@@ -547,13 +547,14 @@ func parseRuntimeResource(data map[string]any) runtimeResourceDoc {
 // resource present after a reconciled release means it is live again; an
 // observation of absent after a create means it is gone, whatever came before.
 type runtimeDerived struct {
-	everPresent   bool      // some authoritative receipt has observed the resource present
-	present       bool      // the latest authoritative observation is present
-	lifetimeStart time.Time // observed-at of the observation that began the current lifetime
-	claimed       bool      // a succeeded claim with a receipt in the current lifetime
-	released      bool      // the latest authoritative observation is a reconciled release observing absent
-	everReleased  bool      // some release was reconciled to absent
-	createFailed  bool      // a create failed, or was reconciled absent, and nothing since observed it present
+	everPresent   bool            // some authoritative receipt has observed the resource present
+	present       bool            // the latest authoritative observation is present
+	lifetimeStart time.Time       // observed-at of the observation that began the current lifetime
+	claimed       bool            // a succeeded claim with a receipt in the current lifetime
+	claimants     map[string]bool // principals with a succeeded claim in the current lifetime
+	released      bool            // the latest authoritative observation is a reconciled release observing absent
+	everReleased  bool            // some release was reconciled to absent
+	createFailed  bool            // a create failed, or was reconciled absent, and nothing since observed it present
 	// lifetime[i] numbers the lifetime in force once effect i is read: 0 before
 	// any observation of present, and one more each time the resource is
 	// observed present again after evidence that it ended — a reconciled release
@@ -561,9 +562,13 @@ type runtimeDerived struct {
 	// after an absence, including the first reconcile that resolves a create or
 	// restore whose acknowledgment was lost. An inspect that finds nothing, and a
 	// reconcile of an effect that was acknowledged, are not that evidence, so an
-	// absent/present pair of inspects keeps the lifetime. Rule 6 scopes ownership
-	// to it, so a claim and its release protection end with the lifetime they
-	// were made in.
+	// absent/present pair of inspects keeps the lifetime. A re-creation on a
+	// claimed resource is that evidence only when the claim's own principal (or
+	// the control plane) issued it: a claim is principal-bound, so an agent's
+	// create or restore, acknowledged or reconciled, never ends a human's claim
+	// (https://github.com/medici-finance/assay/issues/3059#issuecomment-6197991580).
+	// Rule 6 scopes ownership to the lifetime, so a claim and its release
+	// protection end with the lifetime they were made in.
 	lifetime []int
 }
 
@@ -574,13 +579,15 @@ type runtimeDerived struct {
 // later reconcile says the resource is gone (docs/runtime-adapters.md, Recovery
 // rule 4).
 func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived {
-	dv := runtimeDerived{lifetime: make([]int, len(d.Effects))}
+	dv := runtimeDerived{lifetime: make([]int, len(d.Effects)), claimants: map[string]bool{}}
 	cur := 0
 	// recreates is true for the receipt of an effect that re-creates the
 	// resource (create, restore), and for the first reconcile that resolves one
 	// whose acknowledgment was lost (outcome unknown): both are evidence the
-	// resource came back. A reconcile of an acknowledged effect is a read.
-	observe := func(state string, at time.Time, recreates bool) {
+	// resource came back. A reconcile of an acknowledged effect is a read. by is
+	// the principal that issued the create or restore: the target effect's own
+	// principal, never the reconcile's, because the reconcile only reads.
+	observe := func(state string, at time.Time, recreates bool, by string) {
 		switch state {
 		case "present":
 			// regression: any absence followed by any present began a new
@@ -588,10 +595,16 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 			// dropped a human's claim. Only evidence that the resource ended and
 			// came back begins one; otherwise the lifetime, its claim and its
 			// TTL anchor continue.
-			if !dv.present && (!dv.everPresent || recreates || dv.released) {
+			// regression: a re-creation ended a claim whoever issued it, so an
+			// agent's lost-ack create dropped a human's claim. A claim is
+			// principal-bound: only its own principal (or the control plane)
+			// ends it by re-creating the resource.
+			endsClaim := !dv.claimed || dv.claimants[by] || by == "control-plane"
+			if !dv.present && (!dv.everPresent || (recreates && endsClaim) || dv.released) {
 				// A new lifetime: its TTL counts from here, and a claim from an
 				// earlier lifetime does not carry over.
 				dv.lifetimeStart, dv.claimed = at, false
+				dv.claimants = map[string]bool{}
 				cur++
 			}
 			dv.present, dv.everPresent = true, true
@@ -619,7 +632,7 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 			tv := d.Effects[j].Verb
 			recreates := (tv == "create" || tv == "restore") && d.Effects[j].Outcome == "unknown" && !resolved[j]
 			resolved[j] = true
-			observe(e.ObservedState, e.ObservedAt.At, recreates)
+			observe(e.ObservedState, e.ObservedAt.At, recreates, d.Effects[j].Principal)
 			if e.ObservedState == "absent" {
 				switch d.Effects[j].Verb {
 				case "create":
@@ -635,18 +648,19 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 				dv.createFailed = true
 			}
 			if e.Outcome != "unknown" && e.HasReceipt {
-				observe(e.ObservedState, e.ObservedAt.At, true)
+				observe(e.ObservedState, e.ObservedAt.At, true, e.Principal)
 			}
 		case "claim":
 			if e.Outcome == "succeeded" && e.HasReceipt {
-				observe(e.ObservedState, e.ObservedAt.At, false)
+				observe(e.ObservedState, e.ObservedAt.At, false, e.Principal)
 				if dv.present {
 					dv.claimed = true
+					dv.claimants[e.Principal] = true
 				}
 			}
 		default: // inspect, snapshot, restore
 			if e.Outcome != "unknown" && e.HasReceipt {
-				observe(e.ObservedState, e.ObservedAt.At, e.Verb == "restore")
+				observe(e.ObservedState, e.ObservedAt.At, e.Verb == "restore", e.Principal)
 			}
 		}
 		dv.lifetime[i] = cur

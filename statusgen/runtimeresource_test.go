@@ -173,12 +173,24 @@ func TestRuntimeResourceContractRules(t *testing.T) {
 		rrEffect("eff-0013", "reconcile", "control-plane", "01:16", "succeeded", "eff-0012", "mock://branch/rr-valid-01", "present") +
 		rrEffect("eff-0014", "inspect", "agent:worker-1", "01:20", "succeeded", "", "mock://branch/rr-valid-01", "absent") +
 		rrEffect("eff-0015", "reconcile", "control-plane", "01:50", "succeeded", "eff-0012", "mock://branch/rr-valid-01", "present")
+	// validAbsentFirst: a lost-ack create reconciled ABSENT, then the same
+	// create reconciled present: the effect was resolved by the first reconcile.
+	validAbsentFirst := valid + rrEffect("eff-0011", "inspect", "agent:worker-1", "01:10", "succeeded", "", "mock://branch/rr-valid-01", "absent") +
+		rrEffect("eff-0012", "create", "agent:worker-1", "01:15", "unknown", "", "", "") +
+		rrEffect("eff-0013", "reconcile", "control-plane", "01:16", "succeeded", "eff-0012", "mock://branch/rr-valid-01", "absent") +
+		rrEffect("eff-0014", "reconcile", "control-plane", "01:20", "succeeded", "eff-0012", "mock://branch/rr-valid-01", "present")
 	recreatedByInspect := strings.Replace(recreated, "verb: create\n    idempotency-key: run-0003/create-again", "verb: inspect\n    idempotency-key: run-0003/create-again", 1)
-	// lostCreate is a create by an agent whose acknowledgment was lost, and the
-	// reconcile that found the resource present: the same event as an
-	// acknowledged create.
-	lostCreate := "  - id: eff-0010\n    verb: create\n    idempotency-key: run-0003/create-lost\n    requested-at: \"2026-01-01T01:05:00Z\"\n    outcome: unknown\n    principal: agent:worker-2\n" +
-		"  - id: eff-0011\n    verb: reconcile\n    idempotency-key: run-0003/reconcile-eff-0010\n    requested-at: \"2026-01-01T01:06:00Z\"\n    outcome: succeeded\n    principal: control-plane\n    reconciles: eff-0010\n    receipt:\n      adapter-ref: mock://snapshot/rr-claimed-01\n      observed-at: \"2026-01-01T01:06:01Z\"\n      observed-state: present\n"
+	// A claim is principal-bound across re-creation: only the claim's own
+	// principal (or the control plane) ends it by re-creating the resource.
+	byAgent := strings.Replace(releaseByOwner, "human:reviewer-a", "agent:worker-2", 1)
+	notEnds := `release effect "eff-0003" ends a claimed resource but is authorized by "agent:worker-2"`
+	unbacked := `ownership names "human:reviewer-a" but no succeeded claim effect by that principal in the resource's current lifetime`
+	// absentThenPresent: the claimant's create is reconciled absent, then the
+	// SAME create is reconciled present — a re-read, not a second re-creation.
+	absentThenPresent := rrEffect("eff-0009", "inspect", "agent:worker-2", "01:00", "succeeded", "", "mock://snapshot/rr-claimed-01", "absent") +
+		rrEffect("eff-0010", "create", "human:reviewer-a", "01:05", "unknown", "", "", "") +
+		rrEffect("eff-0011", "reconcile", "control-plane", "01:06", "succeeded", "eff-0010", "mock://snapshot/rr-claimed-01", "absent") +
+		rrEffect("eff-0012", "reconcile", "control-plane", "01:10", "succeeded", "eff-0010", "mock://snapshot/rr-claimed-01", "present")
 	issuedWhilePending := "  - id: eff-0003\n    verb: inspect\n    idempotency-key: run-0002/inspect\n    requested-at: \"2026-01-01T00:01:00Z\"\n    outcome: failed\n    principal: agent:worker-1\n  - id: eff-0002\n    verb: reconcile"
 
 	cases := []struct {
@@ -247,9 +259,26 @@ func TestRuntimeResourceContractRules(t *testing.T) {
 		{"agent release across an inspect gap", claimedGap, releaseByOwner, strings.Replace(releaseByOwner, "human:reviewer-a", "agent:worker-2", 1), ruleRRClaimWithoutPrincipal, `release effect "eff-0003" ends a claimed resource but is authorized by "agent:worker-2"`},
 		{"ttl restarted by an inspect gap", validGap, "ttl: 4h", "ttl: 1h", ruleRRExpired, "ended 2026-01-01T01:00:05Z"},
 		{"present after release by inspect", recreatedByInspect, "state: released", "state: provisioned", ruleRRClaimWithoutPrincipal, `ownership names "human:reviewer-a" but no succeeded claim effect by that principal in the resource's current lifetime`},
-		// regression: a create reconciled present after an absence kept the old
-		// lifetime and its claim, while the acknowledged create dropped them.
-		{"lost-ack create after an absence drops the claim", claimedLive + inspectAbsent + lostCreate, "state: claimed", "state: claimed", ruleRRClaimWithoutPrincipal, `ownership names "human:reviewer-a" but no succeeded claim effect by that principal in the resource's current lifetime`},
+		// regression: this case pinned the OPPOSITE (an agent's lost-ack create
+		// after an absence dropped a human's claim); it is flipped by the
+		// recorded ruling https://github.com/medici-finance/assay/issues/3059#issuecomment-6197991580
+		// and an agent's re-creation, acknowledged or reconciled, now leaves the
+		// claim in force, so the agent cannot then release it. Only the claim's
+		// own principal (or the control plane) ends a claim by re-creating.
+		{"agent lost-ack create keeps the claim", rrBeforeRelease(claimed, rrReborn("create", "agent:worker-2", false)), releaseByOwner, byAgent, ruleRRClaimWithoutPrincipal, notEnds},
+		{"agent lost-ack restore keeps the claim", rrBeforeRelease(claimed, rrReborn("restore", "agent:worker-2", false)), releaseByOwner, byAgent, ruleRRClaimWithoutPrincipal, notEnds},
+		{"agent acked create keeps the claim", rrBeforeRelease(claimed, rrReborn("create", "agent:worker-2", true)), releaseByOwner, byAgent, ruleRRClaimWithoutPrincipal, notEnds},
+		{"agent acked restore keeps the claim", rrBeforeRelease(claimed, rrReborn("restore", "agent:worker-2", true)), releaseByOwner, byAgent, ruleRRClaimWithoutPrincipal, notEnds},
+		{"other human lost-ack create keeps the claim", rrBeforeRelease(claimed, rrReborn("create", "human:reviewer-b", false)), releaseByOwner, byAgent, ruleRRClaimWithoutPrincipal, notEnds},
+		{"claimant lost-ack create ends the claim", claimedLive + rrReborn("create", "human:reviewer-a", false), "state: claimed", "state: claimed", ruleRRClaimWithoutPrincipal, unbacked},
+		{"claimant lost-ack restore ends the claim", claimedLive + rrReborn("restore", "human:reviewer-a", false), "state: claimed", "state: claimed", ruleRRClaimWithoutPrincipal, unbacked},
+		{"claimant acked create ends the claim", claimedLive + rrReborn("create", "human:reviewer-a", true), "state: claimed", "state: claimed", ruleRRClaimWithoutPrincipal, unbacked},
+		{"control-plane lost-ack create ends the claim", claimedLive + rrReborn("create", "control-plane", false), "state: claimed", "state: claimed", ruleRRClaimWithoutPrincipal, unbacked},
+		// regression: only the FIRST reconcile that resolves a lost create counts;
+		// marking the effect resolved only when that reconcile read present let
+		// a reconcile that read absent be followed by a second one that
+		// re-created, and ended the claim.
+		{"claim kept across a second reconcile", rrBeforeRelease(claimed, absentThenPresent), releaseByOwner, byAgent, ruleRRClaimWithoutPrincipal, notEnds},
 		// regression: a reconcile of an acknowledged create, after an inspect
 		// found the resource absent, began a new lifetime — the ttl restarted
 		// and an agent's release of a claimed resource lint clean.
@@ -258,6 +287,10 @@ func TestRuntimeResourceContractRules(t *testing.T) {
 		// regression: a second reconcile of the same lost-ack create, after an
 		// inspect found the resource absent again, began a lifetime a second time.
 		{"ttl restarted by a second reconcile of a lost-ack create", validTwice, "ttl: 4h", "ttl: 30m", ruleRRExpired, "ended 2026-01-01T01:46:01Z"},
+		// regression: the effect was marked resolved only when the first
+		// reconcile read present, so a reconcile that read absent left the next
+		// one to re-create and restart the ttl.
+		{"ttl restarted after a reconcile that read absent", validAbsentFirst, "ttl: 4h", "ttl: 1h", ruleRRExpired, "ended 2026-01-01T01:00:05Z"},
 		// regression: a receipt dated after a later-listed one was still read
 		// first, so an earlier-issued inspect could not outvote a reconcile.
 		{"receipt dated after a later-listed one", claimed, "  - id: eff-0003\n", lateInspect + "  - id: eff-0003\n", ruleRRStateUnsupported, `effect "eff-0003": receipt is dated 2026-01-01T01:30:01Z, before the receipt of "eff-0009" listed ahead of it (2026-01-01T01:40:01Z)`},
@@ -308,6 +341,25 @@ func rrEffect(id, verb, by, at, outcome, reconciles, ref, seen string) string {
 func rrReread(by, ref, absentAt, readAt string) string {
 	return rrEffect("eff-0011", "inspect", by, absentAt, "succeeded", "", ref, "absent") +
 		rrEffect("eff-0012", "reconcile", "control-plane", readAt, "succeeded", "eff-0001", ref, "present")
+}
+
+// rrReborn is an inspect that finds the resource absent, then a create or
+// restore by `by` that brings it back: acknowledged (its own receipt observes
+// present), or with the acknowledgment lost and a control-plane reconcile
+// reading it present. Nothing releases the resource in between.
+func rrReborn(verb, by string, acked bool) string {
+	ref := "mock://snapshot/rr-claimed-01"
+	s := rrEffect("eff-0009", "inspect", "agent:worker-2", "01:00", "succeeded", "", ref, "absent")
+	if acked {
+		return s + rrEffect("eff-0010", verb, by, "01:05", "succeeded", "", ref, "present")
+	}
+	return s + rrEffect("eff-0010", verb, by, "01:05", "unknown", "", "", "") +
+		rrEffect("eff-0011", "reconcile", "control-plane", "01:06", "succeeded", "eff-0010", ref, "present")
+}
+
+// rrBeforeRelease inserts effects ahead of the claimed fixture's release.
+func rrBeforeRelease(claimed, effects string) string {
+	return strings.Replace(claimed, "  - id: eff-0003\n", effects+"  - id: eff-0003\n", 1)
 }
 
 // rrLineHas reports whether one line carries both the rule tag and the message.
@@ -366,7 +418,50 @@ func TestRuntimeResourceContractOrd(t *testing.T) {
 	if lostRecreate == recreate {
 		t.Fatal("anchor create receipt not found")
 	}
+	// A claim is principal-bound across re-creation
+	// (https://github.com/medici-finance/assay/issues/3059#issuecomment-6197991580):
+	// an agent's create or restore, acknowledged or reconciled, leaves a
+	// human's claim in force; the claim's own principal's, or the control
+	// plane's, ends it, and the new lifetime is unclaimed.
+	ownerBlock := "ownership:\n  principal: human:reviewer-a\n  claimed-at: \"2026-01-01T00:30:00Z\"\n  retain-until: \"2026-01-08T00:00:00Z\"\n"
+	if !strings.Contains(claimed, ownerBlock) {
+		t.Fatal("anchor ownership block not found")
+	}
+	releaseHuman := "requested-at: \"2026-01-01T01:30:00Z\"\n    outcome: succeeded\n    principal: human:reviewer-a\n"
+	if !strings.Contains(claimed, releaseHuman) {
+		t.Fatal("anchor release not found")
+	}
+	// endedBy: the claimed fixture, re-created by `by` before the release, with
+	// the claim ended: no ownership block, and the unclaimed resource released
+	// by the agent.
+	endedBy := func(verb, by string, acked bool) string {
+		s := strings.Replace(rrBeforeRelease(claimed, rrReborn(verb, by, acked)), ownerBlock, "", 1)
+		return strings.Replace(s, releaseHuman, strings.Replace(releaseHuman, "human:reviewer-a", "agent:worker-2", 1), 1)
+	}
+	// secondClaim: the first claim's lifetime ended by a reconciled release; an
+	// agent re-created the resource, human:reviewer-b claimed it, and then
+	// human:reviewer-a — a claimant of the ENDED lifetime only — re-created it
+	// after an absence. The claim is reviewer-b's, so reviewer-a's re-creation
+	// does not end it.
+	secondClaim := claimed +
+		rrEffect("eff-0009", "create", "agent:worker-2", "01:40", "succeeded", "", "mock://snapshot/rr-claimed-01", "present") +
+		rrEffect("eff-0010", "claim", "human:reviewer-b", "01:45", "succeeded", "", "mock://snapshot/rr-claimed-01", "present") +
+		rrEffect("eff-0011", "inspect", "agent:worker-2", "01:50", "succeeded", "", "mock://snapshot/rr-claimed-01", "absent") +
+		rrEffect("eff-0012", "create", "human:reviewer-a", "01:52", "succeeded", "", "mock://snapshot/rr-claimed-01", "present")
+	secondClaim = strings.Replace(secondClaim, "  principal: human:reviewer-a\n  claimed-at: \"2026-01-01T00:30:00Z\"", "  principal: human:reviewer-b\n  claimed-at: \"2026-01-01T01:45:00Z\"", 1)
+	secondClaim = strings.Replace(secondClaim, "      at: \"2026-01-01T01:30:01Z\"\n", "      at: \"2026-01-01T01:30:01Z\"\n    - after: eff-0010\n      action: rotated\n      at: \"2026-01-01T01:45:01Z\"\n", 1)
 	cases := []struct{ name, base, old, new string }{
+		{"a claimant of an ended lifetime does not end the next claim", secondClaim, "state: released", "state: claimed"},
+		{"agent lost-ack create keeps the claim, owner releases", rrBeforeRelease(claimed, rrReborn("create", "agent:worker-2", false)), "state: released", "state: released"},
+		{"agent lost-ack restore keeps the claim, owner releases", rrBeforeRelease(claimed, rrReborn("restore", "agent:worker-2", false)), "state: released", "state: released"},
+		{"agent acked create keeps the claim, owner releases", rrBeforeRelease(claimed, rrReborn("create", "agent:worker-2", true)), "state: released", "state: released"},
+		{"agent acked restore keeps the claim, owner releases", rrBeforeRelease(claimed, rrReborn("restore", "agent:worker-2", true)), "state: released", "state: released"},
+		{"claim live across an agent lost-ack create", strings.Split(claimed, "  - id: eff-0003\n")[0] + rrReborn("create", "agent:worker-2", false), "state: released", "state: claimed"},
+		{"claimant lost-ack create ends the claim", endedBy("create", "human:reviewer-a", false), "state: released", "state: released"},
+		{"claimant lost-ack restore ends the claim", endedBy("restore", "human:reviewer-a", false), "state: released", "state: released"},
+		{"claimant acked create ends the claim", endedBy("create", "human:reviewer-a", true), "state: released", "state: released"},
+		{"claimant acked restore ends the claim", endedBy("restore", "human:reviewer-a", true), "state: released", "state: released"},
+		{"control-plane lost-ack create ends the claim", endedBy("create", "control-plane", false), "state: released", "state: released"},
 		{"re-created after release", unclaimed, "state: released", "state: provisioned"},
 		{"owner releases across an inspect gap", claimedGap, "state: released", "state: released"},
 		{"owner releases across a re-read of the create", claimedReread, "state: released", "state: released"},

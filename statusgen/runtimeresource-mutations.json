@@ -353,7 +353,7 @@
       "name": "a release's own receipt is read as an observation",
       "file": "runtimeresource.go",
       "old": "\t\tcase \"release\":\n\t\t\t// An acknowledgment, not an observation",
-      "new": "\t\tcase \"release\":\n\t\t\tif e.HasReceipt {\n\t\t\t\tobserve(e.ObservedState, e.ObservedAt.At)\n\t\t\t}\n\t\t\t// An acknowledgment, not an observation"
+      "new": "\t\tcase \"release\":\n\t\t\tif e.HasReceipt {\n\t\t\t\tobserve(e.ObservedState, e.ObservedAt.At, false, e.Principal)\n\t\t\t}\n\t\t\t// An acknowledgment, not an observation"
     },
     {
       "name": "ownership.claimed-at is never checked for a real instant",
@@ -382,8 +382,8 @@
     {
       "name": "an observation of present after an absence does not begin a new lifetime",
       "file": "runtimeresource.go",
-      "old": "dv.lifetimeStart, dv.claimed = at, false\n\t\t\t\tcur++",
-      "new": "dv.lifetimeStart, dv.claimed = at, false"
+      "old": "\t\t\t\tdv.claimants = map[string]bool{}\n\t\t\t\tcur++",
+      "new": "\t\t\t\tdv.claimants = map[string]bool{}"
     },
     {
       "name": "claims from an ended lifetime still back the ownership block",
@@ -400,32 +400,32 @@
     {
       "name": "an inspect gap (absent, then present) begins a new lifetime",
       "file": "runtimeresource.go",
-      "old": "if !dv.present && (!dv.everPresent || recreates || dv.released) {",
+      "old": "if !dv.present && (!dv.everPresent || (recreates && endsClaim) || dv.released) {",
       "new": "if !dv.present {"
     },
     {
       "name": "a create or restore after an absence does not begin a new lifetime",
       "file": "runtimeresource.go",
-      "old": "(!dv.everPresent || recreates || dv.released)",
+      "old": "(!dv.everPresent || (recreates && endsClaim) || dv.released)",
       "new": "(!dv.everPresent || dv.released)"
     },
     {
       "name": "a restore after an absence does not begin a new lifetime",
       "file": "runtimeresource.go",
-      "old": "observe(e.ObservedState, e.ObservedAt.At, e.Verb == \"restore\")",
-      "new": "observe(e.ObservedState, e.ObservedAt.At, false)"
+      "old": "observe(e.ObservedState, e.ObservedAt.At, e.Verb == \"restore\", e.Principal)",
+      "new": "observe(e.ObservedState, e.ObservedAt.At, false, e.Principal)"
     },
     {
       "name": "a present after a reconciled release does not begin a new lifetime",
       "file": "runtimeresource.go",
-      "old": "(!dv.everPresent || recreates || dv.released)",
-      "new": "(!dv.everPresent || recreates)"
+      "old": "(!dv.everPresent || (recreates && endsClaim) || dv.released)",
+      "new": "(!dv.everPresent || (recreates && endsClaim))"
     },
     {
       "name": "a create reconciled present after an absence does not begin a new lifetime",
       "file": "runtimeresource.go",
-      "old": "observe(e.ObservedState, e.ObservedAt.At, recreates)",
-      "new": "observe(e.ObservedState, e.ObservedAt.At, false)"
+      "old": "observe(e.ObservedState, e.ObservedAt.At, recreates, d.Effects[j].Principal)",
+      "new": "observe(e.ObservedState, e.ObservedAt.At, false, d.Effects[j].Principal)"
     },
     {
       "name": "a reconcile of an acknowledged create begins a new lifetime",
@@ -444,6 +444,48 @@
       "file": "runtimeresource.go",
       "old": "if e.ObservedAt.OK && prevObs.ObservedAt.OK && e.ObservedAt.At.Before(prevObs.ObservedAt.At) {",
       "new": "if false && prevObs.ObservedAt.OK {"
+    },
+    {
+      "name": "a re-creation ends a claim whoever issued it",
+      "file": "runtimeresource.go",
+      "old": "endsClaim := !dv.claimed || dv.claimants[by] || by == \"control-plane\"",
+      "new": "endsClaim := true"
+    },
+    {
+      "name": "the control plane's re-creation does not end a claim",
+      "file": "runtimeresource.go",
+      "old": " || by == \"control-plane\"",
+      "new": ""
+    },
+    {
+      "name": "any human or organization principal ends a claim, not only its claimant",
+      "file": "runtimeresource.go",
+      "old": "dv.claimants[by]",
+      "new": "isOwnerPrincipal(by)"
+    },
+    {
+      "name": "the claimant's own re-creation does not end its claim",
+      "file": "runtimeresource.go",
+      "old": " || dv.claimants[by]",
+      "new": ""
+    },
+    {
+      "name": "a re-creation of an unclaimed resource does not begin a new lifetime",
+      "file": "runtimeresource.go",
+      "old": "endsClaim := !dv.claimed || ",
+      "new": "endsClaim := "
+    },
+    {
+      "name": "the claimants of an ended lifetime still end the next claim",
+      "file": "runtimeresource.go",
+      "old": "\t\t\t\tdv.claimants = map[string]bool{}\n",
+      "new": ""
+    },
+    {
+      "name": "an effect is resolved only when its reconcile observed present",
+      "file": "runtimeresource.go",
+      "old": "resolved[j] = true",
+      "new": "resolved[j] = e.ObservedState == \"present\""
     }
   ]
 }
