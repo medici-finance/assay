@@ -8,8 +8,8 @@ why: >-
   throttle into a wait, and the same verb, exposed as a button on the page and as a line to the
   launching console, means the person and the Claude Code session driving the install see and
   drive one state machine.
-wave: 2
-depends: ["apps-installer/02"]
+wave: 3
+depends: ["apps-installer/02", "apps-installer/09"]
 unblocks: ["apps-installer/07"]
 effort: M
 gate: model
@@ -21,6 +21,7 @@ sources:
   - "./design.md §4 (state machine and its edges), §2 Screen 2 (throttle banner, Resume creation, console strip), §6 (`deskapps resume`, `status`), §8 (throttle, code expired, port in use)."
   - "Operator observation 2026-09-05: about four Apps can be created before the account is throttled; the throttle's duration is not documented by GitHub."
   - "apps-installer/02 — writes `apps.state.json` (`deskapps-state-v1`) and flips a row to `paused` after 10 minutes without a callback; this brief owns everything that reads that state back."
+  - "apps-installer/09 — the team tier gains a third App, `<prefix>-review`; an install keyed before that change must resume to three Apps without re-creating the first two (#3092 review F3: resume is this brief's, so the upgrade case lives here)."
   - "freshness-checked 2026-09-05 @ 38e96f7 (origin/main) — no state record or resume verb exists."
 exec-tier: any
 consumers:
@@ -75,7 +76,11 @@ facts:
 4. `/verb` handler with nonce check, the four verbs, console lines.
 5. Port fallback and redirect derivation.
 6. Docs sections.
-7. `mutations.json`: remove the reconciliation step → row 5 red; accept a fifth verb → row 6 red.
+7. Team upgrade: `resume` (and a team `init` re-run) against a state file whose team rows are
+   `<p>-read` and `<p>-act`, both keyed, adds one `<p>-review` row as `pending` and never
+   re-creates or re-states a keyed row. `REVIEWER_APP` keeps its written value until
+   `<p>-review` is keyed (apps-installer/09's `writeBindings` then moves it).
+8. `mutations.json`: remove the reconciliation step → row 5 red; accept a fifth verb → row 6 red.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
@@ -90,6 +95,7 @@ facts:
 | 8 | `grep -cE -e '^## Resume' -e '^## Status' -e '^## Page verbs' docs/desk-tools/deskapps.md` | 3 |
 | 9 | `cd tools/desk && go test ./cmd/deskapps/ -run 'Mutation' -count=1` | exit 0 — both mutants caught |
 | 10 | `statusgen --root . --consumers --brief apps-installer/04` | exit 0 (routing claims corroborated against the diff) |
+| 11 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestTeamResumeAddsReviewOnly' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestTeamResumeAddsReviewOnly'` | 1 — a state file with read and act keyed gains one pending `example-review` row; neither keyed row changes state |
 
 ## Evidence
 <!-- appended at implementation time -->

@@ -9,7 +9,7 @@ why: >-
   review-to-ready lane runs on it unchanged, with no gate loosened.
 wave: 2
 depends: ["apps-installer/02"]
-unblocks: ["apps-installer/03", "apps-installer/07"]
+unblocks: ["apps-installer/03", "apps-installer/04", "apps-installer/07"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -25,8 +25,9 @@ sources:
 exec-tier: strong
 exec-tier-why: >-
   Question (b) — the binding this writes (apps.env `REVIEWER_APP=`) is read by desktoken, while the
-  approver identity deskflip and deskclose check is read from the roster; the change is only right
-  when every reader sees reviewer ≠ worker, and a test of the writer alone passes either way.
+  approver login deskflip checks and the worker/reviewer pair deskclose compares are read from the
+  roster; the change is only right when every reader sees reviewer ≠ worker, and a test of the
+  writer alone passes either way.
 consumers:
   - "tools/desk/cmd/deskapps/manifest.go: follow-up apps-installer/09"
   - "tools/desk/cmd/deskapps/page/tier.html: follow-up apps-installer/09"
@@ -63,10 +64,15 @@ files:
 
 single-point-of-failure: author ≠ approver on the team tier. Three independent layers stand
 behind it: (1) the manifests and bindings this brief writes put the reviewer role on its own App;
-(2) at run time deskclose and deskflip compare the roster's worker and reviewer logins
-(`deskkit.SameActor`) and refuse when they match — a different component, reading a different
-file; (3) GitHub itself refuses an App approving a PR it authored. Row 4 bypasses layer 1 (a
-hand-written roster binding both roles to one App) and proves layer 2 still refuses.
+(2) at run time, two desk-tool checks in different components refuse a collapsed identity —
+deskpost's non-author verdict assertion (`deskkit.NonAuthorVerdict`, `tools/desk/cmd/deskpost/review.go`)
+refuses a verdict whose poster is the head commit's author, and deskclose's superseded lane
+(`deskkit.SameActor`, `tools/desk/cmd/deskclose/superseded.go`) refuses when the roster binds worker and
+reviewer to one App. deskflip does NOT compare worker and reviewer; it only requires the approval's
+author to be the roster's reviewer login; (3) GitHub itself refuses an App approving a PR it
+authored. Row 4 bypasses layer 1 (a hand-written roster binding both roles to one App) and proves
+deskclose still refuses; row 9 proves deskpost's assertion still refuses a poster equal to the
+head author.
 
 facts:
 - Team tier after this brief, in run-board order (checked 2026-10-15 against manifest.go @ 3bf2bf99b):
@@ -101,9 +107,9 @@ facts:
    `<p>-act`'s `Roles` drops `reviewer`; `<p>-review` has `Roles: ["reviewer"]` and
    `Permissions: permsForFamilyRole("reviewer")`. Update the `deskRoles` comment that says every
    role is bound to `<prefix>-act`.
-2. A team run against an existing `apps.state.json` that already has `<p>-read` and `<p>-act`
-   keyed adds the `<p>-review` row as pending and never re-creates the keyed two. Until
-   `<p>-review` is keyed, `REVIEWER_APP` stays as written; once keyed it reads `<p>-review`.
+2. Upgrading an install keyed before this brief (read and act keyed, no review row) is
+   apps-installer/04's resume work, which depends on this brief; nothing here reads an existing
+   `apps.state.json`.
 3. Page copy (tier.html, setup.html): the Read + Act column becomes Read · Act · Review with the
    design table values below; setup lists three App rows.
 4. design.md §2 table, Read · Act · Review column: Bot identities 3 · Clicks 3 create · 3 install
@@ -115,8 +121,10 @@ facts:
    keys and six bindings).
 5. docs/adopting-assay.md: the Read + Act self-approval paragraph states the tier now carries a
    reviewer App; the per-App key step names the Credentials tab.
-6. deskclose superseded_test.go: add a case where the roster binds worker to `<p>-act` and
-   reviewer to `<p>-review` — the lane is not refused for being one App.
+6. deskclose superseded_test.go: add `TestSupersededTeamTierThreeApps` (planned), where the roster binds
+   worker to `<p>-act` and reviewer to `<p>-review` — the lane is not refused for being one App.
+   The existing one-App refusal stays where it is, a subtest of
+   `TestSupersededRoleFromTokenBinding`.
 7. changelog fragment.
 
 ## Verify (executable — no prose-only DoD items)
@@ -124,12 +132,14 @@ facts:
 |---|---------|--------|-------|
 | 1 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestManifest' -count=1 -v 2>&1 \| grep -cE -e 'team tier: 3 manifests' -e 'team review App permissions equal family reviewer' -e 'no tier set carries administration:write'` | 3 | check |
 | 2 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestBindingsWritten' -count=1 -v 2>&1 \| grep -cE -e 'REVIEWER_APP=example-review' -e 'WORKER_APP=example-act' -e 'READ_APP=example-read'` | 3, and the same command with `grep -c 'REVIEWER_APP=example-act'` prints 0 | check |
-| 3 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestTeamTierBindingsResolveThroughDeskkit' -count=1 -v` | exit 0 — the test writes apps.env through `writeBindings` for all three team specs into a temp config home, then reads it back through `deskkit.AppBinding`; logs `reviewer→example-review worker→example-act` and fails if the two are equal | check +flow |
-| 4 | `cd tools/desk && go test ./cmd/deskclose/ -run 'TestSuperseded.*(SameApp\|TeamTier)' -count=1 -v` | exit 0 — the existing same-App case still refuses (exit 5 shape) and the new three-App team case is not refused for being one App | check |
+| 3 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestTeamTierBindingsResolveThroughDeskkit' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestTeamTierBindingsResolveThroughDeskkit'` | 1 — the test writes apps.env through `writeBindings` for all three team specs into a temp config home, then reads it back through `deskkit.AppBinding`; logs `reviewer→example-review worker→example-act` and fails if the two are equal | check +flow |
+| 4 | `cd tools/desk && go test ./cmd/deskclose/ -run 'TestSupersededRoleFromTokenBinding\|TestSupersededTeamTierThreeApps' -count=1 -v 2>&1 \| grep -cE -e '--- PASS: TestSupersededRoleFromTokenBinding/a_roster_binding_both_roles_to_ONE_App' -e '--- PASS: TestSupersededTeamTierThreeApps'` | 2 — the existing one-App subtest still refuses and the new three-App team case is not refused for being one App | check |
 | 5 | `cd tools/desk && go build -o /tmp/deskapps ./cmd/deskapps && /tmp/deskapps init --tier team --org example --no-browser --dry-run 2>&1 \| grep -cE -e 'example-read' -e 'example-act' -e 'example-review'` | 3 | check |
-| 6 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestTeamResumeAddsReviewOnly' -count=1 -v` | exit 0 — a state file with read and act keyed gains one pending `example-review` row; neither keyed row changes state | check |
-| 7 | `n=$(/tmp/deskapps init --tier team --org example --no-browser --dry-run 2>&1 \| grep -cE 'example-(read\|act\|review)'); grep -E '^\| Bot identities' docs/streams/apps-installer/design.md \| awk -F'\|' '{gsub(/ /,"",$4); print $4}' \| grep -qx "$n" && echo match` | prints `match` — the design table's Read · Act · Review identity count equals the number of Apps the tool plans (run after row 5) | check +dereference |
+| 6 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestBindingsWritten$' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestBindingsWritten '` | 1 — the team binding test row 2 greps actually ran and passed | check |
+| 7 | `n=$(/tmp/deskapps init --tier team --org example --no-browser --dry-run 2>&1 \| grep -cE -e 'example-read' -e 'example-act' -e 'example-review'); grep -E '^\| Bot identities' docs/streams/apps-installer/design.md \| awk -F'\|' '{gsub(/ /,"",$4); print $4}' \| grep -qx "$n" && echo match` | prints `match` — the design table's Read · Act · Review identity count equals the number of Apps the tool plans (run after row 5) | check +dereference |
 | 8 | `cd tools/desk && go test ./cmd/deskapps/ -count=1` | exit 0 — mutations.json and the page tests stay green | check |
+| 9 | `cd tools/desk && go test ./cmd/deskpost/ -run 'TestNonAuthorVerdictWired' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestNonAuthorVerdictWired'` | ≥ 1 — deskpost still refuses a verdict whose poster is the head commit's author (layer 2, independent of the bindings) | check |
+| 10 | `statusgen --root . --consumers --brief apps-installer/09` | exit 0 — routing claims corroborated against the diff | check |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

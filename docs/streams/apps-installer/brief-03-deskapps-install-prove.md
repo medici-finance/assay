@@ -112,7 +112,7 @@ facts:
 | 8 | `grep -cE -e '^## Install' -e '^## Prove' docs/desk-tools/deskapps.md` | 2 |
 | 9 | `cd tools/desk && go test ./cmd/deskapps/ -run 'Mutation' -count=1` | exit 0 — the id-swap mutant is caught by row 4 |
 | 10 | `statusgen --root . --consumers --brief apps-installer/03` | exit 0 (routing claims corroborated against the diff) |
-| 11 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestProveDistinctApps' -count=1 -v` | exit 0 — a fake `GET /apps/<slug>` returning the same `id` for `example-act` and `example-review` exits 5 naming both; a permissions set differing from the manifest exits 5 naming the permission |
+| 11 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestProveDistinctApps' -count=1 -v 2>&1 \| grep -c -- '--- PASS: TestProveDistinctApps'` | ≥ 1 — a fake `GET /apps/<slug>` returning the same `id` for `example-act` and `example-review` exits 5 naming both; a permissions set differing from the manifest exits 5 naming the permission |
 
 ## Evidence
 <!-- appended at implementation time -->

@@ -61,7 +61,7 @@ per Secret or per user). The tiers change **who does the work**, never the metho
 | 01 | [Role→App indirection — six desk roles on N GitHub Apps without symlinks](brief-01-role-app-indirection.md) | 0 | M | done | 2026-09-11 sonnet-5-verifier | 2026-09-12 assay-reviewer-app[bot] (approved PR #902 @ 725df44621ba4bacf370f8683ca07331a01b5219) |
 | 02 | [`deskapps init` — loopback page, tier manifests, the manifest→code→conversion flow, key and record writes](brief-02-deskapps-manifest-flow.md) | 1 | L | implemented | — | — |
 | 03 | [`deskapps` install + prove — installation poll, fresh mint, scopes-vs-duties, roster write](brief-03-deskapps-install-prove.md) | 3 | M | todo | — | — |
-| 04 | [`deskapps resume` / `status` — per-App state machine, throttle pause, expired-code re-arm, page verbs](brief-04-deskapps-resume-status.md) | 2 | M | todo | — | — |
+| 04 | [`deskapps resume` / `status` — per-App state machine, throttle pause, expired-code re-arm, page verbs](brief-04-deskapps-resume-status.md) | 3 | M | todo | — | — |
 | 05 | [`deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof](brief-05-deskavatar-generator.md) | 0 | M | done | 2026-09-11 sonnet-5-verifier | 2026-09-12 assay-reviewer-app[bot] (approved PR #911 @ 5317c66fcb189a2f07e3e8c83a9fdbb9c5f551aa) |
 | 06 | [Avatar step in the run board — generated PNG beside the settings page, confirmed not uploaded](brief-06-avatar-step-wiring.md) | 3 | S | todo | — | — |
 | 07 | [Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented](brief-07-install-skill-runbook-cutover.md) | 4 | M | todo | — | — |
@@ -80,7 +80,7 @@ cites both #467 and that spec. That follow-on authoring task is filed and work-r
 
 ```
 01 (role→App indirection) → 02 (manifest flow) → 09 (team review App) → 03 (install + prove) → 07 (skill + runbook cutover)
-                                              └→ 04 (resume/status) ───────────────────────┘
+                                                                    └→ 04 (resume/status) ─────┘
 05 (avatar generator) ─────────────────────────────────────────────────→ 06 (avatar step) ──→ 07
 10 (team review avatar) ────────────────────────────────────────────────┘
 08 (solo spec, human decision) — independent; its implementation brief is authored AFTER the ruling
@@ -121,8 +121,8 @@ carries it.
 ```
 Wave 0: [01, 05, 08, 10]
 Wave 1: [02] ← 01
-Wave 2: [04, 09] ← 02
-Wave 3: [03] ← 02, 09   [06] ← 02, 05, 10
+Wave 2: [09] ← 02
+Wave 3: [03] ← 02, 09   [04] ← 02, 09   [06] ← 02, 05, 10
 Wave 4: [07] ← 03, 04, 06, 09
 ```
 
