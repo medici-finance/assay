@@ -828,15 +828,18 @@ def loginlist: (try fromjson catch [])
 # turns text a stranger wrote, or text the issue page does not show, into one.
 #   a. the body author is trusted ($bodyTrusted): anyone can open an issue on a public repo,
 #      so an untrusted body is never evidence (see resolve_roster);
-#   b. there is a recommended letter, and the ruling names it. The letter is the Options
-#      section's option marked "recommend", by its ORIGINAL letter (the walk re-letters it
-#      A); with no Options section, it is a fork-test `default:` naming one of the block's
+#   b. there is a recommended letter, and the ruling names it. The letter is the ORIGINAL
+#      letter (the walk re-letters it A) of the one visible option carrying the standalone
+#      "(recommended)" marker, when no other option mentions "recommend" at all and the
+#      visible Options equal the ones the walk shows; with no Options section, it is a
+#      fork-test `default:` naming one of the block's
 #      own `option:` letters. The ruling is the first double-quoted phrase in a "How to
 #      answer" (or "How to reply" / "How to respond") section that names that letter
 #      ("A", "B — drop it", "ratify B"), else the fork-test default when its letter is the
 #      recommended one, verbatim;
-#   c. the phrase is VISIBLE: HTML comments, which GitHub does not render, are cut out of
-#      the body first, multi-line and unterminated ones included;
+#   c. the phrase is VISIBLE: HTML comments (multi-line and unterminated ones included) and
+#      Markdown link-reference definitions, which GitHub does not render, are cut out of
+#      the body first;
 #   d. the ruling holds no \p{Cf} format character (a bidi override or zero-width
 #      character makes the displayed command differ from the posted bytes) and no
 #      `<placeholder>` (template text is not a ruling).
@@ -858,22 +861,44 @@ def loginlist: (try fromjson catch [])
         | ($rest | map(isheading) | index(true)) as $stop
         | (if $stop == null then $rest else $rest[:$stop] end)
       end;
+  # The same Options parse as $oraw, over the VISIBLE lines. Gate b requires the two to be
+  # equal, so a parse drift between them fails closed (not derivable), never open.
+  def optionsin($ls):
+    sectionin($ls; "^[[:space:]]*#{1,6}[[:space:]]*Options?\\b") | nonblank | map(strip)
+    | map(select(test("^(?:[-*][[:space:]]*)?(?:\\*\\*)?[A-Da-d1-4][.)][[:space:]]")))
+    | map(capture("^(?:[-*][[:space:]]*)?(?:\\*\\*)?(?<let>[A-Da-d1-4])[.)][[:space:]]*(?<txt>.+)$"))
+    | .[0:4];
+  # The standalone marker only: a trailing "(recommended)" or "— recommended", or a leading
+  # "(Recommended)" / "Recommended:". Never a word that merely contains "recommend"
+  # ("recommendation") and never a negated form ("(not recommended)", "non-recommended").
+  def strictmark:
+    demd | clean | strip
+    | test("(?:^|[[:space:]])\\(recommended\\)$|[[:space:]][—–-][[:space:]]*recommended$|^\\(recommended\\)|^recommended[[:space:]]*[:—–-]"; "i");
+  # Visible lines only: HTML comments and Markdown link-reference definitions
+  # (`[//]: # "…"`) are not rendered by GitHub.
   ((($d.body // "") | gsub("\r"; "") | gsub("<!--[\\s\\S]*?-->"; "") | sub("<!--[\\s\\S]*$"; "")
-    | split("\n"))) as $vis
+    | split("\n") | map(select(test("^ {0,3}\\[[^\\]]+\\]:") | not)))) as $vis
 | ($vis | nonblank | map(strip | demd | clean)) as $visc
 | ($visc | map(select(test("^option:"; "i")) | sub("^option:[[:space:]]*"; ""; "i") | optletter | select(. != null))) as $forkLetters
 | ((($visc | map(select(test("^default:"; "i"))) | .[0]) // "") | sub("^default:[[:space:]]*"; ""; "i") | strip) as $defaultFull
 | ($defaultFull | optletter) as $defaultLetter
 | (($defaultLetter != null) and ($forkLetters | any(. == $defaultLetter))) as $defaultNamesFork
-| ($oraw | to_entries | map(select(.value.txt | test("recommend"; "i"))) | first) as $recMarked
+| optionsin($vis) as $voraw
+# Exactly ONE visible option may mention "recommend" at all, and it must carry the standalone
+# marker. A second mention (even "recommendation") is where the walk's own substring test
+# could pick another option, so the walk and the command could disagree: not derivable.
+| ($voraw | map(select(.txt | test("recommend"; "i")))) as $recMentions
+| (if (($recMentions | length) == 1) and ($recMentions[0].txt | strictmark)
+   then $recMentions[0] else null end) as $recMarked
 # A marked option whose text cleans to empty is dropped from the walk (see $opts), so it is
 # not the option the walk presents as recommended: no letter.
-| (if ($recMarked != null)
-       and (($recMarked.value.txt | demd | clean | strip
+| (if $voraw != $oraw then null
+   elif ($recMarked != null)
+       and (($recMarked.txt | demd | clean | strip
              | sub("[[:space:]]*[—-]?[[:space:]]*\\(?[Rr]ecommended\\)?[[:space:]]*$"; "")
              | sub("^\\(?[Rr]ecommended\\)?[[:space:],:;—-]*"; "") | strip) != "")
-   then ($recMarked.value.let | ascii_upcase)
-   elif (($oraw | length) == 0) and $defaultNamesFork then $defaultLetter
+   then ($recMarked.let | ascii_upcase)
+   elif (($voraw | length) == 0) and $defaultNamesFork then $defaultLetter
    else null
    end) as $recLetter
 | (if $recLetter == null then null

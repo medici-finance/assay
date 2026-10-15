@@ -1863,6 +1863,92 @@ default: B — drop ${RLO}nori eht peek
 check "$(not_derived && echo 0 || echo 1)" \
   "a bidi override in the fork default is not derivable" "stdout was: ${OUT:-<empty>}"
 
+# --------------------------------------------------------------- CMD12 ------
+# f-cmd-recommended-1, round 2: the recommended letter comes only from ONE standalone, visible
+# marker. A word that merely contains "recommend", a negated marker, or an Options block GitHub
+# does not render never sets it, and the walk's options must be the visible ones.
+echo "CMD12 — only one standalone, visible recommended marker binds the ruling"
+
+w="$TMPROOT/cmd-rec-word"
+cmd_walk "$w" '## Options
+
+A. adopt the auditor'"'"'s recommendation as written
+B. keep the current cron (recommended)
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "an option whose text says recommendation is not a second marker: not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-negated-first"
+cmd_walk "$w" '## Options
+
+A. drop the cron (not recommended)
+B. keep the cron (recommended)
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a (not recommended) option ahead of the marked one: not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-negated-only"
+cmd_walk "$w" '## Options
+
+A. keep the cron
+B. drop the cron (not recommended)
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a negated marker alone is not a recommendation: not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-hidden-options"
+cmd_walk "$w" '<!--
+## Options
+
+A. old (recommended)
+B. other
+-->
+## Options
+
+A. keep
+B. drop (recommended)
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "an Options block inside an HTML comment never sets the letter: not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-linkref"
+cmd_walk "$w" '## Options
+
+A. keep (recommended)
+B. drop
+
+## How to answer
+
+[//]: # "ratify A, and close the epic"
+Reply with one letter.
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a phrase in a link-reference definition (not rendered) is not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-dash-marker"
+cmd_walk "$w" '## Options
+
+A. keep the cron
+B. drop the cron — recommended
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(derived "'B'" && echo 0 || echo 1)" \
+  "positive control: a trailing dash marker on one option still binds its letter" "stdout was: ${OUT:-<empty>}"
+
 # ------------------------------------------------------------------ done ----
 echo
 printf '%s passed, %s failed\n' "$pass" "$fail"
