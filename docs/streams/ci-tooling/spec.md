@@ -19,12 +19,27 @@ merely because this document lands. Each implementation brief preserves a workin
 
 ## Observed baseline and inherited decisions
 
-Inspected public source: `4696d598e`, 2026-10-13. `ci/staged-workflows/` already exists,
-including `declared-changes.json`; `.github/workflows/` remains the executable workflow
-location. Standalone tools and the `tools/desk` module coexist; `commsgw` is currently under
-`tools/desk/cmd` and imports its internal packages. It cannot simply move outside that
-module and keep those imports. The private migration source is supplied by each adopter;
-public execution and qualification must not depend on access to it.
+Inspected public source: `4696d598e`, 2026-10-13; staging and live-workflow facts
+re-checked at `a1c0a9c1e`, 2026-10-14. Two public staging areas exist:
+`ci/staged-workflows/` (with `declared-changes.json`) and `tools/ci-load/activation/`
+(five post-change workflow copies and a hand-copy runbook). Three workflows,
+`assay-qualgen.yml`, `assay-statusgen.yml` and `evidence-automerge.yml`, are staged in
+both. `.github/workflows/` remains the executable workflow location. Standalone tools and
+the `tools/desk` module coexist; `commsgw` is currently under `tools/desk/cmd` and imports
+its internal packages. It cannot simply move outside that module and keep those imports.
+The private migration source is supplied by each adopter; public execution and
+qualification must not depend on access to it.
+
+The pilot's adopter-held commands (`claimsguard`, `closecheck`, `releaseguard`) have no
+source in this tree; the public release workflow records that it does not carry
+`releaseguard`. Public `tools/claimguard`, `tools/harnesslint` and `tools/plugindrift`
+are public. The live `ci.yml` selects unit suites by module path (`tools/harnesslint`,
+`tools/plugindrift`) and runs the real-tree `harnesslint` job from `tools/harnesslint`.
+
+The public `deskcore` module already holds a pure, versioned facts bundle (unknown-schema
+refusal, policy digest, completeness) and import-closure tests (`deskcore/archtest`). No
+in-repo submodule (`forgeread`, `statusgen`, `deskcore`) has a published module tag; in-repo
+consumers use a relative `replace` with the zero pseudo-version.
 
 Existing owners remain binding: `statusgen/evaluation` owns eligibility and evidence
 coverage (S-eligibility, S-evidence-coverage in [contracts](../../contracts.md)); `forgeread`
@@ -43,9 +58,11 @@ restricts offline libraries and online authority separately. This work neither r
 | `ci/checks/<check>/` | Reusable check-specific logic | Explicit inputs; no ambient forge credentials or hidden provider reads. |
 | `ci/report/`, `ci/invocation/` | CI presentation and command binding | Import shared result types; do not redefine acceptance. |
 | `ci/actions/<action>/` | Reusable composite action entry points | Checked-in `action.yml`; external users pin the repository commit. |
-| `ci/staged-workflows/` | Reviewable workflow candidates and drift declarations | One canonical staging location; activation still uses the authorized promotion path. |
+| `ci/staged-workflows/` | Reviewable workflow candidates and drift declarations | The staging root for this stream's new candidates while staging exists; the mechanism itself is owned by desk-supervision (see "Workflow landing owner"). |
+| `tools/ci-load/activation/` | Existing second staging area | Inventoried, never a target for new candidates; reconciled or retired by its owner, never landed verbatim. |
 | `.github/workflows/` | Active workflow triggers, jobs and permissions | Remains here because the provider requires it; delegates repeated steps to actions. |
 | `core/checkresult/`, `core/repofiles/` | Narrow mechanisms shared beyond CI | Create only with named consumers and explicit contracts; no catch-all utilities package. |
+| `deskcore/` | Desk-domain facts bundle, policy and import-closure tests | Reuse before adding: `core/checkresult` is created only for what `deskcore/facts` cannot serve without CI importing desk-domain types, and import-closure checks extend `deskcore/archtest` rather than duplicate it. |
 | existing domain modules | Existing semantic owners | Reuse them; directory cleanup does not invent competing owners. |
 
 Two library layers are deliberate:
@@ -66,10 +83,16 @@ No repository-root module/workspace is introduced by this stream.
 
 Release qualification must resolve both modules from outside this checkout, with
 `GOWORK=off`, no consumer `replace`, and no private source. Existing umbrella releases
-must publish resolvable module versions as well as binaries. If the current tag layout
-does not resolve a submodule at the advertised version, stop the consumer cutover until
-the release owner supplies a working module version; never substitute a placeholder
-pseudo-version. Local-proxy tests prove packaging, not a published release.
+must publish resolvable module versions as well as binaries. **Submodule tag owner:** the
+existing release process (`.github/workflows/release.yml` and its maintainers) owns
+emitting `core/vX.Y.Z` and `ci/vX.Y.Z` tags; brief 02 stages that release wiring and
+brief 03 extends it to `ci/`, and each publishes only through the release owner's separate
+authorization. Until a tag resolves, in-tree builds and tests (`ci` importing `core`) use a
+relative `replace` with the zero pseudo-version, the existing in-repo pattern; that is
+in-tree only. If the tag layout does not resolve a submodule at the advertised version,
+stop the external consumer cutover until the release owner supplies a working module
+version; never substitute a placeholder pseudo-version. Local-proxy tests prove
+packaging, not a published release.
 
 ## Check results, policy and authority
 
@@ -101,8 +124,21 @@ names and is a different tool. Preserve both executable names initially, documen
 singular/plural distinction and use distinct packages `checks/claims` and
 `checks/citations`. Any later rename needs its own caller migration.
 
-Extract `checks/claims` so a release-check caller can use a typed result instead of
-launching a checker and parsing its stdout solely to cross a Go module boundary. Retain
+**The library slice is clean-room; the pilot set is conditional.** Brief 03 implements
+`checks/claims`, `checks/closure` and `checks/citations` from the public contract in this
+specification with synthetic fixtures only; no adopter source, export or fixture enters
+it. Importing any adopter-held implementation (`claimsguard`, `closecheck`,
+`releaseguard`) into this public tree is decided only at brief 05's human gate, and only
+for a tool whose source owner has recorded a human publication ruling for that tool
+(see "Publication of adopter-held tools" below). The pilot set is the cleared subset.
+**Fallback pilot:** when no adopter-held tool is cleared, the pilot is the public
+`tools/claimguard` command adopting `checks/citations` and the shared result/report
+packages, moved to `ci/cmd/claimguard` under brief 05 (and then dropped from brief 06's
+cohort). The fallback needs no withheld source, so the critical path never waits on a
+disposition change.
+
+Where `releaseguard` is cleared, the release-check caller uses the typed `checks/claims` result
+instead of launching a checker and parsing its stdout solely to cross a Go module boundary. Retain
 a process boundary where it actually provides isolation or independent deployment; do
 not delete a security check because it resembles repeated code. A command adapter stays
 for shell consumers. `checks/closure` takes a resolver interface; the existing `forgeread`
@@ -125,19 +161,46 @@ consumer pin and open work item affected by a path. Assign desk/operator/service
 or explicit retention, with an owner and retirement condition. This inventory extends
 beyond Go: shell/Python guards, workflow helpers, bootstrap scripts and hooks count too.
 
-Public staging already uses `ci/staged-workflows/`. Migrate any adopter's legacy staging
-path with its promoter, path restrictions, drift manifests, tests, instruction files,
-skills and all path filters. Never run a blanket textual replacement over dated Evidence.
-Keep a bounded dual-read transition only if needed: new writes use the canonical path;
-same workflow in both roots is refused unless bytes match; every alias has a removal step.
-A normal move is not permission to activate workflows or widen workflow-write authority.
+**Workflow landing owner.** This stream does not own how a workflow change lands. That
+mechanism belongs to desk-supervision: the proposed
+[DR-workflow-app-landing](../decisions/DR-workflow-app-landing.md) and briefs
+desk-supervision/10–12 (all `blocked` today) would land workflow changes as workflow-only
+PRs from a single workflow App and retire both staging areas (desk-supervision/12). The two
+plans are compatible under one coexistence rule, which every ci-tooling brief follows:
+
+- Each brief delivers its workflow changes through the landing path **in force at
+  pickup**. Until desk-supervision/12 is `done`, that is a staged candidate under
+  `ci/staged-workflows/`, promoted by the existing maintainer act. Once it is `done`,
+  the same change is delivered as a workflow-only PR through the workflow App path, and
+  no new staged file is written.
+- No ci-tooling brief writes into `tools/ci-load/activation/`, adds a third staging root,
+  or hardens staging (no new promoter, alias or reader that desk-supervision/12 would
+  have to unwind).
+- A workflow staged in more than one root (today `assay-qualgen.yml`,
+  `assay-statusgen.yml`, `evidence-automerge.yml`, and `ci.yml` once brief 04 stages it)
+  is refused by the layout contract unless the bytes match or the inventory names the
+  superseded copy, its reconciliation owner (desk-supervision/12) and any delta the newer
+  candidate carries forward. A superseded copy is never landed verbatim; it would revert
+  intervening fixes.
+- A new candidate is authored against the live `.github/workflows/` file, not against
+  another staged copy.
+
+Migrate any adopter's legacy staging path with its promoter, path restrictions, drift
+manifests, tests, instruction files, skills and all path filters. Never run a blanket
+textual replacement over dated Evidence. Keep a bounded dual-read transition only if
+needed: any required pre-promote check selects the canonical root **before** the first
+write lands there; new writes use the canonical path; the same workflow in both roots
+follows the rule above; every alias has a removal step. A normal move is not permission
+to activate workflows or widen workflow-write authority.
 
 ### 2. Libraries first, existing commands adopt them in place
 
 Publish narrow Assay-wide and CI-wide libraries with offline positive/negative fixtures.
 Cut over the existing command locations to those released versions before moving paths.
-The first consumers are the claims command, release-check composition and closure command;
-add a second check consumer for each proposed shared mechanism before generalizing it.
+The first consumers are the cleared pilot commands (claims, release-check composition and
+closure where their owners rule them publishable) or, failing that, the fallback pilot and
+a synthetic external consumer; add a second check consumer for each proposed shared
+mechanism before generalizing it.
 Do not make an all-tools rewrite a prerequisite to the pilot.
 
 Private-only wrappers, fixtures, policy and source stay private. Their eventual local home
@@ -154,10 +217,27 @@ release before a consumer pin changes; prove consumer pin adoption before deleti
 source. If a public copy exists already, select one canonical implementation and prove
 parity/divergence disposition rather than publishing another copy.
 
-Private adapters move to an adopter-owned private CI directory in private PRs. Pending-publication tools remain
-there or at their recorded old location until independent scrub, publication approval,
-public build, release and consumer parity pass. A generic-looking tool is not automatically
-publishable. Private detector fixtures and publication policy never accompany a move.
+**Live coverage is never dark during a move.** A relocated public control's old tree
+(for example `tools/harnesslint`) stays authoritative, and stays selected by the live
+`.github/workflows/` legs (its unit suite and any real-tree job), until a promoted
+workflow is **observed** running the relocated suite and real-tree job from the new
+location. The new location is a parity-checked copy until then. Retiring the old tree is
+brief 07's act, after that observation, never a side effect of the move. A live-coverage
+check (brief 06) reads the live workflow wiring and fails when any inventoried control's
+suite or real-tree job is not selected at its authoritative path; it is shown red first
+against the current `ci.yml` for a `ci/`-located cohort.
+
+**Publication of adopter-held tools.** Importing any adopter implementation into this
+public tree requires that tool's source owner to record a **human publication ruling,
+per tool**, before its source is exported or pushed anywhere public. A model review,
+an automated scrub or a desk relay never satisfies it; an absent ruling means withheld.
+The ruling is checked at brief 05's human gate. A withheld tool stays at its adopter
+location and leaves the pilot set; it is never re-requested as a pressure point.
+Private adapters move to an adopter-owned private CI directory in private PRs.
+Pending-publication tools remain there or at their recorded old location until the
+ruling, independent scrub, public build, release and consumer parity pass. A
+generic-looking tool is not automatically publishable. Private detector fixtures and
+publication policy never accompany a move.
 
 Desk and service moves share the directory contract, but their custody/module extraction
 is a separate bounded lane under the runtime migration owner. The initial inventory must
@@ -215,8 +295,11 @@ stream has executable Verify contracts for future deliverables; none is marked d
 Qualification must prove: external module resolution; forbidden imports absent; missing
 observations and empty coverage not clean; CLI/library/action parity; malicious annotation
 text escaped; checksum mismatch refused before execution; same input returns the same
-findings; old staging ambiguity refused; unchanged required checks still run after a move;
-private consumers work with public pins without private code becoming a public dependency.
+findings; old staging ambiguity refused; unchanged required checks still run after a move,
+proven against the live workflow wiring rather than staged candidates; moved-control test
+rows fail before the move; adopter source is imported only under a recorded per-tool
+publication ruling; private consumers work with public pins without private code
+becoming a public dependency.
 
 Consumer-specific adoption and the broader desk/service move inventory remain explicit
 obligations, not hidden prerequisites to initial library development. Update existing

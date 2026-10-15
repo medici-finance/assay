@@ -14,7 +14,7 @@ outcome: none
 version: 1
 id: "6f494350-ed0e-476d-b2b6-51323861d154"
 authored: "2026-10-13 by architecture authoring session"
-sources: ["docs/streams/ci-tooling/spec.md", "docs/proposals/non-ci-architecture/24-ci-tooling.md"]
+sources: ["docs/streams/ci-tooling/spec.md", "docs/proposals/non-ci-architecture/24-ci-tooling.md", "docs/streams/decisions/DR-workflow-app-landing.md (proposed; owns the workflow landing mechanism)", "docs/streams/desk-supervision/brief-12-retire-staged-copy-landing.md (blocked; retires both staging areas)"]
 exec-tier: "strong"
 exec-tier-why: "Shared contracts, release paths and independent consumers require cross-component reasoning."
 domain: "complicated"
@@ -68,18 +68,19 @@ Default if no answer: none — activation blocks until answered.
 
 ## Task
 
-1. Convert the selected Assay staged workflows to the qualified actions and actual immutable pins. Retain provider-required active workflow location, triggers, job permissions, concurrency and required-check names. Reconcile declared staged/live deltas honestly; promotion is a separate authorized act.
-2. Publish a neutral adopter cutover recipe: public module and binary release qualification, old-path wrapper adoption, local policy isolation, workflow promotion, observed run and then source deletion. Public records expose no private identifiers, corpus paths or counts.
-3. Implement migration_contract.py over the inventory with refusal cases for unreleased versions, missing consumer evidence, conflicting canonical sources, unmerged fixes and stale import/action pins. Test rollback to the previous qualified pin combination without source fallback.
+1. Convert the selected Assay workflows to the qualified actions and actual immutable pins, delivered through the landing path in force at pickup (spec "Workflow landing owner"): staged candidates under `ci/staged-workflows/` while desk-supervision/12 is not `done`, workflow-only PRs through the workflow App path after. Never write into `tools/ci-load/activation/` or land a superseded staged copy. Retain provider-required active workflow location, triggers, job permissions, concurrency and required-check names. Reconcile declared staged/live deltas honestly; promotion is a separate authorized act.
+2. Publish a neutral adopter cutover recipe: public module and binary release qualification, old-path wrapper adoption, local policy isolation, staging-root migration (any required pre-promote check selects the canonical root **before** the first write lands there), workflow promotion, observed run and then source deletion. Public records expose no private identifiers, corpus paths or counts.
+3. Implement migration_contract.py over the inventory with refusal cases for unreleased versions, missing consumer evidence, conflicting canonical sources, unmerged fixes, stale import/action pins, and an old `tools/<x>` tree retired before a promoted workflow was observed running its relocated suite and real-tree job. Retire a relocated cohort's old tree only after that observation, and re-run brief 06's live_coverage.py with the inventory pointing at the new location. Test rollback to the previous qualified pin combination without source fallback.
 4. Refresh the ownership register and archive only fulfilled transition entries. Every residual tool has an owning bounded brief, including desk/operator/service paths assigned to runtime migration. Report net production/test change separately from relocation and cross-repository copy retirement. Update docs and run statusgen lint; no generated board/status files are branch-committed.
 
 ## Verify
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `python3 ci/tests/migration_contract.py` | exit 0; MIGRATION PASS; all premature-retirement controls rejected | check +flow +dereference |
-| 2 | `statusgen --root . --lint` | exit 0; no new documentation/consumer problems | check |
-| 3 | `statusgen --root . --consumers` | exit 0; consumer routing corroborated against the implementation diff | check |
+| 1 | `python3 ci/tests/migration_contract.py` | exit 0; MIGRATION PASS; all premature-retirement controls rejected, including retirement before an observed promoted run | check +flow +dereference |
+| 2 | `python3 ci/tests/live_coverage.py` | exit 0; LIVE COVERAGE PASS; after any retirement, the live `.github/workflows/` wiring selects every relocated control's unit suite and real-tree job at its new authoritative path | check +neighbour |
+| 3 | `statusgen --root . --lint` | exit 0; no new documentation/consumer problems | check |
+| 4 | `statusgen --root . --consumers` | exit 0; consumer routing corroborated against the implementation diff | check |
 
 ## Evidence
 
@@ -89,5 +90,5 @@ exit codes, outputs or hashes, date and runner here; never infer activation from
 ## Review
 
 Gate: human. The pre-mortem is a green local tool with a stale or unsafe consumer.
-Verify row 1 exercises behavior and negative controls; the remaining row covers the
-module/contract integration. Publication adequacy and retained authority also require review.
+Verify row 1 is the behavior and negative-control row (premature-retirement refusals); row 2
+binds live coverage after retirement; rows 3 and 4 cover lint and consumer routing. Publication adequacy and retained authority also require review.

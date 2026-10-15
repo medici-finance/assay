@@ -54,10 +54,10 @@ design-fit:
 
 ## Task
 
-1. Create the ci module with checks/claims and checks/closure, importing core result types. Obtain only independently publication-cleared source exports and synthetic fixtures; never require a private checkout to build the public module.
+1. Create the ci module with checks/claims, checks/closure and checks/citations, importing core result types (in-tree via a relative `replace` until a `core/` tag resolves). This brief is **clean-room**: implement each package from the public contract in spec.md with synthetic fixtures only. No adopter source, export or fixture enters this brief, and no private checkout is needed to build it. Importing any adopter-held implementation is deferred to brief 05's human gate under a recorded per-tool publication ruling.
 2. Expose explicit policy/snapshot inputs and a resolver interface for closure observations. Distinguish advisory exit zero from could-not-check; preserve existing flags through adapters and record deliberate output changes as versioned compatibility deltas.
 3. Create report/invocation packages for structured output, text/Actions presentation and policy-to-exit mapping. Escape untrusted annotation text. Share no arbitrary shell command runner or credential resolver. Import-closure tests prevent effects in pure checks.
-4. Qualify release-check composition through the typed claims API and a synthetic external consumer. Preserve process-isolated callers when independently justified. Require library/CLI fixture parity including missing data and approved diagnostic changes. Stage release wiring and record published module versions before external adoption.
+4. Qualify typed composition through the claims API and a synthetic external consumer (the release-check caller adopts it only in brief 05, and only if cleared). Preserve process-isolated callers when independently justified. Require library/CLI fixture parity including missing data and approved diagnostic changes. Stage release wiring that emits a `ci/vX.Y.Z` module tag through the release owner and record published module versions before external adoption.
 
 ## Verify
 
@@ -75,5 +75,6 @@ exit codes, outputs or hashes, date and runner here; never infer activation from
 ## Review
 
 Gate: model. The pre-mortem is a green local tool with a stale or unsafe consumer.
-Verify row 1 exercises behavior and negative controls; the remaining row covers the
-module/contract integration. Publication adequacy and retained authority also require review.
+Verify row 2 is the negative-control row (rejected imports, external composition); row 1
+runs the positive, incomplete-input and escaping suites; row 3 covers consumer routing.
+The reviewer also confirms no adopter source, export or fixture entered the diff. Publication adequacy and retained authority also require review.

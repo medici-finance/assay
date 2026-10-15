@@ -54,10 +54,10 @@ design-fit:
 
 ## Task
 
-1. Create core/go.mod and core/checkresult with versioned typed results, input/policy digests, findings and explicit coverage. The result package is pure and does not map advisory policy to a clean verdict. Keep existing statusgen/evaluation and forgeread owners unchanged.
+1. First record, in the inventory, what `deskcore/facts` (versioned bundle, unknown-schema refusal, policy digest, completeness) already serves. Create core/go.mod and core/checkresult only for the versioned typed results, input/policy digests, findings and explicit coverage that CI consumers cannot take from `deskcore` without importing desk-domain types; reuse rather than duplicate. The result package is pure and does not map advisory policy to a clean verdict. Keep existing statusgen/evaluation and forgeread owners unchanged.
 2. Create core/repofiles only for common mechanics demonstrated by at least two consumers in the inventoried check cohort. Callers choose tracked/worktree/artifact selection, globs, exclusions, symlinks and bounds. Preserve different selection contracts; record unavailable files instead of silently dropping them.
-3. Add transitive import checks: result types cannot reach filesystem, environment, clock, subprocess, network, credentials, CI or services. Repofiles cannot import custody or forge effects. Prove deterministic and adversarial path/empty/unreadable input cases.
-4. Qualify external consumers with GOWORK=off and a local module proxy without replace. Stage release-matrix wiring; publish through the existing release process only after its separate authorization. Record the real resolvable module version before any adopter cutover.
+3. Add transitive import checks, extending `deskcore/archtest` where it applies rather than writing a second closure checker: result types cannot reach filesystem, environment, clock, subprocess, network, credentials, CI or services. Repofiles cannot import custody or forge effects. Prove deterministic and adversarial path/empty/unreadable input cases.
+4. Qualify external consumers with GOWORK=off and a local module proxy without replace. Stage release-matrix wiring that emits a `core/vX.Y.Z` module tag (the release process owns tagging, per the spec); publish only after the release owner's separate authorization. In-tree consumers use a relative `replace` until then. Record the real resolvable module version before any adopter cutover.
 
 ## Verify
 
@@ -75,5 +75,6 @@ exit codes, outputs or hashes, date and runner here; never infer activation from
 ## Review
 
 Gate: model. The pre-mortem is a green local tool with a stale or unsafe consumer.
-Verify row 1 exercises behavior and negative controls; the remaining row covers the
-module/contract integration. Publication adequacy and retained authority also require review.
+Verify row 2 is the negative-control row (external resolution with no workspace, `replace`
+or private source); row 1 runs the purity and adversarial-input suites; row 3 covers
+consumer routing. Publication adequacy and retained authority also require review.

@@ -71,14 +71,14 @@ Default if no answer: none — activation blocks until answered.
 1. Implement the three actions specified in spec.md; keep source under ci/actions and invocation relative to github.action_path. External consumer roots are explicit inputs. Document exact action inputs, outputs, supported platforms and compatible binary/library versions.
 2. Require explicit version and platform checksum, verify before execution, and refuse absent/mismatched pins without fallback. Use the existing verified installer if compatible; factor it instead of maintaining a competing implementation.
 3. Keep credentials job-owned and narrowly scoped. No arbitrary command input, token minting, private PATH fallback or privileged execution of untrusted candidate code. Preserve check mode/outcome separation and escape annotation text.
-4. Use synthetic local assets and a throwaway external consumer to prove the real action step flow; test checksum failure before invocation, missing files, malicious annotation content, unsupported platform and non-root checkout. Stage the Assay self-test workflow; activation remains separate.
+4. Use synthetic local assets and a throwaway external consumer to prove the real action step flow; test checksum failure before invocation, missing files, malicious annotation content, unsupported platform and non-root checkout. Deliver the Assay self-test workflow change through the landing path in force at pickup (spec "Workflow landing owner"): a `ci/staged-workflows/ci.yml` (planned) candidate authored against the live `ci.yml` while desk-supervision/12 is not `done`, recorded in the inventory against the existing `tools/ci-load/activation/ci.yml` copy so the layout contract does not refuse it; a workflow-only PR through the workflow App path after. Activation remains separate.
 
 ## Verify
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `python3 ci/tests/actions_contract.py` | exit 0; ACTIONS PASS; actual steps reject every specified negative case | check +flow +dereference |
-| 2 | `(cd ci && GOWORK=off go test ./report/... ./invocation/...)` | exit 0; output and exit contracts pass | check |
+| 2 | `python3 ci/tests/actions_contract.py --mutant skip-checksum` | exit non-zero; the recorded mutant (install-tools with checksum verification removed) is detected before any binary runs; the red output is quoted in Evidence | check +mutation |
 | 3 | `statusgen --root . --consumers` | exit 0; consumer routing corroborated against the implementation diff | check |
 
 ## Evidence
@@ -89,5 +89,6 @@ exit codes, outputs or hashes, date and runner here; never infer activation from
 ## Review
 
 Gate: human. The pre-mortem is a green local tool with a stale or unsafe consumer.
-Verify row 1 exercises behavior and negative controls; the remaining row covers the
-module/contract integration. Publication adequacy and retained authority also require review.
+Verify row 1 is the behavior and negative-control row over the real action steps; row 2
+is fail-first, proving the contract test detects a removed checksum check; row 3 covers
+consumer routing. Publication adequacy and retained authority also require review.

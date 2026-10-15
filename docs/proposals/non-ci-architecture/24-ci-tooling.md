@@ -40,11 +40,19 @@ Private result visibility remains controlled even when the representation is sha
 
 ## Delivery relative to the runtime program
 
-1. Establish directory ownership and one `ci/staged-workflows/` contract, updating every
-   promoter, guard, drift manifest, instruction and path-dependent test together.
+1. Establish directory ownership and inventory both public staging areas
+   (`ci/staged-workflows/`, `tools/ci-load/activation/`). Workflow changes land through the
+   path the workflow-landing owner (desk-supervision/10–12) has in force at pickup; this
+   lane never adds a staging root, and an adopter path migration updates every promoter,
+   guard, drift manifest, instruction and path-dependent test together, with any
+   pre-promote check selecting the new root before the first write there.
 2. Publish Assay-wide and CI-wide libraries; adopt them from existing command paths.
 3. Move qualified binaries and consumers to their family locations, preserving module
-   boundaries, roles, pins and required-check coverage. Retain private code separately.
+   boundaries, roles, pins and required-check coverage. An adopter-held tool enters the
+   public tree only under its owner's recorded per-tool human publication ruling; a
+   public fallback pilot keeps the lane moving without one. An old tree stays live and
+   authoritative until the promoted workflow is observed running the relocated suite.
+   Retain private code separately.
 4. Adopt pinned reusable actions across workflows. Build the first action before or with
    the first workflow cutover; do not wait until all binaries have moved.
 
