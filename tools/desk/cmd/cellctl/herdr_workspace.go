@@ -90,8 +90,11 @@ func (c *Cell) saveHerdrWorkspace(w *herdrWorkspace) error {
 	return os.Rename(f.Name(), filepath.Join(dir, "workspace.json"))
 }
 func verifyHerdrWorkspace(w *herdrWorkspace) (bool, error) {
+	// An ID-less receipt is a create that never finished (Herdr refused, or the run died). The
+	// owner token is reported only after the ID is saved, under the cell lease, so no live
+	// workspace can carry it: the receipt holds no authority and the caller recreates or drops it.
 	if w.ID == "" {
-		return false, fmt.Errorf("Herdr workspace creation unfinished; reconcile the cell workspace receipt")
+		return false, nil
 	}
 	out, err := exec.Command("herdr", "workspace", "list").Output()
 	if err != nil {

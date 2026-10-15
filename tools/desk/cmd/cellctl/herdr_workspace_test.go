@@ -77,4 +77,23 @@ esac
 	if _, err := os.Stat(filepath.Join(dir, "one.ws")); !os.IsNotExist(err) {
 		t.Fatal("own workspace not closed")
 	}
+	// A create that never finished leaves an ID-less receipt; the next run recreates, never wedges.
+	three := cell("three")
+	os.MkdirAll(three.herdrDir(), 0700)
+	if err := three.saveHerdrWorkspace(&herdrWorkspace{Owner: "unfinished"}); err != nil {
+		t.Fatal(err)
+	}
+	c, err := three.ensureHerdrWorkspace()
+	if err != nil || c.ID != "three" || c.Owner == "unfinished" {
+		t.Fatal("unfinished receipt not healed", c, err)
+	}
+	if err := three.saveHerdrWorkspace(&herdrWorkspace{Owner: "unfinished"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := three.closeHerdrWorkspace(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(three.herdrDir(), "workspace.json")); !os.IsNotExist(err) {
+		t.Fatal("unfinished receipt not dropped on close")
+	}
 }
