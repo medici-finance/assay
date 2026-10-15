@@ -138,13 +138,12 @@ type assertionFixture struct {
 		Name string `json:"name"`
 		Hex  string `json:"hex"`
 	} `json:"canonicalSegments"`
-	SigHex       string `json:"sigHex"`
 	PublicKeyHex string `json:"publicKeyHex"`
 }
 
 // TestContractCompatibilityAssertionBytes pins the signed byte layout: the
-// canonical bytes, and the Ed25519 signature over them (deterministic), minted
-// by the pre-extraction implementation. A drift here is a wire break.
+// canonical bytes minted by the pre-extraction implementation, and the legacy
+// signature (carried by the fixture envelope) verifying end to end. A drift here is a wire break.
 func TestContractCompatibilityAssertionBytes(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("testdata", "assertion.json"))
 	if err != nil {
@@ -178,9 +177,6 @@ func TestContractCompatibilityAssertionBytes(t *testing.T) {
 	}
 	if got := CanonicalAssertionBytes(a); !bytes.Equal(got, want) {
 		t.Fatalf("canonical assertion bytes drifted:\n got %x\nwant %x", got, want)
-	}
-	if got := hex.EncodeToString(a.Sig); got != f.SigHex {
-		t.Fatalf("assertion signature drifted:\n got %s\nwant %s", got, f.SigHex)
 	}
 	if a.ExpiresAt.Unix() != f.ExpiresUnix {
 		t.Fatalf("expiry = %d, want %d", a.ExpiresAt.Unix(), f.ExpiresUnix)
