@@ -212,8 +212,10 @@ type Brief struct {
 	// WHERE and how much of the brief it covers, e.g.
 	// `{in: "sib#136", covers: full}`. nil when absent. Read by the
 	// sibling-merge-unreconciled detector as the one acknowledgement that can
-	// release its hold; it is
-	// never a witness for anything else and never derives a lifecycle cell.
+	// release its hold, and by reconcile (briefdelivery.go, #2703): a
+	// `covers: partial` entry naming the reconciled repo marks that merged PR
+	// as work in progress, never the implementation. It can only REMOVE a
+	// witness — it is never a witness itself.
 	Delivery []DeliveryClaim
 	// MergedInSibling is set by the sibling-merge-unreconciled detector
 	// (siblingmerge.go), NOT from frontmatter: the
