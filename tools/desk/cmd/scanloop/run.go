@@ -364,6 +364,13 @@ func renderPassReport(w io.Writer, loop *ScanLoop) {
 		fmt.Fprintf(w, "  leak check: %d item(s) with NO exit — %s\n", len(leaked), strings.Join(leaked, ", "))
 	}
 
+	// Post-write failures, each on its own line. The exit above stands — the artifact exists — but
+	// local state was left behind and an operator has to see it, so it is never folded into the
+	// ledger line or dropped.
+	for _, warning := range loop.Warnings() {
+		fmt.Fprintf(w, "  WARNING: %s\n", warning)
+	}
+
 	if rep := loop.Report(); rep != nil {
 		for _, d := range rep.Degraded {
 			fmt.Fprintf(w, "  DEGRADED: %s\n", d)
