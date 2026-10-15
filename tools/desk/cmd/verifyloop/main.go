@@ -31,23 +31,25 @@ import (
 )
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident
-	// (correctness review finding: SetToolClass had no caller anywhere
-	// in the tree, so every tool was ClassWrite only because nothing ever set it).
-	// This tool ACTS on the roster, so ciEligible=false: config-home file only, never
-	// the environment, in CI as well as locally.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// Every run echoes the EFFECTIVE trust/authority
-	// configuration to stderr before it does anything. The roster, the allowed-repo
-	// set and the risk-path additions live in repository settings or a config-home
-	// file, not in a diff — so the RUN is the only place a change to them becomes
-	// visible, and a NARROWING has to be as visible as a widening. Logins and paths
-	// only; never a token or a credential path.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("verifyloop", nil, os.Args[1:], func([]string) int {
+		// The roster class is an EXPLICIT declaration, never the zero value by accident
+		// (correctness review finding: SetToolClass had no caller anywhere
+		// in the tree, so every tool was ClassWrite only because nothing ever set it).
+		// This tool ACTS on the roster, so ciEligible=false: config-home file only, never
+		// the environment, in CI as well as locally.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// Every run echoes the EFFECTIVE trust/authority
+		// configuration to stderr before it does anything. The roster, the allowed-repo
+		// set and the risk-path additions live in repository settings or a config-home
+		// file, not in a diff — so the RUN is the only place a change to them becomes
+		// visible, and a NARROWING has to be as visible as a widening. Logins and paths
+		// only; never a token or a credential path.
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

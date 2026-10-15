@@ -121,3 +121,64 @@ The architecture reduces duplicate semantic and runtime owners by design, but ad
 database operation, migration, discovery and qualification work. Net savings remain
 a hypothesis until the remaining implementation is sized and measured. A brief
 retirement count is not an engineering-effort estimate.
+
+## Scion-derived forge-service extension — 14 October 2026
+
+The [forge-service amendment](22-forge-service-and-source-queries.md) extends R6 alongside
+R4 and the read portion of R7; it is not a second mirror or authority program. Reuse the
+forge-neutral/37–38 briefs and the forge-neutral/39–45 briefs merged in PR 2743 (merge commit
+`6b479a573`). Those briefs cover typed service contracts,
+authenticated serving and role-executor custody, write-through receipts, exact-commit source
+queries, incremental derived indexes, a shared-Git reuse trial, and served/recovery/cutover
+qualification. Their source contracts can be tested offline; the managed writer still needs
+R1–R4 and the mirror store before activation. The public cockpit and remote OIDC ingress
+remain R7 work, consuming the same authorization and observation contract.
+
+Do not make a shared-object daemon or broad source checkout redesign a prerequisite for the
+first mirror/service. The reuse trial is a bounded go/no-go comparison, while request coalescing
+and bounded upstream fallback are already mirror obligations. Necessary PR branches and the
+existing candidate/retirement owners stay. Cross-provider qualification must cover operation
+unknowns, admission-bound private data and exact candidate currency, not only read speed.
+
+
+## Public runtime contract gaps — 14 October 2026
+
+The [runtime alignment](23-runtime-contract-alignment.md) maps prior requirements onto
+existing R1–R8 owners. Add graph-execution/30 (complete evaluation context/time validity)
+and /31 (accountable-principal and proof provenance) after /28, independently at wave 3.
+They add no second runtime or signer. /14 consumes both, /19 consumes /30 and /25 consumes
+/31 through dated Task/Verify amendments; existing human activation gates remain.
+
+The real head is still independent verification of /02 before /09 -> /28. /30–31 contract
+fixtures do not need a deployed PostgreSQL controller; their managed consumers still require
+their existing R2–R5 prerequisites and separate activation proof. R3–R8 package amendments
+remain with their existing owners; this revision does not mark their implementation complete.
+
+## Communications extraction and existing-work amendments (proposed; pending approval)
+
+Proposal against the ratified revision `23f655f5d`. The R2, R7 and R8 edges below are not in the amendment manifest's rows or dependency path until the proposal is approved and the manifest is reconciled.
+
+The [communications target](24-communications.md) and [comms-core briefs](../../streams/comms-core/README.md)
+add a concrete extraction path: 01 contract/policy → 02 server/file backend → 03 client;
+04 shared configuration follows 02 and desktools-v2/16. Existing desktools-v2/42 now
+depends on 02/03 and remains the sole owner of Cobra migration for the comms commands.
+This is actual brief amendment work, not an inventory-only promise. Adopters reconcile
+their own unfinished mode/activation plans against these public interfaces.
+
+R1 consumes the versioned message/receipt contract only where its flow sends messages.
+R2 owns transactional SQL outbox and business inbox deduplication; it does not implement
+a second durable broker. R7's comms host integration follows 02 and a qualified public
+service/custody seam; its unrelated UI work stays independent. R8's messaging cutover
+requires selected-broker proof and an accepted/held/acked state reconciliation manifest.
+Broker qualification, adapter, host composition and cutover need subsequent bounded
+briefs; the four extraction briefs neither select a broker nor enable native firing.
+
+## CI and directory migration lane
+
+The [CI extension](25-ci-tooling.md) adds a separately deliverable lane: directory/staging
+contract → public shared libraries → in-place consumer cutover → qualified command moves
+and action adoption → source retirement. Build the first reusable actions before or beside
+the first workflow cutover. The [ci-tooling stream](../../streams/ci-tooling/README.md)
+owns this decomposition; it does not wait for the runtime controller. R8 retains the
+desk/operator/service relocation work routed by the layout inventory and must qualify
+module visibility, authority and lifecycle before retiring their old paths.

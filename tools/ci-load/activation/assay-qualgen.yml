@@ -68,7 +68,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.25.0"
+  GO_VERSION: "1.27.2"
 
 jobs:
   render:
@@ -162,6 +162,15 @@ jobs:
           # Never `git pull --rebase`: QUALITY.md is a generated artifact, so a
           # rebase conflict in it is meaningless — regeneration against the new
           # head IS the resolution.
+          # CLASSIFIED PUSH (#2910). Only a non-fast-forward rejection is a race
+          # with main and earns a retry; an expired, revoked, under-scoped or
+          # otherwise refused credential fails ONCE with its own line, spends no
+          # retry, and never says main moved. The credential is preflighted (a
+          # dry-run push) before the commit is written and before every retry.
+          # git's output is shown masked. statusgen/pushcred.sh is the one
+          # testable home of the classes (statusgen/pushcred_test.go).
+          . statusgen/pushcred.sh
+          pushcred_preflight "qualgen QUALITY.md regen" || exit 1
           attempts=3
           attempt=1
           while : ; do
@@ -175,9 +184,14 @@ jobs:
               exit 0
             fi
             git commit -m 'chore(quality): regenerate QUALITY.md [skip-qualgen-regen]'
-            if git push; then
+            if pushcred_push; then
               echo "QUALITY.md pushed on attempt ${attempt}/${attempts}"
               exit 0
+            fi
+            class="$(pushcred_classify)"
+            if [ "${class}" != nonff ]; then
+              pushcred_fail "${class}" "qualgen QUALITY.md regen"
+              exit 1
             fi
             if [ "${attempt}" -ge "${attempts}" ]; then
               echo "::error::qualgen QUALITY.md regen: push rejected on all ${attempts} attempts — main is moving faster than the regen can re-sync. Re-run this job once the merge burst settles."
@@ -188,4 +202,5 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             QUALGEN_QUALITY_WRITER=ci "${RUNNER_TEMP}/qualgen" report --out . --write
+            pushcred_preflight "qualgen QUALITY.md regen" || exit 1
           done

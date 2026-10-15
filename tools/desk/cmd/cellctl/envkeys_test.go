@@ -239,13 +239,25 @@ var envKeyOtherReads = map[string]envOtherRead{
 		why: "the per-role pin, read to refuse an Opus pin on the-desk"},
 	"GetOrSet(k)@cell.go:loadCell": {prefixes: []string{"TIER_MODEL_"},
 		why: "the compiled tier map, applied from tierModelDefaults"},
+	"Get(k)@modelreset.go:tierEntry": {prefixes: []string{"TIER_MODEL_"},
+		why: "a tier-map entry from the cell's files: the cheap default and the ranks the reset compares"},
+	"Get(k)@modelreset.go:planModelReset": {keys: modelPinKeyList(),
+		why: "the model pin cell.env carries for a pin record"},
+	"Source(k)@modelreset.go:planModelReset": {keys: modelPinKeyList(),
+		why: "whether the pin a record names is still a line of the cell's own cell.env"},
+	"Get(k)@modelreset.go:recordPins": {keys: modelPinKeyList(),
+		why: "the value a just-written model pin reads back as, recorded in the pin record"},
+	"Get(k)@modelreset.go:theDeskFallsThrough": {keys: []string{"DESK_MODEL_the_desk", "CODEX_MODEL_the_desk", "CURSOR_MODEL_the_desk"},
+		why: "whether the-desk has its own pin, or resolves through the harness default"},
+	"Get(m.Key)@modelreset.go:resetAgedDefaultPins": {keys: modelPinKeyList(),
+		why: "the launch value of a pin the reset moves, so a shell override is not replaced"},
 	"Get(providerVar(name, suffix))@provider.go:providerValue": {provider: true,
 		why: "a provider's endpoint, token variable name or model"},
 	"Source(providerVar(name, suffix))@provider.go:providerValue": {provider: true,
 		why: "which file supplied the provider value just read"},
 
 	// ── Env.Get handed to another package ──
-	"c.Env.Get@cache.go:cachePolicy": {keys: []string{"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE"},
+	"c.Env.Get@cache.go:cachePolicy": {keys: []string{"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE", "CELL_GO_CACHE_BUILD_MAX_AGE", "CELL_GO_TRIMPATH"},
 		why: "the managed Go cache resolver reads its keys through this getter; TestEnvKeyRegistryIsComplete holds this list to the literals in that package"},
 
 	// ── forwarding: the key is a parameter, and the call sites are walked instead ──
@@ -694,7 +706,8 @@ func TestCellDefaultsTemplateListsEveryMachineKey(t *testing.T) {
 func cellSnapshot(t *testing.T, c *Cell) map[string]string {
 	t.Helper()
 	m := map[string]string{
-		"kind": c.Kind, "harness": c.Harness, "roles": strings.Join(c.Roles, " "), "session": c.Session,
+		"telemetry": c.telemetryValue(),
+		"kind":      c.Kind, "harness": c.Harness, "roles": strings.Join(c.Roles, " "), "session": c.Session,
 		"deskd": c.Deskd, "forge": c.Forge, "forge api": c.ForgeAPIBase, "repo": c.Repo,
 		"generated files":  strings.Join(c.cellctlGeneratedFiles(), "|"),
 		"repair admission": c.repairAdmissionValue(),
@@ -810,6 +823,8 @@ func TestCellDefaultsTemplateUncommentedLines(t *testing.T) {
 				t.Fatalf("cachePolicy = %v, %v", p, err)
 			}
 			m["cache budget"], m["cache floor"] = fmt.Sprint(p.Budget), fmt.Sprint(p.Floor)
+			m["cache build max age"] = fmt.Sprint(p.BuildMaxAge)
+			m["cache trimpath"] = p.GoFlags
 			off, err := plain.cachePolicy()
 			m["cache"] = fmt.Sprintf("on=%v err=%v", off != nil, err)
 		}
@@ -948,9 +963,12 @@ func TestCellDefaultsTemplateUncommentedLines(t *testing.T) {
 // take from one Go constant, for a read that is inline in a launch and has no resolver to call.
 // "by reading" is the one line whose printed value is not a constant the code holds at all.
 var templateDefaultProof = map[string]string{
+	envAssayTelemetry:                 "resolved: telemetry",
 	"CELL_GO_CACHE":                   "resolved: cache",
 	"CELL_GO_CACHE_BYTES":             "resolved: cache budget",
 	"CELL_GO_CACHE_MIN_FREE":          "resolved: cache floor",
+	"CELL_GO_CACHE_BUILD_MAX_AGE":     "resolved: cache build max age",
+	"CELL_GO_TRIMPATH":                "resolved: cache trimpath",
 	"CELL_SCRATCH_MAX_AGE":            "resolved: scratch",
 	"CELL_SCRATCH_MAX_BYTES":          "resolved: scratch",
 	"CELL_HARNESS":                    "resolved: harness",
@@ -1361,4 +1379,16 @@ func TestDefaultsVerb(t *testing.T) {
 	if got, _ := os.ReadFile(path); string(got) != edited {
 		t.Errorf("a refused `defaults` changed the file:\n%s", got)
 	}
+}
+
+// modelPinKeyList is every model pin key, the exact set modelPinKey accepts.
+func modelPinKeyList() []string {
+	var keys []string
+	for _, s := range pinSpaces {
+		keys = append(keys, s.def)
+		for _, r := range knownRoles {
+			keys = append(keys, s.prefix+underscore(r))
+		}
+	}
+	return keys
 }

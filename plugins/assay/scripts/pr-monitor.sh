@@ -102,7 +102,10 @@ Environment:
 
 Exit codes:
   0  every repo read cleanly (armed, quiet, or emitted PR-EVENT lines)
-  1  precondition failure — gh/jq missing, no repos resolvable, unusable state dir
+  1  precondition failure — gh/jq missing, no repos resolvable (or an invalid repo
+     token), unusable state dir. When the repo set cannot be resolved, a
+     `MONITOR-DEGRADED: <reason>` line is printed on STDOUT first (the line the
+     watch filter matches); stderr alone is invisible to it.
   2  at least one repo went DEGRADED (read failed, truncated, or rate-limited) — state RETAINED
 EOF
 }
@@ -124,6 +127,37 @@ for _kv in "LIMIT=$LIMIT" "PACE=$PACE" "MAX_REPOS=$MAX_REPOS"; do
   fi
 done
 
+# origin_to_slug <url> -- reduce a GitHub remote URL to owner/name. Handles every
+# supported github.com form: https/http/git/ssh/git+ssh with
+# an optional user[:password]@ and an optional :port, the scp-style
+# git@github.com:owner/name, a trailing slash and a trailing .git. A URL it does
+# not recognise passes through unchanged so the owner/name validator rejects it
+# loudly (never a silent skip). Pure bash regex: bash 3.2 safe.
+origin_to_slug() {
+  local u="$1" p
+  if [[ "$u" =~ ^(https|http|git|ssh|git\+ssh)://([^/@]*@)?github\.com(:[0-9]+)?/(.*)$ ]]; then
+    p="${BASH_REMATCH[4]}"
+  elif [[ "$u" =~ ^([^/@:]*@)?github\.com:(.*)$ ]]; then
+    p="${BASH_REMATCH[2]}"
+  else
+    p="$u"
+  fi
+  while [[ "$p" == */ ]]; do p="${p%/}"; done
+  p="${p%.git}"
+  printf '%s\n' "$p"
+}
+
+# Display only: remove userinfo even when a malformed URL failed parsing. Keep
+# the scheme and suffix after the last @; no escaped replacement (bash 3.2).
+origin_display() {
+  local u="$1" prefix=""
+  if [[ "$u" == *@* ]]; then
+    if [[ "$u" =~ ^([A-Za-z][A-Za-z0-9+.-]*://) ]]; then prefix="${BASH_REMATCH[1]}"; fi
+    u="$prefix${u##*@}"
+  fi
+  printf '%s' "$u"
+}
+
 resolve_repos() {
   if [[ $# -gt 0 ]]; then
     printf '%s\n' "$@"
@@ -136,8 +170,7 @@ resolve_repos() {
   local origin_url owner_name
   origin_url=$(git remote get-url origin 2>/dev/null || true)
   [[ -z "$origin_url" ]] && return
-  owner_name=$(printf '%s' "$origin_url" \
-    | sed -E 's#^git@github\.com:##; s#^https://github\.com/##; s#\.git$##')
+  owner_name=$(origin_to_slug "$origin_url")
   printf '%s\n' "$owner_name"
 }
 
@@ -150,6 +183,7 @@ while IFS= read -r _line; do
 done < <(resolve_repos "$@")
 
 if [[ -z "${REPOS[*]+x}" || ${#REPOS[@]} -eq 0 ]]; then
+  echo "MONITOR-DEGRADED: no repos to query (no repo args, no ./.assay/repos.txt, and no usable git origin remote)"
   echo "pr-monitor: no repos to query (no repo args, no ./.assay/repos.txt, and no git origin remote found)" >&2
   exit 1
 fi
@@ -158,7 +192,11 @@ fi
 # alphabet, nothing else.
 for _repo in "${REPOS[@]}"; do
   if [[ ! "$_repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
-    echo "pr-monitor: invalid repo '$_repo' (expected owner/name)" >&2
+    # Print the token with any user[:password]@ stripped: stdout is a watch
+    # stream, and an origin URL can carry a credential.
+    _shown="$(origin_display "$_repo")"
+    echo "MONITOR-DEGRADED: invalid repo '$_shown' (expected owner/name)"
+    echo "pr-monitor: invalid repo '$_shown' (expected owner/name)" >&2
     exit 1
   fi
 done

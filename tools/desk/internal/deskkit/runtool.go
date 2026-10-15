@@ -106,6 +106,8 @@ func Run(c ToolCall) ToolRun {
 		Err:      err,
 	}
 	traceRecord(r)
+	// perf.go: one child and its wall time, for the opt-in local perf record.
+	perfCountChild(r.Elapsed)
 	return r
 }
 

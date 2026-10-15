@@ -24,7 +24,13 @@ func (c *Cell) cacheEnv(env []string) []string {
 	if p == nil {
 		return env
 	}
-	for _, kv := range p.Env() {
+	ambient := ""
+	for _, kv := range env {
+		if k, v, ok := strings.Cut(kv, "="); ok && k == "GOFLAGS" {
+			ambient = v
+		}
+	}
+	for _, kv := range p.WithAmbientGoFlags(ambient).Env() {
 		k, v, _ := strings.Cut(kv, "=")
 		env = envSet(env, k, v)
 	}
@@ -131,6 +137,10 @@ func (c *Cell) maintenanceCachePolicy() (*cellcache.Policy, error) {
 			return c.Env.Get("CELL_GO_CACHE_BYTES")
 		case "CELL_GO_CACHE_MIN_FREE":
 			return c.Env.Get("CELL_GO_CACHE_MIN_FREE")
+		case "CELL_GO_CACHE_BUILD_MAX_AGE":
+			return c.Env.Get("CELL_GO_CACHE_BUILD_MAX_AGE")
+		case "CELL_GO_TRIMPATH":
+			return c.Env.Get("CELL_GO_TRIMPATH")
 		}
 		return ""
 	})

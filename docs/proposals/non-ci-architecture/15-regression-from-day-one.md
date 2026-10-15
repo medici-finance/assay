@@ -61,7 +61,7 @@ CLI parser or path-layout tests can retire with an explicitly retired command. T
 | A graph query crosses target versions or inaccessible cells | No mixed-version answer or hidden-data leakage through paths, counts or explanations. |
 | Local Docker state moves to CNPG | Compatible schema/extension set, validated recovery point, paused handover and no admission before reconciliation. |
 
-These are additional tests to author with implementation. They are not claimed to run in this documentation task, and existing CI-only test plumbing is outside the architectural refactor scope except where needed to ensure the selected suite actually runs.
+These are additional tests to author with implementation. They are not claimed to run in this documentation task, and runtime regression plumbing remains in this lane. The separately scoped [CI extension](25-ci-tooling.md) owns CI library/action qualification and tool migration; it preserves this regression floor.
 
 ## Continuous-work and resource qualification
 
@@ -136,3 +136,32 @@ Qualification reports actual selected policy/contract/implementation revisions a
 capability evidence. A schema-valid preset or a higher score is not a passing runtime
 case. Measure first useful outcome and independent repeat use, including support and
 repair effort. Read-only release acceptance is independent of managed writer activation.
+
+## Write-through and source-cache qualification — 14 October 2026
+
+Carry the [forge-service amendment](22-forge-service-and-source-queries.md) into the same
+regression ledger. Exercise provider success followed by SQL failure, death after send,
+conflicting operation payload, stale pre-write refresh, caller loss of a reply, and receipt
+lookup after authorization revocation. Unknown does not replay; read-after-write requests
+show a confirmed/newer observation or explicit pending coverage. Test cached bodies, counts,
+errors and pagination against denied admissions and access epochs. Bypass ingress to prove
+the role executor refuses escalation, stale incarnation and wrong candidate independently.
+
+Source-query tests use disposable bare Git and independent literal fixtures at exact SHAs.
+Changing a branch tip cannot change a cached old-SHA answer; private object reuse still needs
+repository authorization. Compare incremental derived results with a fresh oracle after
+membership, time, policy and permission changes. Burst/outage tests assert the configured
+upstream request budget, while shared-Git experiments report native-Git/go-git latency, CPU,
+bytes, retention and alternate-store recovery. No fixture result certifies live provider
+permissions, a deployed identity provider or CNPG failover.
+
+## Communications regression extension (proposed; pending approval)
+
+Proposal against the ratified revision `23f655f5d`; not baseline text until approved and reconciled in the amendment manifest.
+
+Preserve the commsgw bypass/identity/mailbox suites, commsloop policy/native-dispatch
+suites, deskcomms command/peer-custody suites and cellctl comms manifest/lifecycle
+suites through the [communications extraction](24-communications.md). The initial
+proof is behavior parity plus a real external SDK consumer, not distributed delivery.
+The specification's acceptance cases govern later two-cell outages, filter crashes,
+retries, quota/expiry, authority bypass, SQL-outbox handoff and state migration.

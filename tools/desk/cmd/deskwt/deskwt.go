@@ -695,6 +695,20 @@ func cmdRemove(args []string) (err error) {
 	if !set[rt] {
 		return deskkit.Refused("refused: " + path + " is not a registered worktree (`git worktree list`)")
 	}
+	// A registration with NO git link left (an empty-directory husk, or a directory that is
+	// already gone) cannot be opened, so the tracked-clean and pushed gates below cannot run
+	// on it. huskremove.go clears it under its own, stricter bar — nothing in the directory,
+	// nothing holding it open, a recoverable HEAD, the lock's owner matched — instead of
+	// exiting 6 and leaving the branch registered forever (#1905).
+	if handled, huskDetail, herr := removeHusk(guard, dir, rt); handled {
+		if herr != nil {
+			return herr
+		}
+		ac.repo = repoOrEmpty(dir)
+		ac.detail = huskDetail
+		fmt.Println("removed " + path)
+		return nil
+	}
 	// Dirty TRACKED tree blocks removal (the uncommitted-work guard).
 	// Untracked build artifacts (node_modules, build/, dist/) do NOT block — a
 	// refusal that fired on every real worktree would kill the verb.

@@ -98,20 +98,22 @@ same deskreply --workpad --body-file and --dry-run checks above; neither example
 changes exact-marker validation, PR ownership, identity, scanning or budgets.`
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident
-	// (an earlier correctness review found SetToolClass had no caller anywhere,
-	// so "ClassWrite is the safe default" was true only by luck). This tool ACTS on
-	// the roster, so it is ciEligible=false: it reads the config-home file and never
-	// the environment, in CI as well as locally.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// Echo the effective roster once per run. Every tool that reads a configured
-	// control surface echoes it — a value that lives in settings rather than in a diff
-	// is only visible at RUN time, and a NARROWING must be as visible as a widening.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskreply", nil, os.Args[1:], func([]string) int {
+		// The roster class is an EXPLICIT declaration, never the zero value by accident
+		// (an earlier correctness review found SetToolClass had no caller anywhere,
+		// so "ClassWrite is the safe default" was true only by luck). This tool ACTS on
+		// the roster, so it is ciEligible=false: it reads the config-home file and never
+		// the environment, in CI as well as locally.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// Echo the effective roster once per run. Every tool that reads a configured
+		// control surface echoes it — a value that lives in settings rather than in a diff
+		// is only visible at RUN time, and a NARROWING must be as visible as a widening.
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

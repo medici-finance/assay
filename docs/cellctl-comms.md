@@ -151,6 +151,11 @@ cellctl comms example recover --confirm-stopped
 cellctl comms example run
 ```
 
+`cellctl up` runs this recovery for you, after one confirmation on a terminal. It does so
+only when it has proven the prior supervisor dead by pid and start time and stopped every
+orphaned process carrying the cell's `comms` marker. See the
+[reconcile preflight](cellctl-cadence.md#reconcile-preflight).
+
 Recovery removes the service checkpoint, startup receipt and a stale Unix socket, preserving
 queued, held and acknowledged messages. It never takes over an active lease.
 A clean stop already removes the socket, so `run` can start again without

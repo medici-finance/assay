@@ -85,7 +85,7 @@ Its three-state answer decides everything:
 |---|---|
 | **known** | Proceed. This is the only state that moves anything. |
 | **known-inconsistent** (exit 5) | **Refuse.** Report which records disagree and stop. |
-| **could-not-determine** (exit 6) | **Refuse.** Never assume latest, never offer a "best guess" upgrade. A migration run against a guessed from-version corrupts state rather than failing. |
+| **could-not-determine** (exit 6) | **Refuse.** Never assume latest, never offer a "best guess" upgrade. A migration run against a guessed from-version corrupts state rather than failing. One cause has a supported way through: the refusal says `.assay-versions` carries **no `assay` umbrella line**. In that case only, re-run the same command with `--adopt-umbrella-from-pins`, as described below. |
 
 ## The flow — dry-run first, always
 
@@ -117,7 +117,7 @@ process result alone:
 | Exit | Refusal | Message shape |
 |---|---|---|
 | 5 | **inconsistent records** | names the disagreeing pair (e.g. a `statusgen` pin that disagrees with the umbrella composition) and stops |
-| 6 | **undetermined version** | names the missing/unreadable record (e.g. `.assay-versions`), prints no version, and uses no "assuming latest" wording |
+| 6 | **undetermined version** | names the missing/unreadable record (e.g. `.assay-versions`), prints no version, and uses no "assuming latest" wording. When the cause is **no umbrella line**, the refusal names `--adopt-umbrella-from-pins`. Re-run the same dry-run with that flag. It adopts the release the per-artifact lines pin only when every eligible line (not `-source`, not `same-tag: exempt`) pins one bare tag and every pinned sha256 matches that release's published `checksums.txt`, and it prints that evidence. The apply then writes the `assay <target>` line. With the flag, a digest mismatch is exit 5 (it names the line and both digests), and mixed or legacy tags, an unlisted asset, or no loadable `checksums.txt` are exit 6. Any other undetermined cause stays a refusal: **never guess** a version, and never hand-write the umbrella line |
 | 7 | **not a bare umbrella version** | a `<component>/`-prefixed per-artifact tag, or a malformed version — "this verb moves the whole umbrella; name a bare umbrella version, e.g. `v0.13.0`" |
 | 8 | **no such published release** | a bare `vX.Y.Z` that names no published umbrella — no manifest, no materialised `checksums.txt`, and none at the release home (or no `--fetch`, in which case the refusal names the flag); the refusal names where it looked. Unsupported / could-not-resolve, **never a nearest-match guess** |
 | 9 | **artifacts unavailable** | the target resolves but its artifacts can no longer be fetched (a release pruned from the cache), or its `checksums.txt` lists no `<artifact>-linux-amd64` asset for a bare pin line the pin file carries — the refusal names the missing asset, and nothing is migrated or re-pinned |

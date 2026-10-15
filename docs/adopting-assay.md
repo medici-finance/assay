@@ -1155,7 +1155,7 @@ need a `deskinstall` that nothing above has placed. #1693 tracks closing this. U
 first `deskinstall` **outside** `--dest`. It must be outside because `deskinstall` rewrites every
 file it places in `--dest`, and Windows does not let a running `.exe` overwrite itself. Two ways:
 
-- **With a Go 1.25 toolchain.** From the clone root, run
+- **With a Go 1.27 toolchain.** From the clone root, run
   `go build -C tools/desk -o $env:TEMP\deskinstall.exe ./cmd/deskinstall`, then run step 1's
   second command as `& $env:TEMP\deskinstall.exe --manifest …`. That run places the pinned,
   sha256-verified release build of the whole toolchain, `deskinstall.exe` included, into `--dest`,
@@ -1211,7 +1211,7 @@ operation still needs Git-Bash or WSL after install: **bulk PAT renewal**. See *
 | Lane | When | What you pin | Need Go? |
 |---|---|---|---|
 | **Channel E (release)** | Adopter wants the published tag (example: `v0.26.0`) | `statusgen-windows-<arch>.exe` + `desk-tools-windows-<arch>.tar.gz` **tag + sha256** in `.assay-versions` | **No.** Bootstrap + `deskinstall` download verified assets. |
-| **Channel D (source SHA)** | Adopter asked for `main` (or any commit that is **not** a release asset) | the assay commit SHA your CI clones and rebuilds — recorded in CI config, **not** as a `-source` `.assay-versions` line (see the channel-D lane below) | **Yes.** A Go 1.25 toolchain, `go build` of `statusgen` and the desk-tools, and CI that clones that SHA and rebuilds. Copying a release sha256 onto a source lane is a lie. |
+| **Channel D (source SHA)** | Adopter asked for `main` (or any commit that is **not** a release asset) | the assay commit SHA your CI clones and rebuilds — recorded in CI config, **not** as a `-source` `.assay-versions` line (see the channel-D lane below) | **Yes.** A Go 1.27 toolchain, `go build` of `statusgen` and the desk-tools, and CI that clones that SHA and rebuilds. Copying a release sha256 onto a source lane is a lie. |
 
 `gh` is not required to *install* either lane. GitHub-shaped *desk* work still wants `gh`; GitLab-shaped desk work wants `glab` / `--forge gitlab`, not a GitHub App PEM path.
 
@@ -1223,7 +1223,7 @@ operation still needs Git-Bash or WSL after install: **bulk PAT renewal**. See *
 - **Channel E:** **No Go toolchain and no `gh` are required to install.** The adopter downloads the
   *pinned release binary*, not a from-source build: the bootstrap fetches over `Invoke-WebRequest`
   and the Go-native installer over `net/http`.
-- **Channel D:** a **Go 1.25** toolchain on `PATH` (or a documented portable install) **is**
+- **Channel D:** a **Go 1.27** toolchain on `PATH` (or a documented portable install) **is**
   required. There is no checksummed Windows asset for an unpublished SHA.
 - **`git`** — needed to clone Assay (bootstrap script lives **in this repo**, not on a blank
   adopter machine) and to run desks. `gh` is GitHub-desk only.
@@ -2276,7 +2276,8 @@ branch → draft-PR → review → verify loop (structure: scaffold-seam → mov
 ## 8. Upgrading after install — the `assay:upgrade-assay` skill
 
 Install and upgrade are **one story with one mechanism**: install writes the `.assay-versions` pin
-(the umbrella line plus the per-artifact tags), and upgrade moves it. The single supported upgrade
+(the per-artifact tags, plus the `assay <vX.Y.Z>` umbrella line when it pins a bare `vX.Y.Z` release
+and every per-artifact line pins that tag), and upgrade moves it. The single supported upgrade
 path is the **`assay:upgrade-assay`** skill (surfaced once the plugin is installed). Do **not**
 hand-edit pins against a release page — that is precisely the drift the pin/umbrella model removes.
 The distribution model this section implements is [`distribution.md`](distribution.md).
@@ -2293,7 +2294,11 @@ highest published bare `vX.Y.Z` release) or to a **named** umbrella version, dry
    for you to run; it never re-points the marketplace or edits the install cache itself.
 
 **What it refuses** (each a distinct exit): an **undetermined** current version (exit 6 — it never
-assumes latest), **inconsistent** records (exit 5 — it names the disagreeing pair), a
+assumes latest). When the only cause is a pin file with **no umbrella line**, as written by an
+install that predates the installer recording the line, re-run with `--adopt-umbrella-from-pins`.
+That flag adopts the release the per-artifact lines pin only after every pinned sha256 matches that
+release's published `checksums.txt`; a mismatch refuses with exit 5, and any other gap with exit 6
+([`distribution.md`](distribution.md) § Adopting the umbrella line). Also refused: **inconsistent** records (exit 5 — it names the disagreeing pair), a
 **per-artifact tag** where an umbrella version was required (exit 7 — the verb moves the whole
 umbrella, e.g. `--to v0.13.0`, never `statusgen/v0.13.0`), and a target that names **no published
 release** (exit 8 — never a nearest-match guess).

@@ -589,6 +589,31 @@ protected branch). Refusing rather than guessing.
   `protected=true` (a GitLab adopter cell's review found a masked-only variable in the field;
   that variable is now protected).
 
+**Failure classes — what a red regen job is telling you.** Before it regenerates the
+board, the regen job checks the token: it asks GitLab about the token itself
+(`GET /personal_access_tokens/self`, the token sent as a header on stdin), then makes a
+dry-run push, which authenticates without writing. The token reaches git through an
+inline credential helper that reads `STATUSGEN_PUSH_TOKEN` at run time, so it is never in
+a URL, an argument or the job log, and git's output is masked before it is printed. A
+failed check or push prints exactly one of these lines (the logic lives in
+`statusgen/pushcred.sh`, embedded verbatim in the generated file):
+
+| Class | What it means | What to do |
+|---|---|---|
+| `expired` | the token is past its expiry date | rotate the token, re-run the job |
+| `revoked` | the token was revoked | mint a new one, re-run the job |
+| `scope` | the token cannot push: no `write_repository`, or its role cannot push the protected default branch | fix the scope or the role (see Minimum role above) |
+| `auth` | authentication failed and GitLab did not say why | check the variable's value, then rotate |
+| `nonff` | the default branch moved while the job ran | nothing; the next push to the branch regenerates the board |
+| `other` | neither a credential failure nor a moved branch (a hook, a push rule, the network) | read the masked git output above the line |
+
+Only `nonff` is a race. Every credential class stops the job at once, before the board is
+regenerated when the preflight catches it, and never reads as "main moved". GitLab
+answers a refused push with one message for invalid, expired and under-scoped tokens
+alike, so a refused push is classified by asking about the token again. A token holding
+only `write_repository` may be refused the self-introspection read itself; the job then
+prints a could-not-check NOTICE and the dry-run push is the check.
+
 The runners section above used to send the reader to the per-role fleet credential section
 by a wrong number — the section that actually holds the per-role rotation rules is §5, and
 its subject is a different credential entirely. Read `STATUSGEN_PUSH_TOKEN` from this

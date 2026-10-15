@@ -30,6 +30,12 @@ workflow checks: not one assertion, guard, gate or step is altered in any of the
 | `assay-qualgen.yml` | the same conditional-cancel change: the `main` regen job (QUALITY.md's single writer) stays uncancellable; superseded PR **render** runs — which discard their output by design — are cancelled |
 | `evidence-automerge.yml` | superseded by the main-only board-writer poll; see `ci/board-writer-migration/README.md` before activation |
 
+The `assay-statusgen.yml` and `assay-qualgen.yml` copies here also carry the
+classified board push (#2910) in their board-push steps, the same text as their
+`ci/staged-workflows/` twins, so activating either cannot bring back a push loop that
+reads an expired credential as a moved main. `ci-load.diff` shows only the trigger
+change; the push steps are tested in place by `statusgen/pushcred_test.go`.
+
 ## The rule these edits were held to
 
 **No security or leak workflow gains a filter of any kind.** `leaksweep-control.yml` and
