@@ -99,6 +99,14 @@ list the cells under the registry
   (no flags)
 ```
 
+## `cellctl models reset <cell> [--model-ttl <Nd|duration>]`
+
+lower a cell's aged default model pins to the mid tier
+
+```
+  --model-ttl                string   TTL override for this run (Nd, e.g. 7d)
+```
+
 ## `cellctl new <cell>`
 
 scaffold a cell
@@ -165,6 +173,7 @@ persist a change into a cell's cell.env
 
 ```
   --cockpit                  string   CELL_COCKPIT (auto|tmux|herdr|orca)
+  --default                           record the model pin(s) as a resettable default (the cheap-default reset may lower it once it ages past the TTL)
   --force                             write a KEY that is not a known cell.env key
   --harness                  string   harness (claude|codex|cursor)
   --kind                     string   CELL_KIND (k8s|house|container|scrubbed)

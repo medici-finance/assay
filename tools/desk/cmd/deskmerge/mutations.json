@@ -76,8 +76,8 @@
     {
       "name": "answer from stale local refs when the fetch fails (could-not-check reported as clean)",
       "file": "cmd/deskmerge/currency.go",
-      "old": "\t); ferr != nil {",
-      "new": "\t); false && ferr != nil {"
+      "old": "\t}); ferr != nil {",
+      "new": "\t}); false && ferr != nil {"
     },
     {
       "name": "accept a checkout whose origin names another project",

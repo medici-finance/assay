@@ -27,9 +27,9 @@
 #                    binaries out of that image, so a re-pin that moves the manifest but not the
 #                    Dockerfile ships the old tools in the container only.
 #
-# Not checked HERE: whether the pinned tag is the LATEST release — that needs the network, so it
-# belongs to the online checker `tools/pairedversions`, not this script. This script stays offline
-# and enforces internal consistency, which is what silently rotted.
+# Not checked HERE: whether the pinned tag is current with the latest release. That needs the
+# network, so it is assertion (d) of the online checker `tools/pairedversions` (`make
+# paired-versions`), which fails a pin left behind by a newer release past its grace window.
 #
 # THREE-STATE: could-not-check is a FAILURE, never a quiet pass. A missing or unreadable file,
 # an absent key, or a section with no platform pins all exit non-zero — a guard that cannot see

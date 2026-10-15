@@ -122,3 +122,46 @@ Owner rows for the [cell operator surface amendment](21-cell-operator-surface.md
 
 Adopters make their corresponding local amendments separately; nothing in this manifest edits an
 adopter repository or names private repositories, credentials or deployment details.
+
+## Forge-service follow-on — amendment of 14 October 2026
+
+The new [bounded design](22-forge-service-and-source-queries.md) extends R6/R4 and R7's
+read interface. The original dated manifest above remains its source account. PR 2743
+(merged as `6b479a573`) authored forge-neutral/37–38 (mirror and event adapter) and the follow-on
+forge-neutral/39–45. Reconcile its reciprocal edges and waves
+against the landed R2 amendments before delivery. Do not duplicate the mirror or silently
+rebind in-progress forge-neutral/18, populated Evidence or historical decisions.
+
+| Extension | Owner/delivery | Dependencies and active-work treatment |
+|---|---|---|
+| Typed service contract and SDK | forge-neutral/39; `forgeread/service/`, separate `forgeread/client/` | Pure contract first; root/offline reader and implemented 36 are preserved |
+| Authenticated serving and executor custody | forge-neutral/40; `tools/desk/internal/forgeservice/`, private role executor, thin commands | 39 and R2/R3 incarnation/ownership contract; preserve role-specific custody and guards |
+| Write-through receipt/projection | forge-neutral/41; service composition plus `workflow/store/` adapters | 37, 40, graph-execution/04 and /19; no second intent/outbox or issue authority |
+| SHA-bound source queries | forge-neutral/42; pure query contract plus trusted Git/provider adapters | 39–40; consume existing gitcore and exact-candidate meanings |
+| Incremental indexes and invalidation | forge-neutral/43; mirror-derived indexes and application query composition | 37 and 42; domain evaluators unchanged; explicit access/time/input dependencies |
+| Shared Git reuse trial | forge-neutral/44; gitcore test harness and public experiment report | 42; reuse existing maintenance/retirement owners, no daemon or live fetch required |
+| Served flow, recovery and cutover | forge-neutral/45; disposable integration harness and operator runsheet | 38, 41, 43, 44 and R3/R4 proofs; write activation independent of read release |
+
+The existing R7 owner choice still governs full remote ingress/cockpit work. This amendment
+supplies a narrow reusable local forge surface, not an alternative application framework.
+The source baseline and the merged forge-neutral/37–45 state are pinned in doc 22; implementation workers
+refresh current source/claims and resolve existing human decisions before starting.
+
+
+## Public runtime alignment — 14 October 2026
+
+Controlling delta: [one public runtime](23-runtime-contract-alignment.md). Existing R1–R8
+rows remain owners; no separate implementation programme is opened. Actual patches here:
+
+| Gap/consumer | Applied authoring amendment | Qualification |
+|---|---|---|
+| Evaluation context and expiry | new graph-execution/30 after /28; complete inputs, time-bound validity and conservative reuse | pure context/schema and real evaluator flow; cached result grants no authority |
+| Accountable principals/proof provenance | new graph-execution/31 after /28; shared issuer versus delegation, proof classes and missing corroboration | synthetic independent-principal and trusted-selector bypass cases; no crypto/custody deployment claim |
+| Dispatch/admission | /14 depends on /30–31, version 4; dated consumption and two Verify rows | current context and corroborated independence checked at actual admission |
+| PostgreSQL bindings | /19 depends on /30, version 4; dated context persistence and real-PG Verify row | restore cannot renew validity or source coverage |
+| Scoped control exports | /15 depends on /31, version 2; proof-provenance consumption and Verify row | truthful assurance and missing/denied coverage in independently read exports |
+| Publication/review | /25 depends on /31, version 2; dated provenance consumption and Verify row | existing exact-candidate, role and disabled-profile controls retained |
+
+Historical Evidence is byte-preserved. /28 receives reciprocal unblocks only, not Task/Verify
+changes. The merged forge-neutral/39–45 and performance-collection/01–06 are reused unchanged.
+R3/R4 custody and R5/R7/R8 integration/migration remain their existing proof obligations.

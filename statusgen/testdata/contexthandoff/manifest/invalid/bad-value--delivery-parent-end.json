@@ -1,0 +1,47 @@
+{
+  "schema": "amendment-manifest-v1",
+  "declared_by": "example:demo:widgets:07",
+  "handoff": "sha256:e7b24a59179679baf3a2e9751a264466a9c224ce7272e2f4bc24ed51b5d69f0e",
+  "entries": [
+    {
+      "obligation": "ob-1",
+      "brief": "widgets:03",
+      "action": "amend",
+      "delivery_paths": [
+        "docs/.."
+      ],
+      "contract_version": "widget-cache-v2",
+      "depends": [],
+      "test_commands": [
+        "go test -count=1 -run '^TestCacheKeyV2$' ./cache/"
+      ],
+      "active_work": "none observed",
+      "effort": "S",
+      "binding": {
+        "patch": {
+          "base_revision": "3f9c2a1",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "obligation": "ob-2",
+      "brief": "demo:gadgets:04",
+      "action": "split",
+      "delivery_paths": [
+        "docs/streams/gadgets/brief-08-dual-read.md",
+        "docs/streams/gadgets/brief-09-v2-read.md"
+      ],
+      "contract_version": null,
+      "depends": [
+        "widgets:03"
+      ],
+      "test_commands": [],
+      "active_work": "adjust the claim on gadgets:04; owner acknowledged",
+      "effort": "M",
+      "binding": {
+        "follow_up": "gadgets:08"
+      }
+    }
+  ]
+}

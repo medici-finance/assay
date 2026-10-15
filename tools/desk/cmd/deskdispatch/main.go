@@ -256,6 +256,9 @@ registry does not define = exit 5 naming it; a resolved repo that is not --repo 
 origin = HARD FAIL exit 5 naming both repos — no claim, no worktree. The resolved repo is the claim
 repo and the token's repo; a cross-repo claim key carries the TRACKING alias; the prompt tells the
 worker to run ` + "`deskpr create --root <tracking checkout>`" + ` so its Brief: trailer resolves there.
+Under --cross-repo (a brief homed in one repo, its PR opened in --repo) the prompt instead names the
+exact ` + "`Cross-repo-brief: <alias>:<stream>/<NN>`" + ` line and plain ` + "`deskpr create`" + ` (fresh) or
+` + "`deskpr update`" + ` (--pr resume) with no tracking --root.
 
 PHANTOM PRECONDITION. A fresh worker dispatch is reconciled against the deliverable repo's open and
 merged PRs by ` + "`Brief:`" + ` trailer BEFORE admission, the token mint and the claim. An OPEN PR refuses
