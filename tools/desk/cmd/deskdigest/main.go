@@ -99,19 +99,21 @@ An exit 6 from --post can mean the digest WAS posted and says, in its own body, 
 repos it could not read. A partial digest that admits it is partial beats no digest.`
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident.
-	// deskdigest reads the roster for its trust decisions (who is the blessing
-	// authority, which authors are trusted) and writes one issue, so ciEligible=false:
-	// the roster comes from the config-home file and never from the environment.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// Echo the effective roster once per run: the blessing authority whose comment
-	// outranks every other classification input is a control surface that lives in
-	// settings rather than in a diff, so it is visible only at RUN time.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("deskdigest", nil, os.Args[1:], func([]string) int {
+		// The roster class is an EXPLICIT declaration, never the zero value by accident.
+		// deskdigest reads the roster for its trust decisions (who is the blessing
+		// authority, which authors are trusted) and writes one issue, so ciEligible=false:
+		// the roster comes from the config-home file and never from the environment.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// Echo the effective roster once per run: the blessing authority whose comment
+		// outranks every other classification input is a control surface that lives in
+		// settings rather than in a diff, so it is visible only at RUN time.
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:], os.Stdout, os.Stderr)
+	}))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {

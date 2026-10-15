@@ -21,7 +21,9 @@ import (
 )
 
 func main() {
-	os.Exit(run(os.Getenv))
+	os.Exit(deskkit.PerfRun("commsgw", nil, os.Args[1:], func([]string) int {
+		return run(os.Getenv)
+	}))
 }
 
 // run is main's testable body: it never calls os.Exit itself, so a test can

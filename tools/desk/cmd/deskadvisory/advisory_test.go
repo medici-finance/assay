@@ -3,15 +3,22 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/go-git/go-git/v5/plumbing/transport"
+	githttp "github.com/go-git/go-git/v5/plumbing/transport/http"
+
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
+	"github.com/medici-finance/assay/tools/desk/internal/gittest"
 )
 
 // TestMain installs the roster fixture and hands the exit code through finishFixtureRoster
@@ -53,28 +60,43 @@ func mockGitOnly(t *testing.T) *[][]string {
 	return mockGitSeed(t, "")
 }
 
-// mockGitSeed is mockGitOnly plus a stand-in for the fetched tree: the `git checkout`
-// call is replaced by `sh -c <seed>`, which runGit runs with cmd.Dir set to the
-// temp directory the real fetch would have populated. Check tools then run for real
+// mockGitSeed is mockGitOnly plus a stand-in for the fetched tree: the in-process tree
+// fetch (fetchTreeFn) is replaced by `sh -c <seed>` run with the working directory set to
+// the temp directory the real fetch would have populated. Check tools then run for real
 // over that tree, so a test can drive the whole pass/fail decision — including the
-// cases where a tool exits successfully having examined nothing.
+// cases where a tool exits successfully having examined nothing. The recorded calls hold
+// every execCommand call plus one ["gitcore","fetch-tree",<url>] entry per tree fetch.
 func mockGitSeed(t *testing.T, seed string) *[][]string {
 	t.Helper()
 	calls := &[][]string{}
 	old := execCommand
 	execCommand = func(name string, args ...string) *exec.Cmd {
 		*calls = append(*calls, append([]string{name}, args...))
-		if name == "git" && seed != "" && len(args) > 0 && args[0] == "checkout" {
-			return old("sh", "-c", seed)
-		}
 		if name == "git" || name == "gh" {
 			return old("/usr/bin/true")
 		}
 		return old(name, args...)
 	}
-	t.Cleanup(func() { execCommand = old })
+	oldFetch := fetchTreeFn
+	fetchTreeFn = func(opts gitcore.TreeOpts, dest string) (gitcore.TreeResult, error) {
+		*calls = append(*calls, []string{"gitcore", "fetch-tree", opts.URL})
+		if seed == "" {
+			return gitcore.TreeResult{}, nil
+		}
+		cmd := old("sh", "-c", seed)
+		cmd.Dir = dest
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return gitcore.TreeResult{}, fmt.Errorf("seed: %w (%s)", err, out)
+		}
+		return gitcore.TreeResult{}, nil
+	}
+	t.Cleanup(func() { execCommand = old; fetchTreeFn = oldFetch })
 	return calls
 }
+
+// branchSHA, when set, is the head SHA the mock branches endpoint serves (a real fixture
+// commit for the tests that run the real in-process fetch).
+var branchSHA string
 
 // advisoryAPI returns a handler serving the advisory/repo/branch endpoints for the
 // fixture, with the given advisory state and a checkdef served over the contents API.
@@ -107,6 +129,9 @@ func advisoryAPI(state, checkJSON string) http.HandlerFunc {
 		case strings.Contains(r.URL.Path, "/branches/"):
 			resp := branchResponse{}
 			resp.Commit.SHA = "abc123def456"
+			if branchSHA != "" {
+				resp.Commit.SHA = branchSHA
+			}
 			b, _ := json.Marshal(resp)
 			w.Write(b)
 		default:
@@ -251,17 +276,117 @@ func TestScrubbedEnv_DropsGitAndDangerous(t *testing.T) {
 	}
 }
 
-// --- Hardening pin presence ---
+// --- In-process tree fetch ---
 
-func TestFetchHardeningPinsPresent(t *testing.T) {
-	if len(fetchHardening) != 3 {
-		t.Fatalf("fetchHardening has %d entries, want 3", len(fetchHardening))
+// realFetchTree wires fetchTreeFn to the REAL gitcore.FetchTree, pointed at a local fixture
+// repository standing in for the fork, and records the options the production code built
+// (the URL and credential it would have sent to the forge) before the redirect.
+func realFetchTree(t *testing.T, fork string) *gitcore.TreeOpts {
+	t.Helper()
+	got := &gitcore.TreeOpts{}
+	old := fetchTreeFn
+	fetchTreeFn = func(opts gitcore.TreeOpts, dest string) (gitcore.TreeResult, error) {
+		*got = opts
+		opts.URL = fork
+		opts.Auth = nil
+		return gitcore.FetchTree(opts, dest)
 	}
-	joined := strings.Join(fetchHardening, " ")
-	for _, want := range []string{"--refmap=", "--upload-pack=git-upload-pack", "--no-recurse-submodules"} {
-		if !strings.Contains(joined, want) {
-			t.Fatalf("fetchHardening %q missing %q", joined, want)
+	t.Cleanup(func() { fetchTreeFn = old })
+	return got
+}
+
+// A fixture fork, fetched by the real in-process path, yields the same advisory verdict as
+// before: the check tool runs over the materialised tree.
+func TestCheckAdvisory_FixtureFork_RealInProcessFetch(t *testing.T) {
+	checkJSON := `{"version":1,"checks":[{"name":"ck","tool":"grep","args":["-rnE","FORBIDDEN","scripts"],` +
+		`"invertExit":true,"requireFiles":["scripts"],"minFiles":1}]}`
+	withMockAPI(t, advisoryAPI("draft", checkJSON))
+	fork := gittest.NewFixture(t)
+	if err := os.MkdirAll(filepath.Join(fork.Dir, "scripts"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sha := fork.CommitFile(t, "scripts/a.sh", "clean\n", "fork head")
+	branchSHA = sha
+	t.Cleanup(func() { branchSHA = "" })
+	mockGitOnly(t) // intercepts git/gh only; the tree-fetch seam is rebound next
+	got := realFetchTree(t, fork.Dir)
+
+	if err := checkAdvisory("example-org/example-k8s", "GHSA-1111-2222-3333"); err != nil {
+		t.Fatalf("clean fork tree must pass: %v", err)
+	}
+	if got.Commit != sha {
+		t.Fatalf("fetched commit = %q, want %q", got.Commit, sha)
+	}
+
+	// The same fork, now carrying the forbidden pattern, fails the check.
+	sha2 := fork.CommitFile(t, "scripts/b.sh", "FORBIDDEN\n", "bad head")
+	branchSHA = sha2
+	if err := checkAdvisory("example-org/example-k8s", "GHSA-1111-2222-3333"); err == nil {
+		t.Fatal("a fork tree carrying the forbidden pattern must fail the advisory check")
+	}
+}
+
+// The credential goes to the fetch as an in-memory value on the options: it is in no URL,
+// no log line, and no file is written for it (no askpass script, no credential store).
+func TestFetchAdvisoryTree_TokenInMemoryOnly(t *testing.T) {
+	var gotURL string
+	var gotAuth transport.AuthMethod
+	var gotDest string
+	old := fetchTreeFn
+	t.Cleanup(func() { fetchTreeFn = old })
+	fetchTreeFn = func(opts gitcore.TreeOpts, dest string) (gitcore.TreeResult, error) {
+		gotURL, gotAuth, gotDest = opts.URL, opts.Auth, dest
+		entries, _ := os.ReadDir(dest)
+		if len(entries) != 0 {
+			t.Errorf("destination not empty before the fetch: %v", entries)
 		}
+		return gitcore.TreeResult{}, nil
+	}
+	before, _ := filepath.Glob(filepath.Join(os.TempDir(), "deskadvisory-askpass-*"))
+
+	dir, err := fetchAdvisoryTree("example-org/example-k8s-advisory-fork", strings.Repeat("a", 40))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	if want := "https://github.com/example-org/example-k8s-advisory-fork.git"; gotURL != want {
+		t.Fatalf("fetch URL = %q, want %q", gotURL, want)
+	}
+	if strings.Contains(gotURL, "test-token") || strings.Contains(gotURL, "@") {
+		t.Fatalf("the credential is in the fetch URL: %q", gotURL)
+	}
+	ba, ok := gotAuth.(*githttp.BasicAuth)
+	if !ok || ba.Password != "test-token" {
+		t.Fatalf("the credential did not travel as the in-memory auth value: %#v", gotAuth)
+	}
+	if gotDest != dir {
+		t.Fatalf("fetched into %q, returned %q", gotDest, dir)
+	}
+	after, _ := filepath.Glob(filepath.Join(os.TempDir(), "deskadvisory-askpass-*"))
+	if len(after) != len(before) {
+		t.Fatalf("an askpass temp dir was created: %v -> %v", before, after)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".git")); !os.IsNotExist(err) {
+		t.Fatalf("a repository exists in the fetched tree dir: %v", err)
+	}
+}
+
+// A failed fetch leaves no temp directory behind and is reported.
+func TestFetchAdvisoryTree_FailureCleansUp(t *testing.T) {
+	var gotDest string
+	old := fetchTreeFn
+	t.Cleanup(func() { fetchTreeFn = old })
+	fetchTreeFn = func(opts gitcore.TreeOpts, dest string) (gitcore.TreeResult, error) {
+		gotDest = dest
+		return gitcore.TreeResult{}, fmt.Errorf("boom")
+	}
+	dir, err := fetchAdvisoryTree("example-org/example-k8s-advisory-fork", strings.Repeat("a", 40))
+	if err == nil || dir != "" {
+		t.Fatalf("want an error and no dir, got %q, %v", dir, err)
+	}
+	if _, serr := os.Stat(gotDest); !os.IsNotExist(serr) {
+		t.Fatalf("temp dir %s survived a failed fetch: %v", gotDest, serr)
 	}
 }
 

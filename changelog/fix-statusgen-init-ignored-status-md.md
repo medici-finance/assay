@@ -1,2 +1,0 @@
-### Fixed
-- `statusgen init` refuses (writing nothing) on a repo whose ignore rules stop git staging `STATUS.md` or `docs/streams`, naming the matching rule and the fix; `statusgen --lint` reports the same as a PROBLEM; and the scaffolded GitHub and GitLab regen jobs now print an error naming the rule instead of git's generic "Use -f" hint. Nothing edits `.gitignore` or force-adds. The install and adopt skills include the check in their proof steps.

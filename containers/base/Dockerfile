@@ -118,8 +118,8 @@ ARG TARGETARCH=amd64
 # Pinned toolchain versions, each with the sha256 of its linux tarball for both
 # architectures the image builds for. Every value comes from the vendor's own
 # published checksums (see containers/README.md, "Pins and checksums").
-#   GO_VERSION  — at or above `go 1.27.0` in tools/desk/go.mod (statusgen/go.mod
-#                 declares 1.25.0).
+#   GO_VERSION  — the fleet's single Go toolchain; every go.mod declares
+#                 `go 1.27.0` (#2918).
 #                 Checksums: https://go.dev/dl/?mode=json&include=all
 #   GH_VERSION  — pinned gh CLI release.
 #                 Checksums: the release's gh_<version>_checksums.txt
