@@ -150,7 +150,7 @@ func TestDeskShellRecipeRefusesBlankToken(t *testing.T) {
 		{"empty", "", false},
 		{"newline", "\n", false},
 		{"whitespace", " \t\n \n", false},
-		{"token", "ghs_stubtoken\n", true},
+		{"token", "stub-role-token\n", true},
 	}
 	for _, sh := range shells {
 		for _, c := range cases {
@@ -196,7 +196,7 @@ func TestDeskShellRecipeRefusesBlankToken(t *testing.T) {
 					}
 					return
 				}
-				if runErr != nil || string(logged) != "GH_TOKEN=[ghs_stubtoken]\n" {
+				if runErr != nil || string(logged) != "GH_TOKEN=[stub-role-token]\n" {
 					t.Fatalf("gh did not run with the token: err=%v log=%q output=%s", runErr, logged, out)
 				}
 			})
