@@ -1296,10 +1296,10 @@ func parseRepo(raw string) (string, error) {
 //
 // On success it also returns the trailer's issue number: the parsed `#<N>` for an
 // `Issue:` trailer, or 0 for a `Brief:` trailer (a brief resolves to a file, not an
-// issue, so it has no reactions surface) — and 0 for the exempt scan carrier likewise.
-// The create path feeds this to the public-repo gate so a non-blessed public repo gains
-// the per-issue-+1 path (a +1 on the named tracking issue admits the create) instead of
-// the structural no-number hard-fail (#1707).
+// issue) — and 0 for the exempt scan carrier likewise. The create path uses it only as the
+// self-containment scan's number hint (SelfContainOpts.NumberHint). It is NOT an input to
+// the public-repo write gate: deskkit.PublicRepoGate is repository-scoped (an explicit
+// `:public` allowed-repos entry agreeing with the live visibility) and takes no number.
 func requireTrailer(body []byte, root, dir string) (int, error) {
 	// Head-anchored, not a whole-body substring: the emitter writes ScanBodyMarker as
 	// the FIRST line (deskkit.ScanPRBody), so the exemption matches it only at the body
