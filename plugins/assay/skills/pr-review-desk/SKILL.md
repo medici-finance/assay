@@ -827,11 +827,9 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      The PR body must state that the hunk is `reconcile --backfill --apply` output (the rows the
      read-only form reports as `wouldApply`) and name the witness PR for each row; that statement
      is a CLAIM, and the run above is the only evidence.
-     The carve-out exists because `--apply` without `--regenerate` only ever writes this one
-     Status-only transition, and only from a real merged-PR witness (a `--regenerate` run also
-     re-renders drive plan pages — no row promotion, so outside this carve-out — and the
-     reproduce run above does not pass it), so a PR carrying its output byte-for-byte adds nothing the
-     tool would not write itself. The code-existence check is the second layer on every admitted
+     The carve-out exists because `--apply` without `--regenerate` (the reproduce run never passes it) only ever
+     writes this one Status-only transition, and only from a real merged-PR witness, so a PR carrying its output
+     adds nothing the tool would not write itself. The code-existence check is the second layer on every admitted
      row, because no witness alone can tell whether this brief's work landed: a trailer-less
      branch-name or body match; a trailer whose `<stream>/<NN>` may belong to a different brief
      delivered into the same repo, whichever board tracks it; and a trailer in a body edited after
