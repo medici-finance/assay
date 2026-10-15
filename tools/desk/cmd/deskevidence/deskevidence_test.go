@@ -63,6 +63,14 @@ type fakeForge struct {
 	cmpErr        error
 	cmpIncomplete bool
 	cmpCalls      []string
+	// cmpBehind is the BehindBy the compare reports (the home's HEAD not an ancestor).
+	cmpBehind int
+	// fileKinds is what ReadFile reports a path holds (deskkit.FileContent.Kind); a path
+	// not named is a regular file.
+	fileKinds map[string]string
+	// commitSHAs maps a ref GetCommit is asked for onto the SHA it resolves to; a ref not
+	// named resolves to itself.
+	commitSHAs map[string]string
 
 	hits    []string
 	reads   []deskkit.ReadFileInput
@@ -155,7 +163,7 @@ func (f *fakeForge) CompareRefs(repo deskkit.ForgeRepo, base, head string) (*des
 	if s, ok := f.compareStatus[key]; ok {
 		st = s
 	}
-	return &deskkit.RefComparison{Files: f.cmpFiles, CommitsComplete: !f.cmpIncomplete, Status: st}, nil
+	return &deskkit.RefComparison{Files: f.cmpFiles, CommitsComplete: !f.cmpIncomplete, Status: st, BehindBy: f.cmpBehind}, nil
 }
 
 // serveLocked answers one read of path (the caller holds f.mu): a scripted path advances its
@@ -218,7 +226,11 @@ func (f *fakeForge) ReadFile(_ deskkit.ForgeRepo, in deskkit.ReadFileInput) (*de
 		return nil, deskkit.Unverifiable("not found: "+in.File,
 			&deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: in.File})
 	}
-	return &deskkit.FileContent{Content: []byte(c), SHA: sha, Exists: true}, nil
+	kind := deskkit.FileKindRegular
+	if k, set := f.fileKinds[in.File]; set {
+		kind = k
+	}
+	return &deskkit.FileContent{Content: []byte(c), SHA: sha, Exists: true, Kind: kind}, nil
 }
 
 func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*deskkit.WriteFileResult, error) {
@@ -306,6 +318,9 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 	f.getCommitCalls++
 	if f.commitErr != nil {
 		return nil, f.commitErr
+	}
+	if resolved, ok := f.commitSHAs[sha]; ok {
+		sha = resolved
 	}
 	return &deskkit.RepoCommit{SHA: sha, AuthorLogin: f.commitAuthorLogin}, nil
 }

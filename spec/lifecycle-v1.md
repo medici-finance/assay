@@ -424,7 +424,13 @@ board the write lands on, not a stale copy of it: when the landing is judged fro
 that is not the target branch's tip, the branch's version of every board file it has
 changed since that checkout's commit (other than the one being written) MUST be what is
 judged, and the landing MUST NOT proceed if those files cannot be read or the set cannot
-be determined or shown complete. The checkout itself is never moved. A PR that delivers a `gate: human` brief
+be determined or shown complete. The set and the files MUST be read at one resolved commit
+of the branch, and the checkout's commit MUST be an ancestor of it. A changed board entry
+the branch holds as anything but a plain file (a symbolic link, served as its target's
+bytes or as nothing, or a submodule) is an unreadable record to the board and MUST NOT be
+judged as a plain file; the landing does not proceed. Staging the judged files in the
+checkout MUST NOT write through a symbolic link, and MUST NOT stand a plain file where the
+checkout's commit holds a link or a submodule. The checkout itself is never moved. A PR that delivers a `gate: human` brief
 MAY carry an informational banner naming the decision issue and whether a ruling is
 recorded; the banner blocks nothing.
 

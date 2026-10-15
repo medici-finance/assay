@@ -2654,6 +2654,36 @@ type ghContentsWire struct {
 	SHA      string `json:"sha"`
 	Content  string `json:"content"`
 	Encoding string `json:"encoding"`
+	// Type and Path say what the response describes. A symbolic link whose target is a
+	// file in the repository is served as that target (type "file", the target's path);
+	// any other link is served as itself (type "symlink", no content), a submodule as
+	// type "submodule". Read by ghContentsKind.
+	Type string `json:"type"`
+	Path string `json:"path"`
+}
+
+// ghContentsKind maps one Contents-API read of file onto FileContent.Kind: a regular file
+// only when the response is type "file" for the very path requested (a link to a file is
+// served under its target's path), "" when the response names no type.
+func ghContentsKind(w ghContentsWire, file string) string {
+	switch w.Type {
+	case "":
+		return ""
+	case "file":
+		if w.Path == "" {
+			return ""
+		}
+		if strings.Trim(w.Path, "/") != strings.Trim(file, "/") {
+			return FileKindSymlink
+		}
+		return FileKindRegular
+	case "symlink":
+		return FileKindSymlink
+	case "submodule":
+		return FileKindSubmodule
+	default:
+		return w.Type
+	}
 }
 
 // ghContentsCommitWire is the Contents-API write response: the new blob sha under `content`
@@ -2700,7 +2730,7 @@ func (g *GitHubForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, 
 	if derr != nil {
 		return nil, Unverifiable("cannot decode base64 content for "+in.File, derr)
 	}
-	return &FileContent{Content: decoded, SHA: w.SHA, Exists: true}, nil
+	return &FileContent{Content: decoded, SHA: w.SHA, Exists: true, Kind: ghContentsKind(w, in.File)}, nil
 }
 
 // WriteFile writes a file's whole content on a branch via the Contents API, as the minted

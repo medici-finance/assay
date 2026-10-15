@@ -68,13 +68,22 @@ func decisionGateDiffAt(root, targetRepoPath string, replaced []byte, replacedEx
 	if err != nil {
 		return nil, err
 	}
+	// Every path this stages must be a plain file (or absent) under real directories in
+	// the home: a link there would carry the staged bytes through to whatever it names,
+	// and a non-file entry is not the record the board reads (S-2266-7). stageBoardEdits
+	// holds the board's paths to the same rule before it writes any of them.
+	if lerr := refuseLinkedHomePath(root, targetRepoPath); lerr != nil {
+		return nil, lerr
+	}
 	abs := filepath.Join(root, filepath.FromSlash(targetRepoPath))
 	orig, rerr := os.ReadFile(abs)
 	existed := rerr == nil
 	if rerr != nil && !os.IsNotExist(rerr) {
 		return nil, deskkit.Unverifiable("cannot read local "+abs+" to stage the decision-gate check", rerr)
 	}
-	if merr := os.MkdirAll(filepath.Dir(abs), 0o755); merr != nil {
+	created, merr := mkdirTracked(root, filepath.Dir(abs))
+	defer removeCreatedDirs(created)
+	if merr != nil {
 		return nil, deskkit.Unverifiable("cannot create local directories under "+root+" to stage the decision-gate check", merr)
 	}
 	defer func() {
@@ -158,6 +167,18 @@ func replacedBaseCommit(root, targetRepoPath string, replaced []byte, replacedEx
 	}
 	if _, err := git(nil, "read-tree", head); err != nil {
 		return fail("read-tree", err)
+	}
+	// The base replaces each staged path with a plain blob: refuse when the home's HEAD
+	// holds that path (or a directory above it) as anything else, a link or a submodule
+	// the board would not read as a record (S-2266-7).
+	paths := []string{targetRepoPath}
+	for _, e := range board {
+		paths = append(paths, e.Path)
+	}
+	for _, p := range paths {
+		if err := headEntriesPlain(git, head, p); err != nil {
+			return "", deskkit.Unverifiable("cannot build the decision-gate base in "+root+": "+err.Error()+" (decision-gate hold, lifecycle-v1 §4.5)", nil)
+		}
 	}
 	if replacedExists {
 		blob, err := git(replaced, "hash-object", "-w", "--stdin")
@@ -250,12 +271,27 @@ func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branc
 		return nil, deskkit.Unverifiable("cannot resolve the landing home's HEAD in "+root+" to compare it with "+branch+" (decision-gate hold, lifecycle-v1 §4.5)", err)
 	}
 	branch = strings.TrimPrefix(branch, "refs/heads/")
-	cmp, err := fg.CompareRefs(fr, head, branch)
+	// The branch tip is resolved ONCE, and both the compare and every read below are made
+	// at that commit, so a push to the branch between them cannot pair one tip's file list
+	// with another tip's bytes.
+	tipCommit, err := fg.GetCommit(fr, branch)
+	if err != nil || tipCommit == nil || strings.TrimSpace(tipCommit.SHA) == "" {
+		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot resolve the tip of %s on %s, so the board the write lands on cannot be judged (decision-gate hold, lifecycle-v1 §4.5)", branch, fr.Slug()), err)
+	}
+	tip := tipCommit.SHA
+	cmp, err := fg.CompareRefs(fr, head, tip)
 	if err != nil {
-		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot compare the landing home's HEAD %s with %s on %s, so the board the write lands on cannot be shown to match the one judged (decision-gate hold, lifecycle-v1 §4.5)", head, branch, fr.Slug()), err)
+		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot compare the landing home's HEAD %s with %s (%s) on %s, so the board the write lands on cannot be shown to match the one judged (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug()), err)
 	}
 	if cmp == nil || !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {
-		return nil, deskkit.Unverifiable(fmt.Sprintf("the forge's compare of the landing home's HEAD %s with %s on %s cannot be shown complete, so a board change on the branch cannot be ruled out (decision-gate hold, lifecycle-v1 §4.5)", head, branch, fr.Slug()), nil)
+		return nil, deskkit.Unverifiable(fmt.Sprintf("the forge's compare of the landing home's HEAD %s with %s (%s) on %s cannot be shown complete, so a board change on the branch cannot be ruled out (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug()), nil)
+	}
+	// The compare lists what the branch changed since the commits' merge base. Only when
+	// the home's HEAD is an ancestor of the tip is that every difference between the board
+	// judged and the board landed on; a home carrying commits the branch lacks would keep
+	// its own board edits in the judge.
+	if cmp.BehindBy != 0 || (cmp.Status != "ahead" && cmp.Status != "identical") {
+		return nil, deskkit.Unverifiable(fmt.Sprintf("the landing home's HEAD %s is not an ancestor of %s (%s) on %s (compare status %q, behind by %d), so the board judged cannot be shown to be the board the write lands on (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug(), cmp.Status, cmp.BehindBy), nil)
 	}
 	isBoard := func(p string) bool {
 		return p != "" && p != targetRepoPath && decisionGateBoardRe.MatchString(p) && !decisionGateRegisterRe.MatchString(p)
@@ -263,7 +299,9 @@ func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branc
 	var edits []boardEdit
 	seen := map[string]bool{}
 	for _, f := range cmp.Files {
-		if isBoard(f.PreviousFilename) && !seen[f.PreviousFilename] {
+		// A previous name is gone from the branch only when the file was renamed; a copy
+		// keeps it.
+		if f.Status == "renamed" && isBoard(f.PreviousFilename) && !seen[f.PreviousFilename] {
 			seen[f.PreviousFilename] = true
 			edits = append(edits, boardEdit{Path: f.PreviousFilename, Delete: true})
 		}
@@ -275,12 +313,22 @@ func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branc
 			edits = append(edits, boardEdit{Path: f.Filename, Delete: true})
 			continue
 		}
-		fc, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: f.Filename, Ref: branch})
+		fc, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: f.Filename, Ref: tip})
 		if rerr != nil {
-			return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read %s at %s on %s, so the board the write lands on cannot be judged (decision-gate hold, lifecycle-v1 §4.5)", f.Filename, branch, fr.Slug()), rerr)
+			return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read %s at %s (%s) on %s, so the board the write lands on cannot be judged (decision-gate hold, lifecycle-v1 §4.5)", f.Filename, branch, tip, fr.Slug()), rerr)
 		}
 		if fc == nil || !fc.Exists {
 			return nil, deskkit.Unverifiable(fmt.Sprintf("%s is listed as changed on %s but is absent at its tip, so the board the write lands on cannot be judged (decision-gate hold, lifecycle-v1 §4.5)", f.Filename, branch), nil)
+		}
+		// The board reads a record only from a plain file. A link (served as its target's
+		// bytes, or as nothing) or a submodule is an unreadable record to the board, so
+		// staging it as a plain file would judge a board the write does not land on.
+		if fc.Kind != deskkit.FileKindRegular {
+			kind := fc.Kind
+			if kind == "" {
+				kind = "an entry the forge did not type"
+			}
+			return nil, deskkit.Unverifiable(fmt.Sprintf("%s at %s (%s) on %s is %s, not a plain file, so the board the write lands on cannot be judged (decision-gate hold, lifecycle-v1 §4.5)", f.Filename, branch, tip, fr.Slug(), kind), nil)
 		}
 		edits = append(edits, boardEdit{Path: f.Filename, Content: fc.Content})
 	}
@@ -296,6 +344,7 @@ func stageBoardEdits(root string, edits []boardEdit) (restore func(), err error)
 		existed bool
 	}
 	var undo []saved
+	var dirs [][]string
 	restore = func() {
 		for i := len(undo) - 1; i >= 0; i-- {
 			u := undo[i]
@@ -305,8 +354,15 @@ func stageBoardEdits(root string, edits []boardEdit) (restore func(), err error)
 				_ = os.Remove(u.abs)
 			}
 		}
+		for i := len(dirs) - 1; i >= 0; i-- {
+			removeCreatedDirs(dirs[i])
+		}
 	}
 	for _, e := range edits {
+		if lerr := refuseLinkedHomePath(root, e.Path); lerr != nil {
+			restore()
+			return func() {}, lerr
+		}
 		abs := filepath.Join(root, filepath.FromSlash(e.Path))
 		orig, rerr := os.ReadFile(abs)
 		if rerr != nil && !os.IsNotExist(rerr) {
@@ -321,7 +377,9 @@ func stageBoardEdits(root string, edits []boardEdit) (restore func(), err error)
 			}
 			continue
 		}
-		if merr := os.MkdirAll(filepath.Dir(abs), 0o755); merr != nil {
+		created, merr := mkdirTracked(root, filepath.Dir(abs))
+		dirs = append(dirs, created)
+		if merr != nil {
 			restore()
 			return func() {}, deskkit.Unverifiable("cannot create local directories under "+root+" to stage the branch's board for the decision-gate check", merr)
 		}
@@ -331,6 +389,123 @@ func stageBoardEdits(root string, edits []boardEdit) (restore func(), err error)
 		}
 	}
 	return restore, nil
+}
+
+// refuseLinkedHomePath is could-not-check unless rel names, under root, a plain file or
+// nothing, reached through real directories only: no component is a symbolic link, no
+// directory position holds a file, and the path itself is not a directory, device or
+// other non-file. rel must be a local, slash-separated repo path.
+func refuseLinkedHomePath(root, rel string) error {
+	local := filepath.FromSlash(rel)
+	if rel == "" || !filepath.IsLocal(local) {
+		return deskkit.Unverifiable(fmt.Sprintf("%q is not a path inside the landing home, so the decision-gate check cannot stage it (lifecycle-v1 §4.5)", rel), nil)
+	}
+	parts := strings.Split(filepath.Clean(local), string(filepath.Separator))
+	cur := root
+	for i, part := range parts {
+		cur = filepath.Join(cur, part)
+		fi, err := os.Lstat(cur)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return deskkit.Unverifiable("cannot inspect local "+cur+" to stage the decision-gate check", err)
+		}
+		last := i == len(parts)-1
+		switch {
+		case fi.Mode()&os.ModeSymlink != 0:
+			return deskkit.Unverifiable(fmt.Sprintf("local %s is a symbolic link; the decision-gate check stages %s only through real directories onto a plain file (lifecycle-v1 §4.5)", cur, rel), nil)
+		case !last && !fi.IsDir():
+			return deskkit.Unverifiable(fmt.Sprintf("local %s is not a directory, so %s cannot be staged for the decision-gate check (lifecycle-v1 §4.5)", cur, rel), nil)
+		case last && !fi.Mode().IsRegular():
+			return deskkit.Unverifiable(fmt.Sprintf("local %s is not a plain file, so the decision-gate check cannot stage it (lifecycle-v1 §4.5)", cur), nil)
+		}
+	}
+	return nil
+}
+
+// headEntriesPlain checks the home HEAD's entries along rel: each directory above it is a
+// tree (040000) and rel itself a plain blob (100644 or 100755), where present. git runs
+// one git command in the home (replacedBaseCommit's runner).
+//
+// `ls-tree -r -t` on rel lists the trees on the way down and rel itself, stopping at the
+// first component that is not a tree; that component, when present, is then listed on its
+// own, so a link or submodule standing where a directory belongs is seen too.
+func headEntriesPlain(git func([]byte, ...string) (string, error), head, rel string) error {
+	entries := func(args ...string) (map[string]string, error) {
+		out, err := git(nil, append([]string{"ls-tree", "-z"}, args...)...)
+		if err != nil {
+			return nil, fmt.Errorf("cannot list %s in the home's HEAD: %v", rel, err)
+		}
+		modes := map[string]string{}
+		for _, rec := range strings.Split(out, "\x00") {
+			if rec == "" {
+				continue
+			}
+			meta, name, ok := strings.Cut(rec, "\t")
+			f := strings.Fields(meta)
+			if !ok || len(f) != 3 {
+				return nil, fmt.Errorf("cannot read the home's HEAD entry %q", rec)
+			}
+			modes[name] = f[0]
+		}
+		return modes, nil
+	}
+	chain, err := entries("-r", "-t", head, "--", rel)
+	if err != nil {
+		return err
+	}
+	parts := strings.Split(rel, "/")
+	for i := range parts {
+		p := strings.Join(parts[:i+1], "/")
+		last := i == len(parts)-1
+		mode, ok := chain[p]
+		if !ok {
+			// Absent from the chain: either nothing is there (a new path) or something that
+			// is not a tree stands where a directory belongs.
+			own, err := entries(head, "--", p)
+			if err != nil {
+				return err
+			}
+			if m, there := own[p]; there {
+				return fmt.Errorf("the home's HEAD holds %s as mode %s, not a directory", p, m)
+			}
+			return nil
+		}
+		switch {
+		case !last && mode != "040000":
+			return fmt.Errorf("the home's HEAD holds %s as mode %s, not a directory", p, mode)
+		case last && mode != "100644" && mode != "100755":
+			return fmt.Errorf("the home's HEAD holds %s as mode %s, not a plain file", p, mode)
+		}
+	}
+	return nil
+}
+
+// mkdirTracked creates dir (under root) and every missing directory above it, returning
+// the ones it created, deepest first, so removeCreatedDirs can take them away again.
+func mkdirTracked(root, dir string) ([]string, error) {
+	var missing []string
+	for d := dir; d != root && len(d) > len(root); d = filepath.Dir(d) {
+		if _, err := os.Lstat(d); err == nil {
+			break
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
+		missing = append(missing, d)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return missing, err
+	}
+	return missing, nil
+}
+
+// removeCreatedDirs removes the directories mkdirTracked created, deepest first; a
+// directory something else has since written into is left in place.
+func removeCreatedDirs(created []string) {
+	for _, d := range created {
+		_ = os.Remove(d)
+	}
 }
 
 // decisionGateRefusedMark is the separator statusgen prints between a board id and

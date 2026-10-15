@@ -196,14 +196,14 @@
     {
       "name": "branch board lets a compare error through (an unreadable branch is read as an unchanged board)",
       "file": "cmd/deskevidence/decisiongate.go",
-      "old": "cmp, err := fg.CompareRefs(fr, head, branch)\n\tif err != nil {",
-      "new": "cmp, err := fg.CompareRefs(fr, head, branch)\n\tif false && err != nil {"
+      "old": "cmp, err := fg.CompareRefs(fr, head, tip)\n\tif err != nil {",
+      "new": "cmp, err := fg.CompareRefs(fr, head, tip)\n\tif false && err != nil {"
     },
     {
       "name": "branch board lets an unreadable changed file through (a changed board file the judge never sees)",
       "file": "cmd/deskevidence/decisiongate.go",
-      "old": "fc, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: f.Filename, Ref: branch})\n\t\tif rerr != nil {",
-      "new": "fc, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: f.Filename, Ref: branch})\n\t\tif false && rerr != nil {"
+      "old": "fc, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: f.Filename, Ref: tip})\n\t\tif rerr != nil {",
+      "new": "fc, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: f.Filename, Ref: tip})\n\t\tif false && rerr != nil {"
     },
     {
       "name": "branch board reads a removed file as present (a brief the branch deleted still stands for the judge)",
@@ -318,6 +318,66 @@
       "file": "cmd/deskevidence/outcomerecord.go",
       "old": "if terr := checkRecordTier(receipt, join); terr != nil {",
       "new": "if terr := error(nil); terr != nil {"
+    },
+    {
+      "name": "branch board stages a link or submodule as a plain file (the forge serves a link as its target's bytes or as nothing, which the board reads as an unreadable record) — S-2266-7",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\tif fc.Kind != deskkit.FileKindRegular {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "branch board compares and reads at the moving branch name, not the tip resolved once (a push between the compare and a read pairs one tip's listing with another's bytes)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "deskkit.ReadFileInput{File: f.Filename, Ref: tip}",
+      "new": "deskkit.ReadFileInput{File: f.Filename, Ref: branch}"
+    },
+    {
+      "name": "branch board lets an unresolvable branch tip through (the compare runs against no fixed commit)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if err != nil || tipCommit == nil || strings.TrimSpace(tipCommit.SHA) == \"\" {",
+      "new": "if err != nil || tipCommit == nil || strings.TrimSpace(tipCommit.SHA) == \"\" {\n\t\ttipCommit = &deskkit.RepoCommit{SHA: branch}\n\t}\n\tif false {"
+    },
+    {
+      "name": "branch board accepts a home HEAD that is not an ancestor of the tip (the home's own board edits stay in the judge)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if cmp.BehindBy != 0 || (cmp.Status != \"ahead\" && cmp.Status != \"identical\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "branch board deletes a copied file's source (a previous name is gone only on a rename)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if f.Status == \"renamed\" && isBoard(f.PreviousFilename) && !seen[f.PreviousFilename] {",
+      "new": "if isBoard(f.PreviousFilename) && !seen[f.PreviousFilename] {"
+    },
+    {
+      "name": "decision-gate stage writes the target through a link in the landing home (the staged bytes reach whatever the link names) — S-2266-7",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if lerr := refuseLinkedHomePath(root, targetRepoPath); lerr != nil {",
+      "new": "if lerr := refuseLinkedHomePath(root, targetRepoPath); false && lerr != nil {"
+    },
+    {
+      "name": "branch board staged through a link in the landing home (the branch's bytes reach whatever the link names) — S-2266-7",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\tif lerr := refuseLinkedHomePath(root, e.Path); lerr != nil {",
+      "new": "\t\tif lerr := refuseLinkedHomePath(root, e.Path); false && lerr != nil {"
+    },
+    {
+      "name": "decision-gate base replaces a link or submodule in the home's HEAD with a plain blob (the base is not the tree the board reads) — S-2266-7",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if err := headEntriesPlain(git, head, p); err != nil {",
+      "new": "if err := headEntriesPlain(git, head, p); false && err != nil {"
+    },
+    {
+      "name": "decision-gate stage leaves the directories it created for the target behind",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\tdefer removeCreatedDirs(created)",
+      "new": "\tdefer removeCreatedDirs(created[:0])"
+    },
+    {
+      "name": "branch board stage leaves the directories it created behind",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\t\tremoveCreatedDirs(dirs[i])",
+      "new": "\t\t\tremoveCreatedDirs(nil)"
     }
   ]
 }

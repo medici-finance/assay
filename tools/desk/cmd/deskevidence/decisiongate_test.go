@@ -526,10 +526,51 @@ func TestDecisionGateBranchBoard(t *testing.T) {
 				f.cmpFiles = append(f.cmpFiles, deskkit.ChangedFile{Filename: "tools/x" + strings.Repeat("a", i%7) + ".go"})
 			}
 		}, nil, "cannot be shown complete"},
+		// S-2266-7: the board reads a record only from a plain file, so a changed board
+		// entry the forge serves as anything else is could-not-check, never staged.
+		{"a board entry is a link to a file", func(f *fakeForge) {
+			f.setFile(brief, "the link target's bytes\n")
+			f.fileKinds = map[string]string{brief: deskkit.FileKindSymlink}
+			f.cmpFiles = freshFiles(brief)
+		}, nil, "not a plain file"},
+		{"a board entry is a dangling link", func(f *fakeForge) {
+			f.setFile(brief, "")
+			f.fileKinds = map[string]string{brief: deskkit.FileKindSymlink}
+			f.cmpFiles = freshFiles(brief)
+		}, nil, "not a plain file"},
+		{"a board entry is a submodule", func(f *fakeForge) {
+			f.setFile(brief, "")
+			f.fileKinds = map[string]string{brief: deskkit.FileKindSubmodule}
+			f.cmpFiles = freshFiles(brief)
+		}, nil, "not a plain file"},
+		{"the forge does not type a board entry", func(f *fakeForge) {
+			f.setFile(brief, "branch brief\n")
+			f.fileKinds = map[string]string{brief: ""}
+			f.cmpFiles = freshFiles(brief)
+		}, nil, "not a plain file"},
+		// The compare lists the branch's changes since the merge base: only a home HEAD
+		// that is an ancestor of the tip makes that the whole difference.
+		{"the home is behind and ahead of the branch", func(f *fakeForge) {
+			f.compareStatus = map[string]string{"example-org/tracker:" + head + "...c0ffee1": "diverged"}
+			f.cmpBehind = 2
+		}, nil, "not an ancestor"},
+		{"the branch is behind the home", func(f *fakeForge) {
+			f.compareStatus = map[string]string{"example-org/tracker:" + head + "...c0ffee1": "behind"}
+			f.cmpBehind = 1
+		}, nil, "not an ancestor"},
+		{"the compare reports no status", func(f *fakeForge) {
+			f.compareStatus = map[string]string{"example-org/tracker:" + head + "...c0ffee1": ""}
+		}, nil, "not an ancestor"},
+		{"a board file copied, not renamed", func(f *fakeForge) {
+			f.setFile("docs/archive/sdlc/brief-18.md", "archived\n")
+			f.cmpFiles = []deskkit.ChangedFile{{Filename: "docs/archive/sdlc/brief-18.md", PreviousFilename: brief, Status: "copied"}}
+		}, []want{{path: "docs/archive/sdlc/brief-18.md", body: "archived\n"}}, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			f := &fakeForge{}
+			// The tip resolves to c0ffee1: the compare and every read are made at that
+			// commit, never at the moving branch name.
+			f := &fakeForge{commitSHAs: map[string]string{"main": "c0ffee1"}}
 			c.mutate(f)
 			edits, err := decisionGateBranchBoard(f, deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}, root, "refs/heads/main", target)
 			if c.wantErr != "" {
@@ -550,11 +591,26 @@ func TestDecisionGateBranchBoard(t *testing.T) {
 					t.Fatalf("edit %d = %+v, want %+v", i, edits[i], w)
 				}
 			}
-			if len(f.cmpCalls) != 1 || f.cmpCalls[0] != head+"...main" {
-				t.Fatalf("compare calls = %v, want the home HEAD against the bare branch name", f.cmpCalls)
+			if len(f.cmpCalls) != 1 || f.cmpCalls[0] != head+"...c0ffee1" {
+				t.Fatalf("compare calls = %v, want the home HEAD against the branch tip resolved once", f.cmpCalls)
+			}
+			for _, r := range f.reads {
+				if r.Ref != "c0ffee1" {
+					t.Fatalf("read %s at %q, want the resolved tip c0ffee1 (the commit the compare was made at)", r.File, r.Ref)
+				}
 			}
 		})
 	}
+	t.Run("the branch tip cannot be resolved", func(t *testing.T) {
+		f := &fakeForge{commitErr: deskkit.Unverifiable("no such ref", nil)}
+		_, err := decisionGateBranchBoard(f, deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}, root, "main", target)
+		if err == nil || !deskkit.IsUnverifiable(err) || !strings.Contains(err.Error(), "cannot resolve the tip") {
+			t.Fatalf("got %v, want could-not-check naming the tip", err)
+		}
+		if len(f.cmpCalls) != 0 {
+			t.Fatalf("compare ran without a resolved tip: %v", f.cmpCalls)
+		}
+	})
 	t.Run("home HEAD does not resolve", func(t *testing.T) {
 		_, err := decisionGateBranchBoard(&fakeForge{}, deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}, t.TempDir(), "main", target)
 		if err == nil || !deskkit.IsUnverifiable(err) {
@@ -702,4 +758,174 @@ func TestDecisionGateLandingWholeVerbJudgesTheBranchBoard(t *testing.T) {
 			t.Fatalf("stopped landing still wrote %d time(s)", f.putCalls)
 		}
 	})
+}
+
+// landLinkedBoard drives the whole verb with the real judge where the target branch
+// holds the brief as a non-plain entry (kind), served with content: the board reads it
+// as an unreadable record, so the landing must stop as could-not-check with no write.
+func landLinkedBoard(t *testing.T, kind, content string) {
+	t.Helper()
+	_, f, args := landingStaleHome(t, "human", content)
+	f.fileKinds = map[string]string{"docs/streams/sdlc/brief-18.md": kind}
+	f.cmpFiles = freshFiles("docs/streams/sdlc/brief-18.md")
+	if code := run(args); code != deskkit.ExitUnverifiable {
+		t.Fatalf("exit = %d, want %d (a %s board entry is not a record the board reads)", code, deskkit.ExitUnverifiable, kind)
+	}
+	if f.putCalls != 0 {
+		t.Fatalf("stopped landing still wrote %d time(s)", f.putCalls)
+	}
+}
+
+// regression: S-2266-7 — a brief the target branch holds as a symbolic link to a file is
+// served by the forge as the target's bytes (here a gate: model brief). The board reads
+// the link as an unreadable record and holds it; staging those bytes as a plain file
+// judged a gate: model brief and let the unruled move land.
+func TestBranchBoardLinkServed(t *testing.T) {
+	landLinkedBoard(t, deskkit.FileKindSymlink, briefOf("model", ""))
+}
+
+// regression: S-2266-7 — a brief the target branch holds as a dangling link or a
+// submodule is served with no content; staging that as an empty plain file judged a
+// board the write does not land on.
+func TestBranchBoardEmptyEntry(t *testing.T) {
+	t.Run("dangling link", func(t *testing.T) { landLinkedBoard(t, deskkit.FileKindSymlink, "") })
+	t.Run("submodule", func(t *testing.T) { landLinkedBoard(t, deskkit.FileKindSubmodule, "") })
+}
+
+// symlinkOrSkip makes link point at target, skipping where the platform will not.
+func symlinkOrSkip(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("cannot create a symbolic link here: %v", err)
+	}
+}
+
+// regression: S-2266-7 — the stage writes the branch's board and the target into the
+// landing home; a link at (or above) one of those paths carried the staged bytes
+// through to whatever it names, outside the home. Each is could-not-check before
+// anything is written, and the judge never runs.
+func TestStageRefusesHomeLink(t *testing.T) {
+	const readme = "docs/streams/x/README.md"
+	const brief = "docs/streams/x/brief-1.md"
+	cases := []struct {
+		name  string
+		setup func(t *testing.T, root, outside string)
+		board []boardEdit
+	}{
+		{"board file is a link", func(t *testing.T, root, outside string) {
+			symlinkOrSkip(t, filepath.Join(outside, "victim.md"), filepath.Join(root, brief))
+		}, []boardEdit{{Path: brief, Content: []byte("STAGED\n")}}},
+		{"board directory is a link", func(t *testing.T, root, outside string) {
+			symlinkOrSkip(t, outside, filepath.Join(root, "docs/streams/y"))
+		}, []boardEdit{{Path: "docs/streams/y/victim.md", Content: []byte("STAGED\n")}}},
+		{"target is a link", func(t *testing.T, root, outside string) {
+			if err := os.Remove(filepath.Join(root, readme)); err != nil {
+				t.Fatal(err)
+			}
+			symlinkOrSkip(t, filepath.Join(outside, "victim.md"), filepath.Join(root, readme))
+		}, nil},
+		{"board path is a directory", func(t *testing.T, root, _ string) {
+			if err := os.MkdirAll(filepath.Join(root, brief), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, []boardEdit{{Path: brief, Content: []byte("STAGED\n")}}},
+		{"board path leaves the home", func(t *testing.T, _, _ string) {}, []boardEdit{{Path: "../victim.md", Content: []byte("STAGED\n")}}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := rootWithFile(t, readme, "LOCAL\n")
+			outside := t.TempDir()
+			victim := filepath.Join(outside, "victim.md")
+			if err := os.WriteFile(victim, []byte("OUTSIDE\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			c.setup(t, root, outside)
+			var seen []string
+			stubDecisionGateRuns(t, nil, nil, nil)
+			old := statusgenDecisionGateFn
+			statusgenDecisionGateFn = func(r, b string) ([]string, error) {
+				v, _ := os.ReadFile(victim)
+				seen = append(seen, string(v))
+				return old(r, b)
+			}
+			_, err := decisionGateDiffAt(root, readme, []byte("R\n"), true, []byte("N\n"), c.board)
+			if err == nil || !deskkit.IsUnverifiable(err) {
+				t.Fatalf("got %v, want could-not-check", err)
+			}
+			if len(seen) != 0 {
+				t.Fatalf("the judge ran %d time(s) over a linked home (outside file read as %q)", len(seen), seen)
+			}
+			if v, _ := os.ReadFile(victim); string(v) != "OUTSIDE\n" {
+				t.Fatalf("the file outside the home was changed: %q", v)
+			}
+		})
+	}
+}
+
+// regression: S-2266-7 — the base replaces each staged path with a plain blob; a home
+// HEAD that holds the path, or a directory above it, as a link is not the tree the board
+// reads, so building the base is could-not-check. A plain path builds.
+func TestHomeHeadModeRefused(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git on PATH")
+	}
+	const readme = "docs/streams/x/README.md"
+	build := func(t *testing.T, link, target, staged string) error {
+		t.Helper()
+		root := rootWithFile(t, readme, "x\n")
+		if link != "" {
+			symlinkOrSkip(t, target, filepath.Join(root, link))
+		}
+		git := func(args ...string) {
+			c := exec.Command("git", append([]string{"-C", root, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false"}, args...)...)
+			if out, err := c.CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v\n%s", args, err, out)
+			}
+		}
+		git("init", "-q")
+		git("add", "-A")
+		git("commit", "-q", "-m", "home")
+		_, err := replacedBaseCommit(root, readme, []byte("r\n"), true, []boardEdit{{Path: staged, Content: []byte("b\n")}})
+		return err
+	}
+	t.Run("staged file is a link in HEAD", func(t *testing.T) {
+		err := build(t, "docs/streams/x/brief-1.md", "README.md", "docs/streams/x/brief-1.md")
+		if err == nil || !deskkit.IsUnverifiable(err) || !strings.Contains(err.Error(), "mode 120000") {
+			t.Fatalf("got %v, want could-not-check naming the link", err)
+		}
+	})
+	t.Run("directory above is a link in HEAD", func(t *testing.T) {
+		err := build(t, "docs/streams/y", "x", "docs/streams/y/brief-1.md")
+		if err == nil || !deskkit.IsUnverifiable(err) || !strings.Contains(err.Error(), "mode 120000") {
+			t.Fatalf("got %v, want could-not-check naming the link", err)
+		}
+	})
+	t.Run("control: plain and new paths build", func(t *testing.T) {
+		if err := build(t, "", "", "docs/streams/z/brief-1.md"); err != nil {
+			t.Fatalf("got %v, want a base", err)
+		}
+	})
+}
+
+// regression: S-2266-7 advisory — staging a board file or target under a directory the
+// home lacks created it and left it behind, empty, after the revert.
+func TestStageRemovesCreatedDirs(t *testing.T) {
+	const readme = "docs/streams/x/README.md"
+	root := rootWithFile(t, readme, "LOCAL\n")
+	stubDecisionGateRuns(t, nil, nil, nil)
+	board := []boardEdit{{Path: "docs/streams/new/deep/brief-1.md", Content: []byte("B\n")}}
+	if _, err := decisionGateDiffAt(root, "docs/archive/x/README.md", nil, false, []byte("N\n"), board); err != nil {
+		t.Fatalf("judge: %v", err)
+	}
+	for _, d := range []string{"docs/streams/new", "docs/archive"} {
+		if _, err := os.Lstat(filepath.Join(root, d)); !os.IsNotExist(err) {
+			t.Fatalf("%s was left in the home after the revert (lstat err %v)", d, err)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, readme)); string(b) != "LOCAL\n" {
+		t.Fatalf("the home's own file changed: %q", b)
+	}
 }
