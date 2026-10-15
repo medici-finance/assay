@@ -154,3 +154,14 @@ membership, time, policy and permission changes. Burst/outage tests assert the c
 upstream request budget, while shared-Git experiments report native-Git/go-git latency, CPU,
 bytes, retention and alternate-store recovery. No fixture result certifies live provider
 permissions, a deployed identity provider or CNPG failover.
+
+## Communications regression extension (proposed; pending approval)
+
+Proposal against the ratified revision `23f655f5d`; not baseline text until approved and reconciled in the amendment manifest.
+
+Preserve the commsgw bypass/identity/mailbox suites, commsloop policy/native-dispatch
+suites, deskcomms command/peer-custody suites and cellctl comms manifest/lifecycle
+suites through the [communications extraction](24-communications.md). The initial
+proof is behavior parity plus a real external SDK consumer, not distributed delivery.
+The specification's acceptance cases govern later two-cell outages, filter crashes,
+retries, quota/expiry, authority bypass, SQL-outbox handoff and state migration.
