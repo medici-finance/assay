@@ -85,6 +85,7 @@ func TestInstanceFixtures(t *testing.T) {
 		{"missing-pattern.yaml", "", "checked-failed", []string{ruleInstancePatternUnbound}},
 		{"capability-minted.yaml", "", "checked-failed", []string{ruleInstanceCapMinted, ruleInstanceEffectPattern}},
 		{"silent-truncation.yaml", "", "checked-failed", []string{ruleInstanceTruncation}},
+		{"duplicate-dependency.yaml", "", "checked-failed", []string{ruleInstanceIdentity}},
 	}
 	for _, c := range cases {
 		t.Run(c.file, func(t *testing.T) {
@@ -805,6 +806,56 @@ func TestInstanceSecretNotEchoed(t *testing.T) {
 		if err == nil || strings.Contains(err.Error(), secret) {
 			t.Errorf("%s: err %v — want a refusal that does not quote the value", name, err != nil)
 		}
+	}
+}
+
+// regression: graph-execution/09 — a parse failure never quotes the scalar it failed on
+func TestInstanceParseErrNotEcho(t *testing.T) {
+	schema, _ := instanceSchema()
+	// A bare authorization header: its opaque part is what must not be quoted.
+	opaque := "opaque-" + strings.Repeat("y", 6)
+	hdr := "Authorization: " + opaque
+	cases := []struct{ name, doc string }{
+		{"duplicate key", "schema: x\n\"" + hdr + "\": a\n\"" + hdr + "\": b\n"},
+		{"tag mismatch", "schema: x\nwork: !!int \"" + hdr + "\"\n"},
+		{"duplicate key in flow map", "{\"" + hdr + "\": 1, \"" + hdr + "\": 2}"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, fs, refusals := decodeInstance([]byte(c.doc), schema)
+			if len(fs) != 0 || len(refusals) != 1 || refusals[0].Rule != ruleInstanceUnreadable {
+				t.Fatalf("findings %v refusals %v, want one %s refusal", fs, refusals, ruleInstanceUnreadable)
+			}
+			// Positive control: the refusal is still an actionable message,
+			// and a position is kept where the parser gave one.
+			if !strings.Contains(refusals[0].Message, "not parseable") {
+				t.Errorf("message does not say the document is unparseable: %s", refusals[0].Message)
+			}
+			if c.name != "tag mismatch" && !strings.Contains(refusals[0].Message, "near line") {
+				t.Errorf("message names no position: %s", refusals[0].Message)
+			}
+			if _, err := importInstance([]byte(c.doc), "example-cell"); err == nil || strings.Contains(err.Error(), opaque) {
+				t.Errorf("import: err %v — want a refusal that does not quote the value", err)
+			}
+			file := filepath.Join(t.TempDir(), "doc.yaml")
+			if err := os.WriteFile(file, []byte(c.doc), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			for _, args := range [][]string{{"--json"}, nil} {
+				var out, errb bytes.Buffer
+				code := runInstance(append([]string{"validate", "--file", file, "--root", instRoot}, args...), &out, &errb)
+				if code != instanceExitCouldNot {
+					t.Errorf("validate %v: exit %d, want could-not-check", args, code)
+				}
+				if strings.Contains(out.String()+errb.String(), opaque) {
+					t.Errorf("validate %v prints the credential value", args)
+				}
+			}
+		})
+	}
+	// Defence in depth: a header in the middle of any message is redacted.
+	if got := redactText("bad key \""+hdr+"\" at line 3", nil); strings.Contains(got, opaque) || !strings.Contains(got, "line 3") {
+		t.Errorf("redactText: %q", got)
 	}
 }
 

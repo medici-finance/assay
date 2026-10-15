@@ -340,11 +340,36 @@ func decodeInstance(raw []byte, schema *schemaNode) (workflowInstance, []instanc
 	return inst, redactFindings(findings, lits), redactFindings(refusals, lits)
 }
 
+// parseLineRef matches the position a YAML parse error carries. Only the digits
+// are kept, so no quoted scalar in the error text can survive into a message.
+var parseLineRef = regexp.MustCompile(`\bline (\d+)`)
+
+// parseFailureMessage is the one message a YAML/JSON parse failure produces.
+// The parser's own text quotes the offending scalar (a duplicate key, a tag
+// mismatch), and at that point no decoded document exists to supply the
+// literals redaction needs, so the text is never forwarded: the message names
+// the position only.
+func parseFailureMessage(err error) string {
+	seen := map[string]bool{}
+	var lines []string
+	for _, m := range parseLineRef.FindAllStringSubmatch(err.Error(), -1) {
+		if !seen[m[1]] && len(lines) < 3 {
+			seen[m[1]] = true
+			lines = append(lines, m[1])
+		}
+	}
+	msg := "the document is not parseable as YAML or JSON"
+	if len(lines) > 0 {
+		msg += " (near line " + strings.Join(lines, ", ") + ")"
+	}
+	return msg + "; the parser's detail is withheld because it can quote a value"
+}
+
 // decodeInstanceBody is decodeInstance before redaction; only decodeInstance
 // calls it.
 func decodeInstanceBody(raw []byte, schema *schemaNode) (inst workflowInstance, findings, refusals []instanceFinding, data map[string]any) {
 	if err := yaml.Unmarshal(raw, &data); err != nil {
-		return inst, nil, []instanceFinding{instFinding(ruleInstanceUnreadable, "%v", err)}, nil
+		return inst, nil, []instanceFinding{instFinding(ruleInstanceUnreadable, "%s", parseFailureMessage(err))}, nil
 	}
 	if data == nil {
 		return inst, nil, []instanceFinding{instFinding(ruleInstanceUnreadable, "empty document")}, nil
@@ -414,7 +439,13 @@ var (
 		regexp.MustCompile(`(?i)^\s*authorization\s*:`),
 		regexp.MustCompile(`(?i)://[^/\s:@]+:[^/\s@]+@`),
 	}
-	instanceCredentialKey = regexp.MustCompile(`(?i)(^|[-_])(token|password|passwd|secret|api-?key|private-?key|authorization|credentials?)($|[-_])`)
+	// instanceCredentialInMessage is the value list's authorization-header
+	// pattern without its line anchor: inside a message the header is not at
+	// the start of the string. It is for redacting messages only; the scan
+	// keeps the anchored form so prose that mentions "authorization:" is not
+	// a finding.
+	instanceCredentialInMessage = regexp.MustCompile(`(?i)\bauthorization\s*:\s*[^"'\x60\n]*`)
+	instanceCredentialKey       = regexp.MustCompile(`(?i)(^|[-_])(token|password|passwd|secret|api-?key|private-?key|authorization|credentials?)($|[-_])`)
 )
 
 // instanceRedacted stands in for a credential-shaped value or key in any
@@ -526,7 +557,7 @@ func redactText(msg string, literals []string) string {
 	for _, pat := range instanceCredentialValue {
 		msg = pat.ReplaceAllString(msg, instanceRedacted)
 	}
-	return msg
+	return instanceCredentialInMessage.ReplaceAllString(msg, instanceRedacted)
 }
 
 // ---- digests ----
@@ -734,6 +765,17 @@ func checkInstanceRules(inst workflowInstance) []instanceFinding {
 					"dependency %s supports acceptance row %q, which is not in the acceptance scope", d.Ref, s))
 			}
 		}
+	}
+
+	// One manifest entry per ref: acceptance and the packet bind each
+	// dependency once, so a repeated ref could never be current.
+	seenDep := map[string]bool{}
+	for _, d := range inst.Dependencies {
+		if seenDep[d.Ref] {
+			out = append(out, instFinding(ruleInstanceIdentity,
+				"dependency %s appears more than once in the manifest — one entry per ref", d.Ref))
+		}
+		seenDep[d.Ref] = true
 	}
 
 	nodeIDs := map[string]bool{}

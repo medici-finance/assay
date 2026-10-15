@@ -68,7 +68,7 @@ is the normative shape; it is closed (`additionalProperties: false`) at every le
 | `policy` | contract | REQUIRED. `revision` (`<path>@<40-hex>`), `control-profile` reference. |
 | `budget` | contract | REQUIRED. `ref` — a reservation reference, never an amount of authority. |
 | `inputs` | contract | REQUIRED. Immutable input references: `name`, `ref`, `digest`, `origin`, `trust`. |
-| `dependencies` | contract | REQUIRED. The dependency manifest: `ref`, `kind` (`source`, `api`, `schema`, `build`, `policy`, `environment`), `fingerprint`, `supports` (acceptance rows it supports). |
+| `dependencies` | contract | REQUIRED. The dependency manifest: `ref`, `kind` (`source`, `api`, `schema`, `build`, `policy`, `environment`), `fingerprint`, `supports` (acceptance rows it supports). A `ref` appears once; a repeated ref is refused (`instance-identity-mismatch`). |
 | `nodes` | contract + records | REQUIRED. One node instance per pattern node: `id`, `node`, `role`, `actor {binding, cell, capabilities}`, `effects`, `evidence`; `attempts` are records. |
 | `decisions` | records | OPTIONAL. Human decisions as references (§8). |
 | `assignment` | projection | REQUIRED. `backend`, `generation` (>= 1), `runner-profile` reference. |
@@ -189,7 +189,8 @@ the decision.
    offending value — carries a credential-shaped value or field name: every message a
    decode, an import, a packet projection or a handoff check produces is redacted before it
    leaves, and the packet and handoff boundaries refuse credential material before any
-   message quotes a field.
+   message quotes a field. A YAML/JSON parse failure is reported by position only; the
+   parser's own text quotes the offending scalar and is never forwarded.
 3. Only the trust gate decides an input's disposition. An input whose `trust.source` is
    `reporter` MUST have disposition `unresolved`; a reporter-supplied label is kept in
    `reported-label` and is never a disposition (`instance-trust-not-authoritative`). Import

@@ -126,6 +126,24 @@
       "file": "instance.go",
       "old": "observed map[string]string) error {\n\tif err := credentialFree(h); err != nil {",
       "new": "observed map[string]string) error {\n\tif err := credentialFree(h); false && err != nil {"
+    },
+    {
+      "name": "row 4: a YAML parse failure forwards the parser text (which quotes the scalar)",
+      "file": "instance.go",
+      "old": "instFinding(ruleInstanceUnreadable, \"%s\", parseFailureMessage(err))",
+      "new": "instFinding(ruleInstanceUnreadable, \"%v\", err)"
+    },
+    {
+      "name": "row 4: message redaction drops the unanchored authorization-header pattern",
+      "file": "instance.go",
+      "old": "return instanceCredentialInMessage.ReplaceAllString(msg, instanceRedacted)",
+      "new": "return msg"
+    },
+    {
+      "name": "row 1: a manifest may repeat a dependency ref",
+      "file": "instance.go",
+      "old": "if seenDep[d.Ref] {",
+      "new": "if false && seenDep[d.Ref] {"
     }
   ]
 }
