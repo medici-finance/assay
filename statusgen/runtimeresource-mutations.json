@@ -422,6 +422,12 @@
       "new": "(!dv.everPresent || recreates)"
     },
     {
+      "name": "a create reconciled present after an absence does not begin a new lifetime",
+      "file": "runtimeresource.go",
+      "old": "observe(e.ObservedState, e.ObservedAt.At, tv == \"create\" || tv == \"restore\")",
+      "new": "observe(e.ObservedState, e.ObservedAt.At, false)"
+    },
+    {
       "name": "receipts dated out of list order are accepted",
       "file": "runtimeresource.go",
       "old": "if e.ObservedAt.OK && prevObs.ObservedAt.OK && e.ObservedAt.At.Before(prevObs.ObservedAt.At) {",

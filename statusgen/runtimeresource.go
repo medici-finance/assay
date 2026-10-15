@@ -575,7 +575,8 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 	dv := runtimeDerived{lifetime: make([]int, len(d.Effects))}
 	cur := 0
 	// recreates is true for the receipt of an effect that re-creates the
-	// resource (create, restore).
+	// resource (create, restore), and for a reconcile that resolves one whose
+	// acknowledgment was lost: both are evidence the resource came back.
 	observe := func(state string, at time.Time, recreates bool) {
 		switch state {
 		case "present":
@@ -604,7 +605,11 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 				dv.lifetime[i] = cur
 				continue
 			}
-			observe(e.ObservedState, e.ObservedAt.At, false)
+			// regression: a create whose answer was lost, once reconciled
+			// present, is the same physical event as an acknowledged create, so
+			// it begins a lifetime after an absence too (Recovery rule 3).
+			tv := d.Effects[j].Verb
+			observe(e.ObservedState, e.ObservedAt.At, tv == "create" || tv == "restore")
 			if e.ObservedState == "absent" {
 				switch d.Effects[j].Verb {
 				case "create":
