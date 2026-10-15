@@ -1269,7 +1269,9 @@ func parseRepo(raw string) (string, error) {
 // requireTrailer enforces the example-stream/02 link grammar on a PR body: exactly one
 // `Brief: <stream>/<NN>` that resolves to a brief file under --root (the PR DELIVERS that
 // brief), `Authors: <stream>/<NN>[, …]` whose every entry resolves the same way (the PR only
-// AUTHORS those briefs — #1339), or `Issue: #<N>` for issue-only work. Absence, duplicates,
+// AUTHORS those briefs — #1339), `Cross-repo-brief: <alias>:<stream>/<NN>` for a brief homed in
+// another repo (checked against --root's alias registry, never resolved to a file here —
+// medici-finance/assay#2748), or `Issue: #<N>` for issue-only work. Absence, duplicates,
 // mixed kinds and non-resolving briefs are all constraint refusals (exit 5). There is deliberately no bypass flag — a worker-typeable
 // bypass makes the edge asserted again.
 //
@@ -1304,6 +1306,7 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 		return 0, deskkit.SchemaRefusal("deskpr", "--check", "refused: PR body carries no trailer — add exactly one line "+
 			"`Brief: <stream>/<NN>` naming the brief this PR delivers (e.g. `Brief: example-stream/02`), "+
 			"`Authors: <stream>/<NN>[, …]` naming the brief(s) a briefs-authoring PR writes, "+
+			"`Cross-repo-brief: <alias>:<stream>/<NN>` naming a brief homed in another repo, "+
 			"or `Issue: #<N>` for issue-only work")
 	}
 	if trs[0].Kind == deskkit.TrailerIssue {
@@ -1334,6 +1337,9 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 			}
 		}
 		return 0, nil
+	}
+	if trs[0].Kind == deskkit.TrailerCrossRepoBrief {
+		return 0, requireCrossRepoBrief(trs[0].Value, root)
 	}
 	stream, nn, ok := splitBriefTrailer(trs[0].Value)
 	if !ok {

@@ -978,10 +978,7 @@ func midMergeTrial(t *testing.T, w *world) *trial {
 		t.Fatal(err)
 	}
 	t.Cleanup(wt.remove)
-	if _, err := runGit(w.root, "fetch", "--quiet", "origin",
-		"+refs/heads/main:refs/remotes/origin/main"); err != nil {
-		t.Fatal(err)
-	}
+	git(t, w.root, "fetch", "--quiet", "origin", "+refs/heads/main:refs/remotes/origin/main")
 	// A conflict is expected here; the error is the point.
 	_, _ = runGit(wt.dir, "merge", "--no-ff", "--no-commit", w.baseSHA)
 	return &trial{wt: wt, rep: &report{HeadSHA: w.headSHA, BaseSHA: w.baseSHA}}
