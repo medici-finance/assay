@@ -859,6 +859,39 @@ func TestInstanceParseErrNotEcho(t *testing.T) {
 	}
 }
 
+// regression: graph-execution/09 — a parse position never comes from document content
+func TestInstanceParseLineOwn(t *testing.T) {
+	cases := []struct{ name, doc, want string }{
+		{"scalar naming a line", "schema: x\nwork: !!int \"line 4242\"\n", ""},
+		{"duplicate key naming a line", "schema: x\n\"line 99\": a\n\"line 99\": b\n", "(near line 3)"},
+		{"scalar root, unmarshal error", "\"line 77\"\n", "(near line 1)"},
+		{"scalar forging an entry", "schema: x\nwork: !!int \"x\\n  line 7: y\"\n", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			schema, _ := instanceSchema()
+			_, _, refusals := decodeInstance([]byte(c.doc), schema)
+			if len(refusals) != 1 || refusals[0].Rule != ruleInstanceUnreadable {
+				t.Fatalf("refusals %v, want one %s refusal", refusals, ruleInstanceUnreadable)
+			}
+			got := refusals[0].Message
+			// want "" is a failure the parser reports without a position: the
+			// message then names none, rather than reading one from the scalar.
+			if c.want == "" && strings.Contains(got, "near line") {
+				t.Errorf("message %q names a position the parser never gave", got)
+			}
+			if c.want != "" && !strings.Contains(got, c.want) {
+				t.Errorf("message %q, want it to contain %q", got, c.want)
+			}
+			for _, bad := range []string{"4242", "99", "line 7", ", 7", "77"} {
+				if strings.Contains(got, bad) {
+					t.Errorf("message %q carries document content %q", got, bad)
+				}
+			}
+		})
+	}
+}
+
 // regression: graph-execution/09 — a reporter label never becomes a disposition
 func TestInstanceTrustNotPromoted(t *testing.T) {
 	rep := validateInstanceFile(instanceValidateOptions{File: instPath("reporter-trust-promoted.yaml"), Root: instRoot})

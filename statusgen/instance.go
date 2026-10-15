@@ -340,23 +340,39 @@ func decodeInstance(raw []byte, schema *schemaNode) (workflowInstance, []instanc
 	return inst, redactFindings(findings, lits), redactFindings(refusals, lits)
 }
 
-// parseLineRef matches the position a YAML parse error carries. Only the digits
-// are kept, so no quoted scalar in the error text can survive into a message.
-var parseLineRef = regexp.MustCompile(`\bline (\d+)`)
+// parseSyntaxLine and parseTypeLine match the parser's OWN position prefix and
+// nothing else: a syntax or duplicate-key failure is one string that begins
+// "yaml: line N:", and an unmarshal failure is a TypeError whose entries each
+// begin "line N:". A "line N" that appears later inside an entry is part of the
+// quoted scalar (or of the "already defined at line M" tail) and is never read.
+var (
+	parseSyntaxLine = regexp.MustCompile(`^yaml: line (\d+):`)
+	parseTypeLine   = regexp.MustCompile(`^line (\d+):`)
+)
 
 // parseFailureMessage is the one message a YAML/JSON parse failure produces.
 // The parser's own text quotes the offending scalar (a duplicate key, a tag
 // mismatch), and at that point no decoded document exists to supply the
 // literals redaction needs, so the text is never forwarded: the message names
-// the position only.
+// the position only, read from the position prefix the parser itself wrote.
+// TypeError entries are separate strings, so a scalar holding a newline and a
+// "line N:" cannot start a forged entry.
 func parseFailureMessage(err error) string {
-	seen := map[string]bool{}
 	var lines []string
-	for _, m := range parseLineRef.FindAllStringSubmatch(err.Error(), -1) {
-		if !seen[m[1]] && len(lines) < 3 {
+	seen := map[string]bool{}
+	take := func(re *regexp.Regexp, text string) {
+		if m := re.FindStringSubmatch(text); m != nil && !seen[m[1]] && len(lines) < 3 {
 			seen[m[1]] = true
 			lines = append(lines, m[1])
 		}
+	}
+	var te *yaml.TypeError
+	if errors.As(err, &te) {
+		for _, e := range te.Errors {
+			take(parseTypeLine, e)
+		}
+	} else {
+		take(parseSyntaxLine, err.Error())
 	}
 	msg := "the document is not parseable as YAML or JSON"
 	if len(lines) > 0 {

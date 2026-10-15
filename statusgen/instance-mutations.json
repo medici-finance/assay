@@ -140,6 +140,12 @@
       "new": "return msg"
     },
     {
+      "name": "row 4: the parse position is read from anywhere in the parser text, scalar included",
+      "file": "instance.go",
+      "old": "parseSyntaxLine = regexp.MustCompile(`^yaml: line (\\d+):`)",
+      "new": "parseSyntaxLine = regexp.MustCompile(`line (\\d+)`)"
+    },
+    {
       "name": "row 1: a manifest may repeat a dependency ref",
       "file": "instance.go",
       "old": "if seenDep[d.Ref] {",

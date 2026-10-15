@@ -189,8 +189,9 @@ the decision.
    offending value — carries a credential-shaped value or field name: every message a
    decode, an import, a packet projection or a handoff check produces is redacted before it
    leaves, and the packet and handoff boundaries refuse credential material before any
-   message quotes a field. A YAML/JSON parse failure is reported by position only; the
-   parser's own text quotes the offending scalar and is never forwarded.
+   message quotes a field. A YAML/JSON parse failure is reported by position only, read from
+   the parser's own position prefix and never from the document's content; the parser's text
+   quotes the offending scalar and is never forwarded.
 3. Only the trust gate decides an input's disposition. An input whose `trust.source` is
    `reporter` MUST have disposition `unresolved`; a reporter-supplied label is kept in
    `reported-label` and is never a disposition (`instance-trust-not-authoritative`). Import
