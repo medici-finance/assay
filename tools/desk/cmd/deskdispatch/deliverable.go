@@ -222,6 +222,15 @@ type deliverable struct {
 	// the PR's `Brief:` trailer resolves against the tracking repo's board.
 	trackingRoot string
 	registryPath string
+	// crossRepoBrief: --cross-repo accepted --repo as the deliverable repo of a brief homed in the
+	// tracking repo (medici-finance/assay#2748), so the PR links it with `Cross-repo-brief:`.
+	crossRepoBrief bool
+}
+
+// crossRepoTrailer is the exact link line a --cross-repo PR carries: the tracking alias, then the
+// brief id — the `<alias>:<stream>/<NN>` item key deskdispatch itself accepts.
+func (d deliverable) crossRepoTrailer(item string) string {
+	return "Cross-repo-brief: " + d.homeAlias + ":" + briefIDFromItem(item)
 }
 
 // crossRepo reports whether the deliverable lands in a repo other than the one tracking the brief.
@@ -358,6 +367,10 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 		declV2Alias = briefV2Alias(briefField(front, briefIDRe))
 	}
 	if o.itemAlias == "" && declDeliverable == "" && declHomedIn == "" && declV2Alias == "" {
+		if o.crossRepo {
+			return d, crossRepoRefusal("this item names no tracking alias (no `<alias>:` item-key prefix and no " +
+				"brief-v2 id on --brief), so there is no home repo to deliver across from")
+		}
 		return d, nil
 	}
 	d.active = true
@@ -420,6 +433,13 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 	}
 	if d.homeAlias != "" {
 		d.trackingRepo, _ = reg.repoOf(d.homeAlias)
+	}
+
+	if o.crossRepo {
+		if err := d.acceptCrossRepo(o, reg, declDeliverable, declHomedIn); err != nil {
+			return d, err
+		}
+		return d, d.checkRootOrigin(o)
 	}
 
 	// The deliverable alias: deliverable_repo, else homed-in (reverse-resolved), else the home alias.
@@ -487,16 +507,24 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 			return d, mismatch(d, "--repo", r, authoringPRHint(o, d, r))
 		}
 	}
+	return d, d.checkRootOrigin(o)
+}
+
+// checkRootOrigin is the second pre-claim witness: --root's origin must be d.repo (or, with no
+// --repo, the authoring-PR acceptance's tracking repo). On success d.repo becomes the checkout's
+// own canonical origin slug.
+func (d *deliverable) checkRootOrigin(o dispatchOpts) error {
+	repo := d.repo
 	origin := runCmd(o.root, "git", "remote", "get-url", "origin")
 	if origin.err != nil {
-		return d, origin.run.FailVerbatim(deskkit.ExitUnverifiable, fmt.Sprintf(
+		return origin.run.FailVerbatim(deskkit.ExitUnverifiable, fmt.Sprintf(
 			"step %s: alias %q resolves to %s, but %s's origin could not be read (%s), so whether --root is a "+
 				"checkout of that repo cannot be established. Nothing was claimed.",
 			stepClaimAcquire, d.alias, repo, o.root, origin.run.Said()))
 	}
 	actual := repoSlugFromURL(origin.stdout)
 	if actual == "" {
-		return d, deskkit.Unverifiable(fmt.Sprintf(
+		return deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: alias %q resolves to %s, but --root's origin %q does not parse to an owner/name. "+
 				"Nothing was claimed.", stepClaimAcquire, d.alias, repo, origin.stdout), nil)
 	}
@@ -504,10 +532,10 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 		// With no --repo the change's repo IS --root's origin, so the authoring-PR acceptance reads
 		// that one witness. With --repo given it was already decided above, and --root must agree.
 		if strings.TrimSpace(o.repo) != "" {
-			return d, mismatch(d, "--root "+o.root, actual, "")
+			return mismatch(*d, "--root "+o.root, actual, "")
 		}
-		if !authoringPR(o, d, actual) {
-			return d, mismatch(d, "--root "+o.root, actual, authoringPRHint(o, d, actual))
+		if !authoringPR(o, *d, actual) {
+			return mismatch(*d, "--root "+o.root, actual, authoringPRHint(o, *d, actual))
 		}
 		d.acceptAuthoringPR(o)
 	}
@@ -515,7 +543,58 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 	// the two matched case-insensitively, and the claim, the mint and the allowlist should see the
 	// one spelling the forge actually serves.
 	d.repo = actual
-	return d, nil
+	return nil
+}
+
+// acceptCrossRepo is the --cross-repo resolution (medici-finance/assay#2748): the brief resolves to
+// its HOME (the tracking alias, already resolved and registry-checked above), and --repo names the
+// repo the PR opens in. It widens exactly one shape, and refuses every other:
+//   - --repo is given, and the registry publishes it under an alias (the registry stays the only
+//     resolution path — an unregistered repo is never trusted by name);
+//   - the tracking alias was NAMED for this item (the item-key prefix or the brief-v2 id), never
+//     defaulted to the registry's own self;
+//   - the brief declares no deliverable_repo / homed-in: an explicit declaration names exactly one
+//     repo, and the flag never overrides it;
+//   - --repo is not the tracking repo itself (nothing crosses; drop the flag).
+//
+// The home alias may be reserved-but-unpublished in this registry: only the deliverable repo must
+// resolve, and the tracking repo is then never spelled out. --root's origin is still checked
+// against --repo afterwards (checkRootOrigin), exactly as on every other path.
+func (d *deliverable) acceptCrossRepo(o dispatchOpts, reg *aliasRegistry, declDeliverable, declHomedIn string) error {
+	r := strings.TrimSpace(o.repo)
+	switch {
+	case r == "":
+		return crossRepoRefusal("--repo is not given — it names the repo the deliverable PR opens in")
+	case declDeliverable != "":
+		return crossRepoRefusal(fmt.Sprintf("the brief declares deliverable_repo %q, which names its deliverable repo "+
+			"explicitly; drop --cross-repo and dispatch at that repo", declDeliverable))
+	case declHomedIn != "":
+		return crossRepoRefusal(fmt.Sprintf("the brief declares homed-in %q, which names its deliverable repo "+
+			"explicitly; drop --cross-repo and dispatch at that repo", declHomedIn))
+	case !d.trackingNamed:
+		return crossRepoRefusal("the tracking alias is not named for this item (no `<alias>:` item-key prefix and no " +
+			"brief-v2 id) — it would default to this registry's own self")
+	}
+	alias, found := reg.aliasFor(r)
+	if !found {
+		return crossRepoRefusal(fmt.Sprintf("--repo %s is not published under any alias in %s — the registry is the "+
+			"only legal resolution path, so an unregistered repo is refused rather than trusted", r, reg.path))
+	}
+	if alias == d.homeAlias || (d.trackingRepo != "" && strings.EqualFold(d.trackingRepo, r)) {
+		return crossRepoRefusal(fmt.Sprintf("--repo %s is the brief's own tracking repo (alias %q) — nothing crosses; "+
+			"drop --cross-repo", r, d.homeAlias))
+	}
+	d.alias, d.repo, d.crossRepoBrief = alias, r, true
+	d.source = fmt.Sprintf("--cross-repo (--repo, alias %q)", alias)
+	return nil
+}
+
+// crossRepoRefusal is the exit-5 refusal for a --cross-repo dispatch that does not have the one
+// shape the flag admits. Like every refusal in this file it precedes the claim, the mint and the
+// worktree.
+func crossRepoRefusal(why string) error {
+	return deskkit.Refused(fmt.Sprintf("step %s: --cross-repo refused: %s. Nothing was claimed and no worktree was "+
+		"cut.", stepClaimAcquire, why))
 }
 
 // filesTagRe reads the `[<alias>]` declaration at the head of one `files:` entry, bare or in its own

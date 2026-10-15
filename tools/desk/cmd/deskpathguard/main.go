@@ -66,15 +66,17 @@ prints no "applied:" line — the label is NOT on the PR, whatever the state lin
 non-zero exit with no state= line means the check did not run: could-not-check.`
 
 func main() {
-	// check performs a forge write (ApplyLabels); rederive is a local git read. Both declare
-	// the same non-CI-eligible class as the sibling write verbs (desklabel, deskclose): the
-	// roster is read from the config-home file, in CI as well as locally.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskpathguard", nil, os.Args[1:], func([]string) int {
+		// check performs a forge write (ApplyLabels); rederive is a local git read. Both declare
+		// the same non-CI-eligible class as the sibling write verbs (desklabel, deskclose): the
+		// roster is read from the config-home file, in CI as well as locally.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

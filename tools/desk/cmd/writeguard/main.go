@@ -55,45 +55,48 @@ type hookOutput struct {
 }
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident.
-	// ClassWrite is the only defensible class for a GUARD: it reads the config-home
-	// file and NEVER the environment, so a steered session cannot hand this process
-	// its own dangerous-command policy through an exported variable. ciEligible=false
-	// says so even when GITHUB_ACTIONS is set.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// P3: echo the effective roster once per run, like every other tool that reads a
-	// configured control surface. It goes to stderr, which a PreToolUse hook exiting 0
-	// does not surface to the user — so the visibility is there for a debug run and
-	// for anyone diagnosing a refusal, without narrating every tool call. A callout
-	// that has been silently unconfigured is exactly the change this makes visible.
-	// Because nobody sees it on success, it is the full block and records nothing: the
-	// stateful digest echo would mark this configuration "seen" for the next run someone
-	// does see (deskkit configecho.go).
-	deskkit.EchoEffectiveConfigUnsurfaced(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-
-	v, err := run(os.Stdin)
-	if err != nil {
-		// Fail open: a broken guard must never brick every session.
-		// Printing nothing on exit 0 means "no decision".
-		return
-	}
-	if v.Block {
-		var out hookOutput
-		out.HookSpecificOutput.HookEventName = "PreToolUse"
-		out.HookSpecificOutput.PermissionDecision = "deny"
-		out.HookSpecificOutput.PermissionDecisionReason = v.Reason
-		enc, err := json.Marshal(out)
-		if err != nil {
-			// Last-resort blocking path; only reachable if marshaling a
-			// plain struct fails, but keep the guard from silently allowing.
-			fmt.Fprintln(os.Stderr, v.Reason)
-			os.Exit(2)
+	os.Exit(deskkit.PerfRun("writeguard", nil, os.Args[1:], func([]string) int {
+		// The roster class is an EXPLICIT declaration, never the zero value by accident.
+		// ClassWrite is the only defensible class for a GUARD: it reads the config-home
+		// file and NEVER the environment, so a steered session cannot hand this process
+		// its own dangerous-command policy through an exported variable. ciEligible=false
+		// says so even when GITHUB_ACTIONS is set.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// P3: echo the effective roster once per run, like every other tool that reads a
+		// configured control surface. It goes to stderr, which a PreToolUse hook exiting 0
+		// does not surface to the user — so the visibility is there for a debug run and
+		// for anyone diagnosing a refusal, without narrating every tool call. A callout
+		// that has been silently unconfigured is exactly the change this makes visible.
+		// Because nobody sees it on success, it is the full block and records nothing: the
+		// stateful digest echo would mark this configuration "seen" for the next run someone
+		// does see (deskkit configecho.go).
+		deskkit.EchoEffectiveConfigUnsurfaced(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
 		}
-		fmt.Println(string(enc))
-	}
+
+		v, err := run(os.Stdin)
+		if err != nil {
+			// Fail open: a broken guard must never brick every session.
+			// Printing nothing on exit 0 means "no decision".
+			return 0
+		}
+		if v.Block {
+			var out hookOutput
+			out.HookSpecificOutput.HookEventName = "PreToolUse"
+			out.HookSpecificOutput.PermissionDecision = "deny"
+			out.HookSpecificOutput.PermissionDecisionReason = v.Reason
+			enc, err := json.Marshal(out)
+			if err != nil {
+				// Last-resort blocking path; only reachable if marshaling a
+				// plain struct fails, but keep the guard from silently allowing.
+				fmt.Fprintln(os.Stderr, v.Reason)
+				return 2
+			}
+			fmt.Println(string(enc))
+		}
+		return 0
+	}))
 }
 
 func run(stdin io.Reader) (Verdict, error) {

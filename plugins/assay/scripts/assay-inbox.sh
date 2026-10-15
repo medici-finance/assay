@@ -228,6 +228,37 @@ if [[ -n "$FLOW_SINCE" && ! "$FLOW_SINCE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; th
   exit 1
 fi
 
+# origin_to_slug <url> -- reduce a GitHub remote URL to owner/name. Handles every
+# supported github.com form: https/http/git/ssh/git+ssh with
+# an optional user[:password]@ and an optional :port, the scp-style
+# git@github.com:owner/name, a trailing slash and a trailing .git. A URL it does
+# not recognise passes through unchanged so the owner/name validator rejects it
+# loudly (never a silent skip). Pure bash regex: bash 3.2 safe.
+origin_to_slug() {
+  local u="$1" p
+  if [[ "$u" =~ ^(https|http|git|ssh|git\+ssh)://([^/@]*@)?github\.com(:[0-9]+)?/(.*)$ ]]; then
+    p="${BASH_REMATCH[4]}"
+  elif [[ "$u" =~ ^([^/@:]*@)?github\.com:(.*)$ ]]; then
+    p="${BASH_REMATCH[2]}"
+  else
+    p="$u"
+  fi
+  while [[ "$p" == */ ]]; do p="${p%/}"; done
+  p="${p%.git}"
+  printf '%s\n' "$p"
+}
+
+# Display only: remove userinfo even when a malformed URL failed parsing. Keep
+# the scheme and suffix after the last @; no escaped replacement (bash 3.2).
+origin_display() {
+  local u="$1" prefix=""
+  if [[ "$u" == *@* ]]; then
+    if [[ "$u" =~ ^([A-Za-z][A-Za-z0-9+.-]*://) ]]; then prefix="${BASH_REMATCH[1]}"; fi
+    u="$prefix${u##*@}"
+  fi
+  printf '%s' "$u"
+}
+
 resolve_repos() {
   if [[ $# -gt 0 ]]; then
     printf '%s\n' "$@"
@@ -246,8 +277,7 @@ resolve_repos() {
     # emit nothing; the caller detects an empty REPOS array and reports + exits.
     return
   fi
-  owner_name=$(printf '%s' "$origin_url" \
-    | sed -E 's#^git@github\.com:##; s#^https://github\.com/##; s#\.git$##')
+  owner_name=$(origin_to_slug "$origin_url")
   printf '%s\n' "$owner_name"
 }
 
@@ -290,7 +320,7 @@ cell_name_for() {
   local url
   url=$(git -C "$1" remote get-url origin 2>/dev/null || true)
   if [[ -n "$url" ]]; then
-    printf '%s' "$url" | sed -E 's#^git@github\.com:##; s#^https://github\.com(:[0-9]+)?/##; s#\.git$##'
+    origin_display "$(origin_to_slug "$url")"
     return
   fi
   basename "$(cd "$1" 2>/dev/null && pwd || printf '%s' "$1")"
@@ -467,7 +497,7 @@ fi
 # The charset is GitHub's own owner/name alphabet.
 for _repo in ${REPOS[@]+"${REPOS[@]}"}; do
   if [[ ! "$_repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
-    echo "assay-inbox: invalid repo '$_repo' (expected owner/name)" >&2
+    echo "assay-inbox: invalid repo '$(origin_display "$_repo")' (expected owner/name)" >&2
     exit 1
   fi
 done
@@ -821,6 +851,106 @@ def loginlist: (try fromjson catch [])
    else ""
    end) as $classEvidence
 
+# ------------------------------------------------- the recommended option's command --
+# Reply shape carries a copy-pasteable command that records the RECOMMENDED option, but only
+# where a TRUSTED author's issue visibly states the ruling phrase. Every gate must hold, else
+# the line is `not derivable — desk to fill`: this program never composes a ruling, and never
+# turns text a stranger wrote, or text the issue page does not show, into one.
+#   a. the body author is trusted ($bodyTrusted): anyone can open an issue on a public repo,
+#      so an untrusted body is never evidence (see resolve_roster);
+#   b. there is a recommended letter, and the ruling names it. The letter is the ORIGINAL
+#      letter (the walk re-letters it A) of the one visible option carrying the standalone
+#      "(recommended)" marker, when no other option mentions "recommend" at all and the
+#      visible Options equal the ones the walk shows; with no Options section, it is a
+#      fork-test `default:` naming one of the block's
+#      own `option:` letters. The ruling is the first double-quoted phrase in a "How to
+#      answer" (or "How to reply" / "How to respond") section that names that letter
+#      ("A", "B — drop it", "ratify B"), else the fork-test default when its letter is the
+#      recommended one, verbatim;
+#   c. the phrase is VISIBLE: HTML comments (multi-line and unterminated ones included) and
+#      Markdown link-reference definitions, which GitHub does not render, are cut out of
+#      the body first;
+#   d. the ruling holds no \p{Cf} format character (a bidi override or zero-width
+#      character makes the displayed command differ from the posted bytes) and no
+#      `<placeholder>` (template text is not a ruling).
+# The command fails CLOSED on identity: it reads the driver's own token into a variable and
+# runs `gh` only when that read succeeded with a non-empty token. An empty GH_TOKEN makes gh
+# fall back to whichever account is active, so the bare `GH_TOKEN="$(…)" gh …` form would
+# post under that account when the lookup fails; this form posts nothing instead. The login
+# comes from $DRIVER_LOGIN when it is set and login-shaped (\z: a trailing newline is not);
+# otherwise the `<driver-login>` placeholder stays for the desk to fill. The ruling is
+# single-quoted for the shell (@sh), so a `$`, a backtick or a quote inside it stays text.
+| def optletter:
+    [capture("^(?:[Oo]ption[[:space:]]+)?(?<l>[A-Da-d1-4])(?:$|[.)!:,]|[[:space:]]*[—–-])") | .l | ascii_upcase] | first;
+  def phraseletter:
+    sub("^(?:[Ii][[:space:]]+)?(?:[Rr]atif(?:y|ied)|[Aa]pproved?)[[:space:]:,]+"; "") | optletter;
+  def sectionin($ls; $re):
+    ($ls | to_entries | map(select(.value | test($re; "i"))) | first) as $h
+    | if $h == null then []
+      else ($ls[($h.key + 1):]) as $rest
+        | ($rest | map(isheading) | index(true)) as $stop
+        | (if $stop == null then $rest else $rest[:$stop] end)
+      end;
+  # The same Options parse as $oraw, over the VISIBLE lines. Gate b requires the two to be
+  # equal, so a parse drift between them fails closed (not derivable), never open.
+  def optionsin($ls):
+    sectionin($ls; "^[[:space:]]*#{1,6}[[:space:]]*Options?\\b") | nonblank | map(strip)
+    | map(select(test("^(?:[-*][[:space:]]*)?(?:\\*\\*)?[A-Da-d1-4][.)][[:space:]]")))
+    | map(capture("^(?:[-*][[:space:]]*)?(?:\\*\\*)?(?<let>[A-Da-d1-4])[.)][[:space:]]*(?<txt>.+)$"))
+    | .[0:4];
+  # The standalone marker only: a trailing "(recommended)" or "— recommended", or a leading
+  # "(Recommended)" / "Recommended:". Never a word that merely contains "recommend"
+  # ("recommendation") and never a negated form ("(not recommended)", "non-recommended").
+  def strictmark:
+    demd | clean | strip
+    | test("(?:^|[[:space:]])\\(recommended\\)$|[[:space:]][—–-][[:space:]]*recommended$|^\\(recommended\\)|^recommended[[:space:]]*[:—–-]"; "i");
+  # Visible lines only: HTML comments and Markdown link-reference definitions
+  # (`[//]: # "…"`) are not rendered by GitHub.
+  ((($d.body // "") | gsub("\r"; "") | gsub("<!--[\\s\\S]*?-->"; "") | sub("<!--[\\s\\S]*$"; "")
+    | split("\n") | map(select(test("^ {0,3}\\[[^\\]]+\\]:") | not)))) as $vis
+| ($vis | nonblank | map(strip | demd | clean)) as $visc
+| ($visc | map(select(test("^option:"; "i")) | sub("^option:[[:space:]]*"; ""; "i") | optletter | select(. != null))) as $forkLetters
+| ((($visc | map(select(test("^default:"; "i"))) | .[0]) // "") | sub("^default:[[:space:]]*"; ""; "i") | strip) as $defaultFull
+| ($defaultFull | optletter) as $defaultLetter
+| (($defaultLetter != null) and ($forkLetters | any(. == $defaultLetter))) as $defaultNamesFork
+| optionsin($vis) as $voraw
+# Exactly ONE visible option may mention "recommend" at all, and it must carry the standalone
+# marker. A second mention (even "recommendation") is where the walk's own substring test
+# could pick another option, so the walk and the command could disagree: not derivable.
+| ($voraw | map(select(.txt | test("recommend"; "i")))) as $recMentions
+| (if (($recMentions | length) == 1) and ($recMentions[0].txt | strictmark)
+   then $recMentions[0] else null end) as $recMarked
+# A marked option whose text cleans to empty is dropped from the walk (see $opts), so it is
+# not the option the walk presents as recommended: no letter.
+| (if $voraw != $oraw then null
+   elif ($recMarked != null)
+       and (($recMarked.txt | demd | clean | strip
+             | sub("[[:space:]]*[—-]?[[:space:]]*\\(?[Rr]ecommended\\)?[[:space:]]*$"; "")
+             | sub("^\\(?[Rr]ecommended\\)?[[:space:],:;—-]*"; "") | strip) != "")
+   then ($recMarked.let | ascii_upcase)
+   elif (($voraw | length) == 0) and $defaultNamesFork then $defaultLetter
+   else null
+   end) as $recLetter
+| (if $recLetter == null then null
+   else [sectionin($vis; "^[[:space:]]*#{1,6}[[:space:]]*How[[:space:]]+to[[:space:]]+(answer|reply|respond)\\b") | .[]
+         | demd | clean
+         | scan("[\"“]([^\"“”]+)[\"”]") | .[0] | strip
+         | select(. != "")
+         | select(phraseletter == $recLetter)] | first
+   end) as $answerPhrase
+| (if ($bodyTrusted | not) or ($recLetter == null) then null
+   elif $answerPhrase != null then $answerPhrase
+   elif $defaultNamesFork and ($defaultLetter == $recLetter) then $defaultFull
+   else null
+   end
+   | if (. != null) and ((test("\\p{Cf}") or test("<[^>]*>")) | not) then . else null end) as $rulingText
+| (($ENV.DRIVER_LOGIN // "") as $dl
+   | if ($dl | test("^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\\z")) then $dl else "<driver-login>" end) as $driverLogin
+| (if $rulingText == null then "not derivable — desk to fill"
+   else "t=\"$(gh auth token --user " + $driverLogin + ")\" && [ -n \"$t\" ] && GH_TOKEN=\"$t\" gh issue comment "
+        + ($it.number | tostring) + " -R " + $it.repo + " --body " + ($rulingText | @sh)
+   end) as $command
+
 | {
     repo: $it.repo,
     number: $it.number,
@@ -836,6 +966,7 @@ def loginlist: (try fromjson catch [])
     options: $options,
     optionsStated: $stated,
     reply: $reply,
+    command: $command,
     verificationBase: $verificationBase,
     verification: $verification,
     unread: $blind,
@@ -896,6 +1027,7 @@ render_walk() {
         "",
         "Reply shape",
         "  " + .reply,
+        "  command: " + (.command // "not derivable — desk to fill"),
         "",
         "Verification",
         "  " + .verification
@@ -931,6 +1063,7 @@ render_walk_genuine() {
         "",
         "Reply shape",
         "  " + $item.reply,
+        "  command: " + ($item.command // "not derivable — desk to fill"),
         "",
         "Verification",
         "  " + $verification
@@ -1211,6 +1344,7 @@ def flowsection($f):
       "</ul>",
       "<h3>Reply shape</h3>",
       ("<p>" + (.reply | esc) + "</p>"),
+      ("<p class=\"cmd\">command: <code>" + ((.command // "not derivable — desk to fill") | esc) + "</code></p>"),
       "<h3>Verification</h3>",
       ("<p>" + (.verification | esc) + "</p>"),
       "</article>"
@@ -1287,7 +1421,7 @@ read_json() {
   local rc detail
   if ASSAY_CONFIG_ECHO=full "$@" > "$out" 2>"$TMP_ERR"; then rc=0; else rc=$?; fi
   if [[ "$rc" -ne 0 ]]; then
-    detail=$(grep -v '^assay-config' "$TMP_ERR" 2>/dev/null | head -1 | LC_ALL=C tr -d '\000-\037')
+    detail=$(grep -v '^assay-config' "$TMP_ERR" 2>/dev/null | sed -n 1p | LC_ALL=C tr -d '\000-\037')
     [[ -z "$detail" ]] && detail="exit ${rc}, no diagnostic"
     flow_failures=$((flow_failures + 1))
     printf 'assay-inbox: FLOW READER FAILED %s (exit %s): %s\n' "$label" "$rc" "$detail" >&2

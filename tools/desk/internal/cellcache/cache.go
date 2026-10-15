@@ -38,6 +38,10 @@ type Report struct {
 	TrimmedBuild      int      `json:"trimmed_build_entries"`
 	TrimmedBuildBytes int64    `json:"trimmed_build_bytes"`
 	Failures          []string `json:"failures"`
+	// Admission says how Admit reached this verdict: "precheck" when the
+	// lock-free test cleared it, "locked: <why>" when the full check ran
+	// because the test could not. Empty for every other caller.
+	Admission string `json:"admission,omitempty"`
 }
 type manager struct {
 	p    Policy
@@ -231,7 +235,11 @@ func (m *manager) checkMode(dry, wipe bool) Report {
 		r.Failures = append(r.Failures, "active custody: "+err.Error())
 	}
 	removed := false
+	// acted is set the moment any trim or removal is attempted, even one that
+	// fails part way: a partial removal changes what a second measurement sees.
+	acted := false
 	if len(r.Failures) == 0 && (wipe || pressure(r.Before, m.p)) && len(r.SkippedActive) > 0 && !dry {
+		acted = true
 		// Live consumer records protect mod/, gopath/ and whole-root removal,
 		// so only the age trim may act (under pressure, or always on a wipe):
 		// it takes compiler-cache entries past the policy's age, which cmd/go's
@@ -247,6 +255,7 @@ func (m *manager) checkMode(dry, wipe bool) Report {
 	if len(r.Failures) == 0 && (wipe || pressure(r.Before, m.p)) && len(r.SkippedActive) == 0 && !dry {
 		// Whole inactive roots only. Consumers are enrolled under this same lock;
 		// no Go clean subprocess can race a build or module reader.
+		acted = true
 		for _, name := range []string{"build", "mod"} {
 			if err := m.remove(name); err != nil {
 				r.Failures = append(r.Failures, "remove "+name+": "+err.Error())
@@ -255,9 +264,16 @@ func (m *manager) checkMode(dry, wipe bool) Report {
 			removed = true
 		}
 	}
-	var afterErrors []string
-	r.After, afterErrors = m.measure()
-	r.Failures = append(r.Failures, afterErrors...)
+	if acted {
+		var afterErrors []string
+		r.After, afterErrors = m.measure()
+		r.Failures = append(r.Failures, afterErrors...)
+	} else {
+		// Nothing was trimmed or removed, so a second full walk would only
+		// re-read what the first just measured (assay#2791). The lock held
+		// here is the reason that matters: it is held for the walk's length.
+		r.After = r.Before
+	}
 	if removed && r.Before.LogicalBytes != nil && r.After.LogicalBytes != nil && *r.Before.LogicalBytes > *r.After.LogicalBytes {
 		r.Reclaimed = *r.Before.LogicalBytes - *r.After.LogicalBytes
 	}

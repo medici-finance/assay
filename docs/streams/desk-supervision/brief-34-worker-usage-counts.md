@@ -10,13 +10,13 @@ why: >-
   repo, makes cost analysable without ever reading what a worker said or did.
 wave: 1
 depends: ["desk-supervision/28"]
-unblocks: ["desk-supervision/35"]
+unblocks: ["desk-supervision/35", "graph-execution/27"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-06 by an ad-hoc authoring session for the driver (pipeline analysis records)
 exec-tier: strong
 exec-tier-why: >-
@@ -31,7 +31,10 @@ sources:
   - "driver ruling 2026-10-06 (pipeline analysis records set, desk-supervision/28-35): capture token counts (in/out), wall time and tier at claim release from the usage figure the agent run already reports; counts only, aggregated per brief/tier, stored where the adopter configures, never the public repo; never read session transcripts, prompts or tool output"
   - "desk-supervision/13 (brief-13-worker-operations-vitals.md) — the self-reported resource block and its three-state VitalField type, reused here rather than re-invented"
   - "desk-supervision/28 — defines `dispatch_ref`, the join key this record carries"
+  - "graph-execution/20 (implemented) — `loopadmin/runner/usage.go` `runner.Usage`: per-invocation `input_tokens`, `output_tokens` and `cost_micros`, where a nil figure is UNKNOWN, never zero; this record's count keys match those names (amended 2026-10-13 under #2839, which the desk filed)"
+  - "graph-execution/26 and graph-execution/27 — the loop-admin execution journal keeps usage per invocation, and standing desks launch their workers through it; for a worker role enrolled there, the journal is the one per-run usage record and 27 skips this brief's record step (amended 2026-10-13)"
   - "freshness-checked 2026-10-06 @ 1fbf1153f (origin/main): no `deskusage` command under tools/desk/cmd/; no usage/token record is written at or after claim release by deskclaim-ref (claim.go:261 cmdRelease deletes the ref only), deskdispatch (dispatch.go:1120 releaseClaim) or the worker prompt's release line (prompt.go:453 writeReleaseClaim); the only token field anywhere is desk-supervision/13's per-session beacon `resource.tokens` (vitals.go:67-73), which is a live session vital, not a per-dispatch record"
+  - "re-checked 2026-10-13 @ bcc02252e (origin/main): still no `deskusage` command; `loopadmin/runner/usage.go` exists (graph-execution/20) and is its own Go module (`loopadmin/go.mod`), so this brief matches its JSON keys and never imports it"
 consumers:
   - "tools/desk/cmd/deskusage/ (planned — new verb `record` + `summary`): follow-up desk-supervision/34 (this brief; flips to fixed-here when the implementation edits the path)"
   - "tools/desk/internal/deskkit/usage.go (planned — record type, store resolution, strict reader): follow-up desk-supervision/34 (this brief; flips to fixed-here when the implementation edits the path)"
@@ -42,6 +45,7 @@ consumers:
   - "docs/records-and-retention.md (lists this record class): out-of-scope (desk-supervision/35 owns that page and lists every analysis record; this brief only supplies the location, writer and schema it will cite)"
   - "desksupervise reclaim and deskdispatch's lifecycle-failure release (dispatch.go:379/418/495): out-of-scope (no agent run completed, so no harness usage figure exists to record; a reclaimed run's cost stays unrecorded rather than estimated)"
   - "review and verify agent dispatches (pr-review-desk, verify-desk): out-of-scope (deferred to an unauthored follow-up — the same verb serves them, but this brief scopes the worker pool only, per the driver's ruling)"
+  - "loopadmin/runner/usage.go (runner.Usage JSON keys): out-of-scope (read-only alignment — this brief matches its keys and never edits or imports it; Verify row 11 checks the match)"
   - "opmetrics (tools/desk/cmd/opmetrics): out-of-scope (it reads session transcripts by design for its own aggregates; this record must not reuse or depend on it — Task 1 keeps the two input paths disjoint)"
 ---
 
@@ -108,8 +112,26 @@ facts:
   second three-state type.
 - **The harness figure may be a total only.** Some harnesses report one total-token count, a
   duration and a tool-use count rather than an in/out split. The record therefore carries
-  `tokens_in`, `tokens_out` AND `tokens_total`, each three-state; whichever the notification
-  does not report is null. No field is derived or estimated from another.
+  `input_tokens`, `output_tokens` AND `total_tokens`, plus `cost_micros` when the harness
+  reports a cost, each three-state; whichever the notification does not report is null. No
+  field is derived or estimated from another.
+- **Aligned with the runner contract, and retired by it.** graph-execution/20 already defines
+  per-invocation usage as `runner.Usage` (`loopadmin/runner/usage.go:6-10`): `input_tokens`,
+  `output_tokens`, `cost_micros`, with a nil figure UNKNOWN, never zero
+  (`usage.go:3-5`). This record uses the same three key names with the same meaning, so its
+  rows carry into the runner's records without a key rename. One value needs converting:
+  `could-not-check` is a string and does not decode into `runner.Usage`'s `*int64` fields, so
+  the move maps it to nil; `null` already decodes to nil, and a measured value maps to itself. `total_tokens` and
+  `wall_seconds` have no runner twin today; they are kept, not derived. This record exists
+  because today's workers are launched outside loop-admin, so no adapter sees their usage.
+  graph-execution/26's execution journal keeps usage per invocation, and graph-execution/27
+  moves standing desks onto it, one role at a time by opt-in. For a worker role enrolled there,
+  the journal is the one per-run usage record, and graph-execution/27's Task 3 skips this record
+  for that role: this brief's Task 5 skill step still calls `deskusage record`, and the verb
+  writes nothing for an enrolled worker role (graph-execution/27's Verify row 5 proves it). A
+  role still on the legacy launch path keeps the record. Once no role uses the
+  legacy path, `usage.jsonl` is read-only history for `deskusage summary`. This brief adds
+  nothing to loopadmin and does not import it — `loopadmin` is a separate Go module.
 - **Storage.** The desk's local state directory is `deskkit.StateDir()` (`~/.config/assay` by
   default, `tools/desk/internal/deskkit/killswitch.go:65-90`); the audit log is `audit.jsonl`
   there (`audit.go:88-94`). Usage records go to `<ASSAY_USAGE_DIR or StateDir()/usage>/usage.jsonl`,
@@ -137,8 +159,9 @@ facts:
 
 ## Task
 1. **Record type (`tools/desk/internal/deskkit/usage.go` (planned)).** `UsageRecord{Schema "usage-v1", TS (RFC3339 UTC),
-   DispatchRef, Repo (owner/name), Item (`<stream>/<NN>` or `issue-<N>`), Tier, TokensIn,
-   TokensOut, TokensTotal, WallSeconds}` — the four counts are `*VitalField`. NO other field: no
+   DispatchRef, Repo (owner/name), Item (`<stream>/<NN>` or `issue-<N>`), Tier, InputTokens,
+   OutputTokens, TotalTokens, CostMicros, WallSeconds}` with JSON keys `input_tokens`,
+   `output_tokens`, `total_tokens`, `cost_micros`, `wall_seconds` — the five counts are `*VitalField`. NO other field: no
    session id, no person, no model name, no free text, no PR title, no path. Each string field
    is validated against a closed grammar (`dispatch_ref` = desk-supervision/28's `<claim_key>@<ts>.<nonce>` grammar; `repo` =
    owner/name; `item` = `<stream>/<NN>` or `issue-<N>`; `tier` ∈ `DispatchTiers()`).
@@ -150,7 +173,7 @@ facts:
    three roster sites listed in Context. Append one JSON line per record with an exclusive lock,
    file mode 0600.
 3. **Verb `deskusage record (<dispatch_ref> | --claim-key KEY) --repo O/R --item ITEM --tier any|strong
-   [--tokens-in N] [--tokens-out N] [--tokens-total N] [--wall-seconds N]`.** Flags only. The run is
+   [--input-tokens N] [--output-tokens N] [--total-tokens N] [--cost-micros N] [--wall-seconds N]`.** Flags only. The run is
    named by exactly one of: a positional `dispatch_ref` (validated against desk-supervision/28's
    grammar), or `--claim-key KEY`, which resolves the `dispatch_ref` from the latest `dispatched`
    line for `KEY` in `<StateDir>/dispatch-records.jsonl` (the lookup of Context; no such line →
@@ -174,22 +197,24 @@ facts:
    pass anything from the worker's transcript, prompt or tool output; the figures are not a
    target for ranking agents or people. A refusal is logged and does not block the refill.
 6. **Docs + changelog.** `tools/desk/README.md`: a `deskusage` row (local-only write, never a
-   repo) and the `ASSAY_USAGE_DIR` key. Changelog fragment: the new record, what it never
-   collects.
+   repo), the `ASSAY_USAGE_DIR` key, and one line naming the record as interim — graph-execution/26's
+   execution journal replaces it for any worker role enrolled under graph-execution/27. Changelog fragment: the new
+   record, what it never collects.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd tools/desk && go test ./cmd/deskusage/... ./internal/deskkit/...` | exit 0 | check:ci |
-| 2 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsageRecord_RefusesTranscriptShapedInput$' -v > "${TMPDIR:-/tmp}/b34-transcript.out" 2>&1 && grep -F -e '--- PASS: TestUsageRecord_RefusesTranscriptShapedInput' "${TMPDIR:-/tmp}/b34-transcript.out"` | exit 0; subtests: a transcript-shaped JSON line (a `message` object with `content` text carrying a canary string) passed as `--tokens-in` → exit 5, store byte-identical; the same transcript piped on stdin with otherwise valid flags → record written, stdin never read, canary absent from the store; `--transcript`/`--prompt` flags → exit 5 | check:ci +mutation |
+| 2 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsageRecord_RefusesTranscriptShapedInput$' -v > "${TMPDIR:-/tmp}/b34-transcript.out" 2>&1 && grep -F -e '--- PASS: TestUsageRecord_RefusesTranscriptShapedInput' "${TMPDIR:-/tmp}/b34-transcript.out"` | exit 0; subtests: a transcript-shaped JSON line (a `message` object with `content` text carrying a canary string) passed as `--input-tokens` → exit 5, store byte-identical; the same transcript piped on stdin with otherwise valid flags → record written, stdin never read, canary absent from the store; `--transcript`/`--prompt` flags → exit 5 | check:ci +mutation |
 | 3 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsageSummary_RefusesPollutedStore$' -v > "${TMPDIR:-/tmp}/b34-polluted.out" 2>&1 && grep -F -e '--- PASS: TestUsageSummary_RefusesPollutedStore' "${TMPDIR:-/tmp}/b34-polluted.out"` | exit 0; a store with one hand-appended line carrying a `prompt` key → `summary` exits 6 naming that line number; a store of valid lines → aggregates printed with no `dispatch_ref` in the output (the reader layer, with the writer bypassed) | check:ci +mutation |
 | 4 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestUsageStore_RefusesGitWorkTree$' -v > "${TMPDIR:-/tmp}/b34-gitdir.out" 2>&1 && grep -F -e '--- PASS: TestUsageStore_RefusesGitWorkTree' "${TMPDIR:-/tmp}/b34-gitdir.out"` | exit 0; `ASSAY_USAGE_DIR` pointing inside a temp dir carrying `.git` → refused, nothing written; `ASSAY_USAGE_DIR` a symlink whose target is inside a temp dir carrying `.git` → refused, nothing written; unset → resolves under the (test-overridden) state dir | check:ci +mutation |
-| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestUsageRecord_ThreeState$' -v > "${TMPDIR:-/tmp}/b34-3state.out" 2>&1 && grep -F -e '--- PASS: TestUsageRecord_ThreeState' "${TMPDIR:-/tmp}/b34-3state.out"` | exit 0; omitted count → JSON `null`; `could-not-check` → that string; measured `0` → `0`; a vendor model name as `--tier` → refused | check:ci |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestUsageRecord_ThreeState$' -v > "${TMPDIR:-/tmp}/b34-3state.out" 2>&1 && grep -F -e '--- PASS: TestUsageRecord_ThreeState' "${TMPDIR:-/tmp}/b34-3state.out"` | exit 0; omitted count → JSON `null`; `could-not-check` → that string; measured `0` → `0`; the five JSON keys are exactly `input_tokens`, `output_tokens`, `total_tokens`, `cost_micros`, `wall_seconds`; a vendor model name as `--tier` → refused | check:ci |
 | 6 | `cd tools/desk && go test ./cmd/deskusage/ -run '^TestUsage_RecordToSummaryFlow$' -v > "${TMPDIR:-/tmp}/b34-flow.out" 2>&1 && grep -F -e '--- PASS: TestUsage_RecordToSummaryFlow' "${TMPDIR:-/tmp}/b34-flow.out"` | exit 0; roster key → store dir → three `record` calls (two items, two tiers) → `summary --by tier --json` shows the right counts, sums and measured/null tallies; a `--claim-key` call resolves to the `dispatch_ref` of the LATEST `dispatched` line in a fixture dispatch-record store (two `dispatched` lines for one key, the later one wins), and each stored `dispatch_ref` equals the one desk-supervision/28's `MintDispatchRef` produced for that fixture line — never a bare claim key; a `--claim-key` with no `dispatched` line, a `--repo` that differs from the resolved record, and a positional ref passed together with `--claim-key` are each refused (exit 5, store byte-identical) | check:ci +flow |
 | 7 | `(cd statusgen && go test . -run '^TestRosterKeySchemaCoupling$' -v > "${TMPDIR:-/tmp}/b34-sg-roster.out" 2>&1 && grep -F -e '--- PASS: TestRosterKeySchemaCoupling' "${TMPDIR:-/tmp}/b34-sg-roster.out") && (cd tools/desk && go test ./internal/deskkit/ -run '^TestRosterKeySchemaCoupling$' -v > "${TMPDIR:-/tmp}/b34-dk-roster.out" 2>&1 && grep -F -e '--- PASS: TestRosterKeySchemaCoupling' "${TMPDIR:-/tmp}/b34-dk-roster.out") && grep -F -e 'ASSAY_USAGE_DIR' statusgen/testdata/roster_coupling.json` | exit 0 (the new key is in the coupling vector and both binaries' key-schema coupling tests pass) | check:ci +neighbour |
 | 8 | `grep -n 'deskusage record' plugins/assay/skills/worker-desk/SKILL.md && grep -n -i 'transcript' plugins/assay/skills/worker-desk/SKILL.md` | exit 0; the record step sits in the refill-on-completion bullet and the same passage forbids transcript content | check |
 | 9 | `grep -n 'func cmdRelease' tools/desk/cmd/deskclaim-ref/claim.go && ! grep -rn -i -e 'deskusage' -e 'UsageRecord' -e 'usage-v1' tools/desk/cmd/deskclaim-ref/ tools/desk/cmd/deskdispatch/` | exit 0; `cmdRelease` exists and neither the claim tool nor deskdispatch references the usage verb or record — brief 34 adds nothing to them (the claim of Context fact 1 dereferenced against code; desk-supervision/28's own `released`-record edit to the same file is deliberately out of this row's scope) | check +dereference |
 | 10 | `statusgen --consumers --root .` | exit 0 (every `consumers:` routing above is corroborated by the implementation diff) | check:ci |
+| 11 | `for k in input_tokens output_tokens cost_micros; do if grep -qF "json:\"$k" loopadmin/runner/usage.go && grep -qF "\"$k\"" tools/desk/internal/deskkit/usage.go; then :; else echo "MISMATCH $k"; exit 1; fi; done; echo aligned` | exit 0; prints `aligned` (every runner.Usage key is spelled the same in this record) | check +neighbour |
 
 Pre-mortem → detection map:
 
@@ -200,6 +225,7 @@ Pre-mortem → detection map:
 | Counts land inside a repo (operator points the dir at a checkout) | row 4 |
 | An unreported count is stored as 0, skewing every average | row 5 |
 | `dispatch_ref` does not match the dispatch record, so nothing joins | row 6 |
+| A count key drifts from `runner.Usage`, so moving the history into the runner's records needs a key rename | row 11 |
 | The new roster key fail-closes an adopter's fleet because one binary does not know it | row 7 |
 | The skill never tells the desk to record, so the store stays empty in production | row 8 |
 | Someone "simplifies" by adding usage flags to the claim tool, which the worker runs blind | row 9 |

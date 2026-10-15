@@ -573,6 +573,17 @@ it is an authoring convention only.
 | `pipeline-exit-sunk` | a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `prose-led-command` | a prose Command cell whose first code span — the text the lift returns — is a mention (a file, a path, an `owner/repo`, a code identifier, a word ahead of the real command), not a command; verifyrun records the row could-not-run until the command is marked with a `cmd:` code span | advisory |
 | `rE2-literal-pipe` | a `\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
+| `runtime-resource-claim-without-principal` | a runtime resource claim (or a release of a claimed resource) not authorized by a human or organization principal, or ownership no succeeded claim backs | fatal |
+| `runtime-resource-credential-not-rotated` | a runtime resource claim with no recorded rotation of the agent credential, or a release with no recorded revocation | fatal |
+| `runtime-resource-credential-outlives-ttl` | a runtime resource whose agent credential lifetime exceeds the resource's ttl | fatal |
+| `runtime-resource-expired` | an unclaimed runtime resource past its ttl, or a claimed one past its retention, still recorded as live | fatal |
+| `runtime-resource-receipt-missing` | a runtime resource effect recorded succeeded with no adapter receipt | fatal |
+| `runtime-resource-schema-violation` | a runtime resource record that breaks runtime-resource-v1's shape, repeats an effect id, or carries a ttl, lifetime or timestamp the rules cannot evaluate | fatal |
+| `runtime-resource-state-unsupported` | a runtime resource record whose state is not the one its receipts support, read in order (the latest authoritative observation wins), or whose receipt time is outside its effect's window | fatal |
+| `runtime-resource-ttl-exceeds-bound` | a runtime resource requested for longer than its adapter's registered max-ttl | fatal |
+| `runtime-resource-unknown-adapter` | a runtime resource record whose adapter is not in the adapter registry, is not registered for the record's class, or does not implement a verb the record uses | fatal |
+| `runtime-resource-unreconciled-effect` | a runtime resource effect with outcome unknown left unreconciled, or another effect issued while one is pending | fatal |
+| `runtime-resource-unreconciled-release` | a runtime resource release counted done with no later reconcile receipt observing the resource absent | fatal |
 | `shredded-cell` | a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `stream-cap` | a change that adds an active stream past the per-root active-stream cap (ASSAY_STREAM_CAP) with no offsetting park — no net new streams past the cap | fatal |
 | `stream-source` | a change that adds an active stream README citing no `spec:`, or a `spec:` whose header is not `**Status:** approved` — a stream is scaffolded only from an approved spec | fatal |
