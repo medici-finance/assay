@@ -22,7 +22,7 @@
     {
       "name": "row 5: acceptance takes a stale dependency fingerprint (only a missing observation is stale)",
       "file": "instance.go",
-      "old": "if !ok || now != d.Fingerprint {",
+      "old": "if !ok || now != b[0].Fingerprint {",
       "new": "if !ok || now == \"\" {"
     },
     {
@@ -72,6 +72,60 @@
       "file": "instance.go",
       "old": "for _, re := range instanceCredentialValue {",
       "new": "for _, re := range instanceCredentialValue[:0] {"
+    },
+    {
+      "name": "row 5: a dependency trimmed from the handoff's list is skipped, not named",
+      "file": "instance.go",
+      "old": "if len(b) != 1 {",
+      "new": "if len(b) == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tif len(b) != 1 {"
+    },
+    {
+      "name": "row 4: acceptance takes a scope outside the acceptance rows",
+      "file": "instance.go",
+      "old": "if !instanceHolds(inst.Acceptance.Rows, h.Scope) {",
+      "new": "if false {"
+    },
+    {
+      "name": "row 4: acceptance takes a handoff without the acceptance exclusions",
+      "file": "instance.go",
+      "old": "if !sameStrings(h.Exclusions, inst.Acceptance.Exclusions) {",
+      "new": "if false {"
+    },
+    {
+      "name": "row 4: acceptance takes a handoff that drops the attempt's omissions",
+      "file": "instance.go",
+      "old": "!instanceHolds(h.Omissions, cur.Omissions) {",
+      "new": "false {"
+    },
+    {
+      "name": "row 4: acceptance takes a handoff that drops an unresolved input",
+      "file": "instance.go",
+      "old": "if !instanceHolds(h.Unresolved, unresolvedInputs(inst)) {",
+      "new": "if false {"
+    },
+    {
+      "name": "row 4: packet evidence reads present for an artifact the attempt does not hold",
+      "file": "instance.go",
+      "old": "e.Artifact != \"\" && held[e.Artifact] {",
+      "new": "e.Artifact != \"\" {"
+    },
+    {
+      "name": "row 4: decode findings quote credential values (no redaction at the exit)",
+      "file": "instance.go",
+      "old": "return inst, redactFindings(findings, lits), redactFindings(refusals, lits)",
+      "new": "_ = lits\n\treturn inst, findings, refusals"
+    },
+    {
+      "name": "row 4: a credential-shaped field name passes the scan",
+      "file": "instance.go",
+      "old": "if credentialShaped(k) {\n\t\t\t\tseg = instanceRedacted",
+      "new": "if false {\n\t\t\t\tseg = instanceRedacted"
+    },
+    {
+      "name": "row 4: acceptance quotes handoff fields before the credential check",
+      "file": "instance.go",
+      "old": "observed map[string]string) error {\n\tif err := credentialFree(h); err != nil {",
+      "new": "observed map[string]string) error {\n\tif err := credentialFree(h); false && err != nil {"
     }
   ]
 }

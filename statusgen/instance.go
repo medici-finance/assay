@@ -328,25 +328,36 @@ func instanceSchema() (*schemaNode, error) {
 // document requiring something this reader does not implement is never
 // evaluated further), the schema, and the credential scan over every key and
 // string value. findings are checked-failed; refusals are could-not-check.
+//
+// Every message it returns crosses redactFindings first: a schema finding
+// quotes the offending value (a pattern or enum violation), so a
+// credential-shaped value in such a field would otherwise be echoed into the
+// report, its JSON form and the import error. Redacting here, at the one exit,
+// covers every message the decode produces, present and future.
 func decodeInstance(raw []byte, schema *schemaNode) (workflowInstance, []instanceFinding, []instanceFinding) {
-	var inst workflowInstance
-	var data map[string]any
+	inst, findings, refusals, data := decodeInstanceBody(raw, schema)
+	lits := credentialLiterals(data)
+	return inst, redactFindings(findings, lits), redactFindings(refusals, lits)
+}
+
+// decodeInstanceBody is decodeInstance before redaction; only decodeInstance
+// calls it.
+func decodeInstanceBody(raw []byte, schema *schemaNode) (inst workflowInstance, findings, refusals []instanceFinding, data map[string]any) {
 	if err := yaml.Unmarshal(raw, &data); err != nil {
-		return inst, nil, []instanceFinding{instFinding(ruleInstanceUnreadable, "%v", err)}
+		return inst, nil, []instanceFinding{instFinding(ruleInstanceUnreadable, "%v", err)}, nil
 	}
 	if data == nil {
-		return inst, nil, []instanceFinding{instFinding(ruleInstanceUnreadable, "empty document")}
+		return inst, nil, []instanceFinding{instFinding(ruleInstanceUnreadable, "empty document")}, nil
 	}
 	if marker, _ := data["schema"].(string); marker != instanceSchemaMarker {
 		return inst, nil, []instanceFinding{instFinding(ruleInstanceUnreadable,
-			"`schema:` is %q, not %q — an instance must declare its own schema", marker, instanceSchemaMarker)}
+			"`schema:` is %q, not %q — an instance must declare its own schema", marker, instanceSchemaMarker)}, data
 	}
 
 	// Old-reader refusal FIRST: the schema below would also flag an unknown
 	// top-level field, but a capability the document says is mandatory is a
 	// statement that this reader cannot evaluate it — could-not-check, not a
 	// shape defect to be reported alongside a verdict.
-	var refusals []instanceFinding
 	if reqs, ok := data["requires"].([]any); ok {
 		for _, r := range reqs {
 			s, _ := r.(string)
@@ -363,10 +374,9 @@ func decodeInstance(raw []byte, schema *schemaNode) (workflowInstance, []instanc
 		}
 	}
 	if len(refusals) > 0 {
-		return inst, nil, refusals
+		return inst, nil, refusals, data
 	}
 
-	var findings []instanceFinding
 	for _, v := range validateValue(schema, data, "") {
 		findings = append(findings, instFinding(ruleInstanceSchema, "%s", v))
 	}
@@ -384,7 +394,7 @@ func decodeInstance(raw []byte, schema *schemaNode) (workflowInstance, []instanc
 	if err != nil && len(findings) == 0 {
 		findings = append(findings, instFinding(ruleInstanceSchema, "does not decode: %v", err))
 	}
-	return inst, findings, nil
+	return inst, findings, nil, data
 }
 
 // Credential-shaped content. These recognise the SHAPE of well-known token and
@@ -407,8 +417,23 @@ var (
 	instanceCredentialKey = regexp.MustCompile(`(?i)(^|[-_])(token|password|passwd|secret|api-?key|private-?key|authorization|credentials?)($|[-_])`)
 )
 
+// instanceRedacted stands in for a credential-shaped value or key in any
+// message: findings name where the material is, never what it is.
+const instanceRedacted = "[redacted]"
+
+func credentialShaped(s string) bool {
+	for _, re := range instanceCredentialValue {
+		if re.MatchString(s) {
+			return true
+		}
+	}
+	return false
+}
+
 // scanCredentialMaterial walks every key and string value of a decoded
-// document. A credential-named key or a credential-shaped value is a finding.
+// document. A credential-named key, a credential-shaped key or a
+// credential-shaped value is a finding. A credential-shaped key is reported as
+// a redacted path segment, so the path itself never carries the material.
 func scanCredentialMaterial(v any, path string) []instanceFinding {
 	var out []instanceFinding
 	switch t := v.(type) {
@@ -419,8 +444,16 @@ func scanCredentialMaterial(v any, path string) []instanceFinding {
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			p := path + "/" + k
-			if instanceCredentialKey.MatchString(k) {
+			seg := k
+			if credentialShaped(k) {
+				seg = instanceRedacted
+			}
+			p := path + "/" + seg
+			switch {
+			case seg == instanceRedacted:
+				out = append(out, instFinding(ruleInstanceCredential,
+					"%s: a field name has the shape of credential material — replace it with an authorized reference", p))
+			case instanceCredentialKey.MatchString(k):
 				out = append(out, instFinding(ruleInstanceCredential,
 					"%s: a field named like credential material — carry an authorized reference to it, never the value", p))
 			}
@@ -431,15 +464,69 @@ func scanCredentialMaterial(v any, path string) []instanceFinding {
 			out = append(out, scanCredentialMaterial(e, path+"/"+strconv.Itoa(i))...)
 		}
 	case string:
-		for _, re := range instanceCredentialValue {
-			if re.MatchString(t) {
-				out = append(out, instFinding(ruleInstanceCredential,
-					"%s: value has the shape of credential material — replace it with an authorized reference", path))
-				break
-			}
+		if credentialShaped(t) {
+			out = append(out, instFinding(ruleInstanceCredential,
+				"%s: value has the shape of credential material — replace it with an authorized reference", path))
 		}
 	}
 	return out
+}
+
+// credentialLiterals collects every credential-shaped key and string value of
+// a decoded document — the exact text redactFindings removes from messages.
+func credentialLiterals(v any) []string {
+	var out []string
+	var walk func(any)
+	walk = func(v any) {
+		switch t := v.(type) {
+		case map[string]any:
+			for k, e := range t {
+				if credentialShaped(k) {
+					out = append(out, k)
+				}
+				walk(e)
+			}
+		case []any:
+			for _, e := range t {
+				walk(e)
+			}
+		case string:
+			if credentialShaped(t) {
+				out = append(out, t)
+			}
+		}
+	}
+	walk(v)
+	// Longest first, so a literal containing another is removed whole.
+	sort.Slice(out, func(i, j int) bool { return len(out[i]) > len(out[j]) })
+	return out
+}
+
+// redactFindings removes credential material from messages: each literal the
+// document carries, raw and in its quoted (%q) form, and then anything else
+// with a credential shape. A finding keeps its rule and its location.
+func redactFindings(fs []instanceFinding, literals []string) []instanceFinding {
+	if fs == nil {
+		return nil
+	}
+	out := make([]instanceFinding, len(fs))
+	for i, f := range fs {
+		out[i] = instanceFinding{Rule: f.Rule, Message: redactText(f.Message, literals)}
+	}
+	return out
+}
+
+func redactText(msg string, literals []string) string {
+	for _, l := range literals {
+		if q := strconv.Quote(l); len(q) > 2 {
+			msg = strings.ReplaceAll(msg, q[1:len(q)-1], instanceRedacted)
+		}
+		msg = strings.ReplaceAll(msg, l, instanceRedacted)
+	}
+	for _, pat := range instanceCredentialValue {
+		msg = pat.ReplaceAllString(msg, instanceRedacted)
+	}
+	return msg
 }
 
 // ---- digests ----
@@ -474,7 +561,10 @@ func contractDigest(in workflowInstance) string {
 	return sha256Ref(b)
 }
 
-// sealDigest is the export seal over the whole canonical document.
+// sealDigest is the export seal over the whole canonical document. It is an
+// UNKEYED content digest: it detects accidental alteration, never deliberate
+// alteration, since anyone holding the document can recompute it. It
+// authenticates nothing; authenticity comes from the store or transport.
 func sealDigest(in workflowInstance) string {
 	c := canonicalInstance(in)
 	c.Digest = ""
@@ -561,9 +651,13 @@ func exportInstance(in workflowInstance) ([]byte, error) {
 
 // importInstance is the lower boundary every consumer crosses: it re-reads the
 // bytes through the same shape, capability and credential checks as validate,
-// requires and recomputes the export seal, refuses an instance whose Cell is not
-// the importing Cell, and re-runs the contract rules that need no repository.
-// It returns an error for every refusal; it never repairs a document.
+// requires and recomputes the export seal, refuses an instance whose stated Cell
+// is not the importing Cell, and re-runs the contract rules that need no
+// repository. It returns an error for every refusal; it never repairs a
+// document. The seal is unkeyed, so a document altered and re-sealed passes the
+// seal check: import checks what the document states (its Cell, its trust
+// provenance, its contract) and cannot authenticate where it came from — that is
+// the authenticated store or transport's job.
 func importInstance(raw []byte, expectCell string) (workflowInstance, error) {
 	schema, err := instanceSchema()
 	if err != nil {
@@ -1282,8 +1376,12 @@ func findNode(inst workflowInstance, nodeID string) (instanceNode, bool) {
 // given the dependency fingerprints observed now. A dependency with no current
 // observation is unknown, which counts as changed (conservative invalidation).
 // It refuses an instance that fails the document rules, a node with no attempt,
-// an excerpt with no coverage index, and any credential-shaped content.
+// an excerpt with no coverage index, and any credential-shaped content. The
+// credential check runs first, before any message can quote a field.
 func projectPacket(inst workflowInstance, nodeID string, observed map[string]string) (instancePacket, error) {
+	if err := credentialFree(inst); err != nil {
+		return instancePacket{}, err
+	}
 	if fs := checkInstanceRules(inst); len(fs) > 0 {
 		return instancePacket{}, findingsError("cannot project a packet from an invalid instance", fs)
 	}
@@ -1311,7 +1409,7 @@ func projectPacket(inst workflowInstance, nodeID string, observed map[string]str
 		Acceptance:        canonicalInstance(inst).Acceptance,
 		Policy:            inst.Policy,
 		Inputs:            append([]instanceInput{}, inst.Inputs...),
-		Unresolved:        []string{},
+		Unresolved:        unresolvedInputs(inst),
 		Dependencies:      []instanceDependency{},
 		RequiredEvidence:  []packetEvidence{},
 		Artifacts:         []instanceArtifact{},
@@ -1325,19 +1423,6 @@ func projectPacket(inst workflowInstance, nodeID string, observed map[string]str
 			ControlProfile: inst.Policy.ControlProfile,
 			Budget:         inst.Budget.Ref,
 		},
-	}
-
-	// Trust: anything not decided `trusted` by the trust gate is an unresolved
-	// input — source data, never an instruction.
-	for _, in := range inst.Inputs {
-		if in.Trust.Disposition == "trusted" && in.Trust.Source == "trust-gate" {
-			continue
-		}
-		u := fmt.Sprintf("input %s: disposition %s (source %s)", in.Name, in.Trust.Disposition, in.Trust.Source)
-		if in.Trust.ReportedLabel != "" {
-			u += fmt.Sprintf("; reporter label %q is not a disposition", in.Trust.ReportedLabel)
-		}
-		pkt.Unresolved = append(pkt.Unresolved, u)
 	}
 
 	// Dependencies as observed now, and the delta against the prior attempt's
@@ -1410,11 +1495,17 @@ func projectPacket(inst workflowInstance, nodeID string, observed map[string]str
 		pkt.Coverage.Supported = []packetRowSupport{}
 	}
 
-	// Required evidence from the node's claims, with what the attempt holds.
+	// Required evidence from the node's claims, with what the attempt holds. A
+	// claim is present only when it cites an artifact the attempt itself holds
+	// — the same test acceptHandoff applies to a returned handoff.
+	held := map[string]bool{}
+	for _, a := range cur.Artifacts {
+		held[a.Ref] = true
+	}
 	for _, c := range n.Evidence {
 		pe := packetEvidence{Claim: c.Claim, Mandatory: c.Mandatory, State: "missing"}
 		for _, e := range cur.Evidence {
-			if e.Claim == c.Claim && e.Artifact != "" {
+			if e.Claim == c.Claim && e.Artifact != "" && held[e.Artifact] {
 				pe.State, pe.Artifact = "present", e.Artifact
 			}
 		}
@@ -1465,17 +1556,78 @@ func credentialFree(v any) error {
 	return nil
 }
 
-// staleDependencies names every dependency whose fingerprint now differs from
-// the one the packet (or handoff) was bound to. A missing observation is stale.
-func staleDependencies(bound []instanceDependency, observed map[string]string) []string {
-	var stale []string
+// unresolvedInputs lists every input not decided `trusted` by the trust gate —
+// source data, never an instruction. A reporter's label is named as a label.
+func unresolvedInputs(inst workflowInstance) []string {
+	out := []string{}
+	for _, in := range inst.Inputs {
+		if in.Trust.Disposition == "trusted" && in.Trust.Source == "trust-gate" {
+			continue
+		}
+		u := fmt.Sprintf("input %s: disposition %s (source %s)", in.Name, in.Trust.Disposition, in.Trust.Source)
+		if in.Trust.ReportedLabel != "" {
+			u += fmt.Sprintf("; reporter label %q is not a disposition", in.Trust.ReportedLabel)
+		}
+		out = append(out, u)
+	}
+	return out
+}
+
+// staleDependencies checks a packet's or handoff's dependency list against the
+// instance's own manifest, never against the list alone: every manifest
+// dependency must be bound exactly once, at the fingerprint observed now. A
+// dependency trimmed from the list, or the whole list emptied, is named rather
+// than skipped, and a missing observation is stale. A bound entry the manifest
+// does not hold is named too.
+func staleDependencies(inst workflowInstance, bound []instanceDependency, observed map[string]string) []string {
+	byRef := map[string][]instanceDependency{}
 	for _, d := range bound {
-		now, ok := observed[d.Ref]
-		if !ok || now != d.Fingerprint {
-			stale = append(stale, d.Ref)
+		byRef[d.Ref] = append(byRef[d.Ref], d)
+	}
+	var stale []string
+	for _, m := range inst.Dependencies {
+		b := byRef[m.Ref]
+		delete(byRef, m.Ref)
+		if len(b) != 1 {
+			stale = append(stale, m.Ref+" (not bound)")
+			continue
+		}
+		now, ok := observed[m.Ref]
+		if !ok || now != b[0].Fingerprint {
+			stale = append(stale, m.Ref)
 		}
 	}
-	return stale
+	extra := make([]string, 0, len(byRef))
+	for ref := range byRef {
+		extra = append(extra, ref+" (not in the manifest)")
+	}
+	sort.Strings(extra)
+	return append(stale, extra...)
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func instanceHolds[T comparable](have, want []T) bool {
+	set := map[T]bool{}
+	for _, h := range have {
+		set[h] = true
+	}
+	for _, w := range want {
+		if !set[w] {
+			return false
+		}
+	}
+	return true
 }
 
 // packetIsCurrent says whether a previously projected packet still describes the
@@ -1483,6 +1635,9 @@ func staleDependencies(bound []instanceDependency, observed map[string]string) [
 // and no dependency moved. A packet that is not current must be re-projected;
 // it can never stand in for the current one.
 func packetIsCurrent(pkt instancePacket, inst workflowInstance, observed map[string]string) error {
+	if err := credentialFree(pkt); err != nil {
+		return err
+	}
 	if pkt.Instance != inst.Instance.ID || pkt.ContractDigest != contractDigest(inst) {
 		return fmt.Errorf("packet is bound to instance %s at %s; the instance is %s at %s", pkt.Instance, pkt.ContractDigest, inst.Instance.ID, contractDigest(inst))
 	}
@@ -1493,7 +1648,7 @@ func packetIsCurrent(pkt instancePacket, inst workflowInstance, observed map[str
 	if pkt.Acceptance.Version != inst.Acceptance.Version {
 		return fmt.Errorf("packet acceptance version %d, instance %d", pkt.Acceptance.Version, inst.Acceptance.Version)
 	}
-	if stale := staleDependencies(pkt.Dependencies, observed); len(stale) > 0 {
+	if stale := staleDependencies(inst, pkt.Dependencies, observed); len(stale) > 0 {
 		return fmt.Errorf("dependencies moved since the packet was projected: %s", strings.Join(stale, ", "))
 	}
 	return nil
@@ -1535,6 +1690,12 @@ type instanceHandoff struct {
 // buildHandoff assembles the handoff's mechanical fields from the packet; only
 // the result's own content comes from the role.
 func buildHandoff(pkt instancePacket, res handoffResult) (instanceHandoff, error) {
+	if err := credentialFree(pkt); err != nil {
+		return instanceHandoff{}, err
+	}
+	if err := credentialFree(res); err != nil {
+		return instanceHandoff{}, err
+	}
 	rows := map[string]bool{}
 	for _, r := range pkt.Acceptance.Rows {
 		rows[r] = true
@@ -1576,9 +1737,20 @@ func buildHandoff(pkt instancePacket, res handoffResult) (instanceHandoff, error
 // acceptHandoff is the acceptance boundary: it re-checks the binding at the
 // moment of acceptance rather than trusting the packet. The handoff must answer
 // this instance's contract, the node's latest attempt and the current acceptance
-// version; no dependency may have moved since the packet; and every mandatory
-// claim of the node must carry evidence backed by a returned artifact.
+// version; its scope must lie inside the acceptance rows and it must carry the
+// acceptance exclusions, the attempt's omissions and the unresolved inputs
+// forward; no manifest dependency may have moved since the packet; and every
+// mandatory claim of the node must carry evidence backed by a returned
+// artifact. None of this trusts buildHandoff to have produced the handoff.
+//
+// The dependency fingerprints a handoff carries are its own statement of what
+// it was bound to; they are not tied to a packet digest. A handoff rewritten to
+// the current observations passes this check — binding a handoff to the packet
+// it answers is the authenticated transport's job, not this boundary's.
 func acceptHandoff(inst workflowInstance, h instanceHandoff, observed map[string]string) error {
+	if err := credentialFree(h); err != nil {
+		return err
+	}
 	if h.Instance != inst.Instance.ID || h.ContractDigest != contractDigest(inst) || h.Cell != inst.Work.Cell || h.Work != inst.Work.ID {
 		return fmt.Errorf("handoff is bound to %s/%s in Cell %q; the instance is %s/%s in Cell %q",
 			h.Instance, h.ContractDigest, h.Cell, inst.Instance.ID, contractDigest(inst), inst.Work.Cell)
@@ -1590,7 +1762,19 @@ func acceptHandoff(inst workflowInstance, h instanceHandoff, observed map[string
 	if h.AcceptanceVersion != inst.Acceptance.Version || h.AcceptanceRef != inst.Acceptance.Ref {
 		return fmt.Errorf("handoff answers acceptance v%d (%s); the instance is at v%d (%s)", h.AcceptanceVersion, h.AcceptanceRef, inst.Acceptance.Version, inst.Acceptance.Ref)
 	}
-	if stale := staleDependencies(h.Dependencies, observed); len(stale) > 0 {
+	if !instanceHolds(inst.Acceptance.Rows, h.Scope) {
+		return fmt.Errorf("handoff scope %v is not inside the acceptance rows %v", h.Scope, inst.Acceptance.Rows)
+	}
+	if !sameStrings(h.Exclusions, inst.Acceptance.Exclusions) {
+		return fmt.Errorf("handoff exclusions %v differ from the acceptance exclusions %v", h.Exclusions, inst.Acceptance.Exclusions)
+	}
+	if cur := n.Attempts[len(n.Attempts)-1]; !instanceHolds(h.Omissions, cur.Omissions) {
+		return fmt.Errorf("handoff drops an omission the attempt records — omissions travel to the handoff")
+	}
+	if !instanceHolds(h.Unresolved, unresolvedInputs(inst)) {
+		return fmt.Errorf("handoff drops an unresolved input — an input the trust gate has not decided stays unresolved")
+	}
+	if stale := staleDependencies(inst, h.Dependencies, observed); len(stale) > 0 {
 		return fmt.Errorf("dependencies moved since the packet was projected: %s — re-project and revalidate the affected rows", strings.Join(stale, ", "))
 	}
 	arts := map[string]bool{}
@@ -1611,5 +1795,5 @@ func acceptHandoff(inst workflowInstance, h instanceHandoff, observed map[string
 			return fmt.Errorf("mandatory evidence %q is omitted from the handoff", c.Claim)
 		}
 	}
-	return credentialFree(h)
+	return nil
 }

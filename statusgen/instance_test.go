@@ -443,6 +443,31 @@ func TestInstancePacketViewProvenance(t *testing.T) {
 	if err := acceptHandoff(inst, unbacked, pinnedObservations(inst)); err == nil || !strings.Contains(err.Error(), "mandatory evidence") {
 		t.Fatalf("evidence with no returned artifact: err %v, want a refusal", err)
 	}
+	// Acceptance re-checks the scope and the carried-forward fields itself; it
+	// does not rely on buildHandoff having produced the handoff.
+	for name, mutate := range map[string]func(*instanceHandoff){
+		"scope outside acceptance": func(x *instanceHandoff) { x.Scope = []string{"9"} },
+		"exclusions dropped":       func(x *instanceHandoff) { x.Exclusions = nil },
+		"omissions dropped":        func(x *instanceHandoff) { x.Omissions = nil },
+		"unresolved dropped":       func(x *instanceHandoff) { x.Unresolved = nil },
+	} {
+		x := h
+		mutate(&x)
+		if err := acceptHandoff(inst, x, pinnedObservations(inst)); err == nil {
+			t.Errorf("%s: the handoff was accepted", name)
+		}
+	}
+	// Packet evidence reads present only when the cited artifact is one the
+	// attempt holds, the same test acceptance applies.
+	unheld := mustDecodeInstance(t, instPath("valid.yaml"))
+	unheld.Nodes[0].Attempts[0].Evidence[0].Artifact = "artifact/example-cell/not-held"
+	up, err := projectPacket(unheld, unheld.Nodes[0].ID, pinnedObservations(unheld))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if up.RequiredEvidence[0].State != "missing" {
+		t.Errorf("evidence citing an artifact the attempt does not hold reads %q, want missing", up.RequiredEvidence[0].State)
+	}
 	// Omitted mandatory evidence and unknown coverage scenarios.
 	runPacketScenario(t, "omitted-evidence.json")
 	runPacketScenario(t, "unknown-coverage.json")
@@ -481,6 +506,34 @@ func TestInstancePacketChangedDependency(t *testing.T) {
 	}
 	if err := packetIsCurrent(fresh, inst, moved); err != nil {
 		t.Fatalf("the re-projected packet is not current: %v", err)
+	}
+
+	// The instance's manifest, not the list a handoff or packet carries,
+	// decides what is checked: trimming the moved dependency out of the list,
+	// or emptying it, does not hide the move.
+	h, err := buildHandoff(old, handoffResult{Scope: []string{"2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var trimmed []instanceDependency
+	for _, d := range h.Dependencies {
+		if d.Ref != "policy/example-authorization.yaml" {
+			trimmed = append(trimmed, d)
+		}
+	}
+	for name, deps := range map[string][]instanceDependency{"emptied": nil, "moved one omitted": trimmed} {
+		hh, pp := h, old
+		hh.Dependencies, pp.Dependencies = deps, deps
+		if err := acceptHandoff(inst, hh, moved); err == nil || !strings.Contains(err.Error(), "dependencies moved") {
+			t.Errorf("handoff, %s: err %v, want a refusal containing %q", name, err, "dependencies moved")
+		}
+		if err := packetIsCurrent(pp, inst, moved); err == nil {
+			t.Errorf("packet, %s: reads as current", name)
+		}
+		// Nothing moved, but the list no longer covers the manifest.
+		if err := acceptHandoff(inst, hh, pinnedObservations(inst)); err == nil || !strings.Contains(err.Error(), "not bound") {
+			t.Errorf("handoff, %s, nothing moved: err %v, want the unbound dependency named", name, err)
+		}
 	}
 }
 
@@ -656,6 +709,102 @@ func TestInstanceCredentialRejected(t *testing.T) {
 	// The clean packet and handoff carry none.
 	if err := credentialFree(pkt); err != nil {
 		t.Fatalf("clean packet flagged: %v", err)
+	}
+}
+
+// regression: graph-execution/09 — no finding, refusal or import error quotes a credential value
+func TestInstanceSecretNotEchoed(t *testing.T) {
+	inst := mustDecodeInstance(t, instPath("valid.yaml"))
+	schema, _ := instanceSchema()
+	secret := synthToken()
+	// A bare authorization header has no token-shaped tail; its opaque part
+	// is what must not be quoted back.
+	opaque := "opaque-" + strings.Repeat("z", 6)
+	field := func(m map[string]any, obj, key string, v any) { m[obj].(map[string]any)[key] = v }
+	cases := []struct {
+		name   string
+		leak   string
+		scan   bool // the credential scan itself must fire
+		mutate func(map[string]any)
+	}{
+		{"pattern field", secret, true, func(m map[string]any) { field(m, "policy", "control-profile", secret) }},
+		{"pattern field, header", opaque, true, func(m map[string]any) { field(m, "policy", "revision", "Authorization: "+opaque) }},
+		{"cell", secret, true, func(m map[string]any) { field(m, "work", "cell", secret) }},
+		{"backend", secret, true, func(m map[string]any) { field(m, "assignment", "backend", secret) }},
+		{"enum field", secret, true, func(m map[string]any) {
+			m["inputs"].([]any)[1].(map[string]any)["trust"].(map[string]any)["disposition"] = secret
+		}},
+		{"closed-object key", secret, true, func(m map[string]any) { field(m, "work", secret, "x") }},
+		{"extensions key", secret, true, func(m map[string]any) { m["extensions"] = map[string]any{secret: "x"} }},
+		{"requires entry", secret, false, func(m map[string]any) { m["requires"] = []any{"packet-view@1", secret} }},
+		{"schema marker", secret, false, func(m map[string]any) { m["schema"] = secret }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var m map[string]any
+			b, _ := json.Marshal(canonicalInstance(inst))
+			_ = json.Unmarshal(b, &m)
+			c.mutate(m)
+			raw, _ := json.Marshal(m)
+
+			_, fs, refusals := decodeInstance(raw, schema)
+			all := append(append([]instanceFinding{}, fs...), refusals...)
+			if len(all) == 0 {
+				t.Fatal("a document carrying credential material decoded clean")
+			}
+			if c.scan && !strings.Contains(findingsError("x", fs).Error(), ruleInstanceCredential) {
+				t.Errorf("no %s finding: %v", ruleInstanceCredential, all)
+			}
+			if msg := findingsError("x", all).Error(); strings.Contains(msg, c.leak) {
+				t.Errorf("decode quotes the credential value: %s", msg)
+			}
+			if _, err := importInstance(raw, "example-cell"); err == nil || strings.Contains(err.Error(), c.leak) {
+				t.Errorf("import: err %v — want a refusal that does not quote the value", err)
+			}
+			file := filepath.Join(t.TempDir(), "doc.json")
+			if err := os.WriteFile(file, raw, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			for _, args := range [][]string{{"--json"}, nil} {
+				var out, errb bytes.Buffer
+				code := runInstance(append([]string{"validate", "--file", file, "--root", instRoot}, args...), &out, &errb)
+				if code == instanceExitClean {
+					t.Errorf("validate %v: exit 0", args)
+				}
+				if strings.Contains(out.String()+errb.String(), c.leak) {
+					t.Errorf("validate %v prints the credential value", args)
+				}
+			}
+		})
+	}
+
+	// The packet and handoff boundaries take values that never crossed
+	// decodeInstance; each refuses credential content before it quotes a field.
+	pkt, err := projectPacket(inst, inst.Nodes[0].ID, pinnedObservations(inst))
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := buildHandoff(pkt, handoffResult{Scope: []string{"1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	badInst := mustDecodeInstance(t, instPath("valid.yaml"))
+	badInst.Nodes[0].Actor.Cell = secret
+	badPkt, badH := pkt, h
+	badPkt.Instance = secret
+	badH.Cell = secret
+	for name, err := range map[string]error{
+		"projectPacket": func() error {
+			_, e := projectPacket(badInst, badInst.Nodes[0].ID, pinnedObservations(badInst))
+			return e
+		}(),
+		"buildHandoff":    func() error { _, e := buildHandoff(pkt, handoffResult{Scope: []string{secret}}); return e }(),
+		"packetIsCurrent": packetIsCurrent(badPkt, inst, pinnedObservations(inst)),
+		"acceptHandoff":   acceptHandoff(inst, badH, pinnedObservations(inst)),
+	} {
+		if err == nil || strings.Contains(err.Error(), secret) {
+			t.Errorf("%s: err %v — want a refusal that does not quote the value", name, err != nil)
+		}
 	}
 }
 

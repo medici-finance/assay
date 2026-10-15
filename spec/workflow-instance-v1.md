@@ -147,13 +147,22 @@ schema violation. This reference reader implements `packet-view@1`, `assignment@
 
 Export writes the canonical document (an explicit, field-by-field copy; nothing recomputed
 or defaulted) with `digest` set to the sha256 seal of the canonical document without the seal.
+The seal is an UNKEYED content digest: it detects accidental alteration in transit or at
+rest, and nothing more. Anyone holding the document can edit it and recompute a seal that
+verifies, so the seal authenticates neither the document's origin nor any field in it — not
+the Cell, not trust provenance, not the contract. Authenticity comes from the store or
+transport the document crosses (an authenticated store, a signed transport — graph-execution/19's
+scope), never from the seal.
+
 Import is the lower boundary every consumer crosses, and it MUST:
 
 1. apply §6 refusal, the schema and the credential scan (§9);
-2. require the seal and recompute it — a document altered after export is refused
-   (`instance-seal-mismatch`);
+2. require the seal and recompute it — a document altered after export WITHOUT the seal
+   being recomputed is refused (`instance-seal-mismatch`); an alteration that recomputes the
+   seal is not detected here;
 3. refuse an instance whose `work.cell` is not the importing Cell (`instance-cross-cell`),
-   independently of rule §5.5;
+   independently of rule §5.5. This compares the Cell the document states with the importing
+   Cell; it does not prove the document came from that Cell;
 4. re-apply every rule the document alone can decide.
 
 An export → import round trip MUST return the same identity, contract digest, acceptance,
@@ -173,11 +182,21 @@ the decision.
 1. A document, packet or handoff MUST NOT carry credential material. A field named like a
    credential, or a value shaped like a token, key, authorization header or URL with
    embedded credentials, is refused (`instance-credential-material`); the finding names the
-   path, never the value. Carry an authorized reference to the credential instead.
-2. Only the trust gate decides an input's disposition. An input whose `trust.source` is
+   path, never the value. A field NAME shaped like credential material is refused the same
+   way, and its path segment is reported as `[redacted]`. Carry an authorized reference to
+   the credential instead.
+2. No finding, refusal or error — schema findings included, which otherwise quote the
+   offending value — carries a credential-shaped value or field name: every message a
+   decode, an import, a packet projection or a handoff check produces is redacted before it
+   leaves, and the packet and handoff boundaries refuse credential material before any
+   message quotes a field.
+3. Only the trust gate decides an input's disposition. An input whose `trust.source` is
    `reporter` MUST have disposition `unresolved`; a reporter-supplied label is kept in
-   `reported-label` and never becomes authoritative, through export/import or otherwise
-   (`instance-trust-not-authoritative`).
+   `reported-label` and is never a disposition (`instance-trust-not-authoritative`). Import
+   re-applies this rule, so a document that promotes a reporter-sourced input is refused
+   whether or not it was re-sealed. The rule reads `trust.source` as the document states it:
+   a document whose `trust.source` itself was rewritten is not detected by this rule or by
+   the seal (§7) — provenance is authenticated by the store or transport, not the document.
 
 ## 10. The role packet and the handoff
 
@@ -213,12 +232,18 @@ digest, Cell, work id, node instance and attempt, the same acceptance version an
 the exclusions, the packet's dependency fingerprints, and the omissions and unresolved inputs
 carried forward. Its scope MUST be within the acceptance rows.
 
-Acceptance re-checks the binding at the moment of acceptance and MUST refuse a handoff that:
-answers another instance, contract, Cell, attempt or acceptance revision; is bound to a
-dependency fingerprint that no longer matches the observation (a moved or unobserved
-dependency); lacks evidence for a mandatory claim backed by an artifact the handoff returns;
-or carries credential material. A packet projected before a dependency moved is no longer
-current and cannot stand in for the re-projected one.
+Acceptance re-checks the binding at the moment of acceptance, without relying on how the
+handoff was built, and MUST refuse a handoff that: answers another instance, contract, Cell,
+attempt or acceptance revision; has a scope row outside the acceptance rows; does not carry
+the acceptance exclusions, the attempt's omissions or the unresolved inputs forward; does
+not bind every dependency of the instance's manifest exactly once at the fingerprint
+observed now (a moved or unobserved dependency, or one trimmed from the handoff's list or
+the whole list emptied, is refused — the manifest, not the handoff's list, decides what is
+checked); lacks evidence for a mandatory claim backed by an artifact the handoff returns;
+or carries credential material. A packet is current under the same manifest-driven
+dependency test: a packet projected before a dependency moved is no longer current and
+cannot stand in for the re-projected one. A packet's required evidence reads `present` only
+when it cites an artifact the attempt holds.
 
 ## 11. Conformance
 
@@ -244,4 +269,14 @@ The reference implementation is `statusgen instance validate --file PATH [--root
   dependency and computes no fingerprint itself.
 - The credential scan is pattern-based and catches common formats; it is one layer. The
   roster binding remains what authorizes a write, and no instance or packet ever carries
-  the credential that would.
+  the credential that would. Message redaction removes what the scan recognises; a value it
+  does not recognise as credential-shaped is quoted like any other value.
+- The export seal is an unkeyed digest (§7). It does not authenticate a document: a party
+  able to edit an exported document can re-seal it, and import then checks only what the
+  document states — its Cell, its trust provenance, its contract. Authenticating where a
+  document came from is the authenticated store and transport's job (graph-execution/19).
+- A handoff's dependency fingerprints are its own statement of what it was bound to; they
+  are not tied to a packet digest. Acceptance refuses a list that does not match the
+  manifest at the current observations, but a handoff rewritten to the current observations
+  passes — binding a handoff to the exact packet it answers is likewise the authenticated
+  transport's job.

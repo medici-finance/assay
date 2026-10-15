@@ -12,7 +12,7 @@
       "const": "workflow-instance-v1"
     },
     "digest": {
-      "description": "Export seal: sha256 over the canonical JSON of the whole document with this field empty. Written by export, required and recomputed by import; a mismatch is tampering. Absent on an authored (not exported) document.",
+      "description": "Export seal: an unkeyed sha256 over the canonical JSON of the whole document with this field empty. Written by export, required and recomputed by import; a mismatch means the document was altered without re-sealing. It detects accidental alteration only and authenticates nothing: authenticity comes from the store or transport. Absent on an authored (not exported) document.",
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
