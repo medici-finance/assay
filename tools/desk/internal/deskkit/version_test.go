@@ -300,11 +300,12 @@ func TestReleaseTagStampMissingIsCaught(t *testing.T) {
 //
 // The CLAIM is unchanged; the MECHANISM changed when cellctl was ported to Go. It used to be a
 // hand-maintained shell script the workflow `sed`-stamped and copied in as a packaging
-// EXCEPTION. It is now tools/desk/cmd/cellctl, so the generic `for cmd in cmd/*/` loop builds
+// EXCEPTION. It is now tools/desk/cmd/cellctl, so the generic batched `go build ./cmd/...` builds
 // and stages it like every other verb, and `-X main.cellctlVersion` in the shared LDFLAGS stamps
 // it the way -ldflags stamps the rest. This test goes RED if either half regresses: the package
 // disappearing (nothing to build, nothing in the tarball) or the stamp being dropped (a released
 // copy reporting "dev", which defeats `cellctl --version`).
+// regression: #138
 func TestCellctlPackagedInReleaseWorkflow(t *testing.T) {
 	// internal/deskkit sits at tools/desk/internal/deskkit; the repo root is four
 	// levels up.
@@ -317,12 +318,17 @@ func TestCellctlPackagedInReleaseWorkflow(t *testing.T) {
 		t.Fatalf("release workflow not readable at %s: %v", path, err)
 	}
 	wf := string(raw)
-	// The package is what makes cellctl one of the cmd/*/ builds. Without it the loop has
+	// The package is what makes cellctl one of the cmd/*/ builds. Without it the batch has
 	// nothing to build and the tarball carries no cellctl at all.
 	if _, serr := os.Stat(filepath.Join(root, "tools", "desk", "cmd", "cellctl")); serr != nil {
 		t.Errorf("tools/desk/cmd/cellctl is missing (%v) — cellctl would ship nowhere (#850)", serr)
 	}
-	if !strings.Contains(wf, "for cmd in cmd/*/") {
+	step := workflowStep(wf, deskToolsBuildStepName)
+	batch := regexp.MustCompile(`(?m)^\s*GOOS="\$os" GOARCH="\$arch" go build -ldflags "\$LDFLAGS" \\\n\s*-o "\$stage/" \./cmd/\.\.\.\s*$`)
+	if batch.MatchString(strings.Replace(step, "./cmd/...", "./cmd/deskpr", 1)) {
+		t.Error("batch guard accepted a planted single-command build")
+	}
+	if !batch.MatchString(step) {
 		t.Error("release.yml no longer builds every tools/desk/cmd/*/ — cellctl ships only because it is one of them (#850)")
 	}
 	if !strings.Contains(wf, "-X main.cellctlVersion=${RELEASE_TAG}") {

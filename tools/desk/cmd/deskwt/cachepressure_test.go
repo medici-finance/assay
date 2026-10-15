@@ -120,7 +120,9 @@ func TestPruneCachePassReclaimsUnderPressure(t *testing.T) {
 }
 
 // A consumer lease holds the cache under pressure: the sweep reports the
-// deferral and removes nothing. The lease set is the authority.
+// deferral and removes nothing. Active records protect mod/ and gopath/; build/
+// entries older than the policy's trim age would be trimmed regardless, but this
+// fixture's material is fresh, so nothing qualifies.
 func TestPruneCachePassDefersToActiveLease(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)

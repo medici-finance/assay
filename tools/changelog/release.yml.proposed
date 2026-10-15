@@ -1,15 +1,7 @@
-# ⚠️ STAGED — NOT YET ACTIVE. This file is the COMPLETE intended content of the
-# release workflow WITH the CHANGELOG-fragment aggregation changes applied,
-# staged here under tools/ because the identity that authored it cannot push
-# under .github/workflows/ (a server-side workflows-scope block). A
-# workflows-capable identity ACTIVATES the change by copying this file verbatim
-# (dropping this banner, down to the `# ---` rule) over
-#     .github/workflows/release.yml
-# (see tools/changelog/README.md and tools/changelog/release.yml.patch for the
-# exact delta from the currently-live release.yml). The only changes from the
-# live file are the CHANGELOG-fragment additions, each marked "CHANGELOG
-# discipline" below; everything else is byte-identical to the live workflow.
-# Nothing reads this file while it sits under tools/.
+# HISTORICAL SNAPSHOT of the changelog rollout. Its delta is already present
+# in the live workflow, which has acquired later artifact and build contracts.
+# Do not copy this old whole-file snapshot over .github/workflows/release.yml.
+# Consult the current live workflow for release caching and binary packaging.
 # ---------------------------------------------------------------------------
 name: release
 # Build statusgen binaries for darwin-arm64, darwin-amd64 + linux-amd64 on a

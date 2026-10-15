@@ -88,6 +88,7 @@ var canonicalToolKeys = map[string]struct{}{
 	"deskmigrate":       {},
 	"deskmonitor":       {},
 	"deskpathguard":     {},
+	"deskperf":          {},
 	"deskpins":          {},
 	"deskpost":          {},
 	"deskpr":            {},

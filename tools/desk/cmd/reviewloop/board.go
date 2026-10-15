@@ -13,7 +13,7 @@ import (
 
 // HeadUnresolved is the sentinel head SHA for a board row whose head could not be read.
 // It is NEVER the empty string: an empty head silently satisfies string comparisons and
-// would let a coalescing key or an AlreadyDone probe look answered when it was not.
+// would let a coalescing key look answered when it was not.
 const HeadUnresolved = "UNRESOLVED"
 
 // ---------------------------------------------------------------------------

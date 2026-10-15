@@ -48,6 +48,35 @@ func wantRefusal(t *testing.T, res ClaimStoreResolution, err error, fragments ..
 	}
 }
 
+// wantUnshippedFallback asserts a valid but unshipped store resolved to the legacy forge-ref
+// store (exit 0) under a NOTICE naming the configured store and the release that ships it, with
+// provenance recording both the configured value and the fallback (medici-finance/assay#2753).
+func wantUnshippedFallback(t *testing.T, res ClaimStoreResolution, err error, value, ships string) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("%s=%s (valid, not shipped) refused — want the legacy resolution: %v", EnvClaimStore, value, err)
+	}
+	if res.Name != ClaimStoreForgeRef || !res.Legacy || !res.NeedsForgeCredential {
+		t.Fatalf("%s=%s resolved name=%q legacy=%t credential=%t, want %s legacy with a forge credential",
+			EnvClaimStore, value, res.Name, res.Legacy, res.NeedsForgeCredential, ClaimStoreForgeRef)
+	}
+	if res.Notice == ClaimStoreLegacyNotice {
+		t.Fatalf("%s=%s printed the UNSET notice — the operator did set the key", EnvClaimStore, value)
+	}
+	for _, f := range []string{"NOTICE", EnvClaimStore + "=" + value, "does not ship", ClaimStoreForgeRef,
+		"takes effect in", ships} {
+		if !strings.Contains(res.Notice, f) {
+			t.Errorf("unshipped NOTICE does not name %q: %s", f, res.Notice)
+		}
+	}
+	for _, f := range []string{EnvClaimStore + "=", "→ " + EnvClaimStore + "=" + value + " is not shipped in this build", ships,
+		"legacy resolution: " + ClaimStoreForgeRef} {
+		if !strings.Contains(res.Provenance, f) {
+			t.Errorf("provenance does not record %q:\n%s", f, res.Provenance)
+		}
+	}
+}
+
 func TestResolveClaimStore(t *testing.T) {
 	const repo = "example-org/tracker"
 
@@ -118,14 +147,14 @@ func TestResolveClaimStore(t *testing.T) {
 		}
 	})
 
-	t.Run("file and service are valid but refused naming the release that ships them", func(t *testing.T) {
+	t.Run("file and service are valid but unshipped: legacy store, NOTICE names the shipping release", func(t *testing.T) {
 		for v, brief := range map[string]string{ClaimStoreFile: "ships the file store", ClaimStoreService: "ships the served store"} {
 			withRoster(t, map[string]string{EnvClaimStore: v, EnvClaimSingleHost: "yes"})
-			called, _ := installForgeRefOpener(t)
+			called, stand := installForgeRefOpener(t)
 			res, err := ResolveClaimStore(repo)
-			wantRefusal(t, res, err, EnvClaimStore+"="+v, brief, "never replaced by another")
-			if *called != 0 {
-				t.Fatalf("%s opened the forge-ref store", v)
+			wantUnshippedFallback(t, res, err, v, brief)
+			if res.Store != stand || *called != 1 {
+				t.Fatalf("%s: the legacy store was not opened through the installed opener (called %d times)", v, *called)
 			}
 		}
 	})
@@ -133,13 +162,13 @@ func TestResolveClaimStore(t *testing.T) {
 	t.Run("the per-repo form resolves the named repo and refuses an unnamed one", func(t *testing.T) {
 		withRoster(t, map[string]string{EnvClaimStore: "example-org/tracker=file,example-org/agents=service"})
 		called, _ := installForgeRefOpener(t)
-		res, err := ResolveClaimStore("Example-Org/Tracker")
-		wantRefusal(t, res, err, "ships the file store")
-		res, err = ResolveClaimStore("example-org/console")
+		res, err := ResolveClaimStore("example-org/console")
 		wantRefusal(t, res, err, "example-org/console", "names no store")
 		if *called != 0 {
 			t.Fatal("a per-repo key that does not name the repo fell through to the forge-ref store")
 		}
+		res, err = ResolveClaimStore("Example-Org/Tracker")
+		wantUnshippedFallback(t, res, err, ClaimStoreFile, "ships the file store")
 	})
 
 	t.Run("malformed keys are refused, never defaulted", func(t *testing.T) {
@@ -308,9 +337,12 @@ func assertNoClaimStoreSelector(t *testing.T) {
 	}
 }
 
-// TestResolveClaimStoreNeverFallsBack — an EXPLICIT store whose precondition fails is exit 6,
-// and the resolved name is never another store (Verify row 3; the mutation
-// claimstore-unmet-precondition-falls-through reddens it).
+// TestResolveClaimStoreNeverFallsBack — an EXPLICIT store this build SHIPS whose precondition
+// fails is exit 6, and the resolved name is never another store (Verify row 3; the mutation
+// claimstore-unmet-precondition-falls-through reddens it). A valid store this build does NOT
+// ship holds no claim here, so it resolves to the legacy store under its own NOTICE
+// (amended 2026-10-13, medici-finance/assay#2753).
+// regression: #2753
 func TestResolveClaimStoreNeverFallsBack(t *testing.T) {
 	const repo = "example-org/tracker"
 
@@ -335,7 +367,12 @@ func TestResolveClaimStoreNeverFallsBack(t *testing.T) {
 	for _, v := range []string{ClaimStoreFile, ClaimStoreService} {
 		t.Run(v+" not shipped in this build", func(t *testing.T) {
 			withRoster(t, map[string]string{EnvClaimStore: v, EnvClaimSingleHost: "yes"})
-			check(t, v+" (not shipped)")
+			called, _ := installForgeRefOpener(t)
+			res, err := ResolveClaimStore(repo)
+			wantUnshippedFallback(t, res, err, v, claimStoreBackends[v].shippedBy)
+			if *called != 1 {
+				t.Fatalf("%s (not shipped): the legacy store was opened %d times, want 1", v, *called)
+			}
 		})
 		t.Run(v+" shipped but its precondition fails", func(t *testing.T) {
 			withRoster(t, map[string]string{EnvClaimStore: v})
@@ -347,5 +384,63 @@ func TestResolveClaimStoreNeverFallsBack(t *testing.T) {
 			t.Cleanup(func() { claimStoreBackends[v] = prev })
 			check(t, v+" (precondition fails)")
 		})
+	}
+}
+
+// TestLegacyNoticeSaysSetNow — the unset-key NOTICE tells the operator the keys may be set
+// now and take effect on upgrade; it never tells them to set a value this build would refuse.
+// regression: #2753
+func TestLegacyNoticeSaysSetNow(t *testing.T) {
+	for _, f := range []string{"may be set in the roster now", "takes effect on upgrade",
+		EnvClaimStore + "=" + ClaimStoreFile, EnvClaimStore + "=" + ClaimStoreService, EnvClaimSingleHost + "=yes",
+		"release " + ClaimStoreLegacyRemovalRelease} {
+		if !strings.Contains(ClaimStoreLegacyNotice, f) {
+			t.Errorf("legacy NOTICE does not say %q: %s", f, ClaimStoreLegacyNotice)
+		}
+	}
+	// The value it names must be one this build resolves without refusing.
+	withRoster(t, map[string]string{EnvClaimStore: ClaimStoreFile, EnvClaimSingleHost: "yes"})
+	SetForgeRefClaimStoreOpener(nil)
+	if _, err := ResolveClaimStore("example-org/tracker"); err != nil {
+		t.Fatalf("the legacy NOTICE names %s=%s, which this build refuses: %v", EnvClaimStore, ClaimStoreFile, err)
+	}
+}
+
+// TestClaimSingleHostNoEffect — ASSAY_CLAIM_SINGLE_HOST=yes is accepted and changes nothing
+// while the store is unset or unshipped: same store, same legacy flag, same NOTICE; only the
+// provenance records the declaration.
+// regression: #2753
+func TestClaimSingleHostNoEffect(t *testing.T) {
+	const repo = "example-org/tracker"
+	for _, store := range []string{"", ClaimStoreFile, ClaimStoreService} {
+		resolve := func(singleHost bool) ClaimStoreResolution {
+			t.Helper()
+			vals := map[string]string{}
+			if store != "" {
+				vals[EnvClaimStore] = store
+			}
+			if singleHost {
+				vals[EnvClaimSingleHost] = "yes"
+			}
+			withRoster(t, vals)
+			_, stand := installForgeRefOpener(t)
+			res, err := ResolveClaimStore(repo)
+			if err != nil {
+				t.Fatalf("store %q single-host=%t refused: %v", store, singleHost, err)
+			}
+			if res.Store != stand {
+				t.Fatalf("store %q single-host=%t did not open the legacy store", store, singleHost)
+			}
+			return res
+		}
+		without, with := resolve(false), resolve(true)
+		if with.Name != without.Name || with.Legacy != without.Legacy ||
+			with.NeedsForgeCredential != without.NeedsForgeCredential || with.Notice != without.Notice {
+			t.Errorf("store %q: %s=yes changed the resolution:\n without: %+v\n with:    %+v",
+				store, EnvClaimSingleHost, without, with)
+		}
+		if !strings.Contains(with.Provenance, EnvClaimSingleHost+"=yes") {
+			t.Errorf("store %q: provenance does not record %s=yes:\n%s", store, EnvClaimSingleHost, with.Provenance)
+		}
 	}
 }

@@ -160,7 +160,8 @@ func (c *Cell) readCommsSurface() (*commsSurface, error) {
 	return &s, nil
 }
 
-// Called once by up before roles, never by a cadence pass.
+// Called once by up before roles, never by a cadence pass. On tmux the comms window creates the
+// cell's session when none exists yet (a cell with no deskd window has nothing ahead of it).
 func (c *Cell) startComms(cockpit string) error {
 	launch, err := c.acquireCommsLaunch()
 	if err != nil {
@@ -255,7 +256,11 @@ func (c *Cell) openCommsSurface(surface *commsSurface) error {
 	label := surface.Label
 	switch cockpit {
 	case "tmux":
-		out, err := exec.Command("tmux", "new-window", "-P", "-F", "#{window_id}", "-t", c.Session, "-n", label, "-c", c.Dir, cmd).Output()
+		args := []string{"new-window", "-P", "-F", "#{window_id}", "-t", c.Session, "-n", label, "-c", c.Dir, cmd}
+		if exec.Command("tmux", "has-session", "-t", c.Session).Run() != nil {
+			args = []string{"new-session", "-d", "-P", "-F", "#{window_id}", "-s", c.Session, "-n", label, "-c", c.Dir, cmd}
+		}
+		out, err := exec.Command("tmux", args...).Output()
 		if err != nil {
 			return fmt.Errorf("comms tmux launch: %w", err)
 		}

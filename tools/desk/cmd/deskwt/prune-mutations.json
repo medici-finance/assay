@@ -172,8 +172,8 @@
     {
       "name": "the stale-registration pass's content gate inverts (a husk whose detached HEAD is NOT on the mainline is cleared — possibly-unpushed commits stranded)",
       "file": "cmd/deskwt/stalereg.go",
-      "old": "\tif _, ok := sc.mainAncestors[head]; !ok {\n\t\treturn \"detached HEAD \" + head[:12] + \" is not reachable from refs/remotes/origin/main — clearing the registration would strand possibly-unpushed commits\"\n\t}",
-      "new": "\tif _, ok := sc.mainAncestors[head]; ok {\n\t\treturn \"detached HEAD \" + head[:12] + \" is not reachable from refs/remotes/origin/main — clearing the registration would strand possibly-unpushed commits\"\n\t}"
+      "old": "\t\tif _, ok := sc.mainAncestors[head]; !ok {\n\t\t\treturn \"detached HEAD \" + head[:12] + \" is not reachable from refs/remotes/origin/main — clearing the registration would strand possibly-unpushed commits\"\n\t\t}",
+      "new": "\t\tif _, ok := sc.mainAncestors[head]; ok {\n\t\t\treturn \"detached HEAD \" + head[:12] + \" is not reachable from refs/remotes/origin/main — clearing the registration would strand possibly-unpushed commits\"\n\t\t}"
     },
     {
       "name": "the lock-reclaim pass unlocks a content-held husk (the post-reclaim bookkeeping prune drops the registration the content gate held)",
