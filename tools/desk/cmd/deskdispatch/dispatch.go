@@ -572,6 +572,19 @@ func dispatch(o dispatchOpts) error {
 			released, herr), herr))
 	}
 
+	// The read-ahead packet (packet.go) and the prompt, assembled BEFORE the side-effecting
+	// steps below for every kit but the verifier, so an assembly failure leaves no roster,
+	// stamp, dispatch record or queue label behind. The verifier's packet and prompt read
+	// the attested tracking tree, so they are assembled after its attestation instead.
+	var prompt string
+	var perr error
+	if o.kit != "verifier" {
+		plan.packetPath = buildPacketFn(o, plan, repo, home)
+		if prompt, perr = assemblePrompt(o, plan, home); perr != nil {
+			return held.settle(perr)
+		}
+	}
+
 	// 3 — roster registration.
 	o.say("%s %s", stepRosterRegister, stepRoster(o, repo))
 
@@ -604,8 +617,11 @@ func dispatch(o dispatchOpts) error {
 		}
 		plan.workerAttestation = &receipt
 		stamp = workerStampLine(o, repo, receipt)
-		// The prompt is assembled after this step (below, once provenance is established), so
-		// it already hands the worker this run's exact binding line.
+		// The prompt was assembled before the record existed; re-assemble it so the worker is
+		// handed this run's exact binding line.
+		if prompt, perr = assemblePrompt(o, plan, home); perr != nil {
+			return held.settle(perr)
+		}
 	default:
 		stamp, serr = stepStamp(o, repo)
 	}
@@ -629,24 +645,25 @@ func dispatch(o dispatchOpts) error {
 	// ensureLabelSwap.
 	o.say("%s %s", stepQueueLabel, stepQueueLabelApply(o, repo))
 
-	// Cross-repository prompts and packets read the SAME isolated tracking tree
-	// bound by the completed attestation, never the dispatcher's shared checkout.
-	if o.kit == "verifier" && plan.dl.crossRepo(o.root) {
-		br, brief, rev, err := deskkit.VerifierBriefLocation(home)
-		if err != nil {
-			return held.settle(err)
+	if o.kit == "verifier" {
+		// Cross-repository prompts and packets read the SAME isolated tracking tree
+		// bound by the completed attestation, never the dispatcher's shared checkout.
+		if plan.dl.crossRepo(o.root) {
+			br, brief, rev, err := deskkit.VerifierBriefLocation(home)
+			if err != nil {
+				return held.settle(err)
+			}
+			plan.verifierBriefRoot, plan.verifierBriefRevision = br, rev
+			o.brief, o.briefShown = filepath.Join(br, brief), filepath.Join(br, brief)
+			if err := verifierPrivatePromptDestination(verifierEmittedDest(o.promptFile)); err != nil {
+				return held.settle(err)
+			}
 		}
-		plan.verifierBriefRoot, plan.verifierBriefRevision = br, rev
-		o.brief, o.briefShown = filepath.Join(br, brief), filepath.Join(br, brief)
-		if err := verifierPrivatePromptDestination(verifierEmittedDest(o.promptFile)); err != nil {
-			return held.settle(err)
+		// The verifier's read-ahead packet is built only after provenance is established.
+		plan.packetPath = buildPacketFn(o, plan, repo, home)
+		if prompt, perr = assemblePrompt(o, plan, home); perr != nil {
+			return held.settle(perr)
 		}
-	}
-	// The read-ahead packet is built only after provenance is established.
-	plan.packetPath = buildPacketFn(o, plan, repo, home)
-	prompt, perr := assemblePrompt(o, plan, home)
-	if perr != nil {
-		return held.settle(perr)
 	}
 
 	// 7 — the prompt.

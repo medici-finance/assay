@@ -153,6 +153,9 @@ func (v *VerifyLoop) dispatchInterim(it loopengine.Item, tier loopengine.Tier) (
 	if v.Feeder == nil {
 		return nil, fmt.Errorf("interim dispatch: no feeder wired — BLOCKED-ON-HUMAN")
 	}
+	// The association is re-checked here only without an injected attester; with
+	// one, queuedVerifierReceipt binds the admitted receipt to the queued source,
+	// brief and tracking/source association instead (attestation.go).
 	if v.Attest == nil {
 		if err := checkQueuedAssociation(it); err != nil {
 			return nil, err
