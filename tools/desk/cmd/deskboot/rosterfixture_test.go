@@ -36,6 +36,8 @@ ASSAY_TRUSTED_LOGINS=ada:2001,shared-agent:2002
 ASSAY_TRUSTED_BOT_SLUGS=desk=assay-desk-app:300000001,intake-loop=assay-intake-loop-app:300000002,issue-loop=assay-issue-loop-app:300000003,reviewer=assay-reviewer-app:300000004,verifier=assay-verifier-app:300000005,worker=assay-worker-app:300000006
 ASSAY_ALLOWED_REPOS=example-org/tracker:ci:private,example-org/agents:ci:private,example-org/examples:no-ci:private,example-org/console:ci:private,medici-finance/assay:ci:private,example-org/example-k8s:ci:public,example-org/example-reconciler:ci:private,example-org/org-slides:no-ci:private,example-org/proposals:no-ci:public,example-org/platform:ci:private,example-org/demo-slides:no-ci:private,example-org/assay-slides:no-ci:private,example-org/example-reconciler-slides:no-ci:private
 ASSAY_HUMAN_LOGIN_MAP=alex:ada
+# The forge binding the boot's first-sweep check requires for the repo it boots on (#2986).
+ASSAY_REPO_FORGES=medici-finance/assay=github
 `
 
 // plantFixtureRoster writes the fixture roster under home. A test that relocates

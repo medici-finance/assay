@@ -106,6 +106,9 @@ func happyStub(t *testing.T, tokenPath string) []reply {
 		// worktree-current: FETCH_HEAD resolves, HEAD contains it (merge-base exits 0 by the
 		// stub default), and neither side carries a pin file (an empty `git show` is "no pin").
 		{match: "rev-parse FETCH_HEAD", stdout: "0123456789abcdef0123456789abcdef01234567"},
+		// first-sweep-prereqs: the source tree's origin/main carries tools/desk, which is
+		// desk-tools provenance on its own (#2986). A consumer stub fails this ref instead.
+		{match: "refs/remotes/origin/main:tools/desk", stdout: "89abcdef0123456789abcdef0123456789abcdef"},
 	}
 }
 
@@ -720,7 +723,7 @@ func TestEveryKnownRoleIsBothMappedAndStoppable(t *testing.T) {
 // consumer that keys on a step name.
 func TestStepListIsTheDocumentedContract(t *testing.T) {
 	want := []string{"loop-identity", "worktree-prune", "worktree-lock", "roster-set",
-		"roster-preflight", "token-mint", "board-fetch", "worktree-current"}
+		"roster-preflight", "token-mint", "board-fetch", "worktree-current", "first-sweep-prereqs"}
 	if len(bootSteps) != len(want) {
 		t.Fatalf("bootSteps has %d entries, want %d", len(bootSteps), len(want))
 	}

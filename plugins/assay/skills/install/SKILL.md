@@ -192,6 +192,12 @@ digest**, and only then extract and install the binaries to `PATH`. The only sha
 the artifact is a `.tar.gz` of binaries, not a single file. Config is at the config-home
 (`../../references/desk-shell.md` §Config home) only, never the environment. See `install-desk-tools` in the `adopt` runbook.
 
+Skippable for the repo, **required for a desk**: `deskboot` refuses (exit 6, step
+`first-sweep-prereqs`) when the nearest `.assay-versions` has no `desk-tools` /
+`desk-tools-<os>-<arch>` line (or full-commit `desk-tools-source` line), and when the roster's
+`ASSAY_REPO_FORGES` names no forge for the repo. Statusgen lines alone are not a desk-tools pin.
+If desks will run here, land the pin on main and confirm the forge entry with the operator.
+
 **Verify:** `deskboard --version` prints `releaseTag=<the pinned desk-tools tag>` — the tag, not merely
 a line, so a stale binary left on `PATH` cannot pass — and its `assay-config:` echo shows the roster
 present. The acquisition stages the whole verified set before moving any file into place, so a

@@ -792,23 +792,16 @@ func normalizeTag(tag string) string {
 // one of them.
 func deskToolsPinReal() (root, tag, artifact string, found bool) {
 	dir := nearestPinRoot()
-	if dir == "" {
-		return "", "", "", false
+	if t, name, ok := deskkit.DeskToolsReleasePin(dir, deskPlatform); ok {
+		return dir, t, name, true
 	}
-	for _, name := range []string{deskToolsArtifact, deskToolsPlatformArtifact()} {
-		if name == "" {
-			continue
-		}
-		if t, _, perr := deskkit.ArtifactPin(dir, name); perr == nil {
-			return dir, t, name, true
-		}
-	}
-	return "", "", "", false // pin file present but no usable desk-tools line of either shape
+	return "", "", "", false // no pin file, or no usable desk-tools line of either shape
 }
 
 // deskToolsArtifact is the bare artifact name, tried first so a consumer that already
-// carries it keeps exactly today's verdict.
-const deskToolsArtifact = "desk-tools"
+// carries it keeps exactly today's verdict. The lookup itself is deskkit's, shared with
+// deskboot's first-sweep check (#2986), so the boot and the board read one pin the same way.
+const deskToolsArtifact = deskkit.DeskToolsArtifact
 
 // deskPlatform is the host's `<os>-<arch>` token. It is a var for the same reason isPinned
 // and gitTree are: the per-platform fallback has to be exercisable for a platform the test
@@ -819,12 +812,7 @@ var deskPlatform = runtime.GOOS + "-" + runtime.GOARCH
 // deskToolsPlatformArtifact spells the per-platform pin line's artifact name. It returns ""
 // when the platform token is empty, so the caller skips the lookup rather than asking for
 // `desk-tools-` and matching a line that merely starts that way.
-func deskToolsPlatformArtifact() string {
-	if strings.TrimSpace(deskPlatform) == "" {
-		return ""
-	}
-	return deskToolsArtifact + "-" + deskPlatform
-}
+func deskToolsPlatformArtifact() string { return deskkit.DeskToolsPlatformArtifact(deskPlatform) }
 
 // deskToolsSourcePinReal is the channel-D sibling of deskToolsPinReal (#776): it
 // returns the COMMIT sha of a `desk-tools-source` line in the nearest
@@ -877,16 +865,7 @@ func nearestPinRoot() string {
 	if err != nil {
 		return ""
 	}
-	for {
-		if _, statErr := os.Stat(filepath.Join(dir, deskkit.AssayVersionsFile)); statErr == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "" // reached the filesystem root without a pin file
-		}
-		dir = parent
-	}
+	return deskkit.NearestPinRoot(dir)
 }
 
 // isFullCommitSHA reports whether s is a full 40-hex git commit id — the shape a
