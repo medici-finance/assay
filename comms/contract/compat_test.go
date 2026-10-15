@@ -143,8 +143,8 @@ type assertionFixture struct {
 }
 
 // TestContractCompatibilityAssertionBytes pins the signed byte layout: the
-// canonical bytes minted by the pre-extraction implementation, and the legacy
-// signature (carried by the fixture envelope) verifying end to end. A drift here is a wire break.
+// canonical bytes minted by the pre-extraction implementation, and the minted
+// signature verifying end to end. A drift here is a wire break.
 func TestContractCompatibilityAssertionBytes(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("testdata", "assertion.json"))
 	if err != nil {
@@ -189,7 +189,10 @@ func TestContractCompatibilityAssertionBytes(t *testing.T) {
 	pub, _ := hex.DecodeString(f.PublicKeyHex)
 	trust := Ed25519TrustStore{f.Cell: ed25519.PublicKey(pub)}
 
-	// The signature carried by the valid fixture envelope verifies end to end.
+	// The valid fixture envelope carries a placeholder signature (a long base64
+	// run in a fixture reads as a credential to every scanner). Substitute the
+	// signature just minted over the pinned canonical bytes: Ed25519 is
+	// deterministic, so this is the signature the legacy implementation made.
 	env, err := os.ReadFile(filepath.Join("testdata", "legacy", "valid-within-notify.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -198,6 +201,7 @@ func TestContractCompatibilityAssertionBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	e.Sig.Sig = a.Sig
 	guard := NewMemReplayGuardWithClock(func() time.Time { return issued })
 	if err := VerifyEnvelope(e, issued.Add(10*time.Second), trust, DefaultSkew, guard); err != nil {
 		t.Fatalf("fixture envelope should verify: %v", err)
@@ -207,6 +211,7 @@ func TestContractCompatibilityAssertionBytes(t *testing.T) {
 	}
 	// A tampered id breaks the binding.
 	e2, _ := ParseEnvelope(env)
+	e2.Sig.Sig = a.Sig
 	e2.ID = "msg-0002"
 	if err := VerifyEnvelope(e2, issued.Add(10*time.Second), trust, DefaultSkew, NewMemReplayGuard()); !errors.Is(err, ErrIdentityMismatch) {
 		t.Fatalf("want ErrIdentityMismatch, got %v", err)

@@ -1,5 +1,5 @@
 {
-  "note": "Assertion fixture: seed bytes 0..31 -> ed25519 key; minted for cell-a/worker-desk msg-0001 nonce-0001 at 2026-01-02T03:04:05Z, ttl 2m. Generated once from the pre-extraction implementation; the canonical bytes are pinned, and the signature the legacy implementation produced rides in the fixture envelopes, where VerifyEnvelope must accept it so an extraction cannot drift the wire. canonicalSegments are the length-prefixed canonical bytes in order: domain-separation prefix (given as text), then per field an 8-byte big-endian length and the field, then issued and expires as 8-byte big-endian Unix seconds.",
+  "note": "Assertion fixture: seed bytes 0..31 -> ed25519 key; minted for cell-a/worker-desk msg-0001 nonce-0001 at 2026-01-02T03:04:05Z, ttl 2m. Generated once from the pre-extraction implementation; the canonical bytes are pinned. Ed25519 is deterministic, so the signature is re-minted over these bytes in the test and verified through VerifyEnvelope; fixture envelopes carry a placeholder signature so an extraction cannot drift the wire. canonicalSegments are the length-prefixed canonical bytes in order: domain-separation prefix (given as text), then per field an 8-byte big-endian length and the field, then issued and expires as 8-byte big-endian Unix seconds.",
   "cell": "cell-a",
   "role": "worker-desk",
   "msgId": "msg-0001",
