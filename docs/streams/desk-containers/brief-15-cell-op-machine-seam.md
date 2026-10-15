@@ -17,6 +17,7 @@ depends: []
 unblocks: ["desk-containers/17", "desk-containers/18", "desk-containers/20", "desk-containers/21", "desk-containers/22", "desk-containers/24"]
 effort: M
 gate: human
+design: DR-cell-op-contract
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 decision-trigger: creation
 issues: []
