@@ -217,6 +217,8 @@ func TestReviewKitStatesToolResults(t *testing.T) {
 			"**A PR labelled `wrote-to-the-test` gets no APPROVE without the reason.**",
 			"An APPROVE must name the protected path touched and say why the edit is legitimate",
 			"its `state=` line is the result",
+			"A non-zero exit with no `state=` line means the check did not run",
+			"a label write that fails after the state line also exits non-zero and prints no `applied:` line",
 			"`could-not-attribute` on stderr",
 			"never by writing git config",
 			"**Post, confirm and release in one step.**",

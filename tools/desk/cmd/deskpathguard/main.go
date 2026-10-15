@@ -17,9 +17,13 @@
 // is could-not-check (exit 6), never rendered as clean. See Evaluate's doc comment.
 //
 // Exit codes (deskkit contract): 0 ok/clean · 3 disabled · 4 rate-limited · 5 refused ·
-// 6 could-not-check. A checked-failed (labelled) check exits 0: the contract has no
+// 6 could-not-check. A checked-failed (labelled) check exits 0 once its label has landed
+// (the "applied:" line) or under --dry-run, which writes none: the contract has no
 // checked-failed code, and a non-zero exit here would read as a refusal to a caller told to
-// stop on one. The `state=` line carries the result, and the usage says so.
+// stop on one. The `state=` line carries the result, and the usage says so. The exit code is
+// still a signal, though: without --dry-run, a label write that fails AFTER the state line
+// was printed exits 5 (refused) or 6 (could-not-check) and prints no "applied:" line — the
+// label is NOT on the PR, whatever the state line said.
 package main
 
 import (
@@ -54,10 +58,12 @@ rederive   verify-desk's pre-change re-read: reports every Verify-table row pres
 
 Exit: 0 ok/clean · 3 disabled · 4 rate-limited · 5 refused · 6 could-not-check.
 
-RESULT (check): exit 0 means the check RAN, labelled or clean — the state= line is the
-result, never the exit code. state=checked-failed, printed with "gate-forced:
-wrote-to-the-test", is the labelled case and still exits 0, --dry-run or not. Only
-state=could-not-check exits non-zero (6).`
+RESULT (check): the state= line is the result, never the exit code alone. state=checked-failed,
+printed with "gate-forced: wrote-to-the-test", is the labelled case: it exits 0 under
+--dry-run, and without --dry-run once the "applied:" line is printed. Without --dry-run, a
+label write that fails after the state line exits 5 (refused) or 6 (could-not-check) and
+prints no "applied:" line — the label is NOT on the PR, whatever the state line said. A
+non-zero exit with no state= line means the check did not run: could-not-check.`
 
 func main() {
 	// check performs a forge write (ApplyLabels); rederive is a local git read. Both declare

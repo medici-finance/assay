@@ -93,8 +93,10 @@ through their output:
 
 - `deskpathguard check <owner/repo> <N> --dry-run` exits 0 whenever the check RAN, labelled
   or clean; its `state=` line is the result. `state=checked-failed` with
-  `gate-forced: wrote-to-the-test` is the labelled case (clause 12). Only could-not-check
-  exits non-zero (6).
+  `gate-forced: wrote-to-the-test` is the labelled case (clause 12). A non-zero exit with no
+  `state=` line means the check did not run: could-not-check, never a pass. (Without
+  `--dry-run` a label write that fails after the state line also exits non-zero and prints
+  no `applied:` line — the label is not on the PR.)
 - `statusgen verifyrun --dry-run` exits 2 when a row could not run AND when it refused to run
   any row for want of an executing identity — `could-not-attribute` on stderr, no table on
   stdout. The refusal ran nothing: it is could-not-check, never a failed row. An isolated
