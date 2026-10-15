@@ -106,6 +106,8 @@ func buildEnvKeys() []envKey {
 			desc: "Free space the managed Go cache leaves on its volume, in bytes (10 GiB)."},
 		{key: "CELL_GO_CACHE_BUILD_MAX_AGE", class: envMachine, group: envGroupCache, def: "24h",
 			desc: "Age past which compiler-cache entries are trimmed under pressure, even with live consumers, as a duration of at least 2h."},
+		{key: "CELL_GO_TRIMPATH", class: envMachine, group: envGroupCache, def: "on",
+			desc: "Build with -trimpath (GOFLAGS) so worktrees share the managed Go cache: on or off."},
 		{key: "CELL_SCRATCH_MAX_AGE", class: envMachine, group: envGroupCache, def: "168h",
 			desc: "Age past which managed task scratch is swept, as a duration."},
 		{key: "CELL_SCRATCH_MAX_BYTES", class: envMachine, group: envGroupCache, def: "268435456",
