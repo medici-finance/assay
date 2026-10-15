@@ -67,8 +67,8 @@ facts:
 - commsgw is configured by environment only; it binds those keys through declared Viper bindings and gains no new flags.
 - Contract: `docs/streams/desktools-v2/cli-contract.md` (from /15). Desk-module commands build on `tools/desk/internal/cli`; standalone modules use Cobra and Viper directly. Legacy consumers named in the registry are the files that mention each entrypoint most at 3ad1ad83c871 (up to six per row); re-enumerate every caller at pickup.
 
-layering: Cobra constructs the command tree and passes validated typed options into the existing handlers; a fresh command-local Viper resolves only declared keys. Domain checks, custody and external effects keep their current owners.
-single-point-of-failure: signature verification on receipt — it stays in the handler; TestCLIAdmissionBoundary sends an unsigned message through Cobra and directly.
+layering: Cobra constructs the command tree and passes validated typed options into the existing handlers, which call the `comms/server` and `comms/client` extracted by comms-core/02 and /03; a fresh command-local Viper resolves only declared keys. Domain checks, custody and external effects keep their current owners.
+single-point-of-failure: signature verification on receipt — after comms-core/02 it is enforced at `comms/server` admission, which the handlers call; TestCLIAdmissionBoundary sends an unsigned message through Cobra and directly to the extracted service.
 design-fit:
   owner: command packages own parsing; comms/server and comms/client own the extracted use cases
   contract: none — consumes cli-contract.md delivered by /15
@@ -139,7 +139,7 @@ Viper's generic precedence replaces a per-key rule or loses an explicit empty: r
 A consumer's old spelling stops parsing: row 3 replays each consumer's forms.
 The owner tests pass on the happy path but miss a broken guard: the mutation row plants each break and requires it to redden.
 Only imports change while the old parser stays: TestCLIOwnerMigrated and /17's source checks catch it.
-A check moves into the adapter and disappears from the handler: the admission row calls the handler directly.
+A check moves into the Cobra adapter and disappears from service admission: the admission row calls the extracted `comms/server` directly.
 
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->

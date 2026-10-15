@@ -41,7 +41,7 @@ files:
 - `comms/contract (new)`
 - `tools/desk/internal/comms`
 - `tools/desk/internal/deskkit (existing policy owner; no public export)`
-- `tools/desk/internal/commspolicy (new composition adapter if needed)`
+- `tools/desk/internal/commspolicy (optional new composition adapter; the Assay adapter may instead stay in internal/comms, and either way it lives under tools/desk/internal/)`
 - `tools/desk/cmd/{commsgw,commsloop,deskcomms} (import adaptation only)`
 - `tools/desk/internal/commsqueue (import adaptation only; its quarantine filer stays in tools/desk, see facts)`
 - `docs/contracts.md`
@@ -88,7 +88,7 @@ test names below are deliverables, not claims they already exist.
 
 ## Task
 
-1. Create the root `comms/` module with module path `github.com/medici-finance/assay/comms`; it must not import desk-tools, including transitively. Wire desk-tools as a versioned consumer and qualify both modules with GOWORK=off. Inventory the exported contract and all importers. Move structural types and parsing primitives into comms/contract. Keep Assay verb/class/role validation and compiled ACL in the Assay adapter; do not widen acceptance when separating structural parsing from policy.
+1. Create the root `comms/` module with module path `github.com/medici-finance/assay/comms`; it must not import desk-tools, including transitively. Wire desk-tools as a versioned consumer and qualify both modules with GOWORK=off. Inventory the exported contract and all importers. Move structural types and parsing primitives into comms/contract. Keep Assay verb/class/role validation and compiled ACL in the Assay adapter, which lives under `tools/desk/internal/` (in `internal/comms` or a new `internal/commspolicy`); do not widen acceptance when separating structural parsing from policy.
 2. Publish typed message/address/error/receipt interfaces and the legacy wire mapping from the specification. Mark future delivery-token and per-client identity semantics as unimplemented versioned capabilities, not guarantees of cellmsg-v1.
 3. Keep one implementation: migrate importers or retain thin aliases/delegators with named consumers. Do not move deskkit, token minting, forge access, role execution or process launch into the public package dependency closure.
 4. Add characterization fixtures for valid and refused envelopes, assertion bytes, unknown/reserved verbs, class validation and lane rules. Exercise the same fixtures through old-compatible and extracted entrypoints. Place the policy-call mutation (`TestPolicyAdapterRefusesForbiddenMessage`) in `tools/desk`, beside the Assay policy adapter that Task 1 keeps there; the `comms` module cannot import it. Removing the policy call must make an otherwise structurally valid forbidden message fail that test.
@@ -102,7 +102,7 @@ test names below are deliverables, not claims they already exist.
 | 2 | check +flow | `cd comms && GOWORK=off go test -count=1 -v ./... -run '^TestContractDependencyBoundary$' > ${TMPDIR:-/tmp}/comms-core-01-boundary.log 2>&1 && grep -F -- '--- PASS: TestContractDependencyBoundary ' ${TMPDIR:-/tmp}/comms-core-01-boundary.log` | exit 0; `TestContractDependencyBoundary` walks the `comms` module's transitive imports and fails on tools/desk, deskkit, forge, credential or process-launch packages |
 | 3 | check | `(cd comms && GOWORK=off go test -count=1 ./... && cd ../tools/desk && GOWORK=off go test -count=1 ./internal/comms/... ./internal/commsqueue/... ./cmd/commsgw/... ./cmd/commsloop/... ./cmd/deskcomms/...)` | exit 0; existing and moved tests pass |
 | 4 | check | `(cd comms && GOWORK=off GOOS=windows go vet ./... && cd ../tools/desk && GOWORK=off GOOS=windows go vet ./cmd/deskcomms ./cmd/commsgw ./cmd/commsloop)` | exit 0; Windows compile/vet only, not a native-runtime witness |
-| 5 | check +flow | `cd tools/desk && GOWORK=off go test -count=1 -v ./internal/comms/... ./internal/commspolicy/... -run '^TestPolicyAdapterRefusesForbiddenMessage$' > ${TMPDIR:-/tmp}/comms-core-01-policy.log 2>&1 && grep -F -- '--- PASS: TestPolicyAdapterRefusesForbiddenMessage ' ${TMPDIR:-/tmp}/comms-core-01-policy.log` | exit 0; the test runs in the module that owns the Assay policy adapter: a structurally valid but policy-forbidden message is refused through the extracted contract, and the same test fails when the policy call is removed (mutation) |
+| 5 | check +flow | `cd tools/desk && GOWORK=off go test -count=1 -v ./internal/... -run '^TestPolicyAdapterRefusesForbiddenMessage$' > ${TMPDIR:-/tmp}/comms-core-01-policy.log 2>&1 && grep -F -- '--- PASS: TestPolicyAdapterRefusesForbiddenMessage ' ${TMPDIR:-/tmp}/comms-core-01-policy.log` | exit 0; the test runs in the module that owns the Assay policy adapter, in whichever `tools/desk/internal` package holds it: a structurally valid but policy-forbidden message is refused through the extracted contract, and the same test fails when the policy call is removed (mutation) |
 
 ## Pre-mortem
 

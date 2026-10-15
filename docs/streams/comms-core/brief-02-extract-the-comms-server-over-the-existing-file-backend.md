@@ -39,7 +39,7 @@ files:
 - `comms/backend/file (new)`
 - `tools/desk/internal/commsqueue`
 - `tools/desk/internal/commstransport`
-- `tools/desk/internal/commspolicy`
+- `tools/desk/internal/commspolicy` (only if comms-core/01 splits the Assay adapter out of `internal/comms`)
 - `tools/desk/cmd/commsgw`
 - `tools/desk/cmd/commsloop`
 - `comms/server/testdata (new legacy-state and host fixtures)`
