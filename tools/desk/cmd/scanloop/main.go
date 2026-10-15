@@ -8,18 +8,20 @@ import (
 )
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident. This tool
-	// ACTS on the roster — it applies the trust gate and writes through the sanctioned verbs — so
-	// ciEligible=false: the config-home file only, never the environment, in CI as well as locally.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// Echo the effective trust/authority configuration before doing anything. The roster, the scan
-	// scope and the write boundary live in settings rather than in a diff, so the RUN is the only
-	// place a change to them becomes visible — and a NARROWING has to be as visible as a widening.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("scanloop", nil, os.Args[1:], func([]string) int {
+		// The roster class is an EXPLICIT declaration, never the zero value by accident. This tool
+		// ACTS on the roster — it applies the trust gate and writes through the sanctioned verbs — so
+		// ciEligible=false: the config-home file only, never the environment, in CI as well as locally.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// Echo the effective trust/authority configuration before doing anything. The roster, the scan
+		// scope and the write boundary live in settings rather than in a diff, so the RUN is the only
+		// place a change to them becomes visible — and a NARROWING has to be as visible as a widening.
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

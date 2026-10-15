@@ -54,7 +54,9 @@ import (
 const defaultChecklist = "docs/repo-hardening-checklist.md"
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("repohardenguard", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:], os.Stdout, os.Stderr)
+	}))
 }
 
 func run(args []string, out, errW io.Writer) int {

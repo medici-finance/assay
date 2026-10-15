@@ -111,6 +111,8 @@ func buildEnvKeys() []envKey {
 		{key: "CELL_SCRATCH_MAX_BYTES", class: envMachine, group: envGroupCache, def: "268435456",
 			desc: "Total size past which managed task scratch is swept oldest first, in bytes (256 MiB)."},
 
+		{key: envAssayTelemetry, class: envMachine, group: envGroupHarness, def: "0",
+			desc: "Local desk-tool performance logging: exactly 1 opts in; any other value is off. No upload."},
 		{key: "CELL_HARNESS", class: envMachine, group: envGroupHarness, def: "claude",
 			desc: "Harness every role window boots on: " + strings.Join(harnessValues, ", ") + " (cursor needs a house cell)."},
 		{key: "CELL_COCKPIT", class: envMachine, group: envGroupHarness, def: "auto",
