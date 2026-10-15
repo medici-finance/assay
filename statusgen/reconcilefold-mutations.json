@@ -184,8 +184,8 @@
     {
       "name": "C7 backfill admits the passing-witness todo cell",
       "file": "reconcilebackfill.go",
-      "old": "witnessedTodo := passingWitnessNoMerge(out[i], in)",
-      "new": "witnessedTodo := false"
+      "old": "return c.Cell == \"todo\" && c.Source == \"pr\", passingWitnessNoMerge(c, in)",
+      "new": "return c.Cell == \"todo\" && c.Source == \"pr\", false"
     },
     {
       "name": "C7 backfill: no trailer PR of any kind (open excluded)",

@@ -15,18 +15,54 @@ import (
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
+// perBriefHandSaid is the per-brief walk handSaidBeforeGeneration performed
+// before the per-stream replay replaced it, kept verbatim as the test oracle so
+// the replay is compared against an independent implementation, not itself.
+func perBriefHandSaid(root, stream, num string) (state, sha string, found bool) {
+	rel := filepath.ToSlash(filepath.Join("docs", "streams", stream, "README.md"))
+	commits, err := streamReadmeCommits(root, rel)
+	if err != nil || len(commits) == 0 {
+		return "", "", false
+	}
+	for _, c := range commits {
+		content, ok := readmeAtCommit(root, c.SHA, rel)
+		if !ok {
+			continue
+		}
+		if strings.Contains(content, generatedTableMarker) {
+			break
+		}
+		_, briefs, ok := parseStreamSnapshot(content, stream)
+		if !ok {
+			continue
+		}
+		for _, b := range briefs {
+			if b.Num == num {
+				state, sha, found = b.Status, c.SHA, true
+			}
+		}
+	}
+	return state, sha, found
+}
+
 // TestHandSaidLookupMatchesPerBrief pins that the per-stream replay answers
-// exactly what the per-brief walk answers, and that a stream's history is read
-// once: after the first answer the .git directory is removed, and the lookup
-// still answers every brief of that stream from its replay.
+// exactly what the old per-brief walk answered (an independent oracle), and that
+// a stream's history is read once: after the first answer the .git directory is
+// removed, and the lookup still answers every brief of that stream from its
+// replay.
 func TestHandSaidLookupMatchesPerBrief(t *testing.T) {
 	dir := initHandSaidRepo(t)
 	lookup := newHandSaidLookup(dir)
 	for _, c := range []struct{ stream, num string }{{"demo", "01"}, {"demo", "99"}, {"no-such-stream", "01"}} {
-		ws, wsha, wfound := handSaidBeforeGeneration(dir, c.stream, c.num)
-		gs, gsha, gfound := lookup(c.stream, c.num)
-		if gs != ws || gsha != wsha || gfound != wfound {
-			t.Fatalf("%s/%s: lookup = (%q, %q, %v), per-brief walk = (%q, %q, %v)", c.stream, c.num, gs, gsha, gfound, ws, wsha, wfound)
+		ws, wsha, wfound := perBriefHandSaid(dir, c.stream, c.num)
+		for name, got := range map[string]func(string, string) (string, string, bool){
+			"lookup":                   lookup,
+			"handSaidBeforeGeneration": func(s, n string) (string, string, bool) { return handSaidBeforeGeneration(dir, s, n) },
+		} {
+			gs, gsha, gfound := got(c.stream, c.num)
+			if gs != ws || gsha != wsha || gfound != wfound {
+				t.Fatalf("%s/%s: %s = (%q, %q, %v), the per-brief walk = (%q, %q, %v)", c.stream, c.num, name, gs, gsha, gfound, ws, wsha, wfound)
+			}
 		}
 	}
 	want, _, _ := handSaidBeforeGeneration(dir, "demo", "01")
