@@ -190,7 +190,7 @@ func TestSecurityPassSubmittedAfterHeadCommitIsAccepted(t *testing.T) {
 // by the re-read the forge reports only an APPROVED re-anchored onto head B (submitted before
 // B existed). The re-read's correctness gate must refuse on it — the re-read exists to see
 // exactly what the forge reports at the moment of the mutation.
-func TestReanchoredApprovalOnTheReReadIsRefused(t *testing.T) {
+func TestReanchoredApprovalOnTheSecondReadIsRefused(t *testing.T) {
 	s := newStub()
 	s.headCommittedAt = reanchorHeadDate
 	s.install(t)
@@ -228,7 +228,7 @@ func TestReanchoredSecurityPassOnTheFirstReadIsRefused(t *testing.T) {
 
 // The mirror: a fresh security pass on the first read, and only a re-anchored one by the
 // pre-mutation re-read. The re-read's security lane must refuse.
-func TestReanchoredSecurityPassOnTheReReadIsRefused(t *testing.T) {
+func TestReanchoredSecurityPassOnTheSecondReadIsRefused(t *testing.T) {
 	s := newStub()
 	s.headCommittedAt = reanchorHeadDate
 	s.install(t)
