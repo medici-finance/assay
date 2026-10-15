@@ -1,0 +1,13 @@
+{
+  "note": "Assertion fixture: seed bytes 0..31 -> ed25519 key; minted for cell-a/worker-desk msg-0001 nonce-0001 at 2026-01-02T03:04:05Z, ttl 2m. Generated once from the pre-extraction implementation; the canonical bytes and signature are pinned so an extraction cannot drift the wire.",
+  "cell": "cell-a",
+  "role": "worker-desk",
+  "msgId": "msg-0001",
+  "nonce": "nonce-0001",
+  "issuedUnix": 1767323045,
+  "expiresUnix": 1767323165,
+  "canonicalHex": "636f6d6d732f617373657274696f6e2f63656c6c6d73672d76310a000000000000000663656c6c2d61000000000000000b776f726b65722d6465736b00000000000000086d73672d30303031000000000000000a6e6f6e63652d3030303100000000695735a5000000006957361d",
+  "sigHex": "23e19ffa7fb81e3e4aa6b4e28c01335dcf773d54f5bb996f254ce21473196bef536266d7317d7c306c6ab7ea77ddcad80c5f06159cd4074d91ed80b617ef6b0e",
+  "publicKeyHex": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+  "seedFirstByte": 0
+}

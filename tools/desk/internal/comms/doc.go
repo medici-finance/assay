@@ -24,6 +24,15 @@
 //     action is refused at LOAD; cross-cell reach is the-desk to the-desk only and
 //     its verb allow-set ships EMPTY, a named open decision.
 //
+// EXTRACTED CONTRACT. The envelope structure, size caps, parse order and the
+// assertion mint/verify mechanism now live in the public module
+// github.com/medici-finance/assay/comms/contract (stdlib only; comms-core/01).
+// This package is the Assay POLICY ADAPTER over it: the verb and class
+// vocabulary, the compiled lane ACL, the reserved-verb refusal and the Admit /
+// ACL.AllowEnvelope entry that applies the ACL to a parsed message. Names such
+// as Envelope, Mint and the Err* sentinels are thin aliases of the contract's so
+// every existing consumer compiles unchanged; there is one implementation.
+//
 // DESIGN IS FIXED BY THE SPEC, NOT REDESIGNED HERE. The envelope fields, the
 // two-layer identity model (gateway mTLS is the transport layer; this package
 // owns the envelope-level identity) and the reach rules are settled by the
