@@ -300,7 +300,7 @@ if want origin-degraded; then
   OUT=$(cd "$repodir" && env PR_MONITOR_STATE_DIR="$TMPROOT/od-st-a" PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
   ERR=$(cat "$w/stderr")
   check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "an unparseable origin exits 1" "got $RC"
-  check "$(printf '%s\n' "$OUT" | grep -q '^MONITOR-DEGRADED: invalid repo' && echo 0 || echo 1)" \
+  check "$(grep -q '^MONITOR-DEGRADED: invalid repo' <<<"$OUT" && echo 0 || echo 1)" \
     "stdout carries a MONITOR-DEGRADED line (what the watch filter matches)" "stdout: ${OUT:-<empty>}"
   check "$([[ "$OUT" == "MONITOR-DEGRADED: invalid repo 'https://example.com:8443/o/r' (expected owner/name)" ]] && echo 0 || echo 1)" \
   "credential-stripped display is exact on both Bash versions" "stdout: $OUT"
@@ -311,7 +311,7 @@ if want origin-degraded; then
   repodir="$TMPROOT/od-repo-b"; mkdir -p "$repodir"; git -C "$repodir" init -q 2>/dev/null
   OUT=$(cd "$repodir" && env PR_MONITOR_STATE_DIR="$TMPROOT/od-st-b" PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
   check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "no resolvable repos exits 1" "got $RC"
-  check "$(printf '%s\n' "$OUT" | grep -q '^MONITOR-DEGRADED: no repos to query' && echo 0 || echo 1)" \
+  check "$(grep -q '^MONITOR-DEGRADED: no repos to query' <<<"$OUT" && echo 0 || echo 1)" \
     "stdout carries MONITOR-DEGRADED: no repos to query" "stdout: ${OUT:-<empty>}"
   # (c) an explicit invalid arg takes the same path.
   run "$w" "$TMPROOT/od-st-c" -- 'not a repo'
