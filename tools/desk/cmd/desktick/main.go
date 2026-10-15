@@ -13,6 +13,8 @@
 // surface, so it declares no tool class and echoes no config.
 package main
 
+import "github.com/medici-finance/assay/tools/desk/internal/deskkit"
+
 import (
 	"fmt"
 	"io"
@@ -43,7 +45,9 @@ exit codes: 0 satisfies · 1 does not (reason on stderr) · 2 usage error
 `
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("desktick", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	}))
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {

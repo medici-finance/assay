@@ -14,7 +14,7 @@ outcome: none
 version: 1
 id: "0e25d867-24b0-44e2-a8a4-395b17fcd501"
 authored: "2026-10-13 by architecture authoring session"
-sources: ["docs/streams/ci-tooling/spec.md", "docs/proposals/non-ci-architecture/24-ci-tooling.md", "docs/streams/desktools-v2/brief-49-migrate-the-harness-and-version-guard-clis-to-cobra-and-viper.md (migrates tools/harnesslint in place; lands first)", ".github/workflows/ci.yml (live suite selection by module path and the real-tree harnesslint job)"]
+sources: ["docs/streams/ci-tooling/spec.md", "docs/proposals/non-ci-architecture/25-ci-tooling.md", "docs/streams/desktools-v2/brief-49-migrate-the-harness-and-version-guard-clis-to-cobra-and-viper.md (migrates tools/harnesslint in place; lands first)", ".github/workflows/ci.yml (live suite selection by module path and the real-tree harnesslint job)"]
 exec-tier: "strong"
 exec-tier-why: "Shared contracts, release paths and independent consumers require cross-component reasoning."
 domain: "complicated"

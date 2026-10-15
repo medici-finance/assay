@@ -85,6 +85,7 @@ func cardLines(c cardData) []string {
 		lines = append(lines, "<li><b>"+htmlEsc(o.Letter)+".</b> "+htmlEsc(o.Text)+rec+"</li>")
 	}
 	lines = append(lines, "</ul>", "<h3>Reply shape</h3>", "<p>"+htmlEsc(c.Rendered.Reply)+"</p>",
+		"<p class=\"cmd\">command: <code>"+htmlEsc(commandOrFill(c.Rendered.Command))+"</code></p>",
 		"<h3>Verification</h3>", "<p>"+htmlEsc(c.Rendered.Verification)+"</p>", "</article>")
 	return lines
 }

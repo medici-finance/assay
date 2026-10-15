@@ -1,0 +1,19 @@
+{
+  "description": "The handoff omits the node's mandatory evidence claim. It is refused rather than accepted with the gap hidden.",
+  "instance": "../valid.yaml",
+  "node": "inst-example-07-a.implement",
+  "projection": {},
+  "acceptance": {},
+  "result": {
+    "scope": [
+      "2"
+    ],
+    "evidence": [],
+    "artifacts": [],
+    "next-safe-action": "open the draft pull request"
+  },
+  "expect": {
+    "accepted": false,
+    "error": "mandatory evidence"
+  }
+}

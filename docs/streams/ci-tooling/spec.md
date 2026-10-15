@@ -10,7 +10,7 @@ Separate desk clients, independently operated services and CI programs by consum
 lifecycle. Give repeated mechanisms one implementation without making CI depend on the
 cell service. Move reusable implementations from adopter repositories into public Assay;
 keep private policy, identifiers, fixtures and private-only implementations in the adopter.
-The [architecture extension](../../proposals/non-ci-architecture/24-ci-tooling.md) connects
+The [architecture extension](../../proposals/non-ci-architecture/25-ci-tooling.md) connects
 this work to the product domains. This specification owns the CI migration contract.
 
 This is authoring, not activation: the stream is parked pending revision-bound approval.
@@ -53,7 +53,8 @@ restricts offline libraries and online authority separately. This work neither r
 |---|---|---|
 | `desk/cmd/` | Role-facing commands and clients | Move callers after their internal dependencies have an appropriate owner; retain role checks. |
 | `operator/cmd/` | Installation, cell lifecycle, recovery | Keep operator capability separate from desk clients. |
-| `services/<service>/` | Processes with independent lifecycle/custody, including communications | Gateway/consumer/runtime packages move as a tested unit; folders do not pool credentials or create new daemons. |
+| `services/<service>/` | Hosts: processes with independent lifecycle/custody | Gateway/consumer/runtime packages move as a tested unit; folders do not pool credentials or create new daemons. A host stays in its present module (`commsgw` stays under `tools/desk/cmd`) until its owning brief moves it. |
+| `comms/` | The communications library: standalone module `github.com/medici-finance/assay/comms` (contract, server, file backend, client, config) | Placement is owned by comms-core (stream `comms-core`, briefs 01-04; [target](../../proposals/non-ci-architecture/24-communications.md)). Classified here, never moved or renamed by this stream; `services/` takes hosts, not this library. |
 | `ci/cmd/<tool>/` | Thin standalone check commands | Preserve supported names/flags/results through the measured transition. |
 | `ci/checks/<check>/` | Reusable check-specific logic | Explicit inputs; no ambient forge credentials or hidden provider reads. |
 | `ci/report/`, `ci/invocation/` | CI presentation and command binding | Import shared result types; do not redefine acceptance. |

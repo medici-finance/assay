@@ -14,7 +14,7 @@ outcome: none
 version: 1
 id: "8e16d89e-fe8c-4176-9c9d-f79e139dcc0f"
 authored: "2026-10-13 by architecture authoring session"
-sources: ["docs/streams/ci-tooling/spec.md", "docs/proposals/non-ci-architecture/24-ci-tooling.md"]
+sources: ["docs/streams/ci-tooling/spec.md", "docs/proposals/non-ci-architecture/25-ci-tooling.md"]
 exec-tier: "strong"
 exec-tier-why: "Shared contracts, release paths and independent consumers require cross-component reasoning."
 domain: "complicated"

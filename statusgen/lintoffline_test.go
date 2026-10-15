@@ -17,7 +17,7 @@ import (
 // make no network call (docs/statusgen-lint-reach.md). Removing `gh` from PATH does NOT prove
 // that: a call site that looks `gh` up, fails, and degrades to a could-not-check passes such a
 // test while still being a forge read in every environment that has `gh` — which is exactly
-// how dead-claim decay's `gh pr list`, and the `git ls-remote --heads origin` claim read in
+// how dead-claim decay's `gh api graphql` branch read, and the `git ls-remote --heads origin` claim read in
 // front of it, ran on every plain --lint while the old version of this test stayed green (it
 // asserted the failed lookup's NOTICE as its proof). Here every forge or network tool on PATH
 // is PRESENT — a logging shim that records its argv and then fails — so a process that starts
@@ -156,7 +156,7 @@ func gitSubcommand(args []string) (sub, next string) {
 // lintReachFixture is testdata/goodrepo as a real git repo whose origin is a local bare repo
 // carrying one claim-shaped branch — so the claim read returns a non-empty list and dead-claim
 // decay is genuinely reached whenever claims are read at all. Without the branch, decay
-// short-circuits on an empty list and its `gh pr list` would never be attempted.
+// short-circuits on an empty list and its `gh api graphql` branch read would never be attempted.
 func lintReachFixture(t *testing.T) string {
 	t.Helper()
 	bareDir := t.TempDir()
@@ -196,7 +196,7 @@ func TestLintOfflineMakesNoNetworkCall(t *testing.T) {
 		t.Cleanup(func() { forgeReadsOptedIn = false })
 		_ = captureStderr(t, func() { networkedCode = run(root, "lint", nil, nil, "") })
 		joined := strings.Join(g.violations(t), "\n")
-		for _, want := range []string{"ls-remote", "gh pr list"} {
+		for _, want := range []string{"ls-remote", "gh api graphql"} {
 			if !strings.Contains(joined, want) {
 				t.Errorf("guard did not record %q with forge reads opted in — it cannot see what this "+
 					"row says is absent; recorded:\n%s", want, joined)

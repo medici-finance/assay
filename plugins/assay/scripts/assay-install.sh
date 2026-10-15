@@ -93,7 +93,7 @@ asset_name() {
   esac
 }
 
-is_sha256() { printf '%s' "$1" | grep -Eq '^[0-9a-f]{64}$'; }
+is_sha256() { grep -Eq '^[0-9a-f]{64}$' <<<"$1"; }
 is_placeholder() { case "$1" in REPLACE_WITH*|"") return 0 ;; esac; return 1; }
 
 # pin_fields <pins-file> <asset> — prints "<tag> <sha256>" for the ONE pin line keyed on
@@ -116,7 +116,7 @@ pin_fields() {
   if is_placeholder "$tag" || [ "$tag" = latest ]; then
     refuse "the pin line for $asset carries tag '$tag' — a placeholder or floating tag is not a pin"
   fi
-  printf '%s' "$tag" | grep -Eq '^[A-Za-z0-9._/+-]+$' || refuse "the pin line for $asset carries an unusable tag '$tag'"
+  grep -Eq '^[A-Za-z0-9._/+-]+$' <<<"$tag" || refuse "the pin line for $asset carries an unusable tag '$tag'"
   case "$tag" in *..*) refuse "the pin line for $asset carries an unusable tag '$tag'" ;; esac
   is_sha256 "$sha" || refuse "the pin line for $asset carries '$sha', not a 64-lowercase-hex sha256 — the expected digest could not be read"
   printf '%s %s' "$tag" "$sha"
@@ -178,7 +178,7 @@ cmd_acquire() {
   [ -n "$pins" ] || usage_err "acquire --pins <.assay-versions> --dest <bindir> [--kind statusgen|desk-tools]"
   [ -n "$dest" ] || usage_err "acquire needs --dest <bindir>"
   [ -n "$plat" ] || plat=$(detect_platform)
-  printf '%s' "$home" | grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$' || usage_err "--release-home must be <owner>/<repo> (got '$home')"
+  grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$' <<<"$home" || usage_err "--release-home must be <owner>/<repo> (got '$home')"
 
   local asset fields tag want url tmp got
   asset=$(asset_name "$kind" "$plat") || exit $?

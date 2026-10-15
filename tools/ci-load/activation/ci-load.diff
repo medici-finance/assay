@@ -69,7 +69,7 @@
 +  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 +
  env:
-   GO_VERSION: "1.25.0"
+   GO_VERSION: "1.27.2"
  
 --- a/.github/workflows/plugin-drift.yml
 +++ b/.github/workflows/plugin-drift.yml

@@ -55,7 +55,9 @@ const EnvCell = "ASSAY_COMMS_CELL"
 const idlePollCadence = time.Minute
 
 func main() {
-	os.Exit(dispatch(os.Args[1:], os.Getenv, os.Stdout))
+	os.Exit(deskkit.PerfRun("commsloop", nil, os.Args[1:], func([]string) int {
+		return dispatch(os.Args[1:], os.Getenv, os.Stdout)
+	}))
 }
 
 // dispatch is main's testable body ahead of the drain-loop/sweep split: with

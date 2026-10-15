@@ -14,7 +14,7 @@ outcome: none
 version: 1
 id: "6f494350-ed0e-476d-b2b6-51323861d154"
 authored: "2026-10-13 by architecture authoring session"
-sources: ["docs/streams/ci-tooling/spec.md", "docs/proposals/non-ci-architecture/24-ci-tooling.md", "docs/streams/decisions/DR-workflow-app-landing.md (proposed; owns the workflow landing mechanism)", "docs/streams/desk-supervision/brief-12-retire-staged-copy-landing.md (blocked; retires both staging areas)"]
+sources: ["docs/streams/ci-tooling/spec.md", "docs/proposals/non-ci-architecture/25-ci-tooling.md", "docs/streams/decisions/DR-workflow-app-landing.md (proposed; owns the workflow landing mechanism)", "docs/streams/desk-supervision/brief-12-retire-staged-copy-landing.md (blocked; retires both staging areas)"]
 exec-tier: "strong"
 exec-tier-why: "Shared contracts, release paths and independent consumers require cross-component reasoning."
 domain: "complicated"

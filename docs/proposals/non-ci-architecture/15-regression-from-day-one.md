@@ -61,7 +61,7 @@ CLI parser or path-layout tests can retire with an explicitly retired command. T
 | A graph query crosses target versions or inaccessible cells | No mixed-version answer or hidden-data leakage through paths, counts or explanations. |
 | Local Docker state moves to CNPG | Compatible schema/extension set, validated recovery point, paused handover and no admission before reconciliation. |
 
-These are additional tests to author with implementation. They are not claimed to run in this documentation task, and runtime regression plumbing remains in this lane. The separately scoped [CI extension](24-ci-tooling.md) owns CI library/action qualification and tool migration; it preserves this regression floor.
+These are additional tests to author with implementation. They are not claimed to run in this documentation task, and runtime regression plumbing remains in this lane. The separately scoped [CI extension](25-ci-tooling.md) owns CI library/action qualification and tool migration; it preserves this regression floor.
 
 ## Continuous-work and resource qualification
 
@@ -154,3 +154,14 @@ membership, time, policy and permission changes. Burst/outage tests assert the c
 upstream request budget, while shared-Git experiments report native-Git/go-git latency, CPU,
 bytes, retention and alternate-store recovery. No fixture result certifies live provider
 permissions, a deployed identity provider or CNPG failover.
+
+## Communications regression extension (proposed; pending approval)
+
+Proposal against the ratified revision `23f655f5d`; not baseline text until approved and reconciled in the amendment manifest.
+
+Preserve the commsgw bypass/identity/mailbox suites, commsloop policy/native-dispatch
+suites, deskcomms command/peer-custody suites and cellctl comms manifest/lifecycle
+suites through the [communications extraction](24-communications.md). The initial
+proof is behavior parity plus a real external SDK consumer, not distributed delivery.
+The specification's acceptance cases govern later two-cell outages, filter crashes,
+retries, quota/expiry, authority bypass, SQL-outbox handoff and state migration.
