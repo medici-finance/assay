@@ -25,7 +25,7 @@ func defaultsRoot(t *testing.T) string {
 	for _, k := range []string{
 		"CELL", "CELL_KIND", "CELL_KIND_OVERRIDE_INTERNAL", "CELL_HARNESS", "ROLES", "DESKD", "DRY_RUN",
 		"CELL_REPO", "CELL_REPO_SLUG", "CELL_ROOTS", "TMUX_SESSION", "DESK_MODEL_DEFAULT",
-		"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE", "CELL_GO_CACHE_BUILD_MAX_AGE",
+		"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE", "CELL_GO_CACHE_BUILD_MAX_AGE", "CELL_GO_TRIMPATH",
 		"CELL_PATH", "CELL_PROVIDER", "CELL_PROVIDER_DEFAULTS", "CELL_PROVIDER_OVERRIDES",
 		"CELL_MODEL_POLICY", "CELL_ROLE_CONTEXT", "CELLCTL_TEST_PROBE",
 	} {
@@ -747,6 +747,8 @@ func TestBinaryCellDefaultsDoNotReachAContainerLauncher(t *testing.T) {
 	}
 	fixed := map[string]bool{"HOME": true, "PATH": true, "TERM": true, "CELL": true, "CELL_KIND": true, "CELL_DIR": true,
 		"CELL_REPO": true, "CELL_ROOTS": true, "CELL_HARNESS": true, "ROLES": true,
+		// The sole additional non-secret switch is normalized, never raw defaults.
+		envAssayTelemetry: true,
 		// what a POSIX shell adds to its own environment
 		"PWD": true, "OLDPWD": true, "SHLVL": true, "_": true}
 	handed := map[string]string{}
@@ -769,6 +771,10 @@ func TestBinaryCellDefaultsDoNotReachAContainerLauncher(t *testing.T) {
 	if want := strings.TrimPrefix(f.hermeticPath(), "PATH="); handed["PATH"] != want {
 		t.Errorf("the launcher was handed PATH=%q, want the launching process's %q", handed["PATH"], want)
 	}
+	if handed[envAssayTelemetry] != "0" {
+		t.Fatalf("unconfigured launcher opt-in = %q", handed[envAssayTelemetry])
+	}
+
 }
 
 // TestShowNamesTheDefaultsFileAsASource: `show` says where each effective choice came from, and

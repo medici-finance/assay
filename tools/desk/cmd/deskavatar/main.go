@@ -8,6 +8,8 @@
 // (a Go release can change a PNG's deflate stream, never its pixels — #1952).
 package main
 
+import "github.com/medici-finance/assay/tools/desk/internal/deskkit"
+
 import (
 	"errors"
 	"flag"
@@ -23,7 +25,9 @@ import (
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stderr))
+	os.Exit(deskkit.PerfRun("deskavatar", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:], os.Stderr)
+	}))
 }
 
 func run(args []string, stderr io.Writer) int {

@@ -51,9 +51,9 @@ func (s scopedAccess) GetPage(ctx context.Context, repo, rel string, q url.Value
 }
 
 // sharedIssueSkip is the composition's listing policy, injected into the adapters: the desk's own
-// verifier-attestation issues are not open work and never listed.
+// pre-work attestation records (verifier and worker) are not open work and never listed.
 func sharedIssueSkip(title, authorLogin string) bool {
-	return IsVerifierAttestation(title, authorLogin)
+	return IsAttestationRecord(title, authorLogin)
 }
 
 // issueFromShared converts the shared issue type to the interface's IssueSummary.

@@ -38,7 +38,7 @@
 # Pinned Go toolchain. `GOTOOLCHAIN=local` forbids an on-the-fly toolchain
 # download, so the build is deterministic on THIS Go version (bump the base
 # tag if a tool's go.mod ever requires a newer toolchain).
-FROM golang:1.26-bookworm AS build
+FROM golang:1.27.2-bookworm AS build
 
 ENV GOTOOLCHAIN=local \
     CGO_ENABLED=0 \

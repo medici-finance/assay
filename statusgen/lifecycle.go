@@ -51,6 +51,12 @@ type PRRecord struct {
 	HeadSHA  string
 	MergeSHA string
 	Reopened bool
+	// Partial is set when the brief's own `delivery:` frontmatter declares this
+	// MERGED PR a partial delivery (`covers: partial`, and no `full` entry for the
+	// same PR). It is never read from the forge: admitPRWitnesses sets it from the
+	// tree (briefdelivery.go). A declared-partial merge is not a witness that the
+	// brief is implemented, so classifyPRs counts it as work in progress (#2703).
+	Partial bool
 }
 
 // WitnessInfo is the `verifyrun --check` result for a brief — the `verified`
@@ -172,8 +178,10 @@ func deriveOne(b BriefIdent, prs []PRRecord, in LifecycleInput) BriefCell {
 	// 1. PR-derived base. When the instrument could NOT look (offline, API error,
 	// rate-limit), the PR-derived cell is `unknown` with the reason — never a
 	// silent todo (the three-state invariant applied to the board). When it DID
-	// look: `implemented` at the LATEST merge; else `in-progress` for any open PR;
-	// else `todo` — and the todo carries the evidence the search ran. The
+	// look: `implemented` at the LATEST merge; else `in-progress` for any open PR
+	// or declared-partial merge (#2703: a merge the brief itself says delivered
+	// only part of it is never the implementation); else `todo` — and the todo
+	// carries the evidence the search ran. The
 	// witnesses (verified/done) overlay only a merge on record (step 3): a verify
 	// witness attests an implementation, so with no merged PR read there is
 	// nothing for it to promote.
@@ -188,12 +196,8 @@ func deriveOne(b BriefIdent, prs []PRRecord, in LifecycleInput) BriefCell {
 			c.Witness = fmt.Sprintf("PR #%d (merged %s)", latestMerged.Number, shortSHA(latestMerged.MergeSHA))
 			c.MergedPR = c.Witness
 		case open != nil:
-			state := "ready"
-			if open.Draft {
-				state = "draft"
-			}
 			c.Cell = "in-progress"
-			c.Witness = fmt.Sprintf("PR #%d (%s %s)", open.Number, state, shortSHA(open.HeadSHA))
+			c.Witness = inProgressWitness(open)
 		default:
 			c.Cell = "todo"
 			c.Reason = "PR search ran; no open or merged PR carries this brief's trailer"
@@ -319,11 +323,26 @@ func deriveBlocked(b BriefIdent, c BriefCell, in LifecycleInput) BriefCell {
 	return c
 }
 
+// inProgressWitness names the PR an `in-progress` cell rests on: an open PR by
+// its draft/ready state and head, a declared-partial merge by its merge.
+func inProgressWitness(pr *PRRecord) string {
+	if pr.State == prMerged && pr.Partial && !pr.Reopened {
+		return fmt.Sprintf("PR #%d (merged %s, a declared partial delivery)", pr.Number, shortSHA(pr.MergeSHA))
+	}
+	state := "ready"
+	if pr.Draft {
+		state = "draft"
+	}
+	return fmt.Sprintf("PR #%d (%s %s)", pr.Number, state, shortSHA(pr.HeadSHA))
+}
+
 // classifyPRs returns the latest non-reverted merged PR and the first open PR
 // among a brief's PRs. A merged-then-reopened (reverted) PR is NOT counted as a
-// merge — it is treated as open work, the reverted-merge demotion. "Latest" merge
-// is the highest PR number, a stable proxy for merge order across a deterministic
-// fixture set.
+// merge — it is treated as open work, the reverted-merge demotion. A merge the
+// brief declares a PARTIAL delivery (PRRecord.Partial) is not counted as a merge
+// either: part of the brief landed, the rest is still owed, so it is work in
+// progress (#2703). "Latest" merge is the highest PR number, a stable proxy for
+// merge order across a deterministic fixture set.
 func classifyPRs(prs []PRRecord) (latestMerged, open *PRRecord) {
 	sorted := make([]PRRecord, len(prs))
 	copy(sorted, prs)
@@ -332,7 +351,7 @@ func classifyPRs(prs []PRRecord) (latestMerged, open *PRRecord) {
 		pr := &sorted[i]
 		switch pr.State {
 		case prMerged:
-			if pr.Reopened {
+			if pr.Reopened || pr.Partial {
 				if open == nil {
 					open = pr
 				}

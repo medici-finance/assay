@@ -74,13 +74,13 @@ cnc()       { printf 'FAIL could-not-check: %s\n' "$1" >&2; exit 2; }
 # Each prints the version a file carries, or nothing when the token is absent.
 
 # `"version": "X.Y.Z"` — first occurrence (plugin.json and the Codex manifest carry exactly one).
-json_version() { sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" | head -1; }
+json_version() { sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" | sed -n 1p; }
 
 # `plugin: "X.Y.Z"` — the top-level pairing key, quotes optional.
-paired_version() { sed -n 's/^plugin:[[:space:]]*"\{0,1\}\([^"[:space:]]*\)"\{0,1\}[[:space:]]*$/\1/p' "$1" | head -1; }
+paired_version() { sed -n 's/^plugin:[[:space:]]*"\{0,1\}\([^"[:space:]]*\)"\{0,1\}[[:space:]]*$/\1/p' "$1" | sed -n 1p; }
 
 # `(assay plugin vX.Y.Z)` — the Header line the generators resolve {{VERSION}} into.
-header_version() { sed -n 's/.*(assay plugin v\([^)]*\)).*/\1/p' "$1" | head -1; }
+header_version() { sed -n 's/.*(assay plugin v\([^)]*\)).*/\1/p' "$1" | sed -n 1p; }
 
 # The `assay` entry's version inside the marketplace catalog's `plugins` array. The entry is
 # located by its `"name": "assay"` line after `"plugins"`; the first `"version"` line that
@@ -253,7 +253,7 @@ cmd_gate() {
     if ! prev_manifest=$(git -C "$ROOT" show "${prev}:${MANIFEST}" 2>/dev/null); then
       cnc "cannot read ${MANIFEST} at ${prev} (is the ref fetched?)"
     fi
-    prev_have=$(printf '%s\n' "$prev_manifest" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+    prev_have=$(printf '%s\n' "$prev_manifest" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | sed -n 1p)
     [[ -n "$prev_have" ]] || cnc "${MANIFEST} at ${prev} has no \`version\` field"
 
     # Did plugins/assay/ change between the previous tag and the tree being tagged?

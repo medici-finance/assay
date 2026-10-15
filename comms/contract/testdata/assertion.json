@@ -1,0 +1,57 @@
+{
+  "note": "Assertion fixture: seed bytes 0..31 -> ed25519 key; minted for cell-a/worker-desk msg-0001 nonce-0001 at 2026-01-02T03:04:05Z, ttl 2m. Generated once from the pre-extraction implementation; the canonical bytes are pinned. Ed25519 is deterministic, so the signature is re-minted over these bytes in the test and verified through VerifyEnvelope; fixture envelopes carry a placeholder signature so an extraction cannot drift the wire. canonicalSegments are the length-prefixed canonical bytes in order: domain-separation prefix (given as text), then per field an 8-byte big-endian length and the field, then issued and expires as 8-byte big-endian Unix seconds.",
+  "cell": "cell-a",
+  "role": "worker-desk",
+  "msgId": "msg-0001",
+  "nonce": "nonce-0001",
+  "issuedUnix": 1767323045,
+  "expiresUnix": 1767323165,
+  "publicKeyHex": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+  "seedFirstByte": 0,
+  "canonicalSegments": [
+    {
+      "name": "domain",
+      "text": "comms/assertion/cellmsg-v1\n"
+    },
+    {
+      "name": "cellLen",
+      "hex": "0000000000000006"
+    },
+    {
+      "name": "cell",
+      "hex": "63656c6c2d61"
+    },
+    {
+      "name": "roleLen",
+      "hex": "000000000000000b"
+    },
+    {
+      "name": "role",
+      "hex": "776f726b65722d6465736b"
+    },
+    {
+      "name": "msgIdLen",
+      "hex": "0000000000000008"
+    },
+    {
+      "name": "msgId",
+      "hex": "6d73672d30303031"
+    },
+    {
+      "name": "nonceLen",
+      "hex": "000000000000000a"
+    },
+    {
+      "name": "nonce",
+      "hex": "6e6f6e63652d30303031"
+    },
+    {
+      "name": "issued",
+      "hex": "00000000695735a5"
+    },
+    {
+      "name": "expires",
+      "hex": "000000006957361d"
+    }
+  ]
+}

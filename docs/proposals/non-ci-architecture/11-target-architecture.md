@@ -303,3 +303,32 @@ This design makes a cell service central to **online operation**, while keeping 
 Preserve separate role authority, operator-only credential custody, pure library reuse and retirement after consumers move. A shared online coordination/API service and any unified operator CLI need precise amendments to existing command/process contracts; permission for command breaks does not approve pooling credentials. The [public library-first contract](https://github.com/medici-finance/assay/blob/f9327a5954d57e786464e244a8e9c06f695d980d/docs/library-first.md) keeps online statusgen reads behind `deskread`; replacing that particular command seam needs an explicit contract amendment before activation.
 
 Do not retain every old constraint by inertia, or erase it by implication. The [migration proposal](13-migration-and-decisions.md) names the decisions and affected plans to reconcile. The [future-state model](12-future-state-model.md) makes subsequent amendments discoverable and revision-bound.
+
+## Communications future-state amendment (proposed 13 October 2026; pending approval)
+
+This section is a proposal against the ratified revision `23f655f5d`, not baseline text. It is pending approval and is not yet carried by the amendment manifest.
+
+The [communications specification](24-communications.md) gives messaging an explicit
+reusable client/server boundary. `commsgw` is the standalone service host; `deskd` can
+compose the same service under a qualified custody profile; `deskcomms` is a client
+adapter. Existing cellctl comms operations own operator configuration. A non-Go host
+uses the versioned wire boundary rather than duplicating the service.
+
+An established broker eventually owns message persistence and delivery. PostgreSQL
+retains attempts, leases and business-effect intents; a transactional outbox bridges
+SQL state to transport without an assumed distributed transaction. Broker transport
+state has its own retention/recovery obligations. Assay owns verbs, policy, filtering
+and business receipts. The initial packages retain the current file backend and trust
+profile; broker selection and stronger client identity are separate qualified changes.
+
+This amends the catch-all communications disposition above, not the authority of other
+domains. The four comms-core extraction briefs are real prerequisites for their named
+consumers; they do not block every R1–R8 package or unrelated supported-path fixes.
+
+## Tool families and CI
+
+The [CI extension](25-ci-tooling.md) separates desk and operator clients, services,
+and CI entry points while retaining these domain owners. CI produces attributed
+check observations through shared libraries; acceptance stays with the existing
+evaluator. Its independent delivery lane is specified in
+[ci-tooling](../../streams/ci-tooling/spec.md).
