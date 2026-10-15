@@ -203,7 +203,7 @@
       "name": "an unreadable max-ttl is read as no ceiling",
       "file": "runtimeresource.go",
       "old": "if !ok {\n\t\t\t\treturn nil, fmt.Errorf(\"adapter %q: max-ttl",
-      "new": "if false {\n\t\t\t\treturn nil, fmt.Errorf(\"adapter %q: max-ttl"
+      "new": "if false && !ok {\n\t\t\t\treturn nil, fmt.Errorf(\"adapter %q: max-ttl"
     },
     {
       "name": "a record's schema marker is not checked",
@@ -396,6 +396,36 @@
       "file": "runtimeresource.go",
       "old": "claimPrincipals, ownedBefore = map[string]bool{}, false",
       "new": "claimPrincipals = map[string]bool{}"
+    },
+    {
+      "name": "an inspect gap (absent, then present) begins a new lifetime",
+      "file": "runtimeresource.go",
+      "old": "if !dv.present && (!dv.everPresent || recreates || dv.released) {",
+      "new": "if !dv.present {"
+    },
+    {
+      "name": "a create or restore after an absence does not begin a new lifetime",
+      "file": "runtimeresource.go",
+      "old": "(!dv.everPresent || recreates || dv.released)",
+      "new": "(!dv.everPresent || dv.released)"
+    },
+    {
+      "name": "a restore after an absence does not begin a new lifetime",
+      "file": "runtimeresource.go",
+      "old": "observe(e.ObservedState, e.ObservedAt.At, e.Verb == \"restore\")",
+      "new": "observe(e.ObservedState, e.ObservedAt.At, false)"
+    },
+    {
+      "name": "a present after a reconciled release does not begin a new lifetime",
+      "file": "runtimeresource.go",
+      "old": "(!dv.everPresent || recreates || dv.released)",
+      "new": "(!dv.everPresent || recreates)"
+    },
+    {
+      "name": "receipts dated out of list order are accepted",
+      "file": "runtimeresource.go",
+      "old": "if e.ObservedAt.OK && prevObs.ObservedAt.OK && e.ObservedAt.At.Before(prevObs.ObservedAt.At) {",
+      "new": "if false && prevObs.ObservedAt.OK {"
     }
   ]
 }

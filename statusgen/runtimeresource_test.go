@@ -152,6 +152,20 @@ func TestRuntimeResourceContractRules(t *testing.T) {
 	ownershipBlock := "ownership:\n  principal: human:reviewer-a\n  claimed-at: \"2026-01-01T00:30:00Z\"\n  retain-until: \"2026-01-08T00:00:00Z\"\n"
 	releaseByOwner := "requested-at: \"2026-01-01T01:30:00Z\"\n    outcome: succeeded\n    principal: human:reviewer-a\n"
 	inspectAbsent := "  - id: eff-0009\n    verb: inspect\n    idempotency-key: run-0003/inspect-9\n    requested-at: \"2026-01-01T01:00:00Z\"\n    outcome: succeeded\n    principal: agent:worker-2\n    receipt:\n      adapter-ref: mock://snapshot/rr-claimed-01\n      observed-at: \"2026-01-01T01:00:01Z\"\n      observed-state: absent\n"
+	// rrGap is an inspect that finds the resource absent and a later one that
+	// finds it present, with no create, restore or reconciled release between.
+	rrGap := func(by, ref, absentAt, presentAt string) string {
+		one := func(id, at, seen string) string {
+			return "  - id: " + id + "\n    verb: inspect\n    idempotency-key: gap/" + id + "\n    requested-at: \"2026-01-01T" + at + ":00Z\"\n    outcome: succeeded\n    principal: " + by + "\n    receipt:\n      adapter-ref: " + ref + "\n      observed-at: \"2026-01-01T" + at + ":01Z\"\n      observed-state: " + seen + "\n"
+		}
+		return one("eff-0011", absentAt, "absent") + one("eff-0012", presentAt, "present")
+	}
+	claimedGap := strings.Replace(claimed, "  - id: eff-0003\n", rrGap("agent:worker-2", "mock://snapshot/rr-claimed-01", "00:40", "00:45")+"  - id: eff-0003\n", 1)
+	validGap := valid + rrGap("agent:worker-1", "mock://branch/rr-valid-01", "01:10", "01:15")
+	// lateInspect is listed before the release (requested 01:29) but its receipt
+	// is dated 01:40, after the reconcile that observed the resource gone.
+	lateInspect := "  - id: eff-0009\n    verb: inspect\n    idempotency-key: run-0003/inspect-late\n    requested-at: \"2026-01-01T01:29:00Z\"\n    outcome: succeeded\n    principal: human:reviewer-a\n    receipt:\n      adapter-ref: mock://snapshot/rr-claimed-01\n      observed-at: \"2026-01-01T01:40:01Z\"\n      observed-state: present\n"
+	recreatedByInspect := strings.Replace(recreated, "verb: create\n    idempotency-key: run-0003/create-again", "verb: inspect\n    idempotency-key: run-0003/create-again", 1)
 	issuedWhilePending := "  - id: eff-0003\n    verb: inspect\n    idempotency-key: run-0002/inspect\n    requested-at: \"2026-01-01T00:01:00Z\"\n    outcome: failed\n    principal: agent:worker-1\n  - id: eff-0002\n    verb: reconcile"
 
 	cases := []struct {
@@ -214,6 +228,15 @@ func TestRuntimeResourceContractRules(t *testing.T) {
 		// regression: ownership from a released lifetime backed a re-created
 		// resource that nobody had claimed.
 		{"re-created with stale ownership", recreated, "state: released", "state: provisioned", ruleRRClaimWithoutPrincipal, `ownership names "human:reviewer-a" but no succeeded claim effect by that principal in the resource's current lifetime`},
+		// regression: an inspect that found nothing, then one that found the
+		// resource again, began a new lifetime — so an agent could release a
+		// claimed resource, and the ttl restarted.
+		{"agent release across an inspect gap", claimedGap, releaseByOwner, strings.Replace(releaseByOwner, "human:reviewer-a", "agent:worker-2", 1), ruleRRClaimWithoutPrincipal, `release effect "eff-0003" ends a claimed resource but is authorized by "agent:worker-2"`},
+		{"ttl restarted by an inspect gap", validGap, "ttl: 4h", "ttl: 1h", ruleRRExpired, "ended 2026-01-01T01:00:05Z"},
+		{"present after release by inspect", recreatedByInspect, "state: released", "state: provisioned", ruleRRClaimWithoutPrincipal, `ownership names "human:reviewer-a" but no succeeded claim effect by that principal in the resource's current lifetime`},
+		// regression: a receipt dated after a later-listed one was still read
+		// first, so an earlier-issued inspect could not outvote a reconcile.
+		{"receipt dated after a later-listed one", claimed, "  - id: eff-0003\n", lateInspect + "  - id: eff-0003\n", ruleRRStateUnsupported, `effect "eff-0003": receipt is dated 2026-01-01T01:30:01Z, before the receipt of "eff-0009" listed ahead of it (2026-01-01T01:40:01Z)`},
 		// regression: a non-mapping effect item kept its raw list index, and the
 		// ordered rules indexed past the end of the effect list and panicked.
 		{"effect items that are not mappings", claimed, "effects:\n", "effects:\n  - just-a-string\n  - another\n", ruleRRSchemaViolation, "effects[0]: wrong type (want object, got string)"},
@@ -274,8 +297,22 @@ func TestRuntimeResourceContractOrd(t *testing.T) {
 		t.Fatal("anchor revocation rotation not found")
 	}
 	releasedAgain := strings.Replace(unclaimed, revokedAgain, revokedAgain+"    - after: eff-0006\n      action: revoked\n      at: \"2026-01-01T01:50:02Z\"\n", 1) + agentRelease
+	valid := rrFixture(t, "good-valid.yaml")
+	claimed := rrFixture(t, "good-claimed-released.yaml")
+	gapInspect := "  - id: eff-0011\n    verb: inspect\n    idempotency-key: gap/eff-0011\n    requested-at: \"2026-01-01T00:40:00Z\"\n    outcome: succeeded\n    principal: agent:worker-2\n    receipt:\n      adapter-ref: mock://snapshot/rr-claimed-01\n      observed-at: \"2026-01-01T00:40:01Z\"\n      observed-state: absent\n" +
+		"  - id: eff-0012\n    verb: inspect\n    idempotency-key: gap/eff-0012\n    requested-at: \"2026-01-01T00:45:00Z\"\n    outcome: succeeded\n    principal: agent:worker-2\n    receipt:\n      adapter-ref: mock://snapshot/rr-claimed-01\n      observed-at: \"2026-01-01T00:45:01Z\"\n      observed-state: present\n"
+	// regression: an inspect gap ended the lifetime, so the owner's own claim
+	// no longer backed the ownership block of the resource it still held.
+	claimedGap := strings.Replace(claimed, "  - id: eff-0003\n", gapInspect+"  - id: eff-0003\n", 1)
+	// A create whose receipt observes the resource present after an absence is
+	// evidence of re-creation: a new lifetime, and its ttl counts from there.
+	recreate := "  - id: eff-0011\n    verb: inspect\n    idempotency-key: run-0001/inspect-2\n    requested-at: \"2026-01-01T01:10:00Z\"\n    outcome: succeeded\n    principal: agent:worker-1\n    receipt:\n      adapter-ref: mock://branch/rr-valid-01\n      observed-at: \"2026-01-01T01:10:01Z\"\n      observed-state: absent\n" +
+		"  - id: eff-0012\n    verb: create\n    idempotency-key: run-0001/create-again\n    requested-at: \"2026-01-01T01:15:00Z\"\n    outcome: succeeded\n    principal: agent:worker-1\n    receipt:\n      adapter-ref: mock://branch/rr-valid-01\n      observed-at: \"2026-01-01T01:15:01Z\"\n      observed-state: present\n"
 	cases := []struct{ name, base, old, new string }{
 		{"re-created after release", unclaimed, "state: released", "state: provisioned"},
+		{"owner releases across an inspect gap", claimedGap, "state: released", "state: released"},
+		{"create after an absence restarts the ttl", valid + recreate, "ttl: 4h", "ttl: 1h"},
+		{"restore after an absence restarts the ttl", valid + strings.Replace(recreate, "verb: create", "verb: restore", 1), "ttl: 4h", "ttl: 1h"},
 		{"agent releases the re-created resource", releasedAgain, "state: released", "state: released"},
 		{"lost create reconciled absent", strings.Replace(lostAck, "      observed-state: present", "      observed-state: absent", 1), "state: provisioned", "state: failed"},
 	}

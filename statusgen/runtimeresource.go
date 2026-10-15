@@ -555,9 +555,13 @@ type runtimeDerived struct {
 	everReleased  bool      // some release was reconciled to absent
 	createFailed  bool      // a create failed, or was reconciled absent, and nothing since observed it present
 	// lifetime[i] numbers the lifetime in force once effect i is read: 0 before
-	// any observation of present, and one more each time an observation of
-	// present follows an absence. Rule 6 scopes ownership to it, so a claim and
-	// its release protection end with the lifetime they were made in.
+	// any observation of present, and one more each time the resource is
+	// observed present again after evidence that it ended — a reconciled release
+	// observing it absent, or a create or restore receipt observing it present
+	// after an absence. An inspect that finds nothing is not that evidence, so an
+	// absent/present pair of inspects keeps the lifetime. Rule 6 scopes ownership
+	// to it, so a claim and its release protection end with the lifetime they
+	// were made in.
 	lifetime []int
 }
 
@@ -570,10 +574,17 @@ type runtimeDerived struct {
 func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived {
 	dv := runtimeDerived{lifetime: make([]int, len(d.Effects))}
 	cur := 0
-	observe := func(state string, at time.Time) {
+	// recreates is true for the receipt of an effect that re-creates the
+	// resource (create, restore).
+	observe := func(state string, at time.Time, recreates bool) {
 		switch state {
 		case "present":
-			if !dv.present {
+			// regression: any absence followed by any present began a new
+			// lifetime, so an agent's inspect gap reset the TTL anchor and
+			// dropped a human's claim. Only evidence that the resource ended and
+			// came back begins one; otherwise the lifetime, its claim and its
+			// TTL anchor continue.
+			if !dv.present && (!dv.everPresent || recreates || dv.released) {
 				// A new lifetime: its TTL counts from here, and a claim from an
 				// earlier lifetime does not carry over.
 				dv.lifetimeStart, dv.claimed = at, false
@@ -593,7 +604,7 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 				dv.lifetime[i] = cur
 				continue
 			}
-			observe(e.ObservedState, e.ObservedAt.At)
+			observe(e.ObservedState, e.ObservedAt.At, false)
 			if e.ObservedState == "absent" {
 				switch d.Effects[j].Verb {
 				case "create":
@@ -609,18 +620,18 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 				dv.createFailed = true
 			}
 			if e.Outcome != "unknown" && e.HasReceipt {
-				observe(e.ObservedState, e.ObservedAt.At)
+				observe(e.ObservedState, e.ObservedAt.At, true)
 			}
 		case "claim":
 			if e.Outcome == "succeeded" && e.HasReceipt {
-				observe(e.ObservedState, e.ObservedAt.At)
+				observe(e.ObservedState, e.ObservedAt.At, false)
 				if dv.present {
 					dv.claimed = true
 				}
 			}
 		default: // inspect, snapshot, restore
 			if e.Outcome != "unknown" && e.HasReceipt {
-				observe(e.ObservedState, e.ObservedAt.At)
+				observe(e.ObservedState, e.ObservedAt.At, e.Verb == "restore")
 			}
 		}
 		dv.lifetime[i] = cur
@@ -662,7 +673,7 @@ func checkRuntimeResourceRules(path string, d runtimeResourceDoc, adapters map[s
 	// Effects are listed in the order they were issued; every ordered rule
 	// below reads the list, so a list whose request times run backwards is
 	// one whose order cannot be trusted.
-	var prev runtimeEffect
+	var prev, prevObs runtimeEffect
 	for _, e := range d.Effects {
 		if e.RequestedAt.Set && !e.RequestedAt.OK {
 			add(ruleRRSchemaViolation, "effect %q: requested-at %q is not a real RFC3339 instant", e.ID, e.RequestedAt.Raw)
@@ -684,6 +695,15 @@ func checkRuntimeResourceRules(path string, d runtimeResourceDoc, adapters map[s
 		}
 		if e.ObservedAt.OK && e.RequestedAt.OK && e.ObservedAt.At.Before(e.RequestedAt.At) {
 			add(ruleRRStateUnsupported, "effect %q: receipt is dated %s, before the effect was requested at %s", e.ID, e.ObservedAt.At.Format(time.RFC3339), e.RequestedAt.At.Format(time.RFC3339))
+		}
+		// The state rules read the receipts in list order and take the last as
+		// the latest observation, so a receipt dated before one listed ahead
+		// of it makes "latest" ambiguous: it is refused, never guessed.
+		if e.ObservedAt.OK && prevObs.ObservedAt.OK && e.ObservedAt.At.Before(prevObs.ObservedAt.At) {
+			add(ruleRRStateUnsupported, "effect %q: receipt is dated %s, before the receipt of %q listed ahead of it (%s) — receipts are read in list order, so one dated out of that order leaves the latest observation ambiguous", e.ID, e.ObservedAt.At.Format(time.RFC3339), prevObs.ID, prevObs.ObservedAt.At.Format(time.RFC3339))
+		}
+		if e.ObservedAt.OK && (!prevObs.ObservedAt.OK || e.ObservedAt.At.After(prevObs.ObservedAt.At)) {
+			prevObs = e
 		}
 	}
 
@@ -773,8 +793,8 @@ func checkRuntimeResourceRules(path string, d runtimeResourceDoc, adapters map[s
 
 	// 6. Ownership: only a human or organization principal claims, and once one
 	// owns the resource, an agent cannot end it either. Ownership belongs to one
-	// lifetime: a resource observed absent and then present again is a new
-	// resource, unclaimed until a claim in that lifetime, so both the release
+	// lifetime: a resource on a new lifetime (deriveRuntimeState says when one
+	// begins) is unclaimed until a claim in that lifetime, so both the release
 	// protection and the claims backing the ownership block reset at the
 	// boundary.
 	var claimPrincipals = map[string]bool{}
