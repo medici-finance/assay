@@ -172,3 +172,13 @@ service/custody seam; its unrelated UI work stays independent. R8's messaging cu
 requires selected-broker proof and an accepted/held/acked state reconciliation manifest.
 Broker qualification, adapter, host composition and cutover need subsequent bounded
 briefs; the four extraction briefs neither select a broker nor enable native firing.
+
+## CI and directory migration lane
+
+The [CI extension](25-ci-tooling.md) adds a separately deliverable lane: directory/staging
+contract → public shared libraries → in-place consumer cutover → qualified command moves
+and action adoption → source retirement. Build the first reusable actions before or beside
+the first workflow cutover. The [ci-tooling stream](../../streams/ci-tooling/README.md)
+owns this decomposition; it does not wait for the runtime controller. R8 retains the
+desk/operator/service relocation work routed by the layout inventory and must qualify
+module visibility, authority and lifecycle before retiring their old paths.

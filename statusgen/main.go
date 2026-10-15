@@ -1414,6 +1414,24 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "patterns" {
 		os.Exit(runPatterns(os.Args[2:], os.Stdout, os.Stderr))
 	}
+	// `statusgen instance validate --file PATH ...` (graph-execution/09) —
+	// validates one workflow-instance-v1 document against its schema, its pattern
+	// and the work item's acceptance version (instance.go). A distinct artifact
+	// class with its own flags, so a subcommand, like `patterns`.
+	if len(os.Args) > 1 && os.Args[1] == "instance" {
+		os.Exit(runInstance(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
+	// `statusgen runtime-resource --lint --adapters FILE [--as-of RFC3339]
+	// PATH...` — validate runtime-resource-v1 records against
+	// schemas/runtime-resource-v1.json, an adapter registry, and the contract
+	// rules a schema cannot express (sdlc/24, runtimeresource.go,
+	// docs/runtime-adapters.md). Offline: it reads the files it is given and
+	// never contacts an adapter. A distinct artifact class, so a subcommand,
+	// same shape as `patterns`.
+	if len(os.Args) > 1 && os.Args[1] == "runtime-resource" {
+		os.Exit(runRuntimeResource(os.Args[2:], os.Stdout, os.Stderr))
+	}
 
 	// `statusgen migrate brief-v1-to-v2 [--dry-run] [--root DIR]` — the brief-v1 →
 	// brief-v2 flag-day migration (derived-board/06, migrate.go). Intercepted

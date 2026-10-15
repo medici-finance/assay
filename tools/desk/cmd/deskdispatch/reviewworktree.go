@@ -15,7 +15,7 @@ func freshReviewName(base string) (string, error) {
 	if _, err := io.ReadFull(reviewEntropy, nonce[:]); err != nil {
 		return "", err
 	}
-	const maxPrefix = 64 - len("review-") - 1 - 16
+	const maxPrefix = worktreeNameMax - len("review-") - 1 - 16
 	if len(base) > maxPrefix {
 		base = base[:maxPrefix]
 	}

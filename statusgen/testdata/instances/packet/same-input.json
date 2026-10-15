@@ -1,0 +1,41 @@
+{
+  "description": "Same input, same dependencies: projecting twice yields an identical packet, and the handoff built from it is accepted with the same identifiers.",
+  "instance": "../valid.yaml",
+  "node": "inst-example-07-a.implement",
+  "projection": {},
+  "acceptance": {},
+  "result": {
+    "scope": [
+      "2"
+    ],
+    "evidence": [
+      {
+        "claim": "Verify rows pass",
+        "artifact": "artifact/example-cell/test-log-a1"
+      }
+    ],
+    "artifacts": [
+      {
+        "ref": "artifact/example-cell/test-log-a1",
+        "digest": "sha256:3232323232323232323232323232323232323232323232323232323232323232",
+        "bytes": 4096
+      }
+    ],
+    "next-safe-action": "open the draft pull request"
+  },
+  "expect": {
+    "accepted": true,
+    "changed": [],
+    "affected": [],
+    "completed": [
+      "1"
+    ],
+    "remaining": [
+      "2",
+      "3"
+    ],
+    "coverage-unknown": [
+      "3"
+    ]
+  }
+}

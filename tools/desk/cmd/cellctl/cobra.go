@@ -922,7 +922,7 @@ func cacheCmd() *cobra.Command {
 			"  cellctl cache <cell> wipe      discard build/module caches regardless of pressure (live consumers: aged build entries only)\n" +
 			"  cellctl cache <cell> recover --confirm-stopped\n\n" +
 			"Defaults: 8 GiB logical-byte budget, 10 GiB filesystem free-space floor, 24h compiler-cache trim age.\n" +
-			"Configure CELL_GO_CACHE_ROOT / CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE / CELL_GO_CACHE_BUILD_MAX_AGE.\n" +
+			"Configure CELL_GO_CACHE_ROOT / CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE / CELL_GO_CACHE_BUILD_MAX_AGE / CELL_GO_TRIMPATH.\n" +
 			"With live consumers, clean (under pressure) and wipe (always) remove only compiler-cache entries\n" +
 			"older than the trim age; module caches, gopath and whole roots stay protected.\n" +
 			"Recovery requires external proof ALL cache consumers have stopped. See docs/cellctl-go-cache.md.",

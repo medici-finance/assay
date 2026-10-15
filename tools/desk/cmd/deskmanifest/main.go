@@ -30,6 +30,8 @@
 //	deskmanifest --version
 package main
 
+import "github.com/medici-finance/assay/tools/desk/internal/deskkit"
+
 import (
 	"fmt"
 	"io"
@@ -37,7 +39,9 @@ import (
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("deskmanifest", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:], os.Stdout, os.Stderr)
+	}))
 }
 
 const usage = `deskmanifest — the component-manifest lint.

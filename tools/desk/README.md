@@ -407,8 +407,11 @@ unaffected and keep their current behaviour until they are moved over.
 
 The audit ledger records WHAT a verb did; it records nothing about how long it took. With
 `ASSAY_TELEMETRY=1` exported (exactly `1` — `true`, `yes` or an empty value are all OFF), the
-first-wave verbs — `deskpr`, `deskpost`, `deskboard`, `desktoken`, `deskwt`, `deskdispatch`
-and `deskboot` — each append ONE `perf-v1` line per invocation to a local day file:
+desk commands append ONE `perf-v1` line per completed invocation to a local day file.
+All 67 operational commands are wrapped, including deskfile, deskreply, scanloop, issueboard,
+reviewloop, verifyloop and the supervisor. `deskperf` is excluded so reading a report cannot
+change its input; `muhar` is a developer mutation harness with separate execution accounting.
+A command-inventory test fails when a new entrypoint forgets its wrapper:
 
 ```sh
 export ASSAY_TELEMETRY=1        # opt in; unset it to stop — the history then ages out
@@ -426,7 +429,12 @@ through the shared runner (`deskkit.Run`) and their summed wall ms, how many HTT
 round-trips went through the forge client's counting transport, the build stamp (hex, else
 `unpinned`), and a random per-install id.
 
-**The two counts are lower bounds.** A verb's own child-process runner or its own direct
+**Newly covered commands use the fixed verb `other` rather than copying arbitrary argv;
+the original seven retain their registered verb lists. Tool-level timing/counts are complete
+for completed wrapped invocations when the local sink is writable. Long-running commands
+write only on return; killed processes can have no terminal sample.
+
+The two counts are lower bounds.** A verb's own child-process runner or its own direct
 HTTP client is outside both seams and is not counted: `deskboot`'s boot-step children,
 `desktoken`'s token mint, `deskpost`'s posts, and the repository-visibility read when no
 client is injected. A `0` from those means "not counted", not "none made".
@@ -3622,8 +3630,9 @@ Rotating the session id does reset the bucket — a new session is a new session
 **every `new` audit line records the sessionTag it charged**, so rotating to buy budget
 leaves a trail rather than erasing one. That trace is the control here, not a hard block.
 Sessions with no session variable set at all share the single `unknown` bucket (the
-conservative direction). deskfile **gates WHETHER and WHERE, never WHO**: the caller's ambient `gh`
-credential is the filing identity and no App token is ever minted. Repo scope comes from
+conservative direction). deskfile **gates WHETHER and WHERE, never WHO**: the filing identity is the session's own
+role App credential, resolved from `$DESK_LOOP` through `desktoken` (the worker App, with a NOTICE,
+when no role resolves), never an ambient `gh` login. Repo scope comes from
 `deskkit.IsAllowedRepo` — there is no second repo list, and a test parses the sources to
 prove it.
 
@@ -5691,6 +5700,33 @@ make this command pass. This path acquires no
 claim, allocates no worktree, invokes no lifecycle hook, registers no roster entry and
 launches no worker. It does not revive a released review claim. `--model` and `--tier`
 are explicit, never inferred from an old stamp or a model-name lookup.
+
+**Worker pre-work attestation (opt-in, `--attest-worker`).** Without the flag a fresh
+worker dispatch reports its stamp PENDING, as above. With it,
+`deskdispatch <item> --kit worker --model gpt-6.1-sol --tier strong --brief <path> --attest-worker`
+gives the run a stamp target before any PR exists. Step 5 creates a dispatcher-authored
+`[worker-attestation] <run>` issue whose immutable JSON body binds a random run identifier,
+the repository, the claim key, the kit, the dispatched branch, the worktree's base commit,
+the source (the repo-relative brief path and its content digest, or an `issue-<N>` item's
+number and body digest) and the selected model/tier. The record is stamped with the
+authoring pair under the existing desk custody, closed and read back before the prompt is
+emitted. Refusals: a non-worker kit, `--pr`, no `--model`, no source, or a roster binding
+desk and worker to one actor (exit 5, before the claim). A failure to create, stamp, close
+or read the record back emits no prompt, releases the claim and exits 6. The worktree is
+kept, and the abandoned record stays open. An open record never binds a change, and
+`ListOpenIssues` excludes the reserved title when the bound dispatcher authored it, as for
+the verifier record. `--dry-run` prints the plan and writes nothing.
+
+The prompt hands the worker one exact `Worker-Attestation: <repo>#<N> run=<run>` line for
+the draft PR's description. The PR's own authoring stamp is still the coordinator's
+post-open `--stamp-only` call, with an explicit `--model`/`--tier` (and optionally
+`--attestation <N>`). That call reads the record the change names. It refuses (exit 5,
+nothing written) when the record's repository, kit, branch or model/tier disagree with the
+change or the stated selection, when `--attestation` and the description name different
+records, or when the description carries a malformed or duplicate line. An unreadable,
+open, edited, PENDING or unstamped record is never admitted. The change stamp is never
+inferred from the record: the record only constrains it. A change that names no record
+takes the plain path above, unchanged.
 
 **Two label pairs (#2760).** A worker kit (the default) writes the AUTHORING pair,
 `authored-model:<slug>` + `authored-tier:<tier>`: which model the coordinator launched to
