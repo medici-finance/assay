@@ -407,8 +407,11 @@ unaffected and keep their current behaviour until they are moved over.
 
 The audit ledger records WHAT a verb did; it records nothing about how long it took. With
 `ASSAY_TELEMETRY=1` exported (exactly `1` — `true`, `yes` or an empty value are all OFF), the
-first-wave verbs — `deskpr`, `deskpost`, `deskboard`, `desktoken`, `deskwt`, `deskdispatch`
-and `deskboot` — each append ONE `perf-v1` line per invocation to a local day file:
+desk commands append ONE `perf-v1` line per completed invocation to a local day file.
+All 67 operational commands are wrapped, including deskfile, deskreply, scanloop, issueboard,
+reviewloop, verifyloop and the supervisor. `deskperf` is excluded so reading a report cannot
+change its input; `muhar` is a developer mutation harness with separate execution accounting.
+A command-inventory test fails when a new entrypoint forgets its wrapper:
 
 ```sh
 export ASSAY_TELEMETRY=1        # opt in; unset it to stop — the history then ages out
@@ -426,7 +429,12 @@ through the shared runner (`deskkit.Run`) and their summed wall ms, how many HTT
 round-trips went through the forge client's counting transport, the build stamp (hex, else
 `unpinned`), and a random per-install id.
 
-**The two counts are lower bounds.** A verb's own child-process runner or its own direct
+**Newly covered commands use the fixed verb `other` rather than copying arbitrary argv;
+the original seven retain their registered verb lists. Tool-level timing/counts are complete
+for completed wrapped invocations when the local sink is writable. Long-running commands
+write only on return; killed processes can have no terminal sample.
+
+The two counts are lower bounds.** A verb's own child-process runner or its own direct
 HTTP client is outside both seams and is not counted: `deskboot`'s boot-step children,
 `desktoken`'s token mint, `deskpost`'s posts, and the repository-visibility read when no
 client is injected. A `0` from those means "not counted", not "none made".

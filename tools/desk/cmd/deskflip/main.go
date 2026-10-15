@@ -142,14 +142,16 @@ Exit: 0 flipped or already-flipped · 3 disabled · 5 refused (a condition faile
 6 unverifiable (a condition could not be read).`
 
 func main() {
-	// Explicit roster class: deskflip ACTS (it mutates a PR), and it reads the roster for
-	// the reviewer App binding and the repo set — ciEligible=false.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskflip", nil, os.Args[1:], func([]string) int {
+		// Explicit roster class: deskflip ACTS (it mutates a PR), and it reads the roster for
+		// the reviewer App binding and the repo set — ciEligible=false.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

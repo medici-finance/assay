@@ -84,15 +84,17 @@ stale   — READ-ONLY: report whether <item>'s claim is reclaimable, WITHOUT tou
 Exit: 0 ok/noop/stale · 3 disabled · 5 refused (already claimed / live) · 6 unverifiable.`
 
 func main() {
-	// Explicit roster class (a correctness review): deskclaim acts on
-	// local state, ciEligible=false — it reads the config-home file, never the environment.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// P3: echo the effective roster once per run.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskclaim", nil, os.Args[1:], func([]string) int {
+		// Explicit roster class (a correctness review): deskclaim acts on
+		// local state, ciEligible=false — it reads the config-home file, never the environment.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// P3: echo the effective roster once per run.
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

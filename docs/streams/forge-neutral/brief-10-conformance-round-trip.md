@@ -16,6 +16,8 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
+delivery:
+  - {in: "assay#1561", covers: partial, note: "the conformance-report skeleton only, with every row NOT YET RUN; the live round trip, the negative-path walk and the verify-desk skill change are still owed"}
 schema: brief-v2
 authored: 2026-09-02 by forge-neutral authoring session
 sources:
