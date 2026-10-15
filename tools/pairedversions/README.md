@@ -23,6 +23,7 @@ This is the thing that reddens.
 | **a** | `plugin.json` `version` == `paired-versions.yaml` `plugin` | Otherwise the shipped pairing is for a plugin version nobody is running, and the installer resolves the wrong tag for the skills it ships with. |
 | **b** | each section's `tag` is a **published** release of the `release_home` it names | A tag that was never cut, or a draft, gives the adopter's `gh release download` nothing to install. |
 | **c** | every per-platform `sha256` equals that release's own `checksums.txt` entry | The installer REFUSES on a hash mismatch. A locally built binary lacks the release `-ldflags` stamp and hashes differently, so a hash that did not come from the published `checksums.txt` bricks the install. |
+| **d** | no newer published release of the `release_home` has gone un-pinned for more than seven days | (a)–(c) all pass on a pin that is consistent and real but stale. The release workflow moves `plugin:` at every cut and leaves the tags alone, so without this a skipped re-pin hands every new adopter old tools for as long as nobody notices. |
 
 Three supporting assertions fall out of the same read, because each is a way for
 (b) or (c) to be true of nothing:
@@ -35,6 +36,16 @@ Three supporting assertions fall out of the same read, because each is a way for
 - a pinned artifact must actually be published by that release — the manifest
   deliberately leaves an unavailable platform **out** rather than inventing a
   hash for it, and this catches inventing one anyway.
+
+For (d), drafts, pre-releases and tags that are not a plain `vX.Y.Z` (the
+per-artifact tag namespaces) are not releases a pin can be behind. The seven-day
+grace window exists because a re-pin needs the harness image digest as well as
+`checksums.txt`, and the image is published by a separate run. It is counted from
+the **first** release the pin missed, not the newest, so frequent releases cannot
+keep restarting it. Inside the window the lag is printed as a note naming the
+moment it becomes a failure; past it the run is red and names the re-pin. A
+release list that cannot be read, that is not read to the end, or that does not
+hold the pinned release is could-not-check, never "nothing newer".
 
 A **pre-release** pin is reported as a note, not a failure: a prerelease is
 published and installable, so the honest treatment is to make it visible rather
@@ -62,8 +73,8 @@ cd tools/pairedversions && go run . --root ../..
 
 Exit codes: `0` consistent · `1` a problem or a could-not-check · `2` usage error.
 
-It reads the GitHub REST API (`api.github.com`, or `$GITHUB_API_URL`) for (b) and
-(c), using `$GH_TOKEN` / `$GITHUB_TOKEN` when one is present. It speaks to the
+It reads the GitHub REST API (`api.github.com`, or `$GITHUB_API_URL`) for (b),
+(c) and (d), using `$GH_TOKEN` / `$GITHUB_TOKEN` when one is present. It speaks to the
 API directly rather than shelling out to `gh`, because not every self-hosted
 runner ships the CLI and a checker that skips when its tool is missing fails open.
 

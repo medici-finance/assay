@@ -327,6 +327,28 @@ type closeOutPlan struct {
 	// placeholder moves it back to the stream root. "" means write in place (no
 	// move) — e.g. reactivating a placeholder that is still at the stream root.
 	Dest string
+	// Gate and Labels carry the LIVE issue's derived gate and label set for a
+	// "reactivate" (unused by every other action). A reopened issue's labels may
+	// have changed while its placeholder sat retired, so reactivation re-derives
+	// both from the open issue instead of trusting the stale frontmatter — a
+	// reopen that gained a risk label must come back gate: human. Build a
+	// reactivate ONLY via reactivatePlan; applyCloseOut refuses one with no Gate.
+	Gate   string
+	Labels []string
+}
+
+// reactivatePlan is the single constructor for a "reactivate" closeOutPlan.
+// Every reactivate site (in-place and from the archive, in both the scan and
+// the transcription lanes) goes through it, so the live gate and labels are
+// never left behind. dest "" means reactivate in place.
+func reactivatePlan(repo string, iss ghIssue, path, rel, dest string) closeOutPlan {
+	labels := labelNames(iss.Labels)
+	return closeOutPlan{
+		Repo: repo, Issue: iss.Number, Path: path, Rel: rel,
+		Action: "reactivate", Dest: dest,
+		Gate:   derivePlaceholderGate(labels, iss.Title),
+		Labels: labels,
+	}
 }
 
 // archiveDirName is the per-stream subfolder a retired placeholder is moved into
@@ -426,8 +448,12 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 		// reactivate one whose issue lost it while staying open.
 		openSet := map[int]bool{}
 		openExcluded := map[int]bool{}
+		// openIssue keeps each open issue itself, so a reactivate re-derives the
+		// placeholder's gate and labels from LIVE state (reactivatePlan).
+		openIssue := map[int]ghIssue{}
 		for _, iss := range issues {
 			openSet[iss.Number] = true
+			openIssue[iss.Number] = iss
 			labels := labelNames(iss.Labels)
 			excluded := hasExcludedLabel(labels)
 			openExcluded[iss.Number] = excluded
@@ -544,10 +570,8 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 				// in place. Reactivation doesn't care WHICH resolved marker put it
 				// at done.
 				if ph.Status == "done" {
-					closeOuts = append(closeOuts, closeOutPlan{
-						Repo: repo, Issue: ph.Issue, Path: ph.Path, Rel: rel,
-						Action: "reactivate", // Dest "" — already at the root
-					})
+					// Dest "" — already at the root.
+					closeOuts = append(closeOuts, reactivatePlan(repo, openIssue[ph.Issue], ph.Path, rel, ""))
 				}
 			}
 		}
@@ -569,11 +593,8 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 				if err != nil {
 					rel = path
 				}
-				closeOuts = append(closeOuts, closeOutPlan{
-					Repo: repo, Issue: ph.Issue, Path: path,
-					Rel: filepath.ToSlash(rel), Action: "reactivate",
-					Dest: unarchivedPath(path),
-				})
+				closeOuts = append(closeOuts, reactivatePlan(repo, openIssue[ph.Issue], path,
+					filepath.ToSlash(rel), unarchivedPath(path)))
 			}
 		}
 	}
@@ -683,7 +704,7 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 			fmt.Printf("would create %s  (%s#%d, gate:%s)\n", p.Rel, p.Repo, p.Issue, p.Gate)
 		}
 		for _, c := range closeOuts {
-			fmt.Printf("would %s %s  (%s#%d, %s)\n", c.Action, c.Rel, c.Repo, c.Issue, closeOutReason(c.Action))
+			fmt.Printf("would %s %s  (%s#%d, %s%s)\n", c.Action, c.Rel, c.Repo, c.Issue, closeOutReason(c.Action), closeOutGateNote(c))
 		}
 		if len(unblockPlans) == 0 && len(plans) == 0 && len(closeOuts) == 0 && !partial {
 			fmt.Println("scan-issues: no changes — nothing to create or retire")
@@ -803,10 +824,21 @@ func closeOutPastTense(action string) string {
 // instead, so a later label removal is distinguishable from an issue-close and can
 // reactivate the same way a reopen does. For "reactivate": changes status to
 // "todo" and removes any "resolved:" field (regardless of which retire path wrote
-// it). The body prose is left intact.
+// it), and re-derives the placeholder from the LIVE issue: the `gate:` line is
+// rewritten from c.Gate (inserted when absent; a stored human gate, as the
+// reader decodes it, is never relaxed — see reactivateGate) and the `labels:` line is replaced by c.Labels
+// (dropped when the issue now has none). A reactivate plan with no Gate is
+// REFUSED: it could only re-surface the stale frontmatter. The body prose is
+// left intact.
 // Editing is line-based within the frontmatter block (between --- markers),
 // matching the pattern established by unblockPlaceholderFile.
 func applyCloseOut(c closeOutPlan) error {
+	if c.Action == "reactivate" && !validGate[c.Gate] {
+		// Fail closed: a reactivate built without the live issue (any site that
+		// bypasses reactivatePlan) would bring back the retired file's gate and
+		// labels unchanged — a reopen that gained a risk label stays gate: model.
+		return fmt.Errorf("%s: reactivate plan carries no live gate (got %q) — build it with reactivatePlan", c.Rel, c.Gate)
+	}
 	data, err := os.ReadFile(c.Path)
 	if err != nil {
 		return fmt.Errorf("%s: %w", c.Rel, err)
@@ -820,14 +852,29 @@ func applyCloseOut(c closeOutPlan) error {
 
 	content := strings.ReplaceAll(string(data), "\r\n", "\n")
 	lines := strings.Split(content, "\n")
+	storedGate := ""
+	if c.Action == "reactivate" {
+		storedGate = storedEffectiveGate(c.Path)
+	}
 	var out []string
 	inFrontmatter := false
 	frontmatterClosed := false
 	hasStatus := false
 	hasResolved := false
+	reactivate := c.Action == "reactivate"
+	hasGate := false
+	hasLabels := false
+	skipLabelItems := false // inside a block-style `labels:` list being replaced
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		if skipLabelItems {
+			if inFrontmatter && !frontmatterClosed && trimmed != "---" &&
+				(strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") || strings.HasPrefix(trimmed, "- ")) {
+				continue
+			}
+			skipLabelItems = false
+		}
 		if !frontmatterClosed {
 			if trimmed == "---" {
 				if !inFrontmatter {
@@ -855,6 +902,25 @@ func applyCloseOut(c closeOutPlan) error {
 						out = append(out, "resolved: "+marker)
 					}
 					// reactivate: drop the resolved line
+					continue
+				}
+				if reactivate && strings.HasPrefix(trimmed, "gate:") {
+					hasGate = true
+					if val := strings.TrimSpace(strings.TrimPrefix(trimmed, "gate:")); strings.HasPrefix(val, ">") || strings.HasPrefix(val, "|") {
+						skipLabelItems = true // block scalar: drop its continuation lines with the header
+					}
+					out = append(out, "gate: "+reactivateGate(storedGate, c.Gate))
+					continue
+				}
+				if reactivate && strings.HasPrefix(trimmed, "labels:") {
+					hasLabels = true
+					val := strings.TrimSpace(strings.TrimPrefix(trimmed, "labels:"))
+					if val == "" || (strings.HasPrefix(val, "[") && !strings.Contains(val, "]")) {
+						skipLabelItems = true // block list, or a flow list wrapped onto further lines: drop those too
+					}
+					if len(c.Labels) > 0 {
+						out = append(out, "labels: "+yamlFlowList(c.Labels))
+					}
 					continue
 				}
 				// For retire: if we're at the closing --- (next iteration
@@ -889,7 +955,58 @@ func applyCloseOut(c closeOutPlan) error {
 		out = result
 	}
 
+	// For reactivate: insert a gate (and, when the live issue has labels, a
+	// labels line) the stale file lacked, just before the closing ---.
+	if reactivate && (!hasGate || (!hasLabels && len(c.Labels) > 0)) {
+		var add []string
+		if !hasGate {
+			add = append(add, "gate: "+reactivateGate(storedGate, c.Gate))
+		}
+		if !hasLabels && len(c.Labels) > 0 {
+			add = append(add, "labels: "+yamlFlowList(c.Labels))
+		}
+		var result []string
+		fmCloseCount := 0
+		for _, line := range out {
+			if strings.TrimSpace(line) == "---" {
+				fmCloseCount++
+				if fmCloseCount == 2 {
+					result = append(result, add...)
+				}
+			}
+			result = append(result, line)
+		}
+		out = result
+	}
+
 	return writeCloseOut(c, []byte(strings.Join(out, "\n")))
+}
+
+// storedEffectiveGate is the gate the placeholder at path carries as its reader
+// sees it: the YAML-decoded `gate:` value (so `"human"`, `'human'` and
+// `human # note` all read as human), or, when there is no gate line, the gate
+// derived from the stored labels. A file the reader cannot parse yields "human":
+// the rewrite can only tighten what it cannot read.
+func storedEffectiveGate(path string) string {
+	ph, ok, err := parsePlaceholderFile(path)
+	if err != nil || !ok {
+		return "human"
+	}
+	return ph.Gate
+}
+
+// reactivateGate is the gate a reactivated placeholder carries: the gate
+// derived from the live issue, except that any stored gate other than exactly
+// `model` (the effective gate from storedEffectiveGate, not the raw line text:
+// human in any case, padded, folded or otherwise unreadable) is kept as human,
+// failing toward the stricter gate. The stored value may be a deliberate human override, and a reopen is
+// no evidence the risk went away; tightening is automatic, loosening stays a
+// human edit.
+func reactivateGate(stored, live string) string {
+	if stored == "model" {
+		return live
+	}
+	return "human"
 }
 
 // writeCloseOut persists a closeOutPlan's transformed body. When c.Dest is set
@@ -1179,4 +1296,13 @@ func unblockPlaceholderFile(path string) error {
 		out = append(out, line)
 	}
 	return os.WriteFile(path, []byte(strings.Join(out, "\n")), 0o644)
+}
+
+// closeOutGateNote names the gate a reactivate plan will write (the live gate,
+// unless the stored gate keeps it human), so a dry run shows the real change.
+func closeOutGateNote(c closeOutPlan) string {
+	if c.Action != "reactivate" || c.Gate == "" {
+		return ""
+	}
+	return ", gate:" + reactivateGate(storedEffectiveGate(c.Path), c.Gate)
 }

@@ -73,6 +73,11 @@ where relevant, not required headings or a section-count gate.
   removing the hazard or reusing its owner before adding another guard or exception.
   State what the proposal retires and what added complexity remains justified. Apply the
   project's existing design-fit procedure rather than creating another register or gate.
+- **Quality attributes.** Use the [quality prompts](references/quality-requirements.md) to
+  select material concerns, prioritize tradeoffs and express verifiable scenarios with
+  conditions, targets, provenance and evidence owners. Reuse inherited obligations;
+  unknown targets stay explicit. Identify costly paths and scaling risks before decomposition.
+  Keep this proportionate: no mandatory category checklist or invented budgets.
 - **Change and compatibility.** Explain migration, version compatibility, affected callers,
   rollback or recovery, and retirement of the previous path where applicable. Distinguish
   the desired end state from a transition that intentionally carries two implementations.

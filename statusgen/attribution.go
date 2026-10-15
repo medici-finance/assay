@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -575,8 +576,12 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 			// way, and a brief the token layer already flagged (the `corroborating`
 			// bucket below) is already a hard PROBLEM regardless of this refinement.
 			var confirmed, unconfirmed []identPair
-			for _, p := range escalated {
-				touchedByOther, pok := evidenceSectionTouchedByOtherIdentity(p.root, p.rel, p.id)
+			history := evidenceHistoryChecks(len(escalated), func(i int) (bool, bool) {
+				p := escalated[i]
+				return evidenceSectionTouchedByOtherIdentity(p.root, p.rel, p.id)
+			})
+			for i, p := range escalated {
+				touchedByOther, pok := history[i].touchedByOther, history[i].known
 				switch {
 				case !pok:
 					// Could not determine the Evidence section's own history (no
@@ -640,6 +645,37 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 	sort.Strings(problems)
 	sort.Strings(notices)
 	return problems, notices
+}
+
+type evidenceHistoryResult struct {
+	touchedByOther bool
+	known          bool
+}
+
+// Evidence histories are independent Git reads. Bound process pressure like
+// the Evidence-actor blame pool, then consume indexed results in the original
+// order so concurrency never changes verdict ordering or unknown handling.
+const evidenceHistoryWorkers = 8
+
+func evidenceHistoryChecks(count int, check func(int) (bool, bool)) []evidenceHistoryResult {
+	results := make([]evidenceHistoryResult, count)
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for worker := 0; worker < min(count, evidenceHistoryWorkers); worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				results[i].touchedByOther, results[i].known = check(i)
+			}
+		}()
+	}
+	for i := 0; i < count; i++ {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+	return results
 }
 
 // principalAttributionCutoverDate is the date the on-behalf-of write path landed
