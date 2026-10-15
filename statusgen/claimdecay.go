@@ -60,7 +60,7 @@ import (
 // first, with the fields sameRepoPR needs (isCrossRepository, headRepository,
 // headRepositoryOwner) and the PR's head commit (headRefOid), which branchIsDead
 // compares to the branch's current tip. gh fills {owner} and {repo} from the
-// repository at root, as `gh pr list` resolved it from its working directory.
+// repository at root, as the earlier `gh pr list` reader resolved it from its working directory.
 const ghBranchPRQuery = `query($owner:String!,$name:String!,$endCursor:String){
   repository(owner:$owner,name:$name){
     refs(refPrefix:"refs/heads/",first:100,after:$endCursor){
@@ -170,7 +170,7 @@ func trackedGitHubRepo(root string) string {
 // case in which its headRefName names a branch of that repository — and whether
 // the reader could attribute it at all.
 //
-// `gh pr list` returns every pull request TARGETING the repository, forks
+// A pull-request listing can return pull requests TARGETING the repository, forks
 // included, and a fork's headRefName is a name chosen inside the fork — unscoped
 // to this repository entirely. Anyone who can fork and open a pull request (the
 // ordinary contribution bar; no elevated access) could otherwise open and close a
@@ -273,15 +273,25 @@ var listMergedClosedBranches = func(root string) (map[string]bool, error) {
 	return dead, nil
 }
 
-// branchIsDead decides one branch. The pull requests arrive newest first; the
-// first one attributable to this repository and headed by this branch decides.
-// skipped counts the unattributable pull requests passed over on the way.
+// branchIsDead decides one branch. Only pull requests headed by this branch and
+// attributable to this repository count (sameRepoPR); skipped counts the
+// unattributable ones passed over. Two rules, both required for a corpse:
+//
+//   - no counted pull request in the window is OPEN — an open PR anywhere on the
+//     branch is a live claim, whatever order it was opened in (an older open PR
+//     with a newer closed one from the same branch is still in flight);
+//   - the NEWEST counted pull request is merged or closed AND the branch tip is
+//     still that PR's head commit — a push after the close is new work.
+//
+// No counted pull request at all is a live claim (pushed, not yet opened).
 func branchIsDead(b ghBranch, tracked string) (dead bool, skipped int) {
 	name := strings.TrimSpace(b.Name)
 	if name == "" || b.Target == nil || strings.TrimSpace(b.Target.Oid) == "" {
 		return false, 0
 	}
-	for _, pr := range b.AssociatedPullRequests.Nodes {
+	var newest *ghPR
+	for i := range b.AssociatedPullRequests.Nodes {
+		pr := b.AssociatedPullRequests.Nodes[i]
 		if strings.TrimSpace(pr.HeadRefName) != name {
 			continue
 		}
@@ -294,13 +304,18 @@ func branchIsDead(b ghBranch, tracked string) (dead bool, skipped int) {
 		}
 		switch strings.ToUpper(strings.TrimSpace(pr.State)) {
 		case "MERGED", "CLOSED":
-			head := strings.TrimSpace(pr.HeadRefOid)
-			return head != "" && strings.EqualFold(head, strings.TrimSpace(b.Target.Oid)), skipped
+			if newest == nil {
+				newest = &pr
+			}
 		default:
-			return false, skipped // the newest PR is open: a live claim
+			return false, skipped // an open PR on the branch: a live claim
 		}
 	}
-	return false, skipped // no pull request of this repository: a live claim
+	if newest == nil {
+		return false, skipped // no pull request of this repository: a live claim
+	}
+	head := strings.TrimSpace(newest.HeadRefOid)
+	return head != "" && strings.EqualFold(head, strings.TrimSpace(b.Target.Oid)), skipped
 }
 
 // decayReader picks the change-state reader for the forge behind root's `origin`

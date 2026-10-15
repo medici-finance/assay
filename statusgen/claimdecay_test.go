@@ -221,7 +221,7 @@ func stubGHPRListJSON(t *testing.T, rows string, err error) {
 // load-bearing invariant, on the GitHub arm: decay may only ever shrink the
 // claim set to what it VERIFIED is dead.
 //
-// `gh pr list` returns every pull request TARGETING the repository, forks
+// A pull-request listing can return pull requests TARGETING the repository, forks
 // included, and a fork's headRefName is a name chosen inside the fork — it names
 // nothing in the tracked repository. Matching dead claims by bare headRefName
 // therefore let anyone who can fork and open a pull request (the ordinary
@@ -376,8 +376,10 @@ func TestDecayReadsBranchesNotPRHistory(t *testing.T) {
 	same := `"isCrossRepository":false,"headRepository":{"name":"board"},"headRepositoryOwner":{"login":"example-org"}`
 	stubGHPRListJSON(t, `[
 	  {"number":12,"headRefName":"fix/old-01-corpse","state":"CLOSED",`+same+`},
-	  {"number":3001,"headRefName":"fix/reused-02","state":"OPEN",`+same+`},
-	  {"number":40,"headRefName":"fix/reused-02","state":"MERGED",`+same+`},
+	  {"number":3001,"headRefName":"fix/reused-02","state":"OPEN","headRefOid":"`+strings.Repeat("c", 40)+`",`+same+`},
+	  {"number":40,"headRefName":"fix/reused-02","state":"MERGED","headRefOid":"`+strings.Repeat("c", 40)+`",`+same+`},
+	  {"number":70,"headRefName":"fix/older-open-05","state":"CLOSED","headRefOid":"`+strings.Repeat("d", 40)+`",`+same+`},
+	  {"number":65,"headRefName":"fix/older-open-05","state":"OPEN","headRefOid":"`+strings.Repeat("d", 40)+`",`+same+`},
 	  {"number":50,"headRefName":"fix/repushed-03","state":"CLOSED","headRefOid":"`+strings.Repeat("a", 40)+`","tip":"`+strings.Repeat("b", 40)+`",`+same+`},
 	  {"number":60,"headRefName":"fix/merged-04","state":"MERGED",`+same+`}
 	]`, nil)
@@ -392,11 +394,34 @@ func TestDecayReadsBranchesNotPRHistory(t *testing.T) {
 	if dead["fix/reused-02"] {
 		t.Error("a branch whose NEWEST PR is open is a live claim, even though an older PR on the same name merged")
 	}
+	if dead["fix/older-open-05"] {
+		t.Error("a branch with an OPEN PR is a live claim even when a newer PR from it closed at the same tip")
+	}
 	if dead["fix/repushed-03"] {
 		t.Error("a branch pushed again after its PR closed (tip moved past the PR head) is new work, not the corpse")
 	}
 	if !dead["fix/merged-04"] {
 		t.Error("a merged PR's branch still at the PR head must decay")
+	}
+}
+
+// TestDecayIgnoresPRHeadedElsewhere pins the headRefName filter: a pull request
+// the forge associates with the branch but whose head is a DIFFERENT branch name
+// says nothing about this branch, even merged at the branch's own tip.
+func TestDecayIgnoresPRHeadedElsewhere(t *testing.T) {
+	tip := strings.Repeat("e", 40)
+	no := false
+	b := ghBranch{Name: "fix/x-06"}
+	b.Target = &struct {
+		Oid string `json:"oid"`
+	}{Oid: tip}
+	b.AssociatedPullRequests.Nodes = []ghPR{{Number: 80, HeadRefName: "fix/other-07", HeadRefOid: tip, State: "MERGED", IsCrossRepository: &no}}
+	if dead, _ := branchIsDead(b, ""); dead {
+		t.Fatal("a pull request headed by another branch must not decay this one")
+	}
+	b.AssociatedPullRequests.Nodes[0].HeadRefName = "fix/x-06"
+	if dead, _ := branchIsDead(b, ""); !dead {
+		t.Fatal("fixture drift: the same pull request headed by this branch must decay it")
 	}
 }
 
