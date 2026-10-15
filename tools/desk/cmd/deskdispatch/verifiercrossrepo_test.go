@@ -176,6 +176,13 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 			if strings.Contains(string(packet), "Prior-evidence-canary") {
 				t.Fatal("packet copied earlier Evidence")
 			}
+			// A plan naming any tracking revision other than the checkout's own
+			// is refused by that reason, never quoted from a different commit.
+			stale := plan
+			stale.verifierBriefRevision = strings.Repeat("a", 40)
+			if _, err := verifierPacket(packetInput{o: o, plan: stale, repo: o.repo, home: source}); err == nil || !strings.Contains(err.Error(), "tracking revision differs from its attestation") {
+				t.Fatalf("packet built against an unattested tracking revision: %v", err)
+			}
 			receipt, err := deskkit.CheckVerifierAttestation(source, brief)
 			if err != nil {
 				t.Fatal(err)
