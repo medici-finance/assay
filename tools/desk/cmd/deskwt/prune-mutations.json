@@ -100,8 +100,8 @@
     {
       "name": "the identity refusals stop binding the reap arm (the shared checkout / the current worktree become reap candidates)",
       "file": "cmd/deskwt/prune.go",
-      "old": "\t\tif opts.reapDeadSessions && !protected {",
-      "new": "\t\tif opts.reapDeadSessions {"
+      "old": "\t\tif opts.reapDeadSessions && !protected && idleHold == \"\" {",
+      "new": "\t\tif opts.reapDeadSessions && idleHold == \"\" {"
     },
     {
       "name": "the sweep never runs the cache pressure pass (the cadence this PR exists for is gone)",
@@ -210,6 +210,42 @@
       "file": "cmd/deskwt/prune.go",
       "old": "\tif staleErr != nil {\n\t\treturn res, staleErr\n\t}",
       "new": "\tif false && staleErr != nil {\n\t\treturn res, staleErr\n\t}"
+    },
+    {
+      "name": "activity gate skipped in the ordinary arm",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\t\tif idleHold != \"\" {\n\t\t\tres.skips = append(res.skips, skipEntry{rt, idleHold})",
+      "new": "\t\tif false {\n\t\t\tres.skips = append(res.skips, skipEntry{rt, idleHold})"
+    },
+    {
+      "name": "dead-session arm ignores the activity gate",
+      "file": "cmd/deskwt/prune.go",
+      "old": "if opts.reapDeadSessions && !protected && idleHold == \"\" {",
+      "new": "if opts.reapDeadSessions && !protected {"
+    },
+    {
+      "name": "unreadable activity evidence judged idle",
+      "file": "cmd/deskwt/activity.go",
+      "old": "if !f.required && os.IsNotExist(err) {",
+      "new": "if true {"
+    },
+    {
+      "name": "index writes are not activity",
+      "file": "cmd/deskwt/activity.go",
+      "old": "\t{\"index\", false},\n",
+      "new": ""
+    },
+    {
+      "name": "activity gate off by default",
+      "file": "cmd/deskwt/activity.go",
+      "old": "var defaultMinIdle = 60 * time.Minute",
+      "new": "var defaultMinIdle = 0 * time.Minute"
+    },
+    {
+      "name": "prune singleton keyed per worktree, not per repository",
+      "file": "cmd/deskwt/prune.go",
+      "old": "\t\treturn guard.commonDir\n",
+      "new": "\t\treturn cwd\n"
     }
   ]
 }

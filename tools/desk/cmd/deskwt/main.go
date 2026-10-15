@@ -31,11 +31,13 @@ const usage = `deskwt — add, remove, or prune git worktrees, only under sancti
 
 USAGE:
   deskwt add <name> [--branch B | --detach] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R]
+             [--lock-session <id>]
   deskwt remove <path>
   deskwt maintain [--repo <path>] [--apply] [--min-interval <dur>] [--timeout <dur>]
   deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
                [--reap-dead-sessions] [--lock-ttl <dur>] [--dry-run]
                [--no-branches | --branches-only] [--no-cache] [--cells-root <path>]
+               [--min-idle <dur>]
   deskwt role-init  <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]
   deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]
   deskwt --version
@@ -115,6 +117,11 @@ the url and the remedy. Fetch over SSH stays allowed (remote.origin.pushurl is w
 read whenever it is set), and with $DESK_LOOP unset the gate is inert — a human pushes under
 their own key, which is what the SSH remote is for.
 
+add --lock-session <id> LOCKS the new worktree for that live session, in role-init's lock
+reason format (` + "`session=<id>`" + `), so prune holds it from its first second and
+--reclaim-stale-locks / --reap-dead-sessions retire it only once that session's roster beacon
+is stale. A lock that cannot be taken and verified rolls the worktree back.
+
 add resolves a LOCAL BRANCH COLLISION by name rather than dying on git's. Worktrees share
 one refs store, so a branch left behind by an abandoned dispatch blocks every later add that
 derives the same name. A leftover that is checked out in no worktree and carries no commit its
@@ -154,6 +161,12 @@ and the shape a reclaim-by-detach leaves behind) must additionally pass three at
 old enough to be no session's just-created workspace (the fresh-worktree safety window),
 nothing uncommitted or untracked (the untracked-inclusive status), and no git-ignored
 payload. An at-tip tree passing all three drains; any other is LEFT with the reason named.
+Ahead of every content gate, in this arm and the --reap-dead-sessions arm alike, the
+ACTIVITY gate holds any worktree git shows activity in within --min-idle (default 1h;
+tunable, never disableable): the newest mtime of its admin HEAD, index, logs/HEAD,
+ORIG_HEAD and FETCH_HEAD and of the worktree root itself. It is held as "active <age> ago";
+evidence that cannot be read holds it too. A tree a session is working in can be
+content-identical to residue — this gate needs no lock to see the session.
 With --interval (e.g. 30m) it loops forever, sweeping every interval (for a k8s desk pod's
 prune loop); it honors the kill switch / STOP flags between ticks and exits 0 on SIGTERM.
 Every sweep reports: pruned (bookkeeping), removed, held (and locked-held), locks-reclaimed,
@@ -162,9 +175,11 @@ dead-session-reaped, and branches-deleted — plus, when it acted, stale-registr
 Every sweep ALSO runs the CELL-CACHE pressure pass (Step D, default ON; --no-cache skips it):
 for each marked cell Go-cache root under the cells root (--cells-root, then $CELLS_ROOT,
 then the compiled per-user default) it runs the managed cache's own pressure check —
-reclaiming only over the byte budget or under the free-space floor; active consumer records
-protect mod/ and gopath/, while build/ entries older than the policy's trim age are trimmed
-regardless — and it reaps a cache root whose owning directory this same sweep removed,
+reclaiming over the byte budget or under the free-space floor, and trimming over the
+high-water mark (75% of budget). Active consumer records protect mod/, gopath/ and whole
+roots; a trim removes build/ entries oldest first down to the low-water mark (60% of budget
+by default), plus any past the policy's trim age, and never one younger than the trim
+safety floor (2h by default) — and it reaps a cache root whose owning directory this same sweep removed,
 gated on the root's lease set re-read under its own lock at act time. The pass is SILENT
 when every cache is within policy; the summary gains a cache segment only when it
 reclaimed, reaped, or found pressure it could not clear.

@@ -19,7 +19,8 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// stampPathFor returns the singleton stamp path for the repo the fixture's sweep resolves.
+// stampPathFor returns the singleton stamp path for the repo the fixture's sweep resolves:
+// the key is the repository's resolved git-common-dir, whichever worktree work names.
 func stampPathFor(t *testing.T, work string) string {
 	t.Helper()
 	dir, err := pruneStampDir()
@@ -29,7 +30,11 @@ func stampPathFor(t *testing.T, work string) string {
 	if mkErr := os.MkdirAll(dir, 0o700); mkErr != nil {
 		t.Fatalf("mkdir %s: %v", dir, mkErr)
 	}
-	return filepath.Join(dir, pruneRepoKey(resolvePath(mustAbsOrRaw(work)))+".stamp")
+	g, err := newPathGuard(work)
+	if err != nil {
+		t.Fatalf("newPathGuard(%s): %v", work, err)
+	}
+	return filepath.Join(dir, pruneRepoKey(g.commonDir)+".stamp")
 }
 
 // --- the LOCK fails closed ----------------------------------------------------------
@@ -246,4 +251,38 @@ func writeStamp(t *testing.T, path string, st pruneStamp) {
 	if werr := os.WriteFile(path, b, 0o600); werr != nil {
 		t.Fatalf("write stamp: %v", werr)
 	}
+}
+
+// The singleton is the REPOSITORY's, not the invoking worktree's: a sweep covers every
+// worktree whichever one it starts in, so a sweep started from a linked worktree contends
+// on the same lock as one started from the main checkout.
+func TestPruneSingletonSharedAcrossWorktrees(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	target := addWorktree(t, "shared-candidate")
+	other := addWorktree(t, "second-invoker")
+	advanceMain(t, work, "first")
+
+	if stampPathFor(t, work) != stampPathFor(t, other) {
+		t.Fatal("two worktrees of one repository resolve different singleton stamps")
+	}
+	holder, err := os.OpenFile(stampPathFor(t, work), os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		t.Fatalf("open stamp: %v", err)
+	}
+	if lerr := deskkit.TryLockExclusive(holder); lerr != nil {
+		t.Fatalf("take the holding lock: %v", lerr)
+	}
+	t.Cleanup(func() { _ = deskkit.UnlockFile(holder); _ = holder.Close() })
+
+	// The second sweep starts from the OTHER worktree.
+	getwd = func() (string, error) { return other, nil }
+	rc, errout := runCapErr(t, []string{"prune"})
+	if rc != 0 {
+		t.Fatalf("a held sweep must exit 0, got rc = %d; stderr:\n%s", rc, errout)
+	}
+	if !strings.Contains(errout, "held by") {
+		t.Fatalf("a sweep from a second worktree did not contend on the repository's singleton; stderr:\n%s", errout)
+	}
+	assertExists(t, target)
 }
