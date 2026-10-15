@@ -8,7 +8,7 @@
     ".cursor/references/desk-shell.md": "e43cb70e4499ebca59cff8302593c793c981c89fb3e4b3d5643cac676d35289c",
     ".cursor/references/standing-note.md": "2f2868fdd8f122903e30e1b720a0efb7940165946e379adad2e6378a4d4e58c0",
     ".cursor/references/tick-contract.md": "65e6ac141091a31120f5eefd126891409ed1a92c376d6ef3f99fd8ea52e86ee7",
-    ".cursor/rules/assay.mdc": "c8ac5b06a068177da53bb3c509897e5f8dca95676835a0e0010723153dc52ebf",
+    ".cursor/rules/assay.mdc": "bdb3773d814f916c1c02bfe65a27eec16892e3e425fc8a8cb06240f815d53c0f",
     ".cursor/skills/adopt/SKILL.md": "8a2fda684f224efd2a35c1ccfbe5d842d2f91d168d342f70d5b027b16adfd3f8",
     ".cursor/skills/ask-decision/SKILL.md": "6596a186ad26a625e039c480f8a37ae689a65175579eb31e0e7d424960c4324f",
     ".cursor/skills/author-brief/SKILL.md": "b9ede81c5f1d8de2bddc4db15050858ac81102df21a35744d1f341b6ba09edbd",
@@ -38,5 +38,5 @@
     ".cursor/skills/worker-desk/SKILL.md": "c2dc89002d31b99e7cc6eb7b65ab3a4fb82cd882157956325633f6e7ea15b42e",
     ".cursor/skills/worker-desk/references/dispatch-runbook.md": "75fea93d48f9ef79f295c24eb9e44aaedd44e0b71fe70cb102633f074e9d8743"
   },
-  "bindingsSha256": "421a1c337733bebb1c971b3092fe56be914eaf5b801c28a2bb58769cab08327c"
+  "bindingsSha256": "b0c352b435e05457799e7226acbc714238548fd9933db70a401798cf20c5a068"
 }

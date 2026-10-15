@@ -1414,6 +1414,13 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "patterns" {
 		os.Exit(runPatterns(os.Args[2:], os.Stdout, os.Stderr))
 	}
+	// `statusgen instance validate --file PATH ...` (graph-execution/09) —
+	// validates one workflow-instance-v1 document against its schema, its pattern
+	// and the work item's acceptance version (instance.go). A distinct artifact
+	// class with its own flags, so a subcommand, like `patterns`.
+	if len(os.Args) > 1 && os.Args[1] == "instance" {
+		os.Exit(runInstance(os.Args[2:], os.Stdout, os.Stderr))
+	}
 
 	// `statusgen runtime-resource --lint --adapters FILE [--as-of RFC3339]
 	// PATH...` — validate runtime-resource-v1 records against

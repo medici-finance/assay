@@ -98,7 +98,7 @@ _Held by per-stream caps: 35 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (14 for the desk · 28 for the driver · 33 for workers · 24 for an operator · 15 runner-pending — of 117 total; 3 could-not-check)
+## Awaiting verification / review (14 for the desk · 28 for the driver · 33 for workers · 24 for an operator · 16 runner-pending — of 118 total; 3 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -204,11 +204,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 13 [exec:strong] | implemented | 1000 | 0 | — | operator | environment blocker, cite #1631 | — | — |
 | quality | 19 [exec:strong] | implemented | 1000 | 0 | — | operator | environment blocker, cite #1800 | — | — |
 
-### Runner-pending (15)
+### Runner-pending (16)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | desktools-v2 | 15 [exec:strong] | verified | 22000 | 42 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ 5f5072d89b11 (claude-opus-5-5) | — |
+| graph-execution | 09 [exec:strong] | implemented | 17500 | 31 | — | verify runner | none | — | — |
 | build-less-brittle | 02 [exec:strong] | verified | 6500 | 7 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | build-less-brittle | 04 [exec:strong] | verified | 5500 | 5 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | build-less-brittle | 05 [exec:strong] | verified | 4500 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
@@ -582,7 +583,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 06 Run records and the replay/learning loop — todo (wave 9)
 - 07 Flow instruments — service/wait split, CI-slot saturation, gate catch/override — implemented (wave 1)
 - 08 Signal-triggered pattern — incident and regression — todo (wave 1)
-- 09 Versioned workflow instances and shared identity — todo (wave 1)
+- 09 Versioned workflow instances and shared identity — implemented (wave 1)
 - 11 Optional pinned Laya provider with explicit CPU and GPU profiles — todo (wave 1)
 - 12 Reproducible decision evaluation and calibration manifests — todo (wave 2)
 - 13 Deterministic admission over facts and bounded probabilistic advice — implemented (wave 1)
