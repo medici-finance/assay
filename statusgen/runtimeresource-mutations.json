@@ -424,8 +424,20 @@
     {
       "name": "a create reconciled present after an absence does not begin a new lifetime",
       "file": "runtimeresource.go",
-      "old": "observe(e.ObservedState, e.ObservedAt.At, tv == \"create\" || tv == \"restore\")",
+      "old": "observe(e.ObservedState, e.ObservedAt.At, recreates)",
       "new": "observe(e.ObservedState, e.ObservedAt.At, false)"
+    },
+    {
+      "name": "a reconcile of an acknowledged create begins a new lifetime",
+      "file": "runtimeresource.go",
+      "old": " && d.Effects[j].Outcome == \"unknown\"",
+      "new": ""
+    },
+    {
+      "name": "a second reconcile of the same lost-ack create begins a lifetime again",
+      "file": "runtimeresource.go",
+      "old": " && !resolved[j]",
+      "new": ""
     },
     {
       "name": "receipts dated out of list order are accepted",

@@ -558,7 +558,9 @@ type runtimeDerived struct {
 	// any observation of present, and one more each time the resource is
 	// observed present again after evidence that it ended — a reconciled release
 	// observing it absent, or a create or restore receipt observing it present
-	// after an absence. An inspect that finds nothing is not that evidence, so an
+	// after an absence, including the first reconcile that resolves a create or
+	// restore whose acknowledgment was lost. An inspect that finds nothing, and a
+	// reconcile of an effect that was acknowledged, are not that evidence, so an
 	// absent/present pair of inspects keeps the lifetime. Rule 6 scopes ownership
 	// to it, so a claim and its release protection end with the lifetime they
 	// were made in.
@@ -575,8 +577,9 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 	dv := runtimeDerived{lifetime: make([]int, len(d.Effects))}
 	cur := 0
 	// recreates is true for the receipt of an effect that re-creates the
-	// resource (create, restore), and for a reconcile that resolves one whose
-	// acknowledgment was lost: both are evidence the resource came back.
+	// resource (create, restore), and for the first reconcile that resolves one
+	// whose acknowledgment was lost (outcome unknown): both are evidence the
+	// resource came back. A reconcile of an acknowledged effect is a read.
 	observe := func(state string, at time.Time, recreates bool) {
 		switch state {
 		case "present":
@@ -597,6 +600,7 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 			dv.present = false
 		}
 	}
+	resolved := map[int]bool{} // effects an earlier reconcile receipt already resolved
 	for i, e := range d.Effects {
 		switch e.Verb {
 		case "reconcile":
@@ -608,8 +612,14 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 			// regression: a create whose answer was lost, once reconciled
 			// present, is the same physical event as an acknowledged create, so
 			// it begins a lifetime after an absence too (Recovery rule 3).
+			// regression: that held for ANY reconcile of a create or restore,
+			// so a re-read of an acknowledged one restarted the ttl and ended a
+			// claim. Only the first reconcile that resolves a create or restore
+			// whose outcome was unknown is evidence of re-creation.
 			tv := d.Effects[j].Verb
-			observe(e.ObservedState, e.ObservedAt.At, tv == "create" || tv == "restore")
+			recreates := (tv == "create" || tv == "restore") && d.Effects[j].Outcome == "unknown" && !resolved[j]
+			resolved[j] = true
+			observe(e.ObservedState, e.ObservedAt.At, recreates)
 			if e.ObservedState == "absent" {
 				switch d.Effects[j].Verb {
 				case "create":

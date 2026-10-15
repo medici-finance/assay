@@ -96,8 +96,10 @@ only a later reconcile says the resource is gone (Recovery rule 4). So:
   observes it `present` after an `absent` observation. A `reconcile` that resolves a lost
   `create` or `restore` and observes `present` is that same evidence, because it shows the
   create took effect (Recovery rule 3): a lost acknowledgment never changes which lifetime
-  the resource is on. An `inspect` that found nothing and a later one that found the
-  resource again are not that evidence. The resource stays on
+  the resource is on. Only the first such reconcile counts. A `reconcile` of an effect
+  whose acknowledgment arrived, or a later reconcile of one already resolved, is a read of
+  the resource and shows no more than an `inspect` does. An `inspect` that found nothing and
+  a later one that found the resource again are not that evidence either. The resource stays on
   its current lifetime: its claim, its release protection and its TTL anchor all continue.
 - A resource observed `present` again after a reconciled release is live again, and the
   record MUST NOT say `released`. On a new lifetime the TTL counts from the observation
@@ -225,7 +227,8 @@ resource until someone claims it, and an agent may release it. This holds whoeve
 the `create` or `restore`, and whether its acknowledgment arrived or was reconciled: a
 claim does not outlive the resource it was made on, and the claimant makes it again if
 the resource came back. An `inspect` that found the resource absent and a later one that
-found it present do not end the protection.
+found it present do not end the protection, and neither does a `reconcile` that re-reads an
+effect whose acknowledgment arrived.
 
 The split matters because the dangerous moment is the moment a resource stops being
 ephemeral. An agent that could claim could turn a scratch branch into a standing database

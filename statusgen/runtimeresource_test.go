@@ -165,6 +165,14 @@ func TestRuntimeResourceContractRules(t *testing.T) {
 	// lateInspect is listed before the release (requested 01:29) but its receipt
 	// is dated 01:40, after the reconcile that observed the resource gone.
 	lateInspect := "  - id: eff-0009\n    verb: inspect\n    idempotency-key: run-0003/inspect-late\n    requested-at: \"2026-01-01T01:29:00Z\"\n    outcome: succeeded\n    principal: human:reviewer-a\n    receipt:\n      adapter-ref: mock://snapshot/rr-claimed-01\n      observed-at: \"2026-01-01T01:40:01Z\"\n      observed-state: present\n"
+	claimedReread := strings.Replace(claimed, "  - id: eff-0003\n", rrReread("agent:worker-2", "mock://snapshot/rr-claimed-01", "00:40", "00:45")+"  - id: eff-0003\n", 1)
+	// validTwice: a lost-ack create reconciled present (a new lifetime), the
+	// resource found absent again, then the SAME create reconciled a second time.
+	validTwice := valid + rrEffect("eff-0011", "inspect", "agent:worker-1", "01:10", "succeeded", "", "mock://branch/rr-valid-01", "absent") +
+		rrEffect("eff-0012", "create", "agent:worker-1", "01:15", "unknown", "", "", "") +
+		rrEffect("eff-0013", "reconcile", "control-plane", "01:16", "succeeded", "eff-0012", "mock://branch/rr-valid-01", "present") +
+		rrEffect("eff-0014", "inspect", "agent:worker-1", "01:20", "succeeded", "", "mock://branch/rr-valid-01", "absent") +
+		rrEffect("eff-0015", "reconcile", "control-plane", "01:50", "succeeded", "eff-0012", "mock://branch/rr-valid-01", "present")
 	recreatedByInspect := strings.Replace(recreated, "verb: create\n    idempotency-key: run-0003/create-again", "verb: inspect\n    idempotency-key: run-0003/create-again", 1)
 	// lostCreate is a create by an agent whose acknowledgment was lost, and the
 	// reconcile that found the resource present: the same event as an
@@ -242,6 +250,14 @@ func TestRuntimeResourceContractRules(t *testing.T) {
 		// regression: a create reconciled present after an absence kept the old
 		// lifetime and its claim, while the acknowledged create dropped them.
 		{"lost-ack create after an absence drops the claim", claimedLive + inspectAbsent + lostCreate, "state: claimed", "state: claimed", ruleRRClaimWithoutPrincipal, `ownership names "human:reviewer-a" but no succeeded claim effect by that principal in the resource's current lifetime`},
+		// regression: a reconcile of an acknowledged create, after an inspect
+		// found the resource absent, began a new lifetime — the ttl restarted
+		// and an agent's release of a claimed resource lint clean.
+		{"ttl restarted by a re-read of the create", valid + rrReread("agent:worker-1", "mock://branch/rr-valid-01", "01:10", "01:15"), "ttl: 4h", "ttl: 1h", ruleRRExpired, "ended 2026-01-01T01:00:05Z"},
+		{"agent release across a re-read of the create", claimedReread, releaseByOwner, strings.Replace(releaseByOwner, "human:reviewer-a", "agent:worker-2", 1), ruleRRClaimWithoutPrincipal, `release effect "eff-0003" ends a claimed resource but is authorized by "agent:worker-2"`},
+		// regression: a second reconcile of the same lost-ack create, after an
+		// inspect found the resource absent again, began a lifetime a second time.
+		{"ttl restarted by a second reconcile of a lost-ack create", validTwice, "ttl: 4h", "ttl: 30m", ruleRRExpired, "ended 2026-01-01T01:46:01Z"},
 		// regression: a receipt dated after a later-listed one was still read
 		// first, so an earlier-issued inspect could not outvote a reconcile.
 		{"receipt dated after a later-listed one", claimed, "  - id: eff-0003\n", lateInspect + "  - id: eff-0003\n", ruleRRStateUnsupported, `effect "eff-0003": receipt is dated 2026-01-01T01:30:01Z, before the receipt of "eff-0009" listed ahead of it (2026-01-01T01:40:01Z)`},
@@ -269,6 +285,29 @@ func TestRuntimeResourceContractRules(t *testing.T) {
 			}
 		})
 	}
+}
+
+// rrEffect renders one effect. An empty seen renders no receipt, an empty
+// reconciles no reconcile target.
+func rrEffect(id, verb, by, at, outcome, reconciles, ref, seen string) string {
+	s := "  - id: " + id + "\n    verb: " + verb + "\n    idempotency-key: x/" + id + "\n    requested-at: \"2026-01-01T" + at + ":00Z\"\n    outcome: " + outcome + "\n    principal: " + by + "\n"
+	if reconciles != "" {
+		s += "    reconciles: " + reconciles + "\n"
+	}
+	if seen != "" {
+		s += "    receipt:\n      adapter-ref: " + ref + "\n      observed-at: \"2026-01-01T" + at + ":01Z\"\n      observed-state: " + seen + "\n"
+	}
+	return s
+}
+
+// rrReread is an inspect that finds the resource absent at absentAt, then a
+// reconcile of the ORIGINAL, acknowledged create (eff-0001) reading it present
+// at readAt. Nothing was created or restored after the absence, so nothing
+// shows the resource came back: the lifetime, its claim and its ttl anchor
+// continue, exactly as for an inspect that reads the same thing.
+func rrReread(by, ref, absentAt, readAt string) string {
+	return rrEffect("eff-0011", "inspect", by, absentAt, "succeeded", "", ref, "absent") +
+		rrEffect("eff-0012", "reconcile", "control-plane", readAt, "succeeded", "eff-0001", ref, "present")
 }
 
 // rrLineHas reports whether one line carries both the rule tag and the message.
@@ -312,6 +351,10 @@ func TestRuntimeResourceContractOrd(t *testing.T) {
 	// regression: an inspect gap ended the lifetime, so the owner's own claim
 	// no longer backed the ownership block of the resource it still held.
 	claimedGap := strings.Replace(claimed, "  - id: eff-0003\n", gapInspect+"  - id: eff-0003\n", 1)
+	// regression: a re-read of the acknowledged create after an inspect gap
+	// began a new lifetime, so the owner's own claim no longer backed the
+	// ownership block of the resource it still held.
+	claimedReread := strings.Replace(claimed, "  - id: eff-0003\n", rrReread("agent:worker-2", "mock://snapshot/rr-claimed-01", "00:40", "00:45")+"  - id: eff-0003\n", 1)
 	// A create whose receipt observes the resource present after an absence is
 	// evidence of re-creation: a new lifetime, and its ttl counts from there.
 	recreate := "  - id: eff-0011\n    verb: inspect\n    idempotency-key: run-0001/inspect-2\n    requested-at: \"2026-01-01T01:10:00Z\"\n    outcome: succeeded\n    principal: agent:worker-1\n    receipt:\n      adapter-ref: mock://branch/rr-valid-01\n      observed-at: \"2026-01-01T01:10:01Z\"\n      observed-state: absent\n" +
@@ -326,6 +369,7 @@ func TestRuntimeResourceContractOrd(t *testing.T) {
 	cases := []struct{ name, base, old, new string }{
 		{"re-created after release", unclaimed, "state: released", "state: provisioned"},
 		{"owner releases across an inspect gap", claimedGap, "state: released", "state: released"},
+		{"owner releases across a re-read of the create", claimedReread, "state: released", "state: released"},
 		{"create after an absence restarts the ttl", valid + recreate, "ttl: 4h", "ttl: 1h"},
 		{"lost-ack create reconciled after an absence restarts the ttl", valid + lostRecreate, "ttl: 4h", "ttl: 1h"},
 		{"restore after an absence restarts the ttl", valid + strings.Replace(recreate, "verb: create", "verb: restore", 1), "ttl: 4h", "ttl: 1h"},
