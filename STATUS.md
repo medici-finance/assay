@@ -17,7 +17,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [comms-core](docs/streams/comms-core/README.md) | P1 | active | 0/4 | 2026-10-15 |  |
 | [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-10-15 |  |
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-10-15 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/7 | 2026-10-15 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/9 | 2026-10-15 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/27 | 2026-10-15 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/35 | 2026-10-15 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/35 | 2026-10-15 |  |
@@ -61,6 +61,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-10-15 |
 | [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-10-15 |
 | [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-15 |
+| [ci-tooling](docs/streams/ci-tooling/README.md) | P2 | 0/7 | 2026-10-15 |
 | [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/0 | 2026-10-15 |
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-10-15 |
 | [performance-collection](docs/streams/performance-collection/README.md) | P2 | 0/6 | 2026-10-15 |
@@ -145,8 +146,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | graph-execution | 03 [exec:strong] | implemented | 11000 | 18 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | worker | fix, cite medici-finance/assay#1606 | — | — |
 | windows-port | 00 | implemented | 5000 | 8 | — | worker | fix, cite #2942 | — | — |
+| derived-board | 03 [exec:strong] | implemented | 4500 | 5 | — | worker | fix, cite medici-finance/assay#1909 | — | — |
 | apps-installer | 02 [exec:strong] | implemented | 4000 | 4 | — | worker | fix, cite medici-finance/assay#1915 | — | — |
-| derived-board | 03 [exec:strong] | implemented | 3500 | 3 | — | worker | fix, cite medici-finance/assay#1909 | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
 | desk-supervision | 28 [exec:strong] | implemented | 3000 | 4 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | measured-status | 03 [exec:strong] | implemented | 2200 | 0 | — | worker | fix, cite #1915 | — | — |
@@ -338,6 +339,16 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 06 Integrate shell-free Windows host and Docker lifecycle — todo (wave 3)
 - 07 Native Windows acceptance, packaged runtime proof and support documentation — todo (wave 4)
 
+### ci-tooling (7 open)
+
+- 01 Layout inventory and workflow staging coexistence — todo (wave 1)
+- 02 Assay-wide result and repository input libraries — todo (wave 2)
+- 03 CI-wide check and reporting libraries — todo (wave 3)
+- 04 Pinned installation and check actions — todo (wave 4)
+- 05 Pilot command migration and release packaging — todo (wave 5)
+- 06 Relocate an existing public CI cohort — todo (wave 6)
+- 07 Workflow adoption and source retirement qualification — todo (wave 7)
+
 ### comms-core (4 open)
 
 - 01 Extract the comms contract and isolate Assay policy — todo (wave 0)
@@ -364,12 +375,14 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 08 External-contribution metrics — inbound pull requests by tier and outcome, on the board — todo (wave 1)
 - 09 External-contributor credit in release notes — the aggregator names the author a fork change came from — todo (wave 1)
 
-### derived-board (4 open)
+### derived-board (6 open)
 
 - 03 `statusgen reconcile` — derive lifecycle state from PRs, witnesses, approvals and rulings; brief-v2 parser — implemented (wave 1)
 - 04 generated Briefs table in every stream README + single-writer lint + scheduled reconcile PR — implemented (wave 2)
 - 06 v1.0.0 — deskmigrate statusgen-regen op, the v0.28.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1 — implemented (wave 3)
 - 07 per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills — in-progress (wave 4)
+- 08 witness ledger — the board writer records every merged-PR fact the fold reads, so a merged PR is read from the forge once, ever — todo (wave 2)
+- 09 incremental reconcile — forge reads scale with open PRs plus PRs changed since the last regen, never with total PR history — todo (wave 3)
 
 ### desk-containers (25 open)
 
@@ -853,4 +866,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**28** streams (**21** active, **0** paused, **7** parked) · **106/430** briefs done · completed initiatives: see `docs/archive/`
+**29** streams (**21** active, **0** paused, **8** parked) · **106/439** briefs done · completed initiatives: see `docs/archive/`
