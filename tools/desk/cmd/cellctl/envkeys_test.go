@@ -257,7 +257,8 @@ var envKeyOtherReads = map[string]envOtherRead{
 		why: "which file supplied the provider value just read"},
 
 	// ── Env.Get handed to another package ──
-	"c.Env.Get@cache.go:cachePolicy": {keys: []string{"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE", "CELL_GO_CACHE_BUILD_MAX_AGE"},
+	"c.Env.Get@cache.go:cachePolicy": {keys: []string{"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE", "CELL_GO_CACHE_BUILD_MAX_AGE",
+		"CELL_GO_CACHE_LOW_WATER_PERCENT", "CELL_GO_CACHE_TRIM_MIN_AGE"},
 		why: "the managed Go cache resolver reads its keys through this getter; TestEnvKeyRegistryIsComplete holds this list to the literals in that package"},
 
 	// ── forwarding: the key is a parameter, and the call sites are walked instead ──
@@ -823,6 +824,8 @@ func TestCellDefaultsTemplateUncommentedLines(t *testing.T) {
 			}
 			m["cache budget"], m["cache floor"] = fmt.Sprint(p.Budget), fmt.Sprint(p.Floor)
 			m["cache build max age"] = fmt.Sprint(p.BuildMaxAge)
+			m["cache low water"] = fmt.Sprint(p.LowWater())
+			m["cache trim min age"] = fmt.Sprint(p.MinAge())
 			off, err := plain.cachePolicy()
 			m["cache"] = fmt.Sprintf("on=%v err=%v", off != nil, err)
 		}
@@ -965,6 +968,8 @@ var templateDefaultProof = map[string]string{
 	"CELL_GO_CACHE_BYTES":             "resolved: cache budget",
 	"CELL_GO_CACHE_MIN_FREE":          "resolved: cache floor",
 	"CELL_GO_CACHE_BUILD_MAX_AGE":     "resolved: cache build max age",
+	"CELL_GO_CACHE_LOW_WATER_PERCENT": "resolved: cache low water",
+	"CELL_GO_CACHE_TRIM_MIN_AGE":      "resolved: cache trim min age",
 	"CELL_SCRATCH_MAX_AGE":            "resolved: scratch",
 	"CELL_SCRATCH_MAX_BYTES":          "resolved: scratch",
 	"CELL_HARNESS":                    "resolved: harness",

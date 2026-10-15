@@ -133,6 +133,10 @@ func (c *Cell) maintenanceCachePolicy() (*cellcache.Policy, error) {
 			return c.Env.Get("CELL_GO_CACHE_MIN_FREE")
 		case "CELL_GO_CACHE_BUILD_MAX_AGE":
 			return c.Env.Get("CELL_GO_CACHE_BUILD_MAX_AGE")
+		case "CELL_GO_CACHE_LOW_WATER_PERCENT":
+			return c.Env.Get("CELL_GO_CACHE_LOW_WATER_PERCENT")
+		case "CELL_GO_CACHE_TRIM_MIN_AGE":
+			return c.Env.Get("CELL_GO_CACHE_TRIM_MIN_AGE")
 		}
 		return ""
 	})
