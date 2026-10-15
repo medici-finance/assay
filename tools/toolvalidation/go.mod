@@ -1,3 +1,3 @@
 module github.com/medici-finance/assay/tools/toolvalidation
 
-go 1.25.0
+go 1.27.0

@@ -4,7 +4,7 @@ package main
 //
 // The decay needs ONE fact per claiming branch: is the change that branch belongs
 // to still in flight, or has it already merged/closed? On GitHub that fact comes
-// from `gh pr list` (claimdecay.go). On GitLab there is no `gh`, and installing
+// from `gh api graphql` over the branches (claimdecay.go). On GitLab there is no `gh`, and installing
 // one would not help — a GitLab project has no pull requests to list. This file
 // is the equivalent read against GitLab's REST v4 merge-request endpoint.
 //

@@ -67,7 +67,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 ## Next up
 
-> **COULD-NOT-CHECK — dead-claim decay did not run.** PR state through `gh pr list` could not be read: gh pr list: exec: "gh": executable file not found in $PATH
+> **COULD-NOT-CHECK — dead-claim decay did not run.** branch pull-request state through `gh api graphql` could not be read: gh api graphql (branch pull requests): exec: "gh": executable file not found in $PATH
 > Open branches whose PR/merge request has already **merged or closed** are still counted as claims, so they keep consuming their stream's dispatch cap. The rows below are a **subset**: briefs held behind those dead claims are missing from this board, not absent from the backlog.
 
 > **DRIVE NOT APPLIED.** drive manifest(s) rejected: build-less-brittle, desktools-v2. The board generated normally with **zero** drive boost — a malformed, expired, or over-concurrent drive manifest is fail-neutral by design and can never freeze the board (see `--lint` WARN lines).
