@@ -210,6 +210,12 @@
       "file": "cmd/deskflip/flip.go",
       "old": "\t\tif err := checkReviewerApproved(reviewerLogin, grantReviews2, head, liveBodyRead{Body: body2, EditedAt: bodyEditedAt}, o.pr, runsAtHead); err != nil {",
       "new": "\t\tif err := checkReviewerApproved(reviewerLogin, reviews2, head, liveBodyRead{Body: body2, EditedAt: bodyEditedAt}, o.pr, runsAtHead); err != nil {"
+    },
+    {
+      "name": "#3093 X-Fmain: the main pass's correctness gate reads the UNFILTERED reviews",
+      "file": "cmd/deskflip/flip.go",
+      "old": "\t\tif err := checkReviewerApproved(reviewerLogin, grantReviews, head, liveBodyRead{Body: pr.Body, EditedAt: bodyEditedAt}, o.pr, runsAtHead); err != nil {",
+      "new": "\t\tif err := checkReviewerApproved(reviewerLogin, reviews, head, liveBodyRead{Body: pr.Body, EditedAt: bodyEditedAt}, o.pr, runsAtHead); err != nil {"
     }
   ]
 }

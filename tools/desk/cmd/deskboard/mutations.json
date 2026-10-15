@@ -228,6 +228,12 @@
       "file": "cmd/deskboard/reanchor.go",
       "old": "\treturn r.State == \"APPROVED\" || sec == secPass\n",
       "new": "\treturn r.State == \"APPROVED\"\n"
+    },
+    {
+      "name": "#3093 X-Bbody: the body-edit re-verification reads the UNFILTERED reviews — a re-anchored documented APPROVE lifts the row",
+      "file": "cmd/deskboard/board.go",
+      "old": "rs = applyBodyEditReverification(rs, grantReviews, p.HeadRefOid,",
+      "new": "rs = applyBodyEditReverification(rs, reviews, p.HeadRefOid,"
     }
   ]
 }

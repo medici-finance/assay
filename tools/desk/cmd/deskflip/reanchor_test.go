@@ -208,6 +208,28 @@ func TestReanchoredApprovalOnTheSecondReadIsRefused(t *testing.T) {
 	}
 }
 
+// The mirror for the correctness lane: the FIRST read serves only an APPROVED re-anchored onto
+// head B (submitted before B existed), the re-read a genuine fresh one. The main pass must
+// refuse on the read it holds; leaning on the re-read's filter would let the main pass's own
+// unfiltered read go unpinned.
+func TestReanchoredApprovalOnTheFirstReadIsRefused(t *testing.T) {
+	s := newStub()
+	s.headCommittedAt = reanchorHeadDate
+	s.install(t)
+	s.reviews = reanchorReviews(t, reanchorApproveAt)[1:]
+	s.reviewsAfterFirstRead = reanchorReviews(t, reanchorFreshApprov)[1:]
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("re-anchored approval on the first read rc = %d, want %d (refused)", rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a re-anchored approval on the first read produced mutations: %v", m)
+	}
+	if s.reviewReads != 1 {
+		t.Fatalf("reviews read %d time(s) — the refusal must come from the main pass, before any re-read", s.reviewReads)
+	}
+}
+
 // Each pass's security lane is filtered on its own read. The first read serves a security
 // pass re-anchored onto head B (submitted before B existed), the re-read a genuine fresh one:
 // the main pass must refuse on the read it actually holds, not lean on the re-read.

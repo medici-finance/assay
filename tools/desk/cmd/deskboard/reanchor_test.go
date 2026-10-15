@@ -191,3 +191,68 @@ func TestSecurityPassAfterHeadCommitIsAPassOnBoard(t *testing.T) {
 		t.Fatalf("action = %s (%s), want %s", row.Action, row.Note, actMergeNow)
 	}
 }
+
+// bodyEditReanchorRow runs `deskboard actions` over the body-edit fixture PR (bodyedit_test.go)
+// with its head commit dated headDate: the CR blocked on the body, the body edited after it,
+// a documented re-verification APPROVE at docAt, and — when freshAt is set — a later APPROVE
+// that documents nothing.
+func bodyEditReanchorRow(t *testing.T, headDate, docAt, freshAt string) actionRow {
+	t.Helper()
+	installFakeGH(t)
+	t.Setenv("DESKBOARD_GH_PR_REPO", "example-org/tracker")
+	t.Setenv("DESKBOARD_GH_PRLIST_JSON",
+		`[{"number":17,"title":"example deck","body":`+jsonStr(beBoardBodyAfter)+`,"isDraft":true,`+
+			`"lastEditedAt":`+jsonStr(beBoardEditedAt)+`,`+
+			`"author":{"login":"ada"},"headRefOid":"`+beBoardHead+`","headCommittedDate":`+jsonStr(headDate)+`,`+
+			`"mergeStateStatus":"CLEAN",`+
+			`"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}]`)
+	t.Setenv("DESKBOARD_GH_PRFILES_JSON", `[{"filename":"docs/example.md"}]`)
+	rv := func(r review) string {
+		return `{"user":{"login":"` + r.User.Login + `"},"state":"` + r.State + `","commit_id":"` + r.CommitID + `",` +
+			`"body":` + jsonStr(r.Body) + `,"submitted_at":"` + r.SubmittedAt + `"}`
+	}
+	reviews := []string{rv(beBoardCR()), rv(beBoardReview("APPROVED", beBoardApproveBody(), docAt))}
+	if freshAt != "" {
+		reviews = append(reviews, rv(beBoardReview("APPROVED", "looks good", freshAt)))
+	}
+	t.Setenv("DESKBOARD_GH_REVIEWS_JSON", "["+strings.Join(reviews, ",")+"]")
+	var out, errb bytes.Buffer
+	if code := run([]string{"actions"}, &out, &errb); code != deskkit.ExitOK {
+		t.Fatalf("run(actions) = exit %d, stderr=%s", code, errb.String())
+	}
+	var rep actionsReport
+	if err := json.Unmarshal(out.Bytes(), &rep); err != nil {
+		t.Fatalf("parsing actions JSON: %v\n%s", err, out.String())
+	}
+	for _, r := range rep.Rows {
+		if r.Number == 17 {
+			return r
+		}
+	}
+	t.Fatalf("row 17 missing from %s", out.String())
+	return actionRow{}
+}
+
+// The body-edit re-verification decides on the filtered reviews too. The documented APPROVE
+// was submitted BEFORE the head commit's committer date (re-anchored onto the head); the only
+// APPROVE after it documents nothing. The stale re-verification verified nothing at this head,
+// so the row stays SUSPECT-APPROVAL, not MERGE-NOW.
+func TestReanchoredBodyEditReverificationIsNotAPassOnBoard(t *testing.T) {
+	row := bodyEditReanchorRow(t, "2026-07-14T18:30:00Z", "2026-07-14T18:24:55Z", "2026-07-14T18:40:00Z")
+	if row.Action != actSuspectApproval {
+		t.Fatalf("action = %s (%s), want %s — a body-edit re-verification submitted before the head "+
+			"commit existed is not a re-verification at that head", row.Action, row.Note, actSuspectApproval)
+	}
+}
+
+// Positive control: the same documented APPROVE submitted after the head commit's committer
+// date lifts the row to MERGE-NOW through the body-edit class.
+func TestBodyEditReverificationAfterHeadCommitIsAPassOnBoard(t *testing.T) {
+	row := bodyEditReanchorRow(t, "2026-07-14T18:20:00Z", "2026-07-14T18:24:55Z", "")
+	if row.Action != actMergeNow {
+		t.Fatalf("action = %s (%s), want %s", row.Action, row.Note, actMergeNow)
+	}
+	if !strings.Contains(row.Note, "body-edit re-verification") {
+		t.Errorf("note does not name the class: %s", row.Note)
+	}
+}

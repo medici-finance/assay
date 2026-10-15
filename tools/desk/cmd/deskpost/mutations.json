@@ -48,6 +48,18 @@
       "file": "cmd/deskpost/ready.go",
       "old": "\t\tsecv := securityVerdictStanding(grantReviews, head)",
       "new": "\t\tsecv := securityVerdictStanding(reviews, head)"
+    },
+    {
+      "name": "#3093 X-P13: the stale-grant filter drops only APPROVED — a COMMENTED Security-Review: pass (the shape security-review posts) re-anchored onto the head survives it",
+      "file": "cmd/deskpost/reanchor.go",
+      "old": "\treturn r.State == \"APPROVED\" || securityGrantOf(r) == secPass",
+      "new": "\treturn r.State == \"APPROVED\""
+    },
+    {
+      "name": "#3093 X-Pext: the external-prerequisite exemption reads the UNFILTERED reviews — a clearance cited on a re-anchored APPROVE clears the block",
+      "file": "cmd/deskpost/ready.go",
+      "old": "out := clearedByExternalPrereq(grantReviews, head,",
+      "new": "out := clearedByExternalPrereq(reviews, head,"
     }
   ]
 }
