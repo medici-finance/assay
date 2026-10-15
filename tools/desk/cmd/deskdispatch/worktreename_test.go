@@ -33,7 +33,7 @@ func dispatchedWtName(t *testing.T, kit, sess string) string {
 	_, root := s.install(t)
 	plantScripts(t, root)
 	t.Setenv("DESK_SESSION", sess)
-	s.replies = happyReplies("/private/tmp/long-item-home")
+	s.replies = happyReplies(t.TempDir())
 	args := []string{longItem, "--root", root, "--prompt-file", filepath.Join(t.TempDir(), "p.md")}
 	if kit == "verifier" {
 		args = append(args, "--kit", "verifier", "--model", "gpt-6-astra", "--brief", "spec.md")
