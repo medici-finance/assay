@@ -447,6 +447,15 @@ and it is the only one the capability floor reads. Both this worker-desk and its
 a shared `DESK_SESSION` is claim custody, not stamp authority. Never switch identity or
 redispatch a worker just to obtain the stamp.
 
+To give a fresh dispatch a stamp target before its PR exists, add `--attest-worker` (with
+`--model`, `--tier` and `--brief`, or an `issue-<N>` item). The verb creates, stamps, closes and
+reads back a dispatcher-authored `[worker-attestation]` record before it emits the prompt. If
+any of those steps fails, it emits no prompt and releases the claim (exit 6). Do not retry
+by hand. The prompt carries one exact `Worker-Attestation:` line for the PR description,
+and the coordinator's `--stamp-only` call (optionally `--attestation <N>`) refuses a change
+whose branch, kit or model/tier disagrees with that record. The record constrains the PR
+stamp; it never stands in for it.
+
 ## Dispatch — `deskdispatch <item-key>` runs the ceremony
 
 The per-item ceremony is mechanical and lives in the verb: claim-acquire → worktree-create in the

@@ -5692,6 +5692,33 @@ claim, allocates no worktree, invokes no lifecycle hook, registers no roster ent
 launches no worker. It does not revive a released review claim. `--model` and `--tier`
 are explicit, never inferred from an old stamp or a model-name lookup.
 
+**Worker pre-work attestation (opt-in, `--attest-worker`).** Without the flag a fresh
+worker dispatch reports its stamp PENDING, as above. With it,
+`deskdispatch <item> --kit worker --model gpt-6.1-sol --tier strong --brief <path> --attest-worker`
+gives the run a stamp target before any PR exists. Step 5 creates a dispatcher-authored
+`[worker-attestation] <run>` issue whose immutable JSON body binds a random run identifier,
+the repository, the claim key, the kit, the dispatched branch, the worktree's base commit,
+the source (the repo-relative brief path and its content digest, or an `issue-<N>` item's
+number and body digest) and the selected model/tier. The record is stamped with the
+authoring pair under the existing desk custody, closed and read back before the prompt is
+emitted. Refusals: a non-worker kit, `--pr`, no `--model`, no source, or a roster binding
+desk and worker to one actor (exit 5, before the claim). A failure to create, stamp, close
+or read the record back emits no prompt, releases the claim and exits 6. The worktree is
+kept, and the abandoned record stays open. An open record never binds a change, and
+`ListOpenIssues` excludes the reserved title when the bound dispatcher authored it, as for
+the verifier record. `--dry-run` prints the plan and writes nothing.
+
+The prompt hands the worker one exact `Worker-Attestation: <repo>#<N> run=<run>` line for
+the draft PR's description. The PR's own authoring stamp is still the coordinator's
+post-open `--stamp-only` call, with an explicit `--model`/`--tier` (and optionally
+`--attestation <N>`). That call reads the record the change names. It refuses (exit 5,
+nothing written) when the record's repository, kit, branch or model/tier disagree with the
+change or the stated selection, when `--attestation` and the description name different
+records, or when the description carries a malformed or duplicate line. An unreadable,
+open, edited, PENDING or unstamped record is never admitted. The change stamp is never
+inferred from the record: the record only constrains it. A change that names no record
+takes the plain path above, unchanged.
+
 **Two label pairs (#2760).** A worker kit (the default) writes the AUTHORING pair,
 `authored-model:<slug>` + `authored-tier:<tier>`: which model the coordinator launched to
 write the change. `--kit review` writes `dispatched-model:<slug>` + `dispatched-tier:<tier>`:
