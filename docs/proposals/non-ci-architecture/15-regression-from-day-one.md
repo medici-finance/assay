@@ -61,7 +61,7 @@ CLI parser or path-layout tests can retire with an explicitly retired command. T
 | A graph query crosses target versions or inaccessible cells | No mixed-version answer or hidden-data leakage through paths, counts or explanations. |
 | Local Docker state moves to CNPG | Compatible schema/extension set, validated recovery point, paused handover and no admission before reconciliation. |
 
-These are additional tests to author with implementation. They are not claimed to run in this documentation task, and existing CI-only test plumbing is outside the architectural refactor scope except where needed to ensure the selected suite actually runs.
+These are additional tests to author with implementation. They are not claimed to run in this documentation task, and runtime regression plumbing remains in this lane. The separately scoped [CI extension](25-ci-tooling.md) owns CI library/action qualification and tool migration; it preserves this regression floor.
 
 ## Continuous-work and resource qualification
 

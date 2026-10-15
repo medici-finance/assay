@@ -346,3 +346,11 @@ Local/manual calibration works before managed adoption. Later confirmed observat
 may feed deduplicated issues and bounded repair draft PRs through existing admission,
 effect custody, independent review/verification and post-exposure assessment. No new
 scheduler, finding ledger, autonomous merger or architecture-decision authority arises.
+
+## Tool families and CI
+
+The [CI extension](25-ci-tooling.md) separates desk and operator clients, services,
+and CI entry points while retaining these domain owners. CI produces attributed
+check observations through shared libraries; acceptance stays with the existing
+evaluator. Its independent delivery lane is specified in
+[ci-tooling](../../streams/ci-tooling/spec.md).
