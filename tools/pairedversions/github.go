@@ -133,6 +133,61 @@ func (g *ghAPI) Release(home, tag string) (*release, error) {
 	return rel, nil
 }
 
+// releasesPerPage and maxReleasePages bound the release-list read. A list
+// longer than the bound is not read partially and trusted: it is an error, so
+// assertion (d) reports could-not-check rather than "nothing newer".
+const (
+	releasesPerPage = 100
+	maxReleasePages = 20
+)
+
+type ghReleaseMeta struct {
+	TagName     string     `json:"tag_name"`
+	Draft       bool       `json:"draft"`
+	Prerelease  bool       `json:"prerelease"`
+	PublishedAt *time.Time `json:"published_at"`
+}
+
+// Releases implements releaseSource against the GitHub REST API, reading every
+// page of the release home's release list.
+func (g *ghAPI) Releases(home string) ([]releaseMeta, error) {
+	var out []releaseMeta
+	for page := 1; page <= maxReleasePages; page++ {
+		url := fmt.Sprintf("%s/repos/%s/releases?per_page=%d&page=%d", g.baseURL, home, releasesPerPage, page)
+		batch, err := g.releasePage(url)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range batch {
+			m := releaseMeta{Tag: r.TagName, Draft: r.Draft, Prerelease: r.Prerelease}
+			if r.PublishedAt != nil {
+				m.PublishedAt = *r.PublishedAt
+			}
+			out = append(out, m)
+		}
+		if len(batch) < releasesPerPage {
+			return out, nil
+		}
+	}
+	return nil, fmt.Errorf("the release list of %s runs past %d pages of %d, so it was not read to the end", home, maxReleasePages, releasesPerPage)
+}
+
+func (g *ghAPI) releasePage(url string) ([]ghReleaseMeta, error) {
+	resp, err := g.do(url, "application/vnd.github+json")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GET %s: HTTP %d", url, resp.StatusCode)
+	}
+	var batch []ghReleaseMeta
+	if err := json.NewDecoder(resp.Body).Decode(&batch); err != nil {
+		return nil, fmt.Errorf("decoding %s: %w", url, err)
+	}
+	return batch, nil
+}
+
 func (g *ghAPI) asset(home string, id int64) ([]byte, error) {
 	url := fmt.Sprintf("%s/repos/%s/releases/assets/%d", g.baseURL, home, id)
 	resp, err := g.do(url, "application/octet-stream")

@@ -54,6 +54,17 @@ func cmdCheck(cell, cfgArg string) {
 	if policy != nil && (c.Kind == "container" || c.Kind == "scrubbed") {
 		die("model policy requires a house or k8s cell")
 	}
+	// The cheap-default reset a boot runs first, applied read-only before any model row
+	// resolves, so the rows report what the next boot runs.
+	resetMoves, resetErr := c.pendingModelReset(c.Env.Get("CELL_PROVIDER"))
+	modelResetRows := func() {
+		if resetErr != nil {
+			k.chk(false, "model reset: cell.env %v", resetErr)
+		}
+		for _, m := range resetMoves {
+			k.warn("model reset pending: %s (the next boot writes it)", m.notice())
+		}
+	}
 
 	if c.Kind == "container" {
 		if cfgArg != "" {
@@ -70,6 +81,7 @@ func cmdCheck(cell, cfgArg string) {
 			fmt.Printf("[model] role=%s harness=%s model=%s\n", role, c.Harness, rm.Model)
 		}
 		c.checkCellDefaults(k)
+		modelResetRows()
 		// Every launch of a container cell refuses CELL_ROLE_CONTEXT, so its check must say so
 		// instead of passing: the row is a MISS and the exit is non-zero. The container's own
 		// check still runs. Nothing is printed for a cell that does not set the key.
@@ -85,6 +97,7 @@ func cmdCheck(cell, cfgArg string) {
 
 	fmt.Printf("[check] cell=%s dir=%s kind=%s forge=%s\n", c.Name, c.Dir, c.Kind, c.Forge)
 	c.checkCellDefaults(k)
+	modelResetRows()
 	// A scrubbed cell's whole point is that it never touches the operator's real config home —
 	// this row is n/a there (checkScrubbed proves the cell's OWN config home instead), unlike
 	// k8s/house where the cell's custody IS (a copy of, or a symlink to) that directory.

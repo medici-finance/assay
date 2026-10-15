@@ -3,7 +3,8 @@ id: DR-forge-neutral-21
 date: "2026-09-23"
 title: "Lift the dispatch-claim store behind one deskkit seam, resolved from the roster with no caller choice and refusal as the only fallback; keep forge-ref only as what an unset key means, for one release window"
 consequence: major
-decided-by: "human:<name>"
+decided-by: "human:ian"
+ruling: "https://github.com/medici-finance/assay/issues/2753#issuecomment-6148115544"
 alternatives:
   - "Approve, but refuse immediately when nothing is configured (no notice period) — ruled out: put to the driver as option 2 on #1552 and not taken; the ruling selected option 1. Under option 2 every existing install would stop at its next upgrade until someone edited its configuration, where the brief keeps today's behaviour for one release window under a NOTICE that names the key, its two valid values and the removal release."
   - "Reject — claims stay on the platform only, and the reviewer keeps repository write — ruled out: put to the driver as option 3 on #1552 and not taken; the ruling selected option 1. The spec this brief implements (`docs/streams/forge-neutral/reviewer-write-boundary.md`) exists because a dispatch claim that can only live on the forge forces every dispatching role, the reviewer included, to hold repository write."
@@ -38,6 +39,26 @@ the shipped-corpus guard (`TestCorpusHasNoWithheldStreamPaths`) forbids stream b
 resolved to another store — is unchanged; the clause is kept as ruled and this note records the
 wording the merge lands.
 
+**Amendment (2026-10-13, medici-finance/assay#2753 — a change to the third clause, ratified by
+the maintainer there).** The third `accepted:` clause says a `file` / `service`
+value set before its store ships resolves to a refusal. Operators setting the key ahead of an
+upgrade were stopped at dispatch with exit 6, though a build that does not ship a store cannot
+hold a claim in it. The amendment: a VALID value naming a store the running build does not ship
+resolves to the legacy forge-ref resolution, under a NOTICE naming the configured store and the
+release that ships it, with provenance recording both the configured value and the fallback;
+`ASSAY_CLAIM_SINGLE_HOST=yes` is accepted with no effect. Unchanged: a store the build ships
+whose preconditions fail still refuses (exit 6) and never moves on to another store; a
+malformed value still refuses; `forge-ref` still cannot be selected. Because an older build now
+keeps claiming on the forge while `ASSAY_CLAIM_STORE=file` is set, the mixed-store refusal of
+forge-neutral/23, both its directions, must ship in the same release as the `file` store. That
+refusal runs only in builds that ship `file`, and the older process never refuses: when the
+upgraded process claims first, the mix is detected on an upgraded process's next resolve,
+after both holders exist, so it is made loud, not prevented. The
+clauses above are kept as ruled; where the third differs, this amendment governs. The maintainer
+ratified it under the maintainer's own login (`ratify a`, 2026-10-13T14:19:36Z): https://github.com/medici-finance/assay/issues/2753#issuecomment-6147676148
+This note transcribes that ratification and does not mint one: the human acts are that comment
+and the merge of the pull request that lands this note.
+
 **The decision.** `docs/streams/forge-neutral/brief-21-claim-store-seam-and-resolver.md` lifts
 the claim tool's storage interface into `deskkit` as `ClaimStore`, adds the roster keys
 ASSAY_CLAIM_STORE, ASSAY_CLAIM_DIR and ASSAY_CLAIM_SINGLE_HOST with strict parsing, and adds
@@ -49,7 +70,10 @@ select the forge store, and leaves existing installs exactly as they are apart f
 **The constraint behind it.** The dispatch claim is the fleet's mutual exclusion. A resolver
 that fell back to another store instead of refusing would double-dispatch without failing a
 single happy-path test, which is why refusal is the only fallback and why a key set early —
-before the store it names ships — fails loudly. The brief's `single-point-of-failure` line
+before the store it names ships — fails loudly. *(Superseded on the early key by the
+2026-10-13 amendment above: a valid key naming a store the running build does not ship now
+resolves to the legacy forge-ref store under a NOTICE naming that store; refusal stays the only
+fallback for a store the build ships.)* The brief's `single-point-of-failure` line
 names the resolver's order as the one control; behind it sit each store's own atomic create
 and the mixed-store refusal of forge-neutral/23, which detects two live stores for one repo
 from the forge side.

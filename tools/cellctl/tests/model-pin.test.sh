@@ -137,5 +137,24 @@ set_model fable
 out="$("$CELLCTL" check house-cell 2>&1)" && rc=0 || rc=$?
 assert "check passes on a fable pin" 'grep -q "ok    the-desk model: fable" <<<"$out"'
 
+# ---------------------------------------------------------------- cheap-default reset (Go port only)
+# `models reset` is a Go-port verb; the bash oracle predates it and answers "unknown verb", in which
+# case this section is skipped rather than failed (the unit tests in cmd/cellctl cover the logic).
+probe="$("$CELLCTL" models 2>&1 || true)"
+if grep -q 'models reset' <<<"$probe"; then
+  echo "[models reset: cheap-default reset]"
+  grep -v '^DESK_MODEL_worker_desk=' "$CELL/cell.env" > "$CELL/cell.env.tmp"; mv "$CELL/cell.env.tmp" "$CELL/cell.env"
+  "$CELLCTL" set house-cell worker-desk --model fable --default >/dev/null 2>&1       # recorded DEFAULT
+  "$CELLCTL" set house-cell pr-review-desk --model fable >/dev/null 2>&1               # plain set: EXPLICIT
+  assert "set records the pin record next to cell.env" '[[ -f "$CELL/model-pins.json" ]]'
+  sed -i.bak 's/"at": "[^"]*"/"at": "2020-01-01T00:00:00Z"/' "$CELL/model-pins.json"; rm -f "$CELL/model-pins.json.bak"
+  out="$(DRY_RUN=1 "$CELLCTL" desk house-cell worker-desk 2>&1)" && rc=0 || rc=$?
+  assert "boot plan names the repin, one line" '[[ $rc -eq 0 ]] && [[ "$(grep -c "^\[model-reset\]" <<<"$out")" -eq 1 ]] && grep -q "^\[model-reset\] worker-desk: fable -> sonnet" <<<"$out"'
+  assert "a dry run leaves cell.env alone" 'grep -qx "DESK_MODEL_worker_desk=fable" "$CELL/cell.env"'
+  out="$(DRY_RUN=0 "$CELLCTL" models reset house-cell 2>&1)" && rc=0 || rc=$?
+  assert "reset repins the aged DEFAULT pin" '[[ $rc -eq 0 ]] && grep -q "worker-desk: fable -> sonnet" <<<"$out" && grep -qx "DESK_MODEL_worker_desk=sonnet" "$CELL/cell.env"'
+  assert "reset leaves the EXPLICIT pin verbatim" 'grep -qx "DESK_MODEL_pr_review_desk=fable" "$CELL/cell.env" && ! grep -q "pr-review-desk" <<<"$out"'
+fi
+
 echo
 if [[ "$fails" -eq 0 ]]; then echo "model-pin.test.sh: OK"; else echo "model-pin.test.sh: $fails FAILED"; exit 1; fi

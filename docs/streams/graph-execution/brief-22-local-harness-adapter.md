@@ -3,7 +3,7 @@ brief: assay:assay:graph-execution:22
 title: First pinned local harness adapter and qualification fixtures
 why: A fake runner proves contracts but cannot execute useful model work; a narrow adapter connects one harness
   without multiplying orchestration implementations.
-wave: 2
+wave: 7
 depends:
 - graph-execution/20
 - graph-execution/26

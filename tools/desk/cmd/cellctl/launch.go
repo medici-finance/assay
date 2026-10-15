@@ -126,6 +126,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	env = envSet(env, "DESK_SESSION", session)
 	env = envSet(env, "ASSAY_SOURCE_REVISION", sha)
 	env = envSet(env, "ASSAY_HARNESS", harness)
+	// The cell marker every child of this role inherits: the only proof of ownership a later
+	// reconcile accepts before it stops a process this role's dead session left behind.
+	env = c.stampCellMarker(env, role)
 	var commsErr error
 	env, commsErr = c.deskCommsEnv(role, env)
 	if commsErr != nil {
