@@ -137,6 +137,7 @@ type assertionFixture struct {
 	Segments    []struct {
 		Name string `json:"name"`
 		Hex  string `json:"hex"`
+		Text string `json:"text"`
 	} `json:"canonicalSegments"`
 	PublicKeyHex string `json:"publicKeyHex"`
 }
@@ -166,6 +167,10 @@ func TestContractCompatibilityAssertionBytes(t *testing.T) {
 	}
 	var want []byte
 	for _, seg := range f.Segments {
+		if seg.Text != "" {
+			want = append(want, seg.Text...)
+			continue
+		}
 		b, err := hex.DecodeString(seg.Hex)
 		if err != nil {
 			t.Fatalf("segment %s: %v", seg.Name, err)
