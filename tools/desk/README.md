@@ -5787,16 +5787,20 @@ restricted deliverable refuses. Prompts and packets are local, owner-only files 
 Git trees; they must not be published. The packet names both immutable revisions, reads
 its brief/history from tracking, and checks both heads before returning.
 
-`--check-verifier` returns the local `BriefRoot` after admission. `statusgen verifyrun
---root <deliverable-home> --brief <tracking-relative-brief>` reads the admitted tracking
-brief and writes its Evidence there while Verify rows execute in the deliverable home.
+`--check-verifier` returns the local `BriefRoot` and the admitted deliverable home
+(`SourceHome`) after admission. `statusgen verifyrun --brief <tracking-relative-brief>`,
+run from the deliverable home, reads the admitted tracking brief and writes its Evidence
+there while Verify rows execute in the admitted deliverable home and nowhere else: the
+row root is that home whether or not `--root` is given, and an explicit `--root` (or an
+admission root) naming any other directory, the tracking clone included, is refused
+before a row runs.
 For `deskevidence`, keep `--root <deliverable-home>` and select the **tracking** repository
 and branch; only the isolated tracking brief's Evidence and permitted index row may
 change. Refresh landed Evidence bytes in `BriefRoot` without moving either admitted HEAD.
 The native/interim adapters carry the same two-repository binding through queue, launch
 and landing; native ACP's filesystem fence remains the deliverable home. Container
-execution retains its existing single-root mount boundary: an external tracking path
-cannot run through that mode.
+execution retains its existing single-root mount boundary, so `--in-container` refuses
+a cross-repository run outright, with or without `--root`.
 
 A failed/blocked outcome's `sha` names its landed tracking Evidence commit. Its
 `file:` inputs describe tracking files, while `repo-source:<owner/name>` binds the full
