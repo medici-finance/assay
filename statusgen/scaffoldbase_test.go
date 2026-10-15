@@ -89,7 +89,10 @@ func glLintFetchesBase(gl string) string {
 // scaffoldLintChecks names every scaffolded CI template that runs statusgen
 // --lint and the check that proves its lint job resolves the base.
 var scaffoldLintChecks = map[string]func(string) string{
-	"initWorkflow": ghLintFetchesBase,
+	// The GitHub lint job lives in initWorkflowHead, the part of the composed
+	// initWorkflow before the embedded boardadd.sh (#2915);
+	// TestInitLintFetchesBase runs the check on the composed file.
+	"initWorkflowHead": ghLintFetchesBase,
 	// The GitLab lint job lives in initGitlabCITail, the part of the composed
 	// initGitlabCI after the embedded pushcred anchor (#2910);
 	// TestGitLabLintFetchesBase runs the check on the composed file.
