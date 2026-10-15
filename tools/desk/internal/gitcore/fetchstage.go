@@ -388,7 +388,9 @@ func (r *Repo) fastForwards(old, new plumbing.Hash) (bool, string) {
 
 // dropStage removes every ref under stage. The common case is loose ref files only, removed
 // with their directory in one pass; a staged ref a concurrent `git pack-refs` packed meanwhile
-// is then removed through the storer, which rewrites packed-refs without it.
+// is then removed through removeRef, which rewrites the COMMON packed-refs without it (the
+// worktree-split storer would write it into a linked worktree's own git directory and return
+// nil with the ref still present).
 func (r *Repo) dropStage(stage string) error {
 	if refsDir, err := r.commonRefsDir(); err == nil {
 		// Only this call's own nonce directory: the shared parent stays, so a concurrent
@@ -409,7 +411,7 @@ func (r *Repo) dropStage(stage string) error {
 	})
 	iter.Close()
 	for _, name := range left {
-		if err := st.RemoveReference(name); err != nil {
+		if _, err := r.removeRef(name); err != nil {
 			return fmt.Errorf("gitcore: fetch: drop staged ref %s: %w", name, err)
 		}
 	}

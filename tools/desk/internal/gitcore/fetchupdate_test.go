@@ -316,6 +316,34 @@ func TestFetchPruneFromLinkedWorktreeRemovesPackedRef(t *testing.T) {
 	}
 }
 
+// dropStage from a linked worktree removes a staged ref that a concurrent pack-refs packed, from
+// the common packed-refs, leaving no stray packed-refs in the worktree's git directory. Through
+// the worktree-split storer the removal returned nil and left the staged ref behind for good.
+func TestDropStageFromLinkedWorktreeRemovesPackedStage(t *testing.T) {
+	origin := gittest.NewFixture(t)
+	work := cloneFixture(t, origin.Dir)
+	stage := "refs/gitcore-fetch/nonce1"
+	mustFixtureGit(t, work, "update-ref", stage+"/0/refs/remotes/origin/main", "HEAD")
+	mustFixtureGit(t, work, "update-ref", stage+"/1/refs/tags/t", "HEAD")
+	mustFixtureGit(t, work, "pack-refs", "--all")
+	wt := filepath.Join(t.TempDir(), "wt")
+	mustFixtureGit(t, work, "worktree", "add", "-q", "--detach", wt, "HEAD")
+
+	repo, err := Open(wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.dropStage(stage); err != nil {
+		t.Fatalf("dropStage from a linked worktree: %v", err)
+	}
+	if out := mustFixtureGit(t, work, "for-each-ref", "refs/gitcore-fetch/"); out != "" {
+		t.Fatalf("staged refs left after dropStage: %s", out)
+	}
+	if _, err := os.Lstat(filepath.Join(work.Dir, ".git", "worktrees", filepath.Base(wt), "packed-refs")); !os.IsNotExist(err) {
+		t.Fatalf("a stray packed-refs was written into the worktree's git directory (%v)", err)
+	}
+}
+
 // Two destinations of one fetch whose names conflict: the first lands, the second is refused
 // as a name conflict (git: "'…' exists; cannot create '…'"), not attempted as a write.
 func TestFetchRefusesConflictingNewNames(t *testing.T) {
