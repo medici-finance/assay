@@ -127,6 +127,39 @@ func (f *failForge) CloseIssueTyped(r ForgeRepo, n int, k TargetKind, reason str
 	return f.verifierForge.CloseIssueTyped(r, n, k, reason)
 }
 
+// swapForge replaces the record, at close, with another run's complete record: every check on
+// the record itself passes, so only the readback-equals-issued check can refuse.
+type swapForge struct {
+	*verifierForge
+	to WorkerBinding
+}
+
+func (f *swapForge) CloseIssueTyped(r ForgeRepo, n int, k TargetKind, reason string) error {
+	if err := f.verifierForge.CloseIssueTyped(r, n, k, reason); err != nil {
+		return err
+	}
+	f.issue.Title, f.issue.Body = WorkerAttestationTitle+f.to.Run, workerBody(f.to)
+	return nil
+}
+
+func TestWorkerAttestationReadbackOfAnotherRunRefuses(t *testing.T) {
+	home, brief := workerFixture(t)
+	f := &swapForge{verifierForge: &verifierForge{actor: "example-desk[bot]"}}
+	b, err := PrepareWorkerBinding(f, workerInput(home, brief))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.to = b
+	f.to.Run = strings.Repeat("d", 64)
+	r, err := IssueWorkerAttestation(f, b)
+	if ExitCodeOf(err) != ExitRefused || err == nil || !strings.Contains(err.Error(), "readback binds a different run") {
+		t.Fatalf("readback of another run admitted: %+v %v", r, err)
+	}
+	if got, rerr := ReadWorkerAttestation(f, ForgeRepo{Owner: "example-org", Name: "one"}, 41); rerr != nil || got.Binding != f.to {
+		t.Fatalf("fixture: the swapped record must itself be complete, so only the equality check refuses: %v", rerr)
+	}
+}
+
 func TestWorkerAttestationEveryFailureIsNonSuccess(t *testing.T) {
 	home, brief := workerFixture(t)
 	for name, tc := range map[string]struct {
@@ -161,21 +194,49 @@ func TestWorkerAttestationEveryFailureIsNonSuccess(t *testing.T) {
 
 func TestWorkerAttestationOpenOrUnstampedRecordNeverBinds(t *testing.T) {
 	home, brief := workerFixture(t)
-	f := &verifierForge{actor: "example-desk[bot]"}
-	b, _ := PrepareWorkerBinding(f, workerInput(home, brief))
 	repo := ForgeRepo{Owner: "example-org", Name: "one"}
-	if _, err := f.FileIssue(repo, IssueInput{Title: WorkerAttestationTitle + b.Run, Body: workerBody(b)}); err != nil {
+
+	// A failed close leaves exactly a stamped-but-open record: issue a complete, stamped record,
+	// then reopen it, so the state check is the only guard left that can refuse.
+	f := &verifierForge{actor: "example-desk[bot]"}
+	b, err := PrepareWorkerBinding(f, workerInput(home, brief))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ReadWorkerAttestation(f, repo, 41); ExitCodeOf(err) != ExitRefused {
-		t.Fatalf("open record bound: %v", err)
+	if _, err := IssueWorkerAttestation(f, b); err != nil {
+		t.Fatal(err)
 	}
+	f.issue.State = "open"
+	if got, err := ReadWorkerAttestation(f, repo, 41); err == nil || ExitCodeOf(err) != ExitRefused || !strings.Contains(err.Error(), "record still open") {
+		t.Fatalf("stamped but open record bound: %+v %v", got, err)
+	}
+
+	// The same stamped, closed record read through another repository: only the binding's repo
+	// check can refuse it.
 	f.issue.State = "closed"
-	if _, err := ReadWorkerAttestation(f, repo, 41); ExitCodeOf(err) != ExitRefused {
-		t.Fatalf("closed but unstamped record bound: %v", err)
+	if _, err := ReadWorkerAttestation(f, repo, 41); err != nil {
+		t.Fatalf("complete record must read back before the cross-repository case: %v", err)
 	}
-	if _, err := ReadWorkerAttestation(f, ForgeRepo{Owner: "example-org", Name: "two"}, 41); ExitCodeOf(err) != ExitRefused {
+	other := ForgeRepo{Owner: "example-org", Name: "two"}
+	if _, err := ReadWorkerAttestation(f, other, 41); ExitCodeOf(err) != ExitRefused || !strings.Contains(err.Error(), "belongs to a different repository") {
 		t.Fatalf("record bound in another repository: %v", err)
+	}
+
+	// A record whose body binds this run but whose title names another run is not this run's
+	// record: only the exact-title check can refuse it.
+	f.issue.Title = WorkerAttestationTitle + strings.Repeat("d", 64)
+	if _, err := ReadWorkerAttestation(f, repo, 41); ExitCodeOf(err) != ExitRefused || !strings.Contains(err.Error(), "not the exact dispatcher-authored run record") {
+		t.Fatalf("record titled for another run bound: %v", err)
+	}
+
+	// A closed record that was never stamped refuses on the stamp.
+	u := &verifierForge{actor: "example-desk[bot]"}
+	if _, err := u.FileIssue(repo, IssueInput{Title: WorkerAttestationTitle + b.Run, Body: workerBody(b)}); err != nil {
+		t.Fatal(err)
+	}
+	u.issue.State = "closed"
+	if _, err := ReadWorkerAttestation(u, repo, 41); ExitCodeOf(err) != ExitRefused || !strings.Contains(err.Error(), "authoring stamp") {
+		t.Fatalf("closed but unstamped record bound: %v", err)
 	}
 }
 
