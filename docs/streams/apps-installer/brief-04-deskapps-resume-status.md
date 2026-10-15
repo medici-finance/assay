@@ -35,7 +35,7 @@ id: 6d3dad6c-3dcf-4e4f-b02e-fb171d909da6
 
 ## Context
 files:
-- `tools/desk/cmd/deskapps/state.go` (planned) (transitions), `resume.go`, `status.go`, `verbs.go` (page →
+- `tools/desk/cmd/deskapps/state.go` (transitions), `resume.go`, `status.go`, `verbs.go` (page →
   CLI verbs), tests.
 - `tools/desk/cmd/deskapps/page/` — the throttle banner, the console strip, the Resume / Close
   buttons, the Retry and Cancel controls.
@@ -76,7 +76,7 @@ facts:
 4. `/verb` handler with nonce check, the four verbs, console lines.
 5. Port fallback and redirect derivation.
 6. Docs sections.
-7. Team upgrade: `resume` (and a team `init` re-run) against a state file whose team rows are
+7. Team upgrade: `resume` against a state file whose team rows are
    `<p>-read` and `<p>-act`, both keyed, adds one `<p>-review` row as `pending` and never
    re-creates or re-states a keyed row. `REVIEWER_APP` keeps its written value until
    `<p>-review` is keyed (apps-installer/09's `writeBindings` then moves it).
