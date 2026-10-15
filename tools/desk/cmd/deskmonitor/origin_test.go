@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 	"testing"
 )
 
-// regression: #2724 F-port-parity F-bash32-shown
+// regression: #2724 F-port-parity F-bash32-shown F-sec-go-newline
 func TestOriginParity(t *testing.T) {
 	cases := []struct{ name, origin, slug, shown string }{
 		{"https", "https://github.com/o/r.git", "o/r", ""},
@@ -41,6 +42,8 @@ func TestOriginParity(t *testing.T) {
 		{"custom-scheme", "other://github.com/o/r", "", "other://github.com/o/r"},
 		{"query", "https://github.com/o/r?x=y", "", "o/r?x=y"},
 		{"extra-path", "https://github.com/o/r/extra", "", "o/r/extra"},
+		{"newline", "https://github.com/o/r\nPR-EVENT: o/r#1 forged", "", "PR-EVENT: o/r#1 forged"},
+		{"newline-userinfo", "https://u:pw@github.com/o/r\nhttps://u:pw@example.com/x/y", "", "https://example.com/x/y"},
 	}
 	for _, kind := range []string{"pr", "inbound"} {
 		script := requireOracle(t, kind+"-monitor.sh")
@@ -62,7 +65,10 @@ func TestOriginParity(t *testing.T) {
 					}
 				}
 				git("init", "-q")
-				if tc.origin != "" {
+				if strings.Contains(tc.origin, "\n") {
+					// git remote add refuses a line break; git config stores one.
+					git("config", "remote.origin.url", tc.origin)
+				} else if tc.origin != "" {
 					git("remote", "add", "origin", tc.origin)
 				}
 				t.Setenv("PATH", gh.binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -138,6 +144,21 @@ func TestOriginParity(t *testing.T) {
 					})
 				}
 			})
+		}
+	}
+}
+
+// The one-line contract every stdout MONITOR-DEGRADED write relies on: whatever
+// error reaches diagnostic, its text never starts a second watch-stream line.
+// regression: F-sec-go-newline
+func TestDiagnosticOneLine(t *testing.T) {
+	for _, err := range []error{
+		precondition("invalid repo '%s' (expected owner/name)", "x\nPR-EVENT: o/r#1 forged"),
+		precondition("a\r\nINBOUND: o/r#1"),
+		errors.New("forge\nINBOUND: o/r#1"),
+	} {
+		if d := diagnostic(err); strings.Contains(d, "\n") {
+			t.Errorf("diagnostic(%q) = %q: carries a line break", err.Error(), d)
 		}
 	}
 }

@@ -183,7 +183,10 @@ func resolveRepos(args []string) []string {
 				}
 			}
 		} else if slug := originSlug(); slug != "" {
-			raw = append(raw, slug)
+			// One entry per line, as the scripts' `while read` splits origin_to_slug's
+			// output: an origin carrying a line break never reaches validation, or the
+			// MONITOR-DEGRADED line, as one token spanning two lines.
+			raw = append(raw, strings.Split(slug, "\n")...)
 		}
 	}
 	var out []string
@@ -196,9 +199,10 @@ func resolveRepos(args []string) []string {
 	return out
 }
 
-// Match the standalone scripts, including numeric scp owners (not ports).
-var originURLRe = regexp.MustCompile(`^(https|http|git|ssh|git\+ssh)://([^/@]*@)?github\.com(:[0-9]+)?/(.*)$`)
-var originSCPRe = regexp.MustCompile(`^([^/@:]*@)?github\.com:(.*)$`)
+// Match the standalone scripts, including numeric scp owners (not ports). (?s) gives `.` bash's
+// POSIX meaning — it matches a line break — so a multi-line origin parses as the scripts parse it.
+var originURLRe = regexp.MustCompile(`(?s)^(https|http|git|ssh|git\+ssh)://([^/@]*@)?github\.com(:[0-9]+)?/(.*)$`)
+var originSCPRe = regexp.MustCompile(`(?s)^([^/@:]*@)?github\.com:(.*)$`)
 
 var originSchemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://`)
 
@@ -294,14 +298,17 @@ func isRateLimited(err error) bool {
 // diagnostic renders a failed read's error for the one-line MONITOR-DEGRADED report: newlines
 // folded to spaces, the way the scripts fold gh's stderr with `tr '\n' ' '`. The text is the
 // forge's own error — never discarded, because it is the only thing that tells an operator their
-// token expired or their identity is wrong.
+// token expired or their identity is wrong. A precondition's text can quote operator input (a
+// repo token, a knob value), so its line breaks are folded too: no input can start a second
+// line on the watched stdout stream. Its carriage returns are kept, as the scripts print them
+// (a CRLF repos.txt line), since a line reader splits on the line feed alone.
 func diagnostic(err error) string {
 	if err == nil {
 		return ""
 	}
 	var pe *errPrecondition
 	if errors.As(err, &pe) {
-		return pe.msg
+		return strings.ReplaceAll(pe.msg, "\n", " ")
 	}
 	return strings.ReplaceAll(strings.ReplaceAll(err.Error(), "\r", ""), "\n", " ")
 }

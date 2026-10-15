@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskmonitor -run '^TestOriginParity$' -count=1 -timeout 60s",
+  "test": "go test ./cmd/deskmonitor -run '^(TestOriginParity|TestDiagnosticOneLine)$' -count=1 -timeout 60s",
   "control": {
     "name": "origin resolution suppressed",
     "file": "cmd/deskmonitor/state.go",
@@ -48,6 +48,24 @@
       "file": "cmd/deskmonitor/inbound.go",
       "old": "\t\t_, _ = fmt.Fprintf(stdout, \"MONITOR-DEGRADED: %s\\n\", diagnostic(err))\n",
       "new": ""
+    },
+    {
+      "name": "multi-line origin kept as one token",
+      "file": "cmd/deskmonitor/state.go",
+      "old": "raw = append(raw, strings.Split(slug, \"\\n\")...)",
+      "new": "raw = append(raw, slug)"
+    },
+    {
+      "name": "origin grammar stops at a line break",
+      "file": "cmd/deskmonitor/state.go",
+      "old": "regexp.MustCompile(`(?s)^(https|",
+      "new": "regexp.MustCompile(`^(https|"
+    },
+    {
+      "name": "precondition line breaks kept",
+      "file": "cmd/deskmonitor/state.go",
+      "old": "return strings.ReplaceAll(pe.msg, \"\\n\", \" \")",
+      "new": "return pe.msg"
     }
   ]
 }
