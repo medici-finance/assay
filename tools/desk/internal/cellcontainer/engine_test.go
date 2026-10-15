@@ -720,3 +720,23 @@ func TestCheckValidatesExistingContainer(t *testing.T) {
 		t.Fatalf("check accepted an incompatible running container: %v", err)
 	}
 }
+
+func TestRunningAcceptsBoundedTelemetrySelection(t *testing.T) {
+	for _, value := range []string{"0", "1", "unplanned"} {
+		t.Run(value, func(t *testing.T) {
+			c, p := fixture(t)
+			p.Env["ASSAY_TELEMETRY"] = value
+			e, _ := fakeEngine(t, inspection(p))
+			got, _, err := c.Running(e, "sample", "desk")
+			if value == "unplanned" {
+				if err == nil {
+					t.Fatal("invalid telemetry accepted")
+				}
+				return
+			}
+			if err != nil || got.Env["ASSAY_TELEMETRY"] != value {
+				t.Fatalf("selection lost: %v", err)
+			}
+		})
+	}
+}

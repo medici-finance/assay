@@ -54,6 +54,9 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 		"BASH_ENV": "",
 		"ENV":      "",
 	}
+	// Resolve from cell configuration even when the invoking shell differs. Only the
+	// normalized non-secret opt-in crosses argv; never copy arbitrary config values.
+	values[envAssayTelemetry] = c.telemetryValue()
 	// Record the operator context only when capture found an operator-side
 	// resource. From an already cell-scoped parent it stays unset, and the house
 	// check then refuses the cell link compared with itself.

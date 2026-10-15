@@ -1349,6 +1349,9 @@ cmd_show(){
     printf '[show] %s=%s (%s)\n' "$key" "$eff" "$src"
   }
   echo "[show] cell=$CELL dir=$CELL_DIR"
+  local telemetry_value=0
+  [[ "${ASSAY_TELEMETRY:-}" != "1" ]] || telemetry_value=1
+  [[ -z "${ASSAY_TELEMETRY+x}" ]] || show_line ASSAY_TELEMETRY "" "$telemetry_value"
   # Surface the repair-admission opt-in whenever cell.env carries it, on or off — so `show`
   # answers "would a desk booted from this cell turn the dispatch gate on" the same way a
   # DRY_RUN boot would. "on" is what the launch composes; anything else is identical absence.
@@ -2016,7 +2019,7 @@ check_codex_harness(){
 # exclusive — only the active harness's var is ever exported — and DESK_ROOTS/TERM/LANG are
 # present only when the source they come from (cell.env CELL_ROOTS; the launching shell) carries
 # one.
-SCRUBBED_ENV_KEYS="HOME ZDOTDIR SHELL PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION DESK_LOOP DESK_SESSION DESK_ROOTS TERM LANG"
+SCRUBBED_ENV_KEYS="HOME ZDOTDIR SHELL PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME ASSAY_TELEMETRY GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION DESK_LOOP DESK_SESSION DESK_ROOTS TERM LANG"
 
 # scrubbed_harness_path <harness>: resolves the harness binary ONCE, on the PARENT shell's PATH —
 # the one parent-derived element the composed PATH below keeps (named and pinned, never a bare
@@ -2044,6 +2047,7 @@ scrubbed_env_value(){
     PATH) printf '%s' "$composed_path" ;;
     TMPDIR) printf '%s' "$CELL_DIR/tmp" ;;
     KUBECONFIG) printf '%s' "/dev/null" ;;
+    ASSAY_TELEMETRY) if [[ -n "${ASSAY_TELEMETRY+x}" ]]; then if [[ "$ASSAY_TELEMETRY" == "1" ]]; then printf 1; else printf 0; fi; fi ;;
     ASSAY_CONFIG_HOME) printf '%s' "$CELL_CONFIG" ;;
     GH_CONFIG_DIR) printf '%s' "$CELL_HOME/.config/gh" ;;
     GIT_CONFIG_GLOBAL) printf '%s' "$CELL_HOME/.gitconfig" ;;
