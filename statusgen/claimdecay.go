@@ -28,7 +28,7 @@ import (
 // from the FORGE — and which forge that is decides the reader:
 //
 //   - GitHub (and an unclassifiable remote, where GitHub is the historical
-//     fallback): `gh pr list`, the same dependency the `--issues` metrics path
+//     fallback): one `gh api graphql` read over the branches (ghBranchPRQuery) — `gh`, the same dependency the `--issues` metrics path
 //     already shells out to (ghIssueMetricLister).
 //   - GitLab: the project's merge requests over REST v4 (claimdecay_gitlab.go).
 //     `gh` does not exist there and a GitLab project has no pull requests to
