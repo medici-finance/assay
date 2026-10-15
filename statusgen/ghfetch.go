@@ -97,16 +97,27 @@ type ghRestReview struct {
 	} `json:"user"`
 }
 
+// fetchAllPullsMaxPages bounds the walk so a forge that never returns a short
+// page cannot spin it forever. It is a safety bound, not a size limit: at 100
+// pulls a page it is 100,000 pulls, and a walk that reaches it is reported as
+// a could-not-check, never as a complete list. A variable only so a test can
+// reach the bound without serving 1,000 pages.
+var fetchAllPullsMaxPages = 1000
+
 // fetchAllPulls pages through EVERY open-or-closed PR for repo and returns the
 // raw pulls, untouched by the trailer filter — the shared paging loop behind
 // both ListPRs (trailer-only, the normal derivation) and the declared
 // reconcile --backfill fallback (reconcilebackfill.go), which is the ONLY
 // caller allowed to look at a pull with no trailer. lookedAt is false with an
 // HTTP/transport reason on any failure.
+//
+// The walk ends only on a short page. It used to stop after 20 full pages and
+// return the 2,000 newest pulls as if they were all of them, so a repository
+// past 2,000 pull requests silently lost its oldest witnesses (#1969). Reaching
+// the safety bound is now a could-not-check with the count read so far.
 func (c *ghClient) fetchAllPulls(repo string) (pulls []ghPull, lookedAt bool, reason string) {
 	const perPage = 100
-	const maxPages = 20 // 2000 PRs; a hard bound so a bad Link loop cannot spin forever
-	for page := 1; page <= maxPages; page++ {
+	for page := 1; page <= fetchAllPullsMaxPages; page++ {
 		url := fmt.Sprintf("%s/repos/%s/pulls?state=all&per_page=%d&page=%d", c.base, repo, perPage, page)
 		body, status, err := c.get(url)
 		if err != nil {
@@ -121,10 +132,10 @@ func (c *ghClient) fetchAllPulls(repo string) (pulls []ghPull, lookedAt bool, re
 		}
 		pulls = append(pulls, batch...)
 		if len(batch) < perPage {
-			break // last page
+			return pulls, true, "" // a short page: the list is complete
 		}
 	}
-	return pulls, true, ""
+	return nil, false, fmt.Sprintf("the pull list was still returning full pages after %d pages (%d pulls), so it is not provably complete", fetchAllPullsMaxPages, len(pulls))
 }
 
 // ListPRs fetches every open-or-closed PR for repo and returns one PRRecord per
