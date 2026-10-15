@@ -10,7 +10,7 @@ why: >-
   repo, makes cost analysable without ever reading what a worker said or did.
 wave: 1
 depends: ["desk-supervision/28"]
-unblocks: ["desk-supervision/35"]
+unblocks: ["desk-supervision/35", "graph-execution/27"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
