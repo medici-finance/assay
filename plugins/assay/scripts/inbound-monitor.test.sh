@@ -94,7 +94,7 @@ run_case() {
 TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
 
-echo "inbound-monitor regression suite ($(bash --version | head -1))"
+echo "inbound-monitor regression suite (bash $BASH_VERSION)"
 
 # ================================================================ A =========
 echo "A — the monitor must scrub an inherited App token, not poll as it"
@@ -106,7 +106,7 @@ make_gh "$w" 0 "$(issue_json 3)" ""
 # non-empty for the scrub assertion; a placeholder that wears NO real credential
 # prefix keeps a token-shaped string out of the public tree.
 run_case "$w" "$st" GH_TOKEN=x-bogus-app-token GITHUB_TOKEN=x-bogus-app-token-2 -- o/r
-tokline=$(cat "$w/token.log" 2>/dev/null | head -1)
+tokline=$(sed -n 1p "$w/token.log" 2>/dev/null)
 check "$([[ "$tokline" == "GH_TOKEN=[] GITHUB_TOKEN=[]" ]] && echo 0 || echo 1)" \
   "gh is invoked with GH_TOKEN and GITHUB_TOKEN unset" \
   "gh saw: ${tokline:-<no invocation recorded>}"

@@ -85,6 +85,17 @@ contains() {
   return 1
 }
 
+# row_has <text> <row-needle> <class>  -> 0 if a line carrying <row-needle> carries <class>.
+# The row is read into a variable first: under `pipefail`, a `grep -q` reader that exits at its
+# first match can leave the stage before it dying of SIGPIPE, and the pipeline then reports
+# failure for a line that DID match (the screen-relay-only flake). No early-exit reader here
+# is ever a pipe stage; a producer is read to the end or fed to the reader as a here-string.
+row_has() {
+  local row
+  row=$(grep -F -- "$2" <<<"$1")
+  contains "$row" "$3"
+}
+
 TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
 
@@ -95,8 +106,11 @@ trap 'rm -rf "$TMPROOT"' EXIT
 export ASSAY_CONFIG_HOME="$TMPROOT/empty-config-home"
 mkdir -p "$ASSAY_CONFIG_HOME"
 unset ASSAY_BLESS_LOGIN ASSAY_TRUSTED_LOGINS ASSAY_TRUSTED_BOT_SLUGS ASSAY_HUMAN_LOGIN_MAP
+# Reply shape's command line names the driver's login from DRIVER_LOGIN; a developer's own
+# value must not leak into the output the cases compare.
+unset DRIVER_LOGIN
 
-echo "assay-inbox regression suite ($(bash --version | head -1))"
+echo "assay-inbox regression suite (bash $BASH_VERSION)"
 
 # ---------------------------------------------------------------- F1 --------
 echo "F1 — a failed query must not masquerade as an empty inbox"
@@ -146,7 +160,7 @@ w="$TMPROOT/f2-limit"
 make_gh "$w" 0 '[]' ""
 run_case "$w" o/r
 if grep -q -- "--limit" "$w/argv.log"; then
-  lim=$(sed -n 's/.*--limit \([0-9]*\).*/\1/p' "$w/argv.log" | head -1)
+  lim=$(sed -n 's/.*--limit \([0-9]*\).*/\1/p' "$w/argv.log" | sed -n 1p)
   ok "an explicit --limit is passed to gh (--limit $lim)"
   check "$([[ "$lim" -gt 30 ]] && echo 0 || echo 1)" \
     "--limit ($lim) exceeds gh's silent default of 30" "got --limit $lim"
@@ -268,7 +282,7 @@ run_case "$w" o/r
 stripped=$(printf '%s' "$OUT" | LC_ALL=C tr -d '\000-\010\013\014\016-\037\177')
 check "$([[ "$stripped" == "$OUT" ]] && echo 0 || echo 1)" \
   "stdout contains zero C0/DEL bytes" \
-  "control bytes survived: $(printf '%s' "$OUT" | LC_ALL=C tr -d '\000-\010\013\014\016-\037\177' | od -An -tx1 | head -2)"
+  "control bytes survived: $(printf '%s' "$OUT" | LC_ALL=C tr -d '\000-\010\013\014\016-\037\177' | od -An -tx1 | sed -n 1,2p)"
 check "$(contains "$OUT" "RED" && echo 0 || echo 1)" \
   "harmless text survived (RED)" "stdout was: ${OUT:-<empty>}"
 check "$(contains "$OUT" "[31m" && echo 0 || echo 1)" \
@@ -318,7 +332,7 @@ run_case "$w" o/r
 order=$(printf '%s\n' "$OUT" | sed -n 's/.*\(#[0-9][0-9]*\).*/\1/p' | tr '\n' ' ')
 check "$([[ "$order" == "#1 #2 #3 " ]] && echo 0 || echo 1)" \
   "urgency-then-oldest order preserved (#1 #2 #3)" "got: $order"
-marked=$(printf '%s\n' "$OUT" | grep -c '^\*\*')
+marked=$(grep -c '^\*\*' <<<"$OUT")
 check "$([[ "$marked" -eq 1 ]] && echo 0 || echo 1)" \
   "the urgent item is marked once (dedupe held)" "urgent-marked rows: $marked"
 check "$(contains "$OUT" "3 item(s) across 1 repo(s)" && echo 0 || echo 1)" \
@@ -380,8 +394,8 @@ SECTIONS_RE='question [0-9]+ of [0-9]+'
 # ordered_contains <text> <a> <b> — 0 if <a> appears before <b>.
 ordered_contains() {
   local ia ib
-  ia=$(printf '%s\n' "$1" | grep -n -- "$2" | head -1 | cut -d: -f1)
-  ib=$(printf '%s\n' "$1" | grep -n -- "$3" | head -1 | cut -d: -f1)
+  ia=$(grep -n -- "$2" <<<"$1" | sed -n 1p | cut -d: -f1)
+  ib=$(grep -n -- "$3" <<<"$1" | sed -n 1p | cut -d: -f1)
   [[ -n "$ia" && -n "$ib" && "$ia" -lt "$ib" ]]
 }
 
@@ -392,10 +406,10 @@ w="$TMPROOT/w1"
 make_gh_walk "$w"
 run_case "$w" --walk o/r
 check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "--walk exits 0 on a healthy queue" "got $RC (stderr: ${ERR:-<empty>})"
-check "$(printf '%s' "$OUT" | grep -Eq "^o/r#1 — $SECTIONS_RE\$" && echo 0 || echo 1)" \
+check "$(grep -Eq "^o/r#1 — $SECTIONS_RE\$" <<<"$OUT" && echo 0 || echo 1)" \
   "header is '<repo>#<N> — question k of n'" "stdout was: ${OUT:-<empty>}"
 for section in "Context" "Options" "Reply shape" "Verification"; do
-  check "$(printf '%s' "$OUT" | grep -Fxq "$section" && echo 0 || echo 1)" \
+  check "$(grep -Fxq "$section" <<<"$OUT" && echo 0 || echo 1)" \
     "section '$section' is present" "stdout was: ${OUT:-<empty>}"
 done
 check "$(ordered_contains "$OUT" "^Context\$" "^Options\$" && echo 0 || echo 1)" \
@@ -407,7 +421,7 @@ check "$(ordered_contains "$OUT" "^Reply shape\$" "^Verification\$" && echo 0 ||
 # Exactly ONE item per invocation — the turn boundary belongs to the skill, not the script.
 # Counted on the HEADER SHAPE anchored at both ends, not on the phrase: the Verification
 # line names the next question ("presents question 2 of 3"), and a loose match counts it.
-headers=$(printf '%s\n' "$OUT" | grep -Ec '^[A-Za-z0-9._/-]+#[0-9]+ — question [0-9]+ of [0-9]+$' || true)
+headers=$(grep -Ec '^[A-Za-z0-9._/-]+#[0-9]+ — question [0-9]+ of [0-9]+$' <<<"$OUT" || true)
 check "$([[ "$headers" -eq 1 ]] && echo 0 || echo 1)" \
   "exactly one item is rendered per --walk invocation" "found $headers item headers"
 # The context is the 3-6 lines the format asks for, never an empty section.
@@ -421,12 +435,12 @@ echo "W2 — the recommended option is FIRST and labelled, whatever order the is
 # The fixture lists the recommended option SECOND. Recommended-first is the format's rule,
 # so the renderer must reorder — and must relabel: the option that lands at A is the one
 # marked [recommended].
-firstopt=$(printf '%s\n' "$OUT" | sed -n '/^Options$/,/^$/p' | grep '^  A\. ' | head -1)
+firstopt=$(sed -n '/^Options$/,/^$/p' <<<"$OUT" | grep '^  A\. ' | sed -n 1p)
 check "$(contains "$firstopt" "Keep the gate" && echo 0 || echo 1)" \
   "the recommended option is promoted to A" "option A was: ${firstopt:-<none>}"
 check "$(contains "$firstopt" "[recommended]" && echo 0 || echo 1)" \
   "option A is labelled [recommended]" "option A was: ${firstopt:-<none>}"
-recount=$(printf '%s\n' "$OUT" | grep -c '\[recommended\]' || true)
+recount=$(grep -c '\[recommended\]' <<<"$OUT" || true)
 check "$([[ "$recount" -eq 1 ]] && echo 0 || echo 1)" \
   "exactly one option is labelled recommended" "labelled options: $recount"
 # Never more than four.
@@ -451,8 +465,8 @@ walk_order=""
 for k in 1 2 3; do
   run_case "$w" --walk --item "$k" o/r
   walk_order="${walk_order}$(printf '%s\n' "$OUT" | sed -n '1s/.*\(#[0-9][0-9]*\).*/\1/p') "
-  check "$(printf '%s' "$OUT" | grep -Eq "question $k of 3" && echo 0 || echo 1)" \
-    "--item $k announces itself as 'question $k of 3'" "stdout head: $(printf '%s\n' "$OUT" | head -1)"
+  check "$(grep -Eq "question $k of 3" <<<"$OUT" && echo 0 || echo 1)" \
+    "--item $k announces itself as 'question $k of 3'" "stdout head: $(sed -n 1p <<<"$OUT")"
 done
 check "$([[ "$walk_order" == "#1 #2 #3 " ]] && echo 0 || echo 1)" \
   "--walk walks the SAME order as the table" "got: $walk_order"
@@ -471,7 +485,7 @@ check "$(contains "$OUT" "reply with the ruling in one line" && echo 0 || echo 1
   "Reply shape degrades to a one-line ruling when no options are stated" "stdout was: ${OUT:-<empty>}"
 # Even with nothing to quote, the five sections still stand.
 for section in "Context" "Options" "Reply shape" "Verification"; do
-  check "$(printf '%s' "$OUT" | grep -Fxq "$section" && echo 0 || echo 1)" \
+  check "$(grep -Fxq "$section" <<<"$OUT" && echo 0 || echo 1)" \
     "section '$section' survives an empty issue body" "stdout was: ${OUT:-<empty>}"
 done
 
@@ -498,7 +512,7 @@ run_case "$w" --walk o/r
 check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "--walk on an empty queue exits 0" "got $RC"
 check "$(contains "$OUT" "0 item(s) across 1 repo(s)" && echo 0 || echo 1)" \
   "--walk on an empty queue prints the terminating summary" "stdout was: ${OUT:-<empty>}"
-check "$(printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' && echo 1 || echo 0)" \
+check "$(grep -Eq 'question [0-9]+ of' <<<"$OUT" && echo 1 || echo 0)" \
   "--walk on an empty queue asks nothing" "an item header was rendered: $OUT"
 
 # ---------------------------------------------------------------- W6 --------
@@ -549,7 +563,7 @@ check "$([[ "$html_order" == "1 2 3 " ]] && echo 0 || echo 1)" \
   "the page preserves the queue order (1 2 3)" "got: $html_order"
 check "$(contains "$PAGE" "question 1 of 3" && contains "$PAGE" "question 3 of 3" && echo 0 || echo 1)" \
   "cards carry the same 'question k of n' header as --walk" "page head: $(head -c 200 "$HTML")"
-check "$(grep -c '<span class="rec">recommended</span>' "$HTML" | grep -qx 3 && echo 0 || echo 1)" \
+check "$([[ "$(grep -c '<span class="rec">recommended</span>' "$HTML")" == 3 ]] && echo 0 || echo 1)" \
   "each card labels exactly one recommended option" "count: $(grep -c '<span class="rec">recommended</span>' "$HTML" || true)"
 
 # ---------------------------------------------------------------- H2 --------
@@ -606,7 +620,7 @@ run_case "$w" --html "$HTML" o/r
 check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "--html on an empty queue exits 0" "got $RC"
 check "$([[ -s "$HTML" ]] && echo 0 || echo 1)" "--html on an empty queue still writes a page" "no file at $HTML"
 check "$(grep -qF 'Nothing is waiting' "$HTML" && echo 0 || echo 1)" \
-  "the empty page says so positively" "page: $(cat "$HTML" 2>/dev/null | head -c 200)"
+  "the empty page says so positively" "page: $(head -c 200 "$HTML" 2>/dev/null)"
 check "$(grep -qF '<article' "$HTML" 2>/dev/null && echo 1 || echo 0)" \
   "the empty page renders no cards" "a card was rendered"
 
@@ -667,7 +681,7 @@ screen_gh() {
 }
 
 # presented — the item was put to the driver as question 1 of 1.
-presented() { printf '%s' "$OUT" | grep -Eq '^o/r#10 — question 1 of 1$'; }
+presented() { grep -Eq '^o/r#10 — question 1 of 1$' <<<"$OUT"; }
 
 BODY_2OPT='## Options
 
@@ -724,7 +738,7 @@ roster_off
 # would match it: the Verify table greps the suite's own output for this exact name and
 # wants a count of 1.
 check "$([[ "$RC" -eq 0 ]] \
-        && ! printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' \
+        && ! grep -Eq 'question [0-9]+ of' <<<"$OUT" \
         && contains "$OUT" "screened: 1 already-ruled" \
         && echo 0 || echo 1)" \
   "screen-already-ruled" \
@@ -749,7 +763,7 @@ screen_gh "$w" "[]" "$BODY_1OPT"
 roster_on
 run_case "$w" --walk o/r
 roster_off
-check "$(printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' && echo 1 || echo 0)" \
+check "$(grep -Eq 'question [0-9]+ of' <<<"$OUT" && echo 1 || echo 0)" \
   "screen-no-fork-one-option: a one-option item is never presented as a question" "stdout was: ${OUT:-<empty>}"
 check "$(contains "$OUT" "screened: 0 already-ruled · 1 no-fork" && echo 0 || echo 1)" \
   "screen-no-fork-one-option: the tail counts it as no-fork" "stdout was: ${OUT:-<empty>}"
@@ -775,7 +789,7 @@ screen_gh "$w" "[]" "$BODY_REVDEFAULT"
 roster_on
 run_case "$w" --walk o/r
 roster_off
-check "$(printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' && echo 1 || echo 0)" \
+check "$(grep -Eq 'question [0-9]+ of' <<<"$OUT" && echo 1 || echo 0)" \
   "screen-reversible-default: a reversible-default item is never presented as a question" "stdout was: ${OUT:-<empty>}"
 check "$(contains "$OUT" "1 reversible-default" && echo 0 || echo 1)" \
   "screen-reversible-default: the tail counts it as reversible-default" "stdout was: ${OUT:-<empty>}"
@@ -819,7 +833,7 @@ chmod +x "$w/gh"
 roster_on
 run_case "$w" --walk o/r
 roster_off
-check "$(printf '%s' "$OUT" | grep -Eq '^o/r#11 — question 1 of 1$' && contains "$OUT" "could-not-check" && echo 0 || echo 1)" \
+check "$(grep -Eq '^o/r#11 — question 1 of 1$' <<<"$OUT" && contains "$OUT" "could-not-check" && echo 0 || echo 1)" \
   "screen-unread-is-genuine: an unread item is genuine — presented, and says could-not-check" \
   "stdout was: ${OUT:-<empty>}"
 check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" \
@@ -858,9 +872,9 @@ w="$TMPROOT/scr-numbering"
 make_gh_numbering "$w"
 roster_on
 run_case "$w" --walk --item 1 o/r
-first_header=$(printf '%s\n' "$OUT" | head -1)
+first_header=$(sed -n 1p <<<"$OUT")
 run_case "$w" --walk --item 2 o/r
-second_header=$(printf '%s\n' "$OUT" | head -1)
+second_header=$(sed -n 1p <<<"$OUT")
 run_case "$w" --walk --item 3 o/r
 third_rc="$RC"
 roster_off
@@ -889,7 +903,7 @@ roster_off
 # "screened:", a token that never otherwise appears in the format's own text) from the
 # screened output must reproduce the legacy one, byte for byte. One consolidated check,
 # named exactly "no-screen-flag" for the Verify table's grep -c 1.
-screened_minus_tail=$(printf '%s\n' "$screened_out" | grep -v '^screened:')
+screened_minus_tail=$(grep -v '^screened:' <<<"$screened_out")
 check "$(! contains "$legacy_out" "screened:" \
         && [[ "$screened_minus_tail" == "$legacy_out" ]] \
         && echo 0 || echo 1)" \
@@ -1102,10 +1116,10 @@ roster_on
 run_case "$w" --walk --screened o/r
 roster_off
 check "$([[ "$RC" -eq 0 ]] \
-        && printf '%s\n' "$OUT" | grep -Eq '^o/r#1 +already-ruled +ruled — flag for relabel/close' \
-        && printf '%s\n' "$OUT" | grep -Eq '^o/r#2 +no-fork +no fork — desk proceeds or re-routes' \
-        && ! printf '%s\n' "$OUT" | grep -Eq '^o/r#(3|4) ' \
-        && ! printf '%s\n' "$OUT" | grep -Eq 'question [0-9]+ of' \
+        && grep -Eq '^o/r#1 +already-ruled +ruled — flag for relabel/close' <<<"$OUT" \
+        && grep -Eq '^o/r#2 +no-fork +no fork — desk proceeds or re-routes' <<<"$OUT" \
+        && ! grep -Eq '^o/r#(3|4) ' <<<"$OUT" \
+        && ! grep -Eq 'question [0-9]+ of' <<<"$OUT" \
         && echo 0 || echo 1)" \
   "screen-screened-list: #1 already-ruled and #2 no-fork are listed with their evidence; #3/#4 are not" \
   "exit $RC; stdout was: ${OUT:-<empty>}"
@@ -1121,10 +1135,10 @@ table_out="$OUT"
 run_case "$w" --no-screen o/r
 legacy_table="$OUT"
 roster_off
-check "$(printf '%s\n' "$table_out" | grep -F 'example.test/1' | grep -q 'already-ruled' \
-        && printf '%s\n' "$table_out" | grep -F 'example.test/2' | grep -q 'no-fork' \
-        && printf '%s\n' "$table_out" | grep -F 'example.test/3' | grep -q 'genuine' \
-        && [[ "$(printf '%s\n' "$table_out" | grep -c 'example.test/')" -eq 4 ]] \
+check "$(row_has "$table_out" 'example.test/1' 'already-ruled' \
+        && row_has "$table_out" 'example.test/2' 'no-fork' \
+        && row_has "$table_out" 'example.test/3' 'genuine' \
+        && [[ "$(grep -c 'example.test/' <<<"$table_out")" -eq 4 ]] \
         && echo 0 || echo 1)" \
   "screen-table-class: every row is shown, each with its class" "table: ${table_out}"
 check "$(! contains "$legacy_table" "already-ruled" && ! contains "$legacy_table" "no-fork" && echo 0 || echo 1)" \
@@ -1248,7 +1262,7 @@ flow_cell_fixtures() {
 
 # flow_row <output> <stage> — the rendered table row for one stage, whitespace-squeezed.
 flow_row() {
-  printf '%s\n' "$1" | grep -E "^  $2( \*)? " | head -1 | tr -s ' '
+  grep -E "^  $2( \*)? " <<<"$1" | sed -n 1p | tr -s ' '
 }
 
 # ---------------------------------------------------------------- FL1 -------
@@ -1264,7 +1278,7 @@ run_case "$w" --flow --root "$w/alpha"
 check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "--flow with every reader healthy exits 0" "got $RC (stderr: ${ERR:-<empty>})"
 
 # The seven stages, in pipeline order, exactly once each.
-order=$(printf '%s\n' "$OUT" | grep -Eo '^  (intake|todo|in-progress|review|implemented|verified|done)( \*)? ' \
+order=$(grep -Eo '^  (intake|todo|in-progress|review|implemented|verified|done)( \*)? ' <<<"$OUT" \
         | sed 's/ \*//; s/^ *//; s/ *$//' | tr '\n' ' ')
 check "$([[ "$order" == "intake todo in-progress review implemented verified done " ]] && echo 0 || echo 1)" \
   "the seven stages render in pipeline order" "got: $order"
@@ -1291,7 +1305,7 @@ echo "FL2 — the bottleneck is throughput's stage, translated into the flow voc
 
 check "$(contains "$OUT" "bottleneck (largest queue/slots ratio): review *" && echo 0 || echo 1)" \
   "throughput's 'review' marks the review stage" "stdout: $OUT"
-marks=$(printf '%s\n' "$OUT" | grep -Ec '^  [a-z-]+ \* ' || true)
+marks=$(grep -Ec '^  [a-z-]+ \* ' <<<"$OUT" || true)
 check "$([[ "$marks" -eq 1 ]] && echo 0 || echo 1)" \
   "exactly one stage is marked as the bottleneck" "marked rows: $marks"
 
@@ -1457,7 +1471,7 @@ check "$([[ "$(flow_row "$OUT" todo)" == " todo 11 "* ]] && echo 0 || echo 1)" \
   "the fleet row sums the cells (7 + 4 = 11)" "row: $(flow_row "$OUT" todo)"
 check "$(contains "$OUT" "== cell alpha" && contains "$OUT" "== cell beta" && echo 0 || echo 1)" \
   "each cell gets its own row block" "stdout: $OUT"
-blocks=$(printf '%s\n' "$OUT" | grep -c '^== ' || true)
+blocks=$(grep -c '^== ' <<<"$OUT" || true)
 check "$([[ "$blocks" -eq 3 ]] && echo 0 || echo 1)" \
   "one fleet block plus one block per cell (got $blocks, want 3)" "blocks: $blocks"
 # regression: #2724 — second display consumer, outside repo validation.
@@ -1469,7 +1483,7 @@ check "$([[ "$RC" -eq 0 ]] && contains "$OUT" "== cell https://example.com/o/r" 
 
 # A single cell needs no per-cell repetition of the fleet row.
 run_case "$TMPROOT/fl1" --flow --root "$TMPROOT/fl1/alpha"
-blocks=$(printf '%s\n' "$OUT" | grep -c '^== ' || true)
+blocks=$(grep -c '^== ' <<<"$OUT" || true)
 check "$([[ "$blocks" -eq 1 ]] && echo 0 || echo 1)" \
   "a single cell renders the fleet row only, not the same numbers twice" "blocks: $blocks"
 
@@ -1502,13 +1516,13 @@ flow_cell_fixtures "$w" beta
 throughput_fixture "$w" review
 run_case "$w" --flow --root "$w/alpha" --root "$w/beta"
 cellblock=$(printf '%s\n' "$OUT" | sed -n '/^== cell alpha/,/^== cell beta/p')
-reviewrow=$(printf '%s\n' "$cellblock" | grep -E '^  review( \*)? ' | head -1)
+reviewrow=$(grep -E '^  review( \*)? ' <<<"$cellblock" | sed -n 1p)
 check "$(contains "$reviewrow" "n/a — read fleet-wide" && echo 0 || echo 1)" \
   "a per-cell review row reads n/a, not could-not-check" "row: ${reviewrow:-<none>}"
 check "$(contains "$reviewrow" "could-not-check" && echo 1 || echo 0)" \
   "a legitimate absence is never labelled could-not-check" "row: $reviewrow"
 # The fleet-wide-capacity fact is stated once per block, not on all seven rows.
-notes=$(printf '%s\n' "$cellblock" | grep -c 'pool width is resolved fleet-wide' || true)
+notes=$(grep -c 'pool width is resolved fleet-wide' <<<"$cellblock" || true)
 check "$([[ "$notes" -eq 1 ]] && echo 0 || echo 1)" \
   "the fleet-wide-capacity note appears once per cell block, not per row (got $notes)" "notes: $notes"
 
@@ -1552,6 +1566,428 @@ check "$(contains "$ERR" "YYYY-MM-DD" && echo 0 || echo 1)" \
   "stderr says what --since should look like" "stderr: ${ERR:-<empty>}"
 run_case "$TMPROOT/fl1" --root
 check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "--root with no path exits 1" "got $RC"
+
+# ============================================================================
+# Reply shape's `command:` line (issue #2759). Where a TRUSTED author's issue visibly states
+# the ruling phrase for its RECOMMENDED option, the walk and the page carry a copy-pasteable
+# `gh issue comment` that records it under the driver's own token, failing closed when that
+# token cannot be read. Otherwise the line says so and leaves it to the desk; it never
+# composes a ruling of its own. The cases run with the roster on and the default trusted
+# App author, unless a case says otherwise; every fixture is still presented (genuine).
+# ============================================================================
+
+BODY_HOWTO='## Options
+
+A. keep the cron (recommended)
+B. drop the cron
+
+## How to answer
+
+Reply "ratify A" to accept the recommendation, or name the other letter.
+'
+BODY_HOWTO_QUOTE='## Options
+
+A. ship it (recommended)
+B. hold it
+
+## How to answer
+
+Reply "A — it'"'"'s fine, ship it" on this issue.
+'
+BODY_FORK_DEFAULT='The fork test for this item.
+
+option: A — keep the cron
+option: B — drop the cron
+default: B — drop the cron
+'
+BODY_FORK_STRAY_DEFAULT='The fork test for this item.
+
+option: A — keep the cron
+option: B — drop the cron
+default: C
+'
+CMD_PREFIX='command: t="$(gh auth token --user '
+CMD_MID=')" && [ -n "$t" ] && GH_TOKEN="$t" gh issue comment 10 -R o/r --body '
+CMD_NONE='command: not derivable — desk to fill'
+
+# cmd_walk <dir> <body> [author-json] — stub the item, walk it with the roster on.
+cmd_walk() {
+  screen_gh "$1" "[]" "$2" "${3:-$TRUSTED_APP_AUTHOR}"
+  roster_on
+  run_case "$1" --walk o/r
+  roster_off
+}
+# not_derived — the walk printed the not-derivable line and no command at all.
+not_derived() { contains "$OUT" "  $CMD_NONE" && ! contains "$OUT" "gh issue comment"; }
+# derived <body-as-shell-quoted> — the walk printed the full command with that --body.
+derived() { contains "$OUT" "${CMD_PREFIX}<driver-login>${CMD_MID}$1"; }
+
+# ---------------------------------------------------------------- CMD1 ------
+echo "CMD1 — a How-to-answer phrase naming the recommended letter yields the ruling command"
+
+w="$TMPROOT/cmd-howto"
+cmd_walk "$w" "$BODY_HOWTO"
+check "$(ordered_contains "$OUT" "^Reply shape\$" "^  command: " && ordered_contains "$OUT" "^  command: " "^Verification\$" && echo 0 || echo 1)" \
+  "the command line sits inside Reply shape" "stdout was: ${OUT:-<empty>}"
+check "$(derived "'ratify A'" && echo 0 || echo 1)" \
+  "the stated phrase becomes the --body, single-quoted, under the <driver-login> placeholder" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" "env -u" && echo 1 || echo 0)" \
+  "the command sets GH_TOKEN; it never relies on unsetting it" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- CMD2 ------
+echo "CMD2 — DRIVER_LOGIN names the token's account; a malformed one falls back to the placeholder"
+
+screen_gh "$w" "[]" "$BODY_HOWTO"
+roster_on
+DRIVER_LOGIN=example-driver run_case "$w" --walk o/r
+check "$(contains "$OUT" "${CMD_PREFIX}example-driver${CMD_MID}'ratify A'" && echo 0 || echo 1)" \
+  "a login-shaped DRIVER_LOGIN is used as --user" "stdout was: ${OUT:-<empty>}"
+DRIVER_LOGIN='bad;login $(x)' run_case "$w" --walk o/r
+check "$(contains "$OUT" "${CMD_PREFIX}<driver-login>)\"" && ! contains "$OUT" "bad;login" && echo 0 || echo 1)" \
+  "a DRIVER_LOGIN that is not login-shaped never reaches the command" "stdout was: ${OUT:-<empty>}"
+DRIVER_LOGIN=$'example-driver\n' run_case "$w" --walk o/r
+roster_off
+check "$(derived "'ratify A'" && echo 0 || echo 1)" \
+  "a DRIVER_LOGIN with a trailing newline is not login-shaped: the placeholder stays" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- CMD3 ------
+echo "CMD3 — a quote inside the phrase stays text: single-quoted with the '\\'' escape"
+
+w="$TMPROOT/cmd-howto-quote"
+cmd_walk "$w" "$BODY_HOWTO_QUOTE"
+check "$(derived "'A — it'\\''s fine, ship it'" && echo 0 || echo 1)" \
+  "an apostrophe in the phrase is shell-escaped" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- CMD4 ------
+echo "CMD4 — with no Options section, a fork-test default naming its own option is the ruling"
+
+w="$TMPROOT/cmd-fork-default"
+cmd_walk "$w" "$BODY_FORK_DEFAULT"
+check "$(derived "'B — drop the cron'" && echo 0 || echo 1)" \
+  "'default: B — drop the cron' is the --body, verbatim" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- CMD5 ------
+echo "CMD5 — no stated phrase: the line says not derivable, never an invented ruling"
+
+w="$TMPROOT/cmd-stray-default"
+cmd_walk "$w" "$BODY_FORK_STRAY_DEFAULT"
+check "$(not_derived && echo 0 || echo 1)" \
+  "a default naming no offered option is not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-none"
+cmd_walk "$w" "$BODY_2OPT"
+check "$(not_derived && echo 0 || echo 1)" \
+  "options with no How-to-answer phrase and no default are not derivable" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- CMD6 ------
+echo "CMD6 — --html carries the same command line in the card's Reply shape, escaped"
+
+w="$TMPROOT/cmd-howto"
+screen_gh "$w" "[]" "$BODY_HOWTO"
+roster_on
+run_case "$w" --html "$w/inbox.html" o/r
+roster_off
+PAGE=$(cat "$w/inbox.html" 2>/dev/null || true)
+check "$(contains "$PAGE" '<p class="cmd">command: <code>t=&quot;$(gh auth token --user &lt;driver-login&gt;)&quot; &amp;&amp; [ -n &quot;$t&quot; ] &amp;&amp; GH_TOKEN=&quot;$t&quot; gh issue comment 10 -R o/r --body &apos;ratify A&apos;</code></p>' && echo 0 || echo 1)" \
+  "the page renders the derived command, HTML-escaped" "page: ${PAGE:-<empty>}"
+w="$TMPROOT/cmd-none"
+screen_gh "$w" "[]" "$BODY_2OPT"
+roster_on
+run_case "$w" --html "$w/inbox.html" o/r
+roster_off
+PAGE=$(cat "$w/inbox.html" 2>/dev/null || true)
+check "$(contains "$PAGE" "<p class=\"cmd\">command: <code>not derivable — desk to fill</code></p>" && echo 0 || echo 1)" \
+  "the page says not derivable where the issue states no phrase" "page: ${PAGE:-<empty>}"
+
+# ---------------------------------------------------------------- CMD7 ------
+# S1: the command must fail CLOSED. An empty GH_TOKEN makes gh fall back to the active
+# account, so a token lookup that fails must stop the comment, not post it as someone else.
+# The emitted command is run as pasted, under bash and sh, with a stub `gh` that logs each
+# call and the GH_TOKEN it saw.
+echo "CMD7 — the pasted command fails closed when the driver's token cannot be read"
+
+w="$TMPROOT/cmd-howto"
+screen_gh "$w" "[]" "$BODY_HOWTO"
+roster_on
+DRIVER_LOGIN=example-driver run_case "$w" --walk o/r
+roster_off
+PASTE=$(sed -n 's/^  command: //p' <<<"$OUT" | sed -n 1p)
+stub="$TMPROOT/cmd-paste-stub"
+mkdir -p "$stub"
+cat > "$stub/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s|GH_TOKEN=%s\n' "$*" "${GH_TOKEN-<unset>}" >> "$PASTE_LOG"
+if [[ "$1 $2" == "auth token" ]]; then
+  [[ -n "${TOKEN_OUT:-}" ]] && printf '%s\n' "$TOKEN_OUT"
+  exit "${TOKEN_RC:-0}"
+fi
+exit 0
+STUB
+chmod +x "$stub/gh"
+# paste_run <shell> <token-rc> <token-stdout> — run $PASTE; sets PLOG to the stub's log.
+paste_run() {
+  PLOG="$stub/log.$1.$2.${3:-empty}"
+  : > "$PLOG"
+  env PATH="$stub:$PATH" PASTE_LOG="$PLOG" TOKEN_RC="$2" TOKEN_OUT="$3" GH_TOKEN=app-token-example \
+    "$1" -c "$PASTE" >/dev/null 2>&1
+}
+check "$([[ -n "$PASTE" ]] && echo 0 || echo 1)" "the walk printed a command to paste" "stdout was: ${OUT:-<empty>}"
+for sh in bash sh; do
+  paste_run "$sh" 1 ""
+  check "$(grep -q 'issue comment' "$PLOG" && echo 1 || echo 0)" \
+    "$sh: a failed token lookup never runs gh issue comment (no fallback to the active account or an exported App token)" "stub log: $(cat "$PLOG")"
+  paste_run "$sh" 0 ""
+  check "$(grep -q 'issue comment' "$PLOG" && echo 1 || echo 0)" \
+    "$sh: an empty token never runs gh issue comment" "stub log: $(cat "$PLOG")"
+  paste_run "$sh" 0 "driver-token-example"
+  check "$(grep -qF "issue comment 10 -R o/r --body ratify A|GH_TOKEN=driver-token-example" "$PLOG" && grep -qF 'auth token --user example-driver|' "$PLOG" && echo 0 || echo 1)" \
+    "$sh: a token read for the driver's login posts the ruling under that token" "stub log: $(cat "$PLOG")"
+done
+
+# ---------------------------------------------------------------- CMD8 ------
+# S2(a): only a trusted author's body is evidence. Anyone can open an issue on a public repo.
+echo "CMD8 — an untrusted author's body never becomes a ruling"
+
+w="$TMPROOT/cmd-untrusted"
+cmd_walk "$w" "$BODY_HOWTO" "$STRANGER_AUTHOR"
+check "$(presented && not_derived && echo 0 || echo 1)" \
+  "a How-to phrase typed by an untrusted author is not derivable" "stdout was: ${OUT:-<empty>}"
+screen_gh "$w" "[]" "$BODY_HOWTO"
+run_case "$w" --walk o/r
+check "$(not_derived && echo 0 || echo 1)" \
+  "with no roster, no body is trusted: not derivable" "stdout was: ${OUT:-<empty>}"
+
+# ---------------------------------------------------------------- CMD9 ------
+# S2(b) / f-cmd-recommended-1: the ruling must name the RECOMMENDED option, by the issue's own
+# letter (the walk re-letters the recommended option A).
+echo "CMD9 — the ruling names the recommended option's own letter, or there is none"
+
+w="$TMPROOT/cmd-rec-b"
+cmd_walk "$w" '## Options
+
+A. keep the cron
+B. drop the cron (recommended)
+
+## How to answer
+
+Reply "A" to keep the cron, or "B" to drop it.
+'
+check "$(derived "'B'" && echo 0 || echo 1)" \
+  "B recommended: the phrase naming B is the ruling, not the first phrase (A)" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-b-only-a"
+cmd_walk "$w" '## Options
+
+A. keep the cron
+B. drop the cron (recommended)
+
+## How to answer
+
+Reply "A" to keep the cron.
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a phrase naming only the non-recommended letter is not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-a-default-b"
+cmd_walk "$w" '## Options
+
+A. keep the cron (recommended)
+B. drop the cron
+
+option: A — keep the cron
+option: B — drop the cron
+default: B — drop the cron
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a fork default naming B while Options recommends A is not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-a-negated-b"
+cmd_walk "$w" '## Options
+
+A. keep (recommended)
+B. drop
+
+## How to answer
+
+Do not reply "B" unless the cron is gone; reply "A" otherwise.
+'
+check "$(derived "'A'" && echo 0 || echo 1)" \
+  "a leading phrase naming B is skipped; the phrase naming recommended A is the ruling" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-unmarked"
+cmd_walk "$w" '## Options
+
+A. keep the cron
+B. drop the cron
+
+## How to answer
+
+Reply "A".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "an Options section that marks no recommendation is not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-template"
+cmd_walk "$w" '## Options
+
+A. keep (recommended)
+B. drop
+
+## How to answer
+
+Comment with "A — <reason>", e.g. "B — fine".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a template phrase with a <placeholder> is not a ruling" "stdout was: ${OUT:-<empty>}"
+
+# --------------------------------------------------------------- CMD10 ------
+# S2(c): a phrase GitHub does not render never becomes the ruling.
+echo "CMD10 — a phrase inside an HTML comment is not derivable"
+
+w="$TMPROOT/cmd-hidden-multiline"
+cmd_walk "$w" '## Options
+
+A. keep the cron
+B. drop the cron (recommended)
+
+## How to answer
+
+<!--
+"ratify B"
+-->
+Reply with one letter.
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a phrase on a line inside a multi-line HTML comment is not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-hidden-inline"
+cmd_walk "$w" '## Options
+
+A. keep the cron
+B. drop the cron (recommended)
+
+## How to answer
+
+Reply <!-- "B" --> with one letter.
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a phrase inside an inline HTML comment is not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-hidden-default"
+cmd_walk "$w" 'The fork test for this item.
+
+option: A — keep the cron
+option: B — drop the cron
+<!--
+default: B — drop the cron
+-->
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a fork default inside an HTML comment is not derivable" "stdout was: ${OUT:-<empty>}"
+
+# --------------------------------------------------------------- CMD11 ------
+# S2(d) / S3: a format character makes the displayed command differ from the posted bytes.
+echo "CMD11 — a phrase carrying a Unicode format character is not derivable"
+
+ZWSP=$(printf '\342\200\213')
+RLO=$(printf '\342\200\256')
+w="$TMPROOT/cmd-cf-zwsp"
+cmd_walk "$w" "## Options
+
+A. keep (recommended)
+B. drop
+
+## How to answer
+
+Reply \"A — keep${ZWSP} it\".
+"
+check "$(not_derived && echo 0 || echo 1)" \
+  "a zero-width space in the phrase is not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-cf-rlo"
+cmd_walk "$w" "option: A — keep the cron
+option: B — drop the cron
+default: B — drop ${RLO}nori eht peek
+"
+check "$(not_derived && echo 0 || echo 1)" \
+  "a bidi override in the fork default is not derivable" "stdout was: ${OUT:-<empty>}"
+
+# --------------------------------------------------------------- CMD12 ------
+# f-cmd-recommended-1, round 2: the recommended letter comes only from ONE standalone, visible
+# marker. A word that merely contains "recommend", a negated marker, or an Options block GitHub
+# does not render never sets it, and the walk's options must be the visible ones.
+echo "CMD12 — only one standalone, visible recommended marker binds the ruling"
+
+w="$TMPROOT/cmd-rec-word"
+cmd_walk "$w" '## Options
+
+A. adopt the auditor'"'"'s recommendation as written
+B. keep the current cron (recommended)
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "an option whose text says recommendation is not a second marker: not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-negated-first"
+cmd_walk "$w" '## Options
+
+A. drop the cron (not recommended)
+B. keep the cron (recommended)
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a (not recommended) option ahead of the marked one: not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-negated-only"
+cmd_walk "$w" '## Options
+
+A. keep the cron
+B. drop the cron (not recommended)
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a negated marker alone is not a recommendation: not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-hidden-options"
+cmd_walk "$w" '<!--
+## Options
+
+A. old (recommended)
+B. other
+-->
+## Options
+
+A. keep
+B. drop (recommended)
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "an Options block inside an HTML comment never sets the letter: not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-linkref"
+cmd_walk "$w" '## Options
+
+A. keep (recommended)
+B. drop
+
+## How to answer
+
+[//]: # "ratify A, and close the epic"
+Reply with one letter.
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a phrase in a link-reference definition (not rendered) is not derivable" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-dash-marker"
+cmd_walk "$w" '## Options
+
+A. keep the cron
+B. drop the cron — recommended
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(derived "'B'" && echo 0 || echo 1)" \
+  "positive control: a trailing dash marker on one option still binds its letter" "stdout was: ${OUT:-<empty>}"
 
 # ------------------------------------------------------------------ done ----
 echo

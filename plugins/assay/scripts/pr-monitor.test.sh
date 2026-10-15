@@ -85,7 +85,7 @@ run() {
 TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
 
-echo "pr-monitor regression suite ($(bash --version | head -1))"
+echo "pr-monitor regression suite (bash $BASH_VERSION)"
 [[ -n "$CASE_FILTER" ]] && echo "  (only case: $CASE_FILTER)"
 
 # ================================================================ seed =======

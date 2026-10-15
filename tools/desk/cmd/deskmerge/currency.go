@@ -258,6 +258,69 @@ func originNames(url, repo string) bool {
 // operator's own branches, and so a stale one cannot shadow a real branch name.
 func prHeadRef(pr int) string { return fmt.Sprintf("refs/deskmerge/pr-%d", pr) }
 
+// fetchFn is the in-process fetch seam. Production opens root and runs gitcore's Fetch; a
+// test substitutes its own to observe or fail the fetch.
+var fetchFn = func(root string, opts gitcore.FetchOpts) error {
+	r, err := gitcore.Open(root)
+	if err != nil {
+		return err
+	}
+	return r.Fetch(opts)
+}
+
+// fetchEndpointFn resolves the https fetch endpoint (the forge's canonical URL for the gated
+// repo plus the in-memory credential) under this session's minted role. A test swaps it.
+var fetchEndpointFn = func(repo, originURL string) (deskkit.ForgeGitEndpoint, error) {
+	role, _, err := sessionRoleFn(toolName)
+	if err != nil {
+		return deskkit.ForgeGitEndpoint{}, deskkit.Unverifiable(
+			"could-not-check: cannot resolve the deskmerge App role to fetch "+deskkit.StripControl(repo), err)
+	}
+	return deskkit.ForgeGitEndpointForCheckout(repo, role, originURL)
+}
+
+// fetchFromOrigin fetches refSpecs from origin into root, in-process. origin's fetch URL is
+// re-resolved exactly as the identity gate (resolveRepoRoot) resolved it and must still be a
+// single URL naming repo — the gate's decision is re-made at the point of use rather than
+// trusted to have run. Where the fetch goes then depends on that URL's shape:
+//
+//   - https: the forge's canonical URL for the gated repo, with the role App's token held in
+//     memory and presented to that URL only (deskkit.ForgeGitEndpointForCheckout; the origin
+//     host never decides where the credential goes);
+//   - a local repository (an absolute path or file:// URL — the offline fixtures): that URL
+//     verbatim, with no credential at all;
+//   - anything else (ssh, scp-like, cleartext http, a remote-helper): refused as
+//     could-not-check — no in-process transport carries it, and none is faked.
+func fetchFromOrigin(root, repo string, refSpecs []string) error {
+	urls, err := originURLs(root, false)
+	if err != nil {
+		return err
+	}
+	if len(urls) != 1 {
+		return fmt.Errorf("origin resolves to %d fetch URLs; fetching from exactly one", len(urls))
+	}
+	url := urls[0]
+	if !originNames(url, repo) {
+		return fmt.Errorf("origin %s does not name %s", deskkit.StripControl(url), deskkit.StripControl(repo))
+	}
+	opts := gitcore.FetchOpts{RefSpecs: refSpecs, Force: true}
+	lower := strings.ToLower(url)
+	switch {
+	case strings.HasPrefix(lower, "https://"):
+		ep, eerr := fetchEndpointFn(repo, url)
+		if eerr != nil {
+			return eerr
+		}
+		opts.URL, opts.Auth = ep.Opts.URL, ep.Opts.Auth
+	case filepath.IsAbs(url) || strings.HasPrefix(lower, "file://"):
+		opts.URL = url
+	default:
+		return fmt.Errorf("origin %s is not an https URL or a local repository — no in-process transport carries it",
+			deskkit.StripControl(url))
+	}
+	return fetchFn(root, opts)
+}
+
 // fetchState fetches the base branch and the PR head, and returns their SHAs.
 //
 // The head SHA is cross-checked against the one GitHub reported. A mismatch means the
@@ -266,10 +329,10 @@ func prHeadRef(pr int) string { return fmt.Sprintf("refs/deskmerge/pr-%d", pr) }
 // and quietly re-basing the question onto a different one would make the answer true of
 // a PR nobody asked about.
 func fetchState(root, repo string, p prInfo) (baseSHA, headSHA string, err error) {
-	if _, ferr := runGit(root, "fetch", "--quiet", "origin",
-		"+refs/heads/"+p.BaseRefName+":refs/remotes/origin/"+p.BaseRefName,
-		"+refs/pull/"+strconv.Itoa(p.Number)+"/head:"+prHeadRef(p.Number),
-	); ferr != nil {
+	if ferr := fetchFromOrigin(root, repo, []string{
+		"+refs/heads/" + p.BaseRefName + ":refs/remotes/origin/" + p.BaseRefName,
+		"+refs/pull/" + strconv.Itoa(p.Number) + "/head:" + prHeadRef(p.Number),
+	}); ferr != nil {
 		return "", "", deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: cannot fetch %s's %s and refs/pull/%d/head — an unfetched ref makes "+
 				"every currency verdict unverifiable. deskmerge reports could-not-check rather than "+

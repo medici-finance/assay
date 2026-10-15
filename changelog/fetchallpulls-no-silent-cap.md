@@ -1,0 +1,2 @@
+### Fixed
+- statusgen's pull-list read (`reconcile`, `regen`'s drift comparator, `--flow`) reads every page until a short one. It used to stop after 20 pages and return the newest 2,000 pull requests as if they were all of them, so a repository past 2,000 PRs silently lost its oldest witnesses (#1969). A walk that reaches the new safety bound (1,000 pages) is reported as could-not-check, never as complete.
