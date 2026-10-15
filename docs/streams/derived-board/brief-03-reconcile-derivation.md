@@ -9,7 +9,7 @@ why: >-
   schema flag-day instead of two.
 wave: 1
 depends: ["derived-board/01", "derived-board/02"]
-unblocks: ["derived-board/04"]
+unblocks: ["derived-board/04", "derived-board/08"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

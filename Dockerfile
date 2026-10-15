@@ -63,6 +63,9 @@ WORKDIR /src
 # The forgeread module is a sibling both modules resolve through a `replace ../forgeread`
 # (stdlib-only, so it adds nothing to download); it must be present before either builds.
 COPY forgeread/ ./forgeread/
+# The comms module (the public cellmsg-v1 contract) is the same kind of sibling: tools/desk
+# resolves it through `replace ../../comms`, and it is stdlib-only.
+COPY comms/ ./comms/
 COPY statusgen/go.mod statusgen/go.sum ./statusgen/
 COPY tools/desk/go.mod ./tools/desk/
 RUN cd statusgen && go mod download
