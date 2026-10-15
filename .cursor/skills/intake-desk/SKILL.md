@@ -240,7 +240,8 @@ every lane step without running it; `--offline --inbound <file>` opens no networ
 A pass report line `WARNING: … cleanup: could not remove worktree <path>` means the carrier PR WAS
 published and its exit recorded (the leak check stays clean); only the scan worktree was retained,
 detached so the next pass can still coalesce onto the carrier. Inspect it, clear what blocked the
-removal, then `git worktree remove` it — never with `--force`.
+removal, then remove it through the project's sanctioned worktree tooling — never with `--force`,
+and never by deleting the directory.
 
 **Exit records.** Every exit `run` lands is also appended as a `decided_by: mechanical` record to
 `<state dir>/intake-exits.jsonl` (`--dry-run` writes none). A JUDGMENT item is parked, never
