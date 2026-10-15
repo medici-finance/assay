@@ -307,6 +307,61 @@ func TestCrossRepoPrepareRefusals(t *testing.T) {
 	}
 }
 
+// regression: #2485. A "cross-repository" run whose tracking repository IS the
+// deliverable is refused by name at both ends: when the run is prepared, and
+// when an admitted record is later read back with its tracking clone and
+// binding both re-pointed at the deliverable. Each refusal is asserted by its
+// own reason, so a later check refusing for another cause does not stand in
+// for the distinctness check it backs up.
+func TestCrossRepoSameRepositoryRefusals(t *testing.T) {
+	t.Run("prepare", func(t *testing.T) {
+		crossRepoRoster(t)
+		source := crossRepoGitFixture(t, "example-org/one", "source.txt", "source\n")
+		tracking := crossRepoGitFixture(t, "example-org/tracking", "brief.md", "# Plan\n")
+		attestGit(t, tracking, "remote", "set-url", "origin", "https://github.com/example-org/one.git")
+		err := PrepareVerifierAttestation(source, "example-org/one", filepath.Join(tracking, "brief.md"), "gpt-6-astra", "strong")
+		if err == nil || !strings.Contains(err.Error(), "distinct allowed tracking repository") {
+			t.Fatalf("same-repository tracking brief not refused as non-distinct: %v", err)
+		}
+		record, rerr := verifierRecordPath(source)
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		if _, serr := os.Stat(record); !os.IsNotExist(serr) {
+			t.Fatal("refused preparation persisted a run")
+		}
+	})
+	t.Run("check", func(t *testing.T) {
+		crossRepoRoster(t)
+		home := crossRepoGitFixture(t, "example-org/one", "source.txt", "source\n")
+		tracking := crossRepoGitFixture(t, "example-org/tracking", "brief.md", "# Plan\n\n## Evidence\n\nPending.\n")
+		if err := PrepareVerifierAttestation(home, "example-org/one", filepath.Join(tracking, "brief.md"), "gpt-6-astra", "strong"); err != nil {
+			t.Fatal(err)
+		}
+		r, err := verifierLoad(home)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(r.TrackingHome)) })
+		f := &verifierForge{actor: "example-desk[bot]"}
+		if _, err := IssueVerifierAttestation(home, f); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := CheckVerifierAttestationWithForge(home, "brief.md", f); err != nil {
+			t.Fatalf("untampered run refused: %v", err)
+		}
+		r, _ = verifierLoad(home)
+		attestGit(t, r.TrackingHome, "remote", "set-url", "origin", "https://github.com/example-org/one.git")
+		r.Binding.Repo = r.Binding.SourceRepo
+		if err := verifierSave(home, r); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := CheckVerifierAttestationWithForge(home, "brief.md", f); err == nil || !strings.Contains(err.Error(), "names only one repository") {
+			t.Fatalf("one-repository binding not refused as non-distinct: %v", err)
+		}
+	})
+}
+
 // regression: #2485
 func TestCrossRepoLegacyRecovery(t *testing.T) {
 	crossRepoRoster(t)

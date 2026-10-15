@@ -32,7 +32,16 @@ entries = [
  ("prompt-history", "cmd/verifyloop/association.go", "return text[:at[0]]", "return text", "./cmd/verifyloop", "^TestCrossRepoPromptCutsEvidence$", module),
  ("prompt-symlink", "cmd/deskdispatch/verifierattestation.go", 'return deskkit.Refused("cross-repository verifier prompt must be a regular local file")', "return nil", "./cmd/deskdispatch", "^TestCrossRepoPromptDestination$", module),
  ("prompt-hardlink", "cmd/deskdispatch/verifierattestation.go", "return os.Rename(name, file)", "return os.WriteFile(file, content, 0600)", "./cmd/deskdispatch", "^TestCrossRepoPromptDestination$", module),
- ("executor-routing", "verifieradmission.go", "filepath.Join(receipt.BriefRoot, b.Brief), nil", "brief, nil", ".", "^TestCrossRepoReceiptRouting$", source / "statusgen"),
+ ("executor-routing", "verifieradmission.go", "filepath.Join(receipt.BriefRoot, b.Brief), receipt.SourceHome, nil", "brief, receipt.SourceHome, nil", ".", "^TestCrossRepoReceiptRouting$", source / "statusgen"),
+ ("claim-root-origin", "cmd/deskdispatch/verifierattestation.go", "|| !strings.EqualFold(actual, dl.trackingRepo) ||", "|| (false && !strings.EqualFold(actual, dl.trackingRepo)) ||", "./cmd/deskdispatch", "^TestCrossRepoClaimRootOrigin$", module),
+ ("prepare-distinct", "internal/deskkit/verifiercrossrepo.go", "!IsAllowedRepo(trackingRepo) || strings.EqualFold(repo, trackingRepo)", "!IsAllowedRepo(trackingRepo)", "./internal/deskkit", "^TestCrossRepoSameRepositoryRefusals$/prepare", module),
+ ("check-distinct", "internal/deskkit/verifiercrossrepo.go", "if strings.EqualFold(b.Repo, b.SourceRepo) {", "if false && strings.EqualFold(b.Repo, b.SourceRepo) {", "./internal/deskkit", "^TestCrossRepoSameRepositoryRefusals$/check", module),
+ ("receipt-home-emitted", "internal/deskkit/verifierattestation.go", "r.BriefRoot, r.SourceHome = r.TrackingHome, r.Home", "r.BriefRoot = r.TrackingHome", "./cmd/deskdispatch", "^TestCrossRepoDispatchExecution$", module),
+ ("receipt-home-required", "verifieradmission.go", "|| !filepath.IsAbs(receipt.SourceHome)", "", ".", "^TestCrossRepoReceiptRouting$", source / "statusgen"),
+ ("executor-root-default", "../../statusgen/verifyrun.go", 'case admittedHome != "":\n\t\t\treturn admittedHome', 'case false:\n\t\t\treturn admittedHome', "./cmd/deskdispatch", "^TestCrossRepoDispatchExecution$", module),
+ ("executor-root-explicit", "../../statusgen/verifyrun.go", 'if why := admittedRowRootRefusal(*rootDir, admissionRoot, admittedHome); why != "" {', 'if why := admittedRowRootRefusal(*rootDir, admissionRoot, admittedHome); false && why != "" {', "./cmd/deskdispatch", "^TestCrossRepoDispatchExecution$", module),
+ ("executor-root-container", "../../statusgen/verifyrun.go", "\t\tif admittedHome != \"\" {\n\t\t\tfmt.Fprintf(stderr, \"statusgen verifyrun: refusing --in-container", "\t\tif false {\n\t\t\tfmt.Fprintf(stderr, \"statusgen verifyrun: refusing --in-container", "./cmd/deskdispatch", "^TestCrossRepoDispatchExecution$", module),
+ ("executor-root-helper", "verifieradmission.go", 'explicitRoot != "" && !sameDirectory(explicitRoot, home)', "false", ".", "^TestAdmittedRowRootRefusal$", source / "statusgen"),
 ]
 selected = set(sys.argv[1:])
 known = {e[0] for e in entries}
