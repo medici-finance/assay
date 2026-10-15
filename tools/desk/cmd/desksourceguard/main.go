@@ -23,7 +23,9 @@ Exit: 0 pinned source agrees · 5 a check failed · 6 a precondition was unreada
 `
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("desksourceguard", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:], os.Stdout, os.Stderr)
+	}))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {

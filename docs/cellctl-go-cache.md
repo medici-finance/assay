@@ -7,6 +7,7 @@ CELL_GO_CACHE=on
 CELL_GO_CACHE_BYTES=8589934592
 CELL_GO_CACHE_MIN_FREE=10737418240
 CELL_GO_CACHE_BUILD_MAX_AGE=24h
+CELL_GO_TRIMPATH=on
 ```
 
 The shipped default is **off**. Enabling selects an 8 GiB logical-byte budget,
@@ -62,8 +63,8 @@ managed consumers may use these paths. Do not export them into unrelated shells
 or delegate cache users to services that outlive process supervision.
 
 Before HOME changes, the launcher composes `GOCACHE=<root>/build`,
-`GOMODCACHE=<root>/mod`, `GOPATH=<root>/gopath`, and non-secret serialized
-`ASSAY_GO_CACHE_POLICY`. Codex receives these in its command environment;
+`GOMODCACHE=<root>/mod`, `GOPATH=<root>/gopath`, `GOFLAGS` (see "Builds share
+the cache across worktrees") and non-secret serialized `ASSAY_GO_CACHE_POLICY`. Codex receives these in its command environment;
 scrubbed cells add only these validated values to their composed environment.
 Changing task HOME does not create another compiler cache. Launch plans print
 the effective root, trust-domain digest and policy without initializing a cache.
@@ -76,6 +77,27 @@ cells on the same filesystem sample the same available-space pool. There is no
 aggregate cross-cell quota or reservation for future build writes. `gopath` is
 stable but never reclaimed: installed executables are not disposable compiler
 or module cache entries. Scratch, worktrees and session evidence are excluded.
+
+## Builds share the cache across worktrees
+
+Every consumer of a managed cache builds with `-trimpath`: the launcher exports
+`GOFLAGS=-trimpath` beside `GOCACHE`, and records it in the policy. Without it,
+`cmd/go` keys each package outside GOROOT on its absolute directory, so the same
+code built in a new dispatch worktree — a fresh path per dispatch, review round
+or verify run — is compiled again and stored under a new key, and the cache
+grows by one full compile set per worktree however little the code changed.
+With it, a second worktree at the same commit reuses the first one's entries.
+
+An ambient `GOFLAGS` in the launching shell is extended, never replaced: the
+launcher appends `-trimpath` unless it is already present. Opt one cell out with
+`CELL_GO_TRIMPATH=off` in its `cell.env`, or every cell in `defaults.env`; the
+launcher then exports no `GOFLAGS` and an ambient value passes through untouched.
+Two effects of `-trimpath` to know before keeping it on: source paths in panics,
+stack traces and `runtime.Caller` are module-relative rather than absolute, so
+code that locates files beside its own source must not rely on them; and the flag
+is part of every cache key, so builds with and without it do not share entries.
+Consumers launched before the change carry no `GOFLAGS` in their recorded policy
+and keep custody unchanged; relaunch them to share entries.
 
 ## Launch, cleanup and recovery
 

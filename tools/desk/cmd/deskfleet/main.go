@@ -130,7 +130,9 @@ const (
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], defaultEnv()))
+	os.Exit(deskkit.PerfRun("deskfleet", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:], defaultEnv())
+	}))
 }
 
 func run(args []string, e *env) int {

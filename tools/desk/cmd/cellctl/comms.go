@@ -191,7 +191,7 @@ func (c *Cell) commsServiceEnv(cfg *deskCommsConfig) []string {
 	for k, v := range values {
 		env = envSet(env, k, v)
 	}
-	return c.stampCellMarker(env, "comms")
+	return c.stampCellMarker(c.telemetryEnv(env), "comms")
 }
 
 func cmdComms(cell string, args []string) {

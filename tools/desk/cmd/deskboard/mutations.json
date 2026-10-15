@@ -23,7 +23,7 @@
       "name": "build the per-platform name even with no platform token (asks for `desk-tools-`, matching any line that starts that way)",
       "file": "internal/deskkit/desktoolspin.go",
       "old": "\tif strings.TrimSpace(platform) == \"\" {\n\t\treturn \"\"\n\t}",
-      "new": "\tif false {\n\t\treturn \"\"\n\t}"
+      "new": "\tif strings.TrimSpace(platform) == \"\" && false {\n\t\treturn \"\"\n\t}"
     },
     {
       "name": "drop the prs sweep's fail-closed propagation (one repo's hard error becomes a partial board that reads clean)",

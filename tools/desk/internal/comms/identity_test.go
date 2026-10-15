@@ -65,12 +65,11 @@ func TestRefuseReplayed(t *testing.T) {
 		t.Fatalf("Mint: %v", err)
 	}
 	trust := Ed25519TrustStore{"cell-a": pub}
-	guard := NewMemReplayGuard()
 	// Pin the guard's prune clock to the synthetic test time so the still-valid
 	// nonce (exp = testNow+1m) is not pruned between the two Use calls by the real
 	// wall clock. In production, mint times are real-future, so the wall-clock
 	// prune is correct; only the fixed synthetic testNow needs this.
-	guard.now = func() time.Time { return testNow }
+	guard := NewMemReplayGuardWithClock(func() time.Time { return testNow })
 	if err := Verify(a, testNow.Add(10*time.Second), trust, DefaultSkew, guard); err != nil {
 		t.Fatalf("first verification should succeed: %v", err)
 	}

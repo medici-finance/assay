@@ -37,7 +37,7 @@ fires within one observer interval instead of relying on a worker to remember it
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
 
-> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
 > Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
 
@@ -447,6 +447,15 @@ the PR's authoring as model-attested. A worker-kit stamp writes the `authored-mo
 and it is the only one the capability floor reads. Both this worker-desk and its child are refused by stamp-only;
 a shared `DESK_SESSION` is claim custody, not stamp authority. Never switch identity or
 redispatch a worker just to obtain the stamp.
+
+To give a fresh dispatch a stamp target before its PR exists, add `--attest-worker` (with
+`--model`, `--tier` and `--brief`, or an `issue-<N>` item). The verb creates, stamps, closes and
+reads back a dispatcher-authored `[worker-attestation]` record before it emits the prompt. If
+any of those steps fails, it emits no prompt and releases the claim (exit 6). Do not retry
+by hand. The prompt carries one exact `Worker-Attestation:` line for the PR description,
+and the coordinator's `--stamp-only` call (optionally `--attestation <N>`) refuses a change
+whose branch, kit or model/tier disagrees with that record. The record constrains the PR
+stamp; it never stands in for it.
 
 ## Dispatch — `deskdispatch <item-key>` runs the ceremony
 
