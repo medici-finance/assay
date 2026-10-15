@@ -75,7 +75,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  GO_VERSION: "1.25.0"
+  GO_VERSION: "1.27.2"
 
 jobs:
   build-test:
@@ -208,7 +208,7 @@ jobs:
       - name: Install Go
         env:
           # Keep this download pin in sync with GO_VERSION, as in release.yml.
-          GO_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"

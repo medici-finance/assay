@@ -131,6 +131,9 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	var classifier *authoringClassifier
 	var authoringUndecided map[string]string
 	var unread []string
+	var allPulls []ghPull
+	allPullsLookedAt := false
+	allPullsReason := ""
 	switch {
 	case *offline:
 		in.LookedAt = false
@@ -147,10 +150,15 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 			return reconcileUsageErr
 		}
 		client = reconcileGHClient(token)
-		prs, lookedAt, reason := client.ListPRs(*repo)
-		in.PRs = prs
-		in.LookedAt = lookedAt
-		in.Reason = reason
+		// One paged read of every pull serves both the trailer fold (ListPRs'
+		// filter) and the --backfill match below, which used to page the whole
+		// list a second time.
+		allPulls, allPullsLookedAt, allPullsReason = client.fetchAllPulls(*repo)
+		if allPullsLookedAt {
+			in.PRs = prRecordsFromPulls(allPulls)
+		}
+		in.LookedAt = allPullsLookedAt
+		in.Reason = allPullsReason
 		// A PR that only AUTHORED a brief is not a witness that it is implemented
 		// (briefauthoring.go): drop it from the trailer fold before anything reads
 		// in.PRs, so the cell, the approval fold and --apply all see the same set.
@@ -173,22 +181,24 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	var lookup handSaidLookup
 	pullsUnread := ""
 	if *backfill {
-		lookup = func(stream, num string) (string, string, bool) {
-			return handSaidBeforeGeneration(*root, stream, num)
-		}
+		lookup = newHandSaidLookup(*root)
 		var pulls []ghPull
 		pullsLookedAt := false
 		if client != nil {
-			var reason string
-			pulls, pullsLookedAt, reason = client.fetchAllPulls(*repo)
+			pulls, pullsLookedAt = allPulls, allPullsLookedAt
 			if !pullsLookedAt {
-				fmt.Fprintf(stderr, "reconcile --backfill: could-not-check the raw pull list: %s\n", reason)
-				pullsUnread = reason
+				fmt.Fprintf(stderr, "reconcile --backfill: could-not-check the raw pull list: %s\n", allPullsReason)
+				pullsUnread = allPullsReason
 			}
 		}
 		var authoring backfillAuthoring
 		if classifier != nil {
 			authoring = classifier.authoringOnly
+			if pullsLookedAt {
+				// Overlap the match's file-list reads; the match below then
+				// reads the same PRs, in the same order, from the cache.
+				classifier.prefetchBackfill(pulls, backfillMatchBriefs(cells, in))
+			}
 		}
 		var bfUnread []string
 		cells, bfUnread = applyReconcileBackfillWith(cells, in, pulls, pullsLookedAt, lookup, authoring)
