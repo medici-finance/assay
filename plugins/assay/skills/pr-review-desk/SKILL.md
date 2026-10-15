@@ -289,9 +289,8 @@ failure this section prevents**, and there is no state in this loop called "the 
   push only when the declaration substantiates); the ready-flip reads BOTH lanes' verdicts AT THE FINAL head (stale ≠ pass), CI
   green at that head, mergeable; a `Security-Review: fail` at head blocks everything; dual-track
   out-of-scope FILING waits for both lanes at the same head (the VERDICTS themselves never wait for
-  each other); the human gates (`needs-decision`, the merge, and on a public repo the human's
-  out-of-band `:public` allowed-repos entry the write gate requires — repository-scoped, never a
-  per-item reaction) are never parallelised around.
+  each other); the human gates (`needs-decision`, the merge, a public repo's repository-scoped
+  `:public` allowed-repos entry) are never parallelised around.
 - **Never stop-and-wait.** When actionable = 0, do not exit — the watchers keep the loop alive. "I
   dispatched everything I saw" is not a stop condition and is not an idle claim (§HARD GATE).
 - **Priority within a refill:** RE-REVIEW before NEEDS-REVIEW at the same score (the worker is
