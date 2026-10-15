@@ -1601,6 +1601,21 @@
       "state": "pending"
     },
     {
+      "executable": "intake-eval",
+      "path": "tools/intake-eval",
+      "kind": "go",
+      "module": "tools/intake-eval",
+      "release": "module-local; no release or workflow build declaration",
+      "consumers": [
+        "tools/intake-eval/README.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "720 LOC, ~0 verbs, ~6 flags at 193003bc2570",
+      "owner": "desktools-v2/57",
+      "state": "pending"
+    },
+    {
       "executable": "loopresolve",
       "path": "tools/loopresolve",
       "kind": "go",
