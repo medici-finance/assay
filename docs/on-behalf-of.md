@@ -143,7 +143,7 @@ Six verbs stamp the trailer, or refuse (exit 5) rather than write without one:
 | `deskreply` (plain and `--workpad`) | a trailing line on the posted/edited comment body |
 | `deskpr create` / `edit` | a trailing line on the PR body |
 | `deskfile new` / `attach` | a trailing line on the issue body / comment |
-| `deskevidence` | a trailing git-trailer line on the commit message (both the direct-write and the side-branch/draft-change lanes) |
+| `deskevidence` | a trailing git-trailer line on the commit message (both the direct-write and the side-branch/draft-change lanes), and the Runner-cell annotation on each App-run Evidence row the landing adds without one (see below) |
 | `deskflip` | see below — this verb has no body to stamp |
 
 **Idempotency is unaffected.** The trailer is appended to the body/message sent to the
@@ -181,6 +181,18 @@ verbs above, this annotation is **best-effort**: if no principal resolves, the c
 left unannotated rather than refusing the whole witness write. The write-side refusal
 (the six verbs, above) is the actual enforcement point; the witness cell is a
 *record* of what already landed.
+
+**`deskevidence` stamps the cell at ingest.** A row that reaches `deskevidence` without
+the annotation (one transcribed or assembled from several witnesses rather than written by
+`verifyrun` directly) is stamped by the tool, not by hand: for every `## Evidence` data row
+the landing ADDS whose Runner cell names an App identity and carries no `on-behalf-of`
+text, it inserts ` (on-behalf-of human:<who>)` before a trailing `(forge-identity)` /
+`(ci-env)` / `(git-config)` tag, or at the end of the cell when there is none — the order
+`verifyrun` renders. `<who>` comes from the same roster resolution as the commit trailer
+(the neutral name on any target not stated `:private`, the login on one that is), never
+from a flag, an environment variable or the landed content; when it cannot be resolved
+the landing refuses (exit 5) and nothing is written. A row already on the branch, a
+`human:<name>` row and a cell that already carries an annotation are left byte-identical.
 
 ## The lint
 
