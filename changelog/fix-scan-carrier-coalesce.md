@@ -1,0 +1,3 @@
+### Fixed
+- `scanloop run` now finds the open scan PR on the scan target itself (the youngest open draft scan PR by this App, from any session) and coalesces into it inside the window, instead of cutting a duplicate scan PR every tick when no `--scan-pr` flags are passed. An open-PR list that cannot be read refuses the scan dispatch (exit 6) rather than cutting a possible duplicate; `--scan-pr` still names the PR explicitly, and `--offline` still reads nothing.
+- The scan carrier no longer writes its derived title and body files inside the scan worktree, so the final `git worktree remove` no longer fails on untracked files and leaves the worktree behind; the files sit beside the worktree and are removed after every carry, including a failed one.

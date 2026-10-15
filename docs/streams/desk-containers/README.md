@@ -54,6 +54,7 @@ component list, build/run topology, and open questions.
 | 22 | [`cellctl logs <cell> [role] [--lines N]` — read a desk window's recent output from whichever cockpit holds it](brief-22-logs.md) | 10 | S | todo | — | — |
 | 23 | [`cellctl upgrade <cell>` — install the pinned desk-tools release and plugin, verify them, then rolling-restart the cell onto them](brief-23-upgrade.md) | 11 | M | todo | — | — |
 | 24 | [`cellctl gc <cell>` — one housekeeping verb, plan-first: cache, scratch, worktrees, stale claims, orphaned processes, expired plans](brief-24-gc.md) | 13 | M | todo | — | — |
+| 25 | [`cellctl desk --force` — diagnose a failed desk boot, repair what it can, ask before each destructive step, `-y` answers yes](brief-25-desk-force-repair.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

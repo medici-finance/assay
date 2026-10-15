@@ -7,6 +7,7 @@ depends:
 - graph-execution/06
 - iso-9001/01
 - iso-9001/05
+- graph-execution/31
 unblocks: ["graph-execution/18", "iso-9001/09"]
 effort: L
 gate: human
@@ -21,6 +22,7 @@ issues: []
 schema: brief-v2
 authored: 2026-09-19 by Codex (author-brief)
 sources:
+- docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md — 2026-10-14 provenance consumption
 - docs/streams/graph-execution/admission-assurance-spec.md
 - freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
 exec-tier: strong
@@ -30,7 +32,7 @@ consumers:
 - 'statusgen: fixed-here'
 - 'docs/evidence-bundle.md: fixed-here'
 - 'docs/streams/iso-9001: out-of-scope (existing 03/04 own effectiveness and authorizer implementation)'
-version: 1
+version: 2
 id: 1699cd1a-941a-4d9a-920c-67ef5d1411d8
 ---
 
@@ -60,6 +62,17 @@ Decision-trigger: spec. At implementation pickup, prepare concrete policy choice
 - Existing authority and human gates remain binding. Missing prerequisite evidence is could-not-check.
 - Public fixtures use example-org and synthetic data; do not copy adopter evidence.
 
+## Public runtime proof-provenance amendment — 2026-10-14
+
+Consume /31's corroborated accountable-principal/capture/environment record and declared
+proof class in the existing permission-filtered control export. A bot-for-human remains a
+provider bot act; authenticated attribution is not hardware custody, cryptographic signature
+verification or independent approval. Unknown/omitted provenance remains explicit. Do not
+add a signer, audit store, certification claim or new waiver. Add `TestControlProofExport`
+to the existing controlassurance suite: export and independently read synthetic records,
+refusing an unsupported stronger assurance claim and preserving missing/denied coverage.
+Keep the existing regulatory/human gate and historical Evidence.
+
 ## Task
 
 1. Define profile/edition/owner/scope, run and period-level control executions, expected populations, exceptions, retention/access references, provenance and omissions. Link independent effectiveness receipts using iso-9001/03 rather than a second corrective-action model.
@@ -80,6 +93,7 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 1 | check:ci | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestControlAssurance" ./...` | exit 0; output includes PASS for TestControlAssurance, with no [no tests to run] for its owning package |
 | 2 | check:ci +mutation | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestControlAssuranceMissingPopulation" ./...` | exit 0; output includes PASS for TestControlAssuranceMissingPopulation, with no [no tests to run] for its owning package |
 | 3 | check:ci +flow | `cd statusgen && GOWORK=off go test -count=1 -v -run "^TestControlAssuranceExportVerify" ./...` | exit 0; output includes PASS for TestControlAssuranceExportVerify, with no [no tests to run] for its owning package |
+| 4 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControlProofExport$" . > "$out" && grep -F -- "--- PASS: TestControlProofExport " "$out")` | exit 0; named PASS; export/read preserves declared and corroborated proof, unknown/denied provenance and refuses inflated assurance; mutation: export role attribution as independent approval |
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
 
