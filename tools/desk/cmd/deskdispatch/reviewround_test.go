@@ -798,7 +798,12 @@ func TestDispatchedReviewPromptCarriesTheRound(t *testing.T) {
 	prompt := string(raw)
 	fetch := strings.Index(prompt, "checkout FETCH_HEAD")
 	round := strings.Index(prompt, "### This round — stated by the dispatcher")
-	release := strings.Index(prompt, "Release the dispatch claim once your verdict is posted")
+	// The post-and-release step: the one-step `deskpost finish` line when the key is one finish
+	// accepts (#2493), else the bare release line.
+	release := strings.Index(prompt, "Post your verdict, confirm it and release the dispatch claim")
+	if release < 0 {
+		release = strings.Index(prompt, "Release the dispatch claim once your verdict is posted")
+	}
 	if fetch < 0 || round < fetch || release < round {
 		t.Fatalf("round statement is not between the head fetch and the claim release (fetch %d, round %d, release %d)", fetch, round, release)
 	}
