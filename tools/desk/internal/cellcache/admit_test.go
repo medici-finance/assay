@@ -3,6 +3,7 @@
 package cellcache
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -28,10 +29,42 @@ func warmed(t *testing.T) Policy {
 		t.Fatal(err)
 	}
 	material(t, p, "build/a", 100)
+	quiet(t, p)
 	if r, err := Check(p, false); err != nil || *r.After.LogicalBytes != 100 {
 		t.Fatalf("fixture pass: %+v %v", r, err)
 	}
 	return p
+}
+
+// quiet ages the top level of build/ and mod/ the way a cache in regular use
+// has been quiet for a while, so a fixture is not inside the pre-check's
+// timestamp margin.
+func quiet(t *testing.T, p Policy) {
+	t.Helper()
+	old := time.Now().Add(-time.Hour)
+	for _, d := range []string{"build", "mod"} {
+		path := filepath.Join(p.Root, d)
+		if err := os.MkdirAll(path, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// recordedAt is the time the last recorded pass says it finished measuring.
+func recordedAt(t *testing.T, p Policy) time.Time {
+	t.Helper()
+	b, err := os.ReadFile(p.ReportPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rep Report
+	if err := json.Unmarshal(b, &rep); err != nil {
+		t.Fatal(err)
+	}
+	return rep.After.At
 }
 
 // holdCacheLock takes the root's custody lock the way a sibling dispatch
@@ -126,6 +159,7 @@ func TestCacheAdmitTakesLock(t *testing.T) {
 		}},
 		{name: "near budget", want: "within a quarter of budget", setup: func(t *testing.T, p *Policy) {
 			material(t, *p, "build/near", admitBudget/4*3)
+			quiet(t, *p)
 			if _, err := Check(*p, false); err != nil {
 				t.Fatal(err)
 			}
@@ -187,6 +221,22 @@ func TestCacheAdmitTakesLock(t *testing.T) {
 		{name: "top level changed since report", want: "changed after the recorded measurement", setup: func(t *testing.T, p *Policy) {
 			time.Sleep(10 * time.Millisecond)
 			material(t, *p, "build/late", 10)
+		}},
+		{name: "top level stamped just before report", want: "changed after the recorded measurement", setup: func(t *testing.T, p *Policy) {
+			// What a coarse filesystem clock does to an entry added right
+			// after a pass: a timestamp a hair BEFORE the report's own. The
+			// directory now holds over-budget material the report never saw.
+			material(t, *p, "build/late", admitBudget*2)
+			ts := recordedAt(t, *p).Add(-time.Millisecond)
+			if err := os.Chtimes(filepath.Join(p.Root, "build"), ts, ts); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "mod stamped inside the margin", want: "changed after the recorded measurement", setup: func(t *testing.T, p *Policy) {
+			ts := recordedAt(t, *p).Add(-time.Second)
+			if err := os.Chtimes(filepath.Join(p.Root, "mod"), ts, ts); err != nil {
+				t.Fatal(err)
+			}
 		}},
 		{name: "free space at floor", want: "free space", free: 1 << 30, setup: func(t *testing.T, p *Policy) {
 			p.Floor = 1 << 30

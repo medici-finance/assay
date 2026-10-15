@@ -262,8 +262,14 @@
     {
       "name": "admission ignores a top-level change since the report",
       "file": "internal/cellcache/admit.go",
-      "old": "if !st.ModTime().Before(rep.After.At) {",
+      "old": "if !st.ModTime().Before(rep.After.At.Add(-AdmitMtimeSlack)) {",
       "new": "if false {"
+    },
+    {
+      "name": "admission trusts a top-level stamp a coarse clock put before the report",
+      "file": "internal/cellcache/admit.go",
+      "old": "if !st.ModTime().Before(rep.After.At.Add(-AdmitMtimeSlack)) {",
+      "new": "if !st.ModTime().Before(rep.After.At) {"
     },
     {
       "name": "admission always takes the lock",

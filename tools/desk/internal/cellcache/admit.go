@@ -14,6 +14,20 @@ import (
 // or future-dated estimate is not trusted and the full check runs.
 const AdmitMaxAge = 5 * time.Minute
 
+// AdmitMtimeSlack is how far before the recorded measurement a top-level
+// build/ or mod/ modification time must lie for the pre-check to treat the
+// directory as unchanged since that measurement. Filesystem timestamps and the
+// clock that stamped the report are different clocks: Linux stamps files from
+// a coarse kernel clock that trails time.Now by up to a scheduler tick, and
+// some filesystems keep one or two second resolution. Without the margin, an
+// entry added in the instants after a measurement can carry a timestamp that
+// reads as BEFORE it, and an over-budget cache is admitted on a stale
+// estimate (the lock-free path skipped the locked pass that recovers it). A
+// directory touched inside the margin is unproven and takes the locked path;
+// one that has been quiet longer is unaffected, so the cost is a single
+// locked pass after a change.
+const AdmitMtimeSlack = 2 * time.Second
+
 // admitEnv holds the Admit seams. They are instance-local so a test can make
 // the free-space read fail, move the clock, or observe whether the locked path
 // ran, without touching a global or the host cache.
@@ -37,7 +51,9 @@ type admitEnv struct {
 // pressure is possible at all. It admits only when ALL of these read cleanly:
 //
 //   - the root is the owned, marked root, with build/ and mod/ (when present)
-//     passing the same entry checks the walk applies to their top level;
+//     passing the same entry checks the walk applies to their top level and
+//     not modified at or after the recorded measurement (less AdmitMtimeSlack,
+//     since file timestamps and the report's clock can disagree);
 //   - the last recorded pass is a clean, non-dry, full-measurement report for
 //     this root and trust domain, no older than AdmitMaxAge;
 //   - its logical size is at most three quarters of the budget; and
@@ -131,8 +147,9 @@ func cheapClean(p Policy, dry bool, env admitEnv) (Report, string) {
 		// A top-level change since the recorded pass (a root recreated, an
 		// entry added or removed directly in it) makes the estimate unproven.
 		// Writes deeper down do not touch this mtime; those are what the
-		// margins below are for.
-		if !st.ModTime().Before(rep.After.At) {
+		// margins below are for. The comparison leaves AdmitMtimeSlack of
+		// room because file timestamps and the report's clock can disagree.
+		if !st.ModTime().Before(rep.After.At.Add(-AdmitMtimeSlack)) {
 			return no("%s changed after the recorded measurement", name)
 		}
 	}
