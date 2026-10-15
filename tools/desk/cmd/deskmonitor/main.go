@@ -44,13 +44,15 @@ Exit codes: 0 clean · 1 precondition failure · 2 at least one repo DEGRADED.
 `
 
 func main() {
-	// Property A, first: whatever App token the launching shell exported, this poller is not it.
-	dropInheritedTokens()
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("deskmonitor", nil, os.Args[1:], func([]string) int {
+		// Property A, first: whatever App token the launching shell exported, this poller is not it.
+		dropInheritedTokens()
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:], os.Stdout, os.Stderr)
+	}))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {

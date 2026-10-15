@@ -89,7 +89,9 @@ USAGE:
 The verb never merges and never lands on main; the re-baseline PR is reviewed and merged
 by a human. It fails CLOSED: a row is re-baselined only when git PROVES the work intact.`
 
-func main() { os.Exit(run(os.Args[1:])) }
+func main() {
+	os.Exit(deskkit.PerfRun("deskrebaseline", nil, os.Args[1:], func([]string) int { return run(os.Args[1:]) }))
+}
 
 func run(args []string) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
