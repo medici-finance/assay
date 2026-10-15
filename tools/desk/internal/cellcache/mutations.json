@@ -222,6 +222,78 @@
       "file": "internal/cellcache/cache.go",
       "old": "size, err := m.verifiedTreeSize(path)",
       "new": "size, err := int64(0), error(nil)"
+    },
+    {
+      "name": "admission leans on a stale or future-dated estimate",
+      "file": "internal/cellcache/admit.go",
+      "old": "if rep.After.At.IsZero() || age < 0 || age > AdmitMaxAge {",
+      "new": "if _ = age; false {"
+    },
+    {
+      "name": "admission admits when the free-space read fails",
+      "file": "internal/cellcache/admit.go",
+      "old": "\tif err != nil {\n\t\treturn no(\"available bytes: %v\", err)\n\t}",
+      "new": "\tif err != nil {\n\t\tfree = ^uint64(0)\n\t}"
+    },
+    {
+      "name": "admission ignores the budget margin",
+      "file": "internal/cellcache/admit.go",
+      "old": "if *est > p.Budget/4*3 {",
+      "new": "if false {"
+    },
+    {
+      "name": "admission ignores the free-space margin",
+      "file": "internal/cellcache/admit.go",
+      "old": "if need < p.Floor || free < need {",
+      "new": "if _ = need; free < p.Floor {"
+    },
+    {
+      "name": "admission trusts a pass that was not clean",
+      "file": "internal/cellcache/admit.go",
+      "old": "if rep.DryRun || rep.Outcome != \"checked-clean\" || len(rep.Failures) > 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "admission skips the ownership marker",
+      "file": "internal/cellcache/admit.go",
+      "old": "if err != nil || string(owner) != schema+\"\\n\"+p.Domain+\"\\n\" {",
+      "new": "if _ = owner; false {"
+    },
+    {
+      "name": "admission ignores a top-level change since the report",
+      "file": "internal/cellcache/admit.go",
+      "old": "if !st.ModTime().Before(rep.After.At.Add(-AdmitMtimeSlack)) {",
+      "new": "if false {"
+    },
+    {
+      "name": "admission trusts a top-level stamp a coarse clock put before the report",
+      "file": "internal/cellcache/admit.go",
+      "old": "if !st.ModTime().Before(rep.After.At.Add(-AdmitMtimeSlack)) {",
+      "new": "if !st.ModTime().Before(rep.After.At) {"
+    },
+    {
+      "name": "admission always takes the lock",
+      "file": "internal/cellcache/admit.go",
+      "old": "\tif why == \"\" {\n\t\treturn r, nil\n\t}",
+      "new": "\tif false {\n\t\treturn r, nil\n\t}"
+    },
+    {
+      "name": "a clean pass walks the cache twice",
+      "file": "internal/cellcache/cache.go",
+      "old": "\tif acted {\n\t\tvar afterErrors",
+      "new": "\tif _ = acted; true {\n\t\tvar afterErrors"
+    },
+    {
+      "name": "a failed removal skips the re-measure",
+      "file": "internal/cellcache/cache.go",
+      "old": "\t\tacted = true\n\t\tfor _, name := range",
+      "new": "\t\tfor _, name := range"
+    },
+    {
+      "name": "dispatch storage admission takes the lock unconditionally",
+      "file": "cmd/deskdispatch/storage.go",
+      "old": "cellcache.Admit(*p, dry)",
+      "new": "cellcache.Check(*p, dry)"
     }
   ]
 }

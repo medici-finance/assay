@@ -85,6 +85,17 @@ contains() {
   return 1
 }
 
+# row_has <text> <row-needle> <class>  -> 0 if a line carrying <row-needle> carries <class>.
+# The row is read into a variable first: under `pipefail`, a `grep -q` reader that exits at its
+# first match can leave the stage before it dying of SIGPIPE, and the pipeline then reports
+# failure for a line that DID match (the screen-relay-only flake). No early-exit reader here
+# is ever a pipe stage; a producer is read to the end or fed to the reader as a here-string.
+row_has() {
+  local row
+  row=$(grep -F -- "$2" <<<"$1")
+  contains "$row" "$3"
+}
+
 TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
 
@@ -99,7 +110,7 @@ unset ASSAY_BLESS_LOGIN ASSAY_TRUSTED_LOGINS ASSAY_TRUSTED_BOT_SLUGS ASSAY_HUMAN
 # value must not leak into the output the cases compare.
 unset DRIVER_LOGIN
 
-echo "assay-inbox regression suite ($(bash --version | head -1))"
+echo "assay-inbox regression suite (bash $BASH_VERSION)"
 
 # ---------------------------------------------------------------- F1 --------
 echo "F1 — a failed query must not masquerade as an empty inbox"
@@ -149,7 +160,7 @@ w="$TMPROOT/f2-limit"
 make_gh "$w" 0 '[]' ""
 run_case "$w" o/r
 if grep -q -- "--limit" "$w/argv.log"; then
-  lim=$(sed -n 's/.*--limit \([0-9]*\).*/\1/p' "$w/argv.log" | head -1)
+  lim=$(sed -n 's/.*--limit \([0-9]*\).*/\1/p' "$w/argv.log" | sed -n 1p)
   ok "an explicit --limit is passed to gh (--limit $lim)"
   check "$([[ "$lim" -gt 30 ]] && echo 0 || echo 1)" \
     "--limit ($lim) exceeds gh's silent default of 30" "got --limit $lim"
@@ -224,6 +235,28 @@ else
     "no-repo path reports clearly" "stderr: ${ERR:-<empty>}"
 fi
 
+# ---------------------------------------------------------------- origin ----
+# regression: #2724
+echo "origin — the origin fallback resolves every github.com URL form"
+w="$TMPROOT/origin"
+make_gh "$w" 0 '[]' ""
+n=0
+for url in "https://github.com/o/r.git" "https://github.com:443/o/r.git" "https://u:pw@github.com:443/o/r" \
+           "ssh://git@github.com/o/r.git" "ssh://git@github.com:22/o/r" "git@github.com:o/r.git"; do
+  n=$((n + 1)); rd="$w/repo-$n"; mkdir -p "$rd"; git -C "$rd" init -q 2>/dev/null
+  git -C "$rd" remote add origin "$url"; rm -f "$w/argv.log"
+  (cd "$rd" && PATH="$w:$PATH" bash "$SCRIPT" >"$w/out" 2>"$w/err"); rc=$?
+  check "$([[ "$rc" -eq 0 ]] && grep -q -- 'o/r' "$w/argv.log" 2>/dev/null && echo 0 || echo 1)" \
+    "origin '$url' resolves to o/r and is queried" "rc=$rc argv=$(cat "$w/argv.log" 2>/dev/null) stderr=$(cat "$w/err")"
+done
+
+# regression: #2724
+w="$TMPROOT/origin-display"
+make_gh "$w" 0 '[]' ""
+run_case "$w" 'https://user:pw@example.com/o/r'
+check "$([[ "$RC" -eq 1 && "$ERR" == "assay-inbox: invalid repo 'https://example.com/o/r' (expected owner/name)" && ! -s "$w/argv.log" ]] && echo 0 || echo 1)" \
+  "invalid repo display strips userinfo before refusal without a forge read" "rc=$RC stderr=$ERR"
+
 # ---------------------------------------------------------------- F4 --------
 echo "F4 — the fetched url must actually be emitted"
 
@@ -249,7 +282,7 @@ run_case "$w" o/r
 stripped=$(printf '%s' "$OUT" | LC_ALL=C tr -d '\000-\010\013\014\016-\037\177')
 check "$([[ "$stripped" == "$OUT" ]] && echo 0 || echo 1)" \
   "stdout contains zero C0/DEL bytes" \
-  "control bytes survived: $(printf '%s' "$OUT" | LC_ALL=C tr -d '\000-\010\013\014\016-\037\177' | od -An -tx1 | head -2)"
+  "control bytes survived: $(printf '%s' "$OUT" | LC_ALL=C tr -d '\000-\010\013\014\016-\037\177' | od -An -tx1 | sed -n 1,2p)"
 check "$(contains "$OUT" "RED" && echo 0 || echo 1)" \
   "harmless text survived (RED)" "stdout was: ${OUT:-<empty>}"
 check "$(contains "$OUT" "[31m" && echo 0 || echo 1)" \
@@ -299,7 +332,7 @@ run_case "$w" o/r
 order=$(printf '%s\n' "$OUT" | sed -n 's/.*\(#[0-9][0-9]*\).*/\1/p' | tr '\n' ' ')
 check "$([[ "$order" == "#1 #2 #3 " ]] && echo 0 || echo 1)" \
   "urgency-then-oldest order preserved (#1 #2 #3)" "got: $order"
-marked=$(printf '%s\n' "$OUT" | grep -c '^\*\*')
+marked=$(grep -c '^\*\*' <<<"$OUT")
 check "$([[ "$marked" -eq 1 ]] && echo 0 || echo 1)" \
   "the urgent item is marked once (dedupe held)" "urgent-marked rows: $marked"
 check "$(contains "$OUT" "3 item(s) across 1 repo(s)" && echo 0 || echo 1)" \
@@ -361,8 +394,8 @@ SECTIONS_RE='question [0-9]+ of [0-9]+'
 # ordered_contains <text> <a> <b> — 0 if <a> appears before <b>.
 ordered_contains() {
   local ia ib
-  ia=$(printf '%s\n' "$1" | grep -n -- "$2" | head -1 | cut -d: -f1)
-  ib=$(printf '%s\n' "$1" | grep -n -- "$3" | head -1 | cut -d: -f1)
+  ia=$(grep -n -- "$2" <<<"$1" | sed -n 1p | cut -d: -f1)
+  ib=$(grep -n -- "$3" <<<"$1" | sed -n 1p | cut -d: -f1)
   [[ -n "$ia" && -n "$ib" && "$ia" -lt "$ib" ]]
 }
 
@@ -373,10 +406,10 @@ w="$TMPROOT/w1"
 make_gh_walk "$w"
 run_case "$w" --walk o/r
 check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "--walk exits 0 on a healthy queue" "got $RC (stderr: ${ERR:-<empty>})"
-check "$(printf '%s' "$OUT" | grep -Eq "^o/r#1 — $SECTIONS_RE\$" && echo 0 || echo 1)" \
+check "$(grep -Eq "^o/r#1 — $SECTIONS_RE\$" <<<"$OUT" && echo 0 || echo 1)" \
   "header is '<repo>#<N> — question k of n'" "stdout was: ${OUT:-<empty>}"
 for section in "Context" "Options" "Reply shape" "Verification"; do
-  check "$(printf '%s' "$OUT" | grep -Fxq "$section" && echo 0 || echo 1)" \
+  check "$(grep -Fxq "$section" <<<"$OUT" && echo 0 || echo 1)" \
     "section '$section' is present" "stdout was: ${OUT:-<empty>}"
 done
 check "$(ordered_contains "$OUT" "^Context\$" "^Options\$" && echo 0 || echo 1)" \
@@ -388,7 +421,7 @@ check "$(ordered_contains "$OUT" "^Reply shape\$" "^Verification\$" && echo 0 ||
 # Exactly ONE item per invocation — the turn boundary belongs to the skill, not the script.
 # Counted on the HEADER SHAPE anchored at both ends, not on the phrase: the Verification
 # line names the next question ("presents question 2 of 3"), and a loose match counts it.
-headers=$(printf '%s\n' "$OUT" | grep -Ec '^[A-Za-z0-9._/-]+#[0-9]+ — question [0-9]+ of [0-9]+$' || true)
+headers=$(grep -Ec '^[A-Za-z0-9._/-]+#[0-9]+ — question [0-9]+ of [0-9]+$' <<<"$OUT" || true)
 check "$([[ "$headers" -eq 1 ]] && echo 0 || echo 1)" \
   "exactly one item is rendered per --walk invocation" "found $headers item headers"
 # The context is the 3-6 lines the format asks for, never an empty section.
@@ -402,12 +435,12 @@ echo "W2 — the recommended option is FIRST and labelled, whatever order the is
 # The fixture lists the recommended option SECOND. Recommended-first is the format's rule,
 # so the renderer must reorder — and must relabel: the option that lands at A is the one
 # marked [recommended].
-firstopt=$(printf '%s\n' "$OUT" | sed -n '/^Options$/,/^$/p' | grep '^  A\. ' | head -1)
+firstopt=$(sed -n '/^Options$/,/^$/p' <<<"$OUT" | grep '^  A\. ' | sed -n 1p)
 check "$(contains "$firstopt" "Keep the gate" && echo 0 || echo 1)" \
   "the recommended option is promoted to A" "option A was: ${firstopt:-<none>}"
 check "$(contains "$firstopt" "[recommended]" && echo 0 || echo 1)" \
   "option A is labelled [recommended]" "option A was: ${firstopt:-<none>}"
-recount=$(printf '%s\n' "$OUT" | grep -c '\[recommended\]' || true)
+recount=$(grep -c '\[recommended\]' <<<"$OUT" || true)
 check "$([[ "$recount" -eq 1 ]] && echo 0 || echo 1)" \
   "exactly one option is labelled recommended" "labelled options: $recount"
 # Never more than four.
@@ -432,8 +465,8 @@ walk_order=""
 for k in 1 2 3; do
   run_case "$w" --walk --item "$k" o/r
   walk_order="${walk_order}$(printf '%s\n' "$OUT" | sed -n '1s/.*\(#[0-9][0-9]*\).*/\1/p') "
-  check "$(printf '%s' "$OUT" | grep -Eq "question $k of 3" && echo 0 || echo 1)" \
-    "--item $k announces itself as 'question $k of 3'" "stdout head: $(printf '%s\n' "$OUT" | head -1)"
+  check "$(grep -Eq "question $k of 3" <<<"$OUT" && echo 0 || echo 1)" \
+    "--item $k announces itself as 'question $k of 3'" "stdout head: $(sed -n 1p <<<"$OUT")"
 done
 check "$([[ "$walk_order" == "#1 #2 #3 " ]] && echo 0 || echo 1)" \
   "--walk walks the SAME order as the table" "got: $walk_order"
@@ -452,7 +485,7 @@ check "$(contains "$OUT" "reply with the ruling in one line" && echo 0 || echo 1
   "Reply shape degrades to a one-line ruling when no options are stated" "stdout was: ${OUT:-<empty>}"
 # Even with nothing to quote, the five sections still stand.
 for section in "Context" "Options" "Reply shape" "Verification"; do
-  check "$(printf '%s' "$OUT" | grep -Fxq "$section" && echo 0 || echo 1)" \
+  check "$(grep -Fxq "$section" <<<"$OUT" && echo 0 || echo 1)" \
     "section '$section' survives an empty issue body" "stdout was: ${OUT:-<empty>}"
 done
 
@@ -479,7 +512,7 @@ run_case "$w" --walk o/r
 check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "--walk on an empty queue exits 0" "got $RC"
 check "$(contains "$OUT" "0 item(s) across 1 repo(s)" && echo 0 || echo 1)" \
   "--walk on an empty queue prints the terminating summary" "stdout was: ${OUT:-<empty>}"
-check "$(printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' && echo 1 || echo 0)" \
+check "$(grep -Eq 'question [0-9]+ of' <<<"$OUT" && echo 1 || echo 0)" \
   "--walk on an empty queue asks nothing" "an item header was rendered: $OUT"
 
 # ---------------------------------------------------------------- W6 --------
@@ -530,7 +563,7 @@ check "$([[ "$html_order" == "1 2 3 " ]] && echo 0 || echo 1)" \
   "the page preserves the queue order (1 2 3)" "got: $html_order"
 check "$(contains "$PAGE" "question 1 of 3" && contains "$PAGE" "question 3 of 3" && echo 0 || echo 1)" \
   "cards carry the same 'question k of n' header as --walk" "page head: $(head -c 200 "$HTML")"
-check "$(grep -c '<span class="rec">recommended</span>' "$HTML" | grep -qx 3 && echo 0 || echo 1)" \
+check "$([[ "$(grep -c '<span class="rec">recommended</span>' "$HTML")" == 3 ]] && echo 0 || echo 1)" \
   "each card labels exactly one recommended option" "count: $(grep -c '<span class="rec">recommended</span>' "$HTML" || true)"
 
 # ---------------------------------------------------------------- H2 --------
@@ -587,7 +620,7 @@ run_case "$w" --html "$HTML" o/r
 check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "--html on an empty queue exits 0" "got $RC"
 check "$([[ -s "$HTML" ]] && echo 0 || echo 1)" "--html on an empty queue still writes a page" "no file at $HTML"
 check "$(grep -qF 'Nothing is waiting' "$HTML" && echo 0 || echo 1)" \
-  "the empty page says so positively" "page: $(cat "$HTML" 2>/dev/null | head -c 200)"
+  "the empty page says so positively" "page: $(head -c 200 "$HTML" 2>/dev/null)"
 check "$(grep -qF '<article' "$HTML" 2>/dev/null && echo 1 || echo 0)" \
   "the empty page renders no cards" "a card was rendered"
 
@@ -648,7 +681,7 @@ screen_gh() {
 }
 
 # presented — the item was put to the driver as question 1 of 1.
-presented() { printf '%s' "$OUT" | grep -Eq '^o/r#10 — question 1 of 1$'; }
+presented() { grep -Eq '^o/r#10 — question 1 of 1$' <<<"$OUT"; }
 
 BODY_2OPT='## Options
 
@@ -705,7 +738,7 @@ roster_off
 # would match it: the Verify table greps the suite's own output for this exact name and
 # wants a count of 1.
 check "$([[ "$RC" -eq 0 ]] \
-        && ! printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' \
+        && ! grep -Eq 'question [0-9]+ of' <<<"$OUT" \
         && contains "$OUT" "screened: 1 already-ruled" \
         && echo 0 || echo 1)" \
   "screen-already-ruled" \
@@ -730,7 +763,7 @@ screen_gh "$w" "[]" "$BODY_1OPT"
 roster_on
 run_case "$w" --walk o/r
 roster_off
-check "$(printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' && echo 1 || echo 0)" \
+check "$(grep -Eq 'question [0-9]+ of' <<<"$OUT" && echo 1 || echo 0)" \
   "screen-no-fork-one-option: a one-option item is never presented as a question" "stdout was: ${OUT:-<empty>}"
 check "$(contains "$OUT" "screened: 0 already-ruled · 1 no-fork" && echo 0 || echo 1)" \
   "screen-no-fork-one-option: the tail counts it as no-fork" "stdout was: ${OUT:-<empty>}"
@@ -756,7 +789,7 @@ screen_gh "$w" "[]" "$BODY_REVDEFAULT"
 roster_on
 run_case "$w" --walk o/r
 roster_off
-check "$(printf '%s' "$OUT" | grep -Eq 'question [0-9]+ of' && echo 1 || echo 0)" \
+check "$(grep -Eq 'question [0-9]+ of' <<<"$OUT" && echo 1 || echo 0)" \
   "screen-reversible-default: a reversible-default item is never presented as a question" "stdout was: ${OUT:-<empty>}"
 check "$(contains "$OUT" "1 reversible-default" && echo 0 || echo 1)" \
   "screen-reversible-default: the tail counts it as reversible-default" "stdout was: ${OUT:-<empty>}"
@@ -800,7 +833,7 @@ chmod +x "$w/gh"
 roster_on
 run_case "$w" --walk o/r
 roster_off
-check "$(printf '%s' "$OUT" | grep -Eq '^o/r#11 — question 1 of 1$' && contains "$OUT" "could-not-check" && echo 0 || echo 1)" \
+check "$(grep -Eq '^o/r#11 — question 1 of 1$' <<<"$OUT" && contains "$OUT" "could-not-check" && echo 0 || echo 1)" \
   "screen-unread-is-genuine: an unread item is genuine — presented, and says could-not-check" \
   "stdout was: ${OUT:-<empty>}"
 check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" \
@@ -839,9 +872,9 @@ w="$TMPROOT/scr-numbering"
 make_gh_numbering "$w"
 roster_on
 run_case "$w" --walk --item 1 o/r
-first_header=$(printf '%s\n' "$OUT" | head -1)
+first_header=$(sed -n 1p <<<"$OUT")
 run_case "$w" --walk --item 2 o/r
-second_header=$(printf '%s\n' "$OUT" | head -1)
+second_header=$(sed -n 1p <<<"$OUT")
 run_case "$w" --walk --item 3 o/r
 third_rc="$RC"
 roster_off
@@ -870,7 +903,7 @@ roster_off
 # "screened:", a token that never otherwise appears in the format's own text) from the
 # screened output must reproduce the legacy one, byte for byte. One consolidated check,
 # named exactly "no-screen-flag" for the Verify table's grep -c 1.
-screened_minus_tail=$(printf '%s\n' "$screened_out" | grep -v '^screened:')
+screened_minus_tail=$(grep -v '^screened:' <<<"$screened_out")
 check "$(! contains "$legacy_out" "screened:" \
         && [[ "$screened_minus_tail" == "$legacy_out" ]] \
         && echo 0 || echo 1)" \
@@ -1083,10 +1116,10 @@ roster_on
 run_case "$w" --walk --screened o/r
 roster_off
 check "$([[ "$RC" -eq 0 ]] \
-        && printf '%s\n' "$OUT" | grep -Eq '^o/r#1 +already-ruled +ruled — flag for relabel/close' \
-        && printf '%s\n' "$OUT" | grep -Eq '^o/r#2 +no-fork +no fork — desk proceeds or re-routes' \
-        && ! printf '%s\n' "$OUT" | grep -Eq '^o/r#(3|4) ' \
-        && ! printf '%s\n' "$OUT" | grep -Eq 'question [0-9]+ of' \
+        && grep -Eq '^o/r#1 +already-ruled +ruled — flag for relabel/close' <<<"$OUT" \
+        && grep -Eq '^o/r#2 +no-fork +no fork — desk proceeds or re-routes' <<<"$OUT" \
+        && ! grep -Eq '^o/r#(3|4) ' <<<"$OUT" \
+        && ! grep -Eq 'question [0-9]+ of' <<<"$OUT" \
         && echo 0 || echo 1)" \
   "screen-screened-list: #1 already-ruled and #2 no-fork are listed with their evidence; #3/#4 are not" \
   "exit $RC; stdout was: ${OUT:-<empty>}"
@@ -1102,10 +1135,10 @@ table_out="$OUT"
 run_case "$w" --no-screen o/r
 legacy_table="$OUT"
 roster_off
-check "$(printf '%s\n' "$table_out" | grep -F 'example.test/1' | grep -q 'already-ruled' \
-        && printf '%s\n' "$table_out" | grep -F 'example.test/2' | grep -q 'no-fork' \
-        && printf '%s\n' "$table_out" | grep -F 'example.test/3' | grep -q 'genuine' \
-        && [[ "$(printf '%s\n' "$table_out" | grep -c 'example.test/')" -eq 4 ]] \
+check "$(row_has "$table_out" 'example.test/1' 'already-ruled' \
+        && row_has "$table_out" 'example.test/2' 'no-fork' \
+        && row_has "$table_out" 'example.test/3' 'genuine' \
+        && [[ "$(grep -c 'example.test/' <<<"$table_out")" -eq 4 ]] \
         && echo 0 || echo 1)" \
   "screen-table-class: every row is shown, each with its class" "table: ${table_out}"
 check "$(! contains "$legacy_table" "already-ruled" && ! contains "$legacy_table" "no-fork" && echo 0 || echo 1)" \
@@ -1229,7 +1262,7 @@ flow_cell_fixtures() {
 
 # flow_row <output> <stage> — the rendered table row for one stage, whitespace-squeezed.
 flow_row() {
-  printf '%s\n' "$1" | grep -E "^  $2( \*)? " | head -1 | tr -s ' '
+  grep -E "^  $2( \*)? " <<<"$1" | sed -n 1p | tr -s ' '
 }
 
 # ---------------------------------------------------------------- FL1 -------
@@ -1245,7 +1278,7 @@ run_case "$w" --flow --root "$w/alpha"
 check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "--flow with every reader healthy exits 0" "got $RC (stderr: ${ERR:-<empty>})"
 
 # The seven stages, in pipeline order, exactly once each.
-order=$(printf '%s\n' "$OUT" | grep -Eo '^  (intake|todo|in-progress|review|implemented|verified|done)( \*)? ' \
+order=$(grep -Eo '^  (intake|todo|in-progress|review|implemented|verified|done)( \*)? ' <<<"$OUT" \
         | sed 's/ \*//; s/^ *//; s/ *$//' | tr '\n' ' ')
 check "$([[ "$order" == "intake todo in-progress review implemented verified done " ]] && echo 0 || echo 1)" \
   "the seven stages render in pipeline order" "got: $order"
@@ -1272,7 +1305,7 @@ echo "FL2 — the bottleneck is throughput's stage, translated into the flow voc
 
 check "$(contains "$OUT" "bottleneck (largest queue/slots ratio): review *" && echo 0 || echo 1)" \
   "throughput's 'review' marks the review stage" "stdout: $OUT"
-marks=$(printf '%s\n' "$OUT" | grep -Ec '^  [a-z-]+ \* ' || true)
+marks=$(grep -Ec '^  [a-z-]+ \* ' <<<"$OUT" || true)
 check "$([[ "$marks" -eq 1 ]] && echo 0 || echo 1)" \
   "exactly one stage is marked as the bottleneck" "marked rows: $marks"
 
@@ -1438,12 +1471,19 @@ check "$([[ "$(flow_row "$OUT" todo)" == " todo 11 "* ]] && echo 0 || echo 1)" \
   "the fleet row sums the cells (7 + 4 = 11)" "row: $(flow_row "$OUT" todo)"
 check "$(contains "$OUT" "== cell alpha" && contains "$OUT" "== cell beta" && echo 0 || echo 1)" \
   "each cell gets its own row block" "stdout: $OUT"
-blocks=$(printf '%s\n' "$OUT" | grep -c '^== ' || true)
+blocks=$(grep -c '^== ' <<<"$OUT" || true)
 check "$([[ "$blocks" -eq 3 ]] && echo 0 || echo 1)" \
   "one fleet block plus one block per cell (got $blocks, want 3)" "blocks: $blocks"
+# regression: #2724 — second display consumer, outside repo validation.
+git -C "$w/alpha" init -q
+git -C "$w/alpha" remote add origin 'https://user:pw@example.com/o/r.git'
+run_case "$w" --flow --root "$w/alpha" --root "$w/beta"
+check "$([[ "$RC" -eq 0 ]] && contains "$OUT" "== cell https://example.com/o/r" && ! contains "$OUT$ERR" "user:pw" && echo 0 || echo 1)" \
+  "cell name uses the same stripped display for a non-GitHub origin" "rc=$RC stdout=$OUT stderr=$ERR"
+
 # A single cell needs no per-cell repetition of the fleet row.
 run_case "$TMPROOT/fl1" --flow --root "$TMPROOT/fl1/alpha"
-blocks=$(printf '%s\n' "$OUT" | grep -c '^== ' || true)
+blocks=$(grep -c '^== ' <<<"$OUT" || true)
 check "$([[ "$blocks" -eq 1 ]] && echo 0 || echo 1)" \
   "a single cell renders the fleet row only, not the same numbers twice" "blocks: $blocks"
 
@@ -1476,13 +1516,13 @@ flow_cell_fixtures "$w" beta
 throughput_fixture "$w" review
 run_case "$w" --flow --root "$w/alpha" --root "$w/beta"
 cellblock=$(printf '%s\n' "$OUT" | sed -n '/^== cell alpha/,/^== cell beta/p')
-reviewrow=$(printf '%s\n' "$cellblock" | grep -E '^  review( \*)? ' | head -1)
+reviewrow=$(grep -E '^  review( \*)? ' <<<"$cellblock" | sed -n 1p)
 check "$(contains "$reviewrow" "n/a — read fleet-wide" && echo 0 || echo 1)" \
   "a per-cell review row reads n/a, not could-not-check" "row: ${reviewrow:-<none>}"
 check "$(contains "$reviewrow" "could-not-check" && echo 1 || echo 0)" \
   "a legitimate absence is never labelled could-not-check" "row: $reviewrow"
 # The fleet-wide-capacity fact is stated once per block, not on all seven rows.
-notes=$(printf '%s\n' "$cellblock" | grep -c 'pool width is resolved fleet-wide' || true)
+notes=$(grep -c 'pool width is resolved fleet-wide' <<<"$cellblock" || true)
 check "$([[ "$notes" -eq 1 ]] && echo 0 || echo 1)" \
   "the fleet-wide-capacity note appears once per cell block, not per row (got $notes)" "notes: $notes"
 
@@ -1670,7 +1710,7 @@ screen_gh "$w" "[]" "$BODY_HOWTO"
 roster_on
 DRIVER_LOGIN=example-driver run_case "$w" --walk o/r
 roster_off
-PASTE=$(printf '%s\n' "$OUT" | sed -n 's/^  command: //p' | head -1)
+PASTE=$(sed -n 's/^  command: //p' <<<"$OUT" | sed -n 1p)
 stub="$TMPROOT/cmd-paste-stub"
 mkdir -p "$stub"
 cat > "$stub/gh" <<'STUB'

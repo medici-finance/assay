@@ -123,19 +123,21 @@ record is could-not-check and is refused.
 Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.`
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident.
-	// deskclose ACTS on the roster in the strongest sense any desk tool does — it
-	// closes other people's items — so ciEligible=false: the roster comes from the
-	// config-home file and NEVER from the environment, in CI as well as locally.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// Echo the effective roster once per run: the blessing authority this binary will
-	// accept as the authorizing human is a control surface that lives in settings
-	// rather than in a diff, so it is visible only at RUN time.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:], os.Stdout))
+	os.Exit(deskkit.PerfRun("deskclose", nil, os.Args[1:], func([]string) int {
+		// The roster class is an EXPLICIT declaration, never the zero value by accident.
+		// deskclose ACTS on the roster in the strongest sense any desk tool does — it
+		// closes other people's items — so ciEligible=false: the roster comes from the
+		// config-home file and NEVER from the environment, in CI as well as locally.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// Echo the effective roster once per run: the blessing authority this binary will
+		// accept as the authorizing human is a control surface that lives in settings
+		// rather than in a diff, so it is visible only at RUN time.
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:], os.Stdout)
+	}))
 }
 
 func run(args []string, out io.Writer) int {

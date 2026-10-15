@@ -20,7 +20,7 @@ func (c *Cell) deskHelperEnv(parent []string, role, session string) []string {
 	for key, value := range values {
 		env = envSet(env, key, value)
 	}
-	return env
+	return c.telemetryEnv(env)
 }
 
 // deskd resolves credentials in-process. Its CLI is single threaded; scope the
