@@ -66,14 +66,17 @@ const HighWaterPercent = 75
 // mark so the next few builds do not immediately re-trigger it.
 const DefaultLowWaterPercent = 60
 
-// DefaultTrimMinAge is the compiled trim safety floor. MinTrimMinAge is the
-// least a policy may set: cmd/go refreshes an entry's mtime when it reads one
-// stamped more than an hour ago, so an entry a running build has used is
-// never older than about an hour, and a floor above that hour can never take
-// it. The default leaves that refresh a full hour of margin.
+// DefaultTrimMinAge is the compiled trim safety floor, and MinTrimMinAge the
+// least a policy may set. cmd/go refreshes an entry's mtime when it looks up
+// one stamped more than an hour ago, so an entry a running build looked up is
+// at most about an hour old at lookup. A floor of at least 2h therefore keeps
+// such an entry for at least an hour after that lookup; it does not protect a
+// build step that opens the entry's path later than that (the residual
+// docs/cellctl-go-cache.md names). The minimum matches MinBuildMaxAge, so no
+// policy lets the trim come closer to the use stamp than the age trim could.
 const (
 	DefaultTrimMinAge = 2 * time.Hour
-	MinTrimMinAge     = time.Hour
+	MinTrimMinAge     = 2 * time.Hour
 )
 
 // DefaultBuildMaxAge is the compiled build-cache trim age.
@@ -173,8 +176,8 @@ func Resolve(cell string, get func(string) string) (*Policy, error) {
 	}
 	if v := get("CELL_GO_CACHE_TRIM_MIN_AGE"); v != "" {
 		d, err := time.ParseDuration(v)
-		if err != nil || d <= MinTrimMinAge || d%time.Second != 0 {
-			return nil, fmt.Errorf("CELL_GO_CACHE_TRIM_MIN_AGE must be a whole-second duration above %s", MinTrimMinAge)
+		if err != nil || d < MinTrimMinAge || d%time.Second != 0 {
+			return nil, fmt.Errorf("CELL_GO_CACHE_TRIM_MIN_AGE must be a whole-second duration of at least %s", MinTrimMinAge)
 		}
 		p.TrimMinAge = int64(d / time.Second)
 	}
@@ -209,10 +212,10 @@ func (p Policy) Validate() error {
 	if p.LowWaterPercent != 0 && (p.LowWaterPercent < 0 || p.LowWaterPercent >= HighWaterPercent) {
 		return fmt.Errorf("cache low-water mark must be above 0%% and below %d%% of the budget", HighWaterPercent)
 	}
-	// The floor must clear Go's hourly use stamp, or a trim could take an
-	// entry a running build looked up.
-	if p.TrimMinAge != 0 && (p.TrimMinAge <= int64(MinTrimMinAge/time.Second) || p.TrimMinAge > int64(math.MaxInt64/int64(time.Second))) {
-		return fmt.Errorf("cache trim safety floor must be above %s", MinTrimMinAge)
+	// The floor must clear Go's hourly use stamp by at least an hour, or a
+	// trim could take an entry a running build looked up moments earlier.
+	if p.TrimMinAge != 0 && (p.TrimMinAge < int64(MinTrimMinAge/time.Second) || p.TrimMinAge > int64(math.MaxInt64/int64(time.Second))) {
+		return fmt.Errorf("cache trim safety floor must be at least %s", MinTrimMinAge)
 	}
 	return validatePath(p.Root)
 }

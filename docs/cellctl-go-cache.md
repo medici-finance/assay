@@ -20,7 +20,7 @@ positive; a floor of `0` disables only the free-space floor. The trim age is a
 Go duration in whole seconds of at least `2h` (see "Trimming the compiler cache
 under live consumers"). The low-water mark is a whole percentage of the budget
 above 0 and below 75 (the high-water mark); the safety floor is a whole-second
-duration above `1h`. Invalid values refuse launch. No host-wide scheduled job is installed; the `deskwt prune` sweep
+duration of at least `2h`. Invalid values refuse launch. No host-wide scheduled job is installed; the `deskwt prune` sweep
 pressure-checks every marked cache root under the cells root on each pass as
 the cadence backstop (see "Launch, cleanup and recovery").
 
@@ -144,7 +144,7 @@ few builds do not immediately trigger another trim. Past the low-water mark it
 keeps going only through entries older than `CELL_GO_CACHE_BUILD_MAX_AGE`, so
 everything the age trim always removed still goes. It never removes an entry
 younger than the **safety floor** (`CELL_GO_CACHE_TRIM_MIN_AGE`, default `2h`,
-always above `1h`), however far over the low-water mark the cache is: reaching
+never below `2h`), however far over the low-water mark the cache is: reaching
 that floor first ends the trim with a reported shortfall. The floor is checked
 again against each entry's modification time at removal, so an entry a build
 looked up after the listing is kept. It selects the same names the Go toolchain's own trim selects: entries
@@ -160,8 +160,8 @@ This is safe with consumers live because of how the Go toolchain uses its cache:
 
 - `go` refreshes an entry's modification time when it looks up one that is more
   than an hour old, so an entry a running build has looked up is at most about an
-  hour old. The safety floor is refused at or below `1h`, and its `2h`
-  default leaves that refresh an hour of margin; the trim age, refused below
+  hour old. The safety floor is refused below `2h`, so it always leaves that
+  refresh at least an hour of margin; the trim age, refused below
   `2h`, is never below it in practice.
 - An entry missing at lookup is a cache miss: `go` rebuilds it, and never
   produces a wrong build from it. Two narrow windows remain. The first is a
@@ -192,7 +192,13 @@ entry; the pass still ends `could-not-check`. Files are unlinked through the ver
 by the same verified-descriptor path as inactive cleanup. If the trim clears pressure, admission passes with consumers
 still running. If it does not, the result is `storage-deferred` as before.
 Below the high-water mark and without pressure nothing is trimmed, so warm
-caches stay warm. Pressure with no consumer records still removes the compiler
+caches stay warm. Above it, with consumers live, every pass trims down to the
+safety floor where it must to reach the low-water mark, so the narrow windows
+above apply on routine passes, not only under pressure. When what a trim can
+never take (the module cache) alone holds the cache above the low-water mark,
+emptying `build/` could not reach it: the trim then takes only entries past the
+trim age and reports the shortfall as untrimmable, rather than evicting every
+entry past the floor on each pass. Pressure with no consumer records still removes the compiler
 and module roots whole, as before. An explicit `cellctl cache <cell> wipe` that
 finds live records runs the same trim with a target of zero, so it removes every
 entry older than the safety floor, and still reports `storage-deferred`,

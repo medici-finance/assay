@@ -174,7 +174,7 @@ func TestCacheLowWaterPolicy(t *testing.T) {
 			t.Errorf("accepted CELL_GO_CACHE_LOW_WATER_PERCENT=%s", bad)
 		}
 	}
-	for _, bad := range []string{"1h", "30m", "0", "-3h", "90m0.5s", "soon"} {
+	for _, bad := range []string{"1h", "61m", "119m59s", "30m", "0", "-3h", "150m0.5s", "soon"} {
 		if _, err := Resolve(cell, get("CELL_GO_CACHE_TRIM_MIN_AGE", bad)); err == nil {
 			t.Errorf("accepted CELL_GO_CACHE_TRIM_MIN_AGE=%s", bad)
 		}
@@ -183,9 +183,15 @@ func TestCacheLowWaterPolicy(t *testing.T) {
 	if err != nil || q.LowWater() != q.Budget/100*50 {
 		t.Fatalf("50%%: %v %v", q, err)
 	}
-	q, err = Resolve(cell, get("CELL_GO_CACHE_TRIM_MIN_AGE", "61m"))
-	if err != nil || q.MinAge() != 61*time.Minute {
-		t.Fatalf("61m: %v %v", q, err)
+	// The minimum itself is accepted: the floor is "at least 2h", like the
+	// trim age, never "above" it.
+	q, err = Resolve(cell, get("CELL_GO_CACHE_TRIM_MIN_AGE", "2h"))
+	if err != nil || q.MinAge() != 2*time.Hour {
+		t.Fatalf("2h: %v %v", q, err)
+	}
+	q, err = Resolve(cell, get("CELL_GO_CACHE_TRIM_MIN_AGE", "150m"))
+	if err != nil || q.MinAge() != 150*time.Minute {
+		t.Fatalf("150m: %v %v", q, err)
 	}
 	// A set value round-trips through the consumer environment intact.
 	if got, err := FromEnv(q.Env()); err != nil || *got != *q {
@@ -197,9 +203,13 @@ func TestCacheLowWaterPolicy(t *testing.T) {
 		t.Fatal("recorded low-water mark at the high-water mark accepted")
 	}
 	recorded = p
-	recorded.TrimMinAge = int64(time.Hour / time.Second)
+	recorded.TrimMinAge = int64((2*time.Hour - time.Second) / time.Second)
 	if recorded.Validate() == nil {
-		t.Fatal("recorded safety floor of one hour accepted")
+		t.Fatal("recorded safety floor under two hours accepted")
+	}
+	recorded.TrimMinAge = int64(2 * time.Hour / time.Second)
+	if err := recorded.Validate(); err != nil {
+		t.Fatalf("recorded safety floor of exactly two hours refused: %v", err)
 	}
 }
 
@@ -238,5 +248,151 @@ func TestCacheLowWaterQuietBelowHighWater(t *testing.T) {
 	r, err := Check(p, false)
 	if err != nil || r.TrimmedBuild != 0 || r.LowWater != nil || !exists(p, "build/00/old-a") {
 		t.Fatalf("a cache under the high-water mark was trimmed: %+v %v", r, err)
+	}
+}
+
+// The removal-time re-check binds at the SAFETY FLOOR, not at the trim's own
+// start time: an entry a build refreshed after the listing to an mtime that is
+// already in the past (30 minutes, inside the 2h floor) is still spared.
+// Re-checked against "now" instead, it would go.
+func TestCacheLowWaterRecheckCutoffIsTheFloor(t *testing.T) {
+	p := fixture(t)
+	p.Budget = 1000
+	liveRecord(t, p)
+	material(t, p, "build/00/touched-a", 300)
+	age(t, p, "build/00/touched-a", 10*time.Hour)
+	material(t, p, "build/01/next-d", 300)
+	age(t, p, "build/01/next-d", 9*time.Hour)
+	material(t, p, "build/02/young-a", 200)
+	age(t, p, "build/02/young-a", 3*time.Hour)
+	old := afterTrimListing
+	t.Cleanup(func() { afterTrimListing = old })
+	afterTrimListing = func() {
+		inside := time.Now().Add(-30 * time.Minute)
+		if err := os.Chtimes(filepath.Join(p.Root, "build/00/touched-a"), inside, inside); err != nil {
+			t.Error(err)
+		}
+	}
+	if _, err := Check(p, false); err != nil {
+		t.Fatal(err)
+	}
+	if !exists(p, "build/00/touched-a") {
+		t.Fatal("an entry refreshed to inside the safety floor after the listing was removed")
+	}
+	if exists(p, "build/01/next-d") {
+		t.Fatal("the trim did not move on to the next-oldest entry")
+	}
+}
+
+// A wipe that finds live records trims toward ZERO, not toward the low-water
+// mark: every compiler-cache entry past the safety floor goes even when the
+// cache is already under the low-water mark, and only entries younger than
+// the floor stay.
+func TestCacheWipeUnderRecordsTrimsToZero(t *testing.T) {
+	p := fixture(t)
+	p.Budget = 1000
+	liveRecord(t, p)
+	material(t, p, "build/00/past-floor-a", 100)
+	age(t, p, "build/00/past-floor-a", 5*time.Hour)
+	material(t, p, "build/01/past-floor-d", 100)
+	age(t, p, "build/01/past-floor-d", 3*time.Hour)
+	material(t, p, "build/02/young-a", 100)
+	age(t, p, "build/02/young-a", 30*time.Minute)
+	material(t, p, "mod/cache/keep", 50)
+	r, err := Wipe(p, false)
+	if err != nil && r.Outcome == "" {
+		t.Fatal(err)
+	}
+	if exists(p, "build/00/past-floor-a") || exists(p, "build/01/past-floor-d") {
+		t.Fatalf("a wipe under records left entries past the safety floor: %+v", r)
+	}
+	if !exists(p, "build/02/young-a") || !exists(p, "mod/cache/keep") {
+		t.Fatal("a wipe under records crossed the safety floor or touched mod/")
+	}
+	if lw := r.LowWater; lw == nil || lw.Trigger != "wipe" || lw.TargetBytes != 0 || lw.Reached {
+		t.Fatalf("wipe low-water report: %+v", lw)
+	}
+}
+
+// A wipe whose measurement failed never reaches the trim: there is no size to
+// count down from, and acting on a cache it could not measure is exactly what
+// the failures gate exists to stop.
+func TestCacheWipeSkipsTrimWhenMeasureFails(t *testing.T) {
+	p := fixture(t)
+	p.Budget = 1000
+	liveRecord(t, p)
+	material(t, p, "build/00/old-a", 100)
+	age(t, p, "build/00/old-a", 5*time.Hour)
+	material(t, p, "mod/cache/bad", 10)
+	if err := os.Chmod(filepath.Join(p.Root, "mod/cache/bad"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	r, _ := Wipe(p, false)
+	if r.Outcome != "could-not-check" || r.Before.LogicalBytes != nil {
+		t.Fatalf("an unmeasurable cache was not could-not-check: %+v", r)
+	}
+	if !exists(p, "build/00/old-a") || r.LowWater != nil || r.TrimmedBuild != 0 {
+		t.Fatalf("the trim ran on a cache that could not be measured: %+v", r)
+	}
+}
+
+// A trim that removed nothing but hit a refusal still counts as having acted,
+// so the pass measures the cache again instead of reusing the first walk: a
+// refused directory entry may have been partly removed.
+func TestCacheTrimErrorRemeasures(t *testing.T) {
+	p := fixture(t)
+	p.Budget = 1000
+	liveRecord(t, p)
+	material(t, p, "build/00/old-a", 900)
+	age(t, p, "build/00/old-a", 10*time.Hour)
+	old := afterTrimListing
+	t.Cleanup(func() { afterTrimListing = old })
+	afterTrimListing = func() {
+		// Turns bad between measurement and removal: the trim refuses it.
+		if err := os.Chmod(filepath.Join(p.Root, "build/00/old-a"), 0o666); err != nil {
+			t.Error(err)
+		}
+	}
+	r, _ := Check(p, false)
+	if r.TrimmedBuild != 0 || !exists(p, "build/00/old-a") {
+		t.Fatalf("the refused entry was removed: %+v", r)
+	}
+	remeasured := false
+	for _, f := range r.Failures {
+		if strings.HasPrefix(f, "measure build") {
+			remeasured = true
+		}
+	}
+	if !remeasured || r.After.LogicalBytes != nil {
+		t.Fatalf("a trim that hit a refusal reused the first measurement: %+v", r)
+	}
+}
+
+// When what a trim can never take (the module cache) alone holds the cache
+// above the low-water mark, emptying build/ cannot reach the target, so the
+// trim does not chase it: only entries past the trim age go, warm entries past
+// the floor stay, and the shortfall names the untrimmable bytes.
+func TestCacheLowWaterModAboveTargetAgeTrimOnly(t *testing.T) {
+	p := fixture(t)
+	p.Budget = 1000 // high water 750, low water 600
+	liveRecord(t, p)
+	material(t, p, "mod/cache/big", 650)
+	material(t, p, "build/00/ancient-a", 50)
+	age(t, p, "build/00/ancient-a", 30*time.Hour)
+	material(t, p, "build/01/warm-d", 100)
+	age(t, p, "build/01/warm-d", 5*time.Hour)
+	r, err := Check(p, false)
+	if err != nil || r.Outcome != "checked-clean" {
+		t.Fatalf("pass: %+v %v", r, err)
+	}
+	if exists(p, "build/00/ancient-a") {
+		t.Fatal("the entry past the trim age survived")
+	}
+	if !exists(p, "build/01/warm-d") {
+		t.Fatal("a warm entry was evicted chasing a target only the module cache keeps out of reach")
+	}
+	lw := r.LowWater
+	if lw == nil || lw.Trigger != "high-water" || lw.Reached || lw.TargetBytes != p.LowWater() || !strings.Contains(lw.Reason, "not trimmable") {
+		t.Fatalf("low-water report: %+v", lw)
 	}
 }

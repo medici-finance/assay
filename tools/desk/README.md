@@ -2675,7 +2675,10 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      files git rewrites as a session works there: the admin entry's `HEAD` (required),
      `index`, `logs/HEAD`, `ORIG_HEAD` and `FETCH_HEAD`. Evidence that cannot be read holds
      the tree as `unverifiable worktree activity`, never judges it idle. The gate applies to
-     `--reap-dead-sessions` too. `--min-idle` must be a positive duration: the gate can be
+     `--reap-dead-sessions` too. It is a recency check on what git writes, not proof of
+     an absent session: a session that only reads or runs tests in a clean tree, with no
+     git operation and no top-level file created or deleted, for longer than `--min-idle`
+     is invisible to it; such a session locks its tree. `--min-idle` must be a positive duration: the gate can be
      tuned, not disabled, and `--branches-only` (which removes no worktree) refuses it. No
      `--force`. `--repo <path>` targets a repo without a session cwd (used by the multi-repo
      sweep script). Exit `0` ok/noop · `3` disabled · `5` refused · `6` unverifiable.

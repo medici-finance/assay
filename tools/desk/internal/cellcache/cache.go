@@ -20,6 +20,9 @@ type Measurement struct {
 	At             time.Time `json:"at"`
 	LogicalBytes   *int64    `json:"logical_bytes"`
 	AvailableBytes *uint64   `json:"available_bytes"`
+	// buildBytes is the share of LogicalBytes under build/, the only part a
+	// trim can take. It is not serialized: the report's form is unchanged.
+	buildBytes int64
 }
 type Report struct {
 	Schema        string      `json:"schema"`
@@ -204,6 +207,9 @@ func (m *manager) measure() (Measurement, []string) {
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("measure %s: %v", name, err))
 		}
+		if name == "build" {
+			v.buildBytes = total
+		}
 	}
 	if len(failures) == 0 {
 		v.LogicalBytes = &total
@@ -287,10 +293,20 @@ func (m *manager) checkMode(dry, wipe bool) Report {
 		// looked up within the last hour younger than that floor. mod/ and
 		// gopath/ are left to the records.
 		target := m.p.LowWater()
-		if wipe {
-			target = 0
+		trimTo := target
+		switch {
+		case wipe:
+			target, trimTo = 0, 0
+		case *r.Before.LogicalBytes-r.Before.buildBytes > target:
+			// What a trim can never take (mod/, chiefly) already holds the
+			// cache above the low-water mark, so emptying build/ cannot reach
+			// it. Chasing it anyway would evict every entry past the safety
+			// floor on every pass; instead only the age trim runs (target =
+			// the current size), and the report keeps the real target and
+			// names the untrimmable bytes as the shortfall.
+			trimTo = *r.Before.LogicalBytes
 		}
-		tr = m.trimBuild(time.Now(), *r.Before.LogicalBytes, target)
+		tr = m.trimBuild(time.Now(), *r.Before.LogicalBytes, trimTo)
 		r.TrimmedBuild, r.TrimmedBuildBytes = tr.n, tr.bytes
 		removed = tr.n > 0
 		// A pass that selected nothing and refused nothing changed nothing,
