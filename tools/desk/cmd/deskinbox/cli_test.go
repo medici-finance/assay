@@ -391,7 +391,7 @@ func TestCLILegacyForms(t *testing.T) {
 			{[]string{"flow", "--root", "../app", "--root", "../service"}, []string{"../app", "../service"}, "", ""},
 			{[]string{"flow", "--html", "OUT.html", "--root", "a", "--since", "2026-01-02"}, []string{"a"}, "2026-01-02", "OUT.html"},
 			{[]string{"flow", "--since", "2026-01-02"}, nil, "2026-01-02", ""},
-			{[]string{"flow", "--root", `C:\cells\a b`, "--root", `\\srv\share`}, []string{`C:\cells\a b`, `\\srv\share`}, "", ""},
+			{[]string{"flow", "--root", `C:\cells\a b`, "--root", `..\cells\b`}, []string{`C:\cells\a b`, `..\cells\b`}, "", ""},
 		}
 		for _, c := range cases {
 			r := record(t)
