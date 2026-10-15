@@ -109,22 +109,24 @@ failing child's stderr in full. Credentials are redacted. With it off, output is
 unchanged. See tools/desk/README.md, "Diagnostics — DESK_TRACE".`
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident
-	// (a correctness review found: SetToolClass had no caller anywhere,
-	// so "ClassWrite is the safe default" was true only by luck — and
-	// TestEveryRosterReadingMainDeclaresClassAndEchoes now fails any main that reads
-	// the roster without one). deskfile ACTS on the roster (files issues, posts
-	// comments), so ciEligible=false: it reads the config-home file and never the
-	// environment, in CI as well as locally — matching deskpr/deskboard.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// P3: echo the effective roster once per run. A control surface that lives in
-	// settings rather than in a diff is visible only at RUN time; without the echo a
-	// NARROWING is invisible.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskfile", nil, os.Args[1:], func([]string) int {
+		// The roster class is an EXPLICIT declaration, never the zero value by accident
+		// (a correctness review found: SetToolClass had no caller anywhere,
+		// so "ClassWrite is the safe default" was true only by luck — and
+		// TestEveryRosterReadingMainDeclaresClassAndEchoes now fails any main that reads
+		// the roster without one). deskfile ACTS on the roster (files issues, posts
+		// comments), so ciEligible=false: it reads the config-home file and never the
+		// environment, in CI as well as locally — matching deskpr/deskboard.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// P3: echo the effective roster once per run. A control surface that lives in
+		// settings rather than in a diff is visible only at RUN time; without the echo a
+		// NARROWING is invisible.
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {
