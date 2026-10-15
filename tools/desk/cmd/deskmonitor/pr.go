@@ -64,6 +64,7 @@ Environment:
 Exit codes:
   0  every repo read cleanly (armed, quiet, or emitted PR-EVENT lines)
   1  precondition failure — no repos resolvable, unusable state dir, bad knob
+     Repo-set refusals first print MONITOR-DEGRADED on stdout.
   2  at least one repo went DEGRADED (read failed, truncated, or rate-limited) — state RETAINED
 `
 
@@ -147,9 +148,11 @@ func runPR(args []string, stdout, stderr io.Writer) int {
 	explicitTokens = map[string]string{}
 	repos := resolveRepos(args)
 	if len(repos) == 0 {
+		_, _ = fmt.Fprintln(stdout, "MONITOR-DEGRADED: no repos to query (no repo args, no ./.assay/repos.txt, and no usable git origin remote)")
 		return fail(precondition("no repos to query (no repo args, no ./.assay/repos.txt, and no git origin remote found)"))
 	}
 	if err := validateRepos(repos); err != nil {
+		_, _ = fmt.Fprintf(stdout, "MONITOR-DEGRADED: %s\n", diagnostic(err))
 		return fail(err)
 	}
 	cfg.stateDir = stateDirFrom("PR_MONITOR_STATE_DIR", "assay-pr-monitor")

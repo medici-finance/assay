@@ -125,7 +125,9 @@ Exit codes (deskkit contract): 0 ok/acquired · 5 refused (a live holder owns it
 6 unverifiable (a claim we could not read or write — NEVER "assume free").`
 
 func main() {
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskclaim-ref", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

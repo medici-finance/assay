@@ -23,6 +23,25 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.44 — 2026-10-15
+
+### Added
+- Add the `workflow-instance-v1` contract (`spec/workflow-instance-v1.md`, `schemas/workflow-instance-v1.json`) and `statusgen instance validate --file PATH [--root DIR] [--prior PATH] [--cell CELL] [--json]`. An instance binds one reviewed pattern to one work item in one Cell with pinned acceptance, policy, input and dependency references, and owns the instance, node and attempt identifiers. Its contract is immutable (a change is a superseding instance), attempts and decisions are append-only, and backend assignment moves only by generation. Effects must sit within both the pattern and the actor's capabilities, no credential material is accepted, reporter trust labels never become dispositions, readers refuse capabilities they do not implement, and no finding, refusal or import error quotes a credential-shaped value. The export seal is an unkeyed content digest: it detects accidental alteration only, and authenticity comes from the store or transport.
+- Add the role packet view and handoff for an instance attempt: same identifiers, acceptance revision, coverage with explicit unknowns, omissions and dependency deltas; a handoff bound to a moved dependency or missing mandatory evidence is refused. Export/import is integrity-sealed (unkeyed digest) and Cell-bound.
+
+### Fixed
+- Monitor and inbox diagnostics strip origin userinfo consistently on Bash 3.2 and newer, including inbox cell names. Unsupported schemes and non-GitHub hosts remain refused before reads.
+- The PR and inbound monitors, including `deskmonitor`, resolve supported GitHub origin URL forms with ports, SSH, userinfo and trailing slashes. Unresolvable repository sets emit `MONITOR-DEGRADED` on stdout before exit 1.
+- The scrubbed-cell cellctl suite no longer calls the host's installed `deskwt` (and so no longer writes refusal rows to the operator's desk audit log): it forces cellctl's own worktree path, shadows `deskwt` on its PATH with a recording stub, and asserts after every case that the stub was never called.
+- `deskmonitor` splits a multi-line origin into entries the way the scripts do, and folds line breaks in every precondition diagnostic, so no input can start a second line on the watched stdout stream.
+- `statusgen --corroborate`: the design-decision ruling check now accepts a colon-form decision-gate marker whose repository segment is an alias the consumer's `graph-repos.yaml` registry declares for the record's repository (or the registry's `self:` alias, unless that entry is published under a different repository), not only the literal repository name. A genuine maintainer ruling on a decision issue whose marker uses the alias form is no longer refused as `unrelated-issue`; a marker naming a different repository, by name or by its own alias, is still skipped. An unreadable registry falls back to name-only matching and says so on stderr.
+
+### Changed
+- Add automatic command-inventory coverage and real-binary on/off log-growth tests; preserve the local-only schema and partial forge/child counter semantics.
+- Carry the configured local telemetry opt-in through house, Codex command, scrubbed, cadence and container launches; explicit off overrides inherited opt-in.
+- Extend opt-in local performance instrumentation to 60 more desk commands (67 total), including filing, replies, review/verify/intake loops and supervisors.
+- Show the effective setting in cellctl show; no upload or broader environment forwarding is enabled.
+
 ## v1.0.43 — 2026-10-15
 
 ### Added

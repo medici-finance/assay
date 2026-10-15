@@ -356,6 +356,7 @@ live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares t
 | TMPDIR | `<cell>/tmp` (created 0700 if absent) |
 | KUBECONFIG | `/dev/null` |
 | ASSAY_CONFIG_HOME | `<cell>/home/.config/assay` |
+| ASSAY_TELEMETRY | Cell-resolved local logging: exactly `1` opts in; configured other values become `0`; absent stays off |
 | GH_CONFIG_DIR | `<cell>/home/.config/gh` |
 | GIT_CONFIG_GLOBAL | `<cell>/home/.gitconfig` |
 | GIT_CONFIG_NOSYSTEM | `1` |
@@ -1914,3 +1915,24 @@ gateway/drain supervisor in its own cockpit surface; absent or disabled config
 keeps desk-only startup. `cellctl down` stops the supervisor before closing its
 owned surface and preserves mailbox data. See [host desk communications](cellctl-comms.md)
 for configuration, quoting, recovery and cockpit requirements.
+
+## Local performance opt-in
+
+Set `ASSAY_TELEMETRY=1` with `cellctl set <cell>` or in the machine defaults.
+The effective cell value overrides machine defaults, which override the launching process.
+Explicit empty, `0`, and other non-`1` values turn collection off. `cellctl show <cell>`
+prints the normalized effective value and source when configured. Existing desk sessions retain their old
+process environment; restart a role normally to apply a changed launch setting.
+
+The normalized switch reaches house Claude/Codex/Cursor processes, Codex command-side
+configuration, pre-harness desk helpers, the comms service, scratch/cadence children,
+scrubbed desk/smoke processes and native/external container
+launcher environments. Only this non-secret bounded value is forwarded; scrubbed allowlists,
+credential boundaries and cluster quarantine are unchanged. Existing containers may require
+an explicit restart to apply a different opt-in; status/down can inspect their actual bounded
+launch selection. An external launcher must preserve this documented environment key when
+it creates the container. No upload or performance payload expansion is enabled.
+
+Logging remains optional and best-effort. Enabled does not prove the sink is writable or
+that every invocation completed. Inspect the local perf day file and report coverage; missing
+samples are unknown, never zero. No tool installation or live role restart occurs during tests.

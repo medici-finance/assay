@@ -53,15 +53,17 @@ rederive   verify-desk's pre-change re-read: reports every Verify-table row pres
 Exit: 0 ok/clean · 3 disabled · 4 rate-limited · 5 refused · 6 could-not-check.`
 
 func main() {
-	// check performs a forge write (ApplyLabels); rederive is a local git read. Both declare
-	// the same non-CI-eligible class as the sibling write verbs (desklabel, deskclose): the
-	// roster is read from the config-home file, in CI as well as locally.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskpathguard", nil, os.Args[1:], func([]string) int {
+		// check performs a forge write (ApplyLabels); rederive is a local git read. Both declare
+		// the same non-CI-eligible class as the sibling write verbs (desklabel, deskclose): the
+		// roster is read from the config-home file, in CI as well as locally.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

@@ -424,6 +424,34 @@ check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "invalid repo token => exit 1" 
 check "$([[ ! -e "$w/pwned" && ! -e pwned ]] && echo 0 || echo 1)" \
   "the token never reaches a shell" "pwned marker created"
 
+# ======================================================= origin fallback ====
+# regression: #2724
+echo "Origin fallback — every github.com URL form resolves; an unresolvable set is loud on stdout"
+w="$TMPROOT/of-gh"; make_gh "$w" 0 "$(issue_json 1)" ""
+n=0
+for url in "https://github.com/o/r.git" "https://github.com:443/o/r.git" "https://u:pw@github.com:443/o/r" \
+           "ssh://git@github.com/o/r.git" "ssh://git@github.com:22/o/r" "git@github.com:o/r.git" "https://github.com/o/r/"; do
+  n=$((n + 1)); rd="$TMPROOT/of-repo-$n"; mkdir -p "$rd"; git -C "$rd" init -q 2>/dev/null
+  git -C "$rd" remote add origin "$url"; rm -f "$w/args.log"
+  OUT=$(cd "$rd" && INBOUND_MONITOR_STATE_DIR="$TMPROOT/of-st-$n" PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
+  check "$([[ "$RC" -eq 0 ]] && grep -q -- '--repo o/r ' "$w/args.log" 2>/dev/null && echo 0 || echo 1)" \
+    "origin '$url' resolves to o/r and is polled" "rc=$RC args=$(cat "$w/args.log" 2>/dev/null) stderr=$(cat "$w/stderr")"
+done
+rd="$TMPROOT/of-repo-bad"; mkdir -p "$rd"; git -C "$rd" init -q 2>/dev/null
+git -C "$rd" remote add origin "https://user:s3cretpw@example.com:8443/o/r.git"
+OUT=$(cd "$rd" && INBOUND_MONITOR_STATE_DIR="$TMPROOT/of-st-bad" PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
+ERR=$(cat "$w/stderr")
+check "$([[ "$RC" -eq 1 ]] && contains "$OUT" "MONITOR-DEGRADED: invalid repo" && echo 0 || echo 1)" \
+  "an unparseable origin prints MONITOR-DEGRADED on stdout and exits 1" "rc=$RC stdout: ${OUT:-<empty>}"
+check "$([[ "$OUT" == "MONITOR-DEGRADED: invalid repo 'https://example.com:8443/o/r' (expected owner/name)" ]] && echo 0 || echo 1)" \
+  "credential-stripped display is exact on both Bash versions" "stdout: $OUT"
+check "$(contains "$OUT$ERR" "s3cretpw" && echo 1 || echo 0)" \
+  "the origin's credential never appears on stdout or stderr" "stdout: $OUT stderr: $ERR"
+rd="$TMPROOT/of-repo-none"; mkdir -p "$rd"; git -C "$rd" init -q 2>/dev/null
+OUT=$(cd "$rd" && INBOUND_MONITOR_STATE_DIR="$TMPROOT/of-st-none" PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
+check "$([[ "$RC" -eq 1 ]] && contains "$OUT" "MONITOR-DEGRADED: no repos to query" && echo 0 || echo 1)" \
+  "no resolvable repos prints MONITOR-DEGRADED on stdout and exits 1" "rc=$RC stdout: ${OUT:-<empty>}"
+
 # ============================================================ portability ====
 echo "Portability — bash 3.2 (stock /bin/bash on macOS)"
 for builtin in mapfile readarray; do

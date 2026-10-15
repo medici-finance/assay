@@ -41,24 +41,26 @@ import (
 )
 
 func main() {
-	// Declare the roster class EXPLICITLY (never ClassWrite-by-omission): this tool ACTS on the
-	// dispatch queue, so ciEligible=false — config-home file only, never the environment.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// Echo the effective trust/authority configuration to stderr before doing anything (P3): a
-	// control surface that lives in settings rather than a diff is visible only at RUN time.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	// Wire `plan`'s already-represented PR-list transport LIVE for the shipped binary
-	// (represented_live.go). Assigned here, in main(), not at package init: tests call
-	// cmdPlan/run directly and keep the nil default (plan offers rows as before unless a test
-	// wires its own recorded transport), while the real binary reconciles against the repo's
-	// open+merged changes read through the typed Forge seam.
-	representedPRs = liveRepresentedPRs
-	// The briefs-authoring exemption's file transport (#1339), wired beside it for the same reason.
-	representedPRFiles = liveRepresentedPRFiles
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("fanoutloop", nil, os.Args[1:], func([]string) int {
+		// Declare the roster class EXPLICITLY (never ClassWrite-by-omission): this tool ACTS on the
+		// dispatch queue, so ciEligible=false — config-home file only, never the environment.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// Echo the effective trust/authority configuration to stderr before doing anything (P3): a
+		// control surface that lives in settings rather than a diff is visible only at RUN time.
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		// Wire `plan`'s already-represented PR-list transport LIVE for the shipped binary
+		// (represented_live.go). Assigned here, in main(), not at package init: tests call
+		// cmdPlan/run directly and keep the nil default (plan offers rows as before unless a test
+		// wires its own recorded transport), while the real binary reconciles against the repo's
+		// open+merged changes read through the typed Forge seam.
+		representedPRs = liveRepresentedPRs
+		// The briefs-authoring exemption's file transport (#1339), wired beside it for the same reason.
+		representedPRFiles = liveRepresentedPRFiles
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

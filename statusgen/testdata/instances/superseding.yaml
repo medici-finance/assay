@@ -1,0 +1,93 @@
+# POSITIVE (supersession): a changed policy binding is a NEW instance that names
+# the one it replaces by id and contract digest; it never rewrites
+# inst-example-07-a in place. Validate with --prior valid.yaml.
+schema: workflow-instance-v1
+requires: [packet-view@1, assignment@1, execution-state@1]
+instance:
+  id: inst-example-07-b
+  supersedes:
+    id: inst-example-07-a
+    contract-digest: sha256:5540fa436a1d0ac5615436d81b6d79b68bdabe324ccc3ee4d50217afd59c2453
+work:
+  id: example-stream/07
+  cell: example-cell
+  intent: Report the eligibility verdict beside each validated example record.
+pattern:
+  name: implementation
+  version: 1
+  digest: sha256:edcf96e1eed65dc4a7a09cd2ed0e55fd8c0dba018a0452b959b7e71ffe13af94
+acceptance:
+  version: 3
+  ref: docs/streams/example-stream/brief-07-seven.md@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  rows: ["1", "2", "3"]
+  exclusions: [no provider client, no prompt assembly]
+policy:
+  revision: policy/example-authorization.yaml@cccccccccccccccccccccccccccccccccccccccc
+  control-profile: control-profile/example-standard@2
+budget:
+  ref: budget/example-cell/reservation-0007
+assignment:
+  backend: example-backend
+  generation: 5
+  runner-profile: runner-profile/example-standard@2
+execution-state:
+  projection-version: 1
+  generation: 5
+  state: pending
+inputs:
+  - name: brief
+    ref: docs/streams/example-stream/brief-07-seven.md@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    digest: sha256:1111111111111111111111111111111111111111111111111111111111111111
+    origin: repository
+    trust: {disposition: trusted, source: trust-gate}
+  - name: reporter-note
+    ref: example-org/example-app/issues/41#comment-1
+    digest: sha256:1212121212121212121212121212121212121212121212121212121212121212
+    origin: forge-comment
+    trust: {disposition: unresolved, source: reporter, reported-label: trusted}
+dependencies:
+  - {ref: src/eligibility.go, kind: source, fingerprint: sha256:2121212121212121212121212121212121212121212121212121212121212121, supports: ["1"]}
+  - {ref: schemas/example-record.json, kind: schema, fingerprint: sha256:2222222222222222222222222222222222222222222222222222222222222222, supports: ["1", "2"]}
+  - {ref: policy/example-authorization.yaml, kind: policy, fingerprint: sha256:2323232323232323232323232323232323232323232323232323232323232323, supports: ["2"]}
+  - {ref: build/example.mk, kind: build, fingerprint: sha256:2424242424242424242424242424242424242424242424242424242424242424, supports: ["1", "2"]}
+nodes:
+  - id: inst-example-07-b.implement
+    node: implement
+    role: worker
+    actor: {binding: roster/example-cell/worker, cell: example-cell, capabilities: [push, pr-open, comment]}
+    effects:
+      - {kind: push, target: branch}
+      - {kind: pr-open, target: draft-pr}
+    evidence:
+      - {claim: Verify rows pass, mandatory: true}
+  - id: inst-example-07-b.review
+    node: review
+    role: reviewer
+    actor: {binding: roster/example-cell/reviewer, cell: example-cell, capabilities: [review, comment]}
+    effects:
+      - {kind: comment, target: approval}
+    evidence:
+      - {claim: the reviewer App APPROVED the head commit, mandatory: true}
+  - id: inst-example-07-b.merge
+    node: merge
+    role: desk
+    actor: {binding: roster/example-cell/desk, cell: example-cell, capabilities: [file-issue, comment, dispatch]}
+    effects:
+      - {kind: dispatch, target: merge-commit}
+    evidence:
+      - {claim: "the risk-input gate for this brief's risk class is satisfied", mandatory: true}
+  - id: inst-example-07-b.verify
+    node: verify
+    role: verifier
+    actor: {binding: roster/example-cell/verifier, cell: example-cell, capabilities: [evidence-commit, comment]}
+    effects:
+      - {kind: comment, target: verified-record}
+    evidence:
+      - {claim: "the Verify table's commands were re-run against the merged commit and pass", mandatory: true}
+  - id: inst-example-07-b.close
+    node: close
+    role: desk
+    actor: {binding: roster/example-cell/desk, cell: example-cell, capabilities: [file-issue, comment, dispatch]}
+    effects: []
+    evidence:
+      - {claim: "the brief's status cell reads done", mandatory: false}
