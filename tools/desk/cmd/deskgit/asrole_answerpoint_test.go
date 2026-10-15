@@ -192,8 +192,13 @@ func TestAsRole_NonGitHubHost_CredentialNeverAnswered(t *testing.T) {
 // asks the credential machinery for that user's password before it connects; that answer must
 // not be the GitHub App token. With nothing answering, git stops at the prompt and never connects
 // at all — so the check that the prompt was exercised reads git's own refusal, not the recorder.
+//
+// push only: fetch runs in-process, reads no http.proxy from any git config scope, and has no
+// credential prompt to answer — the token is a value on the transport options, carried only
+// to the gated https://github.com origin (credentialHostOK). A fetch variant of this test
+// would have to reach the real github.com, so it is not run here.
 func TestAsRole_UserBearingProxy_NeverGetsToken(t *testing.T) {
-	for _, verb := range []string{"push", "fetch"} {
+	for _, verb := range []string{"push"} {
 		t.Run(verb, func(t *testing.T) {
 			rec := newCredRecorder(t, true)
 			work := newRepo(t, allowedSlug)

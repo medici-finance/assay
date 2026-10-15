@@ -360,8 +360,8 @@ func breakerIgnores(result string) bool {
 // of the PR it had just made, so no successful create could ever land in the bucket its own
 // gate counted. The meter was also inverted — only FAILED creates (which record no number)
 // accumulated, so ten failures locked the tool out for an hour while ninety-nine successes
-// did not move it. Use AllowWriteRepoWide for a call site whose writes carry a number it
-// cannot know in advance; see that function.
+// did not move it. Use AllowPRCreate for deskpr creation; other call sites with numbers they
+// cannot know in advance use AllowWriteRepoWide.
 func AllowWrite(tool, repo string, pr int) error {
 	return AllowWriteAt(tool, repo, pr, time.Now())
 }
@@ -370,7 +370,8 @@ func AllowWrite(tool, repo string, pr int) error {
 // gate could name in advance, and holds it at RateLimitPerPRPerHour over every charged
 // write the tool made on `repo` in the window.
 //
-// `deskpr create` is the motivating case and currently the only caller. A create's audit
+// `deskpr create` was the motivating case; it now uses AllowPRCreate to keep
+// maintenance traffic out of its creation counter. A create's audit
 // line records the number of the PR it just created — a different, previously unseen number
 // every time — so there is no per-PR bucket that can accumulate creates and no unnumbered
 // bucket they land in either. Every scope AllowWrite can express is therefore empty for
@@ -413,6 +414,22 @@ func AllowVerdictIssueWriteAt(repo string, now time.Time) error {
 
 // AllowWriteRepoWideAt is AllowWriteRepoWide with an injectable clock.
 func AllowWriteRepoWideAt(tool, repo string, now time.Time) error {
+	return allowRepoWideAt(tool, repo, now, false)
+}
+
+// AllowPRCreate gates new pull requests separately from updates and body edits.
+// Created PR numbers remain in the audit trail; the counter spans the repository.
+// The aggregate write budget and failure breakers still apply.
+func AllowPRCreate(repo string) error {
+	return AllowPRCreateAt(repo, time.Now())
+}
+
+// AllowPRCreateAt is AllowPRCreate with an injectable clock.
+func AllowPRCreateAt(repo string, now time.Time) error {
+	return allowRepoWideAt("deskpr", repo, now, true)
+}
+
+func allowRepoWideAt(tool, repo string, now time.Time, createsOnly bool) error {
 	tool, err := RequireCanonicalToolKey(tool)
 	if err != nil {
 		return err // a key attributing to no known tool is refused, never given a private budget
@@ -429,13 +446,15 @@ func AllowWriteRepoWideAt(tool, repo string, now time.Time) error {
 		}
 		return checkBreaker(tool, "", 0, now, mine)
 	}
-	if err := checkRepoWideBudget(tool, repo, now, mine); err != nil {
+	if createsOnly {
+		if err := checkPRCreateBudget(repo, now, mine); err != nil {
+			return err
+		}
+	} else if err := checkRepoWideBudget(tool, repo, now, mine); err != nil {
 		return err
 	}
-	// The per-repo tier is strictly looser than the one above and so can never be the
-	// binding constraint here. It runs anyway: the tiers are conjunctive by design, and an
-	// exception carved for "this one is dominated" is exactly the reasoning that produced
-	// the skips this file spent two reviews removing.
+	// Maintenance writes do not consume the creation counter, but they still share
+	// the aggregate outward-write ceiling with creates.
 	if err := checkRepoBudget(tool, repo, now, mine); err != nil {
 		return err
 	}
@@ -527,6 +546,7 @@ func pointsFor(tool string, now time.Time) ([]auditPoint, error) {
 type auditPoint struct {
 	ts     time.Time
 	result string
+	verb   string
 	repo   string
 	pr     *int
 }
@@ -628,6 +648,19 @@ func checkRepoBudget(tool, repo string, now time.Time, mine []auditPoint) error 
 	}
 	return budgetRefusal(tool, "per-repo", repo, count, RateLimitPerRepoPerHour, freeAt, retryAfter,
 		"Other writers on this repo may share this budget.")
+}
+
+// checkPRCreateBudget excludes known maintenance verbs. Legacy create/pr-create
+// and missing or unknown verbs remain charged rather than creating an unmetered lane.
+func checkPRCreateBudget(repo string, now time.Time, mine []auditPoint) error {
+	count, over, freeAt, retryAfter := chargedInWindow(now, mine, RateLimitPerPRPerHour, func(e auditPoint) bool {
+		return e.repo == repo && e.verb != "update" && e.verb != "edit"
+	})
+	if !over {
+		return nil
+	}
+	return budgetRefusal("deskpr", "new-PR", repo, count, RateLimitPerPRPerHour, freeAt, retryAfter,
+		"Updates and body edits do not consume this creation budget; the aggregate write limit still applies.")
 }
 
 // checkRepoWideBudget counts EVERY charged write the tool made on `repo` in the window —

@@ -15,9 +15,10 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 4
+version: 5
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format)"
 sources:
+  - "medici-finance/assay#2789; scratch-isolation amendment, freshness-checked 2026-10-13 @ 53c536312"
   - "docs/streams/build-less-brittle/spec.md — 2026-09-30 pending scope amendment"
   - "freshness-checked 2026-09-30 @ 8485778515c041fc87966902a14eb9d195492be3: amend unfinished scope; no implementation claim"
   - "docs/streams/build-less-brittle/spec.md §2 D1, §3 rows 1 and 8, §4.1"
@@ -141,6 +142,10 @@ incidents; both retain evidence and only the latter advances the recurrence coun
 
 ## Verify (executable — no prose-only DoD items)
 
+Run consumer checks with `TMPDIR` pointing at owned scratch outside the admitted source checkout.
+This scratch-location amendment (#2789) preserves the revision selection and assertions;
+historical Evidence does not verify the revised row, which needs fresh verifier admission.
+
 Rows run from the root of `medici-finance/assay`. The skill text is prose: rows 1–4 and 12
 gate presence, rows 5–6 dereference the mechanisms the text names, and rows 7–9 are the net ≤ 0
 weight rows. Whether the procedure is followed is measured by the project's close-out (spec §5.4), not here.
@@ -158,7 +163,7 @@ still has that diff to read after merge (re-authored in version 4, #1977).
 | 7 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/04$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/intake-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/intake-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/04$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 9 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/04$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
-| 10 | `d=$(mktemp -d "$PWD/.bl04-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach 23ebf3fc7bf0 && statusgen --consumers --root "$d" --brief build-less-brittle/04 --base 23ebf3fc7bf0~1; s=$?; rm -rf "$d"; exit $s` | exit 0; output is `summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing` (the check runs in a throwaway shared clone, made inside the checkout and removed afterwards, checked out at 23ebf3fc7bf0, the squash that delivered this brief in #1876, with the base pinned to its parent, so the diff it reads is exactly the delivering change: never main's later commits, never the runner's own working tree. The three `fixed-here` skill entries are corroborated by that diff; the one UNCHECKED entry is the `out-of-scope` labels line, which names no path in this repo and stays the reviewer's call per brief-rule 9, never a pass. The later work-input amendment (#1943) edits the intake skill only, a path this row already corroborates, and adds no `consumers:` claim) |
+| 10 | `d=$(mktemp -d "${TMPDIR:-/tmp}/bl04-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach 23ebf3fc7bf0 && statusgen --consumers --root "$d" --brief build-less-brittle/04 --base 23ebf3fc7bf0~1; s=$?; rm -rf "$d"; exit $s` | exit 0; output is `summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing` (the check runs in a throwaway shared clone, made in owned scratch outside the checkout and removed afterwards, checked out at 23ebf3fc7bf0, the squash that delivered this brief in #1876, with the base pinned to its parent, so the diff it reads is exactly the delivering change: never main's later commits, never the runner's own working tree. The three `fixed-here` skill entries are corroborated by that diff; the one UNCHECKED entry is the `out-of-scope` labels line, which names no path in this repo and stays the reviewer's call per brief-rule 9, never a pass. The later work-input amendment (#1943) edits the intake skill only, a path this row already corroborates, and adds no `consumers:` claim) |
 | 11 | `grep -c -e 'module:' plugins/assay/skills/intake-desk/SKILL.md && grep -c -e 'brittle' plugins/assay/skills/intake-desk/SKILL.md` | two counts, each ≥ `1` (the hotspot wiring: instances name their module, and a marked module lowers the trigger to the first instance) |
 | 12 | `grep -c -e 'production-down' plugins/assay/skills/intake-desk/SKILL.md && grep -c -e 'bleed' plugins/assay/skills/intake-desk/SKILL.md` | two counts, each ≥ `1` (the parking carve-out: a production-down or security symptom is never parked, and the driver's `bleed` reply un-parks one) |
 | 13 | `f=plugins/assay/skills/intake-desk/SKILL.md; for key in mechanism known-scope source-revisions unresolved-questions next-action source-origin trust-disposition; do grep -qF "$key:" "$f" \|\| exit 1; done; grep -q '^### Work-input triage example$' "$f" && echo WORK-INPUT-FIELDS` | `WORK-INPUT-FIELDS` (presence only; the worked-triage review below checks meaning, retained source trust and recurrence counting) |

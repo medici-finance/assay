@@ -3,7 +3,7 @@ brief: assay:assay:desk-containers:10
 title: "cellctl in Go: `tools/desk/cmd/cellctl`, bash kept as the oracle until parity"
 wave: 1
 depends: ["desk-containers/09"]
-unblocks: ["desk-containers/11"]
+unblocks: ["desk-containers/11", "desk-containers/25"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}

@@ -64,7 +64,7 @@ func (d Disposition) Actionable() bool { return d == DispositionDispatch }
 // reactor's output states WHY a row got no verb rather than merely omitting it.
 type rule struct {
 	Disposition Disposition
-	// Verb is the deskpost verb this disposition would call, "" when none. It is half of
+	// Verb names the proposed operation (review dispatch or ready write), "" when none. It is part of
 	// the coalescing key, so a row with no verb cannot collapse into one that has one.
 	Verb string
 	Why  string

@@ -1,0 +1,1 @@
+- desk-tools/33 authored: an author's explicit disposition on a finding class is final for the reviewer — accept (resolved-by-author-disposition) or escalate once; a re-statement round is neither; safety-consequence dispositions always escalate.

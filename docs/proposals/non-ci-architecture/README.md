@@ -1,6 +1,6 @@
 # Unified non-CI architecture for Assay
 
-**Status: future architecture we are moving towards. Updated 13 October 2026; includes portfolio and drift.** This directory is the canonical public home of Assay's future product architecture. It states the direction of travel, not what is already implemented or deployed. Detailed contract changes still require revision-bound review; implementation and activation require their own evidence and authorization. Publishing or merging this documentation does not activate a runtime, grant credentials or amend existing briefs.
+**Status: future architecture we are moving towards. Updated 14 October 2026; includes portfolio, drift and the write-through forge-service amendment.** This directory is the canonical public home of Assay's future product architecture. It states the direction of travel, not what is already implemented or deployed. Detailed contract changes still require revision-bound review; implementation and activation require their own evidence and authorization. Publishing or merging this documentation does not activate a runtime, grant credentials or amend existing briefs.
 
 Read the [implemented foundations and remaining work](11-target-architecture.md#implemented-foundations-and-work-still-to-build) alongside the target. Portfolio allocation, target/context drift and continuing observation are included in the destination; their integrated automation remains work to build and qualify.
 
@@ -24,6 +24,9 @@ Verification is the first end-to-end test.
 | [Authoring/context delivery](18-authoring-context-delivery.md) | Existing public skill homes, proposed resolver/skill packages and independent context slices |
 | [Progressive adoption and oversight](19-progressive-adoption-and-oversight.md) | Smaller independently useful entry paths, scoped human involvement, assurance and package/consumer changes |
 | [Amendment manifest](20-amendment-manifest.md) | Owners, paths, dependencies and active-work treatment for the ratified packages; brief patches for R1 and step 2 |
+| [Cell operator surface](21-cell-operator-surface.md) | Proposed in medici-finance/assay#2890; ratified when that PR is merged by the maintainer. Cell-level operator verbs classified as interim bridges or target-owned; runner-lifecycle states/transitions; a deferred plan-approval design gated on five properties; Cell API requirements carried from `send` |
+| [Forge service and source queries](22-forge-service-and-source-queries.md) | Write-through visibility, caller/executor authorization, immutable source caches and Scion-inspired qualification |
+| [Runtime contract alignment](23-runtime-contract-alignment.md) | One public runtime: PostgreSQL coordination, existing Git/forge evidence owners, requirement-to-owner coverage and remaining gaps |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Future direction and mechanisms to qualify
@@ -42,7 +45,10 @@ architecture specifies their delivery but changes no skill body or executable in
 PostgreSQL coordinates in-flight work and holds query projections; reviewed Git
 records retain canonical intent and published evidence for this phase. Recovery
 should reconstruct useful state, allowing declared transient loss and safe repeated
-work. Forge records are mirrored with attributed coverage and freshness. Active
+work. Forge records are mirrored with attributed coverage and freshness. The
+[forge-service amendment](22-forge-service-and-source-queries.md) routes authorized writes
+through existing role-bound executors and projects confirmed results immediately; it also
+provides SHA-bound source queries and scoped cache reuse. Active
 verification publishes through a governed role-bound path.
 
 The ratified target includes one mutating cell per external repository, separate
@@ -129,3 +135,13 @@ Public research inputs, inspected 10 October 2026:
 - Recent public Assay fixes are mapped in the [migration obligations](13-migration-and-decisions.md#preserve-recent-repository-hygiene-behavior), with new [continuous-work qualification](15-regression-from-day-one.md#continuous-work-and-resource-qualification).
 
 PostgreSQL remains the operational transaction owner; reviewed Git records retain canonical intent and published evidence. These lessons introduce neither a mandatory Git append per operation nor a replacement authoritative store.
+
+
+## One public runtime — 14 October 2026
+
+The [runtime alignment](23-runtime-contract-alignment.md) reconciles earlier refs-first
+ideas into the existing R1–R8 implementation in public Assay. PostgreSQL coordinates
+runtime effects; Git retains definitions/evidence; the forge service owns scoped provider
+observations and effects. There is no second runtime, native SCM prerequisite or new signer
+deployment. The coverage table maps existing owners and routes only two new contract gaps
+(graph-execution/30–31), with amendments to their existing admission/store/publication consumers.

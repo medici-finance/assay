@@ -34,6 +34,11 @@ const (
 	// (writes the files of) the named briefs and delivers none of them. Value is the raw
 	// list; SplitAuthorsTrailer reduces it to brief ids.
 	TrailerAuthors TrailerKind = "authors"
+	// TrailerCrossRepoBrief is `Cross-repo-brief: <alias>:<stream>/<NN>` — the PR delivers a
+	// brief homed (tracked) in ANOTHER repo, named by its graph-repos.yaml alias
+	// (medici-finance/assay#2748). Value is the raw `<alias>:<stream>/<NN>`;
+	// SplitCrossRepoBriefTrailer validates it.
+	TrailerCrossRepoBrief TrailerKind = "cross-repo-brief"
 )
 
 // Trailer is one parsed trailer line. Line is the 1-based line number in the body.
@@ -47,7 +52,12 @@ var (
 	reTrailerBrief = regexp.MustCompile(`^[ \t]*Brief:[ \t]*(\S.*?)[ \t]*$`)
 	reTrailerIssue = regexp.MustCompile(`^[ \t]*Issue:[ \t]*#?[ \t]*([0-9]+)[ \t]*$`)
 	reTrailerAuth  = regexp.MustCompile(`^[ \t]*Authors:[ \t]*(\S.*?)[ \t]*$`)
-	reFenceOpen    = regexp.MustCompile("^[ \t]*```")
+	reTrailerXR    = regexp.MustCompile(`^[ \t]*Cross-repo-brief:[ \t]*(\S.*?)[ \t]*$`)
+	// reCrossRepoBriefValue is the one accepted Cross-repo-brief: value: the registry alias grammar,
+	// one colon, then the slash-form brief id — exactly the `<alias>:<stream>/<NN>` item key
+	// deskdispatch accepts, so a lane can hand the value straight back to it.
+	reCrossRepoBriefValue = regexp.MustCompile(`^([a-z][a-z0-9_-]{0,31}):([^:/\s]+)/([0-9]+)$`)
+	reFenceOpen           = regexp.MustCompile("^[ \t]*```")
 )
 
 // ErrTrailerDuplicate reports a second Brief: (or second Issue:, or second Authors:) trailer.
@@ -110,8 +120,30 @@ func trailerKeyword(k TrailerKind) string {
 		return "Issue"
 	case TrailerAuthors:
 		return "Authors"
+	case TrailerCrossRepoBrief:
+		return "Cross-repo-brief"
 	}
 	return string(k)
+}
+
+// WHY `Cross-repo-brief:` IS ITS OWN KIND (medici-finance/assay#2748). A brief homed in one repo
+// may be delivered by a PR in another. A `Brief:` line there would be read by every reader in the
+// DELIVERABLE repo as a brief on its own board — deskpr resolves it under --root, the phantom check
+// and the board key on it — and the brief is not there, so create and edit refused it, or (with
+// the alias prefix SplitBriefTrailer drops) it would name a local brief that does not exist. The
+// new kind names the home explicitly and asserts nothing about this repo's board: no reader keyed
+// on TrailerBrief matches it, so what an existing `Brief:` line means is unchanged.
+
+// SplitCrossRepoBriefTrailer reduces a `Cross-repo-brief:` value to (alias, stream, NN). The only
+// accepted form is `<alias>:<stream>/<NN>` — a lowercase registry alias, one colon, a slash-form
+// brief id with a numeric NN — and ok is false for anything else. The alias resolves through
+// graph-repos.yaml elsewhere (deskpr checks it is registered and is not the registry's own self).
+func SplitCrossRepoBriefTrailer(v string) (alias, stream, nn string, ok bool) {
+	m := reCrossRepoBriefValue.FindStringSubmatch(strings.TrimSpace(v))
+	if m == nil {
+		return "", "", "", false
+	}
+	return m[1], m[2], m[3], true
 }
 
 // SplitAuthorsTrailer reduces an `Authors:` trailer value — one or more brief ids
@@ -194,13 +226,13 @@ func CanonicalBriefID(v string) string {
 
 // ParseTrailers returns the link trailers in a PR body. Lines inside fenced code
 // blocks (```) are ignored — a trailer inside a code sample is documentation, not
-// a link. Exactly one link may exist: a second Brief:, Issue: or Authors: line, or
+// a link. Exactly one link may exist: a second Brief:, Issue:, Authors: or Cross-repo-brief: line, or
 // two different kinds, is a multiplicity error (the caller refuses). A body with no
 // trailer is NOT an error here — the caller decides what absence means (deskpr
 // refuses it). An Authors: value is returned raw; SplitAuthorsTrailer validates it.
 func ParseTrailers(body []byte) ([]Trailer, error) {
 	var trs []Trailer
-	var firstBrief, firstIssue, firstAuth int
+	var firstBrief, firstIssue, firstAuth, firstXR int
 	inFence := false
 	for i, raw := range strings.Split(string(body), "\n") {
 		line := i + 1
@@ -233,9 +265,16 @@ func ParseTrailers(body []byte) ([]Trailer, error) {
 			}
 			firstAuth = line
 			trs = append(trs, Trailer{Kind: TrailerAuthors, Value: v, Line: line})
+		case reTrailerXR.MatchString(raw):
+			v := strings.TrimSpace(reTrailerXR.FindStringSubmatch(raw)[1])
+			if firstXR != 0 {
+				return nil, &ErrTrailerDuplicate{Kind: TrailerCrossRepoBrief, FirstLine: firstXR, Line: line}
+			}
+			firstXR = line
+			trs = append(trs, Trailer{Kind: TrailerCrossRepoBrief, Value: v, Line: line})
 		}
 	}
-	if firstAuth != 0 && (firstBrief != 0 || firstIssue != 0) {
+	if (firstAuth != 0 || firstXR != 0) && len(trs) > 1 {
 		mixed := &ErrTrailerMixed{}
 		for _, t := range trs {
 			mixed.Kinds = append(mixed.Kinds, t.Kind)

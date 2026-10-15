@@ -144,6 +144,23 @@ func judgeStaleRegistrations(guard *pathGuard, sc *sweepCtx, cwd string, roots [
 // (unreadable, unparseable, an ancestor set the sweep could not build) is a
 // could-not-check hold.
 func staleRegContentHold(sc *sweepCtx, dir, admin string) string {
+	return adminHeadHold(dir, admin, func(head string) string {
+		if sc.mainAncestors == nil {
+			return "could-not-check: detached HEAD, and the sweep could not build the refs/remotes/origin/main ancestor set"
+		}
+		if _, ok := sc.mainAncestors[head]; !ok {
+			return "detached HEAD " + head[:12] + " is not reachable from refs/remotes/origin/main — clearing the registration would strand possibly-unpushed commits"
+		}
+		return ""
+	})
+}
+
+// adminHeadHold is the admin-HEAD content gate shared by the prune sweep (above) and
+// `deskwt remove`'s husk arm (huskremove.go): the branch half is identical for both, and
+// only the proof a DETACHED commit is retained differs, so the caller supplies it.
+// detachedProof receives the full commit id and returns "" when clearing loses nothing,
+// else the hold reason.
+func adminHeadHold(dir, admin string, detachedProof func(head string) string) string {
 	raw, rerr := os.ReadFile(filepath.Join(admin, "HEAD"))
 	if rerr != nil {
 		return "could-not-check: cannot read the admin entry's HEAD: " + errText(rerr)
@@ -162,13 +179,7 @@ func staleRegContentHold(sc *sweepCtx, dir, admin string) string {
 	if !isFullSHA(head) {
 		return "could-not-check: the admin entry's HEAD is neither a branch ref nor a commit id"
 	}
-	if sc.mainAncestors == nil {
-		return "could-not-check: detached HEAD, and the sweep could not build the refs/remotes/origin/main ancestor set"
-	}
-	if _, ok := sc.mainAncestors[head]; !ok {
-		return "detached HEAD " + head[:12] + " is not reachable from refs/remotes/origin/main — clearing the registration would strand possibly-unpushed commits"
-	}
-	return ""
+	return detachedProof(head)
 }
 
 // isFullSHA reports whether s is a full lowercase-or-uppercase hex commit id.

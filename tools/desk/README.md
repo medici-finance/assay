@@ -23,6 +23,28 @@ tools/desk/
 Everything after that is the deep reference, one section per tool, and you do not need
 it on day one.
 
+## Review planner state contract
+
+`reviewloop plan` proposes review dispatches and draft-to-ready operations from the
+supplied board; it does not execute either operation. A posted review verdict is
+not evidence that a reviewer is currently assigned, and verdict kinds and outcomes
+must remain distinct. The audit ledger records completed writes; planning must not
+reparse its complete history separately for each proposed operation.
+
+Planning uses only the supplied board observations and performs zero audit-history
+loads ([issue #2793](https://github.com/medici-finance/assay/issues/2793)). Historical
+review verdicts, including legacy generic `review` entries, cannot suppress a new
+review dispatch. Historical `ready` entries cannot suppress a current `FLIP`: a
+still-draft PR needs the retry that `deskpost ready` already permits (#805).
+
+Coalescing suppresses repeated keys within a plan and operations whose head is
+unresolved. It does not reserve a reviewer or authorize a write. Before execution,
+`deskdispatch` must acquire a live reviewer claim; `deskpost` must validate history
+under its outward lock and recheck current forge state and exact write identity.
+Missing, unreadable or corrupt audit history does not change a plan, and still
+retains its existing meaning at those write boundaries. No retained history is
+changed or discarded.
+
 ## Tool reference
 
 | Tool | Verb(s) | Class | Write budget + breaker |
@@ -52,6 +74,7 @@ it on day one.
 | `deskclaim` | `acquire`, `release`, `list`, `stale` — the flock-backed claimable-action lock | local-only (claims dir) | no |
 | `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
 | `opmetrics` | (no verbs) — operator-layer collector: reads transcripts/beacons/claims, writes one **aggregates-only** day-file | local-only (strictly read-only against every input) | no |
+| `deskperf` | `report` (per-tool p50 / p90 / max / total wall, share of total wall, refusal ratio, top-N slowest), `boot` (deskboot's per-step cost, per role) — reads the opt-in local perf history; see [Local performance history](#local-performance-history--deskperf) | read-only (local perf files; no network; the shared kill-switch guard still writes its audit row) | no |
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); each takes `--dry-run` to report the hook plan without touching anything | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
@@ -127,6 +150,31 @@ deskclaim list             # which claimable actions are held right now
 Each run echoes the effective configuration (`assay-config:` lines) before its output —
 the allowed-repo set, the trusted identities, the risk triggers. That echo is the point:
 a widened scope shows up in run output and CI history rather than in someone's memory.
+
+By default the echo is **one line** carrying a digest of the full block:
+
+```
+assay-config: class=write source=config file … configured=true digest=sha256:<12 hex> humans=N bots=N roles=N repos=N (full: ASSAY_CONFIG_ECHO=full)
+```
+
+The digest is sha256 over the full block, so it moves on any change in either direction. The
+**full block** prints instead whenever any of these holds:
+
+- the run is in CI (`CI=true` or `CI=1`, any case, or `GITHUB_ACTIONS=true`) — CI history keeps
+  every line;
+- the roster carries a `REFUSED` or `unrecognised-keys` line — those are never quieter;
+- the digest differs from the last recorded one (in `config-echo.state`, beside the roster) —
+  so the first run after a change shows it whole. Only a default-form run whose output someone
+  sees records, and only after the whole block was written without error (a closed or failing
+  stderr records nothing); a forced, CI or refused run prints the full block without recording;
+- the run is one whose stderr nobody sees: a harness hook (`writeguard`, the `cellctl
+  model-policy hook`) and a child whose stderr a desk tool captures (it is given
+  `ASSAY_CONFIG_ECHO=full`) print the full block and never read or record the state;
+- that state file cannot be read or written, or is not a regular file (a symlink is not followed);
+- `ASSAY_CONFIG_ECHO=full` is set (any value other than `compact` counts as `full`); this forced
+  form neither reads nor updates the state file.
+
+To read every line on demand: `ASSAY_CONFIG_ECHO=full deskboard --version`.
 
 ### 3. Learn the exit codes before you run a write verb
 
@@ -355,6 +403,71 @@ assertions. A verb opts into the whole contract by routing its terminal error th
 Retrofitted so far: `deskdispatch`, `deskwt`, `desktoken`, `deskfile`. Other verbs are
 unaffected and keep their current behaviour until they are moved over.
 
+### Local performance history — `deskperf`
+
+The audit ledger records WHAT a verb did; it records nothing about how long it took. With
+`ASSAY_TELEMETRY=1` exported (exactly `1` — `true`, `yes` or an empty value are all OFF), the
+first-wave verbs — `deskpr`, `deskpost`, `deskboard`, `desktoken`, `deskwt`, `deskdispatch`
+and `deskboot` — each append ONE `perf-v1` line per invocation to a local day file:
+
+```sh
+export ASSAY_TELEMETRY=1        # opt in; unset it to stop — the history then ages out
+deskperf report                 # last 7 UTC days, every wrapped tool
+deskperf report --tool deskpr --days 2 --top 5
+deskperf boot --role worker-desk --json
+```
+
+**What is recorded** — and nothing else, enforced by the record's type: the schema tag, a
+second-resolution UTC timestamp, the tool (canonical key, else `other`), the verb (the verb's
+own registered subcommand, else `other`; boot steps as `step:<name>`), the role (`$DESK_LOOP`
+canonical name, else `none`), wall ms, process CPU ms (omitted where unmeasurable, e.g.
+Windows), the exit code and its fixed result word, how many child processes the verb started
+through the shared runner (`deskkit.Run`) and their summed wall ms, how many HTTP
+round-trips went through the forge client's counting transport, the build stamp (hex, else
+`unpinned`), and a random per-install id.
+
+**The two counts are lower bounds.** A verb's own child-process runner or its own direct
+HTTP client is outside both seams and is not counted: `deskboot`'s boot-step children,
+`desktoken`'s token mint, `deskpost`'s posts, and the repository-visibility read when no
+client is injected. A `0` from those means "not counted", not "none made".
+
+**What is never recorded:** argv, flags or their values, repo, PR or issue numbers, branch,
+path, title, body, error text, session tag, any environment value, hostname, user name, or
+any token. Every string field passes through a mapper whose return is one of its OWN
+constants — an unknown input becomes `other` / `none`, never the input.
+
+**Where it lives:** `<state dir>/perf/<YYYY-MM-DD>.jsonl` (state dir: `~/.config/assay`), files
+0600 in a 0700 directory, plus `perf/install-id`. With the switch off, nothing is created —
+no directory, no file, no id. Nothing is ever sent anywhere: no file this adds opens a
+network connection.
+
+**Retention: 7 UTC days, pruned on write.** The first record a process writes removes day
+files older than today and the six days before it. The pruner removes only a name that is
+EXACTLY `YYYY-MM-DD.jsonl`; `install-id`, anything else in `perf/`, and everything outside it
+— the audit ledger and its segments included — are never touched.
+
+**It is not the audit ledger, and never touches it.** The ledger is load-bearing (the
+rate-limit counter, the circuit breaker and the idempotency store read its rows) and is never
+pruned; the perf history is opt-in, disposable and read by nobody but you. A perf write is
+best-effort and silent: a full disk or an unwritable directory never changes a verb's exit
+code or its output. Per-invocation agent usage (tokens, cost) is the agent runner's to report
+(`loopadmin/runner`'s `Usage`), not this record's.
+
+`deskperf` reads it:
+
+- `deskperf report [--days N] [--tool X] [--role R] [--top N] [--json]` — per tool: count,
+  p50 / p90 / max wall ms (nearest-rank), total wall ms, share of total wall, and refusal ratio
+  (refused + unwritten + unverifiable over count); then the N slowest invocations (default
+  10) as ts / tool / verb / wall ms. Boot-step records are excluded (they subdivide a
+  `deskboot` run already counted once).
+- `deskperf boot [--days N] [--role R] [--json]` — `deskboot`'s per-step p50 / p90 / max, in
+  boot order, and the summed boot cost per role.
+
+`--days` defaults to 7 and refuses anything above it (exit 5): there is no eighth day to read.
+An empty history is a REFUSAL (exit 6) that names its reason — logging off, or on but nothing
+recorded yet — never an all-zeroes report; a filter matching nothing is exit 5; unparseable
+lines (a truncated final line) are counted and reported, never silently dropped.
+
 ### Runtime state (NOT created by this repo)
 
 At runtime the tools read/write, under `~/.config/assay/`:
@@ -392,6 +505,10 @@ At runtime the tools read/write, under `~/.config/assay/`:
   kind, name, attempt, conclusion). A check name is whatever the check's poster supplied:
   unauthenticated, sanitize before display. Schema: [`ci-check-v1`](internal/deskkit/ci-check-v1.md);
   fail-first: `muhar -spec internal/deskkit/cicheckhistory-mutations.json`.
+- `perf/` — the OPT-IN local perf history (`ASSAY_TELEMETRY=1` only; absent otherwise):
+  `perf/<YYYY-MM-DD>.jsonl` day files kept 7 UTC days and pruned on write, plus
+  `perf/install-id`. Separate from the audit ledger by design — see
+  [Local performance history](#local-performance-history--deskperf).
 - `DISABLED` — kill switch. `touch ~/.config/assay/DISABLED` (or export
   `DESK_TOOLS_DISABLED=1`) halts the whole suite: every tool exits 3 after auditing
   `result=disabled`. Its first line is shown as the reason.
@@ -2561,8 +2678,9 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      roots under the cells root (`--cells-root`, then `$CELLS_ROOT`, then the compiled
      per-user default; a custom `CELL_GO_CACHE_ROOT` outside it is out of the sweep's
      sight) and runs the package's own `Check` against each root's last recorded policy:
-     reclaim only under pressure, never while a consumer record exists, never a warm
-     purge. A root whose owning directory the same sweep removed is reaped as an orphan,
+     reclaim only under pressure, never a warm purge. Active consumer records protect
+     `mod/` and `gopath/`; `build/` entries older than the policy's trim age
+     (`CELL_GO_CACHE_BUILD_MAX_AGE`) are trimmed under pressure regardless. A root whose owning directory the same sweep removed is reaped as an orphan,
      gated on its lease set re-read under its own lock at act time. The pass is silent
      when every cache is within policy; the summary gains a cache segment only when it
      reclaimed, reaped, or found pressure it could not clear.
@@ -3205,12 +3323,12 @@ for why a refusal-guard that honoured `DISABLED` the ordinary way would fail ope
   *failed* creates (which record no number) locked the tool out for an hour while
   ninety-nine successes did not move it.
 
-  Creates therefore gate on `AllowWriteRepoWide` — every charged write the tool made on that
-  repo, held at the **per-PR cap**. That scope is a superset of wherever a create's line
-  lands, whatever number it gets, and it keeps the created number in the audit trail (the
-  one field that makes a create traceable) rather than blanking it to force the buckets to
-  agree. `TestGateReadsTheBucketItsWritesLandIn` pins the invariant for every gated call
-  site: seed the shape that call site really writes, and its own gate must refuse.
+  `deskpr create` gates on `AllowPRCreate`: new PR attempts are counted across
+  the repository, including their created PR numbers and uncertain outcomes.
+  Updates and body edits have their own per-PR budgets and do not consume this
+  20/hour creation counter. All verbs still share the aggregate 100/hour ceiling.
+  Legacy missing or unknown verbs count conservatively rather than opening an
+  unmetered lane. Other new-object call sites retain `AllowWriteRepoWide`.
 
   **The cap values are pinned by test** (`TestCapValuesArePinned`). Every other test seeds
   by reading the constant the code reads, so raising 10 → 20 was green across the whole
@@ -4683,8 +4801,8 @@ end — unprompted arbitrary code execution, proven by execution. A glob has no 
 this tool does. Same structural argument as `deskrelease`.
 
 ```bash
-deskgit fetch                 # refs/remotes/origin/*
-deskgit fetch --prune         # + drop stale remote-tracking refs
+deskgit fetch                 # refs/remotes/origin/* only (no tags)
+deskgit fetch --prune         # + drop stale remote-tracking refs (never a symbolic one)
 deskgit fetch --pr <N>        # pull/<N>/head -> local branch pr<N>   (N digits only)
 deskgit fetch --branch <B>    # origin's <B> -> local branch <B>      (see --branch guards)
 deskgit fetch --as <role>     # any fetch mode above, authenticated from <role>'s token file
@@ -4705,39 +4823,91 @@ replaced by an unrelated commit at exit 0 — which is why the check is keyed on
 ref rather than the flag. An **exact**-spelling destination on an existing branch is unaffected
 and still subject to git's normal fast-forward rules.
 
-Safe by construction — but note that **a fixed argv closes flags, not config or the
-environment**. git honours the upload-pack program from `.git/config`
-(`remote.origin.uploadpack`) and from injected env config, so an argv-only guard is still
-RCE. deskgit closes the proven vectors:
+**fetch runs in-process — no git child.** The old shape of this verb was a fixed `git fetch`
+argv plus a stack of pins against what argv cannot close (config- and environment-supplied
+programs, refspecs, submodule recursion) and an allowlisted child environment. All of that
+existed because a git child honours config and environment; `deskgit fetch` now runs no child,
+so there is nothing for a pin to pin. It calls `gitcore`'s go-git fetch directly:
 
-- **Fixed argv from validated values.** Each mode builds a literal argv; the only
-  caller-derived values are the digits-only `<N>` and the ref-ish `<B>` (no leading `-`,
-  no `+`, no `:`), which flow only into a constructed refspec. Unknown flags and positional
-  operands are refused, never ignored.
-- **Transport-exec options refused BY NAME.** `--upload-pack`, `--exec`, `--exec-path`,
-  `--receive-pack`, `--upload-archive`, `--config-env`/`-c`, and `-C` are refused
-  explicitly, before the flag table sees the argv, in any position — including after a
-  positional operand, where Go's `flag` has already stopped parsing. Matching is on the
-  option name with prefix matching in both directions, because git honours unambiguous
-  long-option abbreviations (`--upload-p`). See `transportexec.go`.
-- **CLI pins beat config/env.** Every fetch carries `--upload-pack=git-upload-pack` (the
-  CLI value overrides `remote.origin.uploadpack` from config *or* env — the code-execution
-  vector), `--refmap=` plus an explicit `+refs/heads/*:refs/remotes/origin/*` (so a
-  malicious `remote.origin.fetch` cannot redirect writes to local branches), and
-  `--no-recurse-submodules` (so `fetch.recurseSubmodules` cannot expand one gated fetch
-  into fetches of arbitrary `.gitmodules` URLs, escaping the repo gate).
-- **Scrubbed child env.** `runGit` passes only an allowlist (`PATH`, `HOME`,
-  `SSH_AUTH_SOCK`, locale, …) and drops every `GIT_*` var — `GIT_SSH_COMMAND`,
-  `GIT_CONFIG_*`, `GIT_ASKPASS` — plus forces `GIT_TERMINAL_PROMPT=0`.
-- **Effective-URL repo gate.** It gates on `git remote get-url --all origin`, git's own
-  resolution of origin's fetch url list, which applies `url.<base>.insteadOf` from every config
-  scope (and makes no network call), so an insteadOf rewrite cannot present an allowed identity
-  while fetching elsewhere. Exactly one url value is accepted; a multi-valued list is refused
-  (exit 5). This read decides the repo only: where a push goes (`pushurl`, `pushInsteadOf`) is
-  gated separately, under `--as`, by the host binding below. It rejects remote-helper (`<helper>::…`)
-  transport forms and requires an exact `owner/repo` path for any **host-bearing** URL, so a
-  padded URL can't smuggle an allowed slug in trailing components. The repo must be in the
-  fixed C-4 set.
+- **Fixed refspec from validated values.** Each mode builds one Go refspec value; the only
+  caller-derived values are the digits-only `<N>` and the ref-ish `<B>` (no leading `-`, no
+  `+`, no `:`). Unknown flags and positional operands are refused, never ignored, and there is
+  no configured refspec list for a `remote.origin.fetch` value to widen. The transport-exec
+  option names `push` still needs refused (`--receive-pack`, `--exec`, `--exec-path`,
+  `--upload-archive`, `--config-env`/`-c`, `-C`) are refused **by name** before the flag table
+  (`transportexec.go`); `--upload-pack` is now simply an unknown flag (still exit 5).
+- **No program is started for any origin shape.** An https origin uses go-git's Go HTTP
+  client; an ssh origin uses its Go ssh client; a **local-path or `file://` origin** is served
+  from the local repository's own storage **in-process** (`internal/gitcore/localtransport.go`
+  replaces go-git's stock local transport, which would otherwise start `git-upload-pack`
+  with this process's whole environment). There is no `--upload-pack` to pin, no child
+  environment to scrub, no submodule recursion (go-git's fetch does not recurse) and no `PATH`
+  lookup. `TestFileFetchStartsNoChild` (gitcore), `TestFetch_RunsNoGitChild` (deskgit) and
+  `TestFetchFromOrigin_LocalOriginStartsNoChild` (deskmerge) put a recording `git-upload-pack`
+  stand-in first on `PATH`, under environment-supplied git configuration, and fail if it ever
+  runs; `TestFileProtocolIsInProcess` fails if any scheme in go-git's protocol table is served
+  by a client that is not in-process.
+- **What the environment still parameterises** (no program, but not nothing): the Go HTTP
+  client honours the standard proxy variables (`HTTPS_PROXY`, `NO_PROXY`, …) and the system
+  trust-store variables, and the ssh client reads `SSH_AUTH_SOCK`, `~/.ssh/known_hosts` and
+  the host/port entries of `~/.ssh/config`. These choose a route or a trust root for a
+  connection; they do not run anything.
+- **Origin-URL repo gate.** The gate is the repository's own configured `remote.origin.url`,
+  as go-git resolves it from the repository's config (that config's `url.<base>.insteadOf`
+  rules included; global- and worktree-scope config play no part, because no git binary
+  reads them) — and **the same string is the URL the fetch connects to**, so the allowed-repo
+  decision and the connection cannot disagree. Exactly one url value is accepted; a
+  multi-valued list is refused (exit 5). The parser rejects remote-helper (`<helper>::…`)
+  forms and requires an exact `owner/repo` path for any **host-bearing** URL, so a padded URL
+  cannot smuggle an allowed slug in trailing components. The repo must be in the fixed C-4
+  set. (`push` still runs git and gates on `git remote get-url`; see below.)
+- **The refspec is the whole write set — no tags.** No mode follows tags: a fetch writes its
+  refspec's destinations and nothing else, so no `refs/tags/*` ref is created or replaced.
+  (`git fetch` auto-followed tags but never replaced an existing local one; go-git's default
+  tag mode writes every advertised tag whose object is present and *replaces* a differing
+  local tag, so the in-process fetch sets `NoTags`.) `TestFetch_KeepsLocalTags` (deskgit) and
+  `TestFetchKeepsLocalTags` (gitcore) pin it; `TestEveryFetchSetsNoTags` fails on any go-git
+  fetch option literal under `tools/desk` that leaves tag-following on, with a planted
+  positive control (`TestFetchTagsGuardFlagsPlant`). The same holds for `deskmerge`'s
+  in-process fetch, which shares `gitcore.Fetch`.
+- **gitcore, not go-git, applies the ref updates.** go-git only transfers: every refspec is
+  rewritten into a forced one whose destination is a private per-call staging namespace
+  (`refs/gitcore-fetch/<nonce>/…`, dropped on every path), and `gitcore` then writes each
+  advertised value to its real destination under git's rules (`internal/gitcore/fetchstage.go`).
+  Two go-git v5.19.2 behaviours forced this. With tags off it returns from its reference update
+  *before* turning a refused non-fast-forward into an error, so `--pr`/`--branch` over an origin
+  ref rewritten to a non-descendant exited 0 with the local ref still on the superseded commit;
+  now that update is refused, the other destinations still land, and the fetch fails closed
+  (exit 6) naming the refused ref (`TestFetch_RewrittenRefFailsClosed`,
+  `TestFetchRefusesNonFastForward`). And its prune removed every unadvertised ref under the
+  destination, symbolic ones included, so `--prune` deleted `refs/remotes/origin/HEAD`; now a
+  symbolic ref is never pruned (`TestFetch_PruneKeepsOriginHEAD`, `TestFetchPruneKeepsSymref`)
+  and never written through. As in `git fetch`, the prune runs *before* the updates and
+  removes each pruned ref's reflog and the directories it empties, so when upstream replaces
+  branch `X` with `X/a` (or the reverse) `--prune` clears the stale tracking ref and lands
+  everything, and the git binary's own `git fetch` in that checkout still updates the new
+  name (`TestFetchPruneRemovesReflog`); without `--prune` the new name is refused (exit 6,
+  naming it) and every other ref still updates. A non-forced refspec never moves an existing
+  tag, and one destination that cannot be written never stops the rest
+  (`TestFetch_RefNameConflictMatchesGit`, which runs the git binary on an identical twin of
+  each fixture, compares, then runs `git fetch` in both after a prune;
+  `TestFetch_PruneScopeIsTheRefspec`). Unlike `git fetch`, the in-process fetch writes no
+  reflog entry for a ref it creates or moves, and no `FETCH_HEAD`.
+  `TestEveryFetchLeavesUpdatesToGitcore` fails on any go-git
+  `FetchOptions`/`PullOptions` literal under `tools/desk` that is not `Force: true` or that
+  sets `Prune`, with a planted positive control (`TestFetchUpdateGuardFlagsPlant`).
+- **A local origin tolerates local-only commits.** A checkout routinely holds commits its
+  origin has never seen; the client offers them as "haves", and the local in-process session
+  drops any have the origin cannot resolve before the server walks them — as `git
+  upload-pack` does — instead of failing the fetch (`TestFetch_LocalOnlyCommitOK`,
+  `TestLocalFetchWithUnpushedCommit`).
+- **Branches in use are never rewritten.** `--branch`/`--pr` refuse a destination branch that
+  **any** worktree of the repository — this one or a linked one — is using, as `git fetch`
+  itself did: the branch its HEAD names, the branch it is in the middle of **rebasing** or
+  **bisecting** (HEAD is detached meanwhile), and any branch an in-progress `rebase
+  --update-refs` will rewrite. The set is read from each worktree's admin directory under the
+  common directory; if it cannot be read, the fetch stops (exit 6) rather than assume none
+  (`TestFetch_RefusesBusyBranch`, `TestCheckedOutBranchesInFlight`).
 
 **Residuals on the gate — read before assuming it binds identity.** The exact-path rule
 only bites on URLs the parser ROUTES to the host-bearing branch, and that routing is where
@@ -4747,9 +4917,10 @@ host swallowed as userinfo, and a scp-like URL with **no** `user@` component fel
 the lenient bare-path branch — while the same URL *with* a user was correctly refused. What
 remains open:
 
-- **Host is not bound** to `github.com` — the desk's origins use ssh host aliases
-  (`git@github-example:owner/repo`), so an exact allowed `owner/repo` on an unexpected host
-  still passes and does a read-only fetch; host-allowlist binding is a follow-up.
+- **Host is not bound** to `github.com` for a plain fetch — the desk's origins use ssh host
+  aliases (`git@github-example:owner/repo`), so an exact allowed `owner/repo` on an unexpected
+  host still passes and does a read-only, unauthenticated fetch; host-allowlist binding is a
+  follow-up. (`--as` binds the credential to `github.com`; see below.)
 - **Bare local paths are gated by the local-roots allowlist** (#215, formerly a
   residual). A real local repo lives at an arbitrary absolute path, so no `owner/repo` shape
   applies — but the parser no longer reads its identity off the last two path components
@@ -4761,46 +4932,25 @@ remains open:
   compiled `.` home root when `DESK_ROOTS` is unset) is skipped: a root meaning "wherever I
   run" cannot anchor identity. `file://` URLs route through the **same** gate, since they too
   name a purely local path. So an `insteadOf` rewrite to a directory merely *named* to spell
-  an allowed slug — the old bypass, which landed foreign content on the tracking refs the
-  desk loops consume — is now refused with no lenient fallback.
-- **The audit line is not a second gate**, but it is no longer blind. C-5 remains a ledger of
-  what the gate *allowed* — it refuses nothing. It now records the **effective origin URL**
-  alongside the parsed slug on the success path (security review Q6), with any userinfo
-  redacted so the ledger never becomes a credential store. Before that change a legitimate
-  refresh, a foreign-host fetch and the (then-open) local-path smuggle produced byte-identical
-  lines in every security-relevant field; recording the effective URL made the smuggle
-  **detectable** even before the local-path gate above closed it outright.
+  an allowed slug is refused with no lenient fallback.
+- **The audit line is not a second gate**, but it is not blind. C-5 remains a ledger of what
+  the gate *allowed* — it refuses nothing. It records the **origin URL** alongside the parsed
+  slug on the success path (security review Q6), with any userinfo redacted so the ledger
+  never becomes a credential store.
 
-It is **not a sandbox**, and the boundary is wider than "a compromised repo" (security review
-S-2). `cmdFetch` binds to `os.Getwd()` and does not check the worktree against deskkit's
-known roots, so the **caller chooses the repo** and with it the `.git/config` governing the
-fetch. In the #1555 threat model the caller *is* the adversary, so an attacker-controlled
-`.git/config` is the ordinary reachable state, not an edge case. Under it, **any config key
-that names a program** is an execution route — the class, not just the examples:
-`core.sshCommand`, `core.gitProxy` (its env twin `GIT_PROXY_COMMAND` *is* scrubbed, which
-makes it easy to misread as closed), `core.fsmonitor`, and `remote.<n>.vcs` (git runs
-`git-remote-<name>` while `git remote get-url` still reports an innocent URL, so the gate is
-structurally blind to it).
+It is **not a sandbox**. `cmdFetch` binds to `os.Getwd()` and does not check the worktree
+against deskkit's known roots, so the **caller chooses the repo** and with it the
+`.git/config` that names origin. What the fetch can no longer be made to do through that
+config or the environment is **run a program** — the class the old pins and scrub chased key
+by key — because the in-process fetch reads no program-naming key and starts no process.
+What the config still decides is the origin URL, and that is exactly what the gate above
+checks.
 
-deskgit also **trusts `PATH`** (security review S-3): `PATH` is allowlisted and `runGit`
-invokes `git` by bare name, so the binary that runs is whatever `PATH` resolves — and the
-`--upload-pack=git-upload-pack` pin binds that program's *name*, not its path. The "a glob
-has no end anchor, but a `main()` does" argument holds only while `PATH` is trusted.
-
-`git` is **not the only lever** (security review Q3). Anything git shells out to that is not
-a `git-*` core helper resolves from the inherited `PATH` — confirmed for **`ssh`**, which is
-executed from `PATH` for both `ssh://` and scp-like origins. (A stand-in `git-upload-pack` is
-*not* reachable: git prepends its own `--exec-path` for core helpers, and `--exec-path` is
-refused by name while `GIT_EXEC_PATH` is scrubbed — that surface is closed on both sides.)
-So resolving `git` to an absolute path is **necessary but not sufficient**: the child must
-also stop inheriting `PATH`. The follow-up is therefore *both* halves — absolute `git` **and**
-a fixed system `PATH` in the allowlist's place; the first half alone leaves the `ssh` lever
-open. It is deferred because a minimal `PATH` risks breaking ssh/credential helpers on the
-desk machine.
-
-deskgit closes the proven upload-pack, env, fetch-refspec and submodule vectors, and the
-insteadOf **identity-substitution** vector for **both** host-bearing URLs and bare local
-paths (the latter via the local-roots allowlist, #215). It claims no more.
+deskgit's **push** is unchanged by this: it still runs `git push` with a fixed argv, the
+`--receive-pack` and `--no-recurse-submodules` pins, and an allowlisted child environment
+(`runGit`), and it trusts `PATH` to resolve `git` and `ssh` (security review S-3/Q3) — so for
+push, the pins-and-scrub reasoning above still applies, and absolute `git` plus a fixed system
+`PATH` remains the deferred follow-up.
 
 ### Authenticated transport — `--as <role>` (fetch and push)
 
@@ -4819,15 +4969,18 @@ helper shadows per-worktree config and a token-in-URL is refused by policy). It 
 token path behind the same fixed-argv guard the rest of `deskgit` enforces. `deskgit fetch`
 (no `--as`) is unchanged: no identity check, no credential path.
 
-**What the token never touches.** It is READ from the role's token file and PASSED to the
-one child git process through exactly one environment variable (`DESKGIT_TOKEN`) and an
-ephemeral credential-helper script (`x-access-token` as the username; `$DESKGIT_TOKEN` as the
-password), in a private `0700` temp dir removed on **every** return path including error. The
-token is **never** placed in argv, in a URL, in stdout/stderr, or in the audit line. The argv
-carries `-c credential.helper=` **before the verb**, which clears the helper list on the
-command line so **no ambient or configured credential helper is ever consulted**, then adds
-the ephemeral helper under the host-scoped key `credential.https://github.com.helper` — see
-the answer-point binding below. No `GIT_ASKPASS` is set.
+**What the token never touches.** It is READ from the role's token file. For **fetch** it is
+then handed to the in-process transport as an in-memory Go value (HTTP basic auth,
+`x-access-token` as the username) — no file, no environment variable, no helper, no child.
+For **push** it is PASSED to the one child git process through exactly one environment
+variable (`DESKGIT_TOKEN`) and an ephemeral credential-helper script (`x-access-token` as the
+username; `$DESKGIT_TOKEN` as the password), in a private `0700` temp dir removed on **every**
+return path including error. Either way the token is **never** placed in argv, in a URL, in
+stdout/stderr, or in the audit line. The push argv carries `-c credential.helper=` **before
+the verb**, which clears the helper list on the command line so **no ambient or configured
+credential helper is ever consulted**, then adds the ephemeral helper under the host-scoped
+key `credential.https://github.com.helper` — see the answer-point binding below. No
+`GIT_ASKPASS` is set.
 
 **Identity binding.** `--as <role>` MUST equal the App role this session's loop identity
 binds (`$DESK_LOOP` → `deskkit.SessionTokenRole`); a mismatch is exit 5 **before any token is
@@ -4838,25 +4991,29 @@ repository the effective-URL gate already admitted.
 **Host binding — github.com only, in two layers.** The helper answers the GitHub App-token
 username, so this transport speaks only GitHub.
 
-*Layer 1, the origin destinations.* Before any token is minted or read, `--as` asks git
-itself for every origin URL the verb will use (`git remote get-url [--push] --all origin`, a config
-read that contacts nothing): for push, every `remote.origin.pushurl` value, or with none every
-`url` value; for fetch, every `url` value. Git applies `insteadOf` and `pushInsteadOf` rewrites
-from every config scope (global and worktree included) in that answer. Each URL must name the
+*Layer 1, the origin destinations.* Before any token is minted or read, `--as` checks every
+origin URL the verb will use. For push it asks git itself (`git remote get-url --push --all
+origin`, a config read that contacts nothing): every `remote.origin.pushurl` value, or with none
+every `url` value, with `insteadOf` and `pushInsteadOf` rewrites from every config scope (global
+and worktree included) applied. For fetch it is the single origin URL the gate above decided on
+— the one the fetch connects to. Each URL must name the
 origin repo, have a host of exactly `github.com` (no lookalike, subdomain, trailing dot,
 userinfo trick or self-hosted instance), and not be cleartext `http://`. If any URL fails, the
 verb is refused (exit 5) and nothing is minted. A repo the roster maps to another forge
 (`ASSAY_REPO_FORGES`) is refused the same way. A **local-path origin is refused** under `--as`:
 it has no host to bind a GitHub token to. Plain `deskgit fetch` (no `--as`) is unaffected.
 
-*Layer 2, the answer point.* Git can talk to hosts that are on no origin list during the
-verb: a recursed submodule's own remote, an `http.proxy` whose URL names a user and asks the
-credential machinery for its password, or a destination config rewritten after layer 1 read
-it. So the credential is bound where it is answered, not only where destinations are listed.
-Git asks the host-scoped helper only about `https://github.com`, and the helper itself also
-answers only a request for `protocol=https`, `host=github.com` (or `github.com:443`). Any other
-prompt goes unanswered and, with terminal prompts disabled, fails closed. `push` also pins
-`--no-recurse-submodules`, as fetch does, so push recursion configured in any scope never pushes
+*Layer 2, the answer point.* The credential is bound where it is answered, not only where
+destinations are listed. For **fetch** that is the in-memory hand-off itself: the token is
+attached only when the URL being fetched is `https` with a host of exactly `github.com`
+(default port or `:443`); any other URL is fetched with no credential. For **push**, git can
+talk to hosts that are on no origin list during the verb — a recursed submodule's own remote,
+an `http.proxy` whose URL names a user and asks the credential machinery for its password, or a
+destination config rewritten after layer 1 read it — so git asks the host-scoped helper only
+about `https://github.com`, and the helper itself also answers only a request for
+`protocol=https`, `host=github.com` (or `github.com:443`). Any other prompt goes unanswered and,
+with terminal prompts disabled, fails closed. `push` also pins
+`--no-recurse-submodules`, so push recursion configured in any scope never pushes
 a submodule to its own remote.
 
 **`deskgit push --as <role>`** pushes the **current branch** to origin over that authenticated
@@ -4870,15 +5027,15 @@ git -c credential.helper= -c credential.https://github.com.helper=!'<ephemeral h
 - `<B>` is the current branch (`symbolic-ref --short HEAD`), validated by the **same** rule
   `fetch --branch` uses and **never `main`/`master` in any case**; a **detached HEAD** has no
   branch to push and is refused (exit 5).
-- `--receive-pack=git-receive-pack` is pinned (the push-side twin of fetch's upload-pack pin),
-  overriding any config/env receive-pack.
-- `--no-recurse-submodules` is pinned (the push-side twin of fetch's recursion pin), overriding
-  `push.recurseSubmodules` / `submodule.recurse` from any config scope.
+- `--receive-pack=git-receive-pack` is pinned, overriding any config/env receive-pack.
+- `--no-recurse-submodules` is pinned, overriding `push.recurseSubmodules` /
+  `submodule.recurse` from any config scope.
 - `--force`/`--force-with-lease`, `--delete`, `--prune`, `--mirror`, `--tags` and `--no-verify`
   are refused **by name, with their own reason, before the FlagSet** (`checkPushSafety`); a
   caller `--receive-pack` is refused by the transport-exec guard. None of them is in the
   constructed argv, so none can be reached by any spelling.
-- push gates on the origin URL exactly as fetch does, then on every push destination (the host
+- push gates on its origin URL as git resolves it (`git remote get-url --all origin`, one value
+  only, the same parser and C-4 set as fetch), then on every push destination (the host
   binding above), is charged to the
   **outward-write budget** (`deskkit.AllowWrite`, unlike fetch), and its **pre-push hook**
   (`deskpushguard`, via `core.hooksPath`) still runs — no `--no-verify` is ever passed.
@@ -5535,6 +5692,15 @@ claim, allocates no worktree, invokes no lifecycle hook, registers no roster ent
 launches no worker. It does not revive a released review claim. `--model` and `--tier`
 are explicit, never inferred from an old stamp or a model-name lookup.
 
+**Two label pairs (#2760).** A worker kit (the default) writes the AUTHORING pair,
+`authored-model:<slug>` + `authored-tier:<tier>`: which model the coordinator launched to
+write the change. `--kit review` writes `dispatched-model:<slug>` + `dispatched-tier:<tier>`:
+the review session's attestation. Each stamp reads, removes and verifies only its own pair,
+so neither overwrites the other. Before the split both wrote `dispatched-*`, and whichever
+ran later replaced the other. A full worker dispatch with `--pr` writes the authoring pair
+too. The verifier kit retains `dispatched-*` for validation and stamp-only; normal
+verifier dispatch uses its separate issue-attestation path.
+
 The model slug vocabulary remains open. `gpt-6-astra` and `gpt-6.1-sol` are preserved;
 `gpt-6-1-sol` is a distinct accepted literal, not an alias. Use the exact harness selection.
 Existing label normalization (lowercase and trim) remains shared with ordinary dispatch.
@@ -5543,15 +5709,16 @@ The existing stamp step owns both modes: absent stamps are applied, an identical
 pair is a verified no-op, and partial/conflicting/foreign/unattributed stamps are repaired
 from the supplied selection through `ReStampRemovals`. A failed label or timeline read
 returns unverifiable before mutation. Writes are followed by label and timeline readback;
-only the exact pair accepted by `AttestedModelStampOf` produces an applied-and-verified
-receipt. Failed or unobserved writes return exit 6; retry with the same selection after
+only the exact pair accepted by the applier-aware reader for that kit's pair
+(`AttestedModelStampOf` for `dispatched-*`) produces an applied-and-verified receipt. Failed or unobserved writes return exit 6; retry with the same selection after
 investigating the failure. No receipt claims execution surveillance or invented provenance.
 `--dry-run` prints the read-derived plan without mutation or audit append.
 
 Real invocations record `verb=stamp-only` in the standard desk audit log, including the
 repo, PR, requested model/tier/kit and the verified result or refusal. The downstream
-capability floor (including review posting and ready-flip) and auto-lane reader retain
-their existing shared applier-aware semantics. Legacy `deskrestamp` remains the separate,
+capability floor (including review posting and ready-flip) and auto-lane reader still read
+`dispatched-*` only, with their existing applier-aware semantics. They never read
+`authored-*`, so an authoring stamp does not satisfy a review floor. Legacy `deskrestamp` remains the separate,
 cutoff-gated migration that preserves existing content; its provenance rules are unchanged.
 
 **Verifier pre-work admission.** A verifier has no result yet and needs no PR to start.
@@ -5644,9 +5811,25 @@ Packet: <absolute path>
 
 ```bash
 deskdispatch project--pr-42 --kit review --pr 42 --repo example-org/project --prompt-file /work/pr-42.md
-# → /work/pr-42.md          the assignment, carrying "Packet: /work/pr-42.packet.md"
-# → /work/pr-42.packet.md   the packet, mode 0600
+# stdout: /work/pr-42.emitted.md   the path of the assignment, carrying "Packet: /work/pr-42.packet.md"
+# → /work/pr-42.packet.md          the packet, mode 0600
+# /work/pr-42.md itself is the caller's file and is never written
 ```
+
+**`--prompt-file` names the caller's file and is never modified (#2749).** The assembled
+assignment (tens of KB) goes to a NEW sibling, `<F without extension>.emitted.md` (mode `0600`,
+replaced by a re-dispatch), and that path is printed alone on stdout. A caller that hashes or
+re-reads its own task file after the dispatch gets what it wrote. The flag must name a file: an
+existing directory is refused before the claim.
+
+The emitted file is replaced atomically through an owner-only temporary file: a link at the
+destination is replaced, never followed, and an existing wider mode is replaced with `0600`.
+Callers must check the exit status and read the path printed by this successful invocation,
+rather than read `F` or infer success from an existing emitted file. A refused re-dispatch can
+leave the previous emitted file in place. Files differing only in extension share the same
+emitted and packet paths; use distinct stems for concurrent dispatches. Keep `F` outside
+the agent worktree, especially a verifier home: the emitted sibling is an additional file
+even when the verifier packet provider declines to write its packet there.
 
 **What a review packet holds, in order:** the head commit and the build time (at the top);
 the change's number, title, author, base, head and draft / mergeable state; its description;
@@ -5680,7 +5863,7 @@ always knows what it was not shown and reads that item at the source.
 A removed file, or a path that is not safe to put in a forge request, is listed and not
 read; a file that is not text is listed and not shown.
 
-**Where the packet goes.** Beside the assignment: with `--prompt-file F`, `<F without extension>.packet.md`;
+**Where the packet goes.** Beside the emitted assignment: with `--prompt-file F`, `<F without extension>.packet.md`;
 when the prompt is printed, `<user cache dir>/assay/packets/<item-key>.packet.md` (packets
 there older than a week are removed as new ones are written). Never in the agent's worktree
 — an untracked file would dirty a read-only review tree — and never in the configuration
@@ -5883,6 +6066,23 @@ there — is accepted in place of the tracking repo, and `--root` must still be 
 Every other mismatch (an undeclared `--repo`, an unknown or unpublished tag, a tag outside the
 `files:` list or in a fenced example block, no `--repo` at all) keeps the HARD FAIL. An item that
 declares no alias keeps the path above unchanged.
+
+**`--cross-repo`: a brief homed in one repo, its PR opened in another** (medici-finance/assay#2748).
+The flag is opt-in. The brief resolves to its HOME, the tracking alias that its item-key prefix or
+brief-v2 id names. That alias must be registered, but it may be unpublished in this registry copy.
+`--repo` names the repo the PR opens in. `--repo` must be published under an alias in the registry
+and must be `--root`'s origin. The claim key keeps the tracking alias, and the claim, the mint and
+the worktree all land in `--repo`. The prompt tells the worker to carry the exact trailer line
+`Cross-repo-brief: <alias>:<stream>/<NN>` and no `Brief:` line (see `docs/desk-tools/deskpr.md`).
+The flag is refused (exit 5, before anything durable) in each of these cases:
+- `--repo` is missing;
+- no tracking alias is named;
+- the brief declares `deliverable_repo`/`homed-in`, since an explicit deliverable is never
+  overridden;
+- `--repo` is unregistered;
+- `--repo` is the tracking repo itself.
+
+A `--root` that is not a checkout of `--repo` is still the HARD FAIL.
 
 **The phantom check is a dispatcher precondition.** A fresh worker dispatch is reconciled against
 the deliverable repo's open and merged PRs by `Brief:` trailer before admission, the mint and the
@@ -6403,16 +6603,30 @@ ones. Resolution order:
 
 1. A claim-store key that cannot be read (an unusable roster file) or does not parse →
    refused. An unreadable key is never treated as unset.
-2. `ASSAY_CLAIM_STORE` set → that store, or a refusal when its preconditions do not hold. It
-   never moves on to another store. In this release `file` and `service` parse as valid but
-   are not shipped yet, so setting either is refused naming the release that ships it (the
-   file store, the served store) — a key set early fails loudly.
-3. `ASSAY_CLAIM_STORE` unset → the legacy forge-ref store (claims as refs on the forge,
+2. `ASSAY_CLAIM_STORE` set to a store this build ships → that store, or a refusal when its
+   preconditions do not hold. It never moves on to another store.
+3. `ASSAY_CLAIM_STORE` set to a valid store this build does not ship → the legacy forge-ref
+   store, exactly as for an unset key, under a NOTICE naming the configured store and the
+   release that ships it (amended 2026-10-13, medici-finance/assay#2753). In this release
+   `file` and `service` both parse as valid and are not shipped yet, so an operator can set
+   the key before upgrading and it takes effect on the upgrade. A build that does not ship a
+   store cannot write a claim to it, so this never splits one repo's claims inside one
+   build; across builds during an upgrade, the mixed-store refusal that ships with the
+   `file` store is the guard. `ASSAY_CLAIM_SINGLE_HOST=yes` is accepted and has no effect
+   while the store is unset or unshipped. A malformed value is still refused, never treated
+   as unshipped.
+4. `ASSAY_CLAIM_STORE` unset → the legacy forge-ref store (claims as refs on the forge,
    written under the dispatching role's credential), exactly as before, for one release
    window. Every run of `deskclaim-ref` and `deskdispatch` then prints the removal NOTICE:
 
 ```
-NOTICE: ASSAY_CLAIM_STORE is unset, so dispatch claims use the legacy forge-ref store, which needs repository write; an unset ASSAY_CLAIM_STORE stops resolving in release N+1 — set ASSAY_CLAIM_STORE=file or ASSAY_CLAIM_STORE=service in the roster.
+NOTICE: ASSAY_CLAIM_STORE is unset, so dispatch claims use the legacy forge-ref store, which needs repository write; an unset ASSAY_CLAIM_STORE stops resolving in release N+1. ASSAY_CLAIM_STORE=file or ASSAY_CLAIM_STORE=service (with ASSAY_CLAIM_SINGLE_HOST=yes for file) may be set in the roster now: a build that does not ship the named store keeps using forge-ref, and the setting takes effect on upgrade to the release that ships it.
+```
+
+For a set but unshipped value the NOTICE instead reads, for `file`:
+
+```
+NOTICE: ASSAY_CLAIM_STORE=file is set, but this build does not ship the file store, so dispatch claims stay in the legacy forge-ref store, which needs repository write; ASSAY_CLAIM_STORE=file takes effect in the release that ships the file store.
 ```
 
 The release it names is one constant, `deskkit.ClaimStoreLegacyRemovalRelease`; it reads
@@ -6926,3 +7140,11 @@ closes #146 end to end: the primitive alone did not help until the skill docs ac
 it instead of the shell idiom the writeguard hook blocks. **Routing, filing, and closing**
 (rows 4, 5, 9) remain the next adopters: closing waits on `deskclose` (#282), and filing
 composes with `deskfile` (#283).
+
+### PR creation budget
+
+`deskpr create` admits at most 20 new-PR attempts that succeeded or may have
+reached the remote per repository per rolling hour. `update` and `edit` do not
+consume that counter. All three still share the aggregate 100-write/hour limit,
+and updates/edits retain their per-PR budgets. Existing-PR no-ops do not consume
+creation capacity. Missing or unknown legacy audit verbs count conservatively.

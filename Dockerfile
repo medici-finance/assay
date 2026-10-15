@@ -40,9 +40,9 @@
 # =============================================================================
 
 # ---- Builder --------------------------------------------------------------
-# golang:1.25 matches the `go 1.25.0` line in both go.mod files (tools/desk and
-# statusgen). Alpine base, CGO off -> fully static Linux binaries.
-FROM golang:1.25-alpine AS builder
+# golang:1.27 covers the `go` lines of both go.mod files (tools/desk needs
+# 1.27.0; statusgen still declares 1.25.0). Alpine base, CGO off -> fully static Linux binaries.
+FROM golang:1.27-alpine AS builder
 
 # Target GOOS/GOARCH. Defaulted so a plain `docker build` produces linux/amd64
 # without buildx; a buildx build would override these per platform.

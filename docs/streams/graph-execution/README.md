@@ -110,6 +110,8 @@ or removing any human gate (spec §5 states the divergence).
 | 27 | [Standing desk clients for the shared loop-admin](brief-27-standing-desk-loop-admin.md) | 8 | M | todo | — | — |
 | 28 | [Verifier domain contracts with qualified identities and candidate-bound acceptance](brief-28-verifier-domain-contracts.md) | 2 | M | todo | — | — |
 | 29 | [Old and new regression floor for the verifier domain contracts](brief-29-verifier-regression-floor.md) | 3 | M | todo | — | — |
+| 30 | [Derived evaluation context and bounded validity](brief-30-derived-evaluation-context-and-bounded-validity.md) | 3 | M | todo | — | — |
+| 31 | [Accountable principal and assurance provenance](brief-31-accountable-principal-and-assurance-provenance.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
@@ -305,3 +307,28 @@ their edge to 15. Only wave numbers changed in briefs outside R2.
 **R3 follow-up, not in this routing:** R3 later amends 16 (exclusive repository assignment),
 26 (runner guard events, budgets, resource capacity and custody) and 22 (first real adapter).
 R4 later amends 04 and 25. Those sections are marked in the briefs and are not authored here.
+
+
+## Public runtime alignment and gap routing — 2026-10-14
+
+The [runtime contract](../../proposals/non-ci-architecture/23-runtime-contract-alignment.md)
+selects one public Assay implementation. Existing PostgreSQL, recovery, candidate, runner,
+evidence and controller briefs remain owners; Scion source/cache work is forge-neutral/39–45.
+Only /30 (context/validity) and /31 (principal/proof provenance) are newly authored here.
+Generated lifecycle cells remain authoritative; no implementation is claimed.
+
+Critical path and waves for this addition:
+
+```text
+02 independent verification -> 09 -> 28
+                                  ├-> 30 -> 19 and 14
+                                  └-> 31 -> 14 and 25
+existing R2/R3/R4 dependencies -> managed consumers -> R5/R7/R8 proof -> operator activation
+```
+
+/30 and /31 are wave 3 and can develop independently after /28. Existing consumer waves
+remain /19=6, /14=6 and /25=11 because their other prerequisites are later. The smallest
+unblocking move remains independent /02 verification; a cache daemon or new SCM does not
+unblock it. Missing `workflow/` and `statusgen/domain/` at inspected main 9a8df91dc are
+planned deliverables, not a reason to claim the tests already pass. /31's trust-profile
+activation requires its human decision; no automatic waiver or stronger assurance is added.

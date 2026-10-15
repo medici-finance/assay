@@ -46,8 +46,8 @@
 //     it can only report what IdleVerdict returns.
 //
 //  3. Event coalescing (Coalesce). N deltas on one (repo, PR, head) between sweeps
-//     collapse to at most one outward action per (repo, pr, head, verb), guarded by
-//     deskkit.AlreadyDone — the same audit-keyed idempotency every deskpost verb uses.
+//     collapse to at most one proposed action per (repo, pr, head, verb). Live claims
+//     and completed-write identity are checked by the execution tools, not this plan.
 //
 // # Stop point
 //
