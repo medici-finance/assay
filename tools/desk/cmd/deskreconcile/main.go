@@ -9,7 +9,9 @@
 //
 // It writes ONLY stream README Status cells (todo|in-progress -> implemented, real
 // merged-PR witness only — the narrow, safe transition statusgen enforces), always in an
-// isolated worktree cut from the fetched remote head, and never opens a second PR.
+// isolated worktree cut from the fetched remote head, and never opens a second PR. It never
+// passes statusgen's `--regenerate` opt-in (under which `--apply` also re-renders a drive
+// plan page's snapshot region), so a row whose move would re-render one is held, not written.
 //
 // Exit codes (deskkit contract): 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused ·
 // 6 unverifiable.

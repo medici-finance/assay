@@ -235,12 +235,13 @@ func reconcileWritesWith(root string, cells []BriefCell, write bool, opts holdOp
 			return rows, held, fmt.Errorf("%s: %w", path, merr)
 		}
 		// The move drifted generated output it changes (a drive-snapshot
-		// region): judge the complete proposed output instead — the README edit
-		// plus each such artifact re-rendered against the moved board
-		// (reconcilegenerated.go, #2694). Every rule still runs; only what is
-		// staged differs.
+		// region): with the --regenerate opt-in, judge the complete proposed
+		// output instead — the README edit plus each such artifact re-rendered
+		// against the moved board (reconcilegenerated.go, #2694). Every rule
+		// still runs; only what is staged differs. Without it the row is held
+		// on the drift: the landing callers commit stream READMEs only.
 		var regen *regeneratedStage
-		if kinds, paths := driftedOutputs(root, added); found && len(kinds) > 0 {
+		if kinds, paths := driftedOutputs(root, added); opts.regenerate && found && len(kinds) > 0 {
 			added, found, merr = env.tryMove(stream, num, "implemented", func() (func() error, error) {
 				undoReadme := staged.put(path, edit.content)
 				rs, undoRegen := stageRegenerated(root, staged, kinds, paths)

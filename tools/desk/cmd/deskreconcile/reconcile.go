@@ -317,9 +317,10 @@ func parseApplied(jsonOut string) ([]FlipRow, error) {
 
 // changedReadmes returns the stream-README paths the reconcile modified in the worktree,
 // sorted and deduplicated. It REFUSES if the reconcile changed any path that is not a
-// stream README: `statusgen reconcile --apply` only ever writes a stream README's Status
-// cell, so anything else in the diff is not a reconcile result and must not be committed
-// under the reconcile message.
+// stream README: without the `--regenerate` opt-in (which this verb never passes),
+// `statusgen reconcile --apply` only ever writes a stream README's Status cell, so anything
+// else in the diff is not this verb's reconcile result and must not be committed under the
+// reconcile message.
 func changedReadmes(worktree string, step func(dir, name string, args ...string) (string, error)) ([]string, error) {
 	out, err := step(worktree, "git", "status", "--porcelain")
 	if err != nil {
@@ -348,7 +349,7 @@ func changedReadmes(worktree string, step func(dir, name string, args ...string)
 	}
 	if len(foreign) > 0 {
 		sort.Strings(foreign)
-		return nil, deskkit.Refused("refused: reconcile changed non-README paths — a reconcile writes ONLY stream README Status cells, so these are not reconcile output and will not be committed: " + strings.Join(foreign, ", "))
+		return nil, deskkit.Refused("refused: reconcile changed non-README paths — this verb's reconcile (run without --regenerate) writes ONLY stream README Status cells, so these are not reconcile output and will not be committed: " + strings.Join(foreign, ", "))
 	}
 	sort.Strings(readmes)
 	return dedupe(readmes), nil

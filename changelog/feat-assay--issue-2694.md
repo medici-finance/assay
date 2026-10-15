@@ -1,2 +1,2 @@
-### Fixed
-- `statusgen reconcile` no longer holds every witnessed move on a driven stream for `drive-region-drift`: the lint hold now judges the README edit together with the drive-snapshot region it re-renders, reports that region under the row's `generated`, and `--apply` writes both. The read-only form still writes nothing, and a hand-edited region is never re-rendered.
+### Added
+- `statusgen reconcile --regenerate` (opt-in, with `--apply` or `--backfill`): a witnessed move on a driven stream is no longer held for `drive-region-drift` alone. The lint hold judges the README edit together with the drive-snapshot region it re-renders, reports that region under the row's `generated`, and `--apply` writes both. The read-only form still writes nothing, and a hand-edited region is never re-rendered. Without the flag, behaviour is unchanged: such a row is held and `--apply` writes stream READMEs only, which is all the scheduled reconcile job and `deskreconcile` commit.

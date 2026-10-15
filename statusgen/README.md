@@ -250,7 +250,11 @@ rows, decided the same way with nothing written. When the pulls cannot be read,
 `--apply` exits 3 and writes nothing.
 
 A move on a driven stream changes generated output too: the drive-snapshot
-region of each `docs/roadmap/drives/<slug>.md` page whose drive names it. The
+region of each `docs/roadmap/drives/<slug>.md` page whose drive names it. By
+default such a move is held on its `drive-region-drift`, and `--apply` writes
+stream READMEs only — what the scheduled reconcile job and `deskreconcile`
+commit; each refuses a run that changed any other path. With the `--regenerate`
+opt-in (alongside `--apply` or `--backfill`), the
 hold judges the complete proposed output — the README edit plus each such region
 re-rendered (`statusgen --drive-snapshot <slug>`) against the moved board — with
 every lint rule, the drive-region drift check included. A clean move lists the
@@ -258,7 +262,9 @@ regions it re-renders under the row's `generated` (`path`, `drive`,
 `regionBefore`, `regionAfter`, the text between the fences); `--apply` writes
 them beside the README, keeping the begin marker's `@<sha> <date>` stamp as it
 was, and the read-only form writes neither. A region that was already drifting
-(a hand edit inside the fences) is never re-rendered by the writer.
+(a hand edit inside the fences) is never re-rendered by the writer. A caller
+that passes `--regenerate` with `--apply` must be ready to commit the plan page
+beside the README; neither in-repo landing caller passes it.
 
 ```bash
 # Read-only: which board rows would --apply promote? No stream README is written

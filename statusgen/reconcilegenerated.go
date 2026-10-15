@@ -12,16 +12,23 @@ package main
 // for drive-region-drift — a PROBLEM the complete proposed output (the README
 // edit plus the region it re-renders) does not carry.
 //
-// generatedOutputs is the registry of such artifacts. When a move adds the
-// drift PROBLEM of a registered artifact, reconcileWrites tries the move once
-// more with the artifact re-rendered against the moved board and staged beside
-// the README, and lets the lint — unchanged, every rule — judge that complete
+// generatedOutputs is the registry of such artifacts. With the --regenerate
+// opt-in (holdOptions.regenerate), when a move adds the drift PROBLEM of a
+// registered artifact, reconcileWrites tries the move once more with the
+// artifact re-rendered against the moved board and staged beside the README,
+// and lets the lint — unchanged, every rule — judge that complete
 // output. Clean: the row is admitted and reports the regenerated region
 // (appliedRow.Generated); --apply writes it beside the README, the read-only
 // form keeps it staged. Not clean: the row is held with the PROBLEMs of the
 // complete output. Only a drift the move ADDS is answered: a region that was
 // already drifting (a hand edit inside the fences) is never re-rendered, so the
 // writer never launders the edit the drift rule exists to catch.
+//
+// The opt-in is off by default because the landing callers — the scheduled
+// reconcile job's stray-path check and deskreconcile's changedReadmes — commit
+// stream READMEs only and refuse a run that changed anything else. Without it,
+// such a move is held on its drift exactly as before, and --apply writes
+// stream READMEs only.
 
 import (
 	"fmt"

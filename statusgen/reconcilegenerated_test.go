@@ -24,6 +24,11 @@ func readPlan(t *testing.T, root, slug string) string {
 	return string(b)
 }
 
+// reconcileRegen is reconcileWrites with reconcile's --regenerate opt-in on.
+func reconcileRegen(root string, cells []BriefCell, write bool) ([]appliedRow, []heldRow, error) {
+	return reconcileWritesWith(root, cells, write, holdOptions{crossCheck: holdCrossCheck, regenerate: true})
+}
+
 // boardReadmes returns every stream README's bytes under root.
 func boardReadmes(t *testing.T, root string) map[string]string {
 	t.Helper()
@@ -55,7 +60,7 @@ func TestHoldRegeneratesDriveRegion(t *testing.T) {
 			t.Fatalf("fixture drift: the clean board plus its drive snapshot must lint clean, got %v", lintBefore)
 		}
 
-		rows, held, err := reconcileWrites(root, cells, write)
+		rows, held, err := reconcileRegen(root, cells, write)
 		if err != nil {
 			t.Fatalf("write=%v: %v", write, err)
 		}
@@ -135,7 +140,7 @@ func TestHoldKeepsHandEditedRegion(t *testing.T) {
 	if p, _ := driveRegionLintProblems(root, driveTestNow); len(p) != 1 {
 		t.Fatalf("fixture drift: the hand edit must drift the region, got %v", p)
 	}
-	rows, held, err := reconcileWrites(root, cells, true)
+	rows, held, err := reconcileRegen(root, cells, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,8 +222,9 @@ func plantGenRule(t *testing.T, register bool, render func(n int) string) {
 // TestHoldGeneratedClass is the defect class beyond the drive region: a
 // planted second generated-artifact rule. Without a regenerator its drift
 // holds the move (never written stale); with a correct one the move is
-// admitted and the artifact written by --apply only; with a regenerator whose
-// output the rule rejects, the move is held on the complete proposed output.
+// admitted and the artifact written by --apply only — under the --regenerate
+// opt-in, and held as before without it; with a regenerator whose output the
+// rule rejects, the move is held on the complete proposed output.
 func TestHoldGeneratedClass(t *testing.T) {
 	right := func(n int) string { return fmt.Sprintf("%d\n", n) }
 	wrong := func(n int) string { return fmt.Sprintf("%d\n", n+7) }
@@ -227,11 +233,13 @@ func TestHoldGeneratedClass(t *testing.T) {
 		name     string
 		register bool
 		render   func(int) string
+		optIn    bool
 		admit    bool
 	}{
-		{"no regenerator", false, nil, false},
-		{"right regenerator", true, right, true},
-		{"wrong regenerator", true, wrong, false},
+		{"no regenerator", false, nil, true, false},
+		{"right regenerator", true, right, true, true},
+		{"right regenerator, no opt-in", true, right, false, false},
+		{"wrong regenerator", true, wrong, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			plantGenRule(t, tc.register, tc.render)
@@ -253,7 +261,7 @@ func TestHoldGeneratedClass(t *testing.T) {
 				if err := os.WriteFile(gen, []byte(right(n)), 0o644); err != nil {
 					t.Fatal(err)
 				}
-				rows, held, err := reconcileWrites(root, cells, write)
+				rows, held, err := reconcileWritesWith(root, cells, write, holdOptions{crossCheck: holdCrossCheck, regenerate: tc.optIn})
 				if err != nil {
 					t.Fatalf("write=%v: %v", write, err)
 				}
