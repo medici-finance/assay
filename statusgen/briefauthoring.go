@@ -41,6 +41,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // prFile is one entry of GET /pulls/{n}/files — the subset the classifier reads.
@@ -174,8 +175,14 @@ type authoringClassifier struct {
 	client *ghClient
 	repo   string
 	stderr io.Writer
+	mu     sync.Mutex // guards cache: prefetch fills it from several readers
 	cache  map[int]filesResult
 }
+
+// authoringReadWorkers bounds the concurrent file-list reads a prefetch makes:
+// enough to hide the per-request round trip, few enough to stay clear of the
+// forge's secondary (concurrency) rate limit.
+const authoringReadWorkers = 6
 
 type filesResult struct {
 	files []prFile
@@ -189,11 +196,7 @@ func newAuthoringClassifier(client *ghClient, repo string, stderr io.Writer) *au
 // authoringOnly reports whether PR number only authored briefID. A non-nil error means the file
 // list could not be read or proved complete: the answer is could-not-check.
 func (a *authoringClassifier) authoringOnly(number int, briefID string) (bool, error) {
-	r, ok := a.cache[number]
-	if !ok {
-		r.files, r.err = a.client.ListPRFiles(a.repo, number)
-		a.cache[number] = r
-	}
+	r := a.files(number)
 	if r.err != nil {
 		return false, r.err
 	}
@@ -205,6 +208,98 @@ func (a *authoringClassifier) authoringOnly(number int, briefID string) (bool, e
 		return true, nil
 	}
 	return false, nil
+}
+
+// files returns PR number's file-list read, reading it on the first ask.
+func (a *authoringClassifier) files(number int) filesResult {
+	if r, ok := a.cached(number); ok {
+		return r
+	}
+	var r filesResult
+	r.files, r.err = a.client.ListPRFiles(a.repo, number)
+	a.mu.Lock()
+	a.cache[number] = r
+	a.mu.Unlock()
+	return r
+}
+
+func (a *authoringClassifier) cached(number int) (filesResult, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	r, ok := a.cache[number]
+	return r, ok
+}
+
+// prefetch reads every uncached PR in numbers, authoringReadWorkers at a time.
+func (a *authoringClassifier) prefetch(numbers []int) {
+	work := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < authoringReadWorkers && w < len(numbers); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for n := range work {
+				a.files(n)
+			}
+		}()
+	}
+	sent := map[int]bool{}
+	for _, n := range numbers {
+		if !sent[n] { // two workers on one PR would read its list twice
+			sent[n] = true
+			work <- n
+		}
+	}
+	close(work)
+	wg.Wait()
+}
+
+// prefetchBackfill reads, in parallel, EXACTLY the file lists the backfill
+// match (matchBackfillPRChecked) will read one by one for briefs, so the
+// sequential match that follows answers from the cache. It replays the match
+// in waves: each wave reads, for every brief still unresolved, the next
+// candidate the match would ask about — the newest not yet shown to be
+// authoring-only — and stops a brief at its first delivery or unreadable list.
+// The set of PRs read is therefore the set the sequential walk reads, never a
+// speculative superset; only the waiting is overlapped.
+func (a *authoringClassifier) prefetchBackfill(pulls []ghPull, briefs [][2]string) {
+	type walk struct {
+		id    string
+		cands []ghPull
+		next  int
+	}
+	var walks []*walk
+	for _, b := range briefs {
+		if cands := backfillCandidates(pulls, b[0], b[1]); len(cands) > 0 {
+			walks = append(walks, &walk{id: b[0] + "/" + b[1], cands: cands})
+		}
+	}
+	for {
+		need := map[int]bool{}
+		var wave []int
+		for _, w := range walks {
+			for w.next < len(w.cands) {
+				n := w.cands[w.next].Number
+				r, ok := a.cached(n)
+				if !ok {
+					if !need[n] {
+						need[n] = true
+						wave = append(wave, n)
+					}
+					break
+				}
+				if r.err != nil || !briefAuthoringOnly(w.id, r.files) {
+					w.next = len(w.cands) // resolved: the match stops here
+					break
+				}
+				w.next++ // authoring-only: the match asks about the next one
+			}
+		}
+		if len(wave) == 0 {
+			return
+		}
+		a.prefetch(wave)
+	}
 }
 
 // unreadAuthoring is the disclosure for a PR whose authored-or-delivered question could not be
@@ -266,6 +361,22 @@ func matchBackfillPRChecked(pulls []ghPull, stream, num string, authoring backfi
 		m, found := matchBackfillPR(pulls, stream, num)
 		return m, found, ""
 	}
+	id := stream + "/" + num
+	for _, p := range backfillCandidates(pulls, stream, num) {
+		only, err := authoring(p.Number, id)
+		if err != nil {
+			return ghPull{}, false, unreadAuthoring(p.Number, id, err)
+		}
+		if !only {
+			return p, true, ""
+		}
+	}
+	return ghPull{}, false, ""
+}
+
+// backfillCandidates lists the MERGED pulls that name stream/num in a declared
+// backfill form, newest first — the order matchBackfillPRChecked tries them in.
+func backfillCandidates(pulls []ghPull, stream, num string) []ghPull {
 	var cands []ghPull
 	for _, p := range pulls {
 		if p.MergedAt == "" {
@@ -276,17 +387,7 @@ func matchBackfillPRChecked(pulls []ghPull, stream, num string, authoring backfi
 		}
 	}
 	sort.SliceStable(cands, func(i, j int) bool { return cands[i].Number > cands[j].Number })
-	id := stream + "/" + num
-	for _, p := range cands {
-		only, err := authoring(p.Number, id)
-		if err != nil {
-			return ghPull{}, false, unreadAuthoring(p.Number, id, err)
-		}
-		if !only {
-			return p, true, ""
-		}
-	}
-	return ghPull{}, false, ""
+	return cands
 }
 
 // movableBriefKeys returns the canonical keys of the briefs whose board row is todo or
@@ -327,6 +428,15 @@ func admitPRWitnesses(in *LifecycleInput, client *ghClient, repo, root string, s
 			inScope = func(key string) bool { return keys[key] }
 		}
 	}
+	// dropAuthoringPRs reads one file list per in-scope open or merged PR;
+	// read exactly those in parallel first, so its walk answers from the cache.
+	var reads []int
+	for _, pr := range in.PRs {
+		if pr.State != prClosed && (inScope == nil || inScope(canonicalBriefKey(pr.BriefRef))) {
+			reads = append(reads, pr.Number)
+		}
+	}
+	cl.prefetch(reads)
 	kept, undecided, unread := dropAuthoringPRs(cl, in.PRs, in.Briefs, inScope)
 	in.PRs = kept
 	for _, m := range unread {
