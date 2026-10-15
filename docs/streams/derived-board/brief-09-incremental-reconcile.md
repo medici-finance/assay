@@ -31,7 +31,7 @@ consumers:
   - "statusgen/reconcile.go: follow-up derived-board/09 (this brief)"
   - "statusgen/regen.go (drift comparator): follow-up derived-board/09 (this brief)"
   - "statusgen/claimdecay.go: out-of-scope (claim decay reads branch-scoped pull-request state on its own, one query per 100 live branches, landed separately; it never reads the ledger)"
-  - ".github/workflows/assay-statusgen.yml (regen passes --ledger; weekly --verify-ledger job): follow-up derived-board/09 (this brief; staged as a diff, pushed by the driver because App tokens lack workflow scope)"
+  - "ci/staged-workflows/assay-statusgen.yml (regen_all passes --ledger; weekly --verify-ledger job): follow-up derived-board/09 (this brief; the edit lands in the staged copy, which a maintainer promotes because App tokens lack workflow scope)"
   - "adopter regen workflows (pass --ledger, commit the ledger, add the scheduled --verify-ledger run): out-of-scope (named in the release note of the version that carries this brief; applied per repo through upgrade-assay)"
 ---
 
@@ -44,7 +44,9 @@ files:
 - `statusgen/regen.go` — the drift comparator reads PRs the same way
 - `statusgen/witnessledger.go` (planned) — merge delta records into the ledger
 - `statusgen/reconcileincremental_test.go` (planned)
-- `.github/workflows/assay-statusgen.yml` — `regen` passes `--ledger`; a weekly scheduled `--verify-ledger` job (a staged diff the driver pushes)
+- `ci/staged-workflows/assay-statusgen.yml` — `regen_all` (brief 08 Task 8) passes `--ledger`; a weekly scheduled `--verify-ledger` job. The staged copy is what the job-text tests read and a maintainer promotes it; the `.github/workflows/` copy is not edited here
+- `statusgen/reconcilejob_test.go` — `TestReconcileJobTriggerAndScope` pins exactly one cron and the `reconcile` job's `if:`; amended in the same PR for the weekly cron
+- `statusgen/reconcilejobledger_test.go` (planned) — extended with the `--ledger` pin and the weekly job (Verify 8)
 - `changelog/derived-board-09-incremental-reconcile.md` (planned)
 
 facts:
@@ -73,10 +75,10 @@ single-point-of-failure: the watermark, together with the ledger's forge-only fi
 4. Full mode pages the pull list to the end; a walk stopped by any bound is a could-not-check (#1969, delivered by #3013 if it lands first).
 5. `--json` gains `forgeCost: {requests: <n>, rereads: <n>, notFetchedReads: <n>, mode: "incremental"|"full", fallbackReason: "…"}`.
 6. regen's drift comparator takes the same incremental read when given the ledger.
-7. **Workflow, a staged diff the driver pushes:**
-   - In `.github/workflows/assay-statusgen.yml`, `regen_all` (brief 08 Task 8) adds `--ledger .statusgen/witness-ledger.jsonl` to its `reconcile --record-ledger` call. That is what makes every push-to-main regen incremental; the checkout is already full-depth (brief 08 Task 8).
-   - Add a weekly `schedule`-triggered job running `reconcile --verify-ledger` with the read-only token and `fetch-depth: 0`, failing the job on a difference.
-   - Name the hand-off in the PR body. The 7-day maximum age (Task 1) bounds the exposure whether or not the weekly job has landed.
+7. **Workflow: an edit to the staged copy, `ci/staged-workflows/assay-statusgen.yml`, that a maintainer promotes** (brief 08 Task 8 states why). The edit composes with the classified push already in the `regen` commit step; it adds no push path.
+   - In the `regen` job's "Commit STATUS.md if it changed" step, `regen_all` (brief 08 Task 8) adds `--ledger "$LEDGER"` to its `reconcile --record-ledger` call. The existence guards on both ledger pathspecs, the restore on a failed run, the preflight before the commit and before every retry, and the `nonff`-only retry are brief 08's and stay as written. That one flag is what makes every push-to-main regen incremental; the checkout is already full-depth.
+   - Add a weekly `schedule`-triggered job running `reconcile --verify-ledger` with the read-only token (`contents`, `pull-requests`, `issues`: read), no App token, and `fetch-depth: 0`, failing the job on a difference. The workflow already has an hourly cron (`17 * * * *`), a `schedule` concurrency group and a `reconcile` job guarded on `github.event_name == 'schedule'`. So every scheduled job tests `github.event.schedule` against its own cron: the weekly job runs only on the weekly cron, and the hourly `reconcile` job no longer runs on it. The same PR amends `TestReconcileJobTriggerAndScope`, which pins exactly one cron and the `reconcile` job's `if:`, to the two-cron shape.
+   - Name the hand-off in the PR body. The 7-day maximum age (Task 1) bounds the exposure whether or not the weekly job has landed. Until the promoted workflow carries this edit and brief 08's, every push-to-main regen is the full read.
 8. Changelog fragment, including the workflow change adopters make.
 
 ## Verify (executable — no prose-only DoD items)
@@ -89,7 +91,8 @@ single-point-of-failure: the watermark, together with the ledger's forge-only fi
 | 5 | `go test -count=1 -run TestReconcileWatermarkEdit ./statusgen/...` | exit 0 — a merged PR whose body gains a `Brief:` trailer after recording (its `updated_at` moves past the watermark) is re-read and changes the derived cell. A delta PR whose trailer was removed, or that was reopened, loses its ledger record on re-record | check:ci +neighbour |
 | 6 | `go test -count=1 -run TestFetchAllPullsNoSilentCap ./statusgen/...` | exit 0 — a walk that hits the bound returns lookedAt=false with a reason, never a short list as complete (lands with #3013 if that merges first) | check:ci |
 | 7 | `cd statusgen && go build -o "${TMPDIR:-/tmp}/sg" . && "${TMPDIR:-/tmp}/sg" reconcile --backfill --root .. --repo medici-finance/assay --record-ledger "${TMPDIR:-/tmp}/wl.jsonl" --json > "${TMPDIR:-/tmp}/full.json" && "${TMPDIR:-/tmp}/sg" reconcile --verify-ledger "${TMPDIR:-/tmp}/wl.jsonl" --backfill --root .. --repo medici-finance/assay` | exit 0 — a live read of this repository: the ledger-derived and full-read results agree (GITHUB_TOKEN set) | check +dereference |
-| 8 | `statusgen --root . --consumers --brief derived-board/09` | exit 0 (routing claims corroborated against the diff) | check |
+| 8 | `go test -count=1 -timeout 300s -run TestReconcileJobVerifyLedger ./statusgen/...` | exit 0 — job-text test against the staged YAML, in the style of `TestReconcileJob*`: (a) the "Commit STATUS.md if it changed" step's `regen_all` passes `--ledger` and still sources `pushcred.sh`, preflights before the commit and before the retry, and pushes with `pushcred_push`; (b) a weekly cron exists beside the hourly `17 * * * *`; the weekly job's `if:` names `github.event.schedule` with that cron, holds exactly `contents`, `pull-requests`, `issues` read, references no App token, checks out `fetch-depth: 0`, and runs `reconcile --verify-ledger` with no `|| true`; (c) the hourly `reconcile` job's `if:` excludes the weekly cron; (d) executing the weekly job's run text against a stub `statusgen` that exits 1 fails the job, and exit 0 passes it. Mutations: drop `--ledger` from `regen_all`; drop the weekly job's `github.event.schedule` test; give the weekly job the App token; swallow the exit code. Each fails its case | check:ci +mutation |
+| 9 | `statusgen --root . --consumers --brief derived-board/09` | exit 0 (routing claims corroborated against the diff) | check |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
