@@ -4,6 +4,7 @@ package main
 // singleton's repository key.
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,6 +81,10 @@ func TestPruneActivityGateEachSignal(t *testing.T) {
 		{"HEAD", func(admin, _ string) string { return filepath.Join(admin, "HEAD") }},
 		{"logs/HEAD", func(admin, _ string) string { return filepath.Join(admin, "logs", "HEAD") }},
 		{"worktree root", func(_, target string) string { return target }},
+		// ORIG_HEAD and FETCH_HEAD are written lazily (a merge, reset or rebase; a
+		// fetch): the fixture tree has neither, so the case writes the one it tests.
+		{"ORIG_HEAD", func(admin, _ string) string { return writeNow(admin, "ORIG_HEAD") }},
+		{"FETCH_HEAD", func(admin, _ string) string { return writeNow(admin, "FETCH_HEAD") }},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			work := newRepo(t)
@@ -260,4 +265,147 @@ func TestAddLockSessionRefusesUnsafeID(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(tmpBaseDir, "tracker-"+name)); !os.IsNotExist(err) {
 		t.Fatalf("a refused add left a worktree behind (err=%v)", err)
 	}
+}
+
+// writeNow writes a lazily-created admin file (ORIG_HEAD, FETCH_HEAD) the way git would
+// on first use and returns its path, so touchNow then stamps it as the only recent signal.
+func writeNow(admin, name string) string {
+	p := filepath.Join(admin, name)
+	if err := os.WriteFile(p, []byte("0000000000000000000000000000000000000000\n"), 0o644); err != nil {
+		panic(err)
+	}
+	return p
+}
+
+// A FUTURE activity mtime (clock skew, a `touch -d`) is the most recent activity there
+// can be: the tree is held, never read as idle for "negative" time.
+func TestActivityGateFutureMtimeHolds(t *testing.T) {
+	rt := t.TempDir()
+	admin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(admin, "HEAD"), []byte("ref: refs/heads/x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	future := now.Add(3 * time.Hour)
+	for _, p := range []string{rt, filepath.Join(admin, "HEAD")} {
+		if err := os.Chtimes(p, future, future); err != nil {
+			t.Fatal(err)
+		}
+	}
+	why := activityHold(map[string]string{rt: admin}, nil, rt, time.Hour, now)
+	if !strings.Contains(why, "--min-idle window") {
+		t.Fatalf("a worktree with future-dated activity was judged idle: %q", why)
+	}
+}
+
+// The admin registry is keyed on the RESOLVED worktree root: a gitdir recorded through a
+// symlinked path still maps to the root prune resolves its candidates to. Keyed on the
+// raw path, that worktree would have no admin entry and be held forever.
+func TestWorktreeAdminDirsResolvesSymlinkedGitdir(t *testing.T) {
+	base := resolvePath(t.TempDir())
+	real := filepath.Join(base, "real")
+	if err := os.MkdirAll(filepath.Join(real, "wt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	common := filepath.Join(base, "common")
+	admin := filepath.Join(common, "worktrees", "wt")
+	if err := os.MkdirAll(admin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(admin, "gitdir"), []byte(filepath.Join(link, "wt", ".git")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := (&pathGuard{commonDir: common}).worktreeAdminDirs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[filepath.Join(real, "wt")] != admin {
+		t.Fatalf("admin map = %v, want %s keyed on the resolved root %s", got, admin, filepath.Join(real, "wt"))
+	}
+}
+
+// A gitdir recorded relative to its admin entry (git's worktree.useRelativePaths) maps to
+// the worktree root it names. Resolved against the sweep's working directory instead, it
+// matches no candidate, so every such worktree is held and prune quietly stops reclaiming.
+func TestWorktreeAdminDirsResolvesRelativeGitdir(t *testing.T) {
+	base := resolvePath(t.TempDir())
+	if err := os.MkdirAll(filepath.Join(base, "wt"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	common := filepath.Join(base, "main", ".git")
+	admin := filepath.Join(common, "worktrees", "wt")
+	if err := os.MkdirAll(admin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The exact form git 2.56 writes under -c worktree.useRelativePaths=true.
+	if err := os.WriteFile(filepath.Join(admin, "gitdir"), []byte("../../../../wt/.git\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := (&pathGuard{commonDir: common}).worktreeAdminDirs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[filepath.Join(base, "wt")] != admin {
+		t.Fatalf("admin map = %v, want %s keyed on %s", got, admin, filepath.Join(base, "wt"))
+	}
+}
+
+// assertAddRolledBack checks that a refused `add --lock-session` left nothing behind:
+// no worktree directory and no registration git still lists.
+func assertAddRolledBack(t *testing.T, work, target string) {
+	t.Helper()
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("the worktree directory survived a failed lock (err=%v)", err)
+	}
+	out, err := runGit(work, "worktree", "list", "--porcelain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if p, ok := strings.CutPrefix(line, "worktree "); ok && resolvePath(p) == resolvePath(target) {
+			t.Fatalf("the worktree is still registered after a failed lock:\n%s", out)
+		}
+	}
+}
+
+// A `git worktree lock` that FAILS rolls the new worktree back: the caller asked for a
+// session lock, and an unlocked tree is not what it asked for.
+func TestAddLockSessionRollsBackWhenLockFails(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	old := worktreeLockFn
+	t.Cleanup(func() { worktreeLockFn = old })
+	worktreeLockFn = func(string, string, string) error { return errors.New("lock refused (fixture)") }
+	const name = "lock-fails"
+	rc, errout := runCapErr(t, []string{"add", name, "--lock-session", "sess-42"})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("add with a failing lock rc = %d, want %d; stderr:\n%s", rc, deskkit.ExitUnverifiable, errout)
+	}
+	if !strings.Contains(errout, "ROLLED BACK") {
+		t.Fatalf("the refusal did not report the rollback; stderr:\n%s", errout)
+	}
+	assertAddRolledBack(t, work, filepath.Join(tmpBaseDir, "tracker-"+name))
+}
+
+// A lock that REPORTS success but is not there when read back is refused the same way:
+// git's exit status alone is never taken as proof, and the tree is rolled back.
+func TestAddLockSessionReadsTheLockBack(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	old := worktreeLockFn
+	t.Cleanup(func() { worktreeLockFn = old })
+	worktreeLockFn = func(string, string, string) error { return nil } // "succeeds", locks nothing
+	const name = "lock-silent"
+	rc, errout := runCapErr(t, []string{"add", name, "--lock-session", "sess-42"})
+	if rc != deskkit.ExitUnverifiable {
+		t.Fatalf("add with an unverified lock rc = %d, want %d; stderr:\n%s", rc, deskkit.ExitUnverifiable, errout)
+	}
+	if !strings.Contains(errout, "reported success but") {
+		t.Fatalf("the read-back mismatch was not named; stderr:\n%s", errout)
+	}
+	assertAddRolledBack(t, work, filepath.Join(tmpBaseDir, "tracker-"+name))
 }

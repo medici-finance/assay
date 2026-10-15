@@ -79,6 +79,11 @@ func (g *pathGuard) worktreeAdminDirs() (map[string]string, error) {
 		if dotGit == "" {
 			continue
 		}
+		if !filepath.IsAbs(dotGit) {
+			// worktree.useRelativePaths records the path relative to the admin entry,
+			// not to the sweep's working directory.
+			dotGit = filepath.Join(admin, dotGit)
+		}
 		out[resolvePath(filepath.Dir(dotGit))] = admin
 	}
 	return out, nil

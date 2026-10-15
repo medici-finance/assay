@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskwt/ -count=1 -timeout 600s -run 'TestPrune|TestReap|TestDeadSession|TestMergeGateBeforeStatus|TestConcurrentPrunesCostOne|TestRemove|TestStaleLock|TestReclaim|TestUnattributedLock|TestDirtyHeld|TestUnmergedHeld'",
+  "test": "go test ./cmd/deskwt/ -count=1 -timeout 600s -run 'TestPrune|TestReap|TestDeadSession|TestMergeGateBeforeStatus|TestConcurrentPrunesCostOne|TestRemove|TestStaleLock|TestReclaim|TestUnattributedLock|TestDirtyHeld|TestUnmergedHeld|TestAddLockSession|TestActivityGate|TestWorktreeAdminDirs'",
   "control": {
     "name": "CONTROL — invert the ancestor-set membership test (an unmerged worktree reads as merged and is deleted)",
     "file": "cmd/deskwt/prune.go",
@@ -246,6 +246,48 @@
       "file": "cmd/deskwt/prune.go",
       "old": "\t\treturn guard.commonDir\n",
       "new": "\t\treturn cwd\n"
+    },
+    {
+      "name": "add --lock-session never reads the lock back: git's exit status alone is taken as proof the session lock exists (#3070)",
+      "file": "cmd/deskwt/deskwt.go",
+      "old": "if _, ok := locked[rt]; !ok {",
+      "new": "if _, ok := locked[rt]; false && !ok {"
+    },
+    {
+      "name": "add --lock-session does not roll the worktree back when the lock fails: the caller gets an unlocked tree it asked to be locked (#3070)",
+      "file": "cmd/deskwt/deskwt.go",
+      "old": "\t\tif lerr := lockForSession(guard, dir, resolvePath(target), *lockSession); lerr != nil {\n\t\t\tif rerr := removeWorktreeDir(guard, dir, resolvePath(target)); rerr != nil {",
+      "new": "\t\tif lerr := lockForSession(guard, dir, resolvePath(target), *lockSession); lerr != nil {\n\t\t\tif rerr := error(nil); rerr != nil {"
+    },
+    {
+      "name": "ORIG_HEAD is no longer activity evidence: a tree whose only recent activity is a merge, reset or rebase reads as idle",
+      "file": "cmd/deskwt/activity.go",
+      "old": "\t{\"ORIG_HEAD\", false},\n",
+      "new": ""
+    },
+    {
+      "name": "FETCH_HEAD is no longer activity evidence: a tree whose only recent activity is a fetch reads as idle",
+      "file": "cmd/deskwt/activity.go",
+      "old": "\t{\"FETCH_HEAD\", false},\n",
+      "new": ""
+    },
+    {
+      "name": "a future activity mtime is read as exactly --min-idle old (idle) instead of the most recent activity possible",
+      "file": "cmd/deskwt/activity.go",
+      "old": "\t\tage = 0\n",
+      "new": "\t\tage = minIdle\n"
+    },
+    {
+      "name": "the admin registry is keyed on the raw gitdir path, so a worktree recorded through a symlink has no admin entry",
+      "file": "cmd/deskwt/activity.go",
+      "old": "out[resolvePath(filepath.Dir(dotGit))] = admin",
+      "new": "out[filepath.Dir(dotGit)] = admin"
+    },
+    {
+      "name": "a relative gitdir (worktree.useRelativePaths) is resolved against the sweep's working directory, so every such worktree has no admin entry and is held forever",
+      "file": "cmd/deskwt/activity.go",
+      "old": "\t\t\tdotGit = filepath.Join(admin, dotGit)\n",
+      "new": ""
     }
   ]
 }

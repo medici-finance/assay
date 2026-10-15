@@ -941,10 +941,19 @@ func addLockReason(session string) string {
 	return "deskwt add live session (deskwt add session=" + session + ")"
 }
 
+// worktreeLockFn runs `git worktree lock --reason <reason> <rt>`. A package var only so
+// the fixture suite can drive the two outcomes real git will not produce on demand — a
+// lock that fails, and one that reports success without taking — and prove add rolls the
+// tree back on both; production never assigns it.
+var worktreeLockFn = func(dir, reason, rt string) error {
+	_, err := runGit(dir, "worktree", "lock", "--reason", reason, rt)
+	return err
+}
+
 // lockForSession locks the worktree at rt for session and POSITIVELY verifies it: git's
 // exit status alone is not taken as proof the lock exists.
 func lockForSession(guard *pathGuard, dir, rt, session string) error {
-	if _, err := runGit(dir, "worktree", "lock", "--reason", addLockReason(session), rt); err != nil {
+	if err := worktreeLockFn(dir, addLockReason(session), rt); err != nil {
 		return deskkit.Unverifiable("git worktree lock failed for "+rt, err)
 	}
 	locked, err := guard.lockedWorktrees(dir)
