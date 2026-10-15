@@ -46,25 +46,39 @@ import (
 // clean is a TWO-state instrument (docs/three-state-instrument-rule.md), and that
 // is precisely what hid the GitLab gap.
 
-// ghPRListJSONFields is the `--json` field set the GitHub reader asks `gh pr list`
-// for. headRefName and state are what the decay keys on; isCrossRepository,
-// headRepository and headRepositoryOwner are what tell a pull request opened from
-// THIS repository from one opened from a fork — see sameRepoPR. A test pins the
-// set so it cannot be trimmed back to the bare pair that let a fork's branch name
-// decay a live claim.
-const ghPRListJSONFields = "headRefName,state,isCrossRepository,headRepository,headRepositoryOwner"
+// ghBranchPRQuery is the ONE read the GitHub reader makes: every branch of the
+// repository with its current tip and its newest pull requests, paged 100
+// branches at a time. It replaced `gh pr list --state all --limit 1000`, which
+// read every pull request the repository ever had to learn the state of the few
+// hundred branches that still exist — a cost that grew with history — and which
+// silently stopped at 1,000 pull requests, so a corpse branch whose PR was older
+// than the newest 1,000 was never decayed and held its brief off the board
+// forever. Scoped to branches, the read costs one query per 100 live branches and
+// has no cap.
+//
+// For each branch it asks for the pull requests whose head IS that branch, newest
+// first, with the fields sameRepoPR needs (isCrossRepository, headRepository,
+// headRepositoryOwner) and the PR's head commit (headRefOid), which branchIsDead
+// compares to the branch's current tip. gh fills {owner} and {repo} from the
+// repository at root, as `gh pr list` resolved it from its working directory.
+const ghBranchPRQuery = `query($owner:String!,$name:String!,$endCursor:String){
+  repository(owner:$owner,name:$name){
+    refs(refPrefix:"refs/heads/",first:100,after:$endCursor){
+      pageInfo{hasNextPage endCursor}
+      nodes{name target{oid}
+        associatedPullRequests(first:5,orderBy:{field:CREATED_AT,direction:DESC}){
+          nodes{number state headRefName headRefOid isCrossRepository
+            headRepository{name} headRepositoryOwner{login}}}}}}}`
 
-// ghPRListJSON runs `gh pr list` for the repo rooted at root and returns its raw
-// JSON. A package-level var so tests substitute recorded output and the parse is
-// exercised with no `gh` and no network — the GitHub twin of the GitLab arm's
-// gitlabHTTPDoer seam. A `gh` failure is returned as an error, never as an empty
-// list an empty list would read as "no dead pull requests".
-var ghPRListJSON = func(root string) ([]byte, error) {
-	cmd := exec.Command("gh", "pr", "list",
-		"--state", "all", "--limit", "1000",
-		"--json", ghPRListJSONFields)
-	// gh resolves the repo from its working directory; point it at the board's
-	// root (the same repo listRemoteBranches read), mirroring `git -C root`.
+// ghBranchPRJSON runs the branch read for the repo rooted at root and returns the
+// raw `--paginate --slurp` output (a JSON array of pages). A package-level var so
+// tests substitute recorded output and the parse is exercised with no `gh` and no
+// network. A `gh` failure is returned as an error, never as an empty listing an
+// empty listing would read as "no dead branches".
+var ghBranchPRJSON = func(root string) ([]byte, error) {
+	cmd := exec.Command("gh", "api", "graphql", "--paginate", "--slurp",
+		"-F", "owner={owner}", "-F", "name={repo}",
+		"-f", "query="+ghBranchPRQuery)
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
@@ -72,12 +86,37 @@ var ghPRListJSON = func(root string) ([]byte, error) {
 		if ee, ok := err.(*exec.ExitError); ok {
 			detail = strings.TrimSpace(string(ee.Stderr))
 		}
-		return nil, fmt.Errorf("gh pr list: %v %s", err, detail)
+		return nil, fmt.Errorf("gh api graphql (branch pull requests): %v %s", err, detail)
 	}
 	return out, nil
 }
 
-// ghPR is the subset of a `gh pr list` row the GitHub reader needs.
+// ghBranchPage is one page of the branch read.
+type ghBranchPage struct {
+	Data struct {
+		Repository *struct {
+			Refs struct {
+				Nodes []ghBranch `json:"nodes"`
+			} `json:"refs"`
+		} `json:"repository"`
+	} `json:"data"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
+}
+
+// ghBranch is one branch: its name, its tip, and its newest pull requests.
+type ghBranch struct {
+	Name   string `json:"name"`
+	Target *struct {
+		Oid string `json:"oid"`
+	} `json:"target"`
+	AssociatedPullRequests struct {
+		Nodes []ghPR `json:"nodes"`
+	} `json:"associatedPullRequests"`
+}
+
+// ghPR is the subset of a pull request the GitHub reader needs.
 //
 // IsCrossRepository, HeadRepository and HeadRepositoryOwner are not decoration:
 // they are what tells a pull request opened from THIS repository from one opened
@@ -87,7 +126,9 @@ var ghPRListJSON = func(root string) ([]byte, error) {
 // exists) is distinguishable from one it answered false or empty — sameRepoPR is
 // the predicate; its doc carries the reasoning and the fail direction.
 type ghPR struct {
+	Number            int    `json:"number"`
 	HeadRefName       string `json:"headRefName"`
+	HeadRefOid        string `json:"headRefOid"`
 	State             string `json:"state"`
 	IsCrossRepository *bool  `json:"isCrossRepository"`
 	HeadRepository    *struct {
@@ -170,47 +211,55 @@ func sameRepoPR(pr ghPR, tracked string) (same, attributed bool) {
 	return true, true
 }
 
-// listMergedClosedBranches returns the set of head branch names whose PR is
-// MERGED or CLOSED, for the repo rooted at `root`. It lists PRs in every state
-// and keeps only the dead ones — an OPEN PR is deliberately absent from the set,
-// because its branch is a live claim that must still be honoured. A `gh` failure
-// is returned as an error; decayDeadClaims degrades to "decay nothing" so the
-// board is never WORSE than the pre-decay superset (and never drops a live claim
-// it could not verify, which would risk two sessions converging on one brief).
+// listMergedClosedBranches returns the set of branch names that are corpses: the
+// branch's NEWEST pull request opened from this repository is MERGED or CLOSED,
+// and the branch's tip is still that pull request's head commit. Everything else
+// is a live claim and is absent from the set:
 //
-// Only a pull request opened from THIS repository may contribute a corpse (see
-// sameRepoPR): a fork's headRefName may collide with a live claim here, and a PR
-// whose head repository cannot be read at all is one this reader did not verify.
-// Rows skipped for want of attribution are counted and reported, once.
+//   - no pull request yet (a worker that pushed but has not opened one);
+//   - a newest pull request that is OPEN;
+//   - a branch pushed again after its pull request closed (its tip moved past the
+//     PR's head) — a reused branch name is new work, not the old corpse. The
+//     all-PRs reader keyed on the NAME alone and marked it dead if ANY pull
+//     request ever used it, the over-decay direction that lets two workers take
+//     one brief.
+//
+// A branch whose tip or head commit cannot be read is not concluded dead. A `gh`
+// failure, or a GraphQL error on any page, is returned as an error;
+// decayDeadClaims degrades to "decay nothing" so the board is never WORSE than
+// the pre-decay superset.
+//
+// Only a pull request opened from THIS repository may make a branch a corpse
+// (see sameRepoPR). Pull requests skipped for want of attribution are counted
+// and reported, once.
 //
 // A package-level var so tests substitute a fake lister without a network call,
 // exactly as listRemoteBranches / ghIssueMetricLister are stubbed.
 var listMergedClosedBranches = func(root string) (map[string]bool, error) {
-	out, err := ghPRListJSON(root)
+	out, err := ghBranchPRJSON(root)
 	if err != nil {
 		return nil, err
 	}
-	var raw []ghPR
-	if err := json.Unmarshal(out, &raw); err != nil {
-		return nil, fmt.Errorf("parsing gh pr list output: %w", err)
+	var pages []ghBranchPage
+	if err := json.Unmarshal(out, &pages); err != nil {
+		return nil, fmt.Errorf("parsing the branch pull-request listing: %w", err)
 	}
 	tracked := trackedGitHubRepo(root)
 	dead := map[string]bool{}
 	unattributable := 0
-	for _, pr := range raw {
-		name := strings.TrimSpace(pr.HeadRefName)
-		if name == "" {
-			continue
+	for i, pg := range pages {
+		if len(pg.Errors) > 0 {
+			return nil, fmt.Errorf("the branch pull-request listing returned an error on page %d: %s", i+1, pg.Errors[0].Message)
 		}
-		if same, attributed := sameRepoPR(pr, tracked); !same {
-			if !attributed {
-				unattributable++
+		if pg.Data.Repository == nil {
+			return nil, fmt.Errorf("the branch pull-request listing returned no repository on page %d", i+1)
+		}
+		for _, b := range pg.Data.Repository.Refs.Nodes {
+			isDead, skipped := branchIsDead(b, tracked)
+			unattributable += skipped
+			if isDead {
+				dead[b.Name] = true
 			}
-			continue
-		}
-		switch strings.ToUpper(strings.TrimSpace(pr.State)) {
-		case "MERGED", "CLOSED":
-			dead[name] = true
 		}
 	}
 	// Skipping a PR we could not attribute is the safe direction, but a floor
@@ -222,6 +271,36 @@ var listMergedClosedBranches = func(root string) (map[string]bool, error) {
 			"cannot be told from a fork's, and a fork's branch name does not name a branch of this repository\n", unattributable)
 	}
 	return dead, nil
+}
+
+// branchIsDead decides one branch. The pull requests arrive newest first; the
+// first one attributable to this repository and headed by this branch decides.
+// skipped counts the unattributable pull requests passed over on the way.
+func branchIsDead(b ghBranch, tracked string) (dead bool, skipped int) {
+	name := strings.TrimSpace(b.Name)
+	if name == "" || b.Target == nil || strings.TrimSpace(b.Target.Oid) == "" {
+		return false, 0
+	}
+	for _, pr := range b.AssociatedPullRequests.Nodes {
+		if strings.TrimSpace(pr.HeadRefName) != name {
+			continue
+		}
+		same, attributed := sameRepoPR(pr, tracked)
+		if !same {
+			if !attributed {
+				skipped++
+			}
+			continue
+		}
+		switch strings.ToUpper(strings.TrimSpace(pr.State)) {
+		case "MERGED", "CLOSED":
+			head := strings.TrimSpace(pr.HeadRefOid)
+			return head != "" && strings.EqualFold(head, strings.TrimSpace(b.Target.Oid)), skipped
+		default:
+			return false, skipped // the newest PR is open: a live claim
+		}
+	}
+	return false, skipped // no pull request of this repository: a live claim
 }
 
 // decayReader picks the change-state reader for the forge behind root's `origin`
@@ -236,7 +315,7 @@ func decayReader(root string) (read func(string) (map[string]bool, error), what 
 	if detectForge(root) == forgeGitLab {
 		return listMergedClosedBranchesGitLab, "merge-request state over the GitLab REST v4 API"
 	}
-	return listMergedClosedBranches, "PR state through `gh pr list`"
+	return listMergedClosedBranches, "branch pull-request state through `gh api graphql`"
 }
 
 // decayDeadClaims removes, from an open-branch list, the branches whose PR or
