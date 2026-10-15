@@ -104,10 +104,10 @@ only a later reconcile says the resource is gone (Recovery rule 4). So:
 - **A claim is bound to its principal across re-creation.** On a claimed resource, a
   `create` or `restore` after an absence begins a new lifetime, and so ends the claim,
   only when the claim's own principal issued it (the principal of a succeeded `claim` in
-  the current lifetime), or the control plane did. The principal that counts is the one
-  that issued the `create` or `restore`, not the `reconcile` that read it. An agent's
-  `create` or `restore`, acknowledged or reconciled, and another human's, never ends a
-  human's claim: the resource stays on its lifetime, with its claim, its release
+  the current lifetime). The principal that counts is the one that issued the `create` or
+  `restore`, not the `reconcile` that read it. An agent's, another human's, the control
+  plane's, or an unnamed principal's `create` or `restore`, acknowledged or reconciled,
+  never ends a human's claim: the resource stays on its lifetime, with its claim, its release
   protection and its TTL anchor. The rule is the claim's own, so it changes nothing for a
   resource nobody has claimed, whose lifetime restarts on any re-creation as above. A
   reconciled release still ends the lifetime whoever issued it.
@@ -235,11 +235,12 @@ fails validation. The protection is per lifetime: a resource that a reconciled r
 a `create` or `restore` by the claim's own principal after an absence, has put on a new
 lifetime is an unclaimed resource until someone claims it, and an agent may release it.
 A claim is bound to its principal across re-creation: a `create` or `restore` ends a
-claim only when the claim's own principal, or the control plane, issued it, and whether
-its acknowledgment arrived or was reconciled makes no difference. An agent's, or another
-principal's, `create` or `restore` never ends someone else's claim, so an agent whose
-acknowledgment was lost cannot make a human's resource releasable by re-creating it
-(ruled at https://github.com/medici-finance/assay/issues/3059#issuecomment-6197991580).
+claim only when the claim's own principal issued it, and whether its acknowledgment
+arrived or was reconciled makes no difference. No other principal's `create` or `restore`
+ends someone else's claim (an agent's, another human's, or one the control plane recorded
+or issued), so an agent whose acknowledgment was lost cannot make a human's resource
+releasable by re-creating it. The ruling names the claim's own principal and no other
+(https://github.com/medici-finance/assay/issues/3059#issuecomment-6197991580).
 An `inspect` that found the resource absent and a later one that found it present do not
 end the protection, and neither does a `reconcile` that re-reads an effect whose
 acknowledgment arrived.

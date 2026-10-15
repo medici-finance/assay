@@ -273,7 +273,17 @@ func TestRuntimeResourceContractRules(t *testing.T) {
 		{"claimant lost-ack create ends the claim", claimedLive + rrReborn("create", "human:reviewer-a", false), "state: claimed", "state: claimed", ruleRRClaimWithoutPrincipal, unbacked},
 		{"claimant lost-ack restore ends the claim", claimedLive + rrReborn("restore", "human:reviewer-a", false), "state: claimed", "state: claimed", ruleRRClaimWithoutPrincipal, unbacked},
 		{"claimant acked create ends the claim", claimedLive + rrReborn("create", "human:reviewer-a", true), "state: claimed", "state: claimed", ruleRRClaimWithoutPrincipal, unbacked},
-		{"control-plane lost-ack create ends the claim", claimedLive + rrReborn("create", "control-plane", false), "state: claimed", "state: claimed", ruleRRClaimWithoutPrincipal, unbacked},
+		// regression: C-2459-10 — the control plane's re-creation ended a claim
+		// although the ruling names only the claim's own principal; a
+		// control-plane create recorded after a lost ack let an agent release a
+		// human's claimed resource.
+		{"control-plane lost-ack create keeps the claim", rrBeforeRelease(claimed, rrReborn("create", "control-plane", false)), releaseByOwner, byAgent, ruleRRClaimWithoutPrincipal, notEnds},
+		{"control-plane acked restore keeps the claim", rrBeforeRelease(claimed, rrReborn("restore", "control-plane", true)), releaseByOwner, byAgent, ruleRRClaimWithoutPrincipal, notEnds},
+		// regression: SEC-2459-14 — a re-creation that names no principal is no
+		// claimant's; matching the empty principal against the claimants, or
+		// treating it as the control plane's, ended the claim.
+		{"no-principal lost-ack create keeps the claim", rrBeforeRelease(claimed, rrNoPrincipal(rrReborn("create", "human:nobody", false))), releaseByOwner, byAgent, ruleRRClaimWithoutPrincipal, notEnds},
+		{"no-principal acked create keeps the claim", rrBeforeRelease(claimed, rrNoPrincipal(rrReborn("create", "human:nobody", true))), releaseByOwner, byAgent, ruleRRClaimWithoutPrincipal, notEnds},
 		// regression: only the FIRST reconcile that resolves a lost create counts;
 		// marking the effect resolved only when that reconcile read present let
 		// a reconcile that read absent be followed by a second one that
@@ -355,6 +365,16 @@ func rrReborn(verb, by string, acked bool) string {
 	}
 	return s + rrEffect("eff-0010", verb, by, "01:05", "unknown", "", "", "") +
 		rrEffect("eff-0011", "reconcile", "control-plane", "01:06", "succeeded", "eff-0010", ref, "present")
+}
+
+// rrNoPrincipal drops the principal line of the effect rrReborn issued as
+// human:nobody, so that effect names no principal at all.
+func rrNoPrincipal(effects string) string {
+	const line = "    principal: human:nobody\n"
+	if !strings.Contains(effects, line) {
+		panic("rrNoPrincipal: anchor not found")
+	}
+	return strings.Replace(effects, line, "", 1)
 }
 
 // rrBeforeRelease inserts effects ahead of the claimed fixture's release.
@@ -461,7 +481,8 @@ func TestRuntimeResourceContractOrd(t *testing.T) {
 		{"claimant lost-ack restore ends the claim", endedBy("restore", "human:reviewer-a", false), "state: released", "state: released"},
 		{"claimant acked create ends the claim", endedBy("create", "human:reviewer-a", true), "state: released", "state: released"},
 		{"claimant acked restore ends the claim", endedBy("restore", "human:reviewer-a", true), "state: released", "state: released"},
-		{"control-plane lost-ack create ends the claim", endedBy("create", "control-plane", false), "state: released", "state: released"},
+		{"control-plane lost-ack create keeps the claim, owner releases", rrBeforeRelease(claimed, rrReborn("create", "control-plane", false)), "state: released", "state: released"},
+		{"no-principal lost-ack create keeps the claim, owner releases", rrBeforeRelease(claimed, rrNoPrincipal(rrReborn("create", "human:nobody", false))), "state: released", "state: released"},
 		{"re-created after release", unclaimed, "state: released", "state: provisioned"},
 		{"owner releases across an inspect gap", claimedGap, "state: released", "state: released"},
 		{"owner releases across a re-read of the create", claimedReread, "state: released", "state: released"},

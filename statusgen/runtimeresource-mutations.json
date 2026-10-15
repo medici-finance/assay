@@ -448,14 +448,20 @@
     {
       "name": "a re-creation ends a claim whoever issued it",
       "file": "runtimeresource.go",
-      "old": "endsClaim := !dv.claimed || dv.claimants[by] || by == \"control-plane\"",
+      "old": "endsClaim := !dv.claimed || dv.claimants[by]",
       "new": "endsClaim := true"
     },
     {
-      "name": "the control plane's re-creation does not end a claim",
+      "name": "the control plane's re-creation ends a claim it does not own",
       "file": "runtimeresource.go",
-      "old": " || by == \"control-plane\"",
-      "new": ""
+      "old": "endsClaim := !dv.claimed || dv.claimants[by]",
+      "new": "endsClaim := !dv.claimed || dv.claimants[by] || by == \"control-plane\""
+    },
+    {
+      "name": "a re-creation naming no principal ends a claim",
+      "file": "runtimeresource.go",
+      "old": "endsClaim := !dv.claimed || dv.claimants[by]",
+      "new": "endsClaim := !dv.claimed || dv.claimants[by] || by == \"\""
     },
     {
       "name": "any human or organization principal ends a claim, not only its claimant",

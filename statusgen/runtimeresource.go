@@ -563,9 +563,10 @@ type runtimeDerived struct {
 	// restore whose acknowledgment was lost. An inspect that finds nothing, and a
 	// reconcile of an effect that was acknowledged, are not that evidence, so an
 	// absent/present pair of inspects keeps the lifetime. A re-creation on a
-	// claimed resource is that evidence only when the claim's own principal (or
-	// the control plane) issued it: a claim is principal-bound, so an agent's
-	// create or restore, acknowledged or reconciled, never ends a human's claim
+	// claimed resource is that evidence only when the claim's own principal
+	// issued it: a claim is principal-bound, so no other principal's create or
+	// restore (an agent's, another human's, the control plane's), acknowledged
+	// or reconciled, ever ends it
 	// (https://github.com/medici-finance/assay/issues/3059#issuecomment-6197991580).
 	// Rule 6 scopes ownership to the lifetime, so a claim and its release
 	// protection end with the lifetime they were made in.
@@ -597,9 +598,12 @@ func deriveRuntimeState(d runtimeResourceDoc, pos map[string]int) runtimeDerived
 			// TTL anchor continue.
 			// regression: a re-creation ended a claim whoever issued it, so an
 			// agent's lost-ack create dropped a human's claim. A claim is
-			// principal-bound: only its own principal (or the control plane)
-			// ends it by re-creating the resource.
-			endsClaim := !dv.claimed || dv.claimants[by] || by == "control-plane"
+			// principal-bound: only its own principal ends it by re-creating
+			// the resource. The ruling names no other principal, so the
+			// control plane's re-creation (a lost-ack create it recorded for
+			// an agent) does not end a human's claim either; an unnamed
+			// principal (by == "") never matches a claimant.
+			endsClaim := !dv.claimed || dv.claimants[by]
 			if !dv.present && (!dv.everPresent || (recreates && endsClaim) || dv.released) {
 				// A new lifetime: its TTL counts from here, and a claim from an
 				// earlier lifetime does not carry over.
