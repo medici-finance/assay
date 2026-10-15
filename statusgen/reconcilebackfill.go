@@ -203,8 +203,9 @@ func applyReconcileBackfill(cells []BriefCell, in LifecycleInput, pulls []ghPull
 
 // applyReconcileBackfillWith is applyReconcileBackfill with the authoring exemption
 // (briefauthoring.go): a merged pull that only AUTHORED the brief is not a match, so a
-// docs-only briefs-authoring PR can no longer be the witness that flips a row. authoring nil
-// classifies nothing. The second result lists every match left unresolved because a candidate's
+// docs-only briefs-authoring PR can no longer be the witness that flips a row. The reconcile
+// verb passes the classifier's nonDelivery, which also exempts a merge the brief's delivery:
+// list declares partial (briefdelivery.go, #2703). authoring nil classifies nothing. The second result lists every match left unresolved because a candidate's
 // file list could not be read (the brief stays as the fold left it; --apply refuses on it).
 func applyReconcileBackfillWith(cells []BriefCell, in LifecycleInput, pulls []ghPull, pullsLookedAt bool, lookup handSaidLookup, authoring backfillAuthoring) ([]BriefCell, []string) {
 	var unread []string

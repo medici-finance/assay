@@ -183,7 +183,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		}
 		var authoring backfillAuthoring
 		if classifier != nil {
-			authoring = classifier.authoringOnly
+			authoring = classifier.nonDelivery
 		}
 		var bfUnread []string
 		cells, bfUnread = applyReconcileBackfillWith(cells, in, pulls, pullsLookedAt, lookup, authoring)

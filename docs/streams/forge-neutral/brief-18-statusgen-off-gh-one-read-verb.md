@@ -19,6 +19,11 @@ effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
+delivery:
+  - {in: "assay#1049", covers: partial, note: "authoring only: the board row and a changelog fragment, none of the deliverable"}
+  - {in: "assay#1053", covers: partial, note: "slice 1: the deskread issues read, offline lint by default, one git walk for attribution, the memoised brief parse"}
+  - {in: "assay#1262", covers: partial, note: "the --changed-only CI gate, the offline-safety proof, the history memo and the identity/surface regressions"}
+  - {in: "assay#2312", covers: partial, note: "the stamp-validated read memo for --lint; the remaining gh sites need Forge reads that forge-neutral/33 authors"}
 schema: brief-v2
 authored: 2026-09-14 by forge-neutral authoring session
 sources:

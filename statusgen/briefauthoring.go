@@ -175,6 +175,9 @@ type authoringClassifier struct {
 	repo   string
 	stderr io.Writer
 	cache  map[int]filesResult
+	// partials is the run's declared-partial deliveries (briefdelivery.go), set by
+	// admitPRWitnesses so the --backfill match skips them too.
+	partials declaredPartials
 }
 
 type filesResult struct {
@@ -205,6 +208,20 @@ func (a *authoringClassifier) authoringOnly(number int, briefID string) (bool, e
 		return true, nil
 	}
 	return false, nil
+}
+
+// nonDelivery reports whether PR number is NOT a delivery of briefID: the brief declares it a
+// partial delivery (briefdelivery.go, #2703), or it only authored the brief. It is the seam the
+// --backfill match takes, so the two readers that turn a PR into a witness exempt the same PRs.
+func (a *authoringClassifier) nonDelivery(number int, briefID string) (bool, error) {
+	if a.partials.partial(number, briefID) {
+		if a.stderr != nil {
+			fmt.Fprintf(a.stderr, "reconcile: NOTICE — PR #%d matches %s, but the brief's delivery: list declares it a partial delivery, "+
+				"so it is not a witness that the brief is implemented\n", number, canonicalBriefKey(briefID))
+		}
+		return true, nil
+	}
+	return a.authoringOnly(number, briefID)
 }
 
 // unreadAuthoring is the disclosure for a PR whose authored-or-delivered question could not be
@@ -311,10 +328,11 @@ func movableBriefKeys(boardRoot string) (keys map[string]bool, ok bool) {
 
 // admitPRWitnesses is the one place the `Brief:`-trailer PR set is narrowed to genuine
 // witnesses. It builds the run's classifier, drops the authoring-only PRs from in.PRs (in
-// place), and returns the classifier (shared with the --backfill match so a PR's files are read
-// once), the briefs whose question could not be answered (to be merged into in.Undecided AFTER
-// wireFoldInputs resets that map), and the disclosures. reconcile and regen's drift comparator
-// both call it, so the two agree by construction. A run that could not look (in.LookedAt
+// place), marks the declared-partial merges (briefdelivery.go), and returns the classifier
+// (shared with the --backfill match so a PR's files are read once), the briefs whose question
+// could not be answered (to be merged into in.Undecided AFTER wireFoldInputs resets that map),
+// and the disclosures. reconcile and regen's drift comparator both call it, so the two agree by
+// construction. A run that could not look (in.LookedAt
 // false) has no PRs to narrow.
 func admitPRWitnesses(in *LifecycleInput, client *ghClient, repo, root string, stderr io.Writer) (*authoringClassifier, map[string]string, []string) {
 	cl := newAuthoringClassifier(client, repo, stderr)
@@ -322,12 +340,26 @@ func admitPRWitnesses(in *LifecycleInput, client *ghClient, repo, root string, s
 		return cl, nil, nil
 	}
 	var inScope func(string) bool
-	if boardRoot, found := findBoardRoot(root); found {
+	boardRoot, found := findBoardRoot(root)
+	if found {
 		if keys, ok := movableBriefKeys(boardRoot); ok {
 			inScope = func(key string) bool { return keys[key] }
 		}
 	}
 	kept, undecided, unread := dropAuthoringPRs(cl, in.PRs, in.Briefs, inScope)
+	// A merge the brief declares a partial delivery is work in progress, not the
+	// implementation (briefdelivery.go, #2703). Every brief is read: the claims are
+	// in the tree, so they cost no forge read.
+	if found {
+		cl.partials = readDeclaredPartials(boardRoot, repo)
+		markDeclaredPartials(kept, cl.partials, stderr)
+		for id, why := range cl.partials.undecided {
+			if _, taken := undecided[id]; !taken {
+				undecided[id] = why
+			}
+		}
+		unread = append(unread, cl.partials.unread...)
+	}
 	in.PRs = kept
 	for _, m := range unread {
 		fmt.Fprintf(stderr, "reconcile: %s\n", m)
