@@ -182,7 +182,7 @@ case_dir() { local d="$TMP/case-$1"; mkdir -p "$d"; printf '%s' "$d"; }
 
 d=$(case_dir A1)
 pins "$SG_ASSET $TAG $GOOD" "$d/pins"
-if env -i PATH="$NOCLI" bash -c 'command -v gh; command -v glab' | grep -q .; then
+if [ -n "$(env -i PATH="$NOCLI" bash -c 'command -v gh; command -v glab')" ]; then
   no "A0 the no-CLI PATH really has no gh/glab" "command -v found one"
 else
   ok "A0 the no-CLI PATH really has no gh/glab"
@@ -381,7 +381,7 @@ if ! grep -q '^statusgen  *REPLACE_WITH_TAG' "$d/pins"; then
 else
   runp "$NOCLI" "$d/r" pin --manifest "$MAN3" --pins "$d/pins"; rc=$?
   ntags=$(awk '$0 !~ /^[[:space:]]*#/ && NF {print $2}' "$d/pins" | sort -u | wc -l | tr -d ' ')
-  if [ "$rc" -eq 0 ] && ! grep -v '^[[:space:]]*#' "$d/pins" | grep -q REPLACE_WITH \
+  if [ "$rc" -eq 0 ] && [ "$(grep -v '^[[:space:]]*#' "$d/pins" | grep -c REPLACE_WITH)" = 0 ] \
      && grep -qx "statusgen $TAG $LSHA" "$d/pins" && grep -qx "$SG_ASSET $TAG $GOOD" "$d/pins" && [ "$ntags" = 1 ]; then
     ok "P5 init's four-line placeholder is filled whole (every platform line + the bare line from linux-amd64, one tag)"
   else

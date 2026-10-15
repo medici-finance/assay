@@ -1391,7 +1391,7 @@ read_json() {
   local rc detail
   if ASSAY_CONFIG_ECHO=full "$@" > "$out" 2>"$TMP_ERR"; then rc=0; else rc=$?; fi
   if [[ "$rc" -ne 0 ]]; then
-    detail=$(grep -v '^assay-config' "$TMP_ERR" 2>/dev/null | head -1 | LC_ALL=C tr -d '\000-\037')
+    detail=$(grep -v '^assay-config' "$TMP_ERR" 2>/dev/null | sed -n 1p | LC_ALL=C tr -d '\000-\037')
     [[ -z "$detail" ]] && detail="exit ${rc}, no diagnostic"
     flow_failures=$((flow_failures + 1))
     printf 'assay-inbox: FLOW READER FAILED %s (exit %s): %s\n' "$label" "$rc" "$detail" >&2
