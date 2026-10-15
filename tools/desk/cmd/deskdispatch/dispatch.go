@@ -604,11 +604,8 @@ func dispatch(o dispatchOpts) error {
 		}
 		plan.workerAttestation = &receipt
 		stamp = workerStampLine(o, repo, receipt)
-		// The prompt was assembled before the record existed; re-assemble it so the worker is
-		// handed this run's exact binding line.
-		if prompt, perr = assemblePrompt(o, plan, home); perr != nil {
-			return held.settle(perr)
-		}
+		// The prompt is assembled after this step (below, once provenance is established), so
+		// it already hands the worker this run's exact binding line.
 	default:
 		stamp, serr = stepStamp(o, repo)
 	}
