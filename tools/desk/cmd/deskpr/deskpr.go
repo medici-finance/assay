@@ -321,21 +321,9 @@ func cmdCreate(args []string) (err error) {
 		return nil
 	}
 
-	// Outward-write rate limit — checked immediately before the push.
-	//
-	// REPO-WIDE, at the per-PR cap, because a create's own audit line records the number of
-	// the PR it is about to make (`ac.pr = &n`, below) — a new number every time. Scoping
-	// the gate on a PR number therefore reads a bucket this call site can never fill: an
-	// earlier fix aimed it at the repo's UNNUMBERED bucket, which left creates on the
-	// 100/hr per-repo tier while looking like a 10/hr cap, and inverted the meter so that
-	// only FAILED creates (which record no number) accumulated (#439, third
-	// review). The repo-wide scope counts every line this tool writes on this repo, so the
-	// bucket the gate reads is a superset of wherever the write lands — see
-	// deskkit.AllowWriteRepoWide.
-	//
-	// Held at the per-PR cap, not the per-repo one: this is the verb behind the
-	// PR-flood risk and it was hard-capped at 10/hr before the tiers existed.
-	if werr := deskkit.AllowWriteRepoWide("deskpr", facts.repo); werr != nil {
+	// New PRs have a repository-wide creation counter independent of updates and
+	// body edits. The aggregate write budget and failure breakers still apply.
+	if werr := deskkit.AllowPRCreate(facts.repo); werr != nil {
 		return werr
 	}
 

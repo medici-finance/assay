@@ -1358,11 +1358,13 @@ DESKBOARD_BIN="${ASSAY_DESKBOARD:-deskboard}"
 # the flag exits non-zero with a usage dump, and one that half-wrote its output leaves
 # unparseable bytes. Both are could-not-check, and both carry the reader's own first stderr
 # line so the operator can see WHY. `assay-config:` provenance lines are the desk tools'
-# routine banner, not a diagnostic, so the first line past them is the one quoted.
+# routine banner, not a diagnostic, so the first line past them is the one quoted. Because that
+# stderr is captured, the reader runs with ASSAY_CONFIG_ECHO=full: it prints the full banner and
+# records no config digest as seen, since nobody sees it here.
 read_json() {
   local label="$1" out="$2" verdict="$3"; shift 3
   local rc detail
-  if "$@" > "$out" 2>"$TMP_ERR"; then rc=0; else rc=$?; fi
+  if ASSAY_CONFIG_ECHO=full "$@" > "$out" 2>"$TMP_ERR"; then rc=0; else rc=$?; fi
   if [[ "$rc" -ne 0 ]]; then
     detail=$(grep -v '^assay-config' "$TMP_ERR" 2>/dev/null | head -1 | LC_ALL=C tr -d '\000-\037')
     [[ -z "$detail" ]] && detail="exit ${rc}, no diagnostic"

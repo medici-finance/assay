@@ -132,6 +132,11 @@ there is no poll at all, so there is nothing to copy.
   the coalesce window      An open scan PR younger than the window absorbs the batch; at or past it
                            the PR stays sealed at a stable head and a fresh one is cut. An age that
                            cannot be read never coalesces.
+  the open scan PR         'run' READS it from the scan target: the youngest open draft scan PR by
+                           this App, whichever session opened it. --scan-pr names it instead and
+                           skips the read; --offline reads nothing, so only --scan-pr coalesces. An
+                           open-PR list that cannot be read refuses the scan dispatch (exit 6) rather
+                           than cutting a possible duplicate. 'plan' does not read the forge.
   the flip boundary        A scan PR that has been flipped ready-for-human (--scan-pr-state ready) is
                            push-quiet: a post-flip push re-signals the review loop, so a new batch
                            opens the NEXT scan PR regardless of the window. A draft/ready state that

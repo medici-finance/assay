@@ -18,8 +18,8 @@ package desk_test
 // the source level is the one thing that can fail on the substitution: it reads each known
 // call site's own call expression and asserts the predicate argument is the wide one.
 //
-// This is a MODULE-ROOT test (like TestLayout in layout_test.go) so it runs whichever
-// package's suite is invoked and is not itself scoped to any one command package.
+// This is a MODULE-ROOT test (like TestLayout in layout_test.go). It runs with the
+// module-root suite; command-package-only runs do not exercise it.
 
 import (
 	"os"
@@ -49,8 +49,9 @@ var floorCallSites = []floorCallSite{
 // particular, if it has been reverted (by hand, or by a future edit) to the narrower
 // deskkit.IsDispatcherLogin, which silently drops the #336 roster-configured allowance for
 // that one caller.
+// regression: #2760
 func TestFloorConsumersInjectStampAuthorityLogin(t *testing.T) {
-	callRe := regexp.MustCompile(`deskkit\.(ModelCapabilityFloorRiskAware|ModelCapabilityFloor|AttestedModelStampOf|ReStampRemovals)\(`)
+	callRe := regexp.MustCompile(`(?:deskkit|stampKind)\.(ModelCapabilityFloorRiskAware|ModelCapabilityFloor|AttestedModelStampOf|ReStampRemovals)\(`)
 
 	// perFile caches file contents and, per callee, how many call expressions of that exact
 	// callee this file's positive assertion expects — a file with fewer occurrences than

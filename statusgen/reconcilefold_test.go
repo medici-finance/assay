@@ -1131,6 +1131,8 @@ func TestFoldPreviewPullsRefusal(t *testing.T) {
 		switch {
 		case strings.Contains(r.URL.Path, "/issues"):
 			_, _ = w.Write([]byte(`[]`))
+		case strings.HasSuffix(r.URL.Path, "/files"):
+			_, _ = w.Write([]byte(`[{"filename":"internal/fx/fx.go","status":"modified"}]`))
 		case strings.Contains(r.URL.Path, "/pulls"):
 			if r.URL.Query().Get("page") != "" && r.URL.Query().Get("page") != "1" {
 				_, _ = w.Write([]byte(`[]`))

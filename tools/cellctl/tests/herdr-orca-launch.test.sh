@@ -239,22 +239,23 @@ chmod +x "$T/bin/orca"; }
 # ---------------------------------------------------------------- herdr
 echo "[herdr up: no window open (#985)]"
 herdr_stub
-# --no-the-desk keeps this to exactly two windows (the FIRST/"cell" window plus one role), so the
-# call counts and pane-id sequence below are unambiguous. No workspace is seeded, so
+# --no-the-desk keeps this to exactly one window (worker-desk alone: a house cell with no deskd opens
+# no first/"cell" window, #2881), so the call counts and pane-id sequence below are unambiguous. No workspace is seeded, so
 # `herdr workspace list` reports none open — up_herdr must bring one up before any tab lands.
 out="$(DRY_RUN=0 "$CELLCTL" up example-cell --cockpit herdr --no-the-desk 2>&1)" && rc=0 || rc=$?
 assert "up --cockpit herdr exits 0" '[[ $rc -eq 0 ]]'
 assert "'workspace list' is checked before anything else (has-window probe)" 'grep -q "^workspace list" "$HERDR_CALLS"'
-assert "'workspace create --label' brings up the window, labelled <cell>-cell" 'grep -q "^workspace create --label example-cell-cell" "$HERDR_CALLS"'
+assert "'workspace create --label' brings up the window, labelled after its first (role) window" 'grep -q "^workspace create --label example-cell-worker-desk" "$HERDR_CALLS"'
 assert "workspace create runs BEFORE any tab create" '[[ "$(grep -nE "^workspace create|^tab create" "$HERDR_CALLS" | head -1)" == *"workspace create"* ]]'
-assert "one 'tab create ... --label' per window (cell + worker-desk), targeting the new workspace" '[[ "$(grep -cE "^tab create --workspace w1 --label" "$HERDR_CALLS")" -eq 2 ]]'
-assert "the FIRST window is labelled <cell>-cell, in the new workspace" 'grep -q "tab create --workspace w1 --label example-cell-cell" "$HERDR_CALLS"'
+assert "one 'tab create ... --label' per window (worker-desk only), targeting the new workspace" '[[ "$(grep -cE "^tab create --workspace w1 --label" "$HERDR_CALLS")" -eq 1 ]]'
+assert "no placeholder <cell>-cell window on a house cell with no deskd (#2881)" '! grep -q "example-cell-cell" "$HERDR_CALLS"'
+assert "the no-deskd note is printed exactly once (#2881)" '[[ "$(grep -c "with no deskd" <<<"$out")" -eq 1 ]]'
 assert "the role window is labelled <cell>-worker-desk, in the new workspace" 'grep -q "tab create --workspace w1 --label example-cell-worker-desk" "$HERDR_CALLS"'
 assert "the new workspace's own default tab is closed once the real tabs exist" 'grep -q "^tab close w1:t1" "$HERDR_CALLS"'
 assert "the default tab is closed AFTER both role tabs are created, never before" '[[ "$(grep -nE "^tab create|^tab close" "$HERDR_CALLS" | tail -1)" == *"tab close"* ]]'
 assert "'pane run' is called (not 'agent start')" 'grep -q "^pane run" "$HERDR_CALLS"'
 assert "'agent start' is NEVER called (it cannot host this composite command)" '! grep -q "agent start" "$HERDR_CALLS"'
-assert "pane run's command is the exact role_cmd every cockpit runs" "grep -q \"pane run w1:p3 .*desk 'example-cell' 'worker-desk'\" \"\$HERDR_CALLS\""
+assert "pane run's command is the exact role_cmd every cockpit runs" "grep -q \"pane run w1:p2 .*desk 'example-cell' 'worker-desk'\" \"\$HERDR_CALLS\""
 
 echo "[herdr up: window already open — unchanged (#985 regression check)]"
 herdr_stub seeded
@@ -262,13 +263,13 @@ herdr_stub seeded
 out="$(DRY_RUN=0 "$CELLCTL" up example-cell --cockpit herdr --no-the-desk 2>&1)" && rc=0 || rc=$?
 assert "up --cockpit herdr exits 0" '[[ $rc -eq 0 ]]'
 assert "'workspace create' is NEVER called — a window is already open" '! grep -q "^workspace create" "$HERDR_CALLS"'
-assert "one 'tab create --label' per window (cell + worker-desk)" '[[ "$(grep -c "^tab create" "$HERDR_CALLS")" -eq 2 ]]'
-assert "the FIRST window is labelled <cell>-cell" 'grep -q "^tab create --label example-cell-cell" "$HERDR_CALLS"'
+assert "one 'tab create --label' per window (worker-desk only)" '[[ "$(grep -c "^tab create" "$HERDR_CALLS")" -eq 1 ]]'
+assert "no placeholder <cell>-cell window (#2881)" '! grep -q "example-cell-cell" "$HERDR_CALLS"'
 assert "the role window is labelled <cell>-worker-desk" 'grep -q "^tab create --label example-cell-worker-desk" "$HERDR_CALLS"'
 assert "no tab create carries --workspace — identical invocation to before #985" '! grep -q -- "--workspace" "$HERDR_CALLS"'
 assert "'pane run' is called (not 'agent start')" 'grep -q "^pane run" "$HERDR_CALLS"'
 assert "'agent start' is NEVER called (it cannot host this composite command)" '! grep -q "agent start" "$HERDR_CALLS"'
-assert "pane run's command is the exact role_cmd every cockpit runs" "grep -q \"pane run w1:p2 .*desk 'example-cell' 'worker-desk'\" \"\$HERDR_CALLS\""
+assert "pane run's command is the exact role_cmd every cockpit runs" "grep -q \"pane run w1:p1 .*desk 'example-cell' 'worker-desk'\" \"\$HERDR_CALLS\""
 
 echo "[herdr down]"
 : > "$HERDR_CALLS"

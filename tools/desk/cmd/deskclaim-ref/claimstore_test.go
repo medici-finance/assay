@@ -2,8 +2,9 @@ package main
 
 // claimstore_test.go — the claim-store seam: the claim tool obtains its store from
 // deskkit.ResolveClaimStore. Unset key → the forge-ref store exactly as before, plus the removal
-// NOTICE printed AFTER the verb's own output; a configured store that does not resolve → exit 6
-// with the forge store never built.
+// NOTICE printed AFTER the verb's own output; a valid store this build does not ship → the same
+// forge-ref store under a NOTICE naming the configured store (medici-finance/assay#2753); a
+// configured value that does not resolve → exit 6 with the forge store never built.
 
 import (
 	"strings"
@@ -34,8 +35,6 @@ func TestClaimToolUnsetKeyUsesTheForgeStoreAndPrintsTheNoticeLast(t *testing.T) 
 
 func TestClaimToolConfiguredStoreThatDoesNotResolveNeverBuildsTheForgeStore(t *testing.T) {
 	for v, wants := range map[string][]string{
-		deskkit.ClaimStoreFile:     {deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreFile, "ships the file store"},
-		deskkit.ClaimStoreService:  {deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreService, "ships the served store"},
 		deskkit.ClaimStoreForgeRef: {deskkit.EnvClaimStore, deskkit.ClaimStoreFile, deskkit.ClaimStoreService},
 		"nfs":                      {deskkit.EnvClaimStore, deskkit.ClaimStoreFile, deskkit.ClaimStoreService},
 	} {
@@ -56,6 +55,42 @@ func TestClaimToolConfiguredStoreThatDoesNotResolveNeverBuildsTheForgeStore(t *t
 			for _, want := range wants {
 				if !strings.Contains(se.String(), want) {
 					t.Errorf("the refusal does not name %q:\n%s", want, se.String())
+				}
+			}
+		})
+	}
+}
+
+// TestClaimToolUnshippedFallback — ASSAY_CLAIM_STORE=file (or service) is valid but not
+// shipped in this build: the verb runs against the forge store exactly as an unset key's would,
+// and the last stderr line is the NOTICE naming the configured store.
+// regression: #2753
+func TestClaimToolUnshippedFallback(t *testing.T) {
+	for v, ships := range map[string]string{
+		deskkit.ClaimStoreFile:    "ships the file store",
+		deskkit.ClaimStoreService: "ships the served store",
+	} {
+		t.Run(v, func(t *testing.T) {
+			withClaimRoster(t, map[string]string{deskkit.EnvClaimStore: v, deskkit.EnvClaimSingleHost: "yes"})
+			f := newStore()
+			run, so, se := harness(t, f)
+			built := 0
+			buildStore = func(_, _ string) (deskkit.ClaimStore, error) { built++; return f, nil }
+
+			if rc := run("acquire", "at--stream--07", "--repo", "medici-finance/assay"); rc != exitOK {
+				t.Fatalf("rc = %d, want 0 (an unshipped store is ignored); out=%s err=%s", rc, so.String(), se.String())
+			}
+			if built != 1 || len(f.claims) != 1 {
+				t.Fatalf("the forge store was built %d time(s) / holds %d claim(s), want 1 / 1", built, len(f.claims))
+			}
+			lines := strings.Split(strings.TrimRight(se.String(), "\n"), "\n")
+			last := lines[len(lines)-1]
+			if last == "dispatch-claim: "+deskkit.ClaimStoreLegacyNotice {
+				t.Fatalf("the UNSET notice was printed for a key the operator did set:\n%s", se.String())
+			}
+			for _, want := range []string{"dispatch-claim: NOTICE: " + deskkit.EnvClaimStore + "=" + v, "does not ship", ships} {
+				if !strings.Contains(last, want) {
+					t.Errorf("last stderr line does not carry %q: %q", want, last)
 				}
 			}
 		})

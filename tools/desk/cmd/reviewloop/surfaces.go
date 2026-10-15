@@ -53,9 +53,9 @@ var unreadSurfaces = []UnreadSurface{
 	},
 	{
 		Name: "the loopengine claims dir and its WorkEvidence probe",
-		Consequence: "deliberately NOT a consumer: Claim() dedupes brief-shaped drain items, and this reactor's items " +
-			"are long-lived PRs whose idempotency is the audit-ledger (repo,pr,head,verb) key. The claims mechanism names its consumers " +
-			"as two other loops; this driver is not a fourth one, and says so rather than leaving the omission to be read as an oversight",
+		Consequence: "deliberately NOT a consumer: Claim() dedupes brief-shaped drain items; " +
+			"this planner only coalesces board observations. Live reviewer claims are checked by deskdispatch before launch; " +
+			"deskpost checks current forge state and exact write identity before posting. A proposed verb is not permission to act",
 	},
 }
 
