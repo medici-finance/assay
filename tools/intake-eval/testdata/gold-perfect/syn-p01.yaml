@@ -1,0 +1,15 @@
+# SYNTHETIC test fixture: invented inbound, never a real disposition.
+id: syn-p01
+inbound: "Synthetic inbound syn-p01: a reader asks for a new capability in the widget catalogue."
+expected_exit: spec/brief
+methodology_version: "2026-01-01"
+scoring: scored
+provenance:
+  type: synthetic-ruling
+  tier: synthetic-tier
+  ratification: confirmed
+  ref: synthetic/register#syn-p01
+  confirmed_by: synthetic-reviewer
+  date: "2026-01-01"
+  quote: "Synthetic: routed syn-p01 to spec/brief."
+notes: "Synthetic fixture for the scorer's own tests."
