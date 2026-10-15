@@ -378,6 +378,24 @@
       "file": "cmd/deskevidence/decisiongate.go",
       "old": "\t\t\tremoveCreatedDirs(dirs[i])",
       "new": "\t\t\tremoveCreatedDirs(nil)"
+    },
+    {
+      "name": "disarm the on-behalf-of stamp (an App-run Evidence row with no principal lands unstamped)",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\treturn strings.HasSuffix(id, \"[bot]\")",
+      "new": "\treturn false && strings.HasSuffix(id, \"[bot]\")"
+    },
+    {
+      "name": "stamp rows already on the branch (a standing row is rewritten instead of left byte-identical)",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tif onBranch[orig] {",
+      "new": "\t\tif false && onBranch[orig] {"
+    },
+    {
+      "name": "stamp after the trailing runner-source tag (the source tag is no longer the cell's last parenthetical)",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tpos -= len(tag)",
+      "new": "\t\t\tpos -= 0 * len(tag)"
     }
   ]
 }
