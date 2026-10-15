@@ -320,27 +320,9 @@ func verifierBody(b VerifierBinding) string {
 	data, _ := json.MarshalIndent(b, "", "  ")
 	return "Dispatcher-owned pre-work attestation. This record contains NO verification result.\n\n" + string(data) + "\n"
 }
-func verifierAuthority(login string) bool {
-	desk, ok := RoleAppLogin(DispatcherRole)
-	verifier, bound := RoleAppLogin("verifier")
-	return ok && bound && !SameActor(desk, verifier) && SameActor(login, desk)
-}
+func verifierAuthority(login string) bool { return attestationAuthority("verifier")(login) }
 func verifierIssue(f Forge, repo ForgeRepo, r verifierLocal) (*Issue, error) {
-	issue, err := f.GetIssueTyped(repo, r.Issue, TargetIssue)
-	if err != nil {
-		return nil, Unverifiable("cannot read verifier attestation target", err)
-	}
-	if issue == nil || issue.IsPullRequest || !verifierAuthority(issue.Author.Login) || issue.Title != VerifierAttestationTitle+r.Binding.Run || issue.Body != verifierBody(r.Binding) {
-		return nil, Refused("verifier target is not the exact dispatcher-authored run record")
-	}
-	trust, err := f.IssueTrustEvents(repo, r.Issue)
-	if err != nil {
-		return nil, Unverifiable("cannot establish immutable verifier record", err)
-	}
-	if trust == nil || !trust.BodyHistoryKnown || !trust.Complete || !trust.BodyEdited.IsZero() {
-		return nil, Refused("verifier record edited or its history is incomplete")
-	}
-	return issue, nil
+	return attestationRecord(f, repo, r.Issue, VerifierAttestationTitle+r.Binding.Run, verifierBody(r.Binding), verifierAuthority, "verifier")
 }
 func verifierRepo(slug string) (ForgeRepo, error) {
 	owner, name, ok := strings.Cut(slug, "/")

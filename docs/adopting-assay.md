@@ -2276,7 +2276,8 @@ branch → draft-PR → review → verify loop (structure: scaffold-seam → mov
 ## 8. Upgrading after install — the `assay:upgrade-assay` skill
 
 Install and upgrade are **one story with one mechanism**: install writes the `.assay-versions` pin
-(the umbrella line plus the per-artifact tags), and upgrade moves it. The single supported upgrade
+(the per-artifact tags, plus the `assay <vX.Y.Z>` umbrella line when it pins a bare `vX.Y.Z` release
+and every per-artifact line pins that tag), and upgrade moves it. The single supported upgrade
 path is the **`assay:upgrade-assay`** skill (surfaced once the plugin is installed). Do **not**
 hand-edit pins against a release page — that is precisely the drift the pin/umbrella model removes.
 The distribution model this section implements is [`distribution.md`](distribution.md).
@@ -2293,7 +2294,11 @@ highest published bare `vX.Y.Z` release) or to a **named** umbrella version, dry
    for you to run; it never re-points the marketplace or edits the install cache itself.
 
 **What it refuses** (each a distinct exit): an **undetermined** current version (exit 6 — it never
-assumes latest), **inconsistent** records (exit 5 — it names the disagreeing pair), a
+assumes latest). When the only cause is a pin file with **no umbrella line**, as written by an
+install that predates the installer recording the line, re-run with `--adopt-umbrella-from-pins`.
+That flag adopts the release the per-artifact lines pin only after every pinned sha256 matches that
+release's published `checksums.txt`; a mismatch refuses with exit 5, and any other gap with exit 6
+([`distribution.md`](distribution.md) § Adopting the umbrella line). Also refused: **inconsistent** records (exit 5 — it names the disagreeing pair), a
 **per-artifact tag** where an umbrella version was required (exit 7 — the verb moves the whole
 umbrella, e.g. `--to v0.13.0`, never `statusgen/v0.13.0`), and a target that names **no published
 release** (exit 8 — never a nearest-match guess).

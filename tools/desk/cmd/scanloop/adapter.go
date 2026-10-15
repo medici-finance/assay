@@ -174,6 +174,26 @@ func (s *ScanLoop) Parked() []string {
 	return out
 }
 
+// Warnings returns every lane warning this pass recorded, as "<dispatch item>: <warning>", sorted
+// by item. A warning is a failure AFTER an outward write landed (a cleanup that could not put
+// local state back): it does not undo the exit, and the pass report prints it on its own line.
+func (s *ScanLoop) Warnings() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ids := make([]string, 0, len(s.outcomes))
+	for id := range s.outcomes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	var out []string
+	for _, id := range ids {
+		for _, w := range s.outcomes[id].Warnings {
+			out = append(out, id+": "+w)
+		}
+	}
+	return out
+}
+
 // ParkedEvent returns what the EMITTED report prints for a parked item: the classifier reason it
 // was parked with and the inbound event's time. That time is half of the intake-exit record's key
 // (item + opened), so the session passes it to `land --opened` to record the exit for THIS event.

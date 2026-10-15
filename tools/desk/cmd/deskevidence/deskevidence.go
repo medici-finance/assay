@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"os"
@@ -426,12 +427,35 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// file IS the target's whole content (the caller merged it locally before calling this tool).
 	var commitContent []byte
 	blockAlready := false
+	// The on-behalf-of principal is stamped into every App-run Evidence row this landing ADDS
+	// that carries none (principalstamp.go), from the roster — never from argv or the content —
+	// or the landing refuses here, before any write. On --brief-path the stamp is decided on the
+	// merged brief (so a headerless fragment reads under the brief's own table header, as the
+	// lint will read it) and then applied to the fragment, which is what is merged: the block-
+	// level idempotency check then compares the stamped block with what a stamped earlier
+	// landing left standing.
+	resolveSubject := func() (string, error) { return principalSubjectFn(repoSlug) }
 	if *briefPath != "" {
 		merged, present := mergeEvidenceContent(remoteContent, localContent)
+		stampedMerged, stamped, serr := stampEvidencePrincipal(merged, remoteContent, resolveSubject)
+		if serr != nil {
+			return serr
+		}
+		if len(stamped) > 0 {
+			merged, present = mergeEvidenceContent(remoteContent, stampFragment(localContent, stamped))
+			if !bytes.Equal(merged, stampedMerged) {
+				return deskkit.Unverifiable("on-behalf-of stamp: the stamped fragment did not merge to the stamped brief "+
+					"— refusing rather than land a row whose Runner cell this tool cannot account for", nil)
+			}
+		}
 		commitContent = merged
 		blockAlready = present
 	} else {
-		commitContent = localContent
+		stampedContent, _, serr := stampEvidencePrincipal(localContent, remoteContent, resolveSubject)
+		if serr != nil {
+			return serr
+		}
+		commitContent = stampedContent
 	}
 
 	// Row-scoped README landings. A direct-write target (never

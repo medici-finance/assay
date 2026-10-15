@@ -257,7 +257,7 @@ var envKeyOtherReads = map[string]envOtherRead{
 		why: "which file supplied the provider value just read"},
 
 	// ── Env.Get handed to another package ──
-	"c.Env.Get@cache.go:cachePolicy": {keys: []string{"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE", "CELL_GO_CACHE_BUILD_MAX_AGE"},
+	"c.Env.Get@cache.go:cachePolicy": {keys: []string{"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE", "CELL_GO_CACHE_BUILD_MAX_AGE", "CELL_GO_TRIMPATH"},
 		why: "the managed Go cache resolver reads its keys through this getter; TestEnvKeyRegistryIsComplete holds this list to the literals in that package"},
 
 	// ── forwarding: the key is a parameter, and the call sites are walked instead ──
@@ -706,7 +706,8 @@ func TestCellDefaultsTemplateListsEveryMachineKey(t *testing.T) {
 func cellSnapshot(t *testing.T, c *Cell) map[string]string {
 	t.Helper()
 	m := map[string]string{
-		"kind": c.Kind, "harness": c.Harness, "roles": strings.Join(c.Roles, " "), "session": c.Session,
+		"telemetry": c.telemetryValue(),
+		"kind":      c.Kind, "harness": c.Harness, "roles": strings.Join(c.Roles, " "), "session": c.Session,
 		"deskd": c.Deskd, "forge": c.Forge, "forge api": c.ForgeAPIBase, "repo": c.Repo,
 		"generated files":  strings.Join(c.cellctlGeneratedFiles(), "|"),
 		"repair admission": c.repairAdmissionValue(),
@@ -823,6 +824,7 @@ func TestCellDefaultsTemplateUncommentedLines(t *testing.T) {
 			}
 			m["cache budget"], m["cache floor"] = fmt.Sprint(p.Budget), fmt.Sprint(p.Floor)
 			m["cache build max age"] = fmt.Sprint(p.BuildMaxAge)
+			m["cache trimpath"] = p.GoFlags
 			off, err := plain.cachePolicy()
 			m["cache"] = fmt.Sprintf("on=%v err=%v", off != nil, err)
 		}
@@ -961,10 +963,12 @@ func TestCellDefaultsTemplateUncommentedLines(t *testing.T) {
 // take from one Go constant, for a read that is inline in a launch and has no resolver to call.
 // "by reading" is the one line whose printed value is not a constant the code holds at all.
 var templateDefaultProof = map[string]string{
+	envAssayTelemetry:                 "resolved: telemetry",
 	"CELL_GO_CACHE":                   "resolved: cache",
 	"CELL_GO_CACHE_BYTES":             "resolved: cache budget",
 	"CELL_GO_CACHE_MIN_FREE":          "resolved: cache floor",
 	"CELL_GO_CACHE_BUILD_MAX_AGE":     "resolved: cache build max age",
+	"CELL_GO_TRIMPATH":                "resolved: cache trimpath",
 	"CELL_SCRATCH_MAX_AGE":            "resolved: scratch",
 	"CELL_SCRATCH_MAX_BYTES":          "resolved: scratch",
 	"CELL_HARNESS":                    "resolved: harness",

@@ -196,15 +196,17 @@ identity: two transports, named in the envelope's "identity" object and on one s
 `
 
 func main() {
-	// The custody path reads the roster to resolve its acting role, so its class is
-	// ciEligible=false: config-home file only, never the environment, in CI as well as locally.
-	// Only the explicit --ci-workflow-token opt-in changes that (toolClassFor).
-	deskkit.SetToolClass(toolClassFor(os.Args[1:]))
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("deskread", nil, os.Args[1:], func([]string) int {
+		// The custody path reads the roster to resolve its acting role, so its class is
+		// ciEligible=false: config-home file only, never the environment, in CI as well as locally.
+		// Only the explicit --ci-workflow-token opt-in changes that (toolClassFor).
+		deskkit.SetToolClass(toolClassFor(os.Args[1:]))
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:], os.Stdout, os.Stderr)
+	}))
 }
 
 // ciTransportKinds is the CLOSED set of read kinds the CI workflow-token transport serves. It is
