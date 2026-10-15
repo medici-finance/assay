@@ -11,7 +11,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/8 | 2026-10-15 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/10 | 2026-10-15 |  |
 | [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 4/13 | 2026-10-15 |  |
 | [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-10-15 |  |
 | [comms-core](docs/streams/comms-core/README.md) | P1 | active | 0/4 | 2026-10-15 |  |
@@ -74,7 +74,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **DRIVE NOT APPLIED.** drive manifest(s) rejected: build-less-brittle, desktools-v2. The board generated normally with **zero** drive boost — a malformed, expired, or over-concurrent drive manifest is fail-neutral by design and can never freeze the board (see `--lint` WARN lines).
 
-_Next-up: 14 of 49 eligible — 35 held back (per-stream caps; span-of-control cap 20 not reached). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 15 of 50 eligible — 35 held back (per-stream caps; span-of-control cap 20 not reached). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
 _Held by per-stream caps: 35 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (33), desk-tools (2). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
@@ -82,6 +82,7 @@ _Held by per-stream caps: 35 brief(s) across 2 stream(s) — top: desktools-v2. 
 |---|---|---|---|
 | forge-neutral | 39 — Typed forge service contract and scoped client SDK [exec:strong] | 1 | 5000 |
 | comms-core | 01 — Extract the comms contract and isolate Assay policy [exec:strong] | 0 | 4500 |
+| apps-installer | 10 — `deskavatar --tier team` emits a third tile for `<org>-review`, proofed at 20 px against read and act | 0 | 3000 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3000 |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
 | iso-9001 | 08 — Versioned source obligations and project applicability [exec:strong] | 0 | 2500 |
@@ -146,8 +147,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | graph-execution | 03 [exec:strong] | implemented | 11000 | 18 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | worker | fix, cite medici-finance/assay#1606 | — | — |
 | windows-port | 00 | implemented | 5000 | 8 | — | worker | fix, cite #2942 | — | — |
+| apps-installer | 02 [exec:strong] | implemented | 4500 | 5 | — | worker | fix, cite medici-finance/assay#1915 | — | — |
 | derived-board | 03 [exec:strong] | implemented | 4500 | 5 | — | worker | fix, cite medici-finance/assay#1909 | — | — |
-| apps-installer | 02 [exec:strong] | implemented | 4000 | 4 | — | worker | fix, cite medici-finance/assay#1915 | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3500 | 3 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
 | desk-supervision | 28 [exec:strong] | implemented | 3000 | 4 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | measured-status | 03 [exec:strong] | implemented | 2200 | 0 | — | worker | fix, cite #1915 | — | — |
@@ -284,14 +285,16 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 ## Incomplete briefs
 
-### apps-installer (6 open)
+### apps-installer (8 open)
 
 - 02 `deskapps init` — loopback page, tier manifests, the manifest→code→conversion flow, key and record writes — implemented (wave 1)
-- 03 `deskapps` install + prove — installation poll, fresh mint, scopes-vs-duties, roster write — todo (wave 2)
-- 04 `deskapps resume` / `status` — per-App state machine, throttle pause, expired-code re-arm, page verbs — todo (wave 2)
+- 03 `deskapps` install + prove — installation poll, fresh mint, scopes-vs-duties, roster write — todo (wave 3)
+- 04 `deskapps resume` / `status` — per-App state machine, throttle pause, expired-code re-arm, page verbs — todo (wave 3)
 - 06 Avatar step in the run board — generated PNG beside the settings page, confirmed not uploaded — todo (wave 3)
 - 07 Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented — todo (wave 4)
 - 08 Solo identity mode — spec and decision for running the desk verbs on the operator's own token — implemented (wave 0)
+- 09 Team tier gains `<prefix>-review` — a third App holds the reviewer role, so the act bot's PRs get a formal approval — todo (wave 2)
+- 10 `deskavatar --tier team` emits a third tile for `<org>-review`, proofed at 20 px against read and act — todo (wave 0)
 
 ### audit-pack-example (1 open)
 
@@ -866,4 +869,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**29** streams (**21** active, **0** paused, **8** parked) · **106/439** briefs done · completed initiatives: see `docs/archive/`
+**29** streams (**21** active, **0** paused, **8** parked) · **106/441** briefs done · completed initiatives: see `docs/archive/`
