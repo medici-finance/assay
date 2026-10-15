@@ -144,11 +144,24 @@ type handSaidLookup func(stream, num string) (state, sha string, found bool)
 // found is false when the README has no history, no commit ever lacked the
 // marker (born generated), or the brief never appeared in a pre-generation row.
 func handSaidBeforeGeneration(root, stream, num string) (state, sha string, found bool) {
+	h, ok := handSaidReplay(root, stream)[num]
+	return h.state, h.sha, ok
+}
+
+// handSaid is one brief's last hand-asserted (state, sha) before generation.
+type handSaid struct{ state, sha string }
+
+// handSaidReplay is handSaidBeforeGeneration for every brief of stream at once:
+// ONE oldest-first walk of the README's history, recording each row's latest
+// pre-generation (state, sha) by brief number. A brief absent from the map was
+// never in a pre-generation row (or the README has no history).
+func handSaidReplay(root, stream string) map[string]handSaid {
 	rel := filepath.ToSlash(filepath.Join("docs", "streams", stream, "README.md"))
 	commits, err := streamReadmeCommits(root, rel)
 	if err != nil || len(commits) == 0 {
-		return "", "", false
+		return nil
 	}
+	out := map[string]handSaid{}
 	for _, c := range commits {
 		content, ok := readmeAtCommit(root, c.SHA, rel)
 		if !ok {
@@ -162,12 +175,29 @@ func handSaidBeforeGeneration(root, stream, num string) (state, sha string, foun
 			continue
 		}
 		for _, b := range briefs {
-			if b.Num == num {
-				state, sha, found = b.Status, c.SHA, true
-			}
+			out[b.Num] = handSaid{state: b.Status, sha: c.SHA}
 		}
 	}
-	return state, sha, found
+	return out
+}
+
+// newHandSaidLookup is the run's handSaidLookup over root: each stream's
+// history is replayed once (handSaidReplay) and every brief of that stream is
+// answered from it. The per-brief form walked and `git show`-ed the same
+// README history once per todo brief — on the toolkit board ~2,000 git
+// processes for ~25 streams. Nothing commits during a run, so one replay per
+// stream is the answer every per-brief walk would have given.
+func newHandSaidLookup(root string) handSaidLookup {
+	byStream := map[string]map[string]handSaid{}
+	return func(stream, num string) (string, string, bool) {
+		hist, ok := byStream[stream]
+		if !ok {
+			hist = handSaidReplay(root, stream)
+			byStream[stream] = hist
+		}
+		h, found := hist[num]
+		return h.state, h.sha, found
+	}
 }
 
 // advancedHandState reports whether state is one the derivation must never
@@ -201,6 +231,28 @@ func applyReconcileBackfill(cells []BriefCell, in LifecycleInput, pulls []ghPull
 	return out
 }
 
+// backfillBase reports which todo base, if any, cell c is for the backfill:
+// a plain trailer-less todo, or a passing verify witness with no merge on
+// record. Neither means the backfill leaves c alone.
+func backfillBase(c BriefCell, in LifecycleInput) (plainTodo, witnessedTodo bool) {
+	return c.Cell == "todo" && c.Source == "pr", passingWitnessNoMerge(c, in)
+}
+
+// backfillMatchBriefs lists the stream/num of every cell the backfill will try
+// to match against the pull list — the cells applyReconcileBackfillWith walks.
+func backfillMatchBriefs(cells []BriefCell, in LifecycleInput) [][2]string {
+	var out [][2]string
+	for _, c := range cells {
+		if plain, witnessed := backfillBase(c, in); !plain && !witnessed {
+			continue
+		}
+		if stream, num, ok := briefStreamNum(c.ID); ok {
+			out = append(out, [2]string{stream, num})
+		}
+	}
+	return out
+}
+
 // applyReconcileBackfillWith is applyReconcileBackfill with the authoring exemption
 // (briefauthoring.go): a merged pull that only AUTHORED the brief is not a match, so a
 // docs-only briefs-authoring PR can no longer be the witness that flips a row. authoring nil
@@ -215,8 +267,7 @@ func applyReconcileBackfillWith(cells []BriefCell, in LifecycleInput, pulls []gh
 	out := make([]BriefCell, len(cells))
 	copy(out, cells)
 	for i := range out {
-		plainTodo := out[i].Cell == "todo" && out[i].Source == "pr"
-		witnessedTodo := passingWitnessNoMerge(out[i], in)
+		plainTodo, witnessedTodo := backfillBase(out[i], in)
 		if !plainTodo && !witnessedTodo {
 			continue // already witnessed (trailer PR) or not a PR-derived cell — nothing to backfill
 		}

@@ -149,6 +149,13 @@ func (c *ghClient) ListPRs(repo string) (prs []PRRecord, lookedAt bool, reason s
 	if !lookedAt {
 		return nil, false, reason
 	}
+	return prRecordsFromPulls(pulls), true, ""
+}
+
+// prRecordsFromPulls is ListPRs' trailer filter over an already-fetched pull
+// list, so a caller that also needs the raw pulls (reconcile --backfill) pages
+// the list once instead of twice.
+func prRecordsFromPulls(pulls []ghPull) (prs []PRRecord) {
 	for _, p := range pulls {
 		ref, ok := singleBriefTrailer(p.Body)
 		if !ok {
@@ -171,7 +178,7 @@ func (c *ghClient) ListPRs(repo string) (prs []PRRecord, lookedAt bool, reason s
 		}
 		prs = append(prs, rec)
 	}
-	return prs, true, ""
+	return prs
 }
 
 // ReviewsAtHead reports whether pr carries an APPROVED review at headSHA. It is
