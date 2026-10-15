@@ -157,7 +157,7 @@ remain with their existing owners; this revision does not mark their implementat
 
 ## CI and directory migration lane
 
-The [CI extension](20-ci-tooling.md) adds a separately deliverable lane: directory/staging
+The [CI extension](24-ci-tooling.md) adds a separately deliverable lane: directory/staging
 contract → public shared libraries → in-place consumer cutover → qualified command moves
 and action adoption → source retirement. Build the first reusable actions before or beside
 the first workflow cutover. The [ci-tooling stream](../../streams/ci-tooling/README.md)

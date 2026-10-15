@@ -10,7 +10,7 @@ Separate desk clients, independently operated services and CI programs by consum
 lifecycle. Give repeated mechanisms one implementation without making CI depend on the
 cell service. Move reusable implementations from adopter repositories into public Assay;
 keep private policy, identifiers, fixtures and private-only implementations in the adopter.
-The [architecture extension](../../proposals/non-ci-architecture/20-ci-tooling.md) connects
+The [architecture extension](../../proposals/non-ci-architecture/24-ci-tooling.md) connects
 this work to the product domains. This specification owns the CI migration contract.
 
 This is authoring, not activation: the stream is parked pending revision-bound approval.

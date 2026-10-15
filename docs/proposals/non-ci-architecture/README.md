@@ -27,7 +27,7 @@ Verification is the first end-to-end test.
 | [Cell operator surface](21-cell-operator-surface.md) | Proposed in medici-finance/assay#2890; ratified when that PR is merged by the maintainer. Cell-level operator verbs classified as interim bridges or target-owned; runner-lifecycle states/transitions; a deferred plan-approval design gated on five properties; Cell API requirements carried from `send` |
 | [Forge service and source queries](22-forge-service-and-source-queries.md) | Write-through visibility, caller/executor authorization, immutable source caches and Scion-inspired qualification |
 | [Runtime contract alignment](23-runtime-contract-alignment.md) | One public runtime: PostgreSQL coordination, existing Git/forge evidence owners, requirement-to-owner coverage and remaining gaps |
-| [Tool families and CI integration](20-ci-tooling.md) | Desk/service/CI placement, shared mechanisms and the migration stream |
+| [Tool families and CI integration](24-ci-tooling.md) | Desk/service/CI placement, shared mechanisms and the migration stream |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Future direction and mechanisms to qualify
@@ -61,7 +61,7 @@ qualification. A graph explains relationships; it never grants runtime authority
 ## Scope and public boundary
 
 This covers product tooling, including installation/configuration, communications,
-monitors, role clients and support tools. The 2026-10-13 [CI extension](20-ci-tooling.md)
+monitors, role clients and support tools. The 2026-10-13 [CI extension](24-ci-tooling.md)
 adds directory separation, two layers of shared mechanisms, reusable actions and
 adopter-source migration. CI remains independently runnable; it does not acquire
 runtime acceptance or credential authority. The directory name is retained for link stability.

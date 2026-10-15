@@ -306,7 +306,7 @@ Do not retain every old constraint by inertia, or erase it by implication. The [
 
 ## Tool families and CI
 
-The [CI extension](20-ci-tooling.md) separates desk and operator clients, services,
+The [CI extension](24-ci-tooling.md) separates desk and operator clients, services,
 and CI entry points while retaining these domain owners. CI produces attributed
 check observations through shared libraries; acceptance stays with the existing
 evaluator. Its independent delivery lane is specified in
