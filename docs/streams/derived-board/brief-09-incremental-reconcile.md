@@ -20,17 +20,17 @@ schema: brief-v2
 version: 1
 authored: 2026-10-15 by a reconcile performance investigation session
 sources:
-  - "reconcile --backfill profile, 2026-10-14/15, on a consumer board (1,936 PRs: 17 open): 301 forge requests per run, ~250 of them file-list reads of long-merged PRs; claim decay additionally runs `gh pr list --state all --limit 1000` (an O(all PRs) read, silently truncated at 1,000)"
+  - "reconcile --backfill profile, 2026-10-14/15, on a consumer board (1,936 PRs: 17 open): 301 forge requests per run, ~250 of them file-list reads of long-merged PRs"
   - "#1969 (the 20-page pull-list cap returns a truncated list as complete)"
   - "derived-board/08 (the ledger this brief reads)"
   - freshness-checked 2026-10-15 @ e7c208b00 (origin/main)
 exec-tier: strong
-exec-tier-why: "(b) the incremental read must derive exactly what the full read derives, across reconcile, the regen drift comparator and claim decay; a subtle watermark error survives happy-path tests"
+exec-tier-why: "(b) the incremental read must derive exactly what the full read derives, across reconcile and the regen drift comparator; a subtle watermark error survives happy-path tests"
 domain: complicated
 consumers:
   - "statusgen/reconcile.go: follow-up derived-board/09 (this brief)"
   - "statusgen/regen.go (drift comparator): follow-up derived-board/09 (this brief)"
-  - "statusgen/claimdecay.go: follow-up derived-board/09 (this brief)"
+  - "statusgen/claimdecay.go: out-of-scope (claim decay reads branch-scoped pull-request state on its own, one query per 100 live branches, landed separately; it never reads the ledger)"
   - "adopter regen workflows (pass --ledger, commit the ledger, add the scheduled --verify-ledger run): out-of-scope (named in the release note of the version that carries this brief; applied per repo through upgrade-assay)"
 ---
 
@@ -41,7 +41,6 @@ files:
 - `statusgen/ghfetch.go` — `fetchOpenPulls`, `fetchPullsUpdatedSince(watermark)`; the full walk pages to the end or fails (no silent cap, #1969)
 - `statusgen/reconcile.go` — `--ledger <path>` (incremental mode), `--verify-ledger`, the `forgeCost` JSON field
 - `statusgen/regen.go` — the drift comparator reads PRs the same way
-- `statusgen/claimdecay.go` — open PRs plus PRs closed since the watermark, not `--state all --limit 1000`
 - `statusgen/witnessledger.go` (planned) — merge delta records into the ledger
 - `statusgen/reconcileincremental_test.go` (planned)
 - `changelog/derived-board-09-incremental-reconcile.md` (planned)
@@ -51,7 +50,6 @@ facts:
 - `GET /repos/{o}/{r}/pulls?state=open` costs one request per 100 open PRs. `GET /repos/{o}/{r}/pulls?state=all&sort=updated&direction=desc` returns PRs newest-updated first, so a walk can stop at the first PR whose `updated_at` is older than the watermark — one request per 100 PRs changed since the last run. A body edit, merge, close or reopen all bump `updated_at`.
 - File lists are needed only for PRs the fold classifies (open PRs in scope, and delta PRs); ledger records already carry their authoring facts.
 - Measured target (2026-10-15, board of 1,936 PRs, 17 open): incremental run ≈ 1 open-list request + 1 delta request + file lists for the in-scope open/delta PRs + the open-issue pages — against 301 today.
-- Claim decay keys on head ref and state of PRs; an open PR or one closed since the watermark is all it can act on.
 
 single-point-of-failure: the watermark — a PR changed before it but missing from the ledger would never be read again. Behind it: (1) the delta walk overlaps the watermark by a fixed margin (re-reads PRs updated up to 1 hour before it); (2) the ledger is re-verified against local git on every run (brief 08), and a ledger that fails verification means a full read; (3) the scheduled `--verify-ledger` run re-derives from a full read and exits non-zero on any difference from the ledger-derived result, independently of every incremental run; (4) `--ledger` absent keeps today's full read, unchanged.
 
@@ -66,7 +64,7 @@ single-point-of-failure: the watermark — a PR changed before it but missing fr
 3. `reconcile --verify-ledger <path>`: full read, derive both ways, print every brief whose cell differs, exit non-zero on any difference. This is the out-of-band check a scheduled (e.g. weekly) workflow runs.
 4. Full mode pages the pull list to the end; a walk stopped by any bound is a could-not-check, never a complete list (#1969).
 5. `--json` gains `forgeCost: {requests: <n>, mode: "incremental"|"full", fallbackReason: "…"}` so every run reports what it spent.
-6. regen's drift comparator and claim decay take the same incremental read when given the ledger (claim decay: open PRs + PRs closed since the watermark).
+6. regen's drift comparator takes the same incremental read when given the ledger.
 7. Changelog fragment, including the workflow change adopters make.
 
 ## Verify (executable — no prose-only DoD items)
