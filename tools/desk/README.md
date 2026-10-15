@@ -3323,12 +3323,12 @@ for why a refusal-guard that honoured `DISABLED` the ordinary way would fail ope
   *failed* creates (which record no number) locked the tool out for an hour while
   ninety-nine successes did not move it.
 
-  Creates therefore gate on `AllowWriteRepoWide` — every charged write the tool made on that
-  repo, held at the **per-PR cap**. That scope is a superset of wherever a create's line
-  lands, whatever number it gets, and it keeps the created number in the audit trail (the
-  one field that makes a create traceable) rather than blanking it to force the buckets to
-  agree. `TestGateReadsTheBucketItsWritesLandIn` pins the invariant for every gated call
-  site: seed the shape that call site really writes, and its own gate must refuse.
+  `deskpr create` gates on `AllowPRCreate`: new PR attempts are counted across
+  the repository, including their created PR numbers and uncertain outcomes.
+  Updates and body edits have their own per-PR budgets and do not consume this
+  20/hour creation counter. All verbs still share the aggregate 100/hour ceiling.
+  Legacy missing or unknown verbs count conservatively rather than opening an
+  unmetered lane. Other new-object call sites retain `AllowWriteRepoWide`.
 
   **The cap values are pinned by test** (`TestCapValuesArePinned`). Every other test seeds
   by reading the constant the code reads, so raising 10 → 20 was green across the whole
@@ -7084,3 +7084,11 @@ closes #146 end to end: the primitive alone did not help until the skill docs ac
 it instead of the shell idiom the writeguard hook blocks. **Routing, filing, and closing**
 (rows 4, 5, 9) remain the next adopters: closing waits on `deskclose` (#282), and filing
 composes with `deskfile` (#283).
+
+### PR creation budget
+
+`deskpr create` admits at most 20 new-PR attempts that succeeded or may have
+reached the remote per repository per rolling hour. `update` and `edit` do not
+consume that counter. All three still share the aggregate 100-write/hour limit,
+and updates/edits retain their per-PR budgets. Existing-PR no-ops do not consume
+creation capacity. Missing or unknown legacy audit verbs count conservatively.
