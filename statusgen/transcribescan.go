@@ -318,8 +318,10 @@ func planTranscribeScan(root string, streams []*Stream, homeRepo string,
 
 	openSet := map[int]bool{}
 	openExcluded := map[int]bool{}
+	openIssue := map[int]ghIssue{} // live state for reactivatePlan
 	for _, iss := range issues {
 		openSet[iss.Number] = true
+		openIssue[iss.Number] = iss
 		labels := labelNames(iss.Labels)
 		excluded := hasExcludedLabel(labels)
 		openExcluded[iss.Number] = excluded
@@ -420,8 +422,7 @@ func planTranscribeScan(root string, streams []*Stream, homeRepo string,
 				continue
 			}
 			if ph.Status == "done" {
-				d.CloseOuts = append(d.CloseOuts, closeOutPlan{
-					Repo: homeRepo, Issue: ph.Issue, Path: ph.Path, Rel: rel, Action: "reactivate"})
+				d.CloseOuts = append(d.CloseOuts, reactivatePlan(homeRepo, openIssue[ph.Issue], ph.Path, rel, ""))
 			}
 		}
 	}
@@ -439,9 +440,8 @@ func planTranscribeScan(root string, streams []*Stream, homeRepo string,
 			if rerr != nil {
 				rel = path
 			}
-			d.CloseOuts = append(d.CloseOuts, closeOutPlan{
-				Repo: homeRepo, Issue: ph.Issue, Path: path,
-				Rel: filepath.ToSlash(rel), Action: "reactivate", Dest: unarchivedPath(path)})
+			d.CloseOuts = append(d.CloseOuts, reactivatePlan(homeRepo, openIssue[ph.Issue], path,
+				filepath.ToSlash(rel), unarchivedPath(path)))
 		}
 	}
 
@@ -556,8 +556,8 @@ func runTranscribeScan(root string, dryRun bool,
 		fmt.Printf("transcribe-scan: CREATE %s  (%s#%d, gate:%s)\n", p.Rel, p.Repo, p.Issue, p.Gate)
 	}
 	for _, c := range delta.CloseOuts {
-		fmt.Printf("transcribe-scan: %s %s  (%s#%d, %s)\n",
-			strings.ToUpper(c.Action), c.Rel, c.Repo, c.Issue, closeOutReason(c.Action))
+		fmt.Printf("transcribe-scan: %s %s  (%s#%d, %s%s)\n",
+			strings.ToUpper(c.Action), c.Rel, c.Repo, c.Issue, closeOutReason(c.Action), closeOutGateNote(c))
 	}
 	for _, u := range delta.Unblocks {
 		fmt.Printf("transcribe-scan: AWAIT-FLIP %s  (%s#%d, block cleared)\n", u.Path, u.Repo, u.Issue)

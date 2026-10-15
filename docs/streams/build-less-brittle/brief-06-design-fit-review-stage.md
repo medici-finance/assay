@@ -17,9 +17,10 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format)"
 sources:
+  - "medici-finance/assay#2789; scratch-isolation amendment, freshness-checked 2026-10-13 @ 53c536312"
   - "docs/streams/build-less-brittle/spec.md §2 D2, §3 row 4, §4.4, §4.5, §4.7"
   - "tools/desk/internal/deskkit/reviewscope.go (ScopeBases: the four blocking bases, pinned to the kit block)"
   - "tools/desk/cmd/deskdispatch/reviewscope_test.go:240-268 (TestReviewScopeKitMatchesModel)"
@@ -132,6 +133,10 @@ design-fit:
 
 ## Verify (executable — no prose-only DoD items)
 
+Run consumer checks with `TMPDIR` pointing at owned scratch outside the admitted source checkout.
+This scratch-location amendment (#2789) preserves the revision selection and assertions;
+historical Evidence does not verify the revised row, which needs fresh verifier admission.
+
 Rows run from the root of `medici-finance/assay`. Row 3 is the mutation row for the kit/model
 pin. Rows 7–8 are net ≤ 0 weight rows. Rows 3, 7, 9 and 10 were re-authored in version 2 (#1977)
 so they can be decided on merged main, under any shell, without leaving the checkout: row 3 keeps
@@ -150,7 +155,7 @@ itself, pinned so it still has that diff to read after merge.
 | 7 | check | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "${tip}:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "${base}:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && echo NET-OK` | `NET-OK` (the revision variables are braced: unbraced, zsh reads `:t` as a path modifier, both reads fail, and 0 ≤ 0 would pass) |
 | 8 | check | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/06$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 9 | check | `grep -q '^func TestPrintWeight' tools/desk/internal/weight/weight_test.go && grep -c 'go test ./internal/weight/ -run TestPrintWeight' tools/desk/cmd/deskdispatch/references/review-prompt.md` | ≥ `1` (one line: how often the kit's clause names the counter command, printed only after the counter test that command runs is found; without that test the row prints nothing and fails) |
-| 10 | check | `d=$(mktemp -d "$PWD/.bl06-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach d1258928da48 && statusgen --consumers --root "$d" --brief build-less-brittle/06 --base d1258928da48~1; s=$?; rm -rf "$d"; exit $s` | exit 0; output is `summary: 4 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing` (the check runs in a throwaway shared clone, made inside the checkout and removed afterwards, checked out at d1258928da48, the squash that delivered this brief in #1879, with the base pinned to its parent, so the diff it reads is exactly the delivering change: never main's later commits, never the runner's own working tree. The four `fixed-here` path entries are corroborated by that diff. The two UNCHECKED entries stay the reviewer's call per brief-rule 9, never a pass: the case-corpus entry names its file in prose, and the installed-binaries entry is `out-of-scope`) |
+| 10 | check | `d=$(mktemp -d "${TMPDIR:-/tmp}/bl06-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach d1258928da48 && statusgen --consumers --root "$d" --brief build-less-brittle/06 --base d1258928da48~1; s=$?; rm -rf "$d"; exit $s` | exit 0; output is `summary: 4 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing` (the check runs in a throwaway shared clone, made in owned scratch outside the checkout and removed afterwards, checked out at d1258928da48, the squash that delivered this brief in #1879, with the base pinned to its parent, so the diff it reads is exactly the delivering change: never main's later commits, never the runner's own working tree. The four `fixed-here` path entries are corroborated by that diff. The two UNCHECKED entries stay the reviewer's call per brief-rule 9, never a pass: the case-corpus entry names its file in prose, and the installed-binaries entry is `out-of-scope`) |
 | 11 | check | `s=$(sed -n '/^## [0-9]*\. Design fit first/,/^## [0-9]*\. /p' tools/desk/cmd/deskdispatch/references/review-prompt.md); echo "$s" \| grep -c 'Brittle marks'; echo "$s" \| grep -c 'internal/arch'` | two counts, each ≥ `1` (a marked module and a red arch test both trigger the stage) |
 
 ## Evidence
