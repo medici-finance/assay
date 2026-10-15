@@ -88,7 +88,8 @@ var briefRiskKeys = []string{"regulatory", "customer", "irreversible", "sensitiv
 // It never errors. A body with NO `Brief:` trailer makes no risk claim. A body WITH one
 // that cannot be resolved/read/parsed is RISK-CLASSED and Unverifiable (fail closed — see
 // the file header). Both the slash form `<stream>/<NN>` and the colon forms
-// `<...>:<stream>:<NN>` are accepted.
+// `<...>:<stream>:<NN>` are accepted. A `Cross-repo-brief:` trailer names a brief homed in
+// another repo, which this repo's root cannot consult, so it is always risk-classed Unverifiable.
 func BriefRiskFromBody(repo, body string) BriefRisk {
 	trs, err := ParseTrailers([]byte(body))
 	if err != nil {
@@ -104,6 +105,14 @@ func BriefRiskFromBody(repo, body string) BriefRisk {
 	}
 	var val string
 	for _, t := range trs {
+		if t.Kind == TrailerCrossRepoBrief {
+			// The brief is homed in ANOTHER repo (medici-finance/assay#2748): its gate and risk
+			// flags are not in this repo's stream tree, so no read here can clear it. A declared
+			// brief that cannot be consulted is risk-classed, exactly as an unresolvable Brief: is
+			// — never the trailer-absent "no claim" answer.
+			return unverifiableBrief(t.Value, "owning brief "+strconv.Quote(t.Value)+" is homed in another "+
+				"repo (Cross-repo-brief:) — its gate/risk declaration is not readable from "+repo+"'s stream root")
+		}
 		if t.Kind == TrailerBrief {
 			val = t.Value
 			break
@@ -237,11 +246,11 @@ func briefImplicatedInTrailerError(err error) bool {
 	}
 	var mixed *ErrTrailerMixed
 	if errors.As(err, &mixed) {
-		return mixed.Has(TrailerBrief)
+		return mixed.Has(TrailerBrief) || mixed.Has(TrailerCrossRepoBrief)
 	}
 	var dup *ErrTrailerDuplicate
 	if errors.As(err, &dup) {
-		return dup.Kind == TrailerBrief
+		return dup.Kind == TrailerBrief || dup.Kind == TrailerCrossRepoBrief
 	}
 	return false
 }

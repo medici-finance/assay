@@ -87,9 +87,19 @@ type phantomFollowUp struct {
 
 // representingPRs splits the PRs that represent briefID (by `Brief:` trailer, via deskkit's own
 // reduction) into OPEN and MERGED numbers, in list order.
-func representingPRs(briefID string, prs []deskkit.PRRef) (open, merged []int) {
+//
+// Under --cross-repo (xrLink set) the `Brief:` match is KEPT, deliberately: a brief whose files:
+// list tags --repo can already have been delivered there through the tag path, whose PR is opened
+// with `deskpr create --root <tracking>` and so carries `Brief: <stream>/<NN>` naming this same
+// home brief. --cross-repo does not refuse a tagged brief, so dropping that match would let it
+// spawn a duplicate. The cost is a refusal when an unrelated LOCAL brief shares the stream/NN —
+// the fail-closed direction, and the refusal names the PR it matched.
+func representingPRs(briefID, xrLink string, prs []deskkit.PRRef) (open, merged []int) {
 	for _, pr := range prs {
 		rp, ok := deskkit.RepresentedBriefPRs([]deskkit.PRRef{pr})[strings.ToLower(strings.TrimSpace(briefID))]
+		if !ok && xrLink != "" {
+			rp, ok = crossRepoRepresents(pr, xrLink)
+		}
 		if !ok {
 			continue
 		}
@@ -100,6 +110,28 @@ func representingPRs(briefID string, prs []deskkit.PRRef) (open, merged []int) {
 		}
 	}
 	return open, merged
+}
+
+// crossRepoRepresents reports whether an OPEN or MERGED pr links the --cross-repo brief xrLink
+// (`<alias>:<stream>/<NN>`) with a `Cross-repo-brief:` trailer (medici-finance/assay#2748). Such a
+// PR carries no `Brief:` line, so without this read a second --cross-repo dispatch would spawn a
+// duplicate. The match is on the WHOLE value, alias included: the same stream/NN homed elsewhere
+// is a different brief. A body whose trailer set does not parse names nothing.
+func crossRepoRepresents(pr deskkit.PRRef, xrLink string) (deskkit.RepresentedPR, bool) {
+	state := strings.ToUpper(strings.TrimSpace(pr.State))
+	if state != "OPEN" && state != "MERGED" {
+		return deskkit.RepresentedPR{}, false
+	}
+	trs, err := deskkit.ParseTrailers([]byte(pr.Body))
+	if err != nil {
+		return deskkit.RepresentedPR{}, false
+	}
+	for _, t := range trs {
+		if t.Kind == deskkit.TrailerCrossRepoBrief && strings.EqualFold(strings.TrimSpace(t.Value), xrLink) {
+			return deskkit.RepresentedPR{Number: pr.Number, Merged: state == "MERGED"}, true
+		}
+	}
+	return deskkit.RepresentedPR{}, false
 }
 
 // phantomCheck refuses a fresh worker dispatch whose brief already has an OPEN or MERGED PR. It is a
@@ -113,6 +145,13 @@ func representingPRs(briefID string, prs []deskkit.PRRef) (open, merged []int) {
 // still refused — but the message says "delivered", never "resume", because a merged PR cannot be
 // resumed.
 func phantomCheck(o dispatchOpts, repo string) (phantomFollowUp, error) {
+	return phantomCheckFor(o, repo, deliverable{})
+}
+
+// phantomCheckFor is phantomCheck for a resolved deliverable: under --cross-repo
+// (medici-finance/assay#2748) the representing PR links the brief with `Cross-repo-brief:` rather
+// than `Brief:`, so that exact link is read as well.
+func phantomCheckFor(o dispatchOpts, repo string, dl deliverable) (phantomFollowUp, error) {
 	var none phantomFollowUp
 	if o.kit != "worker" || o.pr != 0 {
 		return none, nil
@@ -137,15 +176,21 @@ func phantomCheck(o dispatchOpts, repo string) (phantomFollowUp, error) {
 	if prs, err = dropBriefAuthoringPRs(repo, briefID, prs); err != nil {
 		return none, err
 	}
-	open, merged := representingPRs(briefID, prs)
+	// A --cross-repo dispatch's PR links the brief with Cross-repo-brief:, so that link is read too.
+	xrLink, matchedOn := "", "`Brief: "+briefID+"`"
+	if dl.crossRepoBrief {
+		xrLink = strings.TrimPrefix(dl.crossRepoTrailer(o.item), "Cross-repo-brief: ")
+		matchedOn += " or `Cross-repo-brief: " + xrLink + "`"
+	}
+	open, merged := representingPRs(briefID, xrLink, prs)
 	if len(open) > 0 {
 		n := open[0]
 		return none, deskkit.Refused(fmt.Sprintf(
-			"step %s: %s is already represented by OPEN %s#%d — matched on that PR's `Brief: %s` trailer, not "+
+			"step %s: %s is already represented by OPEN %s#%d — matched on that PR's %s trailer, not "+
 				"on a branch name, so a branch spelled differently from this verb's derived `feat/%s` cannot "+
 				"hide it. Dispatching would spawn a worker that re-derives the PR already exists and returns no "+
 				"new work. Resume the PR (--pr %d) or close it; do not fresh-dispatch over it.",
-			stepClaimAcquire, briefID, repo, n, briefID, sanitizeSegment(o.item), n))
+			stepClaimAcquire, briefID, repo, n, matchedOn, sanitizeSegment(o.item), n))
 	}
 	if len(merged) > 0 {
 		n := merged[0]
@@ -159,13 +204,13 @@ func phantomCheck(o dispatchOpts, repo string) (phantomFollowUp, error) {
 		}
 		short := deskkit.RepoShortLabel(repo)
 		return none, deskkit.Refused(fmt.Sprintf(
-			"step %s: %s is already DELIVERED by %s#%d (MERGED) — matched on that PR's `Brief: %s` trailer, not "+
+			"step %s: %s is already DELIVERED by %s#%d (MERGED) — matched on that PR's %s trailer, not "+
 				"on a branch name. A merged PR cannot be resumed and its branch must never be re-cut. If the row "+
 				"awaits implementer REWORK (last verdict FAIL), re-dispatch with --rework: it becomes a FOLLOW-UP "+
 				"on a new branch. Otherwise any further fix is NOT this brief's rework: file it as a fresh issue "+
 				"and dispatch that issue's key (`%s--issue-<N>`, PR trailer `Issue: #<N>`) — never fresh-dispatch "+
 				"the brief key %s.",
-			stepClaimAcquire, briefID, repo, n, briefID, short, briefID))
+			stepClaimAcquire, briefID, repo, n, matchedOn, short, briefID))
 	}
 	return none, nil
 }
