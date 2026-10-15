@@ -12,6 +12,8 @@
 #   C     HASH shape — truncated, upper-cased, and placeholder digests.
 #   D     COULD-NOT-CHECK — missing file, missing `plugin:` key, missing `version` field, and a
 #         file with no pin lines at all. Each must FAIL, never quietly pass.
+#   F     IMAGE agreement — the base Dockerfile's DESK_TOOLS_IMAGE left on another tag, or on the
+#         right tag with another digest, fails; a missing Dockerfile is could-not-check, a failure.
 #
 # Fixtures are built by copying the real two files into a temp root and mutating the copy, so a
 # reshaping of the real manifest cannot leave the suite testing a stale shape. Hermetic: no
@@ -30,12 +32,13 @@ no() { printf '  FAIL %s\n     %s\n' "$1" "$2"; fail=$((fail + 1)); }
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/check-paired-versions.XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT
 
-# fixture <name> — a fresh root with the real two files copied in; echoes the root.
+# fixture <name> — a fresh root with the real three files copied in; echoes the root.
 fixture() {
   local root="$TMP/$1"
-  mkdir -p "$root/plugins/assay/scripts" "$root/plugins/assay/.claude-plugin"
+  mkdir -p "$root/plugins/assay/scripts" "$root/plugins/assay/.claude-plugin" "$root/containers/base"
   cp "$REPO/plugins/assay/paired-versions.yaml" "$root/plugins/assay/paired-versions.yaml"
   cp "$REPO/plugins/assay/.claude-plugin/plugin.json" "$root/plugins/assay/.claude-plugin/plugin.json"
+  cp "$REPO/containers/base/Dockerfile" "$root/containers/base/Dockerfile"
   printf '%s' "$root"
 }
 
@@ -131,6 +134,21 @@ grep -v -E '^[[:space:]]+[a-z0-9-]+:[[:space:]]+[A-Za-z0-9._-]+[[:space:]]+v[0-9
 expect 1 "D5 a manifest with no pin lines fails" --root "$r"
 
 expect 2 "E1 an unknown argument is a usage error, not a pass" --bogus
+
+# ------------------------------------------------------------------- F image agreement
+# regression: #2916 — the manifest re-pinned, the base image's DESK_TOOLS_IMAGE left behind.
+r=$(fixture f1)
+sed -i.bak 's/^\(ARG DESK_TOOLS_IMAGE=[^:]*\):v[^@]*@/\1:v0.1.0@/' "$r/containers/base/Dockerfile"
+expect 1 "F1 Dockerfile DESK_TOOLS_IMAGE on an older tag fails" --root "$r"
+
+r=$(fixture f2)
+sed -i.bak 's/^\(ARG DESK_TOOLS_IMAGE=.*@sha256:\)[0-9a-f]\{64\}/\1'"$(printf '0%.0s' $(seq 64))"'/' \
+  "$r/containers/base/Dockerfile"
+expect 1 "F2 Dockerfile DESK_TOOLS_IMAGE with another digest fails" --root "$r"
+
+r=$(fixture f3)
+rm -f "$r/containers/base/Dockerfile"
+expect 1 "F3 missing base Dockerfile fails (not a quiet pass)" --root "$r"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

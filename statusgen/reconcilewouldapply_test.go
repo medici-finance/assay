@@ -210,6 +210,11 @@ const parityPulls = `[
 func stubParityPulls(t *testing.T) {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/files") {
+			// Every recorded PR changed code: each is a delivery, none only authored a brief.
+			fmt.Fprint(w, `[{"filename":"tools/x/x.go","status":"modified"}]`)
+			return
+		}
 		if r.URL.Path != "/repos/o/r/pulls" {
 			http.NotFound(w, r)
 			return

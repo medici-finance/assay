@@ -150,7 +150,24 @@ func cmdRun(args []string, stdout io.Writer) error {
 	// The open scan PR is read ONCE per pass and handed to the single scan dispatch. It used to be
 	// a static closure consulted per item, which was harmless only because there is one scan
 	// dispatch — and was a live hazard the moment there was more than one.
-	openPR := o.openScanPR()
+	//
+	// It is DISCOVERED on the forge (discover.go) unless the operator named it with --scan-pr, the
+	// pass is --offline (no network read at all), or coalescing is disabled. Before discovery the
+	// flags were the only source, and the drain is invoked without them, so every tick cut a
+	// duplicate of the scan PR it should have joined.
+	openPR := func() (*OpenScanPR, error) { return o.openScanPR(), nil }
+	switch {
+	case o.openScanPR() != nil:
+		fmt.Fprintf(stdout, "open scan PR: #%d, as named by --scan-pr (the forge is not read for it)\n", o.scanPR)
+	case o.offline:
+		fmt.Fprintf(stdout, "open scan PR: NOT READ (--offline) — only a --scan-pr can be coalesced into\n")
+	case o.window < 0:
+		fmt.Fprintf(stdout, "open scan PR: not read — coalescing is disabled by configuration\n")
+	default:
+		window := CoalescePolicy{Window: o.window}.window()
+		openPR = onePerPass(func() (*OpenScanPR, error) { return discoverOpenScanPR(target, now, window) })
+		fmt.Fprintf(stdout, "open scan PR: read from %s at the scan dispatch — any open scan PR by this App, from any session\n", target)
+	}
 	loop := &ScanLoop{
 		Root:         o.root,
 		ScanTarget:   target,
@@ -159,7 +176,7 @@ func cmdRun(args []string, stdout io.Writer) error {
 		Scope:        scope,
 		Monitor:      source,
 		Probe:        probe,
-		OpenPR:       func() (*OpenScanPR, error) { return openPR, nil },
+		OpenPR:       openPR,
 		Emit:         stdout,
 		DryRun:       o.dryRun,
 		Now:          func() time.Time { return now },

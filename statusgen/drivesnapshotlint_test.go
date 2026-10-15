@@ -3,9 +3,130 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestDriveLintReusesHydratedBoardAndClaimRead(t *testing.T) {
+	root, _ := driveManyRowBoard(t)
+	streams, _, err := loadHydratedStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := listRemoteBranches
+	t.Cleanup(func() { listRemoteBranches = prev })
+	reads := 0
+	listRemoteBranches = func(string) ([]string, error) {
+		reads++
+		return nil, nil
+	}
+	stubMergedClosedBranches(t, nil, nil)
+	ctx := &driveLintCtx{root: root, loaded: true, streams: streams}
+	first, rc := ctx.section("d1", driveTestNow)
+	if rc != 0 {
+		t.Fatalf("first render failed: %d", rc)
+	}
+	second, rc := ctx.section("d1", driveTestNow)
+	if rc != 0 || first != second || reads != 1 {
+		t.Fatalf("shared render changed or reread claims: rc=%d reads=%d", rc, reads)
+	}
+	wantProblems, wantNotices := driveRegionLintFromBoard(root, streams, driveTestNow)
+	if len(wantProblems) != 0 {
+		t.Fatalf("hydrated fixture must lint clean: %v", wantProblems)
+	}
+	// The source board has already passed hydration. Removing its fixture
+	// READMEs proves the renderer consumes those rows, rather than reloading.
+	for _, s := range streams {
+		if err := os.Remove(filepath.Join(s.Dir, "README.md")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gotProblems, gotNotices := driveRegionLintFromBoard(root, streams, driveTestNow)
+	if !reflect.DeepEqual(gotProblems, wantProblems) || !reflect.DeepEqual(gotNotices, wantNotices) {
+		t.Fatalf("validated board was reloaded: problems=%v notices=%v; want %v %v", gotProblems, gotNotices, wantProblems, wantNotices)
+	}
+}
+
+// scopedDriveRunFixture is a two-product tree whose drive snapshot depends on
+// full hydration. Stream pb (product-b) carries pb/02, a brief-v1 row whose
+// depends: names the unfinished pb/01 in the SAME wave: hydrated, it renders
+// blocked; read from its README row alone (no frontmatter attached), the legacy
+// wave walk renders it ready. The plan region is spliced from a fully hydrated
+// render, so any arm that renders from a partially hydrated or empty board
+// disagrees with it.
+func scopedDriveRunFixture(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	for _, st := range []struct{ name, serves string }{{"pa", "product-a"}, {"pb", "product-b"}} {
+		dir := filepath.Join(root, "docs", "streams", st.name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFixtureFile(t, filepath.Join(dir, "README.md"), "---\n"+
+			"stream: "+st.name+"\nstatus: active\npriority: P1\nserves: "+st.serves+"\n---\n\n# "+st.name+"\n\n"+
+			"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n"+
+			"|---|-------|------|--------|--------|----------|----------|\n"+
+			"| 01 | [Base](./brief-01-base.md) | 0 | M | todo | — | — |\n"+
+			"| 02 | [Next](./brief-02-next.md) | 0 | M | todo | — | — |\n")
+		writeFixtureFile(t, filepath.Join(dir, "brief-01-base.md"), pausedDepBrief(st.name+"/01", "Base", 0, nil))
+		writeFixtureFile(t, filepath.Join(dir, "brief-02-next.md"), pausedDepBrief(st.name+"/02", "Next", 0, []string{st.name + "/01"}))
+	}
+	writeDrive(t, root, "d1", "declared-by: ian\n"+liveWindow+"intensity: focus\nstate: active\nwhy: fixture\nitems:\n  - stream: pb\n")
+	fresh, rc := driveSnapshotSection(root, "d1", driveTestNow)
+	if rc != 0 {
+		t.Fatalf("fixture drive d1 must render (rc %d)", rc)
+	}
+	if strings.Contains(fresh, "pb/02") {
+		t.Fatalf("fixture drift: hydrated, pb/02 is blocked and off the frontier:\n%s", fresh)
+	}
+	writePlanMD(t, root, "d1", "# Drive d1\n\n"+driveSnapshotBeginPrefix+"d1 @deadbee 2026-08-15"+driveSnapshotMarkerSuffix+"\n"+fresh+driveSnapshotEndMarker+"\n")
+	return root
+}
+
+// TestRunDriveLintScopeArms pins run()'s drive-lint arm selection: unscoped
+// lint reuses the board run() hydrated, product-scoped lint (pb out of scope,
+// so its rows were never hydrated) re-hydrates the full board. Both must
+// compare the region clean, and both must still catch a hand-edited region.
+// Red under either mutation of main.go: scoped lint rendering from the scoped
+// board (pb/02 turns ready: drift PROBLEM), or unscoped lint handed no board
+// (the drive no longer resolves: could-not-check NOTICE).
+// regression: #2861
+func TestRunDriveLintScopeArms(t *testing.T) {
+	pinNow(t, driveTestNow)
+	stubRemoteBranches(t, nil, nil)
+	stubMergedClosedBranches(t, nil, nil)
+	root := scopedDriveRunFixture(t)
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attachPlaceholders(streams)
+	unhydrated, _ := resolveClaims(root, streams)
+	ds := loadDrives(root, streams, driveTestNow)
+	stale, ok := driveSnapshotRender(ds, streams, unhydrated, "d1", "", driveTestNow)
+	fresh, _ := driveSnapshotSection(root, "d1", driveTestNow)
+	if !ok || !strings.Contains(stale, "pb/02") || normalizeDriveSnapshot(stale) == normalizeDriveSnapshot(fresh) {
+		t.Fatalf("fixture drift: unhydrated, pb/02 must reach the frontier (ok=%v):\n%s", ok, stale)
+	}
+	for _, scope := range []string{"", "product-a"} {
+		stderr := captureStderr(t, func() { run(root, "lint", nil, nil, scope) })
+		for _, line := range strings.Split(stderr, "\n") {
+			if strings.Contains(line, "drive-region-drift") || strings.Contains(line, "drive-without-manifest") {
+				t.Errorf("scope=%q: the fresh region must compare clean, got: %s", scope, line)
+			}
+		}
+	}
+	// Positive control: a hand-edited region is drift under both arms, so the
+	// clean verdict above came from a comparison that actually ran.
+	writePlanMD(t, root, "d1", "# Drive d1\n\n"+driveSnapshotBeginPrefix+"d1 @deadbee 2026-08-15"+driveSnapshotMarkerSuffix+"\n"+fresh+"hand edit\n"+driveSnapshotEndMarker+"\n")
+	for _, scope := range []string{"", "product-a"} {
+		stderr := captureStderr(t, func() { run(root, "lint", nil, nil, scope) })
+		if !strings.Contains(stderr, "PROBLEM: drive-region-drift: docs/roadmap/drives/d1.md") {
+			t.Errorf("scope=%q: a hand-edited region must be drift; stderr:\n%s", scope, stderr)
+		}
+	}
+}
 
 // activeActOnlyManifest is an operator-act-only active drive: it applies and
 // renders (WAITING-ON-YOU) without naming any stream, so the lint fixtures need

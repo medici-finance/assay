@@ -221,6 +221,24 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads: []string{
+				"tools/forge-import-check/check_env_imports.go",
+				"tools/forge-import-check/check_env_imports_test.go",
+				"docs/streams",
+			},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the unconditional build-test floor executes both authored import-check commands against compiler-valid syntax fixtures",
+		},
+		{
+			test: "tools/desk/internal/regression/releasecache_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"tools/release", ".github/workflows/release.yml", "ci/staged-workflows/release.yml"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the unconditional build-test floor executes release cache provenance, archive, and workflow fixtures",
+		},
+		{
 			test: "tools/desk/cmd/deskinstall/cursor_sync_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"plugins/assay", ".cursor", "AGENTS.md"},
@@ -466,6 +484,27 @@ func ciCrossModuleRegistry() []ciEntry {
 				"copies are bound only by this shared vector, so a statusgen-only diff that drifts the " +
 				"base list, the glob rule or the per-repo topology reading must run this job or the " +
 				"gate a PR is classed by and the gate a brief is checked against silently disagree",
+		},
+		{
+			// The briefs-authoring exemption coupling (#1502).
+			// briefauthoring_coupling_test.go reads the shared vector out of statusgen's
+			// tree and runs it through THIS module's BriefAuthoringOnly; statusgen's twin
+			// runs the same file through its duplicate (briefauthoring.go). A
+			// statusgen-only diff to the vector or the duplicate must run this job.
+			test:     "tools/desk/internal/deskkit/briefauthoring_coupling_test.go",
+			module:   "tools/desk",
+			workflow: ".github/workflows/tools.yml",
+			prJob:    toolsDeskJob,
+			pushJob:  toolsDeskJob,
+			reads: []string{
+				// The SHARED cross-tree authoring-vs-delivery vectors; statusgen reads
+				// them in-module, this module's read is the cross-module one.
+				"statusgen/testdata/brief_authoring_vectors.json",
+			},
+			why: "the rule that a docs-only briefs-authoring PR is not a delivery is DUPLICATED " +
+				"into statusgen's reconcile reader; the two copies are bound only by this shared " +
+				"vector, so a statusgen-only diff that drifts the rule must run this job or " +
+				"deskdispatch and reconcile silently disagree on what counts as delivered",
 		},
 		{
 			test:     "tools/desk/internal/deskkit/citrigger_test.go",
@@ -2491,8 +2530,8 @@ func TestRegressionCIEntrypoints(t *testing.T) {
 			}
 		}
 	}
-	if count != 4 {
-		t.Fatalf("floor has %d CI registry entries, want 4 (manifest, shell, Evidence and changelog suites)", count)
+	if count != 6 {
+		t.Fatalf("floor has %d CI registry entries, want 6 (manifest, shell, Evidence, changelog, mirror import and release cache suites)", count)
 	}
 }
 

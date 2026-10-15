@@ -7,10 +7,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const EnvPolicy = "ASSAY_GO_CACHE_POLICY"
@@ -21,6 +23,30 @@ type Policy struct {
 	Domain string `json:"domain"`
 	Budget int64  `json:"budget_bytes"`
 	Floor  uint64 `json:"minimum_free_bytes"`
+	// BuildMaxAge is the age, in seconds, past which a compiler-cache entry
+	// may be trimmed even while consumers hold records (see trimBuild). Zero
+	// is a policy serialized before the field existed: it means the default,
+	// and omitempty keeps such a policy's serialization byte-identical, so a
+	// consumer launched by an older cellctl still matches its own policy.
+	BuildMaxAge int64 `json:"build_max_age_seconds,omitempty"`
+}
+
+// DefaultBuildMaxAge is the compiled build-cache trim age.
+const DefaultBuildMaxAge = 24 * time.Hour
+
+// MinBuildMaxAge keeps every trim cutoff above the Go toolchain's own use
+// stamp: cmd/go refreshes an entry's mtime when it reads one whose mtime is
+// more than an hour old, so an entry a running build has used is never older
+// than about an hour. Two hours leaves that refresh a full hour of margin.
+const MinBuildMaxAge = 2 * time.Hour
+
+// BuildAge is the effective trim age: the recorded one, or the default for a
+// policy recorded before the field existed.
+func (p Policy) BuildAge() time.Duration {
+	if p.BuildMaxAge == 0 {
+		return DefaultBuildMaxAge
+	}
+	return time.Duration(p.BuildMaxAge) * time.Second
 }
 
 // Resolve uses cell.env's existing resolver, before HOME changes. Ambient Go
@@ -61,6 +87,14 @@ func Resolve(cell string, get func(string) string) (*Policy, error) {
 			return nil, fmt.Errorf("CELL_GO_CACHE_MIN_FREE must be a nonnegative byte count")
 		}
 	}
+	p.BuildMaxAge = int64(DefaultBuildMaxAge / time.Second)
+	if v := get("CELL_GO_CACHE_BUILD_MAX_AGE"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < MinBuildMaxAge || d%time.Second != 0 {
+			return nil, fmt.Errorf("CELL_GO_CACHE_BUILD_MAX_AGE must be a whole-second duration of at least %s", MinBuildMaxAge)
+		}
+		p.BuildMaxAge = int64(d / time.Second)
+	}
 	return p, p.Validate()
 }
 
@@ -74,6 +108,11 @@ func (p Policy) Validate() error {
 	b, err := hex.DecodeString(p.Domain)
 	if err != nil || len(b) != sha256.Size || p.Budget <= 0 {
 		return fmt.Errorf("invalid cache domain or budget")
+	}
+	// Zero is the pre-field default; anything else must clear Go's use stamp.
+	// The upper bound keeps the seconds-to-Duration conversion from overflowing.
+	if p.BuildMaxAge != 0 && (p.BuildMaxAge < int64(MinBuildMaxAge/time.Second) || p.BuildMaxAge > int64(math.MaxInt64/int64(time.Second))) {
+		return fmt.Errorf("build cache trim age must be at least %s", MinBuildMaxAge)
 	}
 	return validatePath(p.Root)
 }

@@ -20,11 +20,28 @@ type stubAPI struct {
 	status      int
 	assetBody   []byte
 	assetStatus int
+	// listPages[i] is the JSON body of release-list page i+1; a page past
+	// the end is an empty list.
+	listPages  []string
+	listStatus int
 }
 
 func (s stubAPI) handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case strings.HasSuffix(r.URL.Path, "/releases"):
+			st := s.listStatus
+			if st == 0 {
+				st = http.StatusOK
+			}
+			w.WriteHeader(st)
+			page := 1
+			fmt.Sscanf(r.URL.Query().Get("page"), "%d", &page)
+			if page-1 < len(s.listPages) {
+				fmt.Fprint(w, s.listPages[page-1])
+			} else {
+				fmt.Fprint(w, "[]")
+			}
 		case strings.Contains(r.URL.Path, "/releases/tags/"):
 			st := s.status
 			if st == 0 {
@@ -150,5 +167,59 @@ func TestParseChecksums(t *testing.T) {
 		if _, err := parseChecksums([]byte(bad)); err == nil {
 			t.Errorf("parseChecksums(%q) should have failed", bad)
 		}
+	}
+}
+
+// listPage renders n releases v1.0.<start>.. as one release-list page.
+func listPage(start, n int) string {
+	var b strings.Builder
+	b.WriteString("[")
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			b.WriteString(",")
+		}
+		fmt.Fprintf(&b, `{"tag_name":"v1.0.%d","draft":false,"prerelease":false,"published_at":"2026-01-02T03:04:05Z"}`, start+i)
+	}
+	b.WriteString("]")
+	return b.String()
+}
+
+// regression: #2916
+func TestGHAPIListsEveryReleasePage(t *testing.T) {
+	g := newTestGH(t, stubAPI{listPages: []string{
+		listPage(0, releasesPerPage),
+		`[{"tag_name":"v0.9.0","draft":true,"prerelease":false,"published_at":null}]`,
+	}})
+	got, err := g.Releases("o/r")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != releasesPerPage+1 {
+		t.Fatalf("want %d releases across two pages, got %d", releasesPerPage+1, len(got))
+	}
+	if got[0].PublishedAt.IsZero() || got[0].Tag != "v1.0.0" {
+		t.Errorf("first release not parsed: %#v", got[0])
+	}
+	last := got[len(got)-1]
+	if !last.Draft || !last.PublishedAt.IsZero() {
+		t.Errorf("a null published_at must read as the zero time: %#v", last)
+	}
+}
+
+// A release list that cannot be read, or that runs past the page bound, is
+// could-not-check — never a short list that reads as "nothing newer".
+// regression: #2916
+func TestGHAPIReleaseListFailsClosed(t *testing.T) {
+	g := newTestGH(t, stubAPI{listStatus: http.StatusInternalServerError})
+	if _, err := g.Releases("o/r"); err == nil {
+		t.Errorf("an HTTP 500 release list returned no error")
+	}
+	full := make([]string, maxReleasePages)
+	for i := range full {
+		full[i] = listPage(i*releasesPerPage, releasesPerPage)
+	}
+	g = newTestGH(t, stubAPI{listPages: full})
+	if _, err := g.Releases("o/r"); err == nil || !strings.Contains(err.Error(), "not read to the end") {
+		t.Errorf("want a refusal past the page bound, got %v", err)
 	}
 }

@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -228,5 +231,87 @@ func TestLaneSeam_TheCutoverCommentIsGenericAndCarriesNoPrivateReference(t *test
 		if strings.Contains(src, forbidden) {
 			t.Fatalf("lane.go names %q — this file is published source and carries no internal document reference", forbidden)
 		}
+	}
+}
+
+// scanGit runs the real git binary in dir with a throwaway identity and no global config, so the
+// two-pass test below cannot depend on, or touch, the developer's own git state.
+func scanGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "HOME="+t.TempDir(), "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.test", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.test")
+	b, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, b)
+	}
+	return string(b)
+}
+
+// TestScanCarrierLane_CoalesceTwoPassRealGit — a fresh pass opens the scan PR on a branch, and the
+// next tick coalesces into it. `git worktree remove` leaves the fresh pass's local branch behind, so
+// a coalesce that cuts its worktree with `-b <open branch>` is refused ("a branch named … already
+// exists") on every tick in the window. This runs real git for both passes; only the outward
+// binaries (statusgen, deskscanbody, deskpr) are stubbed, and the stubbed deskpr create/update push
+// the branch the way the real verb does.
+func TestScanCarrierLane_CoalesceTwoPassRealGit(t *testing.T) {
+	base := t.TempDir()
+	origin := filepath.Join(base, "origin.git")
+	root := filepath.Join(base, "target")
+	scanGit(t, base, "init", "--bare", "-b", "main", origin)
+	scanGit(t, base, "clone", origin, root)
+	scanGit(t, root, "checkout", "-b", "main")
+	if err := os.WriteFile(filepath.Join(root, "seed.txt"), []byte("seed\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scanGit(t, root, "add", "seed.txt")
+	scanGit(t, root, "commit", "-m", "seed")
+	scanGit(t, root, "push", "origin", "main")
+
+	n := 0
+	exec := Exec(func(dir, name string, args ...string) (string, error) {
+		switch name {
+		case "git":
+			return scanGit(t, dir, args...), nil
+		case "statusgen":
+			n++
+			d := filepath.Join(dir, deskkit.ScanDir)
+			if err := os.MkdirAll(d, 0o755); err != nil {
+				return "", err
+			}
+			return "", os.WriteFile(filepath.Join(d, fmt.Sprintf("delta-%d.md", n)), []byte("x\n"), 0o600)
+		case "deskscanbody":
+			return "derived\n", nil
+		case "deskpr":
+			if args[0] == "create" || args[0] == "update" {
+				scanGit(t, dir, "push", "origin", "HEAD:refs/heads/"+strings.TrimSpace(scanGit(t, dir, "branch", "--show-current")))
+			}
+			return "", nil
+		}
+		return "", fmt.Errorf("unexpected command %s", name)
+	})
+	lane := scanCarrierPRLane{exec: exec, write: func(string, string) error { return nil }}
+	it := scanItem("medici-finance/assay", string(LaneScanCarrierPR))
+	req := func(wt string, open *OpenScanPR) LaneRequest {
+		r := laneReq(t, it, open)
+		r.Root, r.Worktree, r.DryRun = root, filepath.Join(base, wt), false
+		r.Branch = "chore/intake-scan-2026-08-24-1140"
+		return r
+	}
+
+	if _, err := lane.Execute(req("wt-fresh", nil)); err != nil {
+		t.Fatalf("fresh pass: %v", err)
+	}
+	if got := scanGit(t, root, "branch", "--list", "chore/intake-scan-2026-08-24-1140"); !strings.Contains(got, "chore/intake-scan") {
+		t.Fatalf("the fresh pass left no local branch, so this test would not exercise the collision:\n%s", got)
+	}
+	for i, wt := range []string{"wt-coalesce-1", "wt-coalesce-2"} {
+		if _, err := lane.Execute(req(wt, openPR(3*time.Minute))); err != nil {
+			t.Fatalf("coalesce pass %d after the fresh pass: %v", i+1, err)
+		}
+	}
+	if got := scanGit(t, origin, "ls-tree", "-r", "--name-only", "chore/intake-scan-2026-08-24-1140"); strings.Count(got, "delta-") != 3 {
+		t.Fatalf("the open branch should carry the fresh delta plus both coalesced ones:\n%s", got)
 	}
 }

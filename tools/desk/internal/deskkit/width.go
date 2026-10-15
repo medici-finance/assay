@@ -215,8 +215,8 @@ var widthPolicies = map[string]widthPolicy{
 		WritesPerItem:  1,
 		TokenBound:     false,
 		DefaultReserve: map[string]int{"resume": 2},
-		Why: "one worker item costs one `deskpr create`, which meters REPO-WIDE at the " +
-			"per-PR cap (AllowWriteRepoWide). Workers hold their own worktrees and do most " +
+		Why: "one worker item costs one `deskpr create`, which meters NEW CREATES per repo at the " +
+			"per-PR cap (AllowPRCreate). Workers hold their own worktrees and do most " +
 			"of their work locally, so the binding constraint is that write budget, not the " +
 			"token. The reserve holds 2 of the 8 slots for orphan-PR resumes so a full pool of " +
 			"fresh briefs cannot leave a resume waiting (example-stream/05); rework starts at " +

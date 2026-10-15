@@ -8,7 +8,7 @@ why: >-
   one failed run into a replay fixture, proposes one reviewed pattern revision from it, and
   proves the revision fixes the motivating cases without changing the ones it did not touch.
   A human decides what ships; the loop proposes, it never promotes.
-wave: 6
+wave: 9
 depends: ["graph-execution/05", "graph-execution/09"]
 unblocks:
 - graph-execution/24
