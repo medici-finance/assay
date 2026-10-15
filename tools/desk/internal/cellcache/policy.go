@@ -10,7 +10,6 @@ import (
 	"math"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -148,21 +147,34 @@ func (p Policy) Env() []string {
 
 // WithAmbientGoFlags returns p with the launching environment's own GOFLAGS
 // kept ahead of the policy's flags, so an operator's GOFLAGS is extended, never
-// silently replaced. A flag already present is not repeated. A policy with no
-// GoFlags (opted out) is returned unchanged: it exports no GOFLAGS, and the
-// ambient value passes through untouched.
+// silently replaced. A flag the ambient value already sets, with any value, is
+// not added: an explicit -trimpath=false stays the operator's choice, since
+// cmd/go lets the later of two settings win. A policy with no GoFlags (opted
+// out) is returned unchanged: it exports no GOFLAGS, and the ambient value
+// passes through untouched.
 func (p Policy) WithAmbientGoFlags(ambient string) Policy {
 	if p.GoFlags == "" || strings.TrimSpace(ambient) == "" {
 		return p
 	}
 	fields := strings.Fields(ambient)
+	set := map[string]bool{}
+	for _, f := range fields {
+		set[goFlagName(f)] = true
+	}
 	for _, f := range strings.Fields(p.GoFlags) {
-		if !slices.Contains(fields, f) {
+		if !set[goFlagName(f)] {
 			fields = append(fields, f)
 		}
 	}
 	p.GoFlags = strings.Join(fields, " ")
 	return p
+}
+
+// goFlagName is a GOFLAGS field's flag name: "-trimpath=false" and
+// "--trimpath" both name "trimpath".
+func goFlagName(f string) string {
+	name, _, _ := strings.Cut(strings.TrimLeft(f, "-"), "=")
+	return name
 }
 func FromEnv(env []string) (*Policy, error) {
 	value := ""

@@ -70,7 +70,8 @@ func TestCacheTrimpathPolicy(t *testing.T) {
 }
 
 // TestCacheAmbientGoFlags: an operator's own GOFLAGS is extended, never replaced
-// or duplicated, and an opted-out policy leaves it alone.
+// or duplicated, an explicit setting of the policy's flag (-trimpath=false)
+// wins, and an opted-out policy leaves it alone.
 func TestCacheAmbientGoFlags(t *testing.T) {
 	p := fixture(t)
 	for ambient, want := range map[string]string{
@@ -79,6 +80,8 @@ func TestCacheAmbientGoFlags(t *testing.T) {
 		"-mod=mod":             "-mod=mod -trimpath",
 		"-trimpath":            "-trimpath",
 		"-mod=mod  -trimpath ": "-mod=mod -trimpath",
+		"-trimpath=false":      "-trimpath=false",
+		"-mod=mod --trimpath":  "-mod=mod --trimpath",
 	} {
 		if got := p.WithAmbientGoFlags(ambient).GoFlags; got != want {
 			t.Errorf("ambient %q: got %q, want %q", ambient, got, want)
