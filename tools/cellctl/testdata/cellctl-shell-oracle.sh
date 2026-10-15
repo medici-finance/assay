@@ -1344,6 +1344,7 @@ cmd_show(){
     local key="$1" flag="$2" eff="$3" src
     if [[ -n "$flag" ]]; then src="flag"
     elif env_file_value "$envfile" "$key" >/dev/null; then src="cell.env"
+    elif [[ "$key" == "ASSAY_TELEMETRY" && -n "${ASSAY_TELEMETRY+x}" ]]; then src="process environment"
     else src="default"
     fi
     printf '[show] %s=%s (%s)\n' "$key" "$eff" "$src"

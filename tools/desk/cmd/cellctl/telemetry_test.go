@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -99,7 +100,8 @@ func TestTelemetryAllRoleLaunchEnvironments(t *testing.T) {
 }
 
 func TestTelemetryChildProcess(t *testing.T) {
-	if os.Getenv("ASSAY_TEST_TELEMETRY_CHILD") != "1" && os.Getenv("CELL_KIND") != "container" {
+	externalFixture := os.Getenv("CELL_KIND") == "container" && slices.Contains(os.Args[1:], "-test.run=^TestTelemetryChildProcess$")
+	if os.Getenv("ASSAY_TEST_TELEMETRY_CHILD") != "1" && !externalFixture {
 		t.Skip("subprocess fixture")
 	}
 	if code := deskkit.PerfRun("deskboard", []string{"--version"}, []string{"--version"}, func([]string) int { return 0 }); code != 0 {
@@ -199,5 +201,22 @@ func TestTelemetryHelperAndServiceLogGrowth(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestTelemetryShowProcessSource(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("policy fixture uses Unix shell scripts")
+	}
+	f := newPolicyFixture(t, "2.1.278")
+	for _, value := range []string{"1", "0", "true"} {
+		want := "0"
+		if value == "1" {
+			want = "1"
+		}
+		r := f.run(t, []string{envAssayTelemetry + "=" + value}, "show", "example")
+		if r.code != 0 || !strings.Contains(r.stdout, "[show] ASSAY_TELEMETRY="+want+" (process environment)") {
+			t.Fatalf("value=%q code=%d stdout=%s stderr=%s", value, r.code, r.stdout, r.stderr)
+		}
 	}
 }

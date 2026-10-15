@@ -356,7 +356,7 @@ live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares t
 | TMPDIR | `<cell>/tmp` (created 0700 if absent) |
 | KUBECONFIG | `/dev/null` |
 | ASSAY_CONFIG_HOME | `<cell>/home/.config/assay` |
-| ASSAY_TELEMETRY | Cell-resolved local logging: exactly `1` opts in; otherwise `0` |
+| ASSAY_TELEMETRY | Cell-resolved local logging: exactly `1` opts in; configured other values become `0`; absent stays off |
 | GH_CONFIG_DIR | `<cell>/home/.config/gh` |
 | GIT_CONFIG_GLOBAL | `<cell>/home/.gitconfig` |
 | GIT_CONFIG_NOSYSTEM | `1` |
