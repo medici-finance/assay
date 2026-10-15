@@ -961,7 +961,7 @@ func TestWorkerDispatchCarriesThePacketLine(t *testing.T) {
 					wants = append(wants, "- **Head commit:** `"+wpBase+"`", "## Repository", "Run the tests.")
 				}
 				wpWantAll(t, "the packet", string(body), wants...)
-				prompt, err := os.ReadFile(promptFile)
+				prompt, err := os.ReadFile(emittedPathFor(promptFile))
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1034,7 +1034,7 @@ func TestWorkerDispatchSurvivesAPacketThatCannotBeBuilt(t *testing.T) {
 			if rc != deskkit.ExitOK {
 				t.Fatalf("dispatch rc = %d, want 0 — a packet must never fail a dispatch\n%s", rc, stderr)
 			}
-			prompt, err := os.ReadFile(promptFile)
+			prompt, err := os.ReadFile(emittedPathFor(promptFile))
 			if err != nil {
 				t.Fatalf("the dispatch emitted no prompt: %v", err)
 			}

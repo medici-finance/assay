@@ -97,6 +97,15 @@ facts:
   machines is stopped by the declaration and the notice only — not by the tool.
 - The reverse check, window only: the legacy resolution refuses while the default claims
   directory holds a live claim for the repo.
+- Precondition 5 and the reverse check ship in the same release as the `file` backend, never
+  after it: since the 2026-10-13 amendment of forge-neutral/21
+  (ratified by the maintainer: https://github.com/medici-finance/assay/issues/2753#issuecomment-6147676148), a build that does not ship `file`
+  resolves `ASSAY_CLAIM_STORE=file` to the legacy forge-ref store, so during an upgrade an old
+  process claims on the forge while an upgraded one claims in the directory. Only these two
+  checks see that mix, and they run only in builds that ship `file`; the old process never
+  refuses. When the upgraded process claims first, the old one claims on the forge anyway, and
+  the mix is detected on an upgraded process's next resolve, after both holders exist: loud,
+  not prevented.
 - Supported: local disks. The README says so and says everything else is unsupported; a cell
   that cannot meet that uses `service`.
 

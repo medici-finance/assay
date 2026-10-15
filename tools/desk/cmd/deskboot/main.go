@@ -88,6 +88,12 @@ before step 2 — nothing is pruned, locked, registered, minted or fetched.
 Exit: 0 boot complete · 3 disabled · 5 refused (caller precondition) · 6 unverifiable
 (a step ran and could not be proven green — including a worktree behind origin/main).`
 
+// perfVerbs is deskboot's registered first-argument set for the opt-in local perf record
+// (deskkit.PerfRun): the role names it boots (the compiled roster knownRoles
+// derives) plus --version/--help. args[0] is recorded only when it is one of these, and as
+// "other" otherwise, so no argv text can reach the record.
+func perfVerbs() []string { return append(knownRoles(), "--version", "--help") }
+
 func main() {
 	// Explicit roster class: deskboot ACTS on the roster (it registers a role and
 	// resolves the repo set), so ciEligible=false — it reads the config-home file and
@@ -99,7 +105,7 @@ func main() {
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskboot", perfVerbs(), os.Args[1:], run))
 }
 
 func run(args []string) int {

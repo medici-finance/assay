@@ -36,7 +36,7 @@ func cmdStampOnly(args []string) (err error) {
 	if o.pr <= 0 || strings.TrimSpace(o.repo) == "" || strings.TrimSpace(o.model) == "" || o.tier == "" {
 		return deskkit.Refused("stamp-only requires --repo, positive --pr, explicit --model and --tier")
 	}
-	if _, e := deskkit.ModelStampLabels(o.model, o.tier); e != nil {
+	if _, e := stampKindForKit(o.kit).Labels(o.model, o.tier); e != nil {
 		return deskkit.Refused(e.Error())
 	}
 	if _, e := kitText(o.kit); e != nil {

@@ -218,6 +218,13 @@ exit codes, roster echo and empty stdout. Their usage diagnostic adds `wipe` to
 `status|clean|wipe|recover`, reflecting the new supported cache action. The parity
 test requires every other byte of those recorded diagnostics to stay identical.
 
+`cache-enabled/3` (`cache example status`) and `cache-enabled/4`
+(`cache example clean`) keep their exit codes and stderr. Their JSON report adds
+the policy's compiler-cache trim age (`build_max_age_seconds`, 86400 by
+default) and the age trim's counts (`trimmed_build_entries`,
+`trimmed_build_bytes`). See [managed Go caches](cellctl-go-cache.md). The parity
+test requires every other byte of those reports to stay identical.
+
 `reset` and `comms init` are additional commands. The contained `comms-reader`
 entrypoint consumes an opaque argv. See [cell maintenance](cellctl-maintenance.md).
 
@@ -231,3 +238,18 @@ replaces only the skill prompt argument with native Goal admission and readback.
 The original pre-migration transcripts are retained, and every other byte still
 must match. Explicit cadence durations and other harnesses keep their behavior.
 See [the cadence contract](cellctl-cadence.md) for continuation limits.
+
+## Cells without a deskd
+
+Issue #2881 drops the placeholder `cell` window that `up` opened on a cell with no deskd (on a
+house cell, `DESKD` unset or `0`). That window only echoed a note and then sat at an idle shell,
+which read as a deskd window that had failed to start. `up` now opens only the role windows (and
+the comms window when comms is configured); on tmux, the comms window or else the first role window
+creates the session. With nothing at all to open, `up` says so on stderr and exits 0 without
+creating a session.
+The one-line note (`[cell] <cell> is a house cell with no deskd (DESKD=1 in cell.env to stand
+one)`) is printed once to `up`'s own stderr instead.
+
+In the dry-run transcripts, `up/0`, `up/1`, `up/2`, `up/3`, `up/4`, `kind-whole-line/1` and
+`kind-whole-line/9` lose their `[dry-run] cell: echo '…'` line from stdout and end their
+stderr with that note. Every other byte still must match. `DESKD=1` behaviour is unchanged.
