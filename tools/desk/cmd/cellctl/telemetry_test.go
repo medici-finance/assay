@@ -220,3 +220,40 @@ func TestTelemetryShowProcessSource(t *testing.T) {
 		}
 	}
 }
+
+// Exercise the real desk entrypoint, not just the environment composer: removing
+// the telemetry overlay from deskLaunch must break this launcher-to-tool proof.
+func TestTelemetryRealHouseLaunchLogGrowth(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("recording harness fixture uses Unix shell scripts")
+	}
+	for _, tc := range []struct{ harness, role string }{{"claude", "pr-review-desk"}, {"codex", "intake-desk"}} {
+		t.Run(tc.harness, func(t *testing.T) {
+			f := newPolicyFixture(t, "2.1.278")
+			f.prepareLocalLaunch(t)
+			home := filepath.Join(f.cellDir, "home")
+			script := "#!/bin/sh\ncase \"$1\" in\n--version) echo '2.1.278 (stub)'; exit 0;;\nplugin) exit 0;;\nesac\n" +
+				"export ASSAY_TEST_TELEMETRY_CHILD=1 HOME=" + bashQuote(home) + " USERPROFILE=" + bashQuote(home) + "\n" +
+				"exec " + bashQuote(os.Args[0]) + " '-test.run=^TestTelemetryChildProcess$'\n"
+			must(t, os.WriteFile(filepath.Join(f.binDir, tc.harness), []byte(script), 0700))
+			path := filepath.Join(f.cellDir, "cell.env")
+			base, err := os.ReadFile(path)
+			must(t, err)
+			for i, value := range []string{"1", "0", "1"} {
+				must(t, os.WriteFile(path, append(append([]byte(nil), base...), []byte("ASSAY_TELEMETRY="+value+"\n")...), 0600))
+				// Opposing parent state proves cell precedence at the live boundary.
+				parent := "1"
+				if value == "1" {
+					parent = "0"
+				}
+				r := f.run(t, []string{"CELLCTL_DESKWT=0", "PATH=" + f.binDir + ":/usr/bin:/bin", "ASSAY_TELEMETRY=" + parent}, "desk", "example", tc.role, "--cadence", "off")
+				if r.code != 0 {
+					t.Fatalf("launch value=%s exit=%d stdout=%s stderr=%s", value, r.code, r.stdout, r.stderr)
+				}
+				if got := telemetryRows(t, home); got != []int{1, 1, 2}[i] {
+					t.Fatalf("value=%s rows=%d", value, got)
+				}
+			}
+		})
+	}
+}
