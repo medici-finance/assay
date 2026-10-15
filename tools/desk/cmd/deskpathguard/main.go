@@ -17,7 +17,9 @@
 // is could-not-check (exit 6), never rendered as clean. See Evaluate's doc comment.
 //
 // Exit codes (deskkit contract): 0 ok/clean · 3 disabled · 4 rate-limited · 5 refused ·
-// 6 could-not-check.
+// 6 could-not-check. A checked-failed (labelled) check exits 0: the contract has no
+// checked-failed code, and a non-zero exit here would read as a refusal to a caller told to
+// stop on one. The `state=` line carries the result, and the usage says so.
 package main
 
 import (
@@ -50,7 +52,12 @@ rederive   verify-desk's pre-change re-read: reports every Verify-table row pres
 --dry-run  (check only) resolves the verdict and prints it, but never writes the label.
 --main     (rederive only) the ref to merge-base HEAD against; default origin/main.
 
-Exit: 0 ok/clean · 3 disabled · 4 rate-limited · 5 refused · 6 could-not-check.`
+Exit: 0 ok/clean · 3 disabled · 4 rate-limited · 5 refused · 6 could-not-check.
+
+RESULT (check): exit 0 means the check RAN, labelled or clean — the state= line is the
+result, never the exit code. state=checked-failed, printed with "gate-forced:
+wrote-to-the-test", is the labelled case and still exits 0, --dry-run or not. Only
+state=could-not-check exits non-zero (6).`
 
 func main() {
 	// check performs a forge write (ApplyLabels); rederive is a local git read. Both declare

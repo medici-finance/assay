@@ -88,6 +88,21 @@ approval RESTING on a could-not-check is unfounded. An instrument that did not l
 cleared nothing, so say which checks could not run and treat the gap as a finding rather
 than as a silence.
 
+**Read what an instrument printed, not only its exit code.** Two read-only runs report
+through their output:
+
+- `deskpathguard check <owner/repo> <N> --dry-run` exits 0 whenever the check RAN, labelled
+  or clean; its `state=` line is the result. `state=checked-failed` with
+  `gate-forced: wrote-to-the-test` is the labelled case (clause 12). Only could-not-check
+  exits non-zero (6).
+- `statusgen verifyrun --dry-run` exits 2 when a row could not run AND when it refused to run
+  any row for want of an executing identity — `could-not-attribute` on stderr, no table on
+  stdout. The refusal ran nothing: it is could-not-check, never a failed row. An isolated
+  HOME has no git identity; supply one for that run alone through git's environment
+  (`GIT_CONFIG_COUNT=2`, `GIT_CONFIG_KEY_0=user.name`, `GIT_CONFIG_VALUE_0=<your identity>`,
+  `GIT_CONFIG_KEY_1=user.email`, `GIT_CONFIG_VALUE_1=<its address>`), never by writing git
+  config.
+
 ## 6. Resolve every path claim in the PR's OWN repository, at the PR's head
 
 A finding that says a file does not exist, was never added, or is not wired up is a claim
@@ -205,6 +220,18 @@ still yours to post, as an ordinary clause-13 finding.
 
 - Post the verdict as a real review under the reviewer App identity, through the desk
   verb — never a raw forge call, and never as the PR author.
+- **Post, confirm and release in one step.** `deskpost finish review|security-review
+  <owner/repo> <N> --verdict … --head <full sha> --body-file F --claim <claim key>` posts the
+  verdict, reads it back, and only then releases your dispatch claim; your assignment spells it
+  out when your claim key is one it accepts. If it stops at its release step, the verdict
+  stands and the claim is still held: run the release line in your assignment. A post may
+  also print `verdict-time labels: applied <labels>` — the verb's own advisory size and
+  surface labels, not a write of yours.
+- **A PR labelled `wrote-to-the-test` gets no APPROVE without the reason.** When the PR
+  carries that label, or `deskpathguard check` reports `gate-forced: wrote-to-the-test`
+  (clause 5), the change edits a protected path the item is graded by. An APPROVE must name
+  the protected path touched and say why the edit is legitimate; with no such reason, the
+  correctness verdict is request-changes, one line pointing at the label.
 - **A content-scan refusal on your verdict body is a STOP.** If the desk verb refuses your
   verdict body on its content scan (exit 5 naming a scan rule), do not reword, re-encode, split
   or trim the body to get past it, and never use the scan override — that act is the
@@ -541,10 +568,11 @@ The packet is a file the dispatcher prepared for this review at a recorded head:
 metadata and description, check states, this lane's earlier verdicts, the diff, the post-change
 text of the touched files it lists, and the brief when the dispatch names one.
 
-- **Read it first, whole, in one read**, before any other fetch. **Do not re-fetch what it
-  holds; fetch only what it lacks**, batched per clause 17 — a file it does not list, a
-  failing job's log, the other lane's verdict — and the two things it cannot vouch for: the
-  PR's head and its check states now (next two bullets).
+- **Read it first, whole, before any other fetch** — in one read when it fits; a packet larger
+  than one read returns is taken in ranges, all sent in one request (clause 17), and you say
+  so. **Do not re-fetch what it holds; fetch only what it lacks**, batched per clause 17 — a
+  file it does not list, a failing job's log, the other lane's verdict — and the two things it
+  cannot vouch for: the PR's head and its check states now (next two bullets).
 - **Head check — against the forge, never the packet.** Read the PR's head from the forge
   yourself and compare it with the head the packet records; a head taken from the packet proves
   nothing about the packet. If they differ — or the packet is missing, unreadable, or records
