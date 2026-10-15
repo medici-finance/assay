@@ -226,7 +226,7 @@ func CanonicalBriefID(v string) string {
 
 // ParseTrailers returns the link trailers in a PR body. Lines inside fenced code
 // blocks (```) are ignored — a trailer inside a code sample is documentation, not
-// a link. Exactly one link may exist: a second Brief:, Issue: or Authors: line, or
+// a link. Exactly one link may exist: a second Brief:, Issue:, Authors: or Cross-repo-brief: line, or
 // two different kinds, is a multiplicity error (the caller refuses). A body with no
 // trailer is NOT an error here — the caller decides what absence means (deskpr
 // refuses it). An Authors: value is returned raw; SplitAuthorsTrailer validates it.

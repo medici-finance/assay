@@ -192,6 +192,18 @@
       "file": "cmd/deskdispatch/phantom.go",
       "old": "\t\tif !ok && xrLink != \"\" {",
       "new": "\t\tif false && xrLink != \"\" {"
+    },
+    {
+      "name": "#2748: under --cross-repo the phantom check drops the Brief: match, so a tag-path delivery of the same home brief is missed and a duplicate is spawned; TestCrossRepoFlagPhantom/tag-path_delivery must go red",
+      "file": "cmd/deskdispatch/phantom.go",
+      "old": "\t\tif !ok && xrLink != \"\" {",
+      "new": "\t\tif xrLink != \"\" {\n\t\t\tok = false\n\t\t}\n\t\tif !ok && xrLink != \"\" {"
+    },
+    {
+      "name": "#2748: a --cross-repo --pr resume prompt points deskpr update at the tracking checkout, whose registry refuses the Cross-repo-brief: link; TestCrossRepoFlagResume must go red",
+      "file": "cmd/deskdispatch/workerkind.go",
+      "old": "\tif plan.dl.crossRepoBrief {",
+      "new": "\tif false && plan.dl.crossRepoBrief {"
     }
   ]
 }

@@ -87,6 +87,13 @@ type phantomFollowUp struct {
 
 // representingPRs splits the PRs that represent briefID (by `Brief:` trailer, via deskkit's own
 // reduction) into OPEN and MERGED numbers, in list order.
+//
+// Under --cross-repo (xrLink set) the `Brief:` match is KEPT, deliberately: a brief whose files:
+// list tags --repo can already have been delivered there through the tag path, whose PR is opened
+// with `deskpr create --root <tracking>` and so carries `Brief: <stream>/<NN>` naming this same
+// home brief. --cross-repo does not refuse a tagged brief, so dropping that match would let it
+// spawn a duplicate. The cost is a refusal when an unrelated LOCAL brief shares the stream/NN —
+// the fail-closed direction, and the refusal names the PR it matched.
 func representingPRs(briefID, xrLink string, prs []deskkit.PRRef) (open, merged []int) {
 	for _, pr := range prs {
 		rp, ok := deskkit.RepresentedBriefPRs([]deskkit.PRRef{pr})[strings.ToLower(strings.TrimSpace(briefID))]

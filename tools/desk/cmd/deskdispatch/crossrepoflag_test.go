@@ -55,7 +55,7 @@ func TestCrossRepoFlagDispatches(t *testing.T) {
 			if !s.ran("deskwt add") {
 				t.Error("no worktree was cut from the --repo checkout")
 			}
-			prompt := readPrompt(t, promptFile)
+			prompt := readPrompt(t, emittedPathFor(promptFile))
 			for _, w := range []string{
 				"**Target repo:** `medici-finance/assay`",
 				c.tracked,
@@ -70,6 +70,41 @@ func TestCrossRepoFlagDispatches(t *testing.T) {
 				t.Error("the cross-repo-brief prompt must not point deskpr at the tracking checkout")
 			}
 		})
+	}
+}
+
+// regression: #2748
+// TestCrossRepoFlagResume — a --cross-repo --pr dispatch RESUMES the open PR, and its shepherd
+// prompt must keep that PR's Cross-repo-brief: link working: plain `deskpr update` from inside the
+// worktree, never `deskpr update --root <tracking>` (the tracking registry's own `self` is the home
+// alias, so deskpr refuses the link there) and never a `Brief:` trailer.
+func TestCrossRepoFlagResume(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	trk := trackingCheckout(t, exampleRegistry)
+	s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
+	recordMint(t, home, nil)
+	promptFile := filepath.Join(t.TempDir(), "p.md")
+	err := cmdDispatch([]string{"example-trk:example-stream/05", "--repo", "medici-finance/assay", "--cross-repo",
+		"--root", root, "--claim-root", trk, "--brief", exampleBriefRel, "--kit", "worker", "--pr", "42",
+		"--prompt-file", promptFile, "--quiet"})
+	if err != nil {
+		t.Fatalf("a cross-repo resume must proceed: %v", err)
+	}
+	prompt := readPrompt(t, emittedPathFor(promptFile))
+	for _, w := range []string{
+		"This dispatch RESUMES `medici-finance/assay#42`",
+		"`Cross-repo-brief: example-trk:example-stream/05`",
+		"with no tracking `--root`",
+	} {
+		if !strings.Contains(prompt, w) {
+			t.Errorf("resume prompt is missing %q", w)
+		}
+	}
+	for _, bad := range []string{"`deskpr update --root ", "so the `Brief:` trailer resolves"} {
+		if strings.Contains(prompt, bad) {
+			t.Errorf("resume prompt must not say %q: deskpr refuses the Cross-repo-brief: link there", bad)
+		}
 	}
 }
 
@@ -134,6 +169,9 @@ func TestCrossRepoFlagPhantom(t *testing.T) {
 		refused bool
 	}{
 		{"open delivery", "Cross-repo-brief: example-trk:example-stream/05", true},
+		// A tag-path delivery of this same brief carries a Brief: line (deskpr create --root
+		// <tracking>), and --cross-repo does not refuse a tagged brief, so it must still count.
+		{"tag-path delivery", "Brief: example-stream/05", true},
 		{"another home", "Cross-repo-brief: example-con:example-stream/05", false},
 		{"issue-only", "Issue: #7", false},
 	} {
