@@ -349,7 +349,7 @@ func changedReadmes(worktree string, step func(dir, name string, args ...string)
 	}
 	if len(foreign) > 0 {
 		sort.Strings(foreign)
-		return nil, deskkit.Refused("refused: reconcile changed non-README paths — this verb's reconcile (run without --regenerate) writes ONLY stream README Status cells, so these are not reconcile output and will not be committed: " + strings.Join(foreign, ", "))
+		return nil, deskkit.Refused("refused: reconcile changed non-README paths — a reconcile writes ONLY stream README Status cells, so these are not reconcile output and will not be committed: " + strings.Join(foreign, ", "))
 	}
 	sort.Strings(readmes)
 	return dedupe(readmes), nil
