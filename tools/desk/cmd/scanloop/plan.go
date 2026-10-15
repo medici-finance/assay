@@ -51,7 +51,7 @@ func (o *planOptions) bind(fs *flag.FlagSet, withRun bool) {
 	fs.StringVar(&o.nowStr, "now", "", "RFC3339 instant to age the queue against (default: wall clock)")
 	fs.StringVar(&o.scanTarget, "scan-target", "", "repo the placeholder delta is committed to and the scan PR opened against (default: the --root checkout's origin)")
 	fs.DurationVar(&o.window, "coalesce-window", DefaultCoalesceWindow, "max age of an open scan PR that may still absorb this batch")
-	fs.IntVar(&o.scanPR, "scan-pr", 0, "this session's open scan PR number, if one is open")
+	fs.IntVar(&o.scanPR, "scan-pr", 0, "the open scan PR to decide against; omitted, 'run' reads the open scan PR of this App from the scan target ('plan' never reads the forge)")
 	fs.StringVar(&o.scanBranch, "scan-branch", "", "the open scan PR's branch")
 	fs.StringVar(&o.prCreated, "scan-pr-created", "", "the open scan PR's RFC3339 createdAt — an unread age never coalesces")
 	fs.StringVar(&o.prState, "scan-pr-state", "", "the open scan PR's draft/ready state: 'draft' (still in the review loop — the window decides) or 'ready' (flipped for-human — push-quiet, so a fresh PR is cut). Empty is unread and never coalesces")

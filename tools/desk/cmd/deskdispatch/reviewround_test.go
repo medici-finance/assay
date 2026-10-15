@@ -791,7 +791,7 @@ func TestDispatchedReviewPromptCarriesTheRound(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("dispatch rc = %d, want 0\n%s", rc, stderr)
 	}
-	raw, err := os.ReadFile(promptFile)
+	raw, err := os.ReadFile(emittedPathFor(promptFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -842,7 +842,7 @@ func TestNonReviewDispatchHasNoRound(t *testing.T) {
 	if rc := run(args); rc != deskkit.ExitOK {
 		t.Fatalf("worker dispatch rc = %d", rc)
 	}
-	raw, err := os.ReadFile(promptFileOf(t, args))
+	raw, err := os.ReadFile(emittedPathFor(promptFileOf(t, args)))
 	if err != nil {
 		t.Fatal(err)
 	}

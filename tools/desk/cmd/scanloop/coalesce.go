@@ -69,7 +69,7 @@ const (
 	ScanPRReady ScanPRState = "ready"
 )
 
-// OpenScanPR is this session's currently-open scan PR, if any.
+// OpenScanPR is the scan target's open scan PR by this App, if any — whichever session opened it.
 type OpenScanPR struct {
 	Number int
 	Branch string
@@ -102,7 +102,7 @@ func (p CoalescePolicy) window() time.Duration {
 func (p CoalescePolicy) Decide(open *OpenScanPR, now time.Time) (CoalesceDecision, string) {
 	w := p.window()
 	if open == nil || open.Number <= 0 {
-		return CoalesceFresh, "no open scan PR from this session — cut a fresh branch and draft PR"
+		return CoalesceFresh, "no open scan PR by this App is known — cut a fresh branch and draft PR"
 	}
 	if w < 0 {
 		return CoalesceFresh, fmt.Sprintf("coalescing is disabled by configuration — #%d is left sealed at its current head", open.Number)

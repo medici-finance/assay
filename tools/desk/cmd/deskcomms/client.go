@@ -128,8 +128,8 @@ func parseEd25519Key(s string) (ed25519.PrivateKey, error) {
 	}
 }
 
-// randHex mints a random lowercase-hex token of n bytes, for message ids and
-// nonces. crypto/rand so a nonce is unguessable and a collision is negligible.
+// randHex mints a random lowercase-hex token of n bytes for nonces.
+// crypto/rand keeps nonce collisions negligible during normal operation.
 func randHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
@@ -139,6 +139,21 @@ func randHex(n int) string {
 		return fmt.Sprintf("t%d", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(b)
+}
+
+// newMessageID uses UUID v4 formatting so a message ID can also be quoted as a
+// correlation reference in a payload. A bare 32-character hex ID is credential-
+// shaped to BodyCheck; the UUID separators avoid that ambiguity without granting
+// any scanner exemption. Existing opaque IDs remain valid for poll and ack.
+func newMessageID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// Preserve the existing timestamp fallback for non-secret message IDs.
+		return fmt.Sprintf("t%d", time.Now().UnixNano())
+	}
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[:4], b[4:6], b[6:8], b[8:10], b[10:])
 }
 
 // buildDeps assembles the real dependencies from the environment: session
@@ -161,7 +176,7 @@ func buildDeps(stdin io.Reader, stdout io.Writer) (*deps, error) {
 			// pr==0: a cell message carries no PR; the destination lane is the bucket.
 			return deskkit.AllowWrite("deskcomms", bucket, 0)
 		},
-		newID:    func() string { return randHex(16) },
+		newID:    newMessageID,
 		newNonce: func() string { return randHex(16) },
 	}, nil
 }
