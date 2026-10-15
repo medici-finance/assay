@@ -36,6 +36,10 @@ fixtures now. Import of actual `perf-v1` files becomes useful as desk-tools/23 s
 an optional source, not a dependency that holds the local logger or database work hostage.
 No second implementation of desk-tools/23's timing hooks is authorized here.
 
+Refresh, 15 October 2026 at public main d430e8f18: the perf-v1 hooks and deskperf
+reader are now present on main; desk-tools/23 remains implemented pending independent
+verification. The preceding 13 October account is historical. perfdata remains absent.
+
 Read these controlling and proposed sources:
 
 - [Telemetry promise](../../telemetry.md): existing `telemetry-v1` counts-only data,
