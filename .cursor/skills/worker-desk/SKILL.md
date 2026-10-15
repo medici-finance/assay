@@ -476,7 +476,9 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   the claim tool `deskdispatch` resolved. **That tool is `deskclaim-ref` by default** — the
   cross-platform claim binary installed with desk-tools (`tools/desk/cmd/deskclaim-ref`), verbs
   `acquire` / `progress` / `release` / `steal` / `show` / `list`, deskkit exit codes **0** ok ·
-  **5** refused (a live holder owns it) · **6** unverifiable (never "assume free"). The fallback:
+  **5** refused (a live holder owns it) · **6** unverifiable (never "assume free"); `list` alone
+  adds **7** partial — some claims listed, some refs unreadable and named on stderr — which is
+  incomplete, never idle. The fallback:
   a repo may ship its own `tools/dispatch-claim.sh`, and `deskdispatch`'s claim-acquire step
   **prefers `deskclaim-ref` whenever it is on PATH**, falling back to that script when the binary
   is absent and the resolved root (`--claim-root` when given, else `--root`) carries it — and
