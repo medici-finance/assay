@@ -73,3 +73,33 @@ func TestAutoLane_MergeHeadCommitDateUnreadableFailsClosed(t *testing.T) {
 		})
 	}
 }
+
+// The exact #3093 sequence on the lane: a CHANGES_REQUESTED at head A, then an APPROVED at
+// head B. On this lane a CR anywhere in the PR's history is a review-rework ejection signal,
+// read over every review, so the PR is ejected before reviewer-approved is consulted —
+// whether the APPROVED was re-anchored (submitted before B's committer date) or is a genuine
+// re-review after it. Pinned so the re-anchor check is never mistaken for the only gate on
+// this shape, and so a change that let a re-anchored APPROVED after a block reach the merge
+// would have to break this test.
+func TestAutoLane_MergeEjectsBlockThenApproval(t *testing.T) {
+	for name, approveAt := range map[string]string{
+		"re-anchored approval": reanchorApproveAt,
+		"fresh re-review":      reanchorFreshAt,
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := install(t, fixtureLaneKeys, rulingsSigned)
+			e.fg.headCommittedAt = reanchorHeadDate
+			e.fg.reviews = reanchorLaneReviews(approveAt)
+			code, stdout, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+			if code == deskkit.ExitOK || strings.Contains(stdout, "would merge") {
+				t.Fatalf("exit %d stdout %q — a CR then an APPROVED must never reach the merge", code, stdout)
+			}
+			if !strings.Contains(stdout+stderr, "would eject: review-rework") {
+				t.Fatalf("stdout %q stderr %q — want the review-rework ejection", stdout, stderr)
+			}
+			if w := e.fg.writes(); len(w) != 0 {
+				t.Fatalf("writes %v on a dry run", w)
+			}
+		})
+	}
+}
