@@ -37,7 +37,8 @@ Before touching the branch, verify no other session or worker owns it:
   `tools/dispatch-claim.sh`; `deskdispatch` prefers `deskclaim-ref` when it is on PATH and falls
   back to that script when the resolved root carries it, and the two speak the same wire
   protocol, so either one's `show` answers this question. Hand either tool your own role's token
-  (`--token-file "$(desktoken worker)"` for the binary, `GH_TOKEN` exported for the script) —
+  (`--token-file "$(desktoken worker)"` for the binary, `GH_TOKEN` set on the script's own
+  command, never exported — desk-shell.md §Forge CLI as the role) —
   neither reads anything but the credential it is given.
   Run BOTH reads: the tool acquires and lists in the `refs/dispatch/*` namespace, while the
   `ls-remote` pattern above lists the `refs/heads/dispatch/*` branch refs the Go claim readers
@@ -65,7 +66,7 @@ rehearse with `--dry-run` before the real upsert.
 
 Work in your **own worktree** (`capability:isolate-workspace`), never the shared checkout:
 
-> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
 ```bash
 git fetch origin <branch>:<branch>            # branch may not exist locally yet

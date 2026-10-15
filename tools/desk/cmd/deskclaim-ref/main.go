@@ -134,7 +134,9 @@ Exit codes (deskkit contract): 0 ok/acquired · 5 refused (a live holder owns it
 7 partial (list only: some claims listed, some refs unreadable — incomplete, never idle).`
 
 func main() {
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskclaim-ref", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

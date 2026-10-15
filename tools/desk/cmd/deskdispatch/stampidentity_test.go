@@ -53,6 +53,8 @@ type ghStampServer struct {
 	state      string
 	writes     int
 	failPR     bool       // the change read answers 500
+	prBody     string     // the change's description
+	headRef    string     // the change's head branch; "" serves feat/x
 	failTL     bool       // the timeline read answers 500
 	minted     []mintCall // every custody request the resolver made
 	mintErr    error      // when set, the custody minter refuses
@@ -123,7 +125,12 @@ func (s *ghStampServer) handle(w http.ResponseWriter, r *http.Request) {
 				}
 				return "open"
 			}(), "draft": true, "node_id": "PR_example_node",
-			"labels": labels, "head": map[string]any{"sha": "abc123", "ref": "feat/x"},
+			"labels": labels, "body": s.prBody, "head": map[string]any{"sha": "abc123", "ref": func() string {
+				if s.headRef != "" {
+					return s.headRef
+				}
+				return "feat/x"
+			}()},
 			"base": map[string]any{"ref": "main"}, "user": map[string]any{"login": "example-bot[bot]", "id": 1},
 		})
 	case r.Method == http.MethodGet && strings.HasSuffix(path, "/issues/77/timeline"):

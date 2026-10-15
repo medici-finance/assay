@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 //go:embed checkdefs
@@ -26,6 +27,11 @@ var checkdefsFS embed.FS
 // Production binds it to exec.Command; tests swap it to record args and return
 // controlled output.
 var execCommand = exec.Command
+
+// fetchTreeFn is the seam for the in-process tree fetch. Production binds it to
+// gitcore.FetchTree; tests swap it to stand in for the fetched tree (or to record what
+// the real fetch was asked for) without a network.
+var fetchTreeFn = gitcore.FetchTree
 
 // --- GitHub API types ---
 
@@ -108,10 +114,9 @@ func (c *checkSpec) normalise() {
 
 // --- Env scrubbing (mirrored from cmd/deskgit/exec.go) ---
 
-// envAllowlist is the ONLY set of environment variables passed to child processes.
-// It mirrors deskgit's envAllowlist exactly. GIT_ASKPASS is deliberately NOT in this
-// list -- deskadvisory adds its own controlled GIT_ASKPASS after scrubbing, so an
-// inherited ambient askpass cannot reach a child process.
+// envAllowlist is the ONLY set of environment variables passed to the check tools.
+// It mirrors deskgit's envAllowlist exactly. No GIT_* variable is in it: the tree fetch
+// runs in-process and the check tools have no use for an ambient git configuration.
 var envAllowlist = map[string]bool{
 	"PATH": true, "HOME": true, "USER": true, "LOGNAME": true, "SHELL": true,
 	"TERM": true, "TMPDIR": true, "TMP": true, "TEMP": true,
@@ -119,10 +124,10 @@ var envAllowlist = map[string]bool{
 	"SSH_AUTH_SOCK": true,
 }
 
-// scrubbedEnv returns the child environment: the allowlisted vars from the parent, plus
-// GIT_TERMINAL_PROMPT=0 so a scrubbed-away askpass can never turn into an interactive
-// hang. Every GIT_* var (and everything else not allowlisted) is dropped.
-// Mirrored from cmd/deskgit/exec.go.
+// scrubbedEnv returns the check tools' environment: the allowlisted vars from the
+// parent, plus GIT_TERMINAL_PROMPT=0 so a tool that shells out to git can never turn
+// into an interactive hang. Every GIT_* var (and everything else not allowlisted) is
+// dropped. Mirrored from cmd/deskgit/exec.go.
 func scrubbedEnv(parent []string) []string {
 	out := make([]string, 0, len(envAllowlist)+1)
 	for _, kv := range parent {
@@ -137,30 +142,6 @@ func scrubbedEnv(parent []string) []string {
 	}
 	out = append(out, "GIT_TERMINAL_PROMPT=0")
 	return out
-}
-
-// fetchHardening mirrors deskgit's fetchHardening: pinned --refmap=, --upload-pack=git-upload-pack,
-// and --no-recurse-submodules to prevent submodule config escaping the repo gate.
-var fetchHardening = []string{"--refmap=", "--upload-pack=git-upload-pack", "--no-recurse-submodules"}
-
-// runGit executes `git <args...>` in dir with the given environment.
-// Mirrored from cmd/deskgit/exec.go.
-func runGit(dir string, env []string, args ...string) (string, error) {
-	cmd := execCommand("git", args...)
-	if dir != "" {
-		cmd.Dir = dir
-	}
-	cmd.Env = env
-	var out, errb bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errb
-	err := cmd.Run()
-	stdout := strings.TrimSpace(out.String())
-	if err != nil {
-		return stdout, fmt.Errorf("git %s: %w (%s)", strings.Join(args, " "),
-			err, strings.TrimSpace(errb.String()))
-	}
-	return stdout, nil
 }
 
 // --- GitHub API helpers ---
@@ -449,10 +430,11 @@ func resolveHeadSHA(tpfSlug string) (string, error) {
 
 // --- Tree fetch ---
 
-// fetchAdvisoryTree fetches the TPF at the given SHA into a temporary directory.
-// Uses deskgit-grade hardening pins and an ephemeral GIT_ASKPASS credential.
-// The askpass script is written to a sibling temp dir (not inside the fetched tree)
-// and cleaned up before this function returns.
+// fetchAdvisoryTree fetches the TPF's branches into memory and writes the tree of sha
+// into a fresh temporary directory, entirely in-process: no git binary runs, and nothing
+// but the tree's files reaches disk — no .git directory, no config, no credential file.
+// The installation token is a value on the transport options for this one call, sent
+// only to the fixed github.com URL built here from the roster-checked slug.
 func fetchAdvisoryTree(tpfSlug, sha string) (string, error) {
 	token, terr := ghToken()
 	if terr != nil {
@@ -464,55 +446,17 @@ func fetchAdvisoryTree(tpfSlug, sha string) (string, error) {
 		return "", fmt.Errorf("cannot create temp directory: %w", derr)
 	}
 
-	// Write askpass to a sibling temp dir to keep the fetched tree clean.
-	askpassDir, aderr := os.MkdirTemp("", "deskadvisory-askpass-*")
-	if aderr != nil {
-		os.RemoveAll(dir)
-		return "", fmt.Errorf("cannot create askpass temp dir: %w", aderr)
-	}
-	defer os.RemoveAll(askpassDir)
-
-	askpass, aerr := writeAskpass(askpassDir)
-	if aerr != nil {
-		os.RemoveAll(dir)
-		return "", aerr
-	}
-
-	env := scrubbedEnv(os.Environ())
-	env = append(env, "GIT_ASKPASS="+askpass)
-	env = append(env, "DESKADVISORY_TOKEN="+token)
-
-	if _, ierr := runGit(dir, env, "init", "-b", "main"); ierr != nil {
-		os.RemoveAll(dir)
-		return "", fmt.Errorf("cannot init temp repo: %w", ierr)
-	}
-
-	fetchURL := "https://github.com/" + tpfSlug + ".git"
-	args := append([]string{"-c", "credential.helper=", "fetch"}, fetchHardening...)
-	args = append(args, fetchURL, "+refs/heads/*:refs/remotes/tpf/*")
-
-	if _, ferr := runGit(dir, env, args...); ferr != nil {
+	_, ferr := fetchTreeFn(gitcore.TreeOpts{
+		URL:      "https://github.com/" + tpfSlug + ".git",
+		RefSpecs: []string{"+refs/heads/*:refs/remotes/tpf/*"},
+		Auth:     gitcore.BasicAuth(token),
+		Commit:   sha,
+	}, dir)
+	if ferr != nil {
 		os.RemoveAll(dir)
 		return "", fmt.Errorf("cannot fetch from fork: %w", ferr)
 	}
-
-	if _, cerr := runGit(dir, env, "checkout", sha); cerr != nil {
-		os.RemoveAll(dir)
-		return "", fmt.Errorf("cannot checkout SHA %s: %w", sha, cerr)
-	}
-
 	return dir, nil
-}
-
-// writeAskpass creates a controlled GIT_ASKPASS script that reads the token from
-// DESKADVISORY_TOKEN.
-func writeAskpass(dir string) (string, error) {
-	path := filepath.Join(dir, "askpass.sh")
-	script := "#!/bin/sh\ncase \"$1\" in\n  *Username*) echo \"x-access-token\" ;;\n  *) echo \"$DESKADVISORY_TOKEN\" ;;\nesac\n"
-	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
-		return "", fmt.Errorf("cannot write askpass script: %w", err)
-	}
-	return path, nil
 }
 
 // --- Check runner ---
@@ -680,7 +624,7 @@ func checkAdvisory(baseRepo, ghsaID string) error {
 		return deskkit.Unverifiable("cannot load check list", lerr)
 	}
 
-	// Step 4: Fetch the tree with hardening pins.
+	// Step 4: Fetch the tree in-process.
 	treeDir, terr := fetchAdvisoryTree(tpfSlug, sha)
 	if terr != nil {
 		return deskkit.Unverifiable("cannot fetch advisory tree", terr)

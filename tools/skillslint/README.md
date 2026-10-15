@@ -25,6 +25,7 @@ own directory (`cd tools/skillslint && go test ./...`), not from the repo root.
 | Invisible-character / Trojan-Source (hard) + context-budget NOTICE (advisory) | the instruction surfaces (below) | `hidden.go` |
 | Unresolved house values | **every `*.md` under `plugins/`** | `housevalue.go` |
 | Shared-guardrail derive-or-diff | every declared guardrail copy | `guardrail.go` |
+| No desk reads a human's `gh auth token` (hard) | every `*.md` under `plugins/assay/skills/` and `plugins/assay/references/` | `ambientauth.go` |
 
 ### 1. Skill-file structure
 
@@ -296,6 +297,32 @@ original read, and the write itself goes through a temp file plus atomic
 rename rather than an in-place truncate-then-write. This closes a
 read-compute-write race that let concurrent `--sync` runs corrupt a file
 (medici-finance/assay#1692).
+
+### 5. No desk reads a human's `gh auth token`
+
+A skill or reference that tells a desk to authenticate `gh` with
+`gh auth token` makes every role borrow the trusted human's personal CLI login.
+When that login is absent, the desks report "missing desk authentication" even
+though `desktoken <role>` can mint the role App token they should be using
+(#3055). The canonical recipe, and the line between a desk-auth failure and a
+missing human login, is `plugins/assay/references/desk-shell.md`
+§Forge CLI as the role.
+
+The check flags every line carrying `gh auth token` in every `*.md` under
+`plugins/assay/skills/` and `plugins/assay/references/`. Two exemptions:
+
+- lines between `<!-- BEGIN forge cli as the role -->` and
+  `<!-- END forge cli as the role -->`, the canonical section that has to name
+  the anti-pattern to rule it out. A BEGIN with no END is itself a finding, so
+  the exemption cannot silently cover the rest of a file;
+- the driver's own human command, spelled exactly
+  `gh auth token --user <driver-login>` (the `ask-decision` Reply shape). Only
+  that spelling is exempt; a second, bare `gh auth token` on the same line is
+  still flagged.
+
+Hard (exit 1): the tree has no unexempt occurrence, so a new one is a
+regression, not lint debt. Missing scan directories or an empty tree are
+could-not-check (exit 2).
 
 ## Fixtures
 
