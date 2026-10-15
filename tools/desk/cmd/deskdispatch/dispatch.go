@@ -105,8 +105,13 @@ const goClaimBinary = "deskclaim-ref"
 // as a flag, or would escape the ref namespace it is supposed to name.
 var itemKeyRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$`)
 
+// worktreeNameMax is the longest worktree name deskdispatch derives. Every name builder
+// (sessionScopedName, freshReviewName) bounds against this one constant, and the grammar
+// below is built from it, so the bound and the check cannot drift apart.
+const worktreeNameMax = 64
+
 // worktreeNameRe bounds the worktree name derived from the item key.
-var worktreeNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
+var worktreeNameRe = regexp.MustCompile(fmt.Sprintf(`^[A-Za-z0-9][A-Za-z0-9._-]{0,%d}$`, worktreeNameMax-1))
 
 // branchNameRe MIRRORS the worktree verb's own --branch constraint. That verb remains the
 // authority; this copy exists only so a branch name it would reject is refused BEFORE the
@@ -1007,9 +1012,10 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// dispatched at all. The BRANCH and the CLAIM KEY stay deterministic — they are the
 	// deliverable's cross-session identity — so only the local scratch dir gains the suffix,
 	// mirroring `deskwt role-init`'s own `tracker-<prefix>-<sess>` naming. A session that does
-	// not resolve to a safe single segment, or a suffix that would push the name past the
-	// worktree-name grammar, falls back to the bare item-derived name (the pre-session
-	// behaviour), so this never turns a usable name unusable.
+	// not resolve to a safe single segment falls back to the bare item-derived name (the
+	// pre-session behaviour). A base long enough that the suffix would push the name past the
+	// worktree-name bound is shortened by sessionScopedName, which keeps the session suffix
+	// whole; it never drops the suffix, and it refuses when no session-unique name fits.
 	base := sanitizeSegment(o.item)
 	if verifierKit(o.kit) {
 		// The verifier's OWN name: a worker worktree for the same item (tracker-<item>-<sess>)
@@ -1021,19 +1027,18 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 			"step %s: the item key %q does not reduce to a usable worktree name — pass --branch and a key "+
 				"that does.", stepWorktreeCreate, o.item))
 	}
-	plan.wtName = base
-	if sess := dispatchSessionSuffix(); sess != "" {
-		if scoped := base + "-" + sess; worktreeNameRe.MatchString(scoped) {
-			plan.wtName = scoped
-		}
-	}
-
 	if reviewKit(o.kit) {
 		var err error
 		plan.wtName, err = freshReviewName(base)
 		if err != nil {
 			return plan, deskkit.Unverifiable("cannot allocate a fresh reviewer worktree name; nothing was claimed", err)
 		}
+	} else {
+		scoped, err := sessionScopedName(base, dispatchSessionSuffix())
+		if err != nil {
+			return plan, deskkit.Refused(fmt.Sprintf("step %s: %v; nothing was claimed.", stepWorktreeCreate, err))
+		}
+		plan.wtName = scoped
 	}
 
 	// The consumer scripts' HOME. --root is the ITEM's repo and stays the worktree source;
