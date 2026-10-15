@@ -14,7 +14,7 @@ schema: brief-v2
 outcome: none
 authored: 2026-10-13 by statusgen newbrief
 sources:
-  - "docs/proposals/non-ci-architecture/21-communications.md"
+  - "docs/proposals/non-ci-architecture/24-communications.md"
   - "freshness-checked 2026-10-13 at a435badbd1d245402407acd2a82a6abe5f37f637 after origin/main fetch"
 version: 1
 id: 8e8fc4a3-2af0-4b72-9adb-6765f0a18de6
@@ -56,14 +56,14 @@ layering: comms/contract for structural types; existing Assay policy via interna
 single-point-of-failure: service admission remains authoritative; client preflight is advisory, and existing transport/custody and effect-boundary controls remain independent checks.
 design-fit:
   owner: comms/contract for structural types; existing Assay policy via internal composition
-  contract: docs/proposals/non-ci-architecture/21-communications.md
+  contract: docs/proposals/non-ci-architecture/24-communications.md
   retires: command-local duplicated or unimportable implementation only after callers move
   weight: no additional daemon or broker; narrow public packages and compatibility fixtures
   why-add: reuse the existing implementation across clients/hosts without exporting authority
 
 ## Read first
 
-- [Communications target](../../proposals/non-ci-architecture/21-communications.md).
+- [Communications target](../../proposals/non-ci-architecture/24-communications.md).
 - [Library boundary](../../library-first.md) and [host comms](../../cellctl-comms.md).
 - Existing tests beside the source paths above.
 

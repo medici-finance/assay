@@ -137,13 +137,31 @@ capability evidence. A schema-valid preset or a higher score is not a passing ru
 case. Measure first useful outcome and independent repeat use, including support and
 repair effort. Read-only release acceptance is independent of managed writer activation.
 
+## Write-through and source-cache qualification — 14 October 2026
+
+Carry the [forge-service amendment](22-forge-service-and-source-queries.md) into the same
+regression ledger. Exercise provider success followed by SQL failure, death after send,
+conflicting operation payload, stale pre-write refresh, caller loss of a reply, and receipt
+lookup after authorization revocation. Unknown does not replay; read-after-write requests
+show a confirmed/newer observation or explicit pending coverage. Test cached bodies, counts,
+errors and pagination against denied admissions and access epochs. Bypass ingress to prove
+the role executor refuses escalation, stale incarnation and wrong candidate independently.
+
+Source-query tests use disposable bare Git and independent literal fixtures at exact SHAs.
+Changing a branch tip cannot change a cached old-SHA answer; private object reuse still needs
+repository authorization. Compare incremental derived results with a fresh oracle after
+membership, time, policy and permission changes. Burst/outage tests assert the configured
+upstream request budget, while shared-Git experiments report native-Git/go-git latency, CPU,
+bytes, retention and alternate-store recovery. No fixture result certifies live provider
+permissions, a deployed identity provider or CNPG failover.
+
 ## Communications regression extension (proposed; pending approval)
 
 Proposal against the ratified revision `23f655f5d`; not baseline text until approved and reconciled in the amendment manifest.
 
 Preserve the commsgw bypass/identity/mailbox suites, commsloop policy/native-dispatch
 suites, deskcomms command/peer-custody suites and cellctl comms manifest/lifecycle
-suites through the [communications extraction](21-communications.md). The initial
+suites through the [communications extraction](24-communications.md). The initial
 proof is behavior parity plus a real external SDK consumer, not distributed delivery.
 The specification's acceptance cases govern later two-cell outages, filter crashes,
 retries, quota/expiry, authority bypass, SQL-outbox handoff and state migration.

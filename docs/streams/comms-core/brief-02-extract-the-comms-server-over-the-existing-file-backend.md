@@ -14,7 +14,7 @@ schema: brief-v2
 outcome: none
 authored: 2026-10-13 by statusgen newbrief
 sources:
-  - "docs/proposals/non-ci-architecture/21-communications.md"
+  - "docs/proposals/non-ci-architecture/24-communications.md"
   - "freshness-checked 2026-10-13 at a435badbd1d245402407acd2a82a6abe5f37f637 after origin/main fetch"
 version: 1
 id: ca4dd298-1734-40bd-88cd-63ba5c34f5cf
@@ -55,7 +55,7 @@ layering: comms/server for message use cases, file backend for transition state;
 single-point-of-failure: service admission remains authoritative; client preflight is advisory, and existing transport/custody and effect-boundary controls remain independent checks.
 design-fit:
   owner: comms/server for message use cases, file backend for transition state; existing runtime owner retains native dispatch
-  contract: docs/proposals/non-ci-architecture/21-communications.md
+  contract: docs/proposals/non-ci-architecture/24-communications.md
   retires: command-local duplicated or unimportable implementation only after callers move
   weight: no additional daemon or broker; narrow public packages and compatibility fixtures
   why-add: reuse the existing implementation across clients/hosts without exporting authority
@@ -65,7 +65,7 @@ in the same change to avoid incompatible queue writers/readers. No broker integr
 
 ## Read first
 
-- [Communications target](../../proposals/non-ci-architecture/21-communications.md).
+- [Communications target](../../proposals/non-ci-architecture/24-communications.md).
 - [Library boundary](../../library-first.md) and [host comms](../../cellctl-comms.md).
 - Existing tests beside the source paths above.
 

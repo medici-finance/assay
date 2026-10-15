@@ -12,7 +12,8 @@ package main
 // reaps the root of a cell directory this same sweep has just removed.
 //
 // Enforcement is entirely the package's own semantics — reclaim only under
-// byte-budget or free-space pressure, never while a consumer holds a lease,
+// byte-budget or free-space pressure, never a whole root while a consumer
+// holds a lease (only compiler-cache entries past the policy's trim age),
 // never a warm purge; this pass adds the cadence and nothing else.
 //
 // Discovery is by the MARKER, not by cell.env's cache keys: a candidate is
@@ -206,8 +207,8 @@ func sweepCellCaches(cellsRoot string, dryRun bool, reapedPaths []string) (cache
 			if dryRun {
 				row := "  RECLAIM cache root " + p.Root + " — " + rep.Reason
 				if len(rep.SkippedActive) > 0 {
-					row = fmt.Sprintf("  HOLD cache root %s — under pressure but %d active consumer record(s): the lease set is the authority; nothing reclaims a live consumer",
-						p.Root, len(rep.SkippedActive))
+					row = fmt.Sprintf("  HOLD cache root %s — under pressure but %d active consumer record(s): active records protect mod/ and gopath/; at act time only build/ entries older than %s are trimmed",
+						p.Root, len(rep.SkippedActive), rep.Policy.BuildAge())
 				}
 				res.plan = append(res.plan, row)
 			}

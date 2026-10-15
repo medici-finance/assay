@@ -1,0 +1,1 @@
+- Repair forge-neutral/34 post-merge verification: pin implementation scope and authoring claims to their historical diffs, build the consumers checker independently, and correct the implementation file inventory.

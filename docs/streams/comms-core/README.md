@@ -12,7 +12,7 @@ board: generated
 # Reusable communications foundation
 
 Design and extraction work; no implementation or activation claimed. The
-[future-state specification](../../proposals/non-ci-architecture/21-communications.md)
+[future-state specification](../../proposals/non-ci-architecture/24-communications.md)
 owns the target and separates initial compatibility refactors from broker migration.
 
 ## Briefs

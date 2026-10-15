@@ -19,9 +19,10 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; third-pass amendment)"
 sources:
+  - "medici-finance/assay#2789; scratch-isolation amendment, freshness-checked 2026-10-13 @ 53c536312"
   - "docs/streams/build-less-brittle/spec.md §3 row 13, §4.11, §11"
   - "tools/desk/cmd/deskdispatch/references/worker-prompt.md §9 (fail-first evidence, line 175 at f7bde6bfa) and §14 (defect class, line 315); worker-prompt-objective.md carries §9 verbatim (line 247)"
   - "tools/desk/cmd/deskdispatch/references/review-prompt.md §4 (line 51) and review-lanes.md §'The fail-first reproduction's two required records' (line 87): the fail-first lane every unknown or blessed-once author gets"
@@ -171,6 +172,10 @@ design-fit:
 
 ## Verify (executable — no prose-only DoD items)
 
+Run consumer checks with `TMPDIR` pointing at owned scratch outside the admitted source checkout.
+This scratch-location amendment (#2789) preserves the revision selection and assertions;
+historical Evidence does not verify the revised row, which needs fresh verifier admission.
+
 Rows run from the root of `medici-finance/assay`. Rows 3–4 are the mutation rows (a planted
 deletion and a planted rename must appear in the report). Rows 5–6 dereference the report
 against the real deletions this brief cites. Row 7 proves the report cannot block. Rows 11–14
@@ -194,7 +199,7 @@ are net ≤ 0 rows.
 | 14 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/11$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" -le "$(git show "$base:tools/desk/cmd/deskdispatch/references/review-prompt.md" \| wc -l)" && test "$(git show "$tip:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` | check |
 | 15 | `grep -cE '^[\|] *R-retires-test .*S-review-verdict' docs/contracts.md && grep -c 'TestLedgerFixture' docs/contracts.md` | `1`, then ≥ `1` (registered, serving an existing S- row, with a catch source that can fire) | check:ci |
 | 16 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/11$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git diff --name-only "$base" "$tip" -- tools/desk/cmd \| grep -v _test.go \| grep -v '/references/' \| wc -l \| tr -d ' ')" = 0 && echo NO-CMD-CHANGE` | `NO-CMD-CHANGE` (no shipped verb or flag changed; kit text under `references/` is the one allowed edit; base derived, never `HEAD~1`) | check |
-| 17 | `d=; impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/11$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; b=$(git rev-parse "$base") && t=$(git rev-parse "$tip") && test "$b" != "$t" && d=$(mktemp -d "$PWD/.bl11-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach "$t" && statusgen --consumers --root "$d" --brief build-less-brittle/11 --base "$b"; s=$?; test -n "$d" && rm -rf "$d"; exit $s` | exit 0 (no `consumers:` routing claim is disproved: the `consumers:` claims are judged against the delivering change itself, in a throwaway clone: after the merge, the first-parent commit on main carrying the `Brief: build-less-brittle/11` trailer (the net-weight rows resolve the same commit) diffed against its parent; before the merge, the PR head diffed against its merge-base; the implementer replaces each self-routed entry with `fixed-here` in the same change). A disproved claim fails the row and names the claim; an unresolvable delivering change fails the row rather than passing on an empty diff. Row re-authored 2026-10-06 (#1915): the unpinned form ran against merged main, where the brief is no longer in the diff, and reported COULD-NOT-CHECK; this form runs the same way before and after the merge (the #1908 pattern). Expect first re-written 2026-10-03 (#1862). | check |
+| 17 | `d=; impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/11$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; b=$(git rev-parse "$base") && t=$(git rev-parse "$tip") && test "$b" != "$t" && d=$(mktemp -d "${TMPDIR:-/tmp}/bl11-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach "$t" && statusgen --consumers --root "$d" --brief build-less-brittle/11 --base "$b"; s=$?; test -n "$d" && rm -rf "$d"; exit $s` | exit 0 (no `consumers:` routing claim is disproved: the `consumers:` claims are judged against the delivering change itself, in a throwaway clone: after the merge, the first-parent commit on main carrying the `Brief: build-less-brittle/11` trailer (the net-weight rows resolve the same commit) diffed against its parent; before the merge, the PR head diffed against its merge-base; the implementer replaces each self-routed entry with `fixed-here` in the same change). A disproved claim fails the row and names the claim; an unresolvable delivering change fails the row rather than passing on an empty diff. Row re-authored 2026-10-06 (#1915): the unpinned form ran against merged main, where the brief is no longer in the diff, and reported COULD-NOT-CHECK; this form runs the same way before and after the merge (the #1908 pattern). Expect first re-written 2026-10-03 (#1862). | check |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,

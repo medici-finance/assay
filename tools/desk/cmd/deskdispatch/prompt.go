@@ -168,7 +168,7 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	writePacketLine(&b, plan)
 
 	if o.pr <= 0 && strings.TrimSpace(o.model) != "" && !review && !verifier {
-		fmt.Fprintf(&b, "\n## Pending model stamp\n\nAfter opening the draft PR, return its number to the dispatching worker-desk. That desk sends the PR and this exact dispatch model/tier selection to the coordinator desk (the-desk), which runs:\n\n```\ndeskdispatch --stamp-only --repo %s --pr <N> --model %s --tier %s --kit %s\n```\n\nThe model and tier are the original dispatcher's selection, backed by its real dispatch receipt. Both worker-desk and its child worker are refused by this verb; a shared DESK_SESSION is claim custody, not stamp authority. Do not run this command as the worker or change your session identity to apply it. A stamp-only receipt does not renew a review claim.\n", repo, o.model, o.tier, o.kit)
+		fmt.Fprintf(&b, "\n## Pending model stamp\n\nAfter opening the draft PR, return its number to the dispatching worker-desk. That desk sends the PR and this exact dispatch model/tier selection to the coordinator desk (the-desk), which runs:\n\n```\ndeskdispatch --stamp-only --repo %s --pr <N> --model %s --tier %s --kit %s\n```\n\nThe model and tier are the original dispatcher's selection, backed by its real dispatch receipt. Both worker-desk and its child worker are refused by this verb; a shared DESK_SESSION is claim custody, not stamp authority. Do not run this command as the worker or change your session identity to apply it. A stamp-only receipt does not renew a review claim. It writes the authoring pair (authored-model:, authored-tier:), never the dispatched-* pair a later review dispatch writes.\n", repo, o.model, o.tier, o.kit)
 	}
 	// The same normalisation the gate, the stamp label and the record use.
 	if c, _ := deskkit.CanonicalDispatchTier(o.tier); c == "strong" {
@@ -357,7 +357,17 @@ func writeWorkerAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 	b.WriteString("## Open the draft PR in that repo\n\n")
 	fmt.Fprintf(b, "Run `deskpr create` from INSIDE your worktree, so the PR lands against `%s`'s own main. "+
 		"Stop at `implemented`: never set verified/done and never flip a PR ready.\n\n", repo)
-	if plan.dl.crossRepo(o.root) {
+	if plan.dl.crossRepoBrief {
+		// --cross-repo (medici-finance/assay#2748): the brief is homed in the tracking repo and its
+		// PR opens HERE. A `Brief:` line would be read against THIS repo's board, where the brief is
+		// not — so the PR names its home with the one explicit Cross-repo-brief: line instead, and
+		// deskpr runs against this worktree as on any other dispatch.
+		fmt.Fprintf(b, "CROSS-REPO delivery: this brief is homed in %s, not in `%s`. Your `deskpr create` body MUST "+
+			"carry the trailer line `%s` — and NO `Brief:` line, which would be read against `%s`'s own board. The "+
+			"tracking checkout is READ-ONLY for you — never write, commit or branch there — and this PR cannot flip "+
+			"the tracking repo's board row: say in the PR body that the home row is handed back separately.\n\n",
+			trackingLabel(plan.dl), repo, plan.dl.crossRepoTrailer(o.item), repo)
+	} else if plan.dl.crossRepo(o.root) {
 		// CROSS-REPO: the PR lands HERE, but its `Brief:` trailer must resolve against the TRACKING
 		// repo's board, which this worktree does not carry — so deskpr is pointed at the tracking
 		// checkout with --root. That checkout is named as a READ source, never a place to work.

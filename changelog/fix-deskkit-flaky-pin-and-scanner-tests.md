@@ -1,0 +1,2 @@
+### Fixed
+- Two deskkit tests no longer fail on an environment accident. The base-image pin test builds its mutants from the version the Dockerfile pins instead of a random map entry (it failed about one run in seven since a second Go row was recorded), and the skill-repo scanner positive control tells desks apart by the skill directory instead of the absolute temp path (it failed under any scratch path containing `verify-desk`). Both keep their power to fail: a pin that is not a reviewed row, and a false positive on a legitimate skill, still go red.

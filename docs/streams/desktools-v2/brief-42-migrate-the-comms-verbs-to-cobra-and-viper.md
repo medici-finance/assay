@@ -18,7 +18,7 @@ version: 2
 id: "6e384661-b193-4ab4-804e-a9cde6dace44"
 authored: "2026-10-04 by desktools-v2/15"
 sources:
-  - "docs/proposals/non-ci-architecture/21-communications.md — 2026-10-13 extraction-first amendment"
+  - "docs/proposals/non-ci-architecture/24-communications.md — 2026-10-13 extraction-first amendment"
   - "https://github.com/medici-finance/assay/issues/2111"
   - "docs/streams/desktools-v2/spec.md §9"
   - "docs/streams/desktools-v2/cli-contract.md"

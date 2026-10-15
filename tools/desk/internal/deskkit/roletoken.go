@@ -135,6 +135,8 @@ func SessionTokenRole(verb string) (role, loop string, err error) {
 // this side keeps that property.
 var tokenMinter = func(role, owner string) (path string, stderr string, err error) {
 	cmd := exec.Command("desktoken", role, "--repo", owner)
+	// Its stderr is captured, echo skipped (minterErrorDetail): no unseen digest is recorded.
+	cmd.Env = UnsurfacedEchoEnv(os.Environ())
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb

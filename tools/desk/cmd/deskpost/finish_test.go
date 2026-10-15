@@ -905,3 +905,38 @@ func TestFinishRefusesAnotherLanesClaim(t *testing.T) {
 		})
 	}
 }
+
+// TestFinishUnshippedStore: ASSAY_CLAIM_STORE names a valid store this build does not ship
+// (file, service). The resolver falls back to the legacy forge-ref store, so the release step
+// deletes the claim ref on the forge — the namespace the claim was acquired in — and the finish
+// exits 0 with claim=released. Before the fallback it refused (exit 6) at the release step.
+// regression: #2753
+func TestFinishUnshippedStore(t *testing.T) {
+	for _, v := range []string{deskkit.ClaimStoreFile, deskkit.ClaimStoreService} {
+		t.Run(v, func(t *testing.T) {
+			h := setupFinish(t)
+			roster := filepath.Join(os.Getenv("HOME"), ".config", "assay", "roster.env")
+			if err := os.WriteFile(roster, []byte(fixtureRoster+deskkit.EnvClaimStore+"="+v+"\n"), 0o600); err != nil {
+				t.Fatalf("write roster: %v", err)
+			}
+			deskkit.ReloadConfig()
+			bf := writeBody(t, "v.md", okReviewBody)
+
+			if code := run(finishArgs("review", "1", "approve", testHead, bf, finishClaimKey)); code != 0 {
+				t.Fatalf("%s=%s: finish exit = %d, want 0 (an unshipped store is ignored)\nstderr: %s",
+					deskkit.EnvClaimStore, v, code, h.errOut.String())
+			}
+			if h.order(http.MethodDelete, finishRefPath(finishClaimKey)) < 0 || h.deletes() != 1 {
+				t.Fatalf("want exactly one DELETE, of the forge claim ref; hits: %v", h.f.hits)
+			}
+			lines := h.resultLines()
+			if len(lines) != 1 || !strings.HasSuffix(lines[0], " claim=released") {
+				t.Fatalf("result = %q, want one line ending claim=released", h.out.String())
+			}
+			rows := releaseRows(t)
+			if len(rows) != 1 || rows[0].Result != deskkit.ResultOK {
+				t.Fatalf("release rows = %+v, want one ok row", rows)
+			}
+		})
+	}
+}

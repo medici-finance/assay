@@ -130,6 +130,22 @@ Routine queries use the mirror. A consequential write may need a targeted fresh 
 
 Forge history and deletion need an explicit retention policy. Re-polling the provider cannot recover an edited/deleted comment's old body. Selective retained snapshots can preserve what was observed, but expand the private-data footprint and storage volume. Define which history matters and what may disappear after database loss; do not imply a record of every event that ever happened. Canonical verification/evidence stays in Git for this phase. Existing read-only reports should remain useful while freshness-dependent execution is held.
 
+### Write-through service — amendment of 14 October 2026
+
+The mirror remains view-only to clients, but authorized forge writes feed confirmed results
+back into it through the [forge-service contract](22-forge-service-and-source-queries.md).
+R2's existing effect-intent/receipt ledger owns retries and ambiguous outcomes. When the
+provider confirms an effect, commit its receipt and the confirmed mirror fields together;
+return provider outcome and projection availability separately if that transaction fails.
+Reads can request a minimum observation token rather than unknowingly reading pre-write state.
+External edits still arrive through authenticated hints and polling repair.
+
+No cross-provider SQL transaction or exactly-once effect is promised. Unknown submission is
+reconciled or held. Caller authorization and the exact mirror admission are checked on cache
+hits and receipt lookup; an ingestion credential does not grant its visibility to every client.
+Immutable Git results and rebuildable derived indexes have separate source/access/version
+keys. Mirror 37, event 38 and the R2/R4 owners remain the owners of their respective meanings.
+
 ### Feedback received during an active attempt
 
 Persist a scoped reevaluation requirement when new relevant feedback arrives while work is active, rather than admitting a second writer. Bind it to the work/candidate and observed source revision or refresh requirement. Distinct instructions, decisions and effect requests remain separate attributed records; coalescing refresh demand must not erase their contents or authorization requirements.
@@ -169,7 +185,7 @@ coalesces presentation only, preserving distinct pending decisions and their sub
 
 Proposal against the ratified revision `23f655f5d`; not baseline text until approved and reconciled in the amendment manifest.
 
-The [communications target](21-communications.md#storage-boundary-and-broker-decision)
+The [communications target](24-communications.md#storage-boundary-and-broker-decision)
 assigns durable message transport to a selected broker. PostgreSQL owns the application
 transaction and its outbox/inbox deduplication bridge, not a competing mailbox engine.
 Broker acceptance, recipient acknowledgment and completed business effect are distinct.

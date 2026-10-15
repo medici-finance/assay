@@ -12,7 +12,8 @@ func relevantEnvironment(entries []string) map[string]string {
 			continue
 		}
 		switch key {
-		case "GOCACHE", "GOMODCACHE", "GOPATH", "DESK_SESSION", "DESK_ROOTS", "HOME", "ASSAY_CONFIG_HOME", "PWD":
+		case "GOCACHE", "GOMODCACHE", "GOPATH", "DESK_SESSION", "DESK_ROOTS", "HOME", "ASSAY_CONFIG_HOME", "PWD",
+			EnvCell, EnvCellDir, EnvCellRole:
 			out[key] = value
 		}
 	}

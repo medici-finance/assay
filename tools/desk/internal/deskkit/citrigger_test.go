@@ -221,6 +221,24 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads: []string{
+				"tools/forge-import-check/check_env_imports.go",
+				"tools/forge-import-check/check_env_imports_test.go",
+				"docs/streams",
+			},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the unconditional build-test floor executes both authored import-check commands against compiler-valid syntax fixtures",
+		},
+		{
+			test: "tools/desk/internal/regression/releasecache_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"tools/release", ".github/workflows/release.yml", "ci/staged-workflows/release.yml"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the unconditional build-test floor executes release cache provenance, archive, and workflow fixtures",
+		},
+		{
 			test: "tools/desk/cmd/deskinstall/cursor_sync_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"plugins/assay", ".cursor", "AGENTS.md"},
@@ -2512,8 +2530,8 @@ func TestRegressionCIEntrypoints(t *testing.T) {
 			}
 		}
 	}
-	if count != 4 {
-		t.Fatalf("floor has %d CI registry entries, want 4 (manifest, shell, Evidence and changelog suites)", count)
+	if count != 6 {
+		t.Fatalf("floor has %d CI registry entries, want 6 (manifest, shell, Evidence, changelog, mirror import and release cache suites)", count)
 	}
 }
 
