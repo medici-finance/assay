@@ -26,7 +26,7 @@
 //
 // EXTRACTED CONTRACT. The envelope structure, size caps, parse order and the
 // assertion mint/verify mechanism now live in the public module
-// github.com/medici-finance/assay/comms/contract (stdlib only; comms-core/01).
+// github.com/medici-finance/assay/comms/contract (stdlib only).
 // This package is the Assay POLICY ADAPTER over it: the verb and class
 // vocabulary, the compiled lane ACL, the reserved-verb refusal and the Admit /
 // ACL.AllowEnvelope entry that applies the ACL to a parsed message. Names such
