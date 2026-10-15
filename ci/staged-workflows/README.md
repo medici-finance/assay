@@ -22,9 +22,18 @@ reviewable artifact, not a run.
 
 ## Contents
 
-- `assay-qualgen.yml` and `verify-gate-close.yml` — live workflow twins with
-  the board-writer Environment restriction. Both copies are byte-identical
-  to their live counterparts, enforced by `declared-changes.json`.
+- `verify-gate-close.yml` — live workflow twin with the board-writer
+  Environment restriction, byte-identical to its live counterpart, enforced by
+  `declared-changes.json`.
+
+- `assay-qualgen.yml` — live workflow twin with the board-writer Environment
+  restriction, plus the classified board push (#2910): the QUALITY.md commit step
+  sources `statusgen/pushcred.sh`, preflights the push credential (a dry-run push)
+  before the commit and before each retry, and retries only a non-fast-forward
+  rejection; an expired, revoked, under-scoped or otherwise refused push fails once
+  with its own line and never reads as "main moved". **Pending promotion**
+  (`declared-changes.json` mode `pending`); its push step is tested by
+  `statusgen/pushcred_test.go`.
 
 - `evidence-automerge-tests.yml` — offline refusal-classifier, step-shell and poll suites,
   including the errexit status-capture class guard across staged, activation and live
@@ -51,7 +60,9 @@ reviewable artifact, not a run.
   `.github/workflows/truth-suite.yml` on 2026-09-10; this directory no longer carries a copy,
   so a change to it is authored here first and re-promoted by a maintainer commit.
 - `assay-statusgen.yml` — a STAGED TWIN of the live `.github/workflows/assay-statusgen.yml`
-  carrying ONLY the decision-gate hold's network layer (`spec/lifecycle-v1.md` §4.5): the
+  carrying the decision-gate hold's network layer (`spec/lifecycle-v1.md` §4.5), alongside
+  the classified board push (#2910) described below, which `declared-changes.json` classes
+  `pending`: the
   corroborate job gains `issues: read` and a `statusgen --decision-gate --pr <N>` step after
   the corroborate step. The step has no shell path pre-filter: the binary decides from the
   PR's own file listing whether the board (`docs/streams/` or `docs/archive/`) was touched, and
@@ -218,6 +229,13 @@ reviewable artifact, not a run.
   board-writer App needs `Contents: write` for the push and its `Pull requests: write`
   grant is no longer used (the conversion removes the PR step); keep that grant until
   the apply lands, because the live job's token mint still requests it.
+  **Pending promotion (#2910):** the staged copy adds the classified board push to
+  the `regen` and `model-autoflip` push steps (credential preflight before the
+  commit and before every retry; only a non-fast-forward rejection retries or says
+  main moved; every credential class fails once with its own line; git output
+  masked), and a lint-job step running `statusgen/pushcred_test.go`, which executes
+  those steps against a stub forge. The manifest declares it `pending` until a
+  maintainer promotes it.
 
 ### `windows-ci-leg.yml` status
 

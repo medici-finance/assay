@@ -11,7 +11,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-10-11 by statusgen newbrief
 sources:
   - "Maintainer direction 2026-10-11: ratchet lint/vulnerability checks over existing debt rather than rewrite old code wholesale; feed findings into qualgen reporting."
@@ -21,15 +21,17 @@ sources:
 exec-tier: strong
 exec-tier-why: "Cross-artifact correctness: tool pins, module/build coverage, exit propagation, fixtures and actual workflow execution must agree."
 consumers:
-  - "tools/go-analysis/baseline.json: follow-up desk-tools/34 (reviewed debt records)"
-  - "docs/go-analysis-report-v1.md: follow-up desk-tools/34 (scan artifact contract)"
-  - ".golangci.yml: follow-up desk-tools/34 (implementation; workflow applied by a human on that branch)"
-  - "scripts/go-analysis.sh: follow-up desk-tools/34 (implementation; workflow applied by a human on that branch)"
-  - "scripts/tests/go-analysis.sh: follow-up desk-tools/34 (implementation; workflow applied by a human on that branch)"
-  - "scripts/tests/testdata/go-analysis/: follow-up desk-tools/34 (implementation; workflow applied by a human on that branch)"
-  - "tools/go-analysis/pins.env: follow-up desk-tools/34 (implementation; workflow applied by a human on that branch)"
-  - "docs/go-analysis.md: follow-up desk-tools/34 (implementation; workflow applied by a human on that branch)"
-  - "docs/runsheets/go-analysis-ci-hunk.md: follow-up desk-tools/34 (implementation; workflow applied by a human on that branch)"
+  - "actions/go-analysis/: fixed-here (reusable GitHub Action; direct maintainer direction during implementation)"
+  - "tools/go-analysis/runner.py: fixed-here (stdlib adapter for upstream JSON and finding ratchet)"
+  - "tools/go-analysis/baseline.json: fixed-here (reviewed debt records)"
+  - "docs/go-analysis-report-v1.md: fixed-here (scan artifact contract)"
+  - ".golangci.yml: fixed-here (implementation; workflow applied by a human on that branch)"
+  - "scripts/go-analysis.sh: fixed-here (implementation; workflow applied by a human on that branch)"
+  - "scripts/tests/go-analysis.sh: fixed-here (implementation; workflow applied by a human on that branch)"
+  - "scripts/tests/testdata/go-analysis/: fixed-here (implementation; workflow applied by a human on that branch)"
+  - "tools/go-analysis/pins.env: fixed-here (implementation; workflow applied by a human on that branch)"
+  - "docs/go-analysis.md: fixed-here (implementation; workflow applied by a human on that branch)"
+  - "docs/runsheets/go-analysis-ci-hunk.md: fixed-here (implementation; workflow applied by a human on that branch)"
   - ".github/workflows/ci.yml: follow-up desk-tools/34 (implementation; workflow applied by a human on that branch)"
 ---
 
@@ -90,6 +92,11 @@ two briefs; desk-tools/35 owns updating those pointers alongside the analysis po
 - If main or another active worker already owns the scope, checkpoint and reconcile before editing.
 
 ## Task
+
+Maintainer implementation direction: expose these checks as a reusable GitHub Action
+under `actions/go-analysis/`, versioned with Assay and consumed by immutable commit
+SHA. The script remains its shared tested engine; the human workflow hunk is a thin
+caller. Desk-tools/35 extends the same action for security and qualgen reporting.
 
 1. Admit one exact golangci-lint v2 release compatible with the project's Go toolchain. Record
    acquisition URL/module, version, release date and checksums in `tools/go-analysis/pins.env` (planned).

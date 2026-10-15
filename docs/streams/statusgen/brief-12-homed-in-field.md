@@ -32,7 +32,7 @@ sources:
   - "The optional-KNOWN-key pattern already used for exec-tier / blocked-by / measures (parse as a recognized field, default-inert on absence, PROBLEM on a malformed present value)"
   - "The fail-loud-when-hiding-work discipline: a brief withheld from Next-up must be NAMED on the board, never silently dropped (the StaleRef ~596-brief silent-hide lesson)"
 gate-why: n/a (gate is model; all four risk answers are no)
-version: 1
+version: 2
 id: c4df0e45-2253-45a6-ba5e-c310cf93a754
 ---
 
@@ -137,7 +137,7 @@ byte-identical to today's (the additive-inert invariant every optional key holds
 | 3 | same fixture, but the brief's value is `homed-in: not-a-repo` | `--lint` exit 1; message contains `invalid homed-in "not-a-repo"` and echoes the file path |
 | 4 | build from a tree where NO brief carries `homed-in`; diff its `STATUS.md` render against the pre-change binary's render of the same tree | identical output — the additive-inert invariant (absent field ⇒ byte-identical board) |
 | 5 | inspect the `NextUp` value (or the rendered board) for a fixture with `homed-in: acme/widgets` | the excluded brief's id and the string `acme/widgets` are both reachable/rendered — a cross-repo dispatcher can read the target without opening the brief |
-| 6 | `git diff --name-only $(git merge-base HEAD origin/main) HEAD -- STATUS.md` | empty — STATUS.md is not committed on the branch (single-writer = main CI) |
+| 6 | `M=fdbca83b1bb2d443e2f99cd56d8fac642c60445b && BASE=$(git merge-base "$M^1" "$M^2") && ! git diff --quiet "$BASE" "$M^2" && git diff --quiet "$BASE" "$M^2" -- STATUS.md` | exit 0 — STATUS.md is not committed on the implementing branch (single-writer = main CI). Judged against the implementing branch itself: M is PR #162's merge commit, `M^2` the branch tip, `BASE` its fork point from main, so the range is the real change and not the empty `merge-base HEAD origin/main..HEAD` (HEAD on merged main). The `!` leg is the positive control: the same range DOES change other files, so the empty `STATUS.md` diff is a real absence |
 
 ## Evidence
 

@@ -8,6 +8,26 @@
   "exclusion_rules": [
     {
       "class": "test",
+      "pattern": "tools/forge-import-check",
+      "reason": "source-only verification instrument run explicitly by go run or go test from forge-neutral briefs 37 and 38 verify rows; it parses a target tree, never builds or executes it, and is never installed or released as an operator CLI (#2743)"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/release/go_cache.py",
+      "reason": "internal release workflow cache adapter imported by fixed workflow calls; no shebang, main guard, argument parser or independent operator entrypoint (#138)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/go_cache_test.py",
+      "reason": "offline release cache provenance and archive fixtures executed by build-test through the regression package (#138)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/go_cache_mutation.py",
+      "reason": "offline planted release cache guard failures in disposable copies; validation utility, never an operator entrypoint (#138)"
+    },
+    {
+      "class": "test",
       "pattern": "docs/qualification/codex-goals/2026-10-12/validate.py",
       "reason": "offline assertions over retained native Goal qualification artifacts for issue #2696; invoked by readers of that evidence index, never installed or released as an operator CLI"
     },
@@ -97,6 +117,26 @@
       "reason": "plan and triage helper built and run only by tools/gremlins/run.sh (issue #2647); not released and not an operator entrypoint"
     },
     {
+      "class": "test",
+      "pattern": "actions/go-analysis/test_action.py",
+      "reason": "offline wrapper tests for the go-analysis composite action (desk-tools/34); CI and verifiers run them, never an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "scripts/tests/go-analysis.py",
+      "reason": "offline ratchet, discovery and real-analyzer negative controls for the pinned go-analysis runner (desk-tools/34); run through scripts/tests/go-analysis.sh, never an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "scripts/tests/go-analysis.sh",
+      "reason": "launcher for the go-analysis harness (desk-tools/34); CI and verifiers run it, never an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "scripts/tests/go-analysis-mutations.py",
+      "reason": "developer mutation runner that removes each go-analysis guard from a disposable runner copy and requires its focused test to fail (desk-tools/34); not an operator entrypoint"
+    },
+    {
       "class": "fixture",
       "pattern": "**/testdata/**",
       "reason": "Go testdata convention: the go tool ignores these packages; they are inputs to tests"
@@ -107,6 +147,11 @@
       "reason": "skill-benchmark fixture checks executed by skillbench, not by operators"
     },
     {
+      "class": "fixture",
+      "pattern": "docs/vision/build_pdf.py",
+      "reason": "offline publication builder for the committed vision-report PDF (issue #2489): takes no arguments, is run by hand per docs/vision/BUILD.md when the report changes, is named by no workflow, Makefile or plugin bundle, and is not an Assay operator command"
+    },
+    {
       "class": "library",
       "pattern": "providers/laya/assay_laya/**",
       "reason": "importable Python package: no __main__ guard and no shebang"
@@ -115,6 +160,16 @@
       "class": "library",
       "pattern": "tools/fleet-gitlab-roles.sh",
       "reason": "role table sourced by the two GitLab fleet scripts; no shebang, never executed"
+    },
+    {
+      "class": "library",
+      "pattern": "statusgen/pushcred.sh",
+      "reason": "board-push credential functions sourced by the board-writer workflow steps and embedded in the GitLab CI template statusgen init writes; no shebang, never executed"
+    },
+    {
+      "class": "library",
+      "pattern": "statusgen/boardadd.sh",
+      "reason": "board-staging function (board_add) embedded verbatim in both CI templates statusgen init writes (issue #2915); no shebang, never executed"
     }
   ],
   "entrypoints": [
@@ -824,6 +879,23 @@
       "complexity": "simple",
       "basis": "924 LOC, ~5 verbs, ~4 flags at 3ad1ad83c871",
       "owner": "desktools-v2/31",
+      "state": "pending"
+    },
+    {
+      "executable": "deskperf",
+      "path": "tools/desk/cmd/deskperf",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "docs/telemetry.md",
+        "docs/streams/desk-tools/brief-23-usage-and-timing-telemetry.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "339 LOC, ~2 verbs, ~8 flags at 2ebdde50982a",
+      "owner": "desktools-v2/56",
       "state": "pending"
     },
     {
@@ -2220,6 +2292,57 @@
       "complexity": "simple",
       "basis": "714 lines at 3ad1ad83c871",
       "owner": "desktools-v2/54",
+      "state": "pending"
+    },
+    {
+      "executable": "run.py",
+      "path": "actions/go-analysis/run.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "composite GitHub Action (actions/go-analysis); run by its action.yml at the consumer's pinned ref",
+      "consumers": [
+        "actions/go-analysis/action.yml",
+        "actions/go-analysis/README.md",
+        "actions/go-analysis/test_action.py"
+      ],
+      "parser": "Python environment variables set by action.yml",
+      "complexity": "simple",
+      "basis": "139 lines at 056d7b634c12",
+      "owner": "desktools-v2/55",
+      "state": "pending"
+    },
+    {
+      "executable": "go-analysis.sh",
+      "path": "scripts/go-analysis.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; operator-invoked as bash scripts/go-analysis.sh",
+      "consumers": [
+        "docs/go-analysis.md",
+        "actions/go-analysis/action.yml",
+        "actions/go-analysis/run.py"
+      ],
+      "parser": "bash arguments passed through to the runner",
+      "complexity": "simple",
+      "basis": "5 lines at 056d7b634c12",
+      "owner": "desktools-v2/55",
+      "state": "pending"
+    },
+    {
+      "executable": "runner.py",
+      "path": "tools/go-analysis/runner.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "repo tooling; run by scripts/go-analysis.sh, the go-analysis action and its harness",
+      "consumers": [
+        "scripts/go-analysis.sh",
+        "docs/go-analysis.md",
+        "scripts/tests/go-analysis.py"
+      ],
+      "parser": "Python argparse (acquire, lint)",
+      "complexity": "simple",
+      "basis": "406 lines at 056d7b634c12",
+      "owner": "desktools-v2/55",
       "state": "pending"
     }
   ]

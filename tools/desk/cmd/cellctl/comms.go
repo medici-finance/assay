@@ -191,7 +191,7 @@ func (c *Cell) commsServiceEnv(cfg *deskCommsConfig) []string {
 	for k, v := range values {
 		env = envSet(env, k, v)
 	}
-	return env
+	return c.stampCellMarker(env, "comms")
 }
 
 func cmdComms(cell string, args []string) {
@@ -216,41 +216,17 @@ func cmdComms(cell string, args []string) {
 		return
 	}
 	if recovering {
-		launch, err := c.acquireCommsLaunch()
-		if err != nil {
-			die("comms recovery: %v", err)
+		if err := c.recoverComms(cfg); err != nil {
+			die("%v", err)
 		}
-		defer launch.Close()
+		fmt.Println("[comms] recovery recorded; run the service to start it")
+		return
 	}
 	lease, err := cellcadence.Acquire(c.commsDir())
 	if err != nil {
 		die("comms ownership: %v", err)
 	}
 	defer lease.Close()
-	if recovering {
-		// Confirmation covers the prior gateway, drain and every owned child.
-		if runtime.GOOS != "windows" {
-			if fi, err := os.Lstat(cfg.Socket); err == nil {
-				if fi.Mode()&os.ModeSocket == 0 {
-					die("comms recovery refuses a non-socket endpoint")
-				}
-				if err := os.Remove(cfg.Socket); err != nil {
-					die("comms recovery: %v", err)
-				}
-			} else if !errors.Is(err, os.ErrNotExist) {
-				die("comms recovery: %v", err)
-			}
-		}
-		if err := os.Remove(filepath.Join(c.Dir, "run", "comms", "checkpoint.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
-			die("comms recovery: %v", err)
-		}
-		// Confirmation also covers a prior cockpit command that has not started.
-		if err := os.Remove(filepath.Join(c.commsLaunchDir(), "surface.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
-			die("comms recovery: %v", err)
-		}
-		fmt.Println("[comms] recovery recorded; run the service to start it")
-		return
-	}
 	if err := os.Remove(filepath.Join(c.commsDir(), "STOP")); err != nil && !errors.Is(err, os.ErrNotExist) {
 		die("comms stop request: %v", err)
 	}
@@ -353,4 +329,43 @@ func (c *Cell) commsCommands() ([][]string, error) {
 		commands = append(commands, []string{path})
 	}
 	return commands, nil
+}
+
+// recoverComms is `comms <cell> recover --confirm-stopped`: the one code path that clears a
+// retained comms checkpoint, its socket and its launch receipt. The caller has established that
+// the prior gateway, drain and every owned child have stopped — the operator's word on the CLI,
+// or the reconcile preflight's pid-and-start-time evidence. Mailbox data, keys and configuration
+// are never touched.
+func (c *Cell) recoverComms(cfg *deskCommsConfig) error {
+	launch, err := c.acquireCommsLaunch()
+	if err != nil {
+		return fmt.Errorf("comms recovery: %w", err)
+	}
+	defer launch.Close()
+	lease, err := cellcadence.Acquire(c.commsDir())
+	if err != nil {
+		return fmt.Errorf("comms ownership: %w", err)
+	}
+	defer lease.Close()
+	// Confirmation covers the prior gateway, drain and every owned child.
+	if runtime.GOOS != "windows" {
+		if fi, err := os.Lstat(cfg.Socket); err == nil {
+			if fi.Mode()&os.ModeSocket == 0 {
+				return fmt.Errorf("comms recovery refuses a non-socket endpoint")
+			}
+			if err := os.Remove(cfg.Socket); err != nil {
+				return fmt.Errorf("comms recovery: %w", err)
+			}
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("comms recovery: %w", err)
+		}
+	}
+	if err := os.Remove(filepath.Join(c.Dir, "run", "comms", "checkpoint.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("comms recovery: %w", err)
+	}
+	// Confirmation also covers a prior cockpit command that has not started.
+	if err := os.Remove(filepath.Join(c.commsLaunchDir(), "surface.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("comms recovery: %w", err)
+	}
+	return nil
 }

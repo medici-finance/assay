@@ -363,6 +363,12 @@ type driveLintCtx struct {
 }
 
 func (c *driveLintCtx) section(slug string, now time.Time) (string, int) {
+	return driveLintSection(c, slug, now)
+}
+
+// Keep the renderer on the package-local call graph used by the Status-keyed
+// rule registry scanner, including when lint reuses an already hydrated board.
+func driveLintSection(c *driveLintCtx, slug string, now time.Time) (string, int) {
 	c.calls++
 	if !c.loaded {
 		c.loaded = true

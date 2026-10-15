@@ -146,7 +146,11 @@ type ProseGate struct {
 	// Journal receives each consult's DecisionRecord. Nil ⇒ the shared
 	// desk-tools audit log, which journals only the context DIGEST.
 	Journal deskkit.Journal
-	// Timeout bounds one advisor consult. Zero ⇒ deskkit's default.
+	// Timeout bounds one advisor consult. Zero ⇒ deskkit.DefaultDecideTimeout.
+	// The gateway replies to a submission only after this consult, and the
+	// deskcomms client sizes its submit deadline above deskkit's default: a
+	// value ABOVE that default would let a client give up on (and report as
+	// could-not-submit) a message this gateway then accepts.
 	Timeout time.Duration
 	// Root is the queue root a held message is written under.
 	Root string
@@ -402,8 +406,17 @@ func (ca *ContainedAdvisor) Advise(ctx context.Context, c deskkit.Consultation) 
 		return deskkit.Advice{}, fmt.Errorf("commsgw prose gate: decider prompt failed: %w", perr)
 	}
 
-	answer := parseVerdict(report.String(), c.Vocabulary)
-	return deskkit.Advice{Answer: answer, Justification: firstLine(report.String())}, nil
+	return adviceFrom(report.String(), c.Vocabulary), nil
+}
+
+// adviceFrom maps the decider's whole reply onto an Advice: the answer is the
+// single vocabulary member parseVerdict finds (or "" — Decide then bounds it to
+// the default), and the justification is the reply line naming that answer
+// (deskkit.ReplyJustification), never a fixed line position. Split
+// out of Advise so the reply handling is testable without spawning an agent.
+func adviceFrom(reply string, vocabulary []string) deskkit.Advice {
+	answer := parseVerdict(reply, vocabulary)
+	return deskkit.Advice{Answer: answer, Justification: deskkit.ReplyJustification(reply, answer)}
 }
 
 // renderPrompt frames the consultation for the decider. The untrusted message
@@ -441,12 +454,4 @@ func parseVerdict(reply string, vocabulary []string) string {
 		}
 	}
 	return found
-}
-
-func firstLine(s string) string {
-	s = strings.TrimSpace(s)
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return deskkit.StripControl(s[:i])
-	}
-	return deskkit.StripControl(s)
 }

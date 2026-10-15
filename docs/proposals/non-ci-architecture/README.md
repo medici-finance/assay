@@ -1,19 +1,20 @@
 # Unified non-CI architecture for Assay
 
-**Status: draft proposal, 10 October 2026; workspace-lifecycle revision 11 October 2026.** This directory is the public home of
-the proposed product architecture. Approval must name its reviewed revision and
-scope. Publishing or merging these documents does not activate a runtime, grant
-credentials, amend existing briefs or implement an authoring interface.
+**Status: future architecture we are moving towards. Updated 14 October 2026; includes portfolio, drift and the write-through forge-service amendment.** This directory is the canonical public home of Assay's future product architecture. It states the direction of travel, not what is already implemented or deployed. Detailed contract changes still require revision-bound review; implementation and activation require their own evidence and authorization. Publishing or merging this documentation does not activate a runtime, grant credentials or amend existing briefs.
+
+Read the [implemented foundations and remaining work](11-target-architecture.md#implemented-foundations-and-work-still-to-build) alongside the target. Portfolio allocation, target/context drift and continuing observation are included in the destination; their integrated automation remains work to build and qualify.
+
+The maintainer ratified the whole target at revision `23f655f5d`, packages R1–R8, on [medici-finance/assay#2500](https://github.com/medici-finance/assay/issues/2500). That approval remains revision-bound: it does not imply that the portfolio/drift additions below were included in that earlier revision, or that any runtime has been activated.
 
 Assay's operator CLI (`cellctl`), governed work verbs (desk-tools), definition and
 evidence engine (`statusgen`), quality tools, service and cockpit share meanings
-and authority boundaries. The proposed refactor gives each meaning one owner,
+and authority boundaries. The target refactor gives each meaning one owner,
 then migrates consumers through shared contracts and complete flow cutovers.
 Verification is the first end-to-end test.
 
 | Document | Purpose |
 |---|---|
-| [Target architecture](11-target-architecture.md) | Domain ownership, authority, public service/cockpit and disposition of existing tools |
+| [Target architecture](11-target-architecture.md) | Domain ownership, portfolio/drift, implementation boundaries, public service/cockpit and disposition of existing tools |
 | [Future-state model](12-future-state-model.md) | Observed, approved, transition and proposal views; shared discovery and authoring handoff |
 | [Migration and decisions](13-migration-and-decisions.md) | Supported-path fixes, verifier transaction, cutover, rollback and unresolved decisions |
 | [Storage, forge mirror and graph](14-storage-forge-graph.md) | PostgreSQL, reconstruction, authority after data loss, event/poll ingestion and queries |
@@ -22,9 +23,13 @@ Verification is the first end-to-end test.
 | [Shared context graph](17-context-substrate.md) | Cell classification, composition, source ownership, snapshot/query and visibility contracts |
 | [Authoring/context delivery](18-authoring-context-delivery.md) | Existing public skill homes, proposed resolver/skill packages and independent context slices |
 | [Progressive adoption and oversight](19-progressive-adoption-and-oversight.md) | Smaller independently useful entry paths, scoped human involvement, assurance and package/consumer changes |
+| [Amendment manifest](20-amendment-manifest.md) | Owners, paths, dependencies and active-work treatment for the ratified packages; brief patches for R1 and step 2 |
+| [Cell operator surface](21-cell-operator-surface.md) | Proposed in medici-finance/assay#2890; ratified when that PR is merged by the maintainer. Cell-level operator verbs classified as interim bridges or target-owned; runner-lifecycle states/transitions; a deferred plan-approval design gated on five properties; Cell API requirements carried from `send` |
+| [Forge service and source queries](22-forge-service-and-source-queries.md) | Write-through visibility, caller/executor authorization, immutable source caches and Scion-inspired qualification |
+| [Runtime contract alignment](23-runtime-contract-alignment.md) | One public runtime: PostgreSQL coordination, existing Git/forge evidence owners, requirement-to-owner coverage and remaining gaps |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
-## Requested direction and proposed mechanisms
+## Future direction and mechanisms to qualify
 
 The design starts with one operator-managed host running multiple isolated cells.
 Command compatibility can break when that simplifies the result. Approved
@@ -35,19 +40,22 @@ service, cockpit, operator tools, schemas, libraries and skills.
 The canonical [author-spec](../../../plugins/assay/skills/author-spec/SKILL.md) and
 [author-brief](../../../plugins/assay/skills/author-brief/SKILL.md) are already public.
 The proposed context-graph/resolver and skill improvements also belong here; this
-PR specifies their delivery but changes no skill body or executable interface.
+architecture specifies their delivery but changes no skill body or executable interface.
 
 PostgreSQL coordinates in-flight work and holds query projections; reviewed Git
 records retain canonical intent and published evidence for this phase. Recovery
 should reconstruct useful state, allowing declared transient loss and safe repeated
-work. Forge records are mirrored with attributed coverage and freshness. Active
+work. Forge records are mirrored with attributed coverage and freshness. The
+[forge-service amendment](22-forge-service-and-source-queries.md) routes authorized writes
+through existing role-bound executors and projects confirmed results immediately; it also
+provides SHA-bound source queries and scoped cache reuse. Active
 verification publishes through a governed role-bound path.
 
-The detailed mechanisms remain proposals: one mutating cell per external
-repository, separate effect executors, fresh operator-controlled authority on
-reconstruction, whole-repository verifier cutover and a bounded discovery/receipt
-interface for both author skills. They need approval and qualification at the
-appropriate phase. A graph explains relationships; it never grants runtime authority.
+The ratified target includes one mutating cell per external repository, separate
+effect executors, fresh operator-controlled authority on reconstruction, whole-repository
+verifier cutover and a bounded discovery/receipt interface for both author skills.
+Implementation and activation still require the corresponding contract and runtime
+qualification. A graph explains relationships; it never grants runtime authority.
 
 ## Scope and public boundary
 
@@ -85,15 +93,17 @@ target is not evidence that the replacement is implemented or its consumers migr
 
 ## Approval and execution
 
-First approve the target and explicit contract deltas. Then deliver the shared
+Build from the ratified target and review subsequent contract deltas against their exact
+revisions. Deliver the shared
 context-packet/resolver and author-skill changes, initially bootstrapped from a
 manually inspected packet. Follow with focused runtime and migration PRs.
 Independent runtime implementation can proceed against approved contracts while
 authoring automation is completed.
 
-The [delivery sequence](16-delivery-sequence.md) is a proposed decomposition.
-Dispatchable briefs, named implementers, estimates and applied amendments are
-still required. This PR neither closes existing work nor claims quantified savings.
+The [delivery sequence](16-delivery-sequence.md) and [amendment manifest](20-amendment-manifest.md)
+record the ratified packages and their reconciliation. The manifest distinguishes
+applied R1/authoring-support brief amendments from follow-up owner rows. Further
+delivery still needs dispatchable briefs, named implementers, estimates and applied amendments. This architecture update neither closes existing work nor claims quantified savings.
 Runtime proof gates activation; it must not become a circular prerequisite to
 authorizing the implementation that produces that proof.
 
@@ -125,3 +135,13 @@ Public research inputs, inspected 10 October 2026:
 - Recent public Assay fixes are mapped in the [migration obligations](13-migration-and-decisions.md#preserve-recent-repository-hygiene-behavior), with new [continuous-work qualification](15-regression-from-day-one.md#continuous-work-and-resource-qualification).
 
 PostgreSQL remains the operational transaction owner; reviewed Git records retain canonical intent and published evidence. These lessons introduce neither a mandatory Git append per operation nor a replacement authoritative store.
+
+
+## One public runtime — 14 October 2026
+
+The [runtime alignment](23-runtime-contract-alignment.md) reconciles earlier refs-first
+ideas into the existing R1–R8 implementation in public Assay. PostgreSQL coordinates
+runtime effects; Git retains definitions/evidence; the forge service owns scoped provider
+observations and effects. There is no second runtime, native SCM prerequisite or new signer
+deployment. The coverage table maps existing owners and routes only two new contract gaps
+(graph-execution/30–31), with amendments to their existing admission/store/publication consumers.

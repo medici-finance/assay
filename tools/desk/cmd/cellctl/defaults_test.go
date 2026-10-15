@@ -25,7 +25,7 @@ func defaultsRoot(t *testing.T) string {
 	for _, k := range []string{
 		"CELL", "CELL_KIND", "CELL_KIND_OVERRIDE_INTERNAL", "CELL_HARNESS", "ROLES", "DESKD", "DRY_RUN",
 		"CELL_REPO", "CELL_REPO_SLUG", "CELL_ROOTS", "TMUX_SESSION", "DESK_MODEL_DEFAULT",
-		"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE",
+		"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE", "CELL_GO_CACHE_BUILD_MAX_AGE",
 		"CELL_PATH", "CELL_PROVIDER", "CELL_PROVIDER_DEFAULTS", "CELL_PROVIDER_OVERRIDES",
 		"CELL_MODEL_POLICY", "CELL_ROLE_CONTEXT", "CELLCTL_TEST_PROBE",
 	} {
@@ -421,13 +421,13 @@ func TestCellDefaultsSetWritesOnlyCellEnv(t *testing.T) {
 		t.Errorf("other cell.env =\n%s\nwant\n%s", got, want)
 	}
 	// Nothing appears in the cells root but the two cells and the one defaults file, and each
-	// cell directory holds its cell.env and that file's backups only.
+	// cell directory holds its cell.env, that file's backups, and the pin record a model pin writes.
 	if names, want := mustReadDir(t, root), []string{cellDefaultsFile, "demo", "other"}; !reflect.DeepEqual(names, want) {
 		t.Errorf("cells root holds %v, want %v", names, want)
 	}
 	for _, cell := range []string{"demo", "other"} {
 		for _, n := range mustReadDir(t, filepath.Join(root, cell)) {
-			if n != "cell.env" && !strings.HasPrefix(n, "cell.env.bak-") {
+			if n != "cell.env" && n != modelPinsFile && !strings.HasPrefix(n, "cell.env.bak-") {
 				t.Errorf("set left %s in cell %s", n, cell)
 			}
 		}

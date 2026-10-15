@@ -2,7 +2,7 @@
 brief: assay:assay:graph-execution:21
 title: Deterministic task controller with durable dispatch and waits
 why: Queue mechanics should survive sessions and invoke a model only when a work item becomes actionable.
-wave: 4
+wave: 7
 depends:
 - graph-execution/19
 - graph-execution/20

@@ -17,9 +17,10 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 4
+version: 5
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; SOTA amendment)"
 sources:
+  - "medici-finance/assay#2789; scratch-isolation amendment, freshness-checked 2026-10-13 @ 53c536312"
   - "docs/streams/build-less-brittle/spec.md — 2026-09-30 pending scope amendment"
   - "freshness-checked 2026-09-30 @ 8485778515c041fc87966902a14eb9d195492be3: amend unfinished scope; no implementation claim"
   - "docs/streams/build-less-brittle/spec.md §3 row 11, §4.9, §11"
@@ -153,6 +154,10 @@ fields/subheadings, not another frontmatter block or a seventh top-level section
 
 ## Verify (executable — no prose-only DoD items)
 
+Run consumer checks with `TMPDIR` pointing at owned scratch outside the admitted source checkout.
+This scratch-location amendment (#2789) preserves the revision selection and assertions;
+historical Evidence does not verify the revised row, which needs fresh verifier admission.
+
 Rows run from the root of `medici-finance/assay`. The deliverable is prose. Rows 1–4 gate the
 template's shape, row 5 proves the worked example parses as an investigation would, row 6
 dereferences the command the template tells sessions to run, rows 7–8 are the wiring and net
@@ -169,7 +174,7 @@ dereferences the command the template tells sessions to run, rows 7–8 are the 
 | 7 | `grep -c 'brittle-investigation-template' plugins/assay/skills/worker-desk/SKILL.md` | ≥ `1` |
 | 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/09$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 9 | `test -f docs/investigations/README.md && grep -c 'recommendation' docs/investigations/README.md` | ≥ `1` |
-| 10 | `d=; impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/09$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; b=$(git rev-parse "$base") && t=$(git rev-parse "$tip") && test "$b" != "$t" && d=$(mktemp -d "$PWD/.bl09-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach "$t" && statusgen --consumers --root "$d" --brief build-less-brittle/09 --base "$b"; s=$?; test -n "$d" && rm -rf "$d"; exit $s` | exit 0; output is `summary: 2 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing` (the `consumers:` claims are judged against the delivering change itself, in a throwaway clone: after the merge, the first-parent commit on main carrying the `Brief: build-less-brittle/09` trailer (the net-weight rows resolve the same commit) diffed against its parent; before the merge, the PR head diffed against its merge-base; the two `fixed-here` entries are corroborated; the UNCHECKED ones are the build-less-brittle/08 follow-up column and the out-of-scope installed-binaries entry, which the delivering diff does not touch and which stay the reviewer's call per brief-rule 9). A disproved claim fails the row and names the claim; an unresolvable delivering change fails the row rather than passing on an empty diff. Row re-authored 2026-10-06 (#1915): the unpinned form ran against merged main, where the brief is no longer in the diff, and reported COULD-NOT-CHECK; this form runs the same way before and after the merge (the #1908 pattern). Expect first re-written 2026-10-03 (#1862). |
+| 10 | `d=; impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/09$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; b=$(git rev-parse "$base") && t=$(git rev-parse "$tip") && test "$b" != "$t" && d=$(mktemp -d "${TMPDIR:-/tmp}/bl09-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach "$t" && statusgen --consumers --root "$d" --brief build-less-brittle/09 --base "$b"; s=$?; test -n "$d" && rm -rf "$d"; exit $s` | exit 0; output is `summary: 2 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing` (the `consumers:` claims are judged against the delivering change itself, in a throwaway clone: after the merge, the first-parent commit on main carrying the `Brief: build-less-brittle/09` trailer (the net-weight rows resolve the same commit) diffed against its parent; before the merge, the PR head diffed against its merge-base; the two `fixed-here` entries are corroborated; the UNCHECKED ones are the build-less-brittle/08 follow-up column and the out-of-scope installed-binaries entry, which the delivering diff does not touch and which stay the reviewer's call per brief-rule 9). A disproved claim fails the row and names the claim; an unresolvable delivering change fails the row rather than passing on an empty diff. Row re-authored 2026-10-06 (#1915): the unpinned form ran against merged main, where the brief is no longer in the diff, and reported COULD-NOT-CHECK; this form runs the same way before and after the merge (the #1908 pattern). Expect first re-written 2026-10-03 (#1862). |
 | 11 | `f=docs/brittle-investigation-template.md; for key in source-revisions dependency-references unresolved-questions; do grep -qF "$key:" "$f" \|\| exit 1; done; awk '/^## / {p=($0 == "## Divergence")} p && /^### Intervening-change example$/ {found=1} END {exit !found}' "$f" && echo SOURCE-CHANGE-EXAMPLE` | `SOURCE-CHANGE-EXAMPLE` (presence/placement only; the review walks the policy-change case and checks revalidation) |
 
 ## Evidence

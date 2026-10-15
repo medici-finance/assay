@@ -275,6 +275,15 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	if pinProblem, has := sameTagPinLint(root); has {
 		problems = append(problems, pinProblem)
 	}
+	// Ignored board paths (#2915): a .gitignore rule that makes git refuse the
+	// regen job's path-scoped add of STATUS.md or docs/streams fails every push
+	// to main. Lint mode only — the regen run itself must still write the board
+	// so the commit step can name the rule (boardadd.sh). See boardignore.go.
+	if mode == "lint" {
+		ignoreProblems, ignoreNotices := boardIgnoreLint(root)
+		problems = append(problems, ignoreProblems...)
+		notices = append(notices, ignoreNotices...)
+	}
 	// The per-stream done/ archive checks — a NOTICE for a
 	// retired placeholder still at the stream root (archive candidate) and a
 	// PROBLEM for any non-done brief/placeholder parked under done/. Additive,
@@ -472,7 +481,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		// snapshot region has drifted from a fresh render, or that has no manifest
 		// beside it. --lint only (the PR gate); STATUS.md-free and offline. Absent
 		// docs/roadmap/drives ⇒ inert.
-		dp, dn := driveRegionLintProblems(root, nowFunc())
+		var dp, dn []string
+		if effScope == "" {
+			dp, dn = driveRegionLintFromBoard(root, streams, nowFunc())
+		} else {
+			// Snapshot frontiers use the full board, including rows outside
+			// the product-scoped checks above. Hydrate those once per sweep.
+			dp, dn = driveRegionLintProblems(root, nowFunc())
+		}
 		problems = append(problems, dp...)
 		notices = append(notices, dn...)
 	}
@@ -552,11 +568,21 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// Inert with no --changed set, exactly like the DAR check.
 	notices = append(notices, verifyScriptDiffNotices(changed)...)
 	// Unfailable Verify rows: a row whose command is structurally
-	// incapable of failing manufactures evidence. NOTICE this phase — the rules
-	// fire on briefs already on main, many of them closed, and rewriting a closed
-	// brief's Verify table to green the gate is the very falsification the check
-	// exists to catch. Flip to a hard problem once the active streams are clean.
-	notices = append(notices, unfailableRowNotices(checkStreams)...)
+	// incapable of failing manufactures evidence. Transition-scoped
+	// (verify-integrity/03): R1–R10 are a PROBLEM on a closure THIS branch makes
+	// and stay a NOTICE on every brief already closed at the merge-base —
+	// rewriting a closed brief's Verify table to green the gate is the very
+	// falsification the check exists to catch. The strength rules R11–R13 are
+	// NOTICEs everywhere (docs/verify-row-strength.md).
+	ufProblems, ufNotices := unfailableRowChecks(root, checkStreams)
+	problems = append(problems, ufProblems...)
+	notices = append(notices, ufNotices...)
+	// Fail-first (verify-integrity/03): a closure THIS branch makes must carry,
+	// for each risk-bearing Verify row, a `verifyrun --fail-first` witness that
+	// reds on the merge-base or an ancestor of it that already holds the brief. See witnessgate.go / failfirst.go.
+	ffProblems, ffNotices := failFirstGateChecks(root, checkStreams)
+	problems = append(problems, ffProblems...)
+	notices = append(notices, ffNotices...)
 	// Portability is advisory; existing POSIX rows remain executable records.
 	notices = append(notices, verifyPortabilityNotices(checkStreams)...)
 	// Missing EXECUTION WITNESS (ground-truth/01, #284): a brief the README

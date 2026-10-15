@@ -392,6 +392,23 @@ func TestRedPreflightSurfacesSummaryNotBanner(t *testing.T) {
 	}
 }
 
+// regression: #2713
+// The default echo is now ONE digest line rather than the full block. The summary must strip
+// that form as preamble too, and must still keep a REFUSED line, which is the message when the
+// roster itself refused.
+func TestPreflightSummaryDigestLine(t *testing.T) {
+	digest := "assay-config: class=write source=config file /x/roster.env configured=true " +
+		"digest=sha256:0123456789ab humans=2 bots=6 roles=6 repos=1 (full: ASSAY_CONFIG_ECHO=full)"
+	got := preflightSummary(digest+"\npreflight role=desk RED 4/5 checked-clean", "")
+	if got != "preflight role=desk RED 4/5 checked-clean" {
+		t.Errorf("the digest echo line was not stripped as preamble; got:\n%s", got)
+	}
+	refused := "assay-config: REFUSED — no roster configured"
+	if got := preflightSummary(digest+"\n"+refused, ""); got != refused {
+		t.Errorf("the REFUSED line must survive the preamble strip; got:\n%s", got)
+	}
+}
+
 // captureStderr redirects os.Stderr for the duration of fn and returns what was written.
 func captureStderr(t *testing.T, fn func() int) string {
 	t.Helper()
@@ -938,5 +955,20 @@ func TestCurrentWorktreeWithEqualPinsBoots(t *testing.T) {
 	}
 	if !s.ran("show FETCH_HEAD:.assay-versions") {
 		t.Error("a green boot never read FETCH_HEAD's pin — the pin comparison did not run")
+	}
+}
+
+// A boot step's stderr is captured and its echo stripped, so the child gets the stateless full
+// echo and records no config digest nobody saw.
+// regression: #2713
+func TestRunCmdChildEchoStateless(t *testing.T) {
+	t.Setenv(deskkit.EnvConfigEcho, "compact")
+	old := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("/bin/sh", "-c", `printf %s "$ASSAY_CONFIG_ECHO"`)
+	}
+	t.Cleanup(func() { execCommand = old })
+	if r := runCmd("", "deskroster", "preflight"); r.err != nil || r.stdout != "full" {
+		t.Fatalf("child saw ASSAY_CONFIG_ECHO=%q (err %v), want full", r.stdout, r.err)
 	}
 }

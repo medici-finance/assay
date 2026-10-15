@@ -330,21 +330,9 @@ func cmdCreate(args []string) (err error) {
 		return nil
 	}
 
-	// Outward-write rate limit — checked immediately before the push.
-	//
-	// REPO-WIDE, at the per-PR cap, because a create's own audit line records the number of
-	// the PR it is about to make (`ac.pr = &n`, below) — a new number every time. Scoping
-	// the gate on a PR number therefore reads a bucket this call site can never fill: an
-	// earlier fix aimed it at the repo's UNNUMBERED bucket, which left creates on the
-	// 100/hr per-repo tier while looking like a 10/hr cap, and inverted the meter so that
-	// only FAILED creates (which record no number) accumulated (#439, third
-	// review). The repo-wide scope counts every line this tool writes on this repo, so the
-	// bucket the gate reads is a superset of wherever the write lands — see
-	// deskkit.AllowWriteRepoWide.
-	//
-	// Held at the per-PR cap, not the per-repo one: this is the verb behind the
-	// PR-flood risk and it was hard-capped at 10/hr before the tiers existed.
-	if werr := deskkit.AllowWriteRepoWide("deskpr", facts.repo); werr != nil {
+	// New PRs have a repository-wide creation counter independent of updates and
+	// body edits. The aggregate write budget and failure breakers still apply.
+	if werr := deskkit.AllowPRCreate(facts.repo); werr != nil {
 		return werr
 	}
 
@@ -1290,7 +1278,9 @@ func parseRepo(raw string) (string, error) {
 // requireTrailer enforces the example-stream/02 link grammar on a PR body: exactly one
 // `Brief: <stream>/<NN>` that resolves to a brief file under --root (the PR DELIVERS that
 // brief), `Authors: <stream>/<NN>[, …]` whose every entry resolves the same way (the PR only
-// AUTHORS those briefs — #1339), or `Issue: #<N>` for issue-only work. Absence, duplicates,
+// AUTHORS those briefs — #1339), `Cross-repo-brief: <alias>:<stream>/<NN>` for a brief homed in
+// another repo (checked against --root's alias registry, never resolved to a file here —
+// medici-finance/assay#2748), or `Issue: #<N>` for issue-only work. Absence, duplicates,
 // mixed kinds and non-resolving briefs are all constraint refusals (exit 5). There is deliberately no bypass flag — a worker-typeable
 // bypass makes the edge asserted again.
 //
@@ -1325,6 +1315,7 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 		return 0, deskkit.SchemaRefusal("deskpr", "--check", "refused: PR body carries no trailer — add exactly one line "+
 			"`Brief: <stream>/<NN>` naming the brief this PR delivers (e.g. `Brief: example-stream/02`), "+
 			"`Authors: <stream>/<NN>[, …]` naming the brief(s) a briefs-authoring PR writes, "+
+			"`Cross-repo-brief: <alias>:<stream>/<NN>` naming a brief homed in another repo, "+
 			"or `Issue: #<N>` for issue-only work")
 	}
 	if trs[0].Kind == deskkit.TrailerIssue {
@@ -1355,6 +1346,9 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 			}
 		}
 		return 0, nil
+	}
+	if trs[0].Kind == deskkit.TrailerCrossRepoBrief {
+		return 0, requireCrossRepoBrief(trs[0].Value, root)
 	}
 	stream, nn, ok := splitBriefTrailer(trs[0].Value)
 	if !ok {

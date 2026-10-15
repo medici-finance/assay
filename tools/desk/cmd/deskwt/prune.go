@@ -181,8 +181,9 @@ type pruneOpts struct {
 //	  cell can sit over its byte budget — or the filesystem under its free-space floor —
 //	  indefinitely. Every sweep runs cellcache.Check over each marked cache root under
 //	  the cells root (--cells-root, then $CELLS_ROOT, then the compiled default), with
-//	  the package's own semantics: reclaim only under pressure, never while a consumer
-//	  holds a lease, never a warm purge. A root whose owning directory this sweep just
+//	  the package's own semantics: reclaim only under pressure, never a warm purge;
+//	  active consumer records protect mod/ and gopath/, while build/ entries older
+//	  than the policy's trim age are trimmed regardless. A root whose owning directory this sweep just
 //	  removed is reaped as an orphan, gated on its lease set re-read under its own lock
 //	  at act time. The pass is SILENT when every cache is within policy; the summary
 //	  line gains a cache segment only when it reclaimed, reaped, or found pressure it

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -94,6 +95,67 @@ type fakeForge struct {
 	// this fake drives is the closed-default-branch (GitLab) one.
 	holds   []int
 	holdErr error
+
+	// --- join-key reads -------------------------------------------------
+	// prs, when non-nil, makes GetPullRequest strict: it serves "owner/name#N" from the map and
+	// answers a 404 for anything else. Left nil, GetPullRequest keeps its draft-landing behaviour.
+	prs map[string]*deskkit.PullRequest
+	// defaultBranches serves RepoDefaultBranch per "owner/name" (unset -> "main");
+	// defaultBranchErr is its error.
+	defaultBranches  map[string]string
+	defaultBranchErr error
+	// compareStatus serves CompareRefs per "<owner/name>:<base>...<head>" (unset -> "ahead");
+	// compareErr, when set, is its error (the GitLab-shaped fake sets a could-not-check).
+	compareStatus map[string]string
+	compareErr    error
+	// visibilityByRepo serves RepoVisibility per "owner/name" (unset -> visibility); visErrByRepo
+	// is a per-repo read error ("*" matches every repo).
+	visibilityByRepo map[string]string
+	visErrByRepo     map[string]error
+	// joinReads records every record-driven read, in order: "GetPullRequest owner/name#N",
+	// "CompareRefs owner/name base...head", "RepoDefaultBranch owner/name", "RepoVisibility owner/name".
+	joinReads []string
+}
+
+// joinRead records one record-driven read (the caller holds f.mu).
+func (f *fakeForge) joinReadLocked(format string, a ...any) {
+	f.joinReads = append(f.joinReads, fmt.Sprintf(format, a...))
+}
+
+// RepoDefaultBranch answers the default-branch read the join-key dereference makes.
+func (f *fakeForge) RepoDefaultBranch(repo deskkit.ForgeRepo) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.joinReadLocked("RepoDefaultBranch %s", repo.Slug())
+	if f.defaultBranchErr != nil {
+		return "", f.defaultBranchErr
+	}
+	if b, ok := f.defaultBranches[repo.Slug()]; ok {
+		return b, nil
+	}
+	return "main", nil
+}
+
+// CompareRefs answers both compare reads a landing makes: the ancestry read of the join-key
+// dereference (compareStatus, compareErr, recorded in joinReads) and the decision gate's
+// branch-board read (cmpFiles, cmpErr, cmpIncomplete, recorded in cmpCalls).
+func (f *fakeForge) CompareRefs(repo deskkit.ForgeRepo, base, head string) (*deskkit.RefComparison, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := repo.Slug() + ":" + base + "..." + head
+	f.joinReadLocked("CompareRefs %s %s...%s", repo.Slug(), base, head)
+	f.cmpCalls = append(f.cmpCalls, base+"..."+head)
+	if f.compareErr != nil {
+		return nil, f.compareErr
+	}
+	if f.cmpErr != nil {
+		return nil, f.cmpErr
+	}
+	st := "ahead"
+	if s, ok := f.compareStatus[key]; ok {
+		st = s
+	}
+	return &deskkit.RefComparison{Files: f.cmpFiles, CommitsComplete: !f.cmpIncomplete, Status: st}, nil
 }
 
 // serveLocked answers one read of path (the caller holds f.mu): a scripted path advances its
@@ -121,6 +183,16 @@ func (f *fakeForge) RepoVisibility(repo deskkit.ForgeRepo) (string, error) {
 	defer f.mu.Unlock()
 	f.visibilityCalls++
 	f.visibilityRepo = repo
+	f.joinReadLocked("RepoVisibility %s", repo.Slug())
+	if err, ok := f.visErrByRepo[repo.Slug()]; ok {
+		return "", err
+	}
+	if err, ok := f.visErrByRepo["*"]; ok {
+		return "", err
+	}
+	if v, ok := f.visibilityByRepo[repo.Slug()]; ok {
+		return v, nil
+	}
 	if f.visibility != "" {
 		return f.visibility, nil
 	}
@@ -147,16 +219,6 @@ func (f *fakeForge) ReadFile(_ deskkit.ForgeRepo, in deskkit.ReadFileInput) (*de
 			&deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: in.File})
 	}
 	return &deskkit.FileContent{Content: []byte(c), SHA: sha, Exists: true}, nil
-}
-
-func (f *fakeForge) CompareRefs(_ deskkit.ForgeRepo, base, head string) (*deskkit.RefComparison, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.cmpCalls = append(f.cmpCalls, base+"..."+head)
-	if f.cmpErr != nil {
-		return nil, f.cmpErr
-	}
-	return &deskkit.RefComparison{Files: f.cmpFiles, CommitsComplete: !f.cmpIncomplete, Status: "ahead"}, nil
 }
 
 func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*deskkit.WriteFileResult, error) {
@@ -218,11 +280,19 @@ func (f *fakeForge) OpenMergeHold(_ deskkit.ForgeRepo, number int) (string, erro
 
 // GetPullRequest serves the head sha the online attribution resolution reads on the GitLab
 // draft-landing path (#1477). Only the HeadSHA field is populated (all deskevidence reads).
-func (f *fakeForge) GetPullRequest(_ deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {
+func (f *fakeForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.joinReadLocked("GetPullRequest %s#%d", repo.Slug(), number)
 	if f.prErr != nil {
 		return nil, f.prErr
+	}
+	if f.prs != nil {
+		if pr, ok := f.prs[fmt.Sprintf("%s#%d", repo.Slug(), number)]; ok {
+			cp := *pr
+			return &cp, nil
+		}
+		return nil, deskkit.Unverifiable("not found: change", &deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: "pulls"})
 	}
 	return &deskkit.PullRequest{Number: number, HeadSHA: f.prHeadSHA}, nil
 }
@@ -238,6 +308,22 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 		return nil, f.commitErr
 	}
 	return &deskkit.RepoCommit{SHA: sha, AuthorLogin: f.commitAuthorLogin}, nil
+}
+
+// stubAdmittedReceipt is the receipt the stubbed admission returns: a binding to the brief a
+// verify-outcome record target (docs/streams/verify-outcomes/<stream>/<NN>-<digest>.json) is
+// keyed to, so the writer's TARGET-TIE re-check of the final path has a real binding to hold.
+// Any other target yields the empty receipt.
+func stubAdmittedReceipt(target string) deskkit.VerifierReceipt {
+	rest, ok := strings.CutPrefix(target, deskkit.OutcomeRecordsDir+"/")
+	if !ok {
+		return deskkit.VerifierReceipt{}
+	}
+	stream, file, _ := strings.Cut(rest, "/")
+	nn, _, _ := strings.Cut(file, "-")
+	return deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{
+		Brief: "docs/streams/" + stream + "/brief-" + nn + "-stub.md",
+	}}
 }
 
 // setupFake wires isolation: a temp HOME with the fixture roster (so trust/write-auth decisions
@@ -259,10 +345,17 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	}
 	t.Cleanup(func() { outcomeEvidenceBindingFn = oldEvidenceBinding })
 	oldAdmission := verifierEvidenceAdmissionFn
-	verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) {
-		return deskkit.VerifierReceipt{}, nil
+	verifierEvidenceAdmissionFn = func(_, _, target string, _ deskkit.Forge) (deskkit.VerifierReceipt, error) {
+		return stubAdmittedReceipt(target), nil
 	}
 	t.Cleanup(func() { verifierEvidenceAdmissionFn = oldAdmission })
+	oldValidate := receiptValidateFn
+	receiptValidateFn = func(string, deskkit.Forge, deskkit.ForgeRepo, string, string, deskkit.WakeReceipt) error { return nil }
+	t.Cleanup(func() { receiptValidateFn = oldValidate })
+	// Which forge software serves the repo: GitHub unless a test says otherwise.
+	oldKind := forgeKindFn
+	forgeKindFn = func(string, string) (deskkit.ForgeKind, error) { return deskkit.ForgeGitHub, nil }
+	t.Cleanup(func() { forgeKindFn = oldKind })
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
