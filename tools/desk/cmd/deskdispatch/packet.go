@@ -157,8 +157,9 @@ const packetSuffix = ".packet.md"
 
 // packetPathFor decides where the packet goes: BESIDE THE ASSIGNMENT.
 //
-//   - With --prompt-file, the assignment is a file, and the packet is its sibling:
-//     "<prompt file without extension>.packet.md". Whoever owns the prompt file owns both.
+//   - With --prompt-file F, the assignment and packet are siblings of the untouched F:
+//     "<F without extension>.emitted.md" and "<F without extension>.packet.md".
+//     The caller owns both generated artifacts.
 //   - Without it the assignment is printed, so there is no file to sit beside. The packet
 //     then goes in the user's cache directory ("<cache>/assay/packets/<claim key>.packet.md"),
 //     an owner-only directory for regenerable files. It is NOT written into the agent's

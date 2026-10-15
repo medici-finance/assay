@@ -44,7 +44,7 @@ func reviewPrompt(t *testing.T, repo string) string {
 	if rc := run(args); rc != deskkit.ExitOK {
 		t.Fatalf("review dispatch rc = %d, want 0", rc)
 	}
-	body, err := os.ReadFile(promptFile)
+	body, err := os.ReadFile(emittedPathFor(promptFile))
 	if err != nil {
 		t.Fatalf("read prompt: %v", err)
 	}

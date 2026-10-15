@@ -145,13 +145,17 @@ class PollTests(unittest.TestCase):
     def test_environment_and_parity_pins_reject_mutations(self):
         names = ("assay-statusgen.yml", "assay-qualgen.yml", "verify-gate-close.yml",
                  "release.yml", "evidence-automerge.yml")
+        # Each mutation names the region of the file holding the pinned control
+        # ("" = whole file). The pinned text must occur exactly once in that
+        # region, so a later edit that repeats it elsewhere cannot silently
+        # retarget the mutation away from the control it exists to prove.
         mutations = (
-            ("assay-qualgen.yml", "    environment: board-writer\n", ""),
-            ("assay-qualgen.yml", "secrets.BOARD_APP_PRIVATE_KEY", "secrets.ANOTHER_KEY"),
-            ("release.yml", " && github.ref == 'refs/heads/main'", ""),
-            ("evidence-automerge.yml", "name: evidence-automerge", "name: altered-poll"),
+            ("assay-qualgen.yml", "", "    environment: board-writer\n", ""),
+            ("assay-qualgen.yml", "", "secrets.BOARD_APP_PRIVATE_KEY", "secrets.ANOTHER_KEY"),
+            ("release.yml", "  changelog-roll:\n", " && github.ref == 'refs/heads/main'", ""),
+            ("evidence-automerge.yml", "", "name: evidence-automerge", "name: altered-poll"),
         )
-        for name, before, after in mutations:
+        for name, anchor, before, after in mutations:
             with self.subTest(workflow=name, mutation=before):
                 with tempfile.TemporaryDirectory() as directory:
                     workflows = Path(directory)
@@ -173,8 +177,12 @@ class PollTests(unittest.TestCase):
                     self.assert_projected_workflows(workflows)
                     path = workflows / name
                     original = path.read_text()
-                    self.assertIn(before, original)
-                    path.write_text(original.replace(before, after, 1))
+                    head, found, region = original.partition(anchor) if anchor else ("", "", original)
+                    self.assertEqual(found, anchor)
+                    # An anchored region ends at the next top-level job key.
+                    scope = re.split(r"^  [\w-]+:\n", region, maxsplit=1, flags=re.M)[0] if anchor else region
+                    self.assertEqual(scope.count(before), 1, (name, anchor, before))
+                    path.write_text(head + found + region.replace(before, after, 1))
                     with self.assertRaises(AssertionError):
                         self.assert_projected_workflows(workflows)
 

@@ -94,7 +94,7 @@ func TestDispatchRunKeyFailureNeverFailsTheDispatch(t *testing.T) {
 		t.Fatalf("a run-key recording failure failed the whole dispatch (rc=%d) — Layer A is best-effort", rc)
 	}
 	// The prompt was still emitted: the dispatch completed.
-	if _, err := os.Stat(promptFile); err != nil {
+	if _, err := os.Stat(emittedPathFor(promptFile)); err != nil {
 		t.Errorf("no prompt was emitted despite the dispatch succeeding: %v", err)
 	}
 }

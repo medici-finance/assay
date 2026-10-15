@@ -41,3 +41,39 @@ func githubSeamClient() *http.Client {
 	}
 	return &http.Client{Transport: githubTransportWrapper(http.DefaultTransport)}
 }
+
+// countingTransport counts each HTTP round-trip for the opt-in local perf record
+// (perf.go) and delegates. It never inspects, buffers, logs or modifies a
+// request or a response: one atomic add, then the wrapped transport's own answer verbatim.
+// It lives here, beside the transport seam, so the perf files themselves import no network
+// package at all.
+type countingTransport struct{ next http.RoundTripper }
+
+func (c countingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	perfCountForgeCall()
+	return c.next.RoundTrip(req)
+}
+
+// countRoundTrips wraps rt (http.DefaultTransport when nil) in the counting transport. A
+// transport already counting is returned as is, so a double install never double-counts.
+func countRoundTrips(rt http.RoundTripper) http.RoundTripper {
+	if rt == nil {
+		rt = http.DefaultTransport
+	}
+	if _, already := rt.(countingTransport); already {
+		return rt
+	}
+	return countingTransport{next: rt}
+}
+
+// countingClient returns a COPY of c whose transport counts round-trips (a fresh client on
+// http.DefaultTransport when c is nil). The caller's client is never mutated, so a test
+// client shared across backends keeps exactly the transport it was built with.
+func countingClient(c *http.Client) *http.Client {
+	if c == nil {
+		return &http.Client{Transport: countRoundTrips(nil)}
+	}
+	cp := *c
+	cp.Transport = countRoundTrips(c.Transport)
+	return &cp
+}

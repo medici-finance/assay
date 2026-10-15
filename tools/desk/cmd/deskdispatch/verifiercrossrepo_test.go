@@ -141,7 +141,7 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 			if len(records) != 1 || len(childCalls) == 0 {
 				t.Fatal("dispatch did not acquire and record its run")
 			}
-			prompt, err := os.ReadFile(o.promptFile)
+			prompt, err := os.ReadFile(emittedPathFor(o.promptFile))
 			if err != nil || !strings.Contains(string(prompt), "Packet:") || strings.Contains(string(prompt), "stamp PENDING") {
 				t.Fatalf("dispatch did not emit admitted packet prompt: %v", err)
 			}
@@ -262,6 +262,14 @@ func TestCrossRepoPromptDestination(t *testing.T) {
 	}
 	if err := verifierPrivatePromptDestination(filepath.Join(outside, "prompt.md")); err != nil {
 		t.Fatal(err)
+	}
+	// --prompt-file is never written; the emitted sibling is, so that is what is checked.
+	caller := filepath.Join(outside, "task.md")
+	if err := os.Symlink(filepath.Join(root, "source.txt"), emittedPathFor(caller)); err != nil {
+		t.Fatal(err)
+	}
+	if err := verifierPrivatePromptDestination(verifierEmittedDest(caller)); err == nil {
+		t.Fatal("emitted prompt allowed through a link into repository")
 	}
 	hardlink := filepath.Join(outside, "hardlinked.md")
 	if err := os.Link(filepath.Join(root, "source.txt"), hardlink); err != nil {

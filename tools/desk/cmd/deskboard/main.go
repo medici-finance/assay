@@ -144,6 +144,11 @@ repo must be in the desk scope (compiled-in — org-default;
   ` + strings.Join(deskkit.AllowedRepoScope(), "\n  ") + `
 `
 
+// perfVerbs is deskboard's registered first-argument set for the opt-in local perf record
+// (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
+// "other" otherwise, so no argv text can reach the record.
+var perfVerbs = []string{"--json", "--table", "--delta", "--quiet", "--version"}
+
 func main() {
 	// The roster class is an EXPLICIT declaration, never the zero value by accident
 	// (a correctness review found SetToolClass had no caller anywhere
@@ -161,7 +166,7 @@ func main() {
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("deskboard", perfVerbs, os.Args[1:], func(a []string) int { return run(a, os.Stdout, os.Stderr) }))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {

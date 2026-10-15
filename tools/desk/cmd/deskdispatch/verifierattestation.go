@@ -68,6 +68,16 @@ func cmdVerifierAttestation(mode string, args []string) (err error) {
 
 var attestVerifierDispatchFn = attestVerifierDispatch
 
+// verifierEmittedDest is the file a --prompt-file dispatch actually writes:
+// --prompt-file names the caller's own file, which is never written, so the
+// destination checked is its emitted sibling.
+func verifierEmittedDest(promptFile string) string {
+	if strings.TrimSpace(promptFile) == "" {
+		return ""
+	}
+	return emittedPathFor(promptFile)
+}
+
 // A cross-repository assignment contains the tracking brief's private locator.
 // Keep explicit prompt/packet files outside every Git tree, not merely outside
 // the newly allocated source home. Stdout and the owner-only packet cache remain

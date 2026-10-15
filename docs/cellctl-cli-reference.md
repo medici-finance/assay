@@ -99,6 +99,14 @@ list the cells under the registry
   (no flags)
 ```
 
+## `cellctl models reset <cell> [--model-ttl <Nd|duration>]`
+
+lower a cell's aged default model pins to the mid tier
+
+```
+  --model-ttl                string   TTL override for this run (Nd, e.g. 7d)
+```
+
 ## `cellctl new <cell>`
 
 scaffold a cell
@@ -165,6 +173,7 @@ persist a change into a cell's cell.env
 
 ```
   --cockpit                  string   CELL_COCKPIT (auto|tmux|herdr|orca)
+  --default                           record the model pin(s) as a resettable default (the cheap-default reset may lower it once it ages past the TTL)
   --force                             write a KEY that is not a known cell.env key
   --harness                  string   harness (claude|codex|cursor)
   --kind                     string   CELL_KIND (k8s|house|container|scrubbed)
@@ -209,6 +218,7 @@ open one window per role in the resolved cockpit
   --automate                 string   orca only: schedule one automation per role (a 5-field cron string or a preset)
   --cadence                  string   role cadence: a duration, or off
   --cockpit                  string   cockpit surface (auto|tmux|herdr|orca)
+  --dry-run                           print the reconcile inventory and plan, the cockpit and the per-role commands; change and launch nothing (as DRY_RUN=1)
   --harness                  string   harness for this run (claude|codex|cursor)
   --kind                     string   cell kind for this run (k8s|house|container|scrubbed)
   --model                    string   model for THIS run only, passed through verbatim to the harness
