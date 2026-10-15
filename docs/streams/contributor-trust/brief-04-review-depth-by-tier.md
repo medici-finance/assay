@@ -33,7 +33,7 @@ consumers:
   - "tools/desk/internal/deskkit/reviewlanes.go: fixed-here (the tier-to-lane table with LanesFor, the dispatch selection path ReviewLanesForAuthor, and the claims-extraction helper land in this file)"
   - "plugins/assay/skills/pr-review-desk/SKILL.md: fixed-here (one neutral paragraph: lane depth is tier-keyed, the tier source resolved from the project layer, never inlined)"
   - "tools/desk/internal/deskkit/trusttier.go: out-of-scope (defined by contributor-trust/02; this brief is a consumer of that reader and adds nothing to it)"
-version: 1
+version: 2
 ---
 
 # Brief 04 — Review depth by tier
@@ -113,7 +113,7 @@ facts:
 | 9 | `cd tools/skillslint && go run . --root ../..; echo rc=$?` | output contains `rc=0` (the skill-body edit keeps the parity and unresolved-house-value checks green) | check:ci +neighbour |
 | 10 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesReferenceMatchesTable' -count=1 -v` | exit 0; output contains `PASS` (the test parses the per-tier lane sets out of the dispatch reference and compares them to `LanesFor`, so a reference document that describes a lane set the dispatcher does not select fails) | check +dereference |
 | 11 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesDispatchEndToEnd' -count=1 -v` | exit 0; output contains `PASS` (tier in, lane set out, through the dispatcher's own selection path rather than through `LanesFor` alone) | check +flow |
-| 12 | `statusgen --root . --consumers --brief assay:assay:contributor-trust:04` | exit 0; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK`; output contains `corroborated` (the fully-qualified key is required — the short `<stream>/<NN>` form answers `no brief-v1 file` and exits 2, so it can never corroborate anything) | check |
+| 12 | `d=; d=$(mktemp -d "$PWD/.ct04-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach 2083064fdeb279d886f4b40e5761b3e958961c61 && statusgen --consumers --root "$d" --brief assay:assay:contributor-trust:04 --base cabdc0b8455aa532fcb9267946c0e8da2e93bb5f; s=$?; test -n "$d" && rm -rf "$d"; exit $s` | exit 0; output contains `summary: 3 corroborated, 0 disproved, 1 unchecked`; output does not contain `DISPROVED`; output does not contain `COULD-NOT-CHECK` (the `consumers:` claims are judged against the change that delivered them: a throwaway shared clone, made inside the checkout and removed afterwards, checked out at 2083064fdeb2, the squash that implemented this brief, with the base pinned to its parent cabdc0b8455a, so the diff it reads is exactly the implementing change, never main's later commits and never the runner's own working tree. The three `fixed-here` entries are corroborated by that diff; the one UNCHECKED entry is the `out-of-scope` trusttier.go line, which that diff does not touch by design and which stays the reviewer's call per brief-rule 9, never a pass. Row re-authored 2026-10-14: the earlier unpinned form ran against the runner's own head, where a merged brief is no longer in the diff, so it could only ever answer COULD-NOT-CHECK with exit 2 after the merge; the pinned form gives the same answer before and after the merge) | check |
 
 Pre-mortem to detection map. "Every tier silently gets the deep lane, so the change is a
 blanket slowdown nobody asked for" is caught by row 3, the negative control. "A claim the
