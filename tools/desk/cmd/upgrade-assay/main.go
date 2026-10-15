@@ -167,7 +167,11 @@ unavailable.`
 // per-artifact tag (refused) from an umbrella version (resolvable).
 var bareUmbrella = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 
-func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
+func main() {
+	os.Exit(deskkit.PerfRun("upgrade-assay", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:], os.Stdout, os.Stderr)
+	}))
+}
 
 func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("upgrade-assay", flag.ContinueOnError)

@@ -748,6 +748,8 @@ func TestBinaryCellDefaultsDoNotReachAContainerLauncher(t *testing.T) {
 	}
 	fixed := map[string]bool{"HOME": true, "PATH": true, "TERM": true, "CELL": true, "CELL_KIND": true, "CELL_DIR": true,
 		"CELL_REPO": true, "CELL_ROOTS": true, "CELL_HARNESS": true, "ROLES": true,
+		// The sole additional non-secret switch is normalized, never raw defaults.
+		envAssayTelemetry: true,
 		// what a POSIX shell adds to its own environment
 		"PWD": true, "OLDPWD": true, "SHLVL": true, "_": true}
 	handed := map[string]string{}
@@ -770,6 +772,10 @@ func TestBinaryCellDefaultsDoNotReachAContainerLauncher(t *testing.T) {
 	if want := strings.TrimPrefix(f.hermeticPath(), "PATH="); handed["PATH"] != want {
 		t.Errorf("the launcher was handed PATH=%q, want the launching process's %q", handed["PATH"], want)
 	}
+	if handed[envAssayTelemetry] != "0" {
+		t.Fatalf("unconfigured launcher opt-in = %q", handed[envAssayTelemetry])
+	}
+
 }
 
 // TestShowNamesTheDefaultsFileAsASource: `show` says where each effective choice came from, and

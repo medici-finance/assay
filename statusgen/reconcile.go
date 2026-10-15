@@ -188,7 +188,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		}
 		var authoring backfillAuthoring
 		if classifier != nil {
-			authoring = classifier.authoringOnly
+			authoring = classifier.nonDelivery
 			if pullsLookedAt {
 				// Overlap the match's file-list reads; the match below then
 				// reads the same PRs, in the same order, from the cache.

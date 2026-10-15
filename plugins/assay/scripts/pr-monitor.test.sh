@@ -13,6 +13,7 @@
 # Run one named case:       bash pr-monitor.test.sh --case <name>
 #   cases: seed-silent opened pushed draft-flip state closed push-and-flip
 #          truncation rate-limit-stops-cycle pacing-honoured portability
+#          origin-forms origin-degraded
 set -uo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -250,6 +251,72 @@ if want pacing-honoured; then
   check "$([[ "$ncalls" -eq 3 ]] && echo 0 || echo 1)" "all three repos were read" "calls: $ncalls"
   check "$([[ "$span" -ge 2 ]] && echo 0 || echo 1)" \
     "the first and last calls are >= 2s apart (two 1s paces between three reads)" "span: ${span}s"
+fi
+
+# ============================================================ origin-forms ===
+# regression: #2724
+if want origin-forms; then
+  echo "origin-forms — the origin fallback resolves every github.com URL form to owner/name"
+  w="$TMPROOT/of"; make_gh "$w"
+  resp "$w" o/r "$(arr "$(pr 1 aaa false OPEN CLEAN)")"
+  n=0
+  for url in \
+    "https://github.com/o/r.git" "https://github.com/o/r" "https://github.com/o/r/" \
+    "https://github.com:443/o/r.git" "https://github.com:443/o/r" \
+    "https://user@github.com/o/r.git" "https://user:pw@github.com:443/o/r.git" \
+    "http://github.com/o/r.git" "git://github.com/o/r.git" \
+    "ssh://git@github.com/o/r.git" "ssh://git@github.com:22/o/r.git" "ssh://github.com/o/r" \
+    "git@github.com:o/r.git" "git@github.com:o/r" "github.com:o/r"; do
+    n=$((n + 1))
+    repodir="$TMPROOT/of-repo-$n"; mkdir -p "$repodir"
+    git -C "$repodir" init -q 2>/dev/null
+    git -C "$repodir" remote add origin "$url"
+    : > "$w/calls.log"
+    OUT=$(cd "$repodir" && env ASSAY_MONITOR_PACE_SECONDS=0 PR_MONITOR_STATE_DIR="$TMPROOT/of-st-$n" \
+          PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
+    check "$([[ "$RC" -eq 0 && "$(awk '{print $2}' "$w/calls.log")" == "o/r" ]] && echo 0 || echo 1)" \
+      "origin '$url' resolves to o/r and is polled" \
+      "rc=$RC calls=$(cat "$w/calls.log") stdout=${OUT:-<empty>} stderr=$(cat "$w/stderr")"
+  done
+  # A numeric-looking owner after the scp colon is an owner, not a port.
+  repodir="$TMPROOT/of-repo-num"; mkdir -p "$repodir"; git -C "$repodir" init -q 2>/dev/null
+  git -C "$repodir" remote add origin "git@github.com:123/r.git"
+  resp "$w" 123/r "$(arr "$(pr 1 aaa false OPEN CLEAN)")"; : > "$w/calls.log"
+  OUT=$(cd "$repodir" && env ASSAY_MONITOR_PACE_SECONDS=0 PR_MONITOR_STATE_DIR="$TMPROOT/of-st-num" \
+        PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
+  check "$([[ "$RC" -eq 0 && "$(awk '{print $2}' "$w/calls.log")" == "123/r" ]] && echo 0 || echo 1)" \
+    "scp form with a numeric owner (git@github.com:123/r) is an owner, not a port" \
+    "rc=$RC calls=$(cat "$w/calls.log")"
+fi
+
+# ========================================================= origin-degraded ===
+# regression: #2724
+if want origin-degraded; then
+  echo "origin-degraded — an unresolvable repo set prints MONITOR-DEGRADED on stdout, then exits 1"
+  w="$TMPROOT/od"; make_gh "$w"
+  # (a) an origin that is not github.com: not a valid owner/name -> degraded, no gh call.
+  repodir="$TMPROOT/od-repo-a"; mkdir -p "$repodir"; git -C "$repodir" init -q 2>/dev/null
+  git -C "$repodir" remote add origin "https://user:s3cretpw@example.com:8443/o/r.git"
+  OUT=$(cd "$repodir" && env PR_MONITOR_STATE_DIR="$TMPROOT/od-st-a" PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
+  ERR=$(cat "$w/stderr")
+  check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "an unparseable origin exits 1" "got $RC"
+  check "$(grep -q '^MONITOR-DEGRADED: invalid repo' <<<"$OUT" && echo 0 || echo 1)" \
+    "stdout carries a MONITOR-DEGRADED line (what the watch filter matches)" "stdout: ${OUT:-<empty>}"
+  check "$([[ "$OUT" == "MONITOR-DEGRADED: invalid repo 'https://example.com:8443/o/r' (expected owner/name)" ]] && echo 0 || echo 1)" \
+  "credential-stripped display is exact on both Bash versions" "stdout: $OUT"
+  check "$(contains "$OUT$ERR" "s3cretpw" && echo 1 || echo 0)" \
+    "the origin's credential never appears on stdout or stderr" "stdout: $OUT stderr: $ERR"
+  check "$([[ ! -s "$w/calls.log" ]] && echo 0 || echo 1)" "no gh call was made" "calls: $(cat "$w/calls.log")"
+  # (b) no repo args, no repos.txt, no origin remote at all.
+  repodir="$TMPROOT/od-repo-b"; mkdir -p "$repodir"; git -C "$repodir" init -q 2>/dev/null
+  OUT=$(cd "$repodir" && env PR_MONITOR_STATE_DIR="$TMPROOT/od-st-b" PATH="$w:$PATH" bash "$SCRIPT" 2>"$w/stderr"); RC=$?
+  check "$([[ "$RC" -eq 1 ]] && echo 0 || echo 1)" "no resolvable repos exits 1" "got $RC"
+  check "$(grep -q '^MONITOR-DEGRADED: no repos to query' <<<"$OUT" && echo 0 || echo 1)" \
+    "stdout carries MONITOR-DEGRADED: no repos to query" "stdout: ${OUT:-<empty>}"
+  # (c) an explicit invalid arg takes the same path.
+  run "$w" "$TMPROOT/od-st-c" -- 'not a repo'
+  check "$([[ "$RC" -eq 1 ]] && contains "$OUT" "MONITOR-DEGRADED: invalid repo" && echo 0 || echo 1)" \
+    "an invalid repo argument also prints MONITOR-DEGRADED on stdout" "rc=$RC stdout: ${OUT:-<empty>}"
 fi
 
 # ============================================================ portability ====

@@ -707,7 +707,8 @@ func TestCellDefaultsTemplateListsEveryMachineKey(t *testing.T) {
 func cellSnapshot(t *testing.T, c *Cell) map[string]string {
 	t.Helper()
 	m := map[string]string{
-		"kind": c.Kind, "harness": c.Harness, "roles": strings.Join(c.Roles, " "), "session": c.Session,
+		"telemetry": c.telemetryValue(),
+		"kind":      c.Kind, "harness": c.Harness, "roles": strings.Join(c.Roles, " "), "session": c.Session,
 		"deskd": c.Deskd, "forge": c.Forge, "forge api": c.ForgeAPIBase, "repo": c.Repo,
 		"generated files":  strings.Join(c.cellctlGeneratedFiles(), "|"),
 		"repair admission": c.repairAdmissionValue(),
@@ -964,6 +965,7 @@ func TestCellDefaultsTemplateUncommentedLines(t *testing.T) {
 // take from one Go constant, for a read that is inline in a launch and has no resolver to call.
 // "by reading" is the one line whose printed value is not a constant the code holds at all.
 var templateDefaultProof = map[string]string{
+	envAssayTelemetry:                 "resolved: telemetry",
 	"CELL_GO_CACHE":                   "resolved: cache",
 	"CELL_GO_CACHE_BYTES":             "resolved: cache budget",
 	"CELL_GO_CACHE_MIN_FREE":          "resolved: cache floor",
