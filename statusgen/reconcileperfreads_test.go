@@ -185,3 +185,46 @@ func TestMemoRepoAsksEachQuestionOnce(t *testing.T) {
 		}
 	}
 }
+
+// TestHandSaidReplayTwoBriefs pins the replay over a README that carries more
+// than one brief, whose histories differ: every row of every snapshot must be
+// recorded, not only the first. 01 moves todo → implemented and then stays;
+// 02 stays todo until the third commit, then goes done.
+func TestHandSaidReplayTwoBriefs(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "-q", "-b", "main")
+	runGit(t, dir, "config", "user.email", "test@example.com")
+	runGit(t, dir, "config", "user.name", "test")
+	runGit(t, dir, "config", "commit.gpgsign", "false")
+	rel := filepath.Join("docs", "streams", "demo", "README.md")
+	abs := filepath.Join(dir, rel)
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	readme := func(s1, s2 string) string {
+		return "---\nstream: demo\nstatus: active\npriority: P1\n---\n\n" +
+			"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
+			"|---|-------|------|--------|--------|----------|----------|\n" +
+			"| 01 | First thing | 0 | M | " + s1 + " | — | — |\n" +
+			"| 02 | Second thing | 0 | M | " + s2 + " | — | — |\n"
+	}
+	for i, st := range [][2]string{{"todo", "todo"}, {"implemented", "todo"}, {"implemented", "done"}} {
+		if err := os.WriteFile(abs, []byte(readme(st[0], st[1])), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		runGit(t, dir, "add", rel)
+		date := "2026-07-0" + strconv.Itoa(i+1) + "T10:00:00Z"
+		runGitEnv(t, dir, []string{"GIT_AUTHOR_DATE=" + date, "GIT_COMMITTER_DATE=" + date}, "commit", "-q", "-m", "step")
+	}
+	lookup := newHandSaidLookup(dir)
+	for num, want := range map[string]string{"01": "implemented", "02": "done"} {
+		ws, wsha, wfound := perBriefHandSaid(dir, "demo", num)
+		gs, gsha, gfound := lookup("demo", num)
+		if !wfound || ws != want {
+			t.Fatalf("fixture drift: the per-brief walk gives %s = (%q, %v), want %q", num, ws, wfound, want)
+		}
+		if gs != ws || gsha != wsha || gfound != wfound {
+			t.Fatalf("demo/%s: replay = (%q, %q, %v), per-brief walk = (%q, %q, %v)", num, gs, gsha, gfound, ws, wsha, wfound)
+		}
+	}
+}
