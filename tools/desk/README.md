@@ -3622,8 +3622,9 @@ Rotating the session id does reset the bucket — a new session is a new session
 **every `new` audit line records the sessionTag it charged**, so rotating to buy budget
 leaves a trail rather than erasing one. That trace is the control here, not a hard block.
 Sessions with no session variable set at all share the single `unknown` bucket (the
-conservative direction). deskfile **gates WHETHER and WHERE, never WHO**: the caller's ambient `gh`
-credential is the filing identity and no App token is ever minted. Repo scope comes from
+conservative direction). deskfile **gates WHETHER and WHERE, never WHO**: the filing identity is the session's own
+role App credential, resolved from `$DESK_LOOP` through `desktoken` (the worker App, with a NOTICE,
+when no role resolves), never an ambient `gh` login. Repo scope comes from
 `deskkit.IsAllowedRepo` — there is no second repo list, and a test parses the sources to
 prove it.
 
