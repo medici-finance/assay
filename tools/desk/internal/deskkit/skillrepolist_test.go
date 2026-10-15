@@ -176,7 +176,18 @@ func TestActingDeskSkillsCarryNoHardcodedRepoList(t *testing.T) {
 
 // TestSkillRepoListScannerFailsOnAPositiveControl is the proof the check CAN fail.
 func TestSkillRepoListScannerFailsOnAPositiveControl(t *testing.T) {
-	root := t.TempDir()
+	skillRepoListPositiveControl(t, t.TempDir())
+}
+
+// TestSkillRepoListScannerControlIgnoresTheTempPath runs the same control under a
+// root whose absolute path names a desk. Every verify-desk session's scratch path
+// does, and the control must classify hits by the skill directory, not by that path.
+func TestSkillRepoListScannerControlIgnoresTheTempPath(t *testing.T) {
+	skillRepoListPositiveControl(t, filepath.Join(t.TempDir(), "verify-desk-scratch"))
+}
+
+func skillRepoListPositiveControl(t *testing.T, root string) {
+	t.Helper()
 
 	write := func(dir, body string) {
 		t.Helper()
@@ -211,7 +222,11 @@ func TestSkillRepoListScannerFailsOnAPositiveControl(t *testing.T) {
 
 	var gotToken, gotMarker int
 	for _, h := range hits {
-		if strings.Contains(h.file, "verify-desk") {
+		rel, err := filepath.Rel(root, h.file)
+		if err != nil {
+			t.Fatalf("hit file %q is not under the fixture root %q: %v", h.file, root, err)
+		}
+		if strings.Split(filepath.ToSlash(rel), "/")[0] == "verify-desk" {
 			t.Errorf("FALSE POSITIVE on legitimate text: %s:%d %s\n    %s",
 				h.file, h.line, h.why, h.text)
 		}

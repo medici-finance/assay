@@ -20,6 +20,12 @@ can also stand up by hand. Nothing else in Assay depends on it.
 
 For local messages between desk roles, see [Host desk communications](cellctl-comms.md).
 
+The command line is Cobra commands with scoped settings resolution: the generated
+[command reference](cellctl-cli-reference.md) lists every verb and flag, and the
+[compatibility table](cellctl-cli-compat.md) lists every way the surface differs from the earlier
+hand-written parser. `cellctl --help`, `cellctl <verb> --help` and `--version` read no cell, no
+credential and no roster.
+
 For an existing container deployment, the **container** kind provides registration and lifecycle
 delegation instead of host worktrees and credential symlinks. See [Container cells](#container-cells).
 For a harness that must run on the host but must NOT inherit the launching shell's credentials, the
@@ -93,6 +99,37 @@ exec env HOME="<cell>/home" "/opt/desk-tools/bin/deskboard" "$@"
 and `CLAUDE_CONFIG_DIR`; every desk verb it invokes resolves the cell's roster and the cell's Apps.
 The split is exact: identity for the tools that write, the operator's own environment for the harness
 that hosts them.
+
+For Codex command subprocesses, `cellctl` composes the cell `HOME`, `USERPROFILE`
+and `ASSAY_CONFIG_HOME` directly. It first records the independently resolved
+operator config path in `CELLCTL_OPERATOR_CONFIG_HOME`; nested launches preserve
+that context. This is automatic launch metadata, not a replacement for the
+active roster override. Existing config aliases are resolved before composition;
+missing inputs remain missing and fail preflight. Operator Claude configuration,
+including an explicit positional override, is preserved for policy rechecks.
+When the composing environment is already cell-scoped, nothing is recorded:
+the context stays unset and the house check refuses, rather than accepting
+whatever the cell link points at. A config candidate is cell-scoped when the
+path, taken as written and resolved one element at a time as the OS resolves
+it, passes through a cell's config link (whatever the stored spelling of each
+link: absolute, relative, a trailing separator or dot element; and a parent
+element after a link applies to the resolved path, whether it sits in the path
+itself or in a link's stored target) or lies inside a cell home,
+including one that does not exist yet. "A cell" is this cell or any sibling
+under the same cells root. A path that cannot be resolved to the end (too many
+links, an unreadable element) counts as cell-scoped. The house check applies the
+same test to its expected target, so a config override that is an alias of the
+cell link is refused even when the link points at the right place: the link
+compared with itself establishes nothing.
+
+Only `cellctl` consumes this context: the operator-config resolver serves the
+common operator-directory check, the house config-link check, and configuration
+paths used by `new`/`new --kind house`; Codex composition carries it onward.
+Desk tools still read the cell's `ASSAY_CONFIG_HOME`. The house check requires the
+link, the active config and the independent operator target to agree; comparing
+the same named symlink to itself cannot establish that identity. Relative config
+links and distinct aliases of the same resource remain valid. Scrubbed and
+container launch paths keep their separate config contracts.
 
 The shims are regenerated on every `cellctl desk`, so installing a new desk-tools release picks up
 automatically.
@@ -583,7 +620,12 @@ cellctl up <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca]
 
 One window per role in `ROLES`, plus a `deskd` window (watching `/healthz` if it is already up,
 otherwise standing it — see *How far the attended affirmation carries* above), in whichever
-**cockpit** resolves for this run — see *Cockpits* below. On the default tmux cockpit that is a
+**cockpit** resolves for this run — see *Cockpits* below. A cell with no deskd (a house cell
+without `DESKD=1`) has no `deskd` window and no placeholder in its place: `up` opens only the role
+windows (plus the comms window when comms is configured), the comms window or else the first role
+window creates the tmux session, and the one-line "no deskd" note is printed once on `up`'s stderr.
+When there is nothing at all to open (no deskd, no comms, and no role after `--no-the-desk`), `up`
+says so on stderr, creates no session, and exits 0. On the default tmux cockpit that is a
 session named `<cell>-cell`, and `up` attaches unless you pass `--no-attach`; re-attach later with
 `tmux attach -t <cell>-cell`. Windows start two seconds apart in every cockpit, so they do not all
 arrive at the fetch lock together.
@@ -595,8 +637,14 @@ cockpit's `cellctl desk <cell> <role>` invocation itself that carries `--model`,
 actually boots resolves the same override the plan named. `--provider <name>` threads onto every
 role window the same way, for the same reason — see *Providers* below.
 
-`DRY_RUN=1 cellctl up <cell>` prints the resolved cockpit and the per-role commands and launches
-nothing. `--harness <h>` overrides `CELL_HARNESS` for **every** role window this run opens (the-desk
+`cellctl up <cell> --dry-run` (or `DRY_RUN=1 cellctl up <cell>`) prints the resolved cockpit and
+the per-role commands and launches nothing. On a house cell, `up` first runs a **reconcile
+preflight**. Stale role and comms checkpoints left by hand-closed or crashed windows, and
+orphaned processes carrying the cell's marker, are inventoried by pid and start time. On a
+terminal you are asked once before they are cleared. Otherwise the refusal prints the whole
+inventory and the exact recovery commands. A dry run prints the inventory and plan and changes
+nothing. `cellctl desk <cell> <role>` runs the same preflight for its one role. See
+[Reconcile preflight](cellctl-cadence.md#reconcile-preflight). `--harness <h>` overrides `CELL_HARNESS` for **every** role window this run opens (the-desk
 included — there is no per-role `--harness-<role>` form) by threading `--harness <h>` onto each
 role's own `cellctl desk <cell> <role>` invocation; `[dry-run] harness=<h> — applied to every role
 window below` announces it once. See *Harnesses* below.
@@ -719,8 +767,8 @@ seconds, 5 by default) once per window, dry runs included.
 
 | Cockpit | What `up` opens |
 |---|---|
-| **tmux** | a session `<cell>-cell`: the `deskd`/`cell` window plus one window per role. Unchanged |
-| **herdr** | one **labelled tab per window**, `<cell>-<role>`, each fed the same `cellctl desk <cell> <role>` command every other cockpit runs (via `herdr pane run`, into a pane the tab's own `tab create` cut). The first (`deskd`/`cell`) window is a tab too. If herdr has no window (a "workspace" in herdr's own grammar) open yet, `up` starts one first — the same trigger point and create-if-absent shape as tmux's `<cell>-cell` session — before any tab lands; an already-open window is unchanged |
+| **tmux** | a session `<cell>-cell`: the `deskd` window (only when the cell has one, i.e. `DESKD=1` on a house cell), the comms window when comms is configured, then one window per role. Whichever window comes first creates the session; a cell with no deskd gets no placeholder window |
+| **herdr** | one **labelled tab per window**, `<cell>-<role>`, each fed the same `cellctl desk <cell> <role>` command every other cockpit runs (via `herdr pane run`, into a pane the tab's own `tab create` cut). The `deskd` window is a tab too when the cell has one (`DESKD=1` on a house cell); a cell with no deskd gets no placeholder tab. If herdr has no window (a "workspace" in herdr's own grammar) open yet, `up` starts one first — the same trigger point and create-if-absent shape as tmux's `<cell>-cell` session — before any tab lands; an already-open window is unchanged |
 | **orca** | one **terminal per role** under the cell directory (registered with Orca via `orca repo add` first — Orca 404s an unregistered path), running the same `cellctl desk` command; or, with `--automate`, one scheduled automation per role instead |
 
 ### The `--automate` recipe (orca only)
@@ -1005,6 +1053,58 @@ cellctl show <cell>        [--kind <k>] [--cockpit <c>] [--harness <h>] [--provi
   `--kind` the cell is not provisioned for refuses just as `desk` would. Nothing is launched or
   written.
 
+### Cheap-default reset
+
+A pin that nobody revisits drifts to the most expensive setting and stays there. The reset is the
+periodic pull-back for pins nobody chose: a **DEFAULT** model pin older than the TTL is lowered to
+the harness's mid-tier model, and people move back up only when they need to.
+
+- **Pin record.** Every model pin written through `cellctl set` (or `desk`/`up --set`) is recorded in
+  `<cell>/model-pins.json` with the value the loader reads, when it was set and who owns it. A pin an
+  operator sets is **EXPLICIT**: plain `set`, the role form and `--set` all record EXPLICIT, and the
+  reset never touches it. Only `cellctl set <cell> ... --default` records a **DEFAULT** pin, one the
+  reset may lower; `--default` on a call that sets no model pin is refused. The latest `set` decides
+  the kind. Clearing a pin (`KEY=`) drops its record.
+- **What moves.** A DEFAULT pin moves only when all of these hold: it is older than the TTL; its
+  `cell.env` line is still there, non-empty and equal to the record (a different value was
+  hand-edited: that is an operator's choice, so its record is dropped and the pin is explicit from
+  then on); the mid-tier model ranks strictly BELOW it (by the
+  cell's tier map, then by the Claude family name: haiku < sonnet < opus/fable; a model neither
+  places is never moved, and the reset never raises a pin); it is not a claude pin on a provider cell
+  (`CELL_PROVIDER` or `--provider`, whose endpoint rejects tier names); and it is not the
+  coordinator's model, meaning neither the `the-desk` pin nor a harness default (`DESK_MODEL_DEFAULT`,
+  `CODEX_MODEL_default`, `CURSOR_MODEL_default`) while `the-desk` has no pin of its own on that
+  harness. EXPLICIT pins and pins with no record (provenance unknown) are never touched. Pin keys are
+  the exact per-role and harness-default names; `DESK_MODEL_OVERRIDE` and other keys sharing the
+  prefix are never pins.
+- **Target.** `TIER_MODEL_MID_<HARNESS>` from the cell's own files (`cell.env`, the machine-wide
+  defaults file), else the compiled tier map, never a variable exported in the launching shell.
+- **When.** At every `cellctl desk` boot, and on demand with `cellctl models reset <cell>
+  [--model-ttl <Nd>]`. Each repin prints one line, `[model-reset] <role>: <old> -> <new> (...)`; a
+  boot with nothing to repin prints nothing. Under `DRY_RUN=1` both plan the repin, mark each line
+  `[dry-run: not written]` and write nothing. `show` and `check` apply the same rule read-only, so the
+  model they report is the one the next boot runs: `show` prints the pending line and tags the role
+  row `pending model-reset of cell.env <KEY>`, `check` prints a `warn  model reset pending:` row.
+- **Write.** A live reset writes one `cell.env.bak-<stamp>` backup, rewrites `cell.env` atomically
+  (temp file and rename) and keeps the previous value in the record (`prev`). Every writer of
+  `cell.env` and the record (`set`, a boot, `models reset`) holds `<cell>/.model-pins.lock`; a boot
+  that cannot take it within a few seconds skips its reset with one `[model-reset] skipped` line.
+  The lock is a directory holding the owner's pid. A dead owner's lock is taken over, and a release
+  removes the lock only while it still carries the releasing process's pid; two waiters that take
+  over the same dead lock together can both proceed, and the cost is a lost update, never a torn
+  file. A lock directory with no pid file is never taken over: `set` and `models reset` refuse and
+  name the directory to remove by hand once no `cellctl` is running; a boot skips its reset.
+- **Scope of the boot reset.** The boot reset runs early in `cellctl desk`, before the model is
+  resolved and before the boot's later refusals, for every role's DEFAULT pins, under a model policy
+  and under `--model` alike. A boot that is then refused (for its own role's model, say) has
+  already lowered other roles' aged DEFAULT pins, written the backup and updated the record.
+  Only pins recorded with `set --default` are ever touched.
+- **TTL.** `CELL_MODEL_TTL_DAYS` in `cell.env`, default `7` (weekly); `0` turns the reset off for the
+  cell. It takes `7d`, a bare number of days (up to five digits, optional fraction) or a Go duration
+  (`36h`); anything else, `NaN`, `Inf`, exponents and underscores included, is refused by `set`. A
+  hand-edited malformed value refuses a boot and is a `check` MISS. `--model-ttl` replaces the cell's
+  value for one `models reset` call, so it also works while the cell's line is malformed.
+
 ---
 
 ## Harnesses
@@ -1038,8 +1138,12 @@ codex --sandbox danger-full-access -C <worktree> -m <model> "Invoke the \"assay:
 ```
 
 The same exported env the claude arm gets — `DESK_LOOP`, `DESK_SESSION`, `DESK_ROOTS` (when
-`cell.env` carries `CELL_ROOTS`), and `shim/` first on `PATH`. `CLAUDE_CONFIG_DIR` is irrelevant on
-this arm and is not passed; the model comes from the **codex namespace** — `CODEX_MODEL_<role>` /
+`cell.env` carries `CELL_ROOTS`), and `shim/` first on `PATH`. `cellctl` sets no
+`CLAUDE_CONFIG_DIR` on the Codex process itself (one the launching shell exports is inherited
+unchanged); the command environment `cellctl` composes for its subprocesses carries the
+resolved Claude config directory (a positional override when one is given, otherwise the operator's,
+resolved before `HOME` changes), so a policy recheck that routes through Claude reads that
+configuration. The model comes from the **codex namespace** — `CODEX_MODEL_<role>` /
 `CODEX_MODEL_default`, falling back to the tier map — never the claude arm's `DESK_MODEL_<role>` /
 `DESK_MODEL_DEFAULT` (`#986`: the two were conflated before this, which is why a Claude-only pin
 used to reach `codex -m` unchanged and fail there). See *Per-harness namespaces and the tier-map
@@ -1391,7 +1495,7 @@ processes are not configuration.
 | `DRY_RUN`, `CELL_ATTENDED`, `DESK_MODEL_OVERRIDE` | switches for one run: a dry run, the statement that a person is at this command, and a model that outranks every pin — give them in the environment of the command they are for |
 | `ASSAY_CONFIG_HOME`, `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME` | locate the operator's own config homes — where the desk tools, the GitHub CLI and the harnesses find their credentials |
 | `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `PATH`, `TERM`, `LANG` | the host's own variables, taken from the launching shell (`DESK_TOOLS_BIN` and `CELL_PATH` are the levers for the parts of `PATH` cellctl composes) |
-| `CELL_KIND_OVERRIDE_INTERNAL`, `ASSAY_SCRATCH_ID`, `DESK_SESSION`, `CELLCTL_PARITY_MUTATE` | not configuration: set by cellctl for a process it starts and read back there, or a test hook |
+| `CELL_KIND_OVERRIDE_INTERNAL`, `ASSAY_SCRATCH_ID`, `DESK_SESSION`, `CELLCTL_PARITY_MUTATE`, `CELLCTL_OPERATOR_CONFIG_HOME` | not configuration: set by cellctl for a process it starts and read back there, or a test hook |
 
 Typical uses of the file are `CELL_GO_CACHE` and its `_BYTES` / `_MIN_FREE` budget,
 `CELL_COCKPIT`, `CELL_HARNESS`, and the model keys (`DESK_MODEL_DEFAULT`, the `TIER_MODEL_*`
@@ -1795,11 +1899,12 @@ cells, whose launch is delegated to the operator's own launcher.
 
 ## Host desk cadence
 
-Codex house desks default to repeated bounded passes owned by Go cellctl, with a
-five-minute interval and 20-minute pass budget. `--cadence off` selects interactive
-mode; explicit intervals and budgets override the defaults. Other harnesses retain
-their existing defaults; Orca/Cursor can opt in with `--cadence`. See [Host desk cadence](cellctl-cadence.md) for setup, status,
-stop/recovery and process-lifetime limits.
+Codex desks default to interactive sessions whose bootstrap establishes and reads back
+a native standing Goal before invoking the role. Existing Goals and user pause/clear
+authority are preserved. Explicit `--cadence <duration>` selects repeated bounded
+headless passes; `--cadence off` explicitly selects interactive mode. Claude and Cursor
+retain their existing behavior. See [Host desk cadence](cellctl-cadence.md) for Goal
+admission, container-image limits, cadence setup, status and stop/recovery.
 
 ### Configured comms startup
 

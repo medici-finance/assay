@@ -42,12 +42,15 @@ func commsUpFixture(t *testing.T) (*repairFixture, *Cell, *deskCommsConfig, stri
 printf '%s\n' "$*" >> "$COMMS_CALLS"
 case "$1 $2" in
  "has-session -t") test -f "$COMMS_CALLS.session"; exit $?;;
- "new-session -d") touch "$COMMS_CALLS.session"; exit 0;;
+ "new-session -d") touch "$COMMS_CALLS.session"; case " $* " in *" -P "*) ;; *) exit 0;; esac;;
  "kill-session -t") rm -f "$COMMS_CALLS.session"; exit 0;;
+ "new-window -P"|"new-window -t") test -f "$COMMS_CALLS.session" || { echo "can't find session: example-cell" >&2; exit 1; };;
  "tab --help") echo "create close list"; exit 0;;
  "pane --help") echo "run"; exit 0;;
- "workspace --help") echo "list create"; exit 0;;
- "workspace list") echo '{"result":{"workspaces":[{"workspace_id":"ws"}]}}'; exit 0;;
+ "workspace --help") echo "list create report-metadata close"; exit 0;;
+ "workspace create") echo '{"result":{"workspace":{"workspace_id":"ws"},"tab":{"tab_id":"default-tab"}}}'; exit 0;;
+ "workspace report-metadata") printf '%s' "${7#cellctl_owner=}" > "$COMMS_CALLS.owner"; exit 0;;
+ "workspace list") printf '{"result":{"workspaces":[{"workspace_id":"ws","tokens":{"cellctl_owner":"%s"}}]}}' "$(cat "$COMMS_CALLS.owner" 2>/dev/null)"; exit 0;;
  "tab create") for word in "$@"; do label="$word"; done; case "$label" in *-comms-*) printf '%s' "$label" > "$COMMS_CALLS.label";; *) echo '{"result":{"tab":{"tab_id":"other-tab"},"root_pane":{"pane_id":"other-pane"}}}'; exit 0;; esac; echo '{"result":{"tab":{"tab_id":"owned-tab"},"root_pane":{"pane_id":"pane"}}}'; exit 0;;
  "tab list") printf '{"result":{"tabs":[{"tab_id":"owned-tab","label":"%s"}]}}\n' "$(cat "$COMMS_CALLS.label")"; exit 0;;
  "list-windows -a") printf '@42\t%s\n' "$(cat "$COMMS_CALLS.label")"; exit 0;;
@@ -61,7 +64,7 @@ if test "$1 $2 $3" = 'terminal create --help'; then
  echo '--worktree --command --title --json'; exit 0
 fi
 command=''
-if test "$1" = new-window; then
+if test "$1" = new-window || test "$1" = new-session; then
  last=''
  for word in "$@"; do
   if test "$last" = -n; then printf '%s' "$word" > "$COMMS_CALLS.label"; fi
@@ -222,7 +225,20 @@ func TestCommsUpPreflight(t *testing.T) {
 				os.WriteFile(filepath.Join(c.commsDir(), "checkpoint.json"), b, 0600)
 				l.Close()
 			}
+			if mode == "stale" {
+				// regression: #2880 — the dry run prints the reconcile inventory and changes nothing.
+				before, _ := os.ReadFile(filepath.Join(c.commsDir(), "checkpoint.json"))
+				dry := f.run(t, env, "up", "example", "--cockpit", "tmux", "--no-the-desk", "--no-attach", "--dry-run")
+				after, _ := os.ReadFile(filepath.Join(c.commsDir(), "checkpoint.json"))
+				if !strings.Contains(dry.stdout, "[reconcile] comms class=could-not-check") || !strings.Contains(dry.stdout, "dry run: nothing was changed") || string(before) != string(after) {
+					t.Fatalf("dry run did not inventory the stale comms record or changed it: %+v", dry)
+				}
+			}
 			r := f.run(t, env, "up", "example", "--cockpit", "tmux", "--no-the-desk", "--no-attach")
+			if mode == "stale" && (!strings.Contains(r.stdout, "[reconcile] refusing to clear anything") || !strings.Contains(r.stdout, "comms 'example' recover --confirm-stopped") || !strings.Contains(r.stderr, "up: stale cell state")) {
+				// regression: #2880 — the refusal carries the inventory and the exact commands.
+				t.Fatalf("stale refusal without inventory and commands: %+v", r)
+			}
 			if mode == "unset" || mode == "disabled" {
 				if r.code != 0 {
 					t.Fatal(r)
@@ -305,5 +321,25 @@ func TestCommsArgvRoundTrip(t *testing.T) {
 	want := []string{"--cells-root", filepath.Dir(c.Dir), "comms", "example", "run"}
 	if string(out) != strings.Join(want, "\n")+"\n" {
 		t.Fatalf("argv changed: %s", out)
+	}
+}
+
+// regression: #2881
+func TestUpTmuxNoDeskdRoleFirst(t *testing.T) {
+	f, _, _, log, env := commsUpFixture(t)
+	f.run(t, env, "set", "example", "CELL_COMMS_CONFIG=")
+	r := f.run(t, env, "up", "example", "--cockpit", "tmux", "--no-attach")
+	if r.code != 0 || strings.Count(r.stderr, "with no deskd") != 1 {
+		t.Fatalf("up: %+v", r)
+	}
+	b, _ := os.ReadFile(log)
+	var creates []string
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "new-session") || strings.HasPrefix(line, "new-window") {
+			creates = append(creates, line)
+		}
+	}
+	if len(creates) != 1 || !strings.HasPrefix(creates[0], "new-session -d -s example-cell -n the-desk ") {
+		t.Fatalf("want the first role window to create the session and no placeholder window, got %q", creates)
 	}
 }

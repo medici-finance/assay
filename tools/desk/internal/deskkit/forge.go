@@ -329,6 +329,12 @@ type Issue struct {
 	// statusgen's decision-gate anchor (forge-neutral brief 18). omitzero keeps every issue read that
 	// predates this field byte-identical in the golden corpus.
 	ClosedBy Account `json:",omitzero"`
+	// CreatedAt is the issue's creation time (RFC3339) as the forge reports it, EMPTY where the
+	// read did not report one — could-not-check, never a guess. Consumer: cmd/deskclose's
+	// human-decided lane, whose human-decision-v1 record measures how long a decision waited
+	// from the issue's opening. omitempty keeps every issue read that
+	// predates this field byte-identical in the golden corpus.
+	CreatedAt string `json:",omitempty"`
 }
 
 // Review is one review/approval on a change (GitHub review ↔ GitLab MR approval). CommitID
@@ -781,13 +787,18 @@ type RollupNode struct {
 // UNKNOWN/…) — the consumer reads its four-state mergeVerdict off it, and an empty value is
 // could-not-check, never mergeable. Consumer: cmd/deskboard's fetchOpenPRs → prBase.
 type OpenChange struct {
-	Number           int
-	Title            string
-	Body             string
-	State            string // OPEN | CLOSED | MERGED
-	Draft            bool
-	CreatedAt        string // RFC3339
-	LastEditedAt     string // RFC3339, "" until the title/body is first edited
+	Number       int
+	Title        string
+	Body         string
+	State        string // OPEN | CLOSED | MERGED
+	Draft        bool
+	CreatedAt    string // RFC3339
+	LastEditedAt string // RFC3339, "" until the title/body is first edited
+	// UpdatedAt is the forge's last-activity time for the change (GitHub's updatedAt: it
+	// moves on a push, a comment, a review, a label, a base retarget or an edit; it does NOT
+	// move when a check run changes). "" when the backend does not report it — a consumer
+	// that keys reuse on it must treat "" as "could have changed" and re-read.
+	UpdatedAt        string `json:",omitempty"`
 	Author           Account
 	Labels           []string
 	HeadSHA          string

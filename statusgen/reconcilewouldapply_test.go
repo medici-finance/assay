@@ -43,8 +43,14 @@ var parityFixtureReadmes = map[string]string{
 // row, so reconcileBriefIdents enumerates them) under a fresh tree.
 func writeParityBoard(t *testing.T) string {
 	t.Helper()
+	return writeBoard(t, parityFixtureReadmes)
+}
+
+// writeBoard is writeParityBoard for any stream->README map.
+func writeBoard(t *testing.T, readmes map[string]string) string {
+	t.Helper()
 	root := t.TempDir()
-	for stream, body := range parityFixtureReadmes {
+	for stream, body := range readmes {
 		dir := filepath.Join(root, "docs", "streams", stream)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
@@ -175,13 +181,10 @@ func runReconcileJSON(t *testing.T, args ...string) (reconcileResult, map[string
 	return res, raw
 }
 
-// TestWouldApplyParityCLI runs the whole verb twice on one git-backed tree
-// against a local recorded-response server (no network): first the read-only
-// `--backfill --json` form, then `--backfill --apply --json`. The read-only run
-// must leave the tree untouched and report as `wouldApply` exactly the rows the
-// --apply run reports as `applied`; each form carries only its own list.
-func TestWouldApplyParityCLI(t *testing.T) {
-	root := writeParityBoard(t)
+// commitFixture makes root a git work tree holding one commit (--backfill reads
+// the hand-said history from git log, so it refuses a root with no .git).
+func commitFixture(t *testing.T, root string) {
+	t.Helper()
 	for _, args := range [][]string{
 		{"init", "-q"},
 		{"add", "-A"},
@@ -191,27 +194,51 @@ func TestWouldApplyParityCLI(t *testing.T) {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
+}
 
-	pulls := `[
+// parityPulls is the recorded pull list behind parityFixtureReadmes: three
+// witnessed rows (a trailer, and two declared backfill branch matches).
+const parityPulls = `[
 	  {"number": 10, "state": "closed", "body": "Brief: apstream/01", "merged_at": "2026-01-01T00:00:00Z", "merge_commit_sha": "aaaaaaa1", "head": {"sha": "h10", "ref": "feat/x"}},
 	  {"number": 11, "state": "closed", "body": "no trailer", "merged_at": "2026-01-01T00:00:00Z", "merge_commit_sha": "bbbbbbb2", "head": {"sha": "h11", "ref": "feat/apstream-02"}},
 	  {"number": 12, "state": "closed", "body": "Brief: apstream/03", "merged_at": "2026-01-01T00:00:00Z", "merge_commit_sha": "ccccccc3", "head": {"sha": "h12", "ref": "feat/y"}},
 	  {"number": 13, "state": "closed", "body": "", "merged_at": "2026-01-01T00:00:00Z", "merge_commit_sha": "ddddddd4", "head": {"sha": "h13", "ref": "work/bpstream/01"}}
 	]`
+
+// stubParityPulls serves parityPulls for the test's duration, as the whole
+// verb's only network peer (the offline envelope).
+func stubParityPulls(t *testing.T) {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/files") {
+			// Every recorded PR changed code: each is a delivery, none only authored a brief.
+			fmt.Fprint(w, `[{"filename":"tools/x/x.go","status":"modified"}]`)
+			return
+		}
 		if r.URL.Path != "/repos/o/r/pulls" {
 			http.NotFound(w, r)
 			return
 		}
-		fmt.Fprint(w, pulls)
+		fmt.Fprint(w, parityPulls)
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
 	prev := reconcileGHClient
 	reconcileGHClient = func(token string) *ghClient {
 		return &ghClient{doer: srv.Client(), base: srv.URL, token: token}
 	}
-	defer func() { reconcileGHClient = prev }()
+	t.Cleanup(func() { reconcileGHClient = prev })
+}
 
+// TestWouldApplyParityCLI runs the whole verb twice on one git-backed tree
+// against a local recorded-response server (no network): first the read-only
+// `--backfill --json` form, then `--backfill --apply --json`. The read-only run
+// must leave the tree untouched and report as `wouldApply` exactly the rows the
+// --apply run reports as `applied`; each form carries only its own list.
+func TestWouldApplyParityCLI(t *testing.T) {
+	root := writeParityBoard(t)
+	commitFixture(t, root)
+
+	stubParityPulls(t)
 	tokenFile := filepath.Join(t.TempDir(), "token")
 	if err := os.WriteFile(tokenFile, []byte("read-only-test-token\n"), 0o600); err != nil {
 		t.Fatal(err)

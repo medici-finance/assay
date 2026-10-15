@@ -1,0 +1,106 @@
+<!-- GENERATED from plugins/assay/references/codex.md by deskinstall --harness cursor. Do not edit. -->
+# Codex CLI — capability bindings
+
+How each neutral-core capability (named in the skill bodies as `capability:<name>`)
+is realised on the **Codex CLI** — the open-source `codex` terminal tool. Target
+set is **Codex CLI only for v1**; the hosted Codex App is a later, separately-ruled
+surface. Both rulings are recorded in the harness-target ruling (Decision A1 + C,
+human:<name> 2026-08-16).
+
+The baseline is the Codex capability matrix (HP/01, documentary + prior-art,
+2026-08-08). Later measurements are dated separately below; the native Goal
+qualification does not re-measure unrelated capabilities. Harness tool names
+are legal here — that is this file's purpose — and illegal in a skill body.
+
+Source of the capability set: the closed vocabulary block in
+[`../../../docs/streams/harness-portability/README.md`](../../../docs/streams/harness-portability/README.md).
+
+## The non-negotiable floor
+
+Three guarantees **never degrade** on any harness (stream README §3; ruling C):
+**isolation**, **evidence-not-claims**, and **the review gates**. Where Codex CLI
+cannot provide the underlying capability, the affected skill **refuses** rather
+than dropping the guarantee. Only *convenience* gaps (no parallel dispatch, no
+reliable background notification) may degrade — explicitly, and in-session.
+
+## Capability → mechanism
+
+| Capability | Codex CLI mechanism (HP/01 §) |
+|---|---|
+| `capability:dispatch-worker` | **Re-measured on codex-cli 0.154.0.** The V1 subagent tools (`spawn_agent` / `wait_agent` / `send_input` / `resume_agent` / `close_agent`) are present **regardless of the `[features] multi_agent` flag**: on 0.154.0 that flag has **graduated** — `codex features list` reports `multi_agent  stable  true`, and a child was spawned with it set `false` — so `multi_agent=false` no longer removes the tools or gates dispatch (the prior "off → unavailable" reading is retired). The V2 tool set (`send_message` / `followup_task` / `interrupt_agent`) sits behind `multi_agent_v2` (`stable`, **off by default** on 0.154.0). What still bounds parallelism is `[agents] max_concurrent_threads_per_session` (legacy alias `max_threads`): excess children **queue rather than fan out**, so `max_concurrent_threads_per_session = 1` is the reachable way to force serial execution on this CLI. The convenience-degradation floor stands as the design contract — **where parallel dispatch is unavailable the skill runs the fan-out serially, one item at a time, stating the degradation** (§3.5); on codex-cli ≥0.154.0 that unavailability is reached through the concurrency cap, not the graduated `multi_agent` flag. |
+| `capability:message-agent` | V1 `send_input` (message a running child) and `resume_agent(id)` (resume a completed child); V2 `send_message` / `followup_task` (§3.6). Caveat: **V2 resume is broken across process restarts** (codex issues #19140, #33002) — child agents are process-local, not durable, so on session resume a follow-up can return "not found". Prefer V1 resume, or re-dispatch fresh, when durability matters. |
+| `capability:isolate-workspace` | Re-measured on **codex-cli 0.154.0**: `codex exec --help` now carries a `--worktree` flag ("Run the session in a new managed Git worktree"), so the CLI **does** have a built-in managed-worktree mechanism (§3.9 revises from the prior `absent` reading) — it is no longer limited to *detecting* linked worktrees (`GIT_DIR != GIT_COMMON`); it can create one itself. That mechanism still writes to `.git/refs/heads/`, and under the default `workspace-write` sandbox that ref-write is **blocked** (§3.8), so isolation is **not creatable** under that sandbox → the no-isolation floor applies unchanged: the skill **refuses rather than implement in the shared checkout**. Under `--sandbox danger-full-access` worktrees are creatable (via `--worktree` or a manual `git worktree add`) and isolation runs normally — the floor behaviour is exactly as previously ruled; only the mechanism classification was stale. |
+| `capability:invoke-skill` | `SKILL.md` discovery from `.agents/skills/` (cwd, parent dirs, repo root, `~/.agents/skills/`); frontmatter `name` + `description` (§3.2). `allow_implicit_invocation` (defaults `true`, `agents/openai.yaml`) gives **description-driven auto-triggering** (§3.3); **invoke-by-name is the floor** where auto-trigger is disabled — parity of availability, not of trigger ergonomics. |
+| `capability:session-notifications` | Main-session completion signals: TUI `agent-turn-complete`, OSC 9, and the `notify` hook (§3.7 `partial`). **Caveat:** a background task spawned with `run_in_background: true` from *inside a subagent* is silently killed when the subagent ends its turn, so its completion notification can never fire — judge subagent liveness by elapsed time and the written verdict, not by a background signal alone. |
+| `capability:stop-worker` | V1 `close_agent(id)` / V2 `interrupt_agent(id)` (§3.5/§3.6) — terminate one dispatched child by id. Where parallel dispatch is unavailable there are no children to stop and the desk window runs the fan-out serially, so a per-run stop reaches its single in-flight worker as the cooperative STOP.run.<key> flag alone (Guard refuses that run's next desk verb) — the convenience-degradation floor, stated in-session; the flag layer is never degraded. |
+| `capability:durable-monitor` | **No reliable durable cross-turn wake signal (§3.6/§3.7 `absent`).** V2 child agents are process-local — resume is broken across process restarts (Issues #19140, #33002) — and an in-subagent `run_in_background: true` task is silently killed when its turn ends (§3.7), so there is no re-arming poll that survives a session restart. A durable wake-signal is a **convenience**, not one of the three never-degrade guarantees (isolation / evidence / gates) → the convenience floor applies: the capability **degrades**. The skill falls back to the **event-driven + fixed-cadence board sweep** (the same backstop Claude Code pairs with its monitor — it is the real liveness safeguard, the durable monitor was only best-effort on either harness) and **states the gap in-session**. The durable liveness home is the always-on observability service, not the harness. |
+| `capability:cadence-tick` | **No in-session recurring prompt (§3.6/§3.7): the tick comes from OUTSIDE the session.** The Codex CLI has no mechanism that re-prompts a standing session on a clock, so a standing window cannot arm this capability itself. The binding is the **cell launcher's interval / an outer scheduler** — a cron or container job that invokes the role in tick mode every cadence interval (`codex exec … --tick`, or `ASSAY_TICK=1` in the job's environment; the trigger, bounded pass and summary line are [`tick-contract.md`](./tick-contract.md)), where each fire IS one "fresh sweep → drain → one quiet line" pass. The cadence and the prompt are the role body's, unchanged. A standing window with no such outer schedule reports `cadence-tick: could-not-check — no in-session scheduler` at boot and FILES it, exactly as the role's boot step says — it never runs keystroke-driven in silence. This is the fixed-cadence sweep the `durable-monitor` row already falls back to; it is a **convenience** (never one of the three never-degrade guarantees), so the capability **degrades** to the outer schedule, stated in-session. |
+
+## Interactive standing Goals
+
+On **codex-cli 0.162.1**, native Goals can continue an active objective after an
+ordinary final response. An isolated native app-server qualification on 2026-10-12
+observed Goal creation/readback, an automatic next turn, and human steering that
+paused the Goal. This is engine evidence, not qualification of a deployed cockpit.
+The [retained primary transcripts](../../../docs/qualification/codex-goals/2026-10-12/README.md)
+include the generated bootstrap, native tool arguments/readbacks, continuation,
+steering, admission controls, cleanup and explicit logging limits.
+
+`cellctl` requests the standing objective before invoking a Codex desk: `get_goal`,
+`create_goal` only if absent with no token budget, then `get_goal` readback. A
+matching active Goal is required; any existing differing or inactive Goal remains
+unchanged and awaits user direction. Missing tools or failed readback report
+could-not-check. A completed batch or empty queue does not finish a standing Goal.
+The user retains `/goal`, `/goal pause`, `/goal resume` and `/goal clear` controls.
+
+An inactive Goal stops standing continuation; it does not withdraw permission for
+a separately requested correction. On "correct and resume", do the authorized
+correction within the existing safeguards, then read the Goal again. A conversational
+resume request does not prove the native status changed. If it remains inactive
+and the exposed tools cannot resume it, give the user the exact `/goal resume`
+control. Preserve the objective, budget and usage; require matching active readback
+before restarting the standing desk. Do not ask again for correction permission or
+try an unsupported `update_goal` status. This is launcher guidance, not evidence
+that a native runtime transition was performed or that a model will follow it.
+
+Goals do not supply the fixed-time `cadence-tick` capability or a process-restart
+monitor. Those rows' scheduler and durability limits remain in force. Explicit
+cellctl cadence uses bounded exec passes with Goals disabled. Native continuation
+can stop for blocking conditions, interruption or continuation limits; it is not a
+promise of permanent unattended service. See the official [Goals guide](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex)
+and [native Goal RPC](https://learn.chatgpt.com/docs/app-server).
+
+## Degradation — per skill (Codex CLI, v1 target)
+
+Reproduced from the ruled matrix (ruling C, Codex CLI column) — the serial-fanout
+degradation text and the isolation-refusal text are carried **verbatim** so a Codex
+session states the ruled posture rather than improvising it.
+
+| Skill | Codex CLI |
+|---|---|
+| `adopt` | **runs** — needs only `resident-rules-channel` §3.1, `skills-discovery` §3.2, `install-mechanism` §3.10, all `supported`; no dispatch/isolation/gate surface. |
+| `ask-decision` | **runs** — interactive decision text; its one write (filing or commenting the decision issue) is a `gh` write → `danger-full-access` precondition (§3.8, blocked under `workspace-write`), else it composes the decision text and states the write is blocked. No dispatch/isolation/gate surface. |
+| `author-brief` | **runs** — pure authoring/planning text; touches no dispatch, no isolation, no gate. |
+| `author-spec` | **runs** — specification authoring and review; uses available source-reading and editing tools. |
+| `cut-release` | **runs** — preconditions, dry-run reading, checksum harvest and re-pin authoring are reads plus local edits; its one write (re-pin draft PRs) is a `gh` write → `danger-full-access` precondition (§3.8, blocked under `workspace-write`), stated in-session rather than half-run. Neither release-workflow run is the session's act, the dry run included: both wait at the release environment's human approval and record their dispatcher as the authorizer, so both dispatches and both approvals are handed to the driver via `human-runsheet` on every harness. The session itself touches no dispatch/isolation/gate surface. |
+| `dailies` | **runs** — report generation is sequential CLI work; any report fan-out **degrades: runs serially with an explicit in-session statement** (dispatch is a convenience here, not a safety guarantee). |
+| `human-runsheet` | **runs** — writes one file (`RUNSHEET.md`) to the session's own scratch home; a local text write needs no `gh`, no dispatch, no isolation and no gate authority. No dispatch/isolation/gate surface. |
+| `install` | **runs** — the turnkey install verb; needs `resident-rules-channel` §3.1, `skills-discovery` §3.2 and `install-mechanism` §3.10, all `supported`. Its scaffold write (`statusgen init`, CI + main-guard wiring, re-pin) needs a write-capable sandbox and its pinned-binary acquisition needs network → both are sandbox preconditions (§3.8, blocked under `workspace-write`), stated in-session rather than half-run. It opens draft PRs only and escalates every human-gated step; no dispatch/isolation/gate surface. |
+| `intake-desk` | **runs** — triage/classification is interactive text plus `gh` reads/writes; `gh` write verbs require the `danger-full-access` sandbox (§3.8, blocked under `workspace-write`) — a sandbox precondition, not a gate degradation. |
+| `market-intelligence` | **runs** — research + reads; no dispatch/isolation/gate needs. |
+| `pdfingest` | **runs** — local PDF ingestion, no dispatch/isolation/gate surface; `workspace-write` allows the local reads. Any outbound fetch or external-binary call is a sandbox precondition (§3.8) → the skill states the blocked fetch in-session rather than silently skipping it. |
+| `pr-review-desk` | **runs** — the review **verdict** is text and is never degraded; posting the review and the draft→ready flip need `gh` writes → `danger-full-access` precondition (§3.8). The review gate is upheld or the skill refuses; it never silently degrades. |
+| `pr-shepherd` | **refuses under `workspace-write`, runs under `danger-full-access`** — the same isolation floor as `worker-desk`: the skill mandates its own worktree for the adopted PR and must create it itself — the CLI's managed-worktree mechanism (`codex exec --worktree`, §3.9, confirmed present on codex-cli 0.154.0) still needs a `.git/refs/heads/` write, which the `workspace-write` sandbox blocks (§3.8). Its watch loop needs no durable poll — the body already states the periodic `gh pr view` read as the primary form and `capability:durable-monitor` only as an alternative, so the §3.6/§3.7 gap **degrades to the stated poll**, not to blindness. Discovery-mode fan-out (one shepherd per PR) **degrades: serial, one PR at a time, stated in-session** where parallel dispatch is unavailable (§3.5). Gates are unchanged: it never flips, merges or closes, and the security-gate carve-out is a refusal, never a degradation. *(Derived from this file's own capability rows plus the skill's declared needs — not a separate live measurement.)* |
+| `session-coach` | **runs** — reads the session's own record (transcript, tool calls, subagent transcripts) and writes one coaching note outside any repository; no `gh`, no dispatch, no isolation and no gate authority. Where the note's location is one the sandbox does not let it write (§3.8), that is a sandbox precondition stated in-session — the note is never written into the repository instead. A piece of the record the session cannot read is marked as such in the note, per the body. No dispatch/isolation/gate surface.  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |
+| `system-demo` | **runs** — authoring a storyboard and, when requested, a local static player is text/local-file work; it writes only within the session's own workspace, needs no `gh`, no dispatch, no isolation and no gate authority. No dispatch/isolation/gate surface. |
+| `the-desk` | **runs** — coordination; its worker fan-out **degrades: serial with an in-session statement** where parallel dispatch is unavailable (§3.5); the review/merge gate is unchanged (the human merges). Isolation of dispatched implementers is delegated to `worker-desk` (below). |
+| `upgrade-assay` | **runs** — the dry-run-first order is the skill's own invariant and is never degraded; the apply step writes the tree and version pins → needs a write-capable sandbox, and under `workspace-write` it states BLOCKED rather than half-applying (§3.8). No dispatch/isolation/gate surface beyond that. |
+| `verify-desk` | **runs** — executes the Verify table and records **real command evidence** (`evidence-not-claims` intact); `gh` writes need `danger-full-access` (§3.8). The evidence guarantee is never degraded. |
+| `worker-desk` | **refuses under `workspace-write`** — the pool cannot create an **isolated worktree**: the CLI's managed-worktree mechanism (`codex exec --worktree`, §3.9, confirmed present on codex-cli 0.154.0) still writes to `.git/refs/heads/`, same as a manual `git worktree add` / `checkout -b` would, and that ref-write is **blocked by the `workspace-write` sandbox** (§3.8). Per the no-isolation→refuse floor it **refuses rather than implement in the shared checkout**. **runs under `danger-full-access`** (worktrees creatable). Dispatch gap → **degrades: the pool runs serially, one brief at a time, with an explicit in-session statement**. Isolation is never silently degraded. |
+
+## Freshness
+
+The baseline was measured documentarily on 2026-08-08. The explicitly dated
+0.154.0 rows and the 0.162.1 native Goal qualification above are later measurements.
+The binding is registered in `freshness.yaml` (harness-portability/07); an isolated
+Goal probe does not refresh the other capabilities.

@@ -227,7 +227,18 @@ func writeShepherdAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPl
 		"a change before hand-back — its board row, fail-first evidence for a test it adds, a changelog fragment " +
 		"where the repo enforces one — is required of this one. Where a clause is timed \"before `deskpr create`\" " +
 		"or \"before you open the PR\", read it for this run as \"before the push that carries it\".\n\n")
-	if plan.dl.crossRepo(o.root) {
+	if plan.dl.crossRepoBrief {
+		// --cross-repo (medici-finance/assay#2748), resumed: the open PR links its home brief with the
+		// one Cross-repo-brief: line, which deskpr checks against THIS worktree's registry. Pointing
+		// deskpr at the tracking checkout would read the tracking registry, whose own `self` is the
+		// home alias, and refuse the link — so `deskpr update` runs as on any other resume.
+		fmt.Fprintf(b, "CROSS-REPO delivery: this brief is homed in %s, not in `%s`. Run `deskpr update` from INSIDE "+
+			"your worktree with no tracking `--root`. The PR body MUST keep the trailer line `%s` — and NO `Brief:` "+
+			"line, which would be read against `%s`'s own board. The tracking checkout is READ-ONLY for you — never "+
+			"write, commit or branch there — and this PR cannot flip the tracking repo's board row: say in the PR "+
+			"body that the home row is handed back separately.\n\n",
+			trackingLabel(plan.dl), repo, plan.dl.crossRepoTrailer(o.item), repo)
+	} else if plan.dl.crossRepo(o.root) {
 		fmt.Fprintf(b, "CROSS-REPO delivery: this brief is tracked in %s, not in `%s`. Run `deskpr update --root %s` "+
 			"(still from INSIDE your worktree) so the `Brief:` trailer resolves against the tracking repo's board. "+
 			"That checkout is READ-ONLY for you — never write, commit or branch there — and this PR cannot flip the "+

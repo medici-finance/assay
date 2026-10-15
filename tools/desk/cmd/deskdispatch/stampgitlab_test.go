@@ -271,8 +271,8 @@ func TestGitLabStampReplacesAForeignAppliedStamp(t *testing.T) {
 	home, root := s.install(t)
 	plantScripts(t, root)
 	gl := installGLStamp(t, home)
-	model := deskkit.DispatchedModelPrefix + "example-model-1"
-	tier := deskkit.DispatchedTierPrefix + "strong"
+	model := deskkit.AuthoredModelPrefix + "example-model-1"
+	tier := deskkit.AuthoredTierPrefix + "strong"
 	gl.labels = []string{model, tier}
 	gl.events = []glLabelEvt{{"add", model, "some-other-user"}, {"add", tier, "some-other-user"}}
 
@@ -295,7 +295,7 @@ func TestGitLabStampReplacesAForeignAppliedStamp(t *testing.T) {
 }
 
 // A stamp already standing under the dispatcher is a NO-OP on GitLab too: no MR update
-// touches a dispatched-* label, so a re-dispatch neither churns the label events nor leaves
+// touches an authored-* label, so a re-dispatch neither churns the label events nor leaves
 // the MR briefly unstamped.
 func TestGitLabStampLeavesItsOwnStampAlone(t *testing.T) {
 	s := &stub{}
@@ -306,8 +306,8 @@ func TestGitLabStampLeavesItsOwnStampAlone(t *testing.T) {
 	if !ok {
 		t.Fatalf("the planted roster binds no App to the dispatcher role %q", deskkit.DispatcherRole)
 	}
-	model := deskkit.DispatchedModelPrefix + "example-model-1"
-	tier := deskkit.DispatchedTierPrefix + "strong"
+	model := deskkit.AuthoredModelPrefix + "example-model-1"
+	tier := deskkit.AuthoredTierPrefix + "strong"
 	gl.labels = []string{model, tier}
 	gl.events = []glLabelEvt{{"add", model, d}, {"add", tier, d}}
 
@@ -316,7 +316,7 @@ func TestGitLabStampLeavesItsOwnStampAlone(t *testing.T) {
 	}
 	noForgeCLI(t, s)
 	for _, b := range gl.puts() {
-		if strings.Contains(b, "dispatched-") {
+		if strings.Contains(b, "authored-") {
 			t.Errorf("the dispatcher rewrote its OWN standing stamp — an identical stamp is a no-op: %q", b)
 		}
 	}
@@ -330,7 +330,7 @@ func TestGitLabStampRefusesWhenTheHistoryReadFails(t *testing.T) {
 	home, root := s.install(t)
 	plantScripts(t, root)
 	gl := installGLStamp(t, home)
-	gl.labels = []string{deskkit.DispatchedModelPrefix + "example-model-1"}
+	gl.labels = []string{deskkit.AuthoredModelPrefix + "example-model-1"}
 	gl.failEv = true
 
 	rc := glStampRun(t, s, root)

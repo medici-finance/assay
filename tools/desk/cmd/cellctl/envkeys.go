@@ -104,6 +104,8 @@ func buildEnvKeys() []envKey {
 			desc: "Size budget of one cell's managed Go cache, in bytes (8 GiB)."},
 		{key: "CELL_GO_CACHE_MIN_FREE", class: envMachine, group: envGroupCache, def: "10737418240",
 			desc: "Free space the managed Go cache leaves on its volume, in bytes (10 GiB)."},
+		{key: "CELL_GO_CACHE_BUILD_MAX_AGE", class: envMachine, group: envGroupCache, def: "24h",
+			desc: "Age past which compiler-cache entries are trimmed under pressure, even with live consumers, as a duration of at least 2h."},
 		{key: "CELL_SCRATCH_MAX_AGE", class: envMachine, group: envGroupCache, def: "168h",
 			desc: "Age past which managed task scratch is swept, as a duration."},
 		{key: "CELL_SCRATCH_MAX_BYTES", class: envMachine, group: envGroupCache, def: "268435456",
@@ -154,6 +156,8 @@ func buildEnvKeys() []envKey {
 	for _, role := range strings.Fields(rolesDefault) {
 		keys = append(keys, envKey{key: "CURSOR_MODEL_" + underscore(role), class: envMachine, group: envGroupModels, desc: pinCursor})
 	}
+	keys = append(keys, envKey{key: "CELL_MODEL_TTL_DAYS", class: envMachine, group: envGroupModels,
+		desc: "Days a model pin recorded DEFAULT (`set ... --default`) stays before a launch lowers it to the MID tier: Nd, a number of days, or a Go duration; 0 turns the reset off. Default: 7."})
 	const tier = "Tier map, used when no pin and no harness default names a model: the-desk resolves at TOP, every other role at MID."
 	for _, harness := range []string{"claude", "codex", "cursor"} {
 		for _, level := range []string{"TOP", "MID", "FAST"} {
@@ -293,6 +297,8 @@ func buildEnvKeys() []envKey {
 			why: "is set by cellctl in a managed task's environment and read back by `cellctl scratch` there"},
 		envKey{key: "DESK_SESSION", class: envNotLever, from: envInternal,
 			why: "is set by cellctl in each role window and read back by `cellctl scratch` there"},
+		envKey{key: "CELLCTL_OPERATOR_CONFIG_HOME", class: envNotLever, from: envInternal,
+			why: "is the operator config path cellctl captures before a launch moves the home, and a file-carried value would be an expectation the launch did not capture"},
 		envKey{key: "CELLCTL_PARITY_MUTATE", class: envNotLever, from: envInternal,
 			why: "is a test hook compiled only under the parity build tag"},
 	)

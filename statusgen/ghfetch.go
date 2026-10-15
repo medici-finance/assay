@@ -138,6 +138,13 @@ func (c *ghClient) ListPRs(repo string) (prs []PRRecord, lookedAt bool, reason s
 	if !lookedAt {
 		return nil, false, reason
 	}
+	return prRecordsFromPulls(pulls), true, ""
+}
+
+// prRecordsFromPulls is ListPRs' trailer filter over an already-fetched pull
+// list, so a caller that also needs the raw pulls (reconcile --backfill) pages
+// the list once instead of twice.
+func prRecordsFromPulls(pulls []ghPull) (prs []PRRecord) {
 	for _, p := range pulls {
 		ref, ok := singleBriefTrailer(p.Body)
 		if !ok {
@@ -160,12 +167,14 @@ func (c *ghClient) ListPRs(repo string) (prs []PRRecord, lookedAt bool, reason s
 		}
 		prs = append(prs, rec)
 	}
-	return prs, true, ""
+	return prs
 }
 
-// ReviewsAtHead reports whether pr carries an APPROVED review at headSHA — the
-// gate:model `done` witness (the same "approval must report at the merged head"
-// property autoflip.go enforces). lookedAt is false with a reason on any failure.
+// ReviewsAtHead reports whether pr carries an APPROVED review at headSHA. It is
+// NOT a gate:model `done` witness: it binds neither the reviewer identity nor the
+// delivering PR, so the reconcile fold decides `done` through autoflip.go's
+// decideModelFlip instead and never calls this. lookedAt is false with a reason
+// on any failure.
 func (c *ghClient) ReviewsAtHead(repo string, pr int, headSHA string) (approved, atHead, lookedAt bool, reason string) {
 	url := fmt.Sprintf("%s/repos/%s/pulls/%d/reviews?per_page=100", c.base, repo, pr)
 	body, status, err := c.get(url)

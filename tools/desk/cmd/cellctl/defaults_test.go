@@ -25,7 +25,7 @@ func defaultsRoot(t *testing.T) string {
 	for _, k := range []string{
 		"CELL", "CELL_KIND", "CELL_KIND_OVERRIDE_INTERNAL", "CELL_HARNESS", "ROLES", "DESKD", "DRY_RUN",
 		"CELL_REPO", "CELL_REPO_SLUG", "CELL_ROOTS", "TMUX_SESSION", "DESK_MODEL_DEFAULT",
-		"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE",
+		"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE", "CELL_GO_CACHE_BUILD_MAX_AGE",
 		"CELL_PATH", "CELL_PROVIDER", "CELL_PROVIDER_DEFAULTS", "CELL_PROVIDER_OVERRIDES",
 		"CELL_MODEL_POLICY", "CELL_ROLE_CONTEXT", "CELLCTL_TEST_PROBE",
 	} {
@@ -252,6 +252,7 @@ func TestCellDefaultsRefusesPerCellKeys(t *testing.T) {
 		"PATH", "TERM", "LANG",
 		// Carriers cellctl sets for itself or a child.
 		"CELL_KIND_OVERRIDE_INTERNAL", "ASSAY_SCRATCH_ID", "DESK_SESSION", "CELLCTL_PARITY_MUTATE",
+		"CELLCTL_OPERATOR_CONFIG_HOME",
 	}
 	for _, k := range named {
 		if !listed[k] {
@@ -277,7 +278,7 @@ func TestCellDefaultsRefusesPerCellKeys(t *testing.T) {
 						t.Errorf("load refusal does not carry %q:\n%s", want, msg)
 					}
 				}
-				msg = refusal(t, "set", func() { cmdSet("demo", []string{"DESK_MODEL_DEFAULT=example-model"}) })
+				msg = refusal(t, "set", func() { setArgv("demo", []string{"DESK_MODEL_DEFAULT=example-model"}) })
 				for _, want := range []string{"cellctl: set: ", file, "sets " + r.key + ",", "nothing written"} {
 					if !strings.Contains(msg, want) {
 						t.Errorf("set refusal does not carry %q:\n%s", want, msg)
@@ -396,11 +397,11 @@ func TestCellDefaultsSetWritesOnlyCellEnv(t *testing.T) {
 	}
 
 	// The role form picks its key from the ACTIVE harness. Only the defaults file says codex.
-	captureStdout(t, func() { cmdSet("demo", []string{"worker-desk", "--model", "example-codex-model"}) })
+	captureStdout(t, func() { setArgv("demo", []string{"worker-desk", "--model", "example-codex-model"}) })
 	// A cell that sets its own harness is not moved by the machine's.
-	captureStdout(t, func() { cmdSet("other", []string{"worker-desk", "--model", "example-claude-model"}) })
+	captureStdout(t, func() { setArgv("other", []string{"worker-desk", "--model", "example-claude-model"}) })
 	// The KEY=VALUE form overrides a machine default for this one cell.
-	captureStdout(t, func() { cmdSet("demo", []string{"CELL_HARNESS=claude"}) })
+	captureStdout(t, func() { setArgv("demo", []string{"CELL_HARNESS=claude"}) })
 
 	read := func(p string) string {
 		t.Helper()
@@ -420,13 +421,13 @@ func TestCellDefaultsSetWritesOnlyCellEnv(t *testing.T) {
 		t.Errorf("other cell.env =\n%s\nwant\n%s", got, want)
 	}
 	// Nothing appears in the cells root but the two cells and the one defaults file, and each
-	// cell directory holds its cell.env and that file's backups only.
+	// cell directory holds its cell.env, that file's backups, and the pin record a model pin writes.
 	if names, want := mustReadDir(t, root), []string{cellDefaultsFile, "demo", "other"}; !reflect.DeepEqual(names, want) {
 		t.Errorf("cells root holds %v, want %v", names, want)
 	}
 	for _, cell := range []string{"demo", "other"} {
 		for _, n := range mustReadDir(t, filepath.Join(root, cell)) {
-			if n != "cell.env" && !strings.HasPrefix(n, "cell.env.bak-") {
+			if n != "cell.env" && n != modelPinsFile && !strings.HasPrefix(n, "cell.env.bak-") {
 				t.Errorf("set left %s in cell %s", n, cell)
 			}
 		}
@@ -458,7 +459,7 @@ func TestCellDefaultsNestedCell(t *testing.T) {
 	if got := activeHarnessOf(envfile); got != "codex" {
 		t.Errorf("activeHarnessOf = %q, want codex from the cells root's file", got)
 	}
-	captureStdout(t, func() { cmdSet("team/demo", []string{"worker-desk", "--model", "example-codex-model"}) })
+	captureStdout(t, func() { setArgv("team/demo", []string{"worker-desk", "--model", "example-codex-model"}) })
 	if got, _ := os.ReadFile(envfile); string(got) != demoCell+"CODEX_MODEL_worker_desk=example-codex-model\n" {
 		t.Errorf("nested cell.env =\n%s", got)
 	}
@@ -488,7 +489,7 @@ func mustReadDir(t *testing.T, dir string) []string {
 func TestCellDefaultsReservedCellName(t *testing.T) {
 	root := defaultsRoot(t)
 	for _, name := range []string{"defaults.env", "Defaults.ENV", "defaults.env/inner"} {
-		msg := refusal(t, "new "+name, func() { cmdNew([]string{name, "--kind", "house"}) })
+		msg := refusal(t, "new "+name, func() { newArgv([]string{name, "--kind", "house"}) })
 		if !strings.Contains(msg, "not available as a cell name") || !strings.Contains(msg, filepath.Join(root, cellDefaultsFile)) {
 			t.Errorf("new %s: %s", name, msg)
 		}
@@ -782,7 +783,7 @@ func TestShowNamesTheDefaultsFileAsASource(t *testing.T) {
 	}
 	lines := "CELL_HARNESS=claude\nCELL_COCKPIT=tmux\nDESK_MODEL_DEFAULT=example-model\nASSAY_REPAIR_ADMISSION=on\n" +
 		"CELL_PROVIDER=glm\nCELL_PROVIDER_GLM_BASE_URL=https://example.invalid/api\n"
-	show := func() string { return captureStdout(t, func() { cmdShow("demo", nil) }) }
+	show := func() string { return captureStdout(t, func() { showArgv("demo") }) }
 
 	writeDefaults(t, root, lines)
 	writeCell(t, root, "demo", demoCell)

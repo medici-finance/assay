@@ -2,6 +2,10 @@
   "evidence-automerge.yml": {
     "mode": "identical"
   },
+  "gremlins-daily.yml": {
+    "mode": "pending",
+    "reason": "New Gremlins daily discovery sweep; pending maintainer activation (README Contents)."
+  },
   "loopadmin.yml": {
     "mode": "pending",
     "reason": "New loopadmin test workflow; pending maintainer activation (README Contents)."
@@ -21,7 +25,8 @@
     "mode": "identical"
   },
   "assay-qualgen.yml": {
-    "mode": "identical"
+    "mode": "pending",
+    "reason": "Classified board push (#2910): credential preflight and per-class push failures in the QUALITY.md regen; pending maintainer promotion (README Contents)."
   },
   "verify-gate-close.yml": {
     "mode": "identical"
@@ -30,6 +35,7 @@
     "mode": "identical"
   },
   "assay-statusgen.yml": {
-    "mode": "identical"
+    "mode": "pending",
+    "reason": "Classified board push (#2910): credential preflight and per-class push failures in regen and model-autoflip, plus the lint job step running their tests; pending maintainer promotion (README Contents)."
   }
 }

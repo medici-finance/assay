@@ -1,0 +1,18 @@
+{
+  "go_module": "example.com/m",
+  "files": [
+    {"file_name": "c.go", "mutations": [
+      {"type": "CONDITIONALS_NEGATION", "status": "RUNNABLE", "line": 1, "column": 1},
+      {"type": "CONDITIONALS_NEGATION", "status": "RUNNABLE", "line": 2, "column": 1},
+      {"type": "CONDITIONALS_NEGATION", "status": "RUNNABLE", "line": 3, "column": 1}
+    ]},
+    {"file_name": "a.go", "mutations": [
+      {"type": "CONDITIONALS_NEGATION", "status": "RUNNABLE", "line": 1, "column": 1},
+      {"type": "CONDITIONALS_NEGATION", "status": "NOT COVERED", "line": 2, "column": 1}
+    ]},
+    {"file_name": "sub/b.go", "mutations": [
+      {"type": "CONDITIONALS_NEGATION", "status": "RUNNABLE", "line": 1, "column": 1},
+      {"type": "CONDITIONALS_NEGATION", "status": "RUNNABLE", "line": 2, "column": 1}
+    ]}
+  ]
+}

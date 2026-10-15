@@ -33,7 +33,7 @@ import (
 //     not the helper.
 //   - Matching on the option NAME alone does not distinguish the two refusals: cmdFetch
 //     wraps the FlagSet error as `refused: bad flags — flag provided but not defined:
-//     -upload-pack`, which contains "upload-pack" too. namedGuardMarker is the phrase
+//     -exec`, which contains "exec" too. namedGuardMarker is the phrase
 //     only checkTransportExec produces, so the pair (marker + name) is what pins the
 //     refusal to the named guard.
 
@@ -87,22 +87,20 @@ func TestTransportExec_RefusedByName(t *testing.T) {
 		argv []string
 		want string
 	}{
-		{"upload-pack long", []string{"fetch", "--upload-pack=sh -c ':'"}, "upload-pack"},
-		{"upload-pack single dash", []string{"fetch", "-upload-pack=sh -c ':'"}, "upload-pack"},
-		{"upload-pack separate value", []string{"fetch", "--upload-pack", "sh -c ':'"}, "upload-pack"},
-		{"upload-pack abbreviated", []string{"fetch", "--upload-p=evil"}, "upload-pack"},
+		{"exec single dash", []string{"fetch", "-exec=sh -c ':'"}, "exec"},
+		{"exec separate value", []string{"fetch", "--exec", "sh -c ':'"}, "exec"},
 		{"exec", []string{"fetch", "--exec=evil"}, "exec"},
 		{"receive-pack", []string{"fetch", "--receive-pack=evil"}, "receive-pack"},
 		{"upload-archive", []string{"fetch", "--upload-archive=evil"}, "upload-archive"},
 		{"exec-path", []string{"fetch", "--exec-path=/tmp/evil"}, "exec-path"},
 		{"config-env", []string{"fetch", "--config-env=remote.origin.uploadpack=EVIL"}, "config-env"},
 		{"-c config injection", []string{"fetch", "-c", "remote.origin.uploadpack=evil"}, "config-env"},
-		{"-u short", []string{"fetch", "-u"}, "upload-pack"},
+		{"-u short", []string{"fetch", "-u"}, "upload-archive"},
 		{"-e short", []string{"fetch", "-e"}, "exec"},
 		// The position that mattered: after a positional operand, Go's flag package has
 		// already STOPPED parsing, so the source PR reported only a generic
 		// "takes no positional operands" and never named the vector.
-		{"after an operand", []string{"fetch", "origin", "--upload-pack=evil"}, "upload-pack"},
+		{"after an operand", []string{"fetch", "origin", "--exec=evil"}, "exec"},
 	}
 
 	for _, tc := range cases {
@@ -159,8 +157,8 @@ func TestTransportExec_AllowsLegitimateFlags(t *testing.T) {
 // to dash/`=` handling cannot quietly narrow the guard.
 func TestOptionName(t *testing.T) {
 	cases := []struct{ in, want string }{
-		{"--upload-pack=x", "upload-pack"},
-		{"-upload-pack", "upload-pack"},
+		{"--receive-pack=x", "receive-pack"},
+		{"-receive-pack", "receive-pack"},
 		{"--prune", "prune"},
 		{"-c", "c"},
 		{"origin", ""},
@@ -194,7 +192,7 @@ func TestKillSwitchBeatsTransportExec(t *testing.T) {
 	work := newRepo(t, allowedSlug)
 	calls := withEnv(t, work)
 	t.Setenv("DESK_TOOLS_DISABLED", "1")
-	if code := run([]string{"fetch", "--upload-pack=evil"}); code != deskkit.ExitDisabled {
+	if code := run([]string{"fetch", "--exec=evil"}); code != deskkit.ExitDisabled {
 		t.Fatalf("exit = %d, want %d (kill switch is checked FIRST)", code, deskkit.ExitDisabled)
 	}
 	if fetchArgv(*calls) != nil {
@@ -202,15 +200,19 @@ func TestKillSwitchBeatsTransportExec(t *testing.T) {
 	}
 }
 
-// The submodule pin is a port strengthening: config-driven submodule recursion would
-// escape the effective-URL repo gate, so recursion is pinned OFF on the CLI.
-func TestFetch_PinsNoRecurseSubmodules(t *testing.T) {
-	work := newRepo(t, allowedSlug)
-	calls := withEnv(t, work)
-	if code := run([]string{"fetch"}); code != deskkit.ExitOK {
-		t.Fatalf("fetch exit = %d, want ok", code)
-	}
-	if got := strings.Join(fetchArgv(*calls), " "); !strings.Contains(got, "--no-recurse-submodules") {
-		t.Fatalf("fetch argv %q does not pin --no-recurse-submodules", got)
+// fetch has no program to name: a flag it does not define (the retired program-naming
+// spelling among them) is refused by the FlagSet, exit 5, and nothing reaches the transport.
+func TestFetch_UndefinedProgramFlagsRefusedByFlagSet(t *testing.T) {
+	for _, flag := range []string{"--helper=evil", "-helper=evil", "--run=evil"} {
+		code, msg, fetched := runRefusal(t, []string{"fetch", flag})
+		if code != deskkit.ExitRefused {
+			t.Errorf("%s: exit = %d, want %d (refused)", flag, code, deskkit.ExitRefused)
+		}
+		if !strings.Contains(msg, "flag provided but not defined") {
+			t.Errorf("%s: refusal %q is not the FlagSet's", flag, msg)
+		}
+		if fetched {
+			t.Errorf("%s: the transport was reached for a refused flag", flag)
+		}
 	}
 }

@@ -97,7 +97,7 @@ sources: []                         # provenance: scoping doc / finding IDs / in
 files: <exact paths the implementer touches — no repo exploration should be needed>
 facts: <the 3-5 project facts required to execute — key: value, no narrative>
 design-fit:                         # REQUIRED on every NEW brief (spec/brief-v1.md §4.1); legacy briefs are not back-filled.
-  owner: statusgen/eligibility.go   # example — the ONE module that owns the meaning this brief touches, or n/a
+  owner: statusgen/evaluation/eligibility.go   # example — the ONE module that owns the meaning this brief touches, or n/a
   contract: S-eligibility           # example — that meaning's row id in docs/contracts.md §"Semantic owners", or `none — <why>`
   retires: []                       # mechanisms/refusals/flags/tests this brief removes; [] is an answer
   weight: verbs 0, flags 0, refusals 0, rule-text lines 0   # signed delta per ratcheted dimension

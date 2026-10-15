@@ -110,6 +110,7 @@ type jqRenderedOut struct {
 	} `json:"options"`
 	OptionsStated bool   `json:"optionsStated"`
 	Reply         string `json:"reply"`
+	Command       string `json:"command"`
 	Verification  string `json:"verification"`
 	Unread        bool   `json:"unread"`
 }
@@ -202,6 +203,9 @@ func assertRenderedMatchesOracle(t *testing.T, name string, it jqItem, oracleD j
 	if got.Reply != want.Reply {
 		t.Errorf("%s: reply mismatch\n got:  %q\n want: %q", name, got.Reply, want.Reply)
 	}
+	if got.Command != want.Command {
+		t.Errorf("%s: command mismatch\n got:  %q\n want: %q", name, got.Command, want.Command)
+	}
 	if got.Verification != want.Verification {
 		t.Errorf("%s: verification mismatch\n got:  %q\n want: %q", name, got.Verification, want.Verification)
 	}
@@ -226,6 +230,12 @@ func TestParityWalk(t *testing.T) {
 		comments []wireComment
 		blind    bool
 		k, n     int
+		// driver is DRIVER_LOGIN for this case ("" = unset → the <driver-login>
+		// placeholder). Both sides read it from the environment: jq inherits it.
+		driver string
+		// wantCmd, when set, is the exact command both sides must agree ON — so a
+		// regression that makes both render "not derivable" cannot pass as parity.
+		wantCmd string
 	}{
 		{
 			name: "typical with context, options, recommended, unblocks, desk-note",
@@ -308,10 +318,91 @@ func TestParityWalk(t *testing.T) {
 			body: "## Options\nA. First choice\nB. Second choice\nC. Third choice, this one is recommended\nD. Fourth choice\n",
 			k:    0, n: 1,
 		},
+		{
+			// The parse now lives in deskkit: a marked option whose text
+			// cleans to empty is dropped (and so is its mark), a fifth list line is never read,
+			// and numeric ids are re-lettered A–D like letters.
+			name: "lifted parse edges: empty marked option, five lines, digits",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 12, Title: "Edges",
+				URL: "https://example.invalid/issues/12", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "## Options\n1. Keep it\n2) (recommended)\n- 3. **Drop** it\n4. Defer it — recommended\n4. A fifth line\n",
+			k:    0, n: 1,
+		},
+		{
+			// Reply shape's command, S2(a): deskinbox reads no roster, so it cannot tell a
+			// trusted body from one anyone could file, and it NEVER derives a command. This
+			// body is the strongest case the oracle derives from when its author is trusted
+			// (a marked recommendation, a visible How-to phrase naming that letter, a matching
+			// fork default) and deskinbox still says not derivable. The oracle, run here with
+			// no roster, agrees: an untrusted body is not evidence.
+			name: "command never derived without a roster",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 13, Title: "How to answer",
+				URL: "https://example.invalid/issues/13", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "## Options\nA. Keep the cron (recommended)\nB. Drop the cron\n\n### How to reply\n\n" +
+				"Answer with one line.\nReply “ ” or **\"ratify A, it's `fine`\"** then \"ignored\".\n\n" +
+				"option: A — keep the cron\noption: B — drop the cron\ndefault: A — keep the cron\n",
+			k: 0, n: 1,
+			wantCmd: commandNotDerivable,
+		},
+		{
+			// A login-shaped DRIVER_LOGIN changes nothing: there is no command to put it in.
+			name: "command not derived with a DRIVER_LOGIN set",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 14, Title: "Driver login",
+				URL: "https://example.invalid/issues/14", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "## Options\nA. Keep (recommended)\nB. Drop\n\n## How to answer\nReply \"ratify A\".\n",
+			k:    0, n: 1,
+			driver:  "example-driver",
+			wantCmd: commandNotDerivable,
+		},
+		{
+			// A fork-test default naming one of its own option letters is not derived either.
+			name: "command not derived from a fork-test default",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 16, Title: "Fork default",
+				URL: "https://example.invalid/issues/16", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "The fork test.\n\noption: A — keep the cron\nOption: Option B) drop the cron\n" +
+				"default: **b — drop the cron**\ndefault: A\n",
+			k: 0, n: 1,
+			wantCmd: commandNotDerivable,
+		},
+		{
+			// A default naming no offered option letter, and a body with options but no
+			// stated phrase, are both not derivable.
+			name: "command not derivable from a stray default",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 17, Title: "Stray default",
+				URL: "https://example.invalid/issues/17", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "## Options\nA. Keep\nC. Drop\n\noption: A — keep\noption: B — drop\ndefault: C\n",
+			k:    0, n: 1,
+			wantCmd: commandNotDerivable,
+		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("DRIVER_LOGIN", tc.driver)
+			// The oracle side runs with no roster, exactly as deskinbox does.
+			t.Setenv("ASSAY_INBOX_TRUSTED_JSON", "")
+			if tc.wantCmd != "" && !tc.blind {
+				repo := deskkit.ForgeRepo{Owner: "example-org", Name: "example-repo"}
+				got := buildRendered(toGoItem(tc.it), readDetailOverREST(t, repo, tc.it.Number, tc.body, tc.comments), tc.k, tc.n, now)
+				if got.Command != tc.wantCmd {
+					t.Errorf("command\n got:  %q\n want: %q", got.Command, tc.wantCmd)
+				}
+			}
 			if tc.blind {
 				assertRenderedMatchesOracle(t, tc.name, tc.it, jqDetail{DetailUnavailable: true},
 					issueDetail{Unavailable: true}, tc.k, tc.n, now)

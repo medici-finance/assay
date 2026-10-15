@@ -27,6 +27,27 @@ Use a manually assembled packet with explicit coverage and bounded authorization
 to bootstrap the first implementation. The future resolver is not a prerequisite
 to building itself. Nor does an unapproved competing proposal freeze approved work.
 
+## Independently useful adoption lane
+
+Extend the [same owners](19-progressive-adoption-and-oversight.md#delivery-changes-to-the-existing-program)
+with a smaller product lane. These are scoped amendments to existing packages,
+not new allocated briefs or another implementation home:
+
+| Slice | Existing owner/package | Prerequisite and acceptance |
+|---|---|---|
+| Pure adoption/oversight contracts | R1, definitions/policy/evidence; existing install-contract owner | Approved bounded meanings and actual module/import closure; neutral positive/negative fixtures |
+| Inspect and advisory Assist | Offline definition/evidence adapters, existing authoring/CLI surfaces | Selected pure contracts and supported pins; cold-host first value and second task without full runtime |
+| Selected installation and actionable output | Cell-operation/config and projection owners | Versioned dependency closure, preview/resume/no-clobber, identical assurance/hold meanings across consumers |
+| Managed oversight | R1 policy; R2 pending decisions; R3/R4 authority; R5/R7 result flow | Full current runtime/custody/effect qualification; presets cannot bypass organization requirements |
+| Sampling/batch delegation and scale | Existing decision, runtime, effects and operations owners | Separately approved scoped contract, anti-evasion/expiry/recovery cases and required capability evidence |
+
+Read-only and advisory slices need neither R2–R8 nor the complete future-state resolver
+merely to be implemented and qualified. Use the bounded manual context bootstrap.
+Their libraries do not acquire provider effects, standing ownership or SQL runtime
+state. Managed writer integration retains the R1–R8 dependency and activation sequence.
+Notification preferences can precede sampling/authority changes because they preserve
+the pending gate. Never wire an installer, skill or cockpit to an unshipped interface.
+
 ## First verifier implementation packages
 
 | Package | Delivers | Dependencies | Proof required for its claim |
@@ -73,6 +94,8 @@ separate reviewed slices, ordered by readiness and actual dependency. Add contin
 operations and richer quality consumers without redefining delivery acceptance.
 Keep urgent fixes on every supported path; route new features to the approved target.
 
+An early continuing-operations slice is **workspace lifecycle completion**: teardown at owning-attempt completion in dispatch; allocation verbs that stamp class and retention for every fleet-created resource, including scratch; class-aware retirement and forge-state eligibility in the sweep; lock-lifecycle retirement; consolidation of repository-local sweepers behind the single maintenance owner; and the supervised maintenance cadence with its per-OS keep-alive profiles. It depends on the approved retirement and maintenance contracts, ships behind explicit flags on current tools where possible, and proves itself through the sustained-work workload retiring disposable resources while held reasons stay explainable.
+
 Each slice carries the old entry points, new contract versions, supported version
 combination, state/evidence mapping, cutover action, rollback limit and removal
 condition. Old callers may use pure new libraries or isolated APIs when useful.
@@ -98,3 +121,35 @@ The architecture reduces duplicate semantic and runtime owners by design, but ad
 database operation, migration, discovery and qualification work. Net savings remain
 a hypothesis until the remaining implementation is sized and measured. A brief
 retirement count is not an engineering-effort estimate.
+
+## Scion-derived forge-service extension — 14 October 2026
+
+The [forge-service amendment](22-forge-service-and-source-queries.md) extends R6 alongside
+R4 and the read portion of R7; it is not a second mirror or authority program. Reuse the
+forge-neutral/37–38 briefs and the forge-neutral/39–45 briefs merged in PR 2743 (merge commit
+`6b479a573`). Those briefs cover typed service contracts,
+authenticated serving and role-executor custody, write-through receipts, exact-commit source
+queries, incremental derived indexes, a shared-Git reuse trial, and served/recovery/cutover
+qualification. Their source contracts can be tested offline; the managed writer still needs
+R1–R4 and the mirror store before activation. The public cockpit and remote OIDC ingress
+remain R7 work, consuming the same authorization and observation contract.
+
+Do not make a shared-object daemon or broad source checkout redesign a prerequisite for the
+first mirror/service. The reuse trial is a bounded go/no-go comparison, while request coalescing
+and bounded upstream fallback are already mirror obligations. Necessary PR branches and the
+existing candidate/retirement owners stay. Cross-provider qualification must cover operation
+unknowns, admission-bound private data and exact candidate currency, not only read speed.
+
+
+## Public runtime contract gaps — 14 October 2026
+
+The [runtime alignment](23-runtime-contract-alignment.md) maps prior requirements onto
+existing R1–R8 owners. Add graph-execution/30 (complete evaluation context/time validity)
+and /31 (accountable-principal and proof provenance) after /28, independently at wave 3.
+They add no second runtime or signer. /14 consumes both, /19 consumes /30 and /25 consumes
+/31 through dated Task/Verify amendments; existing human activation gates remain.
+
+The real head is still independent verification of /02 before /09 -> /28. /30–31 contract
+fixtures do not need a deployed PostgreSQL controller; their managed consumers still require
+their existing R2–R5 prerequisites and separate activation proof. R3–R8 package amendments
+remain with their existing owners; this revision does not mark their implementation complete.

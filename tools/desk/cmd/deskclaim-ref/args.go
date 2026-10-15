@@ -57,8 +57,9 @@ func dispatchVerb(args []string) int {
 	}
 	// The store is the RESOLVER's answer, never this tool's choice: there is no flag that
 	// selects one. The forge-ref opener is installed so that, should the resolver resolve to
-	// the legacy store, it is built here with this invocation's credential; a configured store
-	// whose preconditions fail is a refusal (exit 6) and never becomes the forge-ref store.
+	// the legacy store (an unset key, or a valid key naming a store this build does not ship —
+	// medici-finance/assay#2753), it is built here with this invocation's credential; a shipped
+	// store whose preconditions fail is a refusal (exit 6) and never becomes the forge-ref store.
 	deskkit.SetForgeRefClaimStoreOpener(func(r string) (deskkit.ClaimStore, error) {
 		return buildStore(r, tokenFile)
 	})
@@ -100,7 +101,7 @@ func dispatchVerb(args []string) int {
 			}
 			return cmdProgress(id, owner, branch)
 		case "release":
-			return cmdRelease(id)
+			return cmdRelease(id, repo)
 		case "steal":
 			return cmdSteal(id, owner, reason)
 		case "show":

@@ -26,7 +26,7 @@ the tree.
 
 ## Quickstart
 
-Requires Go 1.25+. From this directory:
+Requires Go 1.27+. From this directory:
 
 ```sh
 go test ./...        # run the engine and its negative tests

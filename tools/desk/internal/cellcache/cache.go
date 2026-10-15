@@ -31,12 +31,18 @@ type Report struct {
 	After         Measurement `json:"after"`
 	SkippedActive []string    `json:"skipped_active"`
 	Reclaimed     int64       `json:"reclaimed_logical_bytes"`
-	Failures      []string    `json:"failures"`
+	// TrimmedBuild counts compiler-cache entries removed by the age trim, and
+	// TrimmedBuildBytes their summed logical sizes. Unlike Reclaimed (a
+	// before/after difference that concurrent builds can blur), these are
+	// exactly what this pass deleted.
+	TrimmedBuild      int      `json:"trimmed_build_entries"`
+	TrimmedBuildBytes int64    `json:"trimmed_build_bytes"`
+	Failures          []string `json:"failures"`
 }
 type manager struct {
 	p    Policy
 	r    *os.Root
-	lock *os.File
+	lock *deskkit.HeldLock
 	dev  uint64
 	// Instance-local seams make unavailable measurements/removal deterministic
 	// in fixtures without mutating globals or touching host caches.
@@ -118,25 +124,21 @@ func open(p Policy, create bool) (*manager, error) {
 		lock.Close()
 		return fail(err)
 	}
-	// Bounded wait for short measurement/cleanup transactions. Busy is unknown,
-	// never permission to proceed without custody.
-	until := time.Now().Add(5 * time.Second)
-	for {
-		err = deskkit.TryLockExclusive(lock)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, deskkit.ErrLockBusy) || time.Now().After(until) {
-			lock.Close()
-			return fail(err)
-		}
-		time.Sleep(10 * time.Millisecond)
+	// Bounded wait, with backoff, for short measurement/cleanup transactions.
+	// Busy is unknown, never permission to proceed without custody; a lasting
+	// busy read names the lock and its holder and says it is retryable.
+	held, err := deskkit.AcquireHeld(r, "lock", lock, deskkit.LockSpec{Name: "cell Go cache", Wait: LockWait, Log: os.Stderr})
+	if err != nil {
+		return fail(err)
 	}
-	m := &manager{p: p, r: r, lock: lock, dev: dev, free: diskFree}
+	m := &manager{p: p, r: r, lock: held, dev: dev, free: diskFree}
 	m.remove = m.removeTree
 	return m, nil
 }
-func (m *manager) close() { deskkit.UnlockFile(m.lock); m.lock.Close(); m.r.Close() }
+func (m *manager) close() { m.lock.Release(); m.r.Close() }
+
+// LockWait bounds how long one cache transaction waits for a sibling's.
+var LockWait = time.Minute
 
 func (m *manager) measure() (Measurement, []string) {
 	v := Measurement{At: time.Now().UTC()}
@@ -217,6 +219,10 @@ func pressure(v Measurement, p Policy) bool {
 	return v.LogicalBytes != nil && v.AvailableBytes != nil && (*v.LogicalBytes > p.Budget || *v.AvailableBytes < p.Floor)
 }
 func (m *manager) check(dry bool) Report {
+	return m.checkMode(dry, false)
+}
+
+func (m *manager) checkMode(dry, wipe bool) Report {
 	r := Report{Schema: schema, Policy: m.p, Filesystem: filesystemName(m.dev), DryRun: dry, Outcome: "checked-clean"}
 	r.Before, r.Failures = m.measure()
 	var err error
@@ -225,7 +231,20 @@ func (m *manager) check(dry bool) Report {
 		r.Failures = append(r.Failures, "active custody: "+err.Error())
 	}
 	removed := false
-	if len(r.Failures) == 0 && pressure(r.Before, m.p) && len(r.SkippedActive) == 0 && !dry {
+	if len(r.Failures) == 0 && (wipe || pressure(r.Before, m.p)) && len(r.SkippedActive) > 0 && !dry {
+		// Live consumer records protect mod/, gopath/ and whole-root removal,
+		// so only the age trim may act (under pressure, or always on a wipe):
+		// it takes compiler-cache entries past the policy's age, which cmd/go's
+		// use stamp keeps older than any entry a running build looked up within
+		// the last hour, and leaves mod/ and gopath/ to the records.
+		n, bytes, err := m.trimBuild(time.Now().Add(-m.p.BuildAge()))
+		r.TrimmedBuild, r.TrimmedBuildBytes = n, bytes
+		removed = n > 0
+		if err != nil {
+			r.Failures = append(r.Failures, "trim build: "+err.Error())
+		}
+	}
+	if len(r.Failures) == 0 && (wipe || pressure(r.Before, m.p)) && len(r.SkippedActive) == 0 && !dry {
 		// Whole inactive roots only. Consumers are enrolled under this same lock;
 		// no Go clean subprocess can race a build or module reader.
 		for _, name := range []string{"build", "mod"} {
@@ -245,11 +264,166 @@ func (m *manager) check(dry bool) Report {
 	if len(r.Failures) > 0 {
 		r.Outcome = "could-not-check"
 		r.Reason = "partial cache measurement or cleanup; inspect failures"
-	} else if pressure(r.After, m.p) {
+	} else if (wipe && len(r.SkippedActive) > 0) || pressure(r.After, m.p) {
 		r.Outcome = "storage-deferred"
 		r.Reason = fmt.Sprintf("cache uses %d logical bytes (budget %d); filesystem has %d available bytes (floor %d); active consumers %d", *r.After.LogicalBytes, m.p.Budget, *r.After.AvailableBytes, m.p.Floor, len(r.SkippedActive))
 	}
 	return r
+}
+
+// Wipe is explicit disposal, independent of the configured pressure threshold.
+// The same custody lock excludes enrollment and protects live consumers.
+func Wipe(p Policy, dry bool) (Report, error) {
+	m, err := open(p, false)
+	if err != nil {
+		return Report{Schema: schema, Policy: p, Outcome: "could-not-check", Reason: err.Error(), DryRun: dry}, err
+	}
+	defer m.close()
+	return finish(m, m.checkMode(dry, true))
+}
+
+// trimBuild removes compiler-cache entries whose mtime is before cutoff. It
+// selects what cmd/go's own trimSubdir selects: names ending "-a" (action) or
+// "-d" (output) inside the 256 two-hex-digit subdirectories of build/. A "-d"
+// output is a regular file, or, for the executables `go run` and `go tool`
+// cache, a directory; cmd/go removes an aged one of either shape, and so does
+// this. Nothing else under build/ (README, trim.txt, a foreign file) and
+// nothing outside it is ever selected. It is safe while consumers hold
+// records because:
+//   - cmd/go refreshes an entry's mtime when it looks up one stamped more than
+//     an hour ago, so an entry a running build looked up is at most about an
+//     hour old, and the policy age is at least MinBuildMaxAge;
+//   - an entry missing at lookup is a cache miss that cmd/go rebuilds.
+//
+// Module directories have neither property (no use stamp, no refetch mid
+// build), so mod/ is never trimmed.
+//
+// Custody: every directory and entry passes checkEntry, the discipline
+// measurement uses. A directory entry is walked in full before anything in it
+// is removed, and any foreign, linked, cross-device or other-writable member
+// refuses the WHOLE directory. A refused entry is skipped, never followed,
+// and the trim continues with the next one: each entry's verdict is its own,
+// so skipping one cannot widen what another removal touches. Every refusal is
+// returned in the error, so the pass still reports could-not-check. Removal
+// goes through the verified root: Remove for a file (never follows a final
+// symlink) and removeTree, the inactive-cleanup path, for a directory.
+func (m *manager) trimBuild(cutoff time.Time) (int, int64, error) {
+	const dir = "build"
+	st, err := m.r.Lstat(dir)
+	if os.IsNotExist(err) {
+		return 0, 0, nil
+	}
+	if err != nil {
+		return 0, 0, err
+	}
+	if err = checkEntry(st, m.dev); err != nil || !st.IsDir() {
+		return 0, 0, fmt.Errorf("invalid compiler cache directory")
+	}
+	n, total := 0, int64(0)
+	var refused []error
+	for i := 0; i < 256; i++ {
+		sub := fmt.Sprintf("%s/%02x", dir, i)
+		names, err := m.subdirNames(sub)
+		if err != nil {
+			refused = append(refused, err)
+			continue
+		}
+		for _, name := range names {
+			if !strings.HasSuffix(name, "-a") && !strings.HasSuffix(name, "-d") {
+				continue
+			}
+			size, removed, err := m.trimEntry(sub+"/"+name, cutoff)
+			if err != nil {
+				refused = append(refused, err)
+				continue
+			}
+			if removed {
+				n++
+				total += size
+			}
+		}
+	}
+	return n, total, errors.Join(refused...)
+}
+
+// subdirNames lists one verified build/<xx> subdirectory; a missing one is empty.
+func (m *manager) subdirNames(sub string) ([]string, error) {
+	st, err := m.r.Lstat(sub)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err = checkEntry(st, m.dev); err != nil || !st.IsDir() {
+		return nil, fmt.Errorf("invalid compiler cache subdirectory %s", sub)
+	}
+	f, err := m.r.OpenFile(sub, os.O_RDONLY|noFollow, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.Readdirnames(-1)
+}
+
+// trimEntry removes one selected entry if it is older than cutoff, returning
+// the logical bytes it held. A concurrent removal (cmd/go's own trim) is not
+// an error.
+func (m *manager) trimEntry(path string, cutoff time.Time) (int64, bool, error) {
+	st, err := m.r.Lstat(path)
+	if os.IsNotExist(err) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	if err = checkEntry(st, m.dev); err != nil || (!st.Mode().IsRegular() && !st.IsDir()) {
+		return 0, false, fmt.Errorf("invalid compiler cache entry %s", path)
+	}
+	if !st.ModTime().Before(cutoff) {
+		return 0, false, nil
+	}
+	if st.IsDir() {
+		size, err := m.verifiedTreeSize(path)
+		if err != nil {
+			return 0, false, fmt.Errorf("refused compiler cache directory %s: %w", path, err)
+		}
+		if err = m.removeTree(path); err != nil {
+			return 0, false, err
+		}
+		return size, true, nil
+	}
+	if err = m.r.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	return st.Size(), true, nil
+}
+
+// verifiedTreeSize walks a directory entry through the verified root, applying
+// checkEntry to every member, and sums its regular files. Any violation
+// refuses the whole directory before a byte of it is removed.
+func (m *manager) verifiedTreeSize(name string) (int64, error) {
+	var total int64
+	err := fs.WalkDir(m.r.FS(), name, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		st, err := m.r.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if err = checkEntry(st, m.dev); err != nil {
+			return err
+		}
+		if st.Mode().IsRegular() {
+			total += st.Size()
+		}
+		return nil
+	})
+	return total, err
 }
 
 // Go module directories are read-only. Open each verified directory and chmod
@@ -419,8 +593,11 @@ func CheckRecorded(root string, dry bool) (Report, error) {
 	return finish(m, m.check(dry))
 }
 
-// Lease is durable custody of both compiler and module caches, even if the
-// supervisor crashes. No PID or age is accepted as proof that consumers exited.
+// Lease is durable custody, even if the supervisor crashes: while any record
+// is held, mod/ and gopath/ are never reclaimed and no root is removed whole;
+// only compiler-cache entries older than the policy's trim age may be trimmed
+// under pressure (trimBuild). No PID or age is accepted as proof that
+// consumers exited.
 type Lease struct {
 	policy Policy
 	record string

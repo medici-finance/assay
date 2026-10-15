@@ -31,6 +31,27 @@ import (
 // driveRegionLintProblems checks every drive-plan .md under root. It never reads
 // or writes STATUS.md and takes no live infrastructure.
 func driveRegionLintProblems(root string, now time.Time) (problems, notices []string) {
+	return driveRegionLintWithContext(root, &driveLintCtx{root: root}, now)
+}
+
+// driveRegionLintFromBoard reuses the full board already hydrated by run().
+// Scoped validation must use the ordinary loader instead: rows outside that
+// scope have not had their frontmatter attached yet.
+func driveRegionLintFromBoard(root string, streams []*Stream, now time.Time) (problems, notices []string) {
+	return driveRegionLintWithContext(root, &driveLintCtx{
+		root: root, loaded: true, streams: streams,
+	}, now)
+}
+
+func driveRegionLintWithContext(root string, ctx *driveLintCtx, now time.Time) (problems, notices []string) {
+	return driveRegionLint(root, func(slug string) (string, int) { return driveLintSection(ctx, slug, now) })
+}
+
+// driveRegionLint is driveRegionLintProblems with the fresh render supplied by
+// the caller: section(slug) must return exactly what driveSnapshotSection(root,
+// slug, now) would. The reconcile lint hold supplies one that reuses a single
+// board load across the rows it evaluates (reconcileholdinc.go).
+func driveRegionLint(root string, section func(slug string) (string, int)) (problems, notices []string) {
 	dir := filepath.Join(root, "docs", "roadmap", "drives")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -94,7 +115,7 @@ func driveRegionLintProblems(root string, now time.Time) (problems, notices []st
 			notices = append(notices, fmt.Sprintf("drive-region-drift: docs/roadmap/drives/%s carries no drive-snapshot:begin region — could-not-check (splice one with `statusgen --drive-snapshot %s`)", e.Name(), slug))
 			continue
 		}
-		fresh, rc := driveSnapshotSection(root, slug, now)
+		fresh, rc := section(slug)
 		if rc != 0 {
 			// Manifest present but not active/in-window/resolvable: the region
 			// cannot be freshly rendered to compare. Three-state NOTICE.

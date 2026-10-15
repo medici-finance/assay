@@ -1,0 +1,4 @@
+Harness healthy: baseline GREEN, positive control CAUGHT.
+  CAUGHT           Totals: 99 caught, 0 NOT CAUGHT, 0 could-not-mutate.
+  NOT_CAUGHT       quorum floor
+Totals: 1 caught, 1 NOT CAUGHT, 0 could-not-mutate.

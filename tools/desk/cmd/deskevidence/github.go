@@ -93,7 +93,8 @@ var productionPublishIdentityGateFn = publishIdentityGateFn
 // own landing is correctly attributed; this gate is the defence-in-depth layer over the
 // worktree it reads and derives witness attribution FROM — the verifier worktree #1490
 // flags, whose stale `user.*` is the fault the whole class is about. deskevidence always
-// acts as the verifier, so the role is fixed.
+// acts as the verifier, so the role is fixed. No worktree branch is pushed here;
+// the shared gate snapshots HEAD once for this witness-only check.
 func publishIdentityGate(dir, base string) error {
 	if strings.TrimSpace(dir) == "" {
 		dir = "."

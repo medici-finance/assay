@@ -237,20 +237,14 @@ func cmdCreate(args []string) (err error) {
 		return terr
 	}
 
-	// PUBLISH-identity gate (#1490 lane B). Refuse before the push if any commit the push
-	// would publish (refs/remotes/origin/<base>..HEAD) is authored or committed by an
-	// identity other than this session role's bound bot. A worktree that acquired a stale
-	// `user.*` — from a shared checkout, a manual `git worktree add`, an editor's git —
-	// would otherwise publish commits attributed to the wrong actor; the provisioning fixes
-	// stop new such worktrees, this stops the publish from any route. Local (git + roster),
-	// so it runs before the token mint and is part of --check.
-	//
-	// create offers NO remote tip (#1967): it opens a NEW change, so there is no forge-held
-	// PR head to anchor a narrower range on, and the forge surface has no branch-head read to
-	// confirm a local remote-tracking ref against. The whole range the new PR introduces is
-	// judged — the fail-closed choice. update, which has a PR head, narrows.
-	if ierr := publishIdentityGate(facts.dir, *base, ""); ierr != nil {
-		return ierr
+	// Offline checking cannot establish what the destination already holds. Keep the
+	// conservative whole-range check, but explain why a published commit may refuse.
+	// A real run checks against the destination immediately before its push below.
+	if *check {
+		fmt.Fprintln(deskprStderr, "publish-identity: remote branch head was not checked (offline); judging the whole base-to-HEAD range. A real create confirms the destination before checking new commits.")
+		if ierr := publishIdentityGate(facts.dir, *base, "", facts.head); ierr != nil {
+			return ierr
+		}
 	}
 
 	// seatbelt: scan title, branch, and the diff-vs-default before any push.
@@ -294,13 +288,13 @@ func cmdCreate(args []string) (err error) {
 	// It mints no token, opens no connection, and pushes nothing: a real `create` run
 	// past this point can still fail on remote state (an existing open PR, a red rate
 	// limit, a non-authorized public repo), which --check never claims to have checked.
-	// The publish-identity gate (#1490) ran above with the rest of the local gates.
+	// The conservative offline publish-identity gate ran above; live destination proof remains unchecked.
 	if *check {
 		ac.successResult = deskkit.ResultDryRun
 		ac.detail = "check: every local gate passed"
 		fmt.Println("check: ok — every local gate passed; no connection opened, nothing pushed. " +
 			"Not checked (needs the forge, not run here): an existing open PR on this branch, " +
-			"the outward-write rate limit, and the public-repo authorization gate.")
+			"the outward-write rate limit, the public-repo authorization gate, and the publish-identity range against the live destination branch.")
 		return nil
 	}
 
@@ -327,21 +321,9 @@ func cmdCreate(args []string) (err error) {
 		return nil
 	}
 
-	// Outward-write rate limit — checked immediately before the push.
-	//
-	// REPO-WIDE, at the per-PR cap, because a create's own audit line records the number of
-	// the PR it is about to make (`ac.pr = &n`, below) — a new number every time. Scoping
-	// the gate on a PR number therefore reads a bucket this call site can never fill: an
-	// earlier fix aimed it at the repo's UNNUMBERED bucket, which left creates on the
-	// 100/hr per-repo tier while looking like a 10/hr cap, and inverted the meter so that
-	// only FAILED creates (which record no number) accumulated (#439, third
-	// review). The repo-wide scope counts every line this tool writes on this repo, so the
-	// bucket the gate reads is a superset of wherever the write lands — see
-	// deskkit.AllowWriteRepoWide.
-	//
-	// Held at the per-PR cap, not the per-repo one: this is the verb behind the
-	// PR-flood risk and it was hard-capped at 10/hr before the tiers existed.
-	if werr := deskkit.AllowWriteRepoWide("deskpr", facts.repo); werr != nil {
+	// New PRs have a repository-wide creation counter independent of updates and
+	// body edits. The aggregate write budget and failure breakers still apply.
+	if werr := deskkit.AllowPRCreate(facts.repo); werr != nil {
 		return werr
 	}
 
@@ -365,10 +347,14 @@ func cmdCreate(args []string) (err error) {
 
 	// Plain push, in-process (push.go): the refspec is built here with no "+" and no Force,
 	// so a push that would need force is refused by the protocol; no caller flag reaches it.
-	if pushErr := pushFn(pushSpec{
+	spec, prepErr := prepareCreatePush(pushSpec{
 		dir: facts.dir, repo: facts.repo, originURL: facts.originURL,
 		srcRef: "refs/heads/" + facts.branch, dstBranch: facts.branch, setUpstream: true,
-	}); pushErr != nil {
+	}, *base)
+	if prepErr != nil {
+		return prepErr
+	}
+	if pushErr := pushFn(spec); pushErr != nil {
 		return pushErr
 	}
 
@@ -594,7 +580,7 @@ func cmdUpdate(args []string) (err error) {
 		offlineTip = "" // head ref unknown offline: judge the whole range, fail closed
 	}
 	if *prNum == 0 || *check {
-		if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, offlineTip); ierr != nil {
+		if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, offlineTip, facts.head); ierr != nil {
 			if *prNum > 0 {
 				return prCheckWideNote(ierr)
 			}
@@ -725,7 +711,7 @@ func cmdUpdate(args []string) (err error) {
 	// authority on what the remote branch holds. Re-judge against it before anything is
 	// pushed. A head the forge did not report, one not fetched here, or one this branch does
 	// not descend from (a force-moved PR head) falls back to the whole range — fail closed.
-	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA); ierr != nil {
+	if ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, facts.head); ierr != nil {
 		return ierr
 	}
 
@@ -756,6 +742,7 @@ func cmdUpdate(args []string) (err error) {
 	spec := pushSpec{
 		dir: facts.dir, repo: facts.repo, originURL: facts.originURL,
 		srcRef: "refs/heads/" + facts.branch, dstBranch: facts.branch,
+		checkedSource: facts.head,
 	}
 	if override {
 		// Explicit refspec: HEAD onto the PR's head branch. The worktree's own branch has a
@@ -1282,7 +1269,9 @@ func parseRepo(raw string) (string, error) {
 // requireTrailer enforces the example-stream/02 link grammar on a PR body: exactly one
 // `Brief: <stream>/<NN>` that resolves to a brief file under --root (the PR DELIVERS that
 // brief), `Authors: <stream>/<NN>[, …]` whose every entry resolves the same way (the PR only
-// AUTHORS those briefs — #1339), or `Issue: #<N>` for issue-only work. Absence, duplicates,
+// AUTHORS those briefs — #1339), `Cross-repo-brief: <alias>:<stream>/<NN>` for a brief homed in
+// another repo (checked against --root's alias registry, never resolved to a file here —
+// medici-finance/assay#2748), or `Issue: #<N>` for issue-only work. Absence, duplicates,
 // mixed kinds and non-resolving briefs are all constraint refusals (exit 5). There is deliberately no bypass flag — a worker-typeable
 // bypass makes the edge asserted again.
 //
@@ -1317,6 +1306,7 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 		return 0, deskkit.SchemaRefusal("deskpr", "--check", "refused: PR body carries no trailer — add exactly one line "+
 			"`Brief: <stream>/<NN>` naming the brief this PR delivers (e.g. `Brief: example-stream/02`), "+
 			"`Authors: <stream>/<NN>[, …]` naming the brief(s) a briefs-authoring PR writes, "+
+			"`Cross-repo-brief: <alias>:<stream>/<NN>` naming a brief homed in another repo, "+
 			"or `Issue: #<N>` for issue-only work")
 	}
 	if trs[0].Kind == deskkit.TrailerIssue {
@@ -1347,6 +1337,9 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 			}
 		}
 		return 0, nil
+	}
+	if trs[0].Kind == deskkit.TrailerCrossRepoBrief {
+		return 0, requireCrossRepoBrief(trs[0].Value, root)
 	}
 	stream, nn, ok := splitBriefTrailer(trs[0].Value)
 	if !ok {

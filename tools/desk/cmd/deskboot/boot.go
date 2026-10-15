@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -123,13 +124,14 @@ func cmdBoot(args []string) error {
 // boot runs the sequence. Every step returns an error that ALREADY names its step, so the
 // caller never has to reconstruct which one stopped the boot from context.
 func boot(o bootOpts) error {
+	began := time.Now()
 	tokenRole := tokenRoleFor(o.role)
 	if tokenRole == "" || !deskkit.IsKnownLoopName(o.role) {
-		return deskkit.Refused(fmt.Sprintf(
+		return stepPerf(stepLoopIdentity, began, deskkit.Refused(fmt.Sprintf(
 			"step %s: %q is not a desk role deskboot can boot (want one of: %s). "+
 				"A role deskboot does not know is a role whose STOP flag would never match, so it "+
 				"refuses rather than booting a session no human could halt.",
-			stepLoopIdentity, o.role, strings.Join(knownRoles(), ", ")))
+			stepLoopIdentity, o.role, strings.Join(knownRoles(), ", "))))
 	}
 
 	if o.dryRun {
@@ -138,33 +140,38 @@ func boot(o bootOpts) error {
 	}
 
 	// 1 — loop identity.
-	if err := stepIdentity(o); err != nil {
+	if err := stepPerf(stepLoopIdentity, began, stepIdentity(o)); err != nil {
 		return err
 	}
 	o.say("%s OK: $DESK_LOOP resolves to %s", stepLoopIdentity, o.role)
 
 	// 2 — prune stale worktrees.
+	began = time.Now()
 	if r := runCmd("", "deskwt", "prune", "--repo", o.root); r.err != nil {
-		return stepFailed(stepWorktreePrune, r,
+		return stepPerfFailed(stepWorktreePrune, began, r,
 			"re-run `deskwt prune --repo "+o.root+"` by hand and read its refusal; deskwt removes ONLY "+
 				"tracked-clean, fully-merged worktrees, so a refusal here is about the prune itself, "+
 				"never about active work being in the way")
 	}
+	stepPerfOK(stepWorktreePrune, began)
 	o.say("%s OK", stepWorktreePrune)
 
 	// 3 — lock this session's worktree.
+	began = time.Now()
 	locked, err := stepLock(o)
-	if err != nil {
+	if err := stepPerf(stepWorktreeLock, began, err); err != nil {
 		return err
 	}
 	o.say("%s OK: %s", stepWorktreeLock, locked)
 
 	// 4 — register the role on the roster.
+	began = time.Now()
 	if r := runCmd("", "deskroster", "set", "--role", o.role); r.err != nil {
-		return stepFailed(stepRosterSet, r,
+		return stepPerfFailed(stepRosterSet, began, r,
 			"the roster keys ONE beacon per session name, so an unresolvable session identity is the "+
 				"usual cause — set $DESK_SESSION (or $CLAUDE_SESSION_ID) to a name unique to this role")
 	}
+	stepPerfOK(stepRosterSet, began)
 	o.say("%s OK: role=%s", stepRosterSet, o.role)
 
 	// 5 — the operating-envelope preflight. A red preflight is could-not-run for the
@@ -178,6 +185,7 @@ func boot(o bootOpts) error {
 	// never changes the verdict, and a filing failure is a stderr warning, never a reason the
 	// boot reports something other than red. The refusal text reports what the alarm actually
 	// did; it never claims a filing that did not happen.
+	began = time.Now()
 	if r := runCmd("", "deskroster", "preflight", "--role", tokenRole, "--root", o.root); r.err != nil {
 		summary := preflightSummary(r.stderr, r.stdout)
 		outcome, aerr := fileRedPreflightAlarm(o, tokenRole, summary)
@@ -186,33 +194,37 @@ func boot(o bootOpts) error {
 		} else if outcome == alarmFiled {
 			o.say("%s: filed a to:desk alarm for the red envelope (role %s)", stepRosterPreflight, tokenRole)
 		}
-		return deskkit.Unverifiable(fmt.Sprintf(
+		return stepPerf(stepRosterPreflight, began, deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: the operating envelope is NOT green for role %s — %s. "+
 				"A red preflight is could-not-run for the whole pass: claim nothing, burn no pass. %s "+
 				"Each failing check still names its own remediation. A probe REJECTION is a STOP — never "+
 				"retry it under another identity.",
-			stepRosterPreflight, tokenRole, summary, alarmSentence(outcome, aerr)), r.err)
+			stepRosterPreflight, tokenRole, summary, alarmSentence(outcome, aerr)), r.err))
 	}
+	stepPerfOK(stepRosterPreflight, began)
 	o.say("%s OK: envelope green for role %s", stepRosterPreflight, tokenRole)
 
 	// 6 — token mint proof.
+	began = time.Now()
 	tokenPath, err := stepMint(o, tokenRole)
-	if err != nil {
+	if err := stepPerf(stepTokenMint, began, err); err != nil {
 		return err
 	}
 	o.say("%s OK: %s token cached at %s", stepTokenMint, tokenRole, tokenPath)
 
 	// 7 — board fetch summary.
+	began = time.Now()
 	summary, err := stepBoard(o)
-	if err != nil {
+	if err := stepPerf(stepBoardFetch, began, err); err != nil {
 		return err
 	}
 	o.say("%s OK: %s", stepBoardFetch, summary)
 
 	// 8 — worktree currency. Seven green steps on a tree three days behind main was the
 	// #1157 boot: the fetch proved main READABLE, and nothing proved this tree WAS main.
+	began = time.Now()
 	current, err := stepCurrent(o)
-	if err != nil {
+	if err := stepPerf(stepWorktreeCurrent, began, err); err != nil {
 		return err
 	}
 	o.say("%s OK: %s", stepWorktreeCurrent, current)
@@ -626,6 +638,24 @@ func repoSlugFromURL(url string) string {
 // so that a human never learns to route around a 5.
 func stepFailed(step string, r runResult, remedy string) error {
 	return deskkit.Unverifiable(fmt.Sprintf("step %s: %s — %s", step, firstLine(r.stderr), remedy), r.err)
+}
+
+// stepPerf records one step's duration and exit code in the opt-in local perf log
+// (deskkit.PerfStep — a no-op unless ASSAY_TELEMETRY=1) and returns err
+// unchanged, so the timing can never alter what the step reports.
+func stepPerf(step string, began time.Time, err error) error {
+	deskkit.PerfStep(toolName, step, time.Since(began), deskkit.ExitCodeOf(err))
+	return err
+}
+
+// stepPerfOK records a step that passed.
+func stepPerfOK(step string, began time.Time) {
+	deskkit.PerfStep(toolName, step, time.Since(began), deskkit.ExitOK)
+}
+
+// stepPerfFailed is stepFailed with the step's perf record written on the way out.
+func stepPerfFailed(step string, began time.Time, r runResult, remedy string) error {
+	return stepPerf(step, began, stepFailed(step, r, remedy))
 }
 
 // say prints a per-step OK line unless --quiet. Failures never go through here: they are

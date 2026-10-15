@@ -70,7 +70,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 13 | [platform gates — cross-compile CI leg, forge-ban GitLab symmetry, Verify-row portability lint, brief-06 re-derivation and platform-issue triage](brief-13-platform-gates-and-reconciliation.md) | 2 | M | implemented | — | — |
 | 14 | [regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green](brief-14-regression-floor.md) | 2 | M | verified | 2026-10-07 assay-verifier-app[bot] @ 91f04b81ba06 (claude-opus-5-5) | — |
 | 15 | [Cobra and Viper foundation and complete CLI migration routing](brief-15-cobra-and-viper-foundation-and-complete-cli-migration-routing.md) | 1 | L | verified | 2026-10-04 assay-verifier-app[bot] @ 5f5072d89b11 (claude-opus-5-5) | — |
-| 16 | [Migrate cellctl to Cobra commands and Viper configuration](brief-16-migrate-cellctl-to-cobra-commands-and-viper-configuration.md) | 2 | L | todo | — | — |
+| 16 | [Migrate cellctl to Cobra commands and Viper configuration](brief-16-migrate-cellctl-to-cobra-commands-and-viper-configuration.md) | 2 | L | implemented | — | — |
 | 17 | [Enforce complete Cobra and Viper adoption across the tool suite](brief-17-enforce-complete-cobra-and-viper-adoption-across-the-tool-suite.md) | 5 | L | todo | — | — |
 | 18 | [Migrate statusgen to Cobra and Viper](brief-18-migrate-statusgen-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 19 | [Migrate qualgen to Cobra and Viper](brief-19-migrate-qualgen-to-cobra-and-viper.md) | 3 | L | todo | — | — |
@@ -109,6 +109,8 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 52 | [Port the changelog and release check scripts](brief-52-port-the-changelog-and-release-check-scripts.md) | 3 | M | todo | — | — |
 | 53 | [Port the CI and regression floor scripts](brief-53-port-the-ci-and-regression-floor-scripts.md) | 3 | M | todo | — | — |
 | 54 | [Port the security control scripts](brief-54-port-the-security-control-scripts.md) | 4 | M | todo | — | — |
+| 55 | [Port the go-analysis adapter entrypoints](brief-55-port-the-go-analysis-adapter-entrypoints.md) | 3 | M | todo | — | — |
+| 56 | [Migrate deskperf to Cobra and Viper](brief-56-migrate-deskperf-to-cobra-and-viper.md) | 3 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -205,12 +207,12 @@ fixtures use local git repositories, local HTTP servers and fake CLI executables
   maintained-entrypoint inventory, and bounded migration briefs for all remaining tools.
 - **Wave 2 — /16:** cellctl reference migration, preserving launch/custody behavior while
   making root and nested help work offline without configuration or credentials.
-- **Wave 3 — /18–/28, /30–/53:** the migration children authored by /15, each depending
+- **Wave 3 — /18–/28, /30–/53, /55, /56:** the migration children authored by /15, each depending
   only on /16's reference adapter. One complex entrypoint per child (statusgen, qualgen,
   deskboard, deskdispatch, deskwt, deskfleet, desksupervise, deskapps, deskclose, deskpost,
   deskroster, the GitLab fleet provisioner) or at most five simple ones (guards, custody,
   transport, install, merge authority, writers, loops, comms, metrics, readers, release,
-  admin, standalone modules, lints, plugin scripts, changelog and CI scripts). Human-gated
+  admin, standalone modules, lints, plugin scripts, changelog and CI scripts, the go-analysis adapter, deskperf). Human-gated
   children: /25–/28, /30–/37, /42, /54 — each carries credentials, refusals or authority.
 - **Wave 4 — /29, /54:** /29 ports the assay-inbox launcher onto deskinbox after /45 migrates
   it; /54 adds token renewal to the GitLab command /30 creates.

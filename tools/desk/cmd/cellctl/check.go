@@ -54,6 +54,17 @@ func cmdCheck(cell, cfgArg string) {
 	if policy != nil && (c.Kind == "container" || c.Kind == "scrubbed") {
 		die("model policy requires a house or k8s cell")
 	}
+	// The cheap-default reset a boot runs first, applied read-only before any model row
+	// resolves, so the rows report what the next boot runs.
+	resetMoves, resetErr := c.pendingModelReset(c.Env.Get("CELL_PROVIDER"))
+	modelResetRows := func() {
+		if resetErr != nil {
+			k.chk(false, "model reset: cell.env %v", resetErr)
+		}
+		for _, m := range resetMoves {
+			k.warn("model reset pending: %s (the next boot writes it)", m.notice())
+		}
+	}
 
 	if c.Kind == "container" {
 		if cfgArg != "" {
@@ -70,6 +81,7 @@ func cmdCheck(cell, cfgArg string) {
 			fmt.Printf("[model] role=%s harness=%s model=%s\n", role, c.Harness, rm.Model)
 		}
 		c.checkCellDefaults(k)
+		modelResetRows()
 		// Every launch of a container cell refuses CELL_ROLE_CONTEXT, so its check must say so
 		// instead of passing: the row is a MISS and the exit is non-zero. The container's own
 		// check still runs. Nothing is printed for a cell that does not set the key.
@@ -85,6 +97,7 @@ func cmdCheck(cell, cfgArg string) {
 
 	fmt.Printf("[check] cell=%s dir=%s kind=%s forge=%s\n", c.Name, c.Dir, c.Kind, c.Forge)
 	c.checkCellDefaults(k)
+	modelResetRows()
 	// A scrubbed cell's whole point is that it never touches the operator's real config home —
 	// this row is n/a there (checkScrubbed proves the cell's OWN config home instead), unlike
 	// k8s/house where the cell's custody IS (a copy of, or a symlink to) that directory.
@@ -366,8 +379,20 @@ func (c *Cell) checkK8s(k *checker) {
 // installed, and the assay plugin is enabled for the checkout the windows will open in.
 func (c *Cell) checkHouse(k *checker, cfgArg string) {
 	k.chk(isGitCheckout(c.Repo), "cell.env CELL_REPO is a git checkout: %s", c.Repo)
-	link, _ := os.Readlink(c.Config)
-	k.chk(link == realConfigHome(c.Env), "config home linked to the operator's: %s -> %s", c.Config, realConfigHome(c.Env))
+	// Require an independent expected resource: one that is not cell-owned (the
+	// cell link under any spelling, or anything inside a cell home), the same
+	// test capture applies. Active desk-tool config must agree with it.
+	// Directory identity still permits relative links and alternate spellings.
+	real := realConfigHome(c.Env)
+	active := mustResolve(configHomeFor(runtime.GOOS, c.Env))
+	linkNode, nodeErr := os.Lstat(filepath.Clean(c.Config))
+	linked, linkErr := os.Stat(c.Config)
+	target, targetErr := os.Stat(real)
+	used, usedErr := os.Stat(active)
+	k.chk(nodeErr == nil && linkNode.Mode()&os.ModeSymlink != 0 &&
+		!cellOwnedConfig(real, c.Home, c.Config) && linkErr == nil && targetErr == nil && usedErr == nil &&
+		linked.IsDir() && target.IsDir() && os.SameFile(linked, target) && os.SameFile(used, target),
+		"config home linked to the operator's: %s -> %s", c.Config, real)
 	k.chk(exists(filepath.Join(c.Home, ".gitconfig")), "gitconfig linked: %s/.gitconfig", c.Home)
 	k.chk(exists(filepath.Join(c.Home, ghConfigRelPath)), "gh config linked: %s/.config/gh", c.Home)
 	k.chk(c.rosterParses(), "roster parses under the cell home: deskroster repos --scope scan")

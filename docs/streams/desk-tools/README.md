@@ -202,7 +202,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 20 | [Cross-repo triage/verify evidence binds to the remote — a sibling checkout must be cross-checked, not trusted as-is](brief-20-cross-repo-remote-verify.md) | 1 | S | done | 2026-09-06 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #556 @ b3294437716536ad815cf13b2b80490e7bf4a4df) |
 | 21 | [`DESK_TRACE` and cause-carrying errors — one subprocess runner, and a swallowed child's message reaches the operator on the first read](brief-21-desk-trace-and-cause-carrying-errors.md) | 1 | M | implemented | — | — |
 | 22 | [Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict](brief-22-trust-gate-account-liveness-notice.md) | 1 | M | done | 2026-09-16 verify-desk (desk-tools/22 dispatched verifier; 13/13 rows PASS; risk-values DERIVED x2, NAMED-NOT-DERIVED x2 filed assay#1242) | 2026-09-17 assay-reviewer-app[bot] (approved PR #1243 @ d156ff7d8e6cff02d849b652a9bb5075fd964cdf) |
-| 23 | [Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it](brief-23-usage-and-timing-telemetry.md) | 2 | M | todo | — | — |
+| 23 | [Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it](brief-23-usage-and-timing-telemetry.md) | 2 | M | implemented | — | — |
 | 24 | [Audit ledger — bounded tail read in `Guard`, no `desktoken` cache-reuse rows, daily rotation, and a `deskaudit tail` read verb](brief-24-audit-ledger-tail-read-and-rotation.md) | 2 | M | done | 2026-09-17 sonnet-5-verifier (14/14 rows PASS incl. SPOF equivalence + 10/10 mutation-caught; found+filed unrelated statusgen consumers bug assay#1296; risk-values DERIVED) | 2026-09-18 assay-reviewer-app[bot] (approved PR #1297 @ 08829451c27fb6a8f943349b8e9b78e8965e1541) |
 | 25 | [One token lookup per owner per process — a memo in front of the minter, and `desktoken` consulting its cache BEFORE it resolves the install id](brief-25-token-memo-and-cache-before-install-id.md) | 2 | M | done | 2026-09-18 sonnet-5-verifier (desk-tools/25 dispatched verifier; 18/19 rows checked-clean direct, 1 pre-existing unrelated drift filed separately; risk-values DERIVED) | 2026-09-19 assay-reviewer-app[bot] (approved PR #1315 @ 7d1c1e09e432ce88ced8b65151708d06702c1e8f) |
 | 26 | [`deskwt prune` — one origin/main walk per sweep, the merge gate before `Status()`, batched removal, a read-only `--dry-run`, and a prune singleton](brief-26-deskwt-prune-one-walk-and-a-lock.md) | 2 | M | implemented | — | — |
@@ -210,27 +210,40 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 28 | [Role-keyed verdict signing (deskverdict --key) + the R-7 clause-4 cross-repo scan-delta verify path](brief-28-deskverdict-role-keys-and-scan-delta-verify.md) | 1 | M | implemented | — | — |
 | 29 | [`verifyloop verdict --unsigned-out <file>` — compose the verdict-v1 payload with no key, so a fenced runner composes and the host signs](brief-29-verifyloop-unsigned-compose.md) | 1 | L | implemented | — | — |
 | 30 | [verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass](brief-30-verify-desk-landing-by-verdict-issue.md) | 1 | M | todo | — | — |
+| 31 | [The correctness lane carries a coverage contract — a named bug-class register every class of which is accounted in the verdict body (finding, checked-clean, n/a with a reason, or could-not-check)](brief-31-correctness-lane-coverage-contract.md) | 1 | M | implemented | — | — |
+| 33 | [An author's explicit disposition on a finding is final for the reviewer — accept it or escalate it once, never spend a round re-stating it](brief-33-author-disposition-finality.md) | 1 | S | todo | — | — |
+| 34 | [Pinned golangci-lint across every Go module](brief-34-pinned-golangci-lint-across-every-go-module.md) | 1 | M | todo | — | — |
+| 35 | [Go security analysis with gosec and govulncheck](brief-35-go-security-analysis-with-gosec-and-govulncheck.md) | 2 | L | todo | — | — |
+| 36 | [The scheduled board reconcile's PR class becomes generated output — auto-approve lane (default) or direct-CI single-writer, per the driver's ruling on #2688](brief-36-reconcile-generated-class.md) | 1 | S | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
-desk-tools/21 → desk-tools/23. That is the stream's only typed edge: brief 23's per-child
+desk-tools/21 → desk-tools/23. The original chain's dependency is: brief 23's per-child
 timing attaches to the ONE subprocess runner brief 21 delivers, so a second measurement is
 never written. desk-tools/27 carries none: its dispatch note asked for a prerequisite on a
 timing-record brief, and its Dependencies section records why that edge is not encoded —
 nothing in 27 reads a perf record and every one of its Verify rows is provable with the shell's
 own timer, which is how its baselines were taken. Every other brief is
-independent and self-contained. The soft ordering their
+independent and self-contained except the analysis rollout below. The soft ordering their
 source streams carried (a version-scheme brief ahead of 01, the drain engine ahead of 02, a set
 of risk-path briefs ahead of 03, the verdict payload/row-classes ahead of 04) is satisfied by
-work already landed outside this stream, so 21 → 23 is the only typed `depends:` edge in the
-stream — see each brief's Dependencies note.
+work already landed outside this stream; see each brief's Dependencies note.
+
+The Go analysis rollout is **desk-tools/34 → desk-tools/35**: first land verified tool
+acquisition, discovery and correctness lint; then reuse that runner for gosec/govulncheck and qualgen reporting. Both gates ratchet over
+reviewed finding-level debt; old code is not subject to a wholesale cleanup before rollout.
+The first step is proving the pinned acquisition route works on CI's runner, whose documented
+network constraints rule out assuming a GitHub release-asset download. Each implementation
+includes a human-applied workflow commit; a local pass does not satisfy deployed CI evidence.
+These new briefs carry the scope left by closed-unmerged PR #2535 and the selections merged
+in PR #2620. They do not mark desk-tools/32 implemented or resurrect its closed branch.
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
-- **Wave 2** — desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
+- **Wave 2** — desk-tools/35 (depends on desk-tools/34), desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
   present in the tree; the brief is dispatchable now), desk-tools/24 (no typed dependency —
   it is wave 2 because it reshapes the same ledger brief 23 reads the growth figures from, and
   the two are cleaner landed in sequence than in parallel), desk-tools/25 (no `depends:` edge
@@ -240,7 +253,7 @@ stream — see each brief's Dependencies note.
   destructive verb in `cmd/deskwt`, so it is kept out of the first wave's parallel band rather
   than made to wait on anything), and desk-tools/27 (no typed prerequisite — every deliverable
   and every Verify row in 27 is implementable and provable with the shell's own timer, which is
-  how its baselines were taken). All five are dispatchable now.
+  how its baselines were taken). Legacy briefs 23–27 are dispatchable now; brief 35 waits for 34.
   <!-- graph: not-a-gate -->
 
 ## Design notes

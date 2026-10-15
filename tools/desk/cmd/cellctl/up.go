@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 )
 
 // upOverrides are the values `role_cmd` threads onto every role's own `cellctl desk`
@@ -24,6 +26,7 @@ type upOverrides struct {
 	Cadence     string
 	TickBudget  string
 	roleCadence map[string]*cadenceOptions // resolved per role, including mixed-harness policies
+	roleHarness map[string]string
 	// Cockpit is the cockpit `up` RESOLVED (never `auto`), threaded onto every window so each
 	// exports the same ASSAY_COCKPIT as the surface it was opened in — even when `up --cockpit`
 	// overrode cell.env for this run only.
@@ -100,7 +103,13 @@ func (c *Cell) roleCmdIn(sh paneShell, self, role, cfg string, o upOverrides) st
 	}
 	out := sh.invoke(sh.quote(self))
 	root, name := c.reenter()
-	if cadence != nil || o.Cadence != "" {
+	harness := o.Harness
+	if resolved, ok := o.roleHarness[role]; ok {
+		harness = resolved
+	} else if harness == "" {
+		harness = c.Harness
+	}
+	if cadence != nil || o.Cadence != "" || harness == "codex" {
 		out += " --cells-root " + sh.quote(root)
 	}
 	out += " desk " + sh.quote(name) + " " + sh.quote(role)
@@ -152,8 +161,10 @@ func selfPath() string {
 	return p
 }
 
-// firstWindow decides the window that is NOT a role: the deskd watcher, the deskd itself, or (on
-// a cell with no deskd) a line saying so.
+// firstWindow decides the window that is NOT a role: the deskd watcher or the deskd itself. A cell
+// with no deskd (DESKD is not 1 — the house default) has NO such window — name and cmd come back empty,
+// the one-line "no deskd" note goes to up's own stderr exactly once, and every cockpit opens only
+// the role windows (tmux creates its session with the first role window instead).
 //
 // STANDING deskd FROM `up` — the attended affirmation, and how far it carries. `cellctl deskd`
 // stands live cross-org reads and so refuses without CELL_ATTENDED=1: the affirmation is the
@@ -172,7 +183,8 @@ func selfPath() string {
 func (c *Cell) firstWindow(sh paneShell) (name, cmd string) {
 	switch {
 	case c.Deskd != "1":
-		return "cell", sh.echo(fmt.Sprintf("[cell] %s is a %s cell with no deskd (DESKD=1 in cell.env to stand one)", c.Name, c.Kind))
+		fmt.Fprintf(os.Stderr, "[cell] %s is a %s cell with no deskd (DESKD=1 in cell.env to stand one)\n", c.Name, c.Kind)
+		return "", ""
 	case c.deskdUp():
 		return "deskd", deskdWatchCmd(sh, c.DeskdAddr)
 	case isTTY(os.Stdin) || c.Env.GetOr("CELL_ATTENDED", "0") == "1":
@@ -222,15 +234,22 @@ func deskdHandStart(sh paneShell, cell string) string {
 	return "CELL_ATTENDED=1 cellctl deskd " + cell
 }
 
-func cmdUp(cell string, args []string) {
-	kindOverride := prescanKindOverride(args)
-	c := loadCellWithKind(cell, kindOverride)
-
+func cmdUp(c *Cell, v *cli.Values, cfgIn string) {
+	if c.Kind == "container" || c.Kind == "scrubbed" {
+		// Container and scrubbed cells run exactly one desk, and `up` hands it the typed desk
+		// options. The host-cockpit flags have no meaning there, and desk has always refused them
+		// by name — keep that refusal where it was, now stated for the flags up declares.
+		for _, hostOnly := range []string{"no-the-desk", "with-the-desk", "no-attach", "automate"} {
+			if v.Source(hostOnly) == cli.Flag {
+				die("desk: unknown flag --%s", hostOnly)
+			}
+		}
+	}
 	if c.Kind == "container" {
 		if strings.Join(c.Roles, " ") != "the-desk" {
 			die("container up currently requires ROLES=the-desk; use desk for explicit roles")
 		}
-		cmdDesk(c.Name, append([]string{"the-desk"}, args...))
+		cmdDesk(c, "the-desk", deskInputsFrom(v, cfgIn))
 		return
 	}
 	if c.Kind == "scrubbed" {
@@ -245,45 +264,20 @@ func cmdUp(cell string, args []string) {
 		if len(c.Roles) > 0 {
 			first = c.Roles[0]
 		}
-		cmdDesk(c.Name, append([]string{first}, args...))
+		cmdDesk(c, first, deskInputsFrom(v, cfgIn))
 		return
 	}
 
-	noTheDesk, attach, persist := false, true, false
-	cfgIn, cockpitFlag, automate := "", "", ""
+	noTheDesk, attach, persist := v.Bool("no-the-desk"), !v.Bool("no-attach"), v.Bool("set")
+	cockpitFlag, automate := v.String("cockpit"), v.String("automate")
 	var o upOverrides
-	for i := 0; i < len(args); i++ {
-		switch a := args[i]; a {
-		case "--no-the-desk":
-			noTheDesk = true
-		case "--with-the-desk":
-		case "--no-attach":
-			attach = false
-		case "--cockpit":
-			cockpitFlag = needFlagValue(args, &i, "--cockpit needs a value (auto|tmux|herdr|orca)")
-		case "--automate":
-			automate = needFlagValue(args, &i, "--automate needs a trigger (a 5-field cron string or a preset)")
-		case "--cadence":
-			o.Cadence = needFlagValue(args, &i, "--cadence needs a duration or off")
-		case "--tick-budget":
-			o.TickBudget = needFlagValue(args, &i, "--tick-budget needs a duration")
-		case "--model":
-			o.Model = needFlagValue(args, &i, "--model needs a value")
-		case "--provider":
-			o.Provider = needFlagValue(args, &i, "--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)")
-		case "--harness":
-			o.Harness = needFlagValue(args, &i, "--harness needs a value (claude|codex)")
-		case "--kind":
-			i++ // consumed by prescanKindOverride above
-		case "--set":
-			persist = true
-		default:
-			if strings.HasPrefix(a, "--") {
-				die("up: unknown flag %s", a)
-			}
-			cfgIn = a
-		}
-	}
+	// Only what was GIVEN by flag is threaded onto each role window's own `desk` command line;
+	// the cell.env pins are re-read by that desk, so they are not copied here.
+	o.Cadence = flagOnly(v, "cadence")
+	o.TickBudget = flagOnly(v, "tick-budget")
+	o.Model = flagOnly(v, "model")
+	o.Provider = v.String("provider")
+	o.Harness = v.String("harness")
 	if o.Harness != "" && !valueIn(o.Harness, harnessValues) {
 		die("up: --harness must be claude or codex, got '%s'", o.Harness)
 	}
@@ -297,14 +291,8 @@ func cmdUp(cell string, args []string) {
 	if effectiveHarness == "" {
 		effectiveHarness = c.Harness
 	}
-	cadence := o.Cadence
-	if cadence == "" {
-		cadence = c.Env.Get("CELL_CADENCE")
-	}
-	budget := o.TickBudget
-	if budget == "" {
-		budget = c.Env.Get("CELL_TICK_BUDGET")
-	}
+	cadence := v.String("cadence")
+	budget := v.String("tick-budget")
 	if effectiveHarness == "cursor" && cfgIn != "" {
 		die("cursor does not accept a Claude config directory")
 	}
@@ -357,8 +345,9 @@ func cmdUp(cell string, args []string) {
 		}
 	}
 	// Resolve the cadence with each role's actual harness, not the cell-wide fallback.
-	// In a mixed policy, defaulting Codex must not schedule the Claude roles too.
+	// No harness implies a schedule; an explicit cadence retains its per-role route.
 	o.roleCadence = make(map[string]*cadenceOptions, len(roles))
+	o.roleHarness = make(map[string]string, len(roles))
 	for _, role := range roles {
 		harness := effectiveHarness
 		if _, err := c.deskCommsEnv(role, nil); err != nil {
@@ -381,6 +370,7 @@ func cmdUp(cell string, args []string) {
 		} else if rc != nil && automate != "" {
 			die("up: --automate cannot apply the role context declared for %s; use live desk windows", role)
 		}
+		o.roleHarness[role] = harness
 		o.roleCadence[role] = resolveDeskCadence(c.Kind, harness, cadence, budget)
 		if automate != "" && (o.roleCadence[role] != nil || harness != "claude") {
 			die("up: --automate cannot preserve this cell launch; use --cadence with cockpit terminals")
@@ -428,11 +418,27 @@ func cmdUp(cell string, args []string) {
 		}
 	}
 
+	// The reconcile preflight (#2880): every role's and the comms service's stale state is
+	// inventoried by pid and start time BEFORE anything launches, and on a terminal cleared on one
+	// confirmation; otherwise the refusal carries the whole inventory and the exact commands.
+	if c.Kind == "house" {
+		commsCfg, cfgErr := c.loadDeskComms()
+		if cfgErr != nil {
+			commsCfg = nil // commsPreflight below refuses the configuration in its own words
+		}
+		c.reconcilePreflight("up", roles, commsCfg, c.Env.Get("DRY_RUN") == "1", "")
+	}
 	o.Comms, err = c.commsPreflight()
 	if err != nil {
 		die("up comms: %v; no windows launched", err)
 	}
 	firstName, firstCmd := c.firstWindow(paneShellFor(runtime.GOOS, res.Cockpit))
+	if firstName == "" && len(roles) == 0 && automate == "" && !o.Comms {
+		// Nothing to open is not an error (the operator asked for --no-the-desk on a cell whose only
+		// role is the-desk), but it is never silent, and no empty session is created for it.
+		fmt.Fprintf(os.Stderr, "[cell] %s: nothing to open — no deskd window (DESKD is not 1), no comms window, and no role window (ROLES is empty after --no-the-desk)\n", c.Name)
+		return
+	}
 
 	if c.Env.Get("DRY_RUN") == "1" {
 		kindShown := c.Kind
@@ -457,7 +463,9 @@ func cmdUp(cell string, args []string) {
 		if o.Comms {
 			fmt.Printf("[dry-run] comms: %s\n", c.commsCmdIn(paneShellFor(runtime.GOOS, res.Cockpit), selfPath()))
 		}
-		fmt.Printf("[dry-run] %s: %s\n", firstName, firstCmd)
+		if firstName != "" {
+			fmt.Printf("[dry-run] %s: %s\n", firstName, firstCmd)
+		}
 		for _, r := range roles {
 			if automate != "" {
 				fmt.Printf("[dry-run] %s: orca automations create --name %s-%s --repo path:%s --trigger '%s' --precheck '%s check %s' --provider claude --prompt /assay:%s\n",
@@ -503,8 +511,13 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 		}
 		return
 	}
-	_ = exec.Command("tmux", "new-session", "-d", "-s", c.Session, "-n", firstName, "-c", c.Dir,
-		firstCmd+"; echo '["+firstName+"] exited'; exec $SHELL").Run()
+	// The order is fixed — the deskd window, then comms, then the roles — and whichever window
+	// comes first creates the session. A cell with no deskd gets no placeholder pane to hold the
+	// session open: comms creates it when configured (openCommsSurface), else the first role window.
+	if firstName != "" {
+		_ = exec.Command("tmux", "new-session", "-d", "-s", c.Session, "-n", firstName, "-c", c.Dir,
+			firstCmd+"; echo '["+firstName+"] exited'; exec $SHELL").Run()
+	}
 	if o.Comms {
 		if err := c.startComms("tmux"); err != nil {
 			die("up comms: %v", err)
@@ -518,14 +531,18 @@ func (c *Cell) upTmux(cfg string, roles []string, attach bool, firstName, firstC
 		case "the-desk":
 			name = "the-desk"
 		}
-		_ = exec.Command("tmux", "new-window", "-t", c.Session, "-n", name, "-c", c.Dir,
-			c.paneRoleCmd(role, cfg, o)+"; echo '["+role+"] exited'; exec $SHELL").Run()
+		verb := []string{"new-window", "-t", c.Session}
+		if exec.Command("tmux", "has-session", "-t", c.Session).Run() != nil {
+			verb = []string{"new-session", "-d", "-s", c.Session}
+		}
+		_ = exec.Command("tmux", append(verb, "-n", name, "-c", c.Dir,
+			c.paneRoleCmd(role, cfg, o)+"; echo '["+role+"] exited'; exec $SHELL")...).Run()
 		// Stagger the windows: each one fetches the shared .git, and starting them at once puts
 		// every window into the fetch lock's retry loop at the same moment.
 		time.Sleep(2 * time.Second)
 	}
 	_ = exec.Command("tmux", "select-window", "-t", c.Session+":the-desk").Run()
-	fmt.Printf("[cell] %s up: %s +%s (config=%s)\n", c.Session, firstName, strings.Join(roles, " "), cfg)
+	fmt.Printf("[cell] %s up: %s (config=%s)\n", c.Session, upWindowList(firstName, "", roles), cfg)
 	fmt.Printf("[cell] attach: tmux attach -t %s   ·   down: cellctl down %s\n", c.Session, c.Name)
 	if attach {
 		runForeground([]string{"tmux", "attach", "-t", c.Session}, os.Environ(), "")
@@ -549,12 +566,14 @@ func (c *Cell) upHerdr(cfg string, roles []string, firstName, firstCmd string, o
 	if !helpHas("list", "herdr", "workspace") {
 		die("herdr is the resolved cockpit but this build's 'herdr workspace --help' advertises no 'list' — cannot tell whether a herdr window is already open to host the role tabs; re-run with --cockpit tmux")
 	}
-	newWsID, newDefaultTab := "", ""
-	if herdrWindowID() == "" {
-		newWsID, newDefaultTab = c.herdrStartWindow(c.Name + "-" + firstName)
-		fmt.Println("[cell] no herdr window was open — started one")
+	w, err := c.ensureHerdrWorkspace()
+	if err != nil {
+		die("herdr workspace: %v", err)
 	}
-	c.herdrWindow(c.Name+"-"+firstName, firstCmd, newWsID)
+	newWsID, newDefaultTab := w.ID, w.DefaultTab
+	if firstName != "" {
+		c.herdrWindow(c.Name+"-"+firstName, firstCmd, newWsID)
+	}
 	for _, role := range roles {
 		c.herdrWindow(c.Name+"-"+role, c.paneRoleCmd(role, cfg, o), newWsID)
 		time.Sleep(2 * time.Second)
@@ -563,56 +582,12 @@ func (c *Cell) upHerdr(cfg string, roles []string, firstName, firstCmd string, o
 	// workspace holds the cell's own labelled tabs too. Closing it any earlier (before the
 	// workspace holds a second tab) closes the whole workspace with it.
 	if newDefaultTab != "" {
-		_ = exec.Command("herdr", "tab", "close", newDefaultTab).Run()
+		if err := c.dropHerdrDefault(w); err != nil {
+			die("Herdr default tab: %v", err)
+		}
 	}
-	fmt.Printf("[cell] %s up in herdr: %s-%s +%s (config=%s)\n", c.Name, c.Name, firstName, strings.Join(roles, " "), cfg)
+	fmt.Printf("[cell] %s up in herdr: %s (config=%s)\n", c.Name, upWindowList(firstName, c.Name+"-", roles), cfg)
 	fmt.Printf("[cell] each window is the tab labelled <cell>-<role>   ·   down: cellctl down %s\n", c.Name)
-}
-
-func herdrWindowID() string {
-	out, err := exec.Command("herdr", "workspace", "list").Output()
-	if err != nil {
-		return ""
-	}
-	var d struct {
-		Result struct {
-			Workspaces []struct {
-				WorkspaceID string `json:"workspace_id"`
-			} `json:"workspaces"`
-		} `json:"result"`
-	}
-	if json.Unmarshal(out, &d) != nil || len(d.Result.Workspaces) == 0 {
-		return ""
-	}
-	return d.Result.Workspaces[0].WorkspaceID
-}
-
-// herdrStartWindow brings up a herdr window (a "workspace") when none was open — the same
-// create-if-absent shape as the tmux arm's `has-session || new-session`. It FAILS CLOSED,
-// naming herdr and the exact command tried, rather than leaving the tabs nowhere to land.
-func (c *Cell) herdrStartWindow(label string) (wsID, defaultTab string) {
-	if !helpHas("create", "herdr", "workspace") {
-		die("herdr is the resolved cockpit but no herdr window is open and this build's 'herdr workspace --help' advertises no 'create' — nothing can bring one up to host the role tabs (tried: herdr workspace create --label %s); re-run with --cockpit tmux", label)
-	}
-	out, err := exec.Command("herdr", "workspace", "create", "--label", label).CombinedOutput()
-	if err != nil {
-		die("herdr is the resolved cockpit but no herdr window is open and 'herdr workspace create --label %s' failed to bring one up: %s; re-run with --cockpit tmux", label, strings.TrimSpace(string(out)))
-	}
-	var d struct {
-		Result struct {
-			Workspace struct {
-				WorkspaceID string `json:"workspace_id"`
-			} `json:"workspace"`
-			Tab struct {
-				TabID string `json:"tab_id"`
-			} `json:"tab"`
-		} `json:"result"`
-	}
-	_ = json.Unmarshal(out, &d)
-	if d.Result.Workspace.WorkspaceID == "" {
-		die("herdr is the resolved cockpit but 'herdr workspace create --label %s' did not return a workspace_id — nothing can host the role tabs: %s; re-run with --cockpit tmux", label, strings.TrimSpace(string(out)))
-	}
-	return d.Result.Workspace.WorkspaceID, d.Result.Tab.TabID
 }
 
 func (c *Cell) herdrWindow(label, cmd, wsID string) {
@@ -701,8 +676,19 @@ func (c *Cell) upOrca(cfg string, roles []string, automate, firstCmd string, o u
 		time.Sleep(2 * time.Second)
 	}
 	fmt.Printf("[cell] %s up in orca: one terminal per role (%s), config=%s\n", c.Name, strings.Join(roles, " "), cfg)
-	fmt.Printf("[cell] the first window's command is not opened in orca — run it yourself if you want it: %s\n", firstCmd)
+	if firstCmd != "" {
+		fmt.Printf("[cell] the first window's command is not opened in orca — run it yourself if you want it: %s\n", firstCmd)
+	}
 	fmt.Printf("[cell] down: cellctl down %s\n", c.Name)
+}
+
+// upWindowList is the summary line's window list: "<prefix><first> +<roles>" when there is a
+// first (deskd) window, else the role windows alone — a cell with no deskd names no first window.
+func upWindowList(firstName, prefix string, roles []string) string {
+	if firstName == "" {
+		return strings.Join(roles, " ")
+	}
+	return prefix + firstName + " +" + strings.Join(roles, " ")
 }
 
 func orcaTerminalVerb() (string, bool) {

@@ -31,6 +31,14 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 	if err != nil {
 		return nil, err
 	}
+	claudeConfig, err := claudeConfigDirFor(runtime.GOOS, c.Env)
+	if err != nil {
+		return nil, err
+	}
+	operatorConfig, err := captureOperatorConfig(c.Env, c.Home, c.Config)
+	if err != nil {
+		return nil, err
+	}
 	values := map[string]string{
 		"HOME":              c.Home,
 		"USERPROFILE":       c.Home,
@@ -38,14 +46,23 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 		"ASSAY_CONFIG_HOME": c.Config,
 		"CODEX_HOME":        codexHome,
 		"GH_CONFIG_DIR":     ghConfig,
+		// Rechecks may include Claude routes even from a Codex desk. Resolve
+		// before HOME changes, just like the other operator resource paths.
+		"CLAUDE_CONFIG_DIR": claudeConfig,
 		"PATH":              filepath.Join(c.Dir, "bin") + string(filepath.ListSeparator) + deskToolsBin(c.Env) + string(filepath.ListSeparator) + c.Env.Get("PATH"),
 		// Noninteractive Bash reads BASH_ENV even without login semantics.
 		"BASH_ENV": "",
 		"ENV":      "",
 	}
+	// Record the operator context only when capture found an operator-side
+	// resource. From an already cell-scoped parent it stays unset, and the house
+	// check then refuses the cell link compared with itself.
+	if operatorConfig != "" {
+		values[operatorConfigKey] = operatorConfig
+	}
 	// Forward only named non-secret launch context. Values are config overrides
 	// on argv, so copying the entire environment here would disclose credentials.
-	for _, key := range []string{"GOCACHE", "GOMODCACHE", "GOPATH", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION"} {
+	for _, key := range []string{"CLAUDE_CONFIG_DIR", "GOCACHE", "GOMODCACHE", "GOPATH", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION"} {
 		for _, kv := range env {
 			k, value, ok := strings.Cut(kv, "=")
 			if ok && strings.EqualFold(k, key) {
@@ -102,4 +119,17 @@ func codexBashPath() (string, error) {
 		return "", fmt.Errorf("Codex desk commands require Bash on this platform: %w", err)
 	}
 	return filepath.Abs(path)
+}
+
+// Native Goal tools own persisted state and continuation. A launch prompt is a
+// request, not a receipt: require tool readback before claiming a standing desk.
+// Keep this wrapper out of explicit cadence, smoke and non-desk invocations.
+func codexStandingPrompt(role, prompt string) string {
+	objective := fmt.Sprintf("Run assay:%s as a standing desk: keep handling its authorized queue across turns until the user stops, pauses, or changes this assignment.", role)
+	return fmt.Sprintf(`Before invoking the desk skill, establish its native Codex Goal. The user explicitly requests this standing objective: %q
+Call get_goal first. Only if no Goal exists, call create_goal with that exact objective and omit token_budget, then call get_goal again. Verify the returned objective and active status; report the actual readback, not a promise to continue. If a Goal already exists, preserve its objective, status, budget, and usage: do not replace, reset, resume, or reactivate it. Continue this bootstrap only if the existing Goal is active and has the exact requested objective; otherwise report the existing state and wait for user direction before starting the desk.
+If native Goal tools are unavailable, creation fails, or readback cannot confirm the active objective, report could-not-check: standing Goal not established, and wait for user direction. Do not substitute a prose promise or a headless loop.
+An inactive Goal gates standing desk continuation, not separately authorized corrective work. When the user asks to correct a problem and resume, complete the authorized correction first, then call get_goal again; do not ask for the same correction permission twice. Keep stop flags, guard refusals, approvals, isolation and protected-action boundaries authoritative. A plain-language resume request is authorization, not evidence that native status changed. If readback is still inactive and no native resume tool is available, give the user the exact /goal resume control and explain that the available Goal tools cannot reactivate it. Do not call update_goal with an unsupported active status, recreate the Goal, or claim resumption before matching active readback.
+Once verified, invoke the skill below. A completed batch, ordinary final response, or empty queue does not complete this standing objective. Continue authorized desk work across native Goal turns, using the skill's idle and stop rules. Human steering, pause/clear, stop flags, approvals, and protected-action boundaries remain authoritative; do not resume or recreate a Goal after the user pauses or clears it. Native continuation is not a durable timer or a guarantee of permanent service.
+%s`, objective, prompt)
 }

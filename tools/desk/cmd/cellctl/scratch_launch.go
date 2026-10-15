@@ -48,6 +48,7 @@ func (c *Cell) beginScratch(role string, env []string) (*scratchLaunch, []string
 	if err != nil {
 		return nil, env, err
 	}
+	s.Label(c.Name, role)
 	report, err := s.Sweep(policy, true)
 	if err != nil {
 		s.Close()

@@ -39,10 +39,13 @@ findings-register state machine.
 | 12 | [`homed-in: <owner/repo>` brief field — exclude a brief whose deliverable lives in another repo from THIS board's Next-up, keep its tracking row, carry the target repo](brief-12-homed-in-field.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #404 @ 894d5e5f73ce417aa49c55134d10db3dc3675cfb) |
 | 13 | [Cadenced roadmap artifacts — `--cadence weekly\|monthly` window computation reusing the roadmap renderer, a `theme:` render rule, config-driven priority order and brand](brief-13-cadenced-roadmap-artifacts.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #409 @ 3b022c17ea158700be8cfab679d1719c75afb7a4) |
 | 14 | [`--lint`: flag a Verify row whose `go test -run` selector can pass on "no tests to run" (vacuous-selector rule)](brief-14-vacuous-gotest-run-lint.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 43420f7ecd74 (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1659 @ f0355f1b57794105b59a1408522a44c7de59eb93) |
-| 15 | [Extract canonical eligibility and coverage evaluation API](brief-15-extract-canonical-eligibility-and-coverage-evaluation-api.md) | 1 | L | todo | — | — |
+| 15 | [Extract canonical eligibility and coverage evaluation API](brief-15-extract-canonical-eligibility-and-coverage-evaluation-api.md) | 1 | L | implemented | — | — |
 | 16 | [Hold an issue out of dispatch when a non-human removed its excluded label: both scanners hold the placeholder, the issue board holds the un-briefed row](brief-16-label-removal-hold.md) | 1 | L | todo | — | — |
 | 17 | [`--scan-issues`: a `risk:high` label derives `gate: human` on the issue's placeholder (`risk:med` does not)](brief-17-risk-high-label-gate.md) | 1 | S | implemented | — | — |
 | 18 | [`--scan-issues`: print a notice when an open issue derives `gate: human` and its placeholder reads `gate: model` (detect only, no write)](brief-18-gate-mismatch-notice.md) | 2 | S | todo | — | — |
+| 19 | [Context handoff contracts and synthetic fixtures](brief-19-context-handoff-contracts.md) | 1 | M | implemented | — | — |
+| 20 | [Offline future-state resolver with receipt and amendment validation](brief-20-offline-context-resolver.md) | 2 | L | todo | — | — |
+| 21 | [Author skills consume the shared context handoff](brief-21-author-skill-handoff.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -57,14 +60,19 @@ statusgen/17 (`risk:high` gates a placeholder at first write) → statusgen/18 (
 for a placeholder whose gate the issue has outgrown): 18 reports on every label and title word
 that derives `human`, the label 17 adds among them, and extends the skill sentence 17 writes,
 so 17 leads 18.
+statusgen/19 (context handoff contracts) → statusgen/20 (offline resolver with receipt and
+amendment validation) → statusgen/21 (author skills consume the handoff): the resolver
+produces the 19 records and the skills may call only the shipped 20 verb, so 19 leads 20
+leads 21. statusgen/19 has no prerequisite and heads this chain.
 Every other brief is independent and self-contained.
 
 ## Dependency waves
 - **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06,
   statusgen/07, statusgen/09, statusgen/10, statusgen/11, statusgen/12, statusgen/13,
-  statusgen/14, statusgen/15 (all independent; parallelizable).
+  statusgen/14, statusgen/15, statusgen/19 (all independent; parallelizable).
 - **Wave 2** — statusgen/03 (depends on statusgen/02), statusgen/08 (depends on statusgen/07),
-  statusgen/18 (depends on statusgen/17).
+  statusgen/18 (depends on statusgen/17), statusgen/20 (depends on statusgen/19).
+- **Wave 3** — statusgen/21 (depends on statusgen/20).
 
 ## Conventions
 - `statusgen --lint-audit` reports 30-day per-rule firing counts; COLD (0-firing,
@@ -76,3 +84,14 @@ Every other brief is independent and self-contained.
 New work: `statusgen/15` extracts the evaluation API independently of forge reads.
 `graph-execution/19` consumes it; no workflow-store dependency flows back into extraction.
 See [the component contract](../../library-first.md). Existing completed history is unchanged.
+
+## Non-CI architecture reconciliation — 2026-10-13
+
+The maintainer ratified the non-CI verifier target (medici-finance/assay#2500, revision
+23f655f5d); approval activates nothing. This stream owns the delivery-sequence step-2 package
+(shared context handoff and authoring support): `statusgen/19` contracts, `statusgen/20`
+resolver and receipt/amendment validation, `statusgen/21` skill integration with release and
+adoption notes. Until 20 ships and is pinned, the bounded manual bootstrap packet remains the
+documented path. Owner rows for every package: the
+[amendment manifest](../../proposals/non-ci-architecture/20-amendment-manifest.md).
+Existing completed history is unchanged.

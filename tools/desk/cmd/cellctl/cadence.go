@@ -19,12 +19,9 @@ import (
 
 type cadenceOptions struct{ Interval, Budget time.Duration }
 
-// Defaults apply only after the role's model policy has selected its harness.
-// Explicit durations and "off" retain precedence; other harnesses/kinds are unchanged.
+// Cadence is opt-in for every harness. Keep resolution after model policy so
+// explicit schedules retain the same per-role launch path.
 func resolveDeskCadence(kind, harness, interval, budget string) *cadenceOptions {
-	if kind == "house" && harness == "codex" && interval == "" {
-		interval = "5m"
-	}
 	return resolveCadence(kind, interval, budget)
 }
 
@@ -75,7 +72,8 @@ func (c *Cell) runInteractiveHarness(role string, argv, env []string, wt string)
 			}
 		}
 		childArgs := scratchArgv(harness, argv, childEnv)
-		code, uncertain, err = cellprocess.RunInteractiveObserved(child, childArgs, childEnv, wt, os.Stdin, interactiveOutput(os.Stdout, scratch.tail), interactiveOutput(os.Stderr, scratch.tail), scratch.run.Started)
+		code, uncertain, err = cellprocess.RunInteractiveObserved(child, childArgs, childEnv, wt, os.Stdin, interactiveOutput(os.Stdout, scratch.tail), interactiveOutput(os.Stderr, scratch.tail), c.childStarted(scratch))
+		c.recordRoleChild(0)
 		result := cellcadence.Result{ExitCode: code, Uncertain: uncertain, Err: err}
 		scratch.finish(&result)
 		return result
@@ -119,6 +117,24 @@ func (c *Cell) runCadencedHarness(role, harness string, argv, env []string, wt s
 	}
 }
 
+// childStarted records a pass's role child on the role lease, then in the scratch
+// record. The lease record is what lets a blocked sibling launch tell a holder
+// with a live role session (current) from one whose child has exited (stale).
+func (c *Cell) childStarted(scratch *scratchLaunch) func(int) error {
+	return func(pid int) error {
+		c.recordRoleChild(pid)
+		return scratch.run.Started(pid)
+	}
+}
+
+// recordRoleChild is diagnostic evidence only: a failed write leaves the holder
+// reading as current or unknown, never as stale, so it is safe to ignore.
+func (c *Cell) recordRoleChild(pid int) {
+	if c.cadenceLease != nil {
+		_ = c.cadenceLease.RecordChild(pid)
+	}
+}
+
 func (c *Cell) cadenceGuard(role string) error {
 	for _, p := range []string{filepath.Join(c.cadenceDir(role), "STOP"), filepath.Join(c.Config, "DISABLED"), filepath.Join(c.Config, "STOP"), filepath.Join(c.Config, "STOP."+role)} {
 		_, err := os.Lstat(p)
@@ -156,7 +172,8 @@ func (c *Cell) executeCadencePass(ctx context.Context, role, harness string, arg
 		f.Close()
 		runArgs = append(runArgs[:len(runArgs)-1], "--output-last-message", resultFile, runArgs[len(runArgs)-1])
 	}
-	exit, uncertain, err := cellprocess.RunObserved(ctx, runArgs, env, wt, io.MultiWriter(os.Stdout, out, scratch.tail), io.MultiWriter(os.Stderr, scratch.tail), scratch.run.Started)
+	exit, uncertain, err := cellprocess.RunObserved(ctx, runArgs, env, wt, io.MultiWriter(os.Stdout, out, scratch.tail), io.MultiWriter(os.Stderr, scratch.tail), c.childStarted(scratch))
+	c.recordRoleChild(0)
 	result = cellcadence.Result{Outcome: "could-not-check", ExitCode: exit, Uncertain: uncertain, Err: err}
 	if err != nil || exit != 0 || uncertain {
 		return result
@@ -262,26 +279,36 @@ func cmdCadence(cell string, args []string) {
 			if action == "recover" && !confirmed {
 				die("cadence recover requires --confirm-stopped after checking that the prior harness and all its children have stopped")
 			}
-			lease, err := cellcadence.Acquire(dir)
-			if err != nil {
-				die("cadence: cannot change active role: %v", err)
+			if err := c.clearCadence(role, action == "recover"); err != nil {
+				die("%v", err)
 			}
-			func() {
-				defer lease.Close()
-				if action == "recover" {
-					if err := os.Remove(filepath.Join(dir, "checkpoint.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
-						die("cadence recover: %v", err)
-					}
-				}
-				if err := os.Remove(filepath.Join(dir, "STOP")); err != nil && !errors.Is(err, os.ErrNotExist) {
-					die("cadence resume: %v", err)
-				}
-			}()
 			fmt.Printf("[cadence] %s %s recorded; start the role to run it\n", role, action)
 		default:
 			die("cadence: unknown action %q", action)
 		}
 	}
+}
+
+// clearCadence is `cadence resume` and, with recover, `cadence recover --confirm-stopped`: the
+// one code path that clears a role's retained checkpoint under its lease. The caller has
+// established that the prior harness and all its children have stopped — the operator's word on
+// the CLI, or the reconcile preflight's pid-and-start-time evidence.
+func (c *Cell) clearCadence(role string, recover bool) error {
+	dir := c.cadenceDir(role)
+	lease, err := cellcadence.Acquire(dir)
+	if err != nil {
+		return fmt.Errorf("cadence: cannot change active role: %w", err)
+	}
+	defer lease.Close()
+	if recover {
+		if err := os.Remove(filepath.Join(dir, "checkpoint.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("cadence recover: %w", err)
+		}
+	}
+	if err := os.Remove(filepath.Join(dir, "STOP")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("cadence resume: %w", err)
+	}
+	return nil
 }
 
 func (c *Cell) printCadenceStatus(role string) {

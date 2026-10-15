@@ -1,0 +1,87 @@
+# gremlins-daily — a daily Gremlins mutation sweep over the desk tools' muhar-spec
+# packages. DISCOVERY, NEVER A GATE: surviving mutants are written to the job summary
+# and the artifact as leads, and the job never fails on them. It fails only when the
+# sweep itself broke (tools/gremlins/run.sh exits 2: install or pin check failed,
+# Gremlins failed, a package's tests are red in the mutant copy layout, or no package
+# produced evidence). See tools/gremlins/README.md.
+#
+# Staged, not live: a maintainer promotes it to .github/workflows/gremlins-daily.yml.
+name: gremlins-daily
+
+on:
+  schedule:
+    # Off the hour, and clear of truth-suite's 06:17 run.
+    - cron: "43 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gremlins-daily
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.27.2"
+
+jobs:
+  sweep:
+    runs-on: medici-builder-public
+    # Per-package budgets sum to 70 minutes (run.sh DEFAULT_PACKAGES); the rest is
+    # install, dry runs and copy probes. A hang still ends here.
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The job runs a third-party binary and mutated test code; nothing it does
+          # needs an authenticated fetch, so the token is not left in .git/config.
+          persist-credentials: false
+
+      - name: Install Go
+        env:
+          # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl — the same pin
+          # truth-suite.yml and release.yml carry for this GO_VERSION; bump them together.
+          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
+          rm -rf "${HOME}/go-toolchain"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: Sweep
+        env:
+          KUBECONFIG: /dev/null
+        run: |
+          set -euo pipefail
+          go version
+          # The checkout is the disposable root: mutant copies go under it (see run.sh).
+          bash tools/gremlins/run.sh --root . -o "${RUNNER_TEMP}/gremlins-out"
+
+      - name: Job summary
+        if: always()
+        run: |
+          f="${RUNNER_TEMP}/gremlins-out/summary.md"
+          if [ -f "$f" ]; then
+            cat "$f" >> "${GITHUB_STEP_SUMMARY}"
+          else
+            echo "No summary: the sweep stopped before triage. See the Sweep step log." >> "${GITHUB_STEP_SUMMARY}"
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gremlins-daily
+          path: |
+            ${{ runner.temp }}/gremlins-out/*.json
+            ${{ runner.temp }}/gremlins-out/*.md
+            ${{ runner.temp }}/gremlins-out/*.tsv
+            ${{ runner.temp }}/gremlins-out/*/*.json
+            ${{ runner.temp }}/gremlins-out/*/*.log
+            ${{ runner.temp }}/gremlins-out/*/*.txt
+          if-no-files-found: warn
+          retention-days: 14

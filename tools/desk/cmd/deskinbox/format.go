@@ -14,9 +14,10 @@ package main
 import (
 	"fmt"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // comment is one issue comment: the author login and body text the oracle's `gh issue
@@ -54,27 +55,26 @@ type rendered struct {
 	Options       []option
 	OptionsStated bool
 	Reply         string
+	Command       string
 	Verification  string
 	Unread        bool
 }
 
 var (
 	contextHeadingRe   = regexp.MustCompile(`(?i)^[ \t]*#{1,6}[ \t]*(Context|Situation|Ask|Summary|Problem)\b`)
-	optionsHeadingRe   = regexp.MustCompile(`(?i)^[ \t]*#{1,6}[ \t]*Options?\b`)
 	htmlCommentLineRe  = regexp.MustCompile(`^[ \t]*<!--`)
 	headingLineRe      = regexp.MustCompile(`^[ \t]*#{1,6}[ \t]`)
 	quoteOrTableLineRe = regexp.MustCompile(`^[|>]`)
 	unblocksLineRe     = regexp.MustCompile(`(?i)^(unblocks|blocks|depends|gates)\b`)
-	optionLineRe       = regexp.MustCompile(`^(?:[-*][ \t]*)?(?:\*\*)?[A-Da-d1-4][.)][ \t]`)
-	optionCaptureRe    = regexp.MustCompile(`^(?:[-*][ \t]*)?(?:\*\*)?([A-Da-d1-4])[.)][ \t]*(.+)$`)
-	recommendWordRe    = regexp.MustCompile(`(?i)recommend`)
-	// Matches the oracle's own ERE exactly — only the leading letter of "Recommended"
-	// case-varies ([Rr]ecommended), not the whole word, so "RECOMMENDED" is deliberately
-	// left untouched by these two, same as the jq program.
-	trailingRecRe    = regexp.MustCompile(`[ \t]*[—-]?[ \t]*\(?[Rr]ecommended\)?[ \t]*$`)
-	leadingRecRe     = regexp.MustCompile(`^\(?[Rr]ecommended\)?[ \t,:;—-]*`)
-	desknoteAuthorRe = regexp.MustCompile(`(?i)\[bot\]$|desk`)
+	desknoteAuthorRe   = regexp.MustCompile(`(?i)\[bot\]$|desk`)
 )
+
+// commandNotDerivable is Reply shape's command line whenever no ruling command can be
+// derived. deskinbox ALWAYS renders it: the oracle derives a command only from a body whose
+// author the roster trusts (its $bodyTrusted), and deskinbox reads no roster, so it has no
+// way to tell a trusted body from one anyone could have filed. Until it gains a roster,
+// issue-body text never becomes a ruling here; the desk fills the line.
+const commandNotDerivable = "not derivable — desk to fill"
 
 // toLines is the oracle's `lines` def: strip every \r, then split on \n.
 func toLines(s string) []string {
@@ -275,67 +275,14 @@ func buildRendered(it item, d issueDetail, k, n int, now time.Time) rendered {
 	}
 
 	// ---- Options ---------------------------------------------------------------------
-	osec := section(bl, optionsHeadingRe)
-	type rawOpt struct {
-		idx int
-		txt string
-	}
-	var oraw []rawOpt
-	for _, l := range nonblankLines(osec) {
-		s := stripWS(l)
-		if !optionLineRe.MatchString(s) {
-			continue
-		}
-		m := optionCaptureRe.FindStringSubmatch(s)
-		if m == nil {
-			continue
-		}
-		oraw = append(oraw, rawOpt{idx: len(oraw), txt: m[2]})
-		if len(oraw) == 4 {
-			break
-		}
-	}
-
-	recidx := 0
-	for i, o := range oraw {
-		if recommendWordRe.MatchString(o.txt) {
-			recidx = i
-			break
-		}
-	}
-
-	ordered := append([]rawOpt(nil), oraw...)
-	sort.SliceStable(ordered, func(i, j int) bool {
-		pi, pj := 1, 1
-		if ordered[i].idx == recidx {
-			pi = 0
-		}
-		if ordered[j].idx == recidx {
-			pj = 0
-		}
-		if pi != pj {
-			return pi < pj
-		}
-		return ordered[i].idx < ordered[j].idx
-	})
-
-	var texts []string
-	for _, o := range ordered {
-		v := cleanText(demd(o.txt))
-		v = stripWS(v)
-		v = trailingRecRe.ReplaceAllString(v, "")
-		v = leadingRecRe.ReplaceAllString(v, "")
-		v = stripWS(v)
-		if v == "" {
-			continue
-		}
-		texts = append(texts, v)
-	}
-
+	// The parse is deskkit's (lifted there so the human-decision-v1 record reads the SAME
+	// options the walk shows). The walk shows the recommended option
+	// first, re-lettered A–D; with no option marked, the first stated one leads, unchanged.
+	parsed := deskkit.ParseDecisionOptions(d.Body)
 	letterFor := []string{"A", "B", "C", "D"}
 	var opts []option
-	for i, t := range texts {
-		opts = append(opts, option{Letter: letterFor[i], Text: t, Recommended: i == 0})
+	for i, idx := range parsed.Walk() {
+		opts = append(opts, option{Letter: letterFor[i], Text: parsed.Texts[idx], Recommended: i == 0})
 	}
 
 	stated := len(opts) > 0
@@ -372,6 +319,7 @@ func buildRendered(it item, d issueDetail, k, n int, now time.Time) rendered {
 		Options:       options,
 		OptionsStated: stated,
 		Reply:         reply,
+		Command:       commandNotDerivable,
 		Verification:  verification,
 		Unread:        d.Unavailable,
 	}

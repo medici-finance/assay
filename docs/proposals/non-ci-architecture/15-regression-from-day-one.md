@@ -79,6 +79,12 @@ Add these cases to the existing runtime suite; they are future executable obliga
 | Critic fails or agent confidently reports completion | Neither event grants authority, acceptance or ready status; required independent evidence still controls. |
 | Concurrent knowledge updates and source retirement | Expected-version conflict is visible; provenance/required history survives; unapproved context cannot change a gate. |
 | Maintenance overlaps foreground work or loses its process | Store ownership, actual Git compatibility and retained objects remain correct; interrupted work is diagnosable and safely resumable. |
+| Review attempt completes after a crash-delayed teardown | The detached review head retires on its recorded class plus completed owning attempt; no pushed/merged proof is required or attempted, and a missing allocation record holds visibly. |
+| Worktree created outside an allocation verb | Held with a visible classification reason; no age, prefix or cleanliness check retires it; classification precedes any removal. |
+| Branch is idle past its threshold while its change record is open, or merged and not reverted | The open record holds the branch; the merged-and-not-reverted record with its owning attempt complete and required evidence retained retires it without an ancestry proof, provided the local tip is the merged head or its ancestor. |
+| Local branch tip advanced past its merged change head, or the revert state cannot be determined | Held as unpublished or ambiguous work; the merged record never retires commits the merged head does not contain, and an undeterminable revert state holds. |
+| Stamped lock whose session beacon stopped updating, and an unstamped lock past its declared window | The dead-session lock retires only on recorded evidence; the unstamped lock is checked and holds until recorded holder-gone evidence or an explicit recorded classification; an unreadable beacon or missing stamp holds rather than guesses, and age alone never retires a lock. |
+| Boot sweep, interval supervisor and manual sweep overlap | The maintenance singleton serializes them; no resource is removed twice and a recent sweep is skipped rather than nested. |
 
 Run a sustained allocate → execute → review → retire → recover workload against disposable repositories as well as the single verifier journey. Vary ref count, pack count, retained history, alternate stores and concurrency independently. Pin implementations and workload seeds; separate cold/warm caches and native-Git/go-git readers. Record p50/p95/p99 foreground latency, index/object opens, resource counts, held reasons, maintenance cost and peak temporary space before and after. Growth required by retention is expected; measure whether disposable resources retire and explain retained growth instead of requiring constant total disk use.
 
@@ -110,3 +116,41 @@ Before the first code substitution, run and retain results for the selected sour
 At minimum, select the runner/conformance packages and the statusgen cases `TestCoverageCouldNotCheckIsNotPass`, `TestCoverageAdviceCannotSupplyWitness`, `TestCoverageAcceptanceDigestChanged`, `TestEligibilityCouldNotCheckHolds`, `TestOfflineReaderNeverAnswersEmpty` and `TestGraphJSONLDeterministic`. Preserve the behavioral cases when extracting package-main helpers. A fake runner passing conformance does not prove production isolation, PostgreSQL reconstruction or publication fencing.
 
 The architecture PR validates document consistency and publication scope. Its checks are not the implementation regression floor. Each delivery PR records its actual selected tests, implementation identity, positive case and relevant failing control.
+
+## Progressive adoption and oversight qualification
+
+Use the [adoption acceptance corpus](19-progressive-adoption-and-oversight.md#adoption-acceptance-and-architecture-qualification)
+through actual producer and consumer boundaries. Add these obligations to the owning
+regression ledger; no new test or public interface is claimed by this document.
+
+| Boundary | Required failing control / positive case |
+|---|---|
+| Offline consumer and installation | Cold fixture inspection without ambient home/credentials/database/source checkout; interrupted setup preserves authored files and a bad pin holds |
+| Evidence and assurance | A passing self-check substituted for an independent witness fails; unchanged canonical facts agree through offline and managed consumers |
+| Policy and effects | Worker-controlled preset/env cannot raise authority; protected scope remains held under a low-touch preference, even with a permissive fake provider |
+| Human decision and recovery | Expired/changed batch subject and reconstructed unknown consumption cannot authorize; unrelated still-valid tuples retain only their actual grant |
+| Sampling and attention | Reroll/split evasion fails; eligible/sample/unknown denominators remain visible; quiet hours or exhausted attention budget do not answer a gate |
+| Measurement and tuning | Incomplete score or reduced detection cannot enact a grant; human minutes, required-check coverage and independently sampled defects remain counter-metrics |
+
+Qualification reports actual selected policy/contract/implementation revisions and
+capability evidence. A schema-valid preset or a higher score is not a passing runtime
+case. Measure first useful outcome and independent repeat use, including support and
+repair effort. Read-only release acceptance is independent of managed writer activation.
+
+## Write-through and source-cache qualification — 14 October 2026
+
+Carry the [forge-service amendment](22-forge-service-and-source-queries.md) into the same
+regression ledger. Exercise provider success followed by SQL failure, death after send,
+conflicting operation payload, stale pre-write refresh, caller loss of a reply, and receipt
+lookup after authorization revocation. Unknown does not replay; read-after-write requests
+show a confirmed/newer observation or explicit pending coverage. Test cached bodies, counts,
+errors and pagination against denied admissions and access epochs. Bypass ingress to prove
+the role executor refuses escalation, stale incarnation and wrong candidate independently.
+
+Source-query tests use disposable bare Git and independent literal fixtures at exact SHAs.
+Changing a branch tip cannot change a cached old-SHA answer; private object reuse still needs
+repository authorization. Compare incremental derived results with a fresh oracle after
+membership, time, policy and permission changes. Burst/outage tests assert the configured
+upstream request budget, while shared-Git experiments report native-Git/go-git latency, CPU,
+bytes, retention and alternate-store recovery. No fixture result certifies live provider
+permissions, a deployed identity provider or CNPG failover.

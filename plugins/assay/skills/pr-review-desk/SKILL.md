@@ -314,8 +314,8 @@ reviewloop plan --actions "$ACTIONS" --prs "$PRS"
 ```
 
 `reviewloop plan` classifies every board row against an action table required by test to be
-exhaustive over `deskboard`'s own constants, coalesces outward verbs on (repo, pr, head, verb)
-under the same audit-keyed idempotency the `deskpost` verbs use, and states the idle verdict
+exhaustive over `deskboard`'s own constants, coalesces verbs on (repo, pr, head, verb) from the
+board alone (claims and write idempotency are checked at execution), and states the idle verdict
 three-state. It spawns nothing and writes nothing outward — the desk executes the verbs. Exit 6
 (board unreadable, an ACTION the table does not know, an idle question the board cannot answer) is
 BLIND, never "all clear"; without `--prs` every outward verb is SUPPRESSED as could-not-check.
@@ -773,24 +773,29 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
        nothing; its `wouldApply` list is the rows `--apply` would write on that tree, computed by
        the same code that writes, each with its `readme`, `from`/`to` and the whole table line
        before and after (`rowBefore`/`rowAfter`). The token comes ONLY from `--token-file`, a
-       file holding the reviewer role's own read credential (the path `desktoken reviewer --repo
-       <delivery owner/name>` prints) — never a token placed in the environment
+       file holding the reviewer role's own credential, used here for reads only (the path
+       `desktoken reviewer --repo <delivery owner/name>` prints) — never a token placed in the environment
        (`GITHUB_TOKEN`), never a human account's. The `--apply` form stays valid: the same
        command with `--apply`, whose `applied` list carries the same fields; because it writes
        into the worktree it runs on, each `--apply` run needs its OWN fresh throwaway worktree.
        Rows with different delivery repos need one run per delivery repo, and each row is
        compared only against the run for its own delivery repo. Admit only when every row the
        hunk changes is reproduced byte-identically by that run's rows — the hunk's removed and
-       added line equal an entry's `rowBefore` and `rowAfter` in `wouldApply` (read-only form),
+       added line equal the `rowBefore` and `rowAfter` of a `wouldApply` entry whose `readme`,
+       taken relative to the `--root` worktree, is the hunk's own file and whose `id` is that
+       row's brief (read-only form; a byte-identical row in another stream's README is not
+       matched by the entry for this one),
        or in `applied` and the resulting README diff (`--apply` form); a hunk row the run does
        not report, or reports differently, bounces. A row current main already shows as
        `implemented` is never reported by the run, so it bounces with the one line "already
        `implemented` on main — merge main and drop the hunk." Rows the run reports that the PR
        does not carry do not affect admission. A run that could not look — a non-zero exit,
        missing or unparseable JSON on stdout, `lookedAt: false` in its JSON, a `could-not-check`
-       on stderr (no token, a failed or rate-limited PR fetch), or a read-only run whose JSON
-       carries no `wouldApply` key at all (a binary that predates the read-only form: use the
-       `--apply` form, never read the absent key as zero rows) — is not a reproduction: hold the
+       on stderr (no token, a failed or rate-limited PR fetch), a `wouldRefuse` key in its JSON,
+       or a read-only run whose JSON carries no `wouldApply` key at all (a run that could not
+       look; never read the absent key as zero rows — only where the binary predates the
+       read-only form, use the `--apply` form instead; a `wouldApply` of `[]` is read together
+       with `lookedAt: true`, and means looked and found nothing) — is not a reproduction: hold the
        verdict and say so, never admit on it. The binary is the pinned release binary the target
        repo's CI uses; where the target repo vendors `statusgen/`, build it from the throwaway
        `origin/main` worktree's own `statusgen/` — NEVER one built or resolved from the PR head
@@ -981,6 +986,16 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   report, not a row to soften or delete. Quietly weakening a correctly-red check to reach green is
   worse than leaving it red with a note explaining why; a correctly-red row is doing exactly its
   job, and this rule must never be read as pressure toward weaker checks.
+- **The coverage contract — a correctness verdict accounts for every class in the register.**
+  The dispatched review kit's `review-prompt` reference carries a fixed register of bug
+  classes; each class ends the round in the verdict body's `## Coverage` block as one of
+  four line shapes, one grammar — class first, state second: a finding reference, a
+  `checked-clean:` naming what was examined, an `n/a:` with a one-sentence reason, or a
+  `could-not-check:` naming what was missing. Silence is not accounting: the coverage
+  contract exists to make selective review visible as a gap in the accounting, and a class
+  that cannot be honestly `n/a`'d and was not checked is `could-not-check`, never a silent
+  approve. The register's home is that reference — this body never restates its rows. The
+  project layer may append classes and never removes a base one.
 - **Decision-drift pass — does this diff contradict a record no one is holding in their head.**
   Check the diff against three BOUNDED sources only, never a whole-repo archaeology pass: (a) the
   owning brief's own Context/constraints, (b) a finding in the findings register that names the
