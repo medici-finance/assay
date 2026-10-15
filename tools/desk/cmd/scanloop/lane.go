@@ -72,6 +72,18 @@ type LaneOutcome struct {
 	// the audit surface: a lane that reports an outcome without the steps that produced it is a
 	// claim, not evidence.
 	Steps []string
+	// Warnings are failures that came AFTER the lane's outward write had landed — a cleanup that
+	// could not put local state back. They do not undo the exit: the artifact exists, so the item
+	// has left the front door, and failing the dispatch would make the ledger report a leak for
+	// an item that did leave. They are never swallowed either: each is a "# WARNING:" step in the
+	// dispatch block and a line of its own in the pass report.
+	Warnings []string
+}
+
+// warn records a post-write failure on both surfaces — the step sequence and the warnings list.
+func (o *LaneOutcome) warn(msg string) {
+	o.Warnings = append(o.Warnings, msg)
+	o.Steps = append(o.Steps, "# WARNING: "+msg)
 }
 
 // Lane is the swappable unit. One method, one direction, no callbacks into the loop.
@@ -173,7 +185,7 @@ func (l scanCarrierPRLane) Execute(req LaneRequest) (LaneOutcome, error) {
 			if rmErr := os.Remove(p); rmErr != nil && !os.IsNotExist(rmErr) {
 				// A leftover metadata file sits BESIDE the worktree and blocks nothing, so it is
 				// reported, never allowed to turn a landed carry into a dispatch error.
-				out.Steps = append(out.Steps, "# WARNING: could not remove the scan metadata file "+p+": "+rmErr.Error())
+				out.warn("could not remove the scan metadata file " + p + ": " + rmErr.Error())
 			}
 		}
 	}
@@ -333,12 +345,38 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 	}
 
 	// 5. put the isolated worktree back.
+	//
+	// The carrier is PUBLISHED by now: the create or the push-and-edit above succeeded. A failure
+	// here is a cleanup failure, never a dispatch failure — returning it as an error once made the
+	// exit ledger report "nothing landed" and the leak check name the item as un-exited while its
+	// carrier PR sat open. So the artifact stands as the item's exit and the failure is reported
+	// on its own line. The worktree is RETAINED for diagnosis: no --force, no other deletion.
 	if err := step(req.Root, "git", "worktree", "remove", req.Worktree); err != nil {
-		return out, err
+		out.warn("cleanup: could not remove worktree " + req.Worktree + ": " + err.Error() +
+			" — worktree retained for diagnosis; the carrier " + out.Artifact + " is published and stands as this item's exit")
+		releaseRetainedBranch(&out, step, req)
 	}
 
 	out.Steps = append(out.Steps, "# coalesce: "+string(decision)+" — "+why)
 	return out, nil
+}
+
+// releaseRetainedBranch detaches the HEAD of a worktree the cleanup could not remove, so the carrier
+// branch is no longer checked out there. Without it the retained worktree still holds the branch,
+// and the next pass inside the coalesce window cannot re-cut it ("already used by worktree"): the
+// retry would fail before it published, and the item would leak on every tick until a human
+// removed the worktree. Detaching moves nothing on disk — HEAD stays on the same commit, and every
+// untracked or modified file stays where it is for diagnosis.
+//
+// The git dir is named EXPLICITLY (the worktree's own .git file) rather than found by walking up
+// from the worktree path: if the path is not a worktree at all, the walk could land in an
+// enclosing repository and detach that one. An explicit git dir that does not exist simply fails.
+func releaseRetainedBranch(out *LaneOutcome, step func(dir, name string, args ...string) error, req LaneRequest) {
+	wt := filepath.Clean(req.Worktree)
+	if err := step(req.Root, "git", "--git-dir="+filepath.Join(wt, ".git"), "--work-tree="+wt, "checkout", "--detach"); err != nil {
+		out.warn("cleanup: could not detach the retained worktree " + wt + ": " + err.Error() +
+			" — it still has " + req.Branch + " checked out, so a later pass cannot coalesce onto that branch until the worktree is removed")
+	}
 }
 
 // ---------------------------------------------------------------------------
