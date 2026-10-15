@@ -231,3 +231,16 @@ The real first constraint is review of this bounded collection/consent contract,
 PostgreSQL deployment, the parked continuing-operations subject program or the full cell runtime.
 Existing local-only desk-tools/23 can ship independently. New schema/local logger implementation
 starts from checked-in fixtures and existing runner interfaces. API/db credentials are not prerequisites.
+
+## Proposed review-profile consumer — 15 October 2026
+
+[Review profiles](../review-profiles/spec.md) add bounded assessment/cost consumers;
+they do not change the collection or consent contract above. Adapter brief 02 must
+preserve profile/run/candidate aliases, model/prompt/router/workload versions, observed
+CPU versus unavailable CPU, token categories, forge/GH calls, packet/benchmark overhead,
+failed/retry work and source coverage. No raw prompt, source packet or finding payload
+is added to the optional transport. Workflow correlation still needs explicit consent.
+Required CI benchmark evidence and budget accounting remain canonical elsewhere and
+continue with collection off. Local imported-output calibration does not wait for this
+collector. Continuing-operations owns interpretations; review-profiles owns assessment
+validation, not metric formulas or an independent run ledger.

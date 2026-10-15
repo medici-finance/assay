@@ -133,6 +133,7 @@ that named implementation tests or commands already exist.
 - **Deliverables:** Public spec-authoring reference, author-brief/template changes, review and verify guidance. Teach user-journey linkage, portable measures, method-profile selection, uncertainty, measurement gaps and independent assessment. Keep one canonical reference.
 - **Owning surfaces:** `plugins/assay/skills/author-brief/SKILL.md`, its canonical references, public brief template, and applicable review/verify guidance. Teach spec authors through a shared public reference rather than assuming a separate spec-writing skill exists.
 - **Acceptance scenarios:** Author representative predicted, learning, enabling and no-direct-impact briefs. Each is interpretable without organization-specific context; a brief can deliver a valid disconfirming experiment without pretending the hypothesis succeeded.
+- **Review-profile consumer:** Apply [review-profiles](../review-profiles/spec.md): architecture direction at the applicable migration stage and algorithm/resource efficiency at design time, with measured results separate from hypotheses. Preserve correctness/security and existing finding scope.
 - **Review / activation considerations:** Keep delivery Verify obligations distinct from later outcome evaluation. Include a disconfirmed learning hypothesis as successful experimental delivery.
 
 <a id="o09"></a>
@@ -157,6 +158,7 @@ that named implementation tests or commands already exist.
 - **Deliverables:** A neutral outcomes responsibility, hostable by the existing desk or human: due queue, evidence review, independent assessment and no-change/investigate/propose-change/escalate exits. Route new work through intake.
 - **Owning surfaces:** Public outcomes procedure/reference in `plugins/assay/`, with existing intake and verification interfaces; no new standing process required.
 - **Acceptance scenarios:** An evaluator reconstructs a completed intervention, records an adverse or inconclusive result and routes the next decision without editing the aggregate or self-verifying implementation. Missing telemetry has an explicit disposition.
+- **Review-profile consumer:** Host manual daily performance and periodic architecture assessments using shared versioned definitions, exact inputs, coverage and full calibration/cost metrics. Findings route through confirmed, deduplicated intake; assess exposure and adverse outcomes after repair. No new scheduler or automatic approval.
 - **Review / activation considerations:** Name the accountable practice owner and independent evaluator; define delegation, overdue escalation and handoff after stream closure.
 
 <a id="o11"></a>
@@ -169,6 +171,7 @@ that named implementation tests or commands already exist.
 - **Deliverables:** Bind practice triggers/windows/deadlines to existing admission, claims, recovery and budget machinery. Define occurrence identity, restart, coalescing, overdue behavior and stale-input handling. No automatic remediation or policy self-modification.
 - **Owning surfaces:** Practice-to-`workflow-instance-v1` adapter at existing graph admission/dispatch boundary; recovery, coalescing and budget conformance fixtures. No second scheduler.
 - **Acceptance scenarios:** Repeated triggers and a crash resume one logical occurrence; cumulative budget survives restart; stale sources cannot initiate an unjustified intervention. Existing permission denial remains binding.
+- **Review-profile consumer:** A later performance/architecture cadence uses this same occurrence/admission/recovery adapter. Confirmed opportunities can propose bounded repair draft PRs through existing role effects, cumulative budgets, review and independent verification. Stale inputs, duplicate triggers and exhausted budgets cannot initiate new repairs. No autonomous merge/deployment or policy/target rewrite.
 - **Review / activation considerations:** Require prerequisite contract acceptance and an explicit activation decision. Derive risk from actual scheduled effects; no production access is implied by the outline.
 
 <a id="o12"></a>

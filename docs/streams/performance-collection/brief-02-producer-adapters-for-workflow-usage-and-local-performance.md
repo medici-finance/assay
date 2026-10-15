@@ -12,7 +12,7 @@ gate-why: "Correlated operational measurements and their access/retention bounda
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: 20aa552e-a2cf-4e0d-959c-0b47c9091d0a
 authored: 2026-10-13 by performance collection authoring
 sources:
@@ -27,6 +27,7 @@ exec-tier-why: Cross-component privacy, identity, concurrency and loss semantics
 domain: complicated
 outcome: none
 consumers:
+  - "tools/desk/internal/reviewprofile/: follow-up review-profiles/04"
   - "perfdata/adapters/: follow-up performance-collection/02"
   - "perfdata/cmd/perfdata/: follow-up performance-collection/02"
   - "perfdata/testdata/sources/: follow-up performance-collection/02"
@@ -151,3 +152,21 @@ Gate: human. Review actual disclosure/identity boundaries, loss visibility and s
 flow evidence. Required operational records must still function with optional collection
 disabled. Human acceptance changes no live destination, credential, collection switch or
 retention policy.
+
+## Proposed assessment consumer amendment — 15 October 2026
+
+Apply [review-profiles/spec](../review-profiles/spec.md)'s calibration/cost requirements
+to the existing adapter work, without expanding payload consent or cloning instrumentation.
+When an authorized source exposes them, preserve profile/run/attempt references, fixed
+model/prompt/router/workload versions, token categories, CPU, elapsed/queue time and
+forge/GH call counts. Include failed/retry work and packet/benchmark/collection overhead;
+shared/unattributed cost and unsupported fields stay explicit. Optional observations
+carry references, never raw source packets, prompts, findings or required evidence.
+
+Extend this brief's planned adapter fixture suite with collection-off, unknown CPU,
+repeated cumulative usage, profile-version change and cross-profile duplicate cases.
+An end-to-end import must preserve totals and coverage into the calibration consumer;
+prove required CI evidence and operational budget accounting remain independent of the
+optional sink. This is part of this brief's DoD, exercised by its producer/reader flow
+Verify cases. Review-profiles/04 owns calibration reduction and can use imported fixtures
+before these live adapters exist. Neither brief holds local synthetic work for the other.
