@@ -107,9 +107,10 @@ func TestHoldRegeneratesDriveRegion(t *testing.T) {
 		if region, ok := extractDriveRegion(planAfter, "d1"); !ok || region != last {
 			t.Fatalf("the written region must be the last reported regionAfter:\nwritten:  %q\nreported: %q", region, last)
 		}
-		beforeHead, _, _ := strings.Cut(planBefore, "\n"+driveSnapshotEndMarker)
-		beforeHead = beforeHead[:strings.Index(beforeHead, driveSnapshotBeginPrefix)]
-		if !strings.HasPrefix(planAfter, beforeHead+driveSnapshotBeginPrefix+"d1 @deadbee 2026-08-15"+driveSnapshotMarkerSuffix+"\n") {
+		head := planBefore[:strings.Index(planBefore, driveSnapshotBeginPrefix)]
+		marker := driveSnapshotBeginPrefix + "d1 @deadbee 2026-08-15" + driveSnapshotMarkerSuffix + "\n"
+		tail := planBefore[strings.Index(planBefore, driveSnapshotEndMarker):]
+		if planAfter != head+marker+last+tail {
 			t.Fatalf("only the text between the markers may change:\n%s", planAfter)
 		}
 		if fresh := newProblemLines(lintBefore, lintProblemLines(t, root)); len(fresh) != 0 {
