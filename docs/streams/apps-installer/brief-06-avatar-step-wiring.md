@@ -7,7 +7,7 @@ why: >-
   step costs one drag if the file is already on screen, and remembering whether it happened is what
   keeps status honest.
 wave: 3
-depends: ["apps-installer/02", "apps-installer/05"]
+depends: ["apps-installer/02", "apps-installer/05", "apps-installer/10"]
 unblocks: ["apps-installer/07"]
 effort: S
 gate: model

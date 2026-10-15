@@ -60,12 +60,14 @@ per Secret or per user). The tiers change **who does the work**, never the metho
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Role→App indirection — six desk roles on N GitHub Apps without symlinks](brief-01-role-app-indirection.md) | 0 | M | done | 2026-09-11 sonnet-5-verifier | 2026-09-12 assay-reviewer-app[bot] (approved PR #902 @ 725df44621ba4bacf370f8683ca07331a01b5219) |
 | 02 | [`deskapps init` — loopback page, tier manifests, the manifest→code→conversion flow, key and record writes](brief-02-deskapps-manifest-flow.md) | 1 | L | implemented | — | — |
-| 03 | [`deskapps` install + prove — installation poll, fresh mint, scopes-vs-duties, roster write](brief-03-deskapps-install-prove.md) | 2 | M | todo | — | — |
+| 03 | [`deskapps` install + prove — installation poll, fresh mint, scopes-vs-duties, roster write](brief-03-deskapps-install-prove.md) | 3 | M | todo | — | — |
 | 04 | [`deskapps resume` / `status` — per-App state machine, throttle pause, expired-code re-arm, page verbs](brief-04-deskapps-resume-status.md) | 2 | M | todo | — | — |
 | 05 | [`deskavatar` — deterministic per-adopter App avatars with a 20 px legibility proof](brief-05-deskavatar-generator.md) | 0 | M | done | 2026-09-11 sonnet-5-verifier | 2026-09-12 assay-reviewer-app[bot] (approved PR #911 @ 5317c66fcb189a2f07e3e8c83a9fdbb9c5f551aa) |
 | 06 | [Avatar step in the run board — generated PNG beside the settings page, confirmed not uploaded](brief-06-avatar-step-wiring.md) | 3 | S | todo | — | — |
 | 07 | [Install skill + adoption runbook cutover — `deskapps` replaces the hand runbook, tiers documented](brief-07-install-skill-runbook-cutover.md) | 4 | M | todo | — | — |
 | 08 | [Solo identity mode — spec and decision for running the desk verbs on the operator's own token](brief-08-solo-identity-spec.md) | 0 | S | implemented | — | — |
+| 09 | [Team tier gains `<prefix>-review` — a third App holds the reviewer role, so the act bot's PRs get a formal approval](brief-09-team-tier-review-app.md) | 2 | M | todo | — | — |
+| 10 | [`deskavatar --tier team` emits a third tile for `<org>-review`, proofed at 20 px against read and act](brief-10-team-review-avatar.md) | 0 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 Ruling for 08 is already recorded on #467 (2026-09-05): adopt Solo as specified, and the install
@@ -77,9 +79,10 @@ cites both #467 and that spec. That follow-on authoring task is filed and work-r
 ## Critical path
 
 ```
-01 (role→App indirection) → 02 (manifest flow) → 03 (install + prove) → 07 (skill + runbook cutover)
-                                              └→ 04 (resume/status) ─┘
-05 (avatar generator) ──────────────────────────→ 06 (avatar step) ──→ 07
+01 (role→App indirection) → 02 (manifest flow) → 09 (team review App) → 03 (install + prove) → 07 (skill + runbook cutover)
+                                              └→ 04 (resume/status) ───────────────────────┘
+05 (avatar generator) ─────────────────────────────────────────────────→ 06 (avatar step) ──→ 07
+10 (team review avatar) ────────────────────────────────────────────────┘
 08 (solo spec, human decision) — independent; its implementation brief is authored AFTER the ruling
 ```
 
@@ -100,14 +103,27 @@ rely on.
 the two-App tier. It demos in a day and leaves every Read + Act adopter with a credential layout no
 document describes.
 
+**Update 2026-10-15 — the head moved to 09.** 01 is done and 02 is implemented. The ruling on #3062
+(option C, ratified by the driver's own comment there) gives the team tier a third App,
+`<prefix>-review`, bound to the reviewer role only: on two Apps the act bot authored every PR and
+could never approve one, so the review-to-ready lane looped and the superseded lane refused. 03
+writes the roster bindings, so it now waits on 09 rather than encoding the two-App binding and
+being rewritten. 10 gives the third App its avatar. The approval gate itself is unchanged.
+
+**Not briefed yet:** GitHub's 2026-10-13 App changes add an `installation_repositories` permission
+that lets an App add or remove repositories on its own installation by API, which could take the
+per-repo install clicks out of 03. Granting it to any desk App also lets that App widen its own
+reach, so it needs its own brief and a decision on which identity may hold it before any manifest
+carries it.
+
 ## Dependency waves
 
 ```
-Wave 0: [01, 05, 08]
+Wave 0: [01, 05, 08, 10]
 Wave 1: [02] ← 01
-Wave 2: [03, 04] ← 02
-Wave 3: [06] ← 02, 05
-Wave 4: [07] ← 03, 04, 06
+Wave 2: [04, 09] ← 02
+Wave 3: [03] ← 02, 09   [06] ← 02, 05, 10
+Wave 4: [07] ← 03, 04, 06, 09
 ```
 
 ## Shared conventions

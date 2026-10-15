@@ -7,8 +7,8 @@ why: >-
   both at the first desk boot, hours after the setup they thought was done. Closing the run with
   the same check the preflight runs, on the same freshly minted token, means the install is proven
   before the browser closes.
-wave: 2
-depends: ["apps-installer/01", "apps-installer/02"]
+wave: 3
+depends: ["apps-installer/01", "apps-installer/02", "apps-installer/09"]
 unblocks: ["apps-installer/07"]
 effort: M
 gate: model
@@ -58,15 +58,23 @@ facts:
 - Bot USER id: `GET /users/<slug>%5Bbot%5D` → `.id` (the roster's `<bot-user-id>`); App id is
   from the conversion; installation id from the poll. Three numbers, three sources.
 - Roster block written (only when `ASSAY_TRUSTED_BOT_SLUGS` is absent in `roster.env`; otherwise
-  print the block and do not write): `team` → `reviewer=<p>-act:<uid>,worker=<p>-act:<uid>,…`
-  for all six roles plus `read=<p>-read:<uid>`; `family` → one `role=<slug>:<uid>` per role.
+  print the block and do not write): `team` → `reviewer=<p>-review:<uid>` plus
+  `worker=<p>-act:<uid>,…` for the other five roles plus `read=<p>-read:<uid>` (apps-installer/09:
+  the reviewer role has its own App on this tier, so the roster never binds reviewer and worker
+  to one login); `family` → one `role=<slug>:<uid>` per role.
   Mode 0600 preserved; a group- or world-writable file is refused (the tools refuse it anyway).
-- Prove: `desktoken <role> --fresh` per bound role (two mints for `team`, six for `family`),
+- Prove: `desktoken <role> --fresh` per bound role (three mints for `team` — read, act, review — six for `family`),
   then `deskkit.CheckAppScopes` per role. Tile values per design §2 Screen 3. Exit 0 on a full
   pass; exit 5 with the missing grant named when any role fails; exit 6 when the grant could not
   be read.
 - Installation scope tile: `GET /installation/repositories` with the minted token →
   `repository_selection` (`all` or `selected`) and count.
+- Distinct-App proof (added 2026-10-15): GitHub's 2026-10-13 App-management changes let
+  `GET /apps/<slug>` read a PRIVATE App owned by the same account. Before minting, read each
+  created App this way and refuse (exit 5) when two rows share an `id`, or when an App's
+  `permissions` differ from its manifest. Measure first which credential the call accepts for a
+  private App (the operator's `gh` token, or an App JWT) and record it in
+  `docs/desk-tools/deskapps.md` § Prove; if neither works, report NEEDS_CONTEXT, never skip it.
 - Cross-org: `--org` may repeat; the install step runs once per org and the bindings gain a
   per-org install id (`<APP>_INSTALL_ID_<ORG>`); a single `<APP>_INSTALL_ID` remains for the
   first org so existing readers keep working.
@@ -97,13 +105,14 @@ facts:
 | 1 | `cd tools/desk && go build ./... && go test ./cmd/deskapps/ -run Install -count=1 && go test ./cmd/deskapps/ -run Prove -count=1 && go test ./cmd/deskapps/ -run Roster -count=1` | exit 0 |
 | 2 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestInstallPollWrongOrg' -count=1 -v 2>&1 \| grep -cE -e 'installed on other-org' -e 'still waiting'` | ≥ 2 |
 | 3 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestProveMissingGrant' -count=1 -v 2>&1 \| grep -cE -e 'contents=read \(want write' -e 'exit 5'` | ≥ 2 |
-| 4 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestRosterBlock' -count=1 -v 2>&1 \| grep -cE -e 'reviewer=example-act:4242' -e 'read=example-read:4343'` | ≥ 2 (4242/4343 are the fake bot USER ids, not the fake App ids 1/2) |
+| 4 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestRosterBlock' -count=1 -v 2>&1 \| grep -cE -e 'reviewer=example-review:4444' -e 'worker=example-act:4242' -e 'read=example-read:4343'` | ≥ 3 (4242/4343/4444 are the fake bot USER ids, not the fake App ids 1/2/3); the same output never contains `reviewer=example-act` |
 | 5 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestRosterNeverOverwrites' -count=1` | exit 0 — an existing `ASSAY_TRUSTED_BOT_SLUGS` line is untouched and the block is printed instead |
 | 6 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestPreflightCatchesSkippedProve' -count=1` | exit 0 — with `--skip-prove` and a fake grant missing `issues:write`, a subsequent `deskroster preflight` (in-process) reports `app-scopes-vs-duties` FAILED (the independent lower layer) |
 | 7 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestPerOrgInstallIDs' -count=1 -v 2>&1 \| grep -cE -e 'EXAMPLE_ACT_INSTALL_ID=' -e 'EXAMPLE_ACT_INSTALL_ID_ORG2='` | ≥ 2 |
 | 8 | `grep -cE -e '^## Install' -e '^## Prove' docs/desk-tools/deskapps.md` | 2 |
 | 9 | `cd tools/desk && go test ./cmd/deskapps/ -run 'Mutation' -count=1` | exit 0 — the id-swap mutant is caught by row 4 |
 | 10 | `statusgen --root . --consumers --brief apps-installer/03` | exit 0 (routing claims corroborated against the diff) |
+| 11 | `cd tools/desk && go test ./cmd/deskapps/ -run 'TestProveDistinctApps' -count=1 -v` | exit 0 — a fake `GET /apps/<slug>` returning the same `id` for `example-act` and `example-review` exits 5 naming both; a permissions set differing from the manifest exits 5 naming the permission |
 
 ## Evidence
 <!-- appended at implementation time -->
