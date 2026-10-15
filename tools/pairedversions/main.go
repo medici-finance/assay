@@ -8,7 +8,7 @@
 // the tool the PREVIOUS plugin was paired with, twelve minors behind the skills
 // shipping alongside it. This is the check that reddens on that state.
 //
-// It asserts three things:
+// It asserts four things:
 //
 //	(a) plugin.json `version` == paired-versions.yaml `plugin` — the manifest is
 //	    a pairing for the plugin that is actually shipping.
@@ -17,6 +17,9 @@
 //	(c) every per-platform `sha256` equals that release's own checksums.txt
 //	    entry — the authority the manifest header names, because a locally built
 //	    binary lacks the release -ldflags stamp and hashes differently.
+//	(d) no newer published release of that release home has gone un-pinned
+//	    for longer than a grace window — a pin that passes (a)-(c) can still
+//	    be stale, and a stale pin hands every new adopter old tools.
 //
 // FAIL-CLOSED, three-state. checked-clean is exit 0; a checked disagreement and
 // a could-not-check are both non-zero and are reported as themselves. A release
@@ -29,20 +32,21 @@
 //	pairedversions --root .   # exit 0 = consistent, 1 = not, 2 = usage error
 //
 // Network: reads the GitHub REST API (api.github.com, or $GITHUB_API_URL) for
-// (b) and (c). $GH_TOKEN / $GITHUB_TOKEN is used when present.
+// (b), (c) and (d). $GH_TOKEN / $GITHUB_TOKEN is used when present.
 package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 )
 
 func main() {
 	root := flag.String("root", ".", "path to the repository root to check")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: pairedversions [--root DIR]\n\n")
-		fmt.Fprintf(os.Stderr, "Asserts that %s and %s agree, that the paired tag is a\npublished release of its release home, and that every pinned sha256 matches that\nrelease's %s.\n\n", pluginJSONPath, manifestPath, checksumsAsset)
+		fmt.Fprintf(os.Stderr, "Asserts that %s and %s agree, that the paired tag is a\npublished release of its release home, that every pinned sha256 matches that\nrelease's %s, and that no newer release has gone un-pinned past the grace window.\n\n", pluginJSONPath, manifestPath, checksumsAsset)
 		fmt.Fprintf(os.Stderr, "exit 0 = consistent; 1 = a problem or a could-not-check; 2 = usage error.\n")
 		flag.PrintDefaults()
 	}
@@ -56,7 +60,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "pairedversions: --root %q is not a directory\n", *root)
 		os.Exit(2)
 	}
-	if Check(*root, newGHAPI(), os.Stdout) {
+	if Check(*root, newGHAPI(), time.Now(), os.Stdout) {
 		return
 	}
 	os.Exit(1)

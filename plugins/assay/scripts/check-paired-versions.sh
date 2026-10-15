@@ -27,9 +27,9 @@
 #                    binaries out of that image, so a re-pin that moves the manifest but not the
 #                    Dockerfile ships the old tools in the container only.
 #
-# Not checked HERE: whether the pinned tag is the LATEST release — that needs the network, so it
-# belongs to the online checker `tools/pairedversions`, not this script. This script stays offline
-# and enforces internal consistency, which is what silently rotted.
+# Not checked HERE: whether the pinned tag is current with the latest release. That needs the
+# network, so it is assertion (d) of the online checker `tools/pairedversions` (`make
+# paired-versions`), which fails a pin left behind by a newer release past its grace window.
 #
 # THREE-STATE: could-not-check is a FAILURE, never a quiet pass. A missing or unreadable file,
 # an absent key, or a section with no platform pins all exit non-zero — a guard that cannot see
@@ -84,9 +84,9 @@ if [[ "$fail" -ne 0 ]]; then exit 1; fi
 
 # ---------------------------------------------------------------- A  PAIRING
 # `plugin: "0.5.0"` — first top-level occurrence, quotes optional.
-paired_plugin=$(sed -n 's/^plugin:[[:space:]]*"\{0,1\}\([^"[:space:]]*\)"\{0,1\}[[:space:]]*$/\1/p' "$PAIRED" | head -1)
+paired_plugin=$(sed -n 's/^plugin:[[:space:]]*"\{0,1\}\([^"[:space:]]*\)"\{0,1\}[[:space:]]*$/\1/p' "$PAIRED" | sed -n 1p)
 # `"version": "0.5.0"` in the plugin manifest.
-manifest_version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$MANIFEST" | head -1)
+manifest_version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$MANIFEST" | sed -n 1p)
 
 if [[ -z "$paired_plugin" ]]; then
   bad "paired-versions.yaml has no top-level \`plugin:\` key"
@@ -153,16 +153,16 @@ fi
 # against the `ARG DESK_TOOLS_IMAGE=<image>:<tag>@<digest>` default in the base Dockerfile.
 DOCKERFILE="$ROOT/containers/base/Dockerfile"
 harness=$(printf '%s\n' "$uncommented" | awk '/^harness:/{on=1; next} /^[^[:space:]]/{on=0} on')
-h_image=$(printf '%s\n' "$harness" | sed -n 's/^[[:space:]]*image:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p' | head -1)
-h_tag=$(printf '%s\n' "$harness" | sed -n 's/^[[:space:]]*tag:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p' | head -1)
-h_digest=$(printf '%s\n' "$harness" | sed -n 's/^[[:space:]]*digest:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p' | head -1)
+h_image=$(printf '%s\n' "$harness" | sed -n 's/^[[:space:]]*image:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p' | sed -n 1p)
+h_tag=$(printf '%s\n' "$harness" | sed -n 's/^[[:space:]]*tag:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p' | sed -n 1p)
+h_digest=$(printf '%s\n' "$harness" | sed -n 's/^[[:space:]]*digest:[[:space:]]*\([^[:space:]]*\)[[:space:]]*$/\1/p' | sed -n 1p)
 if [[ -z "$h_image" || -z "$h_tag" || -z "$h_digest" ]]; then
   bad "paired-versions.yaml harness section lacks image/tag/digest — could-not-check the Dockerfile pin"
 elif [[ ! -r "$DOCKERFILE" ]]; then
   bad "could not read ${DOCKERFILE#"$ROOT"/} — could-not-check is a failure, not a pass"
 else
   want="${h_image}:${h_tag}@${h_digest}"
-  got=$(sed -n 's/^ARG[[:space:]]\{1,\}DESK_TOOLS_IMAGE=\([^[:space:]]*\)[[:space:]]*$/\1/p' "$DOCKERFILE" | head -1)
+  got=$(sed -n 's/^ARG[[:space:]]\{1,\}DESK_TOOLS_IMAGE=\([^[:space:]]*\)[[:space:]]*$/\1/p' "$DOCKERFILE" | sed -n 1p)
   if [[ -z "$got" ]]; then
     bad "containers/base/Dockerfile has no \`ARG DESK_TOOLS_IMAGE=\` default — could-not-check"
   elif [[ "$got" != "$want" ]]; then

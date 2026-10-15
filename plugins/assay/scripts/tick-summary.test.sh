@@ -221,9 +221,9 @@ if want regexp-is-the-applied-one; then
   re=$(bash "$SCRIPT" regexp)
   good="tick role=intake-desk outcome=noop swept=2 acted=0 filed=0 duration=11"
   bad="tick role=intake-desk outcome=nope swept=2 acted=0 filed=0 duration=11"
-  if printf '%s' "$good" | grep -Eq "$re"; then ok "the printed expression matches a valid line"
+  if grep -Eq "$re" <<<"$good"; then ok "the printed expression matches a valid line"
   else no "the printed expression matches a valid line" "it did not"; fi
-  if printf '%s' "$bad" | grep -Eq "$re"; then
+  if grep -Eq "$re" <<<"$bad"; then
     no "the printed expression rejects an invalid outcome" "it matched"
   else ok "the printed expression rejects an invalid outcome"; fi
   # A consumer that greps with the published expression and a consumer that

@@ -111,7 +111,9 @@ pubkey   Derive the PKIX public-key PEM from a private-key PEM and print it on
 Exit (sign/keygen/pubkey): 0 ok · 5 refused · 6 unverifiable.`
 
 func main() {
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskverdict", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

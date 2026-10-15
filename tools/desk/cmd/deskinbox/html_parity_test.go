@@ -102,8 +102,11 @@ type jqHTMLItem struct {
 	} `json:"options"`
 	OptionsStated bool   `json:"optionsStated"`
 	Reply         string `json:"reply"`
-	Verification  string `json:"verification"`
-	Unread        bool   `json:"unread"`
+	// Command is Reply shape's command line; omitempty leaves the key out, so the oracle's
+	// `.command // "not derivable — desk to fill"` fallback is exercised too.
+	Command      string `json:"command,omitempty"`
+	Verification string `json:"verification"`
+	Unread       bool   `json:"unread"`
 	// Class/ClassEvidence are the screen's per-item annotation (the oracle's `.class` /
 	// `.classEvidence`). omitempty keeps an unclassed item's JSON exactly the oracle's
 	// `--no-screen` shape (no key at all), which is what deskinbox's own page renders.
@@ -126,6 +129,7 @@ func htmlFixtureItems() []jqHTMLItem {
 			}{{Letter: "A", Text: "Do the risky thing", Recommended: true}, {Letter: "B", Text: "Do the safe thing"}},
 			OptionsStated: true,
 			Reply:         "reply with one letter (A/B) — nothing else is needed.",
+			Command:       `t="$(gh auth token --user <driver-login>)" && [ -n "$t" ] && GH_TOKEN="$t" gh issue comment 42 -R example-org/example-repo --body 'it'\''s A & <b>'`,
 			Verification:  "the desk records the ruling on example-org/example-repo#42 as a relayed decision, presents question 2 of 3.",
 		},
 		{
@@ -216,7 +220,7 @@ func TestParityHTML(t *testing.T) {
 					Index: it.Index, Total: it.Total,
 					Rendered: rendered{
 						Context: it.Context, Options: opts, OptionsStated: it.OptionsStated,
-						Reply: it.Reply, Verification: it.Verification, Unread: it.Unread,
+						Reply: it.Reply, Command: it.Command, Verification: it.Verification, Unread: it.Unread,
 					},
 					Class: it.Class, ClassEvidence: it.ClassEvidence,
 				})

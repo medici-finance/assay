@@ -1,3 +1,0 @@
-### Changed
-- The desk-tools and qualgen modules now build against go-git v5.19.3 (from v5.19.2 and v5.12.0). The release carries upstream security fixes: HTTP credentials are no longer forwarded when a fetch or push is redirected to another host, a cyclic delta chain in a packfile is rejected instead of recursing without bound, and `golang.org/x/crypto` moves to v0.56.0.
-- Building the desk-tools or qualgen from source now needs Go 1.27 or later: both modules declare `go 1.27.0` (go-git v5.19.3 itself requires Go 1.26). The container images that build these modules move to Go 1.27.2. Release binaries are unaffected for users who install them pre-built.

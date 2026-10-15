@@ -4,10 +4,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
 
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
@@ -31,7 +33,8 @@ func checkInsideWorkTree(dir string) error {
 // and refuses, the same class of decision as parseRepo's refusals, never a could-not-run.
 var errMultiOrigin = errors.New("multi-valued origin url list")
 
-// effectiveOriginURL returns origin's FETCH url AS GIT ITSELF RESOLVES IT: `git remote get-url
+// effectiveOriginURL is the PUSH path's origin read (fetch reads fetchOriginURL, in-process).
+// It returns origin's FETCH url AS GIT ITSELF RESOLVES IT: `git remote get-url
 // --all origin`, a config read that contacts no remote. It runs through the same scrubbed runGit
 // as the fetch it gates, so it sees the same config scopes (system, global, repository,
 // worktree), the same empty-value list resets, and the same insteadOf rewrites of the url list —
@@ -75,6 +78,63 @@ func effectiveOriginURL(dir string) (string, error) {
 			"refusing to gate on one of them — set exactly one", errMultiOrigin, len(urls))
 	}
 }
+
+// fetchOriginURL returns the repository's configured remote.origin.url, read straight from its
+// config with no remote contacted (gitcore.RemoteURLs). It is the string cmdFetch gates on AND
+// the string it hands, verbatim, to the in-process transport, so the allowed-repo decision and
+// the connection can never disagree. It reads the repository-local config only: global- and
+// worktree-scope git config play no part in where a fetch goes, because no git binary runs.
+//
+// Exactly one value is accepted; a multi-valued list is errMultiOrigin (exit 5 at the caller),
+// the same refusal effectiveOriginURL makes for push.
+func fetchOriginURL(dir string) (string, error) {
+	repo, err := gitcore.Open(dir)
+	if err != nil {
+		return "", err
+	}
+	urls, err := repo.RemoteURLs("origin")
+	if err != nil {
+		return "", err
+	}
+	if len(urls) != 1 {
+		return "", fmt.Errorf("%w: origin resolves to %d URLs (a multi-valued remote.origin.url list); "+
+			"refusing to gate on one of them — set exactly one", errMultiOrigin, len(urls))
+	}
+	return urls[0], nil
+}
+
+// credentialHostOK reports whether the GitHub App token may be handed to the transport for
+// rawURL: an https URL whose host is exactly github.com (default port or :443), with no
+// userinfo trick — url.Parse puts the real host in Hostname(), so a lookalike such as
+// github.com.evil.test or evil.test/@github.com is not accepted. It is the in-process
+// replacement for the old host-scoped credential helper, which answered only
+// https://github.com.
+func credentialHostOK(rawURL string) bool {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return false
+	}
+	if u.Hostname() != "github.com" {
+		return false
+	}
+	port := u.Port()
+	return port == "" || port == "443"
+}
+
+// fetchFn is the seam for the in-process fetch. Production opens the checkout and runs
+// gitcore's Fetch; tests replace it to record the exact URL, refspecs and credential cmdFetch
+// handed to the transport (and to run offline).
+var fetchFn = func(dir string, opts gitcore.FetchOpts) error {
+	repo, err := gitcore.Open(dir)
+	if err != nil {
+		return err
+	}
+	return repo.Fetch(opts)
+}
+
+// checkedOutBranchesFn is the seam for the set of branches held by any worktree; a test
+// replaces it only to prove the fetch fails closed when that set cannot be read.
+var checkedOutBranchesFn = gitcore.CheckedOutBranches
 
 // symbolicRefShortHEAD returns the current branch's short name, matching
 // `git symbolic-ref --short HEAD` (errors, rather than returning a name, when HEAD is
@@ -221,22 +281,8 @@ var (
 	branchRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
 )
 
-// The fetch invocation always carries these hardening flags (issue #1555 security review):
-//   - --upload-pack=git-upload-pack pins the remote-helper program on the CLI, which
-//     overrides remote.origin.uploadpack from .git/config OR from injected env config —
-//     the code-execution vector (proven: CLI flag beats both);
-//   - --refmap= clears the configured refmap so ONLY the explicit positional refspec
-//     below applies, so a malicious remote.origin.fetch cannot redirect writes to local
-//     branches (proven: config refspec is otherwise applied);
-//   - --no-recurse-submodules (ADDED IN THE assay PORT, not in #1556) pins
-//     submodule recursion OFF. `fetch.recurseSubmodules`/`submodule.<n>.fetchRecurseSubmodules`
-//     in .git/config can turn one gated fetch into fetches of arbitrary .gitmodules URLs,
-//     each carrying its own transport and its own config — i.e. it escapes the effective-URL
-//     repo gate that the other pins exist to enforce. Same class as the refmap pin (config
-//     redirecting a fetch), so it is pinned on the CLI the same way.
-var fetchHardening = []string{"--refmap=", "--upload-pack=git-upload-pack", "--no-recurse-submodules"}
-
-// trackingRefspec confines writes to remote-tracking refs only.
+// trackingRefspec confines writes to remote-tracking refs only. That holds because the fetch
+// follows no tags (gitcore.Fetch sets go-git's NoTags): the refspec is the whole write set.
 const trackingRefspec = "+refs/heads/*:refs/remotes/origin/*"
 
 // auditCtx accumulates the fields for the ONE audit line every invocation emits.
@@ -279,22 +325,28 @@ func (a *auditCtx) finalize(err error) {
 	a.log(result, err.Error())
 }
 
-// cmdFetch refreshes refs from origin. Three mutually exclusive modes, each building a
-// FIXED git argv (literal verbs + hardening flags + a refspec derived from a validated
-// value) so no caller flag, no `--upload-pack`/`--exec`, and no arbitrary refspec can
-// reach git:
+// cmdFetch refreshes refs from origin, IN-PROCESS (gitcore.Fetch): no child process for any
+// origin shape (a local-path or file:// origin is served in-process too — gitcore's
+// localTransport), no credential helper, no askpass file, so no environment variable or config
+// key for a caller to name a program through. (The environment still steers the connection —
+// HTTP proxy and trust-store variables, the ssh agent — but runs nothing.)
+// Three mutually exclusive modes, each building a FIXED refspec from a validated value, so no
+// caller flag and no arbitrary refspec can reach the transport:
 //
-//	(bare)        git fetch --refmap= --upload-pack=git-upload-pack [--prune] origin +refs/heads/*:refs/remotes/origin/*
-//	--pr <N>      … origin refs/pull/<N>/head:refs/heads/pr<N>      (N digits-only)
-//	--branch <B>  … origin refs/heads/<B>:refs/heads/<B>           (B ref-ish; not main/master
-//	                                                                in ANY case)
+//	(bare)        [--prune]  +refs/heads/*:refs/remotes/origin/*
+//	--pr <N>      refs/pull/<N>/head:refs/heads/pr<N>      (N digits-only)
+//	--branch <B>  refs/heads/<B>:refs/heads/<B>           (B ref-ish; not main/master in ANY case)
 //
 // BOTH ref-writing modes additionally refuse a destination that differs only by CASE from
-// an existing local branch — see localRefTarget/branchCollision.
+// an existing local branch — see localRefTarget/branchCollision — and refuse to write a
+// branch checked out in ANY worktree of the repository (git's own "refusing to fetch into
+// branch ... checked out at ..."), failing closed when that set cannot be read.
 //
-// The tool does NOT sandbox a fully attacker-controlled repo `.git/config` (git has
-// other exec knobs such as core.sshCommand/core.fsmonitor); it closes the proven
-// upload-pack, env, and fetch-refspec vectors and honestly claims no more.
+// The gate is the repository's own configured origin URL, read once (gitcore.RemoteURLs) and
+// then USED VERBATIM as the fetch URL: the string the allowed-repo check decided on is the
+// string the transport connects to, so there is no resolution layer between the two for a
+// rewrite to hide in. The refspec is exactly the Go value built above — there is no configured
+// refspec list to widen it.
 func cmdFetch(args []string) (err error) {
 	ac := &auditCtx{verb: "fetch"}
 	defer func() { ac.finalize(err) }()
@@ -302,7 +354,9 @@ func cmdFetch(args []string) (err error) {
 	// Named transport-exec refusal FIRST — before the FlagSet, so the specific reason
 	// wins over the generic "flag provided but not defined" / "extra operand", and so
 	// the guard is independent of the flag table. See transportexec.go for why the
-	// source PR's incidental refusal was not enough. (Port strengthening.)
+	// source PR's incidental refusal was not enough. (Port strengthening.) fetch no
+	// longer runs a program at all, so a flag this tool does not define is the
+	// FlagSet's generic refusal, exit 5.
 	if terr := checkTransportExec(args); terr != nil {
 		return terr
 	}
@@ -334,8 +388,8 @@ func cmdFetch(args []string) (err error) {
 			strings.Join(fs.Args(), " ")))
 	}
 
-	// Build the mode-specific tail (git verbs/refspec) from validated values only.
-	var tail []string
+	// Build the mode-specific refspec from validated values only.
+	var refSpecs []string
 	var detail string
 	modes := 0
 	if *prNum != "" {
@@ -343,7 +397,7 @@ func cmdFetch(args []string) (err error) {
 		if !prNumRe.MatchString(*prNum) {
 			return deskkit.Refused("refused: --pr must be digits only, got " + *prNum)
 		}
-		tail = []string{"origin", "refs/pull/" + *prNum + "/head:refs/heads/pr" + *prNum}
+		refSpecs = []string{"refs/pull/" + *prNum + "/head:refs/heads/pr" + *prNum}
 		detail = "fetched pull/" + *prNum + "/head -> pr" + *prNum
 	}
 	if *branch != "" {
@@ -355,7 +409,7 @@ func cmdFetch(args []string) (err error) {
 		if why := branchRejectReason(b); why != "" {
 			return deskkit.Refused("refused: --branch " + why + ", got " + b)
 		}
-		tail = []string{"origin", "refs/heads/" + b + ":refs/heads/" + b}
+		refSpecs = []string{"refs/heads/" + b + ":refs/heads/" + b}
 		detail = "fetched origin " + b + " -> " + b
 	}
 	if *prune {
@@ -366,10 +420,9 @@ func cmdFetch(args []string) (err error) {
 	}
 	if *prNum == "" && *branch == "" {
 		// bare (optionally --prune): confine writes to remote-tracking refs.
-		tail = []string{"origin", trackingRefspec}
+		refSpecs = []string{trackingRefspec}
 		detail = "fetched origin"
 		if *prune {
-			tail = append([]string{"--prune", "origin"}, trackingRefspec)
 			detail = "fetched origin --prune"
 		}
 	}
@@ -394,30 +447,30 @@ func cmdFetch(args []string) (err error) {
 			// repository they were aimed at. The refusal is ALREADY decided at this point;
 			// the lookup below only LABELS the audit line and can neither admit nor block
 			// anything. It is best-effort: on any error `repo` stays empty, exactly as
-			// before. The ordering the refusal depends on is untouched — no `git fetch`
+			// before. The ordering the refusal depends on is untouched — no fetch
 			// runs on a colliding destination either way.
 			ac.repo = bestEffortOriginRepo(dir)
 			return deskkit.Refused("refused: " + flagName + " " + why + ", got " + target)
 		}
 	}
 
-	// Gate on the origin URL (effectiveOriginURL: `git remote get-url --all origin`, git's own
-	// resolution of the fetch url list, a config read that contacts no remote). This decides the
-	// REPO. Exactly one url value is accepted, and a plain fetch connects to that value. The
-	// authenticated form below also gates every URL the transport resolves (resolveDestinations)
-	// before any credential exists, and binds the credential to those URLs.
-	originURL, oerr := effectiveOriginURL(dir)
+	// Gate on the origin URL: the repository's own configured remote.origin.url, read once from
+	// its config (gitcore.RemoteURLs — a read that contacts no remote). This decides the REPO,
+	// and the SAME string is then what the transport connects to and what a credential is
+	// bound to, so the gate cannot be contradicted by a later resolution step. Exactly one
+	// url value is accepted: a multi-valued list names no single project.
+	originURL, oerr := fetchOriginURL(dir)
 	if errors.Is(oerr, errMultiOrigin) {
 		return deskkit.Refused("refused: " + oerr.Error())
 	}
 	if oerr != nil {
-		return deskkit.Unverifiable("cannot resolve effective origin URL", oerr)
+		return deskkit.Unverifiable("cannot read origin's URL", oerr)
 	}
 	repo, rerr := parseRepo(originURL)
 	if rerr != nil {
 		// REFUSED (exit 5), not unverifiable (exit 6): the tool positively determined the
 		// URL is unacceptable — this is the same class of decision as the IsAllowedRepo
-		// miss just below, which already exits 5. Exit 6 is for "could not run `git remote get-url`".
+		// miss just below, which already exits 5. Exit 6 is for "could not read the config".
 		// Filing smuggling attempts (padded paths, path-borne '@', remote-helper forms) in
 		// the same audit bucket as network faults is the very confusion transportexec.go
 		// argues against for the named guard (correctness review).
@@ -429,38 +482,53 @@ func cmdFetch(args []string) (err error) {
 		return deskkit.Refused("refused: origin " + repo + " is not in the desk-tools repo set")
 	}
 
-	fetchArgs := append([]string{"fetch"}, fetchHardening...)
-	fetchArgs = append(fetchArgs, tail...)
-
-	// Authenticated form: resolve the role's token for THIS slug (never a caller --repo) and
-	// run through the host-scoped credential helper with the ambient helpers cleared. The unauthenticated
-	// form (no --as) is byte-for-byte the pre-existing path. fetch is not an outward WRITE
-	// (it takes no rate limit), so --as only adds the credential channel — every fetch guard
-	// above (hardening pins, refmap, effective-URL gate, env scrub) is untouched.
-	var out string
-	var ferr error
-	if *asRole != "" {
-		// The credential is bound to what git will actually fetch from (transportDestinations,
-		// gated by resolveDestinations), not to the repo-gate read above.
-		dests, derr := resolveDestinations(dir, repo, false)
-		if derr != nil {
-			return derr
+	// Refuse to write a branch that is checked out in ANY worktree of this repository — this
+	// one or a linked one: `git fetch` itself refused that ("refusing to fetch into branch ...
+	// checked out at ..."), and an in-process ref update would not. The set is git's own,
+	// read from the common directory: every worktree's HEAD branch, the branch a worktree is
+	// rebasing or bisecting (its HEAD is detached meanwhile), and the branches an in-progress
+	// `rebase --update-refs` will rewrite (gitcore.CheckedOutBranches). If it cannot be read
+	// the fetch does not guess "none" — it stops, unverifiable.
+	if flagName, target := localRefTarget(*branch, *prNum); target != "" {
+		held, cerr := checkedOutBranchesFn(dir)
+		if cerr != nil {
+			return deskkit.Unverifiable("cannot tell which branches are checked out, so "+flagName+
+				" "+target+" is not written", cerr)
 		}
-		token, _, terr := roleTokenForRepo(*asRole, repo, dests)
+		for _, ref := range held {
+			if ref == "refs/heads/"+target {
+				return deskkit.Unverifiable("refusing to fetch into a checked-out branch ("+target+
+					") — "+flagName+" would rewrite a branch some worktree has checked out", nil)
+			}
+		}
+	}
+
+	// Authenticated form: resolve the role's token for THIS slug (never a caller --repo), bind
+	// it to the origin URL the gate decided on, and hand it to the transport as an in-memory
+	// Go value. The token is never written to a file, an environment variable, a URL, an
+	// argv or the audit line. fetch is not an outward WRITE (it takes no rate limit), so --as
+	// only adds the credential.
+	var auth transport.AuthMethod
+	if *asRole != "" {
+		token, _, terr := roleTokenForRepo(*asRole, repo, []string{originURL})
 		if terr != nil {
 			return terr // Unverifiable (exit 6), naming the path searched, never the token
 		}
-		env, argvPrefix, cleanup, aerr := credentialSupply(token)
-		if aerr != nil {
-			return deskkit.Unverifiable("cannot stage credential supply", aerr)
+		// SECOND layer, bound where the credential is ANSWERED: whatever roleTokenForRepo
+		// returned, the token goes only to https://github.com — a lookalike, self-hosted,
+		// cleartext or non-URL origin is fetched WITHOUT a credential (it can only fail
+		// the challenge), never offered the GitHub App token.
+		if credentialHostOK(originURL) {
+			auth = gitcore.BasicAuth(token)
 		}
-		defer cleanup()
-		out, ferr = runGitWithEnv(dir, env, append(append([]string{}, argvPrefix...), fetchArgs...)...)
-	} else {
-		out, ferr = runGit(dir, fetchArgs...)
 	}
-	if ferr != nil {
-		return deskkit.Unverifiable("git fetch failed", ferr)
+	if ferr := fetchFn(dir, gitcore.FetchOpts{
+		URL:      originURL,
+		RefSpecs: refSpecs,
+		Auth:     auth,
+		Prune:    *prune,
+	}); ferr != nil {
+		return deskkit.Unverifiable("fetch failed", ferr)
 	}
 	// Record the EFFECTIVE origin URL on the success path (security review). Without it
 	// the audit line for a legitimate refresh, a foreign-host fetch and the residual-2
@@ -470,9 +538,6 @@ func cmdFetch(args []string) (err error) {
 	// compensating control available: it does not gate anything, but it makes the smuggle
 	// DETECTABLE after the fact instead of invisible.
 	ac.detail = detail + " [origin " + redactURL(originURL) + "]"
-	if out != "" {
-		fmt.Fprintln(os.Stderr, out)
-	}
 	return nil
 }
 
@@ -491,8 +556,8 @@ func cmdFetch(args []string) (err error) {
 // `-c credential.helper=` prefix (BEFORE the verb) clears the ambient helper list, and the
 // host-scoped `-c credential.https://github.com.helper=` adds the ONE ephemeral helper, which
 // answers only https://github.com (credentialSupply); `--receive-pack=git-receive-pack` is the
-// push-side twin of fetch's upload-pack pin, overriding any config/env receive-pack; and
-// `--no-recurse-submodules` is the push-side twin of fetch's recursion pin (fetchHardening):
+// pinned so a config/env receive-pack program cannot override it; and
+// `--no-recurse-submodules` pins submodule recursion off:
 // push.recurseSubmodules / submodule.recurse in any config scope would otherwise push each
 // submodule to that submodule's OWN remote — a host no origin destination gate has seen
 // (sec-1587-S1, round 3).
@@ -505,7 +570,7 @@ func cmdPush(args []string) (err error) {
 	defer func() { ac.finalize(err) }()
 
 	// Named refusals FIRST, before the FlagSet — push-safety options (force/delete/…) and
-	// the transport-exec/config-injection options (upload-pack/receive-pack/-c/-C/…). Both
+	// the transport-exec/config-injection options (receive-pack/exec/-c/-C/…). Both
 	// run so each vector is named in the audit line rather than lumped as "unknown flag".
 	if terr := checkPushSafety(args); terr != nil {
 		return terr
@@ -628,10 +693,10 @@ func cmdPush(args []string) (err error) {
 // bestEffortOriginRepo resolves the effective origin slug for AUDIT LABELLING ONLY
 // (#226 item 2). It is never a gate: every caller has already decided its
 // outcome, and an error here yields "" — the same empty `repo` field the line carried
-// before. effectiveOriginURL is a config read that contacts no remote, so calling it on a
-// refusal path adds no network side effect.
+// before. fetchOriginURL is a config read that contacts no remote, so calling it on a
+// refusal path adds no network side effect. (Its only caller is fetch.)
 func bestEffortOriginRepo(dir string) string {
-	originURL, err := effectiveOriginURL(dir)
+	originURL, err := fetchOriginURL(dir)
 	if err != nil {
 		return ""
 	}
@@ -673,8 +738,8 @@ func redactURL(raw string) string {
 
 // remoteHelperRe matches a git remote-helper transport form `<helper>::<address>`
 // (e.g. `ext::sh -c …`). The helper program is executed by git for that transport, so
-// this form is refused outright (issue #1555 re-review) — the pinned --upload-pack
-// does not help when the execution comes from the transport itself. `scheme://…` (a
+// this form is refused outright (issue #1555 re-review) — a pinned program name
+// would not help when the execution comes from the transport itself. `scheme://…` (a
 // single `:` then `//`) and scp-like `user@host:path` (a single `:`) do not match.
 var remoteHelperRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9+.-]*::`)
 
@@ -709,8 +774,8 @@ var schemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://`)
 //  1. The host is NOT bound to `github.com`, because the desk machine's origins use ssh
 //     host ALIASES (`git@github-example:owner/repo`), so a hard host requirement would refuse
 //     the real remote. A URL with an exact allowed `owner/repo` on an UNEXPECTED host still
-//     passes the gate and performs a READ-ONLY fetch (the upload-pack pin + env scrub
-//     ensure no code executes). Binding host via an explicit allowlist is a follow-up.
+//     passes the gate and performs a READ-ONLY fetch (the in-process transport
+//     runs no program). Binding host via an explicit allowlist is a follow-up.
 func parseRepo(raw string) (string, error) {
 	u := strings.TrimSpace(raw)
 	if remoteHelperRe.MatchString(u) {

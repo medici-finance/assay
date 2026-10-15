@@ -1,0 +1,111 @@
+# NEGATIVE (silent truncation): an artifact excerpted to 64000 of 912000 bytes
+# with no coverage index. Expect instance-silent-truncation.
+schema: workflow-instance-v1
+requires: [packet-view@1, assignment@1, execution-state@1]
+instance:
+  id: inst-example-07-a
+work:
+  id: example-stream/07
+  cell: example-cell
+  intent: Report the eligibility verdict beside each validated example record.
+pattern:
+  name: implementation
+  version: 1
+  digest: sha256:edcf96e1eed65dc4a7a09cd2ed0e55fd8c0dba018a0452b959b7e71ffe13af94
+acceptance:
+  version: 3
+  ref: docs/streams/example-stream/brief-07-seven.md@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+  rows: ["1", "2", "3"]
+  exclusions: [no provider client, no prompt assembly]
+policy:
+  revision: policy/example-authorization.yaml@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  control-profile: control-profile/example-standard@2
+budget:
+  ref: budget/example-cell/reservation-0007
+assignment:
+  backend: example-backend
+  generation: 4
+  runner-profile: runner-profile/example-standard@2
+execution-state:
+  projection-version: 1
+  generation: 4
+  state: running
+inputs:
+  - name: brief
+    ref: docs/streams/example-stream/brief-07-seven.md@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    digest: sha256:1111111111111111111111111111111111111111111111111111111111111111
+    origin: repository
+    trust: {disposition: trusted, source: trust-gate}
+  - name: reporter-note
+    ref: example-org/example-app/issues/41#comment-1
+    digest: sha256:1212121212121212121212121212121212121212121212121212121212121212
+    origin: forge-comment
+    trust: {disposition: unresolved, source: reporter, reported-label: trusted}
+dependencies:
+  - {ref: src/eligibility.go, kind: source, fingerprint: sha256:2121212121212121212121212121212121212121212121212121212121212121, supports: ["1"]}
+  - {ref: schemas/example-record.json, kind: schema, fingerprint: sha256:2222222222222222222222222222222222222222222222222222222222222222, supports: ["1", "2"]}
+  - {ref: policy/example-authorization.yaml, kind: policy, fingerprint: sha256:2323232323232323232323232323232323232323232323232323232323232323, supports: ["2"]}
+  - {ref: build/example.mk, kind: build, fingerprint: sha256:2424242424242424242424242424242424242424242424242424242424242424, supports: ["1", "2"]}
+nodes:
+  - id: inst-example-07-a.implement
+    node: implement
+    role: worker
+    actor: {binding: roster/example-cell/worker, cell: example-cell, capabilities: [push, pr-open, comment]}
+    effects:
+      - {kind: push, target: branch}
+      - {kind: pr-open, target: draft-pr}
+    evidence:
+      - {claim: Verify rows pass, mandatory: true}
+    attempts:
+      - id: inst-example-07-a.implement.a1
+        ordinal: 1
+        observed:
+          - {ref: src/eligibility.go, fingerprint: sha256:2121212121212121212121212121212121212121212121212121212121212121}
+          - {ref: schemas/example-record.json, fingerprint: sha256:2222222222222222222222222222222222222222222222222222222222222222}
+          - {ref: policy/example-authorization.yaml, fingerprint: sha256:2323232323232323232323232323232323232323232323232323232323232323}
+          - {ref: build/example.mk, fingerprint: sha256:2424242424242424242424242424242424242424242424242424242424242424}
+        artifacts:
+          - {ref: artifact/example-cell/diff-a1, digest: sha256:3131313131313131313131313131313131313131313131313131313131313131, bytes: 912000, included-bytes: 64000}
+          - {ref: artifact/example-cell/test-log-a1, digest: sha256:3232323232323232323232323232323232323232323232323232323232323232, bytes: 4096}
+        evidence:
+          - {claim: Verify rows pass, artifact: artifact/example-cell/test-log-a1}
+        omissions:
+          - {ref: artifact/example-cell/diff-a1, reason: "excerpt: 64000 of 912000 bytes; full diff by reference and coverage index"}
+        completed: ["1"]
+        next-safe-action: finish row 2 and open the draft pull request
+  - id: inst-example-07-a.review
+    node: review
+    role: reviewer
+    actor: {binding: roster/example-cell/reviewer, cell: example-cell, capabilities: [review, comment]}
+    effects:
+      - {kind: comment, target: approval}
+    evidence:
+      - {claim: the reviewer App APPROVED the head commit, mandatory: true}
+  - id: inst-example-07-a.merge
+    node: merge
+    role: desk
+    actor: {binding: roster/example-cell/desk, cell: example-cell, capabilities: [file-issue, comment, dispatch]}
+    effects:
+      - {kind: dispatch, target: merge-commit}
+    evidence:
+      - {claim: "the risk-input gate for this brief's risk class is satisfied", mandatory: true}
+  - id: inst-example-07-a.verify
+    node: verify
+    role: verifier
+    actor: {binding: roster/example-cell/verifier, cell: example-cell, capabilities: [evidence-commit, comment]}
+    effects:
+      - {kind: comment, target: verified-record}
+    evidence:
+      - {claim: "the Verify table's commands were re-run against the merged commit and pass", mandatory: true}
+  - id: inst-example-07-a.close
+    node: close
+    role: desk
+    actor: {binding: roster/example-cell/desk, cell: example-cell, capabilities: [file-issue, comment, dispatch]}
+    effects: []
+    evidence:
+      - {claim: "the brief's status cell reads done", mandatory: false}
+decisions:
+  - id: dec-example-07-scope
+    node: inst-example-07-a.merge
+    outcome: scope-confirmed
+    act: {kind: external-authenticated-act, ref: example-org/example-app/issues/41#ruling-1}

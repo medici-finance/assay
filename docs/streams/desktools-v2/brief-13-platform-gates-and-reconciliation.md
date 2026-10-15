@@ -268,7 +268,7 @@ Runner for every row below: assay-verifier-app[bot] @ 6e419774479f (claude-opus-
 | 12 | statusgen --consumers --root . | 0 | consumers: no brief files in the diff against 6e419774479f — nothing to corroborate (same result from the installed v1.0.31 binary and a tree-built binary) | PASS (vacuous on merged main, see findings) |
 | 13 | miss=0; for n in <24 issues>; do c=$(gh api --paginate "repos/{owner}/{repo}/issues/$n/comments" --jq …) … done; test $miss -eq 0 | 1 | 12 lines NO TRIAGE COMMENT for #641 #642 #655 #676 #677 #678 #865 #1203 #1411 #1415 #1418 #1805; no READ FAILED lines (all 24 reads succeeded; read-only forge GET) | FAIL |
 
-Result: FAIL — 9 of 13 rows. Rows 1, 11 and 13 fail by exit code; row 7 exits 0 but its requirement is unmet (see below), which is why the hand count is one lower than the witness. None of the four is a defect in the code that merged: each waits on an act held for a human, tracked in #2055. Status stays `implemented`.
+Result: FAIL — 9 of 13 rows. Rows 1, 11 and 13 fail by exit code; row 7 exits 0 but its requirement is unmet (see below), which is why the hand count is one lower than the witness. None of the four is a defect in the code that merged: each waits on an act held for a human, tracked in #2055. Status stays `implemented`. Routed to closed #2055: the hold was tracked there and resolved on 2026-10-03.
 
 **Vacuity findings**
 
@@ -282,7 +282,7 @@ Result: FAIL — 9 of 13 rows. Rows 1, 11 and 13 fail by exit code; row 7 exits 
 
 - The class f baseline of 45 includes one self-count: the probe script's own heredoc line containing the /api/v4 literal. The counter excludes itself in shell but not the probe script, and the header declares no carve-out for it. It also counts 4 lines in the cellctl shell-oracle test fixture. Advisory only; the baseline is reproducible as recorded.
 - Row 5's command was edited by the implementing PR itself (the mutation step and `+mutation` class were added). It is a strengthening, but the implementer changed its own oracle.
-- No human-runsheet file for the workflow patch was found under the stream directory (the delivery mechanic names one). Not checked elsewhere — could-not-check, not absent.
+- No human-runsheet file for the workflow patch was found under the stream directory (the delivery mechanic names one). Not checked elsewhere — could-not-check, not absent. Routed to closed #2055: the hold was tracked there and resolved on 2026-10-03.
 - The changelog fragment added by the implementing commit is no longer present at this SHA under its original name (presumably rolled up by a later release); not a Verify row.
 
 **Risk-bearing value**
@@ -400,7 +400,7 @@ VERIFY: PASS — all 13 rows pass by exit code and by hand reading on merged mai
 
 Independent non-implementer pass on merged main 4f6bb6d59 (host darwin/arm64, go 1.27.1, installed statusgen v1.0.31). Rows 1 to 12 were run by hand under bash from the repository root with a throwaway HOME and KUBECONFIG=/dev/null; row 13 ran as read-only forge GETs (no writes). The execution witness below comes from a separate `statusgen verifyrun` run on the same tree. Expectations were taken from the brief's Task, DoD and Verify text before the earlier Evidence, the outcome record and #2055 were read. Commands are abbreviated; the full text is in the Verify table.
 
-Why this re-run: the last landed outcome record (verify-fail at 6e4197744, 9 of 13) named blocker #2055. That issue closed on 2026-10-03 at 03:04Z after all three held human acts landed: #2064 applied the workflow patch, #2075 flipped desk-containers board row 10, and the twelve triage comments were posted on 2026-10-02 at about 21:28Z. #2066 also tightened row 7. All three held rows now pass on main: row 1 and row 7 match real workflow steps, and row 11 matches board row 10, which reads implemented. Between 03065900ca21 (the last Evidence-only PASS, #2076) and this SHA, the only changes to files these rows read are brief 13's own Evidence (#2076) and a Cobra/Viper section in brief 06 (#2112). Neither affects rows 8 or 9.
+Why this re-run: the last landed outcome record (verify-fail at 6e4197744, 9 of 13) named blocker #2055. That issue closed on 2026-10-03 at 03:04Z after all three held human acts landed: #2064 applied the workflow patch, #2075 flipped desk-containers board row 10, and the twelve triage comments were posted on 2026-10-02 at about 21:28Z. #2066 also tightened row 7. All three held rows now pass on main: row 1 and row 7 match real workflow steps, and row 11 matches board row 10, which reads implemented. Between 03065900ca21 (the last Evidence-only PASS, #2076) and this SHA, the only changes to files these rows read are brief 13's own Evidence (#2076) and a Cobra/Viper section in brief 06 (#2112). Neither affects rows 8 or 9. Routed to closed #2055: the hold was tracked there and resolved on 2026-10-03.
 
 | # | Command | Expected | Observed (exit code + key output) | Date / Runner |
 |---|---|---|---|---|

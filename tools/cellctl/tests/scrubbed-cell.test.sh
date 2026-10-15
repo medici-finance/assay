@@ -10,6 +10,10 @@
 #
 # No network, no real credentials, no live model: `claude`, `codex` are stubs on a private PATH;
 # `tmux` is the REAL binary (a private socket per cell — proving isolation needs a real session).
+# `deskwt` is a recording CANARY stub on that same PATH, and every case asserts it was never
+# called (#2464): both launchers resolve `deskwt role-init` from the CALLER's PATH, never from
+# the fixture's desk-tools directory, so on a host with the desk tools installed an unstubbed
+# case calls the operator's real `deskwt` and writes a row to their live audit log.
 # The assert strings are single-quoted on purpose (expanded by eval at assert time), and the
 # variables they read look unused to a static pass.
 # shellcheck disable=SC2016,SC2034
@@ -56,6 +60,22 @@ export DESK_TOOLS_BIN="$T/desk-tools"; mkdir -p "$DESK_TOOLS_BIN" "$T/bin"
 for v in deskboot deskroster deskwt deskboard deskdispatch deskpr deskfile deskpost desktoken; do
   printf '#!/usr/bin/env bash\nexit 0\n' > "$DESK_TOOLS_BIN/$v"; chmod +x "$DESK_TOOLS_BIN/$v"
 done
+
+# deskwt canary (#2464). The launcher looks `deskwt` up on ITS OWN PATH (git.go
+# worktreeViaDeskwt; the oracle's worktree_via_deskwt), not in the desk-tools directory above, so
+# the stub there is never the one called. This one sits first on the PATH the suite exports below,
+# records every call (the log path is baked into the stub's SOURCE, like the claude/codex stubs)
+# and REFUSES with exit 5 — the installed tool's own refusal shape — so a call can neither succeed
+# quietly nor reach the operator's real `deskwt` and its audit log. The suite also sets
+# CELLCTL_DESKWT=0 (cellctl's own worktree path) so a normal run never calls it at all.
+DESKWT_CALLS="$T/deskwt-calls.log"; : > "$DESKWT_CALLS"
+cat > "$T/bin/deskwt" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "deskwt \$*" >> "$DESKWT_CALLS"
+exit 5
+EOF
+chmod +x "$T/bin/deskwt"
+export CELLCTL_DESKWT=0
 
 # Stub claude/codex. Output paths are baked into the stub's SOURCE (expanded when the heredoc is
 # written), never read from an environment variable at run time — the whole point of the scrubbed
@@ -406,8 +426,37 @@ case_legacy_kinds(){
   assert "legacy-kinds: cell.env without CELL_KIND still loads as k8s (untouched neighbour)" 'grep -q "kind=k8s" <<<"$out"'
 }
 
+# ---------------------------------------------------------------- deskwt-canary
+# Positive control for the per-case guard in run_case: the canary really is what `deskwt` resolves
+# to on this suite's PATH (the lookup both launchers do), and a call really is recorded — so an
+# empty log means "never called", not "the recorder is broken or shadowed".
+case_deskwt_canary(){
+  assert "deskwt-canary: deskwt on PATH resolves to the recording stub" '[[ "$(command -v deskwt)" == "$T/bin/deskwt" ]]'
+  local rc=0
+  deskwt role-init --help >/dev/null 2>&1 || rc=$?
+  assert "deskwt-canary: the stub refuses like the installed tool (exit 5)" '[[ $rc -eq 5 ]]'
+  assert "deskwt-canary: a call is recorded" 'grep -qx "deskwt role-init --help" "$DESKWT_CALLS"'
+  : > "$DESKWT_CALLS"   # the control's own call is not a finding for the per-case guard
+  # A real launch with CELLCTL_DESKWT=1 DOES look deskwt up on this PATH and the stub records it:
+  # the guard sees a real launch, not just a hand call.
+  local cell="case-deskwt-canary"
+  "$CELLCTL" new "$cell" --kind scrubbed --repo "$REPO" --repo-slug example-org/example-repo >/dev/null
+  CELLCTL_DESKWT=1 "$CELLCTL" desk "$cell" worker-desk </dev/null >/dev/null 2>&1 || true
+  assert "deskwt-canary: with CELLCTL_DESKWT=1 a real launch IS recorded" '[[ -s "$DESKWT_CALLS" ]]'
+  "$CELLCTL" down "$cell" >/dev/null 2>&1 || true
+  : > "$DESKWT_CALLS"
+}
+
 # ---------------------------------------------------------------- driver
 run_case(){
+  : > "$DESKWT_CALLS"
+  run_case_body "$1"
+  # Every case: the installed deskwt (here the canary shadowing it) was never called. A stub
+  # nothing reads is silent, so this is the check that it cannot go unused again.
+  assert "$1: deskwt never called (no write to the operator's audit log)" '[[ ! -s "$DESKWT_CALLS" ]]'
+}
+
+run_case_body(){
   case "$1" in
     new) case_new ;;
     check-pass) case_check_pass ;;
@@ -422,6 +471,7 @@ run_case(){
     status) case_status ;;
     down) case_down ;;
     legacy-kinds) case_legacy_kinds ;;
+    deskwt-canary) case_deskwt_canary ;;
     *) echo "scrubbed-cell.test.sh: unknown --case '$1'" >&2; exit 2 ;;
   esac
 }
@@ -432,7 +482,7 @@ if [[ "${1:-}" == "--case" ]]; then
   run_case "$2"
 else
   for c in new check-pass check-pem check-roster check-home-mode env-scrub plan-grammar \
-           smoke-ready smoke-not-ready lock status down legacy-kinds; do
+           smoke-ready smoke-not-ready lock status down legacy-kinds deskwt-canary; do
     echo "[case $c]"
     run_case "$c"
   done

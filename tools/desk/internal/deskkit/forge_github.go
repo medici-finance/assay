@@ -1504,9 +1504,9 @@ func dedupContexts(lists ...[]string) []string {
 	return out
 }
 
-// IssueReactions is SINGLE PAGE by decision — the same reasoning HTTPRepoInfoFetcher's
-// IssueReactions carries in full (repovis.go): fails closed past 100 reactions on one
-// issue, never a false pass. Routed through the go-gh client like every other read; the
+// IssueReactions is SINGLE PAGE by decision: it reads at most 100 reactions on one issue
+// and reports what it read, so a caller that needs a POSITIVE match is never opened by an
+// unread reaction. Routed through the go-gh client like every other read; the
 // squirrel-girl preview accept header the pre-go-gh raw request set is no longer required
 // (the reactions API has been GA for years and returns awards under the default accept).
 func (g *GitHubForge) IssueReactions(repo ForgeRepo, number int) ([]Reaction, error) {

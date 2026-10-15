@@ -141,6 +141,14 @@ func (c *Config) Running(e Engine, name, key string) (*Plan, *Inspection, error)
 	if err != nil {
 		return nil, nil, fmt.Errorf("container %s: %w; refusing to stop it", ContainerName(name, key), err)
 	}
+	// Diagnostic opt-in is a bounded launch selection, like harness/model: status
+	// and down must still work after the operator changes the next launch value.
+	if value, present := env["ASSAY_TELEMETRY"]; present {
+		if value != "0" && value != "1" {
+			return nil, nil, fmt.Errorf("container %s: invalid telemetry selection", p.Name)
+		}
+		p.Env["ASSAY_TELEMETRY"] = value
+	}
 	if err = p.Validate(s); err != nil {
 		return nil, nil, err
 	}

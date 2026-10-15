@@ -74,9 +74,9 @@ USAGE:
   deskdispatch <item-key> [--tier strong|any] [--kit worker|worker-objective|review|verifier]
                [--repo OWNER/NAME] [--root DIR] [--claim-root DIR] [--model SLUG]
                [--branch NAME] [--brief PATH] [--gate-human] [--pr N] [--rework]
-               [--prompt-file FILE] [--quiet] [--dry-run] [--worktree PATH]
+               [--attest-worker] [--prompt-file FILE] [--quiet] [--dry-run] [--worktree PATH]
   deskdispatch --stamp-only --repo OWNER/NAME --pr N --model SLUG --tier strong|any
-               [--kit worker|worker-objective|review|verifier] [--dry-run]
+               [--kit worker|worker-objective|review|verifier] [--attestation N] [--dry-run]
   deskdispatch --kits
   deskdispatch --version
 
@@ -105,6 +105,12 @@ writes the dispatched-* pair and never touches authored-*. The capability floor 
 dispatched-* only, so an authoring stamp does not satisfy a review floor. The verifier
 kit retains dispatched-* for validation and stamp-only; normal verifier dispatch stamps
 its issue through the separate verifier-admission path.
+A worker-kit --stamp-only also reads the change's Worker-Attestation: line (or
+--attestation N). When one is named, the record must be the closed, dispatcher-stamped
+worker attestation, and the PR's branch, repo, kit and the stated --model/--tier must
+equal what it binds: a mismatch refuses (exit 5), an unreadable record is exit 6, and
+nothing is written. The model is still the coordinator's explicit selection, never taken
+from the record. With no attestation named the path is unchanged.
 
 The shared model vocabulary is open: gpt-6-astra and gpt-6.1-sol round-trip unchanged.
 gpt-6-1-sol is also a valid opaque slug, not an alias for gpt-6.1-sol. Use the identifier
@@ -132,6 +138,20 @@ deskdispatch --attest-verifier --root HOME [--dry-run]
   search result cannot authorize another issue. Failed dispatch releases its claim and
   retains the worktree for recovery. Reacquire that claim before launching a recovered run.
   PENDING, failed, mismatched or unreadable stamps never admit verification.
+
+WORKER PRE-WORK (--attest-worker, opt-in). A fresh worker dispatch (no --pr) otherwise
+reports its stamp PENDING until the change opens. With --attest-worker (worker kits only;
+requires --model and either --brief or an issue-<N> item; refused with --pr; needs distinct
+roster-bound desk and worker actors), step 5 creates a dispatcher-authored
+"[worker-attestation] <run>" issue whose immutable body binds a fresh run identifier, the
+claim key, repo, kit, worktree branch and base commit, the brief's repo-relative path and
+digest (or the source issue's body digest) and the selected model/tier; applies
+authored-model:/authored-tier: to it under desk custody; closes it; and reads it back.
+Only then is the prompt emitted, carrying the record's Worker-Attestation: line for the PR
+description. Any failure (create, stamp, close, readback) releases the claim, keeps the
+worktree, emits NO prompt and exits 6; a record left behind stays open, never binds a
+change and, like the verifier's, is excluded from issue intake, boards and sweeps.
+--dry-run names the record it would create and writes nothing.
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 
@@ -190,7 +210,9 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       write authored-model:<slug> + authored-tier:<tier> and never
                       touches dispatched-*, so neither stamp overwrites the other.
                       The stamp attests what the DISPATCHER launched; a self-applied
-                      stamp is worthless by design.
+                      stamp is worthless by design. Without --pr it is PENDING (STAMP
+                      AFTER OPEN), unless --attest-worker admits the run through its
+                      read-back pre-work record (WORKER PRE-WORK above).
   6 queue-label       on a --kit review dispatch with --pr known, applies the review-lane
                       queue label authorization-needed to the change through the resolved
                       forge (idempotent create+apply under the reviewer role's own
@@ -256,6 +278,9 @@ registry does not define = exit 5 naming it; a resolved repo that is not --repo 
 origin = HARD FAIL exit 5 naming both repos — no claim, no worktree. The resolved repo is the claim
 repo and the token's repo; a cross-repo claim key carries the TRACKING alias; the prompt tells the
 worker to run ` + "`deskpr create --root <tracking checkout>`" + ` so its Brief: trailer resolves there.
+Under --cross-repo (a brief homed in one repo, its PR opened in --repo) the prompt instead names the
+exact ` + "`Cross-repo-brief: <alias>:<stream>/<NN>`" + ` line and plain ` + "`deskpr create`" + ` (fresh) or
+` + "`deskpr update`" + ` (--pr resume) with no tracking --root.
 
 PHANTOM PRECONDITION. A fresh worker dispatch is reconciled against the deliverable repo's open and
 merged PRs by ` + "`Brief:`" + ` trailer BEFORE admission, the token mint and the claim. An OPEN PR refuses

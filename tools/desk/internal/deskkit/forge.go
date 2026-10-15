@@ -1708,8 +1708,8 @@ type Forge interface {
 	// Consumer: cmd/deskflip's checks-green condition (freeze rule: this read lands with the
 	// call site that consumes it).
 	RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error)
-	// IssueReactions returns the reactions/awards on an issue or PR (the admission gate
-	// surface: reaction ↔ award emoji).
+	// IssueReactions returns the reactions/awards on an issue or PR (reaction ↔ award
+	// emoji). The public-repo write gate does not read it: that gate is repository-scoped.
 	IssueReactions(repo ForgeRepo, number int) ([]Reaction, error)
 	// ListLabelEvents returns the change's label application/removal events — the label name AND
 	// the actor that applied it. The applier is the whole point: it is what separates a
