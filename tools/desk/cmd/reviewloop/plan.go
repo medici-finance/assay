@@ -87,7 +87,7 @@ func cmdPlan(args []string, stdout io.Writer) error {
 			len(u), strings.Join(u, ", "))
 	}
 
-	verbs := Coalesce([]*Board{board}, deskkit.AlreadyDone)
+	verbs := Coalesce([]*Board{board})
 	fmt.Fprintf(stdout, "\nOUTWARD VERBS, coalesced on (repo, pr, head, verb):\n")
 	if len(verbs) == 0 {
 		fmt.Fprintf(stdout, "  (none — no row on this board carries an outward verb)\n")

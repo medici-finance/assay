@@ -52,6 +52,24 @@ Before you finalize the order: for each "smallest unblocking move," **verify it 
 check the code/config/bug tracker, don't assume. If a proposed first step depends on something
 unproven, that something is the real head. Say so explicitly.
 
+## Carry quality obligations into execution
+
+Carry applicable quality attributes and cost-model obligations from the controlling spec
+into the brief's existing Context, Task, DoD and Verify fields. Name the affected path or
+quality scenario, operating conditions, acceptance target or unresolved decision, behaviour
+to preserve, and evidence owner and method. For performance, retain workload and budget. Cite the source; do not silently invent or relax
+budgets. If the source omits a consequential constraint, surface the gap before committing
+work that depends on it. Keep unrelated briefs free of boilerplate quality checklists.
+
+Where algorithm or data structure choice is consequential, state what needs comparison and
+why. An unresolved choice that could invalidate downstream work needs a bounded spike ahead
+of that work, with a decision criterion and explicit dependencies. Verification should cover
+applicable resource budgets and scaling as well as functional equivalence; a faster result
+that skips required behaviour does not pass. Reuse the spec's workload and measurement
+conditions so that the evidence answers the original requirement. Keep cross-cutting
+obligations traceable to the briefs that implement them and the brief that verifies the
+end-to-end result; passing isolated component checks is insufficient for a system target.
+
 ## Brief structure (one file per unit of work)
 
 `docs/<phase>/brief-<NN>-<slug>.md` (or whatever your repo's convention is — match existing phase docs).

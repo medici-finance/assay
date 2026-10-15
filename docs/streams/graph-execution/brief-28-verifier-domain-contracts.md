@@ -4,7 +4,7 @@ title: Verifier domain contracts with qualified identities and candidate-bound a
 why: "The planned verifier runtime, its database and its cockpit all need one answer to 'which work item, which candidate, which acceptance, which facts'. Without one pure contract they each invent their own, and a verdict can attach to the wrong candidate or pass on missing facts."
 wave: 2
 depends: ["graph-execution/09"]
-unblocks: ["graph-execution/23", "graph-execution/29"]
+unblocks: ["graph-execution/23", "graph-execution/29", "graph-execution/04", "graph-execution/16", "graph-execution/19", "graph-execution/26", "forge-neutral/37", "forge-neutral/38", "graph-execution/30", "graph-execution/31"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -28,7 +28,8 @@ consumers:
   - "workflow candidate record (spec/workflow-candidate-v1.md as planned by graph-execution/23): follow-up graph-execution/23"
   - "regression-floor adapters: follow-up graph-execution/29"
   - "statusgen/evaluation: out-of-scope (consumed unchanged through its exported API; statusgen/15 owns it)"
-  - "durable coordination store and runtime controller: out-of-scope (non-CI R2/R5 follow-up briefs consume this contract; see the amendment manifest)"
+  - "durable coordination store (workflow/store): follow-up graph-execution/19 (non-CI R2 amendment, 2026-10-13; keys its records on this contract)"
+  - "runtime controller: out-of-scope (the non-CI R5 follow-up consumes this contract; see the amendment manifest)"
 id: fefddc8e-4cd2-4438-8c26-965b24ffd5dc
 ---
 
@@ -46,7 +47,7 @@ facts (a435badbd, 2026-10-13):
   `EvaluateCoverage` are pure functions over supplied observations; a value the caller cannot
   supply is could-not-check, never pass. `Identity` reports evaluator version plus policy digest.
 - graph-execution/09 owns instance/node/attempt identity and pinned acceptance references
-  (`spec/workflow-instance-v1.md` (planned), planned). This brief keys its records on those IDs and does
+  (`spec/workflow-instance-v1.md` (planned)). This brief keys its records on those IDs and does
   not mint a second identity scheme.
 - graph-execution/23 planned its own candidate record (`spec/workflow-candidate-v1.md` (planned)). The
   candidate/acceptance binding is defined once, here; graph-execution/23 consumes it (its
@@ -94,7 +95,8 @@ design-fit:
 ## Task
 
 1. Write `spec/verification-domain-v1.md` (planned) and `schemas/verification-domain-v1.json` defining
-   these records: qualified work identity (repository, stream, brief number, plus the
+   these records: qualified work identity (the four-segment `<cell>:<repo>:<stream>:<NN>` brief
+   ID, with elided references expanded against the declaring brief, plus the
    graph-execution/09 instance/attempt IDs; a file path is never an identity); candidate
    (repository, base and candidate commit and tree, artifact manifest digest); acceptance
    binding (acceptance version and digest bound to exactly one candidate); fact set with an

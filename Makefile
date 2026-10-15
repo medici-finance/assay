@@ -169,7 +169,8 @@ skillslint:
 ## paired-versions: assert the adopter FRONT DOOR is consistent — plugin.json's
 ## version equals paired-versions.yaml's `plugin`, each paired tag is a PUBLISHED
 ## release of its release home, and every per-platform sha256 equals that
-## release's own checksums.txt entry. `assay:install` resolves the binary an
+## release's own checksums.txt entry, and no newer published release has gone
+## un-pinned for more than seven days. `assay:install` resolves the binary an
 ## adopter gets from that manifest, so a plugin bump that skipped the re-pin
 ## installs the tool the PREVIOUS plugin was paired with.
 ## Three-state and fail-closed: a disagreement and a could-not-check both exit
