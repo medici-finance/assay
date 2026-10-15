@@ -806,6 +806,12 @@ type OpenChange struct {
 	BaseRef          string
 	MergeStateStatus string
 	Rollup           []RollupNode
+	// HeadCommittedAt is the head commit's COMMITTER date (RFC3339), read on the same node
+	// the rollup already comes from — no extra request. It is set only when that commit's oid
+	// is HeadSHA, so it can never describe a different commit; "" when the backend does not
+	// report it (GitLab) or the oids disagree, and a consumer that needs it (the #3093
+	// stale-approval test, ReviewPredatesHead) reads it per change or fails closed.
+	HeadCommittedAt string `json:",omitempty"`
 }
 
 // OpenChanges is the result of the bulk open-change read: the changes plus whether the read

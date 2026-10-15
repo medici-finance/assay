@@ -333,6 +333,10 @@ func (f *fakeForge) ListOpenChanges(deskkit.ForgeRepo) (*deskkit.OpenChanges, er
 	return openChangesFromPRListJSON(js, f.repo)
 }
 
+// fixtureHeadCommittedAt is the head commit date a PR-list fixture is given when it names
+// none — earlier than any review timestamp a fixture uses.
+const fixtureHeadCommittedAt = "2000-01-01T00:00:00Z"
+
 // openChangesFromPRListJSON maps the SAME flat prBase-shaped array the old openPRs reshape
 // produced into an *OpenChanges — so an existing fixture (a []prBase JSON literal) drives the
 // typed ListOpenChanges read unchanged. It is the exact inverse of fetchOpenPRs's own
@@ -349,6 +353,13 @@ func openChangesFromPRListJSON(js, repo string) (*deskkit.OpenChanges, error) {
 			CreatedAt: p.CreatedAt, LastEditedAt: p.LastEditedAt, MergeStateStatus: p.MergeStateStatus,
 			HeadSHA: p.HeadRefOid, HeadRef: p.HeadRefName, BaseRef: p.BaseRefName,
 			Author: deskkit.Account{Login: p.Author.Login}, Labels: p.labelNames(),
+			HeadCommittedAt: p.HeadCommittedDate,
+		}
+		if change.HeadCommittedAt == "" {
+			// A fixture that does not name its head commit's date predates #3093: its head
+			// commit is taken to be OLDER than every review it carries, so none reads as
+			// re-anchored. A test of the stale-grant filter sets headCommittedDate.
+			change.HeadCommittedAt = fixtureHeadCommittedAt
 		}
 		for _, c := range p.StatusCheckRollup {
 			change.Rollup = append(change.Rollup, deskkit.RollupNode{

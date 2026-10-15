@@ -1,0 +1,2 @@
+### Fixed
+- `deskboard`, `deskpost ready` and `deskflip` no longer accept an approval that GitHub re-anchored onto a newer head. An APPROVED (or `Security-Review: pass`) reported at the head counts only when it was submitted at or after the head commit's committer date. Before this, an approval left on an earlier commit could be reported at a later merge commit, clear a standing CHANGES_REQUESTED as if a push had happened, and make the board read MERGE-NOW. A head commit date that cannot be read counts as not approved.
