@@ -430,7 +430,7 @@ else
   no "P8 a bare line without a linux-amd64 manifest line refuses" "rc=$rc err=$(tr '\n' '|' < "$d/r.err")"
 fi
 
-# P9-P14 — the umbrella line. A write into a file with no `assay` line records the release
+# P9-P15 — the umbrella line. A write into a file with no `assay` line records the release
 # the pins come from, so the version marker reads known instead of could-not-determine.
 MAN9="$TMP/manifest9.yaml"; UTAG="v9.9.9"
 printf 'statusgen:\n  release_home: %s\n  tag: %s\n  platforms:\n    darwin-arm64: statusgen-darwin-arm64 %s %s\n    darwin-amd64: statusgen-darwin-amd64 %s %s\n    linux-amd64: statusgen-linux-amd64 %s %s\n' \
@@ -483,6 +483,17 @@ if ! grep -q '^assay ' "$TMP/case-P1/pins" && ! grep -q '^assay ' "$TMP/case-P3/
   ok "P14 a non-bare manifest tag ($TAG) never records an umbrella line"
 else
   no "P14 a non-bare tag records no umbrella line" "P1=$(tr '\n' '|' < "$TMP/case-P1/pins")"
+fi
+# P15 — the common re-install: the umbrella line is already on the manifest's tag, so the
+# insert's guard is the only thing standing between a write and a duplicate `assay` line.
+d=$(case_dir P15)
+printf 'assay %s\nstatusgen-darwin-arm64 REPLACE_WITH_TAG REPLACE_WITH_SHA256\n' "$UTAG" > "$d/pins"
+runp "$NOCLI" "$d/r" pin --manifest "$MAN9" --pins "$d/pins" --platform darwin-arm64; rc=$?
+if [ "$rc" -eq 0 ] && [ "$(grep -c '^assay ' "$d/pins")" = 1 ] && grep -qx "assay $UTAG" "$d/pins" \
+   && grep -qx "statusgen-darwin-arm64 $UTAG $D1" "$d/pins"; then
+  ok "P15 an existing umbrella line on the manifest's tag stays the only one after a write"
+else
+  no "P15 an on-tag umbrella line is not duplicated" "rc=$rc pins=$(tr '\n' '|' < "$d/pins")"
 fi
 
 # ------------------------------------------------------------------ C classify
