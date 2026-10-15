@@ -110,6 +110,8 @@ func buildEnvKeys() []envKey {
 			desc: "Where a cache trim stops, as a whole percentage of the budget below 75: compiler-cache entries go oldest first until the cache is at or under it."},
 		{key: "CELL_GO_CACHE_TRIM_MIN_AGE", class: envMachine, group: envGroupCache, def: "2h",
 			desc: "Safety floor of the cache trim: no compiler-cache entry younger than this is ever trimmed, as a duration above 1h."},
+		{key: "CELL_GO_TRIMPATH", class: envMachine, group: envGroupCache, def: "on",
+			desc: "Build with -trimpath (GOFLAGS) so worktrees share the managed Go cache: on or off."},
 		{key: "CELL_SCRATCH_MAX_AGE", class: envMachine, group: envGroupCache, def: "168h",
 			desc: "Age past which managed task scratch is swept, as a duration."},
 		{key: "CELL_SCRATCH_MAX_BYTES", class: envMachine, group: envGroupCache, def: "268435456",

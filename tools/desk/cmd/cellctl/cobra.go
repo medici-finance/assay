@@ -924,7 +924,7 @@ func cacheCmd() *cobra.Command {
 			"Defaults: 8 GiB logical-byte budget, 10 GiB filesystem free-space floor, 24h compiler-cache trim age,\n" +
 			"60% low-water mark, 2h trim safety floor.\n" +
 			"Configure CELL_GO_CACHE_ROOT / CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE / CELL_GO_CACHE_BUILD_MAX_AGE /\n" +
-			"CELL_GO_CACHE_LOW_WATER_PERCENT / CELL_GO_CACHE_TRIM_MIN_AGE.\n" +
+			"CELL_GO_CACHE_LOW_WATER_PERCENT / CELL_GO_CACHE_TRIM_MIN_AGE / CELL_GO_TRIMPATH.\n" +
 			"A trim (pressure, over 75% of budget, or a wipe with live consumers) removes compiler-cache entries\n" +
 			"oldest first down to the low-water mark (a wipe: as far as it can), plus any past the trim age, and\n" +
 			"never one younger than the safety floor; module caches, gopath and whole roots stay protected.\n" +

@@ -143,7 +143,8 @@ an item by hand, compose the same shape. Reply shape carries the recommended opt
 4. **Reply shape** — exactly what the answer must contain: a letter, a name, "done", "merge
    it". **The driver should be able to answer in one word.** If your question cannot be
    answered in one word, it is two questions or an unfinished one. It also carries **the
-   exact command for the RECOMMENDED option**: a ruling is
+   exact command for the RECOMMENDED option**, on the driver's own human path (the driver runs
+   it under their own login; a desk never does): a ruling is
    `t="$(gh auth token --user <driver-login>)" && [ -n "$t" ] && GH_TOKEN="$t" gh issue comment <N> -R <owner>/<repo> --body '<ruling text>'`
    (a `'` inside the text is written `'\''`); an act is the matching `gh` command behind the
    same prefix (`gh pr merge <N> -R <owner>/<repo> --merge --match-head-commit <sha>`). If the
@@ -151,8 +152,9 @@ an item by hand, compose the same shape. Reply shape carries the recommended opt
    the active account; an App-posted ruling fails a human gate. No single command fits? Say so;
    never invent one. The script's `command:` line derives it only from a trusted author's
    visible phrase naming the recommended option, else prints `not derivable — desk to fill`.
-   The desk likewise sets `GH_TOKEN` to its own role App token on every `gh` call — never
-   ambient auth.
+   The desk's own `gh` calls run as its role App, per
+   [desk-shell.md §Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role) —
+   never ambient auth, and never the driver's login.
 5. **Verification** — what the desk checks after acting (the API read, the file, the run id,
    the label state) and what it moves to next. This is the promise that the answer will not
    evaporate into a transcript.
