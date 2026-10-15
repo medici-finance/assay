@@ -42,6 +42,12 @@ type VerifierReceipt struct {
 	URL     string
 	// BriefRoot is local-only routing returned after admission, never part of the issue body.
 	BriefRoot string `json:",omitempty"`
+	// SourceHome is the admitted deliverable home a version-2 run's Verify rows
+	// execute in, returned after admission and local-only like BriefRoot. The
+	// executor runs its rows there and refuses any other row root: BriefRoot is
+	// the tracking tree, so a root derived from the brief's location would run
+	// the rows against a tree the attestation does not name.
+	SourceHome string `json:",omitempty"`
 }
 type verifierLocal struct {
 	VerifierReceipt
@@ -438,7 +444,7 @@ func checkVerifierAttestation(root, brief string, f Forge, phase verifierPhase) 
 		return r.VerifierReceipt, Refused("missing or mismatched dispatcher stamp; no Verify rows admitted")
 	}
 	if r.Binding.Version == 2 {
-		r.BriefRoot = r.TrackingHome
+		r.BriefRoot, r.SourceHome = r.TrackingHome, r.Home
 	}
 	return r.VerifierReceipt, nil
 }

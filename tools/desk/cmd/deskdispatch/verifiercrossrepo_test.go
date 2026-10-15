@@ -98,8 +98,16 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 			source := crossDispatchRepo(t, "example-org/source", map[string]string{"source.txt": "deliverable\n"})
 			output := t.TempDir()
 			t.Setenv("VERIFY_OUTPUT", output)
+			// A desk machine carries a global git identity, so every tree can name
+			// a runner; without one a wrong-tree run would stop at attribution and
+			// hide which tree the rows were about to run in.
+			global := filepath.Join(t.TempDir(), "gitconfig")
+			if err := os.WriteFile(global, []byte("[user]\n\tname = fixture-global\n\temail = global@example.invalid\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("GIT_CONFIG_GLOBAL", global)
 			const brief = "docs/streams/sample/brief-01-check.md"
-			body := "---\ndeliverable_repo: source\n---\n# Restricted fixture canary\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `test -f source.txt && touch \"$VERIFY_OUTPUT/row\"` | exit 0 |\n\n## Evidence\n\nPrior-evidence-canary.\n"
+			body := "---\ndeliverable_repo: source\n---\n# Restricted fixture canary\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `if test -f source.txt; then touch \"$VERIFY_OUTPUT/row\"; else touch \"$VERIFY_OUTPUT/elsewhere\"; false; fi` | exit 0 |\n\n## Evidence\n\nPrior-evidence-canary.\n"
 			tracking := crossDispatchRepo(t, "example-org/tracking", map[string]string{brief: body, "docs/streams/graph-repos.yaml": "schema: graph-repos-v1\nself: track\nrepos:\n  track:\n    repo: example-org/tracking\n  source:\n    repo: example-org/source\n"})
 			gh := installGHStamp(t)
 			verifierGHFixture(t, gh)
@@ -192,16 +200,20 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 			t.Setenv("ASSAY_CROSS_ROOT", source)
 			t.Setenv("ASSAY_CROSS_BRIEF", brief)
 			t.Setenv("DESK_LOOP", "verify-desk")
-			execute := func() ([]byte, error) {
-				c := exec.Command(bin, "verifyrun", "--root", source, "--brief", brief)
+			execute := func(args ...string) ([]byte, error) {
+				c := exec.Command(bin, append([]string{"verifyrun"}, args...)...)
 				c.Dir = source
 				return c.CombinedOutput()
+			}
+			ranElsewhere := func() bool {
+				_, err := os.Stat(filepath.Join(output, "elsewhere"))
+				return err == nil
 			}
 			gh.mu.Lock()
 			labels := gh.labels
 			gh.labels = nil
 			gh.mu.Unlock()
-			if out, err := execute(); err == nil {
+			if out, err := execute("--root", source, "--brief", brief); err == nil {
 				t.Fatalf("missing stamp ran rows: %s", out)
 			}
 			if _, err := os.Stat(filepath.Join(output, "row")); !os.IsNotExist(err) {
@@ -210,18 +222,51 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 			gh.mu.Lock()
 			gh.labels = labels
 			gh.mu.Unlock()
-			if out, err := execute(); err != nil {
+			// F-verifyrun-default-root-tracking-tree: a version-2 run executes its
+			// rows only in the admitted deliverable home. Any other row root, named
+			// with --root or reached through --in-container, is refused before a
+			// row runs, so no result from another tree carries the attestation.
+			for name, args := range map[string][]string{
+				"tracking checkout":             {"--root", tracking, "--brief", brief},
+				"isolated tracking clone":       {"--root", br, "--brief", brief},
+				"in-container tracking clone":   {"--in-container", "--root", br, "--brief", brief},
+				"in-container deliverable home": {"--in-container", "--brief", brief},
+			} {
+				out, err := execute(args...)
+				if err == nil || !strings.Contains(string(out), "admitted deliverable home") {
+					t.Fatalf("%s: a row root other than the admitted deliverable home was not refused: %v %s", name, err, out)
+				}
+				if ranElsewhere() {
+					t.Fatalf("%s: a row ran outside the deliverable home under the attestation", name)
+				}
+				if _, err := os.Stat(filepath.Join(output, "row")); !os.IsNotExist(err) {
+					t.Fatalf("%s: a refused run executed its row", name)
+				}
+			}
+			// An explicit --root naming the home is the same run as the default.
+			if out, err := execute("--root", source, "--brief", brief, "--dry-run"); err != nil {
+				t.Fatalf("admitted Verify with --root at the home: %v %s", err, out)
+			}
+			if err := os.Remove(filepath.Join(output, "row")); err != nil {
+				t.Fatal("explicit home --root did not execute in deliverable home")
+			}
+			// The documented default omits --root; the rows still run in the home.
+			if out, err := execute("--brief", brief); err != nil {
 				t.Fatalf("admitted Verify: %v %s", err, out)
 			}
-			if _, err := os.Stat(filepath.Join(output, "row")); err != nil {
+			if _, err := os.Stat(filepath.Join(output, "row")); err != nil || ranElsewhere() {
 				t.Fatal("admitted row did not execute in deliverable home")
 			}
+			deliverableHead := crossDispatchGit(t, source, "rev-parse", "HEAD")
 			landed, err := os.ReadFile(filepath.Join(br, brief))
 			if err != nil {
 				t.Fatal(err)
 			}
 			if !strings.Contains(string(landed), receipt.EvidenceBinding()) {
 				t.Fatal("Evidence omitted two-source binding")
+			}
+			if !strings.Contains(string(landed), "@ "+deliverableHead[:12]) {
+				t.Fatalf("witness Runner does not name the deliverable commit %s:\n%s", deliverableHead[:12], landed)
 			}
 			if _, err := deskkit.CheckVerifierEvidence(source, "example-org/tracking", brief); err != nil {
 				t.Fatal(err)
@@ -240,6 +285,31 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 				t.Fatalf("deliverable changed: %s", diff)
 			}
 		})
+	}
+}
+
+// regression: #2485. The dispatcher binds a cross-repository verifier only
+// when --claim-root's own origin IS the tracking repository its registry
+// resolves. A checkout of another repository carrying the same registry and
+// brief is refused at dispatch, by that reason, before any preparation.
+func TestCrossRepoClaimRootOrigin(t *testing.T) {
+	crossDispatchConfig(t, "public")
+	t.Setenv(deskkit.EnvAllowedRepos, "example-org/source:ci:public,example-org/tracking:ci:private,example-org/other:ci:private")
+	t.Setenv(deskkit.EnvRepoForges, "example-org/source=github,example-org/tracking=github,example-org/other=github")
+	source := crossDispatchRepo(t, "example-org/source", map[string]string{"source.txt": "deliverable\n"})
+	const brief = "docs/streams/sample/brief-01-check.md"
+	body := "---\ndeliverable_repo: source\n---\n# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `true` | exit 0 |\n"
+	registry := "schema: graph-repos-v1\nself: track\nrepos:\n  track:\n    repo: example-org/tracking\n  source:\n    repo: example-org/source\n"
+	tracking := crossDispatchRepo(t, "example-org/tracking", map[string]string{brief: body, "docs/streams/graph-repos.yaml": registry})
+	crossDispatchGit(t, tracking, "remote", "set-url", "origin", "https://github.com/example-org/other.git")
+	o := dispatchOpts{root: source, claimRoot: tracking, repo: "example-org/source", brief: filepath.Join(tracking, brief), model: "gpt-6-astra", tier: "strong", kit: "verifier", item: "sample/01"}
+	_, err := attestVerifierDispatch(o, "example-org/source", source)
+	if err == nil || !strings.Contains(err.Error(), "requires the resolved tracking repository") {
+		t.Fatalf("--claim-root of another repository not refused by its origin: %v", err)
+	}
+	record := crossDispatchGit(t, source, "rev-parse", "--path-format=absolute", "--git-path", "assay-verifier-attestation.json")
+	if _, serr := os.Stat(record); !os.IsNotExist(serr) {
+		t.Fatal("refused dispatch prepared a verifier run")
 	}
 }
 

@@ -12,7 +12,10 @@ import (
 
 // statusgen is a separate module. Admission delegates to the installed shared
 // reader, never duplicates forge custody or accepts a caller-supplied receipt.
-func verifierAdmission(root, brief string) (string, string, error) {
+// It returns the attestation line, the brief to read and, for a version-2
+// (cross-repository) receipt, the admitted deliverable home the rows must run
+// in; a version-1 or unadmitted run returns no home.
+func verifierAdmission(root, brief string) (string, string, string, error) {
 	required := strings.Contains(strings.ToLower(os.Getenv("DESK_LOOP")), "verify")
 	meta, e := exec.Command("git", "-C", root, "rev-parse", "--path-format=absolute", "--git-path", "assay-verifier-attestation.json").Output()
 	if e == nil {
@@ -21,7 +24,7 @@ func verifierAdmission(root, brief string) (string, string, error) {
 		}
 	}
 	if !required {
-		return "", brief, nil
+		return "", brief, "", nil
 	}
 	out, err := exec.Command("deskdispatch", "--check-verifier", "--root", root, "--brief", brief).Output()
 	if err != nil {
@@ -29,37 +32,81 @@ func verifierAdmission(root, brief string) (string, string, error) {
 		if exit, ok := err.(*exec.ExitError); ok {
 			detail = strings.TrimSpace(string(exit.Stderr))
 		}
-		return "", "", fmt.Errorf("pre-work verifier admission failed; no Verify rows executed: %w: %s", err, detail)
+		return "", "", "", fmt.Errorf("pre-work verifier admission failed; no Verify rows executed: %w: %s", err, detail)
 	}
 	return verifierAdmissionReceipt(out, brief)
 }
 
-func verifierAdmissionReceipt(out []byte, brief string) (string, string, error) {
+func verifierAdmissionReceipt(out []byte, brief string) (string, string, string, error) {
 	var receipt struct {
-		Issue     int
-		BriefRoot string
-		Binding   struct {
+		Issue      int
+		BriefRoot  string
+		SourceHome string
+		Binding    struct {
 			Version                                                           int
 			Run, Repo, Source, SourceRepo, TrackingSource, Brief, Model, Tier string
 		}
 	}
 	if err := json.Unmarshal(out, &receipt); err != nil {
-		return "", "", fmt.Errorf("unreadable pre-work verifier receipt: %w", err)
+		return "", "", "", fmt.Errorf("unreadable pre-work verifier receipt: %w", err)
 	}
 	b := receipt.Binding
 	if receipt.Issue <= 0 || b.Run == "" || b.Source == "" || b.Model == "" || b.Tier == "" {
-		return "", "", fmt.Errorf("incomplete pre-work verifier receipt")
+		return "", "", "", fmt.Errorf("incomplete pre-work verifier receipt")
 	}
 	if b.Version == 2 {
-		if receipt.BriefRoot == "" || b.Repo == "" || b.SourceRepo == "" || b.TrackingSource == "" || !filepath.IsAbs(receipt.BriefRoot) || !filepath.IsLocal(b.Brief) || filepath.ToSlash(filepath.Clean(b.Brief)) != b.Brief || b.Brief == "." {
-			return "", "", fmt.Errorf("incomplete cross-repository pre-work verifier receipt")
+		if receipt.BriefRoot == "" || receipt.SourceHome == "" || b.Repo == "" || b.SourceRepo == "" || b.TrackingSource == "" || !filepath.IsAbs(receipt.BriefRoot) || !filepath.IsAbs(receipt.SourceHome) || !filepath.IsLocal(b.Brief) || filepath.ToSlash(filepath.Clean(b.Brief)) != b.Brief || b.Brief == "." {
+			return "", "", "", fmt.Errorf("incomplete cross-repository pre-work verifier receipt")
 		}
-		return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source-repo=%s source=%s tracking-source=%s brief=%s model=%s tier=%s", b.Repo, receipt.Issue, b.Run, b.SourceRepo, b.Source, b.TrackingSource, b.Brief, b.Model, b.Tier), filepath.Join(receipt.BriefRoot, b.Brief), nil
+		return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source-repo=%s source=%s tracking-source=%s brief=%s model=%s tier=%s", b.Repo, receipt.Issue, b.Run, b.SourceRepo, b.Source, b.TrackingSource, b.Brief, b.Model, b.Tier), filepath.Join(receipt.BriefRoot, b.Brief), receipt.SourceHome, nil
 	}
 	if b.Version != 1 {
-		return "", "", fmt.Errorf("unsupported pre-work verifier receipt version")
+		return "", "", "", fmt.Errorf("unsupported pre-work verifier receipt version")
 	}
-	return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source=%s brief=%s model=%s tier=%s", b.Repo, receipt.Issue, b.Run, b.Source, b.Brief, b.Model, b.Tier), brief, nil
+	return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source=%s brief=%s model=%s tier=%s", b.Repo, receipt.Issue, b.Run, b.Source, b.Brief, b.Model, b.Tier), brief, "", nil
+}
+
+// admittedRowRootRefusal is the row-root rule for a version-2 (cross-repository)
+// run. Admission swaps the brief to the isolated tracking checkout, so a row
+// root derived from the brief's location would be the TRACKING tree, while the
+// witness carries an attestation naming the deliverable commit. The rows run in
+// the admitted deliverable home and nowhere else: an explicit --root, and the
+// root admission was asked about, must each be that directory, or the run is
+// refused before any row executes. Directories are compared by file-system
+// identity after resolving symlinks, not by spelling.
+func admittedRowRootRefusal(explicitRoot, admissionRoot, home string) string {
+	if !filepath.IsAbs(home) || !sameDirectory(home, home) {
+		return fmt.Sprintf("refusing to run: the admitted deliverable home %q is not an existing absolute directory, so no row root can be bound to it", home)
+	}
+	if explicitRoot != "" && !sameDirectory(explicitRoot, home) {
+		return fmt.Sprintf("refusing --root %s: a cross-repository verifier run executes its Verify rows only in the admitted deliverable home %s, and its witness binds that home's commit. Omit --root, or pass that home.", explicitRoot, home)
+	}
+	if !sameDirectory(admissionRoot, home) {
+		return fmt.Sprintf("refusing to run: admission was checked at %s, which is not the admitted deliverable home %s that the Verify rows would run in", admissionRoot, home)
+	}
+	return ""
+}
+
+// sameDirectory reports whether a and b resolve to one existing directory.
+func sameDirectory(a, b string) bool {
+	resolve := func(p string) (os.FileInfo, bool) {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return nil, false
+		}
+		real, err := filepath.EvalSymlinks(abs)
+		if err != nil {
+			return nil, false
+		}
+		info, err := os.Stat(real)
+		return info, err == nil && info.IsDir()
+	}
+	ai, ok := resolve(a)
+	if !ok {
+		return false
+	}
+	bi, ok := resolve(b)
+	return ok && os.SameFile(ai, bi)
 }
 
 // admittedRowEnv is the environment an admitted run's Verify rows execute in.
