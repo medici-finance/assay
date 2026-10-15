@@ -1,2 +1,0 @@
-### Changed
-- `statusgen reconcile --backfill` runs about 2.4× faster with byte-identical output (248s → ~100s on a board of ~720 briefs and ~1,900 PRs). The pull list is paged once, not twice (20 fewer forge requests per run). Each stream README's pre-generation history is replayed once per stream instead of once per brief (~2,000 fewer `git` processes). The evidence-coverage evaluation asks each distinct git question once per run (~2,500 fewer). The per-PR changed-file reads overlap, 6 at a time, reading exactly the PRs the sequential match reads.
