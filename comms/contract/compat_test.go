@@ -128,13 +128,16 @@ func (verbsOnly) KnownVerb(string) bool  { return true }
 func (verbsOnly) KnownClass(string) bool { return false }
 
 type assertionFixture struct {
-	Cell         string `json:"cell"`
-	Role         string `json:"role"`
-	MsgID        string `json:"msgId"`
-	Nonce        string `json:"nonce"`
-	IssuedUnix   int64  `json:"issuedUnix"`
-	ExpiresUnix  int64  `json:"expiresUnix"`
-	CanonicalHex string `json:"canonicalHex"`
+	Cell        string `json:"cell"`
+	Role        string `json:"role"`
+	MsgID       string `json:"msgId"`
+	Nonce       string `json:"nonce"`
+	IssuedUnix  int64  `json:"issuedUnix"`
+	ExpiresUnix int64  `json:"expiresUnix"`
+	Segments    []struct {
+		Name string `json:"name"`
+		Hex  string `json:"hex"`
+	} `json:"canonicalSegments"`
 	SigHex       string `json:"sigHex"`
 	PublicKeyHex string `json:"publicKeyHex"`
 }
@@ -162,8 +165,19 @@ func TestContractCompatibilityAssertionBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := hex.EncodeToString(CanonicalAssertionBytes(a)); got != f.CanonicalHex {
-		t.Fatalf("canonical assertion bytes drifted:\n got %s\nwant %s", got, f.CanonicalHex)
+	var want []byte
+	for _, seg := range f.Segments {
+		b, err := hex.DecodeString(seg.Hex)
+		if err != nil {
+			t.Fatalf("segment %s: %v", seg.Name, err)
+		}
+		want = append(want, b...)
+	}
+	if len(f.Segments) == 0 {
+		t.Fatal("assertion fixture carries no canonical segments")
+	}
+	if got := CanonicalAssertionBytes(a); !bytes.Equal(got, want) {
+		t.Fatalf("canonical assertion bytes drifted:\n got %x\nwant %x", got, want)
 	}
 	if got := hex.EncodeToString(a.Sig); got != f.SigHex {
 		t.Fatalf("assertion signature drifted:\n got %s\nwant %s", got, f.SigHex)
