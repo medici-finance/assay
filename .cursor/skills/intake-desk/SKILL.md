@@ -19,7 +19,7 @@ description: >-
 > **Portable core.** A project adopting Assay pairs this body with its own config — the roster's
 > owned-repo scan scope, its role-to-App bindings and its escalation labels — never this text.
 
-> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
@@ -513,10 +513,12 @@ Stated once for every desk; this skill adds only what is its own above.
   don't cite it; cannot reach the remote and cannot cross-check → **could-not-check**, never a
   claim badged as re-verified.
 - **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskpost`,
-  `deskreply`, `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script. A shared
+  `deskreply`, `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script; a `gh`
+  call no verb covers runs as the role App per desk-shell.md §Forge CLI as the role. A shared
   human/operator login makes authorship ambiguous; a token 404-ing on a repo it should cover means
   the wrong installation, never "App not installed". **Fallback:** the App genuinely not installed on
-  a target repo → work as the shared operator account WITH a logged note in the artifact (PR body /
+  a target repo (`desktoken coverage <role> --repo <owner>/<repo>` exits 5; a missing human `gh`
+  login is never this case) → work as the shared operator account WITH a logged note in the artifact (PR body /
   issue comment / register entry), never silently.
 - **Git push policy (R8).** NEVER push to `main`, merge, close a human-decision issue, or trigger
   workflows / mutating `kubectl` without human:<name>'s go. Branch push + draft PR is
