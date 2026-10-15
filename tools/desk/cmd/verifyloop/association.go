@@ -31,11 +31,16 @@ func associateVerifierItem(it loopengine.Item, root string) (loopengine.Item, er
 	if !strings.Contains(text, "deliverable_repo:") && !strings.Contains(text, "homed-in:") && len(deskkit.BriefFilesTags(text)) == 0 {
 		return it, nil
 	}
-	repo, trackingSHA, err := deskkit.VerifierRepositorySnapshot(root)
+	// Declarations are read from the commit the scan read (HEAD), so whether the
+	// work is cross-repository at all is decided before, and independently of,
+	// the fetched-main gate. A same-repository brief (an alias tag or homed-in
+	// naming this repository) keeps its legacy representation even while the
+	// checkout lags fetched main; only a distinct deliverable needs the snapshot.
+	repo, head, err := deskkit.VerifierRepositoryHead(root)
 	if err != nil {
 		return it, err
 	}
-	repos, err := deskkit.VerifierDeliverables(root, trackingSHA, it.BriefPath)
+	repos, err := deskkit.VerifierDeliverables(root, head, it.BriefPath)
 	if err != nil {
 		return it, err
 	}
@@ -44,6 +49,10 @@ func associateVerifierItem(it loopengine.Item, root string) (loopengine.Item, er
 	}
 	if len(repos) != 1 {
 		return it, deskkit.Unverifiable("verifier queue requires one unambiguous declared deliverable", nil)
+	}
+	_, trackingSHA, err := deskkit.VerifierRepositorySnapshot(root)
+	if err != nil {
+		return it, err
 	}
 	sourceRoot := deskkit.RootForRepo(repos[0])
 	if sourceRoot == "" {

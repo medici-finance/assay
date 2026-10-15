@@ -120,9 +120,11 @@ func verifierAssociation(root, revision, brief, sourceRepo string) error {
 	return Refused("immutable tracking brief does not declare the bound deliverable repository")
 }
 
-// VerifierRepositorySnapshot identifies an offline source at fetched main. It
-// grants no execution admission; Prepare/Check still validate the full trees.
-func VerifierRepositorySnapshot(root string) (repo, revision string, err error) {
+// VerifierRepositoryHead identifies a configured checkout and the commit it has
+// checked out, with no claim about how that commit relates to fetched main. It
+// is enough to read a brief's declarations from an immutable commit and decide
+// whether the work is cross-repository at all; it grants nothing else.
+func VerifierRepositoryHead(root string) (repo, revision string, err error) {
 	repo, err = verifierOrigin(root)
 	if err != nil {
 		return
@@ -132,6 +134,15 @@ func VerifierRepositorySnapshot(root string) (repo, revision string, err error) 
 		return
 	}
 	revision, err = verifierGit(root, "rev-parse", "HEAD")
+	return
+}
+
+// VerifierRepositorySnapshot identifies an offline source at fetched main. It
+// grants no execution admission; Prepare/Check still validate the full trees.
+// Only a resolved cross-repository association needs it: a same-repository
+// brief in a checkout that lags fetched main keeps its legacy representation.
+func VerifierRepositorySnapshot(root string) (repo, revision string, err error) {
+	repo, revision, err = VerifierRepositoryHead(root)
 	if err != nil {
 		return
 	}

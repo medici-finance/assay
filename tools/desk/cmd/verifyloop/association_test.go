@@ -201,3 +201,94 @@ func TestCrossRepoPromptCutsEvidence(t *testing.T) {
 		}
 	}
 }
+
+// associationRoster plants the fixture roster for a direct association call.
+func associationRoster(t *testing.T) {
+	t.Helper()
+	for _, line := range strings.Split(fixtureRoster, "\n") {
+		if k, v, ok := strings.Cut(line, "="); ok {
+			t.Setenv(k, v)
+		}
+	}
+	deskkit.SetToolClass(deskkit.ClassCI)
+	t.Cleanup(func() { deskkit.SetToolClass(deskkit.ClassWrite) })
+}
+
+// lagCheckout leaves root's HEAD detached one commit behind fetched main: the
+// ordinary state of a shared checkout that has fetched but not pulled.
+func lagCheckout(t *testing.T, root string) {
+	t.Helper()
+	old := associationGit(t, root, "rev-parse", "HEAD")
+	associationGit(t, root, "commit", "--allow-empty", "-m", "upstream")
+	associationGit(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
+	associationGit(t, root, "checkout", "-q", "--detach", old)
+}
+
+// regression: #2485 (correctness F2). Whether a brief is cross-repository is
+// decided before the fetched-main gate: a same-repository brief carrying an
+// alias tag, a homed-in line or a deliverable_repo naming this repository keeps
+// its legacy representation in a checkout lagging fetched main. A DISTINCT
+// deliverable in that checkout is still refused by the gate, by its reason.
+func TestCrossRepoAssociationLaggingCheckout(t *testing.T) {
+	const registry = "schema: graph-repos-v1\nself: tracker\nrepos:\n  tracker:\n    repo: example-org/tracker\n  source:\n    repo: example-org/agents\n"
+	const brief = "docs/streams/sample/brief-01.md"
+	same := map[string]string{
+		"files alias": "# Plan\n\nfiles:\n- `[tracker] source.txt`\n\n## Verify\n",
+		"homed-in":    "---\nhomed-in: example-org/tracker\n---\n# Plan\n",
+		"deliverable": "---\ndeliverable_repo: tracker\n---\n# Plan\n",
+	}
+	for name, body := range same {
+		t.Run("same repository/"+name, func(t *testing.T) {
+			associationRoster(t)
+			tracking := associationRepo(t, "example-org/tracker", map[string]string{brief: body, "docs/streams/graph-repos.yaml": registry})
+			t.Setenv(deskkit.RootsEnv, "example-org/tracker="+tracking)
+			lagCheckout(t, tracking)
+			it := loopengine.Item{ID: "sample/01", BriefPath: brief, TargetSHA: associationGit(t, tracking, "rev-parse", "HEAD"), Payload: map[string]string{"repo": "example-org/tracker", "root": tracking}}
+			got, err := associateVerifierItem(it, tracking)
+			if err != nil {
+				t.Fatalf("same-repository brief refused in a lagging checkout: %v", err)
+			}
+			if got.TargetSHA != it.TargetSHA || got.Payload["source_repo"] != "" || got.Payload["tracking_sha"] != "" {
+				t.Fatalf("same-repository item gained an association: %+v", got)
+			}
+		})
+	}
+	t.Run("distinct deliverable", func(t *testing.T) {
+		associationRoster(t)
+		source := associationRepo(t, "example-org/agents", map[string]string{"source.txt": "source\n"})
+		tracking := associationRepo(t, "example-org/tracker", map[string]string{brief: "---\ndeliverable_repo: source\n---\n# Plan\n", "docs/streams/graph-repos.yaml": registry})
+		t.Setenv(deskkit.RootsEnv, "example-org/agents="+source+",example-org/tracker="+tracking)
+		lagCheckout(t, tracking)
+		it := loopengine.Item{ID: "sample/01", BriefPath: brief, Payload: map[string]string{"repo": "example-org/tracker", "root": tracking}}
+		if _, err := associateVerifierItem(it, tracking); err == nil || !strings.Contains(err.Error(), "not fetched origin/main") {
+			t.Fatalf("lagging tracking checkout of a cross-repository brief not refused by the fetched-main gate: %v", err)
+		}
+	})
+}
+
+// regression: #2485. Queue association refusals, each by its own reason.
+func TestCrossRepoAssociationRefusals(t *testing.T) {
+	const brief = "docs/streams/sample/brief-01.md"
+	t.Run("ambiguous deliverable", func(t *testing.T) {
+		associationRoster(t)
+		registry := "schema: graph-repos-v1\nrepos:\n  tracker:\n    repo: example-org/tracker\n  source:\n    repo: example-org/agents\n"
+		tracking := associationRepo(t, "example-org/tracker", map[string]string{brief: "# Plan\n\nfiles:\n- `[source] source.txt`\n- `[tracker] docs/plan.md`\n", "docs/streams/graph-repos.yaml": registry})
+		it := loopengine.Item{ID: "sample/01", BriefPath: brief, Payload: map[string]string{"repo": "example-org/tracker", "root": tracking}}
+		if _, err := associateVerifierItem(it, tracking); err == nil || !strings.Contains(err.Error(), "one unambiguous declared deliverable") {
+			t.Fatalf("two declared deliverables not refused as ambiguous: %v", err)
+		}
+	})
+	t.Run("deliverable root origin", func(t *testing.T) {
+		associationRoster(t)
+		registry := "schema: graph-repos-v1\nrepos:\n  source:\n    repo: example-org/agents\n"
+		tracking := associationRepo(t, "example-org/tracker", map[string]string{brief: "---\ndeliverable_repo: source\n---\n# Plan\n", "docs/streams/graph-repos.yaml": registry})
+		// The roots map sends the deliverable to a checkout of ANOTHER configured
+		// repository: its fetched-main snapshot is valid, its origin is not.
+		impostor := associationRepo(t, "example-org/tracker", map[string]string{"source.txt": "source\n"})
+		t.Setenv(deskkit.RootsEnv, "example-org/agents="+impostor+",example-org/tracker="+tracking)
+		it := loopengine.Item{ID: "sample/01", BriefPath: brief, Payload: map[string]string{"repo": "example-org/tracker", "root": tracking}}
+		if _, err := associateVerifierItem(it, tracking); err == nil || !strings.Contains(err.Error(), "deliverable root has the wrong origin") {
+			t.Fatalf("deliverable root of another repository not refused by its origin: %v", err)
+		}
+	})
+}
