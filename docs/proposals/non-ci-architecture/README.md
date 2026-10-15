@@ -6,6 +6,8 @@ Read the [implemented foundations and remaining work](11-target-architecture.md#
 
 The maintainer ratified the whole target at revision `23f655f5d`, packages R1–R8, on [medici-finance/assay#2500](https://github.com/medici-finance/assay/issues/2500). That approval remains revision-bound: it does not imply that the portfolio/drift additions below were included in that earlier revision, or that any runtime has been activated.
 
+The [communications future state](24-communications.md) (13 October 2026) is a proposal pending approval against that ratified revision; it is not part of the ratified packages, and the amendment manifest does not yet carry its edges.
+
 Assay's operator CLI (`cellctl`), governed work verbs (desk-tools), definition and
 evidence engine (`statusgen`), quality tools, service and cockpit share meanings
 and authority boundaries. The target refactor gives each meaning one owner,
@@ -27,6 +29,7 @@ Verification is the first end-to-end test.
 | [Cell operator surface](21-cell-operator-surface.md) | Proposed in medici-finance/assay#2890; ratified when that PR is merged by the maintainer. Cell-level operator verbs classified as interim bridges or target-owned; runner-lifecycle states/transitions; a deferred plan-approval design gated on five properties; Cell API requirements carried from `send` |
 | [Forge service and source queries](22-forge-service-and-source-queries.md) | Write-through visibility, caller/executor authorization, immutable source caches and Scion-inspired qualification |
 | [Runtime contract alignment](23-runtime-contract-alignment.md) | One public runtime: PostgreSQL coordination, existing Git/forge evidence owners, requirement-to-owner coverage and remaining gaps |
+| [Communications future state](24-communications.md) | Proposal pending approval: reusable client/server, broker-owned delivery, config CLI and applied backlog dependencies |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Future direction and mechanisms to qualify

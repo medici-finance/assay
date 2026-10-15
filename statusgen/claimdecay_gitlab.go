@@ -37,11 +37,11 @@ import (
 	"time"
 )
 
-// gitlabMRPerPage / gitlabMRMaxPages bound the merge-request listing. The product
-// (1000) deliberately matches the GitHub lister's `--limit 1000`, so the two
-// forges decay the same depth of history. Reaching the cap is REPORTED (rule 2 of
-// the three-state invariant: a cap that silently drops data is a lie), not
-// silently treated as the whole list.
+// gitlabMRPerPage / gitlabMRMaxPages bound the merge-request listing at 1000
+// merge requests. (The GitHub arm has no history cap: it reads pull requests per
+// live branch, see ghBranchPRQuery.) Reaching the cap is REPORTED (rule 2 of the
+// three-state invariant: a cap that silently drops data is a lie), not silently
+// treated as the whole list.
 const (
 	gitlabMRPerPage  = 100
 	gitlabMRMaxPages = 10
