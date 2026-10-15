@@ -65,6 +65,12 @@ only — no primitive requires either.
 > **BOOTSTRAP-SAFE GUARD (required in `add-statusgen-ci`):** the regen step must guard on
 > `git status --porcelain -- STATUS.md`, **never** `git diff --quiet -- STATUS.md` — the latter can't
 > see the untracked first board, so a fresh repo never generates one.
+>
+> **IGNORED-BOARD CHECK (`add-statusgen-ci`, `first-board`):** if the target's `.gitignore` matches
+> `STATUS.md` or `docs/streams`, git refuses to stage the board and every regen run on the default
+> branch fails. `statusgen init` refuses on that tree naming the rule, and `statusgen --lint`
+> reports it as a PROBLEM; neither edits `.gitignore` nor force-adds. Prove it before calling CI
+> installed: lint exits 0 with no ignore PROBLEM.
 
 ## 3. NEVER autonomous — STOP and escalate to a human
 - **Reviewer identity** creation/install (a GitHub App, or a GitLab service account) — the identity

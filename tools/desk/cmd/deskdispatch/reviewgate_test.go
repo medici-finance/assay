@@ -550,7 +550,7 @@ func TestHeldDispatchLeavesNothingBehind(t *testing.T) {
 			if !strings.Contains(h.stderr, line) {
 				t.Errorf("stderr does not name the held head and why (%q):\n%s", line, h.stderr)
 			}
-			if _, err := os.Stat(h.promptFile); !os.IsNotExist(err) {
+			if _, err := os.Stat(emittedPathFor(h.promptFile)); !os.IsNotExist(err) {
 				t.Error("a held dispatch wrote a reviewer prompt")
 			}
 			for _, c := range h.stub.calls {
@@ -604,7 +604,7 @@ func TestFailedGateReadStillDispatchesTheReviewer(t *testing.T) {
 	if !strings.Contains(h.stderr, "deskdispatch: review round: could not read the change — dispatching") {
 		t.Errorf("stderr does not report the failed read:\n%s", h.stderr)
 	}
-	raw, err := os.ReadFile(h.promptFile)
+	raw, err := os.ReadFile(emittedPathFor(h.promptFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -630,7 +630,7 @@ func TestPendingRequiredCheckDispatches(t *testing.T) {
 	if strings.Contains(h.stderr, heldMarker) || strings.Contains(h.stderr, "review round:") {
 		t.Errorf("a pending check produced gate output:\n%s", h.stderr)
 	}
-	if _, err := os.Stat(h.promptFile); err != nil {
+	if _, err := os.Stat(emittedPathFor(h.promptFile)); err != nil {
 		t.Errorf("no reviewer prompt: %v", err)
 	}
 }

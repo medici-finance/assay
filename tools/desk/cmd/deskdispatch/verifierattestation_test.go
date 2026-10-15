@@ -133,7 +133,7 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 			if receipt.Binding.Model != model || receipt.Binding.Tier != "strong" {
 				t.Fatalf("wrong actual selection %+v", receipt)
 			}
-			p, _ := os.ReadFile(prompt)
+			p, _ := os.ReadFile(emittedPathFor(prompt))
 			if strings.Contains(string(p), "stamp PENDING") {
 				t.Fatal("pending verifier emitted")
 			}
@@ -209,7 +209,7 @@ func TestVerifierDispatchFailedStampEmitsNoPromptAndReleasesClaim(t *testing.T) 
 	if rc := run([]string{"example/01", "--root", root, "--repo", allowedRepo, "--kit", "verifier", "--model", "gpt-6-astra", "--brief", "spec.md", "--prompt-file", prompt}); rc == 0 {
 		t.Fatal("failed stamp reported success")
 	}
-	if _, err := os.Stat(prompt); err == nil {
+	if _, err := os.Stat(emittedPathFor(prompt)); err == nil {
 		t.Fatal("failed stamp emitted verifier prompt")
 	}
 	released := false
@@ -235,7 +235,7 @@ func TestWorkerDeskPostOpenCoordinatorHandoff(t *testing.T) {
 	if rc := run([]string{"example/01", "--root", root, "--repo", allowedRepo, "--model", "gpt-6.1-sol", "--tier", "strong", "--prompt-file", prompt}); rc != 0 {
 		t.Fatal(rc)
 	}
-	p, _ := os.ReadFile(prompt)
+	p, _ := os.ReadFile(emittedPathFor(prompt))
 	if !strings.Contains(string(p), "coordinator") {
 		t.Fatal("worker-desk was not given a reachable coordinator handoff")
 	}

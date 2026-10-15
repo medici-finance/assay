@@ -8,12 +8,20 @@ import (
 )
 
 func processEnvironment(pid int) (map[string]string, error) {
+	env, _, err := processEnvironmentRead(pid)
+	return env, err
+}
+
+// processEnvironmentRead also reports whether the environment was actually readable: macOS
+// returns the arguments of its platform binaries with the environment withheld, which is not
+// the same thing as an empty environment.
+func processEnvironmentRead(pid int) (map[string]string, bool, error) {
 	b, err := unix.SysctlRaw("kern.procargs2", pid)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if len(b) < 4 {
-		return nil, fmt.Errorf("process arguments unavailable")
+		return nil, false, fmt.Errorf("process arguments unavailable")
 	}
 	argc := int(binary.NativeEndian.Uint32(b[:4]))
 	b = b[4:]
@@ -28,15 +36,23 @@ func processEnvironment(pid int) (map[string]string, error) {
 		return false
 	}
 	if !skip() {
-		return nil, fmt.Errorf("process executable unavailable")
+		return nil, false, fmt.Errorf("process executable unavailable")
 	}
 	for len(b) > 0 && b[0] == 0 {
 		b = b[1:]
 	}
 	for i := 0; i < argc; i++ {
 		if !skip() {
-			return nil, fmt.Errorf("process arguments truncated")
+			return nil, false, fmt.Errorf("process arguments truncated")
 		}
 	}
-	return relevantEnvironment(strings.Split(string(b), "\x00")), nil
+	entries := strings.Split(string(b), "\x00")
+	readable := false
+	for _, e := range entries {
+		if strings.Contains(e, "=") {
+			readable = true
+			break
+		}
+	}
+	return relevantEnvironment(entries), readable, nil
 }

@@ -127,6 +127,17 @@ deskwt is safe by construction: every verb acts ONLY on paths that RESOLVE under
 identity, and remove/prune refuse a dirty tracked tree or unpushed commits. There is NO
 --force flag. On any state it cannot positively verify it refuses.
 
+remove also clears a registration whose worktree has NO git link left — an empty-directory
+husk, or a directory already gone — which the gates above cannot open (they exited 6 and left
+the branch registered forever). It does so only when the directory holds nothing, no process
+holds it open (lsof — without root it sees only the caller's own processes; unavailable = could-not-check, refuse), the admin HEAD is recoverable
+(a branch that resolves, or a detached commit on a remote-tracking ref), and any lock is the
+caller's own session's or its session is proven gone by the roster. A husk with files, a lock
+naming no session, or git's "initializing" lock is refused. Then it unlocks, runs
+` + "`git worktree prune`" + `, verifies the registration is gone, and removes the empty directory; a
+failed clear restores the original lock. before_remove runs only when the directory exists (cwd = the husk); a
+directory already gone has nothing to clean, so the hook is skipped.
+
 prune first runs ` + "`git worktree prune`" + ` (drops entries for dirs already gone), then handles
 stale registrations whose directory survives but whose .git gitdir file is gone (the shape
 ` + "`git worktree remove`" + ` refuses and a lock makes ` + "`git worktree prune`" + ` keep forever). It
@@ -151,8 +162,9 @@ dead-session-reaped, and branches-deleted — plus, when it acted, stale-registr
 Every sweep ALSO runs the CELL-CACHE pressure pass (Step D, default ON; --no-cache skips it):
 for each marked cell Go-cache root under the cells root (--cells-root, then $CELLS_ROOT,
 then the compiled per-user default) it runs the managed cache's own pressure check —
-reclaiming only over the byte budget or under the free-space floor, never while a consumer
-holds a lease — and it reaps a cache root whose owning directory this same sweep removed,
+reclaiming only over the byte budget or under the free-space floor; active consumer records
+protect mod/ and gopath/, while build/ entries older than the policy's trim age are trimmed
+regardless — and it reaps a cache root whose owning directory this same sweep removed,
 gated on the root's lease set re-read under its own lock at act time. The pass is SILENT
 when every cache is within policy; the summary gains a cache segment only when it
 reclaimed, reaped, or found pressure it could not clear.
@@ -198,6 +210,11 @@ chain, every child process with its command line, exit status and elapsed time, 
 failing child's stderr in full. Credentials are redacted. With it off, output is
 unchanged. See tools/desk/README.md, "Diagnostics — DESK_TRACE".`
 
+// perfVerbs is deskwt's registered first-argument set for the opt-in local perf record
+// (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
+// "other" otherwise, so no argv text can reach the record.
+var perfVerbs = []string{"add", "remove", "prune", "maintain", "role-init", "role-clean", "--version", "--help"}
+
 func main() {
 	// The roster class is an EXPLICIT declaration, never the zero value by accident
 	// (a correctness review found: SetToolClass had no caller anywhere,
@@ -212,7 +229,7 @@ func main() {
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskwt", perfVerbs, os.Args[1:], run))
 }
 
 func run(args []string) int {

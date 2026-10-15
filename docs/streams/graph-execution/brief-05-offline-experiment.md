@@ -8,7 +8,7 @@ why: >-
   fixtures anyone can re-run, with a written comparison. If a one-line change to a
   declaration cannot change what gets dispatched without touching routing code, the stream
   has not earned a real-work trial.
-wave: 5
+wave: 8
 depends:
 - graph-execution/01
 - graph-execution/02

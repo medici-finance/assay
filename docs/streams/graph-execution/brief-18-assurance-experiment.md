@@ -2,7 +2,7 @@
 brief: assay:assay:graph-execution:18
 title: Offline graph, advice and assurance integration proof
 why: Independent component tests cannot show that a confident model, a restarted worker or an incomplete audit packet is handled correctly across the whole path. One reproducible fixture suite makes the integration claim reviewable.
-wave: 9
+wave: 12
 depends:
 - graph-execution/05
 - graph-execution/07
