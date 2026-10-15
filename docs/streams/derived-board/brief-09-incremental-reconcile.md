@@ -31,6 +31,7 @@ consumers:
   - "statusgen/reconcile.go: follow-up derived-board/09 (this brief)"
   - "statusgen/regen.go (drift comparator): follow-up derived-board/09 (this brief)"
   - "statusgen/claimdecay.go: out-of-scope (claim decay reads branch-scoped pull-request state on its own, one query per 100 live branches, landed separately; it never reads the ledger)"
+  - ".github/workflows (this repository's statusgen workflow, the scheduled --verify-ledger step): follow-up derived-board/09 (this brief; staged as a diff, pushed by the driver because App tokens lack workflow scope)"
   - "adopter regen workflows (pass --ledger, commit the ledger, add the scheduled --verify-ledger run): out-of-scope (named in the release note of the version that carries this brief; applied per repo through upgrade-assay)"
 ---
 
@@ -51,7 +52,7 @@ facts:
 - File lists are needed only for PRs the fold classifies (open PRs in scope, and delta PRs); ledger records already carry their authoring facts.
 - Measured target (2026-10-15, board of 1,936 PRs, 17 open): incremental run ≈ 1 open-list request + 1 delta request + file lists for the in-scope open/delta PRs + the open-issue pages — against 301 today.
 
-single-point-of-failure: the watermark — a PR changed before it but missing from the ledger would never be read again. Behind it: (1) the delta walk overlaps the watermark by a fixed margin (re-reads PRs updated up to 1 hour before it); (2) the ledger is re-verified against local git on every run (brief 08), and a ledger that fails verification means a full read; (3) the scheduled `--verify-ledger` run re-derives from a full read and exits non-zero on any difference from the ledger-derived result, independently of every incremental run; (4) `--ledger` absent keeps today's full read, unchanged.
+single-point-of-failure: the watermark, together with the ledger's forge-only fields — a PR changed before the watermark but missing from the ledger, or a forge-only field that is wrong, would not be re-read by an incremental run. Behind it: (1) the delta walk overlaps the watermark by a fixed margin (re-reads PRs updated up to 1 hour before it); (2) brief 08's hand-edit lint refuses any pull request that changes the ledger, and its read-time checks re-fetch every record whose git-witnessed fields disagree, and refuse the whole ledger on a count mismatch or a raised watermark; (3) a ledger more than 7 days old (`recordedAt`) is not used — the run does the full read and re-records — so a wrong record lives at most 7 days with no scheduled workflow required; (4) `--verify-ledger` re-derives from a full read and exits non-zero on any difference, the independent check a scheduled run adds on top; (5) `--ledger` absent keeps today's full read, unchanged.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task instructions.
@@ -59,13 +60,14 @@ single-point-of-failure: the watermark — a PR changed before it but missing fr
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
 ## Task
-1. `reconcile --ledger <path>`: read the ledger (brief 08). If usable: fetch open PRs, fetch PRs updated since `watermark − 1h`, fold over (ledger records, overridden by any delta record for the same PR) ∪ delta ∪ open; read file lists only for open PRs in scope and delta PRs. If the ledger is missing, unparseable or fails local verification: print one NOTICE naming why, and do the full read. With `--record-ledger`, write the merged ledger and the new watermark.
+1. `reconcile --ledger <path>`: read the ledger (brief 08). If it is unusable, or its `recordedAt` is more than 7 days old (`ledgerMaxAge`, a named constant), do the full read. If usable: re-fetch the records brief 08's read returned in `reread`, fetch open PRs, fetch PRs updated since `watermark − 1h`, fold over (ledger records, overridden by any delta record for the same PR) ∪ delta ∪ open; read file lists only for open PRs in scope and delta PRs. If the ledger is missing, unparseable or fails local verification: print one NOTICE naming why, and do the full read. With `--record-ledger`, write the merged ledger and the new watermark.
 2. The `--backfill` branch/body match reads candidates from ledger `backfillRefs` plus delta and open PRs — the same candidate set the full read builds.
 3. `reconcile --verify-ledger <path>`: full read, derive both ways, print every brief whose cell differs, exit non-zero on any difference. This is the out-of-band check a scheduled (e.g. weekly) workflow runs.
 4. Full mode pages the pull list to the end; a walk stopped by any bound is a could-not-check, never a complete list (#1969).
 5. `--json` gains `forgeCost: {requests: <n>, mode: "incremental"|"full", fallbackReason: "…"}` so every run reports what it spent.
 6. regen's drift comparator takes the same incremental read when given the ledger.
-7. Changelog fragment, including the workflow change adopters make.
+7. Add a scheduled `--verify-ledger` step to this repository's own statusgen workflow (weekly), staged in the PR as a diff. App tokens cannot push workflow files, so the driver pushes that one file. Name the hand-off in the PR body. The 7-day maximum age (Task 1) bounds the exposure whether or not the step has landed.
+8. Changelog fragment, including the workflow change adopters make.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
@@ -73,10 +75,11 @@ single-point-of-failure: the watermark — a PR changed before it but missing fr
 | 1 | `go test -count=1 -run TestReconcileIncremental ./statusgen/...` | exit 0 — on a recorded-response fixture of 2,500 closed PRs (all in the ledger), 3 open and 2 updated since the watermark, the run makes no `state=all` page beyond the delta stop and no file-list read for a ledger PR, and its JSON equals the full-read JSON | check:ci +flow |
 | 2 | `go test -count=1 -run TestReconcileIncrementalCost ./statusgen/...` | exit 0 — `forgeCost.requests` stays the same when the fixture's closed history grows from 500 to 5,000 PRs with open and delta fixed | check:ci |
 | 3 | `go test -count=1 -run TestReconcileLedgerFallback ./statusgen/...` | exit 0 — a missing, malformed, or locally unverifiable ledger produces the NOTICE and the full read's exact JSON; forcing the incremental path on an unverifiable ledger makes the test fail | check:ci +mutation |
-| 4 | `go test -count=1 -run TestReconcileWatermarkEdit ./statusgen/...` | exit 0 — a merged PR whose body gains a `Brief:` trailer after the ledger was recorded (its `updated_at` moves past the watermark) is re-read and changes the derived cell | check:ci +neighbour |
-| 5 | `go test -count=1 -run TestFetchAllPullsNoSilentCap ./statusgen/...` | exit 0 — a fixture with more pages than any bound returns lookedAt=false with a reason, never a short list as complete | check:ci |
-| 6 | `cd statusgen && go build -o "${TMPDIR:-/tmp}/sg" . && "${TMPDIR:-/tmp}/sg" reconcile --backfill --root .. --repo medici-finance/assay --record-ledger "${TMPDIR:-/tmp}/wl.jsonl" --json > "${TMPDIR:-/tmp}/full.json" && "${TMPDIR:-/tmp}/sg" reconcile --verify-ledger "${TMPDIR:-/tmp}/wl.jsonl" --backfill --root .. --repo medici-finance/assay` | exit 0 — a live read of this repository: the ledger-derived and full-read results agree (GITHUB_TOKEN set) | check +dereference |
-| 7 | `statusgen --root . --consumers --brief derived-board/09` | exit 0 (routing claims corroborated against the diff) | check |
+| 4 | `go test -count=1 -run TestReconcileLedgerMaxAge ./statusgen/...` | exit 0 — a ledger whose `recordedAt` is more than 7 days old produces the full read's exact JSON and a re-recorded ledger. A record in brief 08's `reread` set is fetched from the forge, and its recorded fields are not used. Removing the age check makes the test fail | check:ci +mutation |
+| 5 | `go test -count=1 -run TestReconcileWatermarkEdit ./statusgen/...` | exit 0 — a merged PR whose body gains a `Brief:` trailer after the ledger was recorded (its `updated_at` moves past the watermark) is re-read and changes the derived cell | check:ci +neighbour |
+| 6 | `go test -count=1 -run TestFetchAllPullsNoSilentCap ./statusgen/...` | exit 0 — a fixture with more pages than any bound returns lookedAt=false with a reason, never a short list as complete | check:ci |
+| 7 | `cd statusgen && go build -o "${TMPDIR:-/tmp}/sg" . && "${TMPDIR:-/tmp}/sg" reconcile --backfill --root .. --repo medici-finance/assay --record-ledger "${TMPDIR:-/tmp}/wl.jsonl" --json > "${TMPDIR:-/tmp}/full.json" && "${TMPDIR:-/tmp}/sg" reconcile --verify-ledger "${TMPDIR:-/tmp}/wl.jsonl" --backfill --root .. --repo medici-finance/assay` | exit 0 — a live read of this repository: the ledger-derived and full-read results agree (GITHUB_TOKEN set) | check +dereference |
+| 8 | `statusgen --root . --consumers --brief derived-board/09` | exit 0 (routing claims corroborated against the diff) | check |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
