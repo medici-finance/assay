@@ -2536,9 +2536,9 @@ parent), and there is **no `--force` flag anywhere**. It is a local-only verb cl
 takes the C-5 audit line and the C-6 kill switch but NOT the outward-write rate limit.
 
 ```bash
-deskwt add <name> [--branch B] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R]   # create tracker-<name> on a tracking branch
+deskwt add <name> [--branch B] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R] [--lock-session <id>]   # create tracker-<name> on a tracking branch
 deskwt remove <path>                                   # remove ONE proven-safe worktree
-deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale worktrees, safely
+deskwt prune [--repo <path>] [--interval <dur>] [--min-idle 1h]   # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
 deskwt prune --reap-dead-sessions [--dry-run]          # …and reap the worktrees no live session owns
 deskwt prune --branches-only                           # …or run ONLY the local-branch GC (see Step C)
@@ -2601,7 +2601,15 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
   fall through to), so a commit there fails closed until an identity is set rather than
   committing under an unrelated inherited one. The shared checkout's config is never touched
   either way; the identity (or the cleared state) is echoed to stderr, and stdout stays the
-  bare worktree path.
+  bare worktree path. `--lock-session <id>` LOCKS the new worktree for a live session, with
+  the reason `deskwt add live session (deskwt add session=<id>)`, so no prune arm removes it
+  while that session works there. The lock is the LAST step, taken after every other step
+  (including the `after_create` hook) has succeeded, and is read back from git before `add`
+  reports success; if it cannot be taken or verified, the new worktree is rolled back and
+  `add` fails. `<id>` must be a plain name (no `/`, no `..`). The reason carries role-init's
+  `session=<id>` form, so `--reclaim-stale-locks` and `--reap-dead-sessions` retire the lock
+  only once that session's roster beacon is stale. Without the flag `add` locks nothing, as
+  before.
 
 - **`remove`** refuses a dirty TRACKED tree, unpushed commits, a no-upstream branch, an
   unregistered path, or anything resolving outside the prefixes; untracked build artifacts
@@ -2651,7 +2659,16 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      untracked-INCLUSIVE status), and **no git-ignored payload** (ignored files exist in no
      commit). An at-tip tree passing all three drains; any other is LEFT with the reason
      named. Dirty / unpushed / unmerged / the
-     current worktree / out-of-prefix are all LEFT and reported as skipped with a reason. No
+     current worktree / out-of-prefix are all LEFT and reported as skipped with a reason.
+     Every unlocked candidate must ALSO pass the **activity gate**: a tree whose newest
+     activity evidence is younger than `--min-idle` (default `1h`) is HELD with its age
+     named (`active 12m ago (inside the 1h0m0s --min-idle window)`), whatever its content
+     proves. The evidence is the newest mtime of the worktree root directory and of the
+     files git rewrites as a session works there: the admin entry's `HEAD` (required),
+     `index`, `logs/HEAD`, `ORIG_HEAD` and `FETCH_HEAD`. Evidence that cannot be read holds
+     the tree as `unverifiable worktree activity`, never judges it idle. The gate applies to
+     `--reap-dead-sessions` too. `--min-idle` must be a positive duration: the gate can be
+     tuned, not disabled, and `--branches-only` (which removes no worktree) refuses it. No
      `--force`. `--repo <path>` targets a repo without a session cwd (used by the multi-repo
      sweep script). Exit `0` ok/noop · `3` disabled · `5` refused · `6` unverifiable.
   5. **Step C (default ON — `--no-branches` skips it, `--branches-only` runs it alone):**
@@ -2677,10 +2694,13 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      under its free-space floor — indefinitely. Each sweep discovers the marked cache
      roots under the cells root (`--cells-root`, then `$CELLS_ROOT`, then the compiled
      per-user default; a custom `CELL_GO_CACHE_ROOT` outside it is out of the sweep's
-     sight) and runs the package's own `Check` against each root's last recorded policy:
-     reclaim only under pressure, never a warm purge. Active consumer records protect
-     `mod/` and `gopath/`; `build/` entries older than the policy's trim age
-     (`CELL_GO_CACHE_BUILD_MAX_AGE`) are trimmed under pressure regardless. A root whose owning directory the same sweep removed is reaped as an orphan,
+     sight) and runs the package's own `Check` against each root's last recorded policy,
+     never a warm purge. Whole roots go only under pressure with no consumer record.
+     Otherwise, under pressure or above the high-water mark (75% of the budget),
+     `build/` entries are trimmed oldest first down to the low-water mark
+     (`CELL_GO_CACHE_LOW_WATER_PERCENT`, default 60%), never touching one younger than
+     the safety floor (`CELL_GO_CACHE_TRIM_MIN_AGE`, default 2h); active consumer
+     records protect `mod/` and `gopath/`. A root whose owning directory the same sweep removed is reaped as an orphan,
      gated on its lease set re-read under its own lock at act time. The pass is silent
      when every cache is within policy; the summary gains a cache segment only when it
      reclaimed, reaped, or found pressure it could not clear.
@@ -2875,7 +2895,9 @@ repos, `scripts/deskwt-prune-all.sh` invokes `deskwt prune --repo <path>` per ex
 Because every desk loop runs a one-shot prune at boot, N windows starting inside a minute
 used to run N identical full sweeps over the same repository at once. The singleton makes
 that one sweep. It is two mechanisms over one stamp file under `~/.config/assay/prune/`
-(never inside the target repository, so `--dry-run` can promise it writes nothing there):
+(never inside the target repository, so `--dry-run` can promise it writes nothing there).
+The stamp is keyed on the repository's shared git common directory, so sweeps started from
+the shared checkout and from any of its worktrees contend for the same singleton:
 
 - **A non-blocking exclusive advisory lock.** A sweep that cannot take it prints
   `deskwt prune: held by pid <pid>, running <age> — skipping this sweep`, exits **0** (a
