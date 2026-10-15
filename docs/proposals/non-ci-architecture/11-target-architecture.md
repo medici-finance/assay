@@ -324,3 +324,11 @@ profile; broker selection and stronger client identity are separate qualified ch
 This amends the catch-all communications disposition above, not the authority of other
 domains. The four comms-core extraction briefs are real prerequisites for their named
 consumers; they do not block every R1–R8 package or unrelated supported-path fixes.
+
+## Tool families and CI
+
+The [CI extension](25-ci-tooling.md) separates desk and operator clients, services,
+and CI entry points while retaining these domain owners. CI produces attributed
+check observations through shared libraries; acceptance stays with the existing
+evaluator. Its independent delivery lane is specified in
+[ci-tooling](../../streams/ci-tooling/spec.md).
