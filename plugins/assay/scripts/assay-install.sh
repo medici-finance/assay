@@ -313,7 +313,7 @@ cmd_pin() {
   # from the manifest (`statusgen init` writes several, and a half-filled file fails --lint's
   # same-tag check); one the manifest cannot fill is a refusal, and the pin file is left
   # byte-identical. Nothing is written until the whole file is decided.
-  local tmpf l key tag fill unfillable="" hostdone=0 changed=0 notes="" umbrella=0 offtag
+  local tmpf l key tag fill unfillable="" hostdone=0 changed=0 notes="" umbrella=0 offtag utmp
   tmpf=$(mktemp "${TMPDIR:-/tmp}/assay-pins.XXXXXX") || unverifiable "cannot create a temp file"
   if [ -f "$pins" ]; then
     while IFS= read -r l || [ -n "$l" ]; do
@@ -365,8 +365,9 @@ cmd_pin() {
   if [ "$umbrella" -eq 0 ] && is_bare_umbrella "$mtag"; then
     offtag=$(awk -v t="$mtag" '$0 !~ /^[[:space:]]*(#|$)/ && $1 !~ /-source$/ && $0 !~ /same-tag: exempt/ && $2 != t {printf "%s%s", sep, $1; sep=", "}' "$tmpf")
     if [ -z "$offtag" ]; then
-      awk -v u="assay $mtag" '!d && $0 !~ /^[[:space:]]*(#|$)/ {print u; d=1} {print} END {if (!d) print u}' "$tmpf" > "$tmpf.u" \
-        && mv "$tmpf.u" "$tmpf" || { rm -f "$tmpf" "$tmpf.u"; unverifiable "cannot stage the umbrella line for $pins"; }
+      utmp=$(mktemp "${TMPDIR:-/tmp}/assay-pins.XXXXXX") || { rm -f "$tmpf"; unverifiable "cannot create a temp file"; }
+      awk -v u="assay $mtag" '!d && $0 !~ /^[[:space:]]*(#|$)/ {print u; d=1} {print} END {if (!d) print u}' "$tmpf" > "$utmp" \
+        && mv "$utmp" "$tmpf" || { rm -f "$tmpf" "$utmp"; unverifiable "cannot stage the umbrella line for $pins"; }
       notes="${notes}recorded the umbrella line: assay $mtag (the release these pins come from)
 "
     else

@@ -179,12 +179,15 @@ func TestAdopt_UnprovableRefusesUndetermined(t *testing.T) {
 }
 
 // The flag resolves ONLY the no-umbrella-line cause; any other could-not-determine
-// still refuses.
+// still refuses. The refusal must come from the command's own gate, before inference
+// runs: InferUmbrellaFromPins also refuses a file with an umbrella line, so asserting
+// only the exit code would pass with the gate removed.
 func TestAdopt_OtherUndeterminedCauseStillRefuses(t *testing.T) {
 	pins := "assay v1.0.28\n" + stockPins(sumOf('1', "6")) // no v1.0.28 composition
 	root := writeAdoptFixture(t, pins)
 	code, out := run2(t, "--root", root, "--to", "v1.0.30", "--adopt-umbrella-from-pins")
-	if code != exitUndetermined || !strings.Contains(out, "applies only when") {
+	if code != exitUndetermined || !strings.Contains(out, "this cause is not that one") ||
+		strings.Contains(out, "could not prove one umbrella") {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	if readPins(t, root) != pins {
