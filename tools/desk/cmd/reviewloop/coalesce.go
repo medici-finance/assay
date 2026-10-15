@@ -5,10 +5,9 @@ import (
 	"sort"
 )
 
-// Key is the idempotency key every outward desk verb is already keyed on in the audit
-// ledger: (repo, pr, head, verb). The reactor coalesces on the SAME key deskkit.AlreadyDone
-// probes, so "we already did this" and "we would do this twice" are one question, not two
-// that can disagree.
+// Key identifies a proposed operation within the supplied board observations.
+// It is not a completed-write key: review dispatch has no verdict or body yet,
+// and a prior ready attempt cannot override a board that still reports a draft.
 type Key struct {
 	Repo string
 	PR   int
@@ -26,19 +25,10 @@ type PlannedVerb struct {
 	// coalescing evidence: N sweeps seeing the same (pr, head) must produce ONE action.
 	Observations int
 	// Suppressed is set when the verb will NOT be emitted, with Why naming which gate
-	// stopped it: already-done in the audit ledger, or an unresolved head.
+	// stopped it: an unresolved head.
 	Suppressed bool
 	Why        string
 }
-
-// AlreadyDoneFn is deskkit.AlreadyDone's shape, injected so the coalescer is testable
-// without an audit file. Production wiring passes deskkit.AlreadyDone.
-//
-// Note its fail-closed direction (deskkit/idempotent.go:63): on an unreadable audit file
-// it returns FALSE, so a corrupt ledger can never masquerade as "already done" and
-// silently skip a needed write. The reactor inherits that direction rather than adding a
-// second, opposite one.
-type AlreadyDoneFn func(repo string, pr int, head, verb string) bool
 
 // Coalesce collapses a stream of board observations into at most ONE outward verb per
 // (repo, pr, head, verb).
@@ -51,10 +41,11 @@ type AlreadyDoneFn func(repo string, pr int, head, verb string) bool
 // (MERGE-CURR for a benign keep-current merge, RE-REVIEW when the PR's own files changed);
 // the reactor honours that classification and never second-guesses it.
 //
-// A row with HeadUnresolved is SUPPRESSED, not emitted: without a head, AlreadyDone cannot
-// be evaluated, and an outward write whose idempotency cannot be checked is could-not-check,
-// never "probably fine".
-func Coalesce(sweeps []*Board, done AlreadyDoneFn) []PlannedVerb {
+// A row with HeadUnresolved is SUPPRESSED: the operation cannot be bound to a
+// revision. Audit history is not an input. The board determines what needs doing;
+// deskdispatch must acquire a live claim before launching a reviewer, and deskpost
+// rechecks current forge state and exact write identity under its outward lock.
+func Coalesce(sweeps []*Board) []PlannedVerb {
 	byKey := map[Key]*PlannedVerb{}
 	var order []Key
 
@@ -85,9 +76,6 @@ func Coalesce(sweeps []*Board, done AlreadyDoneFn) []PlannedVerb {
 			pv.Suppressed = true
 			pv.Why = "head SHA unresolved — `deskboard actions` carries no head and the `prs` join found no row, " +
 				"so the (repo,pr,head,verb) idempotency key cannot be formed; COULD-NOT-CHECK, the verb is not emitted"
-		case done != nil && done(k.Repo, k.PR, k.Head, k.Verb):
-			pv.Suppressed = true
-			pv.Why = "already recorded ok/noop in the audit ledger at this head — idempotent no-op"
 		}
 		out = append(out, *pv)
 	}
@@ -95,8 +83,8 @@ func Coalesce(sweeps []*Board, done AlreadyDoneFn) []PlannedVerb {
 	return out
 }
 
-// Dispatched returns the verbs that survive both gates — what the reactor would actually
-// emit this pass.
+// Dispatched returns the proposed verbs with resolved heads. These are candidates,
+// not proof of a free dispatch claim or permission to write.
 func Dispatched(vs []PlannedVerb) []PlannedVerb {
 	var out []PlannedVerb
 	for _, v := range vs {

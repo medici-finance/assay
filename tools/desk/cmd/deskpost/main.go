@@ -40,6 +40,11 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// perfVerbs is deskpost's registered first-argument set for the opt-in local perf record
+// (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
+// "other" otherwise, so no argv text can reach the record.
+var perfVerbs = []string{"review", "security-review", "comment", "ready", "finish", "--version", "--help"}
+
 func main() {
 	// The roster class is an EXPLICIT declaration, never the zero value by accident
 	// (an earlier correctness review found SetToolClass had no caller anywhere
@@ -57,7 +62,7 @@ func main() {
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskpost", perfVerbs, os.Args[1:], run))
 }
 
 func run(argv []string) int {

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -32,10 +33,42 @@ type resetPlan struct {
 	WorktreeDirectory string          `json:"cell_worktree_directory"`
 }
 
-func pathInside(path, root string) bool {
+// resetLexicalInside also protects the symlink entry itself during cleanup.
+// Directory ownership decisions must use resetDirectoryInside instead.
+func resetLexicalInside(path, root string) bool {
 	rel, err := filepath.Rel(root, path)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
+
+// Resolve optional missing directories through an existing ancestor, but never
+// turn a broken link, unreadable path or non-directory into an outside result.
+func resetDirectoryPath(path string) (string, error) {
+	resolved, err := resetResolvedPath(path)
+	if err != nil {
+		return "", err
+	}
+	info, err := os.Stat(resolved)
+	if err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	if err == nil && !info.IsDir() {
+		return "", fmt.Errorf("reset requires a directory: %s", path)
+	}
+	return resolved, nil
+}
+
+func resetDirectoryInside(path, root string) (bool, error) {
+	path, err := resetDirectoryPath(path)
+	if err != nil {
+		return false, err
+	}
+	root, err = resetDirectoryPath(root)
+	if err != nil {
+		return false, err
+	}
+	return resetStorageContains(path, root)
+}
+
 func listResetWorktrees(root string) ([]resetWorktree, error) {
 	cmd := exec.Command("git", "-C", root, "worktree", "list", "--porcelain", "-z")
 	b, err := cmd.Output()
@@ -61,6 +94,12 @@ func listResetWorktrees(root string) ([]resetWorktree, error) {
 }
 func (c *Cell) planReset(hard bool) (resetPlan, error) {
 	p := resetPlan{Cell: c.Name, Hard: hard, DiscardMessages: hard, WorktreeDirectory: filepath.Join(c.Dir, "worktrees")}
+	if _, err := resetDirectoryPath(c.Dir); err != nil {
+		return p, err
+	}
+	if _, err := resetDirectoryPath(p.WorktreeDirectory); err != nil {
+		return p, err
+	}
 	roots := rootEntries(c.Env.Get("CELL_ROOTS"))
 	if len(roots) == 0 && c.Repo != "" {
 		roots = append(roots, [2]string{"primary", c.Repo})
@@ -87,11 +126,23 @@ func (c *Cell) planReset(hard bool) (resetPlan, error) {
 		if err != nil {
 			return p, err
 		}
-		if hard && filepath.Clean(worktrees[0].Path) != root {
+		rootInfo, err := os.Stat(root)
+		if err != nil {
+			return p, err
+		}
+		primaryInfo, err := os.Stat(worktrees[0].Path)
+		if err != nil {
+			return p, err
+		}
+		if hard && !os.SameFile(primaryInfo, rootInfo) {
 			return p, fmt.Errorf("hard reset root must be its primary checkout: %s (primary %s)", root, worktrees[0].Path)
 		}
 		r := resetRepo{Root: worktrees[0].Path, Common: common, Worktrees: worktrees}
-		if hard && pathInside(c.Dir, r.Root) {
+		inside, err := resetDirectoryInside(c.Dir, r.Root)
+		if err != nil {
+			return p, err
+		}
+		if hard && inside {
 			return p, fmt.Errorf("hard reset requires cell configuration outside repository %s", r.Root)
 		}
 		p.Repositories = append(p.Repositories, r)
@@ -99,7 +150,11 @@ func (c *Cell) planReset(hard bool) (resetPlan, error) {
 			if i == 0 {
 				continue
 			}
-			if hard || pathInside(wt.Path, filepath.Join(c.Dir, "worktrees")) {
+			inside, err := resetDirectoryInside(wt.Path, p.WorktreeDirectory)
+			if err != nil {
+				return p, err
+			}
+			if hard || inside {
 				p.Worktrees = append(p.Worktrees, wt)
 			}
 		}
@@ -286,7 +341,8 @@ func (c *Cell) resetCell(plan resetPlan) (err error) {
 	stage = "repositories and worktrees"
 	for _, repo := range plan.Repositories {
 		for _, wt := range repo.Worktrees[1:] {
-			if plan.Hard || pathInside(wt.Path, filepath.Join(c.Dir, "worktrees")) {
+			// Execute exactly the selection shown by the read-only plan.
+			if slices.Contains(plan.Worktrees, wt) {
 				if e := resetGit(repo.Root, "worktree", "remove", "--force", "--force", wt.Path); e != nil {
 					return e
 				}
@@ -450,12 +506,25 @@ func (c *Cell) preflightReset(plan resetPlan) (*deskCommsConfig, error) {
 	if plan.Hard {
 		for _, repo := range plan.Repositories {
 			for _, other := range plan.Repositories {
-				if repo.Root != other.Root && pathInside(other.Root, repo.Root) {
+				if repo.Root == other.Root {
+					continue
+				}
+				inside, err := resetDirectoryInside(other.Root, repo.Root)
+				if err != nil {
+					return nil, err
+				}
+				if inside {
 					return nil, fmt.Errorf("hard reset requires non-nested repository roots")
 				}
 			}
-			if cfg != nil && pathInside(cfg.QueueDir, repo.Root) {
-				return nil, fmt.Errorf("hard reset requires comms storage outside repository roots")
+			if cfg != nil {
+				inside, err := resetDirectoryInside(cfg.QueueDir, repo.Root)
+				if err != nil {
+					return nil, err
+				}
+				if inside {
+					return nil, fmt.Errorf("hard reset requires comms storage outside repository roots")
+				}
 			}
 		}
 	}
@@ -492,7 +561,7 @@ func (c *Cell) preflightReset(plan resetPlan) (*deskCommsConfig, error) {
 			if err != nil {
 				return nil, err
 			}
-			if pathInside(path, root) || inside {
+			if resetLexicalInside(path, root) || inside {
 				return nil, fmt.Errorf("reset cleanup/control path overlaps retained configuration or credentials: %s", root)
 			}
 		}
@@ -504,7 +573,7 @@ func (c *Cell) preflightReset(plan resetPlan) (*deskCommsConfig, error) {
 // case-sensitive volume. Compare the retained entry and each actual ancestor to
 // the cleanup root; optional absent paths still get the lexical containment check.
 func resetStorageContains(path, root string) (bool, error) {
-	if pathInside(path, root) {
+	if resetLexicalInside(path, root) {
 		return true, nil
 	}
 	rootInfo, err := os.Stat(root)

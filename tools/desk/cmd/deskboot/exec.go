@@ -2,8 +2,11 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // execCommand is the single seam through which EVERY child process this verb starts
@@ -39,6 +42,13 @@ func runCmd(dir, name string, args ...string) runResult {
 	if dir != "" {
 		cmd.Dir = dir
 	}
+	// The child's stderr is captured and its echo stripped (preflightSummary), so the child
+	// prints the stateless full echo and records no config digest nobody saw.
+	env := cmd.Env
+	if env == nil {
+		env = os.Environ()
+	}
+	cmd.Env = deskkit.UnsurfacedEchoEnv(env)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
@@ -66,8 +76,10 @@ func firstLine(s string) string {
 
 // preflightSummary extracts the roster-preflight's OWN verdict from a red run's captured
 // streams, skipping the two preamble lines every desk tool prints on stderr BEFORE its
-// real message: the effective-config echo (`assay-config: …`) and the unpinned-build
-// warning. A naive firstLine over that output quotes the banner's
+// real message: the effective-config echo (`assay-config: …` — by default ONE digest line,
+// `assay-config: class=… configured=… digest=sha256:…`, and the full block in CI, on a
+// change, on a refusal or an unrecognised key, or on ASSAY_CONFIG_ECHO=full) and the
+// unpinned-build warning. Both echo forms share the prefix, so one rule strips either. A naive firstLine over that output quotes the banner's
 // `… configured=true` header instead of the `preflight role=… RED n/6` summary and the
 // per-check `<check>=checked-failed: … → fix: …` remediations, so the failing check never
 // reaches the pod log — the boot logs the banner three ticks running and the real red stays

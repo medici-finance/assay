@@ -66,6 +66,9 @@
 //     ready-for-human is push-quiet regardless of its age: a post-flip push re-signals the review
 //     loop, so a new batch opens the NEXT scan PR and leaves the flipped one sealed for merge. A
 //     draft/ready state that cannot be read does not coalesce either — the same bounded direction.
+//     The open scan PR is a fact about the scan target, not the session: `run` reads it from the
+//     forge (the youngest open draft scan PR by this App, from any session), and an open-PR list
+//     that cannot be read refuses the scan dispatch rather than cutting a possible duplicate.
 //
 //  2. THE BODY IS REGENERATED ON EVERY PUSH, not just the first. The title and body state counts
 //     describing a diff that grows with every coalesced commit, so a body written once is wrong by

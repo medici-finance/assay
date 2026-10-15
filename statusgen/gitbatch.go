@@ -46,10 +46,11 @@ var errGitObjectMissing = errors.New("git object missing")
 // gitReadSession is one run's git read memo plus its batch readers.
 type gitReadSession struct {
 	mu         sync.Mutex
-	batches    map[string]*catFileBatch // per root; nil entry = could not start, use exec
-	objects    map[string]gitReadResult // root + "\x00" + spec
-	mergeBases map[string]gitReadResult // root + "\x00" + a + "\x00" + b
-	exactBases map[string]string        // root + "\x00" + ref -> mergeBaseExact answer ("" = unresolved)
+	batches    map[string]*catFileBatch    // per root; nil entry = could not start, use exec
+	objects    map[string]gitReadResult    // root + "\x00" + spec
+	mergeBases map[string]gitReadResult    // root + "\x00" + a + "\x00" + b
+	exactBases map[string]string           // root + "\x00" + ref -> mergeBaseExact answer ("" = unresolved)
+	claims     map[string]*claimBranchRead // one remote branch/decay observation per root
 }
 
 // activeGitReads is the session run() opened, or nil outside one.
@@ -64,6 +65,7 @@ func beginGitReadSession() (end func()) {
 		objects:    map[string]gitReadResult{},
 		mergeBases: map[string]gitReadResult{},
 		exactBases: map[string]string{},
+		claims:     map[string]*claimBranchRead{},
 	}
 	activeGitReads = s
 	return func() {

@@ -37,7 +37,9 @@ adopter gets from `plugins/assay/paired-versions.yaml`, so bumping
 the paired release tag, and every per-platform `sha256` refreshed from that release's published
 `checksums.txt` — ships the *previous* plugin's tool to every clean install. `make paired-versions`
 (`tools/pairedversions`) asserts all three and fails closed; it is intended as a required check, so
-a bump that skips the re-pin is red before it lands.
+a bump that skips the re-pin is red before it lands. It also fails once a newer release has gone
+un-pinned for more than seven days, so a re-pin that never happens turns red instead of leaving
+adopters on old tools.
 
 **The plugin version is the umbrella tag.** Since #789 the release workflow stamps
 `plugins/assay/.claude-plugin/plugin.json` — and with it the marketplace entry, `paired-versions.yaml`'s

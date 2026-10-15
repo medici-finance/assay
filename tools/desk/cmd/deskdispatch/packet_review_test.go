@@ -807,7 +807,7 @@ func TestReviewDispatchCarriesThePacketLine(t *testing.T) {
 			t.Errorf("packet lacks %q", w)
 		}
 	}
-	prompt, err := os.ReadFile(promptFile)
+	prompt, err := os.ReadFile(emittedPathFor(promptFile))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -854,7 +854,7 @@ func TestReviewDispatchSurvivesAForgeThatWillNotServeThePacket(t *testing.T) {
 			if rc != deskkit.ExitOK {
 				t.Fatalf("dispatch rc = %d, want 0 — a packet must never fail a dispatch\n%s", rc, stderr)
 			}
-			prompt, err := os.ReadFile(promptFile)
+			prompt, err := os.ReadFile(emittedPathFor(promptFile))
 			if err != nil {
 				t.Fatalf("the dispatch emitted no prompt: %v", err)
 			}

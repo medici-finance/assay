@@ -77,7 +77,7 @@ func dispatchPromptOriginRC(t *testing.T, origin, kit, item string, extra ...str
 	}
 	args = append(args, extra...)
 	rc := run(args)
-	body, err := os.ReadFile(promptFile)
+	body, err := os.ReadFile(emittedPathFor(promptFile))
 	if err != nil {
 		// No prompt file is the expected outcome of a refusal; return the code so the caller
 		// asserts on it rather than the read error masking the verdict under test.
