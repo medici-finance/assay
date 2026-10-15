@@ -367,8 +367,8 @@ func TestGHBranchQueryCarriesAttributionAndHead(t *testing.T) {
 }
 
 // TestDecayReadsBranchesNotPRHistory pins the corpse rule the branch read
-// exists for. A branch is dead only when its NEWEST same-repo pull request is
-// merged or closed AND its tip is still that PR's head; the old all-PRs read
+// exists for. A branch is dead only when NO same-repo pull request on it is open,
+// its NEWEST one is merged or closed, AND its tip is still that PR's head; the old all-PRs read
 // keyed on the name alone (any PR ever on the name made it dead) and stopped at
 // 1,000 PRs (an old corpse never decayed).
 func TestDecayReadsBranchesNotPRHistory(t *testing.T) {
@@ -416,11 +416,11 @@ func TestDecayIgnoresPRHeadedElsewhere(t *testing.T) {
 		Oid string `json:"oid"`
 	}{Oid: tip}
 	b.AssociatedPullRequests.Nodes = []ghPR{{Number: 80, HeadRefName: "fix/other-07", HeadRefOid: tip, State: "MERGED", IsCrossRepository: &no}}
-	if dead, _ := branchIsDead(b, ""); dead {
+	if dead, _, _ := branchIsDead(b, ""); dead {
 		t.Fatal("a pull request headed by another branch must not decay this one")
 	}
 	b.AssociatedPullRequests.Nodes[0].HeadRefName = "fix/x-06"
-	if dead, _ := branchIsDead(b, ""); !dead {
+	if dead, _, _ := branchIsDead(b, ""); !dead {
 		t.Fatal("fixture drift: the same pull request headed by this branch must decay it")
 	}
 }
@@ -440,5 +440,140 @@ func TestDecayGraphQLErrorIsCouldNotCheck(t *testing.T) {
 	got, reason := decayDeadClaims("/repo", []string{"main", "fix/x-01"})
 	if len(got) != 2 || reason == "" {
 		t.Fatalf("a failed read must keep every branch and carry a could-not-check reason; got %v %q", got, reason)
+	}
+}
+
+// windowRows returns n pull-request rows for one branch, newest first, all from
+// this repository. Each carries its own head commit (stubGHPRListJSON's default),
+// and the branch's tip is the first row's, so the newest row is a corpse at the
+// tip. open, when >= 0, makes that row (0 = newest) OPEN instead of CLOSED.
+func windowRows(branch string, n, open int) string {
+	rows := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		state := "CLOSED"
+		if i == open {
+			state = "OPEN"
+		}
+		rows = append(rows, fmt.Sprintf(`{"number":%d,"headRefName":%q,"state":%q,"isCrossRepository":false,`+
+			`"headRepository":{"name":"board"},"headRepositoryOwner":{"login":"example-org"}}`, 900-i, branch, state))
+	}
+	return "[" + strings.Join(rows, ",") + "]"
+}
+
+// TestGHPRWindowMatchesQuery keeps the window the corpse test treats as full equal
+// to the window the query asks for: raise one without the other and either a full
+// window reads as not-full (an open pull request behind it is missed again) or
+// every branch reads as truncated.
+// regression: #3023
+func TestGHPRWindowMatchesQuery(t *testing.T) {
+	want := fmt.Sprintf("associatedPullRequests(first:%d,", ghPRWindow)
+	if !strings.Contains(ghBranchPRQuery, want) {
+		t.Fatalf("ghBranchPRQuery must ask for %q (ghPRWindow = %d)", want, ghPRWindow)
+	}
+}
+
+// TestDecayFullWindowIsNotDead pins the window rule (assay#3023): a branch whose
+// per-branch window comes back full with no open pull request may have an open one
+// behind the window, so it is NOT decayed and is reported as could-not-check. One
+// row short of full, the same shape is a plain corpse; a full window that does hold
+// the open pull request is live, with nothing to report.
+// regression: #3023
+func TestDecayFullWindowIsNotDead(t *testing.T) {
+	stubRemoteOriginURL(t, "https://github.com/example-org/board.git", nil)
+	run := func(t *testing.T, rows string) (map[string]bool, string) {
+		t.Helper()
+		stubGHPRListJSON(t, rows, nil)
+		var dead map[string]bool
+		var err error
+		stderr := captureStderr(t, func() { dead, err = listMergedClosedBranches("/repo") })
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		return dead, stderr
+	}
+	const branch = "fix/busy-01"
+
+	dead, stderr := run(t, windowRows(branch, ghPRWindow, -1))
+	if dead[branch] {
+		t.Error("a full window with no open pull request may hide an open one behind it: the branch must not decay")
+	}
+	if !strings.Contains(stderr, fmt.Sprintf("could-not-check: dead-claim decay saw a full window of %d pull requests", ghPRWindow)) {
+		t.Errorf("a truncated branch must be reported as could-not-check, not silent; got:\n%s", stderr)
+	}
+
+	dead, stderr = run(t, windowRows(branch, ghPRWindow-1, -1))
+	if !dead[branch] {
+		t.Error("fixture drift: a window one row short of full is the whole history and its newest closed PR at the tip is a corpse")
+	}
+	if strings.Contains(stderr, "could-not-check") {
+		t.Errorf("a window that was not full has nothing to report; got:\n%s", stderr)
+	}
+
+	dead, stderr = run(t, windowRows(branch, ghPRWindow, ghPRWindow-1))
+	if dead[branch] {
+		t.Error("an open pull request inside the window — however old — keeps the branch live")
+	}
+	if strings.Contains(stderr, "could-not-check") {
+		t.Errorf("a full window that holds the open pull request is fully decided and has nothing to report; got:\n%s", stderr)
+	}
+}
+
+// TestDecayNewestClosedWins pins "the NEWEST counted pull request
+// decides" against the one mutation the other fixtures cannot see: picking the
+// OLDEST closed pull request. Branch a has an older closed PR (other head) behind
+// a newer one that sits at the tip, so it is a corpse only if the newer one is
+// read. Branch b is the inverse: the older closed PR's head is the tip but the
+// newest closed PR's head is not, so the branch is not that newest PR's corpse.
+// regression: #3023
+func TestDecayNewestClosedWins(t *testing.T) {
+	stubRemoteOriginURL(t, "https://github.com/example-org/board.git", nil)
+	same := `"isCrossRepository":false,"headRepository":{"name":"board"},"headRepositoryOwner":{"login":"example-org"}`
+	a, b, c, d := strings.Repeat("a", 40), strings.Repeat("b", 40), strings.Repeat("c", 40), strings.Repeat("d", 40)
+	stubGHPRListJSON(t, `[
+	  {"number":21,"headRefName":"fix/two-closed-a","state":"CLOSED","headRefOid":"`+a+`",`+same+`},
+	  {"number":11,"headRefName":"fix/two-closed-a","state":"MERGED","headRefOid":"`+b+`",`+same+`},
+	  {"number":22,"headRefName":"fix/two-closed-b","state":"CLOSED","headRefOid":"`+c+`","tip":"`+d+`",`+same+`},
+	  {"number":12,"headRefName":"fix/two-closed-b","state":"MERGED","headRefOid":"`+d+`",`+same+`}
+	]`, nil)
+
+	dead, err := listMergedClosedBranches("/repo")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dead["fix/two-closed-a"] {
+		t.Error("the newest closed PR at the tip makes the branch a corpse, whatever an older closed PR's head was")
+	}
+	if dead["fix/two-closed-b"] {
+		t.Error("only the NEWEST closed PR's head is compared to the tip; an older PR's head at the tip must not decay the branch")
+	}
+}
+
+// TestDecayNullRepoNoErrors pins the refusal for a page that
+// carries no `errors` yet no repository either (a null or missing repository,
+// as GitHub answers for a repository the token cannot see). Reading it as "no
+// branches, nothing dead" would be a clean-looking could-not-check; it must be an
+// error, so decayDeadClaims keeps the whole superset and carries the reason.
+// regression: #3023
+func TestDecayNullRepoNoErrors(t *testing.T) {
+	for name, page := range map[string]string{
+		"null repository":    `[{"data":{"repository":null}}]`,
+		"missing repository": `[{"data":{}}]`,
+		"second page null":   `[{"data":{"repository":{"refs":{"nodes":[]}}}},{"data":{"repository":null}}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			prev := ghBranchPRJSON
+			ghBranchPRJSON = func(string) ([]byte, error) { return []byte(page), nil }
+			t.Cleanup(func() { ghBranchPRJSON = prev })
+
+			if dead, err := listMergedClosedBranches("/repo"); err == nil || !strings.Contains(err.Error(), "no repository") {
+				t.Fatalf("a page with no repository and no errors must be refused naming it; got dead=%v err=%v", dead, err)
+			}
+			var got []string
+			var reason string
+			captureStderr(t, func() { got, reason = decayDeadClaims("/repo", []string{"main", "fix/x-01"}) })
+			if len(got) != 2 || !strings.Contains(reason, "no repository") {
+				t.Fatalf("a refused read must keep every branch and carry the reason; got %v %q", got, reason)
+			}
+		})
 	}
 }

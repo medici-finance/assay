@@ -56,19 +56,35 @@ import (
 // forever. Scoped to branches, the read costs one query per 100 live branches and
 // has no cap.
 //
-// For each branch it asks for the pull requests whose head IS that branch, newest
-// first, with the fields sameRepoPR needs (isCrossRepository, headRepository,
+// For each branch it asks for the newest ghPRWindow pull requests whose head IS
+// that branch, newest first, with the fields sameRepoPR needs (isCrossRepository, headRepository,
 // headRepositoryOwner) and the PR's head commit (headRefOid), which branchIsDead
 // compares to the branch's current tip. gh fills {owner} and {repo} from the
 // repository at root, as the earlier `gh pr list` reader resolved it from its working directory.
+//
+// The per-branch window is ghPRWindow and is NOT unbounded: a branch whose window
+// comes back full with no open pull request in it may have an open one behind the
+// window, so branchIsDead refuses to call it dead (see ghPRWindow). The query does
+// not page the inner connection: `gh api --paginate` drives its one outer cursor
+// from the pageInfo in the response, and this read keeps that the only pageInfo.
 const ghBranchPRQuery = `query($owner:String!,$name:String!,$endCursor:String){
   repository(owner:$owner,name:$name){
     refs(refPrefix:"refs/heads/",first:100,after:$endCursor){
       pageInfo{hasNextPage endCursor}
       nodes{name target{oid}
-        associatedPullRequests(first:5,orderBy:{field:CREATED_AT,direction:DESC}){
+        associatedPullRequests(first:10,orderBy:{field:CREATED_AT,direction:DESC}){
           nodes{number state headRefName headRefOid isCrossRepository
             headRepository{name} headRepositoryOwner{login}}}}}}}`
+
+// ghPRWindow is the number of pull requests per branch ghBranchPRQuery asks for;
+// TestGHPRWindowMatchesQuery keeps the two equal. A branch with this many pull
+// requests whose head it is, none of them open, is TRUNCATED: a pull request
+// older than the window — an open one among them — is invisible to the read. The
+// raw count is compared, not the counted one, so a window filled by pull requests
+// the reader skips (a fork's, an unattributable one) is truncated too. Such a
+// branch is a live claim and is reported as could-not-check, never decayed on
+// the strength of a listing that may be missing its open pull request.
+const ghPRWindow = 10
 
 // ghBranchPRJSON runs the branch read for the repo rooted at root and returns the
 // raw `--paginate --slurp` output (a JSON array of pages). A package-level var so
@@ -211,13 +227,18 @@ func sameRepoPR(pr ghPR, tracked string) (same, attributed bool) {
 	return true, true
 }
 
-// listMergedClosedBranches returns the set of branch names that are corpses: the
-// branch's NEWEST pull request opened from this repository is MERGED or CLOSED,
-// and the branch's tip is still that pull request's head commit. Everything else
-// is a live claim and is absent from the set:
+// listMergedClosedBranches returns the set of branch names that are corpses: NO
+// pull request opened from this repository on the branch is OPEN, the branch's
+// NEWEST such pull request is MERGED or CLOSED, and the branch's tip is still that
+// pull request's head commit. Everything else is a live claim and is absent from
+// the set:
 //
 //   - no pull request yet (a worker that pushed but has not opened one);
-//   - a newest pull request that is OPEN;
+//   - ANY counted pull request that is OPEN, however old — an older open pull
+//     request with a newer closed one from the same branch is still in flight, so
+//     the rule is "any is open", not "the newest is open";
+//   - a full window of ghPRWindow pull requests with none open: an open one may
+//     sit behind the window, so the branch is not concluded dead (reported once);
 //   - a branch pushed again after its pull request closed (its tip moved past the
 //     PR's head) — a reused branch name is new work, not the old corpse. The
 //     all-PRs reader keyed on the NAME alone and marked it dead if ANY pull
@@ -231,7 +252,7 @@ func sameRepoPR(pr ghPR, tracked string) (same, attributed bool) {
 //
 // Only a pull request opened from THIS repository may make a branch a corpse
 // (see sameRepoPR). Pull requests skipped for want of attribution are counted
-// and reported, once.
+// and reported, once; so are branches whose window was full.
 //
 // A package-level var so tests substitute a fake lister without a network call,
 // exactly as listRemoteBranches / ghIssueMetricLister are stubbed.
@@ -247,6 +268,7 @@ var listMergedClosedBranches = func(root string) (map[string]bool, error) {
 	tracked := trackedGitHubRepo(root)
 	dead := map[string]bool{}
 	unattributable := 0
+	truncated := 0
 	for i, pg := range pages {
 		if len(pg.Errors) > 0 {
 			return nil, fmt.Errorf("the branch pull-request listing returned an error on page %d: %s", i+1, pg.Errors[0].Message)
@@ -255,8 +277,11 @@ var listMergedClosedBranches = func(root string) (map[string]bool, error) {
 			return nil, fmt.Errorf("the branch pull-request listing returned no repository on page %d", i+1)
 		}
 		for _, b := range pg.Data.Repository.Refs.Nodes {
-			isDead, skipped := branchIsDead(b, tracked)
+			isDead, skipped, full := branchIsDead(b, tracked)
 			unattributable += skipped
+			if full {
+				truncated++
+			}
 			if isDead {
 				dead[b.Name] = true
 			}
@@ -269,6 +294,11 @@ var listMergedClosedBranches = func(root string) (map[string]bool, error) {
 		fmt.Fprintf(os.Stderr, "could-not-check: dead-claim decay skipped %d pull request(s) whose head repository could not be read, "+
 			"so their branches were NOT decayed and may still be consuming their stream's dispatch cap; an unattributable pull request "+
 			"cannot be told from a fork's, and a fork's branch name does not name a branch of this repository\n", unattributable)
+	}
+	if truncated > 0 {
+		fmt.Fprintf(os.Stderr, "could-not-check: dead-claim decay saw a full window of %d pull requests, none open, on %d branch(es), "+
+			"so those branches were NOT decayed and may still be consuming their stream's dispatch cap; an open pull request "+
+			"older than the window would be invisible to this read\n", ghPRWindow, truncated)
 	}
 	return dead, nil
 }
@@ -283,11 +313,13 @@ var listMergedClosedBranches = func(root string) (map[string]bool, error) {
 //   - the NEWEST counted pull request is merged or closed AND the branch tip is
 //     still that PR's head commit — a push after the close is new work.
 //
-// No counted pull request at all is a live claim (pushed, not yet opened).
-func branchIsDead(b ghBranch, tracked string) (dead bool, skipped int) {
+// No counted pull request at all is a live claim (pushed, not yet opened). So is
+// a branch whose window is FULL (ghPRWindow rows) with none open: truncated
+// reports it, and the caller says so once.
+func branchIsDead(b ghBranch, tracked string) (dead bool, skipped int, truncated bool) {
 	name := strings.TrimSpace(b.Name)
 	if name == "" || b.Target == nil || strings.TrimSpace(b.Target.Oid) == "" {
-		return false, 0
+		return false, 0, false
 	}
 	var newest *ghPR
 	for i := range b.AssociatedPullRequests.Nodes {
@@ -308,14 +340,17 @@ func branchIsDead(b ghBranch, tracked string) (dead bool, skipped int) {
 				newest = &pr
 			}
 		default:
-			return false, skipped // an open PR on the branch: a live claim
+			return false, skipped, false // an open PR on the branch: a live claim
 		}
 	}
 	if newest == nil {
-		return false, skipped // no pull request of this repository: a live claim
+		return false, skipped, false // no pull request of this repository: a live claim
+	}
+	if len(b.AssociatedPullRequests.Nodes) >= ghPRWindow {
+		return false, skipped, true // an open PR may sit behind the window: not concluded dead
 	}
 	head := strings.TrimSpace(newest.HeadRefOid)
-	return head != "" && strings.EqualFold(head, strings.TrimSpace(b.Target.Oid)), skipped
+	return head != "" && strings.EqualFold(head, strings.TrimSpace(b.Target.Oid)), skipped, false
 }
 
 // decayReader picks the change-state reader for the forge behind root's `origin`
