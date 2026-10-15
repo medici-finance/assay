@@ -10,7 +10,7 @@ why: >-
   key on their machine.
 wave: 1
 depends: ["apps-installer/01"]
-unblocks: ["apps-installer/03", "apps-installer/04", "apps-installer/06"]
+unblocks: ["apps-installer/03", "apps-installer/04", "apps-installer/06", "apps-installer/09"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

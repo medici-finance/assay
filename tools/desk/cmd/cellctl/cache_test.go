@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
 )
 
 func TestCacheLaunchEnvironment(t *testing.T) {
@@ -16,14 +18,25 @@ func TestCacheLaunchEnvironment(t *testing.T) {
 	}
 	c.Env.Put("CELL_GO_CACHE", "on")
 	c.Env.Put("CELL_GO_CACHE_MIN_FREE", "0")
-	env := c.cacheEnv([]string{"GOCACHE=/foreign", "GOMODCACHE=/foreign-mod", "GH_TOKEN=secret"})
+	env := c.cacheEnv([]string{"GOCACHE=/foreign", "GOMODCACHE=/foreign-mod", "GH_TOKEN=secret", "GOFLAGS=-mod=mod"})
 	values, err := c.codexCommandEnvironment(env)
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := c.cachePolicy()
+	resolved, err := c.cachePolicy()
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The launch carries the ambient GOFLAGS extended with the policy's, and the
+	// policy it exports records the same value, so the consumer's exact-match
+	// custody check accepts it.
+	p := resolved.WithAmbientGoFlags("-mod=mod")
+	if want := "-mod=mod -trimpath"; p.GoFlags != want {
+		t.Fatalf("merged GOFLAGS %q, want %q", p.GoFlags, want)
+	}
+	exported, err := cellcache.FromEnv(env)
+	if err != nil || exported == nil || exported.GoFlags != p.GoFlags {
+		t.Fatalf("exported policy goflags %+v (err %v), want %q", exported, err, p.GoFlags)
 	}
 	for _, kv := range p.Env() {
 		k, v, _ := strings.Cut(kv, "=")
@@ -34,8 +47,9 @@ func TestCacheLaunchEnvironment(t *testing.T) {
 	if _, ok := values["GH_TOKEN"]; ok {
 		t.Fatal("ambient secret copied")
 	}
+	// The scrubbed launch carries no ambient GOFLAGS, so it gets the policy alone.
 	ce := c.scrubbedComposeEnv("worker-desk", "go", "fixture")
-	for _, kv := range p.Env() {
+	for _, kv := range resolved.Env() {
 		found := false
 		for _, got := range ce.Pairs {
 			if got == kv {
