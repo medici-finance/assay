@@ -31,7 +31,7 @@ sources:
   - "driver ruling 2026-10-06 (pipeline analysis records set, desk-supervision/28-35): capture token counts (in/out), wall time and tier at claim release from the usage figure the agent run already reports; counts only, aggregated per brief/tier, stored where the adopter configures, never the public repo; never read session transcripts, prompts or tool output"
   - "desk-supervision/13 (brief-13-worker-operations-vitals.md) — the self-reported resource block and its three-state VitalField type, reused here rather than re-invented"
   - "desk-supervision/28 — defines `dispatch_ref`, the join key this record carries"
-  - "graph-execution/20 (implemented) — `loopadmin/runner/usage.go` `runner.Usage`: per-invocation `input_tokens`, `output_tokens` and `cost_micros`, where a nil figure is UNKNOWN, never zero; this record's count keys match those names (amended 2026-10-13 at the driver's request)"
+  - "graph-execution/20 (implemented) — `loopadmin/runner/usage.go` `runner.Usage`: per-invocation `input_tokens`, `output_tokens` and `cost_micros`, where a nil figure is UNKNOWN, never zero; this record's count keys match those names (amended 2026-10-13 under #2839, which the desk filed)"
   - "graph-execution/26 and graph-execution/27 — the loop-admin execution journal keeps usage per invocation, and standing desks launch their workers through it; for a worker role enrolled there, the journal is the one per-run usage record and 27 skips this brief's record step (amended 2026-10-13)"
   - "freshness-checked 2026-10-06 @ 1fbf1153f (origin/main): no `deskusage` command under tools/desk/cmd/; no usage/token record is written at or after claim release by deskclaim-ref (claim.go:261 cmdRelease deletes the ref only), deskdispatch (dispatch.go:1120 releaseClaim) or the worker prompt's release line (prompt.go:453 writeReleaseClaim); the only token field anywhere is desk-supervision/13's per-session beacon `resource.tokens` (vitals.go:67-73), which is a live session vital, not a per-dispatch record"
   - "re-checked 2026-10-13 @ bcc02252e (origin/main): still no `deskusage` command; `loopadmin/runner/usage.go` exists (graph-execution/20) and is its own Go module (`loopadmin/go.mod`), so this brief matches its JSON keys and never imports it"
@@ -119,14 +119,17 @@ facts:
   per-invocation usage as `runner.Usage` (`loopadmin/runner/usage.go:6-10`): `input_tokens`,
   `output_tokens`, `cost_micros`, with a nil figure UNKNOWN, never zero
   (`usage.go:3-5`). This record uses the same three key names with the same meaning, so its
-  rows carry into the runner's records without a conversion: `null` and `could-not-check` both
-  map to the runner's nil, and a measured value maps to itself. `total_tokens` and
+  rows carry into the runner's records without a key rename. One value needs converting:
+  `could-not-check` is a string and does not decode into `runner.Usage`'s `*int64` fields, so
+  the move maps it to nil; `null` already decodes to nil, and a measured value maps to itself. `total_tokens` and
   `wall_seconds` have no runner twin today; they are kept, not derived. This record exists
   because today's workers are launched outside loop-admin, so no adapter sees their usage.
   graph-execution/26's execution journal keeps usage per invocation, and graph-execution/27
   moves standing desks onto it, one role at a time by opt-in. For a worker role enrolled there,
-  the journal is the one per-run usage record and graph-execution/27 skips this record step
-  (Task 5) for that role; a role still on the legacy launch path keeps it. Once no role uses the
+  the journal is the one per-run usage record, and graph-execution/27's Task 3 skips this record
+  for that role: this brief's Task 5 skill step still calls `deskusage record`, and the verb
+  writes nothing for an enrolled worker role (graph-execution/27's Verify row 5 proves it). A
+  role still on the legacy launch path keeps the record. Once no role uses the
   legacy path, `usage.jsonl` is read-only history for `deskusage summary`. This brief adds
   nothing to loopadmin and does not import it — `loopadmin` is a separate Go module.
 - **Storage.** The desk's local state directory is `deskkit.StateDir()` (`~/.config/assay` by
@@ -222,7 +225,7 @@ Pre-mortem → detection map:
 | Counts land inside a repo (operator points the dir at a checkout) | row 4 |
 | An unreported count is stored as 0, skewing every average | row 5 |
 | `dispatch_ref` does not match the dispatch record, so nothing joins | row 6 |
-| A count key drifts from `runner.Usage`, so moving the history into the runner's records needs a conversion | row 11 |
+| A count key drifts from `runner.Usage`, so moving the history into the runner's records needs a key rename | row 11 |
 | The new roster key fail-closes an adopter's fleet because one binary does not know it | row 7 |
 | The skill never tells the desk to record, so the store stays empty in production | row 8 |
 | Someone "simplifies" by adding usage flags to the claim tool, which the worker runs blind | row 9 |
