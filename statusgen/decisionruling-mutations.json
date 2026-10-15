@@ -168,6 +168,24 @@
       "file": "decisionruling.go",
       "old": "\tfor _, a := range repoAliases {\n\t\tif a != \"\" && strings.EqualFold(seg, a) {\n\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}",
       "new": "\treturn false\n}"
+    },
+    {
+      "name": "runner glue drops the registry aliases (resolveDecisionRulings derives none, #2735)",
+      "file": "decisionruling.go",
+      "old": "aliases := repoAliasesFor(reg, repo)",
+      "new": "aliases := repoAliasesFor(nil, repo); _ = reg"
+    },
+    {
+      "name": "self alias accepted even when its entry is published under another repository (#2735)",
+      "file": "decisionruling.go",
+      "old": "if e.Unpublished || names {",
+      "new": "if true {"
+    },
+    {
+      "name": "unpublished non-self entry naming the record's repository adds its alias (#2735)",
+      "file": "decisionruling.go",
+      "old": "case !e.Unpublished && names:",
+      "new": "case names:"
     }
   ]
 }

@@ -358,32 +358,104 @@ func TestRuling_RepoAliasesForSelfAndNil(t *testing.T) {
 	}
 }
 
-// End to end through the runner glue: a genuine ruling on a decision issue whose
-// marker uses the registry alias is corroborated, not refused unrelated-issue; the
-// same marker with no registry is still refused (could-not-check falls back closed).
-func TestRuling_AliasMarkerEndToEnd(t *testing.T) {
-	f := defaultRLForge()
-	f.issueBody = rlIssueJSON("<!-- decision-gate: ex:example-stream:7 -->\n")
-	rec := rlNamed("example_human", rlURL(rlRepo, rlIssue, rlComment))
-	rec.File = rlFile
+// regression: #2735 — a self entry PUBLISHED under another repository is a
+// contradictory registry and adds no alias; published under the record's own
+// repository it still does.
+func TestRuling_SelfAliasGuarded(t *testing.T) {
+	for _, tc := range []struct {
+		name, self string
+		want       []string
+	}{
+		{"self published elsewhere", "elsewhere", []string{"ex"}},
+		{"self published here", "ex", []string{"ex"}},
+	} {
+		root := rlWriteRegistry(t, strings.Replace(rlRegistry, "cell: example\nrepos:", "cell: example\nself: "+tc.self+"\nrepos:", 1))
+		reg, _, err := loadGraphRepos(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := repoAliasesFor(reg, rlRepo); strings.Join(got, ",") != strings.Join(tc.want, ",") {
+			t.Errorf("%s: repoAliasesFor = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
 
-	root := rlWriteRegistry(t, rlRegistry)
-	// decisionCitingBriefs reads briefs under root; none exist, so seed the citing
-	// list through resolveRuling directly with the aliases resolveDecisionRulings derives.
-	reg, _, _ := loadGraphRepos(root)
-	o := resolveRuling(f.client(t), rlRepo, rec, rlLogins, []string{"example-stream/07"}, repoAliasesFor(reg, rlRepo))
-	if o.Reason != rulingOK {
-		t.Fatalf("alias marker: reason = %q (%s), want pass", o.Reason, o.Detail)
+// regression: #2735 — a non-self UNPUBLISHED entry adds no alias even when its repo
+// is the record's own repository.
+func TestRuling_UnpubAliasExcluded(t *testing.T) {
+	root := rlWriteRegistry(t, rlRegistry+"  quiet:     {cell: example, repo: "+rlRepo+", unpublished: true}\n")
+	reg, _, err := loadGraphRepos(root)
+	if err != nil {
+		t.Fatal(err)
 	}
-	o = resolveRuling(f.client(t), rlRepo, rec, rlLogins, []string{"example-stream/07"}, nil)
-	if o.Reason != rulingUnrelatedIssue {
-		t.Fatalf("alias marker without registry: reason = %q, want %q", o.Reason, rulingUnrelatedIssue)
+	if e, ok := reg.Aliases["quiet"]; !ok || !e.Unpublished || e.Repo != rlRepo {
+		t.Fatalf("fixture shape changed: quiet = %+v (present %v)", e, ok)
 	}
-	// resolveDecisionRulings derives the aliases itself from root's registry.
-	badRoot := rlWriteRegistry(t, "schema: nope\n")
-	out := resolveDecisionRulings(f.client(t), badRoot, rlRepo, []decisionRecordStamp{rec}, rlLogins)
-	if out[rec.File].Reason != rulingUnrelatedIssue {
-		t.Fatalf("unreadable registry: reason = %q, want fail-closed %q", out[rec.File].Reason, rulingUnrelatedIssue)
+	if got := repoAliasesFor(reg, rlRepo); len(got) != 1 || got[0] != "ex" {
+		t.Fatalf("repoAliasesFor = %v, want [ex]", got)
+	}
+}
+
+// rlWriteCitingBrief writes brief example-stream/07 under root, its design: citing
+// the record, so decisionCitingBriefs(root, rlRecordID) is non-empty. It is the
+// design-gate fixture's dg/01 (a complete brief-v1) with its id and design: swapped.
+func rlWriteCitingBrief(t *testing.T, root string) {
+	t.Helper()
+	src, err := os.ReadFile(filepath.Join("testdata", "designgate", "docs", "streams", "dg", "brief-01-record-present.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := strings.Replace(string(src), "brief: dg/01\n", "brief: example-stream/07\n", 1)
+	b = strings.Replace(b, "design: DR-fixture-approved\n", "design: "+rlRecordID+"\n", 1)
+	if !strings.Contains(b, "brief: example-stream/07\n") || !strings.Contains(b, "design: "+rlRecordID+"\n") {
+		t.Fatal("fixture shape changed: could not re-point dg/01 at example-stream/07")
+	}
+	dir := filepath.Join(root, "docs", "streams", "example-stream")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "brief-07-example.md"), []byte(b), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// regression: #2735 — end to end through the runner glue (resolveDecisionRulings,
+// the production entry point): with a registry declaring "ex" for the record's
+// repository and a brief whose design: cites the record, a genuine ruling on a
+// decision issue whose marker uses the alias form passes. The same tree with no
+// registry, or an unreadable one, refuses it unrelated-issue (fail closed), and a
+// full-name marker passes with no registry — so the refusals are the alias lookup's,
+// not an empty citing set's.
+func TestRuling_AliasMarkerEndToEnd(t *testing.T) {
+	rec := rlNamed("example_human", rlURL(rlRepo, rlIssue, rlComment))
+	run := func(registry, marker string) rulingOutcome {
+		t.Helper()
+		var root string
+		if registry != "" {
+			root = rlWriteRegistry(t, registry)
+		} else {
+			root = t.TempDir()
+		}
+		rlWriteCitingBrief(t, root)
+		if got := decisionCitingBriefs(root, rlRecordID); len(got) != 1 || got[0] != "example-stream/07" {
+			t.Fatalf("control: decisionCitingBriefs = %v, want [example-stream/07]", got)
+		}
+		f := defaultRLForge()
+		f.issueBody = rlIssueJSON("<!-- decision-gate: " + marker + " -->\n")
+		return resolveDecisionRulings(f.client(t), root, rlRepo, []decisionRecordStamp{rec}, rlLogins)[rec.File]
+	}
+	const alias, full = "ex:example-stream:7", "example-org:example-repo:example-stream:7"
+	if o := run(rlRegistry, alias); o.Reason != rulingOK {
+		t.Fatalf("alias marker with registry: reason = %q (%s), want pass", o.Reason, o.Detail)
+	}
+	if o := run("", full); o.Reason != rulingOK {
+		t.Fatalf("control: full-name marker, no registry: reason = %q (%s), want pass", o.Reason, o.Detail)
+	}
+	if o := run("", alias); o.Reason != rulingUnrelatedIssue {
+		t.Fatalf("alias marker, no registry: reason = %q, want %q", o.Reason, rulingUnrelatedIssue)
+	}
+	if o := run("schema: nope\n", alias); o.Reason != rulingUnrelatedIssue {
+		t.Fatalf("alias marker, unreadable registry: reason = %q, want fail-closed %q", o.Reason, rulingUnrelatedIssue)
 	}
 }
 

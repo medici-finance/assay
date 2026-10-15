@@ -475,15 +475,24 @@ func namesRepo(seg, repoName string, repoAliases []string) bool {
 // repoAliasesFor returns the aliases the registry reg declares for repo
 // ("owner/repo"): every published entry whose repo is that repository, plus the
 // registry's `self:` alias (this tree lives in the record's repository, so its own
-// alias names it even when the entry is unpublished). A nil registry yields none.
-// Sorted, so two runs agree.
+// alias names it even when the entry is unpublished). A self entry that is
+// PUBLISHED under a different repo is a contradictory registry, so it adds nothing:
+// an alias the record's repository cannot be shown to own never widens the match.
+// A non-self unpublished entry adds nothing either, whatever its repo says. A nil
+// registry yields none. Sorted, so two runs agree.
 func repoAliasesFor(reg *graphRepos, repo string) []string {
 	if reg == nil {
 		return nil
 	}
 	var out []string
 	for alias, e := range reg.Aliases {
-		if alias == reg.Self || (!e.Unpublished && e.Repo != "" && strings.EqualFold(e.Repo, repo)) {
+		names := e.Repo != "" && strings.EqualFold(e.Repo, repo)
+		switch {
+		case alias == reg.Self:
+			if e.Unpublished || names {
+				out = append(out, alias)
+			}
+		case !e.Unpublished && names:
 			out = append(out, alias)
 		}
 	}
