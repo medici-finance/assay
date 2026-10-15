@@ -96,7 +96,16 @@ rows. The cell is derived or it is not trustworthy; there is no third option.
   under immutable releases).
 - **Wave 4** — `derived-board/07` (depends on 05 + 06; workflow-file pushes need the human).
 
+- **Wave 2 (forge-cost follow-on)** — `derived-board/08` (depends on 03): the witness ledger.
+- **Wave 3 (forge-cost follow-on)** — `derived-board/09` (depends on 08): incremental reconcile.
+  Both stage workflow diffs the driver pushes, and 08 asks the driver to make `lint` a
+  required check.
+
 Path: `01 → 03 → 04 → 06 → 07`, with `02 → 03` joining at wave 1 and `05` running beside 03.
+The forge-cost follow-on `03 → 08 → 09` is off that path: it changes what a regeneration
+costs in rate-limited forge requests, not what a cell may claim. Its head is 08, because 09
+has nothing to read until the ledger exists, and until 08's workflow diff lands every run is
+today's full read.
 
 ## Shared conventions
 

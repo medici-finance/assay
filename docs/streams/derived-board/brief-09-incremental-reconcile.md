@@ -31,7 +31,7 @@ consumers:
   - "statusgen/reconcile.go: follow-up derived-board/09 (this brief)"
   - "statusgen/regen.go (drift comparator): follow-up derived-board/09 (this brief)"
   - "statusgen/claimdecay.go: out-of-scope (claim decay reads branch-scoped pull-request state on its own, one query per 100 live branches, landed separately; it never reads the ledger)"
-  - ".github/workflows (this repository's statusgen workflow, the scheduled --verify-ledger step): follow-up derived-board/09 (this brief; staged as a diff, pushed by the driver because App tokens lack workflow scope)"
+  - ".github/workflows/assay-statusgen.yml (regen passes --ledger; weekly --verify-ledger job): follow-up derived-board/09 (this brief; staged as a diff, pushed by the driver because App tokens lack workflow scope)"
   - "adopter regen workflows (pass --ledger, commit the ledger, add the scheduled --verify-ledger run): out-of-scope (named in the release note of the version that carries this brief; applied per repo through upgrade-assay)"
 ---
 
@@ -39,20 +39,23 @@ consumers:
 
 ## Context
 files:
-- `statusgen/ghfetch.go` — `fetchOpenPulls`, `fetchPullsUpdatedSince(watermark)`; the full walk pages to the end or fails (no silent cap, #1969)
+- `statusgen/ghfetch.go` — `fetchOpenPulls`, `fetchPullsUpdatedSince(watermark)`
 - `statusgen/reconcile.go` — `--ledger <path>` (incremental mode), `--verify-ledger`, the `forgeCost` JSON field
 - `statusgen/regen.go` — the drift comparator reads PRs the same way
 - `statusgen/witnessledger.go` (planned) — merge delta records into the ledger
 - `statusgen/reconcileincremental_test.go` (planned)
+- `.github/workflows/assay-statusgen.yml` — `regen` passes `--ledger`; a weekly scheduled `--verify-ledger` job (a staged diff the driver pushes)
 - `changelog/derived-board-09-incremental-reconcile.md` (planned)
 
 facts:
-- The ledger (brief 08) holds every closed PR the fold could read as a witness, verified against local git on read, with a `watermark` = the largest `updated_at` the recording run saw.
-- `GET /repos/{o}/{r}/pulls?state=open` costs one request per 100 open PRs. `GET /repos/{o}/{r}/pulls?state=all&sort=updated&direction=desc` returns PRs newest-updated first, so a walk can stop at the first PR whose `updated_at` is older than the watermark — one request per 100 PRs changed since the last run. A body edit, merge, close or reopen all bump `updated_at`.
-- File lists are needed only for PRs the fold classifies (open PRs in scope, and delta PRs); ledger records already carry their authoring facts.
-- Measured target (2026-10-15, board of 1,936 PRs, 17 open): incremental run ≈ 1 open-list request + 1 delta request + file lists for the in-scope open/delta PRs + the open-issue pages — against 301 today.
+- The ledger (brief 08) is `.statusgen/witness-ledger.jsonl`. It holds every closed PR the fold could read as a witness, witnessed against local git on read, with `watermark` set to the largest `updated_at` the recording run saw. Brief 08 Task 8 gives the `regen` job `fetch-depth: 0`, `pull-requests: read`, and one `regen_all` function used by both the first attempt and the retry.
+- `GET /repos/{o}/{r}/pulls?state=open` costs one request per 100 open PRs. `GET /repos/{o}/{r}/pulls?state=all&sort=updated&direction=desc` returns PRs newest-updated first, so a walk can stop at the first PR whose `updated_at` is older than the watermark: one request per 100 PRs changed since the last run. A body edit, merge, close or reopen all bump `updated_at`.
+- File lists: a ledger record whose `files` is a list or `"delivers"` needs no read. A ledger record whose `files` is `"not-fetched"` needs exactly one read, and only when the fold needs its authoring answer (its brief is movable, or it is a backfill candidate). Open PRs in scope and delta PRs are read as today.
+- Brief 08's merge-shape witness (squash: `M^1..M`; merge commit: `merge-base(M^1, M^2)..M^2`) keeps two-parent merges out of `reread`. Only records with a forge status git cannot map (`copied`, `changed`, `unchanged`, the 3,000-file cap) or a failed witness are re-fetched; `forgeCost` reports how many.
+- The full pull walk's silent 20-page cap is removed by #3013 (#1969), which also adds `TestFetchAllPullsNoSilentCap`. If #3013 lands first, row 6 below cites that test as already passing.
+- Measured target (2026-10-15, board of 1,936 PRs, 17 open): an incremental run ≈ 1 open-list request + 1 delta request + file lists for in-scope open/delta PRs and needed `"not-fetched"` records + rereads + the open-issue pages, against 301 for today's full read.
 
-single-point-of-failure: the watermark, together with the ledger's forge-only fields — a PR changed before the watermark but missing from the ledger, or a forge-only field that is wrong, is not re-read by an incremental run. Only brief 08's hand-edit lint PREVENTS that; behind it the rest DETECT or BOUND: (1) the delta walk overlaps the watermark by 1 hour (boundary races); (2) brief 08's read-time witnessing re-fetches every record git can disprove, merged or closed; (3) the full-read age — read from git (the newest `Ledger-Full-Read: yes` commit), never from a header field — makes any ledger older than 7 days unusable, so a wrong forge-only field or a deleted record lives at most 7 days; (4) `--verify-ledger` re-derives from a full read and exits non-zero on any difference, scheduled independently of every incremental run; (5) `--ledger` absent keeps today's full read.
+single-point-of-failure: the watermark, together with the ledger's forge-only fields — a PR changed before the watermark but missing from the ledger, or a forge-only field that is wrong, is not re-read by an incremental run. Brief 08's hand-edit lint detects that at review (and prevents it once `lint` is a required check, brief 08 Task 9). Behind it the rest DETECT or BOUND: (1) the delta walk overlaps the watermark by 1 hour (boundary races); (2) brief 08's read-time witnessing re-fetches every record git can disprove, merged or closed; (3) the full-read age — read from git (brief 08 Task 4: the newest writer-committed, ledger-touching `Ledger-Full-Read: yes` commit), never from a header field — makes any ledger older than 7 days unusable, so a wrong forge-only field or a deleted record lives at most 7 days; (4) `--verify-ledger` re-derives from a full read and exits non-zero on any difference, scheduled independently of every incremental run; (5) `--ledger` absent keeps today's full read.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task instructions.
@@ -60,24 +63,31 @@ single-point-of-failure: the watermark, together with the ledger's forge-only fi
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
 ## Task
-1. `reconcile --ledger <path>`: read the ledger (brief 08). If it is unusable, or brief 08's git-witnessed `fullReadAt` is more than 7 days old (`ledgerMaxAge`, a named constant), do the full read and re-record with the `Ledger-Full-Read: yes` trailer. An incremental re-record carries no trailer, so it never extends the age. If usable: re-fetch the records brief 08's read returned in `reread`, fetch open PRs, fetch PRs updated since `watermark − 1h`, fold over (ledger records, overridden by any delta record for the same PR) ∪ delta ∪ open; read file lists only for open PRs in scope and delta PRs. If the ledger is missing, unparseable or fails local verification: print one NOTICE naming why, and do the full read. With `--record-ledger`, write the merged ledger and the new watermark.
-2. The `--backfill` branch/body match reads candidates from ledger `backfillRefs` plus delta and open PRs — the same candidate set the full read builds.
-3. `reconcile --verify-ledger <path>`: full read, derive both ways, print every brief whose cell differs, exit non-zero on any difference. This is the out-of-band check a scheduled (e.g. weekly) workflow runs.
-4. Full mode pages the pull list to the end; a walk stopped by any bound is a could-not-check, never a complete list (#1969).
-5. `--json` gains `forgeCost: {requests: <n>, mode: "incremental"|"full", fallbackReason: "…"}` so every run reports what it spent.
+1. `reconcile --ledger <path>`: read the ledger (brief 08).
+   - **Full read instead** when the ledger is missing, unparseable or unusable, or when brief 08's git-witnessed `fullReadAt` is more than 7 days old (`ledgerMaxAge`, a named constant). Print one NOTICE naming why.
+   - **Otherwise, incremental:** re-fetch the records in brief 08's `reread` set, fetch open PRs, and fetch PRs updated since `watermark − 1h`. Fold over (ledger records, overridden by any delta record for the same PR) ∪ delta ∪ open. Read file lists for open PRs in scope, for delta PRs, and for any `"not-fetched"` ledger record whose authoring answer the fold needs. Read none for a ledger record whose list or `"delivers"` is recorded.
+   - **Re-recording** (`--record-ledger`): the merged ledger and the new watermark. A delta PR that is reopened (now open), or no longer in scope (trailer and every backfill ref removed), loses its ledger record. A `"not-fetched"` record that was read this run is recorded with its list.
+   - **Commit message** (brief 08 Task 6): `--commit-message-file` carries `Ledger-Full-Read: yes` only after a full read. An incremental re-record carries no trailer, so it never extends the age.
+2. The `--backfill` branch/body match reads candidates from ledger `backfillRefs` plus delta and open PRs: the same candidate set the full read builds.
+3. `reconcile --verify-ledger <path>`: full read, derive both ways, print every brief whose cell differs, and exit non-zero on any difference.
+4. Full mode pages the pull list to the end; a walk stopped by any bound is a could-not-check (#1969, delivered by #3013 if it lands first).
+5. `--json` gains `forgeCost: {requests: <n>, rereads: <n>, notFetchedReads: <n>, mode: "incremental"|"full", fallbackReason: "…"}`.
 6. regen's drift comparator takes the same incremental read when given the ledger.
-7. Add a scheduled `--verify-ledger` step to this repository's own statusgen workflow (weekly), staged in the PR as a diff. App tokens cannot push workflow files, so the driver pushes that one file. Name the hand-off in the PR body. The 7-day maximum age (Task 1) bounds the exposure whether or not the step has landed.
+7. **Workflow, a staged diff the driver pushes:**
+   - In `.github/workflows/assay-statusgen.yml`, `regen_all` (brief 08 Task 8) adds `--ledger .statusgen/witness-ledger.jsonl` to its `reconcile --record-ledger` call. That is what makes every push-to-main regen incremental; the checkout is already full-depth (brief 08 Task 8).
+   - Add a weekly `schedule`-triggered job running `reconcile --verify-ledger` with the read-only token and `fetch-depth: 0`, failing the job on a difference.
+   - Name the hand-off in the PR body. The 7-day maximum age (Task 1) bounds the exposure whether or not the weekly job has landed.
 8. Changelog fragment, including the workflow change adopters make.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `go test -count=1 -run TestReconcileIncremental ./statusgen/...` | exit 0 — on a recorded-response fixture of 2,500 closed PRs (all in the ledger), 3 open and 2 updated since the watermark, the run makes no `state=all` page beyond the delta stop and no file-list read for a ledger PR, and its JSON equals the full-read JSON | check:ci +flow |
-| 2 | `go test -count=1 -run TestReconcileIncrementalCost ./statusgen/...` | exit 0 — `forgeCost.requests` stays the same when the fixture's closed history grows from 500 to 5,000 PRs with open and delta fixed | check:ci |
-| 3 | `go test -count=1 -run TestReconcileLedgerFallback ./statusgen/...` | exit 0 — a missing, malformed, or locally unverifiable ledger produces the NOTICE and the full read's exact JSON; forcing the incremental path on an unverifiable ledger makes the test fail | check:ci +mutation |
-| 4 | `go test -count=1 -run TestReconcileLedgerMaxAge ./statusgen/...` | exit 0 — a ledger whose git-witnessed full read (the newest `Ledger-Full-Read: yes` commit) is more than 7 days old produces the full read's exact JSON and a re-recorded ledger. A record in brief 08's `reread` set is fetched from the forge, and its recorded fields are not used. Removing the age check makes the test fail | check:ci +mutation |
-| 5 | `go test -count=1 -run TestReconcileWatermarkEdit ./statusgen/...` | exit 0 — a merged PR whose body gains a `Brief:` trailer after the ledger was recorded (its `updated_at` moves past the watermark) is re-read and changes the derived cell | check:ci +neighbour |
-| 6 | `go test -count=1 -run TestFetchAllPullsNoSilentCap ./statusgen/...` | exit 0 — a fixture with more pages than any bound returns lookedAt=false with a reason, never a short list as complete | check:ci |
+| 1 | `go test -count=1 -run TestReconcileIncremental ./statusgen/...` | exit 0 — on a recorded-response fixture of 2,500 closed PRs in the ledger (lists recorded, plus some `"not-fetched"`), 3 open and 2 updated since the watermark: no `state=all` page beyond the delta stop, no file-list read for a ledger PR with a recorded list, exactly one read for each `"not-fetched"` record the fold needs and none for the rest, and JSON equal to the full read's | check:ci +flow |
+| 2 | `go test -count=1 -run TestReconcileIncrementalCost ./statusgen/...` | exit 0 — `forgeCost.requests` stays the same when the fixture's closed history grows from 500 to 5,000 PRs (squash and merge-commit records mixed, none in `reread`) with open and delta fixed | check:ci |
+| 3 | `go test -count=1 -run TestReconcileLedgerFallback ./statusgen/...` | exit 0 — a missing, malformed or unusable ledger produces the NOTICE and the full read's exact JSON. Forcing the incremental path on an unusable ledger fails | check:ci +mutation |
+| 4 | `go test -count=1 -run TestReconcileLedgerMaxAge ./statusgen/...` | exit 0 — a ledger whose git-witnessed full read is more than 7 days old produces the full read's exact JSON and a re-recorded ledger with a trailer-carrying message. A record in `reread` is fetched from the forge, and its recorded fields are not used. Removing the age check fails | check:ci +mutation |
+| 5 | `go test -count=1 -run TestReconcileWatermarkEdit ./statusgen/...` | exit 0 — a merged PR whose body gains a `Brief:` trailer after recording (its `updated_at` moves past the watermark) is re-read and changes the derived cell. A delta PR whose trailer was removed, or that was reopened, loses its ledger record on re-record | check:ci +neighbour |
+| 6 | `go test -count=1 -run TestFetchAllPullsNoSilentCap ./statusgen/...` | exit 0 — a walk that hits the bound returns lookedAt=false with a reason, never a short list as complete (lands with #3013 if that merges first) | check:ci |
 | 7 | `cd statusgen && go build -o "${TMPDIR:-/tmp}/sg" . && "${TMPDIR:-/tmp}/sg" reconcile --backfill --root .. --repo medici-finance/assay --record-ledger "${TMPDIR:-/tmp}/wl.jsonl" --json > "${TMPDIR:-/tmp}/full.json" && "${TMPDIR:-/tmp}/sg" reconcile --verify-ledger "${TMPDIR:-/tmp}/wl.jsonl" --backfill --root .. --repo medici-finance/assay` | exit 0 — a live read of this repository: the ledger-derived and full-read results agree (GITHUB_TOKEN set) | check +dereference |
 | 8 | `statusgen --root . --consumers --brief derived-board/09` | exit 0 (routing claims corroborated against the diff) | check |
 
