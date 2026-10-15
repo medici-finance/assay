@@ -16,11 +16,21 @@ package deskkit
 // a CHANGES_REQUESTED, a failing marker or a finding is never dropped by it (that would
 // loosen the gate rather than tighten it).
 //
-// Residual, stated so the control's reach is honest: the committer date is set by whoever
-// made the commit. A FUTURE-dated committer date makes a genuine approval read stale — the
-// over-refusal direction, fail closed. A BACKDATED committer date can make a re-anchored
-// approval read current; this test does not defend against a pusher who forges commit
-// dates, only against the forge moving a review's anchor on its own.
+// Residuals, stated so the control's reach is honest:
+//
+//   - Clock skew (safe direction). The committer date comes from the committing client's
+//     clock, not the forge's. A client clock running AHEAD of the forge (or a deliberately
+//     future-dated commit) makes a genuine approval submitted after the push read stale: the
+//     approval is HELD and needs a fresh review — over-refusal, fail closed.
+//   - Back-dating (unsafe direction). A BACKDATED committer date can make a re-anchored
+//     approval read current. This test does not defend against a pusher who forges commit
+//     dates, only against the forge moving a review's anchor on its own. On a fork PR the
+//     head owner controls both the author and committer dates.
+//   - Push time. The committer date records when the commit was CREATED, not when it was
+//     PUSHED. A commit created before an approval and pushed after it carries an earlier
+//     date than the approval, so if the forge re-anchors that approval onto it, the approval
+//     reads current. A reviewed-head marker in the verdict body, or a server-set push-time
+//     bound, would close this; neither is implemented here.
 
 import (
 	"strings"

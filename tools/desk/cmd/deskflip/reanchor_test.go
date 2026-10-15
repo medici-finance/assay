@@ -139,3 +139,109 @@ func TestWithoutStaleGrantsRemovesOnlyStaleGrants(t *testing.T) {
 		t.Fatalf("no grant at head: err=%v read=%v, want no read and no error", err, read)
 	}
 }
+
+// reanchorSecurityAtHead is a risk-classed flip's two verdicts at head B: a genuine correctness
+// APPROVED submitted after B existed, and a `Security-Review: pass` submitted at passAt. The
+// security pass is the risk-classed PR's second, independent grant, and the forge re-anchors
+// it exactly as it does an APPROVED (#3093).
+func reanchorSecurityAtHead(t *testing.T, passAt string) []reviewInfo {
+	t.Helper()
+	bot := reviewerBot(t)
+	approved := reviewInfo{State: "APPROVED", CommitID: headSHA, Body: "looks correct", SubmittedAt: reanchorFreshApprov}
+	approved.User.Login = bot
+	sec := reviewInfo{State: "COMMENTED", CommitID: headSHA, Body: "Security-Review: pass", SubmittedAt: passAt}
+	sec.User.Login = bot
+	return []reviewInfo{approved, sec}
+}
+
+// A security pass re-anchored onto head B is not a security verdict at B: the risk-classed
+// (public-repo) flip is refused, with no mutation.
+func TestReanchoredSecurityPassDoesNotSatisfyTheSecurityLane(t *testing.T) {
+	s := newStub()
+	s.headCommittedAt = reanchorHeadDate
+	s.install(t)
+	s.reviews = reanchorSecurityAtHead(t, reanchorApproveAt)
+
+	if rc := run([]string{"7", "--repo", publicRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("re-anchored security pass rc = %d, want %d (refused) — a Security-Review: pass "+
+			"submitted before the head commit existed is not a security verdict at that head", rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a re-anchored security pass produced mutations: %v", m)
+	}
+}
+
+// Positive control: the same security pass submitted AFTER head B's committer date flips.
+func TestSecurityPassSubmittedAfterHeadCommitIsAccepted(t *testing.T) {
+	s := newStub()
+	s.headCommittedAt = reanchorHeadDate
+	s.install(t)
+	s.reviews = reanchorSecurityAtHead(t, reanchorFreshApprov)
+
+	if rc := run([]string{"7", "--repo", publicRepo}); rc != deskkit.ExitOK {
+		t.Fatalf("fresh security pass at head rc = %d, want %d", rc, deskkit.ExitOK)
+	}
+	if !s.flipped() {
+		t.Errorf("the ready mutation never ran: %v", s.requests)
+	}
+}
+
+// The pre-mutation RE-READ is filtered too. The first read serves a genuine fresh APPROVED;
+// by the re-read the forge reports only an APPROVED re-anchored onto head B (submitted before
+// B existed). The re-read's correctness gate must refuse on it — the re-read exists to see
+// exactly what the forge reports at the moment of the mutation.
+func TestReanchoredApprovalOnTheReReadIsRefused(t *testing.T) {
+	s := newStub()
+	s.headCommittedAt = reanchorHeadDate
+	s.install(t)
+	s.reviews = reanchorReviews(t, reanchorFreshApprov)[1:]
+	s.reviewsAfterFirstRead = reanchorReviews(t, reanchorApproveAt)[1:]
+
+	if rc := run([]string{"7", "--repo", privateCIRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("re-anchored approval on the re-read rc = %d, want %d (refused)", rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a re-anchored approval on the re-read produced mutations: %v", m)
+	}
+	if s.reviewReads < 2 {
+		t.Fatalf("reviews read %d time(s) — the refusal must come from the re-read", s.reviewReads)
+	}
+}
+
+// Each pass's security lane is filtered on its own read. The first read serves a security
+// pass re-anchored onto head B (submitted before B existed), the re-read a genuine fresh one:
+// the main pass must refuse on the read it actually holds, not lean on the re-read.
+func TestReanchoredSecurityPassOnTheFirstReadIsRefused(t *testing.T) {
+	s := newStub()
+	s.headCommittedAt = reanchorHeadDate
+	s.install(t)
+	s.reviews = reanchorSecurityAtHead(t, reanchorApproveAt)
+	s.reviewsAfterFirstRead = reanchorSecurityAtHead(t, reanchorFreshApprov)
+
+	if rc := run([]string{"7", "--repo", publicRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("re-anchored security pass on the first read rc = %d, want %d (refused)", rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a re-anchored security pass produced mutations: %v", m)
+	}
+}
+
+// The mirror: a fresh security pass on the first read, and only a re-anchored one by the
+// pre-mutation re-read. The re-read's security lane must refuse.
+func TestReanchoredSecurityPassOnTheReReadIsRefused(t *testing.T) {
+	s := newStub()
+	s.headCommittedAt = reanchorHeadDate
+	s.install(t)
+	s.reviews = reanchorSecurityAtHead(t, reanchorFreshApprov)
+	s.reviewsAfterFirstRead = reanchorSecurityAtHead(t, reanchorApproveAt)
+
+	if rc := run([]string{"7", "--repo", publicRepo}); rc != deskkit.ExitRefused {
+		t.Fatalf("re-anchored security pass on the re-read rc = %d, want %d (refused)", rc, deskkit.ExitRefused)
+	}
+	if m := s.mutated(); len(m) != 0 {
+		t.Fatalf("a re-anchored security pass on the re-read produced mutations: %v", m)
+	}
+	if s.reviewReads < 2 {
+		t.Fatalf("reviews read %d time(s) — the refusal must come from the re-read", s.reviewReads)
+	}
+}

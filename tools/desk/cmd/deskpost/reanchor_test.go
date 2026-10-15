@@ -1,6 +1,11 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+)
 
 // #3093 — GitHub RE-ANCHORS an old review's commit_id to a later head. The reported case:
 // CHANGES_REQUESTED at commit A, then an APPROVED submitted while A was still the head, which
@@ -83,5 +88,54 @@ func TestReadyHeadCommitDateUnreadableFailsClosed(t *testing.T) {
 	}
 	if f.flips != 0 {
 		t.Fatalf("flips = %d with an unreadable head date, want 0", f.flips)
+	}
+}
+
+// reanchorSecurityReviews is a risk-classed PR's two App verdicts at head B: a genuine
+// correctness APPROVED submitted after B existed, and a `Security-Review: pass` submitted at
+// passAt. The security pass is the second, independent grant on a risk-classed PR, and the
+// forge re-anchors it exactly as it does an APPROVED (#3093).
+func reanchorSecurityReviews(passAt string) []reviewInfo {
+	approved := appReview("APPROVED", testHead, okReviewBody)
+	approved.SubmittedAt = reanchorFreshAt
+	pass := appReview("APPROVED", testHead, "## Security review\n\nNo auth regressions.\n\nSecurity-Review: pass\n")
+	pass.SubmittedAt = passAt
+	return []reviewInfo{approved, pass}
+}
+
+// A security pass re-anchored onto head B — submitted before B's committer date — is not a
+// security verdict at B: gate (e) refuses the risk-classed flip.
+func TestReadyReanchoredSecurityPassRefused(t *testing.T) {
+	f, _ := setupFake(t)
+	f.files = []string{"secrets/service/jwt.key"} // risk-classed
+	f.headCommittedAt = reanchorHeadDate
+	f.reviews = reanchorSecurityReviews(reanchorApproveAt)
+	f.status = greenStatus()
+
+	if code := run(readyArgs(exampleRepo)); code != deskkit.ExitRefused {
+		t.Fatalf("re-anchored security pass exit = %d, want %d — a Security-Review: pass submitted "+
+			"before the head commit existed is not a security verdict at that head", code, deskkit.ExitRefused)
+	}
+	if f.flips != 0 {
+		t.Fatalf("flips = %d on a re-anchored security pass, want 0", f.flips)
+	}
+	if d := lastAudit(t).Detail; !strings.Contains(d, "Security-Review") {
+		t.Errorf("the refusal must be gate (e)'s missing security verdict; audit detail: %s", d)
+	}
+}
+
+// Positive control: the same security pass submitted AFTER head B's committer date grants.
+func TestReadySecurityPassAfterHeadCommitAccepted(t *testing.T) {
+	f, _ := setupFake(t)
+	f.files = []string{"secrets/service/jwt.key"}
+	f.headCommittedAt = reanchorHeadDate
+	f.reviews = reanchorSecurityReviews(reanchorFreshAt)
+	f.status = greenStatus()
+
+	if code := run(readyArgs(exampleRepo)); code != 0 {
+		t.Fatalf("fresh security pass at head exit = %d, want 0", code)
+	}
+	if f.flips != 1 {
+		t.Fatalf("flips = %d, want 1", f.flips)
 	}
 }

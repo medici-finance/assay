@@ -37,6 +37,28 @@ func reanchorRow(t *testing.T, headDate string, reviews ...string) actionRow {
 // resets the forge hooks), for a test that injects a read failure.
 func reanchorRowWith(t *testing.T, headDate string, setup func(), reviews ...string) actionRow {
 	t.Helper()
+	return reanchorRowOpts(t, reanchorFixture{headDate: headDate, setup: setup}, reviews...)
+}
+
+// reanchorFixture varies reanchorRow's PR: files is the changed-file list (default: the one
+// benign docs file), compare the A..B compare's file list (default: that same file, so a
+// verdict at A reads RE-REVIEW).
+type reanchorFixture struct {
+	headDate string
+	setup    func()
+	files    string
+	compare  string
+}
+
+func reanchorRowOpts(t *testing.T, fx reanchorFixture, reviews ...string) actionRow {
+	t.Helper()
+	headDate, setup := fx.headDate, fx.setup
+	if fx.files == "" {
+		fx.files = `[{"filename":"docs/example.md"}]`
+	}
+	if fx.compare == "" {
+		fx.compare = `[{"filename":"docs/example.md"}]`
+	}
 	installFakeGH(t)
 	if setup != nil {
 		setup()
@@ -48,8 +70,8 @@ func reanchorRowWith(t *testing.T, headDate string, setup func(), reviews ...str
 			`"author":{"login":"ada"},"headRefOid":"`+reanchorHead+`","headCommittedDate":`+jsonStr(headDate)+`,`+
 			`"mergeStateStatus":"CLEAN",`+
 			`"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS","name":"ci"}]}]`)
-	t.Setenv("DESKBOARD_GH_PRFILES_JSON", `[{"filename":"docs/example.md"}]`)
-	t.Setenv("DESKBOARD_GH_COMPARE_JSON", `{"status":"ahead","files":[{"filename":"docs/example.md"}]}`)
+	t.Setenv("DESKBOARD_GH_PRFILES_JSON", fx.files)
+	t.Setenv("DESKBOARD_GH_COMPARE_JSON", `{"status":"ahead","files":`+fx.compare+`}`)
 	t.Setenv("DESKBOARD_GH_REVIEWS_JSON", "["+strings.Join(reviews, ",")+"]")
 	var out, errb bytes.Buffer
 	if code := run([]string{"actions"}, &out, &errb); code != deskkit.ExitOK {
@@ -69,8 +91,12 @@ func reanchorRowWith(t *testing.T, headDate string, setup func(), reviews ...str
 }
 
 func reanchorReview(state, commit, at string) string {
+	return reanchorReviewBody(state, commit, at, "review")
+}
+
+func reanchorReviewBody(state, commit, at, body string) string {
 	return `{"user":{"login":"` + reviewerBotDisplay() + `"},"state":"` + state + `","commit_id":"` + commit +
-		`","body":"review","submitted_at":"` + at + `"}`
+		`","body":` + jsonStr(body) + `,"submitted_at":"` + at + `"}`
 }
 
 // notApproved asserts the row did not read as approved at head: no merge/flip action, and no
@@ -126,5 +152,42 @@ func TestHeadCommitDateUnreadableIsNotApprovalOnBoard(t *testing.T) {
 	notApproved(t, row)
 	if !strings.Contains(row.Note, "DEGRADED") {
 		t.Errorf("note does not say the row degraded: %s", row.Note)
+	}
+}
+
+// The reported #3093 interval: B is a merge of main, so A..B does not touch the PR's own
+// files. The surviving CR at A then reads MERGE-CURR (keep current, no re-review) — the
+// pre-existing reduction for a verdict at an older head over a benign interval. What this fix
+// pins is that the re-anchored APPROVED does not turn the row into an approval at head: the
+// row is not MERGE-NOW, whatever non-granting lane the CR at A lands in.
+func TestReanchoredApprovalOverBenignMergeIsNotMergeNowOnBoard(t *testing.T) {
+	row := reanchorRowOpts(t, reanchorFixture{headDate: reanchorHeadDate, compare: `[{"filename":"go.mod"}]`},
+		reanchorReview("CHANGES_REQUESTED", reanchorCommitA, reanchorBlockAt),
+		reanchorReview("APPROVED", reanchorHead, reanchorApproveAt))
+	notApproved(t, row)
+}
+
+// A risk-classed PR (it touches secrets/) with a genuine correctness APPROVED at head B and a
+// `Security-Review: pass` COMMENTED review re-anchored onto B — submitted before B's committer
+// date. The security pass is not a pass at B: the row is SECURITY-REVIEW-REQUIRED, never
+// MERGE-NOW.
+func TestReanchoredSecurityPassIsNotAPassOnBoard(t *testing.T) {
+	row := reanchorRowOpts(t, reanchorFixture{headDate: reanchorHeadDate, files: `[{"filename":"secrets/foo.yaml"}]`},
+		reanchorReview("APPROVED", reanchorHead, reanchorFreshAt),
+		reanchorReviewBody("COMMENTED", reanchorHead, reanchorApproveAt, "## Security review\n\nSecurity-Review: pass\n"))
+	if row.Action != actSecReview {
+		t.Fatalf("action = %s (%s), want %s — a Security-Review: pass submitted before the head commit "+
+			"existed is not a security pass at that head", row.Action, row.Note, actSecReview)
+	}
+}
+
+// Positive control: the same security pass submitted AFTER head B's committer date is a pass
+// at B, and the risk-classed row reads MERGE-NOW.
+func TestSecurityPassAfterHeadCommitIsAPassOnBoard(t *testing.T) {
+	row := reanchorRowOpts(t, reanchorFixture{headDate: reanchorHeadDate, files: `[{"filename":"secrets/foo.yaml"}]`},
+		reanchorReview("APPROVED", reanchorHead, reanchorFreshAt),
+		reanchorReviewBody("COMMENTED", reanchorHead, reanchorFreshAt, "## Security review\n\nSecurity-Review: pass\n"))
+	if row.Action != actMergeNow {
+		t.Fatalf("action = %s (%s), want %s", row.Action, row.Note, actMergeNow)
 	}
 }

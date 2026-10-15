@@ -42,6 +42,12 @@
       "file": "internal/deskkit/trust.go",
       "old": "\tif !strings.EqualFold(strings.TrimSpace(authorLogin), forgeActionsBot) {\n\t\treturn false\n\t}",
       "new": "\t_ = authorLogin"
+    },
+    {
+      "name": "#3093 M4: gate (e) reads the UNFILTERED reviews — a security pass re-anchored onto the head counts as a pass at it",
+      "file": "cmd/deskpost/ready.go",
+      "old": "\t\tsecv := securityVerdictStanding(grantReviews, head)",
+      "new": "\t\tsecv := securityVerdictStanding(reviews, head)"
     }
   ]
 }
