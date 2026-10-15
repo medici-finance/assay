@@ -213,10 +213,11 @@ func lockReasonOf(t *testing.T, work, target string) (string, bool) {
 func TestAddLockSession(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
-	if rc := run([]string{"add", "locked-one", "--lock-session", "sess-42"}); rc != deskkit.ExitOK {
+	const name = "locked-one"
+	if rc := run([]string{"add", name, "--lock-session", "sess-42"}); rc != deskkit.ExitOK {
 		t.Fatalf("add --lock-session rc = %d", rc)
 	}
-	target := filepath.Join(tmpBaseDir, "tracker-locked-one")
+	target := filepath.Join(tmpBaseDir, "tracker-"+name)
 	reason, locked := lockReasonOf(t, work, target)
 	if !locked || reason != addLockReason("sess-42") {
 		t.Fatalf("lock = %v %q, want %q", locked, reason, addLockReason("sess-42"))
@@ -250,12 +251,13 @@ func TestAddLockSession(t *testing.T) {
 func TestAddLockSessionRefusesUnsafeID(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
+	const name = "unsafe"
 	for _, id := range []string{"../x", "a/b", "-x", ".hidden", "a..b"} {
-		if rc := run([]string{"add", "unsafe", "--lock-session", id}); rc != deskkit.ExitRefused {
+		if rc := run([]string{"add", name, "--lock-session", id}); rc != deskkit.ExitRefused {
 			t.Errorf("--lock-session %q rc = %d, want refused", id, rc)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(tmpBaseDir, "tracker-unsafe")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(tmpBaseDir, "tracker-"+name)); !os.IsNotExist(err) {
 		t.Fatalf("a refused add left a worktree behind (err=%v)", err)
 	}
 }
