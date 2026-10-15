@@ -121,6 +121,15 @@ func verifyHerdrWorkspace(w *herdrWorkspace) (bool, error) {
 	}
 	return false, nil
 }
+
+// warnUnfinishedHerdrReceipt names the one residue an unfinished create can leave: Herdr may have
+// made a workspace before the ID was saved, and that workspace carries no owner token, so cellctl
+// can never close it. The operator is told once, on stderr, to look for it by the cell's label.
+func (c *Cell) warnUnfinishedHerdrReceipt(w *herdrWorkspace, action string) {
+	if w != nil && w.ID == "" {
+		fmt.Fprintf(os.Stderr, "cellctl: cell %s had an unfinished Herdr workspace create; %s. A prior attempt may have left an untagged workspace labelled %q for you to close.\n", c.Name, action, c.Name)
+	}
+}
 func (c *Cell) ensureHerdrWorkspace() (*herdrWorkspace, error) {
 	lock, err := c.herdrLease()
 	if err != nil {
@@ -139,6 +148,7 @@ func (c *Cell) ensureHerdrWorkspace() (*herdrWorkspace, error) {
 		if live {
 			return w, nil
 		}
+		c.warnUnfinishedHerdrReceipt(w, "recreating it")
 	}
 	if !helpHas("report-metadata", "herdr", "workspace") {
 		return nil, fmt.Errorf("Herdr requires workspace report-metadata for cell ownership")
@@ -209,6 +219,7 @@ func (c *Cell) closeHerdrWorkspace() error {
 			return err
 		}
 	}
+	c.warnUnfinishedHerdrReceipt(w, "dropping its receipt")
 	return os.Remove(filepath.Join(c.herdrDir(), "workspace.json"))
 }
 
