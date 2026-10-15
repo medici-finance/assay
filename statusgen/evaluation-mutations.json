@@ -82,8 +82,8 @@
     {
       "name": "external consumer: the statusgen manifest names a path under the internal tool module",
       "file": "go.mod",
-      "old": "go 1.25.0\n",
-      "new": "go 1.25.0\n\n// see tools/desk/internal/deskkit\n"
+      "old": "go 1.27.0\n",
+      "new": "go 1.27.0\n\n// see tools/desk/internal/deskkit\n"
     }
   ]
 }

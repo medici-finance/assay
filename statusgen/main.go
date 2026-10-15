@@ -780,7 +780,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// A plain --lint (no --forge) does NOT read them at all (forge-neutral/18, the
 	// reach contract in docs/statusgen-lint-reach.md): the claim read is
 	// `git ls-remote --heads origin` — a network round-trip to the forge — and its
-	// dead-claim decay starts `gh pr list` or calls a GitLab API. Offline, the
+	// dead-claim decay starts `gh api graphql` or calls a GitLab API. Offline, the
 	// claim set is could-not-check, rendered as itself through the same degraded
 	// notice a failed read produces; it never decides the lint verdict (every
 	// PROBLEM is counted above, before this line).
