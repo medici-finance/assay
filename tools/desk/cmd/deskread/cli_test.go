@@ -386,7 +386,7 @@ func TestCLILegacyForms(t *testing.T) {
 	})
 }
 
-// regression: F4 (statusgen/16) — label-events is a real per-issue kind: --issue addresses it, and
+// regression: F-label-events-kind — label-events is a real per-issue kind: --issue addresses it, and
 // a repo or change address is refused by the kind's own addressing check (the CLI table above
 // stubs the read, so this test calls the check the read runs).
 func TestLabelEventsAddressing(t *testing.T) {
