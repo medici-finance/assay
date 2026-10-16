@@ -13,7 +13,7 @@ schema: brief-v2
 version: 1
 authored: 2026-10-13 by statusgen newbrief
 sources:
-  - docs/proposals/non-ci-architecture/21-product-intent-and-portfolio.md
+  - docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md
   - docs/proposals/non-ci-architecture/11-target-architecture.md
   - freshness-checked 2026-10-13 @ d484dd5df24f2aa8d557dafce41687b38173f227
 exec-tier: strong
@@ -23,7 +23,7 @@ outcome: none
 id: 5cec2f6f-26ad-4cd1-aee2-56133468a7b1
 consumers:
   - "statusgen/portfolio.go, statusgen/main.go, schemas/portfolio-view-v1.json: follow-up statusgen/25"
-  - "public API and cockpit: out-of-scope (R7 owner decision and serving brief still owed; consume this API without recomputation)"
+  - "public API and cockpit: out-of-scope (R7's `cell-api` owner stream is named in the amendment manifest; its scaffolding and serving brief are still owed; consume this API without recomputation)"
   - "adopter live trial: out-of-scope (owner must select area, burden bound and activation independently)"
 ---
 
@@ -51,7 +51,7 @@ design-fit:
 
 ## Read first
 
-- `docs/proposals/non-ci-architecture/21-product-intent-and-portfolio.md` — exact record semantics, boundaries and owner mapping.
+- `docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md` — exact record semantics, boundaries and owner mapping.
 - `spec/registers-v1.md`, `spec/brief-v1.md` and the declared dependency briefs.
 - `docs/streams/continuing-operations/spec.md` for operational identity and impact ownership.
 

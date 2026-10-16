@@ -79,7 +79,7 @@ product-target and architecture revisions in both skills. Existing unbound brief
 explicitly unbound, and a proposed target never invalidates approved work. Carry the original
 selection revision and checkpoint disposition into amendments. The manual bootstrap records
 unsupported bindings and coverage; it must not pretend the parser already supports them.
-This is an amendment to an unfinished brief, not a change to statusgen/19's active scope.
+This is an amendment to an unfinished brief, not a change to statusgen/19's merged contract or Evidence.
 
 ## Task
 

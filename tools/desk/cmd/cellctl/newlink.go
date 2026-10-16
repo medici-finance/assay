@@ -109,8 +109,8 @@ type cellScaffold struct {
 }
 
 // beginCellScaffold makes dir's PARENTS the way the oracle's `mkdir -p "$d/…"` makes them, so a
-// nested cell name (`cellctl new team/a`) scaffolds as it always has, and then dir itself
-// exclusively. The parents sit outside the cell and are not journaled: a rollback never removes
+// path-shaped dir is made up to its leaf, and then dir itself exclusively (a cell name is one
+// directory — cellNameLocal — so for `new` the parent is the cells root). The parents sit outside the cell and are not journaled: a rollback never removes
 // them (as it never removes the cells root), and an empty one left behind never blocks a retry.
 func beginCellScaffold(goos, dir string) (*cellScaffold, error) {
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {

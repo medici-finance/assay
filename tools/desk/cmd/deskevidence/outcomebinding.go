@@ -16,6 +16,41 @@ import (
 var outcomeEvidenceBindingFn = validateOutcomeEvidenceBinding
 var outcomeObservationBindingFn = validateOutcomeObservationBinding
 
+// A cross-repository receipt binds a conservative whole-deliverable commit
+// input as well as the tracking repository's ordinary file inputs. Old readers
+// do not recognize repo-source keys and therefore cannot claim unchangedness.
+func admittedOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskkit.ForgeRepo, branch string, receipt deskkit.VerifierReceipt) ([]byte, error) {
+	if receipt.Binding.Version != 2 {
+		return outcomeReceiptFn(raw, root, fg, fr, branch, receipt.Binding.Source)
+	}
+	var record deskkit.WakeReceipt
+	if err := json.Unmarshal(raw, &record); err != nil {
+		return nil, err
+	}
+	if !record.IsFailedOrBlocked() {
+		return raw, nil
+	}
+	if record.Schema == deskkit.SchemaWakeV1 {
+		if err := deskkit.CheckSuppliedReceipt(record); err != nil {
+			return nil, err
+		}
+		return raw, nil
+	}
+	b := receipt.Binding
+	landed, err := fg.ReadFile(fr, deskkit.ReadFileInput{File: b.Brief, Ref: branch})
+	if err != nil {
+		return nil, err
+	}
+	tree, err := newGitOutcomeTree(root, b.TrackingSource)
+	if err != nil {
+		return nil, err
+	}
+	return deskkit.BuildOutcomeRecord(raw, deskkit.OutcomeReceiptInput{
+		BriefPath: b.Brief, LandedBrief: landed.Content, ToolVersion: deskkit.ReleaseTagOrDev(),
+		Repo: b.Repo, SourceRepo: b.SourceRepo, Source: b.Source,
+	}, tree)
+}
+
 // An outcome may hold future verification work. Admission alone does not prove
 // that this run's Evidence landed: its earlier write may have been refused.
 // Read both the named commit and target branch before publishing a new receipt.
@@ -93,7 +128,7 @@ func validateOutcomeObservationBinding(root string, fg deskkit.Forge, fr deskkit
 	if err != nil {
 		return err
 	}
-	expected, err := deriveOutcomeReceipt(raw, root, fg, fr, branch, receipt.Binding.Source)
+	expected, err := admittedOutcomeReceipt(raw, root, fg, fr, branch, receipt)
 	if err != nil {
 		return err
 	}
@@ -113,7 +148,7 @@ func validateOutcomeObservationBinding(root string, fg deskkit.Forge, fr deskkit
 // The existing receipt hashes present files, not absence or directory membership.
 // Changed membership/kinds need a new admission instead of a stale failure hold.
 func validateOutcomeInputShape(root string, receipt deskkit.VerifierReceipt, evidenceSHA string) error {
-	source, err := newGitOutcomeTree(root, receipt.Binding.Source)
+	source, err := newGitOutcomeTree(root, receipt.BriefSource())
 	if err != nil {
 		return err
 	}
@@ -176,6 +211,28 @@ func validateOutcomeInputShape(root string, receipt deskkit.VerifierReceipt, evi
 			if !slices.Equal(oldFiles, newFiles) {
 				return changed()
 			}
+		}
+	}
+	return nil
+}
+
+// Cross-repository delivery joins must also belong to the observed source,
+// rather than merely to a newer default branch at Evidence landing time.
+func checkAdmittedDeliveryPRs(fg deskkit.Forge, receipt deskkit.VerifierReceipt, facts joinFacts) error {
+	if receipt.Binding.Version != 2 {
+		return nil
+	}
+	for _, entry := range facts.Entries {
+		if !strings.EqualFold(entry.Repo, receipt.Binding.SourceRepo) {
+			continue
+		}
+		repo, _ := entryForgeRepo(entry.Repo)
+		compared, err := fg.CompareRefs(repo, entry.MergeSHA, receipt.Binding.Source)
+		if err != nil {
+			return deskkit.Unverifiable("cannot compare delivery PR with admitted deliverable source", err)
+		}
+		if compared == nil || (compared.Status != "identical" && compared.Status != "ahead") {
+			return deskkit.Refused("delivery PR is not in the admitted deliverable source")
 		}
 	}
 	return nil

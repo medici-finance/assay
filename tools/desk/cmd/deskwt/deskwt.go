@@ -375,6 +375,10 @@ func cmdAdd(args []string) (err error) {
 		"worktree's own config; omitted, the new worktree's user.name/user.email are CLEARED so it can never inherit "+
 		"the shared checkout's identity")
 	dryRun := fs.Bool("dry-run", false, "print the lifecycle-hook plan (HOOK after_create: ...) and touch nothing")
+	// --lock-session locks the new worktree for a live session at creation, in the same
+	// reason format role-init writes, so prune holds it from its first second and the
+	// lock-reclaim / dead-session passes can retire it once that session's beacon is stale.
+	lockSession := fs.String("lock-session", "", "lock the new worktree for this live session id, in role-init's lock-reason format")
 	// Usage puts <name> first, but Go's flag stops at the first positional;
 	// parse in a loop so flags may appear before OR after the name (a stray/unknown flag
 	// still errors → refused).
@@ -396,6 +400,11 @@ func cmdAdd(args []string) (err error) {
 	}
 	if *detach && *branch != "" {
 		return deskkit.Refused("refused: --detach and --branch are mutually exclusive — a detached worktree names no branch")
+	}
+	// The session id lands in the lock reason, which sessionFromLockReason later parses
+	// back to a roster beacon filename: the same single-safe-segment rule as <name>.
+	if *lockSession != "" && (!nameRe.MatchString(*lockSession) || strings.Contains(*lockSession, "..")) {
+		return deskkit.Refused("refused: --lock-session must be a single safe segment (no slashes, no leading dash/dot, no '..')")
 	}
 	br := *branch
 	if br == "" {
@@ -618,6 +627,21 @@ func cmdAdd(args []string) (err error) {
 		return deskkit.Unverifiable("after_create hook failed; worktree "+target+" rolled back", herr)
 	}
 
+	// LOCK last: the rollbacks above delete the tree and prune its registration, and git
+	// never prunes a locked entry. A lock that cannot be taken rolls the worktree back —
+	// a caller that asked for a session lock must never get an unlocked tree prune could
+	// treat as ownerless.
+	if *lockSession != "" {
+		if lerr := lockForSession(guard, dir, resolvePath(target), *lockSession); lerr != nil {
+			if rerr := removeWorktreeDir(guard, dir, resolvePath(target)); rerr != nil {
+				return fmt.Errorf("%w; rollback failed: %v", lerr, rerr)
+			}
+			fmt.Fprintln(os.Stderr, "deskwt: worktree ROLLED BACK")
+			return lerr
+		}
+		identityDetail += "; locked for session " + *lockSession
+	}
+
 	ac.detail = "added " + target + " (branch " + br + " tracking " + *base + "; " + identityDetail + ")"
 	if *detach {
 		ac.detail = "added " + target + " (detached HEAD at " + *base + ", no branch; " + identityDetail + ")"
@@ -694,6 +718,20 @@ func cmdRemove(args []string) (err error) {
 	}
 	if !set[rt] {
 		return deskkit.Refused("refused: " + path + " is not a registered worktree (`git worktree list`)")
+	}
+	// A registration with NO git link left (an empty-directory husk, or a directory that is
+	// already gone) cannot be opened, so the tracked-clean and pushed gates below cannot run
+	// on it. huskremove.go clears it under its own, stricter bar — nothing in the directory,
+	// nothing holding it open, a recoverable HEAD, the lock's owner matched — instead of
+	// exiting 6 and leaving the branch registered forever (#1905).
+	if handled, huskDetail, herr := removeHusk(guard, dir, rt); handled {
+		if herr != nil {
+			return herr
+		}
+		ac.repo = repoOrEmpty(dir)
+		ac.detail = huskDetail
+		fmt.Println("removed " + path)
+		return nil
 	}
 	// Dirty TRACKED tree blocks removal (the uncommitted-work guard).
 	// Untracked build artifacts (node_modules, build/, dist/) do NOT block — a
@@ -894,4 +932,36 @@ func repoOrEmpty(dir string) string {
 // deskpr, deskreply and preflight and the class cannot recur from a drifted copy.
 func parseRepo(raw string) (string, error) {
 	return deskkit.RemoteRepoSlug(raw)
+}
+
+// addLockReason is the lock reason `deskwt add --lock-session` writes: role-init's shape
+// ("<owner> live session (deskwt <verb> session=<id>)"), so sessionFromLockReason and
+// judgeLock read it exactly as they read a role-init lock.
+func addLockReason(session string) string {
+	return "deskwt add live session (deskwt add session=" + session + ")"
+}
+
+// worktreeLockFn runs `git worktree lock --reason <reason> <rt>`. A package var only so
+// the fixture suite can drive the two outcomes real git will not produce on demand — a
+// lock that fails, and one that reports success without taking — and prove add rolls the
+// tree back on both; production never assigns it.
+var worktreeLockFn = func(dir, reason, rt string) error {
+	_, err := runGit(dir, "worktree", "lock", "--reason", reason, rt)
+	return err
+}
+
+// lockForSession locks the worktree at rt for session and POSITIVELY verifies it: git's
+// exit status alone is not taken as proof the lock exists.
+func lockForSession(guard *pathGuard, dir, rt, session string) error {
+	if err := worktreeLockFn(dir, addLockReason(session), rt); err != nil {
+		return deskkit.Unverifiable("git worktree lock failed for "+rt, err)
+	}
+	locked, err := guard.lockedWorktrees(dir)
+	if err != nil {
+		return err
+	}
+	if _, ok := locked[rt]; !ok {
+		return deskkit.Unverifiable("git worktree lock reported success but "+rt+" is not locked", nil)
+	}
+	return nil
 }

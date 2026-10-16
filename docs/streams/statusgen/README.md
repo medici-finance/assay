@@ -22,8 +22,8 @@ findings-register state machine.
 
 ## Portfolio extension path — 13 October 2026
 
-See the [contract and delivery amendment](../../proposals/non-ci-architecture/21-product-intent-and-portfolio.md).
-The active /19 scope is unchanged. /22 supplies product records; /23 extends /20 with bindings;
+See the [contract and delivery amendment](../../proposals/non-ci-architecture/26-product-intent-and-portfolio.md).
+The merged /19 contract and its Evidence are unchanged. /22 supplies product records; /23 extends /20 with bindings;
 /24 supplies capacity accounting; /25 composes their views with continuing-operations/02.
 /21 consumes /23 after both contracts ship. Dependency waves are 1: /22, 2: /24 and
 operations/01, 3: /23 and operations/02, 4: /21 and /25 (alongside the existing /19→/20 path).
@@ -52,7 +52,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 16 | [Hold an issue out of dispatch when a non-human removed its excluded label: both scanners hold the placeholder, the issue board holds the un-briefed row](brief-16-label-removal-hold.md) | 1 | L | todo | — | — |
 | 17 | [`--scan-issues`: a `risk:high` label derives `gate: human` on the issue's placeholder (`risk:med` does not)](brief-17-risk-high-label-gate.md) | 1 | S | implemented | — | — |
 | 18 | [`--scan-issues`: print a notice when an open issue derives `gate: human` and its placeholder reads `gate: model` (detect only, no write)](brief-18-gate-mismatch-notice.md) | 2 | S | todo | — | — |
-| 19 | [Context handoff contracts and synthetic fixtures](brief-19-context-handoff-contracts.md) | 1 | M | todo | — | — |
+| 19 | [Context handoff contracts and synthetic fixtures](brief-19-context-handoff-contracts.md) | 1 | M | implemented | — | — |
 | 20 | [Offline future-state resolver with receipt and amendment validation](brief-20-offline-context-resolver.md) | 2 | L | todo | — | — |
 | 21 | [Author skills consume the shared context handoff](brief-21-author-skill-handoff.md) | 4 | M | todo | — | — |
 | 22 | [Product target records and compatible requirement parsing](brief-22-product-target-records-and-compatible-requirement-parsing.md) | 1 | M | todo | — | — |
@@ -75,17 +75,27 @@ that derives `human`, the label 17 adds among them, and extends the skill senten
 so 17 leads 18.
 statusgen/19 (context handoff contracts) → statusgen/20 (offline resolver with receipt and
 amendment validation) → statusgen/21 (author skills consume the handoff): the resolver
-produces the 19 records and the skills may call only the shipped 20 verb, so 19 leads 20
-leads 21. statusgen/19 has no prerequisite and heads this chain.
+produces the 19 records and the skills may call only the shipped 20 verb, so 19 leads 20.
+The portfolio extension adds typed edges (see the
+[contract and delivery amendment](../../proposals/non-ci-architecture/26-product-intent-and-portfolio.md)):
+statusgen/22 (product-target records) → statusgen/24 (allocation and capacity ledger), and
+22 → continuing-operations/01 → continuing-operations/02; statusgen/23 (product binding)
+needs 22 and 20; statusgen/21 now needs 20 and 23; statusgen/25 (read-only projections)
+needs 23, 24 and continuing-operations/02. With /19 merged, the head of the
+`20 → 23 → 25` path is statusgen/20 (plus /19's independent verification).
 Every other brief is independent and self-contained.
 
 ## Dependency waves
 - **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06,
   statusgen/07, statusgen/09, statusgen/10, statusgen/11, statusgen/12, statusgen/13,
-  statusgen/14, statusgen/15, statusgen/19 (all independent; parallelizable).
+  statusgen/14, statusgen/15, statusgen/19, statusgen/22 (all independent; parallelizable).
 - **Wave 2** — statusgen/03 (depends on statusgen/02), statusgen/08 (depends on statusgen/07),
-  statusgen/18 (depends on statusgen/17), statusgen/20 (depends on statusgen/19).
-- **Wave 3** — statusgen/21 (depends on statusgen/20).
+  statusgen/18 (depends on statusgen/17), statusgen/20 (depends on statusgen/19),
+  statusgen/24 (depends on statusgen/22; cross-stream: continuing-operations/01 is also wave 2).
+- **Wave 3** — statusgen/23 (depends on statusgen/20 and statusgen/22; cross-stream:
+  continuing-operations/02, depending on continuing-operations/01, is also wave 3).
+- **Wave 4** — statusgen/21 (depends on statusgen/20 and statusgen/23), statusgen/25 (depends on
+  statusgen/23, statusgen/24 and continuing-operations/02).
 
 ## Conventions
 - `statusgen --lint-audit` reports 30-day per-rule firing counts; COLD (0-firing,

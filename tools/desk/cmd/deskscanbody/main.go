@@ -52,7 +52,9 @@ placeholder is a new .md file under <dir>; a retired one is a file whose diff ad
 
 Exit: 0 ok · 3 disabled · 5 refused · 6 unverifiable.`
 
-func main() { os.Exit(run(os.Args[1:])) }
+func main() {
+	os.Exit(deskkit.PerfRun("deskscanbody", nil, os.Args[1:], func([]string) int { return run(os.Args[1:]) }))
+}
 
 func run(args []string) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {

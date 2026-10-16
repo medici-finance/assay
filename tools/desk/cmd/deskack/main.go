@@ -35,9 +35,11 @@ import (
 )
 
 func main() {
-	// Read the config-home roster like the acting tools do (ciEligible=false), so
-	// RepoShortLabel resolves the same alias map the boards print through. No P3 echo: the
-	// only roster read on this path is the display-only alias, not an authority surface.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("deskack", nil, os.Args[1:], func([]string) int {
+		// Read the config-home roster like the acting tools do (ciEligible=false), so
+		// RepoShortLabel resolves the same alias map the boards print through. No P3 echo: the
+		// only roster read on this path is the display-only alias, not an authority surface.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		return run(os.Args[1:], os.Stdout, os.Stderr)
+	}))
 }

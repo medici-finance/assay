@@ -101,6 +101,49 @@ facts:
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./cmd/deskgit/ ./cmd/deskadvisory/ ./cmd/deskmerge/ && go vet ./cmd/deskgit/ ./cmd/deskadvisory/ ./cmd/deskmerge/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (on-behalf-of human:ian) (git-config) |
+| 2 | `cd tools/desk && go test ./cmd/deskgit/ ./cmd/deskadvisory/ ./cmd/deskmerge/` | pass exit=0 | sha256:bd60b2a83e96 | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (on-behalf-of human:ian) (git-config) |
+| 3 | `cd tools/desk && go test ./cmd/deskgit/ -run DisallowedOriginRefused` | pass exit=0 | sha256:0efc7b15c130 | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (on-behalf-of human:ian) (git-config) |
+| 4 | `grep -cE -e 'GIT_ASKPASS' -e 'credential.helper' tools/desk/cmd/deskadvisory/advisory.go` | pass exit=1 | sha256:9a271f2a916b | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (on-behalf-of human:ian) (git-config) |
+| 5 | `test -d tools/desk/cmd/deskgit && { grep -rnE -e 'upload-pack' -e 'refmap' tools/desk/cmd/deskgit/ \|\| [ $? -eq 1 ]; } \| wc -l` | pass exit=0 | sha256:4eff2db4bada | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (on-behalf-of human:ian) (git-config) |
+| 6 | `sh tools/desk/scripts/count-git-exec.sh` | pass exit=0 | sha256:479c94e0ee82 | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (on-behalf-of human:ian) (git-config) |
+Verification-Attestation: medici-finance/assay#3029 run=7d76f2777784188682fe3419c92c75ccf11e57eac09712b1b7c59657f6595140 source=bbf8e351624538c2a03159cd5a58116fb97fc293 brief=docs/streams/desktools-go-git/brief-05-migrate-fetch-retire-hardening.md model=claude-opus-5-5 tier=any
+
+Observed results. Each row was run separately at merged main bbf8e3516245 and again through the witness above. Go 1.27.2 darwin/arm64 was used with the real build and module caches, and the tests ran under a throwaway HOME.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | Verify row 1 (go build + go vet of deskgit, deskadvisory, deskmerge) | exit 0 | exit 0. Build and vet printed nothing. | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 2 | Verify row 2 (go test of the three packages) | exit 0; fetch + advisory goldens pass | exit 0: ok deskgit 90.3s, ok deskadvisory 1.2s, ok deskmerge 40.5s. Under -v, these advisory goldens PASS: Fetch Advisory Tree Token In Memory Only, Fetch Advisory Tree Failure Cleans Up, and Positive Control Shipped Credential Guard Catches Planted Token. The fixture-fork test (Check Advisory Fixture Fork Real In Process Fetch) is part of the same package run. | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | Verify row 3 (go test deskgit -run DisallowedOriginRefused) | exit 0; disallowed origin still REFUSED | exit 0. Under -v, two tests PASS: Fetch Disallowed Origin Refused and Fetch HTTPS Disallowed Origin Refused. Each requires exit 5 and that no fetch runs. Mutation check on a scratch copy outside the home: with the allowed-repo check at deskgit.go line 481 short-circuited to false, Fetch HTTPS Disallowed Origin Refused FAILS ("exit = 6, want 5 (refused)"), and it passes again once the check is restored. The row discriminates. | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 4 | Verify row 4 (grep -c GIT_ASKPASS / credential.helper in the deskadvisory source) | exit 1; output 0 | exit 1; output 0 | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 5 | Verify row 5 (count of upload-pack / refmap lines under cmd/deskgit) | output 0 | exit 0; output 0 | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 6 | Verify row 6 (count-git-exec.sh) | git-exec sites N; N below the count recorded before this brief | exit 0; git-exec sites: 192 (52 direct, 140 seam). The count recorded before this brief, in the inventory's Brief 05 paragraph, is 179, read on 3c8326f95. That figure reproduces, as does the recorded 172 on d6c91cadc. 192 is not below 179, so this row FAILS as written. Like-for-like, each tree measured with its own copy of the script: 199 on 44054ca37 (the parent of the delivering squash commit c93cd7dd8), then 192 on c93cd7dd8 and on main. The brief removed 7 seam call sites. Concurrent desk-tool growth raised the count by 20 between 3c8326f95 and 44054ca37. This is the same stale-baseline class as the brief 06 row 6 ruling. Filed as medici-finance/assay#3035. | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+Risk-bearing values. The trigger fired because the frontmatter has sensitive-data: yes. The enumeration covered the delivering commit c93cd7dd8, limited to its production files in deskgit, deskadvisory, deskmerge currency, and gitcore auth, fetchstage, fetchtree and gitcore. It found:
+- appUsername = "x-access-token" @ tools/desk/internal/gitcore/auth.go:13
+- credentialHostOK host == "github.com" @ tools/desk/cmd/deskgit/deskgit.go:117, with port "" or "443" @ deskgit.go:121
+- advisory fetch URL "https://github.com/" + tpfSlug + ".git" @ tools/desk/cmd/deskadvisory/advisory.go:450
+- advisory refspec "+refs/heads/*:refs/remotes/tpf/*" @ advisory.go:451
+- trackingRefspec = "+refs/heads/*:refs/remotes/origin/*" @ deskgit.go:286
+- deskmerge FetchOpts Force: true @ tools/desk/cmd/deskmerge/currency.go:306
+- deskmerge PR refspec "+refs/pull/N/head:refs/deskmerge/pr-N" @ currency.go:334 and currency.go:259
+- stageNamespace = "refs/gitcore-fetch/" @ tools/desk/internal/gitcore/fetchstage.go:46
+- Tags: git.NoTags @ gitcore.go:575 and fetchtree.go:77
+- the deniedTransportExec list losing its "upload-pack" entry @ tools/desk/cmd/deskgit/transportexec.go:57-63
+- the temp dir pattern "deskadvisory-*" @ advisory.go:444
+
+Ranked by what a wrong value would expose: the three token-destination bindings first, then the transport deny-list change. The refspecs, staging namespace, tag mode and temp pattern rank last because they are local and fixable by an edit.
+
+RISK-VALUE: DERIVED — credentialHostOK host = "github.com", port "" or "443" @ tools/desk/cmd/deskgit/deskgit.go:117-121 — the token is a GitHub App installation token, so only GitHub's https origin may receive it. The deleted path scoped its credential helper as credential.https://github.com.helper, which answers only https://github.com on the default port, and 443 is that default. url.Parse puts the real host in Hostname(), so userinfo and lookalike hosts are rejected. Any other origin is fetched with no credential.
+RISK-VALUE: DERIVED — advisory URL = "https://github.com/" + tpfSlug + ".git" @ tools/desk/cmd/deskadvisory/advisory.go:450 — this is byte-identical to the deleted fetchURL literal, and the slug is roster-checked earlier in checkAdvisory. The token now rides only as an in-memory BasicAuth value on this one URL, sent to an in-memory storer (gitcore.FetchTree, memory.NewStorage). No askpass file and no environment variable carry it, and row 4 confirms the askpass and helper code is gone.
+RISK-VALUE: DERIVED — appUsername = "x-access-token" @ tools/desk/internal/gitcore/auth.go:13 — GitHub requires this username when an App installation token is presented over HTTPS basic auth. It is the same literal the deleted askpass script echoed for the Username prompt.
+RISK-VALUE: DERIVED — deniedTransportExec without "upload-pack" @ tools/desk/cmd/deskgit/transportexec.go:57-63 — fetch builds no git argv any more, so no flag can reach a program. The probe used a scratch build under a throwaway HOME. It ran fetch with --upload-pack=, --upload-p=, --exec= and -c, and push with --upload-pack. Every case exited 5, with the FlagSet's "flag provided but not defined" refusal for the first. Push keeps its pinned receive-pack.
+
+**VERIFY: FAIL** — row 6: git-exec sites 192 is not below the recorded pre-brief count 179 (stale-baseline class; like-for-like 199 to 192; medici-finance/assay#3035). Rows 1-5 pass. This brief is gate: human, and the human security-posture review stays owed regardless of this verdict.
+
 ## Review
 Gate: human (sensitive-data yes — retires two bespoke hardening layers that fetch
 attacker-influenceable third-party forks with a token in play). The human reviewer

@@ -3,10 +3,12 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -120,7 +122,9 @@ func TestPruneCachePassReclaimsUnderPressure(t *testing.T) {
 }
 
 // A consumer lease holds the cache under pressure: the sweep reports the
-// deferral and removes nothing. The lease set is the authority.
+// deferral and removes nothing. Active records protect mod/ and gopath/; build/
+// entries older than the policy's trim age would be trimmed regardless, but this
+// fixture's material is fresh, so nothing qualifies.
 func TestPruneCachePassDefersToActiveLease(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -449,5 +453,122 @@ func TestPruneCachePassRelativeCellsRoot(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(p.Root, "build", "result")); !os.IsNotExist(err) {
 		t.Fatal("the relative root's over-budget cache survived the sweep", err)
+	}
+}
+
+// holdCellCacheLock takes the cache root's custody lock the way a sibling
+// launch would, and shortens the bounded wait so a sweep that tries to take it
+// comes back busy quickly instead of stalling the test.
+func holdCellCacheLock(t *testing.T, p cellcache.Policy) {
+	t.Helper()
+	root, err := os.OpenRoot(p.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := root.OpenFile("lock", os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := deskkit.AcquireHeld(root, "lock", f, deskkit.LockSpec{Name: "cell Go cache", Wait: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := cellcache.LockWait
+	cellcache.LockWait = 50 * time.Millisecond
+	t.Cleanup(func() { cellcache.LockWait = old; held.Release(); root.Close() })
+}
+
+// warmedCell plants a marked cell whose cache holds n logical bytes under a
+// 1 MiB budget, records a clean measurement, and ages the top-level build/
+// and mod/ directories the way a cache quiet for a while has them.
+func warmedCell(t *testing.T, cells string, n int) cellcache.Policy {
+	t.Helper()
+	p := plantMarkedCell(t, cells, "house", "", 1<<20)
+	cacheMaterial(t, p, "build/warm", n)
+	if _, err := cellcache.Check(p, false); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Hour)
+	for _, d := range []string{"build", "mod"} {
+		dir := filepath.Join(p.Root, d)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(dir, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return p
+}
+
+// A boot-time sweep over a cache whose last clean measurement is fresh and far
+// from its thresholds neither takes the cache lock nor walks the cache: with a
+// sibling launch holding the lock, the pass still finishes clean and silent.
+//
+// regression: #3102
+func TestPruneCacheCleanTakesNoLock(t *testing.T) {
+	cells := withCellsRoot(t)
+	p := warmedCell(t, cells, 100)
+	before, err := os.ReadFile(p.ReportPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	holdCellCacheLock(t, p)
+
+	res, warns := sweepCellCaches(cells, false, nil)
+	if len(warns) != 0 || res.checked != 1 || res.notable() {
+		t.Fatalf("a cheap-clean cache was not passed lock-free: res=%+v warns=%v", res, warns)
+	}
+	after, err := os.ReadFile(p.ReportPath())
+	if err != nil || string(before) != string(after) {
+		t.Fatal("the lock-free pass rewrote the cache report")
+	}
+}
+
+// A cache the pre-check cannot prove clean still takes the lock: near the
+// high-water mark, or with a recorded measurement too old to trust, the pass
+// falls through to the locked check (here the lock is busy, so it surfaces as
+// could-not-check instead of being admitted unlocked).
+//
+// regression: #3102
+func TestPruneCacheThresholdLocks(t *testing.T) {
+	cases := []struct {
+		name string
+		make func(t *testing.T, cells string) cellcache.Policy
+	}{
+		{"near high water", func(t *testing.T, cells string) cellcache.Policy {
+			return warmedCell(t, cells, (1<<20)/4*3+1)
+		}},
+		{"stale measurement", func(t *testing.T, cells string) cellcache.Policy {
+			p := warmedCell(t, cells, 100)
+			b, err := os.ReadFile(p.ReportPath())
+			if err != nil {
+				t.Fatal(err)
+			}
+			var rep cellcache.Report
+			if err := json.Unmarshal(b, &rep); err != nil {
+				t.Fatal(err)
+			}
+			rep.After.At = rep.After.At.Add(-time.Hour)
+			if b, err = json.Marshal(rep); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p.ReportPath(), b, 0600); err != nil {
+				t.Fatal(err)
+			}
+			return p
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cells := withCellsRoot(t)
+			p := c.make(t, cells)
+			holdCellCacheLock(t, p)
+
+			res, warns := sweepCellCaches(cells, false, nil)
+			if res.checked != 1 || len(warns) != 1 || !strings.Contains(warns[0], "could-not-check") {
+				t.Fatalf("a cache the pre-check cannot prove was not routed to the locked check: res=%+v warns=%v", res, warns)
+			}
+		})
 	}
 }

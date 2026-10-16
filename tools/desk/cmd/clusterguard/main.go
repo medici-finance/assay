@@ -69,6 +69,10 @@
 // 5 refused · 6 unverifiable. See deskkit/exitcodes.go.
 package main
 
+import "github.com/medici-finance/assay/tools/desk/internal/deskkit"
+
 import "os"
 
-func main() { os.Exit(run(os.Args, os.Stdout, os.Stderr)) }
+func main() {
+	os.Exit(deskkit.PerfRun("clusterguard", nil, os.Args[1:], func([]string) int { return run(os.Args, os.Stdout, os.Stderr) }))
+}

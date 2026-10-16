@@ -13,7 +13,7 @@ schema: brief-v2
 version: 1
 authored: 2026-10-13 by statusgen newbrief
 sources:
-  - docs/proposals/non-ci-architecture/21-product-intent-and-portfolio.md
+  - docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md
   - docs/proposals/non-ci-architecture/11-target-architecture.md
   - freshness-checked 2026-10-13 @ d484dd5df24f2aa8d557dafce41687b38173f227
 exec-tier: strong
@@ -31,10 +31,10 @@ consumers:
 
 ## Context
 
-files: `spec/brief-v1.md`, `spec/context-handoff-v1.md` (planned), `schemas/context-handoff-v1.json`, `schemas/amendment-manifest-v1.json`, brief schemas/readers, `statusgen/contexthandoff/`, `statusgen/brieffile.go`, `docs/context-handoff.md` (planned), `docs/contracts.md`; `changelog/statusgen-23-portfolio.md` (planned).
+files: `spec/brief-v1.md`, `spec/context-handoff-v1.md`, `schemas/context-handoff-v1.json`, `schemas/amendment-manifest-v1.json`, brief schemas/readers, `statusgen/contexthandoff/`, `statusgen/brieffile.go`, `docs/context-handoff.md` (planned), `docs/contracts.md`; `changelog/statusgen-23-portfolio.md` (planned).
 
-facts (d484dd5df, 13 October 2026):
-- Statusgen/19 owns the initial handoff contract and has an active claim; /20 owns discovery/recheck.
+facts (d484dd5df, 13 October 2026; the statusgen/19 line refreshed against main after PR #2763):
+- Statusgen/19 owns the initial handoff contract and has merged (PR #2763; contract files exist on main); /20 owns discovery/recheck and is still todo.
 - outcome accepts an existing REQ reference or none; appending @revision is not its grammar.
 - The optional binding is not shipped at the source pin; this is an additive successor, not a rewrite of /19.
 
@@ -51,7 +51,7 @@ design-fit:
 
 ## Read first
 
-- `docs/proposals/non-ci-architecture/21-product-intent-and-portfolio.md` — exact record semantics, boundaries and owner mapping.
+- `docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md` — exact record semantics, boundaries and owner mapping.
 - `spec/registers-v1.md`, `spec/brief-v1.md` and the declared dependency briefs.
 - `docs/streams/continuing-operations/spec.md` for operational identity and impact ownership.
 

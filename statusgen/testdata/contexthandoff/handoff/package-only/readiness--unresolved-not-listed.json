@@ -1,0 +1,198 @@
+{
+  "schema": "context-handoff-v1",
+  "declared_by": "example:demo:widgets:07",
+  "target": {
+    "state": "approved",
+    "revision": "3f9c2a1",
+    "approval": {
+      "revision": "3f9c2a1",
+      "reference": "https://example.invalid/reviews/widget-cache-v2"
+    },
+    "intent": "Replace the widget cache key with a content digest so readers stop serving stale entries.",
+    "contracts": [
+      {
+        "name": "widget-cache",
+        "from": "v1",
+        "to": "v2"
+      }
+    ],
+    "transition": "Readers accept both key forms for one release; v1 keys are refused after that.",
+    "acceptance_source": "spec/widget-cache-v2.md"
+  },
+  "discovery": {
+    "sources": [
+      {
+        "id": "demo",
+        "revision": "3f9c2a1",
+        "membership": "included",
+        "reason": "the declaring repository"
+      },
+      {
+        "id": "demo-docs",
+        "revision": null,
+        "membership": "included",
+        "reason": "consumer documentation for the cache"
+      },
+      {
+        "id": "archive",
+        "revision": null,
+        "membership": "excluded",
+        "reason": "retired repository, outside the authorized universe"
+      }
+    ],
+    "queries": [
+      {
+        "rule": "contract-consumers",
+        "version": "v1",
+        "parameters": {
+          "contract": "widget-cache"
+        },
+        "results": [
+          "docs/streams/widgets/brief-03-cache-writer.md",
+          "docs/streams/gadgets/brief-04-cache-reader.md",
+          "docs/streams/gadgets/brief-05-payload-view.md"
+        ],
+        "truncated": false
+      },
+      {
+        "rule": "evidence-of-subject",
+        "version": "v1",
+        "parameters": {
+          "subject": "example:demo:widgets:03"
+        },
+        "results": [],
+        "truncated": false
+      }
+    ],
+    "dependency_slice": [
+      "widgets:03",
+      "demo:gadgets:04",
+      "example:demo:gadgets:05"
+    ],
+    "coverage": {
+      "state": "partial",
+      "enumerated": [
+        "demo"
+      ],
+      "unavailable": [
+        {
+          "source": "demo-docs",
+          "reason": "the documentation source was not readable at discovery time"
+        }
+      ]
+    }
+  },
+  "impacts": [
+    {
+      "subject": "widgets:03",
+      "lifecycle": "implemented",
+      "evidence": "docs/streams/widgets/evidence/03.md",
+      "relationship": {
+        "basis": "declared",
+        "edge": "provides",
+        "locator": "docs/streams/widgets/brief-03-cache-writer.md"
+      },
+      "disposition": "amend",
+      "reason": "writes the v1 key that the target retires"
+    },
+    {
+      "subject": "demo:gadgets:04",
+      "lifecycle": "todo",
+      "evidence": null,
+      "relationship": {
+        "basis": "observed",
+        "edge": "consumes",
+        "locator": "docs/streams/gadgets/brief-04-cache-reader.md"
+      },
+      "disposition": "split",
+      "reason": "the reader must accept both key forms during the transition, then only v2"
+    },
+    {
+      "subject": "example:demo:gadgets:05",
+      "lifecycle": "done",
+      "evidence": "docs/streams/gadgets/evidence/05.md",
+      "relationship": {
+        "basis": "inferred",
+        "edge": "assumes",
+        "locator": "docs/streams/gadgets/brief-05-payload-view.md"
+      },
+      "disposition": "unresolved",
+      "reason": "reads the cached payload only, never the key"
+    }
+  ],
+  "amendments": [
+    {
+      "id": "ob-1",
+      "subject": "widgets:03",
+      "action": "amend",
+      "changes": [
+        {
+          "aspect": "task",
+          "before": "Write entries under the v1 key.",
+          "after": "Write entries under the v2 content-digest key."
+        },
+        {
+          "aspect": "verify",
+          "before": "Row 2 checks the v1 key shape.",
+          "after": "Row 2 checks the v2 key shape and refuses a v1 key."
+        }
+      ],
+      "replaced_by": [],
+      "candidate": {
+        "base_revision": "3f9c2a1",
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "id": "ob-2",
+      "subject": "gadgets:04",
+      "action": "split",
+      "changes": [
+        {
+          "aspect": "scope",
+          "before": "Read entries under the v1 key.",
+          "after": "Split: dual-read during the transition, then v2-only read."
+        }
+      ],
+      "replaced_by": [
+        "gadgets:08",
+        "gadgets:09"
+      ],
+      "candidate": null
+    }
+  ],
+  "history": [
+    {
+      "kind": "evidence",
+      "subject": "widgets:03",
+      "locator": "docs/streams/widgets/evidence/03.md",
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "correction": null
+    }
+  ],
+  "active_work": [
+    {
+      "subject": "gadgets:04",
+      "claim": "refs/dispatch/gadgets-04",
+      "brief_revision": "3f9c2a1",
+      "observed_at": "2026-01-02T03:04:05Z",
+      "owner": "worker-desk",
+      "checkpoint": "reader skeleton pushed; key parsing not started",
+      "treatment": "adjust",
+      "acknowledged": true
+    }
+  ],
+  "readiness": {
+    "unresolved": [],
+    "deciding_role": "brief-author",
+    "next_act": "publish",
+    "prerequisites": [
+      "the v2 key format is reviewed"
+    ],
+    "facts": {
+      "source_available": true,
+      "proposal_approved": true,
+      "deployment_qualified": false
+    }
+  }
+}

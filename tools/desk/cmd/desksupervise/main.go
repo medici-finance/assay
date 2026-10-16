@@ -129,16 +129,18 @@ Exit: 0 ok (every claim ALIVE/reclaimed/landed, none blind) · 3 disabled · 5 r
 6 unverifiable (a claim could not be checked, or a real precondition failed).`
 
 func main() {
-	// Explicit roster class (the desk-tools contract every tool declares): desksupervise
-	// ACTS on the roster (it reads config-home files, mints tokens for its production probes),
-	// so ciEligible=false — it never reads the environment for its roster in CI either.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// P3: echo the effective roster once per run.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("desksupervise", nil, os.Args[1:], func([]string) int {
+		// Explicit roster class (the desk-tools contract every tool declares): desksupervise
+		// ACTS on the roster (it reads config-home files, mints tokens for its production probes),
+		// so ciEligible=false — it never reads the environment for its roster in CI either.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// P3: echo the effective roster once per run.
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

@@ -80,9 +80,9 @@ transfer, retirement or implementation has occurred.
 
 ## Product binding extension — 13 October 2026
 
-Statusgen/19 retains the initial architecture handoff scope under its existing active claim.
+Statusgen/19 owns the initial architecture handoff scope and has merged (PR #2763).
 Statusgen/20 records what its architecture-only discovery covers; it cannot claim product
-alignment without supported product bindings. The [product-intent and portfolio amendment](21-product-intent-and-portfolio.md) routes that
+alignment without supported product bindings. The [product-intent and portfolio amendment](26-product-intent-and-portfolio.md) routes that
 additive contract/parser/resolver work to statusgen/23 after /20 and product records in /22.
 Statusgen/21 now depends on /23 and cites only the actually shipped extension version.
 Unsupported versions use the explicit manual bootstrap and coverage limits. No installed

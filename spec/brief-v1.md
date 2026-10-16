@@ -3,7 +3,7 @@
 **Version:** v1.0-draft
 **Status:** DRAFT — published for review. v1.0-draft is unstable: breaking changes MAY be
 made without a major-version bump; no stability commitment.
-**Describes reference implementation:** `statusgen` v1.0.42
+**Describes reference implementation:** `statusgen` v1.0.46
 
 ## 1. Scope
 
@@ -155,7 +155,7 @@ child's flags UP, not down.
 
 ### Product-target binding planning (13 October 2026)
 
-The [future architecture amendment](../docs/proposals/non-ci-architecture/21-product-intent-and-portfolio.md)
+The [future architecture amendment](../docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md)
 routes optional `outcome-revision` and versioned context bindings to statusgen/23.
 This note does not add a supported field to the frontmatter contract: parser, schemas,
 version negotiation and all consuming readers must land together. Keep `outcome` and

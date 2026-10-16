@@ -762,7 +762,7 @@ func ResolveForge(repo ForgeRepo, role string) (Forge, ForgeResolution, error) {
 	// TestForgeSingleConstructionSite pins that each literal is OutboundChecked's argument.
 	switch res.Kind {
 	case ForgeGitHub:
-		return OutboundChecked(&GitHubForge{Token: tok, BaseURL: base}, role), res, nil
+		return OutboundChecked(&GitHubForge{Token: tok, BaseURL: base, Client: githubSeamClient()}, role), res, nil
 	case ForgeGitLab:
 		return OutboundChecked(&GitLabForge{Token: tok, BaseURL: base}, role), res, nil
 	default:

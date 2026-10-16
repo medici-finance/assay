@@ -175,7 +175,7 @@ view. Schema validation alone proves neither isolation nor discovery completenes
 
 ## Product-target and observation references — 13 October 2026
 
-The [product-intent and portfolio amendment](21-product-intent-and-portfolio.md) extends the existing source/identity model with references to
+The [product-intent and portfolio amendment](26-product-intent-and-portfolio.md) extends the existing source/identity model with references to
 REQ direction/target revisions, operational subjects, obligations, assessments and allocation
 policy. They inherit qualified identity, visibility-before-traversal, source provenance and
 coverage; they do not create a new graph or authority. Product and architecture target revisions

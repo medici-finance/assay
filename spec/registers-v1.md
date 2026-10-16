@@ -404,7 +404,7 @@ perform it.
 
 ### Product-intent extension planning (13 October 2026)
 
-The [future architecture amendment](../docs/proposals/non-ci-architecture/21-product-intent-and-portfolio.md)
+The [future architecture amendment](../docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md)
 routes optional direction/target/observed records to statusgen/22. This is a planning
 reference, not an implemented addition to section 6.2 or a new mandatory REQ field.
 That brief must land schema/parser parity and migration with the normative extension.

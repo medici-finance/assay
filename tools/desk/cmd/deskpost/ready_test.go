@@ -10,8 +10,16 @@ import (
 
 const exampleRepo = "example-org/tracker"
 
+// fakeHeadCommittedAt is the head commit's committer date the fake forge serves by default;
+// fakeReviewSubmittedAt is the submitted_at appReview stamps. The review is AFTER the commit,
+// as it is for any review genuinely posted at that head (#3093).
+const (
+	fakeHeadCommittedAt   = "2025-12-31T00:00:00Z"
+	fakeReviewSubmittedAt = "2026-01-01T00:00:00Z"
+)
+
 func appReview(state, commitID, body string) reviewInfo {
-	r := reviewInfo{State: state, CommitID: commitID, Body: body}
+	r := reviewInfo{State: state, CommitID: commitID, Body: body, SubmittedAt: fakeReviewSubmittedAt}
 	r.User.Login = reviewerBotDisplay()
 	return r
 }

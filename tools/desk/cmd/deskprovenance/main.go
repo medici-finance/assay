@@ -88,7 +88,9 @@ USAGE:
 Exit: 0 clean · 1 flagged · 6 could-not-check · 2 usage error.`
 
 func main() {
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskprovenance", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

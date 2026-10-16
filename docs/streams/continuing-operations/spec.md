@@ -14,7 +14,7 @@ approval. The [cockpit appendix](cockpit.md) describes consumer views and wirefr
 
 The selected [future architecture](../../proposals/non-ci-architecture/11-target-architecture.md)
 includes persistent product intent and observation after delivery. The
-[contract/delivery amendment](../../proposals/non-ci-architecture/21-product-intent-and-portfolio.md)
+[contract/delivery amendment](../../proposals/non-ci-architecture/26-product-intent-and-portfolio.md)
 assigns REQUIREMENTS its direction/target/observed references and this owner the operational
 definition and assessment lineage. Neither duplicates the other. Several REQs can reference
 one journey; product ownership does not authorize changing its operational procedure.

@@ -13,7 +13,7 @@ scope if its reviewed interfaces cannot fit one independently verifiable change.
 ## Authored-slice disposition — 13 October 2026
 
 The original O-numbers below remain outline IDs. They are not canonical brief numbers.
-The six-brief portfolio lane is described in the [delivery amendment](../../proposals/non-ci-architecture/21-product-intent-and-portfolio.md).
+The six-brief portfolio lane is described in the [delivery amendment](../../proposals/non-ci-architecture/26-product-intent-and-portfolio.md).
 
 | Outline | Current disposition |
 |---|---|
