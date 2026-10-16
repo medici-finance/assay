@@ -46,7 +46,7 @@ consumers:
 - 'operator lifecycle and cockpit: out-of-scope (adopter qualification)'
 - 'loopadmin/journal PostgreSQL schema and migrations: follow-up graph-execution/26 (this brief; flips to fixed-here when the implementation edits the path)'
 - 'spec/operator-incarnation-v1.md (read before each launch): follow-up graph-execution/16'
-version: 4
+version: 5
 id: bcbee0b0-8f12-4e7a-b028-0637b2bab0c3
 ---
 
@@ -140,8 +140,8 @@ their contracts.
 
 Only desk/tool **pacing** counts (cadence or throughput pacing of already-authorized,
 budget-admitted launches) are best effort: no global network-spanning lock or exact budget
-reservation, and a fallback estimate seeded from the journal's recorded launches in the
-window, never zero. An unavailable seeded pacing estimate does not alone refuse an
+reservation, and one shared fallback estimate, never per-process, seeded from the journal's
+recorded launches in the window, never zero. An unavailable seeded pacing estimate does not alone refuse an
 otherwise-authorized launch or receipt delivery.
 
 Qualify against target doc 15's §Operation-count qualification cases; row 9 below carries
@@ -174,7 +174,7 @@ Caller/invocation/subject and validated actor capability enter; typed state, evi
 | 6 | check:ci +flow +mutation | `(cd loopadmin && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestJournalSharedStoreRestart$" ./... > "$routing_out" && grep -q -- "--- PASS: TestJournalSharedStoreRestart " "$routing_out")` | exit 0; named PASS against a real disposable PostgreSQL; launch intent and receipt commit in one transaction before the child starts, a restart with the database intact reconciles once, and after the journal database is dropped an unknown launch holds instead of relaunching; mutation: relaunch a child whose launch intent row is missing after database loss — the named test must fail |
 | 7 | check:ci +flow +mutation | `(cd loopadmin && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestJournalIncarnationPaused$" ./... > "$routing_out" && grep -q -- "--- PASS: TestJournalIncarnationPaused " "$routing_out")` | exit 0; named PASS; a journal restored from backup under a mismatched or missing operator incarnation starts paused and launches no child until rotation and confirmed group stop; mutation: resume launches when an activation record is present but its incarnation mismatches — the named test must fail |
 | 8 | check:ci +mutation | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestNoEmbeddedJournalEngine$" ./... > "$routing_out" && grep -q -- "--- PASS: TestNoEmbeddedJournalEngine " "$routing_out")` | exit 0; named PASS; no loopadmin package imports a SQLite or other embedded database driver or the `workflow` module; mutation: add an embedded-driver import under `loopadmin/journal` — the named test must fail |
-| 9 | check:ci +flow +mutation | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLoopAdminLaunchBudgetBrake$" ./... > "$routing_out" && grep -q -- "--- PASS: TestLoopAdminLaunchBudgetBrake " "$routing_out")` | exit 0; named PASS; with the child-launch usage unreadable the launch is refused and no child starts; repeated supervisor restarts within one window cannot launch beyond the consumed budget; a seeded pacing estimate alone does not refuse an authorized launch; mutation: treat an unavailable child-launch count as under budget — the named test must fail |
+| 9 | check:ci +flow +mutation | `(cd loopadmin && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLoopAdminLaunchBudgetBrake$" ./... > "$routing_out" && grep -q -- "--- PASS: TestLoopAdminLaunchBudgetBrake " "$routing_out")` | exit 0; named PASS against a real disposable PostgreSQL journal; with the child-launch usage unreadable the launch is refused and no child starts; repeated supervisor restarts within one window cannot launch beyond the configured budget or regain consumed allowance; a seeded pacing estimate alone does not refuse an authorized launch; mutation: treat an unavailable child-launch count as under budget — the named test must fail |
 
 ## Pre-mortem and dispatch checks
 

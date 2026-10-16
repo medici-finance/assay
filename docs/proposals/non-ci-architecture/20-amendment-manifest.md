@@ -171,16 +171,18 @@ R3/R4 custody and R5/R7/R8 integration/migration remain their existing proof obl
 Controlling delta: [brake and pacing contract](11-target-architecture.md#pacing-counts-are-best-effort-brakes-fail-closed).
 Counts that bound a runaway or blast radius are brakes and stay fail-closed: write
 ceilings, daily and new-issue caps, the circuit breaker, the child-launch budget, ingress
-and retry budgets. Only pacing counts become best effort, with a seeded fallback estimate
-and a declared drift bound (cap + C, or 2 × cap + C after one recorded reset per window).
+and retry budgets. Only pacing counts become best effort, with a seeded, shared fallback estimate and a
+declared drift bound for effect-class counts (cap + C, or
+2 × (cap + C) after one recorded reset per window and operator incarnation); read-class
+pacing counts carry no numeric bound and are unbounded on counter loss.
 Unknown usage still cannot become a fresh allowance. Docs 14, 15, 19 and 23 carry the
 split; doc 15 adds an operation-count qualification section. No brake is relaxed;
 relaxing one is a separate human decision.
 
 | Consumer | Applied amendment | Qualification |
 |---|---|---|
-| R2 store/ownership: graph-execution/16 and /19, versions 5 | Cumulative attempt budgets and brake counts keep fail-closed reservations; pacing counts need no exact budget slot and seed their fallback from retained counts and window receipts | New Verify rows: brake holds on an unavailable count; restart or per-process fallback cannot multiply a pacing cap |
-| R3 supervisor: graph-execution/26, version 4 | The child-launch budget is classified as a fail-closed brake; only desk/tool pacing is best effort | Missing configuration and an unavailable child-launch count both refuse; new Verify row with a mutation that treats the count as under budget |
+| R2 store/ownership: graph-execution/16 and /19, versions 6 | Cumulative attempt budgets and brake counts keep fail-closed reservations; pacing counts need no exact budget slot and keep one shared fallback estimate seeded from retained counts and window receipts | New Verify rows: brake holds on an unavailable count; restart or per-process fallback cannot multiply a pacing cap |
+| R3 supervisor: graph-execution/26, version 5 | The child-launch budget is classified as a fail-closed brake; only desk/tool pacing is best effort | Missing configuration and an unavailable child-launch count both refuse; new Verify row with a mutation that treats the count as under budget |
 
 Existing Task/Verify rows and historical Evidence remain intact; each brief adds rows and
 bumps `version:`. No installed limiter, default, credential, executor activation or hard

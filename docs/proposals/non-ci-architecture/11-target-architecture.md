@@ -297,35 +297,59 @@ otherwise-authorized operation, and counter maintenance failure is never a publi
 failure.
 
 **Unknown usage cannot silently become a fresh allowance.** This invariant binds every
-count. A brake satisfies it by holding. A pacing count's fallback estimate is seeded,
-never started at zero:
+count. A brake satisfies it by holding. A pacing count's fallback estimate is never
+started at zero, and it is **shared**: no process keeps a private estimate that counts
+only its own admissions.
 
-1. from the last retained count for the window, and from the R2 effect intents and
-   receipts already recorded for the window. That is a bounded query over one window,
-   not an audit-history replay. Every process and every restart seeds from the same
-   shared records, so N processes or K restarts do not each regain the allowance;
-2. only when neither can be read, as after a whole-database loss mid-window, the
-   estimate may reset once per window, limiter scope and operator incarnation. The reset
-   is recorded and reported. A second unseeded reset in the same window, or a reset whose
-   record cannot be read, treats the window as exhausted until it rolls over.
+1. The estimate is seeded from the last retained count for the window and, for an
+   effect-class count (below), from the R2 effect intents and receipts already recorded
+   for the window. That is a bounded query over one window, not an audit-history replay.
+2. The shared estimate stays current across processes. It is re-derived from the
+   window's shared records before each admission, or each admission is written back to
+   one shared row that every process reads. Either way, admissions by other processes
+   after the seed are counted, so N processes or K restarts do not each spend the
+   remaining allowance.
+3. Only when neither seed source can be read, as after a whole-database loss mid-window,
+   may the estimate reset, once per window, limiter scope and operator incarnation. The
+   reset is recorded and reported. A second unseeded reset in the same window, or a
+   reset whose record cannot be read, treats the window as exhausted until it rolls over.
 
-**Declared drift bound.** "Small" drift means concurrent-admission overshoot of at most
-one admission per concurrently admitting process (C), plus delayed observations already
-covered by the seeded records. Across one window a pacing count admits at most the
-configured cap + C, or 2 × cap + C when the single recorded reset was used. The bound
-holds per operator incarnation. A whole-database loss erases the reset record with
-everything else, and an absent record cannot be told apart from no reset. Each such
-loss already requires the operator to rotate the incarnation, so every further reset
-in one window sits behind a human act. Within one incarnation, a larger undercount is
-a defect, not tolerated drift.
+**Two kinds of pacing count.** An **effect-class** pacing count paces admissions that
+commit an R2 effect intent before the executor runs, so every admission leaves a shared
+record the seed can read. A **read-class** pacing count paces work that commits no
+effect intent: dispatch or polling cadence, provider read-refresh and the reconstruction
+rate limit. Its only seed is the last retained count, and its increments are themselves
+best effort, so a missed increment is never re-derived.
+
+**Declared drift bound (effect-class only).** C is the concurrent-admission overshoot:
+at most one admission per process that checks the shared estimate between another
+process's check and its intent commit. Across one window an effect-class pacing count
+admits at most the configured cap + C. When the single recorded reset is used, overshoot
+can happen once before the loss and once after the reset, so the bound is 2 × (cap + C).
+The bound holds per operator incarnation. A whole-database loss erases the reset record
+with everything else, and an absent record cannot be told apart from no reset. Each such
+loss already requires the operator to rotate the incarnation, so every further reset in
+one window sits behind a human act. Within one incarnation, a larger undercount is a
+defect, not tolerated drift.
+
+**Read-class counts have no numeric bound.** A read-class pacing count still seeds
+from its last retained count, shares its estimate and obeys the one-reset rule, but it
+is best effort only and unbounded on counter loss: missed increments are not recovered,
+and this contract declares no limit on how many there are. That is accepted because read-class pacing shapes the
+throughput of reads of already-authorized work and is not an abuse boundary. The
+controls on those reads are the per-caller ingress rate limits and provider retry
+budgets (both brakes), provider-enforced quotas and the hard time, cost and resource
+limits.
 
 **Residual risk.** A best-effort pacing count is not an abuse boundary. After one
-unrecoverable loss it can admit up to one extra window's cap of paced, already-authorized
-work. Repeated whole-database loss within one window is a named residual: each loss
-erases the reset record, so each operator-rotated incarnation can admit up to one more
-cap. The incarnation rotation, not the count, is the control on that case. What bounds abuse is the brakes above, the executor's authority checks (scope,
-policy, candidate, lease generation and stable effect identity), provider-enforced
-quotas, and the hard time, cost and resource limits.
+unrecoverable loss an effect-class count can admit up to one extra window's cap + C of
+paced, already-authorized work. Repeated whole-database loss within one window is a
+named residual: each loss erases the reset record, so each operator-rotated incarnation
+can admit up to one more cap + C. The incarnation rotation, not the count, is the
+control on that case. A read-class count's residual is its unbounded missed increments,
+as stated above. What bounds abuse is the brakes above, the executor's authority checks
+(scope, policy, candidate, lease generation and stable effect identity),
+provider-enforced quotas, and the hard time, cost and resource limits.
 
 This tolerance grants no operation, target, credential or human approval. Effect
 identity, duplicate prevention, ownership/fencing, required evidence and reconciliation

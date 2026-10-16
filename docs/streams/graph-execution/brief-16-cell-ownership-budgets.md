@@ -49,7 +49,7 @@ consumers:
 - 'workflow/controller: follow-up graph-execution/21'
 - 'spec/operator-incarnation-v1.md: follow-up graph-execution/16 (this brief; flips to fixed-here when the implementation edits the path)'
 - 'loopadmin supervisor launch admission (checks the current incarnation): follow-up graph-execution/26'
-version: 5
+version: 6
 id: db922112-28f0-44c0-b120-9d6c4f56e103
 ---
 
@@ -148,10 +148,13 @@ it never assumes the actor is under budget. Rows 4 and 5 keep their exact contra
 
 Only **pacing counts** (desk/tool throughput pacing of already-authorized work) are best
 effort. They need no exact budget-slot reservation, global lock across network work or
-complete audit reconstruction. Their fallback estimate is seeded from the last retained
-count and the window's recorded effect intents and receipts, never from zero. When neither
-can be read, one recorded reset per window is allowed; a second treats the window as
-exhausted. A missing estimate is reported as unavailable, not measured zero.
+complete audit reconstruction. Their fallback estimate is shared across processes, never
+per-process, and is seeded from the last retained count and, for an effect-class count, the
+window's recorded effect intents and receipts, never from zero. When neither can be read,
+one recorded reset per window and operator incarnation is allowed; a second treats the
+window as exhausted. Effect-class counts are bounded by cap + C, or 2 × (cap + C) after the
+reset; read-class counts have no numeric bound. A missing estimate is reported as
+unavailable, not measured zero.
 
 Ownership generations, cancellation/stop state, hard resource/time/cost limits and
 unresolved-effect reservations keep their contracts. Qualify against target doc 15's
@@ -187,7 +190,7 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 8 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationMismatchPaused$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationMismatchPaused " "$routing_out")` | exit 0; named PASS; a missing or mismatched operator incarnation starts admission paused, a store snapshot cannot set the current incarnation, and reopening requires rotation plus confirmed execution-group stop; mutation: take the current incarnation from the restored store's activation record — the named test must fail |
 | 9 | check:ci +dereference +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationSpecMatchesFields$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationSpecMatchesFields " "$routing_out")` | exit 0; named PASS; every field `spec/operator-incarnation-v1.md` (planned) names exists on the incarnation type in `drainloop/incarnation.go` (planned), and every exported field is named in the contract; mutation: rename one field in the contract text — the named test must fail |
 | 10 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBrakeCountUnavailableHolds$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCellBrakeCountUnavailableHolds " "$routing_out")` | exit 0; named PASS; with the pacing path bypassed, an unavailable or unverifiable cumulative-budget or per-target write-ceiling count holds admission and no effect is applied at the fake provider; mutation: treat an unavailable brake count as under budget — the named test must fail |
-| 11 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellPacingRestartNoMultiply$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCellPacingRestartNoMultiply " "$routing_out")` | exit 0; named PASS; after the shared pacing counter is lost mid-window, K restarts and N processes seed from retained counts and recorded receipts and admit at most cap + C, or 2 × cap + C after one recorded reset, and a second unseeded reset treats the window as exhausted; mutation: start the fallback estimate at zero — the named test must fail |
+| 11 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellPacingRestartNoMultiply$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCellPacingRestartNoMultiply " "$routing_out")` | exit 0; named PASS; after the shared pacing counter of an effect-class count is lost mid-window, K restarts and N processes seed from retained counts and recorded receipts, share one estimate that counts every process's admissions after the seed, and admit at most cap + C, or 2 × (cap + C) after one recorded reset, and a second unseeded reset treats the window as exhausted; mutation: start the fallback estimate at zero, or keep a per-process estimate that ignores other processes' admissions — the named test must fail |
 
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.

@@ -46,7 +46,7 @@ consumers:
 - 'loopadmin execution journal: follow-up graph-execution/26 (same engine, own schema; no Go dependency on workflow)'
 - 'tools/desk/cmd/deskclaim-ref claim tests: out-of-scope (their intent is carried here as TestPGClaimHolderSemantics per graph-execution/29 inventory; the command is unchanged)'
 - 'forge-neutral file/served claim store (forge-neutral/22-32): out-of-scope (supported legacy desk-tools claim path; applicability note in the forge-neutral README; retirement is the non-CI R8 decision)'
-version: 5
+version: 6
 id: ead4e747-4d61-4ec6-abaf-332873c79b21
 ---
 
@@ -157,10 +157,12 @@ reconstructed from retained evidence or an explicitly authorized reset is record
 
 **Pacing** count updates are not a mandatory part of admission's intent/outbox transaction
 and need no global lock across network work or exact budget-slot reservation. The store
-seeds a lost pacing estimate from the last retained count and from the window's effect
-intents and receipts it already holds; that is a bounded window query, not an audit-history
-replay. After whole-database loss, when neither survives, it records at most one reset per
-window and limiter scope and treats a second unseeded reset as an exhausted window. Unknown
+keeps one shared pacing estimate, never a per-process one, and seeds a lost estimate from
+the last retained count and, for an effect-class count, from the window's effect intents
+and receipts it already holds; that is a bounded window query, not an audit-history
+replay. Effect-class counts are bounded by cap + C, or 2 × (cap + C) after the reset;
+read-class counts have no numeric bound. After whole-database loss, when neither survives, it records at most one reset per
+window, limiter scope and operator incarnation and treats a second unseeded reset as an exhausted window. Unknown
 usage never becomes a fresh allowance, and a missing estimate is reported, not zero.
 
 Required intent, effect identity, approval, incarnation and unknown-outcome records remain
@@ -198,7 +200,7 @@ Pinned instance/attempt/subject and actor capability enter; typed state, evidenc
 | 10 | check:ci +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestNoSQLiteRuntimeStore$" ./... > "$routing_out" && grep -q -- "--- PASS: TestNoSQLiteRuntimeStore " "$routing_out")` | exit 0; named PASS; no package under `workflow/store` imports a SQLite or other embedded database driver, and an unreachable database refuses rather than falling back; mutation: add an embedded-driver import under `workflow/store` — the named test must fail |
 | 11 | check:ci +dereference +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoordinationSpecMatchesMigrations$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCoordinationSpecMatchesMigrations " "$routing_out")` | exit 0; named PASS; every table and column `spec/coordination-store-v1.md` (planned) names exists in `workflow/store/migrations/` (planned), and every migrated table is named in the contract; mutation: drop one column from the contract text — the named test must fail |
 | 12 | check:ci +flow +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGContextRestore$" ./store/ > "$out" && grep -F -- "--- PASS: TestPGContextRestore " "$out")` | exit 0; named PASS; real PostgreSQL reload/restore retains old cutoff and expiry; binding flow holds stale context and accepts current context; mutation: replace expiry with restore time |
-| 13 | check:ci +flow +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGOperationCountSeedAndBrake$" ./... > "$routing_out" && grep -q -- "--- PASS: TestPGOperationCountSeedAndBrake " "$routing_out")` | exit 0; named PASS against a real disposable PostgreSQL; after the pacing counter rows are dropped mid-window, the estimate is seeded from the window's effect intents and receipts and restarts admit no more than cap + C; after whole-database loss one reset is recorded and a second treats the window as exhausted; an unknown brake count holds; mutation: seed the lost estimate at zero — the named test must fail |
+| 13 | check:ci +flow +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGOperationCountSeedAndBrake$" ./... > "$routing_out" && grep -q -- "--- PASS: TestPGOperationCountSeedAndBrake " "$routing_out")` | exit 0; named PASS against a real disposable PostgreSQL; after the pacing counter rows are dropped mid-window, the estimate is seeded from the window's effect intents and receipts and restarts and concurrent processes sharing that estimate admit no more than cap + C; after whole-database loss one reset is recorded, admissions stay within 2 × (cap + C), and a second reset treats the window as exhausted; an unknown brake count holds; mutation: seed the lost estimate at zero, or keep a per-process estimate — the named test must fail |
 
 ## Pre-mortem and dispatch checks
 
