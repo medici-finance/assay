@@ -7,8 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 func TestCacheLaunchEnvironment(t *testing.T) {
@@ -91,4 +93,123 @@ func TestCacheBootHeldBeforeFetch(t *testing.T) {
 	// failure. The storage gate must exit 6 before those operations are possible.
 	c.deskLaunch("worker-desk", "", "", "", "", "", "", "", Provider{}, "", false, nil, nil, cockpitResolution{})
 	t.Fatal("boot continued despite unavailable storage floor")
+}
+
+// admissionCell is a cache-enabled cell with a 1 MiB budget and one locked pass
+// already recorded, so the lock-free pre-check has a clean estimate to lean on.
+func admissionCell(t *testing.T) (*Cell, cellcache.Policy) {
+	t.Helper()
+	c := codexEnvironmentCell(t)
+	dir, err := filepath.EvalSymlinks(filepath.Dir(c.Dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Dir = filepath.Join(dir, "cell")
+	if err = os.MkdirAll(c.Dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	c.Env.Put("CELL_GO_CACHE", "on")
+	c.Env.Put("CELL_GO_CACHE_BYTES", "1048576")
+	c.Env.Put("CELL_GO_CACHE_MIN_FREE", "0")
+	p, err := c.cachePolicy()
+	if err != nil || p == nil {
+		t.Fatalf("policy: %v %v", p, err)
+	}
+	if _, err = cellcache.Check(*p, false); err != nil {
+		t.Fatal(err)
+	}
+	return c, *p
+}
+
+// holdAdmissionLock models a sibling launch inside its locked pass and makes a
+// caller that queues on the lock come back deferred quickly.
+func holdAdmissionLock(t *testing.T, p cellcache.Policy) {
+	t.Helper()
+	root, err := os.OpenRoot(p.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := root.OpenFile("lock", os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := deskkit.AcquireHeld(root, "lock", f, deskkit.LockSpec{Name: "cell Go cache", Wait: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := cellcache.LockWait
+	cellcache.LockWait = 50 * time.Millisecond
+	t.Cleanup(func() {
+		cellcache.LockWait = old
+		held.Release()
+		root.Close()
+	})
+}
+
+// A below-threshold launch admission takes no cache lock and does no walk: with
+// a sibling holding the lock for the whole call, a path that takes it would wait
+// out LockWait and come back deferred.
+//
+// regression: #3045
+func TestCacheLaunchAdmissionNoLock(t *testing.T) {
+	c, p := admissionCell(t)
+	before, err := os.ReadFile(p.ReportPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	holdAdmissionLock(t, p)
+	if err := c.cacheAdmission(); err != nil {
+		t.Fatalf("clean launch admission queued on the cache lock: %v", err)
+	}
+	after, err := os.ReadFile(p.ReportPath())
+	if err != nil || string(before) != string(after) {
+		t.Fatal("lock-free launch admission rewrote the report (it walked under the lock)")
+	}
+}
+
+// Near the budget, or with nothing recorded to lean on, launch admission falls
+// through to the locked check; a busy lock then defers the launch. It is never
+// admitted without the lock.
+//
+// regression: #3045
+func TestCacheLaunchAdmissionLocks(t *testing.T) {
+	t.Run("near budget", func(t *testing.T) {
+		c, p := admissionCell(t)
+		// 900000 of 1048576 logical bytes is over three quarters of the budget.
+		if err := os.MkdirAll(filepath.Join(p.Root, "build"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(p.Root, "build", "near"), make([]byte, 900000), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := cellcache.Check(p, false); err != nil {
+			t.Fatal(err)
+		}
+		holdAdmissionLock(t, p)
+		if err := c.cacheAdmission(); err == nil {
+			t.Fatal("near-threshold cache admitted without taking the lock")
+		}
+	})
+	t.Run("missing estimate", func(t *testing.T) {
+		c, p := admissionCell(t)
+		if err := os.Remove(p.ReportPath()); err != nil {
+			t.Fatal(err)
+		}
+		holdAdmissionLock(t, p)
+		if err := c.cacheAdmission(); err == nil {
+			t.Fatal("unreadable estimate admitted without taking the lock")
+		}
+	})
+	t.Run("lock free: full check runs", func(t *testing.T) {
+		c, p := admissionCell(t)
+		if err := os.Remove(p.ReportPath()); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.cacheAdmission(); err != nil {
+			t.Fatalf("locked fall-through failed on an idle cache: %v", err)
+		}
+		if _, err := os.Stat(p.ReportPath()); err != nil {
+			t.Fatalf("fall-through did not run the locked pass: %v", err)
+		}
+	})
 }
