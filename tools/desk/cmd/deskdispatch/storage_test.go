@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -106,5 +107,58 @@ func TestStorageFloorWithoutManagedCaches(t *testing.T) {
 	t.Setenv("DESK_MIN_FREE_BYTES", "invalid")
 	if err := storageAdmission(false, ""); err == nil {
 		t.Fatal("invalid floor admitted")
+	}
+}
+
+// regression: #3045
+func TestStorageAdmissionNoLock(t *testing.T) {
+	cell, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := cellcache.Resolve(cell, func(k string) string {
+		switch k {
+		case "CELL_GO_CACHE":
+			return "on"
+		case "CELL_GO_CACHE_BYTES":
+			return "1048576"
+		case "CELL_GO_CACHE_MIN_FREE":
+			return "0"
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// One locked pass records the clean estimate admission may lean on.
+	if _, err = cellcache.Check(*p, false); err != nil {
+		t.Fatal(err)
+	}
+	for _, kv := range p.Env() {
+		k, v, _ := strings.Cut(kv, "=")
+		t.Setenv(k, v)
+	}
+	// A sibling dispatch holds the cache lock. Admission of a cheap-clean
+	// cache must not queue behind it: a path that took the lock would wait out
+	// LockWait and come back storage-deferred.
+	root, err := os.OpenRoot(p.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	f, err := root.OpenFile("lock", os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held, err := deskkit.AcquireHeld(root, "lock", f, deskkit.LockSpec{Name: "cell Go cache", Wait: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+	old := cellcache.LockWait
+	cellcache.LockWait = 50 * time.Millisecond
+	defer func() { cellcache.LockWait = old }()
+	if err = storageAdmission(false, ""); err != nil {
+		t.Fatalf("cheap-clean admission waited on the cache lock: %v", err)
 	}
 }

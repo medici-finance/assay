@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
 // defaultHost stands in for the real API host for this whole test binary. TestMain points both
@@ -53,7 +54,7 @@ func TestMain(m *testing.M) {
 	defaultHost.url = srv.URL
 	forgeAPIBase = srv.URL
 	restore := deskkit.SetCITokenAPIBaseForTest(srv.URL)
-	code := m.Run()
+	code := gitquiet.Run(m)
 	restore()
 	srv.Close()
 	if hits := defaultHostHits(); len(hits) > 0 {

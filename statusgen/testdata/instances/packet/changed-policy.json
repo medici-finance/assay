@@ -1,0 +1,47 @@
+{
+  "description": "The policy file a row depends on changed while the touched source file did not. The packet reports the delta and the affected row; a handoff bound to the earlier fingerprints is refused.",
+  "instance": "../valid.yaml",
+  "node": "inst-example-07-a.implement",
+  "projection": {},
+  "acceptance": {
+    "set": {
+      "policy/example-authorization.yaml": "sha256:2525252525252525252525252525252525252525252525252525252525252525"
+    }
+  },
+  "result": {
+    "scope": [
+      "2"
+    ],
+    "evidence": [
+      {
+        "claim": "Verify rows pass",
+        "artifact": "artifact/example-cell/test-log-a1"
+      }
+    ],
+    "artifacts": [
+      {
+        "ref": "artifact/example-cell/test-log-a1",
+        "digest": "sha256:3232323232323232323232323232323232323232323232323232323232323232",
+        "bytes": 4096
+      }
+    ],
+    "next-safe-action": "open the draft pull request"
+  },
+  "expect": {
+    "accepted": false,
+    "error": "dependencies moved",
+    "reprojected-changed": [
+      "policy/example-authorization.yaml"
+    ],
+    "reprojected-affected": [
+      "2"
+    ],
+    "reprojected-completed": [
+      "1"
+    ],
+    "reprojected-remaining": [
+      "2",
+      "3"
+    ]
+  }
+}

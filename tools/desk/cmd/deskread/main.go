@@ -185,7 +185,9 @@ identity: two transports, named in the envelope's "identity" object and on one s
 `
 
 func main() {
-	os.Exit(execute(os.Args[1:], os.Stdout, os.Stderr, startup))
+	os.Exit(deskkit.PerfRun("deskread", nil, os.Args[1:], func([]string) int {
+		return execute(os.Args[1:], os.Stdout, os.Stderr, startup)
+	}))
 }
 
 // startup is what every real run does first, after its command line parsed and its values

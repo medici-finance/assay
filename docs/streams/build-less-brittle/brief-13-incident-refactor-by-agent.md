@@ -27,9 +27,10 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 3
+version: 4
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format; third-pass amendment)"
 sources:
+  - "medici-finance/assay#2789; scratch-isolation amendment, freshness-checked 2026-10-13 @ 53c536312"
   - "docs/streams/build-less-brittle/spec.md §3 row 15, §4.13, §4.7 (no new gate), §8"
   - "docs/brittle-investigation-template.md (09) and docs/refactor-oracle-template.md (12): the two artifacts this run produces; docs/investigations/README.md (where they land)"
   - "plugins/assay/skills/worker-desk/SKILL.md §Un-briefed issues (the strong-tier lane 04 and 09 route design-owed classes through; this brief's run is that dispatch)"
@@ -191,6 +192,10 @@ This adds no third rehearsal, new dispatch, collector or extra human question.
 
 ## Verify (executable — no prose-only DoD items)
 
+Run consumer checks with `TMPDIR` pointing at owned scratch outside the admitted source checkout.
+This scratch-location amendment (#2789) preserves the revision selection and assertions;
+historical Evidence does not verify the revised row, which needs fresh verifier admission.
+
 Rows run from the root of `medici-finance/assay`. Rows 1–3 pin the residue rule, the ask
 shape and the reply-author check mechanically. Rows 4–7 are the rehearsal's dereference rows: (a) the complete record
 ends in a draft refactor PR with zero human asks, (b) the gap record ends in exactly one
@@ -211,7 +216,7 @@ line), which step 6 writes and the Evidence repeats. Rows 8–10 are wiring and 
 | 9 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/13$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && grep -c 'incident-refactor-run' plugins/assay/skills/worker-desk/SKILL.md && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | ≥ `1`, then `NET-OK` |
 | 10 | `for g in 'weaken' 'consumer-facing' 'trust boundary'; do grep -ci "$g" docs/incident-refactor-run.md; done \| grep -c '^[1-9]'` | `3` (the three hard gates are named; no fourth is introduced: `grep -c 'gate: human' docs/incident-refactor-run.md` is the reviewer's cross-check) |
 | 11 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/13$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git diff --name-only "$base" "$tip" -- tools/desk \| grep -v _test.go \| grep -v '^tools/desk/internal/testledger/' \| wc -l \| tr -d ' ')" = 0 && echo NO-SHIPPED-CHANGE` | `NO-SHIPPED-CHANGE` (outside the test-only ledger package and its `testdata/rehearsal/` fixture module, no non-test file under `tools/desk` changed; base derived, never `HEAD~1`) |
-| 12 | `d=; impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/13$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; b=$(git rev-parse "$base") && t=$(git rev-parse "$tip") && test "$b" != "$t" && d=$(mktemp -d "$PWD/.bl13-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach "$t" && statusgen --consumers --root "$d" --brief build-less-brittle/13 --base "$b"; s=$?; test -n "$d" && rm -rf "$d"; exit $s` | exit 0 (no `consumers:` routing claim is disproved: the `consumers:` claims are judged against the delivering change itself, in a throwaway clone: after the merge, the first-parent commit on main carrying the `Brief: build-less-brittle/13` trailer (the net-weight rows resolve the same commit) diffed against its parent; before the merge, the PR head diffed against its merge-base; the implementer replaces each self-routed entry with `fixed-here` in the same change). A disproved claim fails the row and names the claim; an unresolvable delivering change fails the row rather than passing on an empty diff. Row re-authored 2026-10-06 (#1915): the unpinned form ran against merged main, where the brief is no longer in the diff, and reported COULD-NOT-CHECK; this form runs the same way before and after the merge (the #1908 pattern). Expect first re-written 2026-10-03 (#1862). |
+| 12 | `d=; impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/13$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; b=$(git rev-parse "$base") && t=$(git rev-parse "$tip") && test "$b" != "$t" && d=$(mktemp -d "${TMPDIR:-/tmp}/bl13-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach "$t" && statusgen --consumers --root "$d" --brief build-less-brittle/13 --base "$b"; s=$?; test -n "$d" && rm -rf "$d"; exit $s` | exit 0 (no `consumers:` routing claim is disproved: the `consumers:` claims are judged against the delivering change itself, in a throwaway clone: after the merge, the first-parent commit on main carrying the `Brief: build-less-brittle/13` trailer (the net-weight rows resolve the same commit) diffed against its parent; before the merge, the PR head diffed against its merge-base; the implementer replaces each self-routed entry with `fixed-here` in the same change). A disproved claim fails the row and names the claim; an unresolvable delivering change fails the row rather than passing on an empty diff. Row re-authored 2026-10-06 (#1915): the unpinned form ran against merged main, where the brief is no longer in the diff, and reported COULD-NOT-CHECK; this form runs the same way before and after the merge (the #1908 pattern). Expect first re-written 2026-10-03 (#1862). |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code,

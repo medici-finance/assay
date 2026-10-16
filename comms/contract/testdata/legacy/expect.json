@@ -1,0 +1,102 @@
+{
+  "policy-forbidden-cross-pair": {
+    "assay": "ok",
+    "lane": "forbid",
+    "structural": "ok"
+  },
+  "policy-forbidden-cross-verb": {
+    "assay": "ok",
+    "lane": "forbid",
+    "structural": "ok"
+  },
+  "policy-forbidden-self-lane": {
+    "assay": "ok",
+    "lane": "forbid",
+    "structural": "ok"
+  },
+  "policy-forbidden-unknown-role": {
+    "assay": "ok",
+    "lane": "forbid",
+    "structural": "ok"
+  },
+  "policy-forbidden-within-cross-only-verb": {
+    "assay": "ok",
+    "lane": "forbid",
+    "structural": "ok"
+  },
+  "refused-absent-from-role": {
+    "assay": "absent_triple",
+    "lane": "n/a",
+    "structural": "absent_triple"
+  },
+  "refused-absent-id": {
+    "assay": "absent_triple",
+    "lane": "n/a",
+    "structural": "absent_triple"
+  },
+  "refused-absent-to-cell": {
+    "assay": "absent_triple",
+    "lane": "n/a",
+    "structural": "absent_triple"
+  },
+  "refused-absent-verb": {
+    "assay": "absent_triple",
+    "lane": "n/a",
+    "structural": "absent_triple"
+  },
+  "refused-bad-schema": {
+    "assay": "bad_schema",
+    "lane": "n/a",
+    "structural": "bad_schema"
+  },
+  "refused-not-json": {
+    "assay": "malformed",
+    "lane": "n/a",
+    "structural": "malformed"
+  },
+  "refused-trailing-content": {
+    "assay": "malformed",
+    "lane": "n/a",
+    "structural": "malformed"
+  },
+  "refused-unknown-field": {
+    "assay": "malformed",
+    "lane": "n/a",
+    "structural": "malformed"
+  },
+  "refused-wrong-typed-sent": {
+    "assay": "malformed",
+    "lane": "n/a",
+    "structural": "malformed"
+  },
+  "reserved-verb-merge": {
+    "assay": "unknown_verb",
+    "lane": "n/a",
+    "structural": "ok"
+  },
+  "unknown-class": {
+    "assay": "unknown_class",
+    "lane": "n/a",
+    "structural": "ok"
+  },
+  "unknown-verb": {
+    "assay": "unknown_verb",
+    "lane": "n/a",
+    "structural": "ok"
+  },
+  "valid-cross-status": {
+    "assay": "ok",
+    "lane": "allow",
+    "structural": "ok"
+  },
+  "valid-within-notify": {
+    "assay": "ok",
+    "lane": "allow",
+    "structural": "ok"
+  },
+  "valid-within-sensitive-ask": {
+    "assay": "ok",
+    "lane": "allow",
+    "structural": "ok"
+  }
+}

@@ -67,7 +67,9 @@ Exit codes: 0 every query/reader succeeded · 5 refused (bad arguments) · 6 unv
 Flow section alone does not redden the exit — see plugins/assay/commands/inbox.md).`
 
 func main() {
-	os.Exit(execute(os.Args[1:], os.Stdout, os.Stderr, time.Now(), startup))
+	os.Exit(deskkit.PerfRun("deskinbox", nil, os.Args[1:], func([]string) int {
+		return execute(os.Args[1:], os.Stdout, os.Stderr, time.Now(), startup)
+	}))
 }
 
 // startup is what every real run does first, after its command line parsed and its values

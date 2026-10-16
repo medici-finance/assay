@@ -20,6 +20,8 @@ func cmdStampOnly(args []string) (err error) {
 	fs.StringVar(&o.model, "model", "", "exact model selected by the dispatcher (required)")
 	fs.StringVar(&o.tier, "tier", "", "selected execution tier (required)")
 	fs.StringVar(&o.kit, "kit", "worker", "original dispatch kit")
+	fs.IntVar(&o.attestation, "attestation", 0, "the worker pre-work attestation record this change was admitted under "+
+		"(also read from the change's Worker-Attestation: line); a disagreeing selection, kit, repo or branch refuses")
 	fs.BoolVar(&o.dryRun, "dry-run", false, "read and report without mutation")
 	defer func() {
 		// Dry-run does not even append a local audit record.
@@ -32,6 +34,9 @@ func cmdStampOnly(args []string) (err error) {
 	}
 	if fs.NArg() != 0 {
 		return deskkit.Refused("stamp-only accepts flags only, no item key")
+	}
+	if o.attestation < 0 {
+		return deskkit.Refused("stamp-only: --attestation must be a positive record number")
 	}
 	if o.pr <= 0 || strings.TrimSpace(o.repo) == "" || strings.TrimSpace(o.model) == "" || o.tier == "" {
 		return deskkit.Refused("stamp-only requires --repo, positive --pr, explicit --model and --tier")

@@ -1,0 +1,30 @@
+{
+  "test": "go test . -run 'TestDecay|TestGHPRWindowMatchesQuery' -count=1 -timeout 120s",
+  "control": {
+    "name": "CONTROL: a branch with a full window of closed pull requests and no open one is decayed",
+    "file": "claimdecay.go",
+    "old": "len(b.AssociatedPullRequests.Nodes) >= ghPRWindow {",
+    "new": "len(b.AssociatedPullRequests.Nodes) > 1<<20 {"
+  },
+  "mutations": [
+    {
+      "name": "The OLDEST closed pull request decides instead of the newest",
+      "file": "claimdecay.go",
+      "old": "\t\t\tif newest == nil {\n\t\t\t\tnewest = &pr\n\t\t\t}",
+      "new": "\t\t\tnewest = &pr"
+    },
+    {
+      "name": "A page with no repository and no errors is read as an empty listing",
+      "file": "claimdecay.go",
+      "old": "\t\t\treturn nil, fmt.Errorf(\"the branch pull-request listing returned no repository on page %d\", i+1)",
+      "new": "\t\t\tcontinue"
+    },
+    {
+      "name": "The query asks for a different window than the corpse test treats as full",
+      "file": "claimdecay.go",
+      "old": "associatedPullRequests(first:10,",
+      "new": "associatedPullRequests(first:5,"
+    }
+  ],
+  "root": "../../statusgen"
+}

@@ -262,6 +262,7 @@ func ciCrossModuleRegistry() []ciEntry {
 			why:        "the live build-test floor executes all three offline Evidence suites, including every board-writer Environment fence",
 		},
 		{test: "tools/desk/cmd/deskdispatch/verifierattestation_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob, reads: []string{"statusgen/verifyrun.go", "statusgen/verifieradmission.go"}, runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""}, why: "the verifier dispatch fixture builds the actual statusgen executor and proves that two Verify rows require the shared pre-work admission"},
+		{test: "tools/desk/cmd/deskdispatch/verifiercrossrepo_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob, reads: []string{"statusgen/verifyrun.go", "statusgen/verifieradmission.go"}, runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""}, why: "the cross-repository dispatch fixture builds the actual statusgen executor and checks isolated tracking Evidence and deliverable row execution"},
 		{
 			test:   "tools/desk/internal/deskkit/stageddrift_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",

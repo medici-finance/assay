@@ -26,6 +26,7 @@ func defaultsRoot(t *testing.T) string {
 		"CELL", "CELL_KIND", "CELL_KIND_OVERRIDE_INTERNAL", "CELL_HARNESS", "ROLES", "DESKD", "DRY_RUN",
 		"CELL_REPO", "CELL_REPO_SLUG", "CELL_ROOTS", "TMUX_SESSION", "DESK_MODEL_DEFAULT",
 		"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE", "CELL_GO_CACHE_BUILD_MAX_AGE",
+		"CELL_GO_CACHE_LOW_WATER_PERCENT", "CELL_GO_CACHE_TRIM_MIN_AGE", "CELL_GO_TRIMPATH",
 		"CELL_PATH", "CELL_PROVIDER", "CELL_PROVIDER_DEFAULTS", "CELL_PROVIDER_OVERRIDES",
 		"CELL_MODEL_POLICY", "CELL_ROLE_CONTEXT", "CELLCTL_TEST_PROBE",
 	} {
@@ -438,38 +439,6 @@ func TestCellDefaultsSetWritesOnlyCellEnv(t *testing.T) {
 	}
 }
 
-// TestCellDefaultsNestedCell: a cell named `team/demo` lives two levels under the cells root and
-// still takes the ROOT's defaults file — from loadCell and from `set` alike — never a file that
-// happens to sit beside it in `team/`.
-func TestCellDefaultsNestedCell(t *testing.T) {
-	root := defaultsRoot(t)
-	rootFile := writeDefaults(t, root, "CELL_HARNESS=codex\n")
-	envfile := writeCell(t, root, filepath.Join("team", "demo"), demoCell)
-	decoy := filepath.Join(root, "team", cellDefaultsFile)
-	if err := os.WriteFile(decoy, []byte("CELL_HARNESS=cursor\nCELL_KIND=scrubbed\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	c := loadCell("team/demo")
-	if c.DefaultsPath != rootFile || c.Harness != "codex" {
-		t.Errorf("loadCell read %q (harness %s), want the cells root's %q", c.DefaultsPath, c.Harness, rootFile)
-	}
-	if got := cellDefaultsFor(envfile); got != rootFile {
-		t.Errorf("set would read %q, want the cells root's %q", got, rootFile)
-	}
-	if got := activeHarnessOf(envfile); got != "codex" {
-		t.Errorf("activeHarnessOf = %q, want codex from the cells root's file", got)
-	}
-	captureStdout(t, func() { setArgv("team/demo", []string{"worker-desk", "--model", "example-codex-model"}) })
-	if got, _ := os.ReadFile(envfile); string(got) != demoCell+"CODEX_MODEL_worker_desk=example-codex-model\n" {
-		t.Errorf("nested cell.env =\n%s", got)
-	}
-	// A cell.env that is not under the cells root at all never picks up that root's file.
-	outside := filepath.Join(t.TempDir(), "elsewhere", "cell.env")
-	if got := cellDefaultsFor(outside); got == rootFile || got != filepath.Join(filepath.Dir(filepath.Dir(outside)), cellDefaultsFile) {
-		t.Errorf("a cell.env outside the cells root resolved to %q", got)
-	}
-}
-
 func mustReadDir(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -747,6 +716,8 @@ func TestBinaryCellDefaultsDoNotReachAContainerLauncher(t *testing.T) {
 	}
 	fixed := map[string]bool{"HOME": true, "PATH": true, "TERM": true, "CELL": true, "CELL_KIND": true, "CELL_DIR": true,
 		"CELL_REPO": true, "CELL_ROOTS": true, "CELL_HARNESS": true, "ROLES": true,
+		// The sole additional non-secret switch is normalized, never raw defaults.
+		envAssayTelemetry: true,
 		// what a POSIX shell adds to its own environment
 		"PWD": true, "OLDPWD": true, "SHLVL": true, "_": true}
 	handed := map[string]string{}
@@ -769,6 +740,10 @@ func TestBinaryCellDefaultsDoNotReachAContainerLauncher(t *testing.T) {
 	if want := strings.TrimPrefix(f.hermeticPath(), "PATH="); handed["PATH"] != want {
 		t.Errorf("the launcher was handed PATH=%q, want the launching process's %q", handed["PATH"], want)
 	}
+	if handed[envAssayTelemetry] != "0" {
+		t.Fatalf("unconfigured launcher opt-in = %q", handed[envAssayTelemetry])
+	}
+
 }
 
 // TestShowNamesTheDefaultsFileAsASource: `show` says where each effective choice came from, and

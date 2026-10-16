@@ -1,10 +1,12 @@
-# Unified non-CI architecture for Assay
+# Unified product architecture for Assay
 
 **Status: future architecture we are moving towards. Updated 14 October 2026; includes portfolio, drift and the write-through forge-service amendment.** This directory is the canonical public home of Assay's future product architecture. It states the direction of travel, not what is already implemented or deployed. Detailed contract changes still require revision-bound review; implementation and activation require their own evidence and authorization. Publishing or merging this documentation does not activate a runtime, grant credentials or amend existing briefs.
 
 Read the [implemented foundations and remaining work](11-target-architecture.md#implemented-foundations-and-work-still-to-build) alongside the target. Portfolio allocation, target/context drift and continuing observation are included in the destination; their integrated automation remains work to build and qualify.
 
 The maintainer ratified the whole target at revision `23f655f5d`, packages R1–R8, on [medici-finance/assay#2500](https://github.com/medici-finance/assay/issues/2500). That approval remains revision-bound: it does not imply that the portfolio/drift additions below were included in that earlier revision, or that any runtime has been activated.
+
+The [communications future state](24-communications.md) (13 October 2026) is a proposal pending approval against that ratified revision; it is not part of the ratified packages, and the amendment manifest does not yet carry its edges.
 
 Assay's operator CLI (`cellctl`), governed work verbs (desk-tools), definition and
 evidence engine (`statusgen`), quality tools, service and cockpit share meanings
@@ -27,6 +29,8 @@ Verification is the first end-to-end test.
 | [Cell operator surface](21-cell-operator-surface.md) | Proposed in medici-finance/assay#2890; ratified when that PR is merged by the maintainer. Cell-level operator verbs classified as interim bridges or target-owned; runner-lifecycle states/transitions; a deferred plan-approval design gated on five properties; Cell API requirements carried from `send` |
 | [Forge service and source queries](22-forge-service-and-source-queries.md) | Write-through visibility, caller/executor authorization, immutable source caches and Scion-inspired qualification |
 | [Runtime contract alignment](23-runtime-contract-alignment.md) | One public runtime: PostgreSQL coordination, existing Git/forge evidence owners, requirement-to-owner coverage and remaining gaps |
+| [Communications future state](24-communications.md) | Proposal pending approval: reusable client/server, broker-owned delivery, config CLI and applied backlog dependencies |
+| [Tool families and CI integration](25-ci-tooling.md) | Desk/service/CI placement, shared mechanisms and the migration stream |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Future direction and mechanisms to qualify
@@ -59,10 +63,11 @@ qualification. A graph explains relationships; it never grants runtime authority
 
 ## Scope and public boundary
 
-This covers non-CI product tooling, including installation/configuration,
-communications, monitors, role clients and support tools that share the affected
-contracts. Existing CI is touched later only where needed to run the selected
-regression suite; redesigning CI is not this program's objective.
+This covers product tooling, including installation/configuration, communications,
+monitors, role clients and support tools. The 2026-10-13 [CI extension](25-ci-tooling.md)
+adds directory separation, two layers of shared mechanisms, reusable actions and
+adopter-source migration. CI remains independently runnable; it does not acquire
+runtime acceptance or credential authority. The directory name is retained for link stability.
 
 Adopters retain deployment configuration, secrets references, private policy
 overlays, incident evidence and local brief reconciliation. They may reference

@@ -44,11 +44,12 @@ decision-trigger: creation
 decision-issue: 2315
 issues: [2315]
 schema: brief-v2
-version: 3
+version: 5
 outcome: none
 id: a6651bd7-de82-48d4-b80e-38c7d6663222
 authored: 2026-10-06 by forge-neutral authoring session (the #2253 ruling); revised 2026-10-06 for the correctness and security reviews of #2314
 sources:
+  - "medici-finance/assay#2475: definition revision 5 repairs the historical comparisons in rows 14 and 16 and aligns the source inventory with medici-finance/assay#2377; author validation does not replace fresh independent verification"
   - "#2253 comment 6013956713: the question this brief answers. statusgen's CI-only modes (`--corroborate`, `--auto-flip-model`, the transcribe lanes) read under the workflow's job token, `deskread` reads only under a minted App role, so moving those reads onto `deskread` needs a decision about which credential CI reads under"
   - "#2253 comment 6014345604: the driver's ruling on #2253, option (a). `deskread` gains an explicit, opt-in transport that authenticates with the CI workflow token, for read-only kinds only, so the CI-only modes can move their `gh` reads onto it. The ruling asks for this as its own gated brief"
   - "#2315: the decision issue that puts this brief's exact shape to the human"
@@ -136,13 +137,20 @@ the transport stays 18's job (35's for the three ruling and transcribe sites), a
 files:
 - `tools/desk/cmd/deskread/main.go`: the flag, the tool-class selection, the CI-transport kind
   allowlist, the identity record in the envelope, the usage text.
+- `tools/desk/cmd/deskread/ci.go`: CI admission, repository binding and the dedicated token read.
 - `tools/desk/cmd/deskread/forge.go`: the transport switch between the custody path (default,
   unchanged) and the CI path.
 - `tools/desk/internal/deskkit/forgeresolve.go`: the second constructor, `ReadOnlyForgeForCIToken`
   (name is a suggestion), beside `ResolveForge`, and its API-base test seam.
-- `tools/desk/internal/deskkit/readonlyforge.go` (new): the default-deny decorator.
-- Tests beside each: `tools/desk/cmd/deskread/*_test.go`,
-  `tools/desk/internal/deskkit/readonlyforge_test.go` (new), and the guard tests named in Task 5.
+- `tools/desk/internal/deskkit/readonlyforge.go`: the default-deny decorator.
+- `tools/desk/internal/deskkit/remoterepo.go`: `ValidRepoSlug`, shared by the CI admission checks.
+- Tests beside each: `tools/desk/cmd/deskread/ci_test.go`,
+  `tools/desk/internal/deskkit/citransport_test.go`,
+  `tools/desk/internal/deskkit/citransport_recorder_test.go`,
+  `tools/desk/internal/deskkit/citoken_guard_test.go`, and the existing guard tests named in Task 5.
+
+This inventory names the implementation locations in PR #2377. The original design and
+security requirements below remain the contract; the inventory correction adds no deliverable.
 
 facts:
 - **Identity today**: `deskread` calls `deskkit.SessionTokenRole("deskread")`, then
@@ -465,6 +473,26 @@ states that its repository and run id are copied from the environment and are no
 
 ## Verify (executable — no prose-only DoD items)
 
+Definition revision 5 repairs rows 14 and 16 after medici-finance/assay#2475. Prior
+Evidence does not attest these revised commands; a fresh admitted verification run is
+required. Historical Evidence, outcomes, lifecycle and the human gate are unchanged.
+
+The two rows answer different historical questions. Row 14 checks only the implementation
+landing of PR #2377 (`1e4fead60`) against its parent (`3960ba2b7`). Row 16 checks the routing
+claims introduced by authoring PR #2314 (`e399dc816`) against its parent (`2f9a5991b`).
+The implementation did not rewrite the authoring claims: its self-targeted follow-ups
+still describe the plan, not a claim that every implementation consumer is complete.
+Row 16 therefore requires the admitted consumers block to equal the authoring block,
+builds statusgen from the admitted source, and evaluates a clean historical clone at the
+authoring landing. Later main changes cannot supply evidence for those claims. Three entries remain UNCHECKED: the follow-up to forge-neutral/35 (its historical
+brief lacks a back-reference to this brief), plus the two out-of-scope entries. They
+remain review obligations; exit 0 is not universal corroboration. The 11/0/2 result
+reported in #2475 used a later main tree, whose /35 back-reference was added later;
+that later change is not evidence in this bounded authoring comparison.
+Both rows validate the recorded parent and ancestry and fail on unavailable history.
+Row 16 needs Git, Go and a writable TMPDIR outside the admitted source; all new files go
+in a unique directory there. It neither fetches the forge nor changes the admitted tree.
+
 The Class column uses the stream's convention:
 - `check:ci` runs in CI.
 - `check` is a local or grep-level assertion.
@@ -514,9 +542,9 @@ Test names are this brief's planned deliverables:
 | 11 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestNoAmbientEnvTokenRead$' -count=1 -v > "${TMPDIR:-/tmp}/b34-r11a.out" 2>&1 && grep -F -e '--- PASS: TestNoAmbientEnvTokenRead' "${TMPDIR:-/tmp}/b34-r11a.out" && go test ./internal/deskkit/ -run '^TestForgeSingleConstructionSite$' -count=1 -v > "${TMPDIR:-/tmp}/b34-r11b.out" 2>&1 && grep -F -e '--- PASS: TestForgeSingleConstructionSite' "${TMPDIR:-/tmp}/b34-r11b.out" && go test ./internal/deskkit/ -run '^TestForgeSurfaceUnchangedByDeskread$' -count=1 -v > "${TMPDIR:-/tmp}/b34-r11c.out" 2>&1 && grep -F -e '--- PASS: TestForgeSurfaceUnchangedByDeskread' "${TMPDIR:-/tmp}/b34-r11c.out" && go test ./internal/deskkit/ -run '^TestOutboundForgeWrapsEveryWriteMethod$' -count=1 -v > "${TMPDIR:-/tmp}/b34-r11d.out" 2>&1 && grep -F -e '--- PASS: TestOutboundForgeWrapsEveryWriteMethod' "${TMPDIR:-/tmp}/b34-r11d.out"` | exit 0, each `--- PASS:` line printed. The guards pass with the new constructor and permit, and the `Forge` surface is unchanged |
 | 12 | check | `grep -n -E 'ambientTokenReadCeiling = 5' tools/desk/internal/deskkit/ambienttoken_guard_test.go && grep -c -F '"DESKREAD_CI_WORKFLOW_TOKEN"' tools/desk/internal/deskkit/ambienttoken_guard_test.go` | exit 0; the ceiling line prints, and the count is at least 1 (the variable is in the guarded set) |
 | 13 | check +dereference | `awk '/^  [A-Za-z0-9_-]+:[ \t]*$/{j=""; p=0} /^  (corroborate\|model-autoflip):$/{j=$1} j && /^    permissions:/{p=1; next} p && /^      [a-z-]+:/{print j, $0; next} p && !/^      /{p=0}' .github/workflows/assay-statusgen.yml > "${TMPDIR:-/tmp}/b34-r13.out" && grep -q '^corroborate: ' "${TMPDIR:-/tmp}/b34-r13.out" && grep -q '^model-autoflip: ' "${TMPDIR:-/tmp}/b34-r13.out" && ! grep -v ': read$' "${TMPDIR:-/tmp}/b34-r13.out"` | exit 0: each of the two jobs prints at least one permission line (so a renamed job key fails the row instead of passing it vacuously), and every printed line ends in `read`. Every job header clears the job variable, so a job with no `permissions:` block of its own prints nothing and fails the row, instead of being credited with a later job's block. Portable awk: same output under BSD awk and GNU awk. This proves the server-side layer for this repository's two jobs only; adopter jobs are 18's (see `consumers:`). Run at the implementing head; this brief does not change the file |
-| 14 | check | `git fetch -q origin main && git diff --name-only "$(git merge-base FETCH_HEAD HEAD)" HEAD -- statusgen .github/workflows \| wc -l` | prints `0` (against a freshly fetched `main`, so a stale local remote cannot report `0`) |
+| 14 | check | `test "$(git rev-parse 1e4fead60abd3482356446a22a54041186d4311f^1)" = 3960ba2b76a60daa10ddcec19541ae76c0d91209 && git merge-base --is-ancestor 1e4fead60abd3482356446a22a54041186d4311f HEAD && b34_changed=$(git diff --name-only 3960ba2b76a60daa10ddcec19541ae76c0d91209 1e4fead60abd3482356446a22a54041186d4311f -- statusgen .github/workflows) && test -z "$b34_changed"` | exit 0: the implementation landing is an ancestor of the admitted source, and its own parent-to-landing diff changes neither `statusgen` nor `.github/workflows`. Missing history or a failed diff fails the row; later main commits cannot turn this comparison into `HEAD..HEAD` |
 | 15 | check:ci | `cd statusgen && go build -o "${TMPDIR:-/tmp}/b34-statusgen" . && cd .. && "${TMPDIR:-/tmp}/b34-statusgen" --root . --lint` | exit 0, `LINT: PASS` |
-| 16 | check:ci | `git fetch -q origin main && "${TMPDIR:-/tmp}/b34-statusgen" --root . --consumers --brief forge-neutral/34 --base "$(git merge-base FETCH_HEAD HEAD)"` | exit 0; no routing claim disproved by the diff |
+| 16 | check:ci | `( b34_root=$(pwd -P) && b34_base=$(cd "${TMPDIR:-/tmp}" && pwd -P) && case "$b34_base/" in "$b34_root/"*) exit 2;; esac && b34_tmp=$(mktemp -d "$b34_base/b34-consumers.XXXXXX") && b34_author=e399dc816b72dd46fbbd79f08215bb041abc7c73 && b34_parent=2f9a5991b3a0efe61b142b1b10af1b4d882c3a08 && b34_brief=docs/streams/forge-neutral/brief-34-deskread-ci-workflow-token-transport.md && test "$(git rev-parse "$b34_author^1")" = "$b34_parent" && git merge-base --is-ancestor "$b34_author" HEAD && git show "$b34_author:$b34_brief" > "$b34_tmp/authored.md" && sed -n '/^consumers:/,/^---$/p' "$b34_tmp/authored.md" > "$b34_tmp/authored-consumers" && sed -n '/^consumers:/,/^---$/p' "$b34_brief" > "$b34_tmp/admitted-consumers" && cmp "$b34_tmp/authored-consumers" "$b34_tmp/admitted-consumers" && (cd statusgen && GOWORK=off go build -o "$b34_tmp/statusgen" .) && git clone --quiet --shared --no-checkout "$b34_root" "$b34_tmp/source" && git -C "$b34_tmp/source" checkout --quiet --detach "$b34_author" && test "$(git -C "$b34_tmp/source" rev-parse HEAD)" = "$b34_author" && b34_dirty=$(git -C "$b34_tmp/source" status --porcelain) && test -z "$b34_dirty" && "$b34_tmp/statusgen" --root "$b34_tmp/source" --consumers --brief forge-neutral/34 --base "$b34_parent" > "$b34_tmp/consumers.out" && cat "$b34_tmp/consumers.out" && grep -F -x 'summary: 10 corroborated, 0 disproved, 3 unchecked, 0 brief(s) claiming nothing' "$b34_tmp/consumers.out" )` | exit 0; the exact summary prints: 10 corroborated, 0 disproved, 3 unchecked, 0 brief(s) claiming nothing. The historical authoring claims are evaluated against their own diff, with a newly built binary and unchanged admitted claims. The /35 follow-up and two out-of-scope entries are not passes; their truth remains a reviewer judgment. Missing history, changed claims, a failed build or a disproved claim fails the row |
 | 17 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskread/ -run '^TestCITransportToolClass$' -count=1 -v > "${TMPDIR:-/tmp}/b34-r17.out" 2>&1 && grep -F -e '--- PASS: TestCITransportToolClass' "${TMPDIR:-/tmp}/b34-r17.out"` | exit 0, `--- PASS:` printed. `toolClassFor` returns `ClassCI` for flag plus `GITHUB_ACTIONS=true`, and `ClassWrite` for flag without CI, CI without flag, and neither. **Negative path**: the CI-without-flag case keeps the custody path file-only. Mutation M6 turns it red |
 | 18 | check:ci +flow | `cd tools/desk && go test ./cmd/deskread/ -run '^TestCITransportActivatesWithEnvRoster$' -count=1 -v > "${TMPDIR:-/tmp}/b34-r18.out" 2>&1 && grep -F -e '--- PASS: TestCITransportActivatesWithEnvRoster' "${TMPDIR:-/tmp}/b34-r18.out"` | exit 0, `--- PASS:` printed. The test builds `deskread` and runs it from a checkout with an empty config home, the CI variables and a roster in the environment. With the flag and a deliberately non-installation token it exits 5 with the `[ci-transport:token-shape]` tag and no `inactive` line: activation passed and `run` was reached, with no network call. **Negative path**: the same environment without the flag exits 6 with the `assay/desk-tools inactive` line, as at the base |
 | 19 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCITokenConstructorConfined$' -count=1 -v > "${TMPDIR:-/tmp}/b34-r19.out" 2>&1 && grep -F -e '--- PASS: TestCITokenConstructorConfined' "${TMPDIR:-/tmp}/b34-r19.out"` | exit 0, `--- PASS:` printed. The scan covers non-`_test.go` files only. In them, the real tree has exactly the one allowed caller of `ReadOnlyForgeForCIToken` and no caller of `SetCITokenAPIBaseForTest`. **Negative path**: over a fixture tree with a planted second caller in another `cmd` package, and a planted non-test call to the seam, the scanner reports both |

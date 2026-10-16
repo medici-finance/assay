@@ -22,6 +22,7 @@ runtime containment. Taxonomy membership describes components and grants no auth
 
 | Meaning | Canonical implementation / planned interface | Consumers and restrictions |
 |---|---|---|
+| Inter-cell message contract (cellmsg-v1) | `comms/contract` (module `github.com/medici-finance/assay/comms`, comms-core/01): `Envelope`, `ParseEnvelope`, `ParseEnvelopeWith`, `Vocabulary`, `Message`, `Address`, `Receipt`, `ErrorCode`, `Mint`, `Verify`, `VerifyEnvelope` | `tools/desk/internal/comms` (the Assay policy adapter: verb and class vocabulary, compiled lane ACL, `Admit`), then `commsgw`, `commsloop`, `deskcomms`, `commsqueue`. Follow-ups comms-core/02 (server) and /03 (client SDK) consume it. Structure only: no role names, no ACL, no credential, no network, no process launch. |
 | Forge facts and completeness | Existing forge adapters; narrow `forgeread` API, forge-neutral/36 | `deskread`, statusgen's reader adapter. No generic query, raw token getter or write API on the consumer interface. |
 | Eligibility and evidence coverage | `statusgen/evaluation` (canonical owner since statusgen/15): `EvaluateEligibility`, `EvaluateCoverage` | statusgen commands, workflow bindings, projection producers. Explicit observations in; deterministic verdicts out. No admission, identity, capacity or claim authority. |
 | Stream-view wire schema | Existing `statusgen/streamview` | Producers and authorized readers pin the contract; no policy or serving behavior in this package. |
@@ -32,6 +33,37 @@ runtime containment. Taxonomy membership describes components and grants no auth
 The existing semantic-owner index in `docs/contracts.md` remains the ownership register.
 Implementations update its rows and existing architecture checks; this table is a migration
 map, not a competing register. Module placement is not a new semantic owner.
+
+## The message contract: `comms`
+
+`comms/` is its own Go module (`github.com/medici-finance/assay/comms`, stdlib only, no `go.sum`),
+the second extracted module after `forgeread`. Its one package, `comms/contract`, is the public
+cellmsg-v1 contract; `tools/desk/internal/comms` is the Assay policy adapter over it.
+
+| Layer | Owns | Does not own |
+|---|---|---|
+| `comms/contract` | The envelope shape and size caps, the parse-or-refuse order (`ParseEnvelope`; `ParseEnvelopeWith` takes a host `Vocabulary`), typed `Message`, `Address`, `Receipt`, `ErrorCode` and the legacy wire mapping, and the envelope identity primitives (`Mint`, `Verify`, `VerifyIdentityOnly`, `VerifyEnvelope`, `Ed25519Signer`, `Ed25519TrustStore`, `MemReplayGuard`). | Any verb, class or role name, the lane ACL, any signing key or key path, and any network, process or credential code. |
+| `tools/desk/internal/comms` | The Assay verb and class vocabulary, the compiled lane ACL and its source `laneacl.yaml`, human-gate (reserved verb) refusal, and `Admit` / `ACL.AllowEnvelope`, which apply the ACL to a parsed message. Thin aliases keep the existing consumers compiling. | The envelope structure, caps and assertion mechanism: those are the contract's, and there is one implementation of each. |
+
+Acceptance is not widened: `ParseEnvelope` here is `contract.ParseEnvelopeWith` with the Assay
+vocabulary, and the legacy fixtures in `comms/contract/testdata/legacy` are checked through both
+entrypoints. A structurally valid message the ACL forbids is accepted by the contract and
+refused by `Admit`; `TestPolicyAdapterRefusesForbiddenMessage` holds that seam.
+
+The contract declares two capabilities it does **not** implement and that cellmsg-v1 does not
+guarantee: a per-delivery token (`delivery-token/v1`) and independent per-client identity
+(`client-identity/v1`). The legacy trust store holds one public key per cell, and a role name does
+not establish per-client identity. `contract.Capabilities()` lists them and `contract.Implemented`
+returns false for both until a later versioned transport ships them.
+
+Controls: `TestContractDependencyBoundary` walks the whole module closure and fails on
+`tools/desk`, `deskkit`, forge, credential, `net`, `net/http` and `os/exec` packages and on any
+third-party module, with planted-import negative controls. The module is wired into tools/desk as
+a versioned consumer through `replace ../../comms`; the requirement is a placeholder
+pseudo-version no proxy serves, so the local replace is not release proof: the same open gap as
+`forgeread`, and the two modules are to be released at real versions together. The Dockerfiles
+copy `comms/` beside `forgeread/`. CI path filters for `comms/**` are workflow-file changes and
+belong to a maintainer with the workflows scope.
 
 ## Authority and compatibility
 

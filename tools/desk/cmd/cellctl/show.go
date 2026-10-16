@@ -49,6 +49,8 @@ func cmdShow(c *Cell, v *cli.Values, extra []string) {
 				src = "cell.env"
 			} else if c.Env.Source(key) == layerDefaults {
 				src = cellDefaultsFile
+			} else if key == envAssayTelemetry && c.Env.Source(key) == layerProcess {
+				src = layerProcess
 			}
 		}
 		fmt.Printf("[show] %s=%s (%s)\n", key, eff, src)
@@ -60,6 +62,9 @@ func cmdShow(c *Cell, v *cli.Values, extra []string) {
 	}
 
 	fmt.Printf("[show] cell=%s dir=%s\n", c.Name, c.Dir)
+	if c.Env.IsSet(envAssayTelemetry) {
+		showLine(envAssayTelemetry, "", c.telemetryValue())
+	}
 	// Surface the repair-admission opt-in whenever cell.env carries it, on or off, so `show`
 	// answers "would a desk booted from this cell turn the dispatch gate on" the same way a
 	// DRY_RUN boot would. "on" is what deskLaunch composes; anything else is identical absence

@@ -8,16 +8,18 @@ import (
 )
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident.
-	// reviewloop READS only: it plans, it does not act on the roster, so ciEligible=true
-	// is wrong here for the same reason it is wrong in verifyloop — this tool's plan
-	// drives outward verbs, so it takes the config-home-only class.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("reviewloop", nil, os.Args[1:], func([]string) int {
+		// The roster class is an EXPLICIT declaration, never the zero value by accident.
+		// reviewloop READS only: it plans, it does not act on the roster, so ciEligible=true
+		// is wrong here for the same reason it is wrong in verifyloop — this tool's plan
+		// drives outward verbs, so it takes the config-home-only class.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

@@ -1,0 +1,12 @@
+# Adapter registry for the runtime-resource fixtures (docs/runtime-adapters.md,
+# "Adapter registry"). local-mock is the in-process mock adapter the contract is
+# implementable against: it holds every class and implements every verb.
+schema: runtime-adapters-v1
+adapters:
+  - id: local-mock
+    classes: [database-branch, snapshot, eval-corpus, object-prefix, app-backend]
+    verbs: [create, inspect, snapshot, restore, claim, release, reconcile]
+    max-ttl: 24h
+  - id: local-readonly-corpus
+    classes: [eval-corpus]
+    verbs: [create, inspect, release, reconcile]

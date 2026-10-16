@@ -85,7 +85,9 @@ retiring the live placeholders the listing omitted (#1032).
 Exit codes: 0 ok · 3 disabled · 5 refused (bad arguments) · 6 unverifiable.`
 
 func main() {
-	os.Exit(execute(os.Args[1:], os.Stdout, os.Stderr, startup))
+	os.Exit(deskkit.PerfRun("issueboard", nil, os.Args[1:], func([]string) int {
+		return execute(os.Args[1:], os.Stdout, os.Stderr, startup)
+	}))
 }
 
 // startup is what every real run does first, after its command line parsed and its values
