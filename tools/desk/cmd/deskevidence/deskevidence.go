@@ -83,6 +83,10 @@ func refuseAppendedOutcomesLog(targetRepoPath string) error {
 // resolves one of its own.
 var verifierEvidenceAdmissionFn = deskkit.CheckVerifierEvidenceWithForge
 
+// A package seam keeps offline landing fixtures out of the operator's ledger.
+// Production always uses the shared budget check, under runOutward's audit lock.
+var evidenceWriteBudget = deskkit.AllowWrite
+
 // admitVerifierEvidence runs pre-work admission for the exact path this landing
 // writes, so the attested brief is part of what admits the landing, never only
 // of what is recorded about it. fg is the landing's own resolved forge. A nil fg
@@ -321,6 +325,8 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return aerr
 	}
 
+	evidenceRoot := receipt.EvidenceRoot(*root)
+
 	// Resolve the LOCAL read path. With --root set, a repo-relative --evidence-file is read
 	// from that checkout (#1709) rather than the process cwd; the target repo path committed
 	// to the branch stays evidenceRepoPath either way. An absolute --evidence-file names no
@@ -339,7 +345,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 					"or a --brief-path fragment outside --root; got absolute " + evidenceRepoPath)
 			}
 		} else {
-			localReadPath = filepath.Join(*root, evidenceRepoPath)
+			localReadPath = filepath.Join(evidenceRoot, evidenceRepoPath)
 		}
 	}
 
@@ -603,7 +609,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// fallback the local-read resolution above already uses, so "the tree this check lints"
 	// and "the tree a bare --evidence-file would have been read from" are always the same
 	// tree.
-	lintRoot := *root
+	lintRoot := evidenceRoot
 	if lintRoot == "" {
 		lintRoot = "."
 	}
@@ -654,7 +660,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 
 	// Outward-write rate limit. pr=0 is the repo's unnumbered bucket; deskevidence carries a
 	// per-tool override on it (see unnumberedBucketCap in ratelimit.go).
-	if werr := deskkit.AllowWrite(toolName, repoSlug, 0); werr != nil {
+	if werr := evidenceWriteBudget(toolName, repoSlug, 0); werr != nil {
 		return werr
 	}
 

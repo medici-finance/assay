@@ -59,6 +59,8 @@ cells can be reconciled before the staged workflow patch lands.
 | 05 | [desk skills — reference the brief, never flip the cell (author-brief, worker-desk, pr-review-desk, verify-desk; public copies)](brief-05-skill-updates.md) | 1 | S | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #316 @ 7d9ab3f8a772155ef8e4347a16b5f25b421e23e6) |
 | 06 | [v1.0.0 — deskmigrate statusgen-regen op, the v0.28.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1](brief-06-v1-migration-and-cut.md) | 3 | M | implemented | — | — |
 | 07 | [per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills](brief-07-rollout-backfill.md) | 4 | L | in-progress | — | — |
+| 08 | [witness ledger — the board writer records every merged-PR fact the fold reads, so a merged PR is read from the forge once, ever](brief-08-witness-ledger.md) | 2 | M | todo | — | — |
+| 09 | [incremental reconcile — forge reads scale with open PRs plus PRs changed since the last regen, never with total PR history](brief-09-incremental-reconcile.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -94,7 +96,16 @@ rows. The cell is derived or it is not trustworthy; there is no third option.
   under immutable releases).
 - **Wave 4** — `derived-board/07` (depends on 05 + 06; workflow-file pushes need the human).
 
+- **Wave 2 (forge-cost follow-on)** — `derived-board/08` (depends on 03): the witness ledger.
+- **Wave 3 (forge-cost follow-on)** — `derived-board/09` (depends on 08): incremental reconcile.
+  Both edit the staged workflow (`ci/staged-workflows/assay-statusgen.yml`) that a
+  maintainer promotes, and 08 asks the maintainer to make `lint` a required check.
+
 Path: `01 → 03 → 04 → 06 → 07`, with `02 → 03` joining at wave 1 and `05` running beside 03.
+The forge-cost follow-on `03 → 08 → 09` is off that path: it changes what a regeneration
+costs in rate-limited forge requests, not what a cell may claim. Its head is 08, because 09
+has nothing to read until the ledger exists, and until the promoted workflow carries 08's edit every run is
+today's full read.
 
 ## Shared conventions
 

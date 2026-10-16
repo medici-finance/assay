@@ -86,6 +86,14 @@ type fakeGH struct {
 	// forces the commit read to fail (could-not-check → fall back to the PR author).
 	headAuthorLogin string
 	headAuthorErr   bool
+	// headCommittedAt is the committer date GET /commits/{sha} serves — the date an
+	// APPROVED's submitted_at must not predate (#3093: GitHub re-anchors an old review's
+	// commit_id to a later head). "" serves fakeHeadCommittedAt, which predates every
+	// fixture review, so a case not about re-anchoring is unaffected. headCommitDateErr
+	// fails ONLY that read's date (the body omits it) — could-not-check, which must fail
+	// closed.
+	headCommittedAt   string
+	headCommitDateErr bool
 
 	// Issue fixtures (#296). GitHub numbers issues and PRs from ONE
 	// sequence, so the fake models that: a number in issueNums is an ISSUE — GET
@@ -383,7 +391,8 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.postedReview++
 		// Assign a review id as GitHub does; the dedup guard's messages name it (#518).
-		submitted := reviewInfo{ID: int64(1000 + f.postedReview), State: state, CommitID: in.CommitID, Body: in.Body}
+		submitted := reviewInfo{ID: int64(1000 + f.postedReview), State: state, CommitID: in.CommitID, Body: in.Body,
+			SubmittedAt: fakeReviewSubmittedAt}
 		submitted.User.Login = reviewerBotDisplay()
 		f.reviews = append(f.reviews, submitted)
 		id := submitted.ID
@@ -428,7 +437,15 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 				login = "shared-agent"
 			}
 		}
-		writeJSON(map[string]any{"author": map[string]any{"login": login}})
+		date := f.headCommittedAt
+		if date == "" {
+			date = fakeHeadCommittedAt
+		}
+		commit := map[string]any{"committer": map[string]any{"date": date}}
+		if f.headCommitDateErr {
+			commit = map[string]any{}
+		}
+		writeJSON(map[string]any{"author": map[string]any{"login": login}, "commit": commit})
 
 	case r.Method == http.MethodGet && reStatus.MatchString(path):
 		per, pg := ghPaging(r.URL.Query())

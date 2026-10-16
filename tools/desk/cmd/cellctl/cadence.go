@@ -14,6 +14,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
 	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/tick"
 )
 
@@ -136,7 +137,22 @@ func (c *Cell) recordRoleChild(pid int) {
 }
 
 func (c *Cell) cadenceGuard(role string) error {
-	for _, p := range []string{filepath.Join(c.cadenceDir(role), "STOP"), filepath.Join(c.Config, "DISABLED"), filepath.Join(c.Config, "STOP"), filepath.Join(c.Config, "STOP."+role)} {
+	paths := []string{filepath.Join(c.cadenceDir(role), "STOP"), filepath.Join(c.Config, "DISABLED"), filepath.Join(c.Config, "STOP"), filepath.Join(c.Config, "STOP."+role)}
+	// The cell-scoped stop flags (STOP.cell.<cell>, STOP.cell.<cell>.<role>) stop the
+	// supervisor between passes as the Guard stops a pass's own verbs. c.Name was held to
+	// the cell-name rule by the loader, which is what makes a path built from it safe; a
+	// name outside it (a hand-built Cell) builds no cell-flag path.
+	if deskkit.ValidCellName(c.Name) {
+		names := []string{role}
+		if class, known := deskkit.LoopFlagNames(role); known {
+			names = class // the role's whole name class, as the Guard reads it
+		}
+		paths = append(paths, filepath.Join(c.Config, deskkit.CellStopFlagName(c.Name, "")))
+		for _, n := range names {
+			paths = append(paths, filepath.Join(c.Config, deskkit.CellStopFlagName(c.Name, n)))
+		}
+	}
+	for _, p := range paths {
 		_, err := os.Lstat(p)
 		if err == nil {
 			return fmt.Errorf("stopped by %s", p)

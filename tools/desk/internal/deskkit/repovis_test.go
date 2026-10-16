@@ -10,7 +10,7 @@ import (
 // a public/internal repo listed in the allowed-repos set with the `:public` token passes,
 // and the former per-item `+1` reaction check is gone. These tests drive the decision
 // table over (live visibility × configured entry) with the package stub fetcher — no
-// network, no reactions surface.
+// network, no reaction fixtures.
 
 // gateRoster lists one :public repo and one :private repo, so the configured-visibility
 // read the gate depends on has both a positive and a negative entry to consult.

@@ -34,7 +34,7 @@ func admittedFixture(t *testing.T, admit bool) (string, string) {
 	}
 	if admit {
 		bin := t.TempDir()
-		receipt := `{"Issue":7,"Binding":{"Run":"r","Repo":"example-org/one","Source":"s","Brief":"brief.md","Model":"m","Tier":"strong"}}`
+		receipt := `{"Issue":7,"Binding":{"Version":1,"Run":"r","Repo":"example-org/one","Source":"s","Brief":"brief.md","Model":"m","Tier":"strong"}}`
 		if err := os.WriteFile(filepath.Join(bin, "deskdispatch"), []byte("#!/bin/sh\necho '"+receipt+"'\n"), 0700); err != nil {
 			t.Fatal(err)
 		}

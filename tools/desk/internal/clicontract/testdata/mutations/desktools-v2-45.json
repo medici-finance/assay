@@ -1,0 +1,65 @@
+{
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms)$' ./cmd/deskinbox/ ./cmd/issueboard/ ./cmd/deskread/",
+  "control": {
+    "name": "CONTROL — issueboard: a parse failure exits with the wrong code (usage exit 5 becomes 6)",
+    "file": "cmd/issueboard/main.go",
+    "old": "UsageExit: deskkit.ExitRefused,",
+    "new": "UsageExit: deskkit.ExitUnverifiable,"
+  },
+  "mutations": [
+    {
+      "name": "issueboard: help runs after a config read (the startup echo and activation check run before the command line is parsed)",
+      "file": "cmd/issueboard/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "if pre != nil {\n\t\tpre(stderr)\n\t}\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "issueboard: an undeclared config key binding (root also read from an environment variable)",
+      "file": "cmd/issueboard/main.go",
+      "old": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Persistent: true, Default: \".\",",
+      "new": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Persistent: true, Default: \".\", Env: []string{\"ISSUEBOARD_ROOT\"},"
+    },
+    {
+      "name": "issueboard: one legacy flag form dropped (--root before the lane word stops reaching the lane)",
+      "file": "cmd/issueboard/main.go",
+      "old": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Persistent: true,",
+      "new": "{Key: \"root\", Kind: cli.String, Flag: \"root\", Persistent: false,"
+    },
+    {
+      "name": "deskinbox: help runs after a config read (the startup echo and activation check run before the command line is parsed)",
+      "file": "cmd/deskinbox/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "if pre != nil {\n\t\tpre(stderr)\n\t}\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "deskinbox: an undeclared config key binding (flow --root also read from an environment variable)",
+      "file": "cmd/deskinbox/main.go",
+      "old": "{Key: \"root\", Kind: cli.StringArray, Flag: \"root\",",
+      "new": "{Key: \"root\", Kind: cli.StringArray, Flag: \"root\", Env: []string{\"DESKINBOX_ROOT\"},"
+    },
+    {
+      "name": "deskinbox: one legacy flag form dropped (--item K on the table form no longer selects walk)",
+      "file": "cmd/deskinbox/main.go",
+      "old": "walkItem, mode = n, \"walk\"",
+      "new": "walkItem = n"
+    },
+    {
+      "name": "deskread: help runs after a config read (the startup echo and activation check run before the command line is parsed)",
+      "file": "cmd/deskread/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "if pre != nil {\n\t\tpre(stderr, false)\n\t}\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "deskread: an undeclared config key binding (--repo also read from an environment variable)",
+      "file": "cmd/deskread/main.go",
+      "old": "{Key: \"repo\", Kind: cli.StringArray, Flag: \"repo\",",
+      "new": "{Key: \"repo\", Kind: cli.StringArray, Flag: \"repo\", Env: []string{\"DESKREAD_REPO\"},"
+    },
+    {
+      "name": "deskread: one legacy flag form dropped (a repeated --repo keeps only the last repo)",
+      "file": "cmd/deskread/main.go",
+      "old": "o.repos = append(o.repos, r)",
+      "new": "o.repos = []string{r}"
+    }
+  ]
+}

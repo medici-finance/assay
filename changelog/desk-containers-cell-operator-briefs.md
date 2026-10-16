@@ -1,2 +1,0 @@
-### Added
-- Planned: cell-level `cellctl` operator verbs (`up` that converges, `drain`/`pause`/`resume` with a handoff record, rolling `restart`, a `status` overview, `doctor`, `logs`, `upgrade`, `gc`) on one shared `cell-op-v1` result/plan contract for the CLI and the future Cell API (apply by interactive confirm; approvals deferred). Authored as desk-containers briefs 15–24, with a proposed architecture amendment (`docs/proposals/non-ci-architecture/21-cell-operator-surface.md`) that classifies each verb as an interim bridge or a target-owned capability.

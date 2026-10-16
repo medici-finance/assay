@@ -112,6 +112,39 @@ func TestCmdCheckRow1LabelsWorkerAuthoredPathAndCodeDiff(t *testing.T) {
 	}
 }
 
+// A labelled check whose label write fails AFTER the state line was printed must exit
+// non-zero and print no applied: line — the state line alone says checked-failed, and the
+// usage tells callers the exit code is the one signal the label did not land.
+// regression: #2493
+func TestCmdCheckLabelWriteFailureExitsNonZero(t *testing.T) {
+	fg := &fakeForge{
+		issue: &deskkit.Issue{IsPullRequest: true, Author: deskkit.Account{Login: workerLogin}},
+		files: []deskkit.ChangedFile{
+			{Filename: "statusgen/unrun.go"},
+			{Filename: "docs/streams/verify-integrity/brief-01-protected-verifier-paths.md"},
+		},
+		diff:     verifyTableEditDiff,
+		applyErr: errors.New("boom 502"),
+	}
+	plantCheckWorld(t, fg)
+
+	var buf bytes.Buffer
+	err := cmdCheck([]string{fixtureRepo, "42"}, &buf)
+	if err == nil {
+		t.Fatalf("a failed label write must exit non-zero; got nil (out=%s)", buf.String())
+	}
+	if code := deskkit.ExitCodeOf(err); code != deskkit.ExitUnverifiable {
+		t.Fatalf("a failed label write must exit %d (could-not-check); got %d (%v)", deskkit.ExitUnverifiable, code, err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "state=checked-failed") || !strings.Contains(out, gateForcedLine) {
+		t.Fatalf("the state and gate-forced lines print before the write; got: %s", out)
+	}
+	if strings.Contains(out, "applied:") {
+		t.Fatalf("no applied: line may print when the label write failed; got: %s", out)
+	}
+}
+
 func TestCmdCheckDeskIdentityExemptNoForgeWrite(t *testing.T) {
 	fg := &fakeForge{
 		issue: &deskkit.Issue{IsPullRequest: true, Author: deskkit.Account{Login: deskLogin}},

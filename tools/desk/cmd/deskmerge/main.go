@@ -107,15 +107,17 @@ Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused/checked-failed ·
       6 unverifiable/could-not-check.`
 
 func main() {
-	// deskclose's reasoning applies unchanged: deskmerge ACTS on other people's
-	// branches, so the roster comes from the config-home file and NEVER from the
-	// environment, in CI as well as locally.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:], os.Stdout))
+	os.Exit(deskkit.PerfRun("deskmerge", nil, os.Args[1:], func([]string) int {
+		// deskclose's reasoning applies unchanged: deskmerge ACTS on other people's
+		// branches, so the roster comes from the config-home file and NEVER from the
+		// environment, in CI as well as locally.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:], os.Stdout)
+	}))
 }
 
 func run(args []string, out io.Writer) int {
