@@ -124,6 +124,15 @@ func loadGraphRepos(root string) (*graphRepos, bool, error) {
 		}
 		return nil, false, fmt.Errorf("%s: %w", path, err)
 	}
+	reg, err := parseGraphRepos(raw, path)
+	if err != nil {
+		return nil, false, err
+	}
+	return reg, true, nil
+}
+
+// parseGraphRepos parses a graph-repos.yaml body; path names it in errors.
+func parseGraphRepos(raw []byte, path string) (*graphRepos, error) {
 	var doc struct {
 		Schema string `yaml:"schema"`
 		Cell   string `yaml:"cell"`
@@ -135,19 +144,19 @@ func loadGraphRepos(root string) (*graphRepos, bool, error) {
 		} `yaml:"repos"`
 	}
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
-		return nil, false, fmt.Errorf("%s: %w", path, err)
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	if doc.Schema != "graph-repos-v1" {
-		return nil, false, fmt.Errorf("%s: schema must be graph-repos-v1, got %q", path, doc.Schema)
+		return nil, fmt.Errorf("%s: schema must be graph-repos-v1, got %q", path, doc.Schema)
 	}
 	if doc.Cell == "" {
-		return nil, false, fmt.Errorf("%s: cell must be non-empty", path)
+		return nil, fmt.Errorf("%s: cell must be non-empty", path)
 	}
 	reg := &graphRepos{Cell: doc.Cell, Self: doc.Self, Aliases: map[string]graphRepoEntry{}}
 	for alias, e := range doc.Repos {
 		reg.Aliases[alias] = graphRepoEntry{Cell: e.Cell, Repo: e.Repo, Unpublished: e.Unpublished}
 	}
-	return reg, true, nil
+	return reg, nil
 }
 
 // validGraphRef reports whether ref is well-formed under the §3.3 grammar AND,

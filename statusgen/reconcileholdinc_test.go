@@ -271,7 +271,11 @@ func TestHoldParityManyRow(t *testing.T) {
 			t.Fatalf("unexpected hold %+v", h)
 		}
 	}
-	if bound := len(statusKeyedLintRules); got.Stats.FullRuleEvals > bound || got.Stats.Moves != 36 {
+	// One baseline pass of every rule, plus the decision-gate rule's whole-board
+	// evaluation of each move of a gate: human brief's row (the fixture's four
+	// risk-gated /01 briefs): that rule is the only one a move of such a row
+	// reaches beyond its own stream.
+	if bound := len(statusKeyedLintRules) + 4; got.Stats.FullRuleEvals > bound || got.Stats.Moves != 36 {
 		t.Fatalf("36 moves took %d whole-board rule evaluations (want at most %d) over %d evaluated moves", got.Stats.FullRuleEvals, bound, got.Stats.Moves)
 	}
 }

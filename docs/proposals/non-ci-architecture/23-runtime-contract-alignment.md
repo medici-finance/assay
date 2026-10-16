@@ -153,7 +153,7 @@ at that main revision. Existing evaluation APIs and runner protocol remain reusa
 | Admission, controller and complete verifier proof | graph-execution/14, /21, /18; R5 proof remains required |
 | Retained records and truthful audit exports | graph-execution/15 and existing records policy; no new audit store |
 | Source queries, immutable cache, incremental indexes and Git reuse | merged forge-neutral/39–45 beside /37–38; preserve their existing owners |
-| Local-first opt-in performance collection | performance-collection/01–06; separate database and required audit unaffected |
+| Local-first opt-in performance collection | performance-collection/01–09; collection first, offline/daily reports, bounded issue/draft-repair proposals; separate database and required audit unaffected |
 | Complete derived-evaluation context and time-bounded applicability | **new graph-execution/30**; existing /03 coverage handles source/policy/build/environment reuse, while this adds explicit validity/context records for runtime consumers |
 | Accountable principals and evidence assurance provenance | **new graph-execution/31**; existing attribution/role checks do not supply principal/delegation independence or proof-class qualification |
 
@@ -164,3 +164,21 @@ qualification. The real R1 head remains independent verification of /02 before /
 R7 owner selection and R3–R8 follow-up amendments remain with their existing package owners,
 not silently completed by this document. Threshold signing, federation, native SCM, cold-log
 storage and multi-host overlapping writers remain separately scoped later work.
+
+## Operating reporting amendment — 15 October 2026
+
+Reuse performance-collection/01–09: local producer capture/coverage → saved snapshots →
+one deterministic on-demand command/thin skill → daily report generation → separately
+qualified issue/draft-repair proposal mode. All three views (brief completion history,
+stream movement/stall evidence, tool run/total/Avg/P95 wall-child-CPU-forge trends) use the
+same typed results for CLI, daily artifacts and R7 clients. Local collection/reporting is
+useful before R2–R8 and before the optional remote store. It has no work admission/effect
+credentials; optional data loss cannot reset required accounting.
+
+R2 owns managed occurrences, schedules, leases and cumulative budgets; R3 owns execution;
+R4 reconciles stable issue/PR effects; R6 supplies authorized source snapshots. The optional
+performance database holds observations/distributions, not current work/acceptance truth.
+Continuing-operations owns assessment meaning; existing desks own investigation, candidate,
+review and verification. A merged repair remains awaiting measured outcome, and missing
+coverage cannot justify a repair. No second scheduler, runtime DB, forge writer or policy
+self-modification is introduced. Existing default gates and qualified legacy paths remain.

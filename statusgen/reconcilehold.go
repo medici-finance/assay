@@ -156,6 +156,12 @@ var statusKeyedLintRules = []statusKeyedLintRule{
 	{"danglingSatisfiesProblems", func(e *lintEnv) []string { return danglingSatisfiesProblems(e.root, e.streams) }, statusInvariant},
 	// Reads the tree itself (it re-renders each drive-snapshot region from disk),
 	// which is why a move is evaluated with the README already written.
+	// Judges a gate: human brief's status move against the merge-base, reading
+	// the working tree's READMEs through readStreamREADME (so a staged move is
+	// seen). Evaluated over the whole board on every move: a reconcile write that
+	// would carry a gate: human brief to implemented or later without a recorded
+	// ruling is HELD, not kept to red its own PR.
+	{"decisionGateHoldProblems", func(e *lintEnv) []string { p, _ := decisionGateHoldProblems(e.root); return p }, decisionGateIncremental},
 	{"driveRegionLintProblems", func(e *lintEnv) []string { p, _ := driveRegionLintProblems(e.root, nowFunc()); return p }, driveIncremental},
 }
 
