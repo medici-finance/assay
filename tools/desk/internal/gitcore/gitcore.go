@@ -881,8 +881,8 @@ func (r *Repo) RemoteURL(name string) (string, error) {
 	return urls[0], nil
 }
 
-// RemoteURLs returns EVERY URL configured for the named remote, in order — the whole
-// remote.<name>.url list, where RemoteURL returns only the first. A caller that gates a fetch
+// RemoteURLs returns every FETCH URL configured for the named remote, in order — the
+// remote.<name>.url list, excluding remote.<name>.pushurl. A caller that gates a fetch
 // on the URL it will connect to uses this so a multi-valued list is seen as multi-valued
 // rather than silently narrowed to its first entry.
 //
@@ -891,15 +891,23 @@ func (r *Repo) RemoteURL(name string) (string, error) {
 // strings returned are the strings a following Fetch should be handed, so the gate and the
 // connection cannot disagree.
 func (r *Repo) RemoteURLs(name string) ([]string, error) {
-	remote, err := r.repo.Remote(name)
+	cfg, err := r.repo.Config()
 	if err != nil {
 		return nil, fmt.Errorf("gitcore: remote-urls %s: %w", name, err)
 	}
-	urls := remote.Config().URLs
-	if len(urls) == 0 {
-		return nil, fmt.Errorf("gitcore: remote-urls %s: no URL configured", name)
+	remote, ok := cfg.Remotes[name]
+	if !ok {
+		return nil, fmt.Errorf("gitcore: remote-urls %s: %w", name, git.ErrRemoteNotFound)
 	}
-	return append([]string(nil), urls...), nil
+	// go-git appends raw url entries before pushurl entries, then applies insteadOf
+	// in place. Count fetch entries in the SAME config snapshot and retain that
+	// rewritten prefix; reading raw values alone would lose the rewrite. Do not
+	// deduplicate: two actual fetch entries must remain visible to the caller.
+	n := len(cfg.Raw.Section("remote").Subsection(name).OptionAll("url"))
+	if n == 0 {
+		return nil, fmt.Errorf("gitcore: remote-urls %s: no fetch URL configured", name)
+	}
+	return append([]string(nil), remote.URLs[:n]...), nil
 }
 
 // CommitVerifyQuiet reports whether rev resolves to a commit, matching
