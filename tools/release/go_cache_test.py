@@ -119,6 +119,23 @@ class CacheTests(unittest.TestCase):
             cache.unpack(root/'cache.zip',root/'restored',digest,self.key)
             self.assertEqual((root/'restored/build/ab/a').read_bytes(),b'cache object')
 
+    def test_pack_round_trip_keeps_exec_bit(self):
+        # Go execs cached `go run` binaries straight out of GOCACHE.
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d); (root/'owned/build/ab').mkdir(parents=True);(root/'owned/mod').mkdir()
+            tool=root/'owned/build/ab/tool-d'; plain=root/'owned/build/ab/object-a'
+            tool.write_bytes(b'#!/bin/sh\n'); tool.chmod(0o755)
+            plain.write_bytes(b'cache object'); plain.chmod(0o644)
+            cache.pack(root/'owned',root/'go-cache.tar',self.key)
+            with zipfile.ZipFile(root/'cache.zip','w') as z: z.write(root/'go-cache.tar','go-cache.tar')
+            digest=hashlib.sha256((root/'cache.zip').read_bytes()).hexdigest()
+            old=os.umask(0o077)
+            try: cache.unpack(root/'cache.zip',root/'restored',digest,self.key)
+            finally: os.umask(old)
+            self.assertTrue(os.access(root/'restored/build/ab/tool-d',os.X_OK))
+            self.assertEqual((root/'restored/build/ab/tool-d').stat().st_mode & 0o111,0o111)
+            self.assertEqual((root/'restored/build/ab/object-a').stat().st_mode & 0o111,0)
+
     def test_source_contract(self):
         with mock.patch.object(cache.subprocess, 'run') as run, mock.patch.object(cache.subprocess, 'check_output') as show, mock.patch.object(cache.Path, 'read_bytes', return_value=b'approved'):
             run.return_value.returncode=0; show.return_value=b'approved'

@@ -126,6 +126,10 @@ def unpack(archive, destination, digest, key):
                         target.parent.mkdir(parents=True, exist_ok=True)
                         with t.extractfile(member) as source, target.open('xb') as out:
                             shutil.copyfileobj(source, out)
+                        # open('xb') ignores the member mode; Go execs cached
+                        # `go run` binaries directly, so restore the exec bit.
+                        if member.mode & 0o100:
+                            target.chmod(0o755)
                 (stage/'build').mkdir(exist_ok=True); (stage/'mod').mkdir(exist_ok=True)
                 stage.rename(destination)
         except (zipfile.BadZipFile, tarfile.TarError, OSError, ValueError) as e:
