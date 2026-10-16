@@ -26,6 +26,7 @@ const (
 	stepTokenMint       = "token-mint"
 	stepBoardFetch      = "board-fetch"
 	stepWorktreeCurrent = "worktree-current"
+	stepFirstSweep      = "first-sweep-prereqs"
 )
 
 // bootSteps is the ordered step list, used for the plan output and pinned by a test so a
@@ -35,6 +36,8 @@ const (
 // no verified envelope has no business reading a queue it might act on. The currency
 // check comes LAST because it reads the FETCH_HEAD the board fetch wrote (#1157): a boot
 // that stopped at the fetch had proved main was readable, not that this tree was main.
+// The first-sweep check comes after THAT, because the pin file it reads is only worth
+// reading once it is proven to be main's (#2986).
 var bootSteps = []string{
 	stepLoopIdentity,
 	stepWorktreePrune,
@@ -44,6 +47,7 @@ var bootSteps = []string{
 	stepTokenMint,
 	stepBoardFetch,
 	stepWorktreeCurrent,
+	stepFirstSweep,
 }
 
 // loopToTokenRole maps a desk LOOP name (what a session presents in $DESK_LOOP, and what
@@ -228,6 +232,16 @@ func boot(o bootOpts) error {
 		return err
 	}
 	o.say("%s OK: %s", stepWorktreeCurrent, current)
+
+	// 9 — the prerequisites the role's first sweep reads (#2986). Eight green steps on a
+	// roster with no forge mapping and a statusgen-only pin file was the incident: the very
+	// next `desksupervise status --stops` and `deskboard` read both failed.
+	began = time.Now()
+	prereqs, err := stepPrereqs(o)
+	if err := stepPerf(stepFirstSweep, began, err); err != nil {
+		return err
+	}
+	o.say("%s OK: %s", stepFirstSweep, prereqs)
 
 	fmt.Printf("deskboot: BOOT COMPLETE — role=%s token-role=%s root=%s (%d/%d steps)\n",
 		o.role, tokenRole, o.root, len(bootSteps), len(bootSteps))

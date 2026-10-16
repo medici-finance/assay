@@ -1,0 +1,15 @@
+# SYNTHETIC test fixture: invented inbound, never a real disposition.
+id: syn-i12
+inbound: "Synthetic inbound syn-i12: a reader asks which of two widget storage layouts to adopt."
+expected_exit: needs-decision
+methodology_version: "2026-01-01"
+scoring: scored
+provenance:
+  type: synthetic-ruling
+  tier: synthetic-tier
+  ratification: confirmed
+  ref: synthetic/register#syn-i12
+  confirmed_by: synthetic-reviewer
+  date: "2026-01-01"
+  quote: "Synthetic: routed syn-i12 to needs-decision."
+notes: "Synthetic fixture for the scorer's own tests."

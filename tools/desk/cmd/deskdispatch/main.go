@@ -155,6 +155,14 @@ change and, like the verifier's, is excluded from issue intake, boards and sweep
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 
+  Before step 1, two brief-side holds refuse with exit 5, naming claim-acquire, with
+  nothing claimed and no worktree made: a --brief whose exec-tier is stricter than
+  --tier (checked on a --dry-run too), and a fresh worker dispatch of a gate: human
+  brief whose decision issue (its decision-issue: field, else the issue carrying its
+  decision-gate marker) is open, carries needs-decision, and has no ruling from the
+  ratifying identity since that label was applied. A decision read that fails, or
+  a brief whose decision issue does not exist yet, does not hold.
+
   1 claim-acquire     runs the claim tool's acquire <claim-key>. The tool is the pure-Go
                       deskclaim-ref binary when it is on PATH (installed with desk-tools;
                       no shebang .sh, no --claim-root, so a green-field or Windows adopter
@@ -357,6 +365,9 @@ func main() {
 	// ...and the review round's reads: the pre-dispatch gate and the lane's scope and round
 	// number (reviewroundread.go). Unwired, a review dispatch holds nothing and states a full pass.
 	reviewRoundForgeFn = liveReviewRoundForge
+	// ...and the brief-admission decision hold's read (briefadmission.go). Unwired, a
+	// human-gated brief is never held on its decision issue.
+	decisionWaitForgeFn = liveDecisionWaitForge
 	os.Exit(deskkit.PerfRun("deskdispatch", perfVerbs, os.Args[1:], run))
 }
 

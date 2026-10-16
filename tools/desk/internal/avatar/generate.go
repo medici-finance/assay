@@ -24,8 +24,9 @@ const MaxRenderSize = 4096
 type Tier string
 
 const (
-	// TierTeam is the two-App set an adopter installs first: a read tile and an
-	// act tile, both hued from the org login and inverted against each other.
+	// TierTeam is the three-App set an adopter installs first: a read tile and
+	// an act tile, both hued from the org login and inverted against each other,
+	// and a review tile in the same hue carrying the family reviewer's disc.
 	TierTeam Tier = "team"
 	// TierFamily is the full role suite, one hue per role.
 	TierFamily Tier = "family"
@@ -42,6 +43,10 @@ type Options struct {
 	// colour. It exists for the proof's collapse test (Verify row 6): forcing
 	// every hue to #3366FF must make the proof name a colliding pair.
 	forceAccent *rgb
+	// reviewLikeRead, when true, makes the team review tile a copy of the read
+	// tile under the review App's name. It exists for the proof's rejection test:
+	// an indistinguishable review tile must make Generate fail naming both Apps.
+	reviewLikeRead bool
 }
 
 // Avatar is one generated App tile: its SVG source plus a PNG per requested size.
@@ -169,7 +174,23 @@ func specsFor(org string, tier Tier, opts Options) ([]tileSpec, error) {
 			Body: accent, Frame: accentDark, GlyphColor: hexColor(colInkDark),
 			Initials: initials, IdentColor: identColor(accent), Avatar: opts.Avatar,
 		}
-		return []tileSpec{read, act}, nil
+		// The review tile sits between the other two in tone: a muted body in the
+		// adopter's hue (the family tiles' body mix), an accent frame, and the
+		// family reviewer's glyph — a solid disc — in the light ink. Read has a
+		// dark body, act a bright one; review's light disc is the one large bright
+		// central mark in the set, so the 20 px proof separates it from both by
+		// silhouette for every hue (TestTeamProofEveryHue).
+		reviewBody := mix(accent, dark, 0.55)
+		review := tileSpec{
+			App: org + "-review", Glyph: GlyphDisc,
+			Body: reviewBody, Frame: accent, GlyphColor: hexColor(colGlyphLite),
+			Initials: initials, IdentColor: identColor(reviewBody), Avatar: opts.Avatar,
+		}
+		if opts.reviewLikeRead {
+			review = read
+			review.App = org + "-review"
+		}
+		return []tileSpec{read, act, review}, nil
 	case TierFamily:
 		specs := make([]tileSpec, 0, len(familyRoles))
 		for _, r := range familyRoles {

@@ -1,0 +1,2 @@
+### Added
+- `tools/intake-eval` scores intake-routing decisions against a consumer-supplied gold set. It reports precision, recall and F1 for each of the five intake exits, never a blended accuracy. It also returns a PASS/FAIL verdict from per-exit precision and F1 floors, a baseline-regression bound and an advisory mode. Metrics that are undefined for the data are reported as unmeasured, never as 0.
