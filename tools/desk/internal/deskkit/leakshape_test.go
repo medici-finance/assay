@@ -166,7 +166,7 @@ func TestS2ShapeNearMissesClean(t *testing.T) {
 // regression: #3159
 func TestS2ShapeAllowIsExact(t *testing.T) {
 	example := "doc: " + plantHomeMac + "/work\n"
-	entry := ShapeAllow{Path: "docs/guide.md", Shape: string(ShapeHomePath), Values: []string{plantHomeMac}, Reason: "documented example"}
+	entry := ShapeAllow{Path: "docs/guide.md", Shape: string(ShapeHomePath), SHA256: []string{ShapeValueDigest(plantHomeMac)}, Reason: "documented example"}
 	list := ShapeAllowList{Entries: []ShapeAllow{entry}}
 
 	run := func(t *testing.T, files map[string]string, l ShapeAllowList) ShapeReport {
@@ -208,36 +208,52 @@ func TestS2ShapeAllowIsExact(t *testing.T) {
 			t.Fatalf("stale = %v, want the one unmatched entry", rep.Stale)
 		}
 	})
-	t.Run("allow file carries only declared values", func(t *testing.T) {
+	t.Run("allow file is swept like any other file", func(t *testing.T) {
+		// The allow file names values by digest, so it carries no shape and has no
+		// self-exclusion: a value written into it in the clear is a hit like anywhere else.
 		src := "allow.yaml"
-		l := ShapeAllowList{Source: src, Entries: []ShapeAllow{entry}}
-		declared := "values: [" + plantHomeMac + "]\n"
-		rep := run(t, map[string]string{"docs/guide.md": example, src: declared}, l)
+		digests := "sha256: [" + ShapeValueDigest(plantHomeMac) + "]\n"
+		rep := run(t, map[string]string{"docs/guide.md": example, src: digests}, list)
 		if rep.State != StageClean {
-			t.Fatalf("declared value in the allow file: state %s hits %+v, want clean", rep.State, rep.Hits)
+			t.Fatalf("digest-only allow file: state %s hits %+v, want clean", rep.State, rep.Hits)
 		}
-		rep = run(t, map[string]string{"docs/guide.md": example, src: declared + "# " + plantAltValue + "\n"}, l)
+		rep = run(t, map[string]string{"docs/guide.md": example, src: digests + "# " + plantHomeMac + "\n"}, list)
 		if rep.State != StageFailed || len(rep.Hits) != 1 || rep.Hits[0].Path != src {
-			t.Fatalf("undeclared value in the allow file: state %s hits %+v, want one hit there", rep.State, rep.Hits)
+			t.Fatalf("clear value in the allow file: state %s hits %+v, want one hit there", rep.State, rep.Hits)
+		}
+	})
+	t.Run("location names the digest an entry needs", func(t *testing.T) {
+		rep := run(t, map[string]string{"docs/guide.md": example + "also: " + plantAltValue + "\n"}, list)
+		if len(rep.Hits) != 1 {
+			t.Fatalf("hits %+v, want one", rep.Hits)
+		}
+		loc := rep.Hits[0].Location()
+		if !strings.Contains(loc, "sha256:"+ShapeValueDigest(plantAltValue)) || strings.Contains(loc, plantAltValue) {
+			t.Fatalf("Location %q: want the value's digest and never the value", loc)
 		}
 	})
 }
 
 // regression: #3159
 func TestS2ShapeAllowValidation(t *testing.T) {
-	ok := "  - path: docs/guide.md\n    shape: home-path\n    values: ['x']\n    reason: documented example\n"
+	okDigest := ShapeValueDigest("x")
+	ok := "  - path: docs/guide.md\n    shape: home-path\n    sha256: ['" + okDigest + "']\n    reason: documented example\n"
 	cases := map[string]string{
-		"no reason":     "  - path: docs/guide.md\n    shape: home-path\n    values: ['x']\n",
-		"blank reason":  "  - path: docs/guide.md\n    shape: home-path\n    values: ['x']\n    reason: '  '\n",
-		"no values":     "  - path: docs/guide.md\n    shape: home-path\n    reason: r\n",
-		"no path":       "  - shape: home-path\n    values: ['x']\n    reason: r\n",
-		"unknown shape": "  - path: docs/guide.md\n    shape: home-dir\n    values: ['x']\n    reason: r\n",
-		"glob path":     "  - path: docs/*.md\n    shape: home-path\n    values: ['x']\n    reason: r\n",
-		"dir path":      "  - path: docs/\n    shape: home-path\n    values: ['x']\n    reason: r\n",
-		"parent path":   "  - path: ../docs/guide.md\n    shape: home-path\n    values: ['x']\n    reason: r\n",
-		"absolute path": "  - path: /docs/guide.md\n    shape: home-path\n    values: ['x']\n    reason: r\n",
-		"duplicate":     ok + ok,
-		"unknown key":   "  - path: docs/guide.md\n    shape: home-path\n    values: ['x']\n    reason: r\n    glob: true\n",
+		"no reason":      "  - path: docs/guide.md\n    shape: home-path\n    sha256: ['" + okDigest + "']\n",
+		"blank reason":   "  - path: docs/guide.md\n    shape: home-path\n    sha256: ['" + okDigest + "']\n    reason: '  '\n",
+		"no values":      "  - path: docs/guide.md\n    shape: home-path\n    reason: r\n",
+		"clear value":    "  - path: docs/guide.md\n    shape: home-path\n    sha256: ['x']\n    reason: r\n",
+		"short digest":   "  - path: docs/guide.md\n    shape: home-path\n    sha256: ['" + okDigest[:63] + "']\n    reason: r\n",
+		"upper digest":   "  - path: docs/guide.md\n    shape: home-path\n    sha256: ['" + strings.ToUpper(okDigest) + "']\n    reason: r\n",
+		"old values key": "  - path: docs/guide.md\n    shape: home-path\n    values: ['x']\n    reason: r\n",
+		"no path":        "  - shape: home-path\n    sha256: ['" + okDigest + "']\n    reason: r\n",
+		"unknown shape":  "  - path: docs/guide.md\n    shape: home-dir\n    sha256: ['" + okDigest + "']\n    reason: r\n",
+		"glob path":      "  - path: docs/*.md\n    shape: home-path\n    sha256: ['" + okDigest + "']\n    reason: r\n",
+		"dir path":       "  - path: docs/\n    shape: home-path\n    sha256: ['" + okDigest + "']\n    reason: r\n",
+		"parent path":    "  - path: ../docs/guide.md\n    shape: home-path\n    sha256: ['" + okDigest + "']\n    reason: r\n",
+		"absolute path":  "  - path: /docs/guide.md\n    shape: home-path\n    sha256: ['" + okDigest + "']\n    reason: r\n",
+		"duplicate":      ok + ok,
+		"unknown key":    "  - path: docs/guide.md\n    shape: home-path\n    sha256: ['" + okDigest + "']\n    reason: r\n    glob: true\n",
 	}
 	dir := t.TempDir()
 	write := func(body string) string {
@@ -261,7 +277,7 @@ func TestS2ShapeAllowValidation(t *testing.T) {
 
 	// An invalid list handed straight to the sweep is could-not-check, never clean.
 	tree := shapeTree(t, map[string]string{"a.txt": "clean\n"})
-	bad := ShapeAllowList{Entries: []ShapeAllow{{Path: "a.txt", Shape: string(ShapeHomePath), Values: []string{"x"}}}}
+	bad := ShapeAllowList{Entries: []ShapeAllow{{Path: "a.txt", Shape: string(ShapeHomePath), SHA256: []string{ShapeValueDigest("x")}}}}
 	rep, err := ShapeSweep(tree, bad)
 	if err != nil {
 		t.Fatal(err)

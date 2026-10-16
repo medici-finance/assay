@@ -37,20 +37,24 @@ package deskkit
 // THE ALLOW FILE. A documented example — a test fixture that needs a home path to exercise a
 // path guard, a placeholder remote in a doc comment — is a reviewed exception, not a blind
 // spot. Each `allow:` entry names ONE file (exact repo-relative path, no directories, no
-// globs), ONE shape, the exact matched VALUES it permits, and a non-empty reason. A value the
-// entry does not list still fails, in that file or any other, so a real identity cannot ride
-// in on a file that already holds an example. An entry that no longer matches anything is
-// STALE and is reported, so the list cannot rot into a blanket. The allow file must itself
-// name the values it permits, so the stage does not skip it: inside the allow file, a match
-// is permitted only when its exact (shape, value) pair is declared by some entry.
+// globs), ONE shape, the exact matched values it permits, and a non-empty reason. A value is
+// named by the SHA-256 digest of its matched text, never by the text: the allow file then
+// carries no shape itself, so it is swept like every other file (no self-exclusion) and an
+// allow entry never re-publishes what it permits. A value the entry does not list still
+// fails, in that file or any other, so a real identity cannot ride in on a file that already
+// holds an example. An entry that no longer matches anything is STALE and is reported, so
+// the list cannot rot into a blanket.
 //
-// Matched VALUES are never echoed in a failure message by the gate (ShapeHit.Location is
-// path:line and shape only): printing the value would copy the leak into a CI log.
+// Matched VALUES are never echoed in a failure message by the gate: ShapeHit.Location is
+// path:line, the shape and the value's digest — exactly what an allow entry needs, and
+// nothing that copies the leak into a CI log.
 //
 // Register row: R-tree-leak-shape (docs/contracts.md).
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -174,37 +178,49 @@ type ShapeHit struct {
 	Value string    // the matched text — for tests and the allow file, never for a CI log
 }
 
-// Location is the hit as path:line plus its shape, WITHOUT the matched value.
+// Digest is the hit's allow-file token: the SHA-256 of the matched text, lower-case hex.
+func (h ShapeHit) Digest() string { return ShapeValueDigest(h.Value) }
+
+// Location is the hit as path:line, its shape and its value's digest, WITHOUT the matched
+// value.
 func (h ShapeHit) Location() string {
 	if h.Line == 0 {
-		return fmt.Sprintf("%s (symlink target) [%s]", h.Path, h.Shape)
+		return fmt.Sprintf("%s (symlink target) [%s] sha256:%s", h.Path, h.Shape, h.Digest())
 	}
-	return fmt.Sprintf("%s:%d [%s]", h.Path, h.Line, h.Shape)
+	return fmt.Sprintf("%s:%d [%s] sha256:%s", h.Path, h.Line, h.Shape, h.Digest())
 }
 
-// ShapeAllow is one reviewed `allow:` exception.
+// ShapeValueDigest is how an allow entry names a value: the SHA-256 of its exact matched
+// text, as 64 lower-case hex digits.
+func ShapeValueDigest(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
+
+// ShapeAllow is one reviewed `allow:` exception. SHA256 lists the digests
+// (ShapeValueDigest) of the exact values the entry permits.
 type ShapeAllow struct {
 	Path   string   `yaml:"path"`
 	Shape  string   `yaml:"shape"`
-	Values []string `yaml:"values"`
+	SHA256 []string `yaml:"sha256"`
 	Reason string   `yaml:"reason"`
 }
 
-// ShapeAllowList is a loaded allow file. Source is the allow file's own repo-relative path
-// (empty when the list was built in memory); see the file header for how it is swept.
+// ShapeAllowList is a loaded allow file.
 type ShapeAllowList struct {
-	Source  string
 	Entries []ShapeAllow
 }
+
+var reSHA256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 type shapeAllowFile struct {
 	Allow []ShapeAllow `yaml:"allow"`
 }
 
 // LoadShapeAllow reads and validates the allow file at file; rel is its repo-relative path.
-// Any defect — an unreadable file, an unknown key, an entry missing its path, shape, values
-// or reason, an unknown shape, a non-canonical path, a duplicated (path, shape) — is an
-// error, and a caller must read an error as could-not-check, never as an empty list.
+// Any defect — an unreadable file, an unknown key, an entry missing its path, shape, digests
+// or reason, a digest that is not 64 lower-case hex, an unknown shape, a non-canonical path,
+// a duplicated (path, shape) — is an error, and a caller must read an error as could-not-check, never as an empty list.
 func LoadShapeAllow(file, rel string) (ShapeAllowList, error) {
 	raw, err := os.ReadFile(file)
 	if err != nil {
@@ -216,7 +232,7 @@ func LoadShapeAllow(file, rel string) (ShapeAllowList, error) {
 	if err := dec.Decode(&doc); err != nil {
 		return ShapeAllowList{}, fmt.Errorf("%s: %w", rel, err)
 	}
-	list := ShapeAllowList{Source: filepath.ToSlash(rel), Entries: doc.Allow}
+	list := ShapeAllowList{Entries: doc.Allow}
 	if err := list.validate(); err != nil {
 		return ShapeAllowList{}, fmt.Errorf("%s: %w", rel, err)
 	}
@@ -251,12 +267,12 @@ func (l ShapeAllowList) validate() error {
 		if strings.TrimSpace(e.Reason) == "" {
 			problems = append(problems, fmt.Sprintf("%s (%s): no reason — an unexplained exception is a blind spot", at, e.Path))
 		}
-		if len(e.Values) == 0 {
-			problems = append(problems, fmt.Sprintf("%s (%s): no values — an entry permits only the exact values it lists", at, e.Path))
+		if len(e.SHA256) == 0 {
+			problems = append(problems, fmt.Sprintf("%s (%s): no sha256 — an entry permits only the exact values it lists", at, e.Path))
 		}
-		for _, v := range e.Values {
-			if strings.TrimSpace(v) == "" {
-				problems = append(problems, fmt.Sprintf("%s (%s): empty value", at, e.Path))
+		for _, d := range e.SHA256 {
+			if !reSHA256Hex.MatchString(d) {
+				problems = append(problems, fmt.Sprintf("%s (%s): sha256 %q is not 64 lower-case hex digits", at, e.Path, d))
 			}
 		}
 		key := e.Path + "\x00" + e.Shape
@@ -379,28 +395,23 @@ func shapeSweep(root string, allow ShapeAllowList, rules []shapeRule) (ShapeRepo
 		return cnc("rule(s) failed their positive control: " + strings.Join(broken, "; "))
 	}
 
-	type allowKey struct{ path, shape, value string }
+	type allowKey struct{ path, shape, digest string }
 	allowed := map[allowKey]bool{}
-	declared := map[[2]string]bool{} // (shape, value) declared anywhere — what the allow file may itself carry
 	used := map[allowKey]bool{}
 	for _, e := range allow.Entries {
-		for _, v := range e.Values {
-			allowed[allowKey{e.Path, e.Shape, v}] = true
-			declared[[2]string{e.Shape, v}] = true
+		for _, d := range e.SHA256 {
+			allowed[allowKey{e.Path, e.Shape, d}] = true
 		}
 	}
 
 	record := func(rel string, line int, shape LeakShape, value string) {
-		k := allowKey{rel, string(shape), value}
-		switch {
-		case allowed[k]:
+		k := allowKey{rel, string(shape), ShapeValueDigest(value)}
+		if allowed[k] {
 			used[k] = true
 			rep.Allowed++
-		case rel == allow.Source && allow.Source != "" && declared[[2]string{string(shape), value}]:
-			rep.Allowed++
-		default:
-			rep.Hits = append(rep.Hits, ShapeHit{Path: rel, Line: line, Shape: shape, Value: value})
+			return
 		}
+		rep.Hits = append(rep.Hits, ShapeHit{Path: rel, Line: line, Shape: shape, Value: value})
 	}
 	scan := func(rel, body string, symlink bool) {
 		for _, r := range rules {
@@ -480,9 +491,9 @@ func shapeSweep(root string, allow ShapeAllowList, rules []shapeRule) (ShapeRepo
 		return rep.Hits[i].Shape < rep.Hits[j].Shape
 	})
 	for _, e := range allow.Entries {
-		for _, v := range e.Values {
-			if !used[allowKey{e.Path, e.Shape, v}] {
-				rep.Stale = append(rep.Stale, fmt.Sprintf("%s [%s] %q", e.Path, e.Shape, v))
+		for _, d := range e.SHA256 {
+			if !used[allowKey{e.Path, e.Shape, d}] {
+				rep.Stale = append(rep.Stale, fmt.Sprintf("%s [%s] sha256:%s", e.Path, e.Shape, d))
 			}
 		}
 	}

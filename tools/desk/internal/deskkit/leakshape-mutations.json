@@ -46,20 +46,20 @@
     {
       "name": "allow by (path, shape) only, ignoring the listed values (a real identity rides in beside an example)",
       "file": "internal/deskkit/leakshape.go",
-      "old": "\t\t\tallowed[allowKey{e.Path, e.Shape, v}] = true\n\t\t\tdeclared[[2]string{e.Shape, v}] = true\n\t\t}\n\t}\n\n\trecord := func(rel string, line int, shape LeakShape, value string) {\n\t\tk := allowKey{rel, string(shape), value}\n",
-      "new": "\t\t\tallowed[allowKey{e.Path, e.Shape, \"\"}] = true\n\t\t\tdeclared[[2]string{e.Shape, v}] = true\n\t\t}\n\t}\n\n\trecord := func(rel string, line int, shape LeakShape, value string) {\n\t\tk := allowKey{rel, string(shape), \"\"}\n"
+      "old": "\t\t\tallowed[allowKey{e.Path, e.Shape, d}] = true\n\t\t}\n\t}\n\n\trecord := func(rel string, line int, shape LeakShape, value string) {\n\t\tk := allowKey{rel, string(shape), ShapeValueDigest(value)}\n",
+      "new": "\t\t\tallowed[allowKey{e.Path, e.Shape, \"\"}] = true\n\t\t}\n\t}\n\n\trecord := func(rel string, line int, shape LeakShape, value string) {\n\t\tk := allowKey{rel, string(shape), \"\"}\n"
     },
     {
-      "name": "let the allow file carry any value (blind self-exclusion)",
+      "name": "exempt the allow file from the sweep (a value written into it in the clear rides through)",
       "file": "internal/deskkit/leakshape.go",
-      "old": "case rel == allow.Source && allow.Source != \"\" && declared[[2]string{string(shape), value}]:",
-      "new": "case rel == allow.Source && allow.Source != \"\":"
+      "old": "\t\tif allowed[k] {",
+      "new": "\t\tif allowed[k] || rel == \"allow.yaml\" {"
     },
     {
       "name": "drop stale-entry reporting (the allow list rots into a blanket)",
       "file": "internal/deskkit/leakshape.go",
-      "old": "\t\t\tif !used[allowKey{e.Path, e.Shape, v}] {",
-      "new": "\t\t\tif false && !used[allowKey{e.Path, e.Shape, v}] {"
+      "old": "\t\t\tif !used[allowKey{e.Path, e.Shape, d}] {",
+      "new": "\t\t\tif false && !used[allowKey{e.Path, e.Shape, d}] {"
     },
     {
       "name": "skip the canary self-test (a broken rule's silence reads as clean)",
