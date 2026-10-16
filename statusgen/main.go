@@ -2358,7 +2358,7 @@ func main() {
 			exitProcess(1)
 		}
 		fmt.Printf("register-links: %d bare references linked across brief files\n", n)
-		return
+		exitProcess(0)
 	}
 	// Lint-audit (statusgen/01) — read-only advisory sub-command: sample daily commits
 	// over 30 days, tally per-rule firing counts, flag COLD rules. Never retires a

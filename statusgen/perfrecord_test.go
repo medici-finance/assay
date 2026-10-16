@@ -294,6 +294,54 @@ func exitCallers(t *testing.T, dir string) (callers []string, flagExits []string
 	return callers, flagExits
 }
 
+// mainReturnExits parses the package's func main and returns the position of every return
+// statement belonging to main itself (not to a nested function literal), plus whether the
+// body's last statement is a call to exitProcess. A bare return ends the process with exit 0
+// without passing through the recorder, the same blind spot as a direct os.Exit.
+func mainReturnExits(t *testing.T, dir string) (returns []string, endsInExit bool, found bool) {
+	t.Helper()
+	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range files {
+		if strings.HasSuffix(p, "_test.go") {
+			continue
+		}
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, p, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", p, err)
+		}
+		for _, d := range f.Decls {
+			fd, ok := d.(*ast.FuncDecl)
+			if !ok || fd.Recv != nil || fd.Name.Name != "main" || fd.Body == nil {
+				continue
+			}
+			found = true
+			ast.Inspect(fd.Body, func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.FuncLit:
+					return false
+				case *ast.ReturnStmt:
+					returns = append(returns, fset.Position(x.Pos()).String())
+				}
+				return true
+			})
+			if n := len(fd.Body.List); n > 0 {
+				if es, ok := fd.Body.List[n-1].(*ast.ExprStmt); ok {
+					if call, ok := es.X.(*ast.CallExpr); ok {
+						if id, ok := call.Fun.(*ast.Ident); ok && id.Name == "exitProcess" {
+							endsInExit = true
+						}
+					}
+				}
+			}
+		}
+	}
+	return returns, endsInExit, found
+}
+
 // TestMainExitsOnlyViaRecorder: main() ends the process only through exitProcess, so no exit
 // path escapes the perf record. The only other os.Exit in the package is the check:ci sandbox
 // helper child (netns.go), which must NOT record.
@@ -307,6 +355,27 @@ func TestMainExitsOnlyViaRecorder(t *testing.T) {
 	}
 	if c, _ := exitCallers(t, plant); len(c) != 1 {
 		t.Fatalf("the scan missed a planted os.Exit: %v", c)
+	}
+
+	// Negative control: a planted bare return in main is seen, and a main that does not end
+	// in exitProcess is reported as such.
+	plantRet := t.TempDir()
+	if err := os.WriteFile(filepath.Join(plantRet, "m.go"), []byte("package main\nfunc main() {\n\tif true {\n\t\treturn\n\t}\n\texitProcess(0)\n}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if r, ends, ok := mainReturnExits(t, plantRet); !ok || len(r) != 1 || !ends {
+		t.Fatalf("the scan missed a planted bare return in main: returns=%v endsInExit=%v found=%v", r, ends, ok)
+	}
+
+	rets, endsInExit, found := mainReturnExits(t, ".")
+	if !found {
+		t.Fatal("func main not found in the package")
+	}
+	if len(rets) != 0 {
+		t.Errorf("main() has a bare return that ends the process without recording: %v — use exitProcess(0)", rets)
+	}
+	if !endsInExit {
+		t.Errorf("main() must end with a call to exitProcess so falling off the end cannot skip the record")
 	}
 
 	callers, flagExits := exitCallers(t, ".")
