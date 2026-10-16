@@ -1,0 +1,41 @@
+{
+  "test": "go test ./cmd/deskdispatch -run 'Test(LongKeyKeepsSessionSuffix|ShortenedNamesKeepItemsApart|ScopedNameUnchangedWhenItFits|OverlongSession)' -count=1 -timeout=120s",
+  "control": {
+    "name": "drop the session suffix when base-session overflows (the reported defect)",
+    "file": "cmd/deskdispatch/worktreename.go",
+    "old": "\tsum := sha256.Sum256([]byte(base))\n",
+    "new": "\treturn base, nil\n\tsum := sha256.Sum256([]byte(base))\n"
+  },
+  "mutations": [
+    {
+      "name": "fall back to the bare base at the call site when no session-unique name fits",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\tif err != nil {\n\t\t\treturn plan, deskkit.Refused(fmt.Sprintf(\"step %s: %v; nothing was claimed.\", stepWorktreeCreate, err))\n\t\t}\n\t\tplan.wtName = scoped",
+      "new": "\t\tif err != nil {\n\t\t\tscoped = base\n\t\t}\n\t\tplan.wtName = scoped"
+    },
+    {
+      "name": "shorten without the digest tag, so items sharing a long prefix collide",
+      "file": "cmd/deskdispatch/worktreename.go",
+      "old": "\tname := base[:keep] + \"-\" + tag + \"-\" + sess",
+      "new": "\tname := base[:keep] + \"-\" + sess"
+    },
+    {
+      "name": "move the length bound one character past the grammar",
+      "file": "cmd/deskdispatch/worktreename.go",
+      "old": "keep := worktreeNameMax - len(sess) - len(tag) - 2",
+      "new": "keep := worktreeNameMax - len(sess) - len(tag) - 1"
+    },
+    {
+      "name": "shorten a name that already fits",
+      "file": "cmd/deskdispatch/worktreename.go",
+      "old": "\tif full := base + \"-\" + sess; worktreeNameRe.MatchString(full) {",
+      "new": "\tif full := base + \"-\" + sess; len(full) < worktreeNameMax {"
+    },
+    {
+      "name": "accept a session that leaves no room for the item",
+      "file": "cmd/deskdispatch/worktreename.go",
+      "old": "\tif keep < 1 {",
+      "new": "\tif keep < 0 {"
+    }
+  ]
+}

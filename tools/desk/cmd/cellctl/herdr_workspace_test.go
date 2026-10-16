@@ -77,4 +77,45 @@ esac
 	if _, err := os.Stat(filepath.Join(dir, "one.ws")); !os.IsNotExist(err) {
 		t.Fatal("own workspace not closed")
 	}
+	// A create that never finished leaves an ID-less receipt; the next run recreates, never wedges.
+	three := cell("three")
+	os.MkdirAll(three.herdrDir(), 0700)
+	if err := three.saveHerdrWorkspace(&herdrWorkspace{Owner: "unfinished"}); err != nil {
+		t.Fatal(err)
+	}
+	c, err := three.ensureHerdrWorkspace()
+	if err != nil || c.ID != "three" || c.Owner == "unfinished" {
+		t.Fatal("unfinished receipt not healed", c, err)
+	}
+	if err := three.saveHerdrWorkspace(&herdrWorkspace{Owner: "unfinished"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := three.closeHerdrWorkspace(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(three.herdrDir(), "workspace.json")); !os.IsNotExist(err) {
+		t.Fatal("unfinished receipt not dropped on close")
+	}
+}
+
+// regression: assay#3027 — an unfinished create names the possible orphan; a finished one is silent.
+func TestHerdrUnfinishedReceiptWarns(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = w
+	c := &Cell{Name: "orphan-cell"}
+	c.warnUnfinishedHerdrReceipt(&herdrWorkspace{Owner: "o"}, "recreating it")
+	c.warnUnfinishedHerdrReceipt(&herdrWorkspace{ID: "ws", Owner: "o"}, "recreating it")
+	c.warnUnfinishedHerdrReceipt(nil, "recreating it")
+	os.Stderr = old
+	w.Close()
+	b := make([]byte, 4096)
+	n, _ := r.Read(b)
+	got := string(b[:n])
+	if strings.Count(got, "unfinished Herdr workspace create") != 1 || !strings.Contains(got, `"orphan-cell"`) {
+		t.Fatalf("want exactly one orphan warning naming the cell, got %q", got)
+	}
 }

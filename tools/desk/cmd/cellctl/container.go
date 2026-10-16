@@ -29,7 +29,7 @@ func (c *Cell) containerRun(args ...string) {
 		return
 	}
 	cmd := exec.Command(c.Env.Get("CELL_CONTAINER_LAUNCHER"), args...)
-	cmd.Env = []string{
+	cmd.Env = c.telemetryEnv([]string{
 		"HOME=" + c.Env.Get("HOME"),
 		"PATH=" + c.Env.Get("PATH"),
 		"TERM=" + c.Env.GetOr("TERM", "xterm-256color"),
@@ -40,7 +40,7 @@ func (c *Cell) containerRun(args ...string) {
 		"CELL_ROOTS=" + c.Env.Get("CELL_ROOTS"),
 		"CELL_HARNESS=" + c.Harness,
 		"ROLES=" + c.Env.Get("ROLES"),
-	}
+	})
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		exitWith(exitStatus(err))

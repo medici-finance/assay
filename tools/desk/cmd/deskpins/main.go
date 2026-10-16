@@ -48,7 +48,9 @@ const (
 	exitMalformed     = 3
 )
 
-func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
+func main() {
+	os.Exit(deskkit.PerfRun("deskpins", nil, os.Args[1:], func([]string) int { return run(os.Args[1:], os.Stdout, os.Stderr) }))
+}
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version" || args[0] == "version") {

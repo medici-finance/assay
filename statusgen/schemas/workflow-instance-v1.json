@@ -1,0 +1,306 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/workflow-instance-v1.json",
+  "title": "workflow-instance-v1",
+  "description": "Machine-readable contract for a workflow-instance-v1 document (spec/workflow-instance-v1.md). An instance binds one reviewed workflow-pattern-v1 pattern to one canonical work item in one Cell: the work identity, the pattern's name, version and file digest, the acceptance version and scope, the policy and control-profile revisions, immutable input references, a dependency manifest, a budget reference, and one node instance per pattern node carrying the resolved actor and the effects that node may perform. Attempts and decisions are append-only records under that contract; assignment and execution-state are a versioned projection keyed by generation. This contract is DESCRIPTIVE of shape only: required keys, field types, closed value sets and identifier forms. It deliberately does NOT encode the cross-field rules `statusgen instance validate` owns (node and attempt identifiers derived from the instance identifier, effects within both the pattern declaration and the actor's resolved capabilities, one Cell across the work and every actor, trust provenance, generation agreement, pattern digest and acceptance currency against a repository root, supersession) — those need the resolved document, the pattern or a prior revision, which a per-value schema cannot express.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "instance", "work", "pattern", "acceptance", "policy", "budget", "assignment", "execution-state", "inputs", "dependencies", "nodes"],
+  "properties": {
+    "schema": {
+      "description": "The opt-in schema marker. For this contract it is exactly workflow-instance-v1.",
+      "const": "workflow-instance-v1"
+    },
+    "digest": {
+      "description": "Export seal: an unkeyed sha256 over the canonical JSON of the whole document with this field empty. Written by export, required and recomputed by import; a mismatch means the document was altered without re-sealing. It detects accidental alteration only and authenticates nothing: authenticity comes from the store or transport. Absent on an authored (not exported) document.",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "requires": {
+      "description": "Capabilities a reader MUST understand to evaluate this document. A reader that does not implement every listed capability refuses the document (could-not-check) rather than ignoring a mandatory field.",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*@[1-9][0-9]*$" }
+    },
+    "extensions": {
+      "description": "Optional fields a reader MAY ignore. An extension a reader must understand is named in `requires` as well.",
+      "type": "object"
+    },
+    "instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "description": "The instance identifier. Node instance identifiers are `<id>.<pattern-node-id>`; attempt identifiers are `<node-instance-id>.a<ordinal>`. These are additional identities beside the canonical work identifier, never a replacement for it.",
+          "type": "string",
+          "pattern": "^inst-[a-z0-9][a-z0-9-]{2,62}$"
+        },
+        "supersedes": {
+          "description": "The instance this one replaces, named by identifier and contract digest. A changed binding creates a superseding instance; it never rewrites the prior one.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "contract-digest"],
+          "properties": {
+            "id": { "type": "string", "pattern": "^inst-[a-z0-9][a-z0-9-]{2,62}$" },
+            "contract-digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          }
+        }
+      }
+    },
+    "work": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "cell", "intent"],
+      "properties": {
+        "id": {
+          "description": "The canonical work identifier `<stream>/<NN>`.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*/[0-9]{2}[a-z]?$"
+        },
+        "cell": { "description": "The Cell the instance executes in.", "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "intent": { "description": "The accepted intent, in one or two sentences.", "type": "string" }
+      }
+    },
+    "pattern": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "digest"],
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "integer", "minimum": 1 },
+        "digest": { "description": "sha256 of the pattern file's bytes.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "acceptance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "ref", "rows"],
+      "properties": {
+        "version": { "description": "The work item's acceptance version (a brief-v2 `version:`).", "type": "integer", "minimum": 1 },
+        "ref": { "description": "Immutable reference to the acceptance text: `<path>@<40-hex commit>`.", "type": "string", "pattern": "^[^@ ]+@[0-9a-f]{40}$" },
+        "rows": { "description": "Acceptance row identifiers in scope.", "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "exclusions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "control-profile"],
+      "properties": {
+        "revision": { "type": "string", "pattern": "^[^@ ]+@[0-9a-f]{40}$" },
+        "control-profile": { "type": "string", "pattern": "^[^@ ]+@[0-9a-z.-]+$" }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref"],
+      "properties": {
+        "ref": { "description": "Reference to a budget reservation held elsewhere. Never an amount the instance can spend on its own.", "type": "string" }
+      }
+    },
+    "assignment": {
+      "description": "Which execution backend holds the work, at which generation, under which runner profile. References only: no endpoint, no credential.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "generation", "runner-profile"],
+      "properties": {
+        "backend": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "generation": { "type": "integer", "minimum": 1 },
+        "runner-profile": { "type": "string", "pattern": "^[^@ ]+@[0-9a-z.-]+$" }
+      }
+    },
+    "execution-state": {
+      "description": "Versioned projection of execution state. Its generation must equal the assignment generation.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projection-version", "generation", "state"],
+      "properties": {
+        "projection-version": { "type": "integer", "minimum": 1 },
+        "generation": { "type": "integer", "minimum": 1 },
+        "state": { "type": "string", "enum": ["pending", "running", "waiting", "succeeded", "failed", "unknown", "superseded"] }
+      }
+    },
+    "inputs": {
+      "description": "Immutable input references. Each carries its origin and a trust disposition with the source of that disposition.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "ref", "digest", "origin", "trust"],
+        "properties": {
+          "name": { "type": "string" },
+          "ref": { "type": "string" },
+          "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "origin": { "type": "string" },
+          "trust": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["disposition", "source"],
+            "properties": {
+              "disposition": { "type": "string", "enum": ["trusted", "quarantined", "unresolved"] },
+              "source": { "description": "`trust-gate` is the only authoritative source. A `reporter` source records the reporter's own label in `reported-label` and leaves the disposition unresolved.", "type": "string", "enum": ["trust-gate", "reporter"] },
+              "reported-label": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "description": "Dependency manifest: what each acceptance row's conclusion rests on, with the fingerprint pinned at instantiation. A row no entry supports has unknown coverage.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ref", "kind", "fingerprint", "supports"],
+        "properties": {
+          "ref": { "type": "string" },
+          "kind": { "type": "string", "enum": ["source", "api", "schema", "build", "policy", "environment"] },
+          "fingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "supports": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "nodes": {
+      "description": "One node instance per pattern node.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "node", "role", "actor", "effects", "evidence"],
+        "properties": {
+          "id": { "type": "string" },
+          "node": { "description": "The pattern node id this instantiates.", "type": "string" },
+          "role": { "type": "string", "enum": ["desk", "reviewer", "verifier", "worker"] },
+          "actor": {
+            "description": "The resolved actor binding: a reference to the roster binding, the Cell it acts in, and the effect kinds that binding already holds. Recorded, never granted.",
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["binding", "cell", "capabilities"],
+            "properties": {
+              "binding": { "type": "string" },
+              "cell": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+              "capabilities": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "target"],
+              "properties": {
+                "kind": { "type": "string", "enum": ["push", "pr-open", "review", "comment", "evidence-commit", "file-issue", "dispatch"] },
+                "target": { "type": "string" }
+              }
+            }
+          },
+          "evidence": {
+            "description": "The pattern node's evidence claims, copied at instantiation.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["claim", "mandatory"],
+              "properties": {
+                "claim": { "type": "string" },
+                "mandatory": { "type": "boolean" }
+              }
+            }
+          },
+          "attempts": {
+            "description": "Append-only attempt records.",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "ordinal"],
+              "properties": {
+                "id": { "type": "string" },
+                "ordinal": { "type": "integer", "minimum": 1 },
+                "observed": {
+                  "description": "Dependency fingerprints the attempt started from.",
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["ref", "fingerprint"],
+                    "properties": {
+                      "ref": { "type": "string" },
+                      "fingerprint": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+                    }
+                  }
+                },
+                "artifacts": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["ref", "digest", "bytes"],
+                    "properties": {
+                      "ref": { "type": "string" },
+                      "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+                      "bytes": { "type": "integer", "minimum": 0 },
+                      "included-bytes": { "type": "integer", "minimum": 0 },
+                      "index": { "description": "Coverage index of an excerpted artifact. Required whenever included-bytes is below bytes.", "type": "string" }
+                    }
+                  }
+                },
+                "evidence": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["claim", "artifact"],
+                    "properties": {
+                      "claim": { "type": "string" },
+                      "artifact": { "type": "string" }
+                    }
+                  }
+                },
+                "omissions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["ref", "reason"],
+                    "properties": {
+                      "ref": { "type": "string" },
+                      "reason": { "type": "string" }
+                    }
+                  }
+                },
+                "completed": { "type": "array", "items": { "type": "string" } },
+                "next-safe-action": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "decisions": {
+      "description": "Append-only decision records. Each is a reference to an external authenticated act (a forge review, a recorded ruling); the instance never holds the authority itself.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "node", "outcome", "act"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^dec-[a-z0-9][a-z0-9-]*$" },
+          "node": { "type": "string" },
+          "outcome": { "type": "string" },
+          "act": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "ref"],
+            "properties": {
+              "kind": { "const": "external-authenticated-act" },
+              "ref": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

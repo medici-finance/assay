@@ -356,6 +356,7 @@ live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares t
 | TMPDIR | `<cell>/tmp` (created 0700 if absent) |
 | KUBECONFIG | `/dev/null` |
 | ASSAY_CONFIG_HOME | `<cell>/home/.config/assay` |
+| ASSAY_TELEMETRY | Cell-resolved local logging: exactly `1` opts in; configured other values become `0`; absent stays off |
 | GH_CONFIG_DIR | `<cell>/home/.config/gh` |
 | GIT_CONFIG_GLOBAL | `<cell>/home/.gitconfig` |
 | GIT_CONFIG_NOSYSTEM | `1` |
@@ -1053,6 +1054,58 @@ cellctl show <cell>        [--kind <k>] [--cockpit <c>] [--harness <h>] [--provi
   `--kind` the cell is not provisioned for refuses just as `desk` would. Nothing is launched or
   written.
 
+### Cheap-default reset
+
+A pin that nobody revisits drifts to the most expensive setting and stays there. The reset is the
+periodic pull-back for pins nobody chose: a **DEFAULT** model pin older than the TTL is lowered to
+the harness's mid-tier model, and people move back up only when they need to.
+
+- **Pin record.** Every model pin written through `cellctl set` (or `desk`/`up --set`) is recorded in
+  `<cell>/model-pins.json` with the value the loader reads, when it was set and who owns it. A pin an
+  operator sets is **EXPLICIT**: plain `set`, the role form and `--set` all record EXPLICIT, and the
+  reset never touches it. Only `cellctl set <cell> ... --default` records a **DEFAULT** pin, one the
+  reset may lower; `--default` on a call that sets no model pin is refused. The latest `set` decides
+  the kind. Clearing a pin (`KEY=`) drops its record.
+- **What moves.** A DEFAULT pin moves only when all of these hold: it is older than the TTL; its
+  `cell.env` line is still there, non-empty and equal to the record (a different value was
+  hand-edited: that is an operator's choice, so its record is dropped and the pin is explicit from
+  then on); the mid-tier model ranks strictly BELOW it (by the
+  cell's tier map, then by the Claude family name: haiku < sonnet < opus/fable; a model neither
+  places is never moved, and the reset never raises a pin); it is not a claude pin on a provider cell
+  (`CELL_PROVIDER` or `--provider`, whose endpoint rejects tier names); and it is not the
+  coordinator's model, meaning neither the `the-desk` pin nor a harness default (`DESK_MODEL_DEFAULT`,
+  `CODEX_MODEL_default`, `CURSOR_MODEL_default`) while `the-desk` has no pin of its own on that
+  harness. EXPLICIT pins and pins with no record (provenance unknown) are never touched. Pin keys are
+  the exact per-role and harness-default names; `DESK_MODEL_OVERRIDE` and other keys sharing the
+  prefix are never pins.
+- **Target.** `TIER_MODEL_MID_<HARNESS>` from the cell's own files (`cell.env`, the machine-wide
+  defaults file), else the compiled tier map, never a variable exported in the launching shell.
+- **When.** At every `cellctl desk` boot, and on demand with `cellctl models reset <cell>
+  [--model-ttl <Nd>]`. Each repin prints one line, `[model-reset] <role>: <old> -> <new> (...)`; a
+  boot with nothing to repin prints nothing. Under `DRY_RUN=1` both plan the repin, mark each line
+  `[dry-run: not written]` and write nothing. `show` and `check` apply the same rule read-only, so the
+  model they report is the one the next boot runs: `show` prints the pending line and tags the role
+  row `pending model-reset of cell.env <KEY>`, `check` prints a `warn  model reset pending:` row.
+- **Write.** A live reset writes one `cell.env.bak-<stamp>` backup, rewrites `cell.env` atomically
+  (temp file and rename) and keeps the previous value in the record (`prev`). Every writer of
+  `cell.env` and the record (`set`, a boot, `models reset`) holds `<cell>/.model-pins.lock`; a boot
+  that cannot take it within a few seconds skips its reset with one `[model-reset] skipped` line.
+  The lock is a directory holding the owner's pid. A dead owner's lock is taken over, and a release
+  removes the lock only while it still carries the releasing process's pid; two waiters that take
+  over the same dead lock together can both proceed, and the cost is a lost update, never a torn
+  file. A lock directory with no pid file is never taken over: `set` and `models reset` refuse and
+  name the directory to remove by hand once no `cellctl` is running; a boot skips its reset.
+- **Scope of the boot reset.** The boot reset runs early in `cellctl desk`, before the model is
+  resolved and before the boot's later refusals, for every role's DEFAULT pins, under a model policy
+  and under `--model` alike. A boot that is then refused (for its own role's model, say) has
+  already lowered other roles' aged DEFAULT pins, written the backup and updated the record.
+  Only pins recorded with `set --default` are ever touched.
+- **TTL.** `CELL_MODEL_TTL_DAYS` in `cell.env`, default `7` (weekly); `0` turns the reset off for the
+  cell. It takes `7d`, a bare number of days (up to five digits, optional fraction) or a Go duration
+  (`36h`); anything else, `NaN`, `Inf`, exponents and underscores included, is refused by `set`. A
+  hand-edited malformed value refuses a boot and is a `check` MISS. `--model-ttl` replaces the cell's
+  value for one `models reset` call, so it also works while the cell's line is malformed.
+
 ---
 
 ## Harnesses
@@ -1367,23 +1420,27 @@ still overrides all four for that run, as before.
   directory, and can now also set a default for every cell at once — keep the root yours. The
   file holds no secrets of its own. It is opened as `providers.json` is — a regular file only,
   never a FIFO or a directory.
-- **A cell is named by its directory under the cells root.** `demo` and `team/demo` are cell
-  names. An absolute path, `.`, and a name that leaves the root through `..` (`../other/x`,
-  `team/..`) are refused — by `new`, by `set` and by every verb that loads a cell — in a message
-  that names the name and the root. The test is on the name as written, so a cell directory
-  that is a symlink to somewhere else still loads. `defaults.env` is not available as a cell
-  name.
-- **There is one file per cells root, for a nested cell too.** A cell named `team/demo` takes
-  the cells root's file like any other, never one beside `team/`. That holds for the later
-  cellctl processes a launch starts, as far as each is told where the cell is. The model-policy
-  hook, a container cell's console, the comms pane, a cadence-supervised role pane and a
-  managed scratch task are each handed the cells root the launch resolved and the cell's path
-  under it, not the cell directory's parent. An ordinary role pane is handed the cell's path
-  under the root and takes the root from its own environment. Two commands are as they
-  were before this file existed: the `deskd` stand pane and the precheck of a scheduled
-  (`--automate`) run name the cell by its `CELL=` value and take the cells root from their own
-  environment, so for a nested cell they reach the same cell only when `CELL=` is its path
-  under the root and `CELLS_ROOT` is the same there.
+- **A cell is named by ONE directory under the cells root, in `[a-z0-9-]`.** `demo` and
+  `cell-2` are cell names. A nested name (`team/demo`), an upper-case letter, `_` or `.` in the
+  name, an absolute path, `.`, and a name that leaves the root through `..` (`../other/x`,
+  `team/..`) are refused — by `new` (every kind, a container cell included), by `set` and by
+  every verb that loads a cell — in a message that names the name, the root and the rule. A
+  cell's `CELL=` value is held to the same rule, because it is what a launch stamps into every
+  child as `ASSAY_CELL` and what the cell-scoped stop flags (`STOP.cell.<cell>`) name the cell
+  by; a cell cellctl accepts is a cell those flags can address. The test is on the name as
+  written, so a cell directory that is a symlink to somewhere else still loads. `defaults.env`
+  is not available as a cell name. A cell made earlier under a name outside the rule (a nested
+  `team/demo`, `Demo`, `demo_1`) no longer loads: rename its directory and set `CELL=` to the
+  new name.
+- **There is one file per cells root.** Every cell takes the cells root's file. That holds for
+  the later cellctl processes a launch starts, as far as each is told where the cell is. The
+  model-policy hook, a container cell's console, the comms pane, a cadence-supervised role pane
+  and a managed scratch task are each handed the cells root the launch resolved and the cell's
+  name under it. An ordinary role pane is handed the cell's name and takes the root from its
+  own environment. Two commands are as they were before this file existed: the `deskd` stand
+  pane and the precheck of a scheduled (`--automate`) run name the cell by its `CELL=` value and
+  take the cells root from their own environment, so they reach the same cell only when
+  `CELLS_ROOT` is the same there.
 
 **The template, and the list of keys.** `cellctl defaults print` writes the template to
 standard output. It is generated from the one registry of keys cellctl keeps, and it prints
@@ -1862,3 +1919,24 @@ gateway/drain supervisor in its own cockpit surface; absent or disabled config
 keeps desk-only startup. `cellctl down` stops the supervisor before closing its
 owned surface and preserves mailbox data. See [host desk communications](cellctl-comms.md)
 for configuration, quoting, recovery and cockpit requirements.
+
+## Local performance opt-in
+
+Set `ASSAY_TELEMETRY=1` with `cellctl set <cell>` or in the machine defaults.
+The effective cell value overrides machine defaults, which override the launching process.
+Explicit empty, `0`, and other non-`1` values turn collection off. `cellctl show <cell>`
+prints the normalized effective value and source when configured. Existing desk sessions retain their old
+process environment; restart a role normally to apply a changed launch setting.
+
+The normalized switch reaches house Claude/Codex/Cursor processes, Codex command-side
+configuration, pre-harness desk helpers, the comms service, scratch/cadence children,
+scrubbed desk/smoke processes and native/external container
+launcher environments. Only this non-secret bounded value is forwarded; scrubbed allowlists,
+credential boundaries and cluster quarantine are unchanged. Existing containers may require
+an explicit restart to apply a different opt-in; status/down can inspect their actual bounded
+launch selection. An external launcher must preserve this documented environment key when
+it creates the container. No upload or performance payload expansion is enabled.
+
+Logging remains optional and best-effort. Enabled does not prove the sink is writable or
+that every invocation completed. Inspect the local perf day file and report coverage; missing
+samples are unknown, never zero. No tool installation or live role restart occurs during tests.

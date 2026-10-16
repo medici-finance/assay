@@ -1,4 +1,4 @@
-// Command skillslint runs four offline checks over the plugin tree:
+// Command skillslint runs five offline checks over the plugin tree:
 //
 //	structural       every plugins/assay/skills/*/SKILL.md (lint.go), including
 //	                 the per-skill frontmatter conformance limits — description
@@ -12,6 +12,8 @@
 //	act blocks       every example Act block under plugins/ opens with the zsh
 //	                 comment guard and keeps plain-text comments in its header
 //	                 only (actblock.go)
+//	ambient auth     no skill or reference tells a desk to read a human's
+//	                 `gh auth token` (ambientauth.go)
 //
 // The house-value half is deliberately wider than the other two: the references
 // and READMEs under plugins/ are as adopter-facing as a skill body, and a
@@ -249,6 +251,28 @@ func main() {
 		}
 	default:
 		fmt.Printf("ACT-BLOCK: PASS — %d act block(s) under plugins/ keep plain-text comments in the header only, the zsh guard, a per-act name and the one-line secret-read shape (cleared, -rs, exit 1-255; a syntactic check, not in a subshell, pipe or background it models; README §5 lists the forms it does not model)\n", abBlocks)
+	}
+
+	// ambient-auth: HARD. No skill or reference may tell a desk to read a human's
+	// forge-CLI login with `gh auth token` (#3055; see ambientauth.go).
+	aaChecked, aaIssues, aaErr := AmbientAuthIssues(*root)
+	switch {
+	case aaErr != nil:
+		fmt.Fprintf(os.Stderr, "skillslint: %v\n", aaErr)
+		fmt.Fprintf(os.Stderr, "AMBIENT-AUTH: COULD-NOT-CHECK — the skill/reference tree could not be read; a check that read nothing proved nothing\n")
+		if exit < 2 {
+			exit = 2
+		}
+	case len(aaIssues) > 0:
+		for _, is := range aaIssues {
+			fmt.Fprintf(os.Stderr, "skillslint: %s: %s\n", is.Path, is.Msg)
+		}
+		fmt.Fprintf(os.Stderr, "AMBIENT-AUTH: FAIL — %d `gh auth token` instruction(s) across %d markdown file(s)\n", len(aaIssues), aaChecked)
+		if exit < 1 {
+			exit = 1
+		}
+	default:
+		fmt.Printf("AMBIENT-AUTH: PASS — %d markdown file(s) under plugins/assay/skills and plugins/assay/references, no desk told to read a human's `gh auth token`\n", aaChecked)
 	}
 
 	// posix-token: advisory (never exit-affecting, per the lint-debt cadence a hard

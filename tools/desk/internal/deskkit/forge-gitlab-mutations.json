@@ -26,13 +26,13 @@
       "new": "\t\tif true {"
     },
     {
-      "name": "default an unresolvable award author to a human (a bot's award would satisfy a human-only gate)",
+      "name": "default an unresolvable award author to a human (a bot's award would satisfy a human-only caller)",
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\tif err != nil || u == nil {\n\t\treturn \"\"\n\t}",
       "new": "\tif err != nil || u == nil {\n\t\treturn \"User\"\n\t}"
     },
     {
-      "name": "drop the award-emoji name mapping (GitLab's thumbsup never becomes the +1 the admission gate matches)",
+      "name": "drop the award-emoji name mapping (GitLab's thumbsup never becomes the +1 a reaction caller matches)",
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\tif c, ok := gitlabAwardToReaction[name]; ok {",
       "new": "\tif c, ok := gitlabAwardToReaction[name]; false && ok {"

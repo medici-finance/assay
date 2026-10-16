@@ -475,7 +475,7 @@ func buildRoot() *cobra.Command {
 	}
 	root.AddCommand(
 		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(),
-		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(),
+		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(),
 	)
 	return root
@@ -491,6 +491,27 @@ func resetCmd() *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		v := resolve(set, nil)
 		cmdReset(args[0], v.Bool("hard"))
+		return nil
+	}
+	return cmd
+}
+
+func modelsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "models reset <cell> [--model-ttl <Nd|duration>]",
+		Short: "lower a cell's aged default model pins to the mid tier",
+		Long: "The explicit form of the boot-time cheap-default reset. Only a pin recorded as a resettable default\n" +
+			"(`cellctl set ... --default`) that has aged past the TTL moves, and only down to the mid tier. --model-ttl\n" +
+			"replaces the cell's CELL_MODEL_TTL_DAYS for this run, so it also recovers a cell whose line is malformed.",
+		Annotations: map[string]string{leadingArgsKey: "2"},
+		Args:        cobra.ArbitraryArgs,
+	}
+	set := declare(cmd, bStr("model-ttl", "TTL override for this run (Nd, e.g. 7d)"))
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 || args[0] != "reset" {
+			die("models: usage: %s", modelsUsage)
+		}
+		cmdModels(cellArg(args[1:]), resolve(set, nil))
 		return nil
 	}
 	return cmd
@@ -797,6 +818,7 @@ func setCmd() *cobra.Command {
 	}
 	set := declare(cmd,
 		bBool("force", "write a KEY that is not a known cell.env key"),
+		bBool("default", "record the model pin(s) as a resettable default (the cheap-default reset may lower it once it ages past the TTL)"),
 		bStr("harness", "harness ("+joinPipe(harnessValues)+")"),
 		bStr("model", "model pin (needs a role)"),
 		bStr("kind", "CELL_KIND ("+joinPipe(kindValues)+")"),
@@ -896,13 +918,16 @@ func cacheCmd() *cobra.Command {
 		Short: "report or clean a cell's managed Go caches",
 		Long: "Managed Go caches (opt-in CELL_GO_CACHE=on in cell.env or defaults.env; macOS/Linux).\n\n" +
 			"  cellctl cache <cell> status    dry-run JSON; no cleanup\n" +
-			"  cellctl cache <cell> clean     inactive caches, only under pressure\n" +
-			"  cellctl cache <cell> wipe      discard build/module caches regardless of pressure (live consumers: aged build entries only)\n" +
+			"  cellctl cache <cell> clean     under pressure: inactive caches whole; over 75% of budget: trim build entries\n" +
+			"  cellctl cache <cell> wipe      discard build/module caches regardless of pressure (live consumers: build entries past the floor only)\n" +
 			"  cellctl cache <cell> recover --confirm-stopped\n\n" +
-			"Defaults: 8 GiB logical-byte budget, 10 GiB filesystem free-space floor, 24h compiler-cache trim age.\n" +
-			"Configure CELL_GO_CACHE_ROOT / CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE / CELL_GO_CACHE_BUILD_MAX_AGE.\n" +
-			"With live consumers, clean (under pressure) and wipe (always) remove only compiler-cache entries\n" +
-			"older than the trim age; module caches, gopath and whole roots stay protected.\n" +
+			"Defaults: 8 GiB logical-byte budget, 10 GiB filesystem free-space floor, 24h compiler-cache trim age,\n" +
+			"60% low-water mark, 2h trim safety floor.\n" +
+			"Configure CELL_GO_CACHE_ROOT / CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE / CELL_GO_CACHE_BUILD_MAX_AGE /\n" +
+			"CELL_GO_CACHE_LOW_WATER_PERCENT / CELL_GO_CACHE_TRIM_MIN_AGE / CELL_GO_TRIMPATH.\n" +
+			"A trim (pressure, over 75% of budget, or a wipe with live consumers) removes compiler-cache entries\n" +
+			"oldest first down to the low-water mark (a wipe: as far as it can), plus any past the trim age, and\n" +
+			"never one younger than the safety floor; module caches, gopath and whole roots stay protected.\n" +
 			"Recovery requires external proof ALL cache consumers have stopped. See docs/cellctl-go-cache.md.",
 		Annotations: map[string]string{leadingArgsKey: "2"},
 		Args:        cobra.ArbitraryArgs,

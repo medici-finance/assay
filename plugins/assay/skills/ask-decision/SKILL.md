@@ -123,10 +123,12 @@ each question.
 ## The format — five parts for every GENUINE item
 
 The script renders this shape for every item it classifies genuine; when you compose an item
-by hand, compose the same shape. One difference: the renderers cannot know the act a ruling
-authorises, so they print only the fifth part's post-act check, still under its older label
-`Verification`. Before putting an item whose ruling leads to an act, the desk writes the Act
-block itself (below).
+by hand, compose the same shape. Two differences. The renderers (`assay-inbox.sh` and
+`deskinbox walk`) cannot know the act a ruling authorises, so they print only the fifth
+part's post-act check, still under its older label `Verification`; before putting an item
+whose ruling leads to an act, the desk writes the Act block itself (below). They do print the
+Reply shape's `command:` line: the ruling's command, derived only from a trusted author's
+visible phrase naming the recommended option, else `not derivable — desk to fill`.
 
 1. **Header** — `<repo>#<N> — question k of n`. The position is load-bearing: it tells the
    driver how long this will take, which is what makes it possible to say yes to starting.
@@ -145,7 +147,19 @@ block itself (below).
    list.
 4. **Reply shape** — exactly what the answer must contain: a letter, a name, "done", "merge
    it". **The driver should be able to answer in one word.** If your question cannot be
-   answered in one word, it is two questions or an unfinished one.
+   answered in one word, it is two questions or an unfinished one. It also carries **the
+   exact command for the RECOMMENDED option**, on the driver's own human path (the driver runs
+   it under their own login; a desk never does): a ruling is
+   `t="$(gh auth token --user <driver-login>)" && [ -n "$t" ] && GH_TOKEN="$t" gh issue comment <N> -R <owner>/<repo> --body '<ruling text>'`
+   (a `'` inside the text is written `'\''`); an act is not a one-line command: it is
+   the Act block of part 5, the one definition of an act block. For the ruling command, if the
+   driver's token cannot be read, nothing runs — never a fall-back to an exported App token or
+   the active account; an App-posted ruling fails a human gate. No single command fits? Say so;
+   never invent one. The script's `command:` line derives it only from a trusted author's
+   visible phrase naming the recommended option, else prints `not derivable — desk to fill`.
+   The desk's own `gh` calls run as its role App, per
+   [desk-shell.md §Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role) —
+   never ambient auth, and never the driver's login.
 5. **Act** — the act the answer sets off, in runnable form, then the post-act check: what the
    desk checks after the act (the API read, the file, the run id, the label state) and what it
    moves to next. The check is the promise that the answer will not evaporate into a
@@ -222,6 +236,11 @@ restate it.
   `read` has no `-s`, such as dash, fails without assigning, and a value of that name already
   set in the environment would otherwise go through as the secret. An empty or failed read
   then changes nothing, instead of leaving the act half done after an earlier live step.
+- **A block's `gh` steps run as the driver, never as a role App.** The driver pastes the block
+  into their own shell, so its `gh` steps use the driver's own login. The block never reads,
+  exports or falls back to a role App's token. A ruling stays the one-line command of part 4,
+  with its token step; it is not an act block. A token an act needs that is not the driver's
+  login is a `# fill:` secret read as above.
 
 This plugin's own skill lint checks the shipped example below against the comment rule (plain
 text, header only, no trailing comment), the guard line, the per-act name and the secret-read shape, in

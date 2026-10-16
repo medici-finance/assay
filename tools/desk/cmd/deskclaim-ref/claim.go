@@ -27,6 +27,14 @@ const (
 	exitUnverifiable = deskkit.ExitUnverifiable // 6
 )
 
+// exitPartial is the `list`-only PARTIAL-BLINDNESS code: the enumeration succeeded, at least one
+// claim was read and printed, and at least one claim ref could not be read. It sits outside the
+// deskkit refusal classes (3..6) on purpose, as loopengine's tool-local 7 does, so a caller can
+// tell "these claims, and these refs I could not see" apart from both a full listing (0) and a
+// total failure (6). It is never a pass: the listing it accompanies is incomplete, and a caller
+// that cannot act on a partial view treats it like 6 (fail closed), never like 0.
+const exitPartial = 7
+
 // refPrefix is the claim ref namespace on the forge — IDENTICAL to the bash script's
 // REF_PREFIX. See main.go's SCOPE NOTE on why it is not deskkit.ClaimRefsPrefix.
 const refPrefix = "refs/dispatch"
@@ -348,12 +356,18 @@ func cmdShow(id string) int {
 		errf("unverifiable: could not read the claim on %s%s", id, causeSuffix())
 		return exitUnverifiable
 	}
+	printHeld(id, ref)
+	return exitOK
+}
+
+// printHeld writes the one HELD line `show` and `list` share — the wire contract
+// desksupervise/deskdispatch parse.
+func printHeld(id string, ref deskkit.ClaimStoreRecord) {
 	ageStr := "?"
 	if age, ok := ageMinutes(ref.Date); ok {
 		ageStr = strconv.Itoa(age)
 	}
 	logf("HELD %s — %s at=%s age=%sm%s", id, ref.Msg, ref.Date, ageStr, preparedNotLaunchedSuffix(ref.Msg, ref.Date))
-	return exitOK
 }
 
 // preparedNotLaunchedSuffix is what `show` and `list` append to a claim that was acquired and
@@ -391,11 +405,35 @@ func cmdList() int {
 		logf("(no dispatch claims in the repo)")
 		return exitOK
 	}
-	rc := exitOK
+	// One unreadable ref must not blind the caller to every other claim (issue 2831): each ref is
+	// read on its own, a readable one prints its HELD line exactly as `show` does, and an
+	// unreadable one is named as could-not-check WITH its own cause — never dropped, never FREE.
+	// Removing or repairing a bad ref is a maintainer act; this verb only reports it.
+	listed, blind := 0, 0
 	for _, id := range ids {
-		if c := cmdShow(id); c != exitOK {
-			rc = c
+		ref, status := store.Read(id)
+		switch status {
+		case deskkit.ClaimReadHeld:
+			printHeld(id, ref)
+			listed++
+		case deskkit.ClaimReadFree:
+			// Advertised by the enumeration, gone by the read: released in between. Not a claim.
+			logf("FREE %s (no %s/%s in the repo)", id, refPrefix, id)
+		default:
+			errf("could-not-check: %s/%s%s", refPrefix, id, causeSuffix())
+			blind++
 		}
 	}
-	return rc
+	switch {
+	case blind == 0:
+		return exitOK
+	case listed == 0:
+		errf("unverifiable: none of the %d dispatch claim refs could be read — this listing shows nothing", blind)
+		return exitUnverifiable
+	default:
+		errf("partial: listed %d dispatch claim(s); %d claim ref(s) could not be read (exit %d) — "+
+			"the listing is INCOMPLETE, never idle; removing or repairing an unreadable ref is a maintainer act",
+			listed, blind, exitPartial)
+		return exitPartial
+	}
 }

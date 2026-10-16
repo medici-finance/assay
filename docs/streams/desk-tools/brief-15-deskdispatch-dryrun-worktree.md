@@ -327,6 +327,58 @@ Gate: model; all four risk answers no. Status left where it is.
 
 VERIFY: BLOCKED — the execution witness records 0 of 7: could-not-run, because the check:ci network-off sandbox is Linux-only and this host is darwin (medici-finance/assay#1800, open). That witness result is could-not-check, never a pass. By hand, 7 of 7 Verify rows are checked-clean at 251e9473928e; rows 2-5 ran with the ambient cell cache policy unset (finding 1). Status stays implemented.
 
+### Non-implementer verifier re-run: 2026-10-15 (UTC), assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk), merged main 8efe5579d9253813835db650d45180eea76cf33e
+
+Pass window: started 2026-10-15T04:11:39Z, finished 2026-10-15T04:19:00Z (UTC).
+
+Admission: deskdispatch --check-verifier passed before any row ran (exit 0). Binding: Run 92cb3d9569c5…, Repo medici-finance/assay, Source 8efe5579d925, Model claude-opus-5-5, Tier any, attestation issue medici-finance/assay#3009. The runner is not the implementer. The work was delivered by medici-finance/assay#629 (merge commit 05911c425002, deliverable commit 622400754), and both are ancestors of the verified head. The run used its own detached worktree off origin/main in an offline envelope (KUBECONFIG=/dev/null). The toolchain was go1.27.2 darwin/arm64 with GOPROXY=off and GOTOOLCHAIN=local, so no module or toolchain fetch was possible. Nothing was committed or pushed, and the only edit in the home is this Evidence section.
+
+Grounding, written from the brief before any diff or test was read: all seven rows exit 0. Row 2's test must find the stated path at both prompt sites (the home line and the recreate-worktree command), no placeholder, and a banner reading "operator-supplied, verified". Row 3 must cover four negative cases (outside prefix, not a worktree, other repo, shared checkout), each exiting 5 with its own reason and printing no prompt. Row 4 must exit 5 with zero child processes. Row 6 must produce an empty gofmt listing. Row 7 must print 0.
+
+Environment disclosure. Every row ran from the home root in a clean environment. The operator cell's ASSAY_*, DESK_* and CELL* variables were stripped, which matches CI, where none are set. HOME, XDG_CONFIG_HOME, TMPDIR and GOCACHE pointed at a throwaway scratch directory outside the home, and the module cache was used read-only. Row 6's listing file was redirected from the system temp directory into that scratch directory. The command is otherwise as authored. The hermeticity finding from the 2026-10-11 pass is fixed at this head: the package's TestMain now calls cachequiet.Isolate, which clears the cell storage-admission variables before any test runs.
+
+| # | Command | Expect | Observed (exit + key output line) | Date | Runner |
+|---|---------|--------|-----------------------------------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | exit 0 — no output from build or vet (0 bytes) | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDryRunWorktreeRendersVerifiedPath$' -count=1` | exit 0 — the path appears at both sites, the placeholder at none, the banner says "operator-supplied, verified" | exit 0 — "ok github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 1.557s"; a supplementary -v run of the three named tests printed the "--- PASS:" line for this row's named test (1.41s) | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDryRunWorktreeRefusesUnverifiablePaths$' -count=1` | exit 0 — the four NEGATIVE cases (outside prefix, not a worktree, other repo, shared checkout) each exit 5 with their own reason and print no prompt | exit 0 — "ok github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 5.037s"; supplementary -v printed the "--- PASS:" line for this row's named test (4.51s) and "--- PASS" for all four subtests: outside-prefix, not-a-worktree, other-repo, shared-checkout | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestWorktreeFlagRefusedOnRealDispatch$' -count=1` | exit 0 — exit 5, zero child processes recorded | exit 0 — "ok github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 2.108s"; supplementary -v printed the "--- PASS:" line for this row's named test (1.72s) | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 5 | `cd tools/desk && go test ./cmd/deskdispatch/ -count=1` | exit 0 — including the existing dry-run placeholder test, unchanged | exit 0 — "ok github.com/medici-finance/assay/tools/desk/cmd/deskdispatch 272.049s" (whole package, including the existing dry-run placeholder tests); no FAIL line in the output | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 6 | `gofmt -l tools/desk/cmd/deskdispatch > /tmp/dd-fmt.out; test ! -s /tmp/dd-fmt.out` | exit 0 | exit 0 — gofmt listing empty (0 bytes); listing file kept in the verifier scratch directory, see disclosure | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 7 | `cd statusgen && go run . --root .. --lint; echo $?` | 0 | exit 0 — "LINT: PASS", then "0" from the echo. NOTICEs only. Five name this brief: no-output-assertion on row 1, gotest-run-vacuous on rows 2-4, and verify-row-portability on row 6 | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+
+By hand: 7 of 7 rows checked-clean.
+
+Execution witness: statusgen verifyrun --brief on this brief with --dry-run, using statusgen built from this head and run from the home root. It wrote nothing to the brief. Exit 2, 0 of 7 rows witnessed. Every row printed: "could-not-run (exit=-, sha256:e3b0c44298fc) — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses unshare --net, a Linux facility, and this host is darwin." That result is could-not-check and is reported as such. It says nothing for or against the deliverable. The in-container mode was not attempted because it needs a container runtime and image, which are outside this offline envelope.
+
+**Findings**
+
+1. Fixed since the last pass: the ambient cache-policy hermeticity gap that pass recorded is closed on main. TestMain calls cachequiet.Isolate. This pass stripped the cell variables for every row regardless, so its results do not depend on that fix.
+2. Check-definition, non-blocking and carried forward: rows 2-4 draw gotest-run-vacuous NOTICEs, row 6 draws a verify-row-portability NOTICE, and row 1 now also draws a no-output-assertion NOTICE. This pass closed the vacuous-pass gap by observing each "--- PASS:" line directly.
+3. Grounding check against the code: the real-dispatch refusal sits at dispatch.go:768, before any child process. The three fail-closed checks are in validateOperatorWorktree (worktree.go:60-116), and each carries its own refusal text: shared checkout first, then prefix, then show-toplevel, then git-common-dir. The usage line in main.go, the desk tools README paragraph and the banner text at dispatch.go:268 are all present.
+4. No defect found in the deliverable.
+
+**Risk-bearing values.** The enumeration covers every file the deliverable commit 622400754 touches (dispatch.go, main.go, worktree.go, the dry-run worktree test file, the desk tools README, the changelog fragment and the stream README row), plus the literals named in the brief's facts. All were re-read at 8efe5579d925.
+
+1. worktreeTmpBase = "/private/tmp" @ tools/desk/cmd/deskdispatch/worktree.go:53
+2. worktree-name prefix literal "tracker-" @ tools/desk/cmd/deskdispatch/worktree.go:123
+3. sanctioned in-repo prefix filepath.Join(sharedCheckout, ".claude", "worktrees") @ tools/desk/cmd/deskdispatch/worktree.go:126
+4. ExitRefused = 5 @ tools/desk/internal/deskkit/exitcodes.go:51
+5. ExitUnverifiable = 6 @ tools/desk/internal/deskkit/exitcodes.go:55
+6. authority binding: --worktree refused unless dryRun @ tools/desk/cmd/deskdispatch/dispatch.go:768 (a boolean gate, no numeric literal)
+
+Ranking: entries 1-3 rank highest. A loosened prefix would let a previewed prompt name a home outside the isolation allowlist, and an agent handed that prompt could write in the wrong place, which is only partly undoable. Entries 4-6 are exit and gating contracts that can be reversed by an edit and a rebuild, and rows 3-4 cover them.
+
+RISK-VALUE: DERIVED — worktreeTmpBase = "/private/tmp" @ tools/desk/cmd/deskdispatch/worktree.go:53 — byte-identical to deskwt's tmpBaseDir = "/private/tmp" @ tools/desk/cmd/deskwt/deskwt.go:26. That is the directory where deskwt really creates worktrees, and the brief requires the rule to be duplicated without loosening. On darwin /tmp is a symlink into /private/tmp, and both sides compare symlink-resolved paths, so the resolved spelling is the correct one. Neither variable is reassigned in non-test code, and neither is wired to an env var or flag.
+RISK-VALUE: DERIVED — "tracker-" @ tools/desk/cmd/deskdispatch/worktree.go:123 and the ".claude", "worktrees" join @ tools/desk/cmd/deskdispatch/worktree.go:126 — the same literals and the same two-branch shape (a direct tracker-* child of the resolved tmp base, or strictly under the resolved worktrees directory) as deskwt's allowed test @ tools/desk/cmd/deskwt/deskwt.go:166 and its worktrees directory @ tools/desk/cmd/deskwt/deskwt.go:118. Not loosened.
+RISK-VALUE: DERIVED — ExitRefused = 5 @ tools/desk/internal/deskkit/exitcodes.go:51 — the brief's facts require exit 5 for each refusal, and this is the verb family's refused-by-constraint code. ExitUnverifiable = 6 @ tools/desk/internal/deskkit/exitcodes.go:55 stays separate from it for the path where the item repo is unreadable.
+
+Gate: model; all four risk answers no. Status left where it is.
+
+**VERIFY: BLOCKED** — by direct execution, 7 of 7 Verify rows are checked-clean at 8efe5579d925. The execution witness records 0 of 7: could-not-run, because the check:ci network-off sandbox needs unshare --net, which is Linux-only, and this host is darwin (environment blocker, medici-finance/assay#1800). Its open state was not re-read in this offline pass. It clears on a Linux runner. Status stays implemented.
+
+Verification-Attestation: medici-finance/assay#3009 run=92cb3d9569c5c54d8c8474c8ab8b708dca4c16840d4201d31e1068875e038f33 source=8efe5579d9253813835db650d45180eea76cf33e brief=docs/streams/desk-tools/brief-15-deskdispatch-dryrun-worktree.md model=claude-opus-5-5 tier=any
+
 
 ## Review
 

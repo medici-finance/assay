@@ -9,6 +9,14 @@ one link trailer, written at the moment the body is filled in:
 - `Authors: <stream>/<NN>[, <stream>/<NN> …]` — the brief(s) a briefs-AUTHORING PR writes and
   does not deliver (entries separated by commas and/or spaces; each accepts every form `Brief:`
   does), **or**
+- `Cross-repo-brief: <alias>:<stream>/<NN>` — the brief this PR delivers is homed (tracked) in
+  ANOTHER repo, named by its `docs/streams/graph-repos.yaml` alias; the value is exactly the
+  item key `deskdispatch` accepts, so a review or verify lane hands it straight back with
+  `--claim-root` at the tracking checkout (medici-finance/assay#2748). `create`/`edit` check
+  that the alias is registered in `--root`'s registry and is not its own `self`; the brief file
+  is never looked up under `--root`. A brief-risk read fails closed on it (risk-classed,
+  unverifiable), since the brief's gate is not in this repo. `deskdispatch --cross-repo`
+  names this exact line in the worker prompt, **or**
 - `Issue: #<N>` — issue-only work with no brief.
 
 `Brief:` asserts DELIVERY. The dispatcher's phantom check, `fanoutloop plan`'s
@@ -19,7 +27,7 @@ authoring PR merges and is never dispatched (#1339). No reader keys on `Authors:
 
 Rules (derived-board/02):
 
-- Exactly one link per body. A second `Brief:`, `Issue:` or `Authors:` line, or two
+- Exactly one link per body. A second `Brief:`, `Issue:`, `Authors:` or `Cross-repo-brief:` line, or two
   different kinds, is a refusal naming the offending lines.
 - The line may sit anywhere in the body; a trailer inside a fenced code block is
   documentation and is ignored.
