@@ -313,7 +313,7 @@ Use stable subject/rule/baseline/episode identity for one finding and its issue/
 Repeated triggers, lost acknowledgments and restart reconcile the same logical effect.
 Refresh authority/evidence at effect time. Bound investigations, tokens/cost, CPU/wall,
 forge calls, concurrency and issues/PRs per occurrence; failed or unknown accounting holds.
-Proposals cannot raise budgets, alter their policy, disable a check, or merge their own PR, and their repair PRs are never admitted to an automated merge lane.
+Proposals cannot raise budgets, alter their policy, disable a check, or merge their own PR, and their repair PRs are never admitted to an automated merge lane: the lane-side consumer `deskkit.AdmitAutoLane` (`tools/desk/internal/deskkit/autolane.go`) gains a tripwire that fires on the `performance-repair` label or the `<!-- assay:performance-repair -->` body marker that brief 09's executor writes, and brief 09 Verify row 6 proves the refusal with the executor bypassed.
 The worker creates a candidate/draft PR with a reproducer, correctness floor and comparable
 before/after measurement. Independent verification and human gates remain intact. A merged
 repair is awaiting outcome verification until a comparable after-window demonstrates the
