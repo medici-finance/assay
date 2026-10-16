@@ -151,7 +151,8 @@ func TestResolveMonitorIdentity_NoRoleIsAllKeyringNeverAGuess(t *testing.T) {
 // TestRunMonitor_KeyringlessHomeReadsCleanWithTokenFile — the acceptance row end to end: the REAL
 // poller from the plugin tree, run by the real exec path, under a HOME with no gh config at all and
 // a `gh` that 401s without a token exactly as a keyring-less gh does. With the role's token file it
-// arms clean; without one the same read is DEGRADED, as before.
+// arms clean; without one the poller has no identity to read as (no loop, so no role to mint as), so
+// the repo is DEGRADED on the failed mint and `gh` is never run, never falling back to the keyring.
 func TestRunMonitor_KeyringlessHomeReadsCleanWithTokenFile(t *testing.T) {
 	if _, err := exec.LookPath("jq"); err != nil {
 		t.Skip("jq not on PATH — the poller refuses to run without it")
@@ -169,7 +170,9 @@ func TestRunMonitor_KeyringlessHomeReadsCleanWithTokenFile(t *testing.T) {
 
 	const tokenValue = "x-example-installation-token"
 	bin := t.TempDir()
+	callLog := filepath.Join(t.TempDir(), "gh-calls")
 	stub := "#!/bin/sh\n" +
+		"echo called >> '" + callLog + "'\n" +
 		"if [ -z \"${GH_TOKEN:-}\" ]; then echo 'HTTP 401: Requires authentication (https://api.github.com/graphql)' >&2; exit 1; fi\n" +
 		"if [ \"$GH_TOKEN\" != '" + tokenValue + "' ]; then echo 'HTTP 401: Bad credentials' >&2; exit 1; fi\n" +
 		"echo '[{\"number\":7,\"updatedAt\":\"2026-01-01T00:00:00Z\"},{\"number\":8,\"updatedAt\":\"2026-01-01T00:00:00Z\"}]'\n"
@@ -181,6 +184,9 @@ func TestRunMonitor_KeyringlessHomeReadsCleanWithTokenFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", t.TempDir()) // no gh config, no keyring account
+	// The poller mints its read token as the role its loop names. Pin the loop empty so the
+	// result does not depend on the host (a desk host exports one and has a real desktoken).
+	t.Setenv("DESK_LOOP", "")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("GH_TOKEN", "x-bogus-inherited-token") // the poller must never read as this
 	t.Setenv("ASSAY_MONITOR_PACE_SECONDS", "0")
@@ -195,12 +201,20 @@ func TestRunMonitor_KeyringlessHomeReadsCleanWithTokenFile(t *testing.T) {
 		t.Fatalf("keyring-less HOME + token file did not read clean: %+v", rep)
 	}
 
-	// Without one: the same read goes DEGRADED on the 401, exactly as before the hand-off.
+	// Without one: no loop means no role to mint as, so the repo is DEGRADED on the failed
+	// mint (could-not-check) and the 401-ing gh is never invoked: no ambient keyring read.
+	if err := os.Remove(callLog); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
 	rep, err = RunMonitor(Poller{Script: script}, t.TempDir(), scope, nil, nil)
 	if err != nil {
 		t.Fatalf("keyring-less HOME, no token file: a degraded read must not be fatal: %v", err)
 	}
-	if len(rep.Degraded) != 1 || !strings.Contains(rep.Degraded[0], "401") || rep.Armed {
-		t.Fatalf("keyring-less HOME without a token file: want one DEGRADED 401 line, got %+v", rep)
+	if len(rep.Degraded) != 1 || !strings.Contains(rep.Degraded[0], "token mint FAILED") ||
+		!strings.Contains(rep.Degraded[0], "DESK_LOOP") || rep.Armed {
+		t.Fatalf("keyring-less HOME without a token file: want one DEGRADED token-mint line, got %+v", rep)
+	}
+	if _, err := os.Stat(callLog); err == nil {
+		t.Fatalf("gh was invoked for a repo whose token mint failed (an ambient read): %+v", rep)
 	}
 }
