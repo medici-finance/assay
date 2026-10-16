@@ -46,7 +46,7 @@ consumers:
 - 'loopadmin execution journal: follow-up graph-execution/26 (same engine, own schema; no Go dependency on workflow)'
 - 'tools/desk/cmd/deskclaim-ref claim tests: out-of-scope (their intent is carried here as TestPGClaimHolderSemantics per graph-execution/29 inventory; the command is unchanged)'
 - 'forge-neutral file/served claim store (forge-neutral/22-32): out-of-scope (supported legacy desk-tools claim path; applicability note in the forge-neutral README; retirement is the non-CI R8 decision)'
-version: 4
+version: 5
 id: ead4e747-4d61-4ec6-abaf-332873c79b21
 ---
 
@@ -149,17 +149,24 @@ No mandatory Git journal or signature infrastructure is introduced. Existing Evi
 
 ## Operation-count accounting amendment — 2026-10-15
 
-The store consumes the target's [best-effort operation-count contract](../../proposals/non-ci-architecture/11-target-architecture.md#operation-count-budgets-are-best-effort).
-Operation-count estimates may drift or be unavailable after restart/reconstruction;
-report missing coverage and preserve/reconcile them where practical. Their update is not
-a mandatory part of admission's intent/outbox transaction, and counter failure alone
-cannot hold otherwise-authorized work or demand an operator reset. No global lock across
-network work or exact budget-slot reservation is required.
+The store consumes the target's [brake and pacing contract](../../proposals/non-ci-architecture/11-target-architecture.md#pacing-counts-are-best-effort-brakes-fail-closed).
+**Brake** counts (write ceilings, daily and new-issue caps, the circuit breaker, child-launch
+and retry budgets, cumulative attempt budgets) keep transactional records and fail closed:
+unknown brake usage after restart or reconstruction holds the governed effect until it is
+reconstructed from retained evidence or an explicitly authorized reset is recorded.
 
-The store's required intent, effect identity, approval, incarnation and unknown-outcome
-records remain transactional and fail closed as already specified. Qualify both sides
-using target doc 15's counter-loss and authority-history-loss scenarios. This is an
-additive implementation obligation; existing Task/Verify rows and Evidence are preserved.
+**Pacing** count updates are not a mandatory part of admission's intent/outbox transaction
+and need no global lock across network work or exact budget-slot reservation. The store
+seeds a lost pacing estimate from the last retained count and from the window's effect
+intents and receipts it already holds; that is a bounded window query, not an audit-history
+replay. After whole-database loss, when neither survives, it records at most one reset per
+window and limiter scope and treats a second unseeded reset as an exhausted window. Unknown
+usage never becomes a fresh allowance, and a missing estimate is reported, not zero.
+
+Required intent, effect identity, approval, incarnation and unknown-outcome records remain
+transactional and fail closed as already specified. Qualify against target doc 15's
+§Operation-count qualification cases; row 13 below carries that obligation and is red until
+the named test exists. Existing Task/Verify rows and Evidence are preserved.
 
 ## Task
 
@@ -191,6 +198,7 @@ Pinned instance/attempt/subject and actor capability enter; typed state, evidenc
 | 10 | check:ci +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestNoSQLiteRuntimeStore$" ./... > "$routing_out" && grep -q -- "--- PASS: TestNoSQLiteRuntimeStore " "$routing_out")` | exit 0; named PASS; no package under `workflow/store` imports a SQLite or other embedded database driver, and an unreachable database refuses rather than falling back; mutation: add an embedded-driver import under `workflow/store` — the named test must fail |
 | 11 | check:ci +dereference +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoordinationSpecMatchesMigrations$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCoordinationSpecMatchesMigrations " "$routing_out")` | exit 0; named PASS; every table and column `spec/coordination-store-v1.md` (planned) names exists in `workflow/store/migrations/` (planned), and every migrated table is named in the contract; mutation: drop one column from the contract text — the named test must fail |
 | 12 | check:ci +flow +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGContextRestore$" ./store/ > "$out" && grep -F -- "--- PASS: TestPGContextRestore " "$out")` | exit 0; named PASS; real PostgreSQL reload/restore retains old cutoff and expiry; binding flow holds stale context and accepts current context; mutation: replace expiry with restore time |
+| 13 | check:ci +flow +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGOperationCountSeedAndBrake$" ./... > "$routing_out" && grep -q -- "--- PASS: TestPGOperationCountSeedAndBrake " "$routing_out")` | exit 0; named PASS against a real disposable PostgreSQL; after the pacing counter rows are dropped mid-window, the estimate is seeded from the window's effect intents and receipts and restarts admit no more than cap + C; after whole-database loss one reset is recorded and a second treats the window as exhausted; an unknown brake count holds; mutation: seed the lost estimate at zero — the named test must fail |
 
 ## Pre-mortem and dispatch checks
 

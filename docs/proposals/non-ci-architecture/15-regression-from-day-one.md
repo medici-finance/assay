@@ -45,9 +45,7 @@ CLI parser or path-layout tests can retire with an explicitly retired command. T
 | Forge reports an old approval against a new merge head | The independently bound reviewed candidate wins; unknown or mismatched review provenance holds every relevant lane. |
 | Test selector matches nothing or invokes the old oracle | No acceptance PASS; record actual tested implementation and selected cases, and require the failing behavioral control. |
 | A read route is mounted outside middleware | Actual served unauthenticated request is refused; the test must fail if the bypass is enabled, regardless of a correct route table. |
-| Concurrent operation-count budget checks use the same estimate | Small overshoot or underuse is accepted; configured pacing still operates, and independent operations need no global lock across network work or exact budget reservation. |
-| Operation-count budget history/update is lost | Coverage is unavailable rather than measured zero; otherwise-authorized work can continue with best-effort accounting. Counter failure alone neither holds publication nor requires an operator reset. |
-| Idempotency, approval or unknown-effect history is lost | Reconstruct from retained evidence or hold the affected effect. The operation-count tolerance cannot authorize duplicate publication, clear an unknown outcome or recreate approval. |
+| Audit/SQL budget history is lost | Unknown usage is not zero and does not refill authority. A brake count holds or applies its declared conservative fallback; a pacing count seeds from retained counts and receipts within the [declared bound](11-target-architecture.md#pacing-counts-are-best-effort-brakes-fail-closed). Cases: §Operation-count qualification below. |
 | Two cells are assigned the same external repository | Operator admission rejects overlapping mutating assignment before capabilities issue; disjoint assignments and authorized upstream reads still work. |
 | Repository verifier cutover with an old direct publisher | Previously valid legacy capability/credential is refused at the real effect boundary; a shared credential is restricted or its affected scope stays paused. Queue suppression alone must fail the test. |
 | Database deletion or backup rollback with a surviving old capability | Fresh authority incarnation/key plus complete execution-group teardown; old capability cannot admit effects even when its SQL generation reappears. Already-submitted effects are reconciled separately. |
@@ -167,3 +165,18 @@ suites through the [communications extraction](24-communications.md). The initia
 proof is behavior parity plus a real external SDK consumer, not distributed delivery.
 The specification's acceptance cases govern later two-cell outages, filter crashes,
 retries, quota/expiry, authority bypass, SQL-outbox handoff and state migration.
+
+## Operation-count qualification — 15 October 2026
+
+These cases qualify the
+[brake and pacing contract](11-target-architecture.md#pacing-counts-are-best-effort-brakes-fail-closed).
+Each brake case bypasses the pacing path, so a correct pacing limiter cannot mask a
+fail-open brake. C is the number of concurrently admitting processes.
+
+| Scenario | Required assertion |
+|---|---|
+| A brake count is unavailable, unreadable or unverifiable | Per-target and per-repository write ceilings, daily and new-issue caps, the circuit breaker, the child-launch budget, per-caller ingress rate limits and retry budgets each hold, or apply their declared conservative fallback, and admit no effect. Treating the unavailable count as under budget must fail the test. |
+| Concurrent pacing-count checks use the same estimate | Overshoot is at most one admission per concurrently admitting process; configured pacing still operates with no global lock across network work and no exact budget-slot reservation. |
+| A pacing count's shared counter is lost mid-window | The fallback estimate is seeded from the last retained count and the window's recorded effect intents and receipts, never zero. Coverage is reported unavailable rather than measured zero; counter failure alone neither holds publication nor requires an operator reset. |
+| Repeated restart or per-process fallback within one window | K restarts or N processes do not multiply the configured cap: total admissions stay within cap + C, or 2 × cap + C after the single recorded unseeded reset. A second unseeded reset, or an unreadable reset record, treats the window as exhausted. Starting any fallback estimate at zero must fail the test. |
+| Idempotency, approval or unknown-effect history is lost | Reconstruct from retained evidence or hold the affected effect. The pacing tolerance cannot authorize duplicate publication, clear an unknown outcome or recreate approval. |

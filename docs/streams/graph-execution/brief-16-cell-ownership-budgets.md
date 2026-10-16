@@ -49,7 +49,7 @@ consumers:
 - 'workflow/controller: follow-up graph-execution/21'
 - 'spec/operator-incarnation-v1.md: follow-up graph-execution/16 (this brief; flips to fixed-here when the implementation edits the path)'
 - 'loopadmin supervisor launch admission (checks the current incarnation): follow-up graph-execution/26'
-version: 4
+version: 5
 id: db922112-28f0-44c0-b120-9d6c4f56e103
 ---
 
@@ -140,19 +140,24 @@ rejects overlapping mutating assignment of one external repository before capabi
 
 ## Operation-count accounting amendment — 2026-10-15
 
-Apply the target's [best-effort operation-count contract](../../proposals/non-ci-architecture/11-target-architecture.md#operation-count-budgets-are-best-effort).
-Small count drift from concurrent admission, delayed updates and recovery is acceptable;
-operation-count maintenance does not require exact budget reservations, a global lock
-across network work or complete audit reconstruction. Missing estimates are reported as
-unavailable and do not alone hold otherwise-authorized work. Configured pacing still
-uses available estimates.
+Apply the target's [brake and pacing contract](../../proposals/non-ci-architecture/11-target-architecture.md#pacing-counts-are-best-effort-brakes-fail-closed).
+This brief's cumulative attempt budgets, reservations and any per-target or per-repository
+write ceiling it admits against are **brakes**: they stay fail-closed. When such a count is
+unavailable or unverifiable, admission holds or applies a declared conservative fallback;
+it never assumes the actor is under budget. Rows 4 and 5 keep their exact contracts.
 
-The cumulative spend, hard resource/time/cost limits, cancellation/stop state, ownership
-generations and unresolved-effect reservations above retain their contracts. Existing
-concurrent-reservation and restore tests qualify those contracts, not an exact desk/tool
-operation quota. Include the concurrent-count and counter-loss cases in target doc 15
-without weakening the existing ownership and unknown-effect cases. This amendment changes
-no completed Evidence or current runtime behavior.
+Only **pacing counts** (desk/tool throughput pacing of already-authorized work) are best
+effort. They need no exact budget-slot reservation, global lock across network work or
+complete audit reconstruction. Their fallback estimate is seeded from the last retained
+count and the window's recorded effect intents and receipts, never from zero. When neither
+can be read, one recorded reset per window is allowed; a second treats the window as
+exhausted. A missing estimate is reported as unavailable, not measured zero.
+
+Ownership generations, cancellation/stop state, hard resource/time/cost limits and
+unresolved-effect reservations keep their contracts. Qualify against target doc 15's
+§Operation-count qualification cases; rows 10 and 11 below carry that obligation. They are
+red until the named tests exist. Relaxing a brake is a separate human decision; this
+amendment relaxes none. No completed Evidence or current runtime behavior changes.
 
 ## Task
 
@@ -181,6 +186,8 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 7 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationStaleRefused$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationStaleRefused " "$routing_out")` | exit 0; named PASS; with the scheduler bypassed, a capability minted under an earlier incarnation is refused at the effect boundary even when its owner and generation reappear from a restored store, and no effect is applied; mutation: compare only owner and generation, ignoring the incarnation — the named test must fail |
 | 8 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationMismatchPaused$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationMismatchPaused " "$routing_out")` | exit 0; named PASS; a missing or mismatched operator incarnation starts admission paused, a store snapshot cannot set the current incarnation, and reopening requires rotation plus confirmed execution-group stop; mutation: take the current incarnation from the restored store's activation record — the named test must fail |
 | 9 | check:ci +dereference +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationSpecMatchesFields$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationSpecMatchesFields " "$routing_out")` | exit 0; named PASS; every field `spec/operator-incarnation-v1.md` (planned) names exists on the incarnation type in `drainloop/incarnation.go` (planned), and every exported field is named in the contract; mutation: rename one field in the contract text — the named test must fail |
+| 10 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBrakeCountUnavailableHolds$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCellBrakeCountUnavailableHolds " "$routing_out")` | exit 0; named PASS; with the pacing path bypassed, an unavailable or unverifiable cumulative-budget or per-target write-ceiling count holds admission and no effect is applied at the fake provider; mutation: treat an unavailable brake count as under budget — the named test must fail |
+| 11 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellPacingRestartNoMultiply$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCellPacingRestartNoMultiply " "$routing_out")` | exit 0; named PASS; after the shared pacing counter is lost mid-window, K restarts and N processes seed from retained counts and recorded receipts and admit at most cap + C, or 2 × cap + C after one recorded reset, and a second unseeded reset treats the window as exhausted; mutation: start the fallback estimate at zero — the named test must fail |
 
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.

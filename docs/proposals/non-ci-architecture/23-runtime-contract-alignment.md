@@ -21,7 +21,7 @@ library/release consumer; it does not create independent runtime authority.
 |---|---|
 | Definitions, acceptance requirements and policy | Reviewed Git sources and existing decision owners; immutable revision references, not caller-supplied replacements |
 | Eligibility and evidence applicability | Existing pure evaluators plus R1 records; missing facts, wrong candidate and unavailable corroboration hold |
-| Attempts, leases, schedules and effect intent/receipt | R2 PostgreSQL coordination; one transaction owner and stable logical operation identity. Operation-count budgets are best-effort estimates, separate from effect reservations. |
+| Attempts, leases, schedules, brake budgets and effect intent/receipt | R2 PostgreSQL coordination; one transaction owner and stable logical operation identity. Pacing counts are seeded best-effort estimates, separate from effect reservations. |
 | Execution isolation and operator authority | R3 runner/cell operation; protected operator incarnation, exclusive mutating repository assignment and separate credentials |
 | Provider effects and ambiguous outcomes | R4 role executors; current admission, reconciliation and no blind retry |
 | Source and forge observations | R6 typed forge/source service; admitted observations and exact revisions, no acceptance or publication grant from SQL |
@@ -120,19 +120,22 @@ a live lease. Managed admission/publication requires current cell coordination a
 authority. Losing a cache permits scoped fallback when available; losing coordination pauses
 affected admission. Do not equate offline inspection with offline admission.
 
-Required evidence/audit use the existing retention and recovery owners. Operation-count budget
-accounting follows the [best-effort contract](11-target-architecture.md#operation-count-budgets-are-best-effort):
-small drift and counter loss do not impose transactional durability or hold an otherwise-authorized
-effect. Diagnostic loss cannot erase a human decision or clear an unresolved effect. Authentication,
+Required evidence/audit and the declared hard-limit (brake) budgets use the existing retention and
+recovery owners; unknown brake usage holds. Pacing-count accounting follows the
+[brake and pacing contract](11-target-architecture.md#pacing-counts-are-best-effort-brakes-fail-closed):
+seeded estimates within its declared drift bound do not impose transactional durability or
+hold an otherwise-authorized effect. Diagnostic loss cannot erase a human decision, clear an
+unresolved effect or become a fresh allowance. Authentication,
 authenticated requester, represented actor and executing provider identity remain distinct.
 Retention must identify whether a record is canonical, normally durable operational state,
 rebuildable or disposable; required-record uncertainty remains visible.
 
 Opt-in performance data uses the separate performance-collection database and local-first spool.
 It is not the cell's coordination store or an acceptance ledger. Disabling it does not disable
-required audit/budget records. Measure cold/warm source and fold latency, provider calls, bytes,
-fetch/maintenance CPU/space, coverage and recovery cost before optimization. No new fleet baseline
-was obtained in this design review; measurements and cost comparison remain implementation work.
+required audit records, and the declared hard-limit budgets. Measure cold/warm source and fold
+latency, provider calls, bytes, fetch/maintenance CPU/space, coverage and recovery cost before
+optimization. No new fleet baseline was obtained in this design review; measurements and cost
+comparison remain implementation work.
 
 ## Coverage and remaining gaps
 

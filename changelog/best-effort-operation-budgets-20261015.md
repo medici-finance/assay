@@ -1,0 +1,3 @@
+### Changed
+
+- The future-architecture target now splits operation counts by rule: counts that bound a runaway or blast radius (write ceilings, daily and new-issue caps, the circuit breaker, the child-launch budget, ingress and retry budgets) stay fail-closed brakes, and only throughput pacing counts become best effort. A pacing count's fallback estimate is seeded from retained counts and recorded receipts, with a declared drift bound and at most one recorded reset per window, so restarts or extra processes cannot multiply a cap. Graph-execution briefs 16, 19 and 26 carry the split with new Verify rows. Documentation only; no shipped limiter changes.
