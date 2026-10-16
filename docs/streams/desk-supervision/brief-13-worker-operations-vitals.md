@@ -34,10 +34,10 @@ exec-tier-why: >-
 consumers:
   - "schemas/desksupervise-status-v1.json: fixed-here (the reserved `tokens` stub is promoted into a `resource` block and filled; this is the documented intended evolution of the stub, so the schema id stays v1)"
   - "tools/desk/cmd/desksupervise/status.go: fixed-here (the status/JSON renderer surfaces the resource block, joining a claim's holder session to that session's beacon vitals)"
-  - "tools/desk/cmd/deskroster/sets.go (the beacon `set` write): fixed-here (gains optional vitals flags; unset ⇒ the field is written null, never 0)"
-  - "tools/desk/internal/deskkit/ackbeacon.go (beacon write pattern): fixed-here (a sibling field-preserving merge writes `resource`; it must not drop `acks`/`open_work`)"
+  - "tools/desk/cmd/deskroster/roster.go (the beacon `set` write): fixed-here (gains optional vitals flags; unset ⇒ the field is written null, never 0)"
+  - "tools/desk/internal/deskkit/vitals.go (beacon write pattern): fixed-here (a sibling field-preserving merge writes `resource`; it must not drop `acks`/`open_work`)"
   - "an operator console consuming the JSON (deskd's repo): out-of-scope (a private consumer; the versioned schema is the contract it reads. Because `tokens` moves from a claim-level const into `resource`, the console's reader is updated in its own repo when this lands — noted, not owned here)"
-version: 1
+version: 2
 id: f167b9b6-ec90-4766-87de-da21aa47ee2b
 ---
 
@@ -198,7 +198,7 @@ facts:
 | 7 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestStatusJSONValidatesAgainstSchema -v -count=1` | exit 0; output contains `--- PASS: TestStatusJSONValidatesAgainstSchema` |
 | 8 | check | `python3 -c 'import json; s=json.load(open("schemas/desksupervise-status-v1.json")); item=s["properties"]["claims"]["items"]; assert "resource" in item["properties"], "no resource block"; assert "resource" in item["required"], "resource not required"; print("ok")'` | exit 0; output is `ok` |
 | 9 | check | `grep -c 'could-not-check' schemas/desksupervise-status-v1.json` | output is `1` or more |
-| 10 | check | `statusgen --root . --consumers --brief desk-supervision/13` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
+| 10 | check | `d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach d8552d943 && cp docs/streams/desk-supervision/brief-13-worker-operations-vitals.md "$d/docs/streams/desk-supervision/" && statusgen --consumers --root "$d" --brief desk-supervision/13 --base 21ab5d6cab8f; s=$?; rm -rf "$d"; exit $s` | exit 0; output contains `summary: 4 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing` and does not contain `DISPROVED`. The check runs in a throwaway shared clone checked out at d8552d943, the squash that delivered this brief in #1350, with the base pinned to 21ab5d6cab8f, so the diff it reads is the delivering change on any later main; the current brief is copied into the clone so its corrected `consumers:` block (the `deskroster set` flags landed in `roster.go`, the resource merge in the new sibling `vitals.go`) is what gets judged. The one unchecked entry is the out-of-scope operator console, a reviewer judgement |
 | 11 | check | `cd tools/desk && GOWORK=off go test ./cmd/deskroster/ -run TestSetRefusesMultiSegmentSessionName -v -count=1` | exit 0; output contains `--- PASS: TestSetRefusesMultiSegmentSessionName` (a `--session` value containing `/` or `..` is refused, exit 5, never joined into the beacon path) |
 
 Pre-mortem → detection: "an unset or unreadable vital renders 0 and a consumer reads it as
