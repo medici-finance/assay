@@ -33,7 +33,7 @@ consumers:
   - "statusgen/main.go (the `patterns --lint` subcommand): fixed-here (the subcommand is wired in this change)"
   - "docs/lifecycle.md §Review gates (which pattern node a review gate is): fixed-here (the sentence is added in this change)"
   - "plugins/assay/skills/worker-desk/SKILL.md, pr-review-desk/SKILL.md, verify-desk/SKILL.md (the procedures the implementation pattern encodes): out-of-scope (the pattern file describes the existing procedure and changes none of it; a skill that later READS the pattern is graph-execution/05's report to propose)"
-version: 1
+version: 2
 id: ed7644f5-3b16-4050-955c-2e522e5dc257
 ---
 
@@ -96,7 +96,7 @@ facts:
 | 6 | check +dereference | `grep -c 'workflow-pattern-v1' spec/README.md` | count >= 1 |
 | 7 | check:ci +neighbour | `cd statusgen && go test -run TestTopologyValuesMatchSource ./...` | exit 0 — the role names the lint reads still match `topology.yaml` |
 | 8 | check | `statusgen --root . --lint; echo rc=$?` | `rc=0` |
-| 10 | check | `statusgen --consumers --brief graph-execution/02 --root .; echo rc=$?` | `rc=0` on the authoring branch (every entry routes follow-up or out-of-scope); exit 2 (could-not-check) on a fully merged main is acceptable and must be recorded as such, never as pass |
+| 10 | check | `d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach 5b384e52c && statusgen --consumers --root "$d" --brief graph-execution/02 --base 5b384e52c~1; s=$?; rm -rf "$d"; exit $s` | exit 0; `summary: 3 corroborated, 0 disproved, 1 unchecked` — the consumers routing is judged against the delivering commit 5b384e52c (#1259) and its own parent, in a throwaway clone, so the claim stays checkable on merged main instead of degrading to could-not-check; the one UNCHECKED entry is the out-of-scope skill-procedure routing, whose truth is the reviewer's call. Re-baselined 2026-10-16 (was: the live tree, rc=0 only on the authoring branch) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
