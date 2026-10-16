@@ -93,21 +93,28 @@ A Command cell whose lifted command is only a shell comment is the same case (is
 evidence, but lifted as a command the heading is a comment — it exits 0 with no output
 and used to witness a pass for a check that never looked. A lifted command whose first
 non-blank character is `#` is now flagged `prose-led-command` ("a shell comment")
-whatever surrounds it — even as the cell's only span — so `verifyrun` records the row
-could-not-run without executing it, `--check` does not audit an old pass witness on it
-as pass, and the check:ci re-execution lane refuses it. The `verifyloop` runner records
-such a command as a non-zero unexecuted row, and `deskrebaseline` does not probe it;
-the one rule (`#` first) is held to `testdata/shell-comment-vectors.json` in both
-modules. Commands that merely contain `#` — a trailing ` # comment`, a quoted `'#'`,
-`a#b` — and every `cmd:`-marked row are unchanged. Mark an actual executable check with
-`cmd:` where one exists; otherwise retain the manual procedure and its evidence
-obligation, and do not replace a procedure with a command that merely exits zero. A
-`cmd:`-marked command that is itself only a comment is still run (the marker is the
-author's explicit statement) and is NOTICEd as `cmd-marker-vacuous`. Sibling shapes
-left as they were, deliberately: a multi-word prose first span that is not a comment
-(`resolved: no→yes`) is not flagged and lands could-not-run as exit 127 when executed,
-never a pass, so it needs no new arm. `--dry-run` runs rows, so investigate a suspect
-procedure in an isolated fixture, never by running the real brief.
+whatever surrounds it — even as the cell's only span, and even as the command a `cmd:`
+marker names (a marker names the command to run, and a comment runs nothing) — so
+`verifyrun` records the row could-not-run without executing it, `--check` does not audit
+an old pass witness on it as pass, and the check:ci re-execution lane refuses it. The
+tools/desk executors agree cell for cell: `verifyloop` records such a row as a non-zero
+(127) could-not-run without executing it, and `deskrebaseline` does not probe it. They
+judge the raw cell on statusgen's lift (the marked command, else the first code span)
+as well as on their own legacy lift (the whole unwrapped cell, which is what they run),
+so a cell like `` `## Coverage`: confirm it `` — which `sh` would run as the `:` no-op
+once the comment-only substitution expands to nothing — is refused there too, and a
+cell whose own text opens with `#` before a real span is refused by them though
+statusgen runs its span (they are never the looser executor). The rule (`#` first) and
+the whole-cell verdicts are held to `testdata/shell-comment-vectors.json` (`vectors` and
+`cells`) in both modules. Commands that merely contain `#` — a trailing ` # comment`, a
+quoted `'#'`, `a#b` — and every `cmd:`-marked real command are unchanged. Mark an actual
+executable check with `cmd:` where one exists; otherwise retain the manual procedure
+and its evidence obligation, and do not replace a procedure with a command that merely
+exits zero; a marked comment is fixed by replacing it with the command that performs the
+check. Sibling shapes left as they were, deliberately: a multi-word prose first span
+that is not a comment (`resolved: no→yes`) is not flagged and lands could-not-run as exit
+127 when executed, never a pass, so it needs no new arm. `--dry-run` runs rows, so
+investigate a suspect procedure in an isolated fixture, never by running the real brief.
 
 A marked command that cannot fail (`true`, `:`, `exit 0`, a lone `echo`) is NOTICEd as
 `cmd-marker-vacuous`. A marker counts only where the rendered table shows it as code:

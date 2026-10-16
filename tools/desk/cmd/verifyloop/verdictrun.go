@@ -443,11 +443,11 @@ func runBriefRows(root string, it loopengine.Item, execFn rowExec) []rowResult {
 		}
 		var exit int
 		var output string
-		if verifycmd.CommentOnly(row.Command) {
+		if why := commentRefusal(row); why != "" {
 			// A command that is only a shell comment exits 0 with no output, so running
 			// it would record a PASS for a check that never looked (#2684). Fail closed
 			// without executing, exactly as an unrunnable command does.
-			exit, output = commentOnlyExit, "could-not-run: the Verify command is a shell comment, not a command; mark the real command with a `cmd:` code span"
+			exit, output = commentOnlyExit, "could-not-run: "+why
 		} else {
 			exit, output = execFn(root, row.Command)
 		}
@@ -461,6 +461,16 @@ func runBriefRows(root string, it loopengine.Item, execFn rowExec) []rowResult {
 		})
 	}
 	return results
+}
+
+// commentRefusal is why row must not run as a shell comment, or "": the reason
+// parseVerifyRows recorded from the raw cell, else the lifted command itself
+// starting `#` (a row built without a cell).
+func commentRefusal(row verifyRow) string {
+	if row.CommentLed == "" && verifycmd.CommentOnly(row.Command) {
+		return verifycmd.UnmarkedCommentWhy
+	}
+	return row.CommentLed
 }
 
 // commentOnlyExit is the exit code recorded for a Verify command that is only a

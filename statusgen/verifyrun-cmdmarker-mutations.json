@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'CmdMarker|NoMarkerUnchanged|ProseLedCommand|MarkedRowRoundTrips|ReexecutesLiftedCommand|RefusesProseLedCheckCI|ProseLedPassIsNotPass|OneChokePoint|HiddenMarker|RowLintJudges|ProseLedRow|WitnessRowRoundTrips|CommentLed|ShellComment|CommentOnly' -count=1 -timeout 300s",
+  "test": "go test . -run 'CmdMarker|NoMarkerUnchanged|ProseLedCommand|MarkedRowRoundTrips|ReexecutesLiftedCommand|RefusesProseLedCheckCI|ProseLedPassIsNotPass|OneChokePoint|HiddenMarker|RowLintJudges|ProseLedRow|WitnessRowRoundTrips|CommentLed|CommentCell|ShellComment|CommentOnly' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — verifyCommand ignores the marker (the pre-#1805 first-span lift)",
     "file": "verifyrows.go",
@@ -46,8 +46,8 @@
     {
       "name": "the marker exemption dropped from the lint (a marked row is still flagged)",
       "file": "verifyrows.go",
-      "old": "\tif len(markedCommands(cell)) > 0 {\n\t\treturn \"\", \"\"\n\t}\n\t// A command that is nothing but a shell comment",
-      "new": "\t// A command that is nothing but a shell comment"
+      "old": "\t\treturn \"\", \"\" // a marked real command: the author named it",
+      "new": "\t\t// mutated: the marker exemption dropped"
     },
     {
       "name": "the path arm stops firing (owner/repo and stream/NN mentions pass)",
@@ -266,10 +266,16 @@
       "new": "\treturn false"
     },
     {
-      "name": "#2684: a marked command that is all comment is no longer NOTICEd as vacuous",
+      "name": "#2684 review F2: a marked command that is all comment is exempt again (statusgen runs it, verifyloop refuses it)",
       "file": "verifyrows.go",
-      "old": "\tif shellCommentOnly(c) {\n\t\treturn true",
-      "new": "\tif false && shellCommentOnly(c) {\n\t\treturn true"
+      "old": "\t\tif shellCommentOnly(m[0]) {",
+      "new": "\t\tif false && shellCommentOnly(m[0]) {"
+    },
+    {
+      "name": "#2684 review F2: a marked comment's remedy is the generic one (it tells a marked row to add the marker)",
+      "file": "verifyrows.go",
+      "old": "\tcase strings.HasSuffix(why, shellCommentMarkedWhy):",
+      "new": "\tcase false:"
     }
   ]
 }

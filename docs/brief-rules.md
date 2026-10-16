@@ -82,6 +82,9 @@ nothing measured.
    without being executed (running the mention measures nothing, and a word like `gh`
    or a comment exits 0), until its command is marked; the check:ci verdict re-execution lane refuses such a
    row the same way, and `verifyrun --check` does not audit an old pass witness on it as pass.
+   A `cmd:` span whose command is itself only a `#` comment is refused the same way, by
+   statusgen and the tools/desk executors alike: replace it with the command that
+   performs the check.
    A marker counts only where the rendered table shows it as code: not between
    escaped backticks, and not in a cell whose prose carries an unescaped `<` or `[` (raw
    HTML, a comment, a link or an image can hide text from the reader) or a dollar in any

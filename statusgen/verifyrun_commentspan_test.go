@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -72,9 +73,9 @@ func TestCommentLedLintSparesRealCommands(t *testing.T) {
 	}
 }
 
-// TestCommentLedRowNotExecuted — the witness a run writes for the #2684 cell is
-// could-not-run (exit -1, no output fingerprint, the rule tag in the note), never
-// the empty-output pass. The same cell with a marked command runs it and passes
+// TestCommentLedRowNotExecuted — the witness a run writes for the #2684 cell, and
+// for a marked comment (review F2), is could-not-run (exit -1, no output
+// fingerprint, the rule tag in the note), never the empty-output pass. The same cell with a marked command runs it and passes
 // (the positive control: the executor still executes a legitimate row).
 // regression: #2684
 func TestCommentLedRowNotExecuted(t *testing.T) {
@@ -82,15 +83,19 @@ func TestCommentLedRowNotExecuted(t *testing.T) {
 		"| 1 | Inspect the `## Coverage` section of the review | exit 0 |",
 		"| 2 | Inspect `## Coverage`, then run `cmd: test -d .` | exit 0 |",
 		"| 3 | `## Coverage` | exit 0 |",
+		"| 4 | `cmd: # placeholder` | exit 0 |",
 	))
-	if len(rows) != 3 {
-		t.Fatalf("want 3 rows, got %d", len(rows))
+	if len(rows) != 4 {
+		t.Fatalf("want 4 rows, got %d", len(rows))
 	}
 	ws := runWitnesses(t.TempDir(), rows, "human:tester", "", "0000", "2026-10-15", 30*time.Second, false)
-	if len(ws) != 3 {
-		t.Fatalf("want 3 witnesses, got %d", len(ws))
+	if len(ws) != 4 {
+		t.Fatalf("want 4 witnesses, got %d", len(ws))
 	}
-	for _, i := range []int{0, 2} {
+	if !strings.Contains(ws[3].Note, "Replace the cmd:-marked comment") || !strings.HasPrefix(rows[3].ProseLed, "marked command ") {
+		t.Errorf("row 4: a marked comment's note must name the replace-it remedy, got prose-led=%q note=%q", rows[3].ProseLed, ws[3].Note)
+	}
+	for _, i := range []int{0, 2, 3} {
 		w := ws[i]
 		if w.State != stateCouldNotRun || w.Exit != -1 || w.OutHash == emptyOutputFingerprint ||
 			!strings.Contains(w.Note, proseLedRule) || !strings.Contains(w.Note, "shell comment") {
@@ -123,22 +128,37 @@ func TestCommentLedOldPassWitnessIsNotPass(t *testing.T) {
 	}
 }
 
-// TestCommentLedMarkedCommandIsVacuous — a MARKED command that is only a comment
-// is the explicit contract, so it still runs; the lint NOTICEs it as
-// cmd-marker-vacuous so the author marks the command that performs the check.
-func TestCommentLedMarkedCommandIsVacuous(t *testing.T) {
+// TestCommentLedMarkedIsRefused — a MARKED command that is only a comment is
+// refused like an unmarked one (#2684 review F2): the marker names the command
+// to run and a comment runs nothing. statusgen agrees with the tools/desk
+// executors, which refuse it too. The lint raises prose-led-command with the
+// replace-it remedy (the row is already marked), not cmd-marker-vacuous, whose
+// "the row passes" no longer holds; a marked command with a trailing comment
+// is a real command and is left alone.
+// regression: #2684
+func TestCommentLedMarkedIsRefused(t *testing.T) {
 	for _, cell := range []string{
 		"`cmd: ## Coverage`",
 		"Read `x.md`: `cmd: # placeholder`",
 		"`cmd: #coverage`",
 		"`cmd: # don't forget the quote`",
 	} {
-		if fs := rowFindings(cell, "exit 0"); !hasRule(fs, "cmd-marker-vacuous") {
-			t.Errorf("%q must raise cmd-marker-vacuous, got %+v", cell, fs)
+		span, why := proseLedCommandWhy(cell)
+		if !strings.Contains(why, "`cmd:`-marked shell comment") {
+			t.Errorf("proseLedCommandWhy(%q) = %q,%q; want the marked shell-comment reason", cell, span, why)
+		}
+		fs := rowFindings(cell, "exit 0")
+		if !hasRule(fs, proseLedRule) || hasRule(fs, "cmd-marker-vacuous") {
+			t.Errorf("%q must raise %s and not cmd-marker-vacuous, got %+v", cell, proseLedRule, fs)
+		}
+		for _, f := range fs {
+			if f.rule == proseLedRule && (!strings.Contains(f.msg, "Replace the cmd:-marked comment") || strings.Contains(f.msg, "Mark the real command")) {
+				t.Errorf("%q: the NOTICE must name the replace-it remedy, got %q", cell, f.msg)
+			}
 		}
 	}
-	if fs := rowFindings("`cmd: go test ./x -count=1 # the real check`", "exit 0"); hasRule(fs, "cmd-marker-vacuous") {
-		t.Errorf("a command with a trailing comment must not raise cmd-marker-vacuous, got %+v", fs)
+	if fs := rowFindings("`cmd: go test ./x -count=1 # the real check`", "exit 0"); hasRule(fs, "cmd-marker-vacuous") || hasRule(fs, proseLedRule) {
+		t.Errorf("a command with a trailing comment must not be flagged, got %+v", fs)
 	}
 }
 
@@ -209,6 +229,76 @@ func TestShellCommentSharedVectors(t *testing.T) {
 	for _, v := range doc.Vectors {
 		if got := shellCommentOnly(v.Cmd); got != v.CommentOnly {
 			t.Errorf("%s: shellCommentOnly(%q) = %v, want %v", v.Name, v.Cmd, got, v.CommentOnly)
+		}
+	}
+}
+
+// commentCellVector is one whole Command cell from the shared table's "cells"
+// section (#2684 review S1, F2), which tools/desk's verifycmd is held to too.
+type commentCellVector struct {
+	Name      string `json:"name"`
+	Cell      string `json:"cell"`
+	FirstSpan string `json:"firstSpan"`
+	Marked    bool   `json:"marked"`
+	Statusgen string `json:"statusgen"`
+	Desk      string `json:"desk"`
+}
+
+// TestCommentCellSharedVectors — statusgen's cell-to-verdict mapping for the
+// comment class, pinned at the CELL level so the two modules cannot apply one
+// predicate to different strings: the first-span lift tools/desk ports, the
+// marker, the lint's verdict, and the witness a real run writes (a refused cell
+// is could-not-run and never executed; a runs cell executes and passes). The
+// table's own invariant is checked too: a cell statusgen refuses is never one
+// the tools/desk executors run.
+// regression: #2684
+func TestCommentCellSharedVectors(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("testdata", "shell-comment-vectors.json"))
+	if err != nil {
+		t.Fatalf("could-not-check: the shared comment vector table is unreadable: %v", err)
+	}
+	var doc struct {
+		Cells []commentCellVector `json:"cells"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Cells) < 12 {
+		t.Fatalf("positive control: only %d cell vectors loaded", len(doc.Cells))
+	}
+	var table []string
+	for i, v := range doc.Cells {
+		if v.Statusgen == "comment-refused" && v.Desk != "comment-refused" {
+			t.Errorf("%s: statusgen refuses the cell but the table lets the tools/desk executors run it", v.Name)
+		}
+		if got := codeSpan(v.Cell); got != v.FirstSpan {
+			t.Errorf("%s: codeSpan(%q) = %q, want %q", v.Name, v.Cell, got, v.FirstSpan)
+		}
+		if got := len(markedCommands(v.Cell)) > 0; got != v.Marked {
+			t.Errorf("%s: marked = %v, want %v", v.Name, got, v.Marked)
+		}
+		_, why := proseLedCommandWhy(v.Cell)
+		got := "runs"
+		if strings.Contains(why, "shell comment") {
+			got = "comment-refused"
+		} else if why != "" {
+			t.Errorf("%s: flagged for a non-comment reason %q; the comment table holds only comment-class cells", v.Name, why)
+		}
+		if got != v.Statusgen {
+			t.Errorf("%s: statusgen verdict on %q = %s, want %s", v.Name, v.Cell, got, v.Statusgen)
+		}
+		table = append(table, "| "+strconv.Itoa(i+1)+" | "+v.Cell+" | exit 0 |")
+	}
+	rows := briefVerifyRows(verifyTable(table...))
+	if len(rows) != len(doc.Cells) {
+		t.Fatalf("want %d rows, got %d", len(doc.Cells), len(rows))
+	}
+	ws := runWitnesses(t.TempDir(), rows, "human:tester", "", "0000", "2026-10-15", 30*time.Second, false)
+	for i, v := range doc.Cells {
+		w := ws[i]
+		refused := w.State == stateCouldNotRun && w.Exit == -1 && strings.Contains(w.Note, "shell comment")
+		if want := v.Statusgen == "comment-refused"; refused != want || (!want && w.State != statePass) {
+			t.Errorf("%s: witness state=%s exit=%d note=%q; want %s", v.Name, w.State, w.Exit, w.Note, v.Statusgen)
 		}
 	}
 }
