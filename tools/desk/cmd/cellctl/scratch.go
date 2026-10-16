@@ -104,7 +104,7 @@ func cmdScratch(name, action string, v *cli.Values, command []string) {
 		}
 		tail := r.Tail()
 		if runErr == nil {
-			env := os.Environ()
+			env := c.telemetryEnv(os.Environ())
 			cellsRoot, cellName := c.reenter()
 			for k, v := range map[string]string{"TMPDIR": r.Work(), "TMP": r.Work(), "TEMP": r.Work(), "ASSAY_SCRATCH_ID": r.Record.ID, "ASSAY_SCRATCH_ROOT": root, "ASSAY_SCRATCH_CELL": cellName, "CELLS_ROOT": cellsRoot, "ASSAY_SOURCE_ROOT": abs, "ASSAY_SOURCE_REVISION": sha} {
 				env = envSet(env, k, v)

@@ -121,6 +121,43 @@ passes today and must still pass. Run from the repo root.
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -rq '2688' docs/streams/issue-flow/rulings.md && echo ok` | pass exit=0 | sha256:dc51b8c96c2d | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `deskautolane --help > /dev/null 2>&1 && grep -rqF 'chore(board): reconcile' <the lane-config path cited in the PR body> && echo ok` | could-not-run exit=- — unsubstituted placeholder(s) <the lane-config path cited in the PR body> — the row cannot run as written | sha256:e3b0c44298fc | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `READ FROM THE FORGE after the first scheduled reconcile tick following this brief's merge: the reconcile PR either does not exist (B: direct-CI landing on main) or exists merged by the reviewer App via deskautolane (A) with no dispatched reviewer verdict and no authorization-needed label.` | fail exit=2 | sha256:80dd39947a6e | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt36-sg" . && "${TMPDIR:-/tmp}/dt36-sg" --root .. --lint 2>&1 \| grep -q 'LINT: PASS' && echo ok` | pass exit=0 | sha256:dc51b8c96c2d | 2026-10-15 | assay-verifier-app[bot] @ bbf8e3516245 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#3031 run=77aed9fc601cc5ab900c3b39fae5cf7c34e8b5c6033ee016bf6d5ee81dc2ce01 source=bbf8e351624538c2a03159cd5a58116fb97fc293 brief=docs/streams/desk-tools/brief-36-reconcile-generated-class.md model=claude-opus-5-5 tier=any
+
+**Verifier pass — 2026-10-15, dispatched non-implementer verifier (verify-desk), merged main
+bbf8e3516.** The delivery (PR #2706, merged 2026-10-13) chose mechanism B — direct-CI
+single-writer: the rulings register with R-8 recorded unsigned, plus a human runsheet carrying
+the serialized workflow conversion diff for the driver to apply. Each row was run by hand and
+again under the execution witness above.
+
+| # | Command | Expected | Observed | Date / runner |
+|---|---------|----------|----------|---------------|
+| 1 | grep -rq '2688' on the issue-flow rulings register, then echo ok | prints ok | exit 0, prints `ok`; the register exists and cites 2688 twice (R-8 section text); its R-8 Sign-off line (line 36) is empty, so the lane is enacted for no area | 2026-10-15 verify-desk verifier (claude-opus-5-5) |
+| 2 | deskautolane --help, then grep the lane config for the reconcile title | prints ok — mechanism A only; under B not applicable, with the reason | NOT APPLICABLE under mechanism B: the delivery chose B, so no lane-config entry exists and no lane-config path was cited; the row's command carries an unsubstituted placeholder (the lane-config path), so the witness above marks it as unexecutable as written. Neighbour check: `deskautolane --help` exits 0. The register's R-8 text states the class does not enter the lane | 2026-10-15 verify-desk verifier (claude-opus-5-5) |
+| 3 | forge read after the first scheduled reconcile tick following the merge | reconcile PR absent (B: direct-CI landing on main) or merged via deskautolane (A), with no reviewer verdict and no authorization-needed label | FAIL as observed: post-merge scheduled reconcile ticks have run (assay-statusgen schedule runs succeeded 2026-10-14T19:20Z and 23:11Z), and the reconcile still lands as a pull request — the board/reconcile branch tip 8807c807b (`chore(board): reconcile 2026-10-14`, committed 2026-10-14T23:13Z) heads PR #2651, still OPEN, author app/assay-board-writer, labelled authorization-needed. Cause: the direct-CI conversion is not applied on main — `git apply --check` of the runsheet diff still exits 0 at bbf8e3516 (the three target files are unchanged), and the runsheet itself states the remaining act is the driver's apply. Tracked on the open ruling issue #2688; not a code defect | 2026-10-15 verify-desk verifier (claude-opus-5-5) |
+| 4 | build statusgen to a temp path, run --lint, grep LINT: PASS | prints ok | exit 0, prints `ok`; lint tail `LINT: PASS` (NOTICE lines only, none for desk-tools) | 2026-10-15 verify-desk verifier (claude-opus-5-5) |
+
+**Risk-bearing value.** Enumeration over the delivery diff (changelog fragment, rulings
+register, issue-flow README, staged-workflows README, the runsheet and its diff file, stream
+index row): the item carries risk metadata (all four fields `no`, not irreversible). Literals
+the diff introduces: the R-8 Sign-off line, empty, at the rulings register line 36 (an
+authority binding); the runsheet's pinned diff digest sha256 f4e3e0df93e1…a866cd8 and byte
+count 112,747 at the runsheet lines 29–30; the patch base ca0dad5c4 at the runsheet line 34.
+The workflow literals inside the diff file are not live (the diff is unapplied). Ranked: the
+empty Sign-off line first (a wrong value would enact the auto-approve lane, reversible by an
+edit but a review-coverage grant); the digest/size second; the base last.
+
+- RISK-VALUE: DERIVED — R-8 Sign-off = (empty) @ docs/streams/issue-flow/rulings.md:36 — the ruling on #2688 delegated the mechanism, the delivery chose B (direct-CI, the class never enters the lane), so nothing may be enacted; the register's own header states an empty Sign-off line grants nothing.
+- RISK-VALUE: DERIVED — reconcile-lane-hunk.diff sha256 = f4e3e0df93e1d7d47088021c61cf2e232cd4b9ca91564e919cb8687f9a866cd8, size = 112,747 @ docs/runsheets/reconcile-lane-hunk.md:29-30 — recomputed at bbf8e3516: `shasum -a 256` gives the same digest and `wc -c` gives 112747 bytes, so the pin matches the bytes the driver would apply.
+
+**VERIFY: FAIL** — row 3: the reconcile class still lands as PR #2651 (open, authorization-needed) after post-merge ticks, because the runsheet's direct-CI conversion awaits the driver's apply (blocked on a human act, tracked on #2688); rows 1 and 4 PASS, row 2 not applicable under mechanism B.
+
+
 ## Review
 Gate: model (from frontmatter). The reviewer answers, in the verdict: (1) is the lane
 membership exactly the ruled class (title + author), with no widening? (2) does the R-8

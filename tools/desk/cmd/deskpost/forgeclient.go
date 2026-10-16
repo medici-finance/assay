@@ -49,6 +49,10 @@ type postBackend interface {
 	stampTimeline(pr int) (deskkit.StampTimeline, error)
 	claimLiveness(repo string, pr int) deskkit.ClaimLiveness
 	headCommitAuthor(sha string) (string, error)
+	// headCommittedAt returns the commit's COMMITTER date as the forge reports it (RFC3339,
+	// "" when none). `ready` compares it against a grant's submitted_at to refuse a review the
+	// forge re-anchored onto a newer head (#3093).
+	headCommittedAt(sha string) (string, error)
 	prTrustPayload(n int) (*deskkit.TrustPayload, error)
 	issueTrustPayload(n int) (*deskkit.TrustPayload, error)
 	combinedStatusAt(sha string) (*combinedStatus, error)
@@ -244,6 +248,17 @@ func (b *forgeBackend) headCommitAuthor(sha string) (string, error) {
 		return "", err
 	}
 	return c.AuthorLogin, nil
+}
+
+func (b *forgeBackend) headCommittedAt(sha string) (string, error) {
+	c, err := b.fg.GetCommit(b.repo, sha)
+	if err != nil {
+		return "", err
+	}
+	if c == nil {
+		return "", nil // no commit, no date: the caller reads "" as could-not-check
+	}
+	return c.CommittedDate, nil
 }
 
 func (b *forgeBackend) prTrustPayload(n int) (*deskkit.TrustPayload, error) {

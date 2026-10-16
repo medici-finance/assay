@@ -96,10 +96,10 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.25.0"
+  GO_VERSION: "1.27.2"
   # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl; the corroborate
   # job refuses any other tarball. Bump both together.
-  GO_LINUX_AMD64_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+  GO_LINUX_AMD64_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
 
 jobs:
   lint:

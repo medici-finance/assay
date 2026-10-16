@@ -167,7 +167,9 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	// The read-ahead packet, when one was written for this dispatch: one line, every kit.
 	writePacketLine(&b, plan)
 
-	if o.pr <= 0 && strings.TrimSpace(o.model) != "" && !review && !verifier {
+	if o.attestWorker && o.pr <= 0 && !review && !verifier {
+		writeWorkerAttestationSection(&b, o, repo, plan.workerAttestation)
+	} else if o.pr <= 0 && strings.TrimSpace(o.model) != "" && !review && !verifier {
 		fmt.Fprintf(&b, "\n## Pending model stamp\n\nAfter opening the draft PR, return its number to the dispatching worker-desk. That desk sends the PR and this exact dispatch model/tier selection to the coordinator desk (the-desk), which runs:\n\n```\ndeskdispatch --stamp-only --repo %s --pr <N> --model %s --tier %s --kit %s\n```\n\nThe model and tier are the original dispatcher's selection, backed by its real dispatch receipt. Both worker-desk and its child worker are refused by this verb; a shared DESK_SESSION is claim custody, not stamp authority. Do not run this command as the worker or change your session identity to apply it. A stamp-only receipt does not renew a review claim. It writes the authoring pair (authored-model:, authored-tier:), never the dispatched-* pair a later review dispatch writes.\n", repo, o.model, o.tier, o.kit)
 	}
 	// The same normalisation the gate, the stamp label and the record use.
@@ -456,8 +458,33 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 			home, head, home)
 	}
 	writeReviewRound(b, plan.round)
-	b.WriteString("Release the dispatch claim once your verdict is posted:\n\n")
+	if writeReviewFinish(b, o, plan, repo) {
+		b.WriteString("If `finish` stops at its release step, the verdict stands and the claim is still held — " +
+			"release it with:\n\n")
+	} else {
+		b.WriteString("Release the dispatch claim once your verdict is posted:\n\n")
+	}
 	writeReleaseClaim(b, o, plan, repo)
+}
+
+// writeReviewFinish emits the one-step post for a review whose claim key `deskpost finish`
+// accepts: it posts the verdict, reads it back, and releases the claim, so the reviewer is
+// not left to remember a separate release (or to run one that fails as printed). It reports
+// whether it wrote anything. The key and lane are judged by the SAME deskkit functions finish
+// itself judges them by — a key finish would refuse gets no finish line, only the release line,
+// and the lane verb is the one finish pairs with this key, never one it would refuse.
+func writeReviewFinish(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo string) bool {
+	if o.pr <= 0 || deskkit.ValidateReviewClaimKey(plan.claimKey, repo, o.pr) != nil {
+		return false
+	}
+	verb, verdicts := "review", "approve|request-changes"
+	if deskkit.ReviewClaimKeyIsSecurity(plan.claimKey, o.pr) {
+		verb, verdicts = "security-review", "pass|fail"
+	}
+	b.WriteString("Post your verdict, confirm it and release the dispatch claim in ONE step:\n\n")
+	fmt.Fprintf(b, "```\ndeskpost finish %s %s %d --verdict %s --head <full head sha> --body-file <file> --claim %q\n```\n\n",
+		verb, repo, o.pr, verdicts, plan.claimKey)
+	return true
 }
 
 // writeVerifierAssignment emits the VERIFIER's action half. A verifier is READ-ONLY against
@@ -473,7 +500,7 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 // contract), not on a branch push — a verifier does not push a branch as its ordinary output.
 func writeVerifierAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo, home string) {
 	brief := o.brief
-	if filepath.IsAbs(brief) {
+	if filepath.IsAbs(brief) && vpWithin(o.root, brief) {
 		if rel, err := filepath.Rel(o.root, brief); err == nil {
 			brief = rel
 		}
@@ -508,7 +535,26 @@ func writeReleaseClaim(b *strings.Builder, o dispatchOpts, plan dispatchPlan, re
 	if releaseTool == "" {
 		releaseTool = claimScriptRel
 	}
-	fmt.Fprintf(b, "```\n%s release %q --repo %s\n```\n", releaseTool, plan.claimKey, repo)
+	role, _ := kitRole(o.kit)
+	fmt.Fprintf(b, "```\n%s release %q --repo %s%s\n```\n", releaseTool, plan.claimKey, repo,
+		claimCredArg(releaseTool, role, repo))
+}
+
+// claimCredArg is the credential argument a PRINTED claim-tool command needs to run as
+// printed. The pure-Go claim binary opens the forge-ref store only with a token: without
+// --token-file (or a token in the environment) it exits 6, so a hint that omits it is a
+// command that fails as written and reads like a guard refusal to an agent told to stop on
+// one. The legacy script reads the ambient credential itself and takes no flag, so it gets
+// none. role is the desk role whose credential the reader holds; "" (an unknown kit) falls
+// back to the dispatcher's own.
+func claimCredArg(tool, role, repo string) string {
+	if tool != goClaimBinary {
+		return ""
+	}
+	if role == "" {
+		role = deskkit.DispatcherRole
+	}
+	return fmt.Sprintf(` --token-file "$(desktoken --no-rotate %s --repo %s)"`, role, repo)
 }
 
 // issueNumFromItem extracts the GitHub issue number from an ISSUE-ONLY item key. The

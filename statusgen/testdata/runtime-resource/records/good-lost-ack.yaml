@@ -1,0 +1,53 @@
+# The create call's acknowledgment was lost (outcome unknown). The resumed run
+# reconciled BEFORE doing anything else: the reconcile receipt observed the
+# branch present, so the create took effect and is not repeated.
+schema: runtime-resource-v1
+id: rr-lost-ack-01
+class: database-branch
+adapter:
+  id: local-mock
+  version: "1"
+owner:
+  brief: example/01
+  run: run-0002
+input-revision: 3f2a9c1
+ttl: 4h
+quota:
+  - dimension: storage-mb
+    limit: 512
+data-classification: synthetic
+provisioning:
+  requested-by: agent:worker-1
+  via: control-plane
+credentials:
+  durable-custody: control-plane
+  agent-credential:
+    scope: resource
+    lifetime: 1h
+  rotations: []
+cleanup-owner: control-plane
+evidence-kind: runtime-receipt
+cost:
+  amount: 0
+  unit: USD
+  basis: estimate
+recovery: reconcile-before-retry
+state: provisioned
+effects:
+  - id: eff-0001
+    verb: create
+    idempotency-key: run-0002/create
+    requested-at: "2026-01-01T00:00:00Z"
+    outcome: unknown
+    principal: agent:worker-1
+  - id: eff-0002
+    verb: reconcile
+    idempotency-key: run-0002/reconcile-eff-0001
+    requested-at: "2026-01-01T00:02:00Z"
+    outcome: succeeded
+    principal: control-plane
+    reconciles: eff-0001
+    receipt:
+      adapter-ref: mock://branch/rr-lost-ack-01
+      observed-at: "2026-01-01T00:02:01Z"
+      observed-state: present

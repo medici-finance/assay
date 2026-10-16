@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
 // defaultHost stands in for the real API host for this whole test binary. TestMain points both
@@ -53,7 +54,7 @@ func TestMain(m *testing.M) {
 	defaultHost.url = srv.URL
 	forgeAPIBase = srv.URL
 	restore := deskkit.SetCITokenAPIBaseForTest(srv.URL)
-	code := m.Run()
+	code := gitquiet.Run(m)
 	restore()
 	srv.Close()
 	if hits := defaultHostHits(); len(hits) > 0 {
@@ -567,30 +568,43 @@ func TestCITransportRecordsIdentityNotToken(t *testing.T) {
 	}
 }
 
-// toolClassFor: ClassCI only with the flag as a real flag, in CI.
+// toolClassFor: ClassCI only with the flag as a real flag, in CI. The class is what the process
+// startup sets, from the value the command tree parsed; a line the tree refuses never reaches the
+// startup at all, so it never picks a class (desktools-v2/45 moved this from a second argv scan).
 func TestCITransportToolClass(t *testing.T) {
 	cases := []struct {
-		name string
-		ci   bool
-		args []string
-		want deskkit.ToolClass
+		name    string
+		ci      bool
+		args    []string
+		want    deskkit.ToolClass
+		started bool
 	}{
-		{"flag in CI", true, []string{"issues", "--repo", ciRepo, "--ci-workflow-token"}, deskkit.ClassCI},
-		{"flag outside CI", false, []string{"issues", "--repo", ciRepo, "--ci-workflow-token"}, deskkit.ClassWrite},
-		{"CI without flag", true, []string{"issues", "--repo", ciRepo}, deskkit.ClassWrite},
-		{"neither", false, []string{"issues", "--repo", ciRepo}, deskkit.ClassWrite},
-		{"flag as a flag value", true, []string{"issues", "--repo", "--ci-workflow-token"}, deskkit.ClassWrite},
-		{"malformed line", true, []string{"issues", "--ci-workflow-token", "--bogus"}, deskkit.ClassWrite},
-		{"kind only", true, []string{"issues"}, deskkit.ClassWrite},
+		{"flag in CI", true, []string{"issues", "--repo", ciRepo, "--ci-workflow-token"}, deskkit.ClassCI, true},
+		{"flag outside CI", false, []string{"issues", "--repo", ciRepo, "--ci-workflow-token"}, deskkit.ClassWrite, true},
+		{"CI without flag", true, []string{"issues", "--repo", ciRepo}, deskkit.ClassWrite, true},
+		{"neither", false, []string{"issues", "--repo", ciRepo}, deskkit.ClassWrite, true},
+		{"flag as a flag value", true, []string{"issues", "--repo", "--ci-workflow-token"}, deskkit.ClassWrite, false},
+		{"malformed line", true, []string{"issues", "--ci-workflow-token", "--bogus"}, deskkit.ClassWrite, false},
+		{"kind only", true, []string{"issues"}, deskkit.ClassWrite, true},
 	}
+	prev := readFn
+	readFn = func(string, readOpts, io.Writer, io.Writer) int { return deskkit.ExitOK }
+	t.Cleanup(func() { readFn = prev })
 	for _, tc := range cases {
 		if tc.ci {
 			t.Setenv("GITHUB_ACTIONS", "true")
 		} else {
 			t.Setenv("GITHUB_ACTIONS", "")
 		}
-		if got := toolClassFor(tc.args); got != tc.want {
-			t.Errorf("%s: toolClassFor = %v, want %v", tc.name, got, tc.want)
+		got, started := deskkit.ClassWrite, false
+		var out, errb strings.Builder
+		execute(tc.args, &out, &errb, func(_ io.Writer, ci bool) int {
+			got, started = toolClassFor(ci), true
+			return deskkit.ExitOK
+		})
+		assertNoTokenLeak(t, tc.name, out.String()+errb.String())
+		if started != tc.started || got != tc.want {
+			t.Errorf("%s: startup ran=%v class=%v, want ran=%v class=%v", tc.name, started, got, tc.started, tc.want)
 		}
 	}
 }

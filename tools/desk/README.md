@@ -295,7 +295,9 @@ export DESK_TOOLS_DISABLED=1       # env-var arm, same effect, one session
 ```
 
 `STOP` halts every loop at its next iteration boundary; `STOP.<loop-name>` halts one
-loop. Precedence is `DISABLED` > `STOP` > `STOP.<name>`, and stop flags are **not**
+loop; `STOP.cell.<cell>` and `STOP.cell.<cell>.<loop-name>` halt one cell's desks.
+Precedence is `DISABLED` > `STOP` > `STOP.cell.<cell>` > `STOP.<name>` =
+`STOP.cell.<cell>.<name>` (any one present is a stop), and stop flags are **not**
 self-clearing. The full semantics, including the optional `HEARTBEAT` dead-man lease,
 are in [Runtime state](#runtime-state-not-created-by-this-repo).
 
@@ -407,8 +409,11 @@ unaffected and keep their current behaviour until they are moved over.
 
 The audit ledger records WHAT a verb did; it records nothing about how long it took. With
 `ASSAY_TELEMETRY=1` exported (exactly `1` — `true`, `yes` or an empty value are all OFF), the
-first-wave verbs — `deskpr`, `deskpost`, `deskboard`, `desktoken`, `deskwt`, `deskdispatch`
-and `deskboot` — each append ONE `perf-v1` line per invocation to a local day file:
+desk commands append ONE `perf-v1` line per completed invocation to a local day file.
+All 67 operational commands are wrapped, including deskfile, deskreply, scanloop, issueboard,
+reviewloop, verifyloop and the supervisor. `deskperf` is excluded so reading a report cannot
+change its input; `muhar` is a developer mutation harness with separate execution accounting.
+A command-inventory test fails when a new entrypoint forgets its wrapper:
 
 ```sh
 export ASSAY_TELEMETRY=1        # opt in; unset it to stop — the history then ages out
@@ -426,7 +431,12 @@ through the shared runner (`deskkit.Run`) and their summed wall ms, how many HTT
 round-trips went through the forge client's counting transport, the build stamp (hex, else
 `unpinned`), and a random per-install id.
 
-**The two counts are lower bounds.** A verb's own child-process runner or its own direct
+**Newly covered commands use the fixed verb `other` rather than copying arbitrary argv;
+the original seven retain their registered verb lists. Tool-level timing/counts are complete
+for completed wrapped invocations when the local sink is writable. Long-running commands
+write only on return; killed processes can have no terminal sample.
+
+The two counts are lower bounds.** A verb's own child-process runner or its own direct
 HTTP client is outside both seams and is not counted: `deskboot`'s boot-step children,
 `desktoken`'s token mint, `deskpost`'s posts, and the repository-visibility read when no
 client is injected. A `0` from those means "not counted", not "none made".
@@ -518,7 +528,8 @@ At runtime the tools read/write, under `~/.config/assay/`:
 - `STOP.<loop-name>` — per-loop stop flag (brief 08). Halts only the loop whose
   `DESK_LOOP` env var matches `<loop-name>`; other loops and plain tool invocations
   (no DESK_LOOP set) are unaffected. Removed with `rm`. Precedence chain:
-  `DISABLED` (C-6) > `STOP` > `STOP.<name>`. A DISABLED that is cleared re-enables
+  `DISABLED` (C-6) > `STOP` > `STOP.cell.<cell>` > `STOP.<name>` =
+  `STOP.cell.<cell>.<name>` (the cell flags are described below). A DISABLED that is cleared re-enables
   everything; stop flags are NOT self-clearing (C-10: a switch that un-flips itself
   is not a switch).
 
@@ -557,6 +568,44 @@ At runtime the tools read/write, under `~/.config/assay/`:
 
   `deskboard` marks a `STOP.<name>` whose name matches no known loop as **inert**:
   it halts nothing, and a human must not read it as a stop that is being honoured.
+- `STOP.cell.<cell>` / `STOP.cell.<cell>.<loop-name>` — cell-scoped stop flags. Host
+  cells share this one state directory, so `STOP` and `STOP.<loop-name>` reach every
+  cell's desks; these reach one cell. `STOP.cell.<cell>` halts every loop of that
+  cell, `STOP.cell.<cell>.<loop-name>` one loop of it (`<loop-name>` resolves through
+  `loopnames.go` exactly as for `STOP.<loop-name>`, so an alias-named flag holds).
+  Removed with `rm`; not self-clearing. Full precedence chain: `DISABLED` > `STOP` >
+  `STOP.cell.<cell>` > `STOP.<name>` = `STOP.cell.<cell>.<name>` — any one present
+  is a stop.
+
+  - **Membership is the cell marker only.** A session belongs to a cell through
+    `ASSAY_CELL` (its role through `ASSAY_CELL_ROLE`), the process-environment marker
+    `cellctl` stamps on every desk it launches — never a `roster.env` key, and never
+    the comms-only `DESK_CELL`. The per-loop cell flag is checked for the loop named by
+    `DESK_LOOP` and for the role `ASSAY_CELL_ROLE` names, when that is a known loop. A
+    session with no marker is unaffected by every cell flag.
+  - **Cell flags only add stops.** They are resolved after `DISABLED` and `STOP`, and
+    they never clear or override `STOP.<name>`. `STOP.cell.<cell>` is resolved before
+    the loop name, so it also holds over an unrecognised `DESK_LOOP`.
+  - **The cell name is validated before any path is built.** A marker outside
+    `[a-z0-9-]` (for example `../x` or `a/b`) is refused **exit 6 (unverifiable)**:
+    the Guard cannot name the file that would speak for that session, so it never
+    reports "not stopped".
+  - **Two layers.** The iteration-boundary check of `pr-review-desk`, `verify-desk`
+    and `worker-desk` reads both cell flags in the skill body, and the Guard refuses
+    every outward verb independently. `intake-desk` and `the-desk` have no
+    iteration-boundary check and rely on the Guard alone.
+
+  `deskboard` lists cell flags beside the others and tags one **INERT**. It says the
+  flag "halts nothing" only when it can prove that: the cell name breaks the
+  `[a-z0-9-]` rule (the same rule `cellctl` holds every cell name to) or the loop part
+  matches no known loop. A flag whose cell has no registration
+  (`<cells-root>/<cell>/cell.env`) under the cells root *as the board's own shell
+  resolves it* (`$CELLS_ROOT`, else `$XDG_DATA_HOME/assay/cells`, else
+  `~/.local/share/assay/cells`) is tagged INERT too, but its reason names the root it
+  looked in and does not say "halts nothing": the Guard keys on the session's marker
+  alone, so a cell registered under another root is still stopped by it. Any desk on the
+  machine can write a cell flag for another cell — no escalation over `STOP`, which
+  any desk can already write.
 - `HEARTBEAT` — dead-man lease (brief 08, optional). If the file EXISTS and its
   mtime is older than 24h, it is treated as STOP-ALL. Absent file = feature off
   (no behaviour change until Ada opts in by touching it once). **Renewal is a HUMAN
@@ -2536,9 +2585,9 @@ parent), and there is **no `--force` flag anywhere**. It is a local-only verb cl
 takes the C-5 audit line and the C-6 kill switch but NOT the outward-write rate limit.
 
 ```bash
-deskwt add <name> [--branch B] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R]   # create tracker-<name> on a tracking branch
+deskwt add <name> [--branch B] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R] [--lock-session <id>]   # create tracker-<name> on a tracking branch
 deskwt remove <path>                                   # remove ONE proven-safe worktree
-deskwt prune [--repo <path>] [--interval <dur>]        # bulk-reduce stale worktrees, safely
+deskwt prune [--repo <path>] [--interval <dur>] [--min-idle 1h]   # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
 deskwt prune --reap-dead-sessions [--dry-run]          # …and reap the worktrees no live session owns
 deskwt prune --branches-only                           # …or run ONLY the local-branch GC (see Step C)
@@ -2601,7 +2650,15 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
   fall through to), so a commit there fails closed until an identity is set rather than
   committing under an unrelated inherited one. The shared checkout's config is never touched
   either way; the identity (or the cleared state) is echoed to stderr, and stdout stays the
-  bare worktree path.
+  bare worktree path. `--lock-session <id>` LOCKS the new worktree for a live session, with
+  the reason `deskwt add live session (deskwt add session=<id>)`, so no prune arm removes it
+  while that session works there. The lock is the LAST step, taken after every other step
+  (including the `after_create` hook) has succeeded, and is read back from git before `add`
+  reports success; if it cannot be taken or verified, the new worktree is rolled back and
+  `add` fails. `<id>` must be a plain name (no `/`, no `..`). The reason carries role-init's
+  `session=<id>` form, so `--reclaim-stale-locks` and `--reap-dead-sessions` retire the lock
+  only once that session's roster beacon is stale. Without the flag `add` locks nothing, as
+  before.
 
 - **`remove`** refuses a dirty TRACKED tree, unpushed commits, a no-upstream branch, an
   unregistered path, or anything resolving outside the prefixes; untracked build artifacts
@@ -2651,7 +2708,19 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      untracked-INCLUSIVE status), and **no git-ignored payload** (ignored files exist in no
      commit). An at-tip tree passing all three drains; any other is LEFT with the reason
      named. Dirty / unpushed / unmerged / the
-     current worktree / out-of-prefix are all LEFT and reported as skipped with a reason. No
+     current worktree / out-of-prefix are all LEFT and reported as skipped with a reason.
+     Every unlocked candidate must ALSO pass the **activity gate**: a tree whose newest
+     activity evidence is younger than `--min-idle` (default `1h`) is HELD with its age
+     named (`active 12m ago (inside the 1h0m0s --min-idle window)`), whatever its content
+     proves. The evidence is the newest mtime of the worktree root directory and of the
+     files git rewrites as a session works there: the admin entry's `HEAD` (required),
+     `index`, `logs/HEAD`, `ORIG_HEAD` and `FETCH_HEAD`. Evidence that cannot be read holds
+     the tree as `unverifiable worktree activity`, never judges it idle. The gate applies to
+     `--reap-dead-sessions` too. It is a recency check on what git writes, not proof of
+     an absent session: a session that only reads or runs tests in a clean tree, with no
+     git operation and no top-level file created or deleted, for longer than `--min-idle`
+     is invisible to it; such a session locks its tree. `--min-idle` must be a positive duration: the gate can be
+     tuned, not disabled, and `--branches-only` (which removes no worktree) refuses it. No
      `--force`. `--repo <path>` targets a repo without a session cwd (used by the multi-repo
      sweep script). Exit `0` ok/noop · `3` disabled · `5` refused · `6` unverifiable.
   5. **Step C (default ON — `--no-branches` skips it, `--branches-only` runs it alone):**
@@ -2677,10 +2746,13 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
      under its free-space floor — indefinitely. Each sweep discovers the marked cache
      roots under the cells root (`--cells-root`, then `$CELLS_ROOT`, then the compiled
      per-user default; a custom `CELL_GO_CACHE_ROOT` outside it is out of the sweep's
-     sight) and runs the package's own `Check` against each root's last recorded policy:
-     reclaim only under pressure, never a warm purge. Active consumer records protect
-     `mod/` and `gopath/`; `build/` entries older than the policy's trim age
-     (`CELL_GO_CACHE_BUILD_MAX_AGE`) are trimmed under pressure regardless. A root whose owning directory the same sweep removed is reaped as an orphan,
+     sight) and runs the package's own `Check` against each root's last recorded policy,
+     never a warm purge. Whole roots go only under pressure with no consumer record.
+     Otherwise, under pressure or above the high-water mark (75% of the budget),
+     `build/` entries are trimmed oldest first down to the low-water mark
+     (`CELL_GO_CACHE_LOW_WATER_PERCENT`, default 60%), never touching one younger than
+     the safety floor (`CELL_GO_CACHE_TRIM_MIN_AGE`, default 2h); active consumer
+     records protect `mod/` and `gopath/`. A root whose owning directory the same sweep removed is reaped as an orphan,
      gated on its lease set re-read under its own lock at act time. The pass is silent
      when every cache is within policy; the summary gains a cache segment only when it
      reclaimed, reaped, or found pressure it could not clear.
@@ -2875,7 +2947,9 @@ repos, `scripts/deskwt-prune-all.sh` invokes `deskwt prune --repo <path>` per ex
 Because every desk loop runs a one-shot prune at boot, N windows starting inside a minute
 used to run N identical full sweeps over the same repository at once. The singleton makes
 that one sweep. It is two mechanisms over one stamp file under `~/.config/assay/prune/`
-(never inside the target repository, so `--dry-run` can promise it writes nothing there):
+(never inside the target repository, so `--dry-run` can promise it writes nothing there).
+The stamp is keyed on the repository's shared git common directory, so sweeps started from
+the shared checkout and from any of its worktrees contend for the same singleton:
 
 - **A non-blocking exclusive advisory lock.** A sweep that cannot take it prints
   `deskwt prune: held by pid <pid>, running <age> — skipping this sweep`, exits **0** (a
@@ -3241,8 +3315,9 @@ Four things a hand-rolled check has to get right, each of which a naive version 
 ### Kill switch and stop flags
 
 Arm and disarm are file operations under `~/.config/assay/`; the flag semantics,
-the `HEARTBEAT` dead-man lease, and the precedence chain
-`DISABLED` > `STOP` > `STOP.<name>` are specified once in
+the `HEARTBEAT` dead-man lease, and the full precedence chain
+(`DISABLED` > `STOP` > `STOP.cell.<cell>` > `STOP.<name>` = `STOP.cell.<cell>.<name>`)
+are specified once in
 [Runtime state](#runtime-state-not-created-by-this-repo) above.
 
 ```bash
@@ -3622,8 +3697,9 @@ Rotating the session id does reset the bucket — a new session is a new session
 **every `new` audit line records the sessionTag it charged**, so rotating to buy budget
 leaves a trail rather than erasing one. That trace is the control here, not a hard block.
 Sessions with no session variable set at all share the single `unknown` bucket (the
-conservative direction). deskfile **gates WHETHER and WHERE, never WHO**: the caller's ambient `gh`
-credential is the filing identity and no App token is ever minted. Repo scope comes from
+conservative direction). deskfile **gates WHETHER and WHERE, never WHO**: the filing identity is the session's own
+role App credential, resolved from `$DESK_LOOP` through `desktoken` (the worker App, with a NOTICE,
+when no role resolves), never an ambient `gh` login. Repo scope comes from
 `deskkit.IsAllowedRepo` — there is no second repo list, and a test parses the sources to
 prove it.
 
@@ -5692,6 +5768,33 @@ claim, allocates no worktree, invokes no lifecycle hook, registers no roster ent
 launches no worker. It does not revive a released review claim. `--model` and `--tier`
 are explicit, never inferred from an old stamp or a model-name lookup.
 
+**Worker pre-work attestation (opt-in, `--attest-worker`).** Without the flag a fresh
+worker dispatch reports its stamp PENDING, as above. With it,
+`deskdispatch <item> --kit worker --model gpt-6.1-sol --tier strong --brief <path> --attest-worker`
+gives the run a stamp target before any PR exists. Step 5 creates a dispatcher-authored
+`[worker-attestation] <run>` issue whose immutable JSON body binds a random run identifier,
+the repository, the claim key, the kit, the dispatched branch, the worktree's base commit,
+the source (the repo-relative brief path and its content digest, or an `issue-<N>` item's
+number and body digest) and the selected model/tier. The record is stamped with the
+authoring pair under the existing desk custody, closed and read back before the prompt is
+emitted. Refusals: a non-worker kit, `--pr`, no `--model`, no source, or a roster binding
+desk and worker to one actor (exit 5, before the claim). A failure to create, stamp, close
+or read the record back emits no prompt, releases the claim and exits 6. The worktree is
+kept, and the abandoned record stays open. An open record never binds a change, and
+`ListOpenIssues` excludes the reserved title when the bound dispatcher authored it, as for
+the verifier record. `--dry-run` prints the plan and writes nothing.
+
+The prompt hands the worker one exact `Worker-Attestation: <repo>#<N> run=<run>` line for
+the draft PR's description. The PR's own authoring stamp is still the coordinator's
+post-open `--stamp-only` call, with an explicit `--model`/`--tier` (and optionally
+`--attestation <N>`). That call reads the record the change names. It refuses (exit 5,
+nothing written) when the record's repository, kit, branch or model/tier disagree with the
+change or the stated selection, when `--attestation` and the description name different
+records, or when the description carries a malformed or duplicate line. An unreadable,
+open, edited, PENDING or unstamped record is never admitted. The change stamp is never
+inferred from the record: the record only constrains it. A change that names no record
+takes the plain path above, unchanged.
+
 **Two label pairs (#2760).** A worker kit (the default) writes the AUTHORING pair,
 `authored-model:<slug>` + `authored-tier:<tier>`: which model the coordinator launched to
 write the change. `--kit review` writes `dispatched-model:<slug>` + `dispatched-tier:<tier>`:
@@ -5730,6 +5833,56 @@ issue creation and the shared stamp applier; the verifier desk and child may sha
 verifier App, but that App never becomes stamp authority. Configurations binding desk
 and verifier to the same actor refuse this attestation. Existing PR self-stamp rules stay
 unchanged. No record claims execution surveillance or a verification result.
+
+**Cross-repository tracking (#2485).** Keep `--root` and `--repo` on the
+deliverable repository, with `--claim-root` on the tracking repository and `--brief`
+pointing to its absolute brief path. The immutable tracking brief must declare that
+deliverable through `deliverable_repo`, registered `homed-in`, or its registered
+`files:` aliases. Both checkouts must be at fetched `origin/main`. Before materializing the isolated
+tracking tree, Git 2.41 or later reads its immutable attributes: filter-backed trees,
+submodules and executable post-checkout hooks refuse before checkout programs run.
+Version 2 of the
+attestation binds the deliverable repository/commit/home separately from the tracking
+repository/commit/brief/plan/home. Same-repository runs retain version 1.
+
+The dispatcher creates an isolated tracking checkout outside both source roots and
+retains its exact location in local run metadata. The tracking repository owns the
+attestation issue, Evidence and outcome records; no tracking file is copied into the
+deliverable tree. Private tracking with a public deliverable, and two separate private
+repositories, are supported. Unknown visibility or a public tracking destination for a
+restricted deliverable refuses. Prompts and packets are local, owner-only files outside
+Git trees; they must not be published. The packet names both immutable revisions, reads
+its brief/history from tracking, and checks both heads before returning.
+
+`--check-verifier` returns the local `BriefRoot` and the admitted deliverable home
+(`SourceHome`) after admission. `statusgen verifyrun --brief <tracking-relative-brief>`,
+run from the deliverable home, reads the admitted tracking brief and writes its Evidence
+there while Verify rows execute in the admitted deliverable home and nowhere else: the
+row root is that home whether or not `--root` is given, and an explicit `--root` (or an
+admission root) naming any other directory, the tracking clone included, is refused
+before a row runs.
+For `deskevidence`, keep `--root <deliverable-home>` and select the **tracking** repository
+and branch; only the isolated tracking brief's Evidence and permitted index row may
+change. Refresh landed Evidence bytes in `BriefRoot` without moving either admitted HEAD.
+The native/interim adapters carry the same two-repository binding through queue, launch
+and landing; native ACP's filesystem fence remains the deliverable home. Container
+execution retains its existing single-root mount boundary, so `--in-container` refuses
+a cross-repository run outright, with or without `--root`.
+
+A failed/blocked outcome's `sha` names its landed tracking Evidence commit. Its
+`file:` inputs describe tracking files, while `repo-source:<owner/name>` binds the full
+observed deliverable commit. Delivery PRs for that source must also be ancestors of the
+admitted commit. The offline wake reader requires a configured root with the right origin
+and a clean readable tree. Any new clean deliverable commit, including an unrelated or
+empty commit, wakes this conservative manifest; tracking input changes also wake it.
+Missing, wrong or dirty roots are could-not-check. Older readers cannot establish
+unchangedness for the new key. Explicit-recheck receipts keep their existing predicate.
+
+Recovery retains the original nonce, source home and isolated tracking home, including
+a lost issue-create response. A legacy failure with no record or missing association
+provenance is could-not-check: the tool cannot reconstruct the original run and never
+creates a replacement under the name of recovery. Neither a refused dispatch nor a
+successfully stamped association is a verification result.
 
 Successful readback closes the record before the prompt is emitted. `ListOpenIssues`
 excludes its reserved typed title only when authored by the bound dispatcher, across
@@ -6426,9 +6579,9 @@ Caps are the shared builder's — 64 KiB for one item, 512 KiB overall — plus 
 above, all stated in the file; an item over a cap is listed by name and size, never cut short. The file is written
 beside `--prompt-file`, else under the user cache directory, and **never inside the verifier
 home**: an additional file there refuses `--check-verifier`, so a prompt file that sits in
-the home gets no packet. The packet records the home's commit, reads the brief from that
-commit's tree rather than the working tree, and is discarded if the home moved while it was
-being built. It starts no process — every read is in-process through `internal/gitcore` —
+the home gets no packet. The packet records the deliverable home's commit and reads the brief from its
+attested tracking commit (the same commit for same-repository work). It is discarded if
+either home moved while it was being built. It starts no process — every read is in-process through `internal/gitcore` —
 and stops reading history after ten seconds. A read that fails inside a section is stated
 as an omission in one of two fixed sentences; the reader's own error text is never written
 into the file, and a test fails each read in turn to hold that. **Building it can never fail a dispatch:** on

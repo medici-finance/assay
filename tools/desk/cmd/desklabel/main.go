@@ -82,18 +82,20 @@ VOCABULARY (closed; the acting role is read from the session, never from a flag)
 Exit: 0 ok/noop · 3 disabled · 4 rate-limited · 5 refused · 6 unverifiable.`
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident. This
-	// tool ACTS on the roster (it gates the repo it writes to), so it is ciEligible=false:
-	// it reads the config-home file and never the environment, in CI as well as locally —
-	// matching deskclose/deskfile.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// Echo the effective roster once per run: a control surface that lives in settings
-	// rather than in a diff is visible only at RUN time.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("desklabel", nil, os.Args[1:], func([]string) int {
+		// The roster class is an EXPLICIT declaration, never the zero value by accident. This
+		// tool ACTS on the roster (it gates the repo it writes to), so it is ciEligible=false:
+		// it reads the config-home file and never the environment, in CI as well as locally —
+		// matching deskclose/deskfile.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// Echo the effective roster once per run: a control surface that lives in settings
+		// rather than in a diff is visible only at RUN time.
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

@@ -60,6 +60,11 @@
 //
 // 6 is the fail-closed code: a claim we could not read or write is NEVER "assume free".
 //
+// `list` alone adds 7, PARTIAL BLINDNESS (outside the deskkit refusal classes, like loopengine's
+// tool-local 7): every readable claim is printed and every unreadable ref is named on stderr as
+// could-not-check with its own cause. 7 is never a pass — the listing is incomplete — and when no
+// ref at all could be read the verb is 6, not 7. The tool never deletes or repairs a bad ref.
+//
 // SCOPE NOTE — the `refs/dispatch/*` namespace this port speaks matches the bash script it
 // ports (and the transition requirement that a Go and a bash dispatcher collide on the same
 // ref). It is NOT the same namespace as deskkit.ClaimRefsPrefix (`refs/heads/dispatch/*`),
@@ -106,7 +111,10 @@ steal     forcibly take the claim, recording --reason in the replacement — an 
 show      print the claim's holder/state/branch/age, or FREE. A claim still at state=claimed
           past CLAIMED_TTL_MIN (default 20m) carries a trailing PREPARED-NOT-LAUNCHED note:
           its dispatch was prepared and never progressed, so no agent is known to run behind it.
-list      show every dispatch claim in the repo, with the same note.
+list      show every dispatch claim in the repo, with the same note. A claim ref that cannot
+          be read is named on stderr as could-not-check (ref + cause) and the rest are still
+          listed; that partial listing exits 7. Removing or repairing a bad ref is a
+          maintainer act — this tool never deletes it.
 
 CLAIM STORE. Where the claims are kept is resolved from the roster, never chosen here — no
 flag selects a store. Roster keys:
@@ -122,10 +130,13 @@ release. Unset, claims resolve to the legacy ` + deskkit.ClaimStoreForgeRef + ` 
   ` + deskkit.ClaimStoreLegacyNotice + `
 
 Exit codes (deskkit contract): 0 ok/acquired · 5 refused (a live holder owns it) ·
-6 unverifiable (a claim we could not read or write — NEVER "assume free").`
+6 unverifiable (a claim we could not read or write — NEVER "assume free") ·
+7 partial (list only: some claims listed, some refs unreadable — incomplete, never idle).`
 
 func main() {
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskclaim-ref", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {
