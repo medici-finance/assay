@@ -89,6 +89,10 @@ const (
 var reconcileGHClient = newGHClient
 
 func runReconcile(args []string, stdout, stderr *os.File) int {
+	// main() hands `reconcile` off before it sets the roster class, so set it
+	// here, before any roster read, by the same per-mode rule: the CI transport
+	// in a GitHub Actions job, file-only everywhere else (#3082).
+	scanSetToolClass(scanClassForMode(false))
 	fs := flag.NewFlagSet("reconcile", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {}

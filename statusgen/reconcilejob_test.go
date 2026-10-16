@@ -1468,26 +1468,35 @@ func TestReconcileJobRoster(t *testing.T) {
 	}
 }
 
-// TestReconcileJobRosterEnv drives the roster read with exactly the env the
-// staged reconcile step hands statusgen (fixture values for the vars), in a
-// runner with no config home, on the CI class (environment transport): the
-// configuration carries no problem and binds a verifier, so the provenance
-// read's accepted-actor policy is available. The CI class is set here
-// explicitly; whether the reconcile verb selects it is not what this pins.
-func TestReconcileJobRosterEnv(t *testing.T) {
+// reconcileWithStepEnv runs the reconcile verb the way the scheduled step does:
+// a process whose roster class is still the zero value (main() hands
+// `reconcile` off before it sets one), no config home, no roster variable but
+// the step's own env, and GITHUB_ACTIONS as given. It returns the
+// configuration the verb left in force.
+func reconcileWithStepEnv(t *testing.T, actions string) scanConfig {
+	t.Helper()
 	t.Setenv("HOME", t.TempDir())
-	t.Setenv("GITHUB_ACTIONS", "true")
-	scanSetToolClass(scanClassForMode(false))
-	t.Cleanup(func() { scanSetToolClass(scanClassWrite); scanReloadConfig() })
+	t.Setenv("GITHUB_ACTIONS", actions)
+	for _, k := range append(scanKnownRosterKeys(), scanProductConfigKeys()...) {
+		t.Setenv(k, "")
+	}
 	for _, kv := range stepEnv(t, reconcileStep(t, reconcileJobStepName), nil) {
 		k, v, _ := strings.Cut(kv, "=")
 		t.Setenv(k, v)
 	}
-	scanReloadConfig()
+	scanSetToolClass(scanClassWrite)
+	t.Cleanup(func() { scanSetToolClass(scanClassWrite); scanReloadConfig() })
+	runReconcileCaptured(t, "--offline", "--root", t.TempDir())
+	return scanEffectiveConfig()
+}
 
-	cfg := scanEffectiveConfig()
+// TestReconcileJobRosterEnv: in Actions, `statusgen reconcile` reads the
+// roster from the step's env (the CI transport, as every mode but
+// --scan-issues does), so the provenance read resolves the verifier.
+func TestReconcileJobRosterEnv(t *testing.T) {
+	cfg := reconcileWithStepEnv(t, "true")
 	if cfg.Class != scanClassCI {
-		t.Fatalf("roster class %v, want the CI class", cfg.Class)
+		t.Fatalf("reconcile in Actions ran on roster class %v, want the CI class", cfg.Class)
 	}
 	if len(cfg.Problems) > 0 {
 		t.Fatalf("the reconcile step's env yields roster problems: %v", cfg.Problems)
@@ -1497,6 +1506,21 @@ func TestReconcileJobRosterEnv(t *testing.T) {
 	}
 	if p := evidenceActorPolicyFromRoster(); p.Unavailable != "" {
 		t.Errorf("accepted-actor policy unavailable: %s", p.Unavailable)
+	}
+}
+
+// TestReconcileJobRosterLocal is the inverse: outside Actions the same env is
+// ignored — reconcile stays file-only, and with no file it has no roster.
+func TestReconcileJobRosterLocal(t *testing.T) {
+	cfg := reconcileWithStepEnv(t, "")
+	if cfg.Class != scanClassWrite {
+		t.Fatalf("reconcile outside Actions ran on roster class %v, want the file-only class", cfg.Class)
+	}
+	if len(cfg.Problems) == 0 || !strings.Contains(cfg.Problems[0], "no roster configured") {
+		t.Errorf("outside Actions the env reached the roster: problems %v", cfg.Problems)
+	}
+	if p := evidenceActorPolicyFromRoster(); p.Unavailable == "" {
+		t.Error("outside Actions the env made the accepted-actor policy available")
 	}
 }
 
