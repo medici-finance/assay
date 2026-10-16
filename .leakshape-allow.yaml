@@ -516,12 +516,17 @@ allow:
     sha256:
       - 745ab30a5c45b053456a803f626987f7e19b5a6c3a3402d4e4f87eb91e7b5dba
     reason: *fx-home
+  - path: tools/desk/internal/deskkit/evidencelanding_gitlab_test.go
+    shape: home-path
+    sha256:
+      - facea5961a1ba3cea6a11c25d92f0a735b1bc78b9d7f63038806837ffcb3ac9f
+    reason: &api-users "a forge REST API path (the users endpoint and a placeholder login or id) in a test of the API client; a URL path, not a home directory"
   - path: tools/desk/internal/deskkit/forge_brief33_test.go
     shape: home-path
     sha256:
       - 3c6d514baf6eb8eef850d6b548b6945a577d235c798bcf717edf5f66369dfa19
       - 22d089f39846baea91a3a268071b780f08ab59abecf0448f8828123718f5ee0c
-    reason: &api-users "a forge REST API path (the users endpoint and a placeholder login or id) in a test of the API client; a URL path, not a home directory"
+    reason: *api-users
   - path: tools/desk/internal/deskkit/forge_github_getaccount_test.go
     shape: home-path
     sha256:
