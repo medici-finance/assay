@@ -410,7 +410,10 @@ decided, never what they decided.
   login mapped to a human, never a bot, on the brief's recorded decision issue. The issue
   binding is the brief's own: the decision issue's body carries a decision-gate marker
   (`<!-- decision-gate: <board id> -->`) naming this brief, and the ruling comment's text
-  names the brief by its board id. Where the comment, the issue or the login map cannot
+  names the brief by its board id. A colon-form marker that names a repository names this
+  one by its name or by an alias the alias registry declares for it as committed at the
+  judged base; an alias the change under judgment adds does not count, and an unreadable
+  registry leaves the name alone. Where the comment, the issue or the login map cannot
   be read, the result is `could-not-check`, which refuses the transition; it is never a
   pass.
 
@@ -432,7 +435,10 @@ judged as a plain file; the landing does not proceed. Bytes a forge serves for s
 entry are used only when the response shows they are the entry's own blob: an entry whose
 served content is not shown to be that blob (a link served as its target's bytes under
 the link's own path, or a file served without its content) is treated as not a plain
-file. Staging the judged files in the
+file. The same holds for the landing's own read of the file it writes: the write is
+judged against, merged into and checked for shrinkage against the branch's copy only
+when that copy is shown to be a plain file's own bytes, and otherwise does not proceed.
+Staging the judged files in the
 checkout MUST NOT write through a symbolic link, and MUST NOT stand a plain file where the
 checkout's commit holds a link or a submodule. The checkout itself is never moved. A PR that delivers a `gate: human` brief
 MAY carry an informational banner naming the decision issue and whether a ruling is

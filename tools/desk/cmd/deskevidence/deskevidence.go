@@ -409,6 +409,12 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// branch is a create (empty remote), not an error, EXCEPT with --brief-path: a brief must
 	// already exist to be merged into, so a not-found is propagated exactly as it was when this
 	// same ReadFile lived inside mergeEvidence.
+	//
+	// The target is read as a record only from a plain file the forge shows to be the entry's
+	// own bytes (S-2266-8): a file the Contents API serves with its content left out (over its
+	// size limit) arrives as an empty body, and taking that as the branch's copy would make an
+	// empty base for the merge, the decision-gate judge and the shrink guards, so a write that
+	// drops a gate: human brief's frontmatter or board row would be judged as adding it.
 	var remoteContent []byte
 	remoteExists := false
 	remoteSHA := ""
@@ -418,6 +424,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			return rerr
 		}
 	} else {
+		if kerr := plainFileRead(cur, fr, targetRepoPath, branch, "the landing's target", false); kerr != nil {
+			return kerr
+		}
 		remoteContent, remoteExists = cur.Content, cur.Exists
 		remoteSHA = cur.SHA
 	}

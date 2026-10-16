@@ -396,6 +396,36 @@
       "file": "cmd/deskevidence/principalstamp.go",
       "old": "\t\t\tpos -= len(tag)",
       "new": "\t\t\tpos -= 0 * len(tag)"
+    },
+    {
+      "name": "the landing takes a target the forge served without proof as the branch's copy (an over-limit brief or board arrives empty: the merge strips the frontmatter and the judge compares against nothing) — S-2266-8",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\t\tif kerr := plainFileRead(cur, fr, targetRepoPath, branch, \"the landing's target\", false); kerr != nil {",
+      "new": "\t\tif kerr := plainFileRead(cur, fr, targetRepoPath, branch, \"the landing's target\", false); false && kerr != nil {"
+    },
+    {
+      "name": "the row-scope write-time re-fetch rebases onto a table the forge served without proof — S-2266-8",
+      "file": "cmd/deskevidence/rowscope.go",
+      "old": "\tif kerr := plainFileRead(fresh, fr, targetRepoPath, branch, \"the row-scope write-time re-check\", false); kerr != nil {",
+      "new": "\tif kerr := plainFileRead(fresh, fr, targetRepoPath, branch, \"the row-scope write-time re-check\", false); false && kerr != nil {"
+    },
+    {
+      "name": "a verified outcome's closure matches a link served as its target's bytes — S-2266-8",
+      "file": "cmd/deskevidence/outcome.go",
+      "old": "\t\t\tif kerr := plainFileRead(remote, repo, rel, branch, \"the verified outcome's landed closure\", true); kerr != nil {",
+      "new": "\t\t\tif kerr := plainFileRead(remote, repo, rel, branch, \"the verified outcome's landed closure\", true); false && kerr != nil {"
+    },
+    {
+      "name": "a receipt's brief hash is checked against a brief served without its content (the hash of nothing matches) — S-2266-8",
+      "file": "cmd/deskevidence/receiptvalidate.go",
+      "old": "\tif kerr := plainFileRead(cur, fr, briefPath, branch, \"the receipt's brief revision\", true); kerr != nil {",
+      "new": "\tif kerr := plainFileRead(cur, fr, briefPath, branch, \"the receipt's brief revision\", true); false && kerr != nil {"
+    },
+    {
+      "name": "every read the forge did not type is taken as a plain file, on the main landing lane too — S-2266-8",
+      "file": "cmd/deskevidence/plainread.go",
+      "old": "(untypedOK && fc.Kind == \"\")",
+      "new": "fc.Kind == \"\""
     }
   ]
 }

@@ -62,3 +62,65 @@ func TestGitHubReadFileKind(t *testing.T) {
 		})
 	}
 }
+
+// regression: S-2266-8 — WriteFile's own pre-write read is the base its idempotency and
+// append-only shrink checks compare against. A file the Contents API serves without its
+// content (over the size limit: encoding "none", an empty body) read as an empty prior
+// file, so a whole-file write that drops rows passed the shrink guard against nothing. The
+// write must stop as could-not-check, with no PUT, whenever the branch's entry is not a
+// plain file whose served bytes are its own blob; the matched control (the same file
+// served in full) writes, and an append-only shrink against it is still refused.
+func TestGitHubWriteFileRefusesUnprovenPrior(t *testing.T) {
+	const file = "docs/streams/sdlc/verify-outcomes.jsonl"
+	const prior = "{\"row\":1}\n{\"row\":2}\n"
+	put := map[string]any{"content": map[string]any{"sha": "new"}, "commit": map[string]any{"sha": "c1", "author": map[string]any{"name": "bot"}}}
+	in := WriteFileInput{File: file, Branch: "main", Content: []byte("{\"row\":3}\n"), Message: "m", AppendOnly: true}
+	puts := func(s *goldenServer) int {
+		n := 0
+		for _, r := range s.requests {
+			if r.Method == "PUT" {
+				n++
+			}
+		}
+		return n
+	}
+	refused := []struct {
+		name string
+		resp map[string]any
+	}{
+		{"content omitted for size", map[string]any{"type": "file", "path": file, "encoding": "none", "sha": blobID(prior, false), "content": ""}},
+		{"link to a file, live shape", map[string]any{"type": "file", "path": file, "encoding": "base64", "sha": blobID("other.jsonl", false), "content": ghB64(prior)}},
+		{"link to a file, under the target's path", map[string]any{"type": "file", "path": "docs/streams/sdlc/other.jsonl", "encoding": "base64", "sha": blobID(prior, false), "content": ghB64(prior)}},
+		{"link to nothing", map[string]any{"type": "symlink", "path": file, "sha": blobID("gone", false)}},
+		{"submodule", map[string]any{"type": "submodule", "path": file, "sha": blobID("x", false)}},
+		{"no type served", map[string]any{"sha": blobID(prior, false), "content": ghB64(prior)}},
+	}
+	for _, c := range refused {
+		t.Run(c.name, func(t *testing.T) {
+			s := newGoldenServer(t)
+			s.contentsGet, s.contentsPut = c.resp, put
+			res, err := s.forge().WriteFile(forgeTestRepo, in)
+			if err == nil || !IsUnverifiable(err) {
+				t.Fatalf("WriteFile = %+v, %v; want could-not-check", res, err)
+			}
+			if n := puts(s); n != 0 {
+				t.Fatalf("refused write still sent %d PUT(s)", n)
+			}
+		})
+	}
+	t.Run("control: the same file served in full", func(t *testing.T) {
+		s := newGoldenServer(t)
+		s.contentsGet = map[string]any{"type": "file", "path": file, "encoding": "base64", "sha": blobID(prior, false), "content": ghB64(prior)}
+		s.contentsPut = put
+		grow := in
+		grow.Content = []byte(prior + "{\"row\":3}\n")
+		if _, err := s.forge().WriteFile(forgeTestRepo, grow); err != nil || puts(s) != 1 {
+			t.Fatalf("WriteFile = %v with %d PUT(s); want one write", err, puts(s))
+		}
+		s2 := newGoldenServer(t)
+		s2.contentsGet, s2.contentsPut = s.contentsGet, put
+		if _, err := s2.forge().WriteFile(forgeTestRepo, in); err == nil || !IsRefused(err) || puts(s2) != 0 {
+			t.Fatalf("shrink against the real prior = %v with %d PUT(s); want refused, no write", err, puts(s2))
+		}
+	})
+}

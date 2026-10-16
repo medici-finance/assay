@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -51,9 +52,11 @@ type apiCall struct{ Method, Path, Authorization string }
 // contentsPrefix is the Contents-API path of the fixture repository.
 const contentsPrefix = "/repos/example-org/tracker/contents/"
 
-// blobID is a stand-in blob id: stable for equal content, different otherwise.
+// blobID is the git object id of a blob holding content: what the Contents API serves as a
+// file's `sha`, and what the backend checks the served bytes against before it reports a
+// plain file (S-2266-8).
 func blobID(content string) string {
-	sum := sha1.Sum([]byte(content))
+	sum := sha1.Sum([]byte(fmt.Sprintf("blob %d\x00%s", len(content), content)))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -68,7 +71,7 @@ func (a *attestationAPI) serveContents(w http.ResponseWriter, r *http.Request, f
 			enc(map[string]any{"message": "Not Found"})
 			return
 		}
-		enc(map[string]any{"sha": blobID(content), "encoding": "base64",
+		enc(map[string]any{"type": "file", "path": file, "sha": blobID(content), "encoding": "base64",
 			"content": base64.StdEncoding.EncodeToString([]byte(content))})
 	case http.MethodPut:
 		var in struct{ Message, Content, Branch, SHA string }

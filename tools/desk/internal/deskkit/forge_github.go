@@ -2798,6 +2798,20 @@ func (g *GitHubForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 		}
 		// Absent on the branch → this is a create.
 	} else {
+		// The idempotency and shrink checks below compare against this read, so it must be
+		// the entry's own bytes: a file served with its content left out (over the Contents
+		// API's size limit) reads as empty, and a link as its target's bytes or as nothing.
+		// Writing over such an entry is could-not-check, never a write judged against an
+		// empty or foreign base (S-2266-8).
+		if cur.Kind != FileKindRegular {
+			held := cur.Kind
+			if held == "" {
+				held = "an entry the read did not type"
+			}
+			return nil, Unverifiable(fmt.Sprintf(
+				"refusing to write %s on %s: the branch holds it as %s, not a plain file whose served bytes are shown to be its own blob, so the write cannot be checked against it",
+				in.File, in.Branch, held), nil)
+		}
 		priorSHA, priorContent, exists = cur.SHA, cur.Content, true
 	}
 

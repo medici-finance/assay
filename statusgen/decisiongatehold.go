@@ -1389,8 +1389,10 @@ var (
 // number match the board id and whose repository part, when it has one, names
 // repo. The verbatim brief: value is accepted whatever its repository part
 // says, because it is the id the brief itself declares (a house may spell its
-// own repository with a short alias there).
-func briefIssueRulesOn(body, repo string, boardIDs, fmBriefs []string) bool {
+// own repository with a short alias there). A colon-form repository part may
+// also be one of repoAliases, the aliases the registry at the judged base
+// declares for repo (decisionGateAliases); none widens nothing.
+func briefIssueRulesOn(body, repo string, boardIDs, fmBriefs, repoAliases []string) bool {
 	repoName := repo
 	if i := strings.LastIndex(repo, "/"); i >= 0 {
 		repoName = repo[i+1:]
@@ -1411,7 +1413,7 @@ func briefIssueRulesOn(body, repo string, boardIDs, fmBriefs []string) bool {
 		if !ok {
 			continue
 		}
-		if parts := strings.Split(id, ":"); len(parts) >= 3 && !strings.EqualFold(parts[len(parts)-3], repoName) {
+		if parts := strings.Split(id, ":"); len(parts) >= 3 && !namesRepo(parts[len(parts)-3], repoName, repoAliases) {
 			continue
 		}
 		for _, b := range boardIDs {
@@ -1427,7 +1429,7 @@ func briefIssueRulesOn(body, repo string, boardIDs, fmBriefs []string) bool {
 // resolveDecisionGateFaults is layer two over judged faults. The forge is
 // contacted only for a fault layer one accepts; a fault it refuses is refused
 // here with the same reason.
-func resolveDecisionGateFaults(c *ghClient, repo string, faults []gateFault, logins map[string]string) []decisionGateResult {
+func resolveDecisionGateFaults(c *ghClient, repo string, faults []gateFault, logins map[string]string, repoAliases []string) []decisionGateResult {
 	var out []decisionGateResult
 	for _, f := range faults {
 		board := f.primary().Board
@@ -1446,7 +1448,7 @@ func resolveDecisionGateFaults(c *ghClient, repo string, faults []gateFault, log
 		binding := rulingIssueBinding{
 			what: "brief " + strings.Join(names, " / "),
 			rules: func(iss rulingIssue, _ rulingLink) bool {
-				return briefIssueRulesOn(iss.Body, repo, names, f.briefIDs())
+				return briefIssueRulesOn(iss.Body, repo, names, f.briefIDs(), repoAliases)
 			},
 		}
 		var o rulingOutcome
@@ -1476,25 +1478,75 @@ func decisionGateAgainst(root, repo, baseRev string) []decisionGateResult {
 		return []decisionGateResult{{Board: "(board)", Refused: true,
 			Detail: fmt.Sprintf("the board at the base %s could not be read (%v), so no gate: human brief's move can be judged — fail-closed (%s)", baseRev, err, decisionGateSpecRef)}}
 	}
-	return decisionGateJudged(repo, judgeDecisionGate(baseSnap, gateSnapshotOnDisk(root)))
+	return decisionGateJudged(repo, judgeDecisionGate(baseSnap, gateSnapshotOnDisk(root)),
+		func() []string { return decisionGateAliases(root, baseRev, repo) })
 }
 
 // decisionGateJudged resolves judged faults, building the forge client and
-// reading the login map only when a fault needs them.
-func decisionGateJudged(repo string, faults []gateFault) []decisionGateResult {
+// reading the login map and the repository's aliases only when a fault needs them.
+func decisionGateJudged(repo string, faults []gateFault, aliasesFn func() []string) []decisionGateResult {
 	if len(faults) == 0 {
 		return nil
 	}
 	var c *ghClient
 	var logins map[string]string
+	var aliases []string
 	for _, f := range faults {
 		if _, ok, _ := offlineRuling(f); ok {
 			c = decisionGateClientFn()
 			logins = decisionGateLoginsFn()
+			aliases = aliasesFn()
 			break
 		}
 	}
-	return resolveDecisionGateFaults(c, repo, faults, logins)
+	return resolveDecisionGateFaults(c, repo, faults, logins, aliases)
+}
+
+// decisionGateAliases is the aliases the alias registry declares for repo
+// (repoAliasesFor), read from the registry as committed at rev — the judged
+// base, never the tree under judgment, so a change cannot widen which colon-form
+// markers rule on its own briefs by editing the registry in the same change.
+// rev "" reads the tree at root as it stands (the close to done, whose base is
+// that tree). An absent registry yields none; one that cannot be read is said on
+// stderr and yields none, so a marker is matched by the repository's name only
+// (fail closed), as --corroborate does.
+func decisionGateAliases(root, rev, repo string) []string {
+	const rel = "docs/streams/graph-repos.yaml"
+	var reg *graphRepos
+	var err error
+	if rev == "" {
+		reg, _, err = loadGraphRepos(root)
+	} else {
+		reg, err = graphReposAtRev(root, rev, rel)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "statusgen: decision-gate: could-not-check: alias registry unreadable, decision-gate markers are matched by repository name only: %v\n", err)
+		return nil
+	}
+	return repoAliasesFor(reg, repo)
+}
+
+// graphReposAtRev reads the alias registry as committed at rev. Absent there →
+// nil, nil; anything but a plain file at that path, or an unparseable one, is an
+// error.
+func graphReposAtRev(root, rev, rel string) (*graphRepos, error) {
+	out, err := exec.Command("git", "-C", root, "ls-tree", "-z", rev, "--", rel).Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-tree %s -- %s: %w", rev, rel, err)
+	}
+	line := strings.TrimRight(string(out), "\x00")
+	if line == "" {
+		return nil, nil
+	}
+	meta, _, _ := strings.Cut(line, "\t")
+	if mode, _, _ := strings.Cut(meta, " "); mode != "100644" && mode != "100755" {
+		return nil, fmt.Errorf("%s at %s is not a plain file (mode %s)", rel, rev, mode)
+	}
+	raw, err := gitShowObject(root, rev, rel)
+	if err != nil {
+		return nil, fmt.Errorf("git show %s:%s: %w", rev, rel, err)
+	}
+	return parseGraphRepos(raw, rev+":"+rel)
 }
 
 // decisionGateTouchesBoard reports whether a forge file listing names a board
@@ -1640,7 +1692,8 @@ func closeVerifyDecisionGate(root, readme string, updated []byte) error {
 		rel = r
 	}
 	faults := judgeDecisionGate(gateSnapshotOnDisk(root), gateSnapshotOnDiskWith(root, rel, updated))
-	rs := decisionGateJudged(repoFromOriginAtFn(root), faults)
+	repo := repoFromOriginAtFn(root)
+	rs := decisionGateJudged(repo, faults, func() []string { return decisionGateAliases(root, "", repo) })
 	var lines []string
 	for _, r := range rs {
 		if r.Refused {

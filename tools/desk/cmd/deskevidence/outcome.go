@@ -63,6 +63,9 @@ func guardVerifiedOutcomes(root, target string, before, after []byte, fg deskkit
 			if err != nil {
 				return err
 			}
+			if kerr := plainFileRead(remote, repo, rel, branch, "the verified outcome's landed closure", true); kerr != nil {
+				return kerr
+			}
 			if !remote.Exists || !bytes.Equal(local, remote.Content) {
 				return deskkit.Refused("verified outcome requires closure already landed on target branch: " + rel + " differs; refresh --root after landing the status and Evidence")
 			}

@@ -150,6 +150,9 @@ func rowScopeWriteTimeCheck(fg deskkit.Forge, fr deskkit.ForgeRepo, targetRepoPa
 		}
 		return "", deskkit.Unverifiable("row-scope write-time re-check: cannot re-fetch "+targetRepoPath+"@"+branch, ferr)
 	}
+	if kerr := plainFileRead(fresh, fr, targetRepoPath, branch, "the row-scope write-time re-check", false); kerr != nil {
+		return "", kerr
+	}
 	ft, _, ok := parseBriefsTable(fresh.Content)
 	if !ok {
 		return "", deskkit.Refused("refused: " + targetRepoPath +

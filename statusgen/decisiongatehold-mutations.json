@@ -88,8 +88,8 @@
     {
       "name": "colon-form marker naming another repository accepted",
       "file": "decisiongatehold.go",
-      "old": "len(parts) >= 3 && !strings.EqualFold(parts[len(parts)-3], repoName) {",
-      "new": "false && len(parts) >= 3 && !strings.EqualFold(parts[len(parts)-3], repoName) {"
+      "old": "len(parts) >= 3 && !namesRepo(parts[len(parts)-3], repoName, repoAliases) {",
+      "new": "false && len(parts) >= 3 && !namesRepo(parts[len(parts)-3], repoName, repoAliases) {"
     },
     {
       "name": "PR lane with no merge-base passes a PR touching the board",
@@ -318,6 +318,18 @@
       "file": "decisiongatehold.go",
       "old": "return readStreamREADME(filepath.Join(root, filepath.FromSlash(rel)))",
       "new": "return os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))"
+    },
+    {
+      "name": "the decision issue's colon-form marker ignores the registry's aliases for this repository (a ruling naming it by its alias no longer rules)",
+      "file": "decisiongatehold.go",
+      "old": "len(parts) >= 3 && !namesRepo(parts[len(parts)-3], repoName, repoAliases) {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, b := range boardIDs {",
+      "new": "len(parts) >= 3 && !strings.EqualFold(parts[len(parts)-3], repoName) {\n\t\t\tcontinue\n\t\t}\n\t\tfor _, b := range boardIDs {"
+    },
+    {
+      "name": "the aliases are read from the tree under judgment, not the base (a change widens which markers rule on its own briefs by adding an alias)",
+      "file": "decisiongatehold.go",
+      "old": "func() []string { return decisionGateAliases(root, baseRev, repo) }",
+      "new": "func() []string { return decisionGateAliases(root, \"\", repo) }"
     }
   ]
 }

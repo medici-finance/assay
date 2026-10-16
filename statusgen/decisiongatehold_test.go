@@ -571,7 +571,7 @@ func TestDecisionGateBriefIssueMarker(t *testing.T) {
 		{"<!-- decision-gate: sdlc/19 -->", nil, false},
 		{"no marker", nil, false},
 	} {
-		if got := briefIssueRulesOn(tc.body, rlRepo, names, tc.fm); got != tc.matches {
+		if got := briefIssueRulesOn(tc.body, rlRepo, names, tc.fm, nil); got != tc.matches {
 			t.Errorf("briefIssueRulesOn(%q, fm %v) = %v, want %v", tc.body, tc.fm, got, tc.matches)
 		}
 	}
@@ -990,5 +990,115 @@ func TestDecisionGateCloseWorkflowKeyedPhrase(t *testing.T) {
 	err = closeVerifyDecisionGate(root, dhReadmePath, []byte(dhReadme(dhRow("18", "done"))))
 	if err == nil || !strings.Contains(err.Error(), phrase) {
 		t.Fatalf("the close-verify refusal does not carry %q: %v", phrase, err)
+	}
+}
+
+// The decision issue's colon-form marker may name this repository by an alias the
+// registry declares for it, as the record lane's marker may (issueRulesOnRecord); a
+// foreign repository's alias, or an alias with no registry knowledge, still does not
+// match.
+func TestDecisionGateBriefIssueMarkerAliasAware(t *testing.T) {
+	names := []string{dhBoardID}
+	aliases := []string{"ex"}
+	for _, tc := range []struct {
+		body    string
+		aliases []string
+		matches bool
+	}{
+		{"<!-- decision-gate: ex:sdlc:18 -->", aliases, true},
+		{"<!-- decision-gate: example-org:ex:sdlc:18 -->", aliases, true},
+		{"<!-- decision-gate: ex:sdlc:18 -->", nil, false},
+		{"<!-- decision-gate: elsewhere:sdlc:18 -->", aliases, false},
+		{"<!-- decision-gate: ex:sdlc:19 -->", aliases, false},
+	} {
+		if got := briefIssueRulesOn(tc.body, rlRepo, names, nil, tc.aliases); got != tc.matches {
+			t.Errorf("briefIssueRulesOn(%q, aliases %v) = %v, want %v", tc.body, tc.aliases, got, tc.matches)
+		}
+	}
+}
+
+// The aliases come from the registry as committed at the judged base, never from the
+// tree under judgment: a change that adds an alias for this repository in the same
+// change does not widen which markers rule on its briefs. The close to done (rev "")
+// reads the tree as it stands. An absent registry yields none; one that is not a plain
+// file at the base yields none (matched by name only).
+func TestDecisionGateAliasesReadAtBase(t *testing.T) {
+	gitIn := func(dir string, args ...string) {
+		t.Helper()
+		c := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false"}, args...)...)
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	root := rlWriteRegistry(t, rlRegistry)
+	gitIn(root, "init", "-q")
+	gitIn(root, "add", "-A")
+	gitIn(root, "commit", "-q", "-m", "base")
+	widened := rlRegistry + "  wide:      {cell: example, repo: example-org/example-repo}\n"
+	if err := os.WriteFile(filepath.Join(root, "docs", "streams", "graph-repos.yaml"), []byte(widened), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := decisionGateAliases(root, "HEAD", rlRepo); strings.Join(got, ",") != "ex" {
+		t.Fatalf("aliases at the base = %v, want [ex] (the working tree's added alias must not count)", got)
+	}
+	if got := decisionGateAliases(root, "", rlRepo); strings.Join(got, ",") != "ex,wide" {
+		t.Fatalf("aliases of the tree as it stands = %v, want [ex wide]", got)
+	}
+
+	bare := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(bare, "docs", "streams"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bare, "docs", "streams", "other.yaml"), []byte(rlRegistry), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(bare, "init", "-q")
+	gitIn(bare, "add", "-A")
+	gitIn(bare, "commit", "-q", "-m", "no registry")
+	if got := decisionGateAliases(bare, "HEAD", rlRepo); len(got) != 0 {
+		t.Fatalf("absent registry: aliases = %v, want none", got)
+	}
+	if err := os.Symlink("other.yaml", filepath.Join(bare, "docs", "streams", "graph-repos.yaml")); err != nil {
+		t.Skipf("symlink: %v", err)
+	}
+	gitIn(bare, "add", "-A")
+	gitIn(bare, "commit", "-q", "-m", "registry is a link")
+	if got := decisionGateAliases(bare, "HEAD", rlRepo); len(got) != 0 {
+		t.Fatalf("registry is a link at the base: aliases = %v, want none", got)
+	}
+}
+
+// Layer two through the whole gate: a decision issue whose colon-form marker names this
+// repository by the alias the base's registry declares rules on the brief; the same
+// marker with the alias added only by the change under judgment does not.
+func TestDecisionGateAliasMarkerFromBaseRegistry(t *testing.T) {
+	const registry = "docs/streams/graph-repos.yaml"
+	ruled := map[string]string{
+		dhReadmePath: dhReadme(dhRow("18", "implemented")),
+		dhBriefPath:  dhFM("gate: human", dhRuledLines()),
+	}
+	for _, inBase := range []bool{true, false} {
+		forge := dhForge("Option 1 for " + dhBoardID + ".")
+		forge.issueBody = rlIssueJSON("decide\n\n<!-- decision-gate: ex:sdlc:18 -->\n")
+		dhSeams(t, forge)
+		base := unruledBase()
+		change := map[string]string{}
+		for k, v := range ruled {
+			change[k] = v
+		}
+		if inBase {
+			base[registry] = rlRegistry
+		} else {
+			change[registry] = rlRegistry
+		}
+		root := dhFixture(t, base)
+		dhWrite(t, root, change)
+		code, out := dhGate(t, root)
+		if inBase && code != 0 {
+			t.Fatalf("alias marker with the alias in the base's registry refused (exit %d):\n%s", code, out)
+		}
+		if !inBase && code == 0 {
+			t.Fatalf("alias marker accepted on an alias the change itself added:\n%s", out)
+		}
 	}
 }
