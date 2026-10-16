@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // cmdNew scaffolds a cell. Every template below is a BYTE CONTRACT with the shell oracle: the
@@ -44,17 +45,17 @@ func scaffoldCell(cell string, v *cli.Values) {
 	tokenStore = cellEnvPathFor(runtime.GOOS, tokenStore)
 
 	root := cellsRoot(e)
-	// A cell lives under the cells root: a name that is anything else is refused here, before
-	// anything is created, exactly as the loader would refuse to load it (cellNameLocal). A
-	// missing name is left to the usage refusal below.
-	if cell != "" && !cellNameLocal(cell) {
-		die("new: "+cellNameNotLocal, cell, root)
-	}
 	// A cell directory at the defaults file's own path — or a nested cell below it — would make
 	// every cell on the machine refuse to load (the file would be a directory), so the name is
 	// not available to a cell.
 	if first, _, _ := strings.Cut(filepath.ToSlash(cell), "/"); strings.EqualFold(first, cellDefaultsFile) {
 		die("new: '%s' is not available as a cell name — %s is the machine-wide cell defaults file", cell, filepath.Join(root, cellDefaultsFile))
+	}
+	// A cell lives under the cells root: a name that is anything else is refused here, before
+	// anything is created, exactly as the loader would refuse to load it (cellNameLocal). A
+	// missing name is left to the usage refusal below.
+	if cell != "" && !cellNameLocal(cell) {
+		die("new: "+cellNameNotLocal, cell, root)
 	}
 	if containerConfig != "" && kind != "container" {
 		die("--container-config is only valid for --kind container")
@@ -266,8 +267,11 @@ the group this cell reads is ` + "`%s`" + `. Then: ` + "`CELL_ATTENDED=1 cellctl
 
 // newContainer is REGISTRATION ONLY: no daemon, host checkout, credential directory or symlink.
 func newContainer(e *Env, root, cell, repo, launcher, roles, roots string) {
-	if !regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`).MatchString(cell) {
-		die("new: invalid container cell name")
+	// The one cell-name rule (cellNameLocal): lower-case letters, digits and '-', not leading
+	// with '-'. The cell-scoped stop flags name a cell by it, so a container cell outside it
+	// could not be stopped individually.
+	if !deskkit.ValidCellName(cell) || strings.HasPrefix(cell, "-") {
+		die("new: invalid container cell name '%s' — lower-case letters, digits and '-' only ([a-z0-9-]), not leading with '-'", cell)
 	}
 	if repo == "" {
 		die("container new needs --repo <repo-id>")

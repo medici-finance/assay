@@ -661,6 +661,13 @@ type commitInfo struct {
 	Author struct {
 		Login string `json:"login"`
 	} `json:"author"`
+	// Commit.Committer.Date is the git COMMITTER date — the time the commit object was made,
+	// which a review submitted earlier cannot have verified (#3093; see headCommittedAt).
+	Commit struct {
+		Committer struct {
+			Date string `json:"date"`
+		} `json:"committer"`
+	} `json:"commit"`
 }
 
 // headCommitAuthor returns the account login GitHub attributes the head commit to. It is
@@ -675,6 +682,19 @@ func (c *ghClient) headCommitAuthor(sha string) (string, error) {
 		return "", err
 	}
 	return ci.Author.Login, nil
+}
+
+// headCommittedAt returns the head commit's git COMMITTER date (RFC3339; "" when GitHub
+// reports none, which the caller reads as could-not-check). It is the second, independent
+// signal `ready` uses against GitHub re-anchoring an older review's commit_id onto a newer
+// head (#3093): a review submitted before the commit existed cannot have verified it.
+func (c *ghClient) headCommittedAt(sha string) (string, error) {
+	var ci commitInfo
+	path := fmt.Sprintf("/repos/%s/%s/commits/%s", c.owner, c.repo, sha)
+	if err := c.doJSON(http.MethodGet, path, nil, &ci); err != nil {
+		return "", err
+	}
+	return ci.Commit.Committer.Date, nil
 }
 
 // listReviews returns all reviews on the PR (paginated).

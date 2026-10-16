@@ -1420,23 +1420,27 @@ still overrides all four for that run, as before.
   directory, and can now also set a default for every cell at once — keep the root yours. The
   file holds no secrets of its own. It is opened as `providers.json` is — a regular file only,
   never a FIFO or a directory.
-- **A cell is named by its directory under the cells root.** `demo` and `team/demo` are cell
-  names. An absolute path, `.`, and a name that leaves the root through `..` (`../other/x`,
-  `team/..`) are refused — by `new`, by `set` and by every verb that loads a cell — in a message
-  that names the name and the root. The test is on the name as written, so a cell directory
-  that is a symlink to somewhere else still loads. `defaults.env` is not available as a cell
-  name.
-- **There is one file per cells root, for a nested cell too.** A cell named `team/demo` takes
-  the cells root's file like any other, never one beside `team/`. That holds for the later
-  cellctl processes a launch starts, as far as each is told where the cell is. The model-policy
-  hook, a container cell's console, the comms pane, a cadence-supervised role pane and a
-  managed scratch task are each handed the cells root the launch resolved and the cell's path
-  under it, not the cell directory's parent. An ordinary role pane is handed the cell's path
-  under the root and takes the root from its own environment. Two commands are as they
-  were before this file existed: the `deskd` stand pane and the precheck of a scheduled
-  (`--automate`) run name the cell by its `CELL=` value and take the cells root from their own
-  environment, so for a nested cell they reach the same cell only when `CELL=` is its path
-  under the root and `CELLS_ROOT` is the same there.
+- **A cell is named by ONE directory under the cells root, in `[a-z0-9-]`.** `demo` and
+  `cell-2` are cell names. A nested name (`team/demo`), an upper-case letter, `_` or `.` in the
+  name, an absolute path, `.`, and a name that leaves the root through `..` (`../other/x`,
+  `team/..`) are refused — by `new` (every kind, a container cell included), by `set` and by
+  every verb that loads a cell — in a message that names the name, the root and the rule. A
+  cell's `CELL=` value is held to the same rule, because it is what a launch stamps into every
+  child as `ASSAY_CELL` and what the cell-scoped stop flags (`STOP.cell.<cell>`) name the cell
+  by; a cell cellctl accepts is a cell those flags can address. The test is on the name as
+  written, so a cell directory that is a symlink to somewhere else still loads. `defaults.env`
+  is not available as a cell name. A cell made earlier under a name outside the rule (a nested
+  `team/demo`, `Demo`, `demo_1`) no longer loads: rename its directory and set `CELL=` to the
+  new name.
+- **There is one file per cells root.** Every cell takes the cells root's file. That holds for
+  the later cellctl processes a launch starts, as far as each is told where the cell is. The
+  model-policy hook, a container cell's console, the comms pane, a cadence-supervised role pane
+  and a managed scratch task are each handed the cells root the launch resolved and the cell's
+  name under it. An ordinary role pane is handed the cell's name and takes the root from its
+  own environment. Two commands are as they were before this file existed: the `deskd` stand
+  pane and the precheck of a scheduled (`--automate`) run name the cell by its `CELL=` value and
+  take the cells root from their own environment, so they reach the same cell only when
+  `CELLS_ROOT` is the same there.
 
 **The template, and the list of keys.** `cellctl defaults print` writes the template to
 standard output. It is generated from the one registry of keys cellctl keeps, and it prints

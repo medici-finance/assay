@@ -100,6 +100,13 @@ func withEnv(t *testing.T, work string) *[][]string {
 	getwd = func() (string, error) { return work, nil }
 	t.Cleanup(func() { getwd = oldwd })
 
+	// Every fixture worktree is seconds old, so the prune activity gate (activity.go)
+	// would hold all of them; the suite's gate tests were written for the content gates.
+	// The activity gate's own tests re-arm it with --min-idle.
+	oldIdle := defaultMinIdle
+	defaultMinIdle = 0
+	t.Cleanup(func() { defaultMinIdle = oldIdle })
+
 	oldTmp := tmpBaseDir
 	tmpBaseDir = filepath.Join(t.TempDir(), "wtroot")
 	if err := os.MkdirAll(tmpBaseDir, 0o755); err != nil {

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -332,9 +333,9 @@ type Cell struct {
 	Name string
 	Dir  string
 	// Root is the cells root this load resolved, absolute, and Ref the cell's path under it — the
-	// name it was loaded by (`demo`, or `team/demo` for a nested cell). The cell directory's
-	// parent is the cells root only for a cell one level down, and the root is also where the
-	// machine-wide defaults file and the shared provider catalog are read from.
+	// name it was loaded by (`demo`: a cell is one directory under the root, cellNameLocal). The
+	// root is also where the machine-wide defaults file and the shared provider catalog are read
+	// from.
 	//
 	// The pair comes from reenter, and these are the places that hand it to a later cellctl:
 	// the model-policy hook command (--cells-root and the cell directory), the container
@@ -385,23 +386,28 @@ func cellsRoot(e *Env) string {
 	return filepath.Join(xdg, "assay", "cells")
 }
 
-// cellNameLocal reports whether name names a directory UNDER the cells root: a relative path
-// that stays inside the root and is not the root itself. `demo` and `team/demo` are; an absolute
-// path, `.`, `..`, `../other/x` and `team/..` are not. The test is on the name as written,
-// cleaned — it follows no link, so a cell directory that is a symlink to somewhere else is still
-// named by a local name and still loads.
+// cellNameLocal reports whether name is a cell name: ONE directory under the cells root, spelled
+// with lower-case letters, digits and '-' only — the rule the cell-scoped stop flags
+// (STOP.cell.<cell>) read the session's ASSAY_CELL marker against (deskkit.ValidCellName), so a
+// cell cellctl accepts is a cell the stop flags can name. The test is on the name as written,
+// cleaned: `demo` and `./demo/` are cell names; a nested name (`team/demo`), an upper-case or
+// `_` name, an absolute path, `.`, `..`, `../other/x` and `team/..` are not. It follows no link,
+// so a cell directory that is a symlink to somewhere else is still named by a local name and
+// still loads.
 //
 // A cell is refused under any other name (cellNameNotLocal), by `new`, by the loader and by
-// `set`. That is what lets a cell be addressed by ONE pair — the cells root and its path under
-// it — everywhere a later cellctl process is told to load it again: a cell directory outside
-// the root would need a second address (its own parent, with a different defaults file and a
-// different provider catalog beside it), and every re-entry would have to choose between them.
+// `set`. That is what lets a cell be addressed by ONE pair — the cells root and its name under
+// it — everywhere a later cellctl process is told to load it again.
 func cellNameLocal(name string) bool {
-	return filepath.IsLocal(name) && filepath.Clean(name) != "."
+	if !filepath.IsLocal(name) {
+		return false
+	}
+	clean := filepath.Clean(name)
+	return clean != "." && deskkit.ValidCellName(clean)
 }
 
 // cellNameNotLocal is the refusal for a name cellNameLocal rejects: the name, then the root.
-const cellNameNotLocal = "cell name '%s' is not a path under the cells root %s — a cell is named by its directory under the cells root (demo, team/demo), never by an absolute path, by the root itself, or by a path that leaves the root through '..'"
+const cellNameNotLocal = "cell name '%s' is not a valid cell name under the cells root %s — a cell is named by ONE directory under the cells root, spelled with lower-case letters, digits and '-' only ([a-z0-9-]); never a nested path (team/demo), an upper-case letter or '_', an absolute path, the root itself, or a path that leaves the root through '..'"
 
 // cellAddress is the (cells root, name) pair that loads the cell named name again: the root the
 // load resolved, made absolute, and the name cleaned — its path under that root. name is one
@@ -475,6 +481,11 @@ func loadCell(name string) *Cell {
 		die("cannot read %s/cell.env: %v", c.Dir, err)
 	}
 	c.Name = e.GetOr("CELL", name)
+	// CELL is what the launch stamps into every child as ASSAY_CELL, and the cell-scoped stop
+	// flags build a file name from it: it is held to the same rule as the cell's own name.
+	if !deskkit.ValidCellName(c.Name) {
+		die("cell.env: CELL='%s' is not a valid cell name — lower-case letters, digits and '-' only ([a-z0-9-]); rename the cell and set CELL to its new name", c.Name)
+	}
 	e.Put("CELL", c.Name)
 	c.Home = filepath.Join(c.Dir, "home")
 	// The cell config-home is a FIXED relative path: the desk binaries resolve their config as

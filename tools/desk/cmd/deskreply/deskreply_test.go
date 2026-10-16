@@ -410,7 +410,7 @@ func TestPublicRepoGateWired(t *testing.T) {
 	body := bodyFileWith(t, "Re-reviewed the delta.")
 	rc := run([]string{"example-org/tracker", "7", "--body-file", body})
 	if rc != deskkit.ExitRefused {
-		t.Fatalf("reply on public repo without +1 rc = %d, want 5 (refused)", rc)
+		t.Fatalf("reply on a public repo the allowed-repos set does not authorize: rc = %d, want 5 (refused)", rc)
 	}
 
 	// Assert ZERO mutating write calls were made.

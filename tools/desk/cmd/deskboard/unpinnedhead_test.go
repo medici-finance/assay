@@ -49,6 +49,9 @@ func greenRollupPR(num int, head string) prBase {
 	p.State = "OPEN"
 	p.Author.Login = "ada"
 	p.HeadRefOid = head
+	// The head commit's committer date, as the live open-change read carries it (#3093):
+	// older than every fixture review, so a fixture approval at head reads as current.
+	p.HeadCommittedDate = fixtureHeadCommittedAt
 	p.StatusCheckRollup = []check{{
 		TypeName:   "CheckRun",
 		Name:       "build",

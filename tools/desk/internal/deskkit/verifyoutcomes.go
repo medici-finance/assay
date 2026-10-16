@@ -383,9 +383,12 @@ type OutcomeTree interface {
 
 // OutcomeReceiptInput is what the writer needs beyond the record and the tree.
 type OutcomeReceiptInput struct {
-	BriefPath   string // the brief's repo-relative path (docs/streams/<stream>/brief-<NN>-*.md)
-	LandedBrief []byte // the brief as it lands on the target branch: its hash is the brief input
-	ToolVersion string // the desk-tools version that wrote the record: the "tool" input
+	// Optional cross-repository observation; the whole immutable deliverable
+	// commit is a conservative input scope, alongside the tracking file keys.
+	SourceRepo, Source string
+	BriefPath          string // the brief's repo-relative path (docs/streams/<stream>/brief-<NN>-*.md)
+	LandedBrief        []byte // the brief as it lands on the target branch: its hash is the brief input
+	ToolVersion        string // the desk-tools version that wrote the record: the "tool" input
 	// Repo is the landing repository ("owner/name"). It is stamped as the record's repo key
 	// when the record carries none, so a bare #N blocker_ref resolves against the repository the
 	// record lands in — the same repository the writer's own reference check resolved it in.
@@ -564,6 +567,13 @@ func BuildOutcomeRecord(raw []byte, in OutcomeReceiptInput, tree OutcomeTree) ([
 	}
 	inputs[inputKeyFilePrefix+in.BriefPath] = Sha256Hex(in.LandedBrief)
 	inputs[inputKeyTool] = in.ToolVersion
+	if in.SourceRepo != "" || in.Source != "" {
+		_, sourceErr := hex.DecodeString(in.Source)
+		if !IsAllowedRepo(in.SourceRepo) || len(in.Source) != 40 || sourceErr != nil || strings.EqualFold(in.SourceRepo, in.Repo) {
+			return nil, Refused("incomplete cross-repository outcome source")
+		}
+		inputs[InputKeyRepoSourcePrefix+in.SourceRepo] = in.Source
+	}
 
 	id := Sha256Hex([]byte(strings.Join([]string{r.Brief, sha, r.TS, r.Outcome, r.BlockerKind, r.BlockerRef}, "\x00")))
 	r.Schema, r.ID, r.Inputs, r.ToolVersion, r.WakePredicate = SchemaWakeV1, "vw1-"+id[:16], inputs, in.ToolVersion, WakeRelevantInputChanged

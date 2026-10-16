@@ -188,7 +188,7 @@ skill (*Per-forge prerequisites*); the entry grammar itself is defined once in
 the GitHub half:
 
 1. **The automation account** — the identity the fleet *runs as*: it authors PRs, pushes branches, runs CI, mints the reviewer-App token, and posts App reviews. In a solo setup this is one machine account plus the reviewer GitHub App it owns; in a larger setup, the set of role Apps. Everything an agent does, it does as this identity.
-2. **Your human account** — a *separate* personal GitHub account that is **you**, and whose credentials the automation never holds. It does the things only a human may: it is the `ASSAY_BLESS_LOGIN` (the authorization half of the trust gate — `configure-roster`), it posts the sign-off on a `gate:human` brief, it adds the 👍 reaction that clears a public-repo write, and it clicks **merge**.
+2. **Your human account** — a *separate* personal GitHub account that is **you**, and whose credentials the automation never holds. It does the things only a human may: it is the `ASSAY_BLESS_LOGIN` (the authorization half of the trust gate — `configure-roster`), it posts the sign-off on a `gate:human` brief, it decides which public repositories the desk may write to (the `:public` allowed-repos entry), and it clicks **merge**.
 
 **Why this is not optional.** Assay's gates separate *proposing* work (the agents) from *authorizing* it (a human). That separation is only real if the two are different principals on the forge. If the fleet runs as the same account that blesses, approves, and merges, the automation can bless, approve, and merge its *own* work — every human gate becomes self-satisfiable and the model is theater. Under one shared identity, bot-vs-human is undecidable: a verdict, a 👍, or a merge attributed to that account attributes to *both* (§1a). The human account is precisely what the automation must be unable to act as — that is what makes "a human approved this" a claim the fleet cannot forge.
 
@@ -259,9 +259,11 @@ finished `assay:install` run hands you a checklist rather than the impression th
    the protected branch's push-access list naming the board-writer service account, which
    `tools/create-fleet-gitlab.sh` sets and reads back.)
 6. **The ongoing human gates — not one-time.** The ready-flip is the desk's, but the **merge**, the
-   **push to `main`**, the **release tag**, any **history rewrite**, and the **👍 that clears a
-   public write** are yours *every time*, not just at install. The quick-reference table above is
-   the standing list.
+   **push to `main`**, the **release tag** and any **history rewrite** are yours *every time*, not
+   just at install. So is the decision to add a public repository to the allowed-repos set with
+   the `:public` token: it is a one-time, repository-scoped authorization that only you make,
+   and a repository you have not listed stays refused. The quick-reference table above is the
+   standing list.
 7. **Optionally acquire the desk-tools.** If you run the automated desk pipeline, install the pinned
    desk-tools binaries — see the **desk-tools acquisition** (`install-desk-tools` in §3). Without
    them the desk skills fall back to raw `gh`/`git`; with them you get the guards, write-budgets,

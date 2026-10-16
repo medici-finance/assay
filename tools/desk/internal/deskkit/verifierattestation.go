@@ -16,12 +16,18 @@ import (
 const VerifierAttestationTitle = "[verification-attestation] "
 const verifierRecordName = "assay-verifier-attestation.json"
 
+// VerifierAttestationRecord is the file name of a verifier home's local admission
+// record, kept in the home's worktree admin dir. deskwt prune reads it, by this one
+// name, to hold an admitted home until its Evidence can land.
+const VerifierAttestationRecord = verifierRecordName
+
 // VerifierBinding identifies one selected runner against one immutable source.
 // This is dispatch provenance, NEVER a Verify result or evidence of execution.
 // Checkout pins the line-ending conversion the home was checked out with, so
 // admission renders attested blobs from the commit and this record only.
 type VerifierBinding struct {
 	Version                                                                              int
+	SourceRepo, TrackingSource, TrackingHomeSHA256, TrackingCheckout                     string `json:",omitempty"`
 	Run, Repo, Source, Brief, BriefSHA256, PlanSHA256, HomeSHA256, Model, Tier, Checkout string
 }
 
@@ -39,11 +45,20 @@ type VerifierReceipt struct {
 	Binding VerifierBinding
 	Issue   int
 	URL     string
+	// BriefRoot is local-only routing returned after admission, never part of the issue body.
+	BriefRoot string `json:",omitempty"`
+	// SourceHome is the admitted deliverable home a version-2 run's Verify rows
+	// execute in, returned after admission and local-only like BriefRoot. The
+	// executor runs its rows there and refuses any other row root: BriefRoot is
+	// the tracking tree, so a root derived from the brief's location would run
+	// the rows against a tree the attestation does not name.
+	SourceHome string `json:",omitempty"`
 }
 type verifierLocal struct {
 	VerifierReceipt
-	Home      string
-	Attempted bool
+	Home         string
+	TrackingHome string `json:",omitempty"`
+	Attempted    bool
 }
 
 func verifierDigest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
@@ -64,6 +79,11 @@ func verifierEnv() []string {
 	}
 	return append(env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=")
 }
+
+// VerifierReadEnv gives outcome readers the same Git environment as admission.
+// A caller cannot redirect a tracking-history read after its source check.
+func VerifierReadEnv() []string { return verifierEnv() }
+
 func verifierGitBytes(root string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", append([]string{"--no-replace-objects", "-C", root}, args...)...)
 	cmd.Env = verifierEnv()
@@ -115,7 +135,7 @@ func verifierLoad(root string) (verifierLocal, error) {
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return r, Refused("no pre-work verifier attestation in this worktree; dispatch a verifier before executing Verify rows")
+		return r, Unverifiable("missing original pre-work verifier record: run nonce, repository/source, brief/plan, home and model provenance are unavailable; cannot recover or execute this run", err)
 	}
 	if err = json.Unmarshal(b, &r); err != nil {
 		return r, Unverifiable("unreadable verifier attestation", err)
@@ -140,6 +160,9 @@ func withoutEvidence(b []byte) []byte {
 	return []byte(strings.TrimSpace(strings.Join(out, "\n")))
 }
 func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase) error {
+	if r.Binding.Version == 2 {
+		return verifierCrossRepoCheck(root, brief, r, phase)
+	}
 	given, home, err := verifierHome(root)
 	if err != nil {
 		return err
@@ -239,6 +262,9 @@ func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase
 
 // PrepareVerifierAttestation persists the nonce BEFORE the first forge write.
 func PrepareVerifierAttestation(root, repo, brief, model, tier string) error {
+	if filepath.IsAbs(brief) && !verifierContains(root, brief) {
+		return prepareVerifierCrossRepo(root, repo, brief, model, tier)
+	}
 	desk, _ := RoleAppLogin(DispatcherRole)
 	if !verifierAuthority(desk) {
 		return Refused("pre-work attestation requires distinct configured desk and verifier actors")
@@ -422,6 +448,9 @@ func checkVerifierAttestation(root, brief string, f Forge, phase verifierPhase) 
 	if state != ModelStamped || stamp.Model != r.Binding.Model || stamp.Tier != r.Binding.Tier {
 		return r.VerifierReceipt, Refused("missing or mismatched dispatcher stamp; no Verify rows admitted")
 	}
+	if r.Binding.Version == 2 {
+		r.BriefRoot, r.SourceHome = r.TrackingHome, r.Home
+	}
 	return r.VerifierReceipt, nil
 }
 func CheckVerifierAttestation(root, brief string) (VerifierReceipt, error) {
@@ -455,6 +484,9 @@ func RecoverVerifierAttestation(root string) (VerifierReceipt, error) {
 	return IssueVerifierAttestation(root, f)
 }
 func (r VerifierReceipt) EvidenceBinding() string {
+	if r.Binding.Version == 2 {
+		return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source-repo=%s source=%s tracking-source=%s brief=%s model=%s tier=%s", r.Binding.Repo, r.Issue, r.Binding.Run, r.Binding.SourceRepo, r.Binding.Source, r.Binding.TrackingSource, r.Binding.Brief, r.Binding.Model, r.Binding.Tier)
+	}
 	return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source=%s brief=%s model=%s tier=%s", r.Binding.Repo, r.Issue, r.Binding.Run, r.Binding.Source, r.Binding.Brief, r.Binding.Model, r.Binding.Tier)
 }
 func IsVerifierAttestation(title, author string) bool {
