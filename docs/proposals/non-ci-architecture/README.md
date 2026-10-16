@@ -4,10 +4,13 @@
 
 Read the [implemented foundations and remaining work](11-target-architecture.md#implemented-foundations-and-work-still-to-build) alongside the target. Portfolio allocation, target/context drift and continuing observation are included in the destination; their integrated automation remains work to build and qualify.
 
-The draft [celld session and execution-host spec](../../cellctl-codex-daemon-spec.md)
+The draft [celld session and execution-host spec](../../celld-session-host-spec.md)
 explores service packaging and Codex, Claude and Cursor runtime integration against
-these owners. Its six qualification spikes are proposed experiments; the draft does
-not amend this architecture's approved authority or activate remote/cluster execution.
+these owners, including the [cell operator surface](21-cell-operator-surface.md) lifecycle
+and Cell API owner and the [runtime contract alignment](23-runtime-contract-alignment.md).
+It adds no lifecycle vocabulary or second Cell API. Its six qualification spikes are
+proposed experiments; the draft does not amend this architecture's approved authority or
+activate remote/cluster execution.
 
 The maintainer ratified the whole target at revision `23f655f5d`, packages R1–R8, on [medici-finance/assay#2500](https://github.com/medici-finance/assay/issues/2500). That approval remains revision-bound: it does not imply that the portfolio/drift additions below were included in that earlier revision, or that any runtime has been activated.
 

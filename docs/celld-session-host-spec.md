@@ -9,8 +9,11 @@
 
 Make `cellctl` the operator client for **owned sessions on explicit execution hosts**,
 with terminals as attachable views. Use `celld` as the proposed service name for the
-existing future architecture's cell API/controller and runtime integration. It is a
-packaging and interface proposal, not a new scheduler or authority owner. Use each
+execution-host side of the existing future architecture: the packaging of runtime
+coordination (R2), isolated runner and cell operation (R3) and role executors (R4)
+for one cell, with harness adapters behind the shared runner contract. It is a
+packaging and interface proposal, not a new scheduler, ingress or authority owner.
+Its relation to the other owners is stated in the next subsection. Use each
 harness's supported runtime to execute agents; preserve existing role identity,
 workspace, admission, lifecycle and evidence contracts. Qualify an opt-in Codex
 app-server adapter alongside the already planned process adapter; keep legacy
@@ -25,6 +28,28 @@ memory or startup time is a hypothesis to measure, not a reason to assume sharin
 This changes cellctl's unit of management from a launched client process to a role's
 owned runtime session. It does not turn cellctl into an agent engine, transcript
 database, vendor cloud scheduler, or transparent cross-host failover system.
+
+### Relation to the architecture on main
+
+This revision is reconciled against the architecture on main (`origin/main`
+`1948dc087`), in particular [21: cell operator surface](proposals/non-ci-architecture/21-cell-operator-surface.md)
+and [23: runtime contract alignment](proposals/non-ci-architecture/23-runtime-contract-alignment.md).
+
+- **Cell API (R7).** Doc 21 allocates R7, the public Cell API and thin cockpit, to the
+  parked `cell-api` stream and makes the Cell API the only operator ingress. `celld` is
+  **not** that API and adds no ingress of its own. Its authenticated control endpoint
+  serves the Cell API, `cellctl` as a client of it, and runner registration. Whether `celld`
+  is packaged inside or behind the Cell API is open decision D4 for the R7 owner. This
+  spec does not pre-empt it.
+- **Lifecycle (R2/R3).** Doc 21 owns the runner lifecycle vocabulary: pause, resume,
+  drain(timeout), stop, start and restart. R2 records a requested transition and R3
+  executes it. A record is a request, never authority. Section 4 maps every operation in
+  this spec onto those transitions and defines no rival one.
+- **Interim verbs.** The operator verbs `up`, `down`, `status`, `logs` and the per-role
+  stop ship as interim bridges under desk-containers/15-24. A `celld`-backed mode is an
+  adapter behind the same verbs and keeps their observable meaning.
+- **Runtime contract (doc 23).** PostgreSQL coordination, role executors, the typed forge
+  service and the thin-client rule apply unchanged. Section 10 maps every owner.
 
 ## 2. Evidence and inherited contracts
 
@@ -122,20 +147,26 @@ verified yet. [Hooks](https://code.claude.com/docs/en/agent-sdk/hooks),
 | Continuation policy | `Stop` hook that returns `decision: "block"` with a `reason` | Replaces a native standing Goal. celld owns the policy, so freezing it changes no vendor state. A timed-out Stop callback lets the agent stop. |
 | Waiting for approval | `canUseTool` callback or `PermissionRequest` hook; `Notification` of type `permission_prompt` | celld reports the wait and never approves it automatically. |
 | Descendants / quiescence | `SubagentStart`/`SubagentStop` and `SessionStart` (with `source`)/`SessionEnd` hooks | The `SessionStart`/`SessionEnd` callbacks are TypeScript-only. |
-| Resume | `resume: <id>` (or `forkSession`); a `sessionStore` adapter for another host | Restores the conversation only. Files, running commands and pending approvals are not restored. |
+| Session rebind | `resume: <id>` (or `forkSession`); a `sessionStore` adapter for another host | Restores the conversation only. Files, running commands and pending approvals are not restored. This is the vendor's conversation resume, a session-level operation, and is not the lifecycle transition `resume` of doc 21. |
 
 This keeps Claude an owned-process adapter, and the drain gate becomes mechanical
 rather than prompt-only. The existing [model-policy](cellctl-model-policy.md) hooks
 are the in-repo precedent: settings-injected hooks that call back into the launcher.
 The admission hook must follow the same rules: fail closed when its binary is
-missing, and never hang. Timeout handling differs by hook event and by version, so S4
-records the timeout behaviour observed at the pinned version.
+missing, and never hang. Timeout handling differs by hook event and by version, and
+the model-policy record notes that Claude Code can let an action through when a hook
+times out. S4 therefore records the observed timeout behaviour and must include two
+refusal cases: the admission hook binary removed, and the hook stalled past its
+deadline. In both, a tool call made while admission is closed must still be refused. A
+gate that passes a call on timeout is not mechanical.
 
 The limits stay explicit:
 
 - A controller crash loses the in-flight turn and its background commands.
 - There is no remote placement other than running the SDK process on the target host.
-- Remote Control remains an optional, view-only operator attachment.
+- Remote Control remains an optional operator attachment. If input can arrive through
+  it, that input passes the same admission hook while drained, or the path is disabled
+  during drain. S4 verifies which one holds at the pinned version.
 
 Three different cross-host operations must remain explicit:
 
@@ -144,7 +175,7 @@ Three different cross-host operations must remain explicit:
 2. **Remote placement:** an authorized new task is assigned to B before it starts.
    Repository access and environment provisioning happen there.
 3. **Migration:** an existing task moves from B to C. This is out of the first release.
-   Conversation resume is insufficient: worktree changes, commands, approvals,
+   Conversation rebind is insufficient: worktree changes, commands, approvals,
    claims, credentials and execution ownership also require a handoff.
 
 No observed feature establishes transparent live migration across all three vendors.
@@ -168,7 +199,18 @@ Separate three configuration choices: **harness**, **execution target** and
 continuation; headless cadence remains a separate mode with native Goals disabled.
 Changing the view must not change any of these choices.
 
-Proposed operations are `inspect`, `attach`, `drain`, `stop` and explicit `resume`.
+This spec defines no lifecycle vocabulary of its own. Operator intents map onto doc 21,
+and a harness-specific step is an implementation of a doc-21 transition, never a rival:
+
+| This spec's operation | Doc 21 meaning | Owner and constraint |
+| --- | --- | --- |
+| `inspect` | `status` projection | Read-only projection through the Cell API and `cellctl status` |
+| `attach` / `detach` | Not a lifecycle transition | Presentation view only; confers no authority and changes no state |
+| `drain` (section 5) | `drain(timeout)`: paused, then a bounded wait for in-flight attempts to reach a durable transition | R2 records, R3 executes. A drain that times out leaves the role up and lists the remaining work |
+| `stop` (section 5) | `stop`, legal for a role already paused or drained | R2 records, R3 executes after re-measuring idleness. Interrupting in-flight work is the abandon path described there |
+| session rebind (conversation resume) | None. Re-binding to a proven vendor session after a restart | Never lifts a stop or pause. Only doc 21 `resume` (paused to running) changes admission |
+| `pause` / `resume` | `pause` and `resume` (paused to running) | `resume` lifts only the stops its own `pause` set |
+
 These are behavioral requirements, not claims that new CLI verbs already exist.
 Existing `up` should attach to a proven owned session or create one only when no
 unfinished owner exists. Existing `down` must report stop evidence before declaring
@@ -258,17 +300,27 @@ slot. Send steering to the existing session and retain comms until handoff compl
 Do not interrupt active work merely to satisfy drain. Approval waits remain visible
 and are never automatically approved.
 
-Report drained only when captured obligations are completed or explicitly handed
+Drain is bounded: it takes a timeout, as `drain(timeout)` in doc 21 does. Report drained
+only when captured obligations are completed or explicitly handed
 off, no new admissions occurred, and no owned turn or background work can continue
-admitting work. Freeze continuation at that boundary without marking a standing
+admitting work. A drain that reaches its timeout reports the remaining sessions, turns
+and commands, leaves the role up and paused, and is neither drained nor stopped. Freeze continuation at that boundary without marking a standing
 objective complete. Prompt-only compliance is insufficient for the admission gate.
 On the Claude lane the gate is the `PreToolUse` admission hook (section 3), which
 refuses or defers each tool call while admission is closed. Continuation freezes
 because the celld-owned `Stop` hook stops blocking.
 
-**Stop** is a distinct, explicitly requested interruption: close admissions, inhibit
-automatic continuation, interrupt owned turns and descendants, and terminate owned
-background commands as authorized. Re-read runtime state and retain receipts before
+**Stop** is a distinct, explicitly requested transition, legal only for a role already
+paused or drained. Close admissions, inhibit automatic continuation, re-measure that the
+role is idle, and then close the owned session. R2 records the request and R3
+executes it. A recorded request is never authority: while approvals are deferred,
+only stop and no-new-work transitions execute from a record.
+
+Interrupting an owned turn or descendant, or terminating an owned background command, is
+**abandoning in-flight work**. It maps to doc 21's abandon path (`drain --now`) and needs
+a plan confirmed interactively at the operator's terminal. Each abandoned item is
+recorded as an unknown outcome to reconcile, never as cancelled. No transition cancels
+an external effect already in flight. Re-read runtime state and retain receipts before
 closing comms/cockpit surfaces. Never translate unsubscribe, client exit or loss of
 connection into successful stop. Do not use unrestricted server shell commands as
 a teardown shortcut. Shutdown of an entire server requires exclusive proven
@@ -360,6 +412,10 @@ The human driver owns these consequential decisions:
 - **D3 — General cellctl direction:** recommend the shared session/host contract with
   capability-specific adapters. Do not require every harness to expose identical
   services, and do not add live migration or automatic cross-host failover.
+- **D4 — Cell API relation:** recommend that `celld` exposes no operator ingress and is
+  reached only through the R7 Cell API owned by the parked `cell-api` stream. The R7
+  owner decides whether `celld` is packaged inside or behind that API. Until then this
+  spec adds no listener for operators or external callers.
 
 After review, record rulings through the [spec lifecycle](../spec/lifecycle-v1.md#8-spec-and-scoping-doc-lifecycle).
 Only a separately authorized decomposition should create implementation briefs.
@@ -429,17 +485,25 @@ into a production implementation or silently add another service/database.
 | **S1 — Codex server boundary** | Can one owned server preserve two roles' distinct model, command environment, MCP/plugin access and approval settings? Use two synthetic roles, two clients and one pinned server; detach/reattach each and inspect children. Compare with separate servers. | Actual effective settings and served-model records, endpoint/home identity, denied cross-role access, and the same bound session after reconnect. Decide shared-per-cell versus separate-per-policy-domain servers. Any process-wide setting that widens a role rejects sharing. CLI schema presence is insufficient. |
 | **S2 — Mixed-harness candidate handoff** | Can a Cursor worker produce a candidate that a Codex reviewer independently checks through the shared runner contract? Use one planted defect, immutable candidate hash and isolated author/reviewer workspaces. Characterize a Claude process fixture through the same contract; real Claude qualification remains owned by the existing first-adapter brief. | Preserve role, actual harness/model, candidate and attempt identity end to end; the reviewer detects the planted defect. A changed candidate invalidates review currency. Record supported and unsupported operations separately per harness. Decide the minimal adapter/profile extension, including how Cursor joins per-role policy without bypassing its present refusals. |
 | **S3 — Durable controller and supervisor** | Can the existing owners support a celld client/service split? Use disposable PostgreSQL, one cell owner, two fake runners and two clients. Inject a lost Start reply, duplicate invocation/registration, controller restart, unavailable database and backup rollback. | No duplicate accepted launch; unknown survives restart; stale generation/incarnation cannot produce an accepted effect even when bypassing the upper controller. Database failure refuses new admission; rollback starts paused. Decide the required changes to the runner contract, supervisor journal and ownership interfaces. Fake-provider success proves no vendor fencing. |
-| **S4 — Drain, stop and native continuation** | Can real runtime state prove quiescence? Exercise a synthetic Codex Goal with child agents/background commands and a Cursor run, including approval wait, lost cancellation reply and a client disconnect. **Claude lane:** with one owned Agent SDK process, drain through the `PreToolUse` admission hook (deny and defer), continue and freeze through the `Stop` hook, interrupt a turn, stop a background task with `stopTask`, wait on an approval, and resume by session ID after a controller restart. Test drain during existing work and attempts to refill after completion. | Drain rejects new admission while accepted work finishes; stop confirms the owned execution tree ceased; unrelated sessions survive. Goal objective, budget and usage remain intact and paused/cleared state never revives. Decide D1 and each harness's stop capability. Unconfirmed cancellation stays unknown. Changes to real session Goal state require the driver's explicit trial authorization. For Claude, also record hook-timeout behaviour, which owned tasks can be enumerated, and what resume does not restore, each as verified, unavailable or could-not-check. |
-| **S5 — Remote registration and attachment** | Does the same ownership contract work on two disposable hosts? Register an operator-bound runner, connect two clients, cut the transport, replay an old registration and restart the runner. | Unauthorized/cross-cell registration is rejected; host identity and owner generation remain bound; reconnect finds the original session; contact loss cannot cause a duplicate on another host. Decide transport, credential provisioning and supported recovery. This does not qualify automatic failover. |
+| **S4 — Drain, stop and native continuation** | Can real runtime state prove quiescence? Exercise a synthetic Codex Goal with child agents/background commands and a Cursor run, including approval wait, lost cancellation reply and a client disconnect. **Claude lane:** with one owned Agent SDK process, drain through the `PreToolUse` admission hook (deny and defer), continue and freeze through the `Stop` hook, interrupt a turn, stop a background task with `stopTask`, wait on an approval, and rebind by session ID after a controller restart. Test drain during existing work and attempts to refill after completion, and test interrupting in-flight work only through the confirmed-plan abandon path, with each abandoned item recorded as unknown. | Drain is bounded and rejects new admission while accepted work finishes; a timed-out drain leaves the role up with its remaining work listed. Stop is accepted only for a paused or drained role, and confirms the owned execution tree ceased; unrelated sessions survive. Goal objective, budget and usage remain intact and paused/cleared state never revives. Decide D1 and each harness's stop capability. Unconfirmed cancellation stays unknown. Changes to real session Goal state require the driver's explicit trial authorization. For Claude, also record hook-timeout behaviour, which owned tasks can be enumerated, and what a session rebind does not restore, each as verified, unavailable or could-not-check. |
+| **S5 — Remote registration and attachment** | Does the same ownership contract work on two disposable hosts? Register an operator-bound runner, connect two clients, cut the transport, replay an old registration and restart the runner. | Name who owns any cross-host session store, how access to it is bound, and when its data is retained or deleted, as for host identity and transport; transcripts can carry sensitive tool output. Unauthorized/cross-cell registration is rejected; host identity and owner generation remain bound; reconnect finds the original session; contact loss cannot cause a duplicate on another host. Decide transport, credential provisioning and supported recovery. This does not qualify automatic failover. |
 | **S6 — Kubernetes lifecycle** | Does cluster packaging preserve the qualified contract? In a separately authorized disposable cluster, run one celld owner and two runner pods; delete a runner, exhaust termination grace, restart the controller and test both retained and lost workspace/session volumes. | Ready is not reported before registration and reconciliation; termination receipts distinguish confirmed stop from unknown; replacement cannot revive an old owner or reset budget/drain/Goal state. Retained artifacts identify the exact candidate after replacement; lost state causes a visible hold. Decide the pod/PVC/probe contract and whether a pilot is supportable. No production cluster access or HA claim. |
 
 Run S1 and S3 first; their protocol/ownership decisions constrain the service shape.
 S2 follows S1's runtime characterization and S3's fixture contract. S4 follows S2
 and explicit authorization for synthetic Goal changes; its evidence informs the
 production authority decision D1. S5 requires S3/S4, and S6 requires
-S5 plus separate cluster-trial authorization. The existing Claude-first adapter brief
-is not replaced by this experimental ordering. The S4 Claude lane qualifies that brief's SDK
-control mapping (section 3) and pairs with it; it neither supersedes it nor waits on it.
+S5 plus separate cluster-trial authorization.
+
+The S4 Claude lane qualifies **this spec's** section-3 SDK control mapping. It is not
+a lane of [brief 22](streams/graph-execution/brief-22-local-harness-adapter.md), which
+has no SDK mapping. Brief 22 defines the Claude adapter as a wrapper over the resolved
+Claude Code CLI argv/env profile that cellctl already builds, and it adds no second argv
+builder or process runner. An owned Agent SDK host process is a different runtime shape.
+The S4 Claude lane is therefore a separate qualification lane and test fixture only. It
+does not amend or supersede brief 22 and does not wait on it. Adopting SDK hosting for
+production would need a later amendment to brief 22, decided by its owner, that
+reconciles the single-argv-builder and single-process-runner constraint.
 
 The first useful delivery milestone is **S1–S4 locally**, with a thin client rather
 than a new desktop UI. A failure to preserve role policy or prove scoped stop blocks
@@ -485,14 +549,26 @@ binding, celld validates it, and a registered runner receives only an admitted,
 profile-bound invocation. Kubernetes may place or restart a pod; it does not decide
 work eligibility, accept a review, fence a provider write or resume a paused Goal.
 
-The [amendment manifest](proposals/non-ci-architecture/20-amendment-manifest.md) and
-existing graph-execution briefs already name the relevant owners:
+The [amendment manifest](proposals/non-ci-architecture/20-amendment-manifest.md), the
+[cell operator surface](proposals/non-ci-architecture/21-cell-operator-surface.md),
+the [runtime contract alignment](proposals/non-ci-architecture/23-runtime-contract-alignment.md)
+and existing graph-execution briefs already name the relevant owners. `celld` relates to
+each as follows:
+
+| Owner | Relation of `celld` |
+| --- | --- |
+| R7 Cell API and thin cockpit (doc 21; parked `cell-api` stream; doc 23 owner table) | `celld` is not the Cell API and has no operator ingress of its own. The Cell API is the only ingress; `celld` serves it and registered runners (D4) |
+| R2 coordination and R3 isolated runner (doc 21 lifecycle; doc 23 owner table) | `celld` packages the execution-host side. R2 records a requested transition, R3 executes it; section 4 maps every operation onto doc 21 and adds no transition |
+| [desk-containers 15-24](streams/desk-containers/README.md) (doc 21 interim verbs) | The interim `up`, `down`, `status`, `logs` and per-role stop keep their meaning. A `celld` mode is an adapter behind them, not a replacement |
+| R4 role executors and R6 forge service (doc 23) | Effect credentials and provider effects stay with them; `celld` hosts sessions, not effects |
+
+The graph-execution briefs name these further owners:
 
 | Existing owner | Required daemon/service reconciliation |
 | --- | --- |
 | [20: runner contract](streams/graph-execution/brief-20-runner-contract.md) | Extend versioned capabilities for attachment, descendants and native continuation where justified; retain Start/Observe/Cancel/Reconcile and unknown semantics |
 | [26: shared supervisor](streams/graph-execution/brief-26-shared-loop-admin.md) | Bind daemon sessions and registrations to invocation ownership; use its PostgreSQL journal and existing process-runner migration, not a new scheduler |
-| [22: first adapter](streams/graph-execution/brief-22-local-harness-adapter.md) | Currently specifies Claude first. A Codex daemon experiment is an additional qualification lane; it does not silently replace that scope or move Cursor onto an unqualified adapter |
+| [22: first adapter](streams/graph-execution/brief-22-local-harness-adapter.md) | Specifies a Claude Code CLI-profile adapter with one argv builder and one process runner. The Codex daemon experiment and the SDK lane (S4) are separate qualification lanes; neither amends it, replaces its scope or moves Cursor onto an unqualified adapter |
 | [27: standing desk clients](streams/graph-execution/brief-27-standing-desk-loop-admin.md) | Route current desk callers through the shared supervisor while preserving their scheduling and admission semantics |
 | [16: ownership and budgets](streams/graph-execution/brief-16-cell-ownership-budgets.md) | Reuse incarnation/generation, cumulative budget and restoration fencing; registration and heartbeat are not a second authority |
 | [19: durable store](streams/graph-execution/brief-19-durable-instance-store.md), [21: controller](streams/graph-execution/brief-21-controller-host.md) | Keep work state and workflow decisions with their existing owner; session status cannot substitute for evidence or acceptance |
