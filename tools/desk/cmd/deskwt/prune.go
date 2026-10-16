@@ -184,9 +184,12 @@ type pruneOpts struct {
 //	  (cachepressure.go). A cell's managed Go cache (tools/desk/internal/cellcache) is
 //	  otherwise pressure-checked only at launch admission and dispatch, so a long-lived
 //	  cell can sit over its byte budget — or the filesystem under its free-space floor —
-//	  indefinitely. Every sweep runs cellcache.Check over each marked cache root under
-//	  the cells root (--cells-root, then $CELLS_ROOT, then the compiled default), with
-//	  the package's own semantics: never a warm purge; whole roots go only under
+//	  indefinitely. Every sweep pressure-checks each marked cache root under the cells
+//	  root (--cells-root, then $CELLS_ROOT, then the compiled default) through
+//	  cellcache.AdmitRecorded: a lock-free pre-check admits a root whose last clean
+//	  measurement is fresh and well inside its thresholds, so a boot-time sweep neither
+//	  takes the cache lock nor walks a large cache; any root it cannot prove falls
+//	  through to the locked cellcache.CheckRecorded, with the package's own semantics: never a warm purge; whole roots go only under
 //	  pressure with no consumer record; otherwise, under pressure or above the
 //	  high-water mark, build/ entries are trimmed oldest first to the low-water mark,
 //	  never below the policy's safety floor, while active records protect mod/ and
