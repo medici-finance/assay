@@ -151,10 +151,11 @@ visible phrase naming the recommended option, else `not derivable — desk to fi
    exact command for the RECOMMENDED option**, on the driver's own human path (the driver runs
    it under their own login; a desk never does): a ruling is
    `t="$(gh auth token --user <driver-login>)" && [ -n "$t" ] && GH_TOKEN="$t" gh issue comment <N> -R <owner>/<repo> --body '<ruling text>'`
-   (a `'` inside the text is written `'\''`); an act is not a one-line command: it is
-   the Act block of part 5, the one definition of an act block. For the ruling command, if the
-   driver's token cannot be read, nothing runs — never a fall-back to an exported App token or
-   the active account; an App-posted ruling fails a human gate. No single command fits? Say so;
+   (a `'` inside the text is written `'\''`); an act is not a one-line command: it is the Act
+   block of part 5, the one definition of an act block, whose function reads the same
+   driver token first and pins it for every `gh` step. For the ruling and for an act alike, if
+   the driver's token cannot be read, nothing runs — never a fall-back to an exported App token
+   or the active account; an App-posted ruling or act fails a human gate. No single command fits? Say so;
    never invent one. The script's `command:` line derives it only from a trusted author's
    visible phrase naming the recommended option, else prints `not derivable — desk to fill`.
    The desk's own `gh` calls run as its role App, per
@@ -230,17 +231,23 @@ restate it.
   is already resolved. A
   credential never appears in the block: the marker names it, and the block reads it on the
   live call with `read -rs`, so it never echoes, never lands in shell history, and is not in
-  the block if the driver pastes it again. **Read every secret first**, in the act's first
-  step, in the shape `NAME=; read -rs NAME || { …; exit 1; }`, then stop when the value is
+  the block if the driver pastes it again. **Read every secret first**, in the first step
+  after the token pin and before any live step, in the shape `NAME=; read -rs NAME || { …; exit 1; }`, then stop when the value is
   empty. Clearing the name first and stopping on a failed read both matter: a shell whose
   `read` has no `-s`, such as dash, fails without assigning, and a value of that name already
   set in the environment would otherwise go through as the secret. An empty or failed read
   then changes nothing, instead of leaving the act half done after an earlier live step.
-- **A block's `gh` steps run as the driver, never as a role App.** The driver pastes the block
-  into their own shell, so its `gh` steps use the driver's own login. The block never reads,
-  exports or falls back to a role App's token. A ruling stays the one-line command of part 4,
-  with its token step; it is not an act block. A token an act needs that is not the driver's
-  login is a `# fill:` secret read as above.
+- **A block's `gh` steps run as the driver, never as a role App, and the block pins that
+  itself.** The driver pastes the block into their own shell, and that shell may hold an
+  exported `GH_TOKEN` or `GITHUB_TOKEN`, which `gh` prefers to any stored login (with none
+  exported it uses the active account, which may not be the driver). So the act function's
+  first step is `GH_TOKEN="$(gh auth token --user <driver-login>)" || exit 1`, then
+  `export GH_TOKEN; unset GITHUB_TOKEN`: it fails closed, with nothing changed, when the
+  driver's token cannot be read, and the pin lives only in the function's subshell. It comes
+  before any secret prompt and before every `gh` step, and nothing in the function sets
+  either variable again. `<driver-login>` is a value the desk resolves like `owner/repo`. The
+  block never reads or falls back to a role App's token. A token an act needs that is not the
+  driver's login is a `# fill:` secret read as above.
 
 This plugin's own skill lint checks the shipped example below against the comment rule (plain
 text, header only, no trailing comment), the guard line, the per-act name and the secret-read shape, in
@@ -257,24 +264,39 @@ heredoc body fed to a shell, a `#` straight after an operator, an operator insid
 `sh -c` or a command name built from an expansion; a read in one of those can pass. A block a
 desk composes at run time gets no lint; it rests on these rules alone.
 
+The lint also holds the token pin. In a block with a `gh` step, the act function pins the
+driver's token at its top level before the first `gh` step, in the whole shape above: the
+`GH_TOKEN="$(gh auth token --user <driver-login>)"` assignment ending `|| exit` (or `|| { …; exit N; }`),
+a separate `export GH_TOKEN` (an `export` that carries the assignment would report export's
+status, not the read's), and an `unset` of `GITHUB_TOKEN`. A `gh` step ahead of the pin or
+outside the function, a pin inside an `if`, loop, group or subshell, and a later assignment of
+`GH_TOKEN` or `GITHUB_TOKEN` or an `unset GH_TOKEN` are refused. It reads a `gh` step as the
+word `gh` in command position, after `run`, a pipe, `&&`, `then` and the like, never in an
+`echo`'s quoted text. Like the read check it is syntactic and best effort: a `gh` run through
+`eval`, `sh -c`, `xargs`, an alias or a wrapper function, or cleared for one step with
+`env -u`, can pass.
+
 ```sh
 [ -n "${ZSH_VERSION-}" ] && setopt interactive_comments
 # 0. act 123 as one function run in a subshell. Pasting this only prints. Type driver_act_123 live to act.
-# fill: the publish token, typed at a hidden prompt in step 1 on the live call.
+# fill: the publish token, typed at a hidden prompt in step 2 on the live call.
 driver_act_123() (
   DRY_RUN=1; [ "${1-}" = live ] && DRY_RUN=0
   run() { if [ "$DRY_RUN" = 1 ]; then echo "would run: $*"; else "$@"; fi; }
-  echo '1. read the publish token first, so an empty read changes nothing.'
+  echo '1. pin the driver token for every gh step. An exported App token never wins.'
+  GH_TOKEN="$(gh auth token --user <driver-login>)" || { echo "no driver token; nothing changed" >&2; exit 1; }
+  export GH_TOKEN; unset GITHUB_TOKEN
+  echo '2. read the publish token next, so an empty read changes nothing.'
   if [ "$DRY_RUN" = 1 ]; then echo "would read the publish token at a hidden prompt"
   else printf 'publish token: '
     PUBLISH_TOKEN=; read -rs PUBLISH_TOKEN || { echo; echo "no token read; nothing changed" >&2; exit 1; }
     echo; [ -n "$PUBLISH_TOKEN" ] || { echo "no token read; nothing changed" >&2; exit 1; }; fi
-  echo '2. push the parked branch. git push has its own --dry-run.'
+  echo '3. push the parked branch. git push has its own --dry-run.'
   if [ "$DRY_RUN" = 1 ]; then git push --dry-run origin parked-branch; else git push origin parked-branch; fi
-  echo '3. store the publish token as a repo secret.'
+  echo '4. store the publish token as a repo secret.'
   if [ "$DRY_RUN" = 1 ]; then echo "would run: gh secret set PUBLISH_TOKEN -R owner/repo"
   else printf '%s' "$PUBLISH_TOKEN" | gh secret set PUBLISH_TOKEN -R owner/repo; fi
-  echo '4. take the decision label off the issue. No --dry-run here, so the run guard covers it.'
+  echo '5. take the decision label off the issue. No --dry-run here, so the run guard covers it.'
   run gh issue edit 123 -R owner/repo --remove-label needs-decision
 )
 driver_act_123

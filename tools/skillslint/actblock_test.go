@@ -110,7 +110,7 @@ func TestActBlockLintFlagsComment(t *testing.T) {
 // TestActBlockLintFlagsTrailingComment — a # after code on the same line is
 // flagged; a # inside a word, such as ${#T}, is not.
 func TestActBlockLintFlagsTrailingComment(t *testing.T) {
-	_, issues := lintOne(t, "sh", withLine(4, "  run gh issue edit 1 # plain text"))
+	_, issues := lintOne(t, "sh", withLine(4, "  run git status # plain text"))
 	wantOneAt(t, issues, cleanActLine(4), "trailing # comment")
 	_, issues = lintOne(t, "sh", withLine(4, `  echo "${#T} $#"`))
 	if len(issues) != 0 {
@@ -609,7 +609,7 @@ func TestActBlockLintSafeReadForms(t *testing.T) {
 		`  T=; read -rs T || { echo; echo "no token read; nothing changed" >&2; exit 1; }`,
 		`  echo "would read it; read -r X"`,
 		`  echo 'read T'`,
-		`  run gh api repos/o/r/readme --jq .already_read`,
+		`  run curl repos/o/r/readme --jq .already_read`,
 		`  T=; read -rs T || exit 1; U=; read -rs U || exit 1`,
 		`  T=; read -rs T || exit 255`,
 		`  { T=; read -rs T || exit 1; }`,

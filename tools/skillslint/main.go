@@ -250,7 +250,7 @@ func main() {
 			exit = 1
 		}
 	default:
-		fmt.Printf("ACT-BLOCK: PASS — %d act block(s) under plugins/ keep plain-text comments in the header only, the zsh guard, a per-act name and the one-line secret-read shape (cleared, -rs, exit 1-255; a syntactic check, not in a subshell, pipe or background it models; README §5 lists the forms it does not model)\n", abBlocks)
+		fmt.Printf("ACT-BLOCK: PASS — %d act block(s) under plugins/ keep plain-text comments in the header only, the zsh guard, a per-act name, the one-line secret-read shape (cleared, -rs, exit 1-255; a syntactic check, not in a subshell, pipe or background it models) and the fail-closed driver-token pin ahead of every gh step; README §5 lists the forms it does not model\n", abBlocks)
 	}
 
 	// ambient-auth: HARD. No skill or reference may tell a desk to read a human's

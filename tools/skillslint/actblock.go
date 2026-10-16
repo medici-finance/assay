@@ -62,7 +62,12 @@
 //     body fed to a shell, a # straight after an operator, an operator inside
 //     ${X:-…}, $'…' quoting, a function that shadows exit, or a read run
 //     through eval, sh -c or a command name built from an expansion; a read in
-//     one of those can pass (actread.go lists why).
+//     one of those can pass (actread.go lists why);
+//  6. every gh step runs behind the driver's token, pinned at the top of the act
+//     function and fail closed (actpin.go): GH_TOKEN from `gh auth token --user
+//     <driver-login>` with || exit, export GH_TOKEN, unset GITHUB_TOKEN, all
+//     before the first gh step, so an exported App token or the active account
+//     never decides who runs the act.
 //
 // An act block is recognised as an sh, bash, zsh or shell fence whose body
 // defines an act function (actFuncRe). HARD check: a violation is exit 1.
@@ -727,6 +732,11 @@ func actBlockLines(rel, raw string) (int, []Issue) {
 			texts[i] = l.text
 		}
 		scan := actScanBlock(texts)
+		for _, pi := range actPinIssues(code, name) {
+			if pi.line >= 0 && pi.line < len(body) {
+				add(body[pi.line].n, "%s", pi.msg)
+			}
+		}
 		for i, l := range body {
 			t := strings.TrimSpace(l.text)
 			if scan.trailing[i] || (!strings.HasPrefix(t, "#") && actTrailingCommentRe.MatchString(t)) {

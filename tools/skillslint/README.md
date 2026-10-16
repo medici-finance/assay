@@ -25,7 +25,7 @@ own directory (`cd tools/skillslint && go test ./...`), not from the repo root.
 | Invisible-character / Trojan-Source (hard) + context-budget NOTICE (advisory) | the instruction surfaces (below) | `hidden.go` |
 | Unresolved house values | **every `*.md` under `plugins/`** | `housevalue.go` |
 | Shared-guardrail derive-or-diff | every declared guardrail copy | `guardrail.go` |
-| Act blocks paste safely in zsh (hard) | every act block (an `sh`, `bash`, `zsh` or `shell` fence defining a `driver_act…()` function) in a `*.md` under `plugins/` | `actblock.go` |
+| Act blocks paste safely in zsh and run `gh` as the driver (hard) | every act block (an `sh`, `bash`, `zsh` or `shell` fence defining a `driver_act…()` function) in a `*.md` under `plugins/` | `actblock.go` |
 | No desk reads a human's `gh auth token` (hard) | every `*.md` under `plugins/assay/skills/` and `plugins/assay/references/` | `ambientauth.go` |
 
 ### 1. Skill-file structure
@@ -320,7 +320,7 @@ its first line, so the zsh comment guard
 `[ -n "${ZSH_VERSION-}" ] && setopt interactive_comments` covers only later
 pastes and lines typed after it, never the paste that carries it. The
 `ACT-BLOCK` check holds every act block under `plugins/` (an `sh`, `bash`, `zsh`
-or `shell` fence that defines a function named `driver_act…`) to five rules:
+or `shell` fence that defines a function named `driver_act…`) to six rules:
 
 1. every full-line comment holds only letters, digits, spaces, tabs and
    `. , : - / _ + #`, indented or not, and no code line carries a trailing
@@ -399,7 +399,31 @@ or `shell` fence that defines a function named `driver_act…`) to five rules:
    - a read run through `eval`, `sh -c` or a command name built from an
      expansion.
 
-   Rule 1's floor refuses a `#` after an operator, and its scanner refuses
+   6. every `gh` step runs behind the driver's own token, pinned at the top of
+   the act function (`actpin.go`). The driver's shell may hold an exported
+   `GH_TOKEN` or `GITHUB_TOKEN`, which `gh` prefers to any stored login, and
+   with none exported it uses the active account; either runs the step as the
+   wrong identity. In a block that has a `gh` step, the function pins, at its
+   top level and before the first `gh` step,
+   `GH_TOKEN="$(gh auth token --user <driver-login>)" || exit`, then a separate
+   `export GH_TOKEN` (an `export` that carries the assignment returns
+   `export`'s status, not the read's) and an `unset GITHUB_TOKEN`. The
+   assignment must end `|| exit`, `|| exit N` or `|| { ...; exit N; }`, the
+   fail-closed branch. A `gh` step ahead of the pin or outside the function, a
+   pin inside an `if`, loop, group, subshell or other function, and a later
+   assignment of `GH_TOKEN` or `GITHUB_TOKEN` or `unset GH_TOKEN` are refused.
+   A `gh` step is the word `gh` (or a path ending `/gh`, quoted or not) in
+   command position: at the start of a command, after `;`, `&`, `|`, `&&`,
+   `||`, `then`, `else`, `do`, `{`, `(`, `$(`, or after `run`, `command`,
+   `exec`, `env`, `nohup`, `time`; the pin's own `gh auth token --user` is not
+   one, and text inside a quoted string (an `echo` of what would run) is not
+   one. A block with no `gh` step needs no pin. Syntactic and best effort like
+   rule 5: it does **not** model a `gh` run through `eval`, `sh -c`, `xargs`,
+   an alias, a command name built from an expansion or a function that wraps
+   it, a `case` pattern `)` not closed by `esac`, or `env -u GH_TOKEN` that
+   clears the pin for one step; a step in one of those can pass.
+
+Rule 1's floor refuses a `#` after an operator, and its scanner refuses
    `\'` inside `$'…'`, so a block holding either fails by rule 1; the read
    rule itself still does not see them. The others can pass every rule.
 
