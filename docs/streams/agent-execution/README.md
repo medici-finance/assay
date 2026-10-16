@@ -29,9 +29,10 @@ contract/fixture development; existing human and deployment gates still bind con
 | 04 | [Qualify restored execution against ownership and external effects](brief-04-recovery-effect-qualification.md) | 12 | M | todo | — | — |
 | 05 | [Expose preparation, execution, recovery and acceptance separately](brief-05-lifecycle-projection.md) | 13 | M | todo | — | — |
 | 06 | [Investigate AX compatibility through offline contract fixtures](brief-06-ax-offline-compatibility.md) | 3 | M | todo | — | — |
+| 07 | [Evaluate governed harness refinement with isolated offline fixtures](brief-07-harness-refinement-evaluation.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
-The generator owns the table. All six briefs are M-sized, strong-tier work. New tests and
+The generator owns the table. All seven briefs are M-sized, strong-tier work. New tests and
 paths named by their Verify tables are future deliverables, not authoring-time evidence.
 
 ## Critical path and checked head
@@ -50,6 +51,7 @@ verification/release obligations remain prerequisites to adopting its output.
 
 ```text
 graph-execution/20 -> 01 -> 02 ---------> 06 AX offline feasibility (independent branch)
+                         +------------> 07 Harness² refinement protocol (independent branch)
                          |
 graph-execution/26 -> 22 + 02 -> 03 local readiness/capability enforcement
 graph-execution/21 + 25 + 03 -> 04 integrated recovery -> 05 truthful lifecycle
@@ -70,7 +72,7 @@ Global waves include the existing graph-execution prerequisites:
 |---|---|---|
 | 1 | 01 qualified execution profile contract | graph-execution/20, wave 0 |
 | 2 | 02 prepared-environment receipt and workspace port | 01 |
-| 3 | 06 AX compatibility investigation | 01–02; independent of core integration |
+| 3 | 06 AX compatibility and 07 Harness² refinement investigations | 01–02; independent of core integration |
 | 8 | 03 local supervisor/adapter readiness enforcement | 02 and graph-execution/22 (7), /26 (6) |
 | 12 | 04 recovery and external-effect qualification | 03 and graph-execution/21 (7), /25 (11) |
 | 13 | 05 lifecycle projection and operator status | 03–04 and graph-execution/27 (8) |
@@ -100,3 +102,12 @@ briefs' tests. Open-PR file enumeration returned 21 open PRs with no pagination 
 new extension/receipt-path owner. The architecture-review proposal also edits the target
 chapter; this change adds a separate linked section without adopting its proposal. The
 pattern-schema authoring and runner Evidence PRs retain their existing scope.
+
+## Harness² follow-through
+
+The independently runnable /07 investigation evaluates propose–probe–compose as a source of
+reviewed profile proposals. It is not an AX adapter or a production optimization loop.
+It qualifies immutable bundle identity, independent holdouts, grading-data isolation and
+whole-experiment accounting through deterministic fixtures. Existing improvement-proposal,
+review and profile-adoption owners retain promotion; no installed guardrail or live attempt
+can be modified by a generated composition. Core /01–05 remain independent of /06–07.

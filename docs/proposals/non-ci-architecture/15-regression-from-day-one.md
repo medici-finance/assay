@@ -199,7 +199,7 @@ fail-open brake. C is the number of concurrently admitting processes.
 
 ## Portable execution qualification — 16 October 2026
 
-[Agent-execution/01–06](../../streams/agent-execution/README.md) extend the existing runner
+[Agent-execution/01–07](../../streams/agent-execution/README.md) extend the existing runner
 and whole-system regression owners. Their Verify tables require production-boundary named
 PASS checks and executable negative mutations. Preserve the original runner conformance
 suite; run the new profile/receipt cases for both desk and workflow modes. The integrated
@@ -213,3 +213,5 @@ missing acceptance coverage, denied cross-cell reads and read-only reconnect. AX
 checks do not qualify Substrate or a live backend. Existing R3/R4 deployment, celld remote
 experiments and R7 mounted-route tests remain separately required. Source fixtures and tests
 are implementation deliverables; this authoring amendment claims no new runtime test passed.
+
+Harness² protocol qualification adds independent held-out outcomes, a harmful composition, protected-control edits, grading-data isolation and complete experiment cost. Deterministic fixture success proves neither model-backed gains nor live optimizer safety; independent review and a separately authorized trial remain necessary.

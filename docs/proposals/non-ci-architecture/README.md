@@ -40,7 +40,7 @@ Verification is the first end-to-end test.
 | [Communications future state](24-communications.md) | Proposal pending approval: reusable client/server, broker-owned delivery, config CLI and applied backlog dependencies |
 | [Tool families and CI integration](25-ci-tooling.md) | Desk/service/CI placement, shared mechanisms and the migration stream |
 | [Product intent and portfolio](26-product-intent-and-portfolio.md) | Product-target, capacity and observation contracts; concrete briefs, active-work boundaries and remaining admission |
-| [Agent execution environments](27-agent-execution-environments.md) | Qualified harness/model/backend profiles, workspace readiness receipts, recovery and lifecycle visibility; six implementation briefs |
+| [Agent execution environments](27-agent-execution-environments.md) | Qualified harness/model/backend profiles, workspace readiness receipts, recovery and lifecycle visibility; seven implementation briefs |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Future direction and mechanisms to qualify

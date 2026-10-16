@@ -194,10 +194,10 @@ qualification input is a scoped hold, not a claim that the lighter contract appl
 ## Execution-environment target and transition — 16 October 2026
 
 The [execution amendment](27-agent-execution-environments.md) is a requested target change,
-with explicit delivery obligations in agent-execution/01–06. Keep its profile/receipt schema
+with explicit delivery obligations in agent-execution/01–07. Keep its profile/receipt schema
 revision separate from architecture-target approval, installed bundle and qualified backend.
 Existing runner-v1 implementation is observed foundation; prepared-environment integration
-and stronger preservation declarations remain planned. The six new briefs do not turn their
+and stronger preservation declarations remain planned. The seven new briefs do not turn their
 future test names into evidence of implementation.
 
 Impact/handoff records must find current v1 callers, supervisor/local-adapter and standing-desk

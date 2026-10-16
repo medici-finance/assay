@@ -192,3 +192,5 @@ path under restore; /05 supplies a truthful lifecycle snapshot to current status
 /06 independently investigates AX offline. R2 PostgreSQL and R4 effect identity/reconciliation
 remain authoritative. No AX task state, runner receipt or filesystem restoration grants
 work acceptance or renews authority. Existing R3/R4, celld and R7 activation obligations remain.
+
+Harness² follow-through adds agent-execution/07, an independent offline refinement-protocol experiment. Proposed harness bundles stay untrusted, immutable per invocation and subject to existing review/adoption; operator policy, enforced controls and acceptance cannot be optimized by the candidate. This changes no runtime owner.

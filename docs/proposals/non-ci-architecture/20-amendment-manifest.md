@@ -213,7 +213,7 @@ resource limit changes in this documentation PR.
 ## Portable execution environments — 16 October 2026
 
 Controlling delta: [agent execution environments](27-agent-execution-environments.md).
-The new agent-execution stream authors six bounded extensions of existing owners:
+The new agent-execution stream authors seven bounded extensions of existing owners:
 
 | Gap | Owning brief | Existing prerequisite/consumer | Change made in this authoring PR |
 |---|---|---|---|
@@ -223,6 +223,7 @@ The new agent-execution stream authors six bounded extensions of existing owners
 | Integrated restore/effect proof | agent-execution/04 | /03, graph-execution/21 and /25 | Production-owner integration tests; no alternative scheduler or effect ledger |
 | Lifecycle projection | agent-execution/05 | /03–04, graph-execution/27 | Existing cellop/cellctl consumers; R7 retains API/cockpit ingress |
 | AX source/fixture qualification | agent-execution/06 | /01–02, independent of managed integration | Offline go/no-go/unknown report; no production adapter or cluster activation |
+| Governed harness refinement | agent-execution/07 | /01–02; existing improvement/promotion owners retained | Offline protocol experiment with independent holdouts, protected controls and complete cost; no live optimizer |
 
 Source: main ec8d77e56627a7c2269f3d143ef6a31f3e41bd02, open-PR inventory refreshed
 16 October. No listed implementation PR targets the new extension/receipt paths. The open

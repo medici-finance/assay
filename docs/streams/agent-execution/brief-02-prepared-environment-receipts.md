@@ -4,7 +4,7 @@ title: "Prepared-environment receipts and reusable workspace port"
 why: "Starting a healthy process in the wrong repository or with incomplete tools wastes work and produces misleading evidence. An explicit preparation result lets callers establish readiness before launch."
 wave: 2
 depends: ["agent-execution/01"]
-unblocks: ["agent-execution/03", "agent-execution/06"]
+unblocks: ["agent-execution/03", "agent-execution/06", "agent-execution/07"]
 effort: "M"
 gate: "model"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
@@ -48,7 +48,7 @@ facts: As inspected on 2026-10-16 at main `ec8d77e56627a7c2269f3d143ef6a31f3e41b
 
 ## Task
 
-1. Define the prepared-environment receipt schema and pure Go types: caller/invocation, owner incarnation/generation reference, allocation/repository/exact revisions, recipe/tool/skill versions, optional image digest, approved writable paths, effective tool/network policy references, outcome, validation provenance and artifacts. Keep secrets out. Candidate/acceptance identities are opaque references validated by their existing caller owner, not new domain types.
+1. Define the prepared-environment receipt schema and pure Go types: caller/invocation, owner incarnation/generation reference, allocation/repository/exact revisions, recipe/tool/skill versions and harness-component bundle digest, optional image digest, approved writable paths, effective tool/network policy references, outcome, validation provenance and artifacts. Keep secrets out. Candidate/acceptance identities are opaque references validated by their existing caller owner, not new domain types.
 2. Implement a small preparation/reconcile/validate port and deterministic orchestration over injected resource/Git adapters. No direct subprocess, network, new store, Git engine or maintenance scheduler. Ready requires effective configuration to match every mandatory input; fake adapters exercise the same production validator. Keep schemas and code covered by positive and drift-negative tests.
 3. Persist/recover receipt references through caller-owned storage interfaces. Rebinding a cached environment to a new invocation requires current authorization, policy, identity and actual revision checks. Partial/unknown preparation is reconciled before retry. File restoration must not re-clone over unpublished changes.
 4. Preserve existing retention/release ownership. A missing receipt, expired TTL or unknown allocation never authorizes deletion; this port emits a typed hold or delegates to the existing retirement owner. Add named flow and negative tests with executable mutations and document compatibility and changelog.

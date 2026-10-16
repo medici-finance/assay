@@ -89,8 +89,12 @@ sandbox cannot renew ownership, budget, a human answer or permission to repeat a
 external effect. Show preparation, process, recovery, effects and acceptance as separate
 facts through existing client/API owners.
 
+Harness-improvement loops produce versioned, untrusted profile proposals and probe evidence.
+Independent evaluation and existing review/adoption decide promotion; generated compositions
+cannot rewrite enforced controls, acceptance or an active invocation's pinned bundle.
+
 The [execution-environment amendment](27-agent-execution-environments.md) supplies the
-contracts and [six implementation briefs](../../streams/agent-execution/README.md).
+contracts and [seven implementation briefs](../../streams/agent-execution/README.md).
 They extend loop-admin and existing workspace/cell/effect owners. AX/Substrate is an optional
 backend investigation; neither Redis nor another scheduler/store enters the Assay target.
 Existing R2 PostgreSQL, R3 isolation, R4 role authority and R7 ingress retain ownership.

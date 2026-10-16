@@ -141,11 +141,43 @@ collection reuses its existing owner; required budgets and audit do not depend o
 No numerical speed, density or savings target is approved by this amendment. A live backend
 trial needs an owner-approved workload, comparator and thresholds in its separate trial plan.
 
+## Harness improvement as reviewed profile proposals
+
+Harness² is complementary research, not an AX runtime or a replacement controller.
+Source inspected 16 October 2026 at
+[`1cfe254e8d25b15f37048c3730134686abe60335`](https://github.com/google-research/harness2/tree/1cfe254e8d25b15f37048c3730134686abe60335).
+Its [README](https://github.com/google-research/harness2/blob/1cfe254e8d25b15f37048c3730134686abe60335/README.md)
+describes task-level propose–probe–compose and retained lessons across tasks using fixed
+model weights and existing executors. It also permits editing guardrails among its harness
+components. This is research software, not a declaration that Google's production harness
+or an AX integration has been released.
+
+The [experiment guide](https://github.com/google-research/harness2/blob/1cfe254e8d25b15f37048c3730134686abe60335/docs/EXPERIMENTS.md)
+documents unrestricted executor networking and observed access to a public benchmark rubric.
+That makes independent holdouts and enforced evaluation-data isolation material to any
+Assay trial. Reported benchmark gains are upstream observations, not expected Assay gains.
+
+Treat model-proposed prompt/skill/tool-guidance changes as untrusted candidate profile
+bundles, pinned by digest and provenance alongside the harness binary/model/backend tuple.
+Probe them in isolated scratch executions with a cumulative experiment budget. Keep proposal,
+selection evidence and independent assessment separate. A learned memory entry cannot become
+policy or acceptance evidence by being retained. No proposal may edit operator policy,
+authorization, acceptance criteria, enforced guardrails, credentials or a live attempt's
+pinned bundle. The existing reviewed change/profile-adoption path remains the promotion owner.
+
+The new /07 investigation uses deterministic offline fixtures to qualify the proposal and
+evaluation protocol first. It must include an unchanged baseline, an equal-budget retry
+comparator, independent held-out tasks, protected control edits, hidden-rubric access and a
+regressing composition. Count all reference runs, proposals, probes, composition, reflection,
+failed attempts and human review. Fixture success establishes the protocol only; measuring
+model-backed benefit requires a separate authorized trial. The existing improvement-proposal
+owners retain scheduling/promotion; no self-modifying production loop is selected here.
+
 ## Delivery, compatibility and decisions
 
-[Six M-sized briefs](../../streams/agent-execution/README.md) deliver the extension,
+[Seven M-sized briefs](../../streams/agent-execution/README.md) deliver the extension,
 workspace receipts, first local consumer, integrated recovery, lifecycle projection and
-an independent AX feasibility report. Core delivery uses local fixtures and existing owners.
+independent AX feasibility and Harness² evaluation reports. Core delivery uses local fixtures and existing owners.
 AX feasibility neither gates that path nor qualifies remote execution. A production AX adapter,
 remote registration, cluster operations, credential migration and live promotion require
 separately authored work after measured compatibility and existing activation decisions.

@@ -4,7 +4,7 @@ title: "Qualified harness, model and backend capability contract"
 why: "A resume flag cannot tell a caller whether files, conversation or running processes survive. A qualified profile makes those promises explicit before work is launched."
 wave: 1
 depends: ["graph-execution/20"]
-unblocks: ["agent-execution/02", "agent-execution/06"]
+unblocks: ["agent-execution/02", "agent-execution/06", "agent-execution/07"]
 effort: "M"
 gate: "model"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
@@ -48,7 +48,7 @@ facts: As inspected on 2026-10-16 at main `ec8d77e56627a7c2269f3d143ef6a31f3e41b
 
 ## Task
 
-1. Define a schema-backed execution-profile/v1 extension over existing runner v1 ext/require negotiation. Bind the harness implementation/version, model profile, backend/platform profile, profile digest and qualification evidence. Record requested versus actual reported identities; a requested model is never an observation.
+1. Define a schema-backed execution-profile/v1 extension over existing runner v1 ext/require negotiation. Bind the harness implementation/version, immutable harness-component bundle digest/provenance, model profile, backend/platform profile, profile digest and qualification evidence. Record requested versus actual reported identities; a requested model is never an observation.
 2. Declare files, conversation, process memory, descendants and pending-interaction preservation separately, alongside cancellation confirmation, budget scope, telemetry and qualification limits. Retain existing v1 resume/snapshot meanings and doc 21 lifecycle vocabulary. Unknown and unsupported remain distinct; do not infer one capability from another.
 3. Implement validation and compatibility in the existing runner package/client and adapter conformance kit. Old v1 requests remain accepted; mandatory new semantics on an old adapter refuse before Start. No new launcher, credentials, SDK dependency or workflow-store import. Include schema-to-source coverage and a malformed-artifact negative case.
 4. Add the named production-boundary tests and executable mutations to the existing mutation map. Prove both desk and workflow request modes, role/profile substitution and a caller check with the upper contract check bypassed. Update protocol docs and changelog; no installed profile is changed.
