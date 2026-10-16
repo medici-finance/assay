@@ -257,7 +257,7 @@ type PerfBootSummary struct {
 }
 
 // SummariseBootSteps aggregates ONLY the step:* records, per role then per step. Steps keep
-// the boot's own order (the PerfBootSteps roster), unknown steps last by name; roles sort by
+// the boot's own order (the PerfBootSteps roster, then the PerfLaunchSteps roster), unknown steps last by name; roles sort by
 // name.
 func SummariseBootSteps(recs []PerfRecord) PerfBootSummary {
 	var s PerfBootSummary
@@ -276,14 +276,15 @@ func SummariseBootSteps(recs []PerfRecord) PerfBootSummary {
 		totals[r.Role] += r.WallMs
 	}
 	order := map[string]int{}
-	for i, st := range perfBootSteps {
+	known := append(append([]string(nil), perfBootSteps...), perfLaunchSteps...)
+	for i, st := range known {
 		order[st] = i
 	}
 	rank := func(step string) int {
 		if i, ok := order[step]; ok {
 			return i
 		}
-		return len(perfBootSteps)
+		return len(known)
 	}
 	for role, steps := range byRole {
 		br := PerfBootRole{Role: role, TotalMs: totals[role]}

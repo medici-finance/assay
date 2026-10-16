@@ -168,7 +168,23 @@ var perfBootSteps = []string{
 // PerfBootSteps returns a copy of the step-name roster, in boot order.
 func PerfBootSteps() []string { return append([]string(nil), perfBootSteps...) }
 
-// PerfStep writes one boot-step record: verb "step:<name>", wallMs the step's duration,
+// perfLaunchSteps is the compiled roster of cellctl's pre-handover launch phases, in launch
+// order: the work a `cellctl desk` launch does before the session process takes over. It is
+// kept apart from perfBootSteps (deskboot's list, pinned equal to that package's own) and
+// every name carries the "launch-" prefix so a launch step can never read as a boot step. A
+// step outside both rosters is still "step:other".
+var perfLaunchSteps = []string{
+	"launch-role-lease",
+	"launch-storage-admission",
+	"launch-plugin-enable",
+	"launch-fetch-main",
+	"launch-worktree",
+}
+
+// PerfLaunchSteps returns a copy of the launch-step roster, in launch order.
+func PerfLaunchSteps() []string { return append([]string(nil), perfLaunchSteps...) }
+
+// PerfStep writes one step record (a boot step or a launch step): verb "step:<name>", wallMs the step's duration,
 // exit the step's exit code. Child and forge counts are not attributed per step (they stay
 // 0) and cpuMs is omitted — a process-wide CPU reading is not a per-step measurement.
 func PerfStep(tool, step string, d time.Duration, exit int) {
@@ -178,11 +194,14 @@ func PerfStep(tool, step string, d time.Duration, exit int) {
 	perfAppend(newPerfRecord(tool, perfStepVerb(step), d, exit))
 }
 
-// perfStepVerb returns "step:" plus the ROSTER's spelling of step, or "step:other".
+// perfStepVerb returns "step:" plus the ROSTER's spelling of step (boot or launch), or
+// "step:other".
 func perfStepVerb(step string) string {
-	for _, s := range perfBootSteps {
-		if s == step {
-			return perfStepPfx + s
+	for _, roster := range [][]string{perfBootSteps, perfLaunchSteps} {
+		for _, s := range roster {
+			if s == step {
+				return perfStepPfx + s
+			}
 		}
 	}
 	return perfStepPfx + perfOther

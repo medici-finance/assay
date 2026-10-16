@@ -119,7 +119,7 @@ Every record carries exactly these fields and no field capable of holding free t
 | `schema` | string | Record schema version, `perf-v1`. Adding any field bumps it. |
 | `ts` | string | UTC timestamp, second resolution. |
 | `tool` | string | The desk tool's canonical key from a compiled-in roster; anything else is `other`. |
-| `verb` | string | The tool's own registered subcommand, or `other`; a boot step is `step:<name>` from `deskboot`'s compiled step list (else `step:other`). Never argv text. |
+| `verb` | string | The tool's own registered subcommand, or `other`; a boot step is `step:<name>` from `deskboot`'s compiled step list, and a `cellctl desk` launch phase is `step:launch-<phase>` from `cellctl`'s compiled launch-step list (else `step:other`). Never argv text. |
 | `role` | string | `$DESK_LOOP` mapped onto the compiled loop-name roster; unset or unknown is `none`. |
 | `wallMs` | int | Wall-clock duration of the invocation (or boot step). |
 | `cpuMs` | int, optional | Process user+system CPU; **omitted** where it cannot be measured (Windows, boot steps), so "unmeasured" never reads as zero. |

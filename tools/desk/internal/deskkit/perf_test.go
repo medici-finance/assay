@@ -436,3 +436,32 @@ func BenchmarkPerfAppend(b *testing.B) {
 		perfAppend(rec)
 	}
 }
+
+// launchStepNames is the launch-step roster as the cellctl launch spells it.
+var launchStepNames = []string{
+	"launch-role-lease", "launch-storage-admission", "launch-plugin-enable",
+	"launch-fetch-main", "launch-worktree",
+}
+
+// TestPerfLaunchStepsRecordNamed: each launch step is recorded as "step:<name>" under the
+// cellctl tool, not collapsed to "step:other"; an unknown name still collapses.
+// regression: #3099
+func TestPerfLaunchStepsRecordNamed(t *testing.T) {
+	state := perfFixture(t)
+	for _, s := range launchStepNames {
+		PerfStep("cellctl", s, 5*time.Millisecond, 0)
+	}
+	PerfStep("cellctl", "zz-unknown-step", time.Millisecond, 0)
+	recs, _ := perfLines(t, state)
+	if len(recs) != len(launchStepNames)+1 {
+		t.Fatalf("want %d records, got %d", len(launchStepNames)+1, len(recs))
+	}
+	for i, s := range launchStepNames {
+		if recs[i]["verb"] != "step:"+s || recs[i]["tool"] != "cellctl" {
+			t.Errorf("record %d = %v, want cellctl step:%s", i, recs[i], s)
+		}
+	}
+	if recs[len(launchStepNames)]["verb"] != "step:other" {
+		t.Errorf("unknown step = %v, want step:other", recs[len(launchStepNames)]["verb"])
+	}
+}
