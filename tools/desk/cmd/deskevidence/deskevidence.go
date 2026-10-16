@@ -411,6 +411,12 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// branch is a create (empty remote), not an error, EXCEPT with --brief-path: a brief must
 	// already exist to be merged into, so a not-found is propagated exactly as it was when this
 	// same ReadFile lived inside mergeEvidence.
+	//
+	// The target is read as a record only from a plain file the forge shows to be the entry's
+	// own bytes (S-2266-8): a file the Contents API serves with its content left out (over its
+	// size limit) arrives as an empty body, and taking that as the branch's copy would make an
+	// empty base for the merge, the decision-gate judge and the shrink guards, so a write that
+	// drops a gate: human brief's frontmatter or board row would be judged as adding it.
 	var remoteContent []byte
 	remoteExists := false
 	remoteSHA := ""
@@ -420,6 +426,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			return rerr
 		}
 	} else {
+		if kerr := plainFileRead(cur, fr, targetRepoPath, branch, "the landing's target", false); kerr != nil {
+			return kerr
+		}
 		remoteContent, remoteExists = cur.Content, cur.Exists
 		remoteSHA = cur.SHA
 	}
@@ -626,6 +635,26 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: landing %s would introduce %d new statusgen PROBLEM(s) not present in %s before this change:\n%s",
 			targetRepoPath, len(introduced), lintRoot, strings.Join(introduced, "\n")))
+	}
+	// Decision-gate hold, network layer (lifecycle-v1 §4.5). The lint above carries the
+	// hold's offline layer (a well-formed ruling: link); this landing rides the Contents
+	// API with no pull request, so the check that reads WHO wrote the linked comment runs
+	// here, on the same staged write (decisiongate.go). The landing home is bound to the
+	// commit fixed at dispatch, behind the target branch, so the board files the branch
+	// changed since are read at its tip and judged in place of the home's (S-2266-6);
+	// when that cannot be done the landing is could-not-check.
+	boardEdits, herr := decisionGateBranchBoardFn(fg, fr, lintRoot, branch, targetRepoPath)
+	if herr != nil {
+		return herr
+	}
+	gateRefused, gerr := decisionGateDiffFn(lintRoot, targetRepoPath, remoteContent, remoteExists, commitContent, boardEdits)
+	if gerr != nil {
+		return gerr
+	}
+	if len(gateRefused) > 0 {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: landing %s would move, relabel or drop a gate: human brief with no human ruling on its decision issue (decision-gate hold, lifecycle-v1 §4.5):\n%s",
+			targetRepoPath, strings.Join(gateRefused, "\n")))
 	}
 
 	// verified-sidecar acceptance gate (#1309 stuck-flip). When THIS landing appends one or

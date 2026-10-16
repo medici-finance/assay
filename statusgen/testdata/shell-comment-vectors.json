@@ -1,0 +1,34 @@
+{
+  "doc": "Lifted Verify commands and whether each is a shell comment (#2684): the first non-blank character is '#'. statusgen's shellCommentOnly and tools/desk/internal/verifycmd.CommentOnly are both held to this table; a command that is only a comment exits 0 with no output, so no executor may record it as a pass.",
+  "vectors": [
+    {"name": "inline heading", "cmd": "## Coverage", "commentOnly": true},
+    {"name": "single hash word", "cmd": "#coverage", "commentOnly": true},
+    {"name": "hash then space", "cmd": "# read the review", "commentOnly": true},
+    {"name": "leading blanks", "cmd": "   \t## Coverage  ", "commentOnly": true},
+    {"name": "shebang-shaped", "cmd": "#!/bin/sh", "commentOnly": true},
+    {"name": "plain command", "cmd": "go test ./x -count=1", "commentOnly": false},
+    {"name": "trailing comment", "cmd": "go test ./x -count=1 # the real check", "commentOnly": false},
+    {"name": "quoted hash argument", "cmd": "grep -c '#' docs/x.md", "commentOnly": false},
+    {"name": "hash mid-word", "cmd": "echo a#b", "commentOnly": false},
+    {"name": "empty", "cmd": "", "commentOnly": false},
+    {"name": "blank", "cmd": "   ", "commentOnly": false}
+  ],
+  "cellsDoc": "Whole Verify Command cells (#2684 review S1, F2): the cell-to-verdict mapping both modules are held to, not only the predicate. firstSpan is statusgen's lift of an unmarked cell (codeSpan; tools/desk's verifycmd ports it). marked: the cell carries an honoured cmd: span. statusgen / desk: comment-refused (never executed, could-not-run) or runs. statusgen comment-refused implies desk comment-refused on every cell; a cell may differ only where desk's own legacy lift (the whole unwrapped cell) is itself a comment, so desk is never the looser executor.",
+  "cells": [
+    {"name": "S1: inline heading span, then prose", "cell": "`## Coverage`: confirm every angle is answered", "firstSpan": "## Coverage", "marked": false, "statusgen": "comment-refused", "desk": "comment-refused"},
+    {"name": "S1: single-word comment span, then prose", "cell": "`#coverage`: present", "firstSpan": "#coverage", "marked": false, "statusgen": "comment-refused", "desk": "comment-refused"},
+    {"name": "#2684: heading mention mid-prose", "cell": "Inspect the `## Coverage` section of the review and confirm every angle is addressed", "firstSpan": "## Coverage", "marked": false, "statusgen": "comment-refused", "desk": "comment-refused"},
+    {"name": "the whole cell is one comment span", "cell": "`## Coverage`", "firstSpan": "## Coverage", "marked": false, "statusgen": "comment-refused", "desk": "comment-refused"},
+    {"name": "bare cell, no code span", "cell": "# read the review", "firstSpan": "# read the review", "marked": false, "statusgen": "comment-refused", "desk": "comment-refused"},
+    {"name": "blanks inside the comment span", "cell": "Read `  # Coverage` first", "firstSpan": "# Coverage", "marked": false, "statusgen": "comment-refused", "desk": "comment-refused"},
+    {"name": "double-backtick comment span", "cell": "``# a `b` c``: read it", "firstSpan": "# a `b` c", "marked": false, "statusgen": "comment-refused", "desk": "comment-refused"},
+    {"name": "unterminated comment span", "cell": "`## Coverage and nothing closes", "firstSpan": "## Coverage and nothing closes", "marked": false, "statusgen": "comment-refused", "desk": "comment-refused"},
+    {"name": "F2: marked comment", "cell": "`cmd: # placeholder`", "firstSpan": "cmd: # placeholder", "marked": true, "statusgen": "comment-refused", "desk": "comment-refused"},
+    {"name": "F2: marked heading beside a mention", "cell": "Read `x.md`: `cmd: ## Coverage`", "firstSpan": "x.md", "marked": true, "statusgen": "comment-refused", "desk": "comment-refused"},
+    {"name": "marked real command beside a heading mention", "cell": "Inspect `## Coverage`, then run `cmd: test -d .`", "firstSpan": "## Coverage", "marked": true, "statusgen": "runs", "desk": "runs"},
+    {"name": "one plain command span", "cell": "`true`", "firstSpan": "true", "marked": false, "statusgen": "runs", "desk": "runs"},
+    {"name": "trailing comment", "cell": "`test -d . # the real check`", "firstSpan": "test -d . # the real check", "marked": false, "statusgen": "runs", "desk": "runs"},
+    {"name": "command span, then a heading mention", "cell": "`test -d .` and read `## Coverage`", "firstSpan": "test -d .", "marked": false, "statusgen": "runs", "desk": "runs"},
+    {"name": "desk stricter: prose opening with # before the span", "cell": "#2684 regression: `true`", "firstSpan": "true", "marked": false, "statusgen": "runs", "desk": "comment-refused"}
+  ]
+}

@@ -233,6 +233,9 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 			return cerr
 		}
 	} else {
+		if kerr := plainFileRead(cur, fr, targetRepoPath, branch, "whether the outcome record is already recorded", true); kerr != nil {
+			return kerr
+		}
 		remoteExists, remoteContent = cur.Exists, cur.Content
 	}
 
@@ -461,6 +464,9 @@ func deriveOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskkit.
 	landed, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: briefPath, Ref: branch})
 	if rerr != nil {
 		return nil, deskkit.Unverifiable("cannot read "+briefPath+" on "+branch+" to hash the receipt's brief revision", rerr)
+	}
+	if kerr := plainFileRead(landed, fr, briefPath, branch, "the receipt's brief revision", true); kerr != nil {
+		return nil, kerr
 	}
 	if len(observedSource) != 40 {
 		return nil, deskkit.Refused("refused: outcome receipt needs its admitted observation commit")

@@ -103,27 +103,51 @@ func driveSnapshotSection(root, slug string, now time.Time) (section string, rc 
 // The begin marker must name the slug (a region for another drive is not this
 // drive's region). Nothing outside the markers is returned.
 func extractDriveRegion(content, slug string) (string, bool) {
+	start, end, ok := driveRegionBounds(content, slug)
+	if !ok {
+		return "", false
+	}
+	return content[start:end], true
+}
+
+// driveRegionBounds returns the byte offsets of the text strictly between the
+// drive-snapshot begin marker line for slug and the end marker that follows it.
+func driveRegionBounds(content, slug string) (start, end int, ok bool) {
 	begin := driveSnapshotBeginPrefix + slug + " "
 	bi := strings.Index(content, begin)
 	if bi < 0 {
 		// Tolerate an exact `begin <slug> -->` with no provenance stamp too.
 		alt := driveSnapshotBeginPrefix + slug + driveSnapshotMarkerSuffix
 		if bi = strings.Index(content, alt); bi < 0 {
-			return "", false
+			return 0, 0, false
 		}
 	}
 	// Advance past the end of the begin marker line.
-	rest := content[bi:]
-	nl := strings.IndexByte(rest, '\n')
+	nl := strings.IndexByte(content[bi:], '\n')
 	if nl < 0 {
-		return "", false
+		return 0, 0, false
 	}
-	rest = rest[nl+1:]
-	ei := strings.Index(rest, driveSnapshotEndMarker)
+	start = bi + nl + 1
+	ei := strings.Index(content[start:], driveSnapshotEndMarker)
 	if ei < 0 {
-		return "", false
+		return 0, 0, false
 	}
-	return rest[:ei], true
+	return start, start + ei, true
+}
+
+// spliceDriveRegion replaces the text between slug's drive-snapshot markers
+// with fresh and returns the result. Everything outside the markers — the
+// begin marker line with its `@<sha> <date>` provenance stamp included — is
+// kept byte for byte: the stamp records the last splice by the pen holder,
+// and the writer that re-renders the region on a row move (reconcile, #2694)
+// does not claim to know which commit its output will land as. ok is false
+// when content carries no region for slug.
+func spliceDriveRegion(content, slug, fresh string) (string, bool) {
+	start, end, ok := driveRegionBounds(content, slug)
+	if !ok {
+		return content, false
+	}
+	return content[:start] + fresh + content[end:], true
 }
 
 // normalizeDriveSnapshot canonicalises a snapshot for comparison: the heartbeat

@@ -59,11 +59,41 @@ reviewable artifact, not a run.
   on a daily schedule, reporting three-state. **Already live** — promoted to
   `.github/workflows/truth-suite.yml` on 2026-09-10; this directory no longer carries a copy,
   so a change to it is authored here first and re-promoted by a maintainer commit.
+- `assay-statusgen.yml` — a STAGED TWIN of the live `.github/workflows/assay-statusgen.yml`
+  carrying the decision-gate hold's network layer (`spec/lifecycle-v1.md` §4.5), alongside
+  the classified board push (#2910) described below, which `declared-changes.json` classes
+  `pending`: the
+  corroborate job gains `issues: read` and a `statusgen --decision-gate --pr <N>` step after
+  the corroborate step. The step has no shell path pre-filter: the binary decides from the
+  PR's own file listing whether the board (`docs/streams/` or `docs/archive/`) was touched, and
+  it exits 0 with a notice while the base-built statusgen predates `--decision-gate`. **Pending promotion**:
+  re-base on the live file (three-way) and copy it over the live one in a
+  maintainer-credentialled commit. Promoting it does NOT make the check required; that is a
+  separate branch-protection act. Until promotion, the hold's offline layer still runs in
+  `--lint`; the live corroborate step's `--corroborate --pr` runs the network lane only on PRs
+  that touch a findings entry; and `deskevidence` / `--close-verify` run the network check
+  themselves.
+- `verify-gate-close.yml` — a STAGED TWIN of the live `.github/workflows/verify-gate-close.yml`
+  carrying ONLY a decision-gate refusal branch in the "Advance ..." step. When
+  `statusgen --close-verify` refuses a close with the literal "decision-gate hold", the branch
+  relays the refusal, reopens the card and commits nothing. `TestDecisionGateCloseWorkflowKeyedPhrase`
+  in `statusgen` pins the phrase on this staged copy, or on the live file once it is gone.
+  **Pending promotion**, the same way. Until then `--close-verify` still refuses the close and
+  the live workflow commits nothing, but the refusal reaches its generic first-attempt branch.
+  That branch leaves the card closed and comments a reason that does not name the decision
+  issue or the remedy.
 - `loopadmin.yml` — the loopadmin module's test job (graph-execution/20): `gofmt`, `go vet`,
   `go test` and the mutation gate (`go run ./mutate`) from `loopadmin/`, on path triggers for the
   module, `spec/loop-admin-runner-v1.md` and `schemas/loop-admin-runner-v1.json`. **Staged, not
   live** — a maintainer promotes it to `.github/workflows/loopadmin.yml`. Until then `ci.yml`'s
   build-test job still builds and vets the module (it discovers every `go.mod`) but runs no tests.
+- `workspace.yml` — the shared workspace contract module's job (`spec/cell-workspaces-v1.md`):
+  `gofmt`, `go vet`, `go test` and the mutation gate (`muhar -spec mutations.json`, harness built
+  from `tools/desk`) from `workspace/`, on path triggers for the module, its spec, its schema and
+  `docs/workspace-callers.md`. **Staged, not live** — a maintainer promotes it to
+  `.github/workflows/workspace.yml`. Until then `ci.yml` builds and vets the module, and the desk
+  suite runs its tests on every change (`TestWorkspaceModuleSuite` in
+  `tools/desk/internal/regression`); only the mutation gate runs nowhere.
 - `cellcache-mutate.yml` — the cell Go-cache mutation gate (#3148). Runs
   `python3 internal/cellcache/mutate.py --shard i/3` from `tools/desk` on path triggers for the
   cache, process and launcher packages, and fails on any `MISSED` mutant and on any

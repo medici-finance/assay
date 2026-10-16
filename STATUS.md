@@ -64,7 +64,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | [ci-tooling](docs/streams/ci-tooling/README.md) | P2 | 0/7 | 2026-10-16 |
 | [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/2 | 2026-10-16 |
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-10-16 |
-| [performance-collection](docs/streams/performance-collection/README.md) | P2 | 0/6 | 2026-10-16 |
+| [performance-collection](docs/streams/performance-collection/README.md) | P2 | 0/9 | 2026-10-16 |
 | [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-16 |
 
 ## Next up
@@ -107,7 +107,7 @@ _Held by per-stream caps: 33 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 08eb9f5 2026-10-16T13:42:16Z_
+_last regen: e9cf829 2026-10-16T10:58:01-05:00_
 
 **Progress:** 10/13 brief items done.
 
@@ -128,7 +128,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 08eb9f5 2026-10-16T13:42:16Z_
+_last regen: e9cf829 2026-10-16T10:58:01-05:00_
 
 **Progress:** 16/74 brief items done.
 
@@ -241,7 +241,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| graph-execution | 02 [exec:strong] | implemented | 19000 | 34 | — | worker | fix, cite #1281 | — | — |
+| graph-execution | 02 [exec:strong] | implemented | 19500 | 35 | — | worker | fix, cite #1281 | — | — |
 | graph-execution | 03 [exec:strong] | implemented | 11000 | 18 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | forge-neutral | 20 [exec:strong] | implemented | 7000 | 10 | — | worker | fix, cite medici-finance/assay#1606 | — | — |
 | windows-port | 00 | implemented | 5000 | 8 | — | worker | fix, cite #2942 | — | — |
@@ -276,9 +276,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
+| graph-execution | 20 [exec:strong] | implemented | 10000 | 16 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | statusgen | 15 [exec:strong] | implemented | 10000 | 18 | — | operator | environment blocker, cite #1800 | — | — |
-| graph-execution | 20 [exec:strong] | implemented | 9500 | 15 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
-| graph-execution | 13 [exec:strong] | implemented | 8000 | 12 | — | operator | environment blocker, cite #1800 | — | — |
+| graph-execution | 13 [exec:strong] | implemented | 8500 | 13 | — | operator | environment blocker, cite #1800 | — | — |
 | forge-neutral | 33 [exec:strong] | implemented | 6000 | 8 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | cellctl-windows | 00 [exec:strong] | implemented | 5500 | 7 | — | operator | `$log = New-TemporaryFile; go test ./internal/celllaunch -run '^TestLaunchSpecRoundTrip$' -count=1 -v *> $log; if ($LASTEXITCODE -ne 0) { Get-Content $log; exit 1 }; if (-not (Select-String -Path $log -SimpleMatch '--- PASS: TestLaunchSpecRoundTrip ')) { exit 1 }; if (Select-String -Path $log -SimpleMatch '--- SKIP:') { exit 1 }` | — | — |
 | build-less-brittle | 11 [exec:strong] | implemented | 4000 | 2 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
@@ -324,7 +324,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| graph-execution | 09 [exec:strong] | implemented | 17500 | 31 | — | verify-desk | dispatch one judge | — | — |
+| graph-execution | 09 [exec:strong] | implemented | 18000 | 32 | — | verify-desk | dispatch one judge | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | verify-desk | triage, then re-bucket | — | — |
 | desk-containers | 15 [exec:strong] | implemented | 5000 | 8 | — | verify-desk | triage, then re-bucket | — | — |
 | forge-neutral | 36 [exec:strong] | implemented | 4500 | 5 | — | verify-desk | triage, then re-bucket | — | — |
@@ -761,7 +761,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 05 attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish — todo (wave 1)
 - 06 model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login — todo (wave 1)
 
-### performance-collection (6 open)
+### performance-collection (9 open)
 
 - 01 Local performance event contract, spool and offline report — todo (wave 0)
 - 02 Producer adapters for workflow, usage and local performance — todo (wave 1)
@@ -769,6 +769,9 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 04 Authenticated performance ingestion API — todo (wave 2)
 - 05 Explicit resumable upload from the local spool — todo (wave 1)
 - 06 Collection replay, retention, recovery and release qualification — todo (wave 3)
+- 07 On-demand three-report bundle and thin skill — todo (wave 2)
+- 08 Daily report generation and report-pack qualification — todo (wave 3)
+- 09 Bounded performance issue and repair-PR loop — todo (wave 7)
 
 ### quality (3 open)
 
@@ -978,4 +981,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**29** streams (**21** active, **0** paused, **8** parked) · **106/448** briefs done · completed initiatives: see `docs/archive/`
+**29** streams (**21** active, **0** paused, **8** parked) · **106/451** briefs done · completed initiatives: see `docs/archive/`

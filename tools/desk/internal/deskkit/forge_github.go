@@ -3,7 +3,10 @@ package deskkit
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -2689,6 +2692,71 @@ type ghContentsWire struct {
 	SHA      string `json:"sha"`
 	Content  string `json:"content"`
 	Encoding string `json:"encoding"`
+	// Type and Path say what the response describes. A symbolic link whose target is a
+	// file in the repository is served as that target (type "file", the target's path);
+	// any other link is served as itself (type "symlink", no content), a submodule as
+	// type "submodule". Read by ghContentsKind.
+	Type string `json:"type"`
+	Path string `json:"path"`
+}
+
+// ghContentsKind maps one Contents-API read of file onto FileContent.Kind. content is the
+// decoded body the caller will hand on.
+//
+// The endpoint is not a record of the entry's own bytes, so a regular file is reported only
+// when the response PROVES the bytes are the entry's blob: type "file", base64-encoded, and
+// the git blob hash of the decoded content equal to the served `sha`. Two real responses
+// fail that proof and are FileKindUnproven rather than regular: a symbolic link to a file
+// (served as the target's bytes under the requested path, with the link's own blob sha) and
+// a file the endpoint serves without its content (a large file arrives with encoding
+// "none" and an empty body, which would read as an empty regular file). A link served
+// under a different path than the one requested is still FileKindSymlink. "" when the
+// response names no type.
+func ghContentsKind(w ghContentsWire, file string, content []byte) string {
+	switch w.Type {
+	case "":
+		return ""
+	case "file":
+		if w.Path == "" {
+			return ""
+		}
+		if strings.Trim(w.Path, "/") != strings.Trim(file, "/") {
+			return FileKindSymlink
+		}
+		if w.Encoding != "base64" || !gitBlobMatches(w.SHA, content) {
+			return FileKindUnproven
+		}
+		return FileKindRegular
+	case "symlink":
+		return FileKindSymlink
+	case "submodule":
+		return FileKindSubmodule
+	default:
+		return w.Type
+	}
+}
+
+// gitBlobMatches reports whether content hashes, as a git blob, to the object id sha: the
+// object id of a blob is the hash of "blob <len>\x00" followed by its bytes (SHA-1, or
+// SHA-256 in a repository of that object format, told apart by the id's length).
+func gitBlobMatches(sha string, content []byte) bool {
+	var sum []byte
+	hdr := fmt.Sprintf("blob %d\x00", len(content))
+	switch len(sha) {
+	case 40:
+		h := sha1.New()
+		h.Write([]byte(hdr))
+		h.Write(content)
+		sum = h.Sum(nil)
+	case 64:
+		h := sha256.New()
+		h.Write([]byte(hdr))
+		h.Write(content)
+		sum = h.Sum(nil)
+	default:
+		return false
+	}
+	return strings.EqualFold(hex.EncodeToString(sum), sha)
 }
 
 // ghContentsCommitWire is the Contents-API write response: the new blob sha under `content`
@@ -2735,7 +2803,7 @@ func (g *GitHubForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, 
 	if derr != nil {
 		return nil, Unverifiable("cannot decode base64 content for "+in.File, derr)
 	}
-	return &FileContent{Content: decoded, SHA: w.SHA, Exists: true}, nil
+	return &FileContent{Content: decoded, SHA: w.SHA, Exists: true, Kind: ghContentsKind(w, in.File, decoded)}, nil
 }
 
 // WriteFile writes a file's whole content on a branch via the Contents API, as the minted
@@ -2752,6 +2820,21 @@ func (g *GitHubForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 		// Absent on the branch → this is a create.
 	} else if cur == nil || !cur.Exists {
 		cur = nil
+	} else {
+		// The idempotency and shrink checks below compare against this read, so it must be
+		// the entry's own bytes: a file served with its content left out (over the Contents
+		// API's size limit) reads as empty, and a link as its target's bytes or as nothing.
+		// Writing over such an entry is could-not-check, never a write judged against an
+		// empty or foreign base (S-2266-8).
+		if cur.Kind != FileKindRegular {
+			held := cur.Kind
+			if held == "" {
+				held = "an entry the read did not type"
+			}
+			return nil, Unverifiable(fmt.Sprintf(
+				"refusing to write %s on %s: the branch holds it as %s, not a plain file whose served bytes are shown to be its own blob, so the write cannot be checked against it",
+				in.File, in.Branch, held), nil)
+		}
 	}
 	return g.writeEvidenceFileFromSnapshot(repo, in, cur)
 }
