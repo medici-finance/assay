@@ -26,6 +26,8 @@ link. Bindings for your harness — which mechanism each `capability:*` names �
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> **Every `gh` call carries this role's `GH_TOKEN`, reads included.** When no desk verb covers a forge call, mint the role credential with `desktoken <role> --repo <owner>/<repo>` first. Then run the call as `GH_TOKEN="$(cat <custody path>)" gh …`, scoped to that one command and never exported. The recipe, with its checks, is in [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role). A bare `gh` call runs as the host's stored login, which is usually a human's, so a desk never runs one, not even for a read.
+
 > Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
 
 

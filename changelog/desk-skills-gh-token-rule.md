@@ -1,0 +1,2 @@
+### Changed
+- Every desk role skill (`the-desk`, `worker-desk`, `pr-review-desk`, `verify-desk`, `intake-desk`, `pr-shepherd`) now states in its body that every `gh` call, reads included, carries the role's `GH_TOKEN` from `desktoken <role> --repo <owner>/<repo>`, scoped to that one command. A bare `gh` call runs as the host's stored login, which is usually a human's. The recipe and its checks stay in `references/desk-shell.md` §Forge CLI as the role. Before this change the skills reached that rule only through a link inside a long reference pointer.
