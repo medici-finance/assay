@@ -31,7 +31,8 @@ Before touching the branch, verify no other session or worker owns it:
   `state=claimed` past ~20 minutes or `state=dispatched` past ~120 minutes is a DEAD claim,
   not an owner. **The claim tool is `deskclaim-ref`** — installed with desk-tools, verbs
   `acquire` / `progress` / `release` / `steal` / `show` / `list`, deskkit exit codes **0** ok ·
-  **5** refused (a live holder owns it) · **6** unverifiable. A repo may ship its own
+  **5** refused (a live holder owns it) · **6** unverifiable; `list` alone adds **7** partial
+  (some refs unreadable and named on stderr — incomplete, never idle). A repo may ship its own
   `tools/dispatch-claim.sh`; `deskdispatch` prefers `deskclaim-ref` when it is on PATH and falls
   back to that script when the resolved root carries it, and the two speak the same wire
   protocol, so either one's `show` answers this question. Hand either tool your own role's token

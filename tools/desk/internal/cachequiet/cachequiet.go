@@ -10,7 +10,7 @@
 // variable, so every test that drives those paths takes the operator's real lock, writes
 // the operator's real cache report and, under storage pressure, reclaims the operator's
 // real cache. While the test run holds the lock, a production dispatch on the same
-// machine waits its bounded 5 s and returns storage-deferred (exit 6, nothing claimed);
+// machine waits its bounded lock wait (one minute) and returns storage-deferred (exit 6, nothing claimed);
 // while production holds it, the tests fail the same way and read as a code regression.
 //
 // THE FIX. Isolate removes the cell's storage-admission variables (Vars) from the test

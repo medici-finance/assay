@@ -85,7 +85,8 @@ the front-door register stays complete). Anything else inbound stays `intake-des
    that is not this role's, a tag, or the one-way set the test fixes).
 
 Stop flags need no prose check: `deskkit.Guard()` enforces them at the tool layer on every outward
-verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.<name>`.
+verb, `deskboot` sets `$DESK_LOOP`, precedence `DISABLED` > `STOP` > `STOP.cell.<cell>` >
+`STOP.<name>` = `STOP.cell.<cell>.<name>` (the cell flags reach only a session `cellctl` marked).
 
 ## Tick mode
 

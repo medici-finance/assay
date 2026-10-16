@@ -30,6 +30,7 @@ var productionAdmission = verifierEvidenceAdmissionFn
 // carried, which is what lets a test say WHICH token reached the forge and in
 // what order admission and the landing read it.
 type attestationAPI struct {
+	commit             func(string, string) string
 	mu                 sync.Mutex
 	title, body, state string
 	labels             []string
@@ -82,9 +83,13 @@ func (a *attestationAPI) serveContents(w http.ResponseWriter, r *http.Request, f
 		}
 		a.files[file] = string(decoded)
 		a.puts = append(a.puts, contentsPut{File: file, Message: in.Message, Content: string(decoded)})
+		sha := blobID(in.Message + string(decoded))
+		if a.commit != nil {
+			sha = a.commit(file, string(decoded))
+		}
 		enc(map[string]any{
 			"content": map[string]any{"sha": blobID(string(decoded))},
-			"commit": map[string]any{"sha": blobID(in.Message + string(decoded)),
+			"commit": map[string]any{"sha": sha,
 				"author": map[string]any{"name": "assay-verifier-app[bot]"}},
 		})
 	default:

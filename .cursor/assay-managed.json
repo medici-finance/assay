@@ -21,22 +21,22 @@
     ".cursor/skills/intake-desk/SKILL.md": "7bd9be7b086266317178a45e887de00079a9e095fe63736d71d86ff45811b0dc",
     ".cursor/skills/pdfingest/SETUP.md": "ff2c52f24528164712ae951caa729f90318b16dbe5d604f2b8e24aa955773f23",
     ".cursor/skills/pdfingest/SKILL.md": "18d69fb22a5d6ccbb9cb8a174f9d8f5ef5a9154d9cb305a89f630f12991feea9",
-    ".cursor/skills/pr-review-desk/SKILL.md": "d10d8f4b38add26a6ea046541e352963ab1ea5cf4f2ace82dc8a14834299adb9",
+    ".cursor/skills/pr-review-desk/SKILL.md": "9240daefcb2b544e942e95fa4bf2af7750d9068119900332a2fc7d54c3311aa2",
     ".cursor/skills/pr-review-desk/references/leak-audience-check.md": "9d3163bb0fa0da74865ef128409866fa6e5ecbf9d2e64858a7addac9db8ed568",
     ".cursor/skills/pr-review-desk/references/merge-time-recheck.md": "558248aa76c930c578c2fb256ee9c14a1ae5dd066202053499b4e422ad33791e",
     ".cursor/skills/pr-review-desk/references/out-of-scope-filing.md": "d850da0002a43a5ecca1a6c6fab054c8d70731ca6b341209ddb9268ed3e7d2bc",
     ".cursor/skills/pr-review-desk/references/re-anchor.md": "bfb090008d8e5c0e26fe1d4961b355222d366b5439f668109a3c97be5abc82f3",
     ".cursor/skills/pr-review-desk/references/verdict-format.md": "6c262266546311abab9e8ba25972bc8bf01eb63cf9d75673510ac6d3a1d7677a",
-    ".cursor/skills/pr-shepherd/SKILL.md": "9099b09025ce816bfbc8bf76f3938fe6ced3b70d7bff5fa40dd1b5489797be59",
+    ".cursor/skills/pr-shepherd/SKILL.md": "bad99abfbac01ec4c690b7adc2cd7d2698278a2285f48add8a5299d1376f6528",
     ".cursor/skills/session-coach/SKILL.md": "a0827c8ab4a8fcfbc79e2456d95f3f6581b371b748d318da148d36a33452b975",
     ".cursor/skills/session-coach/example.md": "4853dad1eda099d81bdc8e612cab0a8b309af99bcb7d6d64bdfde534bcfa08b3",
     ".cursor/skills/system-demo/SKILL.md": "e13915b75b8843dcbbe183091c883b7dc17fd7267c59408d9a068b6cc0dd1dca",
     ".cursor/skills/system-demo/references/storyboard.md": "9d55dd566e084c1a48eaecb09b6370e2745cd3d7268fdb08494187a80eeff531",
-    ".cursor/skills/the-desk/SKILL.md": "15b66dabec0d2611e74184efdb690f2861b9fd4eb9ba94353899252f16957048",
+    ".cursor/skills/the-desk/SKILL.md": "45640ef026a09f908a10ba3f4768807a6e3d177b5681638fd4a6921b59e5ad67",
     ".cursor/skills/upgrade-assay/SKILL.md": "50b924bd9561444210f6c6bc141fffe14de90583b346e2fd7b58553dec80c2ac",
-    ".cursor/skills/verify-desk/SKILL.md": "d0f4d1b34eba0e5f66d4281d5ade8198f5f0d583d744b7c19bda7ceca5de8b6f",
-    ".cursor/skills/worker-desk/SKILL.md": "4305bd92caff90b195a2597e92bd0ec112ef405a5ffdadf3a81e0ae0deb5252a",
-    ".cursor/skills/worker-desk/references/dispatch-runbook.md": "75fea93d48f9ef79f295c24eb9e44aaedd44e0b71fe70cb102633f074e9d8743"
+    ".cursor/skills/verify-desk/SKILL.md": "4aa4b2db9d2e9fe76b8e8ad1307a1ba534a0a5320cb9a60b20061172c015a3ed",
+    ".cursor/skills/worker-desk/SKILL.md": "3ea4ac41f0d9044b9dd67052f656c8461c89472d4169a79318832e5bd3f8cee1",
+    ".cursor/skills/worker-desk/references/dispatch-runbook.md": "9845b6c5277c9676be4e3d33f4e83501317fe1eb0cbd379e599e3deddad03ca3"
   },
   "bindingsSha256": "4426eb963b3e829efeb34882985f9c7ebb68d074ee6243d6578114ad86a51160"
 }

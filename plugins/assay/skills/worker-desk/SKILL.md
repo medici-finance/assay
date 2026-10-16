@@ -484,7 +484,9 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   the claim tool `deskdispatch` resolved. **That tool is `deskclaim-ref` by default** — the
   cross-platform claim binary installed with desk-tools (`tools/desk/cmd/deskclaim-ref`), verbs
   `acquire` / `progress` / `release` / `steal` / `show` / `list`, deskkit exit codes **0** ok ·
-  **5** refused (a live holder owns it) · **6** unverifiable (never "assume free"). The fallback:
+  **5** refused (a live holder owns it) · **6** unverifiable (never "assume free"); `list` alone
+  adds **7** partial — some claims listed, some refs unreadable and named on stderr — which is
+  incomplete, never idle. The fallback:
   a repo may ship its own `tools/dispatch-claim.sh`, and `deskdispatch`'s claim-acquire step
   **prefers `deskclaim-ref` whenever it is on PATH**, falling back to that script when the binary
   is absent and the resolved root (`--claim-root` when given, else `--root`) carries it — and
@@ -777,11 +779,18 @@ Before each loop cycle (orphan sweep, slot refill):
 
 ```bash
 [ -f "$HOME/.config/assay/STOP" ] && echo "STOP flag active — exiting loop" && exit 0
+case "$ASSAY_CELL" in ""|*[!a-z0-9-]*) ;; *) [ -f "$HOME/.config/assay/STOP.cell.$ASSAY_CELL" ] && echo "STOP.cell.$ASSAY_CELL active — exiting loop" && exit 0 ;; esac
 [ -n "$DESK_LOOP" ] && [ -f "$HOME/.config/assay/STOP.$DESK_LOOP" ] && echo "STOP.$DESK_LOOP active — exiting loop" && exit 0
+case "$ASSAY_CELL" in ""|*[!a-z0-9-]*) ;; *) [ -n "$DESK_LOOP" ] && [ -f "$HOME/.config/assay/STOP.cell.$ASSAY_CELL.$DESK_LOOP" ] && echo "STOP.cell.$ASSAY_CELL.$DESK_LOOP active — exiting loop" && exit 0 ;; esac
 ```
 
+`ASSAY_CELL` is the cell marker `cellctl` stamps on every desk it launches: `STOP.cell.<cell>` stops every
+loop of that cell, `STOP.cell.<cell>.<name>` one loop of it. A session with no marker skips both cell lines; a
+marker outside `[a-z0-9-]` builds no path here and is refused (exit 6) by the Guard. Cell flags only add a
+stop — they never lift `DISABLED`, `STOP` or `STOP.<name>`.
+
 A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispatch. Precedence:
-`DISABLED` > `STOP` > `STOP.<name>`; `deskkit.Guard()` enforces them at the tool layer independently.
+`DISABLED` > `STOP` > `STOP.cell.<cell>` > `STOP.<name>` = `STOP.cell.<cell>.<name>`; `deskkit.Guard()` enforces them at the tool layer independently.
 
 ## Guardrails
 
