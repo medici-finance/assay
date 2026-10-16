@@ -293,7 +293,8 @@ one can run with no pin, and a token change in one can undo the pin): a `gh` run
 `sh -c`, `bash -c`, `xargs`, `nice`, `timeout`, `stdbuf`, `exec -c` or a wrapper command the
 lint does not name, or one whose name is quoted, escaped or given by path (`\env`, `"sudo"`,
 `\builtin`, `/usr/bin/env -i gh`); a wrapper option that takes a separate argument and is not in
-the lint's list (`env -S`, say); an alias; a command name built from an expansion; a function
+the lint's list (`env -S`, say); a token set from a file by `env --env0-from=FILE`;
+an alias; a command name built from an expansion; a function
 that wraps `gh`, or one that shadows `export` or `unset`; a pin inside a heredoc body; a `trap …
 DEBUG`; a `gh` step inside a process substitution (`<( )`, `>( )`), after a leading redirect
 such as `2>&1`, or in a `case` arm whose pattern opens with `(`; a `case` pattern `)` that no

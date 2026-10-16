@@ -60,7 +60,8 @@
 // `nice`, `timeout`, `stdbuf`, `exec -c` or a wrapper command the lint does not name, or one
 // whose name is quoted, escaped or given by path (`\env`, `"sudo"`, `\builtin`, `/usr/bin/env
 // -i gh`); a wrapper option that takes a separate argument and is not in the lint's list (`env
-// -S`, say); an alias; a command name built from an expansion; a function that wraps `gh`, or
+// -S`, say); a token set from a file by `env --env0-from=FILE`;
+// an alias; a command name built from an expansion; a function that wraps `gh`, or
 // one that shadows `export` or `unset`; a pin inside a heredoc body; a `trap … DEBUG`; a `gh`
 // step inside a process substitution (`<( )`, `>( )`), after a leading redirect such as `2>&1`,
 // or in a `case` arm whose pattern opens with `(`; a `case` pattern `)` that no `esac` closes;
@@ -519,10 +520,11 @@ func actPipeAmp(toks []actTok) []actTok {
 // actEnvOption reads one option word of env (val) and the word after it
 // (next). why is non-empty when the option starts the command without the
 // pinned GH_TOKEN: it empties the environment (-i, -, --ignore-environment,
-// and a short cluster holding i, such as -vi), or unsets GH_TOKEN (-u, --unset,
-// and a short cluster ending in u, such as -vu). takesNext reports that the
-// option takes the next word as its argument. GNU long options may be
-// abbreviated to a unique prefix.
+// and a short cluster holding i before any letter not modelled, such as -vi),
+// or unsets GH_TOKEN (-u, --unset, and a short cluster ending in u, such as
+// -vu). takesNext reports that the option takes the next word as its argument:
+// only when u or C ends the cluster and every letter before it is modelled.
+// GNU long options may be abbreviated to a unique prefix.
 func actEnvOption(val, next string) (why string, takesNext bool) {
 	empty := "env " + val + " starts it with an empty environment"
 	unset := func(name string) string {
@@ -549,13 +551,17 @@ func actEnvOption(val, next string) (why string, takesNext bool) {
 		}
 	case strings.HasPrefix(val, "-"):
 		s := val[1:]
-		// Read the whole cluster: an i anywhere empties the environment, and a u
-		// or C wherever it falls takes the rest of the word, or the next word.
+		// Read the cluster left to right: an i empties the environment, and a u
+		// or C takes the rest of the word, or the next word when it ends the
+		// word. Stop at the first letter not modelled here: the rest of the word
+		// may be its argument (GNU -a, BSD -P), so a u or C in it is not read,
+		// and the next word is not taken.
 		cleared := ""
 		for i := 0; i < len(s); i++ {
 			switch s[i] {
 			case 'i':
 				cleared = empty
+			case 'v', '0':
 			case 'u':
 				rest := s[i+1:]
 				if rest == "" {
@@ -567,6 +573,8 @@ func actEnvOption(val, next string) (why string, takesNext bool) {
 				return unset(rest), s[i+1:] == ""
 			case 'C':
 				return cleared, s[i+1:] == ""
+			default:
+				return cleared, false
 			}
 		}
 		return cleared, false
