@@ -64,6 +64,16 @@ reviewable artifact, not a run.
   module, `spec/loop-admin-runner-v1.md` and `schemas/loop-admin-runner-v1.json`. **Staged, not
   live** — a maintainer promotes it to `.github/workflows/loopadmin.yml`. Until then `ci.yml`'s
   build-test job still builds and vets the module (it discovers every `go.mod`) but runs no tests.
+- `cellcache-mutate.yml` — the cell Go-cache mutation gate (#3148). Runs
+  `python3 internal/cellcache/mutate.py --shard i/3` from `tools/desk` on path triggers for the
+  cache, process and launcher packages, and fails on any `MISSED` mutant and on any
+  `COULD-NOT-MUTATE` one (a mutant that does not compile, a `file` that escapes the module, a
+  stale anchor, a suite timeout). No existing job runs it: the suite takes about ten minutes, far
+  past what `ci.yml`'s `build-test` job should absorb per PR. That job instead runs the
+  `TestMutateGate*` tests, which prove each state the gate reports against a throwaway module.
+  **Staged, not live** - a maintainer promotes it (`git mv ci/staged-workflows/cellcache-mutate.yml
+  .github/workflows/cellcache-mutate.yml`); until then the gate is run by hand, as
+  `docs/cellctl-go-cache.md` ("Mutation gate") says.
 - `forge-surface-control.yml` — twin of the live forge-surface job, which carries `forgeread/**` in
   both path filters (`pull_request` and `push`) and a step running the shared fact reader's
   controls (the module's tests, the ambient-token rule over `forgeread/`, the lower-layer scope

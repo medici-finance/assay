@@ -282,8 +282,28 @@ behavior is unchanged. Cross-compilation is not native Windows runtime proof.
 Focused fixtures use small synthetic files, race consumers and cleanup including
 path replacement, check uncertain custody and typed dispatch recovery, and build
 an import-free Go package twice with different HOME values. Toolchain downloads
-and proxy access are disabled. Reproducible mutants live in
-`tools/desk/internal/cellcache/mutations.json`.
+and proxy access are disabled.
+
+### Mutation gate
+
+Reproducible mutants live in `tools/desk/internal/cellcache/mutations.json`, and
+`python3 internal/cellcache/mutate.py` (run from `tools/desk`, about ten minutes;
+`--shard i/n` runs a slice) plants each one and requires a behaviour test
+(`--- FAIL:`) to catch it. It plants them in a temporary copy of the module, so
+the checkout is never written and a killed run leaves it clean. Every mutant ends
+in one of three states: `CAUGHT`, `MISSED`, or `COULD-NOT-MUTATE` (the mutant
+does not compile, its `file` escapes the module or is not a file there, its `old`
+text no longer matches, or the suite timed out). The gate exits 1 on any `MISSED`
+or `COULD-NOT-MUTATE`. The spec's `control` mutation must be caught or the
+harness is reported broken (exit 2) with no per-mutant verdict. The map uses its
+own runner rather than `muhar` because `muhar` reads any non-zero suite exit as
+caught, which would score a mutant that merely fails to compile as a catch.
+
+CI runs the gate through the staged workflow
+`ci/staged-workflows/cellcache-mutate.yml`; until a maintainer promotes it to
+`.github/workflows/` the gate runs only when someone runs it. The
+`TestMutateGate*` tests run on every PR and prove each state above against a
+throwaway module.
 
 ## Dispatch destination volumes
 
