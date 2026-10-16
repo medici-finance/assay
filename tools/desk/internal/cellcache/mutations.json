@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/cellcache ./internal/cellprocess ./cmd/cellctl ./cmd/deskdispatch -run 'TestCache|TestStorage|TestReap|TestLoadMarkedPolicy|TestDomainFor|TestCheckRecorded' -count=1 -timeout=60s",
+  "test": "go test ./internal/cellcache ./internal/cellprocess ./cmd/cellctl ./cmd/deskdispatch ./cmd/deskwt -run 'TestCache|TestStorage|TestReap|TestLoadMarkedPolicy|TestDomainFor|TestCheckRecorded|TestAdmitRecorded|TestPruneCache' -count=1 -timeout=60s",
   "control": {
     "name": "CONTROL — an invalid CELL_GO_CACHE mode is accepted as off",
     "file": "internal/cellcache/policy.go",
@@ -296,6 +296,18 @@
       "new": "\t\tfor _, name := range"
     },
     {
+      "name": "prune cache pass takes the lock unconditionally",
+      "file": "cmd/deskwt/cachepressure.go",
+      "old": "cellcache.AdmitRecorded(p.Root, dryRun)",
+      "new": "cellcache.CheckRecorded(p.Root, dryRun)"
+    },
+    {
+      "name": "recorded admission always takes the lock",
+      "file": "internal/cellcache/admit.go",
+      "old": "\treturn admit(*advisory, dry, env)",
+      "new": "\treturn env.locked(*advisory, dry)"
+    },
+    {
       "name": "dispatch storage admission takes the lock unconditionally",
       "file": "cmd/deskdispatch/storage.go",
       "old": "cellcache.Admit(*p, dry)",
@@ -396,6 +408,12 @@
       "file": "internal/cellcache/policy.go",
       "old": "p.TrimMinAge < int64(MinTrimMinAge/time.Second)",
       "new": "p.TrimMinAge < int64(time.Hour/time.Second)"
+    },
+    {
+      "name": "launch admission takes the locked walk",
+      "file": "cmd/cellctl/cache.go",
+      "old": "r, err := cellcache.Admit(*p, false)",
+      "new": "r, err := cellcache.Check(*p, false)"
     }
   ]
 }

@@ -47,6 +47,12 @@ func (c *Cell) printCachePolicy() {
 	}
 }
 
+// cacheAdmission is the launch-path storage gate. It uses cellcache.Admit, not
+// cellcache.Check: a clean launch is cleared by the lock-free pre-check and takes
+// no cache lock and does no walk, so concurrent desk launches do not queue behind
+// one another's full measurement. When the pre-check cannot prove the cache clean
+// (near budget, stale or unreadable estimate, low free space) Admit runs the
+// unchanged locked Check, so a launch is never admitted without it.
 func (c *Cell) cacheAdmission() error {
 	p, err := c.cachePolicy()
 	if err != nil {
@@ -55,7 +61,7 @@ func (c *Cell) cacheAdmission() error {
 	if p == nil {
 		return nil
 	}
-	r, err := cellcache.Check(*p, false)
+	r, err := cellcache.Admit(*p, false)
 	b, _ := json.Marshal(r)
 	fmt.Fprintf(os.Stderr, "storage-admission %s\n", b)
 	return err

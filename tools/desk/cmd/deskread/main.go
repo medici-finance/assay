@@ -72,7 +72,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/medici-finance/assay/forgeread"
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -117,32 +120,18 @@ var stateWords = map[string][]string{
 	"changes":    {"merged", "closed", "all"},
 }
 
-var usage = `deskread — read-only forge reads on the seam, as JSON
+// helpLong is the root help's prose. The kinds and flags are generated from the command tree
+// (desktools-v2/45); this is what the tree cannot say on its own.
+var helpLong = `deskread — read-only forge reads on the seam, as JSON
 
-usage:
-  deskread issues         --repo   <owner/repo>   [--repo   <owner/repo> …]
-  deskread issue-list     --repo   <owner/repo> … [--state open|closed|all] [--label <name>]
-  deskread changes        --repo   <owner/repo> …  --state merged|closed|all
-  deskread default-branch --repo   <owner/repo> …
-  deskread trust          --issue  <owner/repo#N> [--issue  <owner/repo#N> …]
-  deskread issue          --issue  <owner/repo#N> …
-  deskread issue-states   --issue  <owner/repo#N> …
-  deskread comments       --issue  <owner/repo#N> …   (exactly one of --issue / --change)
-  deskread comments       --change <owner/repo#N> …
-  deskread change         --change <owner/repo#N> …
-  deskread change-commits --change <owner/repo#N> …
-  deskread change-files   --change <owner/repo#N> …
-  deskread --version
-
-flags:
-  --repo <owner/repo>      repeatable (per-repo kinds); ONE invocation serves the whole set, read concurrently
-  --issue <owner/repo#N>   repeatable (trust, issue, issue-states, comments); one entry per issue
-  --change <owner/repo#N>  repeatable (change, change-commits, change-files, comments); one entry per change
-  --state <word>           issue-list (open|closed|all, default open) and changes (merged|closed|all, required);
-                           any other word, or --state on another kind, is refused
-  --label <name>           issue-list only; ONE label (a comma is refused — the forge reads it as a list)
-  --max-parallel <N>       bounded concurrency for the set (default 6)
-  --ci-workflow-token      read as the CI job's own workflow token instead of an App role (see identity)
+addressing: per-repo kinds (issues, issue-list, changes, default-branch) take --repo
+<owner/repo>; per-issue kinds (trust, issue, issue-states) take --issue <owner/repo#N>;
+per-change kinds (change, change-commits, change-files) take --change <owner/repo#N>;
+comments takes exactly one of --issue and --change. Each address flag repeats, and ONE
+invocation serves the whole set, read concurrently (--max-parallel, default 6).
+--state: issue-list (open|closed|all, default open) and changes (merged|closed|all,
+required); any other word, or --state on another kind, is refused. --label: issue-list
+only; ONE label (a comma is refused — the forge reads it as a list).
 
 output: a versioned JSON envelope on stdout
 
@@ -197,16 +186,27 @@ identity: two transports, named in the envelope's "identity" object and on one s
 
 func main() {
 	os.Exit(deskkit.PerfRun("deskread", nil, os.Args[1:], func([]string) int {
-		// The custody path reads the roster to resolve its acting role, so its class is
-		// ciEligible=false: config-home file only, never the environment, in CI as well as locally.
-		// Only the explicit --ci-workflow-token opt-in changes that (toolClassFor).
-		deskkit.SetToolClass(toolClassFor(os.Args[1:]))
-		deskkit.EchoEffectiveConfig(os.Stderr)
-		if !deskkit.CheckVerbActivation(os.Stderr) {
-			return deskkit.ExitUnverifiable
-		}
-		return run(os.Args[1:], os.Stdout, os.Stderr)
+		return execute(os.Args[1:], os.Stdout, os.Stderr, startup)
 	}))
+}
+
+// startup is what every real run does first, after its command line parsed and its values
+// passed their checks, and never for help or version (desktools-v2/45: help reads nothing).
+// The custody path reads the roster to resolve its acting role, so its class is
+// ciEligible=false: config-home file only, never the environment, in CI as well as locally.
+// Only the explicit --ci-workflow-token opt-in changes that (toolClassFor).
+func startup(stderr io.Writer, ci bool) int {
+	deskkit.SetToolClass(toolClassFor(ci))
+	deskkit.EchoEffectiveConfig(stderr)
+	if !deskkit.CheckVerbActivation(stderr) {
+		return deskkit.ExitUnverifiable
+	}
+	return deskkit.ExitOK
+}
+
+// run is execute without the process startup: the in-package tests' entry, as before.
+func run(args []string, stdout, stderr io.Writer) int {
+	return execute(args, stdout, stderr, nil)
 }
 
 // ciTransportKinds is the CLOSED set of read kinds the CI workflow-token transport serves. It is
@@ -216,43 +216,133 @@ func main() {
 var ciTransportKinds = map[string]bool{"issues": true, "trust": true, "comments": true}
 
 // toolClassFor is the one place deskread picks its roster class. The CI class (ClassForTool(true),
-// which is ClassCI only inside CI) is chosen ONLY when the arguments parse cleanly and carry the
-// --ci-workflow-token opt-in as a flag of its own, never as the value of another flag. Everything
-// else, including a malformed command line, is today's ClassForTool(false): config-home file only.
-// Under the CI transport deskread resolves no acting role, so this does not loosen the rule that
-// acting tools stay file-only.
-func toolClassFor(args []string) deskkit.ToolClass {
-	if len(args) >= 2 {
-		if o, err := parseFlags(args[1:]); err == nil && o.ci {
-			return deskkit.ClassForTool(true)
-		}
-	}
-	return deskkit.ClassForTool(false)
+// which is ClassCI only inside CI) is chosen ONLY when the command line parsed cleanly and carried
+// the --ci-workflow-token opt-in as a flag of its own — the command tree hands startup that parsed
+// value, so the opt-in written as another flag's value, or on a line the parser refused, never
+// reaches here. Everything else is today's ClassForTool(false): config-home file only. Under the
+// CI transport deskread resolves no acting role, so this does not loosen the rule that acting
+// tools stay file-only.
+func toolClassFor(ci bool) deskkit.ToolClass {
+	return deskkit.ClassForTool(ci)
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
-		s, b := deskkit.Version()
-		fmt.Fprintf(stdout, "deskread sourceSHA=%s builtAt=%s releaseTag=%s\n", s, b, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
+// readFn is the typed handler the command tree calls; the contract tests replace it to observe
+// the values that reach it.
+var readFn = readKind
+
+// onResolve, when set, sees every invocation's resolved settings (the contract tests' window on
+// which source won).
+var onResolve func(*cli.Values)
+
+// exitErr is a handler's exit code carried as an error, so cli.Run keeps it.
+type exitErr int
+
+func (e exitErr) Error() string { return "exit " + strconv.Itoa(int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
+
+func codeErr(code int) error {
+	if code == deskkit.ExitOK {
+		return nil
 	}
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" {
-		fmt.Fprint(stderr, usage)
+	return exitErr(code)
+}
+
+// versionLine is what --version and the legacy `version` word print.
+func versionLine() string {
+	s, b := deskkit.Version()
+	return fmt.Sprintf("deskread sourceSHA=%s builtAt=%s releaseTag=%s", s, b, deskkit.ReleaseTagOrDev())
+}
+
+// bindings are the settings every read kind declares: flags and defaults only, no environment
+// variable and no configuration file (DESKREAD_CI_WORKFLOW_TOKEN is the CI transport's credential,
+// read by its gate, never a setting and never on argv). Every kind takes every flag, as the
+// hand-rolled parser did; which flags a kind accepts is checkAddressing's to refuse, in its own
+// words, against the kind.
+func bindings() []cli.Binding {
+	return []cli.Binding{
+		{Key: "repo", Kind: cli.StringArray, Flag: "repo", Usage: "`owner/repo` to read (repeatable; per-repo kinds)"},
+		{Key: "issue", Kind: cli.StringArray, Flag: "issue", Usage: "`owner/repo#N` issue to read (repeatable; trust, issue, issue-states, comments)"},
+		{Key: "change", Kind: cli.StringArray, Flag: "change", Usage: "`owner/repo#N` change to read (repeatable; change, change-commits, change-files, comments)"},
+		{Key: "state", Kind: cli.StringArray, Flag: "state", Usage: "the state `word` (issue-list, changes; exactly one)"},
+		{Key: "label", Kind: cli.StringArray, Flag: "label", Usage: "ONE label `name` (issue-list only; exactly one)"},
+		{Key: "ci-workflow-token", Kind: cli.Bool, Flag: strings.TrimPrefix(ciWorkflowTokenFlag, "--"),
+			Usage: "read as the CI job's own workflow token instead of an App role (CI only)"},
+		{Key: "max-parallel", Kind: cli.String, Flag: "max-parallel", Default: "6", Usage: "read at most `N` of the set concurrently"},
+	}
+}
+
+// execute runs one invocation against a fresh command tree. pre is the process startup (nil in
+// the in-package tests, as run never did it).
+func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer, bool) int) int {
+	build := func() *cobra.Command {
+		root := cli.NewRoot("deskread <kind> [flags]", "read-only forge reads on the seam, as JSON")
+		root.Long = helpLong
+		// A word that names no kind is refused before anything runs: the kind set is closed.
+		root.Args = func(_ *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return fmt.Errorf("refused: unknown read kind %q — the kind set is closed (%s)",
+					args[0], strings.Join(sortedKinds(), ", "))
+			}
+			return nil
+		}
+		// A bare deskread still prints its usage to stderr and refuses (exit 5): a caller that ran
+		// it with no kind asked for no read.
+		root.RunE = func(cmd *cobra.Command, _ []string) error {
+			cmd.SetOut(stderr)
+			_ = cmd.Usage()
+			return exitErr(deskkit.ExitRefused)
+		}
+		for _, kind := range sortedKinds() {
+			kind := kind
+			c := &cobra.Command{Use: kind, Short: readKinds[kind], Args: cobra.NoArgs}
+			set := cli.Declare(c, bindings()...)
+			c.RunE = func(*cobra.Command, []string) error {
+				return codeErr(kindCommand(kind, set, stdout, stderr, pre))
+			}
+			root.AddCommand(c)
+		}
+		root.AddCommand(&cobra.Command{Use: "version", Short: "print the version", Hidden: true, Args: cobra.NoArgs,
+			RunE: func(*cobra.Command, []string) error {
+				fmt.Fprintln(stdout, versionLine())
+				return nil
+			}})
+		return root
+	}
+	return cli.Run(build, args, cli.Options{
+		IO:              cli.IO{Out: stdout, Err: stderr},
+		Version:         versionLine(),
+		VersionTemplate: "{{.Version}}\n",
+		// A parse error keeps the legacy refusal code (5), not the adapter's default.
+		UsageExit: deskkit.ExitRefused,
+	})
+}
+
+// kindCommand turns the parsed values into readOpts, refusing a bad value in the hand-rolled
+// parser's own words, then runs the process startup and the read.
+func kindCommand(kind string, set *cli.Set, stdout, stderr io.Writer, pre func(io.Writer, bool) int) int {
+	v, err := set.Resolve(cli.Inputs{})
+	if err != nil {
+		fmt.Fprintf(stderr, "deskread: refused: %v\n", err)
 		return deskkit.ExitRefused
 	}
-
-	kind := args[0]
-	if _, ok := readKinds[kind]; !ok {
-		fmt.Fprintf(stderr, "deskread: refused: unknown read kind %q — the kind set is closed (%s)\n",
-			kind, strings.Join(sortedKinds(), ", "))
-		return deskkit.ExitRefused
+	if onResolve != nil {
+		onResolve(v)
 	}
-
-	o, ferr := parseFlags(args[1:])
+	o, ferr := optsFrom(v)
 	if ferr != nil {
 		fmt.Fprintf(stderr, "deskread: refused: %v\n", ferr)
 		return deskkit.ExitRefused
 	}
+	if pre != nil {
+		if code := pre(stderr, o.ci); code != deskkit.ExitOK {
+			return code
+		}
+	}
+	return readFn(kind, o, stdout, stderr)
+}
+
+// readKind is the read itself, from parsed options: the CI gate, addressing, then the reads.
+func readKind(kind string, o readOpts, stdout, stderr io.Writer) int {
 	// Every refusal below happens BEFORE any forge is resolved, so a refused run makes zero
 	// forge calls.
 	ce := readCIEnv()
@@ -394,7 +484,7 @@ type issueTarget struct {
 	Number int
 }
 
-// readOpts is everything parseFlags read. target/items are settled by checkAddressing.
+// readOpts is everything optsFrom read. target/items are settled by checkAddressing.
 type readOpts struct {
 	repos       []string
 	issues      []issueTarget
@@ -414,78 +504,59 @@ type readOpts struct {
 	ciT *ciTransport
 }
 
-// parseFlags reads the repeatable --repo, --issue and --change sets, the --state and --label
-// filters and the concurrency bound. It is hand-rolled rather than flag.FlagSet because the
-// address flags repeat, and it REFUSES an unknown flag rather than ignoring it: a typo'd flag that
-// silently does nothing is how a caller ends up reading a narrower set than it asked for and never
-// finds out. Which flags a kind accepts is checked afterwards, against the kind (checkAddressing).
-func parseFlags(args []string) (readOpts, error) {
+// optsFrom reads the repeatable --repo, --issue and --change sets, the --state and --label
+// filters and the concurrency bound from the parsed values, with the checks the hand-rolled
+// parser made: a malformed address is refused rather than half-read, --state and --label take
+// exactly one value, and a repeated address is read once. An unknown flag never gets here — the
+// command tree refuses it (a typo'd flag that silently does nothing is how a caller ends up
+// reading a narrower set than it asked for and never finds out). Which flags a kind accepts is
+// checked afterwards, against the kind (checkAddressing).
+func optsFrom(v *cli.Values) (readOpts, error) {
 	o := readOpts{maxParallel: 6}
 	seen := map[string]bool{}
-	seenIssue := map[issueTarget]bool{}
-	seenChange := map[issueTarget]bool{}
-	for i := 0; i < len(args); i++ {
-		switch args[i] {
-		case "--repo":
-			if i+1 >= len(args) {
-				return o, fmt.Errorf("--repo needs a value")
-			}
-			i++
-			r := strings.TrimSpace(args[i])
-			if !validRepoSlug(r) {
-				return o, fmt.Errorf("bad --repo %q — expected owner/name", r)
-			}
-			if !seen[r] {
-				seen[r] = true
-				o.repos = append(o.repos, r)
-			}
-		case "--issue", "--change":
-			flag := args[i]
-			if i+1 >= len(args) {
-				return o, fmt.Errorf("%s needs a value", flag)
-			}
-			i++
-			tgt, terr := parseItemTarget(flag, args[i])
+	for _, raw := range v.Strings("repo") {
+		r := strings.TrimSpace(raw)
+		if !validRepoSlug(r) {
+			return o, fmt.Errorf("bad --repo %q — expected owner/name", r)
+		}
+		if !seen[r] {
+			seen[r] = true
+			o.repos = append(o.repos, r)
+		}
+	}
+	for _, f := range []struct {
+		flag string
+		dst  *[]issueTarget
+	}{{"--issue", &o.issues}, {"--change", &o.changes}} {
+		seenT := map[issueTarget]bool{}
+		for _, raw := range v.Strings(strings.TrimPrefix(f.flag, "--")) {
+			tgt, terr := parseItemTarget(f.flag, raw)
 			if terr != nil {
 				return o, terr
 			}
-			if flag == "--issue" {
-				if !seenIssue[tgt] {
-					seenIssue[tgt] = true
-					o.issues = append(o.issues, tgt)
-				}
-			} else if !seenChange[tgt] {
-				seenChange[tgt] = true
-				o.changes = append(o.changes, tgt)
+			if !seenT[tgt] {
+				seenT[tgt] = true
+				*f.dst = append(*f.dst, tgt)
 			}
-		case "--state":
-			if i+1 >= len(args) || o.stateSet {
-				return o, fmt.Errorf("--state needs exactly one value")
-			}
-			i++
-			o.state, o.stateSet = strings.TrimSpace(args[i]), true
-		case "--label":
-			if i+1 >= len(args) || o.labelSet {
-				return o, fmt.Errorf("--label needs exactly one value")
-			}
-			i++
-			o.label, o.labelSet = args[i], true
-		case ciWorkflowTokenFlag:
-			o.ci = true
-		case "--max-parallel":
-			if i+1 >= len(args) {
-				return o, fmt.Errorf("--max-parallel needs a value")
-			}
-			i++
-			n := 0
-			if _, serr := fmt.Sscanf(args[i], "%d", &n); serr != nil || n < 1 {
-				return o, fmt.Errorf("bad --max-parallel %q — expected a positive integer", args[i])
-			}
-			o.maxParallel = n
-		default:
-			return o, fmt.Errorf("unknown flag %q", args[i])
 		}
 	}
+	if st := v.Strings("state"); len(st) > 1 {
+		return o, fmt.Errorf("--state needs exactly one value")
+	} else if len(st) == 1 {
+		o.state, o.stateSet = strings.TrimSpace(st[0]), true
+	}
+	if lb := v.Strings("label"); len(lb) > 1 {
+		return o, fmt.Errorf("--label needs exactly one value")
+	} else if len(lb) == 1 {
+		o.label, o.labelSet = lb[0], true
+	}
+	o.ci = v.Bool("ci-workflow-token")
+	raw := v.String("max-parallel")
+	n := 0
+	if _, serr := fmt.Sscanf(raw, "%d", &n); serr != nil || n < 1 {
+		return o, fmt.Errorf("bad --max-parallel %q — expected a positive integer", raw)
+	}
+	o.maxParallel = n
 	return o, nil
 }
 
