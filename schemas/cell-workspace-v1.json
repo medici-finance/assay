@@ -145,7 +145,7 @@
         },
         "session": {
           "type": "string",
-          "pattern": "^[\\x21-\\x7e]{1,256}$"
+          "pattern": "^[!-~]{1,256}$"
         },
         "harness": {
           "type": "string",
@@ -167,7 +167,7 @@
         },
         "id": {
           "type": "string",
-          "pattern": "^[\\x21-\\x7e]{1,256}$"
+          "pattern": "^[!-~]{1,256}$"
         }
       }
     },
@@ -280,7 +280,7 @@
         },
         "request_id": {
           "type": "string",
-          "pattern": "^[\\x21-\\x7e]{1,256}$"
+          "pattern": "^[!-~]{1,256}$"
         },
         "operation": {
           "$ref": "#/$defs/Operation"
@@ -302,7 +302,7 @@
         },
         "attempt_id": {
           "type": "string",
-          "pattern": "^[\\x21-\\x7e]{1,256}$"
+          "pattern": "^[!-~]{1,256}$"
         },
         "subject": {
           "$ref": "#/$defs/Subject"
@@ -351,7 +351,7 @@
         },
         "request_id": {
           "type": "string",
-          "pattern": "^[\\x21-\\x7e]{1,256}$"
+          "pattern": "^[!-~]{1,256}$"
         },
         "payload_digest": {
           "type": "string",
@@ -378,7 +378,7 @@
         },
         "attempt_id": {
           "type": "string",
-          "pattern": "^[\\x21-\\x7e]{1,256}$"
+          "pattern": "^[!-~]{1,256}$"
         },
         "subject": {
           "$ref": "#/$defs/Subject"
@@ -438,7 +438,7 @@
         },
         "request_id": {
           "type": "string",
-          "pattern": "^[\\x21-\\x7e]{1,256}$"
+          "pattern": "^[!-~]{1,256}$"
         },
         "outcome": {
           "$ref": "#/$defs/Outcome"

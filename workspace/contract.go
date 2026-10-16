@@ -338,7 +338,7 @@ var (
 	uuidRe       = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 	commitRe     = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 	digestRe     = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
-	idRe         = regexp.MustCompile(`^[\x21-\x7e]{1,256}$`)
+	idRe         = regexp.MustCompile(`^[!-~]{1,256}$`)
 	wordRe       = regexp.MustCompile(`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`)
 	forgeRe      = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{1,5})?$`)
 	repositoryRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*(?:/[A-Za-z0-9_][A-Za-z0-9._-]*)+$`)
