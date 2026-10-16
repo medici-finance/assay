@@ -419,16 +419,19 @@ or `shell` fence that defines a function named `driver_act…`) to six rules:
      anything but one word;
    - a `gh` step ahead of the pin or outside the function;
    - a pin inside an `if`, loop, group, subshell or other function, after `||`,
-     `&&` or `|` (including a newline after one of them), under `!` or a
+     `&&`, `|` or `|&` (including a newline after one of them), under `!` or a
      wrapper word such as `time` or `env`, or followed by a pipe;
    - after the pin, an assignment of `GH_TOKEN` or `GITHUB_TOKEN` (`NAME=`,
      `NAME+=`, or as an argument of `export`, `declare`, `typeset`, `local` or
      `readonly`), an `unset GH_TOKEN`, and `export -n GH_TOKEN` or
      `declare +x GH_TOKEN` (also `typeset`), which take it out of the
-     environment;
+     environment; the builtin's name may be quoted or escaped (`\unset`,
+     `"export"`);
    - after the pin, a `gh` step run through `env -i`, `env -u GH_TOKEN`
      (`-uGH_TOKEN`, `--unset GH_TOKEN`, `--unset=GH_TOKEN`,
-     `--ignore-environment`), `sudo` or `doas`, none of which hands the step
+     `--ignore-environment`, short options in a cluster such as `-vi` or
+     `-vu GH_TOKEN`, and a long option abbreviated to a unique prefix such as
+     `--ignore-env`), `sudo` or `doas`, none of which hands the step
      the pinned token.
 
    A `gh` step is the word `gh` (or a path ending `/gh`, quoted or not) in
@@ -442,15 +445,19 @@ or `shell` fence that defines a function named `driver_act…`) to six rules:
    name up and are not one. The pin's own `gh auth token --user` is not a step,
    and text inside a quoted string (an `echo` of what would run) is not one. A
    block with no `gh` step needs no pin. Syntactic and best effort like rule 5.
-   It does **not** model, and a step in one of these can pass: a `gh` run
-   through `eval`, `sh -c`, `bash -c`, `xargs`, `nice`, `timeout`, `stdbuf` or
-   any other wrapper command not named above; a wrapper option with a separate
-   argument not in the list (`env -S`); an alias; a command name built from an
-   expansion; a function that wraps it; a `case` pattern `)` not closed by
-   `esac`; or a change of either variable by `read`, `printf -v`, a nameref or
-   `eval`. The pin governs `gh` only: it does not cover a `git push`, which
-   uses git's credential helper, and it leaves `GH_HOST` and the enterprise-token
-   variables alone, which matters only against a GitHub Enterprise Server host.
+   The lint refuses the shapes it models; the pin inside the function is the control. Not
+   modelled (examples, not exhaustive; a `gh` step in one can run with no pin, and a token
+   change in one can undo the pin): a `gh` run through `eval`, `sh -c`, `bash -c`, `xargs`,
+   `nice`, `timeout`, `stdbuf`, `exec -c` or a wrapper command the lint does not name; a wrapper
+   option that takes a separate argument and is not in the lint's list (`env -S`, say); an
+   alias; a command name built from an expansion; a function that wraps `gh`; a `gh` step inside
+   a process substitution (`<( )`, `>( )`), after a leading redirect such as `2>&1`, or in a
+   `case` arm whose pattern opens with `(`; a `case` pattern `)` that no `esac` closes; an
+   `export` or `unset` of the token run under `||`, `&` or a pipe; a change of either token
+   variable by `read`, `printf -v`, `for`, `select`, `let`, `mapfile`, `getopts`, `source`, `.`,
+   a nameref, `eval`, or zsh `${GH_TOKEN::=…}`. The pin governs `gh` only: a `git push` uses
+   git's credential helper, and `GH_HOST` and the enterprise-token variables are left alone,
+   which matters only against a GitHub Enterprise Server host.
 
 Rule 1's floor refuses a `#` after an operator, and its scanner refuses
    `\'` inside `$'…'`, so a block holding either fails by rule 1; the read

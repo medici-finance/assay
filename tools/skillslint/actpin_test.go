@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -305,5 +306,118 @@ func TestActPinFlagsBraceBody(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("issues=%+v, want a finding naming the ( ) subshell body", issues)
+	}
+}
+
+// TestActPinFlagsSpellings — the same refusals under other spellings: a |&
+// pipe, a quoted or escaped builtin name, and env's short options in a cluster
+// or abbreviated long. Each draws the finding its plain spelling draws.
+func TestActPinFlagsSpellings(t *testing.T) {
+	rows := map[string]shapeRow{
+		"pin after |&":      {[]string{`  true |& ` + pinCmd, exportLine, editLine}, "own statement"},
+		"pin after |& nl":   {[]string{`  true |&`, `  ` + pinCmd, exportLine, editLine}, "own statement"},
+		"pin after echo |&": {[]string{`  echo hi |& ` + pinCmd, exportLine, editLine}, "own statement"},
+	}
+	for name, c := range map[string]struct{ line, want string }{
+		"escaped unset":       {`  \unset GH_TOKEN`, "unsets GH_TOKEN after"},
+		"single-quoted unset": {`  'unset' GH_TOKEN`, "unsets GH_TOKEN after"},
+		"split-quoted unset":  {`  un"set" GH_TOKEN`, "unsets GH_TOKEN after"},
+		"escaped unset -v":    {`  \unset -v GH_TOKEN`, "unsets GH_TOKEN after"},
+		"builtin unset":       {`  builtin unset GH_TOKEN`, "unsets GH_TOKEN after"},
+		"quoted export":       {`  "export" GH_TOKEN="$o"`, "assigns GH_TOKEN after"},
+		"escaped export":      {`  \export GH_TOKEN=$o`, "assigns GH_TOKEN after"},
+		"escaped declare":     {`  \declare -x GH_TOKEN=$o`, "assigns GH_TOKEN after"},
+		"quoted local":        {`  "local" GITHUB_TOKEN=$o`, "assigns GITHUB_TOKEN after"},
+		"escaped readonly":    {`  \readonly GH_TOKEN=$o`, "assigns GH_TOKEN after"},
+		"escaped export -n":   {`  \export -n GH_TOKEN`, "removes the export"},
+		"quoted export -n":    {`  "export" -n GH_TOKEN`, "removes the export"},
+		"escaped declare +x":  {`  \declare +x GH_TOKEN`, "removes the export"},
+		"quoted typeset +x":   {`  'typeset' +x GH_TOKEN`, "removes the export"},
+	} {
+		rows[name] = shapeRow{[]string{pinLine, exportLine, c.line, editLine}, c.want}
+	}
+	for name, line := range map[string]string{
+		"env -vi":             `  env -vi gh issue edit 1 -R o/r`,
+		"env -iv":             `  env -iv gh issue edit 1 -R o/r`,
+		"env -0i":             `  env -0i gh issue edit 1 -R o/r`,
+		"env -i0v":            `  env -i0v gh issue edit 1 -R o/r`,
+		"env -vu name":        `  env -vu GH_TOKEN gh issue edit 1 -R o/r`,
+		"env -vuGH_TOKEN":     `  env -vuGH_TOKEN gh issue edit 1 -R o/r`,
+		"env -v -u":           `  env -v -u GH_TOKEN gh issue edit 1 -R o/r`,
+		"env --ignore-env":    `  env --ignore-env gh issue edit 1 -R o/r`,
+		"env --ignore-envir":  `  env --ignore-envir gh issue edit 1 -R o/r`,
+		"env -vC dir -i":      `  env -vC /tmp -i gh issue edit 1 -R o/r`,
+		"run env -vi":         `  run env -vi gh issue edit 1 -R o/r`,
+		"env -vi with assign": `  env -vi FOO=1 gh issue edit 1 -R o/r`,
+	} {
+		rows[name] = shapeRow{[]string{pinLine, exportLine, line}, "does not reach"}
+	}
+	wantFinding(t, "spellings", rows)
+}
+
+// TestActPinSpellingsClean — spellings that leave the pinned token alone draw
+// nothing, so the cluster and quote handling does not over-refuse.
+func TestActPinSpellingsClean(t *testing.T) {
+	for name, body := range map[string][]string{
+		"env -v":               {pinLine, exportLine, `  env -v gh issue edit 1 -R o/r`},
+		"env -vu other":        {pinLine, exportLine, `  env -vu FOO gh issue edit 1 -R o/r`},
+		"env -vuFOO":           {pinLine, exportLine, `  env -vuFOO gh issue edit 1 -R o/r`},
+		"env -vC dir":          {pinLine, exportLine, `  env -vC /tmp gh issue edit 1 -R o/r`},
+		"env -Ci dir":          {pinLine, exportLine, `  env -Ci gh issue edit 1 -R o/r`},
+		"env --chdir":          {pinLine, exportLine, `  env --chdir /tmp gh issue edit 1 -R o/r`},
+		"env --ignore-x":       {pinLine, exportLine, `  env --block-signal gh issue edit 1 -R o/r`},
+		"escaped unset other":  {pinLine, exportLine, `  \unset FOO`, editLine},
+		"quoted export other":  {pinLine, exportLine, `  "export" FOO=1`, editLine},
+		"escaped export plain": {pinLine, exportLine, `  \export GITHUB_TOKEN`, editLine},
+		"pin after |& text":    {`  echo "a |& b"`, pinLine, exportLine, editLine},
+	} {
+		blocks, issues := lintOne(t, "sh", pinBlock(body...))
+		if blocks != 1 || len(issues) != 0 {
+			t.Errorf("%s: blocks=%d issues=%+v, want 1 block and no issue", name, blocks, issues)
+		}
+	}
+}
+
+// actUnmodelledList is the one list of what rule 6 does not model. It must read
+// the same at every site that states it, so no site claims more than the check
+// does; § stands for a backtick. The PR body carries the same text and is
+// checked by the author, outside this test.
+const actUnmodelledList = "The lint refuses the shapes it models; the pin inside the function is the control. Not modelled (examples, not exhaustive; a §gh§ step in one can run with no pin, and a token change in one can undo the pin): a §gh§ run through §eval§, §sh -c§, §bash -c§, §xargs§, §nice§, §timeout§, §stdbuf§, §exec -c§ or a wrapper command the lint does not name; a wrapper option that takes a separate argument and is not in the lint's list (§env -S§, say); an alias; a command name built from an expansion; a function that wraps §gh§; a §gh§ step inside a process substitution (§<( )§, §>( )§), after a leading redirect such as §2>&1§, or in a §case§ arm whose pattern opens with §(§; a §case§ pattern §)§ that no §esac§ closes; an §export§ or §unset§ of the token run under §||§, §&§ or a pipe; a change of either token variable by §read§, §printf -v§, §for§, §select§, §let§, §mapfile§, §getopts§, §source§, §.§, a nameref, §eval§, or zsh §${GH_TOKEN::=…}§. The pin governs §gh§ only: a §git push§ uses git's credential helper, and §GH_HOST§ and the enterprise-token variables are left alone, which matters only against a GitHub Enterprise Server host."
+
+// squashSpace drops the Go comment markers and folds every run of whitespace.
+func squashSpace(s string) string {
+	var b strings.Builder
+	for _, l := range strings.Split(s, "\n") {
+		l = strings.TrimSpace(l)
+		l = strings.TrimSpace(strings.TrimPrefix(l, "//"))
+		b.WriteString(l + " ")
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// TestActPinUnmodelledListIdentical — the not-modelled list is word for word the
+// same in the lint source, the README, the skill and the changelog fragment.
+func TestActPinUnmodelledListIdentical(t *testing.T) {
+	want := squashSpace(strings.ReplaceAll(actUnmodelledList, "§", "`"))
+	for _, f := range []struct {
+		path     string
+		optional bool
+	}{
+		{"actpin.go", false},
+		{"README.md", false},
+		{"../../plugins/assay/skills/ask-decision/SKILL.md", false},
+		{"../../changelog/wd1005-issue-2224.md", true},
+	} {
+		b, err := os.ReadFile(f.path)
+		if err != nil {
+			if f.optional && os.IsNotExist(err) {
+				continue // a fragment consumed at release is no longer here
+			}
+			t.Errorf("%s: %v", f.path, err)
+			continue
+		}
+		if n := strings.Count(squashSpace(string(b)), want); n != 1 {
+			t.Errorf("%s states the not-modelled list %d times, want exactly once and word for word", f.path, n)
+		}
 	}
 }

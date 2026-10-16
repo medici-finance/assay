@@ -278,16 +278,27 @@ driver's token at its top level before the first `gh` step, in the whole shape a
 a separate `export GH_TOKEN` (an `export` that carries the assignment would report export's
 status, not the read's), and an `unset` of `GITHUB_TOKEN`. The pin must be its own statement, the login one literal word (quoted, never an expansion), and the
 function body a `( )` subshell. The lint refuses a `gh` step ahead of the pin or outside the
-function; a pin inside an `if`, loop, group or subshell, after `||`, `&&` or `|`, under `!`, `time`
+function; a pin inside an `if`, loop, group or subshell, after `||`, `&&`, `|` or `|&`, under `!`, `time`
 or `env`, or followed by a pipe; after the pin, a set of `GH_TOKEN` or `GITHUB_TOKEN` (a bare
 assignment, or one given to `export`, `declare`, `typeset`, `local` or `readonly`), an
-`unset GH_TOKEN`, and `export -n GH_TOKEN` or `declare +x GH_TOKEN`; and a `gh` step run through
-`env -i`, `env -u GH_TOKEN`, `sudo` or `doas`. It reads a `gh` step as the word `gh` in command
+`unset GH_TOKEN`, and `export -n GH_TOKEN` or `declare +x GH_TOKEN` (the builtin's name may be
+quoted or escaped); and a `gh` step run through `env -i` or `env -u GH_TOKEN` (also as a short
+cluster such as `-vi`, or abbreviated: `--ignore-env`), `sudo` or `doas`. It reads a `gh` step as the word `gh` in command
 position, after `run`, a pipe, `&&`, `then`, `time`, `env`, `command`, `sudo` and the like (their
 options are skipped; `command -v gh` is a lookup, not a step), never in an `echo`'s quoted text.
-Like the read check it is syntactic and best effort and does not model a `gh` run through
-`eval`, `sh -c`, `bash -c`, `xargs`, `nice`, `timeout`, `stdbuf`, an alias or a wrapper function,
-or a token changed by `read` or `printf -v`; a step in one of those can pass.
+Like the read check it is syntactic and best effort. The lint refuses the shapes it models; the
+pin inside the function is the control. Not modelled (examples, not exhaustive; a `gh` step in
+one can run with no pin, and a token change in one can undo the pin): a `gh` run through `eval`,
+`sh -c`, `bash -c`, `xargs`, `nice`, `timeout`, `stdbuf`, `exec -c` or a wrapper command the
+lint does not name; a wrapper option that takes a separate argument and is not in the lint's
+list (`env -S`, say); an alias; a command name built from an expansion; a function that wraps
+`gh`; a `gh` step inside a process substitution (`<( )`, `>( )`), after a leading redirect such
+as `2>&1`, or in a `case` arm whose pattern opens with `(`; a `case` pattern `)` that no `esac`
+closes; an `export` or `unset` of the token run under `||`, `&` or a pipe; a change of either
+token variable by `read`, `printf -v`, `for`, `select`, `let`, `mapfile`, `getopts`, `source`,
+`.`, a nameref, `eval`, or zsh `${GH_TOKEN::=…}`. The pin governs `gh` only: a `git push` uses
+git's credential helper, and `GH_HOST` and the enterprise-token variables are left alone, which
+matters only against a GitHub Enterprise Server host.
 
 ```sh
 [ -n "${ZSH_VERSION-}" ] && setopt interactive_comments

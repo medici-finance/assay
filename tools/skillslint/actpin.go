@@ -22,7 +22,7 @@
 //     --user LOGIN)", LOGIN one literal word, quoted ("<driver-login>": unquoted
 //     it is a redirect and the block fails to parse) and never an expansion,
 //     followed by || exit, || exit N or || { ...; exit N; }, and
-//     standing as its own statement: not after ||, && or |, not under ! or a
+//     standing as its own statement: not after ||, &&, | or |&, not under ! or a
 //     wrapper such as time or env, and not followed by a pipe;
 //  2. after it, still at the top level and before the first `gh` step, an
 //     `export GH_TOKEN` (a separate command: `export GH_TOKEN="$(...)"` returns
@@ -33,9 +33,12 @@
 //  4. nothing after the pin sets either variable again: a GH_TOKEN= or
 //     GITHUB_TOKEN= assignment (also +=, and as an argument of export, declare,
 //     typeset, local or readonly), an unset of GH_TOKEN, or `export -n
-//     GH_TOKEN` / `declare +x GH_TOKEN`, which takes it out of the environment;
+//     GH_TOKEN` / `declare +x GH_TOKEN`, which takes it out of the environment
+//     (the builtin's name may be quoted or escaped: \unset, "export");
 //  5. no `gh` step after the pin runs through env -i, env -u GH_TOKEN (also
-//     -uGH_TOKEN, --unset GH_TOKEN, --unset=GH_TOKEN, --ignore-environment),
+//     -uGH_TOKEN, --unset GH_TOKEN, --unset=GH_TOKEN, --ignore-environment, a
+//     short cluster such as -vi or -vu GH_TOKEN, a unique abbreviation such as
+//     --ignore-env),
 //     sudo or doas, which start the step without the pinned token.
 //
 // A `gh` step is a word whose basename is gh (quotes and backslashes removed) in
@@ -49,16 +52,22 @@
 // step. Text inside a quoted string (an echo of what would run) is not a step.
 // A block with no `gh` step needs no pin.
 //
-// A syntactic, best-effort check, like the read check beside it. It does NOT
-// model, and a step in one of these can pass: a `gh` run through eval, sh -c,
-// bash -c, xargs, nice, timeout, stdbuf or any wrapper command not named above,
-// an option of a wrapper that takes a separate argument and is not in the list
-// (env -S, say), an alias, a command name built from an expansion, a function
-// that wraps `gh`, or a case pattern `)` that is not closed by esac; nor a
-// change of either variable by read, printf -v, a nameref or eval. The pin
-// governs gh only: a git push uses git's credential helper, and GH_HOST and the
-// enterprise-token variables are left alone (they matter only against a GitHub
-// Enterprise Server host).
+// A syntactic, best-effort check, like the read check beside it.
+//
+// The lint refuses the shapes it models; the pin inside the function is the control. Not
+// modelled (examples, not exhaustive; a `gh` step in one can run with no pin, and a token
+// change in one can undo the pin): a `gh` run through `eval`, `sh -c`, `bash -c`,
+// `xargs`, `nice`, `timeout`, `stdbuf`, `exec -c` or a wrapper command the lint does not
+// name; a wrapper option that takes a separate argument and is not in the lint's list
+// (`env -S`, say); an alias; a command name built from an expansion; a function that
+// wraps `gh`; a `gh` step inside a process substitution (`<( )`, `>( )`), after a leading
+// redirect such as `2>&1`, or in a `case` arm whose pattern opens with `(`; a `case`
+// pattern `)` that no `esac` closes; an `export` or `unset` of the token run under `||`,
+// `&` or a pipe; a change of either token variable by `read`, `printf -v`, `for`,
+// `select`, `let`, `mapfile`, `getopts`, `source`, `.`, a nameref, `eval`, or zsh
+// `${GH_TOKEN::=…}`. The pin governs `gh` only: a `git push` uses git's credential
+// helper, and `GH_HOST` and the enterprise-token variables are left alone, which matters
+// only against a GitHub Enterprise Server host.
 package main
 
 import (
@@ -82,9 +91,9 @@ var actPassWords = map[string]bool{
 
 // actWrappers are the pass words that run another command and take options of
 // their own; the options are skipped to reach it. The map holds the options of
-// each that take a separate argument.
+// each that take a separate argument (env's are read by actEnvOption).
 var actWrappers = map[string][]string{
-	"env": {"-u", "-C", "--unset", "--chdir"}, "command": nil, "time": {"-f", "-o"},
+	"env": nil, "command": nil, "time": {"-f", "-o"},
 	"exec": {"-a"}, "nohup": nil, "builtin": nil,
 	"sudo": {"-u", "-g", "-h", "-p", "-r", "-t", "-C", "-D", "-R", "-T", "-U"},
 	"doas": {"-u", "-C"},
@@ -129,7 +138,7 @@ func actIsAssign(raw string) bool {
 // actPinIssues reads the code lines of one act block and returns the findings
 // of the driver-token pin rule for the act function named name.
 func actPinIssues(code []string, name string) []actPinIssue {
-	toks := actTokens(code)
+	toks := actPipeAmp(actTokens(code))
 	var out []actPinIssue
 	add := func(k int, format string, a ...any) {
 		out = append(out, actPinIssue{line: toks[k].line, msg: fmt.Sprintf(format, a...)})
@@ -309,29 +318,31 @@ func actPinIssues(code []string, name string) []actPinIssue {
 			if w == "command" && (t.val == "-v" || t.val == "-V") {
 				continue
 			}
-			if w == "env" && inBody() && pinAt >= 0 && k > pinEnd && dropAt < 0 {
-				next := ""
-				if k+1 < len(toks) && toks[k+1].op == "" {
-					next = toks[k+1].val
+			next := ""
+			if k+1 < len(toks) && toks[k+1].op == "" {
+				next = toks[k+1].val
+			}
+			takes := false
+			if w == "env" {
+				var why string
+				why, takes = actEnvOption(t.val, next)
+				if why != "" && inBody() && pinAt >= 0 && k > pinEnd && dropAt < 0 {
+					dropAt, dropWhy = k, why
 				}
-				switch {
-				case t.val == "-i", t.val == "-", t.val == "--ignore-environment":
-					dropAt, dropWhy = k, "env "+t.val+" starts it with an empty environment"
-				case (t.val == "-u" || t.val == "--unset") && next == "GH_TOKEN",
-					t.val == "-uGH_TOKEN", t.val == "--unset=GH_TOKEN":
-					dropAt, dropWhy = k, "env "+t.val+" unsets GH_TOKEN for it"
+			} else {
+				for _, o := range actWrappers[w] {
+					if t.val == o {
+						takes = true
+					}
 				}
 			}
-			for _, o := range actWrappers[w] {
-				if t.val == o && k+1 < len(toks) && toks[k+1].op == "" {
-					k++
-					break
-				}
+			if takes && k+1 < len(toks) && toks[k+1].op == "" {
+				k++
 			}
 			cmdPos, wrap = true, w
 			continue
 		}
-		if actDeclarers[t.raw] && t.plain && inBody() && pinAt >= 0 && k > pinEnd {
+		if actDeclarers[t.val] && inBody() && pinAt >= 0 && k > pinEnd {
 			named := false
 			unexport := false
 			for i := k + 1; i < len(toks); i++ {
@@ -350,7 +361,7 @@ func actPinIssues(code []string, name string) []actPinIssue {
 				if v == "GH_TOKEN" {
 					named = true
 				}
-				if t.raw == "export" && v == "-n" || t.raw != "export" && strings.HasPrefix(v, "+") && strings.Contains(v, "x") {
+				if t.val == "export" && v == "-n" || t.val != "export" && strings.HasPrefix(v, "+") && strings.Contains(v, "x") {
 					unexport = true
 				}
 			}
@@ -413,11 +424,11 @@ func actPinIssues(code []string, name string) []actPinIssue {
 				}
 				cmdPos = false
 			}
-		case t.raw == "export" && t.plain:
+		case t.val == "export":
 			if atTop() && pinAt >= 0 && k > pinEnd && exportAt < 0 && has(argsOf(k), "GH_TOKEN") {
 				exportAt = k
 			}
-		case t.raw == "unset" && t.plain:
+		case t.val == "unset":
 			a := argsOf(k)
 			if atTop() && pinAt >= 0 && k > pinEnd && unsetAt < 0 && has(a, "GITHUB_TOKEN") && !has(a, "GH_TOKEN") {
 				unsetAt = k
@@ -487,4 +498,67 @@ func actPinIssues(code []string, name string) []actPinIssue {
 		add(k, "act block runs a gh step outside the act function, where the driver-token pin does not reach — run it inside the function after the pin")
 	}
 	return out
+}
+
+// actPipeAmp folds the |& pipe, which the tokenizer reads as | then &, into one
+// | token, so it is a pipe and not a pipe followed by a background &.
+func actPipeAmp(toks []actTok) []actTok {
+	out := make([]actTok, 0, len(toks))
+	for i := 0; i < len(toks); i++ {
+		out = append(out, toks[i])
+		if toks[i].op == "|" && i+1 < len(toks) && toks[i+1].op == "&" {
+			i++
+		}
+	}
+	return out
+}
+
+// actEnvOption reads one option word of env (val) and the word after it
+// (next). why is non-empty when the option starts the command without the
+// pinned GH_TOKEN: it empties the environment (-i, -, --ignore-environment,
+// and a short cluster holding i, such as -vi), or unsets GH_TOKEN (-u, --unset,
+// and a short cluster ending in u, such as -vu). takesNext reports that the
+// option takes the next word as its argument. GNU long options may be
+// abbreviated to a unique prefix.
+func actEnvOption(val, next string) (why string, takesNext bool) {
+	empty := "env " + val + " starts it with an empty environment"
+	unset := func(name string) string {
+		if name == "GH_TOKEN" {
+			return "env " + val + " unsets GH_TOKEN for it"
+		}
+		return ""
+	}
+	switch {
+	case val == "-":
+		return empty, false
+	case strings.HasPrefix(val, "--"):
+		opt, arg, hasArg := strings.Cut(val[2:], "=")
+		switch {
+		case len(opt) >= len("ignore-e") && strings.HasPrefix("ignore-environment", opt):
+			return empty, false
+		case opt != "" && strings.HasPrefix("unset", opt):
+			if hasArg {
+				return unset(arg), false
+			}
+			return unset(next), true
+		case opt != "" && strings.HasPrefix("chdir", opt):
+			return "", !hasArg
+		}
+	case strings.HasPrefix(val, "-"):
+		s := val[1:]
+		for i := 0; i < len(s); i++ {
+			switch s[i] {
+			case 'i':
+				return empty, false
+			case 'u':
+				if rest := s[i+1:]; rest != "" {
+					return unset(rest), false
+				}
+				return unset(next), true
+			case 'C':
+				return "", s[i+1:] == ""
+			}
+		}
+	}
+	return "", false
 }
