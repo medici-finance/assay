@@ -267,7 +267,8 @@ a credential into statusgen to remove a process boundary.
 - Wave 3: 62 — qualify the combined desk path after all four local inputs; no new remote activation dependency.
 
 Freshness: inspected origin/main eba941721 on 2026-10-16. Open-PR and dispatch-claim reads
-found no active owner for the amended items at authoring time; refresh again at pickup.
+were collected at authoring. The reporting plan merged during authoring was reconciled at
+9f9bb35de, preserving its new report owners and deriving their later waves; refresh again at pickup.
 The tree already carries perfrec plus statusgen/perfrecord.go, board review snapshots,
 conditional HTTP/per-PR fact reuse and cheap-clean cache admission. Historical desktop timings
 from installed e70f08e4 are bounded motivation, not a representative week or causal savings.
