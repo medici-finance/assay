@@ -10,6 +10,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/perfrec"
 )
 
 const (
@@ -126,11 +128,11 @@ var stateDirGuard func(dir string) error
 func deskDir() (string, error) {
 	dir := dirOverride
 	if dir == "" {
-		home, err := os.UserHomeDir()
+		d, err := perfrec.StateDir()
 		if err != nil {
 			return "", err
 		}
-		dir = filepath.Join(home, ".config", "assay")
+		dir = d
 	}
 	if stateDirGuard != nil {
 		if err := stateDirGuard(dir); err != nil {

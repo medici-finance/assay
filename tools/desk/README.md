@@ -439,7 +439,9 @@ desk commands append ONE `perf-v1` line per completed invocation to a local day 
 All 67 operational commands are wrapped, including deskfile, deskreply, scanloop, issueboard,
 reviewloop, verifyloop and the supervisor. `deskperf` is excluded so reading a report cannot
 change its input; `muhar` is a developer mutation harness with separate execution accounting.
-A command-inventory test fails when a new entrypoint forgets its wrapper:
+A command-inventory test fails when a new entrypoint forgets its wrapper. `statusgen` writes the same
+record (tool `statusgen`, verb = its mode) through the same shared `perfrec` module, so
+`deskperf report --tool statusgen` reads it too:
 
 ```sh
 export ASSAY_TELEMETRY=1        # opt in; unset it to stop — the history then ages out
@@ -3870,6 +3872,9 @@ way).
 `deskkit.NoticeLaneVerdict`). An item is admitted only when ALL of these hold:
 
 - no caller label marks it one-way: `human-only`, `security`, `gate:human`;
+- it is not a human-only hand-off: `deskfile` checks this before the verdict, with the same
+  test its act gate uses, so a body whose first non-blank line opens with `BLOCKED-ON-HUMAN`
+  stays on `needs-decision` just as the `human-only` label does, and `--no-fork` refuses it;
 - no one-way term appears in the title or body — neither a `deskkit.HumanOnlySignals` needle
   (the list `deskdigest`'s classifier uses) nor a `deskkit.OneWayPatterns` match. The
   patterns are word-bounded and cover: merge; ready-flip; push to main and force-push;
@@ -7279,11 +7284,14 @@ Two durable, stateful pollers ship in the plugin tree for a desk window to arm b
 harness `Monitor` tool: `inbound-monitor.sh` watches every repo's open issues and
 `pr-monitor.sh` watches every repo's open PRs (head sha, draft state, state, merge state).
 Both resolve the same repo set (args, `./.assay/repos.txt`, or the origin remote), keep a
-per-repo baseline so a repo's first sight SEEDS silently, poll as the keyring account (never an
-inherited App token that cannot see the private set), and RETAIN a repo's baseline on any read
+per-repo baseline so a repo's first sight SEEDS silently, read each repo under its own per-repo
+role token minted inside the poll (`desktoken <role> --repo <slug>`, the role resolved from
+`$DESK_LOOP`; `inbound-monitor.sh --token-file OWNER=PATH` outranks the mint for that owner) —
+never the ambient `gh` login and never an inherited `GH_TOKEN`; a repo whose mint fails is
+`MONITOR-DEGRADED` (could-not-check, exit 2), not an empty result — and RETAIN a repo's baseline on any read
 they cannot trust rather than go silently blind — a failed read, or a page that comes back at
 the explicit `--limit` (truncated: `gh` gives no truncation signal, so an at-limit read is a
-moving window, not ground truth). Neither script writes to the forge or holds a credential.
+moving window, not ground truth). Neither script writes to the forge or stores a credential (a minted token file is read in place).
 
 **The pacing contract** is the same for both scripts, so a wide repo set cannot become the
 tight-loop poll that trips the forge's secondary rate limit:

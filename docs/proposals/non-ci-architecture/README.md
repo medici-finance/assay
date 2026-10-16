@@ -1,6 +1,6 @@
 # Unified product architecture for Assay
 
-**Status: future architecture we are moving towards. Updated 14 October 2026; includes portfolio, drift and the write-through forge-service amendment.** This directory is the canonical public home of Assay's future product architecture. It states the direction of travel, not what is already implemented or deployed. Detailed contract changes still require revision-bound review; implementation and activation require their own evidence and authorization. Publishing or merging this documentation does not activate a runtime, grant credentials or amend existing briefs.
+**Status: future architecture we are moving towards. Updated 15 October 2026; includes portfolio, drift, the write-through forge-service amendment and the operation-count split (fail-closed brakes, best-effort pacing).** This directory is the canonical public home of Assay's future product architecture. It states the direction of travel, not what is already implemented or deployed. Detailed contract changes still require revision-bound review; implementation and activation require their own evidence and authorization. Publishing or merging this documentation does not activate a runtime, grant credentials or amend existing briefs.
 
 Read the [implemented foundations and remaining work](11-target-architecture.md#implemented-foundations-and-work-still-to-build) alongside the target. Portfolio allocation, target/context drift and continuing observation are included in the destination; their integrated automation remains work to build and qualify.
 

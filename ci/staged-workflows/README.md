@@ -84,6 +84,13 @@ reviewable artifact, not a run.
   carries the sibling module, without which the corroboration guard cannot build a base that
   already has `forgeread/`. The rest of that staged change (the hourly `reconcile` job and the
   board-writer Environment) was promoted with it, as described below.
+- `assay-statusgen.yml` — perfrec part (#3101): the staged copy also carries the `perfrec/**`
+  path filters (`pull_request` and `push`) and a base-tree archive that carries the sibling
+  `perfrec/` module beside `statusgen/`, for the same reason as the forgeread part above:
+  statusgen's `go.mod` replaces `perfrec` with `../perfrec`, so without it the corroboration
+  guard cannot build a base that already has the module. **This part is promoted** into the
+  live `.github/workflows/assay-statusgen.yml` in the same pull request that adds `perfrec/`
+  (#3113); the rest of the staged copy (#2910) stays pending.
 - `gremlins-daily.yml` — the daily Gremlins mutation sweep (#2647) over the desk tools'
   muhar-spec packages (`tools/gremlins/run.sh`). **Discovery, never a gate**: surviving
   mutants go to the job summary and the uploaded JSON artifact as leads, and survivors in
