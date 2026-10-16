@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior'",
   "schemata": true,
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
@@ -387,10 +387,10 @@
       "new": "\tset := laneTable[tier]\n\tif false {\n\t\tset = laneTable[TierUnknown]\n\t}"
     },
     {
-      "name": "probe the not-yet-created target branch instead of the start branch on a GitLab file write (issue #1412: a create of a path that already exists on the base is rejected HTTP 400, so Evidence never lands on the side-branch lane)",
+      "name": "probe the not-yet-created target branch instead of the start branch on a GitLab file write (issue #1412: a create of a path that already exists on the base is rejected HTTP 400, so Evidence never lands on the side-branch lane). The probe ref is shared by the native read and the scoped landing's cached-prior match, so the mutant is caught on both paths",
       "file": "internal/deskkit/forge_gitlab.go",
-      "old": "\tprobeRef := in.Branch\n\tif in.StartBranch != \"\" {\n\t\tprobeRef = in.StartBranch\n\t}\n\tcur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: probeRef})",
-      "new": "\tcur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: in.Branch})"
+      "old": "func gitlabWriteProbeRef(in WriteFileInput) string {\n\tif in.StartBranch != \"\" {\n\t\treturn in.StartBranch\n\t}\n\treturn in.Branch\n}",
+      "new": "func gitlabWriteProbeRef(in WriteFileInput) string {\n\treturn in.Branch\n}"
     },
     {
       "name": "claimstore-unmet-precondition-falls-through",
@@ -727,6 +727,42 @@
       "file": "internal/deskkit/outbound.go",
       "old": "opts.InFile = fd.Name != OutboundFieldCommitMessage",
       "new": "opts.InFile = false"
+    },
+    {
+      "name": "GitHub ReadFile reads a link to a file as a regular file (the Contents API serves it as the target's bytes under the target's path) — S-2266-7",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tif strings.Trim(w.Path, \"/\") != strings.Trim(file, \"/\") {",
+      "new": "\t\tif false && strings.Trim(w.Path, \"/\") != strings.Trim(file, \"/\") {"
+    },
+    {
+      "name": "GitHub ReadFile reads a link served as itself as a regular file (a dangling link's empty content becomes an empty record) — S-2266-7",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tcase \"symlink\":\n\t\treturn FileKindSymlink",
+      "new": "\tcase \"symlink\":\n\t\treturn FileKindRegular"
+    },
+    {
+      "name": "GitHub ReadFile reads a link to a file as a regular file when its served bytes do not hash to the served sha (the live shape: the requested path, the link's blob sha, the target's bytes) — C-2266-6",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tif w.Encoding != \"base64\" || !gitBlobMatches(w.SHA, content) {",
+      "new": "\t\tif w.Encoding != \"base64\" {"
+    },
+    {
+      "name": "GitHub ReadFile reads a file served without proof of its encoding as a regular file (a large file arrives with encoding none and an empty body) — S-2266-8",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tif w.Encoding != \"base64\" || !gitBlobMatches(w.SHA, content) {",
+      "new": "\t\tif !gitBlobMatches(w.SHA, content) {"
+    },
+    {
+      "name": "git blob hash accepts a served sha that is not an object id of either length — S-2266-8",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tdefault:\n\t\treturn false\n\t}\n\treturn strings.EqualFold(hex.EncodeToString(sum), sha)",
+      "new": "\tdefault:\n\t\treturn true\n\t}\n\treturn strings.EqualFold(hex.EncodeToString(sum), sha)"
+    },
+    {
+      "name": "GitHub WriteFile writes over a prior entry it cannot show to be a plain file (a file served without its content becomes an empty base for the idempotency and shrink checks) — S-2266-8",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tif cur.Kind != FileKindRegular {\n\t\t\theld := cur.Kind",
+      "new": "\t\tif false && cur.Kind != FileKindRegular {\n\t\t\theld := cur.Kind"
     }
   ],
   "_not_mutated": {

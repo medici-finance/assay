@@ -90,7 +90,9 @@ esac
 EOF
 chmod +x "$T/bin/claude"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$T/bin/tmux"; chmod +x "$T/bin/tmux"
-export PATH="$T/bin:$PATH"
+# shellcheck source=SCRIPTDIR/private-path.sh
+source "$HERE/private-path.sh"
+private_path "$T/bin"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
 "$CELLCTL" new example-cell --kind house --repo "$REPO" --roots "$ROOTS" >/dev/null
 CELL="$CELLS_ROOT/example-cell"

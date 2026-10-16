@@ -40,6 +40,8 @@ fires within one observer interval instead of relying on a worker to remember it
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> **Every `gh` call carries this role's `GH_TOKEN`, reads included.** When no desk verb covers a forge call, run it only through the recipe in [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role), never a hand-typed shortcut. That recipe takes the role from `$DESK_LOOP`, mints it with `desktoken`, scopes the token to that one command without exporting it, and stops before `gh` unless the mint exited 0 and the token file holds a non-whitespace token. A bare `gh` call runs as the host's stored login, which is usually a human's, so a desk never runs one, not even for a read.
+
 > Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
 
 
@@ -50,7 +52,8 @@ fires within one observer interval instead of relying on a worker to remember it
 ## Boot
 
 `deskboot worker-desk` — loop identity, `deskwt prune`, worktree lock, roster register, roster
-preflight, worker-App token mint, read-only board fetch. The first red step stops the boot and names
+preflight, worker-App token mint, read-only board fetch, worktree currency, first-sweep prerequisites
+(roster forge mapping, desk-tools pin). The first red step stops the boot and names
 itself; it refuses to boot in the shared checkout. Two residues it does not carry: `export
 KUBECONFIG=/dev/null` (the environment half of the offline envelope; every dispatched agent
 gets the same rule from the common-clauses kit) and inline `-c` commit identity per commit
@@ -213,8 +216,13 @@ This is enforced in two INDEPENDENT layers that fail on different signals in dif
 neither is the single point of failure: the skill clause here, AND — should a desk skip the clause —
 `deskfile new`, which **REFUSES (exit 5)** any filing labelled `needs-decision`, `help wanted` or
 `question` whose body has no `### Evidence` heading followed by a fenced block, naming the missing
-section. `human-only` is not in that set (it is an ACT, not a claim); `attach` observations are not
-claims and are unaffected; and the refusal takes the same audited `--force-new --reason` every deskfile
+section. `human-only` is not in that set (it is an ACT, not a claim). A `BLOCKED-ON-HUMAN` report is
+still a blocker claim, so it carries BOTH the `### Evidence` section above AND the act itself, as the
+runnable **Act block** `ask-decision` §"Act — the shape of the fifth part" defines. `deskfile new`
+refuses (exit 5) a filing with no ` ```sh ` or ` ```url ` fence when it is labelled `human-only` or its
+body's first non-blank line opens with `BLOCKED-ON-HUMAN`; a marker in the title or after an opening
+paragraph is not caught, and there the Act block rests on this clause alone. `attach`
+observations are not claims and are unaffected; and the refusal takes the same audited `--force-new --reason` every deskfile
 refusal does, for a blocker whose evidence genuinely cannot be produced.
 
 ## THE REPO SET — derived once, consumed by every sweep
@@ -674,7 +682,8 @@ shows the helper itself refused (its status 5), that brief is a refusal — repa
 toward the repeat filing. In either case, never hand-run the decision-issue helper around the
 refusal (a hand-run once landed a duplicate decision issue). Record the issue in
 the dispatch and the PR body's BLOCKED-ON-HUMAN line; where the Task has an explicit human co-execution
-step the prompt says prepare everything, STOP at the documented stop-point, report BLOCKED-ON-HUMAN.
+step the prompt says prepare everything, STOP at the documented stop-point, report BLOCKED-ON-HUMAN —
+the report carrying the step the human runs as an Act block (`ask-decision` §"Act — the shape of the fifth part").
 
 **Security-gate removal is gate:human BEFORE the commit, not only at approval**: such a diff
 erases the red-check signal that makes the decision visible downstream, so "a worker behind a draft PR

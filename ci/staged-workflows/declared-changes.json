@@ -28,9 +28,6 @@
     "mode": "pending",
     "reason": "Classified board push (#2910): credential preflight and per-class push failures in the QUALITY.md regen; pending maintainer promotion (README Contents)."
   },
-  "verify-gate-close.yml": {
-    "mode": "identical"
-  },
   "forge-surface-control.yml": {
     "mode": "identical"
   },

@@ -17,9 +17,12 @@
 //  1. The canonical section itself, between the markers
 //     `<!-- BEGIN forge cli as the role -->` and `<!-- END forge cli as the role -->`.
 //     It has to name the anti-pattern in order to rule it out.
-//  2. The driver's own human path, spelled exactly `gh auth token --user <driver-login>`:
-//     a command the human driver pastes and runs under their own login (the
-//     ask-decision Reply shape). Only that exact spelling is exempt, so the same line
+//  2. The driver's own human path, spelled exactly `gh auth token --user <driver-login>`
+//     or `gh auth token --user "<driver-login>"` (the quoted form the Act block
+//     uses: unquoted, `<driver-login>` is a redirect and a block that fails to
+//     parse runs its live steps when pasted into bash): a command the human driver
+//     pastes and runs under their own login (the ask-decision Reply and Act
+//     shapes). Only those two exact spellings are exempt, so the same line
 //     carrying a second, bare `gh auth token` is still flagged.
 //
 // HARD (exit 1). The tree carries no unexempt occurrence, so a new one is a
@@ -40,6 +43,7 @@ var ambientAuthDirs = []string{"plugins/assay/skills", "plugins/assay/references
 const (
 	ambientAuthToken      = "gh auth token"
 	ambientAuthDriverForm = "gh auth token --user <driver-login>"
+	ambientAuthQuotedForm = `gh auth token --user "<driver-login>"`
 	ambientAuthBegin      = "<!-- BEGIN forge cli as the role -->"
 	ambientAuthEnd        = "<!-- END forge cli as the role -->"
 )
@@ -111,10 +115,11 @@ func ambientAuthLines(rel, raw string) []Issue {
 			continue
 		}
 		rest := strings.ReplaceAll(ln, ambientAuthDriverForm, "")
+		rest = strings.ReplaceAll(rest, ambientAuthQuotedForm, "")
 		if strings.Contains(rest, ambientAuthToken) {
 			out = append(out, Issue{Path: rel, Msg: fmt.Sprintf(
-				"line %d: `%s` reads a human's forge-CLI login; a desk runs `gh` as its role App — point at desk-shell.md §Forge CLI as the role instead (only the driver's own `%s` command is exempt)",
-				i+1, ambientAuthToken, ambientAuthDriverForm)})
+				"line %d: `%s` reads a human's forge-CLI login; a desk runs `gh` as its role App — point at desk-shell.md §Forge CLI as the role instead (only the driver's own `%s` or `%s` command is exempt)",
+				i+1, ambientAuthToken, ambientAuthDriverForm, ambientAuthQuotedForm)})
 		}
 	}
 	if inBlock {

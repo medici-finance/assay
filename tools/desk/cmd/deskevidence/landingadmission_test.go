@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -31,6 +32,11 @@ var productionAdmission = verifierEvidenceAdmissionFn
 // what order admission and the landing read it.
 type attestationAPI struct {
 	commit             func(string, string) string
+	head               string
+	branch             string
+	snapshotChange     func(map[string]any)
+	afterSnapshot      func()
+	loseCommitAck      bool
 	mu                 sync.Mutex
 	title, body, state string
 	labels             []string
@@ -46,14 +52,16 @@ type attestationAPI struct {
 type contentsPut struct{ File, Message, Content string }
 
 // apiCall is one request the offline API received and the credential it carried.
-type apiCall struct{ Method, Path, Authorization string }
+type apiCall struct{ Method, Path, Authorization, Operation string }
 
 // contentsPrefix is the Contents-API path of the fixture repository.
 const contentsPrefix = "/repos/example-org/tracker/contents/"
 
-// blobID is a stand-in blob id: stable for equal content, different otherwise.
+// blobID is the git object id of a blob holding content: what the Contents API serves as a
+// file's `sha`, and what the backend checks the served bytes against before it reports a
+// plain file (S-2266-8).
 func blobID(content string) string {
-	sum := sha1.Sum([]byte(content))
+	sum := sha1.Sum(append([]byte(fmt.Sprintf("blob %d\x00", len(content))), []byte(content)...))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -68,11 +76,18 @@ func (a *attestationAPI) serveContents(w http.ResponseWriter, r *http.Request, f
 			enc(map[string]any{"message": "Not Found"})
 			return
 		}
-		enc(map[string]any{"sha": blobID(content), "encoding": "base64",
+		enc(map[string]any{"type": "file", "path": file, "sha": blobID(content), "encoding": "base64",
 			"content": base64.StdEncoding.EncodeToString([]byte(content))})
 	case http.MethodPut:
+		a.calls[len(a.calls)-1].Operation = "commit"
 		var in struct{ Message, Content, Branch, SHA string }
 		_ = json.NewDecoder(r.Body).Decode(&in)
+		prior, exists := a.files[file]
+		if (exists && in.SHA != blobID(prior)) || (!exists && in.SHA != "") {
+			w.WriteHeader(http.StatusConflict)
+			enc(map[string]any{"message": "file revision changed"})
+			return
+		}
 		decoded, err := base64.StdEncoding.DecodeString(in.Content)
 		if err != nil {
 			w.WriteHeader(http.StatusUnprocessableEntity)
@@ -86,6 +101,10 @@ func (a *attestationAPI) serveContents(w http.ResponseWriter, r *http.Request, f
 		sha := blobID(in.Message + string(decoded))
 		if a.commit != nil {
 			sha = a.commit(file, string(decoded))
+		}
+		if a.loseCommitAck {
+			w.WriteHeader(http.StatusBadGateway)
+			return
 		}
 		enc(map[string]any{
 			"content": map[string]any{"sha": blobID(string(decoded))},
@@ -147,6 +166,9 @@ func (a *attestationAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		enc(a.timeline)
 	case strings.HasSuffix(p, "/graphql"):
+		if a.serveEvidenceGraphQL(w, r) {
+			return
+		}
 		enc(map[string]any{"data": map[string]any{"repository": map[string]any{"issue": map[string]any{"lastEditedAt": nil, "comments": map[string]any{"nodes": []any{}, "pageInfo": map[string]any{"hasNextPage": false}}}}}})
 	default:
 		a.unexpected = append(a.unexpected, r.Method+" "+p)

@@ -69,7 +69,9 @@ esac
 echo "ARGS=$*" > "${CELLCTL_TEST_OUT:-/dev/null}"
 EOF
 chmod +x "$T/bin/claude"
-export PATH="$T/bin:$PATH"
+# shellcheck source=SCRIPTDIR/private-path.sh
+source "$HERE/private-path.sh"
+private_path "$T/bin"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
 
 "$CELLCTL" new house-cell --kind house --repo "$REPO" --roots "$ROOTS" >/dev/null

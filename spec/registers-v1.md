@@ -402,6 +402,14 @@ A reader who wants to know whether an ask was actually met follows the citation 
 brief and reads its Evidence. The register's job is to make that walk possible, not to
 perform it.
 
+### Product-intent extension planning (13 October 2026)
+
+The [future architecture amendment](../docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md)
+routes optional direction/target/observed records to statusgen/22. This is a planning
+reference, not an implemented addition to section 6.2 or a new mandatory REQ field.
+That brief must land schema/parser parity and migration with the normative extension.
+Existing acceptance, satisfaction, append-only history and tombstone rules remain controlling.
+
 ### 6.5 The brief citation (`satisfies:`) and the requirement-ref grammar
 
 A brief cites the requirements it was written against with the OPTIONAL `satisfies:`

@@ -44,7 +44,7 @@ func die(format string, args ...any) {
 func exitWith(code int) { panic(exitCode{code}) }
 
 func main() {
-	os.Exit(deskkit.PerfRun("cellctl", nil, os.Args[1:], func([]string) int {
+	os.Exit(deskkit.PerfRun("cellctl", perfVerbs(), commandArgs(os.Args[1:]), func([]string) int {
 		// The roster class is an EXPLICIT declaration, never the zero value by accident
 		// (a correctness review found SetToolClass had no caller anywhere, so "ClassWrite is the
 		// safe default" was true only by luck — and TestEveryRosterReadingMainDeclaresClassAndEchoes

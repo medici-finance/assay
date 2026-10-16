@@ -59,6 +59,29 @@ reviewable artifact, not a run.
   on a daily schedule, reporting three-state. **Already live** — promoted to
   `.github/workflows/truth-suite.yml` on 2026-09-10; this directory no longer carries a copy,
   so a change to it is authored here first and re-promoted by a maintainer commit.
+- `assay-statusgen.yml` — a STAGED TWIN of the live `.github/workflows/assay-statusgen.yml`
+  carrying the decision-gate hold's network layer (`spec/lifecycle-v1.md` §4.5), alongside
+  the classified board push (#2910) described below, which `declared-changes.json` classes
+  `pending`: the
+  corroborate job gains `issues: read` and a `statusgen --decision-gate --pr <N>` step after
+  the corroborate step. The step has no shell path pre-filter: the binary decides from the
+  PR's own file listing whether the board (`docs/streams/` or `docs/archive/`) was touched, and
+  it exits 0 with a notice while the base-built statusgen predates `--decision-gate`. **Pending promotion**:
+  re-base on the live file (three-way) and copy it over the live one in a
+  maintainer-credentialled commit. Promoting it does NOT make the check required; that is a
+  separate branch-protection act. Until promotion, the hold's offline layer still runs in
+  `--lint`; the live corroborate step's `--corroborate --pr` runs the network lane only on PRs
+  that touch a findings entry; and `deskevidence` / `--close-verify` run the network check
+  themselves.
+- `verify-gate-close.yml` — a STAGED TWIN of the live `.github/workflows/verify-gate-close.yml`
+  carrying ONLY a decision-gate refusal branch in the "Advance ..." step. When
+  `statusgen --close-verify` refuses a close with the literal "decision-gate hold", the branch
+  relays the refusal, reopens the card and commits nothing. `TestDecisionGateCloseWorkflowKeyedPhrase`
+  in `statusgen` pins the phrase on this staged copy, or on the live file once it is gone.
+  **Pending promotion**, the same way. Until then `--close-verify` still refuses the close and
+  the live workflow commits nothing, but the refusal reaches its generic first-attempt branch.
+  That branch leaves the card closed and comments a reason that does not name the decision
+  issue or the remedy.
 - `loopadmin.yml` — the loopadmin module's test job (graph-execution/20): `gofmt`, `go vet`,
   `go test` and the mutation gate (`go run ./mutate`) from `loopadmin/`, on path triggers for the
   module, `spec/loop-admin-runner-v1.md` and `schemas/loop-admin-runner-v1.json`. **Staged, not
@@ -71,6 +94,16 @@ reviewable artifact, not a run.
   `.github/workflows/workspace.yml`. Until then `ci.yml` builds and vets the module, and the desk
   suite runs its tests on every change (`TestWorkspaceModuleSuite` in
   `tools/desk/internal/regression`); only the mutation gate runs nowhere.
+- `cellcache-mutate.yml` — the cell Go-cache mutation gate (#3148). Runs
+  `python3 internal/cellcache/mutate.py --shard i/3` from `tools/desk` on path triggers for the
+  cache, process and launcher packages, and fails on any `MISSED` mutant and on any
+  `COULD-NOT-MUTATE` one (a mutant that does not compile, a `file` that escapes the module, a
+  stale anchor, a suite timeout). No existing job runs it: the suite takes about ten minutes, far
+  past what `ci.yml`'s `build-test` job should absorb per PR. That job instead runs the
+  `TestMutateGate*` tests, which prove each state the gate reports against a throwaway module.
+  **Staged, not live** - a maintainer promotes it (`git mv ci/staged-workflows/cellcache-mutate.yml
+  .github/workflows/cellcache-mutate.yml`); until then the gate is run by hand, as
+  `docs/cellctl-go-cache.md` ("Mutation gate") says.
 - `forge-surface-control.yml` — twin of the live forge-surface job, which carries `forgeread/**` in
   both path filters (`pull_request` and `push`) and a step running the shared fact reader's
   controls (the module's tests, the ambient-token rule over `forgeread/`, the lower-layer scope
@@ -81,6 +114,13 @@ reviewable artifact, not a run.
   carries the sibling module, without which the corroboration guard cannot build a base that
   already has `forgeread/`. The rest of that staged change (the hourly `reconcile` job and the
   board-writer Environment) was promoted with it, as described below.
+- `assay-statusgen.yml` — perfrec part (#3101): the staged copy also carries the `perfrec/**`
+  path filters (`pull_request` and `push`) and a base-tree archive that carries the sibling
+  `perfrec/` module beside `statusgen/`, for the same reason as the forgeread part above:
+  statusgen's `go.mod` replaces `perfrec` with `../perfrec`, so without it the corroboration
+  guard cannot build a base that already has the module. **This part is promoted** into the
+  live `.github/workflows/assay-statusgen.yml` in the same pull request that adds `perfrec/`
+  (#3113); the rest of the staged copy (#2910) stays pending.
 - `gremlins-daily.yml` — the daily Gremlins mutation sweep (#2647) over the desk tools'
   muhar-spec packages (`tools/gremlins/run.sh`). **Discovery, never a gate**: surviving
   mutants go to the job summary and the uploaded JSON artifact as leads, and survivors in

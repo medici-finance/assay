@@ -1,13 +1,13 @@
 //go:build unix
 
-package deskkit
+package perfrec
 
 import "syscall"
 
-// processCPUMillis returns this process's user+system CPU time in milliseconds, read from
+// CPUMillis returns this process's user+system CPU time in milliseconds, read from
 // getrusage(RUSAGE_SELF). ok=false when the call fails, in which case the record OMITS cpuMs
 // rather than reporting a zero it did not measure.
-func processCPUMillis() (int64, bool) {
+func CPUMillis() (int64, bool) {
 	var ru syscall.Rusage
 	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err != nil {
 		return 0, false

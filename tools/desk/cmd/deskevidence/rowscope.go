@@ -37,15 +37,11 @@ package main
 // neither is ever a valid --row target. A key that appears more than once in a
 // table is refused — rebasing onto an ambiguous key would be a guess.
 //
-// TWO LAYERS. rebaseNamedRows is the PRE-CHECK: it builds the rebased content
-// against the fetch cmdEvidence already made. rowScopeWriteTimeCheck is the WRITE
-// OP's own, independent re-enforcement: immediately before the commit it re-fetches
-// the target — a SEPARATE read — and refuses unless the content about to be written
-// is exactly that fresh read with only the named rows' lifecycle cells changed. It
-// returns the fresh read's content id, which the write then carries as
-// WriteFileInput.ExpectedSHA: the backend refuses if its own fetch sees a different
-// id, and cites that id as the forge's conditional-write precondition, so a change
-// landing after the re-check is refused by the forge rather than overwritten.
+// TWO LAYERS. rebaseNamedRows builds the candidate against the admitted
+// destination; rowScopeWriteTimeCheck independently verifies the allowed cells.
+// The scoped publication forge reuses those exact bytes and the server enforces
+// the corresponding revision precondition. A concurrent commit therefore refuses
+// the write. Forges without a publication snapshot still perform separate reads.
 
 import (
 	"bytes"
@@ -132,15 +128,10 @@ func foreignRowDiff(a, b briefsTable, named map[string]bool) []string {
 	return out
 }
 
-// rowScopeWriteTimeCheck is the WRITE OP's own, independent re-enforcement
-// (Interface Contract item 5): "only named rows differ from the content fetched at
-// write time". It re-fetches the target fresh — a read wholly separate from the one
-// the pre-check was built against — re-runs the rebase of the pending commit onto
-// that fresh read, and refuses unless the result is byte-identical to the commit:
-// any foreign row, header, separator, prose, or named-row authoring cell that moved
-// in the window is a refusal. It returns the fresh read's content id for the write's
-// ExpectedSHA precondition, which carries the same guarantee through to the forge's
-// own conditional write. It never widens what a landing may write.
+// rowScopeWriteTimeCheck independently re-enforces the named-row constraint
+// against the forge's publication snapshot (or a fresh read for other forges).
+// Its content id binds the write; the server-side revision precondition is the
+// independent protection against a concurrent change.
 func rowScopeWriteTimeCheck(fg deskkit.Forge, fr deskkit.ForgeRepo, targetRepoPath, branch string, rows []string, commitContent []byte) (freshSHA string, err error) {
 	fresh, ferr := fg.ReadFile(fr, deskkit.ReadFileInput{File: targetRepoPath, Ref: branch})
 	if ferr != nil {
@@ -149,6 +140,9 @@ func rowScopeWriteTimeCheck(fg deskkit.Forge, fr deskkit.ForgeRepo, targetRepoPa
 				" no longer exists as of the write-time re-fetch — the table changed under this landing; re-fetch and retry")
 		}
 		return "", deskkit.Unverifiable("row-scope write-time re-check: cannot re-fetch "+targetRepoPath+"@"+branch, ferr)
+	}
+	if kerr := plainFileRead(fresh, fr, targetRepoPath, branch, "the row-scope write-time re-check", false); kerr != nil {
+		return "", kerr
 	}
 	ft, _, ok := parseBriefsTable(fresh.Content)
 	if !ok {

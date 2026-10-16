@@ -894,10 +894,13 @@ func TestForgeGithubGolden(t *testing.T) {
 		{
 			// Update path: the idempotency read finds a DIFFERENT content, so the PUT carries the
 			// prior blob sha. GitHub's default branch is directly writable by the App (carve-out),
-			// so no sentinel — the write lands on the branch directly.
+			// so no sentinel — the write lands on the branch directly. The read is served in the
+			// live shape (typed, base64, the blob's own id), since the write refuses a prior entry
+			// it cannot show to be a plain file (S-2266-8).
 			name: "write_file_updates_existing",
 			setup: func(s *goldenServer) {
-				s.contentsGet = map[string]any{"sha": "blob-1", "content": ghB64("row one\n")}
+				s.contentsGet = map[string]any{"type": "file", "path": "EVIDENCE.md", "encoding": "base64",
+					"sha": blobID("row one\n", false), "content": ghB64("row one\n")}
 				s.contentsPut = map[string]any{
 					"content": map[string]any{"sha": "blob-2"},
 					"commit": map[string]any{"sha": "c0ffee", "author": map[string]any{

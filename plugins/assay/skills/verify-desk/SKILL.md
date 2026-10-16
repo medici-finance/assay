@@ -24,6 +24,8 @@ hand-edits a board cell, and the board follows the witness.
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> **Every `gh` call carries this role's `GH_TOKEN`, reads included.** When no desk verb covers a forge call, run it only through the recipe in [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role), never a hand-typed shortcut. That recipe takes the role from `$DESK_LOOP`, mints it with `desktoken`, scopes the token to that one command without exporting it, and stops before `gh` unless the mint exited 0 and the token file holds a non-whitespace token. A bare `gh` call runs as the host's stored login, which is usually a human's, so a desk never runs one, not even for a read.
+
 > Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
 
 
@@ -61,7 +63,8 @@ run: fix the check it names, re-run, then claim. An open verify-gate wait is a w
    your own valid tree instead of registering another. Never hand-roll `git worktree add`; `deskwt`
    missing is a preflight-class failure.
 2. `deskboot verify-desk`, from `$WT` — loop identity, prune, lock, roster registration, the five-check
-   operating-envelope preflight, the token mint, and the read-only board fetch in one verb. **A red step
+   operating-envelope preflight, the token mint, the read-only board fetch, worktree currency, and the
+   first sweep's prerequisites (roster forge mapping, desk-tools pin) in one verb. **A red step
    is `could-not-run` for the WHOLE pass**: report the one summary line and STOP — claim nothing, and
    file no issue about the desk's own envelope (each failing check names the issue that owns it). A
    probe REJECTION is a STOP; never retry under another identity.
@@ -719,7 +722,10 @@ two-stamp model, #1170). Model-gated briefs are unchanged: one local-tier stamp,
    the second stamp has landed — it is not ready for the human until the stamp is on the cell. A card
    the close workflow refused and reopened is THIS desk's work item: land the second stamp, then the
    human closes it again. Never hand-edit the cell to a runner that did not run the rows — the
-   Evidence-actor and runner-agreement checks read that as a forgery, not a fix.
+   Evidence-actor and runner-agreement checks read that as a forgery, not a fix. **The card carries
+   the act:** closing it is the human's act, so the card holds an Act block (`ask-decision` §"Act — the shape of the fifth part")
+   — where the generated packet has none, this desk attaches it (`deskfile attach`) when the card is
+   ready for the human.
 
 ## Irreversible briefs (`risk.irreversible: yes`) — the model records Evidence, a HUMAN flips
 
@@ -745,7 +751,7 @@ fail `--lint` and redden main CI directly. So the model path STOPS short of the 
    FROM the Evidence's recorded runner, which is why the second stamp (the floor-tier re-verify rows,
    previous section) must be in the Evidence before the human closes: the close refuses a below-floor
    runner rather than landing it. Surface the open wait in the
-   report. Where that wiring is not deployed, the brief stays at `implemented` with Evidence — a
+   report, with the card's Act block (step 3 of the previous section). Where that wiring is not deployed, the brief stays at `implemented` with Evidence — a
    documented wait state, never a checkpoint PR.
    **Re-firing a cycle.** When a CLOSED verify-gate card must fire its close event again (the
    Evidence row it lifted was corrected; the flip did not land), this desk runs

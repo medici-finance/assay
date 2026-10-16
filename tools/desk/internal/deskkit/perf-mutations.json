@@ -2,16 +2,16 @@
   "test": "go test ./internal/deskkit/ ./cmd/deskperf/ -count=1 -run 'TestPerf|TestSummarisePerf|TestReportAndBootRenderFixtureDirectory|TestWrappedVerbToDeskperfEndToEnd'",
   "control": {
     "name": "CONTROL \u2014 arm perf unconditionally (the off-by-default floor is gone; an unset switch writes a record)",
-    "file": "internal/deskkit/perf.go",
-    "old": "func PerfEnabled() bool { return os.Getenv(perfEnvVar) == \"1\" }",
-    "new": "func PerfEnabled() bool { return true }"
+    "file": "../../perfrec/perfrec.go",
+    "old": "func Enabled() bool { return os.Getenv(EnvVar) == \"1\" }",
+    "new": "func Enabled() bool { return true }"
   },
   "mutations": [
     {
       "name": "loosen the switch from exact \"1\" to a truthiness test (ASSAY_TELEMETRY=true arms recording)",
-      "file": "internal/deskkit/perf.go",
-      "old": "func PerfEnabled() bool { return os.Getenv(perfEnvVar) == \"1\" }",
-      "new": "func PerfEnabled() bool { v := os.Getenv(perfEnvVar); return v != \"\" && v != \"0\" }"
+      "file": "../../perfrec/perfrec.go",
+      "old": "func Enabled() bool { return os.Getenv(EnvVar) == \"1\" }",
+      "new": "func Enabled() bool { v := os.Getenv(EnvVar); return v != \"\" && v != \"0\" }"
     },
     {
       "name": "widen the field allowlist by one planted value: the verb field carries the argv (repo, PR, branch, path)",
@@ -22,24 +22,24 @@
     {
       "name": "widen the field allowlist by one planted value: the role field carries DESK_SESSION",
       "file": "internal/deskkit/perf.go",
-      "old": "\t\tRole:      perfRole(os.Getenv(\"DESK_LOOP\")),",
-      "new": "\t\tRole:      perfRole(os.Getenv(\"DESK_LOOP\")) + os.Getenv(\"DESK_SESSION\"),"
+      "old": "perfrec.New(perfTool(tool), verb, perfRole(os.Getenv(\"DESK_LOOP\")), wall, exit, sha, perfNow())",
+      "new": "perfrec.New(perfTool(tool), verb, perfRole(os.Getenv(\"DESK_LOOP\"))+os.Getenv(\"DESK_SESSION\"), wall, exit, sha, perfNow())"
     },
     {
       "name": "relax the pruner's exact day-file match to a prefix match (a day-prefixed decoy is deleted)",
-      "file": "internal/deskkit/perf.go",
-      "old": "var perfDayFile = regexp.MustCompile(`^(\\d{4}-\\d{2}-\\d{2})\\.jsonl$`)",
-      "new": "var perfDayFile = regexp.MustCompile(`^(\\d{4}-\\d{2}-\\d{2})\\.jsonl`)"
+      "file": "../../perfrec/perfrec.go",
+      "old": "var dayFile = regexp.MustCompile(`^(\\d{4}-\\d{2}-\\d{2})\\.jsonl$`)",
+      "new": "var dayFile = regexp.MustCompile(`^(\\d{4}-\\d{2}-\\d{2})\\.jsonl`)"
     },
     {
       "name": "widen the retention window past 7 days (the day-8 file survives the prune)",
-      "file": "internal/deskkit/perf.go",
-      "old": "const perfRetentionDays = 7",
-      "new": "const perfRetentionDays = 8"
+      "file": "../../perfrec/perfrec.go",
+      "old": "const RetentionDays = 7",
+      "new": "const RetentionDays = 8"
     },
     {
       "name": "make resultForExit return (an encoding of) its input instead of one of its own constants",
-      "file": "internal/deskkit/perf.go",
+      "file": "../../perfrec/perfrec.go",
       "old": "\tdefault:\n\t\treturn ResultUnverifiable\n\t}\n}",
       "new": "\tdefault:\n\t\treturn hex.EncodeToString([]byte{byte(exit)})\n\t}\n}"
     },
@@ -49,5 +49,6 @@
       "old": "\tperfAppend(rec)\n\treturn code\n}",
       "new": "\tif perfWrite(rec) != nil {\n\t\treturn ExitUnverifiable\n\t}\n\treturn code\n}"
     }
-  ]
+  ],
+  "_note": "Mutations that target the shared writer name it by a path relative to tools/desk (run sequentially from there: go run ./cmd/muhar -spec internal/deskkit/perf-mutations.json). The writer lives in the perfrec module; deskkit's tests exercise it through PerfRun."
 }

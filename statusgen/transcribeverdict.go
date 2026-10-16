@@ -851,9 +851,10 @@ func planTranscribeVerdict(root string, streams []*Stream, homeRepo string,
 				// A prose-led row (#1808 review CR-1808-3) is never re-executed, exactly
 				// as verifyrun never executes it: its lifted first span is a mention,
 				// and running a mention can exit 0 (`true`, `gh`) and turn a verdict
-				// this gate should refuse into a PASS. A `cmd:` marker clears it.
+				// this gate should refuse into a PASS. A `cmd:` marker naming a real
+				// command clears it; a marked comment stays refused (#2684).
 				if first, why := proseLedCommandWhy(row.Command); why != "" {
-					refuse("clause-6 (check:ci)", fmt.Sprintf("check:ci row %d of %s is %s: its first code span `%s` is %s, not a command, so it cannot be re-executed — a check that was never run established nothing; mark the command with a `cmd:` code span", e.Row, rel, ruleProseLedCommand, first, why))
+					refuse("clause-6 (check:ci)", fmt.Sprintf("check:ci row %d of %s is %s: its lifted command `%s` is %s, not a command, so it cannot be re-executed — a check that was never run established nothing; %s", e.Row, rel, ruleProseLedCommand, first, why, proseLedRemedy(why)))
 					verdictOK = false
 					break
 				}

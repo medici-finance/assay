@@ -65,7 +65,8 @@ the front-door register stays complete). Anything else inbound stays `intake-des
 ## Boot
 
 1. **`deskboot the-desk`** — the whole ceremony in one verb (loop identity, worktree prune, worktree
-   lock, roster registration, the five-check envelope preflight, token mint, read-only board fetch).
+   lock, roster registration, the five-check envelope preflight, token mint, read-only board fetch,
+   worktree currency, and the first sweep's prerequisites: a roster forge mapping and a desk-tools pin).
    It fails closed and names the step that stopped it: 0 complete · 3 disabled · 5 refused (unknown
    role, `$DESK_LOOP` unset/mismatched, shared checkout — isolate first) · 6 unverifiable. **Any
    non-zero exit is a STOP:** report the one summary line, claim nothing, and do NOT file an issue
@@ -227,6 +228,9 @@ not own.
   own identity.
 - **Driver-act runsheet entry** — an escalation that is an ACT only the driver can perform: see
   [`../../references/desk-common.md`](../../references/desk-common.md) §Driver-act runsheet entry.
+  Its `BLOCKED-ON-HUMAN` report or `human-only` filing carries the act as an Act block
+  (`ask-decision` §"Act — the shape of the fifth part"); `deskfile new` refuses one without it (exit 5)
+  when the filing is labelled `human-only` or its body opens with the `BLOCKED-ON-HUMAN` marker.
 - **File-and-exit, never block — the pod-loop contract (desk-hardening/13).** File (or confirm
   already-filed) the escalation, then **exit the run**; never hold it open for the answer, resumption
   is event-driven. A blocked state must be an at-rest filed issue anyone can inspect, never a hung
@@ -260,6 +264,8 @@ not own.
 > `../../references/<harness>.md`.
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+
+> **Every `gh` call carries this role's `GH_TOKEN`, reads included.** When no desk verb covers a forge call, run it only through the recipe in [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role), never a hand-typed shortcut. That recipe takes the role from `$DESK_LOOP`, mints it with `desktoken`, scopes the token to that one command without exporting it, and stops before `gh` unless the mint exited 0 and the token file holds a non-whitespace token. A bare `gh` call runs as the host's stored login, which is usually a human's, so a desk never runs one, not even for a read.
 
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 

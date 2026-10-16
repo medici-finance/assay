@@ -17,8 +17,8 @@ package main
 //     installation token), through deskkit.ForgeFor — the resolver every migrated desk read
 //     uses.
 //
-// The second step is where this verb deliberately departs from the bash oracle, whose fallback is
-// the gh keyring account. A Go desk verb never reaches a forge through the gh CLI (the closed forge
+// The second step is where this verb deliberately departs from the bash oracle, which mints its
+// per-repo role token through the desktoken CLI and runs `gh` under it. A Go desk verb never reaches a forge through the gh CLI (the closed forge
 // surface, internal/forgeban) and never through an ambient credential (deskkit.ForgeFor refuses to
 // build a client without a minted token). A repo whose owner has no token file and whose session
 // has no resolvable role is therefore a FAILED read — MONITOR-DEGRADED, loudly — never a read as

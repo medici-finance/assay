@@ -13,6 +13,7 @@ unblocks:
 - graph-execution/22
 - graph-execution/27
 - graph-execution/21
+- performance-collection/09
 effort: M
 gate: human
 risk:
@@ -46,7 +47,7 @@ consumers:
 - 'operator lifecycle and cockpit: out-of-scope (adopter qualification)'
 - 'loopadmin/journal PostgreSQL schema and migrations: follow-up graph-execution/26 (this brief; flips to fixed-here when the implementation edits the path)'
 - 'spec/operator-incarnation-v1.md (read before each launch): follow-up graph-execution/16'
-version: 3
+version: 6
 id: bcbee0b0-8f12-4e7a-b028-0637b2bab0c3
 ---
 
@@ -126,6 +127,31 @@ Package R3 later amends this brief for runner **guard events, budgets, resource 
 custody** (delivery sequence, operating obligations). That is not authored here; do not
 implement it under these rows.
 
+## Operation-count accounting amendment — 2026-10-15
+
+Apply the target's [brake and pacing contract](../../proposals/non-ci-architecture/11-target-architecture.md#pacing-counts-are-best-effort-brakes-fail-closed).
+The **child-launch budget** that Task 3 rechecks at every child launch and the bound on
+recursive agent creation in Task 4 are **brakes**: they stay fail-closed. An unavailable,
+unreadable or unverifiable child-launch count refuses the launch exactly as Task 4's absent
+or unreadable budget does, and a supervisor restart cannot regain consumed launch allowance
+(Task 3's preserved consumption). Required budget/profile configuration stays mandatory and
+its absence is never unlimited. Hard resource/time/cost limits, shared capacity, launch
+identity, generation fencing, stop state and unknown launch/cancel reconciliation retain
+their contracts.
+
+Only desk/tool **pacing** counts (cadence or throughput pacing of already-authorized,
+budget-admitted launches) are best effort: no global network-spanning lock or exact budget
+reservation, and one shared estimate, never per-process. Launch pacing is effect-class,
+because each launch leaves a durable record in the journal: the estimate is re-derived
+from the journal's recorded launches in the window before each launch, never zero, and a
+cached pacing row is never the source. An unavailable seeded pacing estimate does not alone refuse an
+otherwise-authorized launch or receipt delivery.
+
+Qualify against target doc 15's §Operation-count qualification cases; row 9 below carries
+the brake obligation and is red until the named test exists. Relaxing a brake is a separate
+human decision; this amendment relaxes none. Existing Task/Verify rows and Evidence are
+preserved.
+
 ## Task
 
 1. Move `tools/desk/internal/cellprocess` into `loopadmin/process` as the module's one process runner, without copying it: keep its process-tree containment and uncertain-cleanup result unchanged, delete the old package, and re-point cellctl's cadence path at the moved package through a `require` plus relative `replace` of the loopadmin module in `tools/desk/go.mod` (the pattern `tools/loopresolve/go.mod` uses for `cellconfig`); cellctl's existing cadence tests stay green unchanged, and the tools/desk release build must resolve the relative `replace`. Extend the process-launch audit so it also scans `loopadmin/` and re-key the runner's exec-site entry to the moved path; the audit must not lose sight of that exec site. Implement one shared process/session supervisor over /20 and that runner. Accept only authenticated caller-scoped, operator-approved launch profiles and validated assignment/reservation references. Support standing-desk and workflow-stage modes with identical adapter and lifecycle semantics. An operator may run separate per-role processes of the same binary; reuse does not imply a privileged all-role daemon.
@@ -151,6 +177,7 @@ Caller/invocation/subject and validated actor capability enter; typed state, evi
 | 6 | check:ci +flow +mutation | `(cd loopadmin && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestJournalSharedStoreRestart$" ./... > "$routing_out" && grep -q -- "--- PASS: TestJournalSharedStoreRestart " "$routing_out")` | exit 0; named PASS against a real disposable PostgreSQL; launch intent and receipt commit in one transaction before the child starts, a restart with the database intact reconciles once, and after the journal database is dropped an unknown launch holds instead of relaunching; mutation: relaunch a child whose launch intent row is missing after database loss — the named test must fail |
 | 7 | check:ci +flow +mutation | `(cd loopadmin && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestJournalIncarnationPaused$" ./... > "$routing_out" && grep -q -- "--- PASS: TestJournalIncarnationPaused " "$routing_out")` | exit 0; named PASS; a journal restored from backup under a mismatched or missing operator incarnation starts paused and launches no child until rotation and confirmed group stop; mutation: resume launches when an activation record is present but its incarnation mismatches — the named test must fail |
 | 8 | check:ci +mutation | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestNoEmbeddedJournalEngine$" ./... > "$routing_out" && grep -q -- "--- PASS: TestNoEmbeddedJournalEngine " "$routing_out")` | exit 0; named PASS; no loopadmin package imports a SQLite or other embedded database driver or the `workflow` module; mutation: add an embedded-driver import under `loopadmin/journal` — the named test must fail |
+| 9 | check:ci +flow +mutation | `(cd loopadmin && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLoopAdminLaunchBudgetBrake$" ./... > "$routing_out" && grep -q -- "--- PASS: TestLoopAdminLaunchBudgetBrake " "$routing_out")` | exit 0; named PASS against a real disposable PostgreSQL journal; with the child-launch usage unreadable the launch is refused and no child starts; repeated supervisor restarts within one window cannot launch beyond the configured budget or regain consumed allowance; a seeded pacing estimate alone does not refuse an authorized launch; mutation: treat an unavailable child-launch count as under budget — the named test must fail |
 
 ## Pre-mortem and dispatch checks
 

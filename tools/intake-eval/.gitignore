@@ -1,0 +1,2 @@
+# Local build output — `go build .` writes an executable named after the dir.
+/intake-eval
