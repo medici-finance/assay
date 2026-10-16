@@ -355,9 +355,15 @@ var (
 // path begins with two separators; no `..` segment between either separator; no control
 // character. A segment is any run of permitted characters other than `..` (the first one also
 // not empty, which is what keeps a second separator off the root).
+//
+// The control characters are the characters themselves, not regexp escapes: RE2 and ECMA-262
+// both read a literal character in a class as itself, and the JSON schema then carries them as
+// ordinary JSON string escapes (backslash, u, four hex digits), so its pattern decodes to this
+// exact string.
 const (
-	pathChar       = `[^\x00-\x1f\x7f/\\]`
-	pathCharNoDot  = `[^\x00-\x1f\x7f/\\.]`
+	pathCtl        = "\x00-\x1f\x7f"
+	pathChar       = `[^` + pathCtl + `/\\]`
+	pathCharNoDot  = `[^` + pathCtl + `/\\.]`
 	pathSegment    = `(\.?` + pathCharNoDot + `|\.\.` + pathChar + `)` + pathChar + `*`
 	absPathPattern = `^(/|[A-Za-z]:[\\/])((` + pathSegment + `|\.)([\\/](` + pathSegment + `|\.?))*)?$`
 )

@@ -330,7 +330,7 @@ func TestWorkspaceContractRoundTrip(t *testing.T) {
 		accept := []string{"/", "/srv/cells/alpha", "/a/./b", "/a//b", "/...", "/a/..b", "/a/b..",
 			"C:/x", "C:" + bs + "x" + bs + "y", "/caf" + string(rune(0xe9)) + string(rune(0x2028)),
 			"/a b", "/" + strings.Repeat("a", 4095)}
-		refuse := []string{"", "rel", "C:x", "//srv/share", bs + bs + "srv" + bs + "share",
+		refuse := []string{"", "rel", "C:x", "//srv", "//h/share", bs + bs + "srv" + bs + "share",
 			bs + bs + "?" + bs + "C:" + bs + "x", "//?/C:/x", "/" + bs + "x", "C:" + bs + bs + "x",
 			"/..", "/a/..", "/a/../b", "/a" + bs + ".." + bs + "b", "C:" + bs + "..", "C:/x/../y",
 			"/a\tb", "/a\nb", "/a\rb", "/a\x00b", "/a\x01b", "/a\x1fb", "/a\x7fb", "/a\xffb",
@@ -352,7 +352,7 @@ func TestWorkspaceContractRoundTrip(t *testing.T) {
 		for field, edit := range map[string]func(*Record){
 			"path.logical":   func(r *Record) { r.Path.Logical += "/../x" },
 			"path.physical":  func(r *Record) { r.Path.Physical = bs + bs + "host" + bs + "share" },
-			"git.common_dir": func(r *Record) { r.Git.CommonDir = "//host/share/.git" },
+			"git.common_dir": func(r *Record) { r.Git.CommonDir = "//h/share/.git" },
 			"git.admin_dir":  func(r *Record) { r.Git.AdminDir += "\x1b" },
 		} {
 			r := rec

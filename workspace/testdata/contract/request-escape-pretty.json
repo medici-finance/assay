@@ -4,7 +4,7 @@
   "operation": "allocate",
   "cell": {
     "uuid": "00000000-7b4d-4e8a-9c21-5d6e7f8a9b0c",
-    "root": "\/srv\/cells\/caf\u00E9\u003c\u0026\u003e\u2028"
+    "root": "/srv\/cells\/caf\u00E9\u003c\u0026\u003e\u2028"
   },
   "repo": {
     "forge": "github.com",

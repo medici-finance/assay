@@ -106,8 +106,8 @@
     {
       "name": "a control character is admitted inside a path segment",
       "file": "contract.go",
-      "old": "pathChar       = `[^\\x00-\\x1f\\x7f/\\\\]`",
-      "new": "pathChar       = `[^\\x00/\\\\]`"
+      "old": "pathChar       = `[^` + pathCtl + `/",
+      "new": "pathChar       = `[^` + `/"
     },
     {
       "name": "a path that is not valid UTF-8 is admitted",

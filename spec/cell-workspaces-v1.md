@@ -38,7 +38,7 @@ Key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 
 Every identifier a caller chooses — `request_id`, `attempt_id`, a task or claim reference's `id`, and a role session — is 1–256 visible ASCII characters (U+0021–U+007E): no space, control, or non-ASCII character. The characters JSON and HTML treat specially (`"`, `\`, `<`, `>`, `&`) are allowed, which is why section 4.2 fixes how they are written.
 
-Every path in these documents — the cell root, a record's logical and physical paths, and its Git common and administration directories — is an absolute local path: valid UTF-8 of at most 4096 bytes that starts at a POSIX root (`/` not followed by a second separator) or a drive root (`C:/` or `C:\`). It is never a network root (`//host/share`, `\\host\share`, `\\?\`), never contains a `..` segment between either separator, and never contains a control character (U+0000–U+001F or U+007F). The schema carries this rule as one pattern on every path member, the same string the reference implementation checks.
+Every path in these documents — the cell root, a record's logical and physical paths, and its Git common and administration directories — is an absolute local path: valid UTF-8 of at most 4096 bytes that starts at a POSIX root (`/` not followed by a second separator) or a drive root (`C:/` or `C:\`). It is never a network root (`//<host>/<share>`, `\\<host>\<share>`, `\\?\`), never contains a `..` segment between either separator, and never contains a control character (U+0000–U+001F or U+007F). The schema carries this rule as one pattern on every path member, the same string the reference implementation checks.
 
 ## 4. Requests
 
