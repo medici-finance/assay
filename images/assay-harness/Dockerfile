@@ -50,7 +50,7 @@ FROM --platform=$BUILDPLATFORM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384b
 
 # GOWORK=off is load-bearing: the repo root carries no go.work, and statusgen/
 # and tools/desk are self-contained modules (only external dep is
-# gopkg.in/yaml.v3; the only `replace` is the stdlib-only sibling forgeread module), so each builds from its own dir with
+# gopkg.in/yaml.v3; the only `replace`s are the stdlib-only sibling forgeread and perfrec modules), so each builds from its own dir with
 # GOWORK off. GOARCH is fixed to amd64 to match the runtime stage's platform.
 ENV GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 
@@ -76,6 +76,10 @@ COPY forgeread/ /src/forgeread/
 # comms — the stdlib-only public message contract (cellmsg-v1) tools/desk resolves through a
 # `replace ../../comms`; same sibling layout as forgeread.
 COPY comms/ /src/comms/
+
+# perfrec — the stdlib-only shared perf-v1 writer statusgen and tools/desk each resolve through a
+# `replace` to a sibling directory; same sibling layout as forgeread.
+COPY perfrec/ /src/perfrec/
 
 # statusgen — its own module, stamped with main.statusgenVersion.
 WORKDIR /src/statusgen

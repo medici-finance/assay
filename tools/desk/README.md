@@ -413,7 +413,9 @@ desk commands append ONE `perf-v1` line per completed invocation to a local day 
 All 67 operational commands are wrapped, including deskfile, deskreply, scanloop, issueboard,
 reviewloop, verifyloop and the supervisor. `deskperf` is excluded so reading a report cannot
 change its input; `muhar` is a developer mutation harness with separate execution accounting.
-A command-inventory test fails when a new entrypoint forgets its wrapper:
+A command-inventory test fails when a new entrypoint forgets its wrapper. `statusgen` writes the same
+record (tool `statusgen`, verb = its mode) through the same shared `perfrec` module, so
+`deskperf report --tool statusgen` reads it too:
 
 ```sh
 export ASSAY_TELEMETRY=1        # opt in; unset it to stop — the history then ages out
