@@ -4006,6 +4006,12 @@ func (g *GitLabForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, 
 // Evidence-lane fallback needs no separate CreateRef op. The idempotency read and append-only
 // shrink guard are folded in exactly as the GitHub backend's, so the two behave the same.
 func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileResult, error) {
+	return g.writeEvidenceFile(repo, in, nil, nil, false)
+}
+
+// writeEvidenceFile shares the native write implementation with a scoped landing.
+// known binds prior to the validator snapshot; LastCommitID remains enforced by GitLab.
+func (g *GitLabForge) writeEvidenceFile(repo ForgeRepo, in WriteFileInput, project *gitlab.Project, prior *FileContent, known bool) (*WriteFileResult, error) {
 	cl, err := g.client()
 	if err != nil {
 		return nil, err
@@ -4014,9 +4020,13 @@ func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 	res := &WriteFileResult{}
 
 	projPath := fmt.Sprintf("/projects/%s", proj)
-	p, _, perr := cl.Projects.GetProject(repo.Slug(), nil)
-	if perr != nil {
-		return nil, g.mapErr(http.MethodGet, projPath, perr)
+	p := project
+	if p == nil {
+		var perr error
+		p, _, perr = cl.Projects.GetProject(repo.Slug(), nil)
+		if perr != nil {
+			return nil, g.mapErr(http.MethodGet, projPath, perr)
+		}
 	}
 	if p.DefaultBranch != "" && in.Branch == p.DefaultBranch {
 		res.DefaultBranchNotWritable = true
@@ -4038,12 +4048,16 @@ func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 	if in.StartBranch != "" {
 		probeRef = in.StartBranch
 	}
-	cur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: probeRef})
+	cur := prior
+	var rerr error
+	if !known {
+		cur, rerr = g.ReadFile(repo, ReadFileInput{File: in.File, Ref: probeRef})
+	}
 	if rerr != nil {
 		if !IsForgeNotFound(rerr) {
 			return nil, rerr
 		}
-	} else {
+	} else if cur != nil && cur.Exists {
 		priorSHA, priorContent, exists = cur.SHA, cur.Content, true
 	}
 	// Conditional write (see WriteFileInput.ExpectedSHA): the update below cites priorSHA as
