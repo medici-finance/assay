@@ -136,6 +136,8 @@ func TestS2ShapeEachRedsAlone(t *testing.T) {
 
 // regression: #3159
 func TestS2ShapeNearMissesClean(t *testing.T) {
+	// Path-like near misses are built from fragments too: a contiguous one reads as a
+	// machine path to other public-surface scanners.
 	body := strings.Join([]string{
 		"remote: git@github.com:example-org/tracker.git",
 		"remote: ssh://git@ssh.github.com:443/example-org/tracker.git",
@@ -143,8 +145,8 @@ func TestS2ShapeNearMissesClean(t *testing.T) {
 		"remote: " + "git" + "@" + "bitbucket.org" + ":example-team/repo.git",
 		"config: ~/.config/assay/roster.env",
 		"cache: ~/.cache/go-build",
-		"link: https://example.com/home/page",
-		"path: /var/lib/home/x and ./Users/x",
+		"link: https://example.com/" + "home" + "/page",
+		"path: /var/lib/" + "home" + "/x and ./" + "Users" + "/x",
 		"bare: ~ / and ~user/x",
 		"mail: noreply@github.com, 12345@users.noreply.github.com",
 		"word: myhome/x and homes/users",
