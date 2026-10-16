@@ -24,9 +24,9 @@ func TestTokenCacheNeverTorn(t *testing.T) {
 	// Different lengths so a torn write is visible as a prefix of a longer token or as an
 	// empty file, not only as a mix of two same-length values.
 	tokens := []string{
-		"ghs_" + strings.Repeat("a", 36),
-		"ghs_" + strings.Repeat("b", 200),
-		"ghs_" + strings.Repeat("c", 8),
+		"tok_" + strings.Repeat("a", 36),
+		"tok_" + strings.Repeat("b", 200),
+		"tok_" + strings.Repeat("c", 8),
 	}
 	valid := map[string]bool{}
 	for _, tok := range tokens {
@@ -84,8 +84,8 @@ func TestTokenCacheNeverTorn(t *testing.T) {
 func TestTokenCacheOldUntilRename(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "reviewer-token-1")
-	oldTok := "ghs_old_" + strings.Repeat("o", 30)
-	newTok := "ghs_new_" + strings.Repeat("n", 60)
+	oldTok := "tok_old_" + strings.Repeat("o", 30)
+	newTok := "tok_new_" + strings.Repeat("n", 60)
 	if err := writeTokenCacheAtomic(path, oldTok); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestTokenCacheModeNoLeftovers(t *testing.T) {
 	path := filepath.Join(dir, "reviewer-token-1")
 	// A pre-existing, too-permissive file is replaced by a 0600 one, as the old Chmod did.
 	writeFileMode(t, path, "stale", 0o644)
-	if err := writeTokenCacheAtomic(path, "ghs_x"); err != nil {
+	if err := writeTokenCacheAtomic(path, "tok_x"); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	fi, err := os.Stat(path)
@@ -152,7 +152,7 @@ func TestTokenCacheModeNoLeftovers(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(bad, "keep"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeTokenCacheAtomic(bad, "ghs_y"); err == nil {
+	if err := writeTokenCacheAtomic(bad, "tok_y"); err == nil {
 		t.Fatal("expected an error renaming over a non-empty directory")
 	}
 	ents, _ = os.ReadDir(dir)
