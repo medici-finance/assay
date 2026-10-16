@@ -182,3 +182,13 @@ Continuing-operations owns assessment meaning; existing desks own investigation,
 review and verification. A merged repair remains awaiting measured outcome, and missing
 coverage cannot justify a repair. No second scheduler, runtime DB, forge writer or policy
 self-modification is introduced. Existing default gates and qualified legacy paths remain.
+
+## Portable execution follow-through — 16 October 2026
+
+The [execution-environment amendment](27-agent-execution-environments.md) extends this same
+public runtime. Agent-execution/01–02 supply capability/profile and preparation contracts;
+/03 consumes the existing local supervisor/adapter; /04 tests the existing controller/effect
+path under restore; /05 supplies a truthful lifecycle snapshot to current status clients;
+/06 independently investigates AX offline. R2 PostgreSQL and R4 effect identity/reconciliation
+remain authoritative. No AX task state, runner receipt or filesystem restoration grants
+work acceptance or renews authority. Existing R3/R4, celld and R7 activation obligations remain.

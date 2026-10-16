@@ -196,3 +196,20 @@ fail-open brake. C is the number of concurrently admitting processes.
 | A pacing count's shared counter is lost mid-window | An effect-class estimate is re-derived from the window's recorded effect intents and receipts before each admission; a read-class estimate is seeded from the last retained count; neither starts at zero. Coverage is reported unavailable rather than measured zero; counter failure alone neither holds publication nor requires an operator reset. |
 | Repeated restart or per-process fallback within one window | For an effect-class pacing count, run at least two processes from a seed well below the cap (at most half of it), with K restarts. They do not multiply the configured cap: the estimate is re-derived from the window's intents and receipts before each admission, so every process's admissions are counted. With intents committed but every pacing-row update skipped, admissions still stay within cap + C, because the re-derive ignores the row. Within one operator incarnation, total admissions stay within cap + C, or 2 × (cap + C) after the single recorded unseeded reset. A second unseeded reset, or an unreadable or absent reset record, treats the window as exhausted. Starting any fallback estimate at zero, keeping a per-process estimate that ignores other processes' admissions, or admitting against the cached pacing row instead of the re-derived estimate must fail the test. Read-class pacing counts are outside this bound by contract; they must still seed from the last retained count, never zero. |
 | Idempotency, approval or unknown-effect history is lost | Reconstruct from retained evidence or hold the affected effect. The pacing tolerance cannot authorize duplicate publication, clear an unknown outcome or recreate approval. |
+
+## Portable execution qualification — 16 October 2026
+
+[Agent-execution/01–06](../../streams/agent-execution/README.md) extend the existing runner
+and whole-system regression owners. Their Verify tables require production-boundary named
+PASS checks and executable negative mutations. Preserve the original runner conformance
+suite; run the new profile/receipt cases for both desk and workflow modes. The integrated
+recovery fixture uses the real controller/publication/supervisor with its own disposable
+PostgreSQL and a fake provider; a fake workflow is insufficient. Count provider contacts to
+prove lost replies cannot create a second logical effect, and bypass the upper controller
+to prove a stale restored owner is denied at the executor.
+
+Status qualification covers alive environment plus failed child, unknown cancellation,
+missing acceptance coverage, denied cross-cell reads and read-only reconnect. AX source/fixture
+checks do not qualify Substrate or a live backend. Existing R3/R4 deployment, celld remote
+experiments and R7 mounted-route tests remain separately required. Source fixtures and tests
+are implementation deliverables; this authoring amendment claims no new runtime test passed.
