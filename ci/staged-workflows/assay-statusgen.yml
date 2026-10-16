@@ -722,6 +722,10 @@ jobs:
         env:
           # The READ token: statusgen reconcile resolves it from GITHUB_TOKEN.
           GITHUB_TOKEN: ${{ github.token }}
+          # The fold's provenance read resolves verifier identities from the roster (#3082).
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+          ASSAY_HOME_REPO: ${{ vars.ASSAY_HOME_REPO || github.repository }}
         run: |
           set -euo pipefail
           statusgen="${RUNNER_TEMP}/statusgen"
