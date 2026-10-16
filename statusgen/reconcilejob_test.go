@@ -1490,6 +1490,24 @@ func reconcileWithStepEnv(t *testing.T, actions string) scanConfig {
 	return scanEffectiveConfig()
 }
 
+// TestGitHubActionsCleared pins TestMain's clearing of GITHUB_ACTIONS: it
+// re-runs this test binary with GITHUB_ACTIONS=true, as an Actions runner
+// sets it, and requires the child to see none, so the suite's verdicts do not
+// depend on where it runs (release.yml runs it on a runner).
+func TestGitHubActionsCleared(t *testing.T) {
+	if os.Getenv("STATUSGEN_GHACTIONS_PROBE") == "1" {
+		if v, ok := os.LookupEnv("GITHUB_ACTIONS"); ok {
+			t.Fatalf("the test binary inherited GITHUB_ACTIONS=%q", v)
+		}
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestGitHubActionsCleared$", "-test.count=1")
+	cmd.Env = append(os.Environ(), "GITHUB_ACTIONS=true", "STATUSGEN_GHACTIONS_PROBE=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("a GITHUB_ACTIONS set by the caller reached the tests: %v\n%s", err, out)
+	}
+}
+
 // TestReconcileJobRosterEnv: in Actions, `statusgen reconcile` reads the
 // roster from the step's env (the CI transport, as every mode but
 // --scan-issues does), so the provenance read resolves the verifier.

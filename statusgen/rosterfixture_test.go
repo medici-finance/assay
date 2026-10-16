@@ -85,6 +85,15 @@ func TestMain(m *testing.M) {
 	if err := os.Unsetenv("DESK_LOOP"); err != nil {
 		panic("cannot clear DESK_LOOP for the test binary: " + err.Error())
 	}
+	// No test inherits the runner's GITHUB_ACTIONS either. reconcile picks its
+	// roster class from it, so on an Actions runner every reconcile test would
+	// read the empty env roster instead of the fixture file below, and the
+	// process-global class would leak into later roster tests (#3082). A test
+	// that needs Actions sets it itself with t.Setenv;
+	// TestGitHubActionsCleared pins this line.
+	if err := os.Unsetenv("GITHUB_ACTIONS"); err != nil {
+		panic("cannot clear GITHUB_ACTIONS for the test binary: " + err.Error())
+	}
 	cleanup, err := installFixtureRoster()
 	if err != nil {
 		panic("cannot install the test-fixture roster: " + err.Error())
