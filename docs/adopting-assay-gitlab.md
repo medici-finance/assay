@@ -250,7 +250,10 @@ which is what rotate-on-mint (§5) actually calls at operation time. To renew ev
 role's PAT in one run, use `tools/renew-fleet-gitlab-tokens.sh` (§2g).
 
 **Token custody.** Every minted token is written to a `0600` file under `--out-dir`; the
-script prints the file's **path**, never the token value, on stdout or in argv. Move the
+script prints the file's **path**, never the token value, on stdout or in argv. Each file is
+created new and then moved into place, replacing whatever was at that name. An existing
+`--out-dir` that other users can write to is refused before any request is sent (Unix; use a
+directory only you can write to). Move the
 files out of the default `mktemp` location into your role-token store immediately — the
 directory is not cleaned up for you, by design, so a run's tokens survive the script
 exiting.
@@ -287,9 +290,10 @@ holds an invalidated one, so on that layout never copy the provisioned file back
 `gitlab-<role>.token` — doing so installs a dead credential, and the next desk verb fails `401`
 on its first API read. Prefer the link on any platform that has one. (#1112)
 
-The script itself is **bash + curl + jq** — a labelled **fallback** (#1646), not the Windows
-path (see **`deskfleet provision`** at the top of this section). If you do run it on native
-Windows, run it from Git-Bash or WSL, never from PowerShell.
+The script itself is a **bash** adapter onto `deskgitlab create` — a labelled **fallback**
+(#1646), not the Windows path (see **`deskfleet provision`** at the top of this section). If you
+do run it on native Windows, run it from Git-Bash or WSL, never from PowerShell, or run
+`deskgitlab create` with the same flags directly.
 
 **`GITLAB_API_BASE` — required before the next boot, and it is not a `roster.env` key.**
 Every GitLab-side token operation — the read-only custody check `deskboot` / `deskroster

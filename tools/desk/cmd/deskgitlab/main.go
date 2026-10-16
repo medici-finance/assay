@@ -5,8 +5,8 @@
 //
 // It is the Go port of tools/create-fleet-gitlab.sh (desktools-v2/30), which is now a
 // transparent adapter that execs `deskgitlab create`. The behaviour, the output lines and
-// the exit codes are the script's; docs/streams/desktools-v2/brief-30-port-the-gitlab-fleet-
-// provisioner-to-a-go-command.md records where they deliberately differ.
+// the exit codes are the script's; the changelog fragment changelog/cli-gitlab-create.md
+// records where they deliberately differ.
 //
 // Exit codes: 0 every step succeeded · 1 a step failed (listed in the summary) or a fatal
 // API refusal · 2 usage (an unknown flag, a bad value, a missing requirement), before any
@@ -119,7 +119,7 @@ func bindings() []cli.Binding {
 		{Key: "pat-expiry-days", Kind: cli.String, Flag: "pat-expiry-days", Default: strconv.Itoa(defaultPATDays),
 			Usage: "PAT lifetime in whole `days` (spec.md §5's RECOMMENDED backstop)"},
 		{Key: "out-dir", Kind: cli.String, Flag: "out-dir",
-			Usage: "`dir` the minted token files are written to, 0600 each (default: a fresh temp dir)"},
+			Usage: "`dir` the minted token files are written to, 0600 each; refused if other users can write to it (default: a fresh temp dir)"},
 		{Key: "avatars-dir", Kind: cli.String, Flag: "avatars-dir",
 			Usage: "upload `dir`/<role>.png as each new account's own avatar (default: the public role icons)"},
 		{Key: "no-avatars", Kind: cli.Bool, Flag: "no-avatars",
@@ -224,7 +224,7 @@ func (r *refusal) Error() string { return r.msg }
 func (r *refusal) ExitCode() int { return cli.ExitUsage }
 
 // validate is the domain check: every combination the provisioner refuses, in the script's
-// order and with its messages, plus three it adds (see the brief's compatibility report).
+// order and with its messages, plus three it adds (listed in changelog/cli-gitlab-create.md).
 // It reads nothing and touches nothing, so a refused run has had no effect.
 func validate(o options) error {
 	if o.avatarsOnly {

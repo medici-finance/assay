@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -100,6 +101,10 @@ func (p *provisioner) run() error {
 		}
 		if err := os.MkdirAll(p.outDir, 0o700); err != nil {
 			p.warn("error: could not create --out-dir: %v", err)
+			return errAbort{}
+		}
+		if err := checkOutDirPrivate(p.outDir); err != nil {
+			p.warn("error: --out-dir: %v", err)
 			return errAbort{}
 		}
 	}
@@ -307,7 +312,7 @@ func (p *provisioner) provisionRole(r fleetRole) error {
 
 	if r.Role == "board-writer" {
 		p.boardWriterID = userID
-		if err := os.WriteFile(filepath.Join(p.outDir, ".board-writer-id"), []byte(userID+"\n"), 0o600); err != nil {
+		if err := writeSecretFile(filepath.Join(p.outDir, ".board-writer-id"), userID+"\n"); err != nil {
 			p.warn("error: could not record the board-writer id: %v", err)
 			return errAbort{}
 		}
@@ -370,21 +375,55 @@ func (p *provisioner) provisionRole(r fleetRole) error {
 	return nil
 }
 
-// writeSecretFile writes value to path, readable by the owner only, whatever the umask.
+// writeSecretFile writes value to path, readable by the owner only, whatever the umask. The
+// value goes into a new file created exclusively in path's directory, which then replaces
+// path as a whole: whatever already sits at path (a file or a link) is replaced, never
+// opened or written through.
 func writeSecretFile(path, value string) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
 		return err
 	}
+	tmp := f.Name()
+	done := false
+	defer func() {
+		if !done {
+			_ = os.Remove(tmp)
+		}
+	}()
+	merr := f.Chmod(0o600)
 	_, werr := f.WriteString(value)
 	cerr := f.Close()
-	if werr != nil {
-		return werr
+	for _, e := range []error{merr, werr, cerr} {
+		if e != nil {
+			return e
+		}
 	}
-	if cerr != nil {
-		return cerr
+	if err := os.Rename(tmp, path); err != nil {
+		return err
 	}
-	return os.Chmod(path, 0o600)
+	done = true
+	return nil
+}
+
+// checkOutDirPrivate refuses a token directory other users can write to: they could
+// replace or remove the token files in it. Windows permissions are not mode bits, so the
+// check applies on other systems only.
+func checkOutDirPrivate(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		return fmt.Errorf("%s is not a directory", dir)
+	}
+	if fi.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("%s is writable by other users (mode %v); use a directory only you can write to", dir, fi.Mode().Perm())
+	}
+	return nil
 }
 
 // --- the --project block ---------------------------------------------------------------

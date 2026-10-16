@@ -6,7 +6,8 @@
 #   A. the adapter itself — every argument reaches deskgitlab unchanged after
 #      the `create` verb, the exit status comes back unchanged, the credential
 #      travels in the environment and never on argv, and the build-from-source
-#      fallback works and cleans up after itself;
+#      fallback works, refuses with 127 when the build fails, and cleans up after
+#      itself;
 #   B. the provisioner's behaviour — the scenarios this suite used to drive
 #      through a fake curl (tier fallback, the guarded protect step, approvals
 #      read-back, protected tags, merge checks, labels, avatars, credential
@@ -156,6 +157,22 @@ if [ "$RC" = "127" ] && printf '%s' "$OUT" | grep -q 'deskgitlab is not on PATH'
   ok "C3 with neither deskgitlab nor go the adapter says so and exits 127"
 else
   bad "C3 neither deskgitlab nor go -> exit 127 with a message (rc=$RC)"
+fi
+GOFAIL="$WORK/gofail"; mkdir -p "$GOFAIL"
+cat > "$GOFAIL/go" <<'GOEOF'
+#!/usr/bin/env bash
+: > "$GOFAIL_MARK"
+echo "stub go: build failed" >&2
+exit 1
+GOEOF
+chmod +x "$GOFAIL/go"
+RC=0
+OUT="$(GOFAIL_MARK="$WORK/gofail.called" PATH="$GOFAIL:$CLEAN_PATH" TMPDIR="$FB_TMP" "$BASH_BIN" "$IMPL" --group g --prefix p --dry-run 2>&1)" || RC=$?
+if [ "$RC" = "127" ] && [ -e "$WORK/gofail.called" ] && printf '%s' "$OUT" | grep -q 'building deskgitlab from .* failed' \
+   && ! printf '%s' "$OUT" | grep -q 'No such file' && [ -z "$(ls -A "$FB_TMP")" ]; then
+  ok "C4 a failed fallback build exits 127 (not 1, a step failure), runs nothing and removes the build dir"
+else
+  bad "C4 failed fallback build -> exit 127, nothing run, build dir removed (rc=$RC, left behind: $(ls -A "$FB_TMP" | tr '\n' ' '))"
 fi
 
 # --- the provisioner's scenarios -----------------------------------------------------

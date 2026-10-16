@@ -5,7 +5,8 @@
 #   deskgitlab create "$@"
 #
 # with every argument passed through unchanged, and exits with deskgitlab's
-# exit status (0 ok · 1 a step failed · 2 usage, before any effect).
+# exit status (0 ok · 1 a step failed · 2 usage, before any effect). When no
+# deskgitlab can be found or built it exits 127, before any effect.
 #
 # The provisioner itself — the seven per-role service accounts, their
 # memberships, first PATs and avatars, and the fleet project's protected
@@ -35,8 +36,8 @@ fi
 build_dir="$(mktemp -d "${TMPDIR:-/tmp}/deskgitlab.XXXXXX")"
 trap 'rm -rf "$build_dir"' EXIT
 if ! go -C "$desk_dir" build -o "$build_dir/deskgitlab" ./cmd/deskgitlab; then
-  echo "error: building deskgitlab from ${desk_dir} failed" >&2
-  exit 1
+  echo "error: building deskgitlab from ${desk_dir} failed; nothing was sent" >&2
+  exit 127
 fi
 rc=0
 "$build_dir/deskgitlab" create "$@" || rc=$?

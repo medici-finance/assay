@@ -1,5 +1,5 @@
 {
-  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIAdmissionBoundary)$' ./cmd/deskgitlab/",
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIAdmissionBoundary|TestAPIClientDoesNotFollowRedirects|TestFleetScenarioTokenFileReplacedNotFollowed|TestFleetScenarioSharedOutDirRefused)$' ./cmd/deskgitlab/",
   "control": {
     "name": "CONTROL — a parse failure exits with the wrong code (usage exit 2 becomes 3)",
     "file": "cmd/deskgitlab/main.go",
@@ -42,6 +42,30 @@
       "file": "cmd/deskgitlab/main.go",
       "old": "if o.noAvatars && o.avatarsDir != \"\" {",
       "new": "if false && o.noAvatars && o.avatarsDir != \"\" {"
+    },
+    {
+      "name": "the API client follows redirects (the no-redirect guard is removed, so a 3xx is followed with the credential header)",
+      "file": "cmd/deskgitlab/client.go",
+      "old": "\tc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }",
+      "new": "\t_ = http.ErrUseLastResponse"
+    },
+    {
+      "name": "the URL rule is bypassed (validateGitLabURL accepts any base URL, plain http off loopback included)",
+      "file": "cmd/deskgitlab/client.go",
+      "old": "func validateGitLabURL(raw string) error {",
+      "new": "func validateGitLabURL(raw string) error {\n\tif true {\n\t\treturn nil\n\t}"
+    },
+    {
+      "name": "the token file is written in place (whatever already sits at the token path is opened and written through instead of replaced)",
+      "file": "cmd/deskgitlab/provision.go",
+      "old": "\tif err := os.Rename(tmp, path); err != nil {",
+      "new": "\tif err := os.WriteFile(path, []byte(value), 0o600); err != nil {"
+    },
+    {
+      "name": "a refusal is dropped (an --out-dir other users can write to is used instead of refused)",
+      "file": "cmd/deskgitlab/provision.go",
+      "old": "\t\tif err := checkOutDirPrivate(p.outDir); err != nil {",
+      "new": "\t\tif err := checkOutDirPrivate(p.outDir); false && err != nil {"
     }
   ]
 }
