@@ -87,6 +87,16 @@ reviewable artifact, not a run.
   module, `spec/loop-admin-runner-v1.md` and `schemas/loop-admin-runner-v1.json`. **Staged, not
   live** — a maintainer promotes it to `.github/workflows/loopadmin.yml`. Until then `ci.yml`'s
   build-test job still builds and vets the module (it discovers every `go.mod`) but runs no tests.
+- `cellcache-mutate.yml` — the cell Go-cache mutation gate (#3148). Runs
+  `python3 internal/cellcache/mutate.py --shard i/3` from `tools/desk` on path triggers for the
+  cache, process and launcher packages, and fails on any `MISSED` mutant and on any
+  `COULD-NOT-MUTATE` one (a mutant that does not compile, a `file` that escapes the module, a
+  stale anchor, a suite timeout). No existing job runs it: the suite takes about ten minutes, far
+  past what `ci.yml`'s `build-test` job should absorb per PR. That job instead runs the
+  `TestMutateGate*` tests, which prove each state the gate reports against a throwaway module.
+  **Staged, not live** - a maintainer promotes it (`git mv ci/staged-workflows/cellcache-mutate.yml
+  .github/workflows/cellcache-mutate.yml`); until then the gate is run by hand, as
+  `docs/cellctl-go-cache.md` ("Mutation gate") says.
 - `forge-surface-control.yml` — twin of the live forge-surface job, which carries `forgeread/**` in
   both path filters (`pull_request` and `push`) and a step running the shared fact reader's
   controls (the module's tests, the ambient-token rule over `forgeread/`, the lower-layer scope
@@ -97,6 +107,13 @@ reviewable artifact, not a run.
   carries the sibling module, without which the corroboration guard cannot build a base that
   already has `forgeread/`. The rest of that staged change (the hourly `reconcile` job and the
   board-writer Environment) was promoted with it, as described below.
+- `assay-statusgen.yml` — perfrec part (#3101): the staged copy also carries the `perfrec/**`
+  path filters (`pull_request` and `push`) and a base-tree archive that carries the sibling
+  `perfrec/` module beside `statusgen/`, for the same reason as the forgeread part above:
+  statusgen's `go.mod` replaces `perfrec` with `../perfrec`, so without it the corroboration
+  guard cannot build a base that already has the module. **This part is promoted** into the
+  live `.github/workflows/assay-statusgen.yml` in the same pull request that adds `perfrec/`
+  (#3113); the rest of the staged copy (#2910) stays pending.
 - `gremlins-daily.yml` — the daily Gremlins mutation sweep (#2647) over the desk tools'
   muhar-spec packages (`tools/gremlins/run.sh`). **Discovery, never a gate**: surviving
   mutants go to the job summary and the uploaded JSON artifact as leads, and survivors in

@@ -160,8 +160,8 @@
     {
       "name": "the mint moves back below forge resolution and admission (the original #2458 order: admission's forge read meets the custody step's empty-token refusal, and every landing, --dry-run included, refuses)",
       "file": "cmd/deskevidence/deskevidence.go",
-      "old": "\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n",
-      "new": "\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n"
+      "old": "\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\tfg = deskkit.EvidenceLandingForge(fg, fr, target, branch)\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n",
+      "new": "\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\tfg = deskkit.EvidenceLandingForge(fg, fr, target, branch)\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n"
     },
     {
       "name": "mint above the command-line refusals (a call refused on its arguments alone spends a token mint — on GitLab, a credential rotation)",
@@ -426,6 +426,48 @@
       "file": "cmd/deskevidence/plainread.go",
       "old": "(untypedOK && fc.Kind == \"\")",
       "new": "fc.Kind == \"\""
+    },
+    {
+      "name": "the publication snapshot accepts a non-regular destination mode (a symlink's target-path text or an executable is read as the brief's prior content and written over)",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "\t\tif f.Mode != 0100644 || b == nil || b.Typename != \"Blob\"",
+      "new": "\t\tif b == nil || b.Typename != \"Blob\""
+    },
+    {
+      "name": "the publication snapshot accepts a blob GitHub flags as binary (converted bytes become the destination's prior content)",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "b.IsBinary == nil || *b.IsBinary || b.Text == nil",
+      "new": "b.IsBinary == nil || b.Text == nil"
+    },
+    {
+      "name": "the publication snapshot stops comparing the blob's byte size with the returned text (partial or converted text is taken as the whole file)",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "b.ByteSize == nil || *b.ByteSize != len(*b.Text) {",
+      "new": "b.ByteSize == nil {"
+    },
+    {
+      "name": "the publication snapshot stops binding the returned text to the Git blob id (same-length altered bytes are written under the real blob's compare-and-swap)",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "\t\tif fmt.Sprintf(\"%x\", h.Sum(nil)) != b.OID {",
+      "new": "\t\tif false && fmt.Sprintf(\"%x\", h.Sum(nil)) != b.OID {"
+    },
+    {
+      "name": "the publication snapshot hands an attestation with unknown body-edit history to the trust reducer",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "wi.Comments.Nodes == nil || !ti.bodyHistoryKnown {",
+      "new": "wi.Comments.Nodes == nil {"
+    },
+    {
+      "name": "the publication snapshot accepts a comments page whose hasNextPage is null (an incomplete comment history is read as complete)",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "wi.Comments.PageInfo.HasNextPage == nil || wi.Comments.Nodes == nil",
+      "new": "wi.Comments.Nodes == nil"
+    },
+    {
+      "name": "a scoped publication forge writes again in process after a write or a lost acknowledgement (the consumed snapshot is replayed)",
+      "file": "internal/deskkit/evidencelanding.go",
+      "old": "\tif e.attempted {\n\t\treturn nil, Refused(\"evidence publication already attempted",
+      "new": "\tif false {\n\t\treturn nil, Refused(\"evidence publication already attempted"
     }
   ]
 }

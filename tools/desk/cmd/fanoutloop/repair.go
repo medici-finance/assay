@@ -180,47 +180,15 @@ func obligationToReworkItem(o deskkit.RepairObligation, roots []deskkit.RootConf
 // ---- forge-transition reconciliation (task 4) ---------------------------------------------------
 
 // RepairForgeObservation is what an ALREADY-AUTHORIZED forge read reports about an obligation's
-// repair PR. It is the ONLY input applyForgeTransition consumes: the interim/offline build makes no
-// probe of its own (exactly like the orphan and represented sources), so tests inject it and the
-// live cutover supplies it from the forge resolver.
-type RepairForgeObservation struct {
-	ReviewOpened bool   // a repair PR is open and under review
-	Approved     bool   // the repair PR is approved and awaits a human merge
-	Merged       bool   // the repair PR MERGED — a legitimate wake event
-	MergedSHA    string // the revision the merge landed at (the repaired revision)
-	RepairPR     string // owner/repo#N of the repair PR, recorded on first observation
-	RepairedBy   string // the worker identity that produced the repair
-}
+// repair PR. The type and its observation step live in deskkit so deskdispatch's admission fixture drives
+// the same transition function this rework source does.
+type RepairForgeObservation = deskkit.RepairForgeObservation
 
-// applyForgeTransition reconciles ONE obligation against a forge observation and returns the
-// (possibly advanced) obligation plus whether it changed. It NEVER resolves an obligation: a merge
-// WAKES independent reverification (awaiting-reverification), it does not close the obligation —
-// only deskkit.RepairObligation.Resolve, driven by an independent verifier at the repaired revision,
-// can do that. State only ADVANCES here (merge outranks approve outranks review-open), so a stale or
-// out-of-order observation can never regress a further-progressed obligation. This is the whole
-// load-bearing invariant restated at the transition boundary: a worker assertion or a merge is a
-// scheduling event, never acceptance.
+// applyForgeTransition reconciles ONE obligation against a forge observation (see
+// deskkit.ApplyForgeObservation): state only advances, and a merge wakes independent
+// reverification — it never resolves the obligation.
 func applyForgeTransition(o deskkit.RepairObligation, obs RepairForgeObservation) (deskkit.RepairObligation, bool) {
-	before := o.State
-	switch {
-	case obs.Merged:
-		if o.RepairPR == "" && strings.TrimSpace(obs.RepairPR) != "" {
-			o = o.WithRepairPR(obs.RepairPR, obs.MergedSHA, obs.RepairedBy)
-		}
-		if o.RepairedBy == "" && strings.TrimSpace(obs.RepairedBy) != "" {
-			o.RepairedBy = strings.TrimSpace(obs.RepairedBy)
-		}
-		o = o.MarkRepairMerged(obs.MergedSHA)
-	case obs.Approved:
-		if o.State == deskkit.RepairAwaitingReview || o.State == deskkit.RepairRepairing {
-			o = o.MarkAwaitingMerge()
-		}
-	case obs.ReviewOpened:
-		if o.State == deskkit.RepairRepairing {
-			o = o.WithRepairPR(obs.RepairPR, obs.MergedSHA, obs.RepairedBy)
-		}
-	}
-	return o, o.State != before
+	return deskkit.ApplyForgeObservation(o, obs)
 }
 
 // ---- small shared helpers -----------------------------------------------------------------------

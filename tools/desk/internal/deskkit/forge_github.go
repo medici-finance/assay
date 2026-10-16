@@ -2787,16 +2787,14 @@ func (g *GitHubForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, 
 // and ignores StartBranch: on GitHub the Evidence row lands on the target branch directly. The
 // idempotency read and the append-only shrink guard are folded in per WriteFileInput.
 func (g *GitHubForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileResult, error) {
-	res := &WriteFileResult{}
-	var priorSHA string
-	var priorContent []byte
-	exists := false
 	cur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: in.Branch})
 	if rerr != nil {
 		if !IsForgeNotFound(rerr) {
 			return nil, rerr
 		}
 		// Absent on the branch → this is a create.
+	} else if cur == nil || !cur.Exists {
+		cur = nil
 	} else {
 		// The idempotency and shrink checks below compare against this read, so it must be
 		// the entry's own bytes: a file served with its content left out (over the Contents
@@ -2812,7 +2810,20 @@ func (g *GitHubForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 				"refusing to write %s on %s: the branch holds it as %s, not a plain file whose served bytes are shown to be its own blob, so the write cannot be checked against it",
 				in.File, in.Branch, held), nil)
 		}
-		priorSHA, priorContent, exists = cur.SHA, cur.Content, true
+	}
+	return g.writeEvidenceFileFromSnapshot(repo, in, cur)
+}
+
+// writeEvidenceFileFromSnapshot shares all native write checks and the Contents
+// request with a publication snapshot. The server compares the supplied blob SHA;
+// a create omits SHA, which GitHub refuses if the path has appeared meanwhile.
+func (g *GitHubForge) writeEvidenceFileFromSnapshot(repo ForgeRepo, in WriteFileInput, prior *FileContent) (*WriteFileResult, error) {
+	res := &WriteFileResult{}
+	var priorSHA string
+	var priorContent []byte
+	exists := prior != nil && prior.Exists
+	if exists {
+		priorSHA, priorContent = prior.SHA, prior.Content
 	}
 
 	// Conditional write (see WriteFileInput.ExpectedSHA): refuse when the file is no longer the

@@ -66,6 +66,9 @@ COPY forgeread/ ./forgeread/
 # The comms module (the public cellmsg-v1 contract) is the same kind of sibling: tools/desk
 # resolves it through `replace ../../comms`, and it is stdlib-only.
 COPY comms/ ./comms/
+# The perfrec module (the shared perf-v1 writer) is the same kind of stdlib-only sibling:
+# statusgen resolves it through `replace ../perfrec`, tools/desk through `replace ../../perfrec`.
+COPY perfrec/ ./perfrec/
 COPY statusgen/go.mod statusgen/go.sum ./statusgen/
 COPY tools/desk/go.mod ./tools/desk/
 RUN cd statusgen && go mod download

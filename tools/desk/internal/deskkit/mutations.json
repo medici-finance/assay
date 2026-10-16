@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior'",
   "schemata": true,
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
@@ -387,10 +387,10 @@
       "new": "\tset := laneTable[tier]\n\tif false {\n\t\tset = laneTable[TierUnknown]\n\t}"
     },
     {
-      "name": "probe the not-yet-created target branch instead of the start branch on a GitLab file write (issue #1412: a create of a path that already exists on the base is rejected HTTP 400, so Evidence never lands on the side-branch lane)",
+      "name": "probe the not-yet-created target branch instead of the start branch on a GitLab file write (issue #1412: a create of a path that already exists on the base is rejected HTTP 400, so Evidence never lands on the side-branch lane). The probe ref is shared by the native read and the scoped landing's cached-prior match, so the mutant is caught on both paths",
       "file": "internal/deskkit/forge_gitlab.go",
-      "old": "\tprobeRef := in.Branch\n\tif in.StartBranch != \"\" {\n\t\tprobeRef = in.StartBranch\n\t}\n\tcur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: probeRef})",
-      "new": "\tcur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: in.Branch})"
+      "old": "func gitlabWriteProbeRef(in WriteFileInput) string {\n\tif in.StartBranch != \"\" {\n\t\treturn in.StartBranch\n\t}\n\treturn in.Branch\n}",
+      "new": "func gitlabWriteProbeRef(in WriteFileInput) string {\n\treturn in.Branch\n}"
     },
     {
       "name": "claimstore-unmet-precondition-falls-through",

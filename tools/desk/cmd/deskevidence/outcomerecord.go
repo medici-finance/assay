@@ -127,7 +127,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// attestation for another brief refuses here. The refusals above need only the record's
 	// own bytes, so a record they refuse never mints; everything below reads or writes the
 	// forge and runs only for an admitted landing.
-	fg, fr, receipt, aerr := admitLanding(root, repoSlug, owner, name, targetRepoPath, ac)
+	fg, fr, receipt, aerr := admitLanding(root, repoSlug, owner, name, targetRepoPath, branch, ac)
 	if aerr != nil {
 		return aerr
 	}

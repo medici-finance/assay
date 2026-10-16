@@ -223,7 +223,7 @@
       "complexity": "complex",
       "basis": "8654 LOC, ~7 verbs, ~22 flags at 3ad1ad83c871",
       "owner": "desktools-v2/19",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "statusgen",
