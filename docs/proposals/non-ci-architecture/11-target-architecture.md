@@ -305,19 +305,25 @@ never started at zero:
    not an audit-history replay. Every process and every restart seeds from the same
    shared records, so N processes or K restarts do not each regain the allowance;
 2. only when neither can be read, as after a whole-database loss mid-window, the
-   estimate may reset once per window and limiter scope. The reset is recorded and
-   reported. A second unseeded reset in the same window, or a reset whose record cannot
-   be read, treats the window as exhausted until it rolls over.
+   estimate may reset once per window, limiter scope and operator incarnation. The reset
+   is recorded and reported. A second unseeded reset in the same window, or a reset whose
+   record cannot be read, treats the window as exhausted until it rolls over.
 
 **Declared drift bound.** "Small" drift means concurrent-admission overshoot of at most
 one admission per concurrently admitting process (C), plus delayed observations already
 covered by the seeded records. Across one window a pacing count admits at most the
-configured cap + C, or 2 × cap + C when the single recorded reset was used. A larger
-undercount is a defect, not tolerated drift.
+configured cap + C, or 2 × cap + C when the single recorded reset was used. The bound
+holds per operator incarnation. A whole-database loss erases the reset record with
+everything else, and an absent record cannot be told apart from no reset. Each such
+loss already requires the operator to rotate the incarnation, so every further reset
+in one window sits behind a human act. Within one incarnation, a larger undercount is
+a defect, not tolerated drift.
 
 **Residual risk.** A best-effort pacing count is not an abuse boundary. After one
 unrecoverable loss it can admit up to one extra window's cap of paced, already-authorized
-work. What bounds abuse is the brakes above, the executor's authority checks (scope,
+work. Repeated whole-database loss within one window is a named residual: each loss
+erases the reset record, so each operator-rotated incarnation can admit up to one more
+cap. The incarnation rotation, not the count, is the control on that case. What bounds abuse is the brakes above, the executor's authority checks (scope,
 policy, candidate, lease generation and stable effect identity), provider-enforced
 quotas, and the hard time, cost and resource limits.
 
