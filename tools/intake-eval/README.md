@@ -139,7 +139,9 @@ fixtures, that exit's precision is 0: every such prediction is a misroute.
 
 Floors and `regression_delta` must lie within [0, 1]. The scorer refuses a config with unknown
 keys, unknown exit names, a `regression_delta` with no baseline, or a baseline with no
-`regression_delta`. A typo cannot silently drop a check.
+`regression_delta`. A typo cannot silently drop a check. The file must hold one JSON value; content
+after it is refused. A floor written as an explicit `null` is the same as omitting it: that check is
+not run.
 
 The verdict is FAIL when any check fails. Under `"unmeasured": "fail"`, an unmeasured value on a
 checked metric also counts as a failure. The `--json` report lists every check with its floor,

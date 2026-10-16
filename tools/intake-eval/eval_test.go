@@ -346,6 +346,7 @@ func TestThresholdConfigRejectsTyposAndRanges(t *testing.T) {
 		"bad unmeasured":    `{"unmeasured":"skip","exits":{}}`,
 		"negative delta":    `{"regression_delta":-0.1,"baseline":{"finding":1},"exits":{}}`,
 		"baseline no delta": `{"baseline":{"finding":1},"exits":{}}`,
+		"trailing value":    `{"exits":{}} {"exits":{"finding":{"f1":2}}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			p := filepath.Join(t.TempDir(), "thr.json")
@@ -359,6 +360,40 @@ func TestThresholdConfigRejectsTyposAndRanges(t *testing.T) {
 	}
 }
 
+// A value exactly equal to its floor passes ("at or above the floor"), including
+// float ratios such as 2/3, and a value just under the floor fails.
+func TestFloorEqualityPasses(t *testing.T) {
+	two3 := 2.0 / 3.0
+	one, zero := 1.0, 0.0
+	cases := []struct {
+		name         string
+		value, floor *float64
+		want         string
+	}{
+		{"two-thirds at two-thirds", &two3, &two3, "PASS"},
+		{"one at one", &one, &one, "PASS"},
+		{"zero at zero", &zero, &zero, "PASS"},
+		{"just under", &two3, func() *float64 { f := two3 + 1e-6; return &f }(), "FAIL"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := &Score{Exits: map[string]*ExitScore{"finding": {Precision: c.value, F1: c.value}}}
+			for _, th := range []*Thresholds{
+				{Unmeasured: unmeasuredFail, Exits: map[string]Floors{"finding": {Precision: c.floor}}},
+				{Unmeasured: unmeasuredFail, Exits: map[string]Floors{"finding": {F1: c.floor}}},
+			} {
+				v, err := evaluate(th, s)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if v.Result != c.want {
+					t.Errorf("result=%s want %s", v.Result, c.want)
+				}
+			}
+		})
+	}
+}
+
 // The leak boundary. This public tool's own fixtures are invented;
 // every one must say so and use the synthetic id namespace, so a real corpus
 // file copied into testdata/ fails here.
@@ -367,6 +402,12 @@ func TestTestdataIsSynthetic(t *testing.T) {
 	if err != nil || len(files) == 0 {
 		t.Fatalf("no testdata fixtures found: %v", err)
 	}
+	// The loader also accepts .yml, so the boundary covers it too.
+	more, err := filepath.Glob("testdata/*/*.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	files = append(files, more...)
 	for _, f := range files {
 		raw, err := os.ReadFile(f)
 		if err != nil {
@@ -375,7 +416,7 @@ func TestTestdataIsSynthetic(t *testing.T) {
 		if !strings.HasPrefix(string(raw), "# SYNTHETIC test fixture") {
 			t.Errorf("%s lacks the SYNTHETIC header", f)
 		}
-		if !strings.HasPrefix(strings.TrimSuffix(filepath.Base(f), ".yaml"), "syn-") {
+		if !strings.HasPrefix(strings.TrimSuffix(strings.TrimSuffix(filepath.Base(f), ".yaml"), ".yml"), "syn-") {
 			t.Errorf("%s is outside the syn- id namespace", f)
 		}
 	}

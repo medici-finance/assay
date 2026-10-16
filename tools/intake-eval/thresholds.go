@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 )
 
@@ -46,6 +47,10 @@ func decodeStrict(path string, v any) error {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
+	}
+	// Strict means one JSON value: anything after it is refused, not ignored.
+	if _, err := dec.Token(); err != io.EOF {
+		return fmt.Errorf("%s: unexpected content after the first JSON value", path)
 	}
 	return nil
 }

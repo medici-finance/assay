@@ -103,8 +103,9 @@ func loadGold(dir, currentVersion string) (*GoldSet, error) {
 		if f.ID != "" {
 			if prev, dup := seen[f.ID]; dup {
 				problems = append(problems, fmt.Sprintf("%s: duplicate id %q (also in %s)", name, f.ID, prev))
+			} else {
+				seen[f.ID] = name
 			}
-			seen[f.ID] = name
 		}
 		gs.Fixtures = append(gs.Fixtures, f)
 	}
