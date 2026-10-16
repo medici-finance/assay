@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -45,19 +46,46 @@ func fxControl() fxMutation { return fxCaught("control") }
 // outside.go, the file an escaping mutation would target.
 func fxModule(t *testing.T, test string, control fxMutation, muts ...fxMutation) (string, string) {
 	t.Helper()
+	return fxModuleWith(t, nil, test, control, muts...)
+}
+
+// fxModuleWith is fxModule plus extra files, keyed by path relative to the
+// module directory ("../dep/go.mod" is a sibling of it). An extra file replaces
+// a default of the same name. A value starting "dir:" makes a directory and a
+// value starting "link:" makes a symlink to the rest of the value, which may be
+// "@top/outside.go" for the fixture's real outside file.
+func fxModuleWith(t *testing.T, extra map[string]string, test string, control fxMutation, muts ...fxMutation) (string, string) {
+	t.Helper()
 	top := t.TempDir()
 	mod := filepath.Join(top, "mod")
 	if err := os.Mkdir(mod, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	for name, body := range map[string]string{
+	files := map[string]string{
 		"go.mod":             "module example.com/fx\n\ngo 1.21\n",
 		"fx.go":              fxSource,
 		"fx_test.go":         fxTest,
 		"../outside.go":      "package outside // return 5\n",
 		"../outside.go.orig": "package outside // return 5\n",
-	} {
-		if err := os.WriteFile(filepath.Join(mod, name), []byte(body), 0o644); err != nil {
+	}
+	for name, body := range extra {
+		files[name] = body
+	}
+	for name, body := range files {
+		path := filepath.Join(mod, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		var err error
+		switch {
+		case strings.HasPrefix(body, "dir:"):
+			err = os.MkdirAll(path, 0o755)
+		case strings.HasPrefix(body, "link:"):
+			err = os.Symlink(strings.Replace(strings.TrimPrefix(body, "link:"), "@top", top, 1), path)
+		default:
+			err = os.WriteFile(path, []byte(body), 0o644)
+		}
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -76,7 +104,9 @@ func gateCommand(t *testing.T, mod, spec string, extra ...string) *exec.Cmd {
 	t.Helper()
 	py, err := exec.LookPath("python3")
 	if err != nil {
-		t.Skip("could-not-check: python3 is not on PATH, so mutate.py cannot be exercised")
+		// A silent skip would let the proof of the gate vanish from a runner
+		// without python3 while the job stays green.
+		t.Fatalf("could-not-check: python3 is not on PATH, so mutate.py cannot be exercised: %v", err)
 	}
 	args := append([]string{"mutate.py", "--spec", spec, "--module", mod}, extra...)
 	cmd := exec.Command(py, args...)
@@ -87,7 +117,14 @@ func gateCommand(t *testing.T, mod, spec string, extra ...string) *exec.Cmd {
 
 func runGate(t *testing.T, mod, spec string) (string, int) {
 	t.Helper()
-	out, err := gateCommand(t, mod, spec).CombinedOutput()
+	return runGateWith(t, mod, spec, nil)
+}
+
+func runGateWith(t *testing.T, mod, spec string, env []string, args ...string) (string, int) {
+	t.Helper()
+	cmd := gateCommand(t, mod, spec, args...)
+	cmd.Env = append(cmd.Env, env...)
+	out, err := cmd.CombinedOutput()
 	var ee *exec.ExitError
 	switch {
 	case err == nil:
@@ -119,6 +156,52 @@ func readFile(t *testing.T, path string) string {
 	}
 	return string(b)
 }
+
+// hangSuite plants a SENTINEL as the control's catch and, for a HANG mutation,
+// records its own pids in $PIDS, touches $MARK and sleeps. A pid file lets a
+// test see whether the suite survived, and clean it up.
+const hangSuite = `sh -c 'if grep -q HANG fx.go; then sleep 60 & echo "$$ $!" > "$PIDS"; touch "$MARK"; wait; fi; if grep -q SENTINEL fx.go; then echo "--- FAIL: control"; exit 1; fi'`
+
+var (
+	sentinelControl = fxMutation{Name: "control", File: "fx.go", Old: "package fx", New: "package fx // SENTINEL"}
+	hangMutation    = fxMutation{Name: "hang", File: "fx.go", Old: "package fx", New: "package fx // HANG"}
+)
+
+func recordedPids(path string) []int {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var pids []int
+	for _, f := range strings.Fields(string(raw)) {
+		if n, err := strconv.Atoi(f); err == nil && n > 1 {
+			pids = append(pids, n)
+		}
+	}
+	return pids
+}
+
+func killRecorded(path string) {
+	for _, pid := range recordedPids(path) {
+		_ = syscall.Kill(pid, syscall.SIGKILL)
+	}
+}
+
+func waitMarker(t *testing.T, marker string, out *bytes.Buffer) {
+	t.Helper()
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		if _, err := os.Stat(marker); err == nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the hanging mutant never started:\n%s", out.String())
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func alive(pid int) bool { return syscall.Kill(pid, 0) == nil }
 
 // regression: #3148
 func TestMutateGateAllCaught(t *testing.T) {
@@ -197,14 +280,14 @@ func TestMutateGateRedBaselineBreaksTheHarness(t *testing.T) {
 // regression: #3148
 func TestMutateGateKilledRunLeavesSourceClean(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "planted")
-	suite := `sh -c 'if grep -q HANG fx.go; then touch "$MARK"; sleep 120; fi; if grep -q SENTINEL fx.go; then echo "--- FAIL: control"; exit 1; fi'`
-	control := fxMutation{Name: "control", File: "fx.go", Old: "package fx", New: "package fx // SENTINEL"}
-	hang := fxMutation{Name: "hang", File: "fx.go", Old: "package fx", New: "package fx // HANG"}
-	mod, spec := fxModule(t, suite, control, hang)
+	pids := filepath.Join(t.TempDir(), "pids")
+	// The suite runs in its own session; the kill below cannot reach it.
+	t.Cleanup(func() { killRecorded(pids) })
+	mod, spec := fxModule(t, hangSuite, sentinelControl, hangMutation)
 	before := readFile(t, filepath.Join(mod, "fx.go"))
 
 	cmd := gateCommand(t, mod, spec)
-	cmd.Env = append(cmd.Env, "MARK="+marker)
+	cmd.Env = append(cmd.Env, "MARK="+marker, "PIDS="+pids)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	var buf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &buf, &buf
@@ -213,16 +296,7 @@ func TestMutateGateKilledRunLeavesSourceClean(t *testing.T) {
 	}
 	defer func() { _ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); _ = cmd.Wait() }()
 
-	deadline := time.Now().Add(60 * time.Second)
-	for {
-		if _, err := os.Stat(marker); err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the hanging mutant never started:\n%s", buf.String())
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	waitMarker(t, marker, &buf)
 	// SIGKILL the gate itself, mid-mutation: no handler or finally block runs.
 	if err := syscall.Kill(cmd.Process.Pid, syscall.SIGKILL); err != nil {
 		t.Fatal(err)
@@ -230,6 +304,194 @@ func TestMutateGateKilledRunLeavesSourceClean(t *testing.T) {
 	if got := readFile(t, filepath.Join(mod, "fx.go")); got != before {
 		t.Fatalf("a killed run left the source tree mutated:\n%s", got)
 	}
+}
+
+// regression: #3148
+func TestMutateGateSignalStopsTheSuiteAndRemovesTheCopy(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		sig  syscall.Signal
+		exit int
+	}{{"SIGTERM", syscall.SIGTERM, 143}, {"SIGINT", syscall.SIGINT, 130}} {
+		t.Run(tc.name, func(t *testing.T) {
+			marker := filepath.Join(t.TempDir(), "planted")
+			pids := filepath.Join(t.TempDir(), "pids")
+			tmp := t.TempDir()
+			t.Cleanup(func() { killRecorded(pids) })
+			mod, spec := fxModule(t, hangSuite, sentinelControl, hangMutation)
+			before := readFile(t, filepath.Join(mod, "fx.go"))
+
+			cmd := gateCommand(t, mod, spec)
+			cmd.Env = append(cmd.Env, "MARK="+marker, "PIDS="+pids, "TMPDIR="+tmp)
+			var buf bytes.Buffer
+			cmd.Stdout, cmd.Stderr = &buf, &buf
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() { done <- cmd.Wait() }()
+			defer func() { _ = cmd.Process.Kill() }()
+
+			waitMarker(t, marker, &buf)
+			if err := cmd.Process.Signal(tc.sig); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			select {
+			case err = <-done:
+			case <-time.After(30 * time.Second):
+				t.Fatalf("the gate ignored %s:\n%s", tc.name, buf.String())
+			}
+			var ee *exec.ExitError
+			if !errors.As(err, &ee) || ee.ExitCode() != tc.exit {
+				t.Fatalf("exit %v, want %d:\n%s", err, tc.exit, buf.String())
+			}
+			pidList := recordedPids(pids)
+			if len(pidList) != 2 {
+				t.Fatalf("suite pids %v, want the shell and its sleep", pidList)
+			}
+			for _, pid := range pidList {
+				for i := 0; alive(pid) && i < 100; i++ {
+					time.Sleep(50 * time.Millisecond)
+				}
+				if alive(pid) {
+					t.Errorf("suite process %d survived %s: it is orphaned against a deleted copy", pid, tc.name)
+				}
+			}
+			if left, _ := filepath.Glob(filepath.Join(tmp, "cellcache-mutate-*")); len(left) != 0 {
+				t.Errorf("temporary copy left behind: %v", left)
+			}
+			if got := readFile(t, filepath.Join(mod, "fx.go")); got != before {
+				t.Errorf("source tree changed:\n%s", got)
+			}
+		})
+	}
+}
+
+// regression: #3148
+func TestMutateGateRefusesFilesThatAreNotPlainFilesInTheModule(t *testing.T) {
+	mod, spec := fxModuleWith(t, map[string]string{
+		"link.txt": "link:@top/outside.go", // a symlink out of the module, onto a real file
+		"pkgdir":   "dir:",
+	}, goSuite, fxControl(),
+		fxMutation{Name: "symlink out", File: "link.txt", Old: "return 5", New: "return 6"},
+		fxMutation{Name: "a directory", File: "pkgdir", Old: "x", New: "y"},
+		fxMutation{Name: "the module root", File: ".", Old: "x", New: "y"},
+		fxMutation{Name: "nul byte", File: "nul\x00.go", Old: "package fx", New: "package fy"},
+		fxMutation{Name: "inner dot dot back in", File: "pkgdir/../fx.go", Old: "return 5", New: "return 0"},
+	)
+	out, code := runGate(t, mod, spec)
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	mustContain(t, out,
+		"COULD-NOT-MUTATE symlink out: file 'link.txt' escapes the module",
+		"COULD-NOT-MUTATE a directory: file 'pkgdir' is not a file in the module",
+		"COULD-NOT-MUTATE the module root: file '.' escapes the module",
+		"COULD-NOT-MUTATE nul byte: file 'nul\\x00.go' is not a relative path",
+		"CAUGHT inner dot dot back in",
+		"Totals: 1 caught, 0 NOT CAUGHT, 4 could-not-mutate.")
+	if got := readFile(t, filepath.Join(mod, "../outside.go")); got != readFile(t, filepath.Join(mod, "../outside.go.orig")) {
+		t.Errorf("a mutation reached the file the symlink points at: %q", got)
+	}
+}
+
+// regression: #3148
+func TestMutateGateRefusesNoOpAndEmptyEdits(t *testing.T) {
+	mod, spec := fxModule(t, goSuite, fxControl(),
+		fxMutation{Name: "same text", File: "fx.go", Old: "return 5", New: "return 5"},
+		fxMutation{Name: "empty old", File: "fx.go", Old: "", New: "return 5"},
+	)
+	out, code := runGate(t, mod, spec)
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	mustContain(t, out,
+		"COULD-NOT-MUTATE same text: `old` equals `new`",
+		"COULD-NOT-MUTATE empty old: `old` is empty",
+		"Totals: 0 caught, 0 NOT CAUGHT, 2 could-not-mutate.")
+}
+
+// regression: #3148
+func TestMutateGateSuiteTimeoutIsCouldNotMutate(t *testing.T) {
+	pids := filepath.Join(t.TempDir(), "pids")
+	marker := filepath.Join(t.TempDir(), "planted")
+	t.Cleanup(func() { killRecorded(pids) })
+	mod, spec := fxModule(t, hangSuite, sentinelControl, hangMutation)
+	out, code := runGateWith(t, mod, spec, []string{"MARK=" + marker, "PIDS=" + pids, "CELLCACHE_MUTATE_SUITE_TIMEOUT=3"})
+	if code != 1 {
+		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	}
+	mustContain(t, out,
+		"COULD-NOT-MUTATE hang: suite timed out",
+		"Totals: 0 caught, 0 NOT CAUGHT, 1 could-not-mutate.")
+	// The timeout kills the suite's whole group, not just its shell.
+	for _, pid := range recordedPids(pids) {
+		for i := 0; alive(pid) && i < 100; i++ {
+			time.Sleep(50 * time.Millisecond)
+		}
+		if alive(pid) {
+			t.Errorf("suite process %d survived the timeout", pid)
+		}
+	}
+}
+
+// regression: #3148
+func TestMutateGateBuildFailureInTheBaselineBreaksTheHarness(t *testing.T) {
+	// Exit 0 with a build failure in the output: only the output check sees it.
+	mod, spec := fxModule(t, `sh -c 'echo "FAIL example.com/fx [build failed]"'`, fxControl(), fxCaught("flat rate"))
+	out, code := runGate(t, mod, spec)
+	if code != 2 {
+		t.Fatalf("exit %d, want 2:\n%s", code, out)
+	}
+	mustContain(t, out, "HARNESS BROKEN: baseline suite is not green")
+}
+
+// regression: #3148
+func TestMutateGateCopiesRelativeReplaceTargets(t *testing.T) {
+	mod, spec := fxModuleWith(t, map[string]string{
+		"go.mod":        "module example.com/fx\n\ngo 1.21\n\nrequire example.com/dep v0.0.0\n\nreplace example.com/dep => ../dep\n",
+		"fx.go":         "package fx\n\nimport \"example.com/dep\"\n\nfunc Cost(total int) int {\n\tif total >= 50 {\n\t\treturn 0\n\t}\n\treturn dep.Rate()\n}\n",
+		"../dep/go.mod": "module example.com/dep\n\ngo 1.21\n",
+		"../dep/dep.go": "package dep\n\nfunc Rate() int { return 5 }\n",
+	}, goSuite, fxMutation{Name: "control", File: "fx.go", Old: "return dep.Rate()", New: "return dep.Rate() + 1"},
+		fxMutation{Name: "flat rate", File: "fx.go", Old: "return dep.Rate()", New: "return dep.Rate() + 2"})
+	out, code := runGate(t, mod, spec)
+	if code != 0 {
+		t.Fatalf("a module with a relative replace target must run: exit %d:\n%s", code, out)
+	}
+	mustContain(t, out, "CAUGHT flat rate", "Totals: 1 caught, 0 NOT CAUGHT, 0 could-not-mutate.")
+}
+
+// regression: #3148
+func TestMutateGateShardsPartitionTheSpec(t *testing.T) {
+	mod, spec := fxModule(t, goSuite, fxControl(), fxCaught("m0"), fxCaught("m1"), fxCaught("m2"))
+	for shard, want := range map[string][]string{"0/2": {"m0", "m2"}, "1/2": {"m1"}} {
+		out, code := runGateWith(t, mod, spec, nil, "--shard", shard)
+		if code != 0 {
+			t.Fatalf("shard %s: exit %d:\n%s", shard, code, out)
+		}
+		for _, m := range []string{"m0", "m1", "m2"} {
+			has := strings.Contains(out, "CAUGHT "+m+"\n")
+			if wanted := contains(want, m); has != wanted {
+				t.Errorf("shard %s: %s run=%v, want %v:\n%s", shard, m, has, wanted, out)
+			}
+		}
+	}
+	for _, bad := range []string{"2/2", "-1/3", "a/b", "1"} {
+		if out, code := runGateWith(t, mod, spec, nil, "--shard", bad); code != 2 {
+			t.Errorf("--shard %s: exit %d, want 2:\n%s", bad, code, out)
+		}
+	}
+}
+
+func contains(list []string, s string) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 // regression: #3148

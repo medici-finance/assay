@@ -45,7 +45,10 @@ import tempfile
 
 CAUGHT, MISSED, COULD_NOT_MUTATE = "CAUGHT", "MISSED", "COULD-NOT-MUTATE"
 BUILD_FAILED = re.compile(r"\[(?:build|setup) failed\]")
-SUITE_TIMEOUT = 300  # seconds per suite run; a hang is could-not-mutate, never caught
+# Seconds per suite run; a hang is could-not-mutate, never caught. The
+# environment override exists so a test can prove the timeout path in seconds.
+SUITE_TIMEOUT = float(os.environ.get("CELLCACHE_MUTATE_SUITE_TIMEOUT", "300"))
+ACTIVE = []  # the suite process currently running, if any, for the signal handler
 SKIP_DIRS = (".git", "dist", "node_modules", "__pycache__")
 
 
@@ -87,13 +90,29 @@ def run_suite(command, cwd, env):
     proc = subprocess.Popen(command, cwd=cwd, env=env, text=True,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             start_new_session=True)
+    ACTIVE.append(proc)
     try:
         out, _ = proc.communicate(timeout=SUITE_TIMEOUT)
     except subprocess.TimeoutExpired:
-        os.killpg(proc.pid, signal.SIGKILL)
+        kill_group(proc)
         out, _ = proc.communicate()
         return None, out
+    finally:
+        ACTIVE.remove(proc)
     return proc.returncode, out
+
+
+def kill_group(proc):
+    """SIGKILL the suite's whole process group (it runs in its own session, so
+    a terminal interrupt does not reach it) and reap the leader."""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def judge(code, out):
@@ -172,6 +191,8 @@ def main(argv):
     env.pop("ENV", None)
 
     def terminate(signum, frame):
+        for proc in list(ACTIVE):  # no orphaned suite against a deleted copy
+            kill_group(proc)
         sys.exit(128 + signum)  # unwinds, so the temporary copy is removed
     signal.signal(signal.SIGTERM, terminate)
     signal.signal(signal.SIGINT, terminate)

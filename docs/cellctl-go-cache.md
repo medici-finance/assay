@@ -292,18 +292,24 @@ Reproducible mutants live in `tools/desk/internal/cellcache/mutations.json`, and
 (`--- FAIL:`) to catch it. It plants them in a temporary copy of the module, so
 the checkout is never written and a killed run leaves it clean. Every mutant ends
 in one of three states: `CAUGHT`, `MISSED`, or `COULD-NOT-MUTATE` (the mutant
-does not compile, its `file` escapes the module or is not a file there, its `old`
-text no longer matches, or the suite timed out). The gate exits 1 on any `MISSED`
-or `COULD-NOT-MUTATE`. The spec's `control` mutation must be caught or the
-harness is reported broken (exit 2) with no per-mutant verdict. The map uses its
-own runner rather than `muhar` because `muhar` reads any non-zero suite exit as
-caught, which would score a mutant that merely fails to compile as a catch.
+does not compile, its `file` is absolute, escapes the module or is not a file
+there, its `old` text is empty, equals `new` or no longer matches, or the suite
+timed out; `CELLCACHE_MUTATE_SUITE_TIMEOUT` sets the per-suite limit in seconds,
+default 300). The gate exits 1 on any `MISSED` or `COULD-NOT-MUTATE`. The spec's
+`control` mutation must be caught or the harness is reported broken (exit 2) with
+no per-mutant verdict. SIGTERM and SIGINT stop the running suite and remove the
+copy. The map uses its own runner rather than `muhar` because of one case:
+`muhar`'s per-mutation run scores a mutant whose build fails as caught (its
+schemata mode compiles mutants first and sets non-compiling ones aside, but
+those still rebuild per mutation and count as caught), which is tracked in #2639.
+Counting a build failure as a catch would hide exactly the stale mutations this
+gate must surface.
 
 CI runs the gate through the staged workflow
 `ci/staged-workflows/cellcache-mutate.yml`; until a maintainer promotes it to
 `.github/workflows/` the gate runs only when someone runs it. The
-`TestMutateGate*` tests run on every PR and prove each state above against a
-throwaway module.
+`TestMutateGate*` tests run on every PR and prove each state and guard above
+against a throwaway module; each fails when the guard it covers is removed.
 
 ## Dispatch destination volumes
 
