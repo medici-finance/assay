@@ -135,7 +135,7 @@ below, exercising production code rather than an independently reimplemented che
 | 3 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestImportsAndCoverage$' ./adapters/... > "$o" && grep -F -- '--- PASS: TestImportsAndCoverage ' "$o")` | exit 0; named PASS. Legacy perf-v1 fixture, incomplete history, manual effort, late CI and evidence invalidation import preserve basis and cutoff; missing source is visibly unavailable. |
 | 4 | check:ci +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestObserverAuthority$' ./runner/... > "$o" && grep -F -- '--- PASS: TestObserverAuthority ' "$o")` | exit 0; named PASS. Runner sink failures and callbacks cannot alter fencing, cancellation, limits or acceptance; callbacks cannot block under the client lock. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/02` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
-| 6 | check:ci +flow | `(cd perfdata && o=$(mktemp) && go test -count=1 -v -run '^TestOperatingReportSourceCoverage$' ./... > "$o" && grep -F -- '--- PASS: TestOperatingReportSourceCoverage ' "$o")` | exit 0; named test runs and passes, including the negative cases in Task 8. |
+| 6 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v -run '^TestOperatingReportSourceCoverage$' ./... > "$o" && grep -F -- '--- PASS: TestOperatingReportSourceCoverage ' "$o")` | exit 0; named test runs and passes, including the negative cases in Task 8. |
 
 ## Pre-mortem and detection
 

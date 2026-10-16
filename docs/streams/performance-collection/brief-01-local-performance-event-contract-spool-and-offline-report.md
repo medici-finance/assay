@@ -140,7 +140,7 @@ below, exercising production code rather than an independently reimplemented che
 | 3 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLocalReportFlow$' ./... > "$o" && grep -F -- '--- PASS: TestLocalReportFlow ' "$o")` | exit 0; named PASS. Real local record command to report command works without DB/server; zero transport calls; repeated cumulative usage and nested time are not double-counted; missing is not zero. |
 | 4 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLocalCostAndBounds$' ./local/... > "$o" && grep -F -- '--- PASS: TestLocalCostAndBounds ' "$o")` | exit 0; named PASS. Bounded queue and flush under slow I/O; matched small-event append median below inherited 1 ms target on declared reference fixture, with p95/max and on/off overhead reported. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/01` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
-| 6 | check:ci +flow | `(cd perfdata && o=$(mktemp) && go test -count=1 -v -run '^TestReportDistributionRetention$' ./... > "$o" && grep -F -- '--- PASS: TestReportDistributionRetention ' "$o")` | exit 0; named test runs and passes, including the negative cases in Task 8. |
+| 6 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v -run '^TestReportDistributionRetention$' ./... > "$o" && grep -F -- '--- PASS: TestReportDistributionRetention ' "$o")` | exit 0; named test runs and passes, including the negative cases in Task 8. |
 
 ## Pre-mortem and detection
 

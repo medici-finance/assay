@@ -219,7 +219,7 @@ adapters and preservation tests; do not use missing quality evidence to justify 
 | 06 | [Collection replay, retention, recovery and release qualification](brief-06-collection-replay-retention-recovery-and-release-qualification.md) | 3 | M | todo | — | — |
 | 07 | [On-demand three-report bundle and thin skill](brief-07-on-demand-operating-reports.md) | 2 | L | todo | — | — |
 | 08 | [Daily report generation and report-pack qualification](brief-08-daily-report-generation.md) | 3 | M | todo | — | — |
-| 09 | [Bounded performance issue and repair-PR loop](brief-09-bounded-performance-repair-loop.md) | 4 | L | todo | — | — |
+| 09 | [Bounded performance issue and repair-PR loop](brief-09-bounded-performance-repair-loop.md) | 7 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path and dependency waves
@@ -233,8 +233,9 @@ full managed runtime is a prerequisite for local reporting.
 - Wave 1: 02 — source adapters; 03 — separate database; 05 — explicit uploader.
 - Wave 2: 07 — on-demand three-report bundle; 04 — authenticated ingestion.
 - Wave 3: 08 — daily generation through the same report entrypoint; 06 — remote-path qualification.
-- Wave 4 minimum: 09 — bounded issue/repair proposal loop, additionally held by its typed
-  graph-execution prerequisites. Those external prerequisites can dominate delivery time.
+- Wave 7: 09 — bounded issue/repair proposal loop, held by its typed graph-execution
+  prerequisites (graph-execution/14 and /26 are wave 6, /16 wave 5). Those external
+  prerequisites can dominate delivery time.
 
 The remote path remains `01 → 03 → 04 → 06`, with 02 and 05 also required by 06.
 Remote qualification does not hold local 07/08 hostage. The real local head is qualifying

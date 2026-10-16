@@ -25,13 +25,13 @@ exec-tier-why: "Cross-source identity, coverage, authority and migration must ag
 domain: complicated
 outcome: none
 consumers:
-  - "perfdata/report/: fixed-in-this-brief"
-  - "perfdata/cmd/perfdata/: fixed-in-this-brief"
-  - "perfdata/testdata/operating-reports/: fixed-in-this-brief"
-  - "plugins/assay/skills/operating-report/SKILL.md: fixed-in-this-brief"
-  - "docs/performance-collection.md: fixed-in-this-brief"
-  - "docs/contracts.md: fixed-in-this-brief"
-  - "changelog/operating-reports.md: fixed-in-this-brief"
+  - "perfdata/report/: follow-up performance-collection/07"
+  - "perfdata/cmd/perfdata/: follow-up performance-collection/07"
+  - "perfdata/testdata/operating-reports/: follow-up performance-collection/07"
+  - "plugins/assay/skills/operating-report/SKILL.md: follow-up performance-collection/07"
+  - "docs/performance-collection.md: follow-up performance-collection/07"
+  - "docs/contracts.md: follow-up performance-collection/07"
+  - "changelog/operating-reports.md: follow-up performance-collection/07"
 ---
 
 # Brief 07 — On-demand three-report bundle and thin skill
@@ -80,7 +80,7 @@ Default if no answer: none — acceptance/activation remains held; offline imple
 
 ## Task
 
-1. Extend the existing perfdata report entrypoint with an operating bundle selector, date/window/timezone and permitted repository/stream/tool filters. JSON is the common result; self-contained HTML includes all three historical charts and accessible data tables. A thin operating-report skill invokes the command and interprets cited facts; it does not recompute metrics or contact a forge. Report saved source cutoffs and collection health first.
+1. Extend the perfdata report entrypoint created by performance-collection/01 with an operating bundle selector, date/window/timezone and permitted repository/stream/tool filters. JSON is the common result; self-contained HTML includes all three historical charts and accessible data tables. A thin operating-report skill invokes the command and interprets cited facts; it does not recompute metrics or contact a forge. Report saved source cutoffs and collection health first.
 2. Compose completion and stream-flow results from existing lifecycle/flow definitions and versioned saved exports. Stable work identity deduplicates imports; first-observed done is opening balance. Show first completions and separate reopens/recompletions, a daily chart and seven-calendar-day rolling average. Unknown days break the line/rolling coverage, never silently enter as zero. Added/removed/renamed scope and paused states remain visible.
 3. Render per-stream movements since an explicit previous cutoff, stage counts, age, last meaningful movement and stalled work. A versioned stage/priority policy nominates stalls. Show recorded blocker reason, accountable role and source/as-of when present; otherwise reason unknown. Do not infer a causal explanation from inactivity or current labels.
 4. Aggregate per-tool/verb/role/build/platform runs and total/Avg/nearest-rank P95 for invocation wall, child wall, own-process CPU and forge requests. Pool samples or declared mergeable distributions, not daily percentiles/means. Show per-field n, unavailable values, lower bounds, malformed/lost samples and build/workload breaks. Do not sum nested times as elapsed brief time. Tokens/cost are optional qualified workflow-profile inputs, never fabricated from shared totals.
@@ -91,12 +91,13 @@ Default if no answer: none — acceptance/activation remains held; offline imple
 
 Named commands below are implementation deliverables. Each must run the named test (not succeed with no matching tests).
 
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `(cd perfdata && o=$(mktemp) && go test -count=1 -v ./report/... -run '^TestOperatingReportsGolden$' > "$o" && grep -F -- '--- PASS: TestOperatingReportsGolden ' "$o")` | exit 0; named PASS; hand-checked completion, stream and tool panels match one snapshot, including opening balance/reopen and unknown blocker cases |
-| 2 | `(cd perfdata && o=$(mktemp) && go test -count=1 -v ./report/... -run '^TestOperatingDistributionPooling$' > "$o" && grep -F -- '--- PASS: TestOperatingDistributionPooling ' "$o")` | exit 0; named PASS; unequal daily cohorts yield correct Avg/P95; missing CPU and missing days stay unknown |
-| 3 | `(cd perfdata && o=$(mktemp) && go test -count=1 -v ./report/... -run '^TestOperatingReportOfflineAndScope$' > "$o" && grep -F -- '--- PASS: TestOperatingReportOfflineAndScope ' "$o")` | exit 0; named PASS; no provider/socket attempt; unauthorized sources excluded before aggregates and stale coverage visible |
-| 4 | `(cd perfdata && o=$(mktemp) && go test -count=1 -v ./report/... -run '^TestOperatingReportReplayAndTriageParity$' > "$o" && grep -F -- '--- PASS: TestOperatingReportReplayAndTriageParity ' "$o")` | exit 0; named PASS; same snapshot/config has identical JSON and deterministic chart data; legacy triage ranking/coverage agrees |
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 1 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./report/... -run '^TestOperatingReportsGolden$' > "$o" && grep -F -- '--- PASS: TestOperatingReportsGolden ' "$o")` | exit 0; named PASS; hand-checked completion, stream and tool panels match one snapshot, including opening balance/reopen and unknown blocker cases |
+| 2 | check:ci | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./report/... -run '^TestOperatingDistributionPooling$' > "$o" && grep -F -- '--- PASS: TestOperatingDistributionPooling ' "$o")` | exit 0; named PASS; unequal daily cohorts yield correct Avg/P95; missing CPU and missing days stay unknown |
+| 3 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./report/... -run '^TestOperatingReportOfflineAndScope$' > "$o" && grep -F -- '--- PASS: TestOperatingReportOfflineAndScope ' "$o")` | exit 0; named PASS; no provider/socket attempt; unauthorized sources excluded before aggregates and stale coverage visible |
+| 4 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./report/... -run '^TestOperatingReportReplayAndTriageParity$' > "$o" && grep -F -- '--- PASS: TestOperatingReportReplayAndTriageParity ' "$o")` | exit 0; named PASS; same snapshot/config has identical JSON and deterministic chart data; legacy triage ranking/coverage agrees |
+| 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/07` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
 
 ## Evidence
 

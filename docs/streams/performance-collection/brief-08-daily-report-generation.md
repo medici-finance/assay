@@ -25,14 +25,14 @@ exec-tier-why: "Cross-source identity, coverage, authority and migration must ag
 domain: complicated
 outcome: none
 consumers:
-  - "perfdata/reportpack/: fixed-in-this-brief"
-  - "perfdata/cmd/perfdata/: fixed-in-this-brief"
-  - "perfdata/testdata/reportpack/: fixed-in-this-brief"
-  - "components/perfdata/: fixed-in-this-brief"
-  - "ci/staged-workflows/perfdata-reports.yml: fixed-in-this-brief"
-  - "docs/report-packs.md: fixed-in-this-brief"
-  - "docs/performance-collection.md: fixed-in-this-brief"
-  - "changelog/daily-operating-report.md: fixed-in-this-brief"
+  - "perfdata/reportpack/: follow-up performance-collection/08"
+  - "perfdata/cmd/perfdata/: follow-up performance-collection/08"
+  - "perfdata/testdata/reportpack/: follow-up performance-collection/08"
+  - "components/perfdata/: follow-up performance-collection/08"
+  - "ci/staged-workflows/perfdata-reports.yml: follow-up performance-collection/08"
+  - "docs/report-packs.md: follow-up performance-collection/08"
+  - "docs/performance-collection.md: follow-up performance-collection/08"
+  - "changelog/daily-operating-report.md: follow-up performance-collection/08"
 ---
 
 # Brief 08 — Daily report generation and report-pack qualification
@@ -91,12 +91,13 @@ Default if no answer: none — acceptance/activation remains held; offline imple
 
 Named commands below are implementation deliverables. Each must run the named test (not succeed with no matching tests).
 
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `(cd perfdata && o=$(mktemp) && go test -count=1 -v ./reportpack/... -run '^TestDailyManualParity$' > "$o" && grep -F -- '--- PASS: TestDailyManualParity ' "$o")` | exit 0; named PASS; all three panels and source manifests agree for the same saved snapshot |
-| 2 | `(cd perfdata && o=$(mktemp) && go test -count=1 -v ./reportpack/... -run '^TestReportPublicationRecovery$' > "$o" && grep -F -- '--- PASS: TestReportPublicationRecovery ' "$o")` | exit 0; named PASS; duplicate triggers/concurrent publishers/crash preserve one current artifact and previous good version |
-| 3 | `(cd perfdata && o=$(mktemp) && go test -count=1 -v ./reportpack/... -run '^TestReportCoverageAndRetention$' > "$o" && grep -F -- '--- PASS: TestReportCoverageAndRetention ' "$o")` | exit 0; named PASS; 90-day trends preserve distribution/coverage; missing capture and expired raw are not zero |
-| 4 | `(cd perfdata && o=$(mktemp) && go test -count=1 -v ./reportpack/... -run '^TestReportPackWriterBoundary$' > "$o" && grep -F -- '--- PASS: TestReportPackWriterBoundary ' "$o")` | exit 0; named PASS; unapproved canonical writes refuse; PR render and explicit manual export remain usable without network |
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 1 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./reportpack/... -run '^TestDailyManualParity$' > "$o" && grep -F -- '--- PASS: TestDailyManualParity ' "$o")` | exit 0; named PASS; all three panels and source manifests agree for the same saved snapshot |
+| 2 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./reportpack/... -run '^TestReportPublicationRecovery$' > "$o" && grep -F -- '--- PASS: TestReportPublicationRecovery ' "$o")` | exit 0; named PASS; duplicate triggers/concurrent publishers/crash preserve one current artifact and previous good version |
+| 3 | check:ci | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./reportpack/... -run '^TestReportCoverageAndRetention$' > "$o" && grep -F -- '--- PASS: TestReportCoverageAndRetention ' "$o")` | exit 0; named PASS; 90-day trends preserve distribution/coverage; missing capture and expired raw are not zero |
+| 4 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./reportpack/... -run '^TestReportPackWriterBoundary$' > "$o" && grep -F -- '--- PASS: TestReportPackWriterBoundary ' "$o")` | exit 0; named PASS; unapproved canonical writes refuse; PR render and explicit manual export remain usable without network |
+| 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/08` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
 
 ## Evidence
 

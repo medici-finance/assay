@@ -2,7 +2,7 @@
 brief: assay:assay:performance-collection:09
 title: "Bounded performance issue and repair-PR loop"
 why: "Persistent measured regressions should enter one accountable investigation and repair proposal instead of repeated alerts or speculative automatic changes."
-wave: 4
+wave: 7
 depends: ["performance-collection/08", "graph-execution/04", "graph-execution/09", "graph-execution/14", "graph-execution/16", "graph-execution/26"]
 unblocks: []
 effort: L
@@ -25,14 +25,14 @@ exec-tier-why: "Cross-source identity, coverage, authority and migration must ag
 domain: complicated
 outcome: none
 consumers:
-  - "perfdata/assessment/: fixed-in-this-brief"
-  - "perfdata/proposals/: fixed-in-this-brief"
-  - "perfdata/testdata/performance-repair/: fixed-in-this-brief"
-  - "plugins/assay/skills/operating-report/SKILL.md: fixed-in-this-brief"
-  - "docs/streams/continuing-operations/spec.md: fixed-in-this-brief"
-  - "docs/performance-collection.md: fixed-in-this-brief"
-  - "docs/contracts.md: fixed-in-this-brief"
-  - "changelog/performance-repair-proposals.md: fixed-in-this-brief"
+  - "perfdata/assessment/: follow-up performance-collection/09"
+  - "perfdata/proposals/: follow-up performance-collection/09"
+  - "perfdata/testdata/performance-repair/: follow-up performance-collection/09"
+  - "plugins/assay/skills/operating-report/SKILL.md: follow-up performance-collection/09"
+  - "docs/streams/continuing-operations/spec.md: follow-up performance-collection/09"
+  - "docs/performance-collection.md: follow-up performance-collection/09"
+  - "docs/contracts.md: follow-up performance-collection/09"
+  - "changelog/performance-repair-proposals.md: follow-up performance-collection/09"
 ---
 
 # Brief 09 — Bounded performance issue and repair-PR loop
@@ -92,13 +92,14 @@ Default if no answer: none — acceptance/activation remains held; offline imple
 
 Named commands below are implementation deliverables. Each must run the named test (not succeed with no matching tests).
 
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `(cd perfdata && o=$(mktemp) && go test -count=1 -v ./assessment/... -run '^TestPerformanceAssessmentCoverage$' > "$o" && grep -F -- '--- PASS: TestPerformanceAssessmentCoverage ' "$o")` | exit 0; named PASS; compatible persistent fixture regression nominates once; sparse/missing/mismatched cohort returns gap/hold |
-| 2 | `(cd perfdata && o=$(mktemp) && go test -count=1 -v ./proposals/... -run '^TestRepairProposalIdempotency$' > "$o" && grep -F -- '--- PASS: TestRepairProposalIdempotency ' "$o")` | exit 0; named PASS; duplicate triggers, crash and lost ACK reconcile one issue/attempt identity |
-| 3 | `(cd perfdata && o=$(mktemp) && go test -count=1 -v ./proposals/... -run '^TestRepairAuthorityAndBudgets$' > "$o" && grep -F -- '--- PASS: TestRepairAuthorityAndBudgets ' "$o")` | exit 0; named PASS; lower executor refuses stale authority, exceeded/unknown budgets, merge and policy self-modification even with upper filter bypassed |
-| 4 | `(cd perfdata && o=$(mktemp) && go test -count=1 -v ./proposals/... -run '^TestRepairProposalJourney$' > "$o" && grep -F -- '--- PASS: TestRepairProposalJourney ' "$o")` | exit 0; named PASS; dry-run makes no writes; accepted fixture routes one draft PR and independent correctness evidence |
-| 5 | `(cd perfdata && o=$(mktemp) && go test -count=1 -v ./assessment/... -run '^TestRepairOutcomeWindow$' > "$o" && grep -F -- '--- PASS: TestRepairOutcomeWindow ' "$o")` | exit 0; named PASS; merged repair remains awaiting observation; adverse/inconclusive result cannot be labelled improved |
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 1 | check:ci | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./assessment/... -run '^TestPerformanceAssessmentCoverage$' > "$o" && grep -F -- '--- PASS: TestPerformanceAssessmentCoverage ' "$o")` | exit 0; named PASS; compatible persistent fixture regression nominates once; sparse/missing/mismatched cohort returns gap/hold |
+| 2 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./proposals/... -run '^TestRepairProposalIdempotency$' > "$o" && grep -F -- '--- PASS: TestRepairProposalIdempotency ' "$o")` | exit 0; named PASS; duplicate triggers, crash and lost ACK reconcile one issue/attempt identity |
+| 3 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./proposals/... -run '^TestRepairAuthorityAndBudgets$' > "$o" && grep -F -- '--- PASS: TestRepairAuthorityAndBudgets ' "$o")` | exit 0; named PASS; lower executor refuses stale authority, exceeded/unknown budgets, merge and policy self-modification even with upper filter bypassed |
+| 4 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./proposals/... -run '^TestRepairProposalJourney$' > "$o" && grep -F -- '--- PASS: TestRepairProposalJourney ' "$o")` | exit 0; named PASS; dry-run makes no writes; accepted fixture routes one draft PR and independent correctness evidence |
+| 5 | check:ci | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./assessment/... -run '^TestRepairOutcomeWindow$' > "$o" && grep -F -- '--- PASS: TestRepairOutcomeWindow ' "$o")` | exit 0; named PASS; merged repair remains awaiting observation; adverse/inconclusive result cannot be labelled improved |
+| 6 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/09` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
 
 ## Evidence
 

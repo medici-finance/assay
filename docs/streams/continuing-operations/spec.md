@@ -256,8 +256,8 @@ recovery and cumulative cost accounting. Observation windows must distinguish ev
 time from ingestion time. Stale data can produce an overdue/gap escalation, not an
 invented positive assessment or automatic intervention.
 
-No new scheduler, graph database, autonomous merge/deployment authority or policy learner is
-part of this proposal. The 15 October reporting amendment below adds bounded issue and draft-repair proposals through existing work owners; it does not grant a reporting process effect credentials. Repeated checks alone are not improvement. Each occurrence must
+No new scheduler, graph database, autonomous remediation authority or policy learner is
+part of this proposal. The 15 October reporting amendment below adds bounded issue and draft-repair proposals through existing work owners, each ending in a draft PR that existing review and a human merge decide; such a human-merged proposal is outside the prohibition on autonomous remediation, and the amendment grants a reporting process no effect credentials, merge or deployment authority. Repeated checks alone are not improvement. Each occurrence must
 leave evidence, an honest disposition and an accountable next step.
 
 ### Three-report performance practice — amendment, 15 October 2026
