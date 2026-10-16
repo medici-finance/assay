@@ -158,14 +158,21 @@ func readFile(t *testing.T, path string) string {
 }
 
 // hangSuite plants a SENTINEL as the control's catch and, for a HANG mutation,
-// records its own pids in $PIDS, touches $MARK and sleeps. A pid file lets a
+// records its own pids in $PIDS, touches $MARK and sleeps. The sleep's output
+// goes to /dev/null so it does not hold the gate's pipe open: the gate must
+// return on its own kill, not because the sleep ended. A pid file lets a
 // test see whether the suite survived, and clean it up.
-const hangSuite = `sh -c 'if grep -q HANG fx.go; then sleep 60 & echo "$$ $!" > "$PIDS"; touch "$MARK"; wait; fi; if grep -q SENTINEL fx.go; then echo "--- FAIL: control"; exit 1; fi'`
+const hangSuite = `sh -c 'if grep -q HANG fx.go; then sleep 60 >/dev/null 2>&1 & echo "$$ $!" > "$PIDS"; touch "$MARK"; wait; fi; if grep -q SENTINEL fx.go; then echo "--- FAIL: control"; exit 1; fi'`
 
 var (
 	sentinelControl = fxMutation{Name: "control", File: "fx.go", Old: "package fx", New: "package fx // SENTINEL"}
 	hangMutation    = fxMutation{Name: "hang", File: "fx.go", Old: "package fx", New: "package fx // HANG"}
 )
+
+// badBytesSuite, for a HANG mutation, leaves a sleeping child behind and exits
+// after printing bytes that are not UTF-8, so the gate's read of the suite's
+// output raises after the suite has started. The gate must still kill the group.
+const badBytesSuite = `sh -c 'if grep -q HANG fx.go; then sleep 60 >/dev/null 2>&1 & echo "$!" > "$PIDS"; printf "\\377"; touch "$MARK"; exit 0; fi; if grep -q SENTINEL fx.go; then echo "--- FAIL: control"; exit 1; fi'`
 
 func recordedPids(path string) []int {
 	raw, err := os.ReadFile(path)
@@ -413,26 +420,94 @@ func TestMutateGateRefusesSameAndEmptyEdit(t *testing.T) {
 }
 
 // regression: #3148
-func TestMutateGateSuiteTimeoutIsCouldNotMutate(t *testing.T) {
+func TestMutateGateTimeoutKillsGroup(t *testing.T) {
 	pids := filepath.Join(t.TempDir(), "pids")
 	marker := filepath.Join(t.TempDir(), "planted")
 	t.Cleanup(func() { killRecorded(pids) })
 	mod, spec := fxModule(t, hangSuite, sentinelControl, hangMutation)
-	out, code := runGateWith(t, mod, spec, []string{"MARK=" + marker, "PIDS=" + pids, "CELLCACHE_MUTATE_SUITE_TIMEOUT=3"})
-	if code != 1 {
-		t.Fatalf("exit %d, want 1:\n%s", code, out)
+	cmd := gateCommand(t, mod, spec)
+	cmd.Env = append(cmd.Env, "MARK="+marker, "PIDS="+pids, "CELLCACHE_MUTATE_SUITE_TIMEOUT=3")
+	var buf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &buf, &buf
+	start := time.Now()
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(25 * time.Second):
+		_ = cmd.Process.Kill()
+		t.Fatalf("the gate was still running 25s in, well past the 3s suite timeout and while the suite's sleep (60s) lives on:\n%s", buf.String())
+	}
+	out := buf.String()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+		t.Fatalf("exit %v, want 1:\n%s", err, out)
 	}
 	mustContain(t, out,
 		"COULD-NOT-MUTATE hang: suite timed out",
 		"Totals: 0 caught, 0 NOT CAUGHT, 1 could-not-mutate.")
+	if elapsed := time.Since(start); elapsed > 25*time.Second {
+		t.Errorf("the gate took %s; it waited the sleep out instead of killing it", elapsed)
+	}
 	// The timeout kills the suite's whole group, not just its shell.
-	for _, pid := range recordedPids(pids) {
+	pidList := recordedPids(pids)
+	if len(pidList) != 2 {
+		t.Fatalf("suite pids %v, want the shell and its sleep", pidList)
+	}
+	for _, pid := range pidList {
 		for i := 0; alive(pid) && i < 100; i++ {
 			time.Sleep(50 * time.Millisecond)
 		}
 		if alive(pid) {
 			t.Errorf("suite process %d survived the timeout", pid)
 		}
+	}
+}
+
+// regression: #3148
+func TestMutateGateKillsOnReadError(t *testing.T) {
+	pids := filepath.Join(t.TempDir(), "pids")
+	marker := filepath.Join(t.TempDir(), "planted")
+	t.Cleanup(func() { killRecorded(pids) })
+	mod, spec := fxModule(t, badBytesSuite, sentinelControl, hangMutation)
+	out, _ := runGateWith(t, mod, spec, []string{"MARK=" + marker, "PIDS=" + pids})
+	left := recordedPids(pids)
+	if len(left) != 1 {
+		t.Fatalf("suite pids %v, want the one sleep:\n%s", left, out)
+	}
+	for i := 0; alive(left[0]) && i < 100; i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if alive(left[0]) {
+		t.Errorf("the suite's child %d outlived the gate:\n%s", left[0], out)
+	}
+}
+
+// regression: #3148
+func TestMutateGateBadTimeout(t *testing.T) {
+	for _, bad := range []string{"nan", "inf", "-inf", "1e12", "3601", "0", "-5", "abc", ""} {
+		t.Run("value "+bad, func(t *testing.T) {
+			pids := filepath.Join(t.TempDir(), "pids")
+			t.Cleanup(func() { killRecorded(pids) })
+			// A suite that records itself the moment it starts, baseline included.
+			suite := `sh -c 'sleep 30 >/dev/null 2>&1 & echo "$$ $!" >> "$PIDS"; wait'`
+			mod, spec := fxModule(t, suite, fxControl(), fxCaught("flat rate"))
+			out, code := runGateWith(t, mod, spec, []string{"PIDS=" + pids, "CELLCACHE_MUTATE_SUITE_TIMEOUT=" + bad})
+			if code != 2 {
+				t.Fatalf("exit %d, want 2:\n%s", code, out)
+			}
+			mustContain(t, out, "HARNESS BROKEN: CELLCACHE_MUTATE_SUITE_TIMEOUT=")
+			if strings.Contains(out, "Traceback") {
+				t.Errorf("a traceback instead of a verdict:\n%s", out)
+			}
+			if started := recordedPids(pids); len(started) != 0 {
+				t.Errorf("a suite started (pids %v) before the timeout was validated", started)
+			}
+		})
 	}
 }
 

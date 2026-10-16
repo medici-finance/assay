@@ -46,8 +46,13 @@ import tempfile
 CAUGHT, MISSED, COULD_NOT_MUTATE = "CAUGHT", "MISSED", "COULD-NOT-MUTATE"
 BUILD_FAILED = re.compile(r"\[(?:build|setup) failed\]")
 # Seconds per suite run; a hang is could-not-mutate, never caught. The
-# environment override exists so a test can prove the timeout path in seconds.
-SUITE_TIMEOUT = float(os.environ.get("CELLCACHE_MUTATE_SUITE_TIMEOUT", "300"))
+# environment override exists so a test can prove the timeout path in seconds;
+# main() validates it (a number, > 0, <= MAX_SUITE_TIMEOUT; so never nan or
+# inf) before any suite runs; a bad value is HARNESS BROKEN, exit 2.
+DEFAULT_SUITE_TIMEOUT = 300.0
+MAX_SUITE_TIMEOUT = 3600.0
+SUITE_TIMEOUT = DEFAULT_SUITE_TIMEOUT
+TIMEOUT_ENV = "CELLCACHE_MUTATE_SUITE_TIMEOUT"
 ACTIVE = []  # the suite process currently running, if any, for the signal handler
 SKIP_DIRS = (".git", "dist", "node_modules", "__pycache__")
 
@@ -97,9 +102,27 @@ def run_suite(command, cwd, env):
         kill_group(proc)
         out, _ = proc.communicate()
         return None, out
+    except BaseException:
+        kill_group(proc)  # whatever went wrong, never leave the suite running
+        raise
     finally:
         ACTIVE.remove(proc)
     return proc.returncode, out
+
+
+def suite_timeout(environ):
+    """The per-suite timeout from the environment, or raise HarnessBroken."""
+    raw = environ.get(TIMEOUT_ENV)
+    if raw is None:
+        return DEFAULT_SUITE_TIMEOUT
+    try:
+        value = float(raw)
+    except ValueError:
+        value = float("nan")
+    if not 0 < value <= MAX_SUITE_TIMEOUT:  # false for nan and inf as well
+        raise HarnessBroken("%s=%r must be a number greater than 0 and at most %g seconds"
+                            % (TIMEOUT_ENV, raw, MAX_SUITE_TIMEOUT))
+    return value
 
 
 def kill_group(proc):
@@ -118,7 +141,7 @@ def kill_group(proc):
 def judge(code, out):
     """(state, reason) for one suite run on a planted mutant."""
     if code is None:
-        return COULD_NOT_MUTATE, "suite timed out after %ds" % SUITE_TIMEOUT
+        return COULD_NOT_MUTATE, "suite timed out after %gs" % SUITE_TIMEOUT
     if BUILD_FAILED.search(out):
         return COULD_NOT_MUTATE, "mutant does not compile (suite reports a build/setup failure)"
     if code != 0 and "--- FAIL:" in out:
@@ -167,6 +190,13 @@ def main(argv):
     parser.add_argument("--shard", default="",
                         help="I/N: run only mutations at spec index = I (mod N); baseline and control run in every shard")
     args = parser.parse_args(argv)
+
+    global SUITE_TIMEOUT
+    try:
+        SUITE_TIMEOUT = suite_timeout(os.environ)
+    except HarnessBroken as err:
+        print("HARNESS BROKEN: " + str(err))
+        return 2
 
     try:
         spec = json.loads(Path(args.spec).read_text())
