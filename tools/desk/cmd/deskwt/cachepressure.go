@@ -8,7 +8,7 @@ package main
 // whose launches are rare can sit over its byte budget — or the filesystem
 // under its free-space floor — indefinitely, and crash-custody records
 // accumulate without bound. This pass is the backstop: every prune sweep
-// runs cellcache.Check over each marked cache root under the cells root, and
+// runs the cellcache pressure check over each marked cache root under the cells root, and
 // reaps the root of a cell directory this same sweep has just removed.
 //
 // Enforcement is entirely the package's own semantics — reclaim only under
@@ -22,8 +22,10 @@ package main
 // a cell's own subtree never is — and cellcache.LoadMarkedPolicy accepts it
 // only when the path boundary holds and the ownership marker and the root's
 // own recorded policy agree. Enforcement then goes through
-// cellcache.CheckRecorded, which re-reads the recorded policy under the
-// root's own lock in the same transaction as the check: a policy read here,
+// cellcache.AdmitRecorded — a lock-free pre-check that admits a cache whose
+// recorded clean measurement is fresh and well inside its thresholds, and
+// otherwise runs cellcache.CheckRecorded, which re-reads the recorded policy
+// under the root's own lock in the same transaction as the check: a policy read here,
 // before the lock, would be written back over a newer one a launch recorded
 // in between. The policy the sweep enforces is therefore always the one the
 // cell's launches actually run under — never re-derived from a second source,
@@ -192,10 +194,15 @@ func sweepCellCaches(cellsRoot string, dryRun bool, reapedPaths []string) (cache
 		}
 
 		res.checked++
-		// CheckRecorded re-reads the recorded policy under the root's lock and
-		// enforces THAT one: an advisory policy read here, before the lock,
-		// would be written back over a policy a launch recorded in between.
-		rep, cerr := cellcache.CheckRecorded(p.Root, dryRun)
+		// AdmitRecorded is the lock-free pre-check first: a cache whose last
+		// clean measurement is fresh and far from its thresholds is admitted
+		// without the root's lock and without walking it (the walk is tens of
+		// seconds on a large cache and this pass runs on every window boot).
+		// Anything it cannot prove falls through to CheckRecorded, which
+		// re-reads the recorded policy under the root's lock and enforces
+		// THAT one: an advisory policy read here, before the lock, would be
+		// written back over a policy a launch recorded in between.
+		rep, cerr := cellcache.AdmitRecorded(p.Root, dryRun)
 		if cerr == nil {
 			// checked-clean: within policy. Silent.
 		} else if rep.Outcome == "storage-deferred" {

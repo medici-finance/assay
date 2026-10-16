@@ -2,8 +2,8 @@
 # pipeline. Declared in session by the driver; the merge of this file is the
 # ratification.
 declared-by: human:ian
-starts: "2026-09-30"
-expires: "2026-10-14"
+starts: "2026-10-16"   # re-declared 2026-10-16 after the 2026-10-14 expiry
+expires: "2026-10-30"   # 14-day horizon is the maximum statusgen applies
 intensity: push
 state: active
 why: land build-less-brittle so brittle builds stop stalling every lane

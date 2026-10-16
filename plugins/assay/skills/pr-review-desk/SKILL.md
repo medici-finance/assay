@@ -96,7 +96,12 @@ identity. Three desk-specific residues `deskboot` does not carry:
    degraded, not diffed), keeps a per-repo baseline so the first sight of a repo SEEDS silently
    (pre-seeded, never a flood), and emits one `PR-EVENT: <slug>#<num> <kind> <old> -> <new>` line
    per change (`kind ∈ opened | pushed | draft-flip | state | merge-state | closed`) — so a fresh
-   PR, a push, or a draft flip surfaces within one cadence tick. It PACES its reads: it sleeps
+   PR, a push, or a draft flip surfaces within one cadence tick. Each repo is read under its own
+   per-repo role token, minted inside the poll from the window's `$DESK_LOOP` (`desktoken <role>
+   --repo <slug>`) and scoped to that one read — never the ambient `gh` login, never an inherited
+   `GH_TOKEN`. A mint that fails (or a `$DESK_LOOP` that is unset) prints `MONITOR-DEGRADED: <slug>
+   token mint FAILED (...)`, the repo keeps its previous baseline, and the cycle exits 2: that is
+   could-not-check, never "no open PRs" — so arm the monitor with `DESK_LOOP` exported. It PACES its reads: it sleeps
    `ASSAY_MONITOR_PACE_SECONDS` (default 2) between repos and, at
    `ASSAY_MONITOR_MAX_REPOS_PER_CYCLE` (default 0 = all), caps a cycle and carries a cursor to the
    next run, so the watcher cannot become the tight-loop poll that once tripped the forge's

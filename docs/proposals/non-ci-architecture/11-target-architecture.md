@@ -99,7 +99,7 @@ The cockpit exposes effective policy, evidence provenance and next required act.
 |---|---|---|
 | Definitions and planning | Work definitions, persistent product direction, product and architecture targets, requirements, contracts, change sets and their revisions | Markdown remains the narrative; structured records make selected relationships traversable. Plans do not assert deployment. |
 | Work and policy | Eligibility, dependency satisfaction, delivery facts, review currency, acceptance obligations, portfolio policy evaluation and explainable holds | Pure evaluation over explicit observations and policy versions. No token minting, process launch or hidden network reads. |
-| Runtime coordination | Attempts, leases/generations, schedules, cancellations, recovery, bounded budgets and effect intents | A simple desk item need not instantiate a general workflow graph. Both desk and workflow adapters use the same admission and ownership semantics. |
+| Runtime coordination | Attempts, leases/generations, schedules, cancellations, recovery, fail-closed brake budgets, best-effort pacing counts and effect intents | A simple desk item need not instantiate a general workflow graph. Both desk and workflow adapters use the same admission and ownership semantics. |
 | Evidence and decisions | Evidence subjects, applicability, independent verification, human decisions, publication receipts and acceptance assessment | Execution success cannot grant acceptance; evidence publication cannot answer a human gate. |
 | Provider effects | Typed external reads/writes, repository coordinates, identity, conditional effects and reconciliation | Credential custody stays outside working sessions. Each effect executor has only its role's authority; no universal credential broker. |
 | Continuing operations and quality | Enduring journeys/practices/workflows, assessment definitions, due observations and improvement hypotheses | Delivery verification does not prove operational benefit. qualgen-style measures feed this domain rather than silently changing authorization. |
@@ -261,6 +261,109 @@ The runtime coordination owner also owns [workspace retirement and pending reeva
 Efficiency guards detect repeated calls/failures, no progress and exhausted output/time/cost budgets. Emit attributed events with attempt, candidate, guard/version, triggering observation, corrective action and outcome; bound and redact stored payloads. Distinguish a model-directed nudge from deterministic refusal or cancellation. A legitimate repeated read must be able to observe changed state; equal tool arguments do not prove equal intent or stale data. Budgets come from the admitted operation profile, with explicit unavailable measurements.
 
 Authority controls remain at the executor: scope, policy, candidate, lease generation and stable effect identity. An in-memory duplicate-call cache is only an efficiency aid; it cannot prove that a timed-out write did not occur or prevent replay after restart. A model-based comment critic may improve prose, but its failure policy must never bypass an authorization or publication check. A model's completion assessment is an attributed suggestion, not independent evidence, acceptance or permission to mark a change ready. Existing role and human gates remain controlling.
+
+### Pacing counts are best effort; brakes fail closed
+
+**15 October 2026 amendment.** Operation counts fall into two classes, decided by rule
+rather than by example. When a count's class is unclear, it is a brake.
+
+**Brakes stay fail-closed and are outside this tolerance.** A brake is any count that
+bounds a runaway, a compromised or misbehaving writer, or the blast radius of one actor
+on a target, repository, tracker or process tree. Brakes are: per-change/per-target and
+per-repository write ceilings; daily write and operation caps; new-issue (filing) caps;
+the write circuit breaker; the child-launch budget that bounds recursive agent launches
+(graph-execution/26); per-caller ingress rate limits on the
+[Cell API](21-cell-operator-surface.md); and retry budgets for provider calls
+([forge service](22-forge-service-and-source-queries.md)). When a brake's count is
+unavailable, unreadable or unverifiable, the governed operation holds or applies a
+declared conservative fallback; it never assumes the actor is under budget. The shipped
+outward-write limiter this target replaces keeps that behavior and is its reference
+(at `1948dc087`: `tools/desk/internal/deskkit/ratelimit.go:23` per-target tier,
+`:60` per-repository tier, `:509` unverifiable count refuses, `:807` unreadable log is
+never a closed breaker; `tools/desk/cmd/deskfile/deskfile.go:267` new-issue cap). This
+amendment relaxes no brake. Relaxing one is a separate human decision, recorded by the
+maintainer and naming its compensating bound; nothing here makes that decision.
+
+**Pacing counts are best effort.** A pacing count only shapes the throughput of
+operations that are already authorized and already bounded by the brakes, for example
+poll cadence, launch pacing, provider read-refresh rate limits
+([storage and forge](14-storage-forge-graph.md)) and the reconstruction rate limit. An
+enabled pacing limiter still applies its configured value to the available estimate;
+this is not permission to discard the limiter or widen that value. Counting needs no
+global lock across network work, no durable budget-slot reservation and no full
+audit-history replay. An unavailable pacing count is reported as unavailable, never as a
+measured zero; with its estimate seeded as below it does not by itself hold an
+otherwise-authorized operation, and counter maintenance failure is never a publication
+failure.
+
+**Unknown usage cannot silently become a fresh allowance.** This invariant binds every
+count. A brake satisfies it by holding. A pacing count's estimate is never
+started at zero, and it is **shared**: no process keeps a private estimate that counts
+only its own admissions.
+
+1. An **effect-class** count (below) is always re-derived, before each admission, from
+   the window's durable admission records (R2 effect intents and receipts, or recorded
+   launches in the supervisor journal). That is
+   a bounded query over one window, not an audit-history replay. A cached pacing row
+   may exist only as an optimisation; it never counts as the source, and a skipped or
+   failed row update cannot lower the estimate. Admissions by every process are
+   therefore counted, so N processes or K restarts do not each spend the remaining
+   allowance.
+2. A **read-class** count (below) is seeded from its last retained count for the window
+   and kept in one shared row that every process reads and writes back to. Row updates
+   are best effort.
+3. Only when a count's source (its admission records or its last retained count) cannot be read, as after a whole-database loss mid-window,
+   may the estimate reset, once per window, limiter scope and operator incarnation. The
+   reset is recorded and reported. A second unseeded reset in the same window, or a
+   reset whose record cannot be read, treats the window as exhausted until it rolls over.
+
+**Two kinds of pacing count.** The tie-break is the durable record: a pacing count
+whose admissions leave a durable admission record is **effect-class**, and that record
+governs its estimate. Admissions that commit an R2 effect intent before the executor
+runs are effect-class, and so is launch pacing, whose recorded launches in the supervisor
+journal ([graph-execution/26](../../streams/graph-execution/brief-26-shared-loop-admin.md))
+govern it. A **read-class** pacing count paces work that leaves no durable admission
+record: poll cadence, provider read-refresh and the reconstruction rate limit. Its only
+seed is the last retained count, and its increments are themselves best effort, so a
+missed increment is never re-derived.
+
+**Declared drift bound (effect-class only).** C is the concurrent-admission overshoot:
+at most one admission per process that re-derives the estimate between another
+process's re-derive and its intent commit. Across one window an effect-class pacing count
+admits at most the configured cap + C. When the single recorded reset is used, overshoot
+can happen once before the loss and once after the reset, so the bound is 2 × (cap + C).
+The bound holds per operator incarnation. A whole-database loss erases the reset record
+with everything else, and an absent record cannot be told apart from no reset. Each such
+loss already requires the operator to rotate the incarnation, so every further reset in
+one window sits behind a human act. Within one incarnation, an absent reset record must
+be detectable rather than read as no reset; the store that owns the records says how
+([graph-execution/19](../../streams/graph-execution/brief-19-durable-instance-store.md)). Within one incarnation, a larger undercount is a
+defect, not tolerated drift.
+
+**Read-class counts have no numeric bound.** A read-class pacing count still seeds
+from its last retained count, shares its estimate and obeys the one-reset rule, but it
+is best effort only and unbounded on counter loss: missed increments are not recovered,
+and this contract declares no limit on how many there are. That is accepted because read-class pacing shapes the
+throughput of reads of already-authorized work and is not an abuse boundary. The
+controls on those reads are the per-caller ingress rate limits and provider retry
+budgets (both brakes), provider-enforced quotas and the hard time, cost and resource
+limits.
+
+**Residual risk.** A best-effort pacing count is not an abuse boundary. After one
+unrecoverable loss an effect-class count can admit up to one extra window's cap + C of
+paced, already-authorized work. Repeated whole-database loss within one window is a
+named residual: each loss erases the reset record, so each operator-rotated incarnation
+can admit up to one more cap + C. The incarnation rotation, not the count, is the
+control on that case. A read-class count's residual is its unbounded missed increments,
+as stated above. What bounds abuse is the brakes above, the executor's authority checks
+(scope, policy, candidate, lease generation and stable effect identity),
+provider-enforced quotas, and the hard time, cost and resource limits.
+
+This tolerance grants no operation, target, credential or human approval. Effect
+identity, duplicate prevention, ownership/fencing, required evidence and reconciliation
+of unknown effects retain their existing contracts. Their durable reservations protect
+an operation, not a budget slot. Provider-enforced quotas and separate time, cost,
+resource or human-gate contracts are unchanged.
 
 ## Public Assay includes the control plane and cockpit
 
