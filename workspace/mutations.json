@@ -1,0 +1,65 @@
+{
+  "test": "go test . -count=1 -timeout 120s -run '^(TestWorkspaceContractRoundTrip|TestWorkspaceSchemaCoverage)$'",
+  "control": {
+    "name": "CONTROL \u2014 accept unknown schema: a cell-workspace/v2 (or schema-less) document is read as v1",
+    "file": "contract.go",
+    "old": "func checkSchema(s string) error {\n\tif s != Schema {",
+    "new": "func checkSchema(s string) error {\n\tif false && s != Schema {"
+  },
+  "mutations": [
+    {
+      "name": "a changed payload replayed under an existing key is accepted as the same allocation",
+      "file": "contract.go",
+      "old": "\tif prior.PayloadDigest != q.Digest() {",
+      "new": "\tif false && prior.PayloadDigest != q.Digest() {"
+    },
+    {
+      "name": "the repository key drops the forge, so two forges with the same repository path share a directory",
+      "file": "contract.go",
+      "old": "sha256.Sum256([]byte(r.Forge + \"\\x00\" + r.Repository))",
+      "new": "sha256.Sum256([]byte(r.Repository))"
+    },
+    {
+      "name": "a transition succeeds against a generation the caller did not read (lost compare-and-set)",
+      "file": "contract.go",
+      "old": "\tif r.Generation != expected {",
+      "new": "\tif false && r.Generation != expected {"
+    },
+    {
+      "name": "a repeated key at any depth is accepted (last value silently wins)",
+      "file": "contract.go",
+      "old": "\t\t\tif _, dup := obj[k]; dup {",
+      "new": "\t\t\tif _, dup := obj[k]; false && dup {"
+    },
+    {
+      "name": "a null or explicitly empty optional field is accepted as absent",
+      "file": "contract.go",
+      "old": "\t\t\tif ina != inb {",
+      "new": "\t\t\tif false && ina != inb {"
+    },
+    {
+      "name": "a failed result may still hand out a record (a path to work in)",
+      "file": "contract.go",
+      "old": "\tif s.Record != nil {\n\t\treturn refuse(ReasonInvalid, \"record\", \"a %s outcome hands out no workspace\", s.Outcome.Kind)",
+      "new": "\tif false && s.Record != nil {\n\t\treturn refuse(ReasonInvalid, \"record\", \"a %s outcome hands out no workspace\", s.Outcome.Kind)"
+    },
+    {
+      "name": "an active record no longer needs a process lease",
+      "file": "contract.go",
+      "old": "\t} else if r.State == StateActive {",
+      "new": "\t} else if false && r.State == StateActive {"
+    },
+    {
+      "name": "a review workspace may hold a branch instead of a detached subject",
+      "file": "contract.go",
+      "old": "\t\tcase KindReview, KindVerify, KindCheck:\n\t\t\treturn refuse(",
+      "new": "\t\tcase \"\":\n\t\t\treturn refuse("
+    },
+    {
+      "name": "the transition table admits retired -> active (a tombstone comes back to life)",
+      "file": "contract.go",
+      "old": "\tStateRetired:    nil,",
+      "new": "\tStateRetired:    {StateActive},"
+    }
+  ]
+}

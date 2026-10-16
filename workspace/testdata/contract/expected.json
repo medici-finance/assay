@@ -1,0 +1,75 @@
+{
+  "digests": {
+    "request-worker.json": "sha256:2da8bb236b4464e5f3e80ce94146e0aa7fe15c0a21b5803a7b0e6d90b0f34ff4",
+    "request-worker-pretty.json": "sha256:2da8bb236b4464e5f3e80ce94146e0aa7fe15c0a21b5803a7b0e6d90b0f34ff4",
+    "request-desk.json": "sha256:6cf02f1602eae3eac2c2ffc9b91c9fc1c864c731368a98f6ea4932dff00b8af8",
+    "request-review.json": "sha256:d9faa821538c549580a8d743b73b8b7d829212aa9d0c115222064dcf79abd321"
+  },
+  "repo_keys": {
+    "request-worker.json": "widgets-103052e15af2ff8e",
+    "request-desk.json": "widgets-103052e15af2ff8e",
+    "request-review.json": "widgets-97d848de73806223"
+  },
+  "negative": {
+    "unknown-schema-v2.json": {
+      "doc": "request",
+      "reason": "unknown-schema"
+    },
+    "missing-schema.json": {
+      "doc": "request",
+      "reason": "unknown-schema"
+    },
+    "unknown-field.json": {
+      "doc": "request",
+      "reason": "malformed"
+    },
+    "case-variant-key.json": {
+      "doc": "request",
+      "reason": "malformed"
+    },
+    "null-optional.json": {
+      "doc": "request",
+      "reason": "malformed"
+    },
+    "empty-optional.json": {
+      "doc": "request",
+      "reason": "malformed"
+    },
+    "duplicate-key.json": {
+      "doc": "request",
+      "reason": "malformed"
+    },
+    "trailing-data.json": {
+      "doc": "request",
+      "reason": "malformed"
+    },
+    "worker-without-task.json": {
+      "doc": "request",
+      "reason": "invalid"
+    },
+    "review-with-branch.json": {
+      "doc": "request",
+      "reason": "invalid"
+    },
+    "short-commit.json": {
+      "doc": "request",
+      "reason": "invalid"
+    },
+    "unknown-operation.json": {
+      "doc": "request",
+      "reason": "unsupported-capability"
+    },
+    "desk-with-task.json": {
+      "doc": "request",
+      "reason": "invalid"
+    },
+    "repository-url.json": {
+      "doc": "request",
+      "reason": "invalid"
+    },
+    "padded-number.json": {
+      "doc": "record",
+      "reason": "malformed"
+    }
+  }
+}
