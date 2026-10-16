@@ -208,7 +208,7 @@ adapters and preservation tests; do not use missing quality evidence to justify 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Local performance event contract, spool and offline report](brief-01-local-performance-event-contract-spool-and-offline-report.md) | 0 | L | todo | — | — |
-| 02 | [Producer adapters for workflow, usage and local performance](brief-02-producer-adapters-for-workflow-usage-and-local-performance.md) | 1 | L | todo | — | — |
+| 02 | [Producer adapters for workflow, usage and local performance](brief-02-producer-adapters-for-workflow-usage-and-local-performance.md) | 2 | L | todo | — | — |
 | 03 | [Separate TimescaleDB performance database and storage adapter](brief-03-separate-timescaledb-performance-database-and-storage-adapter.md) | 1 | L | todo | — | — |
 | 04 | [Authenticated performance ingestion API](brief-04-authenticated-performance-ingestion-api.md) | 2 | L | todo | — | — |
 | 05 | [Explicit resumable upload from the local spool](brief-05-explicit-resumable-upload-from-the-local-spool.md) | 1 | M | todo | — | — |
@@ -218,16 +218,26 @@ adapters and preservation tests; do not use missing quality evidence to justify 
 ## Critical path and dependency waves
 
 `01 local contract/log → 03 database → 04 collector → 06 complete-path qualification`.
-The parallel `01 → 02 producer adapters → 06` and `01 → 05 uploader → 06` paths also bind.
+The parallel `01 + desktools-v2/61 → 02 producer adapters → 06` and `01 → 05 uploader → 06` paths also bind.
 The first useful delivery is 01 followed by 02; neither depends on 03, 04 or 05.
 The uploader develops against the contract and fake HTTP transport while the server is built.
 
 - Wave 0: 01 — local contract, spool, preview and offline report.
-- Wave 1: 02 — source adapters; 03 — separate database; 05 — explicit uploader.
-- Wave 2: 04 — authenticated collector over the database adapter.
+- Wave 1: 03 — separate database; 05 — explicit uploader.
+- Wave 2: 02 — source adapters after 01 and desktools-v2/61; 04 — authenticated collector over the database adapter.
 - Wave 3: 06 — complete-path, retention, recovery and packaging qualification.
 
 The real first constraint is review of this bounded collection/consent contract, not a live
 PostgreSQL deployment, the parked continuing-operations subject program or the full cell runtime.
 Existing local-only desk-tools/23 can ship independently. New schema/local logger implementation
 starts from checked-in fixtures and existing runner interfaces. API/db credentials are not prerequisites.
+
+## Local instrument reuse — 2026-10-16
+
+Fresh main already supplies perfrec and statusgen's local adapter. Desktools-v2/61 owns
+their compatible boundary/schema evolution; /62 and statusgen/26 own producer phases.
+Brief 01 preserves separate correlated collection semantics. Brief 02 consumes the
+versioned fixture contract from /61 and therefore moves to wave 2; /06 remains wave 3.
+The dependency is one-way: immediate local measurements and credential improvements do
+not wait for this stream, a collector or a database. Import old/new timing bases and
+availability explicitly; do not fabricate comparable zeroes or additive nested time.

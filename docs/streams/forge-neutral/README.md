@@ -663,3 +663,12 @@ and its CI registry declares the whole stream-root input without publishing a wi
 stream name. Disclosure/secret guards retain their rules and negative controls. These
 command-path corrections supersede the earlier unchanged-Verify statement for these two
 rows only; existing human decisions and historical Evidence remain intact.
+
+## Performance reuse — 2026-10-16
+
+The immediate local lane remains desktools-v2/58–62 plus statusgen/26. This stream keeps
+the shared online ownership: /37 refresh coalescing and coverage, /38 event hints, /40
+isolated role executors, /43 incremental recomputation, /44 Git reuse trial and /45
+served qualification. /40 now explicitly consumes /58–59's internal provider; /45 consumes
+/62's matched workload. Their existing later waves and activation gates remain. No
+local credential/startup fix is made dependent on the service or PostgreSQL.

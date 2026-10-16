@@ -15,10 +15,12 @@ risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-da
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 1
+version: 2
 id: "2969ba49-706d-4544-b46b-e8b87b133bde"
 authored: "2026-10-04 by desktools-v2/15"
 sources:
+  - "assay:assay:desktools-v2:60 — consumer routing for the 2026-10-16 performance amendment"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - "https://github.com/medici-finance/assay/issues/2111"
   - "docs/streams/desktools-v2/spec.md §9"
   - "docs/streams/desktools-v2/cli-contract.md"
@@ -92,6 +94,8 @@ they already exist.
 | 8 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
 | 9 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
 
+| 10 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCLIHelpDoesNotDiscoverManifests$' ./cmd/deskdispatch/ > "$out" && grep -F -- '--- PASS: TestCLIHelpDoesNotDiscoverManifests ' "$out")` | exit 0; named PASS; compiled help/version with malformed config and a large manifest fixture performs zero operational config/discovery/custody reads; moving discovery before help fails |
+
 ## Pre-mortem
 
 Help reads config or credentials before printing: row 1 runs with hostile config and effect counters.
@@ -99,6 +103,19 @@ Viper's generic precedence replaces a per-key rule or loses an explicit empty: r
 A consumer's old spelling stops parsing: row 3 replays each consumer's forms.
 The owner tests pass on the happy path but miss a broken guard: the mutation row plants each break and requires it to redden.
 Only imports change while the old parser stays: TestCLIOwnerMigrated and /17's source checks catch it.
+
+## Performance reuse amendment — 2026-10-16
+
+Keep this brief's parser ownership and existing compatibility rows. The shared credential
+implementation belongs to /58–59, runtime manifest discovery to /60 and timing semantics to
+/61–62. Help/version acceptance includes every pre-handler entrypoint step: no config echo,
+activation discovery, file/index read, credential lookup or child process may occur first.
+Count those effects in the compiled command test, not only inside the handler. If the shared
+performance recorder is armed, a local best-effort performance record remains subject to its
+existing explicit consent; help must not read operational configuration to classify itself.
+Retain the one measurement finalizer when moving to Cobra. Do not reset the timer after
+parsing, add a second writer or reintroduce a minter callout in an adapter.
+
 
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->

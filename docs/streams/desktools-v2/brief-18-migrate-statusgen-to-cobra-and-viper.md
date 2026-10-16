@@ -16,10 +16,11 @@ risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-da
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 2
+version: 3
 id: "818e8f71-66e0-4614-b503-a6fd0aa301a1"
 authored: "2026-10-04 by desktools-v2/15"
 sources:
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - "https://github.com/medici-finance/assay/issues/2111"
   - "docs/streams/desktools-v2/spec.md §9"
   - "docs/streams/desktools-v2/cli-contract.md"
@@ -102,6 +103,8 @@ coordinate overlapping files with the extraction owner when both changes are in 
 | 8 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
 | 9 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
 
+| 10 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCLIHelpHasNoDiscoveryOrForge$' ./... > "$out" && grep -F -- '--- PASS: TestCLIHelpHasNoDiscoveryOrForge ' "$out")` | exit 0; named PASS; compiled help/version returns under malformed source/config with zero stream discovery and deskread starts; moving a load before help fails |
+
 ## Pre-mortem
 
 Help reads config or credentials before printing: row 1 runs with hostile config and effect counters.
@@ -109,6 +112,17 @@ Viper's generic precedence replaces a per-key rule or loses an explicit empty: r
 A consumer's old spelling stops parsing: row 3 replays each consumer's forms.
 The owner tests pass on the happy path but miss a broken guard: the mutation row plants each break and requires it to redden.
 Only imports change while the old parser stays: TestCLIOwnerMigrated and /17's source checks catch it.
+
+## Performance reuse amendment — 2026-10-16
+
+Statusgen already uses the shared perfrec module at exitProcess. Statusgen/26 extends that
+recorder with phase attribution; this parser migration preserves every measured terminal path
+and the existing network-telemetry consent boundary. Root/nested help and version do not load
+the repository, discover streams, invoke deskread or read credentials. Measure the complete
+Go entrypoint rather than restarting timing inside Cobra. Do not link deskkit or the internal
+credential provider: online reads remain on the existing read verb, while offline/frozen
+libraries stay usable without a service.
+
 
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->
