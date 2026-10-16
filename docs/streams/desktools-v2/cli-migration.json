@@ -170,6 +170,11 @@
       "class": "library",
       "pattern": "statusgen/boardadd.sh",
       "reason": "board-staging function (board_add) embedded verbatim in both CI templates statusgen init writes (issue #2915); no shebang, never executed"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/cellctl/tests/private-path.sh",
+      "reason": "private_path helper sourced by the cellctl shell suites to stub tmux and herdr ahead of the inherited PATH (issue #1927); no shebang, never executed"
     }
   ],
   "entrypoints": [
