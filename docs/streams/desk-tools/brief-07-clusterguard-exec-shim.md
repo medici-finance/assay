@@ -33,7 +33,7 @@ exec-tier: strong
 exec-tier-why: "safety plumbing. A subtle pass-through bug — the guard resolving itself, the
   invoked name lost, the opt-in check inverted, an unclassified verb defaulting to allowed —
   survives every happy-path test and leaves the control looking installed while it does nothing."
-version: 1
+version: 2
 id: 691efcfa-40d4-4382-aeb1-5f565d2415dc
 ---
 
@@ -103,9 +103,13 @@ facts:
   than waved through on the day it appears. `k9s` carries an EMPTY allowlist on purpose — it is
   an interactive TUI whose mutating operations are reachable from inside the session, so nothing
   in its argv can establish that a call is read-only.
-- the verb scan skips flags, and skips the value of a global flag that consumes one (`-n ns get`
-  classifies on `get`, not on `ns`). The value-flag table can only remove FALSE REFUSALS: an
-  unrecognised token still lands on the mutating side.
+- the verb scan skips `--flag=value` tokens, and skips a listed global flag that consumes a value
+  together with that value (`-n ns get` classifies on `get`, not on `ns`). Any OTHER flag before
+  the subcommand makes the call unclassifiable — the mutating side — because its arity is
+  unknown and a value-consuming flag hides the real verb (`kubectl --username get delete pod x`
+  runs `delete`). That is what keeps the value-flag table's completeness off the safety path: a
+  missing entry costs a false REFUSAL, never a false pass. The table's one hazard is an entry for
+  a flag that takes no value, which would make the scan skip the real verb.
 - token discipline: `ASSAY_ALLOW_CLUSTER` is a per-SHELL export an operator makes deliberately —
   the same shape as writeguard's shared-checkout claim, a token the guarded population must never
   export for itself. It is **declared in `deskkit`** for one reason only: it sits in the `ASSAY_`
@@ -197,7 +201,7 @@ are chained with `&&`.
 | 4 | check:ci | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestRefusesScriptWrappedCall$' -count=1` | exit 0 — the MUTATION row: the same call wrapped in a shell script is refused identically. This is what a command-text rule cannot catch and what the exec boundary catches for free |
 | 5 | check:ci | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestPassesThroughWithOptIn$' -count=1 && go test ./cmd/clusterguard/ -run '^TestPassThroughSkipsTheShimDirectory$' -count=1` | exit 0 — pass-through reaches the fixture with args intact, and still does so with the shim directory listed TWICE on PATH ahead of it (the self-exec loop) |
 | 6 | check:ci | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestSymlinkNameDispatch$' -count=1 -v` | exit 0, five subtests — one binary invoked under five names reaches the fixture of its OWN name |
-| 7 | check:ci | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestVerbClassification$' -count=1 && go test ./cmd/clusterguard/ -run '^TestReadOnlyTierRefusesMutatingVerbs$' -count=1` | exit 0 — the per-CLI read-only table holds (including `k9s` having no read-only lane and `delete -f get` not reclassifying on an argument), and the read-only tier refuses a mutating verb with exit 5 without reaching the CLI |
+| 7 | check:ci | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestVerbClassification$' -count=1 && go test ./cmd/clusterguard/ -run '^TestReadOnlyTierRefusesMutatingVerbs$' -count=1 && go test ./cmd/clusterguard/ -run '^TestUnlistedFlagNotReadOnly$' -count=1 && go test ./cmd/clusterguard/ -run '^TestROTierUnlistedFlagRefuses$' -count=1` | exit 0 — the per-CLI read-only table holds (including `k9s` having no read-only lane and `delete -f get` not reclassifying on an argument), and the read-only tier refuses a mutating verb with exit 5 without reaching the CLI — including one hidden behind a flag the guard does not know the arity of (`--username get delete pod x` is refused, exit 5, fixture not reached), in both arity directions (a boolean `--insecure-skip-tls-verify drain get` is refused the same way) |
 | 8 | check:ci | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestUnrecognisedOptInValueRefuses$' -count=1 && go test ./cmd/clusterguard/ -run '^TestNoRealBinaryIsUnverifiable$' -count=1 && go test ./cmd/clusterguard/ -run '^TestUnknownInvocationNameIsUnverifiable$' -count=1` | exit 0 — the three fail-closed edges: a typo'd opt-in refuses (5), a missing binary is a DISTINCT 6, an unrecognised shim name is 6. None of them is 0 |
 | 9 | check:ci | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestStopFlagRefusesEvenWithOptIn$' -count=1` | exit 0 — an armed kill switch exits 3 and the fixture does not run. The fail-OPEN inversion is the thing this row exists to make impossible |
 | 10 | check:ci | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestAbsolutePathInvocationBypassesTheShim$' -count=1 && go test ./cmd/clusterguard/ -run '^TestLogRecordsBothVerdicts$' -count=1 && go test ./cmd/clusterguard/ -run '^TestLogRedactsCredentialArguments$' -count=1` | exit 0 — the NEGATIVE CONTROL (an absolute-path call reaches the CLI and the guard never sees it: the stated limit, proven rather than asserted), plus both verdicts on the log and credential values redacted off it |
@@ -205,6 +209,7 @@ are chained with `&&`.
 | 12 | check:ci | `cd tools/desk && go test ./... -count=1` | exit 0 — the whole module, including the forge-surface ledger check that the new pass-through exec site is registered |
 | 13 | check:ci | `gofmt -l tools/desk/cmd/clusterguard > /tmp/cg-fmt.out; test ! -s /tmp/cg-fmt.out` | exit 0 — no unformatted file |
 | 14 | check:ci | `cd statusgen && go run . --root .. --lint; echo $?` | 0 |
+| 15 | check:ci +mutation | `cd tools/desk && go run ./cmd/muhar -spec cmd/clusterguard/mutations.json` | exit 0 — `Harness healthy: baseline GREEN, positive control CAUGHT.` and every mutation CAUGHT, `0 NOT CAUGHT`. The spec breaks the read-only classification six ways — an unlisted pre-verb flag read as boolean again (the `--username get delete` false pass), the opposite guess that it consumes one token (two forms: `--debug uninstall list` and `--warnings-as-errors delete events` pass as read-only), a listed value flag no longer consuming its value, `--flag=value` no longer self-contained, the refusal no longer naming the flag — and each must redden the package's tests |
 
 Rows 3, 4, 7, 8 and 9 are the negative-path rows. They were written and run against a
 do-nothing stub before the implementation existed: every one of them failed, which is what

@@ -67,7 +67,7 @@ changed or discarded.
 | `deskdisposition` | `set`, `read`, `sweep` — machine-readable PR disposition records (#728/#827); records a verdict, never closes | outward write (`set`) / read-only (`read`, `sweep`) | yes |
 | `deskmerge` | `check` — merge-currency in three states, writes nothing; `merge` — merges main INTO a PR branch, gated on a fetched human sign-off of R-5 (unsigned today, so it merges nothing) | read-only (`check`) / outward write (`merge`) | yes (`merge`) |
 | `deskscanbody` | `emit`, `check` — derives the issue-loop scan PR title/body from the branch diff (#685) | local-only (git read) | no |
-| `deskevidence` | `commit` — Evidence via the Contents API, as the verifier App | outward write | yes |
+| `deskevidence` | `commit` — conditional Evidence publication, as the verifier App | outward write | yes |
 | `deskrun` | `<owner/repo> <workflow> --ref <r> [-f k=v …]` (dispatch one run, print the run it created), `approve <owner/repo> <run-id> --gate <name>` (clear ONE named deployment gate), `status <owner/repo> <run-id>` — under the repo's roster-bound run credential (`ASSAY_RUN_CREDENTIALS`): the dedicated `release-runner` credential proceeds, a `human:<name>` binding is REFUSED (exit 5) before anything is minted, an unbound repo is could-not-check (exit 6). On GitHub, `approve` is could-not-check under an App credential (required reviewers are users or teams). Never `repository_dispatch`; GitLab starts pipelines with the trigger token | outward write (`status`: read) | yes |
 | `deskreconcile` | (no verbs) `--worktree DIR [--issue N] [--dry-run]` — the desk-side board-reconcile writer: fetches origin/main into an isolated worktree, runs `statusgen reconcile --backfill --apply` (the command that flips a stream README Status cell `todo`/`in-progress` → `implemented`, real merged-PR witness only), and — only when a stream README changed — commits ONLY those README files as ONE commit on the fixed branch `board/reconcile` and opens/UPDATES exactly one draft PR titled `chore(board): reconcile`. Removes the scheduled-CI dependency #1175 is blocked on (no App may push the workflow change). `--dry-run` reports the rows it would flip and writes nothing | outward write (the commit + `deskpr` carry) | yes |
 | `deskrelease` | `cut <tag>` — create-only tag ref, as the desk App | outward write | yes |
@@ -100,6 +100,32 @@ defaults. Malformed, duplicate or disallowed entries refuse the whole inventory 
 before printing any rows. This read checks the mapping, not checkout existence or board contents.
 `--scope topology` retains the stated compiled topology. The default `--scope all` retains its
 write, scan and topology inventories; request `roots` explicitly for board-root coverage.
+
+### Evidence publication requests
+
+`deskevidence` shares a snapshot within one publication. On GitHub its admission
+read batches the dispatcher attestation, body-edit history, current labels and
+label provenance, live repository visibility, and the destination file under one
+branch commit. Existing validators consume those facts only after admission.
+The outbound checker and the write use the same file bytes. The existing Contents write
+requires that exact file revision, so a concurrent edit refuses the publication
+rather than overwriting a change. Commits to unrelated files remain compatible. A normal single-file Evidence update takes
+**two requests: one read and one conditional commit**. An already-landed update
+or a dry run needs only the read.
+
+GitLab reuses the attestation issue, destination file and project metadata within
+the publication. It retains its native description-edit history, resource-label
+events and author-identity reads; file updates carry the observed `last_commit_id`.
+The protected default branch still returns the existing sentinel and the caller
+publishes through a side branch and draft merge request. It does not inherit a
+two-request promise: the offline ordinary-update fixture takes seven requests,
+including the author lookup; merge-request publication adds its own calls.
+
+Snapshots never survive an invocation. Overflowing GitHub label histories use
+the complete existing reader. Outcome records can require additional related-file
+and blocker reads. Token minting, conflicts and recovery are outside the two-call
+happy path. A failed commit acknowledgement stays unknown and is never replayed
+automatically; a fresh invocation reads the branch to reconcile it.
 
 ## Your first hour with desk-tools
 
@@ -3015,9 +3041,16 @@ Read-only classification is an **allowlist per CLI**, which is the fail-closed d
 nobody classified is MUTATING, so a subcommand added upstream tomorrow is refused rather than
 waved through on the day it appears. `k9s` carries an EMPTY allowlist on purpose: it is an
 interactive TUI whose mutating operations are reachable from inside the session, so nothing in its
-`argv` can establish that a call is read-only. The verb scan skips flags and the values of global
-flags that consume one (`-n ns get pods` classifies on `get`, not on `ns`); that table can only
-remove false REFUSALS, since an unrecognised token still lands on the mutating side.
+`argv` can establish that a call is read-only. The verb scan skips `--flag=value` tokens and the
+global flags it knows consume a value, with that value (`-n ns get pods` classifies on `get`, not
+on `ns`). Any OTHER flag before the subcommand makes the call unclassifiable, so it lands on the
+mutating side: its arity is unknown, and a flag that consumes the next argument hides the real
+verb — real `kubectl --username get delete pod x` runs `delete`, with `get` as the username. So
+the value-flag table can be incomplete without a false pass; a missing entry costs a false
+refusal, which the operator answers by writing the flag as `--flag=value` or after the subcommand.
+The table's one hazard is the reverse: an entry for a flag that takes NO value would make the
+scan skip the real verb, so a flag goes into it only when the CLI's own help shows it consumes an
+argument.
 
 Exit `5` is a **refusal, not a fallback trigger**. The message says so explicitly: reaching the
 same CLI by absolute path, by a rebuilt `PATH`, or through another tool is not the sanctioned

@@ -159,7 +159,7 @@ func assertAdmissionReadsFirst(t *testing.T, calls []apiCall) {
 	t.Helper()
 	record, contents := -1, -1
 	for i, c := range calls {
-		if record < 0 && strings.HasSuffix(c.Path, "/issues/77") {
+		if record < 0 && (strings.HasSuffix(c.Path, "/issues/77") || c.Operation == "snapshot") {
 			record = i
 		}
 		if contents < 0 && strings.Contains(c.Path, contentsPrefix) {
@@ -206,7 +206,7 @@ func TestLandingMintsBeforeAdmission(t *testing.T) {
 		}
 		assertOneMintedIdentity(t, calls)
 		assertAdmissionReadsFirst(t, calls)
-		if contentsCalls(calls) == 0 {
+		if len(calls) != 1 || calls[0].Operation != "snapshot" {
 			t.Fatalf("dry-run never read the branch, so it exercised no remote gate: %+v", calls)
 		}
 		if len(lf.api.puts) != 0 {
@@ -258,8 +258,9 @@ func TestLandingMintsBeforeAdmission(t *testing.T) {
 }
 
 // TestAdmissionStillPrecedesEveryLandingRead pins what moving the mint must NOT change:
-// admission is still the first thing that touches the forge, and a landing it refuses reads
-// nothing from the branch, does not read its local evidence file, and writes nothing — whether
+// admission is still the first thing that touches the forge. A batched snapshot may
+// include destination bytes, but a refused landing never consumes them, reads its
+// local evidence file or writes anything — whether
 // admission refuses on what it read from the forge or on the home alone.
 func TestAdmissionStillPrecedesEveryLandingRead(t *testing.T) {
 	lf := newLandingFixture(t)
