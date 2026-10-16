@@ -376,3 +376,27 @@ These sources motivate choices; they do not certify the proposed implementation:
 - [OMG BPMN 2.0.2](https://www.omg.org/spec/BPMN/2.0.2/About-BPMN)
   provides related process-modeling vocabulary. This proposal does not require a BPMN
   engine or claim BPMN conformance.
+
+## Proposed performance and architecture practices — 15 October 2026
+
+[The review-profile specification](../review-profiles/spec.md) supplies two versioned
+assessment perspectives over this proposal's enduring subjects, measurement definitions
+and independent assessments. Architecture asks whether a change or accumulated state
+moves toward the applicable future architecture; performance asks whether equivalent
+results can be achieved with less work/contention or a better algorithm. A design
+opportunity and a measured improvement are distinct assessment bases.
+
+PR/CI evaluates the changed design and controlled evidence. Proposed daily performance
+assessment ranks actual frequency × cost and cost per verified brief; owner-selected
+weekly/monthly architecture review examines accumulated drift, owners, coupling and
+expired transitional paths. Declare windows, evidence scope/freshness, budgets, thresholds
+and owner before execution. Local manual assessment and imported evidence remain the
+first useful slice; a new controller, performance database or managed-cell rollout is
+not required. These are proposed practices, not activated cadences.
+
+O08 carries these questions into authoring/review; O10 hosts manual assessment; O11
+continues to own any later cadence adapter. An independently confirmed finding may
+become a deduplicated intake issue and a separately admitted, budgeted repair draft PR.
+Existing claim/effect identity, current-candidate review, independent verification and
+post-exposure assessment apply. Neither a profile nor its report can merge/deploy,
+promote its own gate, rewrite the architecture target or reset exhausted budgets.
