@@ -44,9 +44,8 @@ type Options struct {
 	// every hue to #3366FF must make the proof name a colliding pair.
 	forceAccent *rgb
 	// reviewLikeRead, when true, makes the team review tile a copy of the read
-	// tile under the review App's name. It exists for the proof's rejection test
-	// (apps-installer/10 Verify row 4): an indistinguishable review tile must make
-	// Generate fail naming both Apps.
+	// tile under the review App's name. It exists for the proof's rejection test:
+	// an indistinguishable review tile must make Generate fail naming both Apps.
 	reviewLikeRead bool
 }
 

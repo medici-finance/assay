@@ -14,11 +14,11 @@ import (
 // the shortest legal login, and a 39-character one (the login grammar's max).
 var teamProofOrgs = []string{"example", "acme", "a", "thirty-nine-character-org-login-example"}
 
-// TestTeamThreeTileProof is apps-installer/10 Verify row 2: the three-tile team
+// TestTeamThreeTileProof is the team-review brief's Verify row 2: the three-tile team
 // set (read, act, review) passes the 20 px proof through Generate — which runs
 // the proof before returning anything — for every org login the row names.
 //
-// regression: F-apps-installer-10
+// regression: #3171
 func TestTeamThreeTileProof(t *testing.T) {
 	if n := len(teamProofOrgs[3]); n != 39 {
 		t.Fatalf("the long login is %d characters, want 39", n)
@@ -43,7 +43,7 @@ func TestTeamThreeTileProof(t *testing.T) {
 // the team hue is seedHue(org) — an integer in [0,360) — so a login per hue
 // covers every team palette an adopter can get. Each set must pass the proof.
 //
-// regression: F-apps-installer-10
+// regression: #3171
 func TestTeamProofEveryHue(t *testing.T) {
 	seen := map[float64]bool{}
 	for i := 0; len(seen) < 360 && i < 1_000_000; i++ {
@@ -75,7 +75,7 @@ func TestTeamProofEveryHue(t *testing.T) {
 // (`deskavatar --org example --tier team`), so any drift in the two existing
 // tiles — colour, glyph, geometry, identity field — is a byte difference here.
 //
-// regression: F-apps-installer-10
+// regression: #3171
 func TestTeamReadActUnchanged(t *testing.T) {
 	set, err := Generate("example", TierTeam, Options{Sizes: []int{20}})
 	if err != nil {
@@ -108,7 +108,7 @@ func TestTeamReadActUnchanged(t *testing.T) {
 // silhouette, silhouetteIoU returns 0, and the proof passes them; that gap in
 // the metric is pre-existing and out of this test's reach — see the PR.
 //
-// regression: F-apps-installer-10
+// regression: #3171
 func TestProofRejectsReviewLikeRead(t *testing.T) {
 	const org = "acme"
 	specs, err := specsFor(org, TierTeam, Options{})
