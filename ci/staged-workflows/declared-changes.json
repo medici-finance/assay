@@ -16,7 +16,7 @@
   },
   "release.yml": {
     "mode": "pending",
-    "reason": "Intentional release-by-merge tag authorizer proposal (README Contents)."
+    "reason": "Release-owned binaries and all nine images, with checksummed immutable image references before publication; retains the pending release-by-merge authorizer proposal. Promote with docker-publish.yml."
   },
   "windows-ci-leg.yml": {
     "mode": "identical"

@@ -242,6 +242,18 @@ class CacheTests(unittest.TestCase):
         finally:
             server.shutdown();server.server_close();thread.join()
 
+    def test_split_build_job_is_the_unique_cache_producer(self):
+        build = copy.deepcopy(self.job)
+        build['name'] = 'artifacts'
+        publisher = copy.deepcopy(self.job)
+        publisher['steps'] = []
+        selected = cache.select_artifact(self.run, [publisher, build], [self.artifact],
+                                         self.log, 'example/project', 7, 99)
+        self.assertEqual(selected['id'], self.artifact['id'])
+        with self.assertRaises(cache.Miss):
+            cache.select_artifact(self.run, [self.job, build], [self.artifact],
+                                  self.log, 'example/project', 7, 99)
+
     def test_workflow_wiring(self):
         repo=Path(__file__).resolve().parents[2]
         for path in ['.github/workflows/release.yml','tools/release/release.yml.proposed','ci/staged-workflows/release.yml']:
@@ -252,12 +264,13 @@ class CacheTests(unittest.TestCase):
             self.assertNotIn('actions: write',release)
             self.assertNotRegex(text, r'uses:\s*actions/cache(?:/[^@\s]+)?@')
             self.assertNotIn('type=gha',text)
-            self.assertIn('go_cache.main("restore")',release)
-            self.assertIn('go_cache.main("pack")',release)
-            self.assertIn('overwrite: false',release)
-            self.assertIn('compression-level: 1',release)
-            self.assertIn("github.ref == 'refs/heads/main' && !inputs.dry_run",release)
-            for name in cache.PRODUCER_STEPS: self.assertIn('name: '+name,release)
-            self.assertIn('-o "$stage/" ./cmd/...',release)
-            self.assertIn('darwin-arm64 darwin-amd64 linux-amd64 windows-amd64 windows-arm64',release)
-            self.assertNotIn('for cmd in cmd/*/',release)
+            build = text.split('\n  artifacts:\n', 1)[1].split('\n  images:\n', 1)[0] if '\n  artifacts:\n' in text else release
+            self.assertIn('go_cache.main("restore")',build)
+            self.assertIn('go_cache.main("pack")',build)
+            self.assertIn('overwrite: false',build)
+            self.assertIn('compression-level: 1',build)
+            self.assertIn("github.ref == 'refs/heads/main' && !inputs.dry_run",build)
+            for name in cache.PRODUCER_STEPS: self.assertIn('name: '+name,build)
+            self.assertIn('-o "$stage/" ./cmd/...',build)
+            self.assertIn('darwin-arm64 darwin-amd64 linux-amd64 windows-amd64 windows-arm64',build)
+            self.assertNotIn('for cmd in cmd/*/',build)

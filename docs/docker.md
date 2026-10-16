@@ -1,3 +1,7 @@
+> Release ownership is changing: see [release images and consumer pins](release-images.md).
+> The staged umbrella workflow produces the complete image set and immutable
+> references; consumer re-pins only read those published outputs.
+
 # Container image
 
 The desk-tools suite and `statusgen` are published together as one combined
