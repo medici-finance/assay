@@ -32,7 +32,7 @@ func storageAdmission(dry bool, root string) error {
 	if p == nil {
 		return storageVolumes(root, floor, dry, availableDiskBytes)
 	}
-	r, err := cellcache.Check(*p, dry)
+	r, err := cellcache.Admit(*p, dry)
 	b, _ := json.Marshal(r)
 	fmt.Fprintf(os.Stderr, "storage-admission %s\n", b)
 	if err != nil {

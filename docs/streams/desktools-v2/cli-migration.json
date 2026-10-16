@@ -756,7 +756,7 @@
       "complexity": "simple",
       "basis": "3009 LOC, ~7 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/45",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskinstall",
@@ -1023,7 +1023,7 @@
       "complexity": "simple",
       "basis": "605 LOC, ~2 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/45",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskrebaseline",
@@ -1353,7 +1353,7 @@
       "complexity": "simple",
       "basis": "1314 LOC, ~4 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/45",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "muhar",

@@ -356,6 +356,7 @@ live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares t
 | TMPDIR | `<cell>/tmp` (created 0700 if absent) |
 | KUBECONFIG | `/dev/null` |
 | ASSAY_CONFIG_HOME | `<cell>/home/.config/assay` |
+| ASSAY_TELEMETRY | Cell-resolved local logging: exactly `1` opts in; configured other values become `0`; absent stays off |
 | GH_CONFIG_DIR | `<cell>/home/.config/gh` |
 | GIT_CONFIG_GLOBAL | `<cell>/home/.gitconfig` |
 | GIT_CONFIG_NOSYSTEM | `1` |
@@ -1419,23 +1420,27 @@ still overrides all four for that run, as before.
   directory, and can now also set a default for every cell at once — keep the root yours. The
   file holds no secrets of its own. It is opened as `providers.json` is — a regular file only,
   never a FIFO or a directory.
-- **A cell is named by its directory under the cells root.** `demo` and `team/demo` are cell
-  names. An absolute path, `.`, and a name that leaves the root through `..` (`../other/x`,
-  `team/..`) are refused — by `new`, by `set` and by every verb that loads a cell — in a message
-  that names the name and the root. The test is on the name as written, so a cell directory
-  that is a symlink to somewhere else still loads. `defaults.env` is not available as a cell
-  name.
-- **There is one file per cells root, for a nested cell too.** A cell named `team/demo` takes
-  the cells root's file like any other, never one beside `team/`. That holds for the later
-  cellctl processes a launch starts, as far as each is told where the cell is. The model-policy
-  hook, a container cell's console, the comms pane, a cadence-supervised role pane and a
-  managed scratch task are each handed the cells root the launch resolved and the cell's path
-  under it, not the cell directory's parent. An ordinary role pane is handed the cell's path
-  under the root and takes the root from its own environment. Two commands are as they
-  were before this file existed: the `deskd` stand pane and the precheck of a scheduled
-  (`--automate`) run name the cell by its `CELL=` value and take the cells root from their own
-  environment, so for a nested cell they reach the same cell only when `CELL=` is its path
-  under the root and `CELLS_ROOT` is the same there.
+- **A cell is named by ONE directory under the cells root, in `[a-z0-9-]`.** `demo` and
+  `cell-2` are cell names. A nested name (`team/demo`), an upper-case letter, `_` or `.` in the
+  name, an absolute path, `.`, and a name that leaves the root through `..` (`../other/x`,
+  `team/..`) are refused — by `new` (every kind, a container cell included), by `set` and by
+  every verb that loads a cell — in a message that names the name, the root and the rule. A
+  cell's `CELL=` value is held to the same rule, because it is what a launch stamps into every
+  child as `ASSAY_CELL` and what the cell-scoped stop flags (`STOP.cell.<cell>`) name the cell
+  by; a cell cellctl accepts is a cell those flags can address. The test is on the name as
+  written, so a cell directory that is a symlink to somewhere else still loads. `defaults.env`
+  is not available as a cell name. A cell made earlier under a name outside the rule (a nested
+  `team/demo`, `Demo`, `demo_1`) no longer loads: rename its directory and set `CELL=` to the
+  new name.
+- **There is one file per cells root.** Every cell takes the cells root's file. That holds for
+  the later cellctl processes a launch starts, as far as each is told where the cell is. The
+  model-policy hook, a container cell's console, the comms pane, a cadence-supervised role pane
+  and a managed scratch task are each handed the cells root the launch resolved and the cell's
+  name under it. An ordinary role pane is handed the cell's name and takes the root from its
+  own environment. Two commands are as they were before this file existed: the `deskd` stand
+  pane and the precheck of a scheduled (`--automate`) run name the cell by its `CELL=` value and
+  take the cells root from their own environment, so they reach the same cell only when
+  `CELLS_ROOT` is the same there.
 
 **The template, and the list of keys.** `cellctl defaults print` writes the template to
 standard output. It is generated from the one registry of keys cellctl keeps, and it prints
@@ -1914,3 +1919,24 @@ gateway/drain supervisor in its own cockpit surface; absent or disabled config
 keeps desk-only startup. `cellctl down` stops the supervisor before closing its
 owned surface and preserves mailbox data. See [host desk communications](cellctl-comms.md)
 for configuration, quoting, recovery and cockpit requirements.
+
+## Local performance opt-in
+
+Set `ASSAY_TELEMETRY=1` with `cellctl set <cell>` or in the machine defaults.
+The effective cell value overrides machine defaults, which override the launching process.
+Explicit empty, `0`, and other non-`1` values turn collection off. `cellctl show <cell>`
+prints the normalized effective value and source when configured. Existing desk sessions retain their old
+process environment; restart a role normally to apply a changed launch setting.
+
+The normalized switch reaches house Claude/Codex/Cursor processes, Codex command-side
+configuration, pre-harness desk helpers, the comms service, scratch/cadence children,
+scrubbed desk/smoke processes and native/external container
+launcher environments. Only this non-secret bounded value is forwarded; scrubbed allowlists,
+credential boundaries and cluster quarantine are unchanged. Existing containers may require
+an explicit restart to apply a different opt-in; status/down can inspect their actual bounded
+launch selection. An external launcher must preserve this documented environment key when
+it creates the container. No upload or performance payload expansion is enabled.
+
+Logging remains optional and best-effort. Enabled does not prove the sink is writable or
+that every invocation completed. Inspect the local perf day file and report coverage; missing
+samples are unknown, never zero. No tool installation or live role restart occurs during tests.

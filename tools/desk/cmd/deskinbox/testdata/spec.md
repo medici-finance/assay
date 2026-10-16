@@ -79,8 +79,8 @@ flag, on this port specifically:
   oracle's own top-level flag loop already treats `--root`/`--since` as accepted-but-inert
   outside `--flow` (assay-inbox.sh:143-148, 226 — `ROOT_ARGS` is read only by
   `resolve_cells()`, which only mode `flow`/`flowhtml` calls). Making `flow` its own
-  subcommand with its OWN flag parser (`runFlowCommand`, main.go) means a `--root` typo'd
-  onto `table`/`walk`/`html` is refused as an unknown option instead of silently doing
+  subcommand with its OWN declared flags (the `flow` command's bindings, main.go) means a `--root`
+  typo'd onto `table`/`walk`/`html` is refused as an unknown flag instead of silently doing
   nothing — a strictly SAFER divergence, not a laxer one.
 
 **Observable consequence for a caller migrating a script**: `assay-inbox.sh --html
@@ -103,7 +103,7 @@ in either implementation, and cells still resolve from `--root`/`./.assay/cells.
 ## Flags this PR refuses (not silently ignored)
 
 A bare `--html`/`--flow`/`--root`/`--since` FLAG (the oracle's own spelling, not this
-port's subcommand spelling) under `table`/`walk` parsing is refused as an unknown option —
+port's subcommand spelling) under `table`/`walk` parsing is refused as an unknown flag —
 see "CLI shape diverges from the oracle" above for why these are subcommands here, not
 flags. No flag is silently accepted and no-op'd.
 

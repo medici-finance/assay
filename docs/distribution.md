@@ -61,9 +61,11 @@ runs. It has two kinds of line:
   release asset (or, for a `-source` line, a 40-hex commit sha). Selection is a **trailing-space
   prefix match**: `statusgen ` never matches `statusgen-linux-amd64 `.
 - **The optional umbrella line** — `assay <vX.Y.Z>`. It names a suite composition, not a
-  downloadable asset, so it is the one line with no sha256. Its absence is a valid, expected state
-  (the per-artifact lines stay authoritative); a repo simply is not recorded against a suite
-  version.
+  downloadable asset, so it is the one line with no sha256. Its absence is a valid state (the
+  per-artifact lines stay authoritative); a repo simply is not recorded against a suite version,
+  so the version marker reads it as could-not-determine. The installer's `pin` writes the line
+  when it writes a pin from a bare `vX.Y.Z` release and every per-artifact line pins that tag. A
+  file without the line adopts one through `upgrade-assay --adopt-umbrella-from-pins` (below).
 
 A consumer that cannot read its pin cannot claim to be pinned: a missing or malformed pin file is
 **fail-closed** (could-not-check), never silently defaulted. `deskpins --check` validates a pin file
@@ -119,7 +121,8 @@ the composition manifest — it invents no fourth source of truth — and report
 - **known** (exit 0) — one umbrella version, consistent composition.
 - **known-inconsistent** (exit 5) — records disagree; the report names the pair.
 - **could-not-determine** (exit 6) — no/unreadable pin, no umbrella line, or an unreadable
-  composition. Never "assume latest".
+  composition. Never "assume latest". `deskversion` never infers a missing umbrella line; the one
+  supported way to record it is `upgrade-assay --adopt-umbrella-from-pins`, which first proves it.
 
 ## The migration runner (`deskmigrate`)
 
@@ -141,6 +144,25 @@ exactly the drift the pin/umbrella model removes.
 `upgrade-assay` refuses rather than guesses — on an undetermined version, on inconsistent records,
 on a per-artifact tag where an umbrella version was required, and on a target that names no
 published release (never a nearest-match guess).
+
+**Adopting the umbrella line.** A pin file with per-artifact lines and no `assay` line (what a
+stock install wrote before the installer recorded the line) is could-not-determine, so a plain
+`upgrade-assay` refuses with exit 6 and names the flag. `upgrade-assay --adopt-umbrella-from-pins`
+is the supported way through. It reads the current umbrella from the pins only when it can prove
+it:
+
+- every eligible line (not a `-source` line, not a `same-tag: exempt` line) pins ONE bare tag `T`;
+- `T`'s `checksums.txt` loads (materialised under `releases/`, or fetched under `--fetch`);
+- every pinned sha256 equals the digest `T` publishes for that asset. A bare `<artifact>` line
+  compares with `<artifact>-linux-amd64`, and a platform line with its own asset.
+
+It prints the evidence ("N pin(s) verified against <source>") and continues as from `T`, in dry-run
+and apply alike. The apply writes `assay <target>` along with the re-pinned lines. A pinned digest
+that differs from the published one refuses as known-inconsistent (exit 5), naming the line and
+both digests. Mixed tags, a legacy `<component>/vX.Y.Z` tag, an asset `checksums.txt` does not
+list, no eligible line, or no loadable `checksums.txt` refuse as could-not-determine (exit 6).
+Every other could-not-determine cause refuses as before. The flag is opt-in: without it, nothing
+is inferred.
 
 ### There is no rollback
 

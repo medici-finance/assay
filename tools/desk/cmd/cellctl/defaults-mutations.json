@@ -352,14 +352,14 @@
     {
       "name": "the cells root itself is a cell name (TestCellNameLoaderRefusesANameOutsideTheRoot, TestCellNameNewRefusesANameOutsideTheRoot)",
       "file": "cmd/cellctl/cell.go",
-      "old": "\treturn filepath.IsLocal(name) && filepath.Clean(name) != \".\"",
-      "new": "\treturn filepath.IsLocal(name)"
+      "old": "\treturn clean != \".\" && deskkit.ValidCellName(clean)",
+      "new": "\treturn clean == \".\" || deskkit.ValidCellName(clean)"
     },
     {
       "name": "a relative name that climbs out of the cells root is a cell name; only an absolute path is refused (TestCellNameLoaderRefusesANameOutsideTheRoot)",
       "file": "cmd/cellctl/cell.go",
-      "old": "\treturn filepath.IsLocal(name) && filepath.Clean(name) != \".\"",
-      "new": "\treturn !filepath.IsAbs(name) && filepath.Clean(name) != \".\""
+      "old": "\tif !filepath.IsLocal(name) {\n\t\treturn false\n\t}\n\tclean := filepath.Clean(name)\n\treturn clean != \".\" && deskkit.ValidCellName(clean)",
+      "new": "\tclean := filepath.Clean(name)\n\treturn !filepath.IsAbs(name) && clean != \".\" && (strings.HasPrefix(clean, \"..\") || deskkit.ValidCellName(clean))"
     },
     {
       "name": "a cell re-enters by its name as typed, not by its cleaned path under the root (TestCellNameLoaderRefusesANameOutsideTheRoot)",
