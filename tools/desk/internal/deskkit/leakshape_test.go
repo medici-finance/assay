@@ -18,11 +18,10 @@ import (
 	"unicode/utf16"
 )
 
-// leakShapeAllowRel is the committed allow file, repo-relative and package-relative.
-const (
-	leakShapeAllowRel = "tools/desk/internal/deskkit/leakshape-allow.yaml"
-	leakShapeAllowPkg = "leakshape-allow.yaml"
-)
+// leakShapeAllowRel is the committed allow file, repo-relative. It sits at the repo root
+// beside the other tree-wide scanner config (.gitleaks.toml), not under tools/desk: it names
+// paths across THIS repository, so it is the repo's configuration, not part of the tool.
+const leakShapeAllowRel = ".leakshape-allow.yaml"
 
 // Placeholder shapes, one per detector, built from fragments.
 var (
@@ -57,7 +56,7 @@ func shapeTree(t *testing.T, files map[string]string) string {
 
 // regression: #3159
 func TestS2ShapeRepoGate(t *testing.T) {
-	allow, err := LoadShapeAllow(leakShapeAllowPkg, leakShapeAllowRel)
+	allow, err := LoadShapeAllow(filepath.Join(s2RepoRoot, leakShapeAllowRel), leakShapeAllowRel)
 	if err != nil {
 		t.Fatalf("allow file does not load — the shape stage is could-not-check: %v", err)
 	}

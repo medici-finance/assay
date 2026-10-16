@@ -1,5 +1,5 @@
-# leakshape-allow.yaml — reviewed exceptions for the registry-independent SHAPE stage of the
-# disclosure sweep (leakshape.go; issue #3159).
+# .leakshape-allow.yaml — reviewed exceptions for the registry-independent SHAPE stage of the
+# disclosure sweep (tools/desk/internal/deskkit/leakshape.go; issue #3159).
 #
 # Each entry permits the exact VALUES it lists, of ONE shape, in ONE file:
 #
