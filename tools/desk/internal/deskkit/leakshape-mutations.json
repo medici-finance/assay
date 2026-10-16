@@ -162,6 +162,18 @@
       "file": "internal/deskkit/leakshape.go",
       "old": "[A-Za-z0-9_.~-]*(?i:\\.git)(?:[^A-Za-z0-9_]|$)`)",
       "new": "[A-Za-z0-9_.~-]*`)"
+    },
+    {
+      "name": "drop the any-user scp rule's .git-without-slash path (a non-git user with a slash-free .git path certifies clean)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "(?:[^\\s/]*/|[^\\s/]*(?i:\\.git)(?:[^A-Za-z0-9_]|$))`)",
+      "new": "[^\\s/]*/`)"
+    },
+    {
+      "name": "match the userless scp rule's .git suffix case-sensitively (an upper-case .GIT suffix certifies clean)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "[A-Za-z0-9_.~-]*(?i:\\.git)(?:[^A-Za-z0-9_]|$)`)",
+      "new": "[A-Za-z0-9_.~-]*\\.git(?:[^A-Za-z0-9_]|$)`)"
     }
   ]
 }

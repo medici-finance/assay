@@ -16,10 +16,17 @@ package deskkit
 //   - noreply-id-email  a numeric-id noreply email: digits, a plus sign, a login, then the
 //                       forge noreply domain
 //   - ssh-host-alias    an SSH remote whose host is not a forge host itself — a host ALIAS
-//                       out of somebody's local ssh config, in scp form (with the git user,
-//                       any other user, or no user) or ssh:// URL form, in any case. The
-//                       exact scp grammar, and the near misses it leaves clean, are on the
-//                       three scp rules below.
+//                       out of somebody's local ssh config, in ssh:// URL form (any case) or
+//                       in scp form within a narrow grammar: the git user (any case) with
+//                       any path; any other user when the path reaches a slash or ends in
+//                       ".git"; no user when the host has at least two characters and the
+//                       path is relative, has at least two segments, a first segment
+//                       holding a non-digit and a ".git" suffix (any case). Every other scp
+//                       spelling is out of scope and certifies clean — among them a userless
+//                       remote without ".git", with an absolute path or with one segment,
+//                       and a non-git user with neither a slash nor ".git". The three scp
+//                       rules below carry the exact grammar and the near misses it keeps
+//                       clean.
 //   - tilde-root        a tilde-prefixed home-relative working root (a non-dot directory
 //                       or file directly under the home directory; dot-config paths are
 //                       tool conventions, not working roots)
@@ -200,8 +207,8 @@ var shapeRuleSSHScpUser = shapeRule{
 var shapeRuleSSHScpBare = shapeRule{
 	shape: ShapeSSHAlias,
 	// scp form with no user — how an ssh-config host alias whose config supplies the user is
-	// written: a host, a colon, then one or more path segments ending in a ".git" repository
-	// name. The value is the host. The grammar is narrower than the user form because a bare
+	// written: a host, a colon, then a relative path of two or more segments whose last is a
+	// repository name ending in ".git" (any case). The value is the host. The grammar is narrower than the user form because a bare
 	// "word:word/word" is everyday text: the path takes only name characters (so a space
 	// after the colon, a URL's "//", a Windows drive's backslash and a "::" all stay clean),
 	// its first segment must hold a non-digit (so host:port/path stays clean), and the

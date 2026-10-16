@@ -101,7 +101,11 @@ func TestS2ShapeEachRedsAlone(t *testing.T) {
 		{"ssh-scp", "origin\t" + plantSSHScp + ":owner/repo.git (push)\n", ShapeSSHAlias},
 		{"ssh-scp-user", "origin\t" + "deploy" + "@" + "example-alias" + ":owner/repo.git (push)\n", ShapeSSHAlias},
 		{"ssh-scp-upper", "origin\t" + "GIT" + "@" + "example-alias" + ":owner/repo.git (push)\n", ShapeSSHAlias},
+		// Any user, a slash-free path ending in .git: the rule's second path alternative.
+		{"ssh-scp-user-noslash", "origin\t" + "deploy" + "@" + "example-alias" + ":" + "repo.git (push)\n", ShapeSSHAlias},
 		{"ssh-scp-bare", "url = " + "example-alias" + ":" + "owner/repo.git\n", ShapeSSHAlias},
+		// No user, an upper-case suffix: the .git test is case-insensitive.
+		{"ssh-scp-bare-upper", "url = " + "example-alias" + ":" + "owner/repo.GIT\n", ShapeSSHAlias},
 		{"ssh-url", "url = " + plantSSHURL + "/owner/repo.git\n", ShapeSSHAlias},
 		{"ssh-url-upper", "url = " + "SSH" + "://" + "git" + "@" + "example-alias" + "/owner/repo.git\n", ShapeSSHAlias},
 		{"tilde", "cellctl new c --repo " + plantTilde + "/repo\n", ShapeTildeRoot},
