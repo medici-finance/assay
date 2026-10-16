@@ -35,7 +35,7 @@ files: `statusgen/portfolio/`, `statusgen/portfolio.go` (planned), `statusgen/ma
 
 facts (d484dd5df, 13 October 2026):
 - /23 supplies product binding assessment; /24 supplies capacity; operations/02 supplies obligations.
-- R7 public serving/cockpit ownership remains a separate decision; this slice supplies the pure consumer API.
+- R7 public serving/cockpit ownership is the `cell-api` stream (named in the amendment manifest; ratified with PR #2890, merged); its scaffolding and serving brief are still owed. This slice supplies the pure consumer API.
 - The operations prerequisites remain parked until explicitly admitted; a dashboard is not the first unblocking move.
 
 layering: pure typed records/evaluators in `statusgen/portfolio`; filesystem and CLI adapters remain outside the package. No network, credentials, scheduler or runtime database. The flow and boundary fixtures below enforce this separation.

@@ -123,7 +123,7 @@ policy changes, numerical default weights, universal observation enforcement and
 autonomy require separately scoped decisions/work. O02–O14 remain outlines except for the
 bounded portions mapped in continuing-operations' outline disposition table.
 
-Keep the verifier R1–R8 critical path independent of this portfolio lane. R2 and R6 stay
-with their existing PR owners; neither needs portfolio automation to complete. Existing
+Keep the verifier R1–R8 critical path independent of this portfolio lane. R2 and R6 have merged
+(PRs #2750 and #2743) under their own owners; neither needed portfolio automation to complete. Existing
 legacy selection, claims, gates, observation privacy and independent verification remain
 controlling until their own qualified migration. Completed Evidence is never rewritten.
