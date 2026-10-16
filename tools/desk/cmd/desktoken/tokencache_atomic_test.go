@@ -18,7 +18,7 @@ import (
 )
 
 // regression: #3129
-func TestTokenCacheNeverTornUnderRewrite(t *testing.T) {
+func TestTokenCacheNeverTorn(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "reviewer-token-1")
 	// Different lengths so a torn write is visible as a prefix of a longer token or as an
@@ -81,7 +81,7 @@ func TestTokenCacheNeverTornUnderRewrite(t *testing.T) {
 }
 
 // regression: #3129
-func TestTokenCacheOldTokenVisibleUntilRename(t *testing.T) {
+func TestTokenCacheOldUntilRename(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "reviewer-token-1")
 	oldTok := "ghs_old_" + strings.Repeat("o", 30)
@@ -121,7 +121,7 @@ func TestTokenCacheOldTokenVisibleUntilRename(t *testing.T) {
 }
 
 // regression: #3129
-func TestTokenCacheAtomicWriteMode0600NoLeftovers(t *testing.T) {
+func TestTokenCacheModeNoLeftovers(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "reviewer-token-1")
 	// A pre-existing, too-permissive file is replaced by a 0600 one, as the old Chmod did.
