@@ -742,6 +742,23 @@
       "state": "pending"
     },
     {
+      "executable": "deskgitlab",
+      "path": "tools/desk/cmd/deskgitlab",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/create-fleet-gitlab.sh",
+        "tools/create-fleet-gitlab_test.sh",
+        "tools/desk/README.md"
+      ],
+      "parser": "Cobra via tools/desk/internal/cli",
+      "complexity": "simple",
+      "basis": "~1500 LOC, 1 verb, 13 flags (desktools-v2/30)",
+      "owner": "desktools-v2/30",
+      "state": "migrated"
+    },
+    {
       "executable": "deskinbox",
       "path": "tools/desk/cmd/deskinbox",
       "kind": "go",
@@ -2111,10 +2128,11 @@
         "plugins/assay/skills/adopt/SKILL.md"
       ],
       "parser": "bash manual flag loop",
-      "complexity": "complex",
-      "basis": "1166 lines at 3ad1ad83c871",
+      "complexity": "simple",
+      "basis": "1166 lines at 3ad1ad83c871; 43-line adapter onto deskgitlab create after desktools-v2/30",
       "owner": "desktools-v2/30",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/deskgitlab"
     },
     {
       "executable": "pre-push",

@@ -1,0 +1,47 @@
+{
+  "test": "HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 400s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLIAdmissionBoundary)$' ./cmd/deskgitlab/",
+  "control": {
+    "name": "CONTROL — a parse failure exits with the wrong code (usage exit 2 becomes 3)",
+    "file": "cmd/deskgitlab/main.go",
+    "old": "UsageExit:       cli.ExitUsage,",
+    "new": "UsageExit:       3,"
+  },
+  "mutations": [
+    {
+      "name": "help runs after a credential read: the environment is consulted while the tree is built, so every help and version form reads GITLAB_TOKEN first",
+      "file": "cmd/deskgitlab/main.go",
+      "old": "return cli.Run(build, args, cli.Options{",
+      "new": "_, _ = lookupEnv(\"GITLAB_TOKEN\")\n\treturn cli.Run(build, args, cli.Options{"
+    },
+    {
+      "name": "a setting gains an undeclared source (the group binding also reads DESKGITLAB_GROUP from the environment)",
+      "file": "cmd/deskgitlab/main.go",
+      "old": "{Key: \"group\", Kind: cli.String, Flag: \"group\",",
+      "new": "{Key: \"group\", Kind: cli.String, Flag: \"group\", Env: []string{\"DESKGITLAB_GROUP\"},"
+    },
+    {
+      "name": "one legacy flag form dropped (--pat-expiry-days is renamed --pat-expiry, so the script's spelling no longer parses)",
+      "file": "cmd/deskgitlab/main.go",
+      "old": "Flag: \"pat-expiry-days\"",
+      "new": "Flag: \"pat-expiry\""
+    },
+    {
+      "name": "a refusal leaves the domain check (validate no longer refuses an unknown --tier)",
+      "file": "cmd/deskgitlab/main.go",
+      "old": "if !validTier(o.tier) {",
+      "new": "if false && !validTier(o.tier) {"
+    },
+    {
+      "name": "a refusal leaves the domain check (validate no longer refuses a live run without GITLAB_TOKEN)",
+      "file": "cmd/deskgitlab/main.go",
+      "old": "if !o.dryRun && !o.avatarsOnly && o.token == \"\" {",
+      "new": "if false && !o.dryRun && !o.avatarsOnly && o.token == \"\" {"
+    },
+    {
+      "name": "a refusal leaves the domain check (validate no longer refuses --avatars-dir with --no-avatars)",
+      "file": "cmd/deskgitlab/main.go",
+      "old": "if o.noAvatars && o.avatarsDir != \"\" {",
+      "new": "if false && o.noAvatars && o.avatarsDir != \"\" {"
+    }
+  ]
+}

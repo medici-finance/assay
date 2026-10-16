@@ -1,778 +1,180 @@
 #!/usr/bin/env bash
-# Offline, network-free unit test for tools/create-fleet-gitlab.sh.
+# Offline, network-free test for tools/create-fleet-gitlab.sh, now a transparent
+# adapter onto `deskgitlab create` (tools/desk/cmd/deskgitlab, desktools-v2/30).
 #
-# It puts a fake `curl` first on PATH. That fake logs every invocation and
-# answers from a per-case responder function, so the script's real control
-# flow — tier branching, the guarded protect step, the avatar uploads — is
-# exercised end to end without a GitLab, a credential, or a network.
+# Two layers:
+#   A. the adapter itself — every argument reaches deskgitlab unchanged after
+#      the `create` verb, the exit status comes back unchanged, the credential
+#      travels in the environment and never on argv, and the build-from-source
+#      fallback works and cleans up after itself;
+#   B. the provisioner's behaviour — the scenarios this suite used to drive
+#      through a fake curl (tier fallback, the guarded protect step, approvals
+#      read-back, protected tags, merge checks, labels, avatars, credential
+#      custody, transport failures recorded rather than fatal) now run as Go
+#      tests against an httptest GitLab: TestFleetScenario* in
+#      tools/desk/cmd/deskgitlab/scenario_test.go. This suite runs them.
 #
-# No cluster, no GitLab, no toolchain beyond bash + jq.
-#
-# Default impl is ../create-fleet-gitlab.sh. Point FLEET_IMPL at an earlier
-# version to see the behaviours it lacks fail — the fail-first evidence. Against
-# the impl before the protected-tags + all-discussions-resolved change (issue
-# #346 comment 1 §4), T7 and T8 go RED; against the impl before the gl_api
-# hardening (issue #786 — owner PAT off argv, and a curl transport failure
-# recorded-not-fatal instead of aborting the run under set -e), T10 and T11
-# go RED:
-#   git show HEAD~1:tools/create-fleet-gitlab.sh > /tmp/old-fleet.sh
-#   FLEET_IMPL=/tmp/old-fleet.sh ./tools/create-fleet-gitlab_test.sh   # RED (T10/T11)
-#   ./tools/create-fleet-gitlab_test.sh                                # green
+# Needs bash and Go; no GitLab, no credential, no network.
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMPL="${FLEET_IMPL:-$here/create-fleet-gitlab.sh}"
 case "$IMPL" in /*) ;; *) IMPL="$here/$IMPL" ;; esac
+DESK="$here/desk"
+BASH_BIN="$(command -v bash)"
 
 pass=0; fail=0
 ok()  { echo "ok   - $1"; pass=$((pass+1)); }
 bad() { echo "FAIL - $1"; fail=$((fail+1)); }
 
-ROLES="reviewer worker verifier desk issue-loop intake-loop board-writer"
+if ! command -v go >/dev/null 2>&1; then
+  echo "FAIL - go is required (the provisioner is tools/desk/cmd/deskgitlab)"; exit 1
+fi
 
-# --- the fake curl --------------------------------------------------------
-# Written once into a bin dir that every case prepends to PATH. It parses the
-# argv shapes the script actually uses (-o/-X/-d/-F/-K, plus the -fsSL icon
-# fetch), appends a line to $FAKE_CURL_LOG, and delegates the status+body to
-# the responder shell file named by $FAKE_CURL_RESPONDER.
-BIN="$(mktemp -d "${TMPDIR:-/tmp}/fleet-fakebin-XXXXXX")"
-cat > "$BIN/curl" <<'FAKECURL'
-#!/usr/bin/env bash
-set -uo pipefail
-out=""; method="GET"; url=""; data=""; form=""; cfg=""
-args=("$@"); i=0
-while [ $i -lt ${#args[@]} ]; do
-  a="${args[$i]}"
-  case "$a" in
-    -o|-X|-d|-F|-K|-H|-w) case "$a" in
-        -o) i=$((i+1)); out="${args[$i]}" ;;
-        -X) i=$((i+1)); method="${args[$i]}" ;;
-        -d) i=$((i+1)); data="${args[$i]}" ;;
-        -F) i=$((i+1)); form="${args[$i]}" ;;
-        -K) i=$((i+1)); cfg="${args[$i]}" ;;
-        *)  i=$((i+1)) ;;
-      esac ;;
-    -*) ;;
-    *) url="$a" ;;
-  esac
-  i=$((i+1))
+WORK="$(mktemp -d "${TMPDIR:-/tmp}/fleet-adapter-XXXXXX")"
+trap 'rm -rf "$WORK"' EXIT
+
+# PATH with no deskgitlab on it, so each case chooses exactly which one runs.
+CLEAN_PATH=""
+IFS=: read -r -a path_dirs <<< "$PATH"
+for d in "${path_dirs[@]}"; do
+  [ -n "$d" ] && [ ! -x "$d/deskgitlab" ] && CLEAN_PATH="${CLEAN_PATH:+$CLEAN_PATH:}$d"
 done
 
-printf '%s %s | argv=%s\n' "$method" "$url" "$*" >> "$FAKE_CURL_LOG"
-if [ -n "$data" ]; then
-  printf 'BODY %s %s | %s\n' "$method" "$url" "$(printf '%s' "$data" | tr -d '\n ')" >> "$FAKE_CURL_LOG"
-fi
-if [ -n "$form" ]; then
-  printf 'FORM %s %s | %s | cfg=%s\n' "$method" "$url" "$form" "${cfg:+yes}" >> "$FAKE_CURL_LOG"
-fi
+# --- a recording stub deskgitlab ---------------------------------------------
+STUB="$WORK/stub"; mkdir -p "$STUB"
+cat > "$STUB/deskgitlab" <<'STUBEOF'
+#!/usr/bin/env bash
+{ for a in "$@"; do printf '%s\n' "$a"; done; } > "$STUB_ARGV"
+printf '%s' "${GITLAB_TOKEN-<unset>}" > "$STUB_ENV"
+exit "${STUB_RC:-0}"
+STUBEOF
+chmod +x "$STUB/deskgitlab"
+export STUB_ARGV="$WORK/argv" STUB_ENV="$WORK/env"
 
-# The public role-icon fetch: not the API, no token, plain file download.
-case "$url" in
-  https://assay.guide/*)
-    if [ "${FAKE_ICON_FAIL:-0}" = "1" ]; then exit 22; fi
-    printf 'PNGFAKE' > "$out"
-    exit 0
-    ;;
-esac
-
-# Simulated API transport failure (issue #786): DNS/TLS/connection refused.
-# Faithful to real curl — it STILL writes the "000" http_code from -w to stdout
-# and exits with a transport code (6/7/28), having put nothing in -o. gl_api's
-# `|| echo "000"` must turn this into a RECORDED non-2xx status the caller's
-# failure-ledger branch handles, NOT a set -e abort of the whole run before the
-# ledger and summary are written.
-#   FAKE_CURL_TRANSPORT_FAIL=1             — every API call transport-fails
-#   FAKE_CURL_TRANSPORT_FAIL_PATH=<frag>   — only URLs containing <frag> fail
-if [ "${FAKE_CURL_TRANSPORT_FAIL:-0}" = "1" ]; then
-  printf '000'; exit 6
-fi
-if [ -n "${FAKE_CURL_TRANSPORT_FAIL_PATH:-}" ]; then
-  case "$url" in
-    *"$FAKE_CURL_TRANSPORT_FAIL_PATH"*) printf '000'; exit 6 ;;
-  esac
-fi
-
-path="${url#*://*/api/v4}"
-# shellcheck disable=SC1090
-. "$FAKE_CURL_RESPONDER"
-resp="$(respond "$method" "$path" "$data")"
-status="$(printf '%s' "$resp" | head -1)"
-printf '%s' "$resp" | tail -n +2 > "$out"
-printf '%s' "$status"
-FAKECURL
-chmod +x "$BIN/curl"
-
-# newcase — fresh log, out-dir, responder state.
-newcase() {
-  CASEDIR="$(mktemp -d "${TMPDIR:-/tmp}/fleet-case-XXXXXX")"
-  OUTDIR="$CASEDIR/out";      mkdir -p "$OUTDIR"
-  ICONS="$CASEDIR/icons";     mkdir -p "$ICONS"
-  STATE="$CASEDIR/state";     mkdir -p "$STATE"
-  export FAKE_CURL_LOG="$CASEDIR/curl.log"; : > "$FAKE_CURL_LOG"
-  export FAKE_CURL_RESPONDER="$CASEDIR/responder.sh"
-  export STATE
-  unset FAKE_ICON_FAIL
-  unset FAKE_CURL_TRANSPORT_FAIL
-  unset FAKE_CURL_TRANSPORT_FAIL_PATH
-  for r in $ROLES; do printf 'PNGFAKE' > "$ICONS/$r.png"; done
+stub_run() {  # stub_run RC ARGS... — run the adapter against the stub; sets RC
+  RC=0
+  STUB_RC="$1" PATH="$STUB:$CLEAN_PATH" GITLAB_TOKEN="TOKEN-PLACEHOLDER-owner" "$BASH_BIN" "$IMPL" "${@:2}" >/dev/null 2>&1 || RC=$?
 }
 
-seed_tokens() {
-  for r in $ROLES; do printf 'glpat-fake-%s' "$r" > "$OUTDIR/myorg-${r}-bot.token"; done
+# A1 — arguments pass through unchanged, after the `create` verb.
+args=(--group "a group" --prefix=exorg --out-dir "-dash leading" --avatars-dir 'C:\x y' --tier ultimate --dry-run --)
+stub_run 0 "${args[@]}"
+want="$(printf '%s\n' create "${args[@]}")"
+if [ "$RC" = "0" ] && [ "$(cat "$STUB_ARGV")" = "$want" ]; then
+  ok "A1 every argument reaches deskgitlab create byte-identical, in order"
+else
+  bad "A1 arguments pass through unchanged (rc=$RC): $(tr '\n' ' ' < "$STUB_ARGV")"
+fi
+
+# A2 — the exit status comes back unchanged.
+for want_rc in 0 1 2 7; do
+  stub_run "$want_rc" --group g --prefix p
+  if [ "$RC" = "$want_rc" ]; then ok "A2 exit status $want_rc propagates"; else bad "A2 exit status $want_rc propagates (got $RC)"; fi
+done
+
+# A3 — the credential reaches deskgitlab in the environment, never on argv (#786).
+stub_run 0 --group g --prefix p
+if [ "$(cat "$STUB_ENV")" = "TOKEN-PLACEHOLDER-owner" ] && ! grep -q 'TOKEN-PLACEHOLDER' "$STUB_ARGV"; then
+  ok "A3 GITLAB_TOKEN is passed in the environment and is absent from argv"
+else
+  bad "A3 GITLAB_TOKEN travels in the environment only"
+fi
+
+# A4 — no table of its own: the provisioner's data lives in Go and the shared shell file.
+if grep -q 'deskgitlab' "$IMPL" && ! grep -qE '^(ROLE_TABLE|LABEL_TABLE)=' "$IMPL" && ! grep -q 'curl' "$IMPL"; then
+  ok "A4 the adapter carries no role/label table and no curl"
+else
+  bad "A4 the adapter carries no role/label table and no curl"
+fi
+
+# --- the real binary -------------------------------------------------------------
+REAL="$WORK/real"; mkdir -p "$REAL"
+if ! go -C "$DESK" build -o "$REAL/deskgitlab" ./cmd/deskgitlab; then
+  echo "FAIL - building tools/desk/cmd/deskgitlab"; exit 1
+fi
+NOCALL="$WORK/nocall"; mkdir -p "$NOCALL"
+for t in curl jq glab; do
+  printf '#!/bin/sh\necho "RAN %s" >> "%s"\nexit 0\n' "$t" "$WORK/ran.log" > "$NOCALL/$t"; chmod +x "$NOCALL/$t"
+done
+
+real_run() {  # real_run ARGS... — sets RC, OUT (stdout+stderr)
+  RC=0
+  OUT="$(PATH="$REAL:$NOCALL:$CLEAN_PATH" HTTPS_PROXY=http://127.0.0.1:9 HTTP_PROXY=http://127.0.0.1:9 \
+    "$BASH_BIN" "$IMPL" "$@" 2>&1)" || RC=$?
 }
 
-# bump NAME — echoes 1, 2, 3 ... on successive calls (responder call counters).
-# These two are CODE TEMPLATES pasted into a responder file, so the $vars in
-# them must stay unexpanded here.
-# shellcheck disable=SC2016
-bump_helper='bump() { local f="$STATE/$1"; local n=0; [ -f "$f" ] && n=$(cat "$f"); n=$((n+1)); echo "$n" > "$f"; printf "%s" "$n"; }'
-
-run_impl() {  # run_impl <args...>; captures $OUT and $RC
-  OUT="$(PATH="$BIN:$PATH" GITLAB_TOKEN="${GITLAB_TOKEN:-owner-fake}" bash "$IMPL" "$@" 2>&1)"
-  RC=$?
-  if [ "${FLEET_TEST_DEBUG:-0}" = "1" ]; then
-    echo "--- run: $* (rc=$RC)"; echo "$OUT"; echo "--- log:"; cat "$FAKE_CURL_LOG"; echo "---"
-  fi
-}
-
-has()  { case "$OUT" in *"$1"*) return 0 ;; *) return 1 ;; esac; }
-logn() { grep -c -- "$1" "$FAKE_CURL_LOG" 2>/dev/null || true; }
-
-# --- the shared happy-path responder prologue ------------------------------
-# Accounts, memberships and PAT minting all succeed; each case overrides the
-# project-settings half.
-# shellcheck disable=SC2016
-common_accounts='
-  case "$m $p" in
-    "GET /groups/example") echo "200"; echo "{\"id\":1$PLANFIELD}"; return ;;
-    "GET /groups/1/service_accounts") echo "200"; echo "[]"; return ;;
-    "POST /groups/1/service_accounts") n=$(bump sa); echo "201"; echo "{\"id\":$((100+n))}"; return ;;
-    "POST /groups/1/members") echo "201"; echo "{}"; return ;;
-    "GET /projects/proj") echo "200"; echo "{\"id\":7}"; return ;;
-    "PUT /projects/7") echo "200"; echo "{}"; return ;;
-    "GET /projects/7") echo "200"; echo "{\"only_allow_merge_if_pipeline_succeeds\":true,\"only_allow_merge_if_all_discussions_are_resolved\":true}"; return ;;
-    "GET /projects/7/protected_tags") echo "200"; echo "[]"; return ;;
-    "POST /projects/7/protected_tags") echo "201"; echo "{}"; return ;;
-    "POST /projects/7/labels") echo "201"; echo "{}"; return ;;
-    "PUT /user/avatar") echo "200"; echo "{\"avatar_url\":\"/uploads/-/system/user/avatar/1/x.png\"}"; return ;;
-  esac
-  case "$m $p" in
-    "GET /groups/1/members/"*) echo "404"; echo "{}"; return ;;
-    "POST /groups/1/service_accounts/"*"/personal_access_tokens") echo "201"; echo "{\"token\":\"glpat-fake-minted\"}"; return ;;
-  esac
-'
-
-# ===========================================================================
-# T1 — a 400 from the protect POST re-applies the PREVIOUS rule, and the
-#      settings steps after it still run.
-# ===========================================================================
-newcase
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-PLANFIELD=',"plan":"premium"'
-respond() {
-  local m="\$1" p="\$2" n
-  $common_accounts
-  case "\$m \$p" in
-    "GET /projects/7/protected_branches/main")
-      echo "200"
-      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":30}],"allow_force_push":false}'
-      return ;;
-    "DELETE /projects/7/protected_branches/main") echo "204"; echo "{}"; return ;;
-    "POST /projects/7/protected_branches")
-      n=\$(bump protectpost)
-      if [ "\$n" = "1" ]; then echo "400"; echo '{"message":"boom"}'; else echo "201"; echo "{}"; fi
-      return ;;
-    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
-    "GET /projects/7/approvals")
-      echo "200"
-      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
-      return ;;
-  esac
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
-if has "protection re-applied to its previous state"; then
-  ok "T1 protect POST 400 -> previous rule re-applied"
+real_run --help
+if [ "$RC" = "0" ] && printf '%s' "$OUT" | grep -q -- '--group' && printf '%s' "$OUT" | grep -q -- '--pat-expiry-days'; then
+  ok "B1 --help exits 0 and lists the options"
 else
-  bad "T1 protect POST 400 -> previous rule re-applied (no re-apply reported)"
+  bad "B1 --help exits 0 and lists the options (rc=$RC)"
 fi
-if grep -q 'BODY POST .*/protected_branches |.*"merge_access_level":30' "$FAKE_CURL_LOG"; then
-  ok "T1 the re-POST carries the PREVIOUSLY READ rule (merge_access_level 30)"
+real_run --group g --prefix p --bogus
+if [ "$RC" = "2" ]; then ok "B2 an unknown flag exits 2"; else bad "B2 an unknown flag exits 2 (rc=$RC)"; fi
+real_run --prefix p --dry-run
+if [ "$RC" = "2" ] && printf '%s' "$OUT" | grep -q -- '--group and --prefix are required'; then
+  ok "B3 a missing --group exits 2 with the script's message"
 else
-  bad "T1 the re-POST carries the previously read rule"
+  bad "B3 a missing --group exits 2 (rc=$RC)"
 fi
-if [ "$RC" != "0" ]; then ok "T1 exits non-zero after a failed step (rc=$RC)"; else bad "T1 exits non-zero after a failed step (rc=0)"; fi
-if has "configured: pipelines must succeed before merge"; then
-  ok "T1 a failed protect step does not skip the steps after it"
+GITLAB_TOKEN="" real_run --group g --prefix p
+if [ "$RC" = "2" ] && printf '%s' "$OUT" | grep -q 'GITLAB_TOKEN must be set'; then
+  ok "B4 a live run without GITLAB_TOKEN exits 2 before any effect"
 else
-  bad "T1 a failed protect step does not skip the steps after it"
+  bad "B4 a live run without GITLAB_TOKEN exits 2 (rc=$RC)"
+fi
+: > "$WORK/ran.log"
+real_run --group example --prefix exorg --project example/proj --dry-run
+accounts="$(printf '%s' "$OUT" | grep -c 'would create service account')"
+if [ "$RC" = "0" ] && [ "$accounts" = "7" ] && [ ! -s "$WORK/ran.log" ]; then
+  ok "B5 --dry-run enumerates seven accounts, exits 0 and starts no helper program (proxy dead: no network)"
+else
+  bad "B5 --dry-run enumerates seven accounts offline (rc=$RC accounts=$accounts)"
 fi
 
-# ===========================================================================
-# T2 — --avatars-only uploads and mints NOTHING.
-# ===========================================================================
-newcase
-seed_tokens
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-respond() {
-  local m="\$1" p="\$2"
-  case "\$m \$p" in
-    "PUT /user/avatar") echo "200"; echo '{"avatar_url":"/uploads/x.png"}'; return ;;
-  esac
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-run_impl --avatars-only --prefix myorg --out-dir "$OUTDIR" --avatars-dir "$ICONS"
-mints=$(logn "personal_access_tokens")
-creates=$(logn "POST https://gitlab.com/api/v4/groups")
-uploads=$(logn "^PUT https://gitlab.com/api/v4/user/avatar")
-# RC is part of this assertion on purpose: a script that rejects the flag
-# outright also makes zero mint calls, and that must not read as a pass.
-if [ "$mints" = "0" ] && [ "$creates" = "0" ] && [ "$RC" = "0" ]; then
-  ok "T2 --avatars-only performs zero mint/create calls"
+# --- the build-from-source fallback ------------------------------------------------
+FB_TMP="$WORK/fbtmp"; mkdir -p "$FB_TMP"
+RC=0
+OUT="$(PATH="$CLEAN_PATH" TMPDIR="$FB_TMP" "$BASH_BIN" "$IMPL" --help 2>&1)" || RC=$?
+if [ "$RC" = "0" ] && printf '%s' "$OUT" | grep -q -- '--group' && [ -z "$(ls -A "$FB_TMP")" ]; then
+  ok "C1 with no deskgitlab on PATH the adapter builds it from tools/desk, runs it and removes the build"
 else
-  bad "T2 --avatars-only performs zero mint/create calls (mint=$mints create=$creates rc=$RC)"
+  bad "C1 build-from-source fallback (rc=$RC, left behind: $(ls -A "$FB_TMP" | tr '\n' ' '))"
 fi
-if [ "$uploads" = "7" ]; then ok "T2 --avatars-only uploads all seven avatars"; else bad "T2 --avatars-only uploads all seven avatars (got $uploads)"; fi
-if [ "$(printf '%s\n' "$OUT" | grep -c '^avatar: myorg-.*(HTTP 200)$')" = "7" ]; then
-  ok "T2 prints one 'avatar: <username> <- <file> (HTTP 200)' line per role"
+RC=0
+OUT="$(PATH="$CLEAN_PATH" TMPDIR="$FB_TMP" "$BASH_BIN" "$IMPL" --group g --prefix p --pat-expiry-days 0 --dry-run 2>&1)" || RC=$?
+if [ "$RC" = "2" ] && [ -z "$(ls -A "$FB_TMP")" ]; then
+  ok "C2 the fallback propagates a usage exit (2) and still removes the build"
 else
-  bad "T2 prints one 'avatar: ...' line per role"
+  bad "C2 the fallback propagates exit 2 and cleans up (rc=$RC)"
 fi
-if grep -q 'glpat-fake-reviewer' "$FAKE_CURL_LOG"; then
-  bad "T2 the role token never reaches argv"
+BARE="$WORK/bare"; mkdir -p "$BARE"
+ln -s "$(command -v dirname)" "$BARE/dirname"
+RC=0
+OUT="$(PATH="$BARE" "$BASH_BIN" "$IMPL" --help 2>&1)" || RC=$?
+if [ "$RC" = "127" ] && printf '%s' "$OUT" | grep -q 'deskgitlab is not on PATH'; then
+  ok "C3 with neither deskgitlab nor go the adapter says so and exits 127"
 else
-  ok "T2 the role token never reaches argv (passed via curl -K config)"
-fi
-if [ "$RC" = "0" ]; then ok "T2 --avatars-only exits 0"; else bad "T2 --avatars-only exits 0 (rc=$RC)"; fi
-
-# ===========================================================================
-# T3 — unknown tier: the Premium form's 400 falls back to the free-tier form,
-#      and `main` ends up protected with merge_access_level 40.
-# ===========================================================================
-newcase
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-PLANFIELD=''
-respond() {
-  local m="\$1" p="\$2" n
-  $common_accounts
-  case "\$m \$p" in
-    "GET /projects/7/protected_branches/main")
-      n=\$(bump pbget)
-      if [ "\$n" = "1" ]; then echo "404"; echo '{"message":"404 Not found"}'; else
-        echo "200"
-        echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
-      fi
-      return ;;
-    "POST /projects/7/protected_branches")
-      n=\$(bump protectpost)
-      if [ "\$n" = "1" ]; then
-        echo "400"; echo '{"error":"allowed_to_unprotect[access_level] does not have a valid value"}'
-      else
-        echo "201"; echo "{}"
-      fi
-      return ;;
-    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
-    "GET /projects/7/approvals")
-      echo "200"
-      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
-      return ;;
-  esac
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
-if has "free tier — board-writer push allowlist not available (failed-at-tier, remediation: Premium)"; then
-  ok "T3 the free-tier fallback reports the allowlist as failed-at-tier"
-else
-  bad "T3 the free-tier fallback reports the allowlist as failed-at-tier"
-fi
-if grep -q 'BODY POST .*/protected_branches |.*"push_access_level":0.*"merge_access_level":40' "$FAKE_CURL_LOG"; then
-  ok "T3 the fallback POST uses the three free-tier fields with merge_access_level 40"
-else
-  bad "T3 the fallback POST uses the three free-tier fields with merge_access_level 40"
-fi
-if has "read-back: main push_access_level=0 merge_access_level=40 allow_force_push=false"; then
-  ok "T3 the three decided fields are read back and printed"
-else
-  bad "T3 the three decided fields are read back and printed"
-fi
-if [ "$RC" = "0" ]; then ok "T3 a tier fallback is not a failure (rc=0)"; else bad "T3 a tier fallback is not a failure (rc=$RC)"; fi
-
-# ===========================================================================
-# T4 — dry-run enumerates seven accounts AND seven avatar uploads, no calls.
-# ===========================================================================
-newcase
-echo 'respond() { echo "500"; echo "{}"; }' > "$FAKE_CURL_RESPONDER"
-run_impl --dry-run --group example --prefix myorg
-accs=$(printf '%s\n' "$OUT" | grep -c 'would create service account')
-avs=$(printf '%s\n' "$OUT" | grep -c 'would upload avatar for')
-if [ "$accs" -ge 7 ] && [ "$avs" = "7" ]; then
-  ok "T4 dry-run enumerates $accs service accounts and $avs avatar uploads"
-else
-  bad "T4 dry-run enumerates >=7 accounts and 7 avatar uploads (accs=$accs avs=$avs)"
-fi
-if [ ! -s "$FAKE_CURL_LOG" ]; then ok "T4 dry-run makes zero network calls"; else bad "T4 dry-run makes zero network calls"; fi
-
-# ===========================================================================
-# T5 — approvals: a 201 whose read-back did not take is reported, not trusted.
-# ===========================================================================
-newcase
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-PLANFIELD=',"plan":"free"'
-respond() {
-  local m="\$1" p="\$2" n
-  $common_accounts
-  case "\$m \$p" in
-    "GET /projects/7/protected_branches/main")
-      n=\$(bump pbget)
-      if [ "\$n" = "1" ]; then echo "404"; echo '{"message":"404 Not found"}'; else
-        echo "200"
-        echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
-      fi
-      return ;;
-    "POST /projects/7/protected_branches") echo "201"; echo "{}"; return ;;
-    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
-    "GET /projects/7/approvals")
-      echo "200"
-      echo '{"merge_requests_author_approval":true,"merge_requests_disable_committers_approval":false,"merge_request_approvers_available":false}'
-      return ;;
-  esac
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
-if has "approval settings ignored at this tier (failed-at-tier, remediation: Premium)"; then
-  ok "T5 an ignored approval write is reported instead of trusted"
-else
-  bad "T5 an ignored approval write is reported instead of trusted"
-fi
-if has "do not count approvals as a server-enforced gate on this tier"; then
-  ok "T5 the read-back is judged against enforcement, not just the stored field"
-else
-  bad "T5 the read-back is judged against enforcement, not just the stored field"
-fi
-if grep -q 'GET https://gitlab.com/api/v4/projects/7/approvals' "$FAKE_CURL_LOG"; then
-  ok "T5 approvals are read back after the write"
-else
-  bad "T5 approvals are read back after the write"
+  bad "C3 neither deskgitlab nor go -> exit 127 with a message (rc=$RC)"
 fi
 
-# ===========================================================================
-# T6 — default avatars: the public role icons are fetched and self-uploaded;
-#      an icon that cannot be fetched is a NOTICE, not a failure.
-# ===========================================================================
-newcase
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-PLANFIELD=',"plan":"free"'
-respond() {
-  local m="\$1" p="\$2" n
-  $common_accounts
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-run_impl --group example --prefix myorg --out-dir "$OUTDIR"
-icons=$(logn "^GET https://assay.guide/assets/app-icon-")
-uploads=$(logn "^PUT https://gitlab.com/api/v4/user/avatar")
-if [ "$icons" = "7" ] && [ "$uploads" = "7" ]; then
-  ok "T6 seven default icons fetched and seven avatars self-uploaded"
+# --- the provisioner's scenarios -----------------------------------------------------
+# Includes TestFleetScenarioCredentialCustody (owner PAT never on argv or in a file) and
+# TestFleetScenarioTransportFailureIsRecorded (a transport failure is a recorded step failure,
+# not an abort) — the #786 hardening this suite has always pinned.
+RC=0
+OUT="$(cd "$DESK" && KUBECONFIG=/dev/null go test -count=1 -timeout 200s -v \
+  -run '^(TestFleetScenario.*|TestRoleTableMatchesShell|TestPATDaysAndNamesMatchShell|TestLabelTableMatchesDeskfleet)$' ./cmd/deskgitlab 2>&1)" || RC=$?
+passed="$(printf '%s\n' "$OUT" | grep -c '^--- PASS: ')"
+failed="$(printf '%s\n' "$OUT" | grep -c '^--- FAIL: ')"
+for name in TestFleetScenarioCredentialCustody TestFleetScenarioTransportFailureIsRecorded TestFleetScenarioRerunIsIdempotent; do
+  if printf '%s\n' "$OUT" | grep -q "^--- PASS: $name "; then ok "D $name"; else bad "D $name"; fi
+done
+if [ "$RC" = "0" ] && [ "$failed" = "0" ] && [ "$passed" -ge 16 ]; then
+  ok "D all $passed provisioner scenario and table-parity tests pass"
 else
-  bad "T6 seven default icons fetched and seven avatars self-uploaded (icons=$icons uploads=$uploads)"
-fi
-if [ "$RC" = "0" ]; then ok "T6 default avatar run exits 0"; else bad "T6 default avatar run exits 0 (rc=$RC)"; fi
-
-newcase
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-PLANFIELD=',"plan":"free"'
-respond() {
-  local m="\$1" p="\$2" n
-  $common_accounts
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-FAKE_ICON_FAIL=1 run_impl --group example --prefix myorg --out-dir "$OUTDIR"
-if has "could not fetch the default icon" && has "skipped, not a failure" && [ "$RC" = "0" ]; then
-  ok "T6b an unfetchable icon is a NOTICE, not a failure (rc=$RC)"
-else
-  bad "T6b an unfetchable icon is a NOTICE, not a failure (rc=$RC)"
-fi
-
-# ===========================================================================
-# T7 — protected release tags: created with the SCALAR create_access_level
-#      field (Free tier), never the Premium allowed_to_create array, and the
-#      decision is printed. (issue #346 comment 1 §4 / pilot D-4)
-# ===========================================================================
-newcase
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-PLANFIELD=',"plan":"free"'
-respond() {
-  local m="\$1" p="\$2" n
-  $common_accounts
-  case "\$m \$p" in
-    "GET /projects/7/protected_branches/main")
-      echo "200"
-      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
-      return ;;
-    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
-    "GET /projects/7/approvals")
-      echo "200"
-      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
-      return ;;
-  esac
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
-if grep -q 'BODY POST .*/protected_tags |.*"create_access_level":40' "$FAKE_CURL_LOG"; then
-  ok "T7 protected-tags POST carries the scalar create_access_level=40"
-else
-  bad "T7 protected-tags POST carries the scalar create_access_level=40"
-fi
-if grep -q 'BODY POST .*/protected_tags |.*allowed_to_create' "$FAKE_CURL_LOG"; then
-  bad "T7 protected-tags POST must NOT send the Premium allowed_to_create array"
-else
-  ok "T7 protected-tags POST never sends the Premium allowed_to_create array"
-fi
-if has "protected: tags '*' (create_access_level=40 Maintainers)"; then
-  ok "T7 the protected-tags decision is printed"
-else
-  bad "T7 the protected-tags decision is printed"
-fi
-if [ "$RC" = "0" ]; then ok "T7 a clean run with protected tags exits 0"; else bad "T7 a clean run with protected tags exits 0 (rc=$RC)"; fi
-
-# ===========================================================================
-# T7b — protected tags are idempotent: an existing rule for the glob is a
-#       named no-op, not a duplicate POST.
-# ===========================================================================
-newcase
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-PLANFIELD=',"plan":"free"'
-respond() {
-  local m="\$1" p="\$2" n
-  case "\$m \$p" in
-    "GET /projects/7/protected_tags") echo "200"; echo '[{"name":"*","create_access_level":40}]'; return ;;
-  esac
-  $common_accounts
-  case "\$m \$p" in
-    "GET /projects/7/protected_branches/main")
-      echo "200"
-      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
-      return ;;
-    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
-    "GET /projects/7/approvals")
-      echo "200"
-      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
-      return ;;
-  esac
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
-posts=$(logn "^POST https://gitlab.com/api/v4/projects/7/protected_tags")
-if [ "$posts" = "0" ] && has "already protected"; then
-  ok "T7b an existing protected-tags rule is a no-op (zero POSTs)"
-else
-  bad "T7b an existing protected-tags rule is a no-op (posts=$posts)"
-fi
-
-# ===========================================================================
-# T8 — merge checks: the PUT carries only_allow_merge_if_all_discussions_are_resolved
-#      alongside the pipeline gate, and both are read back and printed.
-# ===========================================================================
-newcase
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-PLANFIELD=',"plan":"free"'
-respond() {
-  local m="\$1" p="\$2" n
-  $common_accounts
-  case "\$m \$p" in
-    "GET /projects/7/protected_branches/main")
-      echo "200"
-      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
-      return ;;
-    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
-    "GET /projects/7/approvals")
-      echo "200"
-      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
-      return ;;
-  esac
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
-if grep -q 'BODY PUT .*/projects/7 |.*"only_allow_merge_if_all_discussions_are_resolved":true' "$FAKE_CURL_LOG"; then
-  ok "T8 the merge-checks PUT sets only_allow_merge_if_all_discussions_are_resolved"
-else
-  bad "T8 the merge-checks PUT sets only_allow_merge_if_all_discussions_are_resolved"
-fi
-if has "all discussions must be resolved before merge"; then
-  ok "T8 the discussions gate is reported"
-else
-  bad "T8 the discussions gate is reported"
-fi
-if has "read-back: only_allow_merge_if_pipeline_succeeds=true only_allow_merge_if_all_discussions_are_resolved=true"; then
-  ok "T8 both merge-check fields are read back and printed"
-else
-  bad "T8 both merge-check fields are read back and printed"
-fi
-if grep -q '^GET https://gitlab.com/api/v4/projects/7 ' "$FAKE_CURL_LOG"; then
-  ok "T8 the project settings are read back after the write"
-else
-  bad "T8 the project settings are read back after the write"
-fi
-
-# ===========================================================================
-# T9 — project labels (#774): a clean run creates every LABEL_TABLE row
-#      via POST /projects/:id/labels, the queue pair carries the leading-#
-#      color GitLab requires, and each create is reported.
-# ===========================================================================
-newcase
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-PLANFIELD=',"plan":"free"'
-respond() {
-  local m="\$1" p="\$2" n
-  $common_accounts
-  case "\$m \$p" in
-    "GET /projects/7/protected_branches/main")
-      echo "200"
-      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
-      return ;;
-    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
-    "GET /projects/7/approvals")
-      echo "200"
-      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
-      return ;;
-  esac
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
-posts=$(logn "^POST https://gitlab.com/api/v4/projects/7/labels")
-if [ "$posts" = "9" ]; then
-  ok "T9 a clean run creates all nine project labels (one POST each)"
-else
-  bad "T9 a clean run creates all nine project labels (got $posts POSTs)"
-fi
-if grep -q 'BODY POST .*/projects/7/labels |.*"name":"authorization-needed".*"color":"#FBCA04"' "$FAKE_CURL_LOG"; then
-  ok "T9 authorization-needed is created with the leading-# color GitLab requires"
-else
-  bad "T9 authorization-needed is created with the leading-# color GitLab requires"
-fi
-if grep -q 'BODY POST .*/projects/7/labels |.*"name":"approval-needed".*"color":"#5319E7"' "$FAKE_CURL_LOG"; then
-  ok "T9 approval-needed is created with the leading-# color GitLab requires"
-else
-  bad "T9 approval-needed is created with the leading-# color GitLab requires"
-fi
-if has "label: created 'authorization-needed'" && has "label: created 'approval-needed'"; then
-  ok "T9 each label create is reported"
-else
-  bad "T9 each label create is reported"
-fi
-if [ "$RC" = "0" ]; then ok "T9 a clean run with labels exits 0"; else bad "T9 a clean run with labels exits 0 (rc=$RC)"; fi
-
-# ===========================================================================
-# T9b — label creation is idempotent: a duplicate-name response (409 on some
-#       GitLab versions, 400 "already exists" on others) is a named no-op, not
-#       a failure — the same ensure semantics the forge seam uses.
-# ===========================================================================
-newcase
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-PLANFIELD=',"plan":"free"'
-respond() {
-  local m="\$1" p="\$2" n
-  case "\$m \$p" in
-    "POST /projects/7/labels")
-      n=\$(bump labelpost)
-      if [ "\$n" = "1" ]; then echo "409"; echo '{"message":["Label already exists"]}';
-      else echo "400"; echo '{"message":{"title":["has already been taken"]}}'; fi
-      return ;;
-  esac
-  $common_accounts
-  case "\$m \$p" in
-    "GET /projects/7/protected_branches/main")
-      echo "200"
-      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
-      return ;;
-    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
-    "GET /projects/7/approvals")
-      echo "200"
-      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
-      return ;;
-  esac
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
-if has "already exists (no-op)" && [ "$RC" = "0" ]; then
-  ok "T9b a duplicate label (409 / 400-already-exists) is a no-op, not a failure (rc=$RC)"
-else
-  bad "T9b a duplicate label (409 / 400-already-exists) is a no-op, not a failure (rc=$RC)"
-fi
-if has "not created"; then
-  bad "T9b a duplicate label must not be recorded as a failure"
-else
-  ok "T9b a duplicate label is not recorded as a failure"
-fi
-
-# ===========================================================================
-# T9c — a label create that fails for any OTHER reason (e.g. 403) is recorded
-#       and the run exits non-zero, but does NOT abort the run.
-# ===========================================================================
-newcase
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-PLANFIELD=',"plan":"free"'
-respond() {
-  local m="\$1" p="\$2" n
-  case "\$m \$p" in
-    "POST /projects/7/labels") echo "403"; echo '{"message":"403 Forbidden"}'; return ;;
-  esac
-  $common_accounts
-  case "\$m \$p" in
-    "GET /projects/7/protected_branches/main")
-      echo "200"
-      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
-      return ;;
-    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
-    "GET /projects/7/approvals")
-      echo "200"
-      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
-      return ;;
-  esac
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
-if has "label 'authorization-needed' not created (HTTP 403)" && [ "$RC" != "0" ]; then
-  ok "T9c a forbidden label create is recorded and the run exits non-zero (rc=$RC)"
-else
-  bad "T9c a forbidden label create is recorded and the run exits non-zero (rc=$RC)"
-fi
-if has "configured: pipelines must succeed before merge"; then
-  ok "T9c a failed label step does not abort the steps around it"
-else
-  bad "T9c a failed label step does not abort the steps around it"
-fi
-
-# ===========================================================================
-# T9d — dry-run enumerates the labels and makes zero network calls.
-# ===========================================================================
-newcase
-echo 'respond() { echo "500"; echo "{}"; }' > "$FAKE_CURL_RESPONDER"
-run_impl --dry-run --group example --prefix myorg --project proj
-if has "would create project label 'authorization-needed'" && has "would create project label 'approval-needed'"; then
-  ok "T9d dry-run enumerates the queue-legibility labels"
-else
-  bad "T9d dry-run enumerates the queue-legibility labels"
-fi
-if [ ! -s "$FAKE_CURL_LOG" ]; then ok "T9d dry-run makes zero network calls"; else bad "T9d dry-run makes zero network calls"; fi
-
-# ===========================================================================
-# T10 — gl_api owner-PAT custody (issue #786): the group-owner PAT is delivered
-#       to curl via a `curl -K` config file, NEVER on argv where the process
-#       table would expose it. Asserted on the group-resolve call, which every
-#       non-dry-run mode makes first, so the whole gl_api path is covered.
-# ===========================================================================
-newcase
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-PLANFIELD=',"plan":"free"'
-respond() {
-  local m="\$1" p="\$2" n
-  $common_accounts
-  case "\$m \$p" in
-    "GET /projects/7/protected_branches/main")
-      echo "200"
-      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
-      return ;;
-    "POST /projects/7/approvals") echo "201"; echo "{}"; return ;;
-    "GET /projects/7/approvals")
-      echo "200"
-      echo '{"merge_requests_author_approval":false,"merge_requests_disable_committers_approval":true,"merge_request_approvers_available":true}'
-      return ;;
-  esac
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-# GITLAB_TOKEN carries a distinctive sentinel so a leak onto argv is unmistakable.
-GITLAB_TOKEN="glpat-owner-argv-sentinel" run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
-if grep -q 'glpat-owner-argv-sentinel' "$FAKE_CURL_LOG"; then
-  bad "T10 the owner PAT must never reach curl argv (found the sentinel in the argv log)"
-else
-  ok "T10 the owner PAT never reaches curl argv (delivered via curl -K config)"
-fi
-if grep -q 'PRIVATE-TOKEN' "$FAKE_CURL_LOG"; then
-  bad "T10 the PRIVATE-TOKEN header must not be passed on the command line"
-else
-  ok "T10 no PRIVATE-TOKEN header appears on the command line"
-fi
-if grep -q 'argv=.* -K ' "$FAKE_CURL_LOG"; then
-  ok "T10 gl_api calls pass a curl -K config file"
-else
-  bad "T10 gl_api calls pass a curl -K config file"
-fi
-if [ "$RC" = "0" ]; then ok "T10 the run still succeeds with the -K custody path (rc=0)"; else bad "T10 the run still succeeds with the -K custody path (rc=$RC)"; fi
-
-# ===========================================================================
-# T11 — gl_api transport safety (issue #786): a curl transport failure on a
-#       settings step is RECORDED, not fatal. `|| echo "000"` keeps the command
-#       substitution's exit status zero, so `set -e` does NOT abort the run
-#       mid-call; the "000" status reaches the caller's ledger branch, so
-#       record_failure fires, the LATER settings steps still run, and
-#       print_summary_and_exit surfaces the failure in the summary. The run
-#       exits non-zero (the ledger is non-empty) but only AFTER writing it.
-#       (Before the fix the non-zero substitution aborted under set -e before
-#       any ledger entry or summary — this case is RED against that impl.)
-# ===========================================================================
-newcase
-cat > "$FAKE_CURL_RESPONDER" <<RESP
-$bump_helper
-PLANFIELD=',"plan":"free"'
-respond() {
-  local m="\$1" p="\$2" n
-  $common_accounts
-  case "\$m \$p" in
-    "GET /projects/7/protected_branches/main")
-      echo "200"
-      echo '{"name":"main","push_access_levels":[{"access_level":0}],"merge_access_levels":[{"access_level":40}],"allow_force_push":false}'
-      return ;;
-  esac
-  echo "500"; echo '{"unstubbed":true}'
-}
-RESP
-# Only the approvals write transport-fails; account resolution and every other
-# settings call succeed, so the run reaches configure_approvals and past it.
-FAKE_CURL_TRANSPORT_FAIL_PATH="/projects/7/approvals" run_impl --group example --prefix myorg --project proj --out-dir "$OUTDIR" --no-avatars
-if has "approval settings write failed (HTTP 000"; then
-  ok "T11 a transport failure is RECORDED via record_failure (ledger line written)"
-else
-  bad "T11 a transport failure is recorded via record_failure"
-fi
-if has "configured: pipelines must succeed before merge"; then
-  ok "T11 the run is NOT fatal — the later settings steps still run"
-else
-  bad "T11 the run continues to the later settings steps (not a hard abort)"
-fi
-if has "FAILED STEPS — this run did NOT complete cleanly" && has "HUMAN-ONLY REMAINDER"; then
-  ok "T11 print_summary_and_exit is reached and surfaces the failure"
-else
-  bad "T11 the summary is reached and surfaces the failure"
-fi
-if [ "$RC" != "0" ]; then
-  ok "T11 the run exits non-zero after recording the failure (rc=$RC)"
-else
-  bad "T11 the run exits non-zero after recording the failure (rc=$RC)"
+  printf '%s\n' "$OUT" | grep -E '^(--- FAIL|FAIL|panic)|_test.go' | head -40
+  bad "D provisioner scenario and table-parity tests (rc=$RC passed=$passed failed=$failed)"
 fi
 
 echo

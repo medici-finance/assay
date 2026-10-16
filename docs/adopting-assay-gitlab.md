@@ -200,7 +200,12 @@ no renew verb, and a re-run of `deskfleet provision` mints nothing for accounts 
 A Windows adopter therefore still runs renewal from Git-Bash or WSL until `windows-port/16` ships
 `deskfleet renew`.
 
-The script is idempotent bash + curl + jq, run by a human holding a **group-owner PAT**
+The script is a thin bash adapter onto the Go command `deskgitlab create`
+(`tools/desk/cmd/deskgitlab`): every flag below passes through unchanged, and the output and
+exit codes are the provisioner's (0 ok · 1 a step failed · 2 usage, before any effect). It
+runs the `deskgitlab` on PATH (the desk-tools release archive), or builds one from
+`tools/desk` with Go; it needs neither curl nor jq, and `deskgitlab create` takes the same
+flags directly. It is idempotent, run by a human holding a **group-owner PAT**
 (supplied only via the `GITLAB_TOKEN` environment variable — never a flag, never
 committed, never stored by the script). It creates the seven service accounts above,
 their group memberships, and their PATs; when `--project` is given, it also configures
@@ -227,7 +232,11 @@ the protected-branch/approval steps with a printed NOTICE, not silently); `--git
 defaults to `https://gitlab.com` (point it at your self-managed instance otherwise);
 `--pat-expiry-days` defaults to 7, the RECOMMENDED backstop from spec.md §5;
 `--out-dir` controls where minted token files land (default: a fresh `mktemp -d`);
-`--avatars-dir`, `--no-avatars` and `--avatars-only` control the avatar step below. Run
+`--avatars-dir`, `--no-avatars` and `--avatars-only` control the avatar step below (give
+`--avatars-dir` or `--no-avatars`, not both); `--tier` and the `--status-check-*` pair are §2b's.
+Flags take `--flag value` or `--flag=value`; an unknown flag or a bad value (a `--tier` outside
+free/premium/ultimate, a `--pat-expiry-days` that is not a whole number of days, 1 or more, a
+plain-http `--gitlab-url` off loopback) exits 2 before anything is read or sent. Run
 `tools/create-fleet-gitlab.sh --help` for the full reference.
 
 **Idempotency.** A re-run against an already-provisioned group is a set of named no-ops,

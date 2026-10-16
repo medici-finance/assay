@@ -1243,8 +1243,9 @@ operation still needs Git-Bash or WSL after install: **bulk PAT renewal**. See *
     has no native equivalent until `windows-port/16` ships `deskfleet renew`. A GitLab adopter on
     Windows therefore still needs Git-Bash or WSL for renewal, **on either harness**.
 
-  The bash+curl+jq `tools/create-fleet-gitlab.sh` is different. It survives only as a **labelled
-  fallback** for initial provisioning (#1646), run from Git-Bash or WSL, never as a prerequisite.
+  `tools/create-fleet-gitlab.sh` is different. It survives only as a **labelled fallback** for
+  initial provisioning (#1646), run from Git-Bash or WSL, never as a prerequisite. It is now a bash
+  adapter onto the Go command `deskgitlab create`, which takes the same flags and runs natively.
   On Windows, token files it mints are **copied**, not `ln -s`'d (see the GitLab runbook).
 
 ### Config home, PATH, and child processes (Windows-specific)
@@ -1628,7 +1629,7 @@ those commands actually does underneath. Nothing here is retired by the collapse
 11. **Put the desk binaries on PATH again for Cursor** — the same `%LOCALAPPDATA%\Assay\bin` entry
     step 3 wrote; Cursor does not add it for you.
 12. **Run `tools/create-fleet-gitlab.sh` from Git-Bash or WSL.** Native PowerShell cannot run
-    it. Read the owner PAT from its owner-only file in the config home, not typed inline, so it
+    it (the bash adapter); `deskgitlab create` with the same flags runs natively. Read the owner PAT from its owner-only file in the config home, not typed inline, so it
     stays out of shell history:
     `GITLAB_TOKEN="$(cat <config-home>/gitlab-owner.token)" tools/create-fleet-gitlab.sh --group
     mygroup --prefix myorg --project mygroup/myproject`. `deskfleet provision` (see **GitLab fleet

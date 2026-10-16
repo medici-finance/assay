@@ -1,9 +1,11 @@
 # shellcheck shell=bash
 # tools/fleet-gitlab-roles.sh — the ONE Assay GitLab fleet role table.
 #
-# Sourced (never executed) by the two fleet scripts that must agree on it:
-#   tools/create-fleet-gitlab.sh         — provisions the accounts + first PATs
-#   tools/renew-fleet-gitlab-tokens.sh   — renews every role PAT in one run
+# Sourced (never executed) by tools/renew-fleet-gitlab-tokens.sh, which renews
+# every role PAT in one run. The provisioner that mints the accounts and first
+# PATs — tools/create-fleet-gitlab.sh, an adapter onto tools/desk/cmd/deskgitlab
+# (desktools-v2/30) — carries the same table in Go; deskgitlab's
+# tables_parity_test.go reads THIS file and fails if the two disagree.
 #
 # It lives in its own file so the role -> access-level -> scope mapping and the
 # naming convention have a single source. A second copy in either script would
@@ -34,9 +36,9 @@ board-writer:developer:30:api,write_repository
 
 # FLEET_PAT_DAYS — the shared default PAT lifetime (spec.md §5's "7 days
 # RECOMMENDED" expiry backstop). A second literal in either script would let
-# a widened default silently relax that backstop; both
-# tools/create-fleet-gitlab.sh (PAT_EXPIRY_DAYS) and
-# tools/renew-fleet-gitlab-tokens.sh (--duration's default) read it from here.
+# a widened default silently relax that backstop. The renewal
+# (--duration's default) reads it from here; deskgitlab's --pat-expiry-days
+# default is parity-tested against it.
 # shellcheck disable=SC2034  # consumed by the scripts that source this file
 FLEET_PAT_DAYS=7
 
