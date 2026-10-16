@@ -82,6 +82,17 @@ func Lift(cell string) string {
 	return stripInlineCode(cell)
 }
 
+// CommentOnly reports whether a lifted command is a shell comment: its first
+// non-blank character is `#`. The shell ignores such a command, so it exits 0
+// with no output and measures nothing (#2684, an inline `## Coverage` heading
+// lifted as the command). An executor MUST NOT run it and report the zero exit
+// as a pass. statusgen's shellCommentOnly is the same rule; both are held to
+// statusgen/testdata/shell-comment-vectors.json. A `#` later in the command (a
+// trailing comment, a quoted argument) leaves a real command.
+func CommentOnly(cmd string) bool {
+	return strings.HasPrefix(strings.TrimSpace(cmd), "#")
+}
+
 // stripInlineCode unwraps a `…` inline-code span that wraps the whole cell; a
 // cell with no wrapping backticks passes through unchanged.
 func stripInlineCode(s string) string {

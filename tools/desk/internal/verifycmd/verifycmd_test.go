@@ -67,6 +67,45 @@ func TestMarkedSharedVectors(t *testing.T) {
 	}
 }
 
+// commentVectorsPath is the shell-comment table statusgen's shellCommentOnly is
+// held to as well (#2684).
+var commentVectorsPath = filepath.Join("..", "..", "..", "..", "statusgen", "testdata", "shell-comment-vectors.json")
+
+// TestCommentOnlySharedVectors — CommentOnly agrees with the table statusgen is
+// held to: a lifted command that is only a shell comment is never runnable.
+// regression: #2684
+func TestCommentOnlySharedVectors(t *testing.T) {
+	b, err := os.ReadFile(commentVectorsPath)
+	if err != nil {
+		t.Fatalf("could-not-check: the shared comment vector table is unreadable: %v", err)
+	}
+	var doc struct {
+		Vectors []struct {
+			Name        string `json:"name"`
+			Cmd         string `json:"cmd"`
+			CommentOnly bool   `json:"commentOnly"`
+		} `json:"vectors"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Vectors) < 8 {
+		t.Fatalf("positive control: only %d vectors loaded", len(doc.Vectors))
+	}
+	for _, v := range doc.Vectors {
+		if got := CommentOnly(v.Cmd); got != v.CommentOnly {
+			t.Errorf("%s: CommentOnly(%q) = %v, want %v", v.Name, v.Cmd, got, v.CommentOnly)
+		}
+	}
+	// The lifted form of the reported cell: a cell wrapped whole in one span.
+	if !CommentOnly(Lift("`## Coverage`")) {
+		t.Errorf("Lift of a lone heading span must be comment-only, got %q", Lift("`## Coverage`"))
+	}
+	if CommentOnly(Lift("Inspect `## Coverage`, then `cmd: go test ./x -count=1`")) {
+		t.Error("a marked command beside a heading mention must not be comment-only")
+	}
+}
+
 // TestLiftUnmarkedIsLegacy — a cell with no marker lifts byte-for-byte what the
 // executors lifted before the marker existed (the compatibility hinge).
 func TestLiftUnmarkedIsLegacy(t *testing.T) {

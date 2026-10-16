@@ -1,0 +1,16 @@
+{
+  "doc": "Lifted Verify commands and whether each is a shell comment (#2684): the first non-blank character is '#'. statusgen's shellCommentOnly and tools/desk/internal/verifycmd.CommentOnly are both held to this table; a command that is only a comment exits 0 with no output, so no executor may record it as a pass.",
+  "vectors": [
+    {"name": "inline heading", "cmd": "## Coverage", "commentOnly": true},
+    {"name": "single hash word", "cmd": "#coverage", "commentOnly": true},
+    {"name": "hash then space", "cmd": "# read the review", "commentOnly": true},
+    {"name": "leading blanks", "cmd": "   \t## Coverage  ", "commentOnly": true},
+    {"name": "shebang-shaped", "cmd": "#!/bin/sh", "commentOnly": true},
+    {"name": "plain command", "cmd": "go test ./x -count=1", "commentOnly": false},
+    {"name": "trailing comment", "cmd": "go test ./x -count=1 # the real check", "commentOnly": false},
+    {"name": "quoted hash argument", "cmd": "grep -c '#' docs/x.md", "commentOnly": false},
+    {"name": "hash mid-word", "cmd": "echo a#b", "commentOnly": false},
+    {"name": "empty", "cmd": "", "commentOnly": false},
+    {"name": "blank", "cmd": "   ", "commentOnly": false}
+  ]
+}

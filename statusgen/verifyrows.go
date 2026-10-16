@@ -496,6 +496,11 @@ var bareWordRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 //   - the first span has whitespace in it → never flagged (a multi-word span is
 //     read as a command line; judging it is the other rules' job).
 //
+// ONE arm runs ahead of those exemptions, because it needs no heuristic: a lifted
+// command whose first non-blank character is `#` is a shell comment (#2684 — an
+// inline `## Coverage` heading in a procedure). It is flagged whatever surrounds
+// it, including as the cell's only span, and a `cmd:` marker still clears it.
+//
 // Otherwise a single-token first span is flagged when it is: a dotted extension
 // or dotfile (`.exe`); a file with a source/doc/data extension (`repovis.go`); a
 // relative path or `owner/repo` / `stream/NN` reference (`windows-port/00`); a
@@ -508,6 +513,15 @@ var bareWordRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 func proseLedCommandWhy(cell string) (span, why string) {
 	if len(markedCommands(cell)) > 0 {
 		return "", ""
+	}
+	// A command that is nothing but a shell comment is never a command, however
+	// many spans or words surround it (#2684): the shell ignores it, exits 0 with
+	// no output, and a witness would record a pass for a check that never ran. It
+	// is judged on what the lift returns — the first span, or the whole cell when
+	// there is no span — and BEFORE the one-span and whitespace exemptions below,
+	// because both of those assume a span that reads as a command line.
+	if lifted := verifyCommand(cell); shellCommentOnly(lifted) {
+		return lifted, shellCommentWhy
 	}
 	spans := codeSpans(cell)
 	if len(spans) == 0 {
@@ -524,6 +538,17 @@ func proseLedCommandWhy(cell string) (span, why string) {
 		return first, w
 	}
 	return "", ""
+}
+
+// shellCommentWhy is the reason text proseLedCommandWhy gives a comment-led
+// span; the NOTICE and the could-not-run note read "...is <shellCommentWhy>, not a command".
+const shellCommentWhy = "a shell comment (a command starting `#` is ignored by the shell: it exits 0 with no output and measures nothing)"
+
+// shellCommentOnly reports whether a lifted command is a shell comment: its first
+// non-blank character is `#`. A `#` later in the command is untouched — a trailing
+// ` # comment`, a quoted `'#'` or `a#b` all leave a real command.
+func shellCommentOnly(cmd string) bool {
+	return strings.HasPrefix(strings.TrimSpace(cmd), "#")
 }
 
 // proseLedShape is proseLedCommandWhy's shape test on a single-token first span.
@@ -1892,12 +1917,15 @@ const (
 )
 
 // isVacuousCommand reports a marked command that exits 0 without looking at
-// anything: one of vacuousCommands once a trailing `;` or `# comment` is
+// anything: a shell comment, one of vacuousCommands once a trailing `;` or `# comment` is
 // dropped, or a lone echo / printf with no shell operator (#1808 review A6). It
 // is a NOTICE heuristic, so it errs quiet: anything carrying a quote, pipe,
 // redirect, `&`, `;` mid-command or substitution is left alone.
 func isVacuousCommand(cmd string) bool {
 	c := strings.TrimSpace(cmd)
+	if shellCommentOnly(c) {
+		return true // a marked command that is all comment looks at nothing (#2684)
+	}
 	if strings.ContainsAny(c, "'\"`$|<>&()") {
 		return false
 	}

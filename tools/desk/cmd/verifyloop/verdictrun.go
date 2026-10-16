@@ -16,6 +16,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
 )
 
 // verdictrun.go — the DETERMINISTIC runner + batcher (brief 04). It pops the Awaiting queue,
@@ -440,7 +441,16 @@ func runBriefRows(root string, it loopengine.Item, execFn rowExec) []rowResult {
 		if !row.runnerExecuted() {
 			continue
 		}
-		exit, output := execFn(root, row.Command)
+		var exit int
+		var output string
+		if verifycmd.CommentOnly(row.Command) {
+			// A command that is only a shell comment exits 0 with no output, so running
+			// it would record a PASS for a check that never looked (#2684). Fail closed
+			// without executing, exactly as an unrunnable command does.
+			exit, output = commentOnlyExit, "could-not-run: the Verify command is a shell comment, not a command; mark the real command with a `cmd:` code span"
+		} else {
+			exit, output = execFn(root, row.Command)
+		}
 		results = append(results, rowResult{
 			BriefPath: it.BriefPath,
 			Row:       row.Num,
@@ -452,6 +462,11 @@ func runBriefRows(root string, it loopengine.Item, execFn rowExec) []rowResult {
 	}
 	return results
 }
+
+// commentOnlyExit is the exit code recorded for a Verify command that is only a
+// shell comment: 127, the shell's own "nothing runnable" code, so the row is a
+// non-zero verdict and never a silent pass.
+const commentOnlyExit = 127
 
 // resolveVerifierPEMPath resolves the verifier private-key PEM, honouring (in order) an
 // explicit override, the VERIFIER_PEM env, and finally verifier-app.pem on the App-credential

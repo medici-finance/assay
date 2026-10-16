@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'CmdMarker|NoMarkerUnchanged|ProseLedCommand|MarkedRowRoundTrips|ReexecutesLiftedCommand|RefusesProseLedCheckCI|ProseLedPassIsNotPass|OneChokePoint|HiddenMarker|RowLintJudges|ProseLedRow|WitnessRowRoundTrips' -count=1 -timeout 300s",
+  "test": "go test . -run 'CmdMarker|NoMarkerUnchanged|ProseLedCommand|MarkedRowRoundTrips|ReexecutesLiftedCommand|RefusesProseLedCheckCI|ProseLedPassIsNotPass|OneChokePoint|HiddenMarker|RowLintJudges|ProseLedRow|WitnessRowRoundTrips|CommentLed|ShellComment|CommentOnly' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — verifyCommand ignores the marker (the pre-#1805 first-span lift)",
     "file": "verifyrows.go",
@@ -252,6 +252,24 @@
       "file": "verifyrows.go",
       "old": "|| strings.IndexByte(\".,;:!?)\", cell[k]) >= 0",
       "new": "|| false"
+    },
+    {
+      "name": "#2684: the comment-only arm is dropped (an inline `## Coverage` heading lifts as the command and passes empty)",
+      "file": "verifyrows.go",
+      "old": "\tif lifted := verifyCommand(cell); shellCommentOnly(lifted) {",
+      "new": "\tif lifted := verifyCommand(cell); false && shellCommentOnly(lifted) {"
+    },
+    {
+      "name": "#2684: shellCommentOnly never matches (the shared comment vectors stop holding)",
+      "file": "verifyrows.go",
+      "old": "\treturn strings.HasPrefix(strings.TrimSpace(cmd), \"#\")",
+      "new": "\treturn false"
+    },
+    {
+      "name": "#2684: a marked command that is all comment is no longer NOTICEd as vacuous",
+      "file": "verifyrows.go",
+      "old": "\tif shellCommentOnly(c) {\n\t\treturn true",
+      "new": "\tif false && shellCommentOnly(c) {\n\t\treturn true"
     }
   ]
 }
