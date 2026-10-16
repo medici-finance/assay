@@ -177,3 +177,27 @@ the five desk images `FROM` that just-built base (all stamped with the same
 version/sha tags), and runs `containers/scripts/layer-secret-scan.sh` against all
 six images — a hit fails the publish. Build them locally with the commands in
 [`containers/README.md`](../containers/README.md).
+
+# Verify-runner image
+
+`ghcr.io/medici-finance/assay/verify-runner:<vX.Y.Z>` is the sandbox a scheduled
+verifier runs Verify rows inside. Each row runs in a container with no network
+and no bind mount, so the image carries everything a row needs: the Go
+toolchain, `unshare`, `curl` and `getent` from a digest-pinned
+`golang:1.27.2-bookworm` base, plus the release's linux `statusgen` on `PATH`
+([`images/verify-runner/Dockerfile`](../images/verify-runner/Dockerfile)).
+
+It is built from the release's own `statusgen-linux-amd64` asset, which must
+match the release's `checksums.txt` before the build runs, so the binary inside
+is byte-for-byte the one `.assay-versions` pins. It is linux/amd64 only; on
+Apple silicon it runs under emulation.
+
+## How it's built and published
+
+The `verify-runner` job in `.github/workflows/release.yml` runs after the
+`release` job publishes an umbrella `vX.Y.Z`. It fetches and checks the asset,
+builds the image, and confirms that the `statusgen` inside reports the release
+tag and that every required tool is on `PATH`. It then pushes the image and
+writes the exact pinnable reference, `<repo>:<tag>@sha256:<digest>`, to the run
+summary. Pin by that digest, never by the tag alone. A dry run publishes no
+release, so it builds no verify-runner image.

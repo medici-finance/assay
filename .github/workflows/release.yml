@@ -78,6 +78,9 @@ name: release
 #     docker-publish.yml (daily-immutable-tag discipline) and NOT rebuilt
 #     here; this release only NAMES the image ref in its notes so consumers can
 #     pin it in `.assay-versions`.
+#   * verify-runner image — `ghcr.io/medici-finance/assay/verify-runner:<tag>`,
+#     built from the PUBLISHED `statusgen-linux-amd64` asset and pushed by the
+#     `verify-runner` job after `release`; its digest is in the run summary.
 
 on:
   push:
@@ -137,6 +140,11 @@ env:
   # the binaries; its registry PUSH is a deliberate, gated decision (the `image` job below).
   # Literal, for the same reason DESK_IMAGE is.
   HARNESS_IMAGE: ghcr.io/medici-finance/assay/assay-harness
+  # The verify-runner image: the Verify-row sandbox, the pinned golang base plus
+  # this release's linux statusgen (images/verify-runner/Dockerfile). Built AND
+  # pushed by the `verify-runner` job once the release is published. Literal, for
+  # the same reason DESK_IMAGE is.
+  VERIFY_RUNNER_IMAGE: ghcr.io/medici-finance/assay/verify-runner
 
 jobs:
   # Work out WHICH tag this run is about, before anything is built or written.
@@ -2008,4 +2016,157 @@ jobs:
           echo "visibility PATCH -> HTTP $code"
           if [ "$code" != "204" ] && [ "$code" != "200" ]; then
             echo "::warning::could not set assay-harness package visibility to public (HTTP $code); an org owner must flip it in GHCR package settings."
+          fi
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # CONTAINER CHANNEL — the verify-runner image. The sandbox a scheduled
+  # verifier runs Verify rows inside: the pinned golang bookworm base plus THIS
+  # release's linux `statusgen` (images/verify-runner/Dockerfile). Tagged with the
+  # SAME umbrella vX.Y.Z; its registry DIGEST is what consumers pin.
+  #
+  # BEHIND `needs: [resolve, release]`. The image carries the PUBLISHED
+  # `statusgen-linux-amd64` asset, byte-for-byte, so it can only be built once
+  # the release exists — and `release` already sits behind the test gate and
+  # the human-approved `release` environment. A dry run publishes no release, so
+  # this job does not run on one.
+  #
+  # WHY IT PUSHES WITHOUT A FLAG (unlike `image`). The image adds nothing but the
+  # released binary to a digest-pinned public base, and that binary was
+  # published moments earlier under the release environment's human approval.
+  # The push records a digest; nothing consumes it until a consumer re-pins its
+  # lock to that digest, which is the consumer's own reviewed change.
+  verify-runner:
+    needs: [resolve, release]
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+    runs-on: medici-builder-public-release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # RELEASE_TAG rides in via env:, never a `${{ }}` splice into run: — a tag
+      # name is attacker-shaped text. GHCR requires a lowercase repo.
+      - name: Compute the image ref
+        id: ref
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          image_tag=$(printf '%s' "${RELEASE_TAG}" | tr '/' '-')
+          repo=$(printf '%s' "${VERIFY_RUNNER_IMAGE}" | tr '[:upper:]' '[:lower:]')
+          echo "ref=${repo}:${image_tag}" >> "$GITHUB_OUTPUT"
+          echo "Image ref: ${repo}:${image_tag}"
+
+      # Fetch the released linux statusgen and the release's checksums.txt, and
+      # refuse to build unless the binary matches its checksums.txt line. The
+      # build context is a fresh directory holding ONLY the verified binary.
+      - name: Fetch and verify the released statusgen
+        id: ctx
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          d="${RUNNER_TEMP}/verify-runner-ctx"
+          rm -rf "$d" && mkdir -p "$d/dl"
+          for asset in statusgen-linux-amd64 checksums.txt; do
+            curl -fsSL --retry 3 \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -o "$d/dl/${asset}" \
+              "https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${asset}"
+          done
+          line=$(grep -E '[[:space:]]\*?statusgen-linux-amd64$' "$d/dl/checksums.txt" || true)
+          if [ "$(printf '%s\n' "$line" | grep -c .)" != "1" ]; then
+            echo "::error::checksums.txt for ${RELEASE_TAG} has no single statusgen-linux-amd64 line — refusing to build"
+            exit 1
+          fi
+          (cd "$d/dl" && printf '%s\n' "$line" | sha256sum -c -)
+          cp "$d/dl/statusgen-linux-amd64" "$d/statusgen"
+          chmod 755 "$d/statusgen"
+          rm -rf "$d/dl"
+          echo "dir=$d" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      # Plain `docker build` on the daemon-ful label, linux/amd64 only — the only
+      # linux statusgen the release ships is amd64.
+      - name: Build the verify-runner image
+        env:
+          IMAGE_REF: ${{ steps.ref.outputs.ref }}
+          CTX: ${{ steps.ctx.outputs.dir }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --platform linux/amd64 \
+            --iidfile "${RUNNER_TEMP}/verify-runner.iid" \
+            -t "${IMAGE_REF}" \
+            -f images/verify-runner/Dockerfile \
+            "${CTX}"
+          echo "built ${IMAGE_REF} (config id $(cat "${RUNNER_TEMP}/verify-runner.iid"))"
+
+      # Prove the image is what consumers rely on BEFORE it is pushed: the
+      # statusgen inside self-reports THIS umbrella tag, and every tool a row
+      # needs is on PATH. Run with no network, as the runner does.
+      - name: Smoke-check the image
+        env:
+          IMAGE_REF: ${{ steps.ref.outputs.ref }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          got=$(docker run --rm --network none "${IMAGE_REF}" statusgen --version | tail -n1)
+          if [ "$got" != "${RELEASE_TAG}" ]; then
+            echo "::error::statusgen in the image reports '${got}', expected '${RELEASE_TAG}'"
+            exit 1
+          fi
+          docker run --rm --network none "${IMAGE_REF}" \
+            sh -c 'for b in go unshare curl getent statusgen; do command -v "$b" >/dev/null || { echo "missing: $b"; exit 1; }; done'
+
+      # Push, then read back the registry MANIFEST digest. Fail closed if the push
+      # produced none. The summary carries the exact `<repo>:<tag>@sha256:<digest>`
+      # form a consumer's lock pins.
+      - name: Push the verify-runner image and record its digest
+        env:
+          IMAGE_REF: ${{ steps.ref.outputs.ref }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          docker push "${IMAGE_REF}"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE_REF}" 2>/dev/null || true)
+          case "$digest" in
+            *@sha256:*) ;;
+            *) echo "::error::the image was pushed but no RepoDigest is recorded — refusing to record a tag with no immutable digest"; exit 1 ;;
+          esac
+          pinned="${IMAGE_REF}@${digest#*@}"
+          {
+            echo "### verify-runner image"
+            echo ""
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| umbrella | \`${RELEASE_TAG}\` |"
+            echo "| pinnable ref | \`${pinned}\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+          echo "pushed: ${pinned}"
+
+      # GHCR packages are created PRIVATE on first push. Best-effort flip to
+      # PUBLIC (mirrors the `image` job); a non-2xx is a warning, not a failure.
+      - name: Make package public (best-effort)
+        continue-on-error: true
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GHCR_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/orgs/medici-finance/packages/container/assay%2Fverify-runner \
+            -d '{"visibility":"public"}')"
+          echo "visibility PATCH -> HTTP $code"
+          if [ "$code" != "204" ] && [ "$code" != "200" ]; then
+            echo "::warning::could not set verify-runner package visibility to public (HTTP $code); an org owner must flip it in GHCR package settings."
           fi
