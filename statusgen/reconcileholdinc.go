@@ -72,6 +72,12 @@ type holdOptions struct {
 	reference  bool       // evaluate every rule over the whole board on every move (the pre-#2615 path)
 	crossCheck bool       // compare every move's incremental evaluation with a whole-board one
 	progress   io.Writer  // nil: silent; else progress lines (stderr in the CLI)
+	// regenerate is reconcile's --regenerate opt-in (#2694): a move that only
+	// drifts generated output it changes (a drive-snapshot region) is judged
+	// with that output re-rendered, and --apply writes it beside the README.
+	// Off (the default, and every in-repo landing caller): such a move is held
+	// on the drift, as before, and nothing but stream READMEs is written.
+	regenerate bool
 }
 
 // holdMove is one row move under evaluation.

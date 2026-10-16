@@ -578,8 +578,12 @@ jobs:
   #      witnessed todo|in-progress -> implemented Status cell. A row whose write
   #      would add a lint PROBLEM (a risk-gated brief with no design record) is
   #      held: reported in the job log on every tick, and in the commit and PR
-  #      body, never written. A reconcile that could not read the PRs exits
-  #      nonzero and fails the tick.
+  #      body, never written. So is a row on a stream an active drive names
+  #      whose move would re-render that drive's plan-page snapshot region: the
+  #      job never passes `--regenerate`, the opt-in under which `--apply` also
+  #      writes docs/roadmap/drives/<slug>.md, a path the check below refuses.
+  #      A reconcile that could not read the PRs exits nonzero and fails the
+  #      tick.
   #   2. `statusgen regen --readmes` — re-renders the marker-wrapped tables from
   #      brief frontmatter. Everything outside the markers is untouched.
   #   3. `statusgen --lint` — the full lint over the result; a failure fails the

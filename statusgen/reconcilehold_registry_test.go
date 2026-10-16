@@ -167,3 +167,102 @@ func designGateProblems(root string, s []*Stream) []string { return []string{s[0
 		t.Fatalf("the guard must name exactly the planted unregistered rule (and not the registered designGateProblems); got %v", got)
 	}
 }
+
+// generatedReadScan returns the Status-keyed rules (statusKeyedRuleScan) whose
+// body reaches readStaged other than through readStreamREADME: rules that read
+// a staged file which is not a stream README — a generated artifact the hold
+// must re-render beside the move (#2694, reconcilegenerated.go).
+func generatedReadScan(files []*ast.File) []string {
+	decls := map[string]*ast.FuncDecl{}
+	for _, f := range files {
+		for _, d := range f.Decls {
+			if fd, ok := d.(*ast.FuncDecl); ok && fd.Recv == nil && fd.Body != nil {
+				decls[fd.Name.Name] = fd
+			}
+		}
+	}
+	var reaches func(name string, depth int, visiting map[string]bool) bool
+	reaches = func(name string, depth int, visiting map[string]bool) bool {
+		fd := decls[name]
+		if fd == nil || name == "readStreamREADME" || visiting[name] || depth > 8 {
+			return false
+		}
+		visiting[name] = true
+		defer delete(visiting, name)
+		hit := false
+		ast.Inspect(fd.Body, func(n ast.Node) bool {
+			if c, ok := n.(*ast.CallExpr); ok {
+				if id, ok := c.Fun.(*ast.Ident); ok {
+					if id.Name == "readStaged" || reaches(id.Name, depth+1, visiting) {
+						hit = true
+					}
+				}
+			}
+			return !hit
+		})
+		return hit
+	}
+	var out []string
+	for _, n := range statusKeyedRuleScan(files) {
+		if reaches(n, 0, map[string]bool{}) {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+// unregisteredGeneratedRules is generatedReadScan minus generatedOutputs.
+func unregisteredGeneratedRules(files []*ast.File) []string {
+	known := map[string]bool{}
+	for _, g := range generatedOutputs {
+		known[g.rule] = true
+	}
+	var missing []string
+	for _, n := range generatedReadScan(files) {
+		if !known[n] {
+			missing = append(missing, n)
+		}
+	}
+	return missing
+}
+
+// TestGeneratedOutputsRegistered is the class guard for #2694: a Status-keyed
+// rule that compares a staged generated artifact against a fresh render must
+// have a regenerator in generatedOutputs, or the hold judges the README move
+// against the artifact's stale bytes and holds every row that changes it.
+func TestGeneratedOutputsRegistered(t *testing.T) {
+	files := parsePackageFiles(t)
+	if missing := unregisteredGeneratedRules(files); len(missing) != 0 {
+		t.Fatalf("Status-keyed rule(s) read a staged generated artifact with no regenerator: %v — add each to generatedOutputs (reconcilegenerated.go)", missing)
+	}
+	live := map[string]bool{}
+	for _, n := range generatedReadScan(files) {
+		live[n] = true
+	}
+	for _, g := range generatedOutputs {
+		if !live[g.rule] {
+			t.Errorf("generatedOutputs names %q, which is not a Status-keyed rule reading a staged artifact", g.rule)
+		}
+	}
+}
+
+// TestGeneratedScanCatchesPlanted plants a second instance of the class — a
+// Status-keyed rule reading a staged generated file, unregistered — and proves
+// the guard names it, while a rule reading only stream READMEs is not named.
+func TestGeneratedScanCatchesPlanted(t *testing.T) {
+	const planted = `package main
+func run() int { _ = plantedGenProblems(nil); _ = readmeOnlyProblems(nil); return 0 }
+func plantedGenProblems(s []*Stream) []string { b, _ := readStaged("gen.md"); return []string{s[0].Briefs[0].Status, string(b)} }
+func readmeOnlyProblems(s []*Stream) []string { b, _ := readStreamREADME("README.md"); return []string{s[0].Briefs[0].Status, string(b)} }
+func readStreamREADME(p string) ([]byte, error) { return readStaged(p) }
+func readStaged(p string) ([]byte, error) { return nil, nil }
+`
+	f, err := parser.ParseFile(token.NewFileSet(), "planted.go", planted, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := unregisteredGeneratedRules([]*ast.File{f})
+	if len(got) != 1 || got[0] != "plantedGenProblems" {
+		t.Fatalf("the guard must name exactly the planted unregistered rule; got %v", got)
+	}
+}

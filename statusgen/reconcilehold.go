@@ -34,7 +34,8 @@ import (
 
 // stagedReadmes is the in-memory README content the hold evaluates a move
 // against: readStreamREADME returns a staged entry in place of the file on
-// disk. Entries exist only while reconcileWrites runs (readmeStage.clear); the
+// disk. A drive-plan page whose generated region the move re-renders is staged
+// here too (readStaged, reconcilegenerated.go). Entries exist only while reconcileWrites runs (readmeStage.clear); the
 // lock is there because parallel tests load boards concurrently, each under
 // its own root.
 var stagedReadmes = struct {
@@ -52,6 +53,13 @@ func stageKey(path string) string {
 // readStreamREADME reads a stream README, preferring content staged by the
 // lint hold over the bytes on disk.
 func readStreamREADME(path string) ([]byte, error) {
+	return readStaged(path)
+}
+
+// readStaged reads any file the lint hold may stage — a stream README, or a
+// drive-plan page whose generated region a move re-renders (#2694) —
+// preferring the staged content over the bytes on disk.
+func readStaged(path string) ([]byte, error) {
 	stagedReadmes.RLock()
 	c, ok := stagedReadmes.m[stageKey(path)]
 	stagedReadmes.RUnlock()

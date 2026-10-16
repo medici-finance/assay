@@ -69,10 +69,17 @@ func runHold(t *testing.T, mk func(t *testing.T) (string, []BriefCell), write bo
 // read-only outcome.
 func assertHoldParity(t *testing.T, mk func(t *testing.T) (string, []BriefCell)) holdOutcome {
 	t.Helper()
+	return assertHoldParityOpt(t, mk, false)
+}
+
+// assertHoldParityOpt is assertHoldParity with reconcile's --regenerate opt-in
+// set on both paths when regen is true (#2694).
+func assertHoldParityOpt(t *testing.T, mk func(t *testing.T) (string, []BriefCell), regen bool) holdOutcome {
+	t.Helper()
 	var readOnly holdOutcome
 	for _, write := range []bool{false, true} {
-		ref := runHold(t, mk, write, holdOptions{reference: true})
-		inc := runHold(t, mk, write, holdOptions{crossCheck: true})
+		ref := runHold(t, mk, write, holdOptions{reference: true, regenerate: regen})
+		inc := runHold(t, mk, write, holdOptions{crossCheck: true, regenerate: regen})
 		if strings.Contains(inc.Err, "lint hold self-check") {
 			t.Fatalf("write=%v: %s", write, inc.Err)
 		}
@@ -273,10 +280,11 @@ func TestHoldParityManyRow(t *testing.T) {
 	}
 }
 
-// driveManyRowBoard is manyRowBoard with an active drive naming mr00 and a
-// drive-plan page carrying that drive's snapshot region as rendered now: a
-// move on mr00 changes the render (so the region drifts and the row is held),
-// a move elsewhere does not.
+// driveManyRowBoard is manyRowBoard with an active drive naming mr00 and mr02
+// and a drive-plan page carrying that drive's snapshot region as rendered now:
+// a move on a driven stream changes the render (so the region drifts and the
+// row is held, or with --regenerate is re-rendered with it, #2694), a move
+// elsewhere does not.
 func driveManyRowBoard(t *testing.T) (string, []BriefCell) {
 	return driveBoard(t, false)
 }
@@ -316,15 +324,24 @@ func TestHoldParityDriveRegion(t *testing.T) {
 	if problems, _ := driveRegionLintProblems(root, driveTestNow); len(problems) != 0 {
 		t.Fatalf("fixture drift: the fresh region must lint clean, got %v", problems)
 	}
+	// Default (no --regenerate): a driven move drifts the region and is held;
+	// undriven moves are admitted and nothing regenerates (#2694).
 	got := assertHoldParity(t, driveManyRowBoard)
-	if !strings.Contains(got.Held, "drive-region") {
-		t.Fatalf("fixture drift: a move on a driven stream must drift the region and be held, got held=%s", got.Held)
-	}
-	if got.Rows == "null" {
-		t.Fatal("fixture drift: moves on undriven streams must be admitted")
+	if !strings.Contains(got.Held, "drive-region") || got.Rows == "null" || strings.Contains(got.Rows, `"generated"`) {
+		t.Fatalf("without --regenerate a driven move must be held and only undriven ones admitted, got held=%s rows=%s", got.Held, got.Rows)
 	}
 	// The drive rule answered incrementally throughout: no whole-board
 	// evaluation beyond the one baseline pass.
+	if bound := len(statusKeyedLintRules); got.Stats.FullRuleEvals > bound {
+		t.Fatalf("%d moves took %d whole-board rule evaluations; want at most %d", got.Stats.Moves, got.Stats.FullRuleEvals, bound)
+	}
+	got = assertHoldParityOpt(t, driveManyRowBoard, true)
+	if got.Held != "null" {
+		t.Fatalf("with --regenerate a move on a driven stream is judged with its region re-rendered and must not be held, got held=%s", got.Held)
+	}
+	if !strings.Contains(got.Rows, `"generated":[{"path":"<root>/docs/roadmap/drives/d1.md","drive":"d1"`) {
+		t.Fatalf("fixture drift: driven moves must report the region they re-render, got rows=%s", got.Rows)
+	}
 	if bound := len(statusKeyedLintRules); got.Stats.FullRuleEvals > bound {
 		t.Fatalf("%d moves took %d whole-board rule evaluations; want at most %d", got.Stats.Moves, got.Stats.FullRuleEvals, bound)
 	}
@@ -348,12 +365,17 @@ func TestHoldParityDrivePlaceholders(t *testing.T) {
 	if problems, _ := driveRegionLintProblems(root, driveTestNow); len(problems) != 0 {
 		t.Fatalf("fixture drift: the fresh region must lint clean, got %v", problems)
 	}
-	got := assertHoldParity(t, drivePlaceholderBoard)
-	if !strings.Contains(got.Held, "drive-region") || got.Rows == "null" {
-		t.Fatalf("fixture drift: want driven moves held and undriven ones admitted, got held=%s rows=%s", got.Held, got.Rows)
-	}
-	if bound := len(statusKeyedLintRules); got.Stats.FullRuleEvals > bound {
-		t.Fatalf("%d moves took %d whole-board rule evaluations; want at most %d — a placeholder row broke the drive rule's mirror", got.Stats.Moves, got.Stats.FullRuleEvals, bound)
+	for _, regen := range []bool{false, true} {
+		got := assertHoldParityOpt(t, drivePlaceholderBoard, regen)
+		if regen && (got.Held != "null" || !strings.Contains(got.Rows, `"drive":"d1"`)) {
+			t.Fatalf("fixture drift: with --regenerate want every move admitted, driven ones with their region re-rendered, got held=%s rows=%s", got.Held, got.Rows)
+		}
+		if !regen && (!strings.Contains(got.Held, "drive-region") || got.Rows == "null") {
+			t.Fatalf("fixture drift: without --regenerate want driven moves held and undriven ones admitted, got held=%s rows=%s", got.Held, got.Rows)
+		}
+		if bound := len(statusKeyedLintRules); got.Stats.FullRuleEvals > bound {
+			t.Fatalf("regen=%v: %d moves took %d whole-board rule evaluations; want at most %d — a placeholder row broke the drive rule's mirror", regen, got.Stats.Moves, got.Stats.FullRuleEvals, bound)
+		}
 	}
 }
 
