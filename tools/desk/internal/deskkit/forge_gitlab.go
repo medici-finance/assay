@@ -4030,6 +4030,21 @@ func (g *GitLabForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, 
 // Evidence-lane fallback needs no separate CreateRef op. The idempotency read and append-only
 // shrink guard are folded in exactly as the GitHub backend's, so the two behave the same.
 func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileResult, error) {
+	return g.writeEvidenceFile(repo, in, nil, nil, false)
+}
+
+// gitlabWriteProbeRef is the ref a GitLab write's content is based on: the
+// start branch of an inline branch-creation, otherwise the target branch.
+func gitlabWriteProbeRef(in WriteFileInput) string {
+	if in.StartBranch != "" {
+		return in.StartBranch
+	}
+	return in.Branch
+}
+
+// writeEvidenceFile shares the native write implementation with a scoped landing.
+// known binds prior to the validator snapshot; LastCommitID remains enforced by GitLab.
+func (g *GitLabForge) writeEvidenceFile(repo ForgeRepo, in WriteFileInput, project *gitlab.Project, prior *FileContent, known bool) (*WriteFileResult, error) {
 	cl, err := g.client()
 	if err != nil {
 		return nil, err
@@ -4038,9 +4053,13 @@ func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 	res := &WriteFileResult{}
 
 	projPath := fmt.Sprintf("/projects/%s", proj)
-	p, _, perr := cl.Projects.GetProject(repo.Slug(), nil)
-	if perr != nil {
-		return nil, g.mapErr(http.MethodGet, projPath, perr)
+	p := project
+	if p == nil {
+		var perr error
+		p, _, perr = cl.Projects.GetProject(repo.Slug(), nil)
+		if perr != nil {
+			return nil, g.mapErr(http.MethodGet, projPath, perr)
+		}
 	}
 	if p.DefaultBranch != "" && in.Branch == p.DefaultBranch {
 		res.DefaultBranchNotWritable = true
@@ -4058,16 +4077,18 @@ func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 	// the start branch is rejected HTTP 400 (issue #1412), so that write must be an update (PUT)
 	// with StartBranch carried through to create the side branch inline. The GitHub Contents-API
 	// path is unaffected: it has one create-or-update verb and no create-vs-update split to miss.
-	probeRef := in.Branch
-	if in.StartBranch != "" {
-		probeRef = in.StartBranch
+	// A scoped landing supplies prior only when it was read at this same ref
+	// (gitlabWriteProbeRef is shared with evidenceLandingForge.WriteFile).
+	cur := prior
+	var rerr error
+	if !known {
+		cur, rerr = g.ReadFile(repo, ReadFileInput{File: in.File, Ref: gitlabWriteProbeRef(in)})
 	}
-	cur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: probeRef})
 	if rerr != nil {
 		if !IsForgeNotFound(rerr) {
 			return nil, rerr
 		}
-	} else {
+	} else if cur != nil && cur.Exists {
 		priorSHA, priorContent, exists = cur.SHA, cur.Content, true
 	}
 	// Conditional write (see WriteFileInput.ExpectedSHA): the update below cites priorSHA as

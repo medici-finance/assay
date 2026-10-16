@@ -264,6 +264,77 @@ VERIFY: FAIL — row 8: TestVersionStampedFromReleaseWorkflow SKIPs on an absent
 the Task 5 stamp guard is not load-bearing. Row 2 also fails on the known load flake (#612). Rows 1,
 5 and 6 are false FAILs from the witness tool and pass when re-run directly.
 
+### Verification — 2026-10-16 (assay-verifier-app[bot] @ c3db7cca008e (claude-opus-5-5 verifier))
+
+Verification-Attestation: medici-finance/assay#3162 run=edc01847dd6790e388d18207b988c54d549ea1f84eb67649b85dd51343cdd694 source=c3db7cca008e9dc17b3d0e7462c4a366706f699a brief=docs/streams/desk-tools/brief-01-binary-channel-and-pin-contract.md model=claude-opus-5-5 tier=any
+
+Fresh non-implementer run of every row against merged main c3db7cca008e9dc17b3d0e7462c4a366706f699a,
+which carries the row-8 fix 320a8b744 (medici-finance/assay#1819) and the #1546 row re-shape. Admission
+`deskdispatch --check-verifier` exit 0 before the first row. Build step `make desk-build` exit 0
+(deskpins built into the desk dist directory). Every row ran under bash with `env -i`: a throwaway
+HOME and a short TMPDIR outside the worktree, GIT_CONFIG_NOSYSTEM=1, GIT_CONFIG_GLOBAL set to an
+empty file there, KUBECONFIG=/dev/null, no DESK_/ASSAY_ variables, and the real GOCACHE/GOMODCACHE passed
+explicitly. The grep on PATH was BSD grep 2.6.0. Host: darwin arm64, go1.27.2, git 2.56.0, load
+average 7 to 49 during the run. Gate is human: this block is Evidence only and the row stays where it is.
+No statusgen verifyrun witness was run; every row below is hand-run.
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 0 | the row 0 command exactly as the Verify table writes it | exit 0, spec-homes=1 | exit 0, `spec-homes=1` | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 1 | the row 1 command exactly as the Verify table writes it | exit 0, n ≥ 5 | exit 0, `n=16` | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 2 | `cd tools/desk && go test ./... && go vet ./...` | exit 0 | exit 0 on the third run (go test 112 ok, 0 FAIL, then go vet exit 0). The first two runs failed, and each failure is classified here. Run 1, in the environment named above: exit 1, 3 packages FAIL (cmd/deskwt, cmd/deskpushguard, internal/deskkit), 404 FAIL lines, every one a git call refused with "update aborted by the reference-transaction hook". Cause, ENVIRONMENT: deskwt's TestMaintenanceHookPolicy (global-path and configured-global subtests) runs `git config --global`. Its fixture swaps HOME but not GIT_CONFIG_GLOBAL, so with GIT_CONFIG_GLOBAL pointing at a file, the test wrote core.hooksPath plus a reference-transaction hook into that one shared file. Every git call in packages running at the same time then ran a hook from a deleted temp dir. Reproduced alone: that one test turns an empty GIT_CONFIG_GLOBAL file into 280 bytes of hook config. With GIT_CONFIG_GLOBAL unset under a throwaway HOME, the same test passes and leaves no global config. That deskwt test is outside this brief. Runs 2 and 3 used GIT_CONFIG_GLOBAL unset with a fresh throwaway HOME and TMPDIR. Run 2: exit 1, 111 ok, 1 FAIL, internal/regression TestEvidenceAutomergeRefusal case G1 ("class guard on the real tree", an UNREDUCED flag on the evidence-automerge poll test). Cause, CODE, outside this brief: that file does call latest_run_per_check at its line 439, and the guard script runs under `set -o pipefail` with a `grep -v … \| grep -q` pipeline, which can return a SIGPIPE status when the reader exits early. Not reproduced in 3 direct reruns of the suite (25/25 each) or 500 isolated pipeline iterations at load ~12; run 2 started at load ~49. Run 3: exit 0, with 111 of the 112 ok packages served from the go test cache filled by run 2 in the same environment and internal/regression re-executed. Every package this brief touches (internal/deskkit, cmd/deskboard, cmd/deskpins with no test files) is ok in runs 2 and 3. | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 3 | the row 3 command exactly as the Verify table writes it | exit 0, checked-clean | exit 0, `checked-clean: 12 artifact line(s), 80 comment line(s)`. The golden fixture has the statusgen, daily-harvest and desk-tools per-platform lines, a desk-tools-source line, and no bare desk-tools line | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 3a | the row 3a command exactly as the Verify table writes it | exit 0, non-zero dup-rc | exit 0, `dup-rc=1`, `line 99: duplicate artifact "statusgen" (first seen line 46)`. The identical-tag/sha statusgen and statusgen-linux-amd64 pair stays clean in row 3 | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 4 | the row 4 command exactly as the Verify table writes it | exit 0, absent and malformed non-zero and distinct | exit 0, `absent=2 malformed=3`; the malformed line reports `"statusgen" has 2 field(s) … (missing sha256)` | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 5 | the row 5 command exactly as the Verify table writes it | exit 0, pass ≥ 1, fail=0 | exit 0, `fail=0 rc=0 pass=1`, `--- PASS: TestNextup_PinFlowFromConfiguredRoot` | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 6 | the row 6 command exactly as the Verify table writes it | exit 0, pass ≥ 1, fail=0 | exit 0, `fail=0 rc=0 pass=1`, `--- PASS: TestStatusgenPin` | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 7 | the row 7 command exactly as the Verify table writes it | exit 0 | exit 0. The release workflow's desk-tools build step carries the deskkit.ReleaseTag=${RELEASE_TAG} ldflag at release.yml line 1209 | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 8 | the row 8 command exactly as the Verify table writes it | exit 0, pass ≥ 1 | exit 0, `rc=0 pass=1`, `--- PASS: TestVersionStampedFromReleaseWorkflow`, with no skip. Independent mutation check: in a git-archive copy of this commit outside the home, with the ReleaseTag ldflag deleted from the copy's release.yml, the same test FAILs ("the desk-tools build step's LDFLAGS assignment does not carry -X …deskkit.ReleaseTag=${RELEASE_TAG}"), so the guard now depends on the stamp | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 9 | the row 9 command exactly as the Verify table writes it | exit 0, hardcoded=0 | exit 0, `hardcoded=0` | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+
+Row totals: 11 of 11 pass. Row 8, the 2026-09-25 implementation failure, now passes and depends on
+the stamp. Rows 1, 5 and 6 pass as re-shaped.
+
+**Observations for the human gate** (outside the Verify table; re-probed against this commit with the
+built deskpins):
+
+- The pin-file section of docs/distribution.md is still about 48 lines. It still gives no worked
+  example from a live consumer file, does not name the daily-harvest lines, and does not spell out the
+  read / malformed / absent states by name.
+- A tab-separated line (statusgen, TAB, tag, TAB, 64-hex) is still checked-clean under deskpins, while
+  the reader selects on artifact name plus a literal space. The disagreement fails closed.
+- `statusgen daily-harvest/v0.1.0 <64-hex>` is still checked-clean: the namespace prefix is
+  shape-checked, not bound to the line's artifact.
+
+**Risk-bearing values.** Enumeration covered the brief's Deliverables and the code they landed at this
+commit (tools/desk/internal/deskkit pins.go and version.go, tools/desk/cmd/deskpins main.go, the
+desk-tools build step of release.yml, the deskboard pin flow) plus the 320a8b744 fix (version.go,
+version_test.go, fixture_skip_test.go, citrigger_test.go). Literals: AssayVersionsFile = ".assay-versions"
+@ pins.go:33; UmbrellaArtifact = "assay" @ pins.go:40; artifactTagPattern @ pins.go:70;
+sha256Pattern = `^[0-9a-f]{64}$` @ pins.go:77; commitPattern = `^[0-9a-f]{40}$` @ pins.go:78;
+selection prefix = artifact + " " @ pins.go:133; umbrella field count = 2 @ pins.go:553; artifact field
+count = 3 @ pins.go:566 and 571; SourcePinSuffix = "-source" @ pins.go:237; deskpins exits 0/1/2/3 @
+cmd/deskpins/main.go:45-48; ReleaseTag = "" @ version.go:28; devRelease = "dev" @ version.go:36;
+IsPinned = SourceSHA != "" && BuiltAt != "" @ version.go:66; ReleaseTag ldflag @ release.yml:1209;
+releaseWorkflowPath = .github/workflows/release.yml @ version_test.go:79; deskToolsBuildStepName =
+"Build and package desk-tools binaries" @ version_test.go:84; ExitUnverifiable = 6 @ exitcodes.go:55.
+Ranking: nothing is marked irreversible. The published-grammar literals rank top (customer: yes; a wrong
+one means migrating every consumer). The test-path constants, "dev", IsPinned and the exit code
+constants are reversible by an edit and rank last.
+
+- RISK-VALUE: DERIVED — sha256Pattern = `^[0-9a-f]{64}$` @ tools/desk/internal/deskkit/pins.go:77 — a SHA-256 digest is 256 bits, which is 64 hex digits. sha256sum, shasum -a 256 and release checksums.txt print lowercase, so a faithfully copied digest matches and a truncated or case-mangled one is refused.
+- RISK-VALUE: DERIVED — commitPattern = `^[0-9a-f]{40}$` @ tools/desk/internal/deskkit/pins.go:78 — a git SHA-1 object id is 160 bits, which is 40 hex digits. Requiring the full id keeps a -source pin immutable and unambiguous, where an abbreviated id or a tag could later resolve to something else.
+- RISK-VALUE: DERIVED — selection prefix = artifact + " " @ tools/desk/internal/deskkit/pins.go:133 — "desk-tools" is a string prefix of "desk-tools-linux-amd64", so only a terminator byte after field 1 separates the bare and per-platform lines, and it is the same byte consumer CI greps for (^statusgen followed by a space).
+- RISK-VALUE: DERIVED — artifact line field count = 3 @ tools/desk/internal/deskkit/pins.go:566/571, umbrella field count = 2 @ pins.go:553 — the grammar is artifact, tag, sha256. The umbrella line names a composition, not a downloadable asset, so it has no digest to carry.
+- RISK-VALUE: NAMED, NOT DERIVED — artifactTagPattern = `^([a-z][a-z0-9-]*/)?v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$` @ tools/desk/internal/deskkit/pins.go:70 — the pattern accepts any lowercase component prefix, including one naming a different artifact. Whether the prefix must match the line's artifact is a grammar choice reserved to the human by gate-why.
+- RISK-VALUE: NAMED, NOT DERIVED — UmbrellaArtifact = "assay" with a plain vX.Y.Z tag @ tools/desk/internal/deskkit/pins.go:40 — the brief text says the umbrella is the assay/vX.Y.Z tag, while the spec and code publish `assay <vX.Y.Z>`. The umbrella line's meaning is on the gate-why list for human confirmation.
+- RISK-VALUE: NAMED, NOT DERIVED — deskpins exit codes 0 clean / 1 checked-failed / 2 unreadable / 3 malformed @ tools/desk/cmd/deskpins/main.go:45-48 — row 4 proves they are distinct, but the spec section still does not publish them, and the desk's pin reader uses ExitUnverifiable = 6 @ tools/desk/internal/deskkit/exitcodes.go:55 for the same states. Nothing derives why the two differ.
+
+**VERIFY: PASS** — 11/11 rows at c3db7cca008e. Row 8 now passes and depends on the stamp. Row 2 exited 0
+on the third run; run 1 failed on an environment interaction (a deskwt test writing global git config
+into the shared GIT_CONFIG_GLOBAL file) and run 2 on a suspected pipefail race in the evidence-automerge
+class guard, both outside this brief. Gate human: the human sign-off on the published grammar remains open.
+
 ## Review
 Gate: **human** (from frontmatter; see `gate-why`). The human signs off the published grammar —
 field order, the `<artifact>-<platform>` convention, the trailing-space selection rule, and the
