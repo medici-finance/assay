@@ -23,7 +23,7 @@ const confineRepo = "example-org/example-repo"
 
 const confineBriefRel = "docs/streams/s/brief-01-x.md"
 
-const confineBrief = "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n---\n\n# Brief 01\n\n## Verify\n\n| # | Class | Command | Expect |\n|---|-------|---------|--------|\n| 1 | check | `test -f tools/old/widget.go` | exists |\n"
+const confineBrief = "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n---\n\n# Brief 01\n\n## Verify\n\n| # | Class | Command | Expect |\n|---|-------|---------|--------|\n| 1 | check | `test -f tools/old/widget.go` | exit 0 |\n"
 
 // gitRun runs git in root and returns trimmed stdout, failing the test on error.
 func gitRun(t *testing.T, root string, args ...string) string {

@@ -85,11 +85,11 @@ func TestLiftUnmarkedIsLegacy(t *testing.T) {
 
 // commandColumnFuncs parses every non-test .go file under root (skipping
 // testdata trees) and returns, for each function that reads a Verify table's
-// Command column by header name (an index expression keyed "command"), whether
-// that same function calls verifycmd.Lift.
-func commandColumnFuncs(t *testing.T, root string) map[string]bool {
+// Command column by header name (an index expression keyed "command"), the
+// verifycmd functions that same function calls.
+func commandColumnFuncs(t *testing.T, root string) map[string]map[string]bool {
 	t.Helper()
-	out := map[string]bool{}
+	out := map[string]map[string]bool{}
 	fset := token.NewFileSet()
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -114,7 +114,7 @@ func commandColumnFuncs(t *testing.T, root string) map[string]bool {
 			if !ok || fn.Body == nil {
 				continue
 			}
-			readsCommand, lifts := false, false
+			readsCommand, calls := false, map[string]bool{}
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
 				switch x := n.(type) {
 				case *ast.IndexExpr:
@@ -122,16 +122,16 @@ func commandColumnFuncs(t *testing.T, root string) map[string]bool {
 						readsCommand = true
 					}
 				case *ast.CallExpr:
-					if sel, ok := x.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "Lift" {
+					if sel, ok := x.Fun.(*ast.SelectorExpr); ok {
 						if id, ok := sel.X.(*ast.Ident); ok && id.Name == "verifycmd" {
-							lifts = true
+							calls[sel.Sel.Name] = true
 						}
 					}
 				}
 				return true
 			})
 			if readsCommand {
-				out[filepath.ToSlash(rel)+":"+fn.Name.Name] = lifts
+				out[filepath.ToSlash(rel)+":"+fn.Name.Name] = calls
 			}
 		}
 		return nil
@@ -147,15 +147,23 @@ func commandColumnFuncs(t *testing.T, root string) map[string]bool {
 // rule other than the marker-aware one". Every function that reads a Verify
 // table's Command column must lift it through verifycmd.Lift; a new parser that
 // reads the column and hands the raw cell (or its own unwrap) to a shell fails
-// here, naming the site. The positive control proves the walker still finds the
-// two executors it exists to hold, so a broken matcher cannot report clean.
+// here, naming the site. The same function must split the row with
+// verifycmd.SplitRow and un-escape the command with verifycmd.UnescapePipes, so
+// a `\|` in the cell is neither a column break nor passed to the shell (#1953).
+// The positive control proves the walker still finds the two executors it
+// exists to hold, so a broken matcher cannot report clean.
+//
+// regression: #1953
 func TestCommandColumnLiftsViaLift(t *testing.T) {
 	found := commandColumnFuncs(t, filepath.Join("..", ".."))
 	var sites []string
-	for site, lifts := range found {
+	for site, calls := range found {
 		sites = append(sites, site)
-		if !lifts {
+		if !calls["Lift"] {
 			t.Errorf("%s reads a Verify table's Command column without verifycmd.Lift — lift the command through verifycmd.Lift so the `cmd:` marker is honoured (spec §4.4)", site)
+		}
+		if !calls["SplitRow"] || !calls["UnescapePipes"] {
+			t.Errorf("%s reads a Verify table's Command column without verifycmd.SplitRow + verifycmd.UnescapePipes — an escaped `\\|` would cut or reach the command (#1953)", site)
 		}
 	}
 	sort.Strings(sites)

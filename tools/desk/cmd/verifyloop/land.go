@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
 )
 
 // Durable is the sink that makes a verify Result durable. It is an interface so the default
@@ -121,7 +122,7 @@ func renderEvidence(r loopengine.Result, date string) string {
 		out := strings.ReplaceAll(strings.TrimSpace(row.Output), "|", `\|`)
 		out = strings.ReplaceAll(out, "\n", " ")
 		fmt.Fprintf(&b, "| %d | `%s` | %d | %s | %s | %s |\n",
-			i+1, row.Command, row.Exit, out, date, runner)
+			i+1, verifycmd.EscapePipes(row.Command), row.Exit, out, date, runner)
 	}
 	fmt.Fprintf(&b, "\nVerdict: %s — %s %s\n", r.Verdict, date, runner)
 	return b.String()

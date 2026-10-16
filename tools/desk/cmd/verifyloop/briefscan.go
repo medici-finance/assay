@@ -13,6 +13,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
 )
 
 // briefRow is one parsed stream-README table row plus its resolved brief file.
@@ -372,9 +373,8 @@ func headerIndex(line string) map[string]int {
 	return idx
 }
 
-func splitRow(line string) []string {
-	return strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
-}
+// splitRow is verifycmd.SplitRow: an escaped `\|` stays inside its cell (#1953).
+func splitRow(line string) []string { return verifycmd.SplitRow(line) }
 
 func normalizeMark(s string) string {
 	switch strings.TrimSpace(s) {

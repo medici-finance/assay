@@ -65,7 +65,7 @@ func parseVerifyRowsIn(section string) []verifyRow {
 			if sepRe.MatchString(row) {
 				continue
 			}
-			cells := splitRow(row)
+			cells := verifycmd.SplitRow(row)
 			cell := func(j int) string {
 				if j >= 0 && j < len(cells) {
 					return strings.TrimSpace(cells[j])
@@ -83,11 +83,12 @@ func parseVerifyRowsIn(section string) []verifyRow {
 				}
 			}
 			// verifycmd.Lift honours the `cmd:` marker (spec §4.4, #1805) and
-			// otherwise unwraps a fully-backticked cell exactly as before.
+			// otherwise unwraps a fully-backticked cell exactly as before. The split
+			// kept `\|` in the cell; the runner executes the un-escaped pipeline (#1953).
 			rows = append(rows, verifyRow{
 				Num:     num,
 				Class:   class,
-				Command: verifycmd.Lift(cell(cmdCol)),
+				Command: verifycmd.UnescapePipes(verifycmd.Lift(cell(cmdCol))),
 			})
 		}
 		return rows
