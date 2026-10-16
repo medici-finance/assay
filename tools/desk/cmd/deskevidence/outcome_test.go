@@ -71,6 +71,9 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 	for _, tc := range []struct {
 		name, before, after                 string
 		closureErr, drift, lintRed, wantErr bool
+		// kind is what the branch holds the closure brief as (S-2266-8); "" leaves it a
+		// plain file.
+		kind string
 	}{
 		{name: "valid", after: success},
 		{name: "unclosed", after: success, closureErr: true, wantErr: true},
@@ -78,6 +81,10 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 		{name: "lint-refused", after: success, lintRed: true, wantErr: true},
 		{name: "failure-after-history", before: success, after: success + failure, closureErr: true},
 		{name: "duplicate-new-success", before: success, after: success + success, closureErr: true, wantErr: true},
+		// regression: S-2266-8 — a link served as its target's bytes matches the local
+		// closure byte for byte, but is not the brief the branch holds.
+		{name: "closure-served-through-a-link", after: success, kind: deskkit.FileKindUnproven, wantErr: true},
+		{name: "closure-is-a-link", after: success, kind: deskkit.FileKindSymlink, wantErr: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f, _ := setupFake(t)
@@ -94,6 +101,9 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 			}
 			if tc.drift {
 				f.setFile("docs/streams/test/README.md", "implemented\n")
+			}
+			if tc.kind != "" {
+				f.fileKinds = map[string]string{brief: tc.kind}
 			}
 			oldCheck, oldLint := closureCheckFn, statusgenLintFn
 			t.Cleanup(func() { closureCheckFn = oldCheck; statusgenLintFn = oldLint })
@@ -112,6 +122,9 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 			err := guardVerifiedOutcomes(root, "docs/streams/verify-outcomes-2026-09.jsonl", []byte(tc.before), []byte(tc.after), f, deskkit.ForgeRepo{}, "main")
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("error=%v wantErr=%v", err, tc.wantErr)
+			}
+			if tc.kind != "" && !deskkit.IsUnverifiable(err) {
+				t.Fatalf("error=%v, want could-not-check for a closure the branch holds as %q", err, tc.kind)
 			}
 		})
 	}

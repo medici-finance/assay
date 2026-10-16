@@ -715,12 +715,16 @@ ASSAY_GITLAB_DISPLAY_NAMES=example-verifier-bot=Assay verifier (fleet bot)
 - Renaming the service account's display name to equal its username is a valid deployment
   workaround, but it silently re-breaks whenever an admin edits the display name; declaring it
   here is the durable fix.
-- **Online alternative.** The desk verb that lands Evidence (`deskevidence`) resolves the landed
-  commit's GitLab account to its username through the typed forge (`GET /users?search=`) and
-  compares that to the verifier binding — so a deployment whose runners can reach the API gets the
-  check for free without declaring display names. The offline map is the fallback for the
-  network-free `--lint` path; unset, that path is simply could-not-check for the display-name case
-  (never a false pass).
+- **Online alternative — not available yet.** The desk verb that lands Evidence
+  (`deskevidence`) can resolve a landed commit's GitLab account to its username through the
+  typed forge (`GET /users?search=`) and compare that to the verifier binding, but on GitLab it
+  never reaches that step today: before any write it runs the decision-gate hold's branch-board
+  read, which needs a ref compare, and the GitLab backend serves none. Every `deskevidence`
+  landing on GitLab therefore stops as **could-not-check (exit 6)** with nothing written, until
+  the GitLab backend serves a compare; [adopting-assay.md](adopting-assay.md) gives the reason
+  (the decision-gate hold, under "PRIMITIVE: add-statusgen-ci"). The offline map above is what
+  the network-free `--lint` path compares against; unset, that path is could-not-check for the
+  display-name case (never a false pass).
 
 A roster-known **human** verifier on GitLab is accepted by the Evidence-actor check via GitLab's
 private commit noreply address `<user-id>-<username>@users.noreply.<host>` the way a GitHub human

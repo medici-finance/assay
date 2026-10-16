@@ -89,6 +89,11 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("cannot install the test-fixture roster: " + err.Error())
 	}
+	// The decision-gate hold on --close-verify (lifecycle-v1 §4.5) reads the
+	// forge. The close-verify fixtures predate it and test the flip itself, so
+	// the hold is off for them; decisiongatehold_test.go restores the real check
+	// (closeVerifyDecisionGate) for every test that exercises it.
+	closeVerifyDecisionGateFn = func(string, string, []byte) error { return nil }
 	code := m.Run()
 	cleanup()
 	os.Exit(code)

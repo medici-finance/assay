@@ -175,7 +175,7 @@ func platformContract(t *testing.T, backend, name string) {
 		gl.repoFile = map[string]map[string]any{"EXAMPLE.md": {"file_name": "EXAMPLE.md", "file_path": "EXAMPLE.md", "content": glB64("old\n"), "encoding": "base64", "last_commit_id": "example-commit", "blob_id": "example-blob"}}
 		gl.updateFileStatus = 400
 		gh.repo = map[string]any{"private": true, "default_branch": "main"}
-		gh.contentsGet = map[string]any{"type": "file", "sha": "example-blob", "content": glB64("old\n"), "encoding": "base64"}
+		gh.contentsGet = ghServedFile("EXAMPLE.md", "old\n")
 		if backend == "github" {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == "PUT" {
