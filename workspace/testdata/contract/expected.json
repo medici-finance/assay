@@ -1,9 +1,9 @@
 {
   "digests": {
-    "request-worker.json": "sha256:2da8bb236b4464e5f3e80ce94146e0aa7fe15c0a21b5803a7b0e6d90b0f34ff4",
-    "request-worker-pretty.json": "sha256:2da8bb236b4464e5f3e80ce94146e0aa7fe15c0a21b5803a7b0e6d90b0f34ff4",
-    "request-desk.json": "sha256:6cf02f1602eae3eac2c2ffc9b91c9fc1c864c731368a98f6ea4932dff00b8af8",
-    "request-review.json": "sha256:d9faa821538c549580a8d743b73b8b7d829212aa9d0c115222064dcf79abd321"
+    "request-worker.json": "sha256:0ad7da13ac70a422ab43bf57d26bb2217bf362d534f6c2823cf3cbd0873c035c",
+    "request-worker-pretty.json": "sha256:0ad7da13ac70a422ab43bf57d26bb2217bf362d534f6c2823cf3cbd0873c035c",
+    "request-desk.json": "sha256:e1f3df4695a2c07f440710a863eaf3536217b48805bb6b6b9d23e88da5892843",
+    "request-review.json": "sha256:35dfc04882a94667ebf3b629973f80ba7520bc11a9f4fd391da4f1a6dcf29912"
   },
   "repo_keys": {
     "request-worker.json": "widgets-103052e15af2ff8e",
