@@ -73,6 +73,10 @@ RUN if [ -z "${ASSAY_VERSION}" ]; then \
 # `replace` to a sibling directory, so the sources keep the repository's layout under /src.
 COPY forgeread/ /src/forgeread/
 
+# comms — the stdlib-only public message contract (cellmsg-v1) tools/desk resolves through a
+# `replace ../../comms`; same sibling layout as forgeread.
+COPY comms/ /src/comms/
+
 # statusgen — its own module, stamped with main.statusgenVersion.
 WORKDIR /src/statusgen
 COPY statusgen/go.mod statusgen/go.sum ./

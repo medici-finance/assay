@@ -112,7 +112,7 @@ func TestVerifierAttestationGitLabIssueContract(t *testing.T) {
 }
 func TestAttestationExcludedDuringOpenWindowBothForges(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode([]map[string]any{{"id": 1, "number": 1, "iid": 1, "title": VerifierAttestationTitle + "fixture-run", "state": "opened", "user": map[string]any{"login": "example-desk[bot]"}, "author": map[string]any{"username": "example-desk"}}, {"id": 2, "number": 2, "iid": 2, "title": "ordinary work", "state": "opened", "user": map[string]any{"login": "example-human"}, "author": map[string]any{"username": "example-human"}}, {"id": 3, "number": 3, "iid": 3, "title": VerifierAttestationTitle + "ordinary-user", "user": map[string]any{"login": "example-human"}, "author": map[string]any{"username": "example-human"}}})
+		json.NewEncoder(w).Encode([]map[string]any{{"id": 1, "number": 1, "iid": 1, "title": VerifierAttestationTitle + "fixture-run", "state": "opened", "user": map[string]any{"login": "example-desk[bot]"}, "author": map[string]any{"username": "example-desk"}}, {"id": 2, "number": 2, "iid": 2, "title": "ordinary work", "state": "opened", "user": map[string]any{"login": "example-human"}, "author": map[string]any{"username": "example-human"}}, {"id": 3, "number": 3, "iid": 3, "title": VerifierAttestationTitle + "ordinary-user", "user": map[string]any{"login": "example-human"}, "author": map[string]any{"username": "example-human"}}, {"id": 4, "number": 4, "iid": 4, "title": WorkerAttestationTitle + "fixture-run", "state": "opened", "user": map[string]any{"login": "example-desk[bot]"}, "author": map[string]any{"username": "example-desk"}}, {"id": 5, "number": 5, "iid": 5, "title": WorkerAttestationTitle + "ordinary-user", "user": map[string]any{"login": "example-human"}, "author": map[string]any{"username": "example-human"}}})
 	}))
 	defer srv.Close()
 	repo := ForgeRepo{Owner: "example-org", Name: "one"}
@@ -121,12 +121,14 @@ func TestAttestationExcludedDuringOpenWindowBothForges(t *testing.T) {
 		if name == "gitlab" {
 			provider = "gitlab:"
 		}
-		plantRoster(t, "ASSAY_BLESS_LOGIN=example-human:2001\nASSAY_TRUSTED_LOGINS=example-human:2001\nASSAY_TRUSTED_BOT_SLUGS=desk="+provider+"example-desk:1,verifier="+provider+"example-verifier:2\nASSAY_ALLOWED_REPOS=example-org/one:ci:private\n")
+		plantRoster(t, "ASSAY_BLESS_LOGIN=example-human:2001\nASSAY_TRUSTED_LOGINS=example-human:2001\nASSAY_TRUSTED_BOT_SLUGS=desk="+provider+"example-desk:1,verifier="+provider+"example-verifier:2,worker="+provider+"example-worker:3\nASSAY_ALLOWED_REPOS=example-org/one:ci:private\n")
 		got, err := f.ListOpenIssues(repo)
 		if err != nil {
 			t.Fatalf("%s %v", name, err)
 		}
-		if len(got) != 2 || got[0].Title != "ordinary work" || got[1].Number != 3 {
+		// The verifier and worker records authored by the bound dispatcher are excluded even while
+		// open; a look-alike title by anyone else stays ordinary work.
+		if len(got) != 3 || got[0].Title != "ordinary work" || got[1].Number != 3 || got[2].Number != 5 {
 			t.Fatalf("%s intake included run record: %+v", name, got)
 		}
 	}

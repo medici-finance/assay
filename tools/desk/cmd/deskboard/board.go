@@ -156,7 +156,13 @@ type prBase struct {
 	Labels    []struct {
 		Name string `json:"name"`
 	} `json:"labels"`
-	HeadRefOid        string  `json:"headRefOid"`
+	HeadRefOid string `json:"headRefOid"`
+	// HeadCommittedDate is the head commit's committer date (RFC3339), read on the SAME
+	// commit node as the rollup and bound to headRefOid (deskkit.OpenChange.HeadCommittedAt).
+	// "" when the backend does not carry it — classifyPRFrom then reads the commit itself.
+	// It is what lets the review reduction refuse an approval the forge RE-ANCHORED onto
+	// this head from an older one (#3093).
+	HeadCommittedDate string  `json:"headCommittedDate,omitempty"`
 	HeadRefName       string  `json:"headRefName"`
 	BaseRefName       string  `json:"baseRefName"` // branch filters in the zero-CI probe (#1652) match against this
 	MergeStateStatus  string  `json:"mergeStateStatus"`
@@ -233,18 +239,19 @@ func warnTruncated(repo string, n int, truncated bool, limit int) bool {
 // change from different fields.
 func prBaseFromChange(c deskkit.OpenChange) prBase {
 	pb := prBase{
-		Number:           c.Number,
-		Title:            c.Title,
-		Body:             c.Body,
-		State:            c.State,
-		IsDraft:          c.Draft,
-		CreatedAt:        c.CreatedAt,
-		LastEditedAt:     c.LastEditedAt,
-		UpdatedAt:        c.UpdatedAt,
-		HeadRefOid:       c.HeadSHA,
-		HeadRefName:      c.HeadRef,
-		BaseRefName:      c.BaseRef,
-		MergeStateStatus: c.MergeStateStatus,
+		Number:            c.Number,
+		Title:             c.Title,
+		Body:              c.Body,
+		State:             c.State,
+		IsDraft:           c.Draft,
+		CreatedAt:         c.CreatedAt,
+		LastEditedAt:      c.LastEditedAt,
+		UpdatedAt:         c.UpdatedAt,
+		HeadRefOid:        c.HeadSHA,
+		HeadCommittedDate: c.HeadCommittedAt,
+		HeadRefName:       c.HeadRef,
+		BaseRefName:       c.BaseRef,
+		MergeStateStatus:  c.MergeStateStatus,
 	}
 	pb.Author.Login = c.Author.Login
 	for _, l := range c.Labels {
@@ -969,6 +976,11 @@ func reduceReviews(reviews []review, head string) reviewState {
 	// FLAGGING on an advisory surface a human reads, never toward granting a flip, so it is
 	// the safe direction — but it IS a divergence, not an exact mirror. Any change that
 	// makes the board's reduction the basis of a mutating decision must close it first.
+	// NOT a divergence (#3093): both reductions decide on reviews with STALE grants removed
+	// — an APPROVED or security pass at head submitted before the head commit's committer
+	// date, which the forge re-anchored from an older head. Without that, the new commit_id
+	// below reads as a genuine push and a re-anchored APPROVED clears a standing CR. The
+	// board's caller (classifyPRFrom) applies withoutStaleGrants; ready's applies its twin.
 	var lastCommit string
 	var commitBlocked bool
 	var effState, effCommit, effSubmittedAt string
@@ -2226,6 +2238,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 	// existing !ever arm to NEEDS-REVIEW (never a cleared state), reusing the existing
 	// contract instead of a second degrade mechanism.
 	var rs reviewState
+	var staleGrantNote string
 	reviews, err := snapReviews, error(nil)
 	if !haveReviews {
 		reviews, err = fetchReviews(repo, p.Number)
@@ -2234,8 +2247,21 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 		degrade(fmt.Sprintf("could not read reviews (%v) — degrading to no verdict "+
 			"established rather than failing the sweep", err))
 	} else {
-		rs = reduceReviews(reviews, p.HeadRefOid)
-		rs = applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body, p.LastEditedAt)
+		// #3093: the forge can re-anchor an older review's commit_id onto this head. Both
+		// reductions decide on the reviews with every grant at head that was submitted
+		// BEFORE the head commit's committer date removed (withoutStaleGrants — blocks are
+		// never removed); a head date that could not be read removes every grant at head
+		// and degrades the row.
+		grantReviews, stale, gerr := withoutStaleGrants(repo, p, reviews)
+		if gerr != nil {
+			degrade(gerr.Error())
+		} else if stale > 0 {
+			staleGrantNote = fmt.Sprintf(" — ignored %d App grant(s) reported at head %s but submitted before "+
+				"its committer date: re-anchored from an older head, they verify nothing here (#3093)",
+				stale, short(p.HeadRefOid))
+		}
+		rs = reduceReviews(grantReviews, p.HeadRefOid)
+		rs = applyBodyEditReverification(rs, grantReviews, p.HeadRefOid, p.Body, p.LastEditedAt)
 	}
 
 	// #1652: an empty rollup is ambiguous until probed. The probe runs ONLY on a truly
@@ -2387,6 +2413,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 	in.riskReason = riskReason
 
 	action, note := classify(in)
+	note += staleGrantNote
 	if rs.bodyEditReverified {
 		note += " — same-head APPROVE accepted under the documented body-edit re-verification class " +
 			"(deskflip re-verifies it at the gate)"

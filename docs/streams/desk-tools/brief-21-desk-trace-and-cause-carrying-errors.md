@@ -562,6 +562,72 @@ statusgen v1.0.37, run from the home with ASSAY_GO_CACHE_POLICY unset, exit 2): 
 
 VERIFY: BLOCKED — the execution witness covers 2 of 16 rows. The 14 check:ci rows could not run on a darwin host with no network-off sandbox (#1800, open), and row 11 names tests that no longer exist (#1306, open). By hand, 15 of 16 rows are green; rows 7, 8, 12 and 16 needed the house cache policy unset (#2491). Status stays implemented.
 
+### Non-implementer verifier re-run: 2026-10-15, assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk), merged main 8efe5579d9253813835db650d45180eea76cf33e
+
+Run window: 2026-10-15T04:16:09Z (admission) to 2026-10-15T04:46:10Z (last row and probe finished), UTC.
+Delivering change: PR #729, squash commit 1003557e167b97c74534d83bf5e47811118fa39c (parent e82c565e).
+Later changes to the same files: #1443, #2364, #2719, #2853.
+
+Admission: `deskdispatch --check-verifier` exit 0 for this detached home at the source above, before
+any row ran. Every row was run by hand on darwin/arm64, go1.27.2, git 2.56.0. The environment was
+cleared and rebuilt with a throwaway HOME, GOCACHE and TMPDIR in the verifier's scratch directory
+outside the home, GOPROXY=off, GOTOOLCHAIN=local and KUBECONFIG=/dev/null. No house environment
+variables and no forge credential were set. Host load average was 16-38 on 16 cores throughout.
+Row 14's listing file was redirected into the scratch directory instead of the system temp
+directory. That is the only change from the authored command text.
+
+| # | Command | Expect | Observed (exit + key output line) | Date | Runner |
+|---|---------|--------|-----------------------------------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | exit 0 | exit 0, both silent | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 2 | row 2 as authored: two anchored `go test ./internal/deskkit/` runs, one per named test | exit 0 | exit 0; `ok .../internal/deskkit 0.324s` and `ok ... 0.276s`, neither says no tests to run | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 3 | row 3 as authored: two anchored `go test ./internal/deskkit/` runs (report-error off and on) | exit 0 | exit 0; `ok ... 0.267s` and `ok ... 0.367s`, neither says no tests to run | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 4 | row 4 as authored: one anchored `go test ./internal/deskkit/` run (scrub transport shapes) | exit 0 | exit 0; `ok ... 0.293s`, the test matched | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestTraceNeverPrintsACredential$' -count=1` | exit 0 | exit 0; `ok ... 0.309s`, the test matched | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 6 | row 6 as authored: two anchored `go test ./internal/deskkit/` runs (refusal stays exit 5; env spellings) | exit 0 | exit 0; `ok ... 0.315s` and `ok ... 0.268s`, both matched | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 7 | row 7 as authored: two anchored `go test ./cmd/deskdispatch/` runs (claim step message; gitOut stderr) | exit 0 | exit 0; `ok .../cmd/deskdispatch 0.358s` and `ok ... 0.233s`, both matched | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 8 | row 8 as authored: two anchored `go test ./cmd/deskdispatch/` runs (worktree-create stderr; trace off by default) | exit 0 | exit 0; `ok ... 0.354s` and `ok ... 0.342s`, both matched | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 9 | row 9 as authored: two anchored `go test ./cmd/deskwt/` runs | exit 0 | exit 0; `ok .../cmd/deskwt 0.639s` and `ok ... 0.540s`, both matched | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 10 | row 10 as authored: one anchored `go test ./cmd/desktoken/` run | exit 0 | exit 0; `ok .../cmd/desktoken 0.699s`, the test matched | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 11 | row 11 as authored: two anchored `go test ./cmd/deskfile/` runs (the dedupe-search outage test, then TestGhStderrStripsControlBytes) | exit 0, 401/403/429 tell apart, exit 6 unchanged, strip survived | exit 0 but VACUOUS, counted as a non-pass: both print `ok .../cmd/deskfile [no tests to run]`. Neither named test is declared anywhere in the tree at this commit; they were renamed in #783. As a supplementary run, not counted as this row, the two renamed successors in deskfile's trace test file (forge-diagnosis propagation, with subtests 403, 429 and 401, and control bytes stripped by the backend), plus deskkit's TestForgeGitlabTierErrors, all exit 0 with `--- PASS` | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 12 | `cd tools/desk && go test -timeout 300s ./internal/deskkit/... ./cmd/deskdispatch/... ./cmd/deskwt/... ./cmd/desktoken/... ./cmd/deskfile/... -count=1` | exit 0 | exit 1 on both passes, from the 300s package timeout only, with zero `--- FAIL` lines in either. Pass 1: deskkit, deskdispatch and deskwt all hit `panic: test timed out after 5m0s`; untrustcorpus, desktoken (61.1s) and deskfile (261.1s) were ok. Pass 2: deskkit ok 272.9s, untrustcorpus ok, deskdispatch ok 240.5s, desktoken ok 67.9s, deskfile ok 196.7s; deskwt timed out again. A diagnostic run of deskwt alone with a 900s budget gave exit 0, `ok .../cmd/deskwt 494.534s`, 247 PASS and 0 FAIL. Its slowest tests are not this brief's | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 13 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestS2' -count=1 && go test ./internal/deskkit/ -run 'TestCorpus' -count=1` | exit 0 | exit 0; `ok ... 2.450s` and `ok ... 1.416s`. Not vacuous: `go test -list` matches 10 TestS2 and 5 TestCorpus tests | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 14 | `gofmt -l` over the four deskkit files and the four cmd directories, redirected to a listing file, then `test ! -s` on it | exit 0 | exit 0; the listing file is 0 bytes | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 15 | `cd statusgen && go run . --root .. --lint; echo $?` | 0 | `LINT: PASS` then `0`, with NOTICE lines only. For this brief, the notices flag vacuity-prone row shapes, the two dangling row-11 test names, and a risk-files cross-read: the brief declares a deskkit path that matches the security-path trigger while all four risk answers are no | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 16 | `cd tools/desk && go run ./cmd/muhar -spec internal/deskkit/trace-mutations.json` | exit 0, every mutation CAUGHT | exit 0; `Harness healthy: baseline GREEN, positive control CAUGHT.` and `Totals: 10 caught, 0 NOT CAUGHT, 0 could-not-mutate.` The home was unchanged afterwards (git status clean) | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+
+Tally: 14 of 16 rows pass (1-10, 13-16). Row 11 exits 0 without running a test. Row 12 is red on its
+300s budget, with no assertion failure.
+
+**Findings**
+
+1. Check-definition, row 11. The two named tests do not exist at this commit; they were renamed in
+   #783, previously recorded as #1306. The row cannot pass or fail until it is re-pointed. The
+   successors pass, but they cover a narrower deskfile-side property. The 401/403/429 tiers moved to
+   deskkit forge tests. The control-byte successor builds its fake from an already-stripped string,
+   so it shows only that deskfile does not reintroduce control bytes, not that the strip happens.
+2. Environment, row 12. On a host at load 16-38 on 16 cores, three packages exhausted the fixed
+   `-timeout 300s` with zero assertion failures. The deskwt package alone needs about 494s at this
+   load. The 300s budget has no headroom on a shared host. Re-run on an idle host or CI runner, with
+   the same command.
+3. NEW, security-relevant: the redactor misses two GitHub token prefixes. Scrub reuses the body
+   scanner's GitHub token pattern, which lists ghp_, github_pat_, ghs_ and gho_. GitHub's documented
+   prefixes also include ghu_ (user-to-server) and ghr_ (refresh). A probe test run against the real
+   Scrub on a scratch copy of this commit planted each prefix bare in a child-stderr-shaped line, with
+   no URL, header or NAME= around it. ghp_, gho_, ghs_ and github_pat_ were redacted; ghu_ and ghr_
+   were printed unredacted. The same pattern backs the outward-write body scan that the Context's
+   single-point-of-failure note names as the independent second layer. For these two prefixes, then,
+   both layers share one blind spot. Whether the body scan's other checks catch them was not probed.
+   This is outside every Verify row, and the brief's own risk note routes a credential that reaches
+   a trace to the human gate.
+
+**VERIFY: BLOCKED** — 14/16 rows pass. Row 11 is a check-definition defect (vacuous, renamed tests). Row 12 is environment-blocked (300s timeout under host load, zero assertion failures). Finding 3 (ghu_/ghr_ not redacted) needs a human decision on the sensitive-data answer. Status stays implemented.
+
+- RISK-VALUE: NAMED, NOT DERIVED — reGitHubToken = `(ghp_|github_pat_|ghs_|gho_)[A-Za-z0-9_]+` @ tools/desk/internal/deskkit/bodycheck.go:16, used by Scrub at scrub.go:75 — derivation against GitHub's documented token prefixes FAILS: ghu_ and ghr_ are absent, and a probe at this commit shows a bare token with either prefix passes Scrub unredacted (Finding 3).
+- RISK-VALUE: NAMED, NOT DERIVED — reURLUserinfo = `://([^:/@\s]+):([^@\s]+)@` @ tools/desk/internal/deskkit/scrub.go:31, with reAuthHeader @ line 36 and reSecretEnvAssign @ lines 42-43 — row 16 shows each shape redacts and that removing any one is caught. The sufficiency of the three-shape set for every transport form a child can print is not derived.
+- Reversible knobs, ranked last, no derivation owed: traceStepCap = 200 @ trace.go:54; redactedMarker = `<redacted>` @ scrub.go:49; DESK_TRACE truthy spellings `1`/`true`/`yes`/`on` @ trace.go:98, with empty and `0` off, matching the brief.
+
+Verification-Attestation: medici-finance/assay#3011 run=8bfbf62f9d7f0234acb60382953ea36f8badff1ee55da2bc89f1530010f37c25 source=8efe5579d9253813835db650d45180eea76cf33e brief=docs/streams/desk-tools/brief-21-desk-trace-and-cause-carrying-errors.md model=claude-opus-5-5 tier=any
+
 ## Review
 
 Gate: model (all four risk answers no). Model-gated because the two hazards this change

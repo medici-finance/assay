@@ -85,14 +85,16 @@ harvested per-class first-pass-yield file; absent or unreadable, the lane HOLDS.
 Exit: 0 ok · 3 disabled · 4 rate-limited · 5 refused/ejected · 6 could-not-check.`
 
 func main() {
-	// The lane ACTS on other people's PRs, so its roster — including the lane keys — comes
-	// from the config-home file and never from the environment.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("deskautolane", nil, os.Args[1:], func([]string) int {
+		// The lane ACTS on other people's PRs, so its roster — including the lane keys — comes
+		// from the config-home file and never from the environment.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:], os.Stdout, os.Stderr)
+	}))
 }
 
 func run(args []string, out, errw io.Writer) int {

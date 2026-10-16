@@ -4,189 +4,20 @@ import (
 	"encoding/json"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
-	"github.com/medici-finance/assay/tools/desk/internal/cellcontainer"
 )
 
 // A launch hands a cell to a later cellctl process in several places: the model-policy hook, the
 // native container console, the comms and role pane commands, a scratch run's environment. Each
-// must name the cells root the launch itself loaded the cell from. For a cell one level under
-// the root that is the cell directory's parent; for a cell named `team/demo` it is not, and a
-// re-entry that took the parent would read `<root>/team/defaults.env` in place of the machine's
-// file — a different environment from the one the window launched on.
+// must name the cells root the launch itself loaded the cell from.
 
-// loadAgain loads a cell the way a re-entered cellctl does: CELLS_ROOT from the command it was
-// handed, the cell by the name it was handed. A load that refuses is reported, not a panic.
-func loadAgain(t *testing.T, what, root, name string) *Cell {
+// defaultsPolicyCell adds a house cell named demo to the fixture's cells root. Its cell.env
+// names no model policy: the policy comes from the cells root's defaults.env alone.
+func defaultsPolicyCell(t *testing.T, f *policyFixture) (cellDir, policy string) {
 	t.Helper()
-	t.Setenv("CELLS_ROOT", root)
-	var c *Cell
-	prev := os.Stderr
-	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stderr = devnull
-	func() {
-		defer func() {
-			os.Stderr = prev
-			devnull.Close()
-			if r := recover(); r != nil {
-				if _, ok := r.(exitCode); !ok {
-					panic(r)
-				}
-				t.Errorf("%s: re-entering with CELLS_ROOT=%s and cell %q does not load the cell", what, root, name)
-			}
-		}()
-		c = loadCell(name)
-	}()
-	return c
-}
-
-// TestNestedCellReentryNamesTheLaunchRoot: every re-entry command a nested cell builds names the
-// cells root it was loaded from, and loading the cell again from that command reads the same
-// defaults file — never the decoy one directory up from the cell. Both spellings of a nested
-// cell are covered: the one `cellctl new team/demo` writes (CELL=team/demo) and a hand-made
-// cell.env whose CELL= is the last path element only.
-func TestNestedCellReentryNamesTheLaunchRoot(t *testing.T) {
-	for _, cellName := range []string{"team/demo", "demo"} {
-		t.Run("CELL="+cellName, func(t *testing.T) {
-			root := defaultsRoot(t)
-			rootFile := writeDefaults(t, root, "CELL_HARNESS=codex\n")
-			writeCell(t, root, filepath.Join("team", "demo"), strings.Replace(demoCell, "CELL=demo", "CELL="+cellName, 1))
-			if err := os.WriteFile(filepath.Join(root, "team", cellDefaultsFile), []byte("CELL_HARNESS=cursor\n"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			c := loadCell("team/demo")
-			if c.DefaultsPath != rootFile || c.Harness != "codex" {
-				t.Fatalf("the launch read %q (harness %s), want %q", c.DefaultsPath, c.Harness, rootFile)
-			}
-			same := func(what, gotRoot, gotName string) {
-				t.Helper()
-				again := loadAgain(t, what, gotRoot, gotName)
-				t.Setenv("CELLS_ROOT", root)
-				if again == nil {
-					return
-				}
-				if again.Dir != c.Dir || again.DefaultsPath != rootFile || again.Harness != "codex" {
-					t.Errorf("%s re-enters with CELLS_ROOT=%s and cell %q, which loads %s reading %q (harness %s); the launch loaded %s reading %q (harness codex)",
-						what, gotRoot, gotName, again.Dir, again.DefaultsPath, again.Harness, c.Dir, rootFile)
-				}
-			}
-
-			// The native container console: `env CELLS_ROOT=<root> cellctl container-run <cell> …`.
-			argv := c.nativeConsoleArgv(&cellcontainer.Plan{Harness: "codex", Model: "example-model"}, "the-desk")
-			if len(argv) < 5 || argv[0] != "env" || !strings.HasPrefix(argv[1], "CELLS_ROOT=") || argv[3] != "container-run" {
-				t.Fatalf("container console argv: %q", argv)
-			}
-			same("the container console", strings.TrimPrefix(argv[1], "CELLS_ROOT="), argv[4])
-
-			// The comms pane and the cadence-supervised role pane: `cellctl --cells-root <root> …`.
-			wantRoot, wantName := "--cells-root "+shellPOSIX.quote(root), shellPOSIX.quote(filepath.Join("team", "demo"))
-			if line := c.commsCmdIn(shellPOSIX, "/opt/example/cellctl"); !strings.Contains(line, wantRoot+" comms "+wantName+" run") {
-				t.Errorf("comms pane command does not name the launch root and the cell under it: %s", line)
-			}
-			c.Cadence = &cadenceOptions{Interval: 5 * time.Minute, Budget: 10 * time.Minute}
-			if line := c.roleCmdIn(shellPOSIX, "/opt/example/cellctl", "worker-desk", "", upOverrides{}); !strings.Contains(line, wantRoot+" desk "+wantName+" 'worker-desk'") {
-				t.Errorf("role pane command does not name the launch root and the cell under it: %s", line)
-			}
-			// What every site above is built from.
-			r, n := c.reenter()
-			same("reenter", r, n)
-
-			// A cadence pass's scratch environment (scratch_launch.go): the harness child and
-			// every cellctl it starts take the cell from CELLS_ROOT and ASSAY_SCRATCH_CELL. The
-			// environment handed in carries a stale CELLS_ROOT, which must be replaced.
-			sl, env, err := c.beginScratch("worker-desk", []string{"ASSAY_SOURCE_REVISION=fixture-revision", "CELLS_ROOT=" + filepath.Join(root, "team")})
-			if err != nil {
-				t.Fatalf("beginScratch: %v", err)
-			}
-			sl.finish(&cellcadence.Result{})
-			gotRoot, gotName := envValue(env, "CELLS_ROOT"), envValue(env, "ASSAY_SCRATCH_CELL")
-			if gotRoot != root || gotName != filepath.Join("team", "demo") {
-				t.Errorf("a cadence pass's scratch environment names CELLS_ROOT=%s ASSAY_SCRATCH_CELL=%s, want %s and %s", gotRoot, gotName, root, filepath.Join("team", "demo"))
-			}
-			same("a cadence pass's scratch environment", gotRoot, gotName)
-		})
-	}
-}
-
-// TestNestedCellReentryScratchRunBinary drives `cellctl scratch <cell> run` for a nested cell
-// against a local Git checkout — no forge and no credentials — and reads the environment the
-// task command was started with: CELLS_ROOT and ASSAY_SCRATCH_CELL must be the pair that loads
-// the same cell again, under the cells root the run itself used, whichever way cell.env spells
-// CELL=.
-func TestNestedCellReentryScratchRunBinary(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the task command is a POSIX shell line")
-	}
-	for _, tool := range []string{"git", "sh"} {
-		if _, err := exec.LookPath(tool); err != nil {
-			t.Skipf("%s not on PATH", tool)
-		}
-	}
-	source := t.TempDir()
-	for _, args := range [][]string{
-		{"init", "-q", source},
-		{"-C", source, "-c", "user.name=example", "-c", "user.email=example@example.invalid", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "fixture"},
-	} {
-		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-	}
-	for _, cellName := range []string{"team/demo", "demo"} {
-		t.Run("CELL="+cellName, func(t *testing.T) {
-			root := defaultsRoot(t)
-			if resolved, err := filepath.EvalSymlinks(root); err == nil {
-				root = resolved
-				t.Setenv("CELLS_ROOT", root)
-			}
-			rootFile := writeDefaults(t, root, "CELL_HARNESS=codex\n")
-			writeCell(t, root, filepath.Join("team", "demo"), strings.Replace(demoCell, "CELL=demo", "CELL="+cellName, 1))
-			if err := os.WriteFile(filepath.Join(root, "team", cellDefaultsFile), []byte("CELL_HARNESS=cursor\n"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			probe := filepath.Join(t.TempDir(), "task-environment")
-			cmd := exec.Command(cellctlBinary(t), "scratch", "team/demo", "run", "--source", source, "--task", "probe", "--session", "example-session",
-				"--", "sh", "-c", `printf '%s\n%s\n' "$CELLS_ROOT" "$ASSAY_SCRATCH_CELL" > "$SCRATCH_PROBE"`)
-			cmd.Env = append(os.Environ(), "SCRATCH_PROBE="+probe)
-			out, err := cmd.CombinedOutput()
-			raw, rerr := os.ReadFile(probe)
-			if rerr != nil {
-				t.Fatalf("the task command did not run (%v; cellctl: %v):\n%s", rerr, err, out)
-			}
-			got := strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
-			if len(got) != 2 || got[0] != root || got[1] != filepath.Join("team", "demo") {
-				t.Errorf("the scratch task was started with CELLS_ROOT and ASSAY_SCRATCH_CELL = %q, want %q and %q", got, root, filepath.Join("team", "demo"))
-			}
-			if len(got) != 2 {
-				return
-			}
-			again := loadAgain(t, "a scratch task", got[0], got[1])
-			if again == nil {
-				return
-			}
-			if again.Dir != filepath.Join(root, "team", "demo") || again.DefaultsPath != rootFile || again.Harness != "codex" {
-				t.Errorf("a scratch task re-enters with CELLS_ROOT=%s and cell %q, which loads %s reading %q (harness %s); the run loaded %s reading %q (harness codex)",
-					got[0], got[1], again.Dir, again.DefaultsPath, again.Harness, filepath.Join(root, "team", "demo"), rootFile)
-			}
-		})
-	}
-}
-
-// nestedPolicyCell adds a house cell named team/demo to the fixture's cells root. Its cell.env
-// names no model policy: the policy comes from the cells root's defaults.env alone, and a decoy
-// defaults.env beside the cell's parent directory names none.
-func nestedPolicyCell(t *testing.T, f *policyFixture) (cellDir, policy string) {
-	t.Helper()
-	cellDir = filepath.Join(f.cellsRoot, "team", "demo")
+	cellDir = filepath.Join(f.cellsRoot, "demo")
 	cfg := filepath.Join(cellDir, "home", ".config", "assay")
 	if err := os.MkdirAll(cfg, 0o755); err != nil {
 		t.Fatal(err)
@@ -194,7 +25,7 @@ func nestedPolicyCell(t *testing.T, f *policyFixture) (cellDir, policy string) {
 	if err := os.WriteFile(filepath.Join(cfg, "roster.env"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	env := "CELL=team/demo\nCELL_KIND=house\n" +
+	env := "CELL=demo\nCELL_KIND=house\n" +
 		"CELL_ROOTS=example-org/example-repo=" + f.repoDir + "\n" +
 		"CELL_REPO=" + f.repoDir + "\n"
 	if err := os.WriteFile(filepath.Join(cellDir, "cell.env"), []byte(env), 0o644); err != nil {
@@ -220,25 +51,24 @@ func nestedPolicyCell(t *testing.T, f *policyFixture) (cellDir, policy string) {
 	if err := os.WriteFile(filepath.Join(f.cellsRoot, cellDefaultsFile), []byte("CELL_MODEL_POLICY="+policy+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(f.cellsRoot, "team", cellDefaultsFile), []byte("CELL_HARNESS=claude\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	return cellDir, policy
 }
 
-// TestBinaryNestedCellHookReadsTheLaunchDefaults drives the whole path for a cell named
-// team/demo whose model policy is named ONLY by the cells root's defaults.env: a real launch
-// installs the hook, and the hook command that launch wrote — run as Claude Code runs it, with
-// no CELLS_ROOT in its environment — must find the same policy and so allow what the policy
-// allows and refuse what it refuses. A hook that took the cell directory's parent as the cells
-// root reads the decoy file, finds no policy, and blocks every model: the window cannot be used.
-func TestBinaryNestedCellHookReadsTheLaunchDefaults(t *testing.T) {
+// regression: PR #2971 (cell names narrowed to [a-z0-9-]; renamed from the
+// nested-cell form of this test)
+//
+// TestBinaryCellHookReadsTheLaunchDefaults drives the whole path for a cell named demo whose
+// model policy is named ONLY by the cells root's defaults.env: a real launch installs the hook,
+// and the hook command that launch wrote — run as Claude Code runs it, with no CELLS_ROOT in its
+// environment — must find the same policy and so allow what the policy allows and refuse what it
+// refuses.
+func TestBinaryCellHookReadsTheLaunchDefaults(t *testing.T) {
 	f := newPolicyFixture(t, "2.1.278")
 	f.prepareLocalLaunch(t)
 	recordingClaude(t, f)
-	cellDir, policy := nestedPolicyCell(t, f)
+	cellDir, policy := defaultsPolicyCell(t, f)
 
-	r := f.run(t, []string{"CELLCTL_DESKWT=0"}, "desk", "team/demo", "pr-review-desk")
+	r := f.run(t, []string{"CELLCTL_DESKWT=0"}, "desk", "demo", "pr-review-desk")
 	if r.code != 0 {
 		t.Fatalf("launch: exit %d\nstdout:\n%s\nstderr:\n%s", r.code, r.stdout, r.stderr)
 	}
@@ -315,15 +145,10 @@ func TestBinaryNestedCellHookReadsTheLaunchDefaults(t *testing.T) {
 	if code, stderr := runHook(t, f, hook([]string{"--cells-root", f.cellsRoot}, cellDir), agentEvent("opus")); code != 0 {
 		t.Errorf("the hand-built command with the launch root: exit %d, want 0; stderr: %s", code, stderr)
 	}
-	// A command with no --cells-root at all (settings an older cellctl wrote) can only take the
-	// parent directory. For this cell that finds no policy, and the hook blocks: it never allows
-	// a model unchecked.
-	if code, stderr := runHook(t, f, hook(nil, cellDir), agentEvent("opus")); code != wantBlock {
-		t.Errorf("a flagless hook command for a nested cell: exit %d, want %d (blocking); stderr: %s", code, wantBlock, stderr)
-	}
-	// And for a cell one level down, the flagless form still resolves the root's file.
-	if code, stderr := runHook(t, f, hook(nil, f.cellDir), agentEvent("opus")); code != 0 {
-		t.Errorf("a flagless hook command for a top-level cell: exit %d, want 0; stderr: %s", code, stderr)
+	// A command with no --cells-root at all (settings an older cellctl wrote) takes the cell
+	// directory's parent, which for a cell named by one directory IS the cells root.
+	if code, stderr := runHook(t, f, hook(nil, cellDir), agentEvent("opus")); code != 0 {
+		t.Errorf("a flagless hook command: exit %d, want 0; stderr: %s", code, stderr)
 	}
 }
 

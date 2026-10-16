@@ -111,26 +111,32 @@ func TestCacheTrimClearsPressure(t *testing.T) {
 	}
 }
 
-// The policy age is honoured, not a fixed one.
+// The policy age is honoured, not a fixed one: once the low-water target is
+// met, entries past the trim age still go and younger ones stay.
 //
 // Register row: R-cache-consumer-custody (docs/contracts.md).
 //
 // regression: #2879
 func TestCacheTrimPolicyAge(t *testing.T) {
 	p := fixture(t)
-	p.Budget = 1
+	p.Budget = 1000
 	p.BuildMaxAge = int64((72 * time.Hour) / time.Second)
 	l, err := Acquire(p.Env())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer l.Finish(true)
-	material(t, p, "build/00/two-days-a", 9)
+	// 800 bytes against a 750 high-water mark and a 600 low-water target:
+	// the oldest entry alone meets the target, the second is past the 72h
+	// policy age and goes anyway, the third is neither and stays.
+	material(t, p, "build/00/five-days-a", 300)
 	material(t, p, "build/00/four-days-a", 4)
-	age(t, p, "build/00/two-days-a", 48*time.Hour)
+	material(t, p, "build/00/two-days-a", 496)
+	age(t, p, "build/00/five-days-a", 120*time.Hour)
 	age(t, p, "build/00/four-days-a", 96*time.Hour)
+	age(t, p, "build/00/two-days-a", 48*time.Hour)
 	r, _ := Check(p, false)
-	if r.TrimmedBuild != 1 || !exists(p, "build/00/two-days-a") || exists(p, "build/00/four-days-a") {
+	if r.TrimmedBuild != 2 || !exists(p, "build/00/two-days-a") || exists(p, "build/00/four-days-a") || exists(p, "build/00/five-days-a") {
 		t.Fatalf("72h policy: %+v", r)
 	}
 }
@@ -162,8 +168,11 @@ func TestCacheTrimRefusesLinks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, _, err := m.trimBuild(time.Now().Add(time.Hour))
+	// A clock three hours ahead puts the just-made link past the safety
+	// floor, so only custody can stop it.
+	tr := m.trimBuild(time.Now().Add(3*time.Hour), 1<<30, 0)
 	m.close()
+	n, err := tr.n, tr.err
 	if err == nil || n != 0 {
 		t.Fatalf("symlinked entry accepted: %d %v", n, err)
 	}
@@ -291,8 +300,9 @@ func TestCacheTrimSkipsBadDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, bytes, err := m.trimBuild(time.Now().Add(-24 * time.Hour))
+	tr := m.trimBuild(time.Now(), 1<<30, 0)
 	m.close()
+	n, bytes, err := tr.n, tr.bytes, tr.err
 	if err == nil || !strings.Contains(err.Error(), "linked-d") {
 		t.Fatalf("linked directory not reported: %v", err)
 	}

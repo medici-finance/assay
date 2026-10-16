@@ -390,6 +390,12 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "\treturn g.listNotes(repo, number, kind, true)",
       "new": "\treturn g.listNotes(repo, number, kind, false)"
+    },
+    {
+      "name": "#3093: reviewer-approved at merge accepts an APPROVED re-anchored onto the head (submitted before the head commit existed)",
+      "file": "cmd/deskautolane/lane.go",
+      "old": "\tif deskkit.ReviewPredatesHead(last.SubmittedAt, at) {",
+      "new": "\tif false && deskkit.ReviewPredatesHead(last.SubmittedAt, at) {"
     }
   ]
 }

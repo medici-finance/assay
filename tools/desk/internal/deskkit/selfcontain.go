@@ -347,7 +347,7 @@ func splitWithheldIdentifiers(raw string) []string {
 // It reads the CONFIGURED visibility, never the live API. That is the same split
 // repovis.go documents in the opposite direction and for the same reason: a gate that has to
 // reach the network fails open when the network is down, and this one runs before any write.
-// PublicRepoGate still does the live read for the +1 authorization it owns.
+// PublicRepoGate still does the live visibility read for the `:public` authorization it owns.
 func SelfContainApplies(repo string) bool {
 	if !EffectiveConfig().Configured() {
 		return false

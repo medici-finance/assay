@@ -63,7 +63,9 @@ const (
 	exitUsage  = 2
 )
 
-func main() { os.Exit(run(os.Args[1:])) }
+func main() {
+	os.Exit(deskkit.PerfRun("deskscanuntrusted", nil, os.Args[1:], func([]string) int { return run(os.Args[1:]) }))
+}
 
 func run(args []string) int {
 	var (

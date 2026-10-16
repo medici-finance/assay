@@ -255,6 +255,35 @@ destination-names-the-gated-repo) still run before the push. The transport gate'
 credential-helper NOTICE no longer describes deskpr's own push, which now uses no helper;
 retiring that notice is a follow-up, not done here, because it removes no attack surface.
 
+## Brief 05 — fetch migrated; the bespoke fetch hardening retired
+
+In THIS table's numbering brief 05's "op family 1 (fetch)" is row **19** (`fetch`). Same
+checklist contract as above.
+
+| # | Family | Ticked? | Note |
+|---|---|---|---|
+| 19 | `fetch` | **ticked** (all three sites) | **deskgit** `fetch` is `gitcore.Fetch` with the role App's token held in memory (`gitcore.BasicAuth`), against the exact `remote.origin.url` string the allowed-repo gate decided on (`gitcore.RemoteURLs`: one value, else the multi-valued refusal). The argv-hardening suite (`fetchHardening`, the program-naming flag pins, the scrubbed child env for fetch) is deleted: with no child process on any fetch path (a local origin included, served in-process) there is no argument or child environment to harden; the environment still steers the HTTP proxy and trust roots, never a program. The credential is bound to `https://github.com` by `credentialHostOK`; any other origin host fetches unauthenticated. **deskadvisory** `fetchAdvisoryTree` is `gitcore.FetchTree`: the fork's branches are fetched into an in-memory store and only the commit's regular files are written under a fresh temp directory (symlinks and gitlinks skipped, `.git`/non-local path elements refuse the write). No askpass script, no `credential.helper` override, no on-disk `init`/`checkout`, and no `.git` for the check tools to read a token from. **deskmerge** `fetchState` is `gitcore.Fetch` through `fetchFromOrigin`: the origin URL is re-resolved and re-checked against the gated repo at the point of use; https origins fetch from the forge's canonical URL with the minted role token in memory (`deskkit.ForgeGitEndpointForCheckout`), local origins (offline fixtures) with no credential, any other shape (ssh, scp-like, cleartext http) is could-not-check. The trial merge stays on the binary (brief 07). Allowlist entries `{deskmerge, fetch}`, `{deskadvisory, fetch}` and `{deskadvisory, checkout}` are removed from `internal/gitexec`. `registerid.go`'s `remoteHeadLiveness` network `ls-remote` (row 9) is still owed and not touched here |
+
+Behaviour that changed on purpose, for the reviewer: an in-process fetch reads only the
+repository's own config, so deskgit's fetch no longer follows global- or worktree-scope
+`url.<base>.insteadOf` rewrites or `remote.origin.url` (the gate and the connection read the
+same repo-local string, so they cannot disagree); an ssh origin is fetched by go-git's Go ssh
+client, which takes only the `Hostname` and `Port` of a host alias from `~/.ssh/config` (no
+`IdentityFile`, `ProxyCommand` or other program-naming option — desk worktrees use https
+origins); and `--upload-pack` is now refused by the flag parser as an unknown flag (still
+exit 5). A branch checked out in ANY worktree — this one or a linked one — is still refused
+by `--branch`/`--pr` (`gitcore.CheckedOutBranches` reads every worktree's HEAD; unreadable =
+exit 6), matching `git fetch`'s own refusal.
+
+A local-path or `file://` origin is fetched in-process too: go-git's stock local transport
+starts `git-upload-pack` with the caller's whole environment, so gitcore replaces that
+protocol's fetch side (`tools/desk/internal/gitcore/localtransport.go`) with an in-process server over
+the local repository's storage, for every caller of `Fetch`, `List` and `FetchTree`. Its
+receive side (a push to a local path) is still go-git's stock child — tracked separately, as
+it is the child that enforces the target's hooks and compare-and-swap. The environment still
+parameterises the https client (proxy and trust-store variables) and the ssh client (agent
+socket, known_hosts); none of those names a program.
+
 ## Baseline counter
 
 `sh tools/desk/scripts/count-git-exec.sh` — see the brief-01 PR body for the recorded
@@ -278,3 +307,12 @@ preflight probe was one). Under the widened script main read **163** before this
 (43 direct) and **162** after it (42 direct, 120 seam). The migrated push sites themselves
 never appeared in the count: they called a per-tool `git(` / `run(` wrapper that is not one
 of the four counted seam names.
+
+Brief 05: `sh tools/desk/scripts/count-git-exec.sh` read **179** (49 direct + 130 seam) on the
+main commit the brief's branch last merged (`3c8326f95`) and **172** (49 direct + 123 seam) on
+the branch head that merges it (`d6c91cadc`) — like-for-like, the same main on both sides, so
+the drop of 7 seam call sites is the brief's alone: deskgit's fetch invocation and
+hardened-env helper, deskadvisory's `init`/`fetch`/`checkout` runner, and deskmerge's fetch
+seam call are gone. (Earlier figures for this brief — 165 → 158 — were read on an older main
+and went stale as main grew; re-derive the pair on the merged main parent and the head, never
+carry one forward.)

@@ -134,11 +134,23 @@ func verifierPacket(in packetInput) (packet.Spec, error) {
 				"would be an additional file there, which refuses the pre-work check")
 		}
 	}
-	brief, err := vpBriefPath(in.o)
+	briefOpts := in.o
+	briefHome := home
+	if in.plan.verifierBriefRoot != "" {
+		briefHome, briefOpts.root = in.plan.verifierBriefRoot, in.plan.verifierBriefRoot
+	}
+	brief, err := vpBriefPath(briefOpts)
 	if err != nil {
 		return packet.Spec{}, err
 	}
-	repo, head, err := vpOpenAtHead(home)
+	repo, head, err := vpOpenAtHead(briefHome)
+	if err != nil {
+		return packet.Spec{}, err
+	}
+	if in.plan.verifierBriefRevision != "" && head != in.plan.verifierBriefRevision {
+		return packet.Spec{}, errors.New("tracking revision differs from its attestation")
+	}
+	_, sourceHead, err := vpOpenAtHead(home)
 	if err != nil {
 		return packet.Spec{}, err
 	}
@@ -156,8 +168,12 @@ func verifierPacket(in packetInput) (packet.Spec, error) {
 		id = ""
 	}
 
+	briefLocation := "read at the head commit above"
+	if in.plan.verifierBriefRoot != "" {
+		briefLocation = "read at tracking revision " + packet.Code(head)
+	}
 	return packet.Spec{
-		Head: head,
+		Head: sourceHead,
 		CapNotes: []string{fmt.Sprintf("At most %d commits are listed, from a search of at most %d commits back, and "+
 			"at most %d changed paths for one commit.", verifierPacketCommits, verifierPacketScan, verifierPacketFiles)},
 		Sections: []packet.Section{
@@ -177,10 +193,10 @@ func verifierPacket(in packetInput) (packet.Spec, error) {
 					"Left out: %s; the Expect cells from the command list; every commit subject, message and date. "+
 					"The tool does not judge what the text it did copy says. A quoted line that reads like an "+
 					"observed value or a verdict is from an earlier run.\n\n"+
-					"- Brief: %s, read at the head commit above.\n"+
+					"- Brief: %s, %s.\n"+
 					"- If that commit is not the one you are verifying, say so and gather yourself.\n"+
 					"- Where this file and the brief at the verified commit disagree, the brief governs.",
-					cut, packet.Code(brief))
+					cut, packet.Code(brief), briefLocation)
 				return c, nil
 			}),
 			packet.NewSection("Gate and risk (frontmatter lines, as written)", func() (packet.Content, error) {
@@ -223,13 +239,17 @@ func verifierPacket(in packetInput) (packet.Spec, error) {
 		},
 		Recheck: func() error {
 			// Opened afresh, so nothing read while building can answer for the home now.
-			_, now, err := vpOpenAtHead(home)
+			_, now, err := vpOpenAtHead(briefHome)
 			if err != nil {
 				return fmt.Errorf("could not re-read the verifier home's commit: %w", err)
 			}
 			if now != head {
 				return fmt.Errorf("the verifier home moved from %s to %s while the packet was being built",
 					head[:12], packet.Inline(now))
+			}
+			_, currentSource, sourceErr := vpOpenAtHead(home)
+			if sourceErr != nil || currentSource != sourceHead {
+				return errors.New("deliverable source moved while the packet was being built")
 			}
 			return nil
 		},

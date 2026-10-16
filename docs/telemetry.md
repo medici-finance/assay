@@ -99,8 +99,7 @@ only meaningful mode, and it is purely local.
 
 The desk tools (`tools/desk/`) keep a separate, **local-only** performance log under the
 same promise and the same environment variable. With `ASSAY_TELEMETRY=1` exported, the
-first-wave desk verbs (`deskpr`, `deskpost`, `deskboard`, `desktoken`, `deskwt`,
-`deskdispatch`, `deskboot`) each append one `perf-v1` record per invocation to
+67 operational desk commands each append one `perf-v1` record per completed invocation to
 `~/.config/assay/perf/<YYYY-MM-DD>.jsonl`; `deskperf report` and `deskperf boot` read it back.
 Day files are kept for 7 UTC days and pruned on write. With the variable unset — or set to
 anything other than exactly `1` — nothing is created: no directory, no file, no install id.
@@ -152,3 +151,15 @@ agent usage: per-invocation tokens and cost belong to the agent runner's own usa
 The client uses the Go standard library only (`net/http`), consistent with
 `statusgen`'s stdlib + `yaml.v3` rule. No third-party telemetry SDK is
 introduced.
+
+### Command coverage
+
+Every operational command under tools/desk/cmd has exactly one optional performance wrapper.
+The inventory test maintains two explicit exceptions: deskperf must not measure its own report
+reads, and muhar is a developer mutation harness. The original seven commands keep their
+registered verb vocabularies; added commands record the fixed `other` verb. User argv, file
+paths, subjects, credentials and free-form error messages never enter these records.
+On/off does not change exit codes or stdout/stderr; a failed sink cannot fail an operation.
+Coverage is terminal observations, not a running-process census: killed or still-running
+commands may have no record. Child and forge counters retain the documented lower bounds;
+adding wrappers does not make custom runners or HTTP clients counted transports.

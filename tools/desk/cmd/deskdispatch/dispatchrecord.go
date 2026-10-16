@@ -64,9 +64,11 @@ func modelStampOutcome(stamp string) string {
 
 // writeDispatchRecord appends the run's `dispatched` line. Never fatal: a write failure prints
 // the WARNING and the dispatch carries on to its queue label and prompt.
+var appendDispatchRecord = deskkit.AppendDispatchRecord
+
 func writeDispatchRecord(o dispatchOpts, plan dispatchPlan, ref, stamp string) {
 	rec := buildDispatchRecord(o, plan, ref, stamp)
-	if err := deskkit.AppendDispatchRecord(&rec); err != nil {
+	if err := appendDispatchRecord(&rec); err != nil {
 		fmt.Fprintf(os.Stderr, "deskdispatch: WARNING: could not write dispatch record: %v\n", err)
 	}
 }

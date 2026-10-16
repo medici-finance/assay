@@ -660,8 +660,8 @@ func cmdUpdate(args []string) (err error) {
 	if berr != nil {
 		return deskkit.Unverifiable("cannot read PR body for trailer check", berr)
 	}
-	// update ignores the trailer's issue number: the gate below is asked about the
-	// PR being updated (pr.Number), which is the reactions surface for an update.
+	// update ignores the trailer's issue number: the public-repo gate below is
+	// repository-scoped and takes no number.
 	if _, terr := requireTrailer([]byte(full.Body), *root, dir); terr != nil {
 		return terr
 	}
@@ -1269,7 +1269,9 @@ func parseRepo(raw string) (string, error) {
 // requireTrailer enforces the example-stream/02 link grammar on a PR body: exactly one
 // `Brief: <stream>/<NN>` that resolves to a brief file under --root (the PR DELIVERS that
 // brief), `Authors: <stream>/<NN>[, …]` whose every entry resolves the same way (the PR only
-// AUTHORS those briefs — #1339), or `Issue: #<N>` for issue-only work. Absence, duplicates,
+// AUTHORS those briefs — #1339), `Cross-repo-brief: <alias>:<stream>/<NN>` for a brief homed in
+// another repo (checked against --root's alias registry, never resolved to a file here —
+// medici-finance/assay#2748), or `Issue: #<N>` for issue-only work. Absence, duplicates,
 // mixed kinds and non-resolving briefs are all constraint refusals (exit 5). There is deliberately no bypass flag — a worker-typeable
 // bypass makes the edge asserted again.
 //
@@ -1284,10 +1286,10 @@ func parseRepo(raw string) (string, error) {
 //
 // On success it also returns the trailer's issue number: the parsed `#<N>` for an
 // `Issue:` trailer, or 0 for a `Brief:` trailer (a brief resolves to a file, not an
-// issue, so it has no reactions surface) — and 0 for the exempt scan carrier likewise.
-// The create path feeds this to the public-repo gate so a non-blessed public repo gains
-// the per-issue-+1 path (a +1 on the named tracking issue admits the create) instead of
-// the structural no-number hard-fail (#1707).
+// issue) — and 0 for the exempt scan carrier likewise. The create path uses it only as the
+// self-containment scan's number hint (SelfContainOpts.NumberHint). It is NOT an input to
+// the public-repo write gate: deskkit.PublicRepoGate is repository-scoped (an explicit
+// `:public` allowed-repos entry agreeing with the live visibility) and takes no number.
 func requireTrailer(body []byte, root, dir string) (int, error) {
 	// Head-anchored, not a whole-body substring: the emitter writes ScanBodyMarker as
 	// the FIRST line (deskkit.ScanPRBody), so the exemption matches it only at the body
@@ -1304,6 +1306,7 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 		return 0, deskkit.SchemaRefusal("deskpr", "--check", "refused: PR body carries no trailer — add exactly one line "+
 			"`Brief: <stream>/<NN>` naming the brief this PR delivers (e.g. `Brief: example-stream/02`), "+
 			"`Authors: <stream>/<NN>[, …]` naming the brief(s) a briefs-authoring PR writes, "+
+			"`Cross-repo-brief: <alias>:<stream>/<NN>` naming a brief homed in another repo, "+
 			"or `Issue: #<N>` for issue-only work")
 	}
 	if trs[0].Kind == deskkit.TrailerIssue {
@@ -1334,6 +1337,9 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 			}
 		}
 		return 0, nil
+	}
+	if trs[0].Kind == deskkit.TrailerCrossRepoBrief {
+		return 0, requireCrossRepoBrief(trs[0].Value, root)
 	}
 	stream, nn, ok := splitBriefTrailer(trs[0].Value)
 	if !ok {
