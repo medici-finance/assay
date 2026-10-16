@@ -10,8 +10,10 @@
 Make `cellctl` the operator client for **owned sessions on explicit execution hosts**,
 with terminals as attachable views. Use `celld` as the proposed service name for the
 execution-host side of the existing future architecture: the packaging of runtime
-coordination (R2), isolated runner and cell operation (R3) and role executors (R4)
-for one cell, with harness adapters behind the shared runner contract. It is a
+coordination (R2) and isolated runner and cell operation (R3) for one cell, with
+harness adapters behind the shared runner contract. It hosts model-working sessions
+and never holds role effect credentials: the R4 role executors stay separate
+processes behind their own credential boundary (section 10). It is a
 packaging and interface proposal, not a new scheduler, ingress or authority owner.
 Its relation to the other owners is stated in the next subsection. Use each
 harness's supported runtime to execute agents; preserve existing role identity,
@@ -37,8 +39,9 @@ and [23: runtime contract alignment](proposals/non-ci-architecture/23-runtime-co
 
 - **Cell API (R7).** Doc 21 allocates R7, the public Cell API and thin cockpit, to the
   parked `cell-api` stream and makes the Cell API the only operator ingress. `celld` is
-  **not** that API and adds no ingress of its own. Its authenticated control endpoint
-  serves the Cell API, `cellctl` as a client of it, and runner registration. Whether `celld`
+  **not** that API and adds no ingress of its own. Operator clients, including `cellctl`,
+  reach `celld` only through the Cell API; its authenticated control endpoint serves
+  the Cell API and runner registration. Whether `celld`
   is packaged inside or behind the Cell API is open decision D4 for the R7 owner. This
   spec does not pre-empt it.
 - **Lifecycle (R2/R3).** Doc 21 owns the runner lifecycle vocabulary: pause, resume,
@@ -228,8 +231,8 @@ configuration digest, last observation and desired admission state. Keep credent
 out of the record. Vendor IDs and host identities are authoritative only when bound
 by the trusted controller; titles, cwd matches and model-written metadata are not.
 
-The OS lock remains host-local. Remote clients must submit lifecycle operations to
-the execution host's single owner through an authenticated transport; copying the
+The OS lock remains host-local. Remote operator clients submit lifecycle operations through the Cell API, which
+reaches the execution host's single owner over an authenticated transport; copying the
 checkpoint or placing a file lock on shared storage does not create distributed
 ownership. A later multi-controller service needs an explicit fencing design.
 
@@ -536,8 +539,9 @@ support; do not broaden permissions to make the demonstration pass.
 
 ## 10. Consequences for the future architecture
 
-`celld` should be the service packaging of existing domain owners, with `cellctl` and
-the desktop/cockpit as clients. Start with one service owner per logical cell; several
+`celld` should be the service packaging of the existing R2/R3 domain owners, reached
+only through the Cell API, with `cellctl` and the desktop/cockpit as clients of that
+API rather than of `celld` directly. Start with one service owner per logical cell; several
 cells may share a host. A shared ingress may route to those cells without becoming a
 cluster-wide authority holding every role's credentials. A cell is a policy and
 ownership boundary, not a synonym for one pod: a controller and its isolated runner
