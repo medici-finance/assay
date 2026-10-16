@@ -3,7 +3,7 @@
   "control": {
     "name": "CONTROL \u2014 a tree with unallowed hits reports clean (the whole stage is off)",
     "file": "internal/deskkit/leakshape.go",
-    "old": "\tif len(rep.Hits) > 0 {\n\t\trep.State = StageFailed",
+    "old": "\tif len(rep.Hits) > 0 || len(rep.Stale) > 0 {\n\t\trep.State = StageFailed",
     "new": "\tif len(rep.Hits) < 0 {\n\t\trep.State = StageFailed"
   },
   "mutations": [
@@ -11,6 +11,12 @@
       "name": "drop the home-path rule (the shape stage goes blind to that shape; with the token registry blind too, nothing reddens the planted tree)",
       "file": "internal/deskkit/leakshape.go",
       "old": "\tshapeRuleHome,\n",
+      "new": ""
+    },
+    {
+      "name": "drop the home-path (tilde-account form) rule (the shape stage goes blind to that spelling; with the token registry blind too, nothing reddens the planted tree)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\tshapeRuleHomeTilde,\n",
       "new": ""
     },
     {
@@ -23,6 +29,18 @@
       "name": "drop the ssh-host-alias (scp form) rule (the shape stage goes blind to that shape; with the token registry blind too, nothing reddens the planted tree)",
       "file": "internal/deskkit/leakshape.go",
       "old": "\tshapeRuleSSHScp,\n",
+      "new": ""
+    },
+    {
+      "name": "drop the ssh-host-alias (scp form, any user) rule (the shape stage goes blind to that spelling; with the token registry blind too, nothing reddens the planted tree)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\tshapeRuleSSHScpUser,\n",
+      "new": ""
+    },
+    {
+      "name": "drop the ssh-host-alias (scp form, no user) rule (the shape stage goes blind to that spelling; with the token registry blind too, nothing reddens the planted tree)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\tshapeRuleSSHScpBare,\n",
       "new": ""
     },
     {
@@ -96,6 +114,54 @@
       "file": "internal/deskkit/leakshape.go",
       "old": "\t\t\t\tscan(rel, target, true)",
       "new": "\t\t\t\t_ = target"
+    },
+    {
+      "name": "match the users-directory prefix case-sensitively again (a lower-case Windows or macOS home path certifies clean)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "(?i:/(?:users|home)/|[a-z]:\\\\{1,2}users\\\\{1,2})",
+      "new": "(?:/(?:Users|home)/|[A-Za-z]:\\\\{1,2}Users\\\\{1,2})"
+    },
+    {
+      "name": "match the ssh:// scheme case-sensitively again (an upper-case scheme certifies clean)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "((?i:ssh)://",
+      "new": "(ssh://"
+    },
+    {
+      "name": "match the git user case-sensitively again (an upper-case user is read only by the any-user rule's narrower grammar)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "((?i:git)@(",
+      "new": "(git@("
+    },
+    {
+      "name": "count one occurrence once per rule instead of once (a git-user scp remote is reported twice)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\t\t\t\tif seen[o] {",
+      "new": "\t\t\t\tif false && seen[o] {"
+    },
+    {
+      "name": "leave a stale entry out of the state (a rotted allow list reads clean to every caller but the repo gate)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\tif len(rep.Hits) > 0 || len(rep.Stale) > 0 {",
+      "new": "\tif len(rep.Hits) > 0 {"
+    },
+    {
+      "name": "drop the any-user scp rule's path requirement (prose such as name@host: text reads as a remote)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "(?:[^\\s/]*/|[^\\s/]*(?i:\\.git)(?:[^A-Za-z0-9_]|$))`)",
+      "new": "`)"
+    },
+    {
+      "name": "let a slash precede the any-user scp rule's user (a URL authority with a user and a port reads as a remote)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "(?:^|[^A-Za-z0-9._/:@-])([A-Za-z0-9._-]+@(",
+      "new": "(?:^|[^A-Za-z0-9._:@-])([A-Za-z0-9._-]+@("
+    },
+    {
+      "name": "drop the userless scp rule's .git requirement (a search qualifier such as repo:owner/name reads as a remote)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "[A-Za-z0-9_.~-]*(?i:\\.git)(?:[^A-Za-z0-9_]|$)`)",
+      "new": "[A-Za-z0-9_.~-]*`)"
     }
   ]
 }

@@ -155,6 +155,11 @@ allow:
     sha256:
       - 18f327fba75840c897eec48706c18c93bc3b1c2605e52ad9f8634583ac2c12bd
     reason: &fx-tilde "placeholder home-relative path in a test fixture that exercises path expansion or refusal"
+  - path: statusgen/contexthandoff/boundary_test.go
+    shape: home-path
+    sha256:
+      - 36025795eaedf314fe4a2f9c2fecf5a82246148055f080419dea954049f9df3f
+    reason: &fx-tilde-account "placeholder tilde-account path (an example or deliberately nonexistent account) in a test fixture that exercises home-path refusal or expansion; no real account"
   - path: statusgen/evaluation/rowinputs_test.go
     shape: tilde-root
     sha256:
@@ -213,6 +218,11 @@ allow:
     sha256:
       - 35969771c67a0aa490b7fd985e9911eb9d1d0951902ec6cd3b724740a1a7337e
     reason: *fx-tilde
+  - path: statusgen/testdata/contexthandoff/manifest/invalid/bad-value--delivery-named-home.json
+    shape: home-path
+    sha256:
+      - 36025795eaedf314fe4a2f9c2fecf5a82246148055f080419dea954049f9df3f
+    reason: *fx-tilde-account
   - path: statusgen/verifyflip_test.go
     shape: noreply-id-email
     sha256:
@@ -225,6 +235,11 @@ allow:
     sha256:
       - 1f19107742728ff867bbfbb138fdea3b7ab8ef4c487fa519ebc811980ff7b27d
     reason: *fx-home
+  - path: statusgen/verifyrun.go
+    shape: ssh-host-alias
+    sha256:
+      - 5d488afdbb0ec4818ebc69aeedd5abfb3dde7dc322b6a63f6798a45f61808a76
+    reason: *doc-ssh
   - path: statusgen/verifyrun_test.go
     shape: noreply-id-email
     sha256:
@@ -298,6 +313,7 @@ allow:
     sha256:
       - 2d4b0f22da4fd9466d5473b0eb71c32d1d2dcd7e7131d76c758f387c12069e4f
       - 5079c0845b8eaab1d4e9a81b1a14a680a4b690ec5c4dceaaf09f995d110ffebc
+      - 5d488afdbb0ec4818ebc69aeedd5abfb3dde7dc322b6a63f6798a45f61808a76
     reason: *doc-ssh
   - path: tools/desk/cmd/deskdispatch/originparsehint_test.go
     shape: ssh-host-alias
@@ -380,6 +396,7 @@ allow:
     sha256:
       - 9a12c90749d3d43aa8ab3110ab6c954374d7458a47778f955f1cb67b7777c9af
       - f0ef68b6131d20322e1b3ed92f03dcb52cc9ff64eeba5407ca15c27a52ab68cc
+      - 5ac107dca3e1c3ae8ed7c8ea057691ac9a65b566d8182f42eb9da4a0488b6281
     reason: *fx-ssh
   - path: tools/desk/cmd/deskpr/pushtransport_test.go
     shape: ssh-host-alias
@@ -424,6 +441,11 @@ allow:
     sha256:
       - efe9f7b3155daad56c7a378f9db4ed88fc29bc06760ca967f5a8458067be8724
     reason: *fx-tilde
+  - path: tools/desk/cmd/deskwt/rolefetch_isolation_test.go
+    shape: home-path
+    sha256:
+      - f4dbc01a9e5ec598cfcf38d40ecb78d535b79c6e60c84010827083c6588b457c
+    reason: *fx-tilde-account
   - path: tools/desk/cmd/deskwt/rolefetch_test.go
     shape: tilde-root
     sha256:
@@ -494,6 +516,17 @@ allow:
     sha256:
       - 745ab30a5c45b053456a803f626987f7e19b5a6c3a3402d4e4f87eb91e7b5dba
     reason: *fx-home
+  - path: tools/desk/internal/deskkit/forge_brief33_test.go
+    shape: home-path
+    sha256:
+      - 3c6d514baf6eb8eef850d6b548b6945a577d235c798bcf717edf5f66369dfa19
+      - 22d089f39846baea91a3a268071b780f08ab59abecf0448f8828123718f5ee0c
+    reason: &api-users "a forge REST API path (the users endpoint and a placeholder login or id) in a test of the API client; a URL path, not a home directory"
+  - path: tools/desk/internal/deskkit/forge_github_getaccount_test.go
+    shape: home-path
+    sha256:
+      - 80600fd0fd6cbb97765b9d5a967ca668080f74e4c66f0099a3df0319396a822a
+    reason: *api-users
   - path: tools/desk/internal/deskkit/forge_github_golden_test.go
     shape: noreply-id-email
     sha256:
@@ -530,6 +563,8 @@ allow:
     shape: ssh-host-alias
     sha256:
       - 26bb3f88e2e30ad7da987e34a7ed3dc76e34af9362eab3c82ada8278426765ce
+      - 093f2c622cefdfcd5c665f67a97cdbbf051d65ef497d3d2c93a345c8600136df
+      - 5ac107dca3e1c3ae8ed7c8ea057691ac9a65b566d8182f42eb9da4a0488b6281
     reason: *fx-ssh
   - path: tools/desk/internal/deskkit/preflightalarm_test.go
     shape: home-path
@@ -575,6 +610,8 @@ allow:
       - c2695de4a87d7f4470ee32f01c25b264876f4da96e3241dd50f51184381ec8fd
       - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
       - f90f0354556c620e78f0ee0e8d3a6e08b1a519f57a43fc1c631c1a12fb901ac0
+      - 282e9f82b58ceb63ee49df76e74dbe751782a3f6f8aee8ae94c55fbf906e1549
+      - a379a6f6eeafb9a55e378c118034e2751e682fab9f2d30ab13d2125586ce1947
     reason: *fx-ssh
   - path: tools/desk/internal/deskkit/remoterepo.go
     shape: ssh-host-alias
@@ -588,7 +625,13 @@ allow:
     sha256:
       - 26bb3f88e2e30ad7da987e34a7ed3dc76e34af9362eab3c82ada8278426765ce
       - 3de5de33636038a7d8cb32f77a54be6cb642fbc921121e7d60db93a45c5b81bc
+      - 5ac107dca3e1c3ae8ed7c8ea057691ac9a65b566d8182f42eb9da4a0488b6281
     reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/riskpathratified_test.go
+    shape: home-path
+    sha256:
+      - 7911230b04118b2539931d4a10b03988fa2535b1944cbc7fd3f510fd1d39816e
+    reason: &fx-tilde-op "a tilde used as a would-be removal operator in a parser-refusal probe; names no account"
   - path: tools/desk/internal/deskkit/rolecredential_test.go
     shape: ssh-host-alias
     sha256:

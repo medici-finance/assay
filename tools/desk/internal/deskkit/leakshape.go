@@ -10,12 +10,16 @@ package deskkit
 // all and cannot be blinded by one that is incomplete:
 //
 //   - home-path         an absolute per-user home directory: a users-directory prefix
-//                       (the macOS one, the Linux one, or a Windows drive's) followed by an
-//                       account name
+//                       (the macOS one, the Linux one, or a Windows drive's, in any case)
+//                       followed by an account name, or the tilde-account form (a tilde, an
+//                       account name, a slash) that names the same directory
 //   - noreply-id-email  a numeric-id noreply email: digits, a plus sign, a login, then the
 //                       forge noreply domain
 //   - ssh-host-alias    an SSH remote whose host is not a forge host itself — a host ALIAS
-//                       out of somebody's local ssh config, in scp form or ssh:// URL form
+//                       out of somebody's local ssh config, in scp form (with the git user,
+//                       any other user, or no user) or ssh:// URL form, in any case. The
+//                       exact scp grammar, and the near misses it leaves clean, are on the
+//                       three scp rules below.
 //   - tilde-root        a tilde-prefixed home-relative working root (a non-dot directory
 //                       or file directly under the home directory; dot-config paths are
 //                       tool conventions, not working roots)
@@ -126,13 +130,28 @@ var shapeRuleHome = shapeRule{
 	shape: ShapeHomePath,
 	// An absolute home directory: the macOS or Linux users-directory prefix, or a Windows
 	// drive's (one or two backslashes, so a Go/JSON-escaped spelling matches too), then an
-	// account name that does not end in a dot. The left boundary keeps a URL path segment
-	// (a "home" segment deep in a web URL's path) from matching, while still matching a
-	// file:// URL.
-	re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])((?:/(?:Users|home)/|[A-Za-z]:\\{1,2}Users\\{1,2})[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)`),
+	// account name that does not end in a dot. The prefix is matched in ANY case: Windows and
+	// the default macOS filesystem resolve it case-insensitively, and Windows tooling often
+	// prints it in lower case. The left boundary keeps a URL path segment (a "home" segment
+	// deep in a web URL's path) from matching, while still matching a file:// URL.
+	re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])((?i:/(?:users|home)/|[a-z]:\\{1,2}users\\{1,2})[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)`),
 	group:     1,
 	prefilter: []string{"/users/", "/home/", "users\\"},
-	canary:    "cd " + "/Us" + "ers/" + "example-user" + "/src",
+	canary:    "cd " + "/us" + "ers/" + "example-user" + "/src",
+}
+
+// shapeRuleHomeTilde matches the tilde-account spelling of a per-user home directory.
+var shapeRuleHomeTilde = shapeRule{
+	shape: ShapeHomePath,
+	// A tilde, an account name (a letter or underscore first, so an approximate figure such
+	// as a tilde before a digit stays clean), then a slash: the shell's name for THAT
+	// account's home directory, so it names the account as surely as the absolute form. The
+	// left boundary keeps a URL path segment (a slash, then the tilde) from matching. The
+	// bare tilde-slash form is the tilde-root rule's, not this one's.
+	re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_~/.$-])(~[A-Za-z_][A-Za-z0-9_.-]*)/`),
+	group:     1,
+	prefilter: []string{"~"},
+	canary:    "cd " + "~" + "example-user" + "/src",
 }
 
 // shapeRuleNoreply matches a numeric-id forge noreply email.
@@ -146,23 +165,63 @@ var shapeRuleNoreply = shapeRule{
 	canary:    "author " + "1234567" + "+" + "example-login" + "@" + "users.noreply" + ".github.com",
 }
 
-// shapeRuleSSHScp matches an scp-form SSH remote.
+// shapeRuleSSHScp matches an scp-form SSH remote with the git user.
 var shapeRuleSSHScp = shapeRule{
 	shape: ShapeSSHAlias,
-	// scp form: the git user, an at sign, a host, a colon, then the path.
-	re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9._-])(git@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)):`),
+	// scp form with the git user (any case): the user, an at sign, a host, then a colon. The
+	// value is user@host. The git user is the scp convention, so a colon after the host is
+	// read as an scp remote whatever follows it.
+	re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9._-])((?i:git)@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)):`),
 	group:     1,
 	hostGroup: 2,
 	prefilter: []string{"git@"},
-	canary:    "origin " + "git" + "@" + "example-alias" + ":" + "owner/repo.git",
+	canary:    "origin " + "GIT" + "@" + "example-alias" + ":" + "owner/repo.git",
+}
+
+// shapeRuleSSHScpUser matches an scp-form SSH remote with any user.
+var shapeRuleSSHScpUser = shapeRule{
+	shape: ShapeSSHAlias,
+	// scp form with ANY user: the user, an at sign, a host, a colon, then a path — a run of
+	// non-space characters that reaches a slash, or that ends in ".git". The value is
+	// user@host. Because the user is not the scp convention, two guards keep everyday text
+	// clean: the path requirement (so prose such as "name@host: text" and a content digest
+	// such as "image@sha256:hex" stay clean), and a left boundary that refuses a slash, a
+	// colon or an at sign before the user (so the user@host:port authority of a URL with a
+	// scheme stays clean). A git-user remote this rule also matches is the same occurrence
+	// as shapeRuleSSHScp's and is counted once.
+	re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9._/:@-])([A-Za-z0-9._-]+@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)):(?:[^\s/]*/|[^\s/]*(?i:\.git)(?:[^A-Za-z0-9_]|$))`),
+	group:     1,
+	hostGroup: 2,
+	prefilter: []string{"@"},
+	canary:    "origin " + "deploy" + "@" + "example-alias" + ":" + "owner/repo.git",
+}
+
+// shapeRuleSSHScpBare matches a userless scp-form SSH remote.
+var shapeRuleSSHScpBare = shapeRule{
+	shape: ShapeSSHAlias,
+	// scp form with no user — how an ssh-config host alias whose config supplies the user is
+	// written: a host, a colon, then one or more path segments ending in a ".git" repository
+	// name. The value is the host. The grammar is narrower than the user form because a bare
+	// "word:word/word" is everyday text: the path takes only name characters (so a space
+	// after the colon, a URL's "//", a Windows drive's backslash and a "::" all stay clean),
+	// its first segment must hold a non-digit (so host:port/path stays clean), and the
+	// repository name must end in ".git" (so a search qualifier such as repo:owner/name stays
+	// clean). The host is at least two characters, so a Windows drive-relative path stays
+	// clean. The left boundary refuses a slash, colon, at sign, dot or tilde before the host,
+	// so a URL's authority and the user form are not read twice.
+	re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9._/:@~-])([A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9]):[A-Za-z0-9_.~-]*[A-Za-z_.~-][A-Za-z0-9_.~-]*/(?:[A-Za-z0-9_.~-]+/)*[A-Za-z0-9_.~-]*(?i:\.git)(?:[^A-Za-z0-9_]|$)`),
+	group:     1,
+	hostGroup: 1,
+	prefilter: []string{".git"},
+	canary:    "url = " + "example-alias" + ":" + "owner/repo.git",
 }
 
 // shapeRuleSSHURL matches an ssh:// URL remote.
 var shapeRuleSSHURL = shapeRule{
 	shape: ShapeSSHAlias,
-	// URL form: the ssh scheme, an optional user, a host (a name or a bracketed IPv6
-	// literal), an optional port, then the path.
-	re:        regexp.MustCompile(`(ssh://(?:[A-Za-z0-9._-]+@)?([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:.]+\]))`),
+	// URL form: the ssh scheme (any case), an optional user, a host (a name or a bracketed
+	// IPv6 literal), an optional port, then the path.
+	re:        regexp.MustCompile(`((?i:ssh)://(?:[A-Za-z0-9._-]+@)?([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:.]+\]))`),
 	group:     1,
 	hostGroup: 2,
 	prefilter: []string{"ssh://"},
@@ -182,8 +241,11 @@ var shapeRuleTilde = shapeRule{
 // leakShapeRules is the default rule set.
 var leakShapeRules = []shapeRule{
 	shapeRuleHome,
+	shapeRuleHomeTilde,
 	shapeRuleNoreply,
 	shapeRuleSSHScp,
+	shapeRuleSSHScpUser,
+	shapeRuleSSHScpBare,
 	shapeRuleSSHURL,
 	shapeRuleTilde,
 }
@@ -310,7 +372,7 @@ type ShapeReport struct {
 	State   string
 	Hits    []ShapeHit // unallowed matches, sorted by path then line
 	Allowed int        // matches an allow entry covered
-	Stale   []string   // allow entries (path [shape] value) that matched nothing
+	Stale   []string   // allow entries (path [shape] digest) that matched nothing; any fails State
 	Scanned int        // text files read
 	Skipped int        // files skipped as binary
 	Problem string     // why the state is could-not-check, when it is
@@ -334,6 +396,7 @@ func shapeSelfTest(rules []shapeRule) []string {
 }
 
 type shapeMatch struct {
+	start int // byte offset of the value in the body
 	line  int
 	value string
 }
@@ -364,6 +427,7 @@ func (r shapeRule) match(body string) []shapeMatch {
 		}
 		start := m[2*r.group]
 		out = append(out, shapeMatch{
+			start: start,
 			line:  1 + strings.Count(body[:start], "\n"),
 			value: body[start:m[2*r.group+1]],
 		})
@@ -432,8 +496,21 @@ func shapeSweep(root string, allow ShapeAllowList, rules []shapeRule) (ShapeRepo
 		rep.Hits = append(rep.Hits, ShapeHit{Path: rel, Line: line, Shape: shape, Value: value})
 	}
 	scan := func(rel, body string, symlink bool) {
+		// Two rules of one shape can match the same occurrence (a git-user scp remote is both
+		// a git-user and an any-user match); an occurrence is its shape and the offset of its
+		// value, and it is recorded once.
+		type occurrence struct {
+			shape LeakShape
+			start int
+		}
+		seen := map[occurrence]bool{}
 		for _, r := range rules {
 			for _, m := range r.match(body) {
+				o := occurrence{r.shape, m.start}
+				if seen[o] {
+					continue
+				}
+				seen[o] = true
 				line := m.line
 				if symlink {
 					line = 0
@@ -516,7 +593,9 @@ func shapeSweep(root string, allow ShapeAllowList, rules []shapeRule) (ShapeRepo
 		}
 	}
 	sort.Strings(rep.Stale)
-	if len(rep.Hits) > 0 {
+	// A stale entry fails the state, not only the repo gate: an allow list that permits a
+	// value no longer present has rotted, and every caller reads that as not clean.
+	if len(rep.Hits) > 0 || len(rep.Stale) > 0 {
 		rep.State = StageFailed
 	} else {
 		rep.State = StageClean

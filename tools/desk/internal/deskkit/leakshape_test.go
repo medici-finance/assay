@@ -94,9 +94,16 @@ func TestS2ShapeEachRedsAlone(t *testing.T) {
 		{"home-mac", "cd " + plantHomeMac + "/src/repo\n", ShapeHomePath},
 		{"home-linux", "WORKDIR=" + plantHomeLin + "/work\n", ShapeHomePath},
 		{"home-windows", `root = "` + plantHomeWin + `\src"` + "\n", ShapeHomePath},
+		{"home-windows-lower", `root = "` + "c:" + `\` + "users" + `\` + "example-user" + `\src"` + "\n", ShapeHomePath},
+		{"home-mac-lower", "cd " + "/us" + "ers/" + "example-user" + "/src\n", ShapeHomePath},
+		{"home-tilde-account", "cd " + "~" + "example-user" + "/src\n", ShapeHomePath},
 		{"noreply", "Author: Example <" + plantNoreply + ">\n", ShapeNoreplyMail},
 		{"ssh-scp", "origin\t" + plantSSHScp + ":owner/repo.git (push)\n", ShapeSSHAlias},
+		{"ssh-scp-user", "origin\t" + "deploy" + "@" + "example-alias" + ":owner/repo.git (push)\n", ShapeSSHAlias},
+		{"ssh-scp-upper", "origin\t" + "GIT" + "@" + "example-alias" + ":owner/repo.git (push)\n", ShapeSSHAlias},
+		{"ssh-scp-bare", "url = " + "example-alias" + ":" + "owner/repo.git\n", ShapeSSHAlias},
 		{"ssh-url", "url = " + plantSSHURL + "/owner/repo.git\n", ShapeSSHAlias},
+		{"ssh-url-upper", "url = " + "SSH" + "://" + "git" + "@" + "example-alias" + "/owner/repo.git\n", ShapeSSHAlias},
 		{"tilde", "cellctl new c --repo " + plantTilde + "/repo\n", ShapeTildeRoot},
 	}
 	for _, tc := range cases {
@@ -147,9 +154,20 @@ func TestS2ShapeNearMissesClean(t *testing.T) {
 		"cache: ~/.cache/go-build",
 		"link: https://example.com/" + "home" + "/page",
 		"path: /var/lib/" + "home" + "/x and ./" + "Users" + "/x",
-		"bare: ~ / and ~user/x",
+		"bare: ~ / and ~5/10 of runs and ~int | ~string",
 		"mail: noreply@github.com, 12345@users.noreply.github.com",
 		"word: myhome/x and homes/users",
+		// The widened scp grammar's near misses: a URL with a scheme (with or without a
+		// user and a port), host:port, a Windows drive, prose with a colon, a user@host
+		// with no path, a content digest, a search qualifier, a tilde in a URL path.
+		"url: https://" + "deploy" + "@" + "example.com:8443/owner/repo.git",
+		"url: https://" + "example.com:8443/owner/repo.git and " + "localhost:8080/owner/repo.git",
+		"drive: " + "C:" + `\` + `src\repo.git and ` + "C:" + "/src/repo.git and " + "C:" + "src/repo.git",
+		"note: foo/bar.git, see: owner/repo.git",
+		"ping " + "alice" + "@" + "example-host: ready, and " + "alice" + "@" + "example-host:22",
+		"image: alpine" + "@" + "sha256:" + strings.Repeat("ab", 32),
+		"search: repo:owner/name is:open",
+		"web: https://example.com/" + "~" + "someone/page",
 	}, "\n") + "\n"
 	dir := shapeTree(t, map[string]string{"near.txt": body})
 	rep, err := ShapeSweep(dir, ShapeAllowList{})
@@ -208,6 +226,13 @@ func TestS2ShapeAllowIsExact(t *testing.T) {
 		rep := run(t, map[string]string{"docs/guide.md": "nothing here\n"}, list)
 		if len(rep.Stale) != 1 {
 			t.Fatalf("stale = %v, want the one unmatched entry", rep.Stale)
+		}
+		// Stale is in the state itself, so a caller other than the repo gate reads it too.
+		if rep.State != StageFailed || len(rep.Hits) != 0 {
+			t.Fatalf("stale only: state %s hits %+v, want %s with no hits", rep.State, rep.Hits, StageFailed)
+		}
+		if got := CertifyStages(StageClean, rep.State); got != StageFailed {
+			t.Fatalf("certify with a stale entry = %s, want %s", got, StageFailed)
 		}
 	})
 	t.Run("allow file is swept like any other file", func(t *testing.T) {
