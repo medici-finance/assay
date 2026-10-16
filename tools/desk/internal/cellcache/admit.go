@@ -70,6 +70,47 @@ func Admit(p Policy, dry bool) (Report, error) {
 	return admit(p, dry, admitEnv{free: diskFree, now: time.Now, locked: Check})
 }
 
+// AdmitRecorded is CheckRecorded for a caller that DISCOVERED the root (a
+// sweep walking a cells root, deskwt prune's cache pass) and, like Admit, only
+// needs to know whether the cache is within policy.
+//
+// CheckRecorded takes the root's custody lock and walks build/ and mod/ in
+// full on every call, so a sweep that finds every cache clean still serialises
+// against every launch and dispatch for the length of the walk. AdmitRecorded
+// reads the root's recorded policy without the lock (LoadMarkedPolicy, the
+// same advisory read the sweep already makes) and runs the Admit pre-check on
+// it. It admits only on the conditions Admit documents; a root it cannot
+// prove cheap-clean (unmarked or unreadable report, stale or dirty estimate,
+// size or free space near the thresholds) runs CheckRecorded unchanged, which
+// re-reads the policy under the lock. Unreadable never means admitted.
+//
+// The pre-check's budget is the recorded policy's, the one the locked path
+// would enforce; a policy recorded between the two reads is picked up by the
+// next pass, within AdmitMaxAge.
+func AdmitRecorded(root string, dry bool) (Report, error) {
+	return admitRecorded(root, dry, admitEnv{
+		free: diskFree, now: time.Now,
+		locked: func(_ Policy, d bool) (Report, error) { return CheckRecorded(root, d) },
+	})
+}
+
+func admitRecorded(root string, dry bool, env admitEnv) (Report, error) {
+	advisory, err := LoadMarkedPolicy(root)
+	if err != nil || advisory == nil {
+		if err == nil {
+			err = fmt.Errorf("no marked cache root at %s", root)
+		}
+		rep, lerr := env.locked(Policy{Root: root}, dry)
+		rep.Admission = "locked: policy not readable: " + err.Error()
+		var d *Deferred
+		if errors.As(lerr, &d) {
+			d.Report.Admission = rep.Admission
+		}
+		return rep, lerr
+	}
+	return admit(*advisory, dry, env)
+}
+
 func admit(p Policy, dry bool, env admitEnv) (Report, error) {
 	r, why := cheapClean(p, dry, env)
 	if why == "" {
