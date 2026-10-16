@@ -9,14 +9,19 @@
 // driver. So the act function pins the driver's own login for every step, fail
 // closed, and clears the second variable `gh` reads:
 //
-//	GH_TOKEN="$(gh auth token --user <driver-login>)" || exit 1
+//	GH_TOKEN="$(gh auth token --user "<driver-login>")" || exit 1
 //	export GH_TOKEN; unset GITHUB_TOKEN
 //
 // The lint (actPinIssues) holds, on every act block that has a `gh` step:
 //
+//  0. an act function whose body is a ( ) subshell, not a { } group (a group
+//     runs in the driver's shell: the pin's exit ends it, the export outlives
+//     the call);
 //  1. a pin, at the top level of the act function (not inside an if, loop,
 //     group or other function), of the exact shape GH_TOKEN="$(gh auth token
-//     --user LOGIN)" followed by || exit, || exit N or || { ...; exit N; }, and
+//     --user LOGIN)", LOGIN one literal word, quoted ("<driver-login>": unquoted
+//     it is a redirect and the block fails to parse) and never an expansion,
+//     followed by || exit, || exit N or || { ...; exit N; }, and
 //     standing as its own statement: not after ||, && or |, not under ! or a
 //     wrapper such as time or env, and not followed by a pipe;
 //  2. after it, still at the top level and before the first `gh` step, an
@@ -50,7 +55,10 @@
 // an option of a wrapper that takes a separate argument and is not in the list
 // (env -S, say), an alias, a command name built from an expansion, a function
 // that wraps `gh`, or a case pattern `)` that is not closed by esac; nor a
-// change of either variable by read, printf -v, a nameref or eval.
+// change of either variable by read, printf -v, a nameref or eval. The pin
+// governs gh only: a git push uses git's credential helper, and GH_HOST and the
+// enterprise-token variables are left alone (they matter only against a GitHub
+// Enterprise Server host).
 package main
 
 import (
@@ -141,6 +149,15 @@ func actPinIssues(code []string, name string) []actPinIssue {
 		if j == k+6 || j+3 >= len(toks) || toks[j].op != ")" || toks[j+1].raw != `"` || toks[j+2].op != "||" {
 			return 0, false
 		}
+		// the login is one literal word: an unquoted <driver-login> is a redirect
+		// (the block fails to parse), and an expansion can name any login.
+		if j != k+7 || toks[k+6].op != "" || toks[k+6].val == "" {
+			return 0, false
+		}
+		if strings.ContainsAny(toks[k+6].raw, "$`") {
+			add(k, "the pin's login is an expansion; name the driver's login as one literal word, \"<driver-login>\" or the resolved login, so the pin cannot name another account")
+			return 0, false
+		}
 		b := j + 3
 		endsHere := func(i int) bool { return i >= len(toks) || toks[i].sep() }
 		switch {
@@ -184,6 +201,7 @@ func actPinIssues(code []string, name string) []actPinIssue {
 		firstGh    = -1
 		ghOutside  []int
 		ghInside   []int
+		braceBody  int    // token index + 1 of a { } act function body, else 0
 		bodyOpen   = -1   // token index of the act function body's opener
 		wrap       string // the wrapper word just seen, whose options are skipped
 		dropAt     = -1   // token index of an env or sudo that drops the pinned token
@@ -359,6 +377,7 @@ func actPinIssues(code []string, name string) []actPinIssue {
 				case j < len(toks) && toks[j].op == "" && toks[j].raw == "{" && toks[j].plain:
 					stack = append(stack, "}")
 					actDepth = len(stack)
+					braceBody = j + 1
 					k, bodyOpen = j, j
 					cmdPos = true
 				default:
@@ -442,7 +461,10 @@ func actPinIssues(code []string, name string) []actPinIssue {
 	if firstGh < 0 {
 		return out
 	}
-	need := "pin the driver's token at the top of the act function, before any gh step: GH_TOKEN=\"$(gh auth token --user <driver-login>)\" || exit 1, then export GH_TOKEN; unset GITHUB_TOKEN. An exported App token (GH_TOKEN or GITHUB_TOKEN) in the driver's shell otherwise wins over their login, and with none exported the active account runs the step"
+	if braceBody > 0 {
+		add(braceBody-1, "the act function body is a { } group, which runs in the driver's own shell: the pin's exit would end that shell and the exported token would outlive the call; write the body as a ( ) subshell, driver_act_<id>() ( ... )")
+	}
+	need := "pin the driver's token at the top of the act function, before any gh step: GH_TOKEN=\"$(gh auth token --user \"<driver-login>\")\" || exit 1, then export GH_TOKEN; unset GITHUB_TOKEN. An exported App token (GH_TOKEN or GITHUB_TOKEN) in the driver's shell otherwise wins over their login, and with none exported the active account runs the step"
 	switch {
 	case pinAt < 0:
 		add(firstGh, "act block runs a gh step with no driver-token pin at the top level of the act function — %s", need)

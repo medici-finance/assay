@@ -405,11 +405,18 @@ or `shell` fence that defines a function named `driver_act…`) to six rules:
    with none exported it uses the active account; either runs the step as the
    wrong identity. In a block that has a `gh` step, the function pins, at its
    top level and before the first `gh` step,
-   `GH_TOKEN="$(gh auth token --user <driver-login>)" || exit`, then a separate
+   `GH_TOKEN="$(gh auth token --user "<driver-login>")" || exit`, then a separate
    `export GH_TOKEN` (an `export` that carries the assignment returns
    `export`'s status, not the read's) and an `unset GITHUB_TOKEN`. The
    assignment must end `|| exit`, `|| exit N` or `|| { ...; exit N; }`, the
-   fail-closed branch, and must stand as its own statement. The rule refuses:
+   fail-closed branch, and must stand as its own statement. The login is one
+   literal word, quoted (unquoted, `<driver-login>` is a redirect and the block
+   fails to parse, which in bash runs the live steps on a paste), never an
+   expansion. The rule refuses:
+   - an act function body written `{ }`, which runs in the driver's own shell:
+     the pin's `exit` ends that shell and the exported token outlives the call;
+   - a login given as an expansion (`"$LOGIN"`, `$(...)`, a backtick), or as
+     anything but one word;
    - a `gh` step ahead of the pin or outside the function;
    - a pin inside an `if`, loop, group, subshell or other function, after `||`,
      `&&` or `|` (including a newline after one of them), under `!` or a
@@ -441,7 +448,9 @@ or `shell` fence that defines a function named `driver_act…`) to six rules:
    argument not in the list (`env -S`); an alias; a command name built from an
    expansion; a function that wraps it; a `case` pattern `)` not closed by
    `esac`; or a change of either variable by `read`, `printf -v`, a nameref or
-   `eval`.
+   `eval`. The pin governs `gh` only: it does not cover a `git push`, which
+   uses git's credential helper, and it leaves `GH_HOST` and the enterprise-token
+   variables alone, which matters only against a GitHub Enterprise Server host.
 
 Rule 1's floor refuses a `#` after an operator, and its scanner refuses
    `\'` inside `$'…'`, so a block holding either fails by rule 1; the read
@@ -482,8 +491,9 @@ The check flags every line carrying `gh auth token` in every `*.md` under
   the anti-pattern to rule it out. A BEGIN with no END is itself a finding, so
   the exemption cannot silently cover the rest of a file;
 - the driver's own human command, spelled exactly
-  `gh auth token --user <driver-login>` (the `ask-decision` Reply shape). Only
-  that spelling is exempt; a second, bare `gh auth token` on the same line is
+  `gh auth token --user <driver-login>` (the `ask-decision` Reply shape) or
+  `gh auth token --user "<driver-login>"` (the Act block's quoted pin). Only
+  those two spellings are exempt; a second, bare `gh auth token` on the same line is
   still flagged.
 
 Hard (exit 1): the tree has no unexempt occurrence, so a new one is a

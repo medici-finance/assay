@@ -65,7 +65,7 @@
 //     one of those can pass (actread.go lists why);
 //  6. every gh step runs behind the driver's token, pinned at the top of the act
 //     function and fail closed (actpin.go): GH_TOKEN from `gh auth token --user
-//     <driver-login>` with || exit, export GH_TOKEN, unset GITHUB_TOKEN, all
+//     "<driver-login>"` with || exit, export GH_TOKEN, unset GITHUB_TOKEN, all
 //     before the first gh step, so an exported App token or the active account
 //     never decides who runs the act. actpin.go lists what it refuses and what
 //     it does not model.

@@ -11,7 +11,7 @@ import (
 // GH_TOKEN, GITHUB_TOKEN or active account the driver's shell holds.
 
 const (
-	pinLine    = `  GH_TOKEN="$(gh auth token --user <driver-login>)" || exit 1`
+	pinLine    = `  GH_TOKEN="$(gh auth token --user "<driver-login>")" || exit 1`
 	exportLine = `  export GH_TOKEN; unset GITHUB_TOKEN`
 )
 
@@ -31,8 +31,8 @@ func pinBlock(body ...string) []string {
 func TestActPinClean(t *testing.T) {
 	for name, body := range map[string][]string{
 		"pin then run gh": {pinLine, exportLine, `  run gh issue edit 1 -R o/r --remove-label x`},
-		"bare exit":       {`  GH_TOKEN="$(gh auth token --user <driver-login>)" || exit`, exportLine, `  run gh issue edit 1 -R o/r`},
-		"exit group": {`  GH_TOKEN="$(gh auth token --user <driver-login>)" || { echo "no driver token; nothing changed" >&2; exit 1; }`,
+		"bare exit":       {`  GH_TOKEN="$(gh auth token --user "<driver-login>")" || exit`, exportLine, `  run gh issue edit 1 -R o/r`},
+		"exit group": {`  GH_TOKEN="$(gh auth token --user "<driver-login>")" || { echo "no driver token; nothing changed" >&2; exit 1; }`,
 			exportLine, `  run gh issue edit 1 -R o/r`},
 		"resolved login": {`  GH_TOKEN="$(gh auth token --user octocat)" || exit 1`, exportLine, `  run gh issue edit 1 -R o/r`},
 		"separate lines": {pinLine, `  export GH_TOKEN`, `  unset GITHUB_TOKEN`, `  run gh issue edit 1 -R o/r`},
@@ -64,18 +64,18 @@ func TestActPinFlagsBareGh(t *testing.T) {
 		"gh path":        {[]string{`  /usr/local/bin/gh issue edit 1 -R o/r`}, "no driver-token pin"},
 		"in if cond":     {[]string{`  if gh issue view 1 -R o/r; then echo y; fi`}, "no driver-token pin"},
 		"in command sub": {[]string{`  X=$(gh issue view 1 -R o/r)`}, "no driver-token pin"},
-		"pin fails open": {[]string{`  GH_TOKEN="$(gh auth token --user <driver-login>)" || true`, exportLine,
+		"pin fails open": {[]string{`  GH_TOKEN="$(gh auth token --user "<driver-login>")" || true`, exportLine,
 			`  run gh issue edit 1 -R o/r`}, "no driver-token pin"},
-		"pin without exit": {[]string{`  GH_TOKEN="$(gh auth token --user <driver-login>)"`, exportLine,
+		"pin without exit": {[]string{`  GH_TOKEN="$(gh auth token --user "<driver-login>")"`, exportLine,
 			`  run gh issue edit 1 -R o/r`}, "no driver-token pin"},
-		"pin group lacks exit": {[]string{`  GH_TOKEN="$(gh auth token --user <driver-login>)" || { echo no; }`, exportLine,
+		"pin group lacks exit": {[]string{`  GH_TOKEN="$(gh auth token --user "<driver-login>")" || { echo no; }`, exportLine,
 			`  run gh issue edit 1 -R o/r`}, "no driver-token pin"},
-		"pin in if": {[]string{`  if [ "$DRY_RUN" = 0 ]; then GH_TOKEN="$(gh auth token --user <driver-login>)" || exit 1; fi`,
+		"pin in if": {[]string{`  if [ "$DRY_RUN" = 0 ]; then GH_TOKEN="$(gh auth token --user "<driver-login>")" || exit 1; fi`,
 			exportLine, `  run gh issue edit 1 -R o/r`}, "no driver-token pin"},
-		"pin in subshell": {[]string{`  ( GH_TOKEN="$(gh auth token --user <driver-login>)" || exit 1 )`,
+		"pin in subshell": {[]string{`  ( GH_TOKEN="$(gh auth token --user "<driver-login>")" || exit 1 )`,
 			exportLine, `  run gh issue edit 1 -R o/r`}, "no driver-token pin"},
 		"pin after gh": {[]string{`  run gh issue view 1 -R o/r`, pinLine, exportLine}, "before the driver token is pinned"},
-		"export combined": {[]string{`  export GH_TOKEN="$(gh auth token --user <driver-login>)" || exit 1`, `  unset GITHUB_TOKEN`,
+		"export combined": {[]string{`  export GH_TOKEN="$(gh auth token --user "<driver-login>")" || exit 1`, `  unset GITHUB_TOKEN`,
 			`  run gh issue edit 1 -R o/r`}, "no driver-token pin"},
 		"no export": {[]string{pinLine, `  unset GITHUB_TOKEN`, `  run gh issue edit 1 -R o/r`}, "separate `export GH_TOKEN`"},
 		"no unset":  {[]string{pinLine, `  export GH_TOKEN`, `  run gh issue edit 1 -R o/r`}, "`unset GITHUB_TOKEN`"},
@@ -147,7 +147,7 @@ func wantFinding(t *testing.T, name string, rows map[string]shapeRow) {
 
 const (
 	editLine = `  run gh issue edit 1 -R o/r`
-	pinCmd   = `GH_TOKEN="$(gh auth token --user <driver-login>)" || exit 1`
+	pinCmd   = `GH_TOKEN="$(gh auth token --user "<driver-login>")" || exit 1`
 )
 
 // TestActPinFlagsDeclared — a declaring builtin carries the token variable
@@ -264,5 +264,46 @@ func TestActPinWrappersClean(t *testing.T) {
 		if blocks != 1 || len(issues) != 0 {
 			t.Errorf("%s: blocks=%d issues=%+v, want 1 block and no issue", name, blocks, issues)
 		}
+	}
+}
+
+// TestActPinFlagsLoginShape — the login must be one literal word. Unquoted, the
+// placeholder is a redirect and the block fails to parse; an expansion can
+// name any login.
+func TestActPinFlagsLoginShape(t *testing.T) {
+	wantFinding(t, "login", map[string]shapeRow{
+		"unquoted placeholder": {[]string{`  GH_TOKEN="$(gh auth token --user <driver-login>)" || exit 1`, exportLine, editLine}, "no driver-token pin"},
+		"variable":             {[]string{`  GH_TOKEN="$(gh auth token --user "$LOGIN")" || exit 1`, exportLine, editLine}, "expansion"},
+		"bare variable":        {[]string{`  GH_TOKEN="$(gh auth token --user $LOGIN)" || exit 1`, exportLine, editLine}, "expansion"},
+		"command sub":          {[]string{`  GH_TOKEN="$(gh auth token --user "$(whoami)")" || exit 1`, exportLine, editLine}, "no driver-token pin"},
+		"backtick":             {[]string{"  GH_TOKEN=\"$(gh auth token --user `whoami`)\" || exit 1", exportLine, editLine}, "no driver-token pin"},
+		"two words":            {[]string{`  GH_TOKEN="$(gh auth token --user a b)" || exit 1`, exportLine, editLine}, "no driver-token pin"},
+		"empty login":          {[]string{`  GH_TOKEN="$(gh auth token --user "")" || exit 1`, exportLine, editLine}, "no driver-token pin"},
+		"extra option":         {[]string{`  GH_TOKEN="$(gh auth token --user "<driver-login>" --hostname h)" || exit 1`, exportLine, editLine}, "no driver-token pin"},
+	})
+}
+
+// TestActPinFlagsBraceBody — a { } body runs in the driver's shell: the pin's
+// exit ends that shell, and the exported token outlives the call.
+func TestActPinFlagsBraceBody(t *testing.T) {
+	lines := []string{
+		actBlockGuardLine,
+		"# 0. the act as one function. Pasting this only prints. Type driver_act_1 live to act.",
+		"driver_act_1() {",
+		`  DRY_RUN=1; [ "${1-}" = live ] && DRY_RUN=0`,
+		`  run() { if [ "$DRY_RUN" = 1 ]; then echo "would run: $*"; else "$@"; fi; }`,
+		pinLine, exportLine, editLine,
+		"}",
+		"driver_act_1",
+	}
+	_, issues := lintOne(t, "sh", lines)
+	found := false
+	for _, is := range issues {
+		if strings.Contains(is.Msg, "( ) subshell") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("issues=%+v, want a finding naming the ( ) subshell body", issues)
 	}
 }

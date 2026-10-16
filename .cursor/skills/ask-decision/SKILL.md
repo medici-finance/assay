@@ -215,8 +215,13 @@ restate it.
   function whose body runs in a subshell, `driver_act_<id>() ( … )`, and its last line calls
   it bare. `<id>` is unique to this act: the issue number, plus a letter when one issue carries
   more than one act. Never reuse a bare or earlier act's name: if this block fails to parse,
-  its function is never defined (zsh runs none of the paste), and the driver's
-  `driver_act_<id> live` must then find no function at all, not the previous act's. Inside, the first line sets `DRY_RUN=1` outright and
+  its function may never be defined, and the driver's `driver_act_<id> live` must then find no
+  function at all, not the previous act's. A block that fails to parse is not safe to paste
+  everywhere: zsh pasted as one bracketed paste runs none of it, but bash, and zsh pasted line by
+  line, drop the function and run the remaining lines at top level, where `DRY_RUN` is unset and
+  the live branches run. So a desk never posts an Act block with a `<…>` value left unresolved,
+  and the one placeholder the example carries, the driver's login, is quoted: unquoted,
+  `<driver-login>` is a redirect and a syntax error. Inside, the first line sets `DRY_RUN=1` outright and
   drops it to `0` only when the call says `live`. Never read a live/dry switch from the shell:
   a `DRY_RUN=0` left over from the previous act, or exported in the driver's profile, would
   make the next block act on its first paste. A mutating step passes the tool's `--dry-run`
@@ -242,12 +247,15 @@ restate it.
   itself.** The driver pastes the block into their own shell, and that shell may hold an
   exported `GH_TOKEN` or `GITHUB_TOKEN`, which `gh` prefers to any stored login (with none
   exported it uses the active account, which may not be the driver). So the act function's
-  first step is `GH_TOKEN="$(gh auth token --user <driver-login>)" || exit 1`, then
-  `export GH_TOKEN; unset GITHUB_TOKEN`: it fails closed, with nothing changed, when the
-  driver's token cannot be read, and the pin lives only in the function's subshell. It comes
+  first step is `GH_TOKEN="$(gh auth token --user "<driver-login>")" || exit 1`, then
+  `export GH_TOKEN; unset GITHUB_TOKEN`: it stops with nothing changed when the driver's token
+  cannot be read, including when the quoted placeholder was left unfilled (no stored login has
+  that name), and the pin lives only in the function's subshell. It comes
   before any secret prompt and before every `gh` step, and nothing in the function sets
-  either variable again. `<driver-login>` is a value the desk resolves like `owner/repo`. The
-  block never reads or falls back to a role App's token. A token an act needs that is not the
+  either variable again. `<driver-login>` is a value the desk resolves like `owner/repo`, written as one quoted literal word. The pin covers `gh` only:
+  a `git push` uses git's own credential helper, and the pin leaves `GH_HOST` and the
+  enterprise-token variables alone, which matters only against a GitHub Enterprise Server host.
+  The block never reads or falls back to a role App's token. A token an act needs that is not the
   driver's login is a `# fill:` secret read as above.
 
 This plugin's own skill lint checks the shipped example below against the comment rule (plain
@@ -267,9 +275,10 @@ desk composes at run time gets no lint; it rests on these rules alone.
 
 The lint also holds the token pin. In a block with a `gh` step, the act function pins the
 driver's token at its top level before the first `gh` step, in the whole shape above: the
-`GH_TOKEN="$(gh auth token --user <driver-login>)"` assignment ending `|| exit` (or `|| { …; exit N; }`),
+`GH_TOKEN="$(gh auth token --user "<driver-login>")"` assignment ending `|| exit` (or `|| { …; exit N; }`),
 a separate `export GH_TOKEN` (an `export` that carries the assignment would report export's
-status, not the read's), and an `unset` of `GITHUB_TOKEN`. The pin must be its own statement. The lint refuses a `gh` step ahead of the pin or outside the
+status, not the read's), and an `unset` of `GITHUB_TOKEN`. The pin must be its own statement, the login one literal word (quoted, never an expansion), and the
+function body a `( )` subshell. The lint refuses a `gh` step ahead of the pin or outside the
 function; a pin inside an `if`, loop, group or subshell, after `||`, `&&` or `|`, under `!`, `time`
 or `env`, or followed by a pipe; after the pin, a set of `GH_TOKEN` or `GITHUB_TOKEN` (a bare
 assignment, or one given to `export`, `declare`, `typeset`, `local` or `readonly`), an
@@ -289,7 +298,7 @@ driver_act_123() (
   DRY_RUN=1; [ "${1-}" = live ] && DRY_RUN=0
   run() { if [ "$DRY_RUN" = 1 ]; then echo "would run: $*"; else "$@"; fi; }
   echo '1. pin the driver token for every gh step. An exported App token never wins.'
-  GH_TOKEN="$(gh auth token --user <driver-login>)" || { echo "no driver token; nothing changed" >&2; exit 1; }
+  GH_TOKEN="$(gh auth token --user "<driver-login>")" || { echo "no driver token; nothing changed" >&2; exit 1; }
   export GH_TOKEN; unset GITHUB_TOKEN
   echo '2. read the publish token next, so an empty read changes nothing.'
   if [ "$DRY_RUN" = 1 ]; then echo "would read the publish token at a hidden prompt"

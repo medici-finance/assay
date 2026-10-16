@@ -153,3 +153,36 @@ func TestAmbientAuth_RealTreeClean(t *testing.T) {
 		t.Errorf("%s: %s", is.Path, is.Msg)
 	}
 }
+
+// TestAmbientAuth_QuotedDriverForm — the Act block quotes the login placeholder
+// (an unquoted `<driver-login>` is a redirect, and a block that fails to parse
+// runs its live steps when pasted into bash). The quoted spelling is exempt
+// exactly, and no looser: other spellings of the line are still flagged.
+func TestAmbientAuth_QuotedDriverForm(t *testing.T) {
+	for name, c := range map[string]struct {
+		line string
+		want int
+	}{
+		"quoted accepted":         {"`GH_TOKEN=\"$(gh auth token --user \"<driver-login>\")\"`", 0},
+		"unquoted still accepted": {"`gh auth token --user <driver-login>`", 0},
+		"quoted then bare":        {"`gh auth token --user \"<driver-login>\"` then `gh auth token`", 1},
+		"single quoted":           {"`gh auth token --user '<driver-login>'`", 1},
+		"other login":             {"`gh auth token --user \"someone\"`", 1},
+		"expansion":               {"`gh auth token --user \"$LOGIN\"`", 1},
+		"space inside the quotes": {"`gh auth token --user \" <driver-login>\"`", 1},
+		"unclosed quote":          {"`gh auth token --user \"<driver-login>`", 1},
+		"extra option":            {"`gh auth token --hostname h --user \"<driver-login>\"`", 1},
+		"bare":                    {"`gh auth token`", 1},
+	} {
+		root := t.TempDir()
+		writeSkill(t, root, "ask-decision", "---\nname: ask-decision\ndescription: x\n---\n\n"+c.line+"\n")
+		writeReference(t, root, "clean.md", "# clean\n")
+		_, issues, err := AmbientAuthIssues(root)
+		if err != nil {
+			t.Fatalf("%s: unexpected could-not-check: %v", name, err)
+		}
+		if len(issues) != c.want {
+			t.Errorf("%s: issues=%+v, want %d", name, issues, c.want)
+		}
+	}
+}
