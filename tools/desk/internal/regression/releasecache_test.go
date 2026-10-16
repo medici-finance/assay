@@ -9,7 +9,8 @@ import (
 	"time"
 )
 
-// regression: #138; includes the release-owned image producer/consumer contract.
+// regression: #138
+// Includes the release-owned image producer/consumer contract.
 func TestReleaseGoCache(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("release workflow executes on Linux; fixtures run in build-test")

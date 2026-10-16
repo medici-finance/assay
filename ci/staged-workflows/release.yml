@@ -104,10 +104,10 @@ permissions:
 # (a `${{ }}` expression has no string op to prepend the `v` conditionally). So
 # dispatching "0.9.0" and "v0.9.0" land in DIFFERENT concurrency groups even
 # though both resolve to tag v0.9.0, and two such runs could proceed in parallel.
-# This is bounded by the non-force tag push in `release`: the second run's
-# `git push refs/tags/v0.9.0` is rejected once the first has pushed, so at most
-# one run publishes. (The push-path key is github.ref_name, already the exact
-# tag, so it has no such gap.)
+# The image job therefore has its OWN concurrency group on the normalized tag,
+# acquired before registry absence checks. A second attempt sees existing image
+# tags and stops. The final non-force Git tag push also refuses a competing cut.
+# The push-path key is github.ref_name, already the exact tag.
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
   cancel-in-progress: false
@@ -1444,7 +1444,14 @@ jobs:
           git checkout --detach "$SOURCE_SHA"
           sha256sum -c checksums.txt
           if [ "$DRY_RUN" != true ]; then
-            python3 tools/release/images_contract.py release-images.json "$RELEASE_TAG" "$SOURCE_SHA" verify-runner-image.txt "$REPOSITORY"
+            python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          from tools.release.images_contract import validate
+          validate(json.loads(Path('release-images.json').read_text()),
+                   os.environ['RELEASE_TAG'], os.environ['SOURCE_SHA'],
+                   Path('verify-runner-image.txt').read_text(), os.environ['REPOSITORY'])
+          PY
             sha256sum release-images.json verify-runner-image.txt >> checksums.txt
           fi
       # A dry run has now built + checksummed the artifacts (proving build, guard

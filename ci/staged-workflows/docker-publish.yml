@@ -19,6 +19,9 @@ permissions:
 jobs:
   images:
     runs-on: medici-builder-public-release
+    concurrency:
+      group: release-images-${{ inputs.version }}
+      cancel-in-progress: false
     environment: release
     permissions:
       contents: read
@@ -55,15 +58,18 @@ jobs:
           DOCKER_CONFIG="$(mktemp -d)"
           export DOCKER_CONFIG
           trap 'rm -rf "$DOCKER_CONFIG"' EXIT
-          mode=--build
           if [ "$DRY_RUN" != true ]; then
             printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
-            mode=--publish
           fi
-          python3 "$SOURCE/tools/release/images.py" "$mode" \
-            --version "$RELEASE_TAG" --source-sha "$SOURCE_SHA" \
-            --registry-prefix "$REGISTRY_PREFIX" --verify-runner-image "$VERIFY_RUNNER_IMAGE" \
-            --artifacts "$INPUT" --out "$OUTPUT"
+          cd "$SOURCE"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          from tools.release.images import build_images
+          build_images(Path.cwd(), os.environ['RELEASE_TAG'], os.environ['SOURCE_SHA'],
+                       os.environ['REGISTRY_PREFIX'], os.environ['VERIFY_RUNNER_IMAGE'],
+                       os.environ['INPUT'], os.environ['OUTPUT'], publish=os.environ['DRY_RUN'] != 'true')
+          PY
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !inputs.dry_run }}
         with:

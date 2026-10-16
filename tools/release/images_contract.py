@@ -1,8 +1,5 @@
 """Validate published image references; this consumer contract never builds or pushes."""
-import json
-from pathlib import Path
 import re
-import sys
 
 NAMES = {"desk-tools", "assay-harness", "desk-base", "intake-desk", "worker-desk",
          "pr-review-desk", "verify-desk", "the-desk", "verify-runner"}
@@ -34,16 +31,3 @@ def validate(manifest, version, source, runner, repository):
     if runner != seen["verify-runner"] + "\n":
         raise ValueError("verify-runner-image.txt disagrees with the image manifest")
     return seen
-
-
-def main():
-    try:
-        path, version, source, runner_path, repository = sys.argv[1:]
-        validate(json.loads(Path(path).read_text()), version, source,
-                 Path(runner_path).read_text(), repository)
-    except (ValueError, OSError, TypeError, KeyError) as exc:
-        sys.exit(f"release image contract: {exc}")
-
-
-if __name__ == "__main__":
-    main()

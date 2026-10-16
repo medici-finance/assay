@@ -24,7 +24,9 @@ legacy component-tag/manual triggers.
 3. Check statusgen's version in all nine images; run the existing layer-secret
    gate on the shared desk base and all five desks. All checks precede the first
    push. Publication retains the approved `release` Environment.
-4. Publish the versioned images and read their registry digests. Refuse an
+4. Serialize the image job on the resolved umbrella version before registry
+   absence checks, including dispatches with or without a leading `v`.
+   Publish the versioned images and read their registry digests. Refuse an
    existing image tag, an indeterminate registry lookup, or a missing/wrong
    digest. Attach the references and their checksums to the draft GitHub release
    before its single immutable publish. A partial registry push is not atomic:

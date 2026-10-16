@@ -74,11 +74,12 @@ if args[:2] == ['image', 'inspect']:
                         CALLS=str(self.calls), PYTHONDONTWRITEBYTECODE='1')
 
     def invoke(self, publish=False, mode=''):
-        return subprocess.run(['python3', str(self.script), '--publish' if publish else '--build',
-                               '--version', VERSION, '--source-sha', SOURCE,
-                               '--registry-prefix', 'ghcr.io/example/assay',
-                               '--verify-runner-image', 'ghcr.io/example/verify-runner',
-                               '--artifacts', str(self.inputs), '--out', str(self.out)],
+        code = ('from pathlib import Path; import sys; from images import build_images; '
+                'build_images(Path(sys.argv[1]), *sys.argv[2:8], sys.argv[8] == "publish")')
+        return subprocess.run(['python3', '-c', code, str(self.root), VERSION, SOURCE,
+                               'ghcr.io/example/assay', 'ghcr.io/example/verify-runner',
+                               str(self.inputs), str(self.out), 'publish' if publish else 'build'],
+                              cwd=self.script.parent,
                               env=dict(self.env, MODE=mode), text=True, capture_output=True)
 
     def recorded(self):
@@ -155,7 +156,7 @@ if args[:2] == ['image', 'inspect']:
         self.assertIn('CGO_ENABLED: "0"', blocks['artifacts'])
         self.assertIn('git bundle create release-source.bundle', blocks['artifacts'])
         self.assertIn('git checkout --detach "$SOURCE_SHA"', blocks['release'])
-        self.assertIn('python3 tools/release/images_contract.py', blocks['release'])
+        self.assertIn('from tools.release.images_contract import validate', blocks['release'])
         self.assertIn('release-images.json verify-runner-image.txt checksums.txt; do', blocks['release'])
         self.assertIn('environment: release', blocks['release'])
         self.assertIn('environment: release', jobs(child)['images'])
@@ -169,6 +170,39 @@ if args[:2] == ['image', 'inspect']:
         (self.root / 'plugins/assay/.claude-plugin/plugin.json').write_text('{"version":"9.9.9"}')
         self.assertNotEqual(self.invoke(True).returncode, 0)
         self.assertEqual(self.recorded(), [])
+
+    def test_normalized_versions_share_the_image_publish_lock(self):
+        import re
+        root = HERE.parents[1]
+        main = (root / 'ci/staged-workflows/release.yml').read_text()
+        child = (root / 'ci/staged-workflows/docker-publish.yml').read_text()
+        # Execute the real resolver's dispatch branch, without forge contact.
+        block = main.split('      - name: Resolve the release tag\n', 1)[1]
+        lines = block.split('        run: |\n', 1)[1].splitlines()
+        script = []
+        for line in lines:
+            if line.strip() and not line.startswith('          '):
+                break
+            script.append(line[10:])
+        tags = []
+        for version in ['1.2.3', 'v1.2.3']:
+            output = self.root / ('resolved-' + version)
+            result = subprocess.run(['bash', '-c', '\n'.join(script)],
+                                    env=dict(os.environ, EVENT='workflow_dispatch', INPUT_VERSION=version,
+                                             ACTOR='fixture', REF_NAME='main', GITHUB_OUTPUT=str(output)),
+                                    text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            tags.append(dict(line.split('=', 1) for line in output.read_text().splitlines())['tag'])
+        self.assertEqual(tags, [VERSION, VERSION])
+        caller = main.split('\n  images:\n', 1)[1].split('\n  release:\n', 1)[0]
+        self.assertIn('version: ${{ needs.resolve.outputs.tag }}', caller)
+        job = child.split('\n  images:\n', 1)[1]
+        lock = re.search(r'    concurrency:\n      group: (.+)\n      cancel-in-progress: false\n', job)
+        self.assertIsNotNone(lock, 'image publication must serialize before tag-absence checks')
+        self.assertIn('${{ inputs.version }}', lock.group(1))
+        groups = [lock.group(1).replace('${{ inputs.version }}', tag) for tag in tags]
+        self.assertEqual(len(set(groups)), 1)
+        self.assertNotIn('${{', groups[0], 'lock must depend only on the normalized version')
 
     def test_archive_link_refuses_before_docker_build(self):
         with tarfile.open(self.inputs / 'desk-tools-linux-amd64.tar.gz', 'w:gz') as out:

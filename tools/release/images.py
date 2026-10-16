@@ -1,5 +1,4 @@
 """Release-owned Linux artifacts and container images. No consumer builds images."""
-import argparse
 import datetime
 import json
 from pathlib import Path
@@ -131,26 +130,3 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
     runner = next(image["ref"] for image in images if image["name"] == "verify-runner")
     (out / "verify-runner-image.txt").write_text(runner + "\n")
     print("Published all release images; immutable references are release artifacts.")
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--version", required=True)
-    parser.add_argument("--source-sha", required=True)
-    parser.add_argument("--registry-prefix", required=True)
-    parser.add_argument("--verify-runner-image", required=True)
-    parser.add_argument("--artifacts", required=True)
-    parser.add_argument("--out", required=True)
-    mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--build", action="store_true", help="build/check only; never push")
-    mode.add_argument("--publish", action="store_true", help="explicit opt-in to registry publication")
-    args = parser.parse_args()
-    try:
-        build_images(Path(__file__).resolve().parents[2], args.version, args.source_sha,
-                     args.registry_prefix, args.verify_runner_image, args.artifacts, args.out, args.publish)
-    except (ValueError, OSError, subprocess.CalledProcessError) as exc:
-        parser.exit(1, f"release images: {exc}\n")
-
-
-if __name__ == "__main__":
-    main()

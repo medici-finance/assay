@@ -7,6 +7,21 @@
   "measured_at": "3ad1ad83c871",
   "exclusion_rules": [
     {
+      "class": "library",
+      "pattern": "tools/release/images.py",
+      "reason": "internal release image producer imported by fixed workflow Python calls; no shebang, main guard, argument parser or independent operator entrypoint (#3204)"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/release/images_contract.py",
+      "reason": "pure image reference validation library imported by release workflow and offline fixtures; no standalone CLI or network calls (#3204)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/images_test.py",
+      "reason": "offline image producer and manifest fixtures executed by build-test through the regression package; never an operator entrypoint (#3204)"
+    },
+    {
       "class": "test",
       "pattern": "tools/forge-import-check",
       "reason": "source-only verification instrument run explicitly by go run or go test from forge-neutral briefs 37 and 38 verify rows; it parses a target tree, never builds or executes it, and is never installed or released as an operator CLI (#2743)"
