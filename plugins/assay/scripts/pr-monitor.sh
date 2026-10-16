@@ -267,16 +267,22 @@ if [[ -n "${DESK_LOOP:-}" ]]; then
 fi
 
 # mint_for_repo <owner/name> -- mint that repo's installation token for $ROLE.
-# On success sets TOKFILE (the custody file `desktoken` named) and returns 0. On
+# On success sets MINT_TOK (the token VALUE, read from the custody file `desktoken`
+# named exactly once and whitespace-stripped) and returns 0. On
 # ANY failure sets MINT_WHY (one short line, the token never in it) and returns 1;
 # the caller then makes no `gh` call for the repo. A mint that "succeeds" with no
 # usable token is a failure too: an empty GH_TOKEN makes `gh` fall back to the
 # host's stored login, which is exactly the ambient identity this refuses.
-TOKFILE=""
+#
+# The file is read ONCE, here, and the caller passes this very value to `gh`: the
+# cache is rewritten in place by every concurrent mint for the role, so a second
+# read at the call site (after the pacing sleep) could see it truncated and hand
+# `gh` an empty GH_TOKEN that nothing checked.
+MINT_TOK=""
 MINT_WHY=""
 mint_for_repo() {
-  local repo="$1" out rc
-  TOKFILE=""; MINT_WHY=""
+  local repo="$1" out rc tok
+  MINT_TOK=""; MINT_WHY=""
   if [[ -z "$ROLE" ]]; then MINT_WHY="$ROLE_WHY"; return 1; fi
   if ! command -v desktoken >/dev/null 2>&1; then
     MINT_WHY="desktoken not found on PATH"; return 1
@@ -293,10 +299,10 @@ mint_for_repo() {
   if [[ -z "$out" || ! -f "$out" ]]; then
     MINT_WHY="desktoken $ROLE named no token file"; return 1
   fi
-  if ! grep -q '[^[:space:]]' "$out" 2>/dev/null; then
+  if ! tok=$(tr -d '[:space:]' < "$out" 2>/dev/null) || [[ -z "$tok" ]]; then
     MINT_WHY="desktoken $ROLE's token file is empty or unreadable"; return 1
   fi
-  TOKFILE="$out"
+  MINT_TOK="$tok"
   return 0
 }
 
@@ -377,7 +383,7 @@ while [[ "$idx" -lt "$proc_n" ]]; do
     # Poll. The token is handed to this one `gh` as its GH_TOKEN and is never
     # exported. `if hits=$(...)` keeps `set -e`-free status inspection; gh's own
     # diagnostics are captured, never discarded.
-    if hits=$(GH_TOKEN="$(cat "$TOKFILE")" gh pr list --repo "$repo" --state open --limit "$LIMIT" \
+    if hits=$(GH_TOKEN="$MINT_TOK" gh pr list --repo "$repo" --state open --limit "$LIMIT" \
         --json number,headRefOid,isDraft,state,mergeStateStatus 2>"$TMP_ERR"); then
       read_ok=1
     else

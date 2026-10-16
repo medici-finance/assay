@@ -391,16 +391,22 @@ if [[ -n "${DESK_LOOP:-}" ]]; then
 fi
 
 # mint_for_repo <owner/name> -- mint that repo's installation token for $ROLE.
-# On success sets TOKFILE (the custody file `desktoken` named) and returns 0. On
+# On success sets MINT_TOK (the token VALUE, read from the custody file `desktoken`
+# named exactly once and whitespace-stripped) and returns 0. On
 # ANY failure sets MINT_WHY (one short line, the token never in it) and returns 1;
 # the caller then makes no `gh` call for the repo. A mint that "succeeds" with no
 # usable token is a failure too: an empty GH_TOKEN makes `gh` fall back to the
 # host's stored login, which is exactly the ambient identity this refuses.
-TOKFILE=""
+#
+# The file is read ONCE, here, and the caller passes this very value to `gh`: the
+# cache is rewritten in place by every concurrent mint for the role, so a second
+# read at the call site (after the pacing sleep) could see it truncated and hand
+# `gh` an empty GH_TOKEN that nothing checked.
+MINT_TOK=""
 MINT_WHY=""
 mint_for_repo() {
-  local repo="$1" out rc
-  TOKFILE=""; MINT_WHY=""
+  local repo="$1" out rc tok
+  MINT_TOK=""; MINT_WHY=""
   if [[ -z "$ROLE" ]]; then MINT_WHY="$ROLE_WHY"; return 1; fi
   if ! command -v desktoken >/dev/null 2>&1; then
     MINT_WHY="desktoken not found on PATH"; return 1
@@ -417,10 +423,10 @@ mint_for_repo() {
   if [[ -z "$out" || ! -f "$out" ]]; then
     MINT_WHY="desktoken $ROLE named no token file"; return 1
   fi
-  if ! grep -q '[^[:space:]]' "$out" 2>/dev/null; then
+  if ! tok=$(tr -d '[:space:]' < "$out" 2>/dev/null) || [[ -z "$tok" ]]; then
     MINT_WHY="desktoken $ROLE's token file is empty or unreadable"; return 1
   fi
-  TOKFILE="$out"
+  MINT_TOK="$tok"
   return 0
 }
 
@@ -463,9 +469,13 @@ for repo in "${REPOS[@]}"; do
   # earlier repo cannot be mistaken for this one's.
   mint_failed=0
   _rtok=$(token_for "$repo")
-  if [[ -z "$_rtok" ]] && ! mint_for_repo "$repo"; then
-    mint_failed=1
-    : > "$TMP_ERR"
+  if [[ -z "$_rtok" ]]; then
+    if mint_for_repo "$repo"; then
+      _rtok="$MINT_TOK"      # the value that was checked is the value gh gets
+    else
+      mint_failed=1
+      : > "$TMP_ERR"
+    fi
   fi
 
   if [[ "$mint_failed" -eq 1 ]]; then
@@ -483,14 +493,7 @@ for repo in "${REPOS[@]}"; do
     # tells an operator their token expired or their identity is wrong. The token
     # is set for this one command only, so it never reaches another repo's read
     # and is never exported.
-    if [[ -n "$_rtok" ]]; then
-      if hits=$(GH_TOKEN="$_rtok" gh issue list --repo "$repo" --state open \
-          --limit "$FETCH" --json number,updatedAt 2>"$TMP_ERR"); then
-        read_ok=1
-      else
-        read_ok=0
-      fi
-    elif hits=$(GH_TOKEN="$(cat "$TOKFILE")" gh issue list --repo "$repo" --state open \
+    if hits=$(GH_TOKEN="$_rtok" gh issue list --repo "$repo" --state open \
         --limit "$FETCH" --json number,updatedAt 2>"$TMP_ERR"); then
       read_ok=1
     else

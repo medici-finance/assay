@@ -16,7 +16,8 @@
 #   cases: seed-silent opened pushed draft-flip state closed push-and-flip
 #          truncation rate-limit-stops-cycle pacing-honoured portability
 #          origin-forms origin-degraded mint-per-repo mint-failed
-#          mint-seed-failed role-unusable mint-bad-custody role-mapping bare-gh-lint
+#          mint-seed-failed role-unusable mint-bad-custody mint-reread-race
+#          role-mapping bare-gh-lint
 set -uo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -48,7 +49,7 @@ arr() { local IFS=,; printf '[%s]' "$*"; }
 #   exits 1 when <dir>/fail/<owner__name> exists.
 make_gh() {
   local dir="$1"
-  mkdir -p "$dir/resp" "$dir/fail" "$dir/tok" "$dir/mintfail" "$dir/mintblank" "$dir/mintnopath"
+  mkdir -p "$dir/resp" "$dir/fail" "$dir/tok" "$dir/mintfail" "$dir/mintblank" "$dir/mintnopath" "$dir/mintrace"
   : > "$dir/calls.log"
   : > "$dir/token.log"
   : > "$dir/mint.log"
@@ -71,6 +72,8 @@ STUB
   #   mintfail/<san>    stderr text, exit 5 (a refused mint)
   #   mintblank/<san>   exit 0, prints a path to a whitespace-only file
   #   mintnopath/<san>  exit 0, prints nothing
+  #   mintrace/<san>    a good token, then another session's re-mint TRUNCATES the
+  #                     shared cache file 0.3s later (desktoken rewrites it in place)
   cat > "$dir/desktoken" <<STUB
 #!/usr/bin/env bash
 d="$dir"
@@ -83,6 +86,7 @@ if [ -f "\$d/mintnopath/\$san" ]; then exit 0; fi
 if [ -f "\$d/mintblank/\$san" ]; then printf ' \n\t\n' > "\$d/tok/\$san"; else printf 'x-minted-%s\n' "\$san" > "\$d/tok/\$san"; fi
 chmod 600 "\$d/tok/\$san"
 printf '%s\n' "\$d/tok/\$san"
+if [ -f "\$d/mintrace/\$san" ]; then ( sleep 0.3; : > "\$d/tok/\$san" ) >/dev/null 2>&1 & fi
 exit 0
 STUB
   chmod +x "$dir/desktoken"
@@ -486,12 +490,31 @@ if want mint-bad-custody; then
   done
 fi
 
+# ========================================================= mint-reread-race ==
+# regression: #3116 (F1/S1: the token was checked in the file, then re-read at the call)
+if want mint-reread-race; then
+  echo "mint-reread-race — the token that was CHECKED is the token gh gets, even if the cache is emptied during the pacing sleep"
+  w="$TMPROOT/rr"; st="$TMPROOT/rr-st"; make_gh "$w"
+  resp "$w" o/a "$(arr "$(pr 1 aaa false OPEN CLEAN)")"
+  resp "$w" o/b "$(arr "$(pr 1 bbb false OPEN CLEAN)")"
+  : > "$w/mintrace/$(san o/b)"
+  run "$w" "$st" ASSAY_MONITOR_PACE_SECONDS=1 GH_TOKEN=x-bogus-app-token -- o/a o/b
+  check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "the cycle exits 0" "got $RC; stdout: ${OUT:-<empty>}"
+  check "$([[ "$(cat "$w/token.log")" == "GH_TOKEN=[x-minted-o__a] GITHUB_TOKEN=[]
+GH_TOKEN=[x-minted-o__b] GITHUB_TOKEN=[]" ]] && echo 0 || echo 1)" \
+    "gh sees the value that was validated for each repo, never an emptied re-read" "gh saw: $(tr '\n' ';' < "$w/token.log")"
+  check "$(contains "$(cat "$w/token.log")" "GH_TOKEN=[]" && echo 1 || echo 0)" \
+    "no gh call ever ran with an empty GH_TOKEN (the ambient-login signature)" "gh saw: $(tr '\n' ';' < "$w/token.log")"
+fi
+
 # bare_gh_calls <file> — the non-comment lines that run a `gh` subcommand WITHOUT a
-# same-line `GH_TOKEN=` assignment: an ambient-identity read, the defect class of
-# #3116. A `gh` read here is only ever `GH_TOKEN=<token> gh ...`.
+# same-line `GH_TOKEN=` assignment of a plain variable: an ambient-identity read, the
+# defect class of #3116. A `gh` read here is only ever `GH_TOKEN="$var" gh ...` where
+# $var was validated earlier. `GH_TOKEN="$(cat f)"` is flagged too: it re-reads (and
+# so does not check) the value it passes, which can come back empty.
 bare_gh_calls() {
   grep -nE '(^|[[:space:](])gh (pr|issue|api|auth|repo|run|search) ' "$1" \
-    | grep -vE '^[0-9]+:[[:space:]]*#' | grep -vF 'GH_TOKEN=' || true
+    | grep -vE '^[0-9]+:[[:space:]]*#' | grep -vE 'GH_TOKEN="?\$[A-Za-z_{]' || true
 }
 
 # regression: #3116
@@ -507,6 +530,9 @@ if want bare-gh-lint; then
   printf '%s\n' 'extra=$(GH_TOKEN="$t" gh pr list --repo o/r --state open)' > "$planted.ok"
   check "$([[ -z "$(bare_gh_calls "$planted.ok")" ]] && echo 0 || echo 1)" \
     "the lint passes a token-scoped gh call" "lint flagged a GH_TOKEN-scoped call"
+  printf '%s\n' 'extra=$(GH_TOKEN="$(cat "$f")" gh pr list --repo o/r --state open)' > "$planted.reread"
+  check "$([[ -n "$(bare_gh_calls "$planted.reread")" ]] && echo 0 || echo 1)" \
+    "the lint catches a planted unchecked re-read at the call site" "lint passed GH_TOKEN=\"\$(cat ...)\""
   bare=$(bare_gh_calls "$SCRIPT")
   check "$([[ -z "$bare" ]] && echo 0 || echo 1)" \
     "no gh call in the script runs without a same-line GH_TOKEN= (no ambient read)" "bare: $bare"

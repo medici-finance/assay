@@ -89,9 +89,11 @@ make_gh() {
 #   <dir>/mintfail/<san>    stderr text, exit 5 (a refused mint)
 #   <dir>/mintblank/<san>   exit 0, path to a whitespace-only file
 #   <dir>/mintnopath/<san>  exit 0, prints nothing
+#   <dir>/mintrace/<san>    a good token, then another session's re-mint TRUNCATES the
+#                           shared cache file 0.3s later (desktoken rewrites it in place)
 ensure_desktoken() {
   local dir="$1"
-  mkdir -p "$dir" "$dir/tok" "$dir/mintfail" "$dir/mintblank" "$dir/mintnopath"
+  mkdir -p "$dir" "$dir/tok" "$dir/mintfail" "$dir/mintblank" "$dir/mintnopath" "$dir/mintrace"
   cat > "$dir/desktoken" <<STUB
 #!/usr/bin/env bash
 d="$dir"
@@ -104,6 +106,7 @@ if [ -f "\$d/mintnopath/\$san" ]; then exit 0; fi
 if [ -f "\$d/mintblank/\$san" ]; then printf ' \n\t\n' > "\$d/tok/\$san"; else printf 'x-minted-%s\n' "\$san" > "\$d/tok/\$san"; fi
 chmod 600 "\$d/tok/\$san"
 printf '%s\n' "\$d/tok/\$san"
+if [ -f "\$d/mintrace/\$san" ]; then ( sleep 0.3; : > "\$d/tok/\$san" ) >/dev/null 2>&1 & fi
 exit 0
 STUB
   chmod +x "$dir/desktoken"
@@ -545,15 +548,30 @@ check "$([[ $((t1 - t0)) -lt 2 ]] && echo 0 || echo 1)" \
 check "$([[ "$(cat "$w/calls.log")" == "o/good" ]] && echo 0 || echo 1)" \
   "the read after the failed mint still happens" "gh calls: $(glog "$w/calls.log")"
 
+# G9 — F1/S1: the token that was CHECKED is the token gh gets, even if the shared
+# cache file is emptied during the pacing sleep (desktoken rewrites it in place).
+# regression: #3116
+w="$TMPROOT/g9-gh"; st="$TMPROOT/g9-state"; multi_gh "$w"
+: > "$w/mintrace/$(san o/b)"
+run_case "$w" "$st" ASSAY_MONITOR_PACE_SECONDS=1 GH_TOKEN=x-bogus-app-token -- o/a o/b
+check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "the cycle exits 0" "got $RC; stdout: ${OUT:-<empty>}"
+check "$([[ "$(cat "$w/token.log")" == "o/a GH_TOKEN=[x-minted-o__a] GITHUB_TOKEN=[]
+o/b GH_TOKEN=[x-minted-o__b] GITHUB_TOKEN=[]" ]] && echo 0 || echo 1)" \
+  "gh sees the value that was validated for each repo, never an emptied re-read" "gh saw: $(glog "$w/token.log")"
+check "$([[ ! -s "$w/ambient.log" ]] && echo 0 || echo 1)" \
+  "no gh call ever ran with an empty GH_TOKEN (the ambient-login signature)" "ambient: $(glog "$w/ambient.log")"
+
 # ================================================================ H =========
 echo "H — no gh call in the script runs under the ambient identity (defect-class lint)"
 # regression: #3116
 # bare_gh_calls <file> — the non-comment lines that run a `gh` subcommand WITHOUT a
-# same-line `GH_TOKEN=` assignment: an ambient-identity read, the defect class of
-# #3116. A `gh` read here is only ever `GH_TOKEN=<token> gh ...`.
+# same-line `GH_TOKEN=` assignment of a plain variable: an ambient-identity read, the
+# defect class of #3116. A `gh` read here is only ever `GH_TOKEN="$var" gh ...` where
+# $var was validated earlier. `GH_TOKEN="$(cat f)"` is flagged too: it re-reads (and
+# so does not check) the value it passes, which can come back empty.
 bare_gh_calls() {
   grep -nE '(^|[[:space:](])gh (pr|issue|api|auth|repo|run|search) ' "$1" \
-    | grep -vE '^[0-9]+:[[:space:]]*#' | grep -vF 'GH_TOKEN=' || true
+    | grep -vE '^[0-9]+:[[:space:]]*#' | grep -vE 'GH_TOKEN="?\$[A-Za-z_{]' || true
 }
 
 # The planted second instance: a bare ambient read added to a copy of the script
@@ -566,6 +584,9 @@ check "$([[ -n "$(bare_gh_calls "$planted")" ]] && echo 0 || echo 1)" \
 printf '%s\n' 'extra=$(GH_TOKEN="$t" gh issue list --repo o/r --state open)' > "$planted.ok"
 check "$([[ -z "$(bare_gh_calls "$planted.ok")" ]] && echo 0 || echo 1)" \
   "the lint passes a token-scoped gh call" "lint flagged a GH_TOKEN-scoped call"
+printf '%s\n' 'extra=$(GH_TOKEN="$(cat "$f")" gh issue list --repo o/r --state open)' > "$planted.reread"
+check "$([[ -n "$(bare_gh_calls "$planted.reread")" ]] && echo 0 || echo 1)" \
+  "the lint catches a planted unchecked re-read at the call site" "lint passed GH_TOKEN=\"\$(cat ...)\""
 bare=$(bare_gh_calls "$SCRIPT")
 check "$([[ -z "$bare" ]] && echo 0 || echo 1)" \
   "no gh call in the script runs without a same-line GH_TOKEN= (no ambient read)" "bare: $bare"
