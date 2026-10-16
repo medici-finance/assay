@@ -126,7 +126,8 @@ var leakShapeRules = []shapeRule{
 		// An absolute home directory: the macOS or Linux users-directory prefix, or a Windows
 		// drive's (one or two backslashes, so a Go/JSON-escaped spelling matches too), then an
 		// account name that does not end in a dot. The left boundary keeps a URL path segment
-		// (".../site/home/page") from matching, while still matching a file:// URL.
+		// (a "home" segment deep in a web URL's path) from matching, while still matching a
+		// file:// URL.
 		re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])((?:/(?:Users|home)/|[A-Za-z]:\\{1,2}Users\\{1,2})[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)`),
 		group:     1,
 		prefilter: []string{"/users/", "/home/", "users\\"},

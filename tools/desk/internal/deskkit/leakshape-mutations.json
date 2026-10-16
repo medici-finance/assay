@@ -10,7 +10,7 @@
     {
       "name": "drop the home-path rule (the shape stage goes blind to that shape; with the token registry blind too, nothing reddens the planted tree)",
       "file": "internal/deskkit/leakshape.go",
-      "old": "\t{\n\t\tshape: ShapeHomePath,\n\t\t// An absolute home directory: the macOS or Linux users-directory prefix, or a Windows\n\t\t// drive's (one or two backslashes, so a Go/JSON-escaped spelling matches too), then an\n\t\t// account name that does not end in a dot. The left boundary keeps a URL path segment\n\t\t// (\".../site/home/page\") from matching, while still matching a file:// URL.\n\t\tre:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])((?:/(?:Users|home)/|[A-Za-z]:\\\\{1,2}Users\\\\{1,2})[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)`),\n\t\tgroup:     1,\n\t\tprefilter: []string{\"/users/\", \"/home/\", \"users\\\\\"},\n\t\tcanary:    \"cd \" + \"/Us\" + \"ers/\" + \"example-user\" + \"/src\",\n\t},\n",
+      "old": "\t{\n\t\tshape: ShapeHomePath,\n\t\t// An absolute home directory: the macOS or Linux users-directory prefix, or a Windows\n\t\t// drive's (one or two backslashes, so a Go/JSON-escaped spelling matches too), then an\n\t\t// account name that does not end in a dot. The left boundary keeps a URL path segment\n\t\t// (a \"home\" segment deep in a web URL's path) from matching, while still matching a\n\t\t// file:// URL.\n\t\tre:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])((?:/(?:Users|home)/|[A-Za-z]:\\\\{1,2}Users\\\\{1,2})[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)`),\n\t\tgroup:     1,\n\t\tprefilter: []string{\"/users/\", \"/home/\", \"users\\\\\"},\n\t\tcanary:    \"cd \" + \"/Us\" + \"ers/\" + \"example-user\" + \"/src\",\n\t},\n",
       "new": ""
     },
     {
