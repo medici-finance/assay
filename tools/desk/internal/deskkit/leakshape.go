@@ -46,6 +46,8 @@ package deskkit
 //
 // Matched VALUES are never echoed in a failure message by the gate (ShapeHit.Location is
 // path:line and shape only): printing the value would copy the leak into a CI log.
+//
+// Register row: R-tree-leak-shape (docs/contracts.md).
 
 import (
 	"bytes"
