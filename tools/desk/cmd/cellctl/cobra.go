@@ -455,6 +455,9 @@ func buildRoot() *cobra.Command {
 		Usage: "absolute path of the cell registry to use for this run (overrides CELLS_ROOT)"})
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		maintenanceCommand = cmd.Name()
+		// A state-changing invocation (annotated cellop:state-changing) is refused off a
+		// terminal and in a desk session before anything else runs (cellop_cli.go).
+		gateStateChanging(cmd, args)
 		if cmd.Annotations[noEcho] == "1" {
 			return nil
 		}
@@ -478,6 +481,8 @@ func buildRoot() *cobra.Command {
 		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(),
 	)
+	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
+	cellopFixtureCommands(root)
 	return root
 }
 

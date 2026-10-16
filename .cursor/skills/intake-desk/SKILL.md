@@ -88,11 +88,12 @@ whose errors compound downstream. `scanloop` EMITS this half for a model tier, n
 ## Boot sequence
 
 `deskboot intake-desk` — loop identity, `deskwt prune`, worktree lock, roster self-declare, the
-five-check `deskroster preflight --role issue-loop`, the issue-loop token mint, and a read-only
-board fetch. Each step prints one line; the first red one stops the boot and names itself. **A red
-preflight is `could-not-run` for the WHOLE pass:** report the ONE summary line and STOP — do not
-claim work, and do not file an issue about the desk's own envelope (each failing check names the
-issue that owns it). Two intake-specific residues after boot:
+five-check `deskroster preflight --role issue-loop`, the issue-loop token mint, a read-only board
+fetch, worktree currency, and first-sweep prerequisites (forge mapping, desk-tools pin). Each step
+prints one line; the first red one stops the boot and names itself. **A red preflight is
+`could-not-run` for the WHOLE pass:** report the ONE summary line and STOP — do not claim work, and
+do not file an issue about the desk's own envelope (each failing check names the issue that owns
+it). Two intake-specific residues after boot:
 
 - **The scan scope comes from the tool; this skill carries no repo list.** `deskroster repos
   --scope scan` prints the front door this desk owns — the same roster value the scanner and

@@ -45,7 +45,8 @@ each as one SIGNAL/PROBE/ACT/STOP row, plus the full-length-SHA posting rule).
 
 `deskboot pr-review-desk` — one command for the whole ceremony: loop identity, worktree prune,
 worktree lock, roster registration, the five-check operating-envelope preflight, a cold token mint,
-a read-only board fetch. It fails closed and NAMES the step that stopped it — exit 5 is a
+a read-only board fetch, worktree currency, and the first sweep's prerequisites (roster forge mapping,
+desk-tools pin). It fails closed and NAMES the step that stopped it — exit 5 is a
 precondition you control, exit 6 a step that ran and could not be proven green. **Either is a
 STOP:** claim nothing, and do not file an issue about the desk's own envelope (each failing check
 already names the issue that owns it). A probe REJECTION is a STOP — never retry it under another

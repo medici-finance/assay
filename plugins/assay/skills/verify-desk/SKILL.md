@@ -63,7 +63,8 @@ run: fix the check it names, re-run, then claim. An open verify-gate wait is a w
    your own valid tree instead of registering another. Never hand-roll `git worktree add`; `deskwt`
    missing is a preflight-class failure.
 2. `deskboot verify-desk`, from `$WT` — loop identity, prune, lock, roster registration, the five-check
-   operating-envelope preflight, the token mint, and the read-only board fetch in one verb. **A red step
+   operating-envelope preflight, the token mint, the read-only board fetch, worktree currency, and the
+   first sweep's prerequisites (roster forge mapping, desk-tools pin) in one verb. **A red step
    is `could-not-run` for the WHOLE pass**: report the one summary line and STOP — claim nothing, and
    file no issue about the desk's own envelope (each failing check names the issue that owns it). A
    probe REJECTION is a STOP; never retry under another identity.

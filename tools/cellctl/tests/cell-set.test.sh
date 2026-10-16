@@ -73,7 +73,9 @@ esac
 echo "ARGS=$*" > "${CELLCTL_TEST_OUT:-/dev/null}"
 EOF
 chmod +x "$T/bin/claude"
-export PATH="$T/bin:$PATH"
+# shellcheck source=SCRIPTDIR/private-path.sh
+source "$HERE/private-path.sh"
+private_path "$T/bin"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
 
 "$CELLCTL" new house-cell --kind house --repo "$REPO" --roots "$ROOTS" >/dev/null
@@ -182,8 +184,8 @@ assert "--model opus --set is refused (opus rule outranks the sugar) and persist
 
 # ================================================================ #1303 scope 2: every per-run choice
 # `set` sugar flags, `desk`/`up --set` persisting EVERY override given, kind-change preconditions,
-# and the `show` read. A codex stub and a no-op tmux stub so the live `up --set` path runs
-# without a real cockpit.
+# and the `show` read. A codex stub, so the live `up --set` path runs; the no-op tmux stub
+# comes from private_path above.
 for stub in codex; do
   cat > "$T/bin/$stub" <<'EOF'
 #!/usr/bin/env bash
@@ -192,7 +194,6 @@ echo "ARGS=$*" > "${CELLCTL_TEST_OUT:-/dev/null}"
 EOF
   chmod +x "$T/bin/$stub"
 done
-printf '#!/usr/bin/env bash\nexit 0\n' > "$T/bin/tmux"; chmod +x "$T/bin/tmux"
 backups(){ find "$1" -maxdepth 1 -name 'cell.env.bak-*' | wc -l | tr -d ' '; }
 
 "$CELLCTL" new wide-cell --kind house --repo "$REPO" --roots "$ROOTS" >/dev/null

@@ -12,10 +12,10 @@ func TestGenerateTeamNamesAndCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("team generate: %v", err)
 	}
-	if len(set) != 2 {
-		t.Fatalf("team: want 2 tiles, got %d", len(set))
+	if len(set) != 3 {
+		t.Fatalf("team: want 3 tiles, got %d", len(set))
 	}
-	want := map[string]bool{"example-org-read": false, "example-org-act": false}
+	want := map[string]bool{"example-org-read": false, "example-org-act": false, "example-org-review": false}
 	for _, av := range set {
 		if _, ok := want[av.App]; !ok {
 			t.Errorf("unexpected app %q", av.App)

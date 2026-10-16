@@ -54,7 +54,7 @@ changed or discarded.
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass), `land` (record a judgment exit for a parked item) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item, each also appended as an `intake-exit-v1` record to `<state dir>/intake-exits.jsonl` (schema: `spec/intake-exit-v1.md`) | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) / local state (`land`) | yes (`run`) |
 | `reviewloop` | `plan` — pr-review-desk's BOARD REACTOR: classifies a `deskboard` sweep against an action table derived from deskboard's own ACTION constants, coalesces outward verbs on `(repo, pr, head, verb)`, and answers the #79 idle question in THREE states. Not a drain: it does not link `internal/loopengine`. `--records <thread.json>` additionally derives the PERSISTENT REVIEW-FINDING ledger for one PR (`review-finding/v1`; `deskkit.DeriveLedger`): outstanding findings, per-class rounds against the existing cap, the single arbiter packet, and every could-not-check — so finding IDs and round counts survive a replacement agent | read-only (spawns nothing, writes nothing, makes no GitHub call) | no |
-| `deskboot` | `<role>` — the adapter verb for a loop's BOOT seam: loop identity, worktree prune + lock, roster register, envelope preflight, token-mint proof, board summary. Fails closed with the step NAMED | local-only (delegates every step to the verb that owns it) | no |
+| `deskboot` | `<role>` — the adapter verb for a loop's BOOT seam: loop identity, worktree prune + lock, roster register, envelope preflight, token-mint proof, board summary, worktree currency, first-sweep prerequisites (a roster forge mapping for the repo; desk-tools provenance — a pin line or the in-tree source, never statusgen lines alone). Fails closed with the step NAMED | local-only (delegates every step to the verb that owns it) | no |
 | `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, the `before_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (failure ⇒ exit 6, no prompt, claim released), roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
 | `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, the `desk-decided` label and body block agree with no standing `Undeclared-desk-decision:` finding, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
 | `deskpost` | `review`, `security-review`, `comment`, `ready` — as the reviewer App; `finish` posts a verdict, confirms it at the reviewed head and releases the review claim in one command | outward write | yes |
@@ -274,9 +274,14 @@ gh pr view <pr> -R <owner/repo> --json isDraft   # must print true
 Two constraints worth knowing before you reach for them. `deskreply` replies **only on
 your own PR** — it compares the branch checked out in this worktree against the PR's head
 branch and refuses with exit 5 otherwise, so it is not a way to comment on someone else's
-work. And `deskpost comment` posts under the reviewer App identity
-(`assay-reviewer-app[bot]`), not yours; it offers no worker identity, which is precisely
-why `deskreply` exists.
+work. `deskpost comment` uses reviewer credentials and admits only callers whose
+`DESK_LOOP` resolves to the reviewer role. Other roles refuse before credential minting
+or forge access, with guidance for the caller's target: use
+`deskfile attach -R <owner/repo> --to <issue-number> --body-file F --kind issue`
+for an issue comment under your session's role, or `deskreply` for your own PR.
+Keep your own loop identity; changing it to the reviewer loop would change the role you
+are claiming rather than select your caller's App. Review, security-review and ready
+retain their existing reviewer authority.
 
 Every write verb runs `deskkit.BodyCheck` over what you are about to post — titles,
 branch name, body, and for `deskpr create` the diff against the default branch. A hit is

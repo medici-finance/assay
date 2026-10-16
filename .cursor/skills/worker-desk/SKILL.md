@@ -52,7 +52,8 @@ fires within one observer interval instead of relying on a worker to remember it
 ## Boot
 
 `deskboot worker-desk` — loop identity, `deskwt prune`, worktree lock, roster register, roster
-preflight, worker-App token mint, read-only board fetch. The first red step stops the boot and names
+preflight, worker-App token mint, read-only board fetch, worktree currency, first-sweep prerequisites
+(roster forge mapping, desk-tools pin). The first red step stops the boot and names
 itself; it refuses to boot in the shared checkout. Two residues it does not carry: `export
 KUBECONFIG=/dev/null` (the environment half of the offline envelope; every dispatched agent
 gets the same rule from the common-clauses kit) and inline `-c` commit identity per commit

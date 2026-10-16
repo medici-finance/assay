@@ -17,17 +17,23 @@ measurements and accountable outcome learning. See the [draft specification](spe
 [fourteen proposed brief outlines](proposed-briefs.md), and [cockpit views](cockpit.md).
 Tracking: [#1971](https://github.com/medici-finance/assay/issues/1971).
 
-**Parked for design review.** This PR proposes scope; it does not approve the spec or
-activate dispatch. The outlines are intentionally not `brief-*.md` execution contracts.
-Once merged, the normal generator can list the parked stream on the board, with zero
-authored briefs until the follow-on authoring PR lands. No generated central file is
-edited here. P2 is a proposed queue priority, subject to the admission decision.
+**Parked pending bounded contract review and capacity admission.** Two executable offline
+briefs now cover operational identities and observation handoff. The broader fourteen
+outlines remain proposals except for the mapped subsets in their disposition table.
+Authoring these briefs neither activates dispatch nor approves recurring operations.
+
+The new bounded path is `statusgen/22 → continuing-operations/01 → 02 → statusgen/25`.
+Statusgen/22 can proceed independently; this stream's admission is still a real blocker
+before /01–02 dispatch. The original full-programme critical path below remains historical
+planning context, not an instruction to implement overlapping O-outlines a second time.
 
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
+| 01 | [Operational subjects linked to product intent](brief-01-operational-subjects-linked-to-product-intent.md) | 2 | M | todo | — | — |
+| 02 | [Observation obligations through delivery closure](brief-02-observation-obligations-through-delivery-closure.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 The generator owns this region. Proposed scopes live in the separate outline document,

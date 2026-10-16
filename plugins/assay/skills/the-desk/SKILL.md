@@ -65,7 +65,8 @@ the front-door register stays complete). Anything else inbound stays `intake-des
 ## Boot
 
 1. **`deskboot the-desk`** — the whole ceremony in one verb (loop identity, worktree prune, worktree
-   lock, roster registration, the five-check envelope preflight, token mint, read-only board fetch).
+   lock, roster registration, the five-check envelope preflight, token mint, read-only board fetch,
+   worktree currency, and the first sweep's prerequisites: a roster forge mapping and a desk-tools pin).
    It fails closed and names the step that stopped it: 0 complete · 3 disabled · 5 refused (unknown
    role, `$DESK_LOOP` unset/mismatched, shared checkout — isolate first) · 6 unverifiable. **Any
    non-zero exit is a STOP:** report the one summary line, claim nothing, and do NOT file an issue
