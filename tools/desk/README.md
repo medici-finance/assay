@@ -274,9 +274,14 @@ gh pr view <pr> -R <owner/repo> --json isDraft   # must print true
 Two constraints worth knowing before you reach for them. `deskreply` replies **only on
 your own PR** — it compares the branch checked out in this worktree against the PR's head
 branch and refuses with exit 5 otherwise, so it is not a way to comment on someone else's
-work. And `deskpost comment` posts under the reviewer App identity
-(`assay-reviewer-app[bot]`), not yours; it offers no worker identity, which is precisely
-why `deskreply` exists.
+work. `deskpost comment` uses reviewer credentials and admits only callers whose
+`DESK_LOOP` resolves to the reviewer role. Other roles refuse before credential minting
+or forge access, with guidance for the caller's target: use
+`deskfile attach -R <owner/repo> --to <issue-number> --body-file F --kind issue`
+for an issue comment under your session's role, or `deskreply` for your own PR.
+Keep your own loop identity; changing it to the reviewer loop would change the role you
+are claiming rather than select your caller's App. Review, security-review and ready
+retain their existing reviewer authority.
 
 Every write verb runs `deskkit.BodyCheck` over what you are about to post — titles,
 branch name, body, and for `deskpr create` the diff against the default branch. A hit is

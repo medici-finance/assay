@@ -4,13 +4,13 @@ title: Offline future-state resolver with receipt and amendment validation
 why: "An author can only amend the briefs they find. A reproducible, offline resolver that enumerates owners and consumers, records what it could not see, and rechecks a patch against its base turns 'did we miss a consumer or overwrite history?' into a check instead of a reviewer's memory."
 wave: 2
 depends: ["statusgen/19"]
-unblocks: ["statusgen/21"]
+unblocks: ["statusgen/21", "statusgen/23"]
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-13 by worker-desk (author-brief), non-CI architecture reconciliation
 sources:
   - docs/proposals/non-ci-architecture/18-authoring-context-delivery.md — packages "Offline future-state resolver" and "Receipt and amendment validation"
@@ -85,6 +85,15 @@ design-fit:
   resolver input.
 - Stop at implemented; independent verification owns verified/done.
 
+## Portfolio scope amendment — 13 October 2026
+
+Statusgen/19 has merged; preserve its shipped contract and Evidence. This brief continues
+architecture discovery and receipt checks. Product-target records and binding semantics
+are owned by statusgen/22–23; /23 consumes this brief rather than expanding /19.
+Discovery output must identify architecture-only coverage until that extension is supported.
+No product binding means unchecked/unbound, not product alignment. The named new fixture
+below checks that an architecture receipt is not represented as a product-alignment result.
+
 ## Task
 
 1. Resolve: given a target and an explicit snapshot, enumerate owners and consumers from typed
@@ -123,13 +132,15 @@ of doc 15's authoring qualification table.
 | 7 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextCompetingProposals$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextCompetingProposals " "$out")` | exit 0; named PASS; a clean merge of two incompatible approved deltas is refused, and an unapproved rival does not block the approved one; mutation: accept any textually clean merge — the test must fail |
 | 8 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextDeliveredBriefRoutesFollowOn$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextDeliveredBriefRoutesFollowOn " "$out")` | exit 0; named PASS; a new obligation on a delivered brief with populated Evidence routes to an unfinished owner or linked follow-on and leaves the delivered brief unchanged; mutation: patch the delivered brief's Task — the test must fail |
 | 9 | check:ci +flow | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextCLIDiscoverRoundTrip$" . > "$out" && grep -F -- "--- PASS: TestContextCLIDiscoverRoundTrip " "$out")` | exit 0; named PASS; the built `statusgen context discover --snapshot <fixture> --json` output decodes with the statusgen/19 package and `context check` on its own receipt passes |
+| 10 | check:ci +flow +mutation | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextArchitectureCoverageNotProductAlignment$" . > "$check_output" && grep -F -- "--- PASS: TestContextArchitectureCoverageNotProductAlignment " "$check_output")` | exit 0; named PASS; architecture discovery through CLI explicitly leaves unsupported product alignment unchecked; mutation: label a receipt covering architecture only as aligned to the product target |
 
 ## Pre-mortem
 
 Likely wrong builds: typed-edge-only discovery (rows 1 and 3), over-invalidation (row 2), missing
 input read as empty (row 4), history rewritten by an applying patch (row 5), silent rebinding of
 active work (row 6), textual merge treated as semantic compatibility (row 7), delivered briefs
-edited in place (row 8) and a CLI that drifts from the package (row 9). Recall beyond the fixture
+edited in place (row 8), a CLI that drifts from the package (row 9) and an architecture receipt
+presented as product alignment (row 10). Recall beyond the fixture
 corpus is not claimed; the fixture coverage limits go in `docs/context-handoff.md` (planned).
 
 ## Evidence

@@ -137,6 +137,22 @@ capability evidence. A schema-valid preset or a higher score is not a passing ru
 case. Measure first useful outcome and independent repeat use, including support and
 repair effort. Read-only release acceptance is independent of managed writer activation.
 
+## Product, portfolio and observation qualification — 13 October 2026
+
+The [product-intent and portfolio amendment](26-product-intent-and-portfolio.md) routes these cases to executable Verify rows. Tests remain
+future deliverables; this document records no pass.
+
+| Case | Required result | Owning brief |
+|---|---|---|
+| Legacy REQ plus two product-target revisions | Old record valid/unbound; immutable history and decision evidence preserved; schema/parser agree | statusgen/22 |
+| Product target changes, architecture does not; unapproved rival appears | Separate bindings; rival cannot invalidate work; authorized continue/adapt/stop retains original context | statusgen/23 |
+| Missing binding, hidden source or undeclared secondary dependency | Explicit coverage gap; no false alignment or hidden count | statusgen/23, statusgen/25 |
+| Duplicate usage, retry, unknown cost/time, zero denominator | Stable invocation dedupe, distinct retries, separate human units, known subtotals and undefined shares | statusgen/24 |
+| Target 5%, consumption 2%, dependency blocked | Divergence visible; target unchanged; no filler or dispatch effect | statusgen/24, statusgen/25 |
+| Two REQs reference a renamed/retired journey | One qualified operational definition and preserved lineage | continuing-operations/01 |
+| Done before exposure; repeated manual-to-practice transfer | One still-unresolved obligation, one deadline, original impact/history; stale transfer refused | continuing-operations/02 |
+| CLI / shared view / future cockpit contract | Same versioned result and provenance; missing producer unavailable; no renderer policy or effect | statusgen/25 |
+
 ## Write-through and source-cache qualification — 14 October 2026
 
 Carry the [forge-service amendment](22-forge-service-and-source-queries.md) into the same

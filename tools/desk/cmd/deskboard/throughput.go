@@ -195,13 +195,16 @@ func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Durat
 	// ---- dispatch depth ----
 	if rootsErr != nil {
 		// already blinded above; no read to attempt
-	} else if dv, err := dispatchFromRoots(hdr, "dispatch", rs); err != nil {
+	} else if dv, err := dispatchFromRoots(hdr, "dispatch", rs, ""); err != nil {
 		dispatchStage.Blind = appendBlind(dispatchStage.Blind, "depth: "+err.Error())
 	} else if dv != nil {
 		// Eligible, not Shown: the caps that hold a brief back are a throughput fact about
 		// the BOARD, not about the pool. Sizing a pool against `shown` would make the pool
 		// look adequate precisely when the queue is deepest.
-		dispatchStage.Depth = intp(dv.Eligible)
+		//
+		// The rows held on an unruled human decision are subtracted: no worker takes one
+		// until the ruling lands (medici-finance/assay#1958, medici-finance/assay#2744).
+		dispatchStage.Depth = intp(dv.Eligible - dv.HeldByDecision)
 		rep.Roots = dv.Roots
 		if len(dv.ClaimsDegraded) > 0 {
 			dispatchStage.Blind = appendBlind(dispatchStage.Blind,

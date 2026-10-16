@@ -83,6 +83,9 @@ func flagTable(c *cobra.Command) string {
 }
 
 func TestCLIReferenceDoc(t *testing.T) {
+	if cellopFixtureBuild {
+		t.Skip("pins the release command tree; the cellopfixture build adds the fixture verb and its stand-ins")
+	}
 	want := referenceMarkdown()
 	path := filepath.FromSlash(referenceDoc)
 	if os.Getenv("CELLCTL_UPDATE_REFERENCE") == "1" {

@@ -122,6 +122,14 @@ database operation, migration, discovery and qualification work. Net savings rem
 a hypothesis until the remaining implementation is sized and measured. A brief
 retirement count is not an engineering-effort estimate.
 
+## Portfolio and drift delivery — 13 October 2026
+
+The [product-intent and portfolio amendment](26-product-intent-and-portfolio.md) supplies a parallel offline lane with six authored briefs:
+statusgen/22–25 and continuing-operations/01–02, plus amendments to statusgen/20–21.
+It leaves statusgen/19 (merged in PR #2763) and its Evidence unchanged. The dependencies and remaining parked-stream
+admission are explicit there. This lane does not gate R1–R8, choose an adopter pilot,
+activate a scheduler or add a second database backend. R7 consumes its qualified view API.
+
 ## Scion-derived forge-service extension — 14 October 2026
 
 The [forge-service amendment](22-forge-service-and-source-queries.md) extends R6 alongside

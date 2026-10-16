@@ -95,6 +95,9 @@ type dispatchRow struct {
 	BlockedCount int    `json:"blockedCount"`
 	CriticalArm  string `json:"criticalArm,omitempty"`
 	DriveSlug    string `json:"driveSlug,omitempty"`
+	// ExecTier is the brief's `exec-tier:` as the admission filter read it, "" when the
+	// brief declares none or was not read (admission.go).
+	ExecTier string `json:"execTier,omitempty"`
 }
 
 // dispatchDegraded names a root whose claim filtering did NOT run: its rows are an
@@ -157,7 +160,16 @@ type dispatchReport struct {
 	// ClaimsDegraded names roots whose claim read did not run — their rows are an
 	// unfiltered superset. Non-empty means: do not dispatch from this board.
 	ClaimsDegraded []dispatchDegraded `json:"claimsDegraded"`
-	Rows           []dispatchRow      `json:"rows"`
+	// Admission filter (admission.go, medici-finance/assay#2744): the rows deskdispatch
+	// would refuse at claim-acquire, dropped from Rows and counted by reason. DispatchTier
+	// is the --tier the board was asked for ("" = none, no tier filter). AdmissionUnknown
+	// names rows KEPT because their brief or decision could not be read.
+	DispatchTier     string                  `json:"dispatchTier,omitempty"`
+	HeldByExecTier   int                     `json:"heldByExecTier"`
+	HeldByDecision   int                     `json:"heldByDecision"`
+	AdmissionHeld    []dispatchAdmissionHeld `json:"admissionHeld,omitempty"`
+	AdmissionUnknown []dispatchDegraded      `json:"admissionUnknown,omitempty"`
+	Rows             []dispatchRow           `json:"rows"`
 }
 
 // nextUpForRoot runs `statusgen --next-up` against ONE root and returns its view.
@@ -315,7 +327,10 @@ func applyDriveWorkerFloor(rep *dispatchReport) []dispatchRow {
 // already-resolved root set it reads each root and merges the views into the report. It is
 // split out so `throughput`, which reads one integer out of this report, can obtain it from
 // a root set it resolved once for the whole run rather than by re-running the whole verb.
-func dispatchFromRoots(hdr Header, verbUsed string, rs rootSet) (*dispatchReport, error) {
+//
+// tier is the dispatching --tier ("" = not given): the admission filter (admission.go) then
+// drops every row deskdispatch would refuse at claim-acquire, after every cap.
+func dispatchFromRoots(hdr Header, verbUsed string, rs rootSet, tier string) (*dispatchReport, error) {
 	// IO half: run the pinned statusgen once per root, CONCURRENTLY under the per-root pool
 	// (roots.go), fail-closed on any error — the lowest-index root's error wins, so which
 	// failure surfaces does not depend on which subprocess finished first. Results come back
@@ -330,12 +345,18 @@ func dispatchFromRoots(hdr Header, verbUsed string, rs rootSet) (*dispatchReport
 
 	// Pure half: merge/attribute/sum. Split out so the merge, repo-attribution
 	// fail-closed rule, and held-back accounting are unit-testable without a binary.
-	return mergeDispatch(hdr, verbUsed, rs.roots, views, rs.pinnedTag, rs.pinRepo, rs.running)
+	rep, err := mergeDispatch(hdr, verbUsed, rs.roots, views, rs.pinnedTag, rs.pinRepo, rs.running)
+	if err != nil {
+		return nil, err
+	}
+	applyBriefAdmission(rep, tier)
+	rep.Shown = len(rep.Rows)
+	return rep, nil
 }
 
 // cmdDispatch renders the cross-repo dispatch queue. verbUsed is the spelling the
-// caller invoked (dispatch / todo / next / next-up).
-func cmdDispatch(hdr Header, verbUsed string) (*Report, error) {
+// caller invoked (dispatch / todo / next / next-up); tier is its --tier, "" when not given.
+func cmdDispatch(hdr Header, verbUsed, tier string) (*Report, error) {
 	// The root/pin/version preamble is resolved ONCE, by the shared resolver (roots.go),
 	// which performs exactly the steps this function used to perform inline and in the same
 	// fail-closed order. `throughput` calls that resolver once for the whole run instead of
@@ -344,7 +365,7 @@ func cmdDispatch(hdr Header, verbUsed string) (*Report, error) {
 	if err != nil {
 		return nil, err
 	}
-	rep, err := dispatchFromRoots(hdr, verbUsed, rs)
+	rep, err := dispatchFromRoots(hdr, verbUsed, rs, tier)
 	if err != nil {
 		return nil, err
 	}
@@ -374,6 +395,14 @@ func cmdDispatch(hdr Header, verbUsed string) (*Report, error) {
 		for _, d := range rep.DriveWorkerUnknown {
 			fmt.Fprintf(w, "COULD-NOT-CHECK drive worker floor %s (%s): %s — no drive row is offered this run\n",
 				shortRepo(d.Repo), d.Root, d.Reason)
+		}
+		// Admission could-not-check: the row is shown, but whether deskdispatch takes it
+		// was not read.
+		for _, d := range rep.AdmissionUnknown {
+			fmt.Fprintf(w, "COULD-NOT-CHECK admission %s (%s): %s — row kept\n", shortRepo(d.Repo), d.Root, d.Reason)
+		}
+		for _, h := range rep.AdmissionHeld {
+			fmt.Fprintf(w, "HELD %s %s: %s\n", shortRepo(h.Repo), h.Brief, h.Reason)
 		}
 		// Held-back decomposition: printed on EVERY run so an empty queue is never a
 		// bare "0". heldBackLine names which cap fired.
@@ -413,7 +442,8 @@ func driveRowTags(r dispatchRow) string {
 // fired. It is the dispatch analog of statusgen's heldBackReason and is printed on
 // every run so "0 shown" is always accompanied by WHY.
 func dispatchHeldBackLine(rep *dispatchReport) string {
-	held := rep.HeldByStreamCap + rep.HeldBySpan + rep.HeldByDriveCap + rep.HeldByDriveWorkerCap
+	held := rep.HeldByStreamCap + rep.HeldBySpan + rep.HeldByDriveCap + rep.HeldByDriveWorkerCap +
+		rep.HeldByExecTier + rep.HeldByDecision
 	if held == 0 {
 		return "0 held back"
 	}
@@ -430,6 +460,12 @@ func dispatchHeldBackLine(rep *dispatchReport) string {
 	if rep.HeldByDriveWorkerCap > 0 {
 		parts = append(parts, fmt.Sprintf("%d by the drive worker floor (%d in flight of %d)",
 			rep.HeldByDriveWorkerCap, rep.DriveInFlight, rep.DriveWorkerCap))
+	}
+	if rep.HeldByExecTier > 0 {
+		parts = append(parts, fmt.Sprintf("%d by exec-tier stricter than --tier %s", rep.HeldByExecTier, rep.DispatchTier))
+	}
+	if rep.HeldByDecision > 0 {
+		parts = append(parts, fmt.Sprintf("%d by an unruled human decision", rep.HeldByDecision))
 	}
 	return fmt.Sprintf("%d held back (%s)", held, strings.Join(parts, ", "))
 }
