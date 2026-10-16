@@ -141,6 +141,7 @@ var perfBootSteps = []string{
 	"token-mint",
 	"board-fetch",
 	"worktree-current",
+	"first-sweep-prereqs",
 }
 
 // PerfBootSteps returns a copy of the step-name roster, in boot order.

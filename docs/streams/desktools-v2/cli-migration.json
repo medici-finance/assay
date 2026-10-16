@@ -170,6 +170,11 @@
       "class": "library",
       "pattern": "statusgen/boardadd.sh",
       "reason": "board-staging function (board_add) embedded verbatim in both CI templates statusgen init writes (issue #2915); no shebang, never executed"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/cellctl/tests/private-path.sh",
+      "reason": "private_path helper sourced by the cellctl shell suites to stub tmux and herdr ahead of the inherited PATH (issue #1927); no shebang, never executed"
     }
   ],
   "entrypoints": [
@@ -1598,6 +1603,21 @@
       "complexity": "simple",
       "basis": "471 LOC, ~2 verbs, ~1 flags at 3ad1ad83c871",
       "owner": "desktools-v2/49",
+      "state": "pending"
+    },
+    {
+      "executable": "intake-eval",
+      "path": "tools/intake-eval",
+      "kind": "go",
+      "module": "tools/intake-eval",
+      "release": "module-local; no release or workflow build declaration",
+      "consumers": [
+        "tools/intake-eval/README.md"
+      ],
+      "parser": "Go flag: FlagSet",
+      "complexity": "simple",
+      "basis": "720 LOC, ~0 verbs, ~6 flags at 193003bc2570",
+      "owner": "desktools-v2/57",
       "state": "pending"
     },
     {

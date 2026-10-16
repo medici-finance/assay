@@ -1500,7 +1500,7 @@ processes are not configuration.
 | `DRY_RUN`, `CELL_ATTENDED`, `DESK_MODEL_OVERRIDE` | switches for one run: a dry run, the statement that a person is at this command, and a model that outranks every pin — give them in the environment of the command they are for |
 | `ASSAY_CONFIG_HOME`, `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME` | locate the operator's own config homes — where the desk tools, the GitHub CLI and the harnesses find their credentials |
 | `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `PATH`, `TERM`, `LANG` | the host's own variables, taken from the launching shell (`DESK_TOOLS_BIN` and `CELL_PATH` are the levers for the parts of `PATH` cellctl composes) |
-| `CELL_KIND_OVERRIDE_INTERNAL`, `ASSAY_SCRATCH_ID`, `DESK_SESSION`, `CELLCTL_PARITY_MUTATE`, `CELLCTL_OPERATOR_CONFIG_HOME` | not configuration: set by cellctl for a process it starts and read back there, or a test hook |
+| `CELL_KIND_OVERRIDE_INTERNAL`, `ASSAY_SCRATCH_ID`, `DESK_SESSION`, `CELLCTL_PARITY_MUTATE`, `CELLOP_FIXTURE_TRACE`, `CELLCTL_OPERATOR_CONFIG_HOME` | not configuration: set by cellctl for a process it starts and read back there, or a test hook |
 
 Typical uses of the file are `CELL_GO_CACHE` and its `_BYTES` / `_MIN_FREE` budget,
 `CELL_COCKPIT`, `CELL_HARNESS`, and the model keys (`DESK_MODEL_DEFAULT`, the `TIER_MODEL_*`

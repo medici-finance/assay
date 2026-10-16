@@ -1,0 +1,15 @@
+# SYNTHETIC test fixture: invented inbound, never a real disposition.
+id: syn-p09
+inbound: "Synthetic inbound syn-p09: a reader suggests repainting the widget icons purple."
+expected_exit: rejected/watching
+methodology_version: "2026-01-01"
+scoring: scored
+provenance:
+  type: synthetic-ruling
+  tier: synthetic-tier
+  ratification: confirmed
+  ref: synthetic/register#syn-p09
+  confirmed_by: synthetic-reviewer
+  date: "2026-01-01"
+  quote: "Synthetic: routed syn-p09 to rejected/watching."
+notes: "Synthetic fixture for the scorer's own tests."

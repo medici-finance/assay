@@ -22,7 +22,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/35 | 2026-10-16 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/35 | 2026-10-16 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-16 |  |
-| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/55 | 2026-10-16 |  |
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/56 | 2026-10-16 |  |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-10-16 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/43 | 2026-10-16 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/31 | 2026-10-16 |  |
@@ -30,7 +30,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-10-16 |  |
 | [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-16 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-10-16 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/21 | 2026-10-16 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/25 | 2026-10-16 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 9/18 | 2026-10-16 |  |
 
 ### Stuck auto-flips (12)
@@ -62,7 +62,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-10-16 |
 | [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-16 |
 | [ci-tooling](docs/streams/ci-tooling/README.md) | P2 | 0/7 | 2026-10-16 |
-| [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/0 | 2026-10-16 |
+| [continuing-operations](docs/streams/continuing-operations/README.md) | P2 | 0/2 | 2026-10-16 |
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-10-16 |
 | [performance-collection](docs/streams/performance-collection/README.md) | P2 | 0/6 | 2026-10-16 |
 | [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-16 |
@@ -78,20 +78,21 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
-_Next-up: 17 of 49 eligible — 32 held back (per-stream caps; span-of-control cap 20 not reached). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 18 of 51 eligible — 33 held back (per-stream caps; span-of-control cap 20 not reached). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
-_Held by per-stream caps: 32 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (31), desk-tools (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 33 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (32), desk-tools (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | forge-neutral | 39 — Typed forge service contract and scoped client SDK [exec:strong] | 1 | 5000 |
 | comms-core | 01 — Extract the comms contract and isolate Assay policy [exec:strong] | 0 | 4500 |
 | desk-containers | 16 — Interim mechanism for the runner-lifecycle `pause` transition — cell-scoped stop flags `STOP.cell.<cell>[.<loop>]`, honoured by the Guard for any session carrying the cell marker [exec:strong] | 7 | 4500 |
+| statusgen | 22 — Product target records and compatible requirement parsing [exec:strong] | 1 | 4000 |
 | iso-9001 | 08 — Versioned source obligations and project applicability [exec:strong] | 0 | 2500 |
 | apps-installer | 10 — `deskavatar --tier team` emits a third tile for `<org>-review`, proofed at 20 px against read and act | 0 | 3000 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3000 |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 3000 |
-| desktools-v2 | 20 — Migrate deskboard to Cobra and Viper [exec:strong] | 3 | 1500 + 918 (drive:desktools-v2) |
+| desktools-v2 | 20 — Migrate deskboard to Cobra and Viper [exec:strong] | 3 | 1500 + 927 (drive:desktools-v2) |
 | measured-status | 05 — attribution.go: a same-identity author/verifier pair in a multi-identity repo becomes a hard PROBLEM, not a NOTICE — the independence gate the check exists to establish [exec:strong] | 1 | 2200 |
 | measured-status | 06 — model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login [exec:strong] | 1 | 2200 |
 | composability | 02 — Install ledger, paired inverses, and the `disable` verb | 1 | 2000 |
@@ -106,7 +107,7 @@ _Held by per-stream caps: 32 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 1664a4c 2026-10-16T12:29:15Z_
+_last regen: 08eb9f5 2026-10-16T13:42:16Z_
 
 **Progress:** 10/13 brief items done.
 
@@ -127,9 +128,9 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 1664a4c 2026-10-16T12:29:15Z_
+_last regen: 08eb9f5 2026-10-16T13:42:16Z_
 
-**Progress:** 16/73 brief items done.
+**Progress:** 16/74 brief items done.
 
 **In-flight:**
 
@@ -187,6 +188,7 @@ _last regen: 1664a4c 2026-10-16T12:29:15Z_
 - desktools-v2/53
 - desktools-v2/55
 - desktools-v2/56
+- desktools-v2/57
 
 
 
@@ -194,7 +196,7 @@ _last regen: 1664a4c 2026-10-16T12:29:15Z_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (16 for the desk · 30 for the driver · 30 for workers · 26 for an operator · 13 runner-pending — of 120 total; 5 could-not-check)
+## Awaiting verification / review (18 for the desk · 30 for the driver · 30 for workers · 26 for an operator · 12 runner-pending — of 121 total; 5 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -204,7 +206,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| desktools-v2 | 16 [exec:strong] | implemented | 21500 | 41 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite #2240 | — | — |
+| desktools-v2 | 16 [exec:strong] | implemented | 22000 | 42 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite #2240 | — | — |
 | forge-neutral | 01 [exec:strong] | implemented | 9000 | 14 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 21 [exec:strong] | implemented | 6500 | 9 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 02 [exec:strong] | implemented | 5500 | 7 | — | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#1800 | — | — |
@@ -281,12 +283,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | cellctl-windows | 00 [exec:strong] | implemented | 5500 | 7 | — | operator | `$log = New-TemporaryFile; go test ./internal/celllaunch -run '^TestLaunchSpecRoundTrip$' -count=1 -v *> $log; if ($LASTEXITCODE -ne 0) { Get-Content $log; exit 1 }; if (-not (Select-String -Path $log -SimpleMatch '--- PASS: TestLaunchSpecRoundTrip ')) { exit 1 }; if (Select-String -Path $log -SimpleMatch '--- SKIP:') { exit 1 }` | — | — |
 | build-less-brittle | 11 [exec:strong] | implemented | 4000 | 2 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | iso-9001 | 03 [exec:strong] | implemented | 3000 | 4 | — | operator | environment blocker, cite medici-finance/assay#2175 | — | — |
+| statusgen | 19 [exec:strong] | implemented | 3000 | 4 | — | operator | environment blocker, cite #1800 | — | — |
 | desk-containers | 08 [exec:strong] | implemented | 2500 | 3 | — | operator | environment blocker, cite #1800 | — | — |
 | desk-containers | 09 [exec:strong] | implemented | 2500 | 3 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | graph-execution | 07 [exec:strong] | implemented | 2500 | 1 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 14 [exec:strong] | implemented | 2000 | 0 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 15 [exec:strong] | implemented | 2000 | 0 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
-| statusgen | 19 [exec:strong] | implemented | 2000 | 2 | — | operator | environment blocker, cite #1800 | — | — |
 | desk-supervision | 31 [exec:strong] | implemented | 1500 | 1 | — | operator | environment blocker, cite medici-finance/assay#2665 | — | — |
 | desk-supervision | 33 [exec:strong] | implemented | 1500 | 1 | — | operator | environment blocker, cite medici-finance/assay#2665 | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1500 | 1 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
@@ -301,11 +303,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 13 [exec:strong] | implemented | 1000 | 0 | — | operator | environment blocker, cite #1631 | — | — |
 | quality | 19 [exec:strong] | implemented | 1000 | 0 | — | operator | environment blocker, cite #1800 | — | — |
 
-### Runner-pending (13)
+### Runner-pending (12)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| desktools-v2 | 15 [exec:strong] | verified | 22000 | 42 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ 5f5072d89b11 (claude-opus-5-5) | — |
+| desktools-v2 | 15 [exec:strong] | verified | 22500 | 43 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ 5f5072d89b11 (claude-opus-5-5) | — |
 | build-less-brittle | 02 [exec:strong] | verified | 6500 | 7 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | build-less-brittle | 04 [exec:strong] | verified | 5500 | 5 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | build-less-brittle | 05 [exec:strong] | verified | 4500 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
@@ -315,16 +317,16 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 09 [exec:strong] | verified | 3500 | 5 | — | CI auto-flip | none; stuck after one main run → file | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | harness-portability | 06 [exec:strong] | verified | 3500 | 5 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ bed1a31ba875 (claude-opus-5-5) | — |
 | desk-supervision | 19 [exec:strong] | verified | 1500 | 1 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ 70deba75a577 (claude-opus-5-5) | — |
-| desktools-v2 | 19 [exec:strong] | implemented | 1500 | 1 | — | verify runner | none | — | — |
 | desktools-v2 | 05 [exec:strong] | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-02 assay-verifier-app[bot] @ 454982f91a72 (claude-opus-5-5) | — |
 | desktools-v2 | 14 [exec:strong] | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ 91f04b81ba06 (claude-opus-5-5) | — |
 
-### Desk-actionable (16)
+### Desk-actionable (18)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | graph-execution | 09 [exec:strong] | implemented | 17500 | 31 | — | verify-desk | dispatch one judge | — | — |
 | contributor-trust | 02 [exec:strong] | implemented | 5000 | 6 | — | verify-desk | triage, then re-bucket | — | — |
+| desk-containers | 15 [exec:strong] | implemented | 5000 | 8 | — | verify-desk | triage, then re-bucket | — | — |
 | forge-neutral | 36 [exec:strong] | implemented | 4500 | 5 | — | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | — | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | — | verify-desk | dispatch one judge | — | — |
@@ -334,6 +336,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 04 [exec:strong] | implemented | 2000 | 2 | — | verify-desk | dispatch one judge | — | — |
 | desktools-v2 | 45 [exec:strong] | implemented | 2000 | 2 | — | verify-desk | triage, then re-bucket | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2000 | 2 | — | verify-desk | triage, then re-bucket | — | — |
+| desktools-v2 | 19 [exec:strong] | implemented | 1500 | 1 | — | verify-desk | triage, then re-bucket | — | — |
 | desk-supervision | 20 [exec:strong] | implemented | 1000 | 0 | — | verify-desk | triage, then re-bucket | — | — |
 | desk-supervision | 21 [exec:strong] | implemented | 1000 | 0 | — | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 17 [exec:strong] | implemented | 1000 | 0 | — | verify-desk | triage, then re-bucket | — | — |
@@ -462,6 +465,11 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 03 Desired-state record and the reconcile engine behind deskmigrate / upgrade-assay — todo (wave 2)
 - 05 Promote the draft to spec/component-v1.md + adopter doc delta — todo (wave 3)
 
+### continuing-operations (2 open)
+
+- 01 Operational subjects linked to product intent — todo (wave 2)
+- 02 Observation obligations through delivery closure — todo (wave 3)
+
 ### contributor-trust (9 open)
 
 - 01 Contributor provenance probe — mechanical signals about an unknown author, rendered as a neutral card — implemented (wave 0)
@@ -497,7 +505,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 12 Unattended mode for the cluster manifests — a Kustomize component that runs each desk as a tick-mode CronJob — todo (wave 4)
 - 13 Argo CD install example — an adopter overlay plus an Application and AppProject that install the desks from a pinned release — todo (wave 5)
 - 14 Flux install example — a GitRepository and Kustomization that install the desks from a pinned release, with an adopter overlay — todo (wave 6)
-- 15 The cell-operation contract — one versioned result and plan schema shared by the future Cell API and the CLI; apply only as an interactive-terminal confirmation, with approval-based apply deferred — todo (wave 7)
+- 15 The cell-operation contract — one versioned result and plan schema shared by the future Cell API and the CLI; apply only as an interactive-terminal confirmation, with approval-based apply deferred — implemented (wave 7)
 - 16 Interim mechanism for the runner-lifecycle `pause` transition — cell-scoped stop flags `STOP.cell.<cell>[.<loop>]`, honoured by the Guard for any session carrying the cell marker — todo (wave 7)
 - 17 `cellctl up <cell>` converges the cell — already-up roles are skipped, stale ones reconciled, launches serialized, one summary table — todo (wave 8)
 - 18 `cellctl drain\|pause\|resume <cell> [role...]` — CLI adapter onto the runner-lifecycle drain/pause/resume transitions and the handoff record, implemented on today's stop flags and cadence as the interim mechanism — todo (wave 9)
@@ -572,7 +580,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 06 migrate push + retire ambient-credential machinery + preflight transport probe — implemented (wave 4)
 - 08 flip the drop-the-binary CI gate to failing + assert CVE floor + file the follow-on — todo (wave 5)
 
-### desktools-v2 (52 open)
+### desktools-v2 (53 open)
 
 - 03 native read-path installation-token client — retire gh shell-out in the read path (#1223 pilot) — implemented (wave 3)
 - 05 the push guards judge the remote actually being pushed to — deskpushguard base ref (#1201) and insteadOf in the push-transport gate (#884) — verified (wave 2)
@@ -626,6 +634,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 54 Port the security control scripts — todo (wave 4)
 - 55 Port the go-analysis adapter entrypoints — todo (wave 3)
 - 56 Migrate deskperf to Cobra and Viper — todo (wave 3)
+- 57 Migrate intake-eval to Cobra and Viper — todo (wave 3)
 
 ### forge-gitlab (6 open)
 
@@ -775,7 +784,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 04 Decision-dependency note — the credential/identity rulings that gate the credential-contract work — todo (wave 0)
 - 05 Reference cross-operator / independent-approver check — the residual after require_last_push_approval, as a required status check — todo (wave 2)
 
-### statusgen (10 open)
+### statusgen (14 open)
 
 - 05 Drives phase 3 — anti-starvation floors + the hard critical tier (≤15/20 slots via a 2-pass fill, ≤6/8 workers, effectiveCap; a lexicographic never-buried tier fed by a stamped security label + a dependency-edge reciprocity lint so blockedCount is not gameable) — implemented (wave 1)
 - 06 Findings register becomes a corroborated state machine — bounded shelving (parked) + transition guard on resolved/affects/parked — implemented (wave 1)
@@ -786,7 +795,11 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 18 `--scan-issues`: print a notice when an open issue derives `gate: human` and its placeholder reads `gate: model` (detect only, no write) — todo (wave 2)
 - 19 Context handoff contracts and synthetic fixtures — implemented (wave 1)
 - 20 Offline future-state resolver with receipt and amendment validation — todo (wave 2)
-- 21 Author skills consume the shared context handoff — todo (wave 3)
+- 21 Author skills consume the shared context handoff — todo (wave 4)
+- 22 Product target records and compatible requirement parsing — todo (wave 1)
+- 23 Product target binding and context drift assessment — todo (wave 3)
+- 24 Portfolio allocation and capacity accounting — todo (wave 2)
+- 25 Read-only portfolio and drift projections — todo (wave 4)
 
 ### windows-port (9 open)
 
@@ -965,4 +978,4 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 ## Totals
 
-**29** streams (**21** active, **0** paused, **8** parked) · **106/441** briefs done · completed initiatives: see `docs/archive/`
+**29** streams (**21** active, **0** paused, **8** parked) · **106/448** briefs done · completed initiatives: see `docs/archive/`
