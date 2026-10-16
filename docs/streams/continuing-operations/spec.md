@@ -275,8 +275,29 @@ time from ingestion time. Stale data can produce an overdue/gap escalation, not 
 invented positive assessment or automatic intervention.
 
 No new scheduler, graph database, autonomous remediation authority or policy learner is
-part of this proposal. Repeated checks alone are not improvement. Each occurrence must
+part of this proposal. The 15 October reporting amendment below adds bounded issue and draft-repair proposals through existing work owners, each ending in a draft PR that existing review and a human merge decide; such a human-merged proposal is outside the prohibition on autonomous remediation only, leaving the prohibitions on a policy learner and on policy self-modification unchanged (the latter is stated in outline O11 of `proposed-briefs.md`: a reporting process may not rewrite its own policy, limits or gates), and the amendment grants a reporting process no effect credentials, merge or deployment authority. Repeated checks alone are not improvement. Each occurrence must
 leave evidence, an honest disposition and an accountable next step.
+
+### Three-report performance practice — amendment, 15 October 2026
+
+The bounded performance-collection/01–09 delivery is an early concrete consumer, not a
+prerequisite for the whole subject/impact program and not a replacement for its metric
+owners. It delivers collection first, then one offline/on-demand command and thin skill,
+then daily generation of (1) completed-brief history, (2) stream movement/stall evidence,
+and (3) tool run counts plus total/Avg/P95 wall, child wall, own CPU and forge calls.
+Sources, partial coverage and compatible distributions are recorded before interpretation.
+A local saved-snapshot report can ship without O01–O14, a database or hosted runtime;
+future adapters bind to the approved subject/measurement contracts without rewriting facts.
+
+The reporting command cannot issue work. performance-collection/09 owns one bounded
+performance-profile integration: shadow assessment → deduplicated issue proposals →
+authorized investigation/draft-repair proposals through intake/worker/review/verification.
+The managed mode requires its typed graph-execution prerequisites and operator-selected
+scope/limits. O10/O11 consume the same assessment/proposal lineage when the general practice
+framework lands; no duplicate scheduler, outcome store, direct forge writer or policy learner.
+Merge remains distinct from outcome improvement: independently evaluate a compatible after-
+window, retaining adverse/inconclusive disposition and accountable follow-through. Recurring
+checks never self-raise budgets, weaken correctness gates or grant deployment/merge authority.
 
 ## 10. Existing owners and planned contracts
 

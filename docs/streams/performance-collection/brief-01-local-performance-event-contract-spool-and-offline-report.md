@@ -12,7 +12,7 @@ gate-why: "Correlated operational measurements and their access/retention bounda
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 id: 1f12e2ac-a0b9-4881-a452-4be522f432ad
 authored: 2026-10-13 by performance collection authoring
 sources:
@@ -62,7 +62,7 @@ files: `perfdata/go.mod` (planned), `perfdata/event.go` (planned), `perfdata/eve
 
 facts (source pin in frontmatter; planned paths/tests are deliverables, not implemented claims):
 - The fresh main has no perfdata module; loopadmin/runner/{request,result,usage}.go already defines invocation, work and nullable usage types. No online supervisor is needed to validate and store bounded observations.
-- statusgen/telemetry.go emits telemetry-v1 counts only behind two switches and an empty endpoint. PR 2853 defines perf-v1 on its own unmerged branch; both old schemas and switches stay unchanged.
+- statusgen/telemetry.go emits telemetry-v1 counts only behind two switches and an empty endpoint. The inspected main now includes perf-v1 hooks and deskperf (desk-tools/23 remains implemented, not independently verified); both old schemas and switches stay unchanged.
 - The new stream README is the bounded design source. Continuing-operations O02 owns measurement meanings, and graph-execution/06 owns run records; performance events carry selected observations and references only.
 
 layering: perfdata contract and local storage; existing domain owners retain the meanings of work, usage and acceptance. A pure typed contract owns validation/aggregation; filesystem, HTTP and database adapters own effects. Task boundaries and the flow/negative Verify cases below enforce this separation. No database or network dependency enters the local writer.
@@ -117,6 +117,8 @@ Default if no answer: none — acceptance remains pending. The decision is prese
 
 7. Update the architecture storage table and delivery mapping to the separate optional database; add a semantic-owner entry for collection only. Reconcile O02/O04 transport consumption without claiming their metric-definition program is implemented. Publish consent/retention limitations and local build/use commands; state plainly in docs/telemetry.md that ASSAY_TELEMETRY=1 together with an explicit profile now also gates a pseudonymous local record class, and scope the existing anonymized, counts-only promise to telemetry-v1 only; the local executable must build independently before any PostgreSQL/HTTP adapter exists. Leave remote activation and existing telemetry endpoints untouched.
 
+8. Freeze the three-report input snapshot and per-source coverage manifest described in the README. Preserve legacy raw retention while supporting explicitly configured 90-day distribution retention; count/sum plus retained samples or versioned mergeable histograms must support pooled Avg/P95. Report collection-on/off cost, drops and retention loss. No composed three-panel rendering or network read is required by this collection brief; the low-level offline reader in Task 5 remains in scope. Add TestReportDistributionRetention proving two unequal daily sample sets pool correctly and missing days stay unknown.
+
 ## Interface contract
 
 Inputs and outputs use performance-event-v1 and performance-batch-v1 from 01, with
@@ -140,6 +142,7 @@ below, exercising production code rather than an independently reimplemented che
 | 3 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLocalReportFlow$' ./... > "$o" && grep -F -- '--- PASS: TestLocalReportFlow ' "$o")` | exit 0; named PASS. Real local record command to report command works without DB/server; zero transport calls; repeated cumulative usage and nested time are not double-counted; missing is not zero. |
 | 4 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLocalCostAndBounds$' ./local/... > "$o" && grep -F -- '--- PASS: TestLocalCostAndBounds ' "$o")` | exit 0; named PASS. Bounded queue and flush under slow I/O; matched small-event append median below inherited 1 ms target on declared reference fixture, with p95/max and on/off overhead reported. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/01` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
+| 6 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v -run '^TestReportDistributionRetention$' ./... > "$o" && grep -F -- '--- PASS: TestReportDistributionRetention ' "$o")` | exit 0; named test runs and passes, including the negative cases in Task 8. |
 
 ## Pre-mortem and detection
 
@@ -159,7 +162,7 @@ measurement are not interchangeable samples. Nested phase, child and parent dura
 cannot be added into causal elapsed-time savings. The contract accepts bounded typed
 observations without requiring a database, network collector or runtime service.
 
-Preserve historical sources and earlier unmerged-PR observations above as dated history;
+Preserve the historical sources and the merged reporting amendment as dated history;
 the current implementation state is the shared perfrec module at eba941721. This amendment
 does not replace its writer or retrospectively widen old payload/consent promises.
 
@@ -174,3 +177,7 @@ Gate: human. Review actual disclosure/identity boundaries, loss visibility and s
 flow evidence. Required operational records must still function with optional collection
 disabled. Human acceptance changes no live destination, credential, collection switch or
 retention policy.
+
+## Reporting amendment provenance
+
+2026-10-15: three operating reports requested; collection precedes on-demand and daily generation. Source inspection: public main d430e8f18. Existing status and independent Evidence are unchanged.
