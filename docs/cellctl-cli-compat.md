@@ -222,7 +222,9 @@ test requires every other byte of those recorded diagnostics to stay identical.
 (`cache example clean`) keep their exit codes and stderr. Their JSON report adds
 the policy's compiler-cache trim age (`build_max_age_seconds`, 86400 by
 default) and the age trim's counts (`trimmed_build_entries`,
-`trimmed_build_bytes`). See [managed Go caches](cellctl-go-cache.md). The parity
+`trimmed_build_bytes`); a pass that trimmed also carries its `low_water_trim`
+outcome. The low-water mark and trim safety floor are serialized only when set
+away from their defaults. See [managed Go caches](cellctl-go-cache.md). The parity
 test requires every other byte of those reports to stay identical.
 
 `reset` and `comms init` are additional commands. The contained `comms-reader`

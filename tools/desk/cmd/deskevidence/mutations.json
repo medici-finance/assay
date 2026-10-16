@@ -10,7 +10,7 @@
     {
       "name": "the --root join becomes a no-op (a repo-relative --evidence-file is read from the process cwd, not the --root checkout — #1709 defeated)",
       "file": "cmd/deskevidence/deskevidence.go",
-      "old": "\t\tlocalReadPath = filepath.Join(*root, evidenceRepoPath)",
+      "old": "\t\t\tlocalReadPath = filepath.Join(evidenceRoot, evidenceRepoPath)",
       "new": "\t\tlocalReadPath = evidenceRepoPath"
     },
     {
@@ -216,6 +216,24 @@
       "file": "cmd/deskevidence/outcomerecord.go",
       "old": "if terr := checkRecordTier(receipt, join); terr != nil {",
       "new": "if terr := error(nil); terr != nil {"
+    },
+    {
+      "name": "disarm the on-behalf-of stamp (an App-run Evidence row with no principal lands unstamped)",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\treturn strings.HasSuffix(id, \"[bot]\")",
+      "new": "\treturn false && strings.HasSuffix(id, \"[bot]\")"
+    },
+    {
+      "name": "stamp rows already on the branch (a standing row is rewritten instead of left byte-identical)",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tif onBranch[orig] {",
+      "new": "\t\tif false && onBranch[orig] {"
+    },
+    {
+      "name": "stamp after the trailing runner-source tag (the source tag is no longer the cell's last parenthetical)",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\tpos -= len(tag)",
+      "new": "\t\t\tpos -= 0 * len(tag)"
     }
   ]
 }

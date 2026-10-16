@@ -440,10 +440,11 @@ a run on an open change it holds the change's facts and description, how it stan
 base branch, check states, every review, the newest comments and the diff. Its "Omitted"
 section, near the top, lists what was left out.
 
-- **Read it first, whole, in one read**, before any other fetch. **Do not re-fetch what it
-  holds; fetch only what it lacks**, batched per clause 16 — a file the brief does not name, a
-  failing job's log, a review comment anchored to a file and a line, anything the packet
-  lists as omitted.
+- **Read it first, whole, before any other fetch** — in one read when it fits; a packet larger
+  than one read returns is taken in ranges, all sent in one request, and you say so. **Do not
+  re-fetch what it holds; fetch only what it lacks**, batched per clause 16 — a file the brief
+  does not name, a failing job's log, a review comment anchored to a file and a line, anything
+  the packet lists as omitted.
 - **Head check — made when you read it.** If the head the packet records differs from the
   head your worktree is at when you start — or the packet is missing, unreadable, or records
   no head — say so in your report, use nothing from it as evidence, and gather everything

@@ -67,18 +67,20 @@ type outcome struct {
 }
 
 func main() {
-	// Explicit roster class: deskcomms is a desk CLIENT verb — it reads the
-	// config-home roster (RoleAppLoginOrEmpty stamps the sender's App login) and
-	// never runs in CI, so ciEligible=false. Declared rather than defaulted: the
-	// deskkit echo-coverage guard treats ClassWrite-by-omission as the defect.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// P3: echo the effective roster once per run, so a NARROWING of the control
-	// surface is visible at run time and not only in a settings diff.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskcomms", nil, os.Args[1:], func([]string) int {
+		// Explicit roster class: deskcomms is a desk CLIENT verb — it reads the
+		// config-home roster (RoleAppLoginOrEmpty stamps the sender's App login) and
+		// never runs in CI, so ciEligible=false. Declared rather than defaulted: the
+		// deskkit echo-coverage guard treats ClassWrite-by-omission as the defect.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// P3: echo the effective roster once per run, so a NARROWING of the control
+		// surface is visible at run time and not only in a settings diff.
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

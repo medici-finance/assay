@@ -4,8 +4,8 @@
 
 Shell and transport mechanics every desk role re-derives from a refusal — how a session
 addresses a repo across tool calls, keeps its work isolated, stamps its commits, carries
-its loop and session markers, authenticates a fetch or push, and asks which repositories
-its role can reach. None of it is judgment; all of it is the same handful of mechanics,
+its loop and session markers, authenticates a fetch or push, asks which repositories
+its role can reach, and runs a forge CLI call as its role. None of it is judgment; all of it is the same handful of mechanics,
 so it lives here once instead of being rediscovered per session.
 
 This is the fourth file in this bundle's `references/` directory and the first that is not a
@@ -224,6 +224,100 @@ verb's output shape here — it belongs to that brief.
 installed where you are aiming it.
 
 **Correct form.** `desktoken coverage <role>`.
+
+## Forge CLI as the role
+
+<!-- BEGIN forge cli as the role -->
+
+**Mechanism.** A desk's only forge credential is its role App's, minted by `desktoken <role>`.
+`desktoken` prints the PATH of an owner-only custody file on stdout, never the token itself,
+and exits 0 ok · 3 disabled · 5 refused · 6 unverifiable. The desk verbs resolve that same
+credential on their own from `$DESK_LOOP` and have no ambient fallback. A bare `gh` call has no
+such resolution. It runs as whatever login the local CLI holds, usually a trusted human's
+personal one, or fails when there is none. A trusted human on the roster is a person whose
+comments and rulings count. That login is not a role credential, and a desk never borrows it,
+whether through the CLI's stored login or by reading it with `gh auth token`.
+
+**Prefer a desk verb.** When a desk verb covers the call, use the verb and skip `gh`:
+`deskread` for issue, change and comment reads (`deskread --help` lists its kinds),
+`deskboard` for board views, and `deskfile`, `deskpr`, `deskreply` and `deskpost` for writes.
+Use `gh` only for a call that no verb covers, and then only through the recipe below.
+
+**Correct form.** Run the whole recipe in one shell call (§One call, one chain). It works in
+bash and zsh. The role comes from `$DESK_LOOP` and nowhere else: a role named by hand could
+differ from the loop's. The `case` arms mirror the compiled loop-to-role table (`loopTokenRoles`
+in `tools/desk/internal/deskkit/roletoken.go`, retired loop names included), and a test holds
+the two in step. The recipe stops before any `gh` call unless `desktoken` exits 0, prints a
+path, and that path names a file holding a token: something other than whitespace. A size
+check alone is not enough. A file holding only a newline has a non-zero size but yields an
+empty `GH_TOKEN`, and `gh` treats an empty `GH_TOKEN` as unset and runs as the host's stored
+login, which is a human's, and exits 0.
+
+```bash
+repo='<owner>/<repo>'
+case "${DESK_LOOP:-}" in
+  the-desk)                 role=desk ;;
+  worker-desk|batch-fanout) role=worker ;;
+  pr-review-desk)           role=reviewer ;;
+  verify-desk)              role=verifier ;;
+  intake-desk|issue-loop)   role=issue-loop ;;
+  *)                        role= ;;
+esac
+if [ -z "$role" ]; then
+  printf '%s\n' "desk-auth: refused: \$DESK_LOOP is unset or names no desk role; export this window's loop name in this shell" >&2
+  false
+elif ! tokfile="$(desktoken "$role" --repo "$repo")"; then
+  printf '%s\n' "desk-auth: unauthenticated: role App custody for '$role' is unavailable (desktoken failed; its stderr names the cause)" >&2
+  false
+elif [ -z "$tokfile" ] || [ ! -f "$tokfile" ] || ! grep -q '[^[:space:]]' "$tokfile"; then
+  printf '%s\n' "desk-auth: unauthenticated: role App custody for '$role' is unavailable (desktoken printed no path, or the file is missing, empty or whitespace only)" >&2
+  false
+else
+  GH_TOKEN="$(cat "$tokfile")" gh issue list -R "$repo" --limit 1 --json number
+fi
+```
+
+Prefix each further `gh` call in the same shell call the same way. Scope `GH_TOKEN` to one
+command. Never `export` it, and never leave it set in a long-lived or shared shell. Never print,
+echo, copy or log the token or the custody file's contents. Only the path may appear in output.
+Never run the recipe under shell tracing (`set -x`, `zsh -x`): a trace prints the expanded
+`GH_TOKEN=` assignment.
+In PowerShell, set the variable for the one call and remove it afterwards:
+
+```powershell
+$tok = (Get-Content -Raw -LiteralPath $tokfile)
+if ([string]::IsNullOrWhiteSpace($tok)) { throw "desk-auth: unauthenticated: role App custody for '$role' is unavailable (the file is empty or whitespace only)" }
+try { $env:GH_TOKEN = $tok.Trim(); gh issue list -R $repo --limit 1 --json number }
+finally { Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue; Remove-Variable tok -ErrorAction SilentlyContinue }
+```
+
+Before those lines, apply the same checks as the bash form: the `$env:DESK_LOOP` role mapping,
+a zero `$LASTEXITCODE` from `desktoken`, and a path that names an existing file. The
+`IsNullOrWhiteSpace` test is the value check: never set `GH_TOKEN` from a value that fails it.
+
+**Two failures, two diagnoses.** Keep them apart. A report that merges them sends the repair to
+the wrong identity.
+
+- **Desk unauthenticated.** `desktoken` exits non-zero, prints no path, or names a missing or
+  empty file, or one holding only whitespace. This is the ONLY desk-authentication failure.
+  Report it as `desk-auth: unauthenticated: role App custody for '<role>' is unavailable`,
+  with the refusal `desktoken` wrote to stderr, then stop and escalate the custody gap under
+  the desk's escalation rules. A token that mints but is refused on the target repository
+  is a coverage gap, not a custody one (§Which repositories a role can see).
+- **No human CLI login.** `gh auth status` reports no login, or `gh auth token` fails for a
+  roster human. That is a fact about the host, not about the desk. Report it, if at all, as
+  `no human gh login on this host: not a desk-authentication failure`, and carry on under the
+  role token. It matters only for a command the human driver runs as themselves, such as a
+  ruling posted from the driver's own account. That is the driver's own path, and the driver
+  repairs it.
+
+**Personal OAuth is never the default repair.** Never repair a desk failure by running `gh auth
+login` with a person's account, reading a roster human's token, or exporting a personal token.
+The repair is the role's custody: the cause `desktoken` names, provisioning the App, its
+installation coverage, or `desktoken <role> --fresh` after a permission change. When the session
+cannot make that repair, it escalates.
+
+<!-- END forge cli as the role -->
 
 ## Cross-desk transport — the comms lane
 

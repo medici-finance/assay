@@ -104,6 +104,7 @@ func ClaimLivenessFromRefPresence(present bool, err error) ClaimLiveness {
 //
 //	Brief: <stream>/<NN>  ->  <short>--<stream>--<NN>
 //	Issue: #<N>           ->  <short>--issue-<N>
+//	Cross-repo-brief: <alias>:<stream>/<NN>  ->  <alias>--<stream>--<NN>
 //
 // A malformed trailer SET is not a key. So is a body with neither trailer — a human-opened PR
 // names no dispatch, and inventing a key for it would look up a claim nobody ever took.
@@ -115,6 +116,17 @@ func ClaimKeyForPR(repo, body string) (string, bool) {
 	trs, err := ParseTrailers([]byte(body))
 	if err != nil {
 		return "", false
+	}
+	for _, t := range trs {
+		if t.Kind != TrailerCrossRepoBrief {
+			continue
+		}
+		// deskdispatch takes a cross-repo claim under the TRACKING alias, not this repo's label.
+		alias, stream, nn, ok := SplitCrossRepoBriefTrailer(t.Value)
+		if !ok {
+			return "", false
+		}
+		return alias + "--" + stream + "--" + nn, true
 	}
 	for _, t := range trs {
 		if t.Kind != TrailerBrief {

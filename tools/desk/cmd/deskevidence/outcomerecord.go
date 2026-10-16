@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -143,6 +142,9 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if ferr != nil {
 		return ferr
 	}
+	if err := checkAdmittedDeliveryPRs(fg, receipt, facts); err != nil {
+		return err
+	}
 	redacted, rderr := redactOutcomeFn(rec.Raw, join, facts)
 	if rderr != nil {
 		return deskkit.Refused("refused: cannot redact --outcome-record for its register: " + rderr.Error())
@@ -180,7 +182,8 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// verify-wake-v1 receipt the planner can hold it on. The receipt changes the record's
 	// bytes, so its name is re-derived — same stream directory, same brief number, which
 	// keeps the admission above bound to this brief.
-	derived, derr := outcomeReceiptFn(rec.Raw, root, fg, fr, branch, receipt.Binding.Source)
+	evidenceRoot := receipt.EvidenceRoot(root)
+	derived, derr := admittedOutcomeReceipt(rec.Raw, evidenceRoot, fg, fr, branch, receipt)
 	if derr != nil {
 		return derr
 	}
@@ -251,10 +254,10 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if err := json.Unmarshal(commitContent, &outcome); err != nil {
 		return deskkit.Refused("refused: invalid outcome record: " + err.Error())
 	}
-	if err := outcomeEvidenceBindingFn(root, fg, fr, branch, receipt, outcome.SHA); err != nil {
+	if err := outcomeEvidenceBindingFn(evidenceRoot, fg, fr, branch, receipt, outcome.SHA); err != nil {
 		return err
 	}
-	if err := outcomeObservationBindingFn(root, fg, fr, branch, receipt, outcome); err != nil {
+	if err := outcomeObservationBindingFn(evidenceRoot, fg, fr, branch, receipt, outcome); err != nil {
 		return err
 	}
 
@@ -272,7 +275,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	bodyDig := deskkit.Sha256Hex(commitContent)
 	ac.bodyDig = bodyDig
 
-	lintRoot := root
+	lintRoot := evidenceRoot
 	if lintRoot == "" {
 		lintRoot = "."
 	}
@@ -311,7 +314,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		}
 	}
 
-	if werr := deskkit.AllowWrite(toolName, repoSlug, 0); werr != nil {
+	if werr := evidenceWriteBudget(toolName, repoSlug, 0); werr != nil {
 		return werr
 	}
 
@@ -492,7 +495,7 @@ func newGitOutcomeTree(root, sha string) (gitOutcomeTree, error) {
 	if sha == "" || strings.HasPrefix(sha, "-") {
 		return gitOutcomeTree{}, deskkit.Refused("refused: sha " + strconv.Quote(sha) + " is not a commit")
 	}
-	if err := exec.Command("git", "-C", root, "cat-file", "-e", sha+"^{commit}").Run(); err != nil {
+	if err := outcomeGit(root, "cat-file", "-e", sha+"^{commit}").Run(); err != nil {
 		return gitOutcomeTree{}, deskkit.Unverifiable("could-not-check: commit "+sha+" is not in the local checkout at "+root, err)
 	}
 	return gitOutcomeTree{root: root, sha: sha}, nil
@@ -509,7 +512,7 @@ func (g gitOutcomeTree) PathKind(rel string) (string, error) {
 func (g gitOutcomeTree) ReadFile(rel string) ([]byte, error) { return gitShowAt(g.root, g.sha, rel) }
 
 func (g gitOutcomeTree) ListFiles(rel string) ([]string, error) {
-	out, err := exec.Command("git", "-C", g.root, "ls-tree", "-r", "--name-only", g.sha, "--", strings.TrimSuffix(rel, "/")+"/").Output()
+	out, err := outcomeGit(g.root, "ls-tree", "-r", "--name-only", g.sha, "--", strings.TrimSuffix(rel, "/")+"/").Output()
 	if err != nil {
 		return nil, err
 	}

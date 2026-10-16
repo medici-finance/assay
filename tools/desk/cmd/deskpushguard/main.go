@@ -66,7 +66,9 @@ type prInfo struct {
 }
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stderr))
+	os.Exit(deskkit.PerfRun("deskpushguard", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:], os.Stdin, os.Stderr)
+	}))
 }
 
 func run(args []string, stdin io.Reader, stderr io.Writer) int {

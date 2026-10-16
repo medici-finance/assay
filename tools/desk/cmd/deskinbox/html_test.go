@@ -205,7 +205,7 @@ func TestPageEscapesHostileInput(t *testing.T) {
 		Index: 1, Total: 1,
 		Rendered: rendered{
 			Context: []string{hostilePayload}, Options: []option{{Letter: hostilePayload, Text: hostilePayload, Recommended: true}},
-			OptionsStated: true, Reply: hostilePayload, Verification: hostilePayload,
+			OptionsStated: true, Reply: hostilePayload, Command: hostilePayload, Verification: hostilePayload,
 		},
 		Class: hostilePayload, ClassEvidence: hostilePayload,
 	}}

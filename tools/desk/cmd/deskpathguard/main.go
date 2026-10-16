@@ -17,7 +17,13 @@
 // is could-not-check (exit 6), never rendered as clean. See Evaluate's doc comment.
 //
 // Exit codes (deskkit contract): 0 ok/clean · 3 disabled · 4 rate-limited · 5 refused ·
-// 6 could-not-check.
+// 6 could-not-check. A checked-failed (labelled) check exits 0 once its label has landed
+// (the "applied:" line) or under --dry-run, which writes none: the contract has no
+// checked-failed code, and a non-zero exit here would read as a refusal to a caller told to
+// stop on one. The `state=` line carries the result, and the usage says so. The exit code is
+// still a signal, though: without --dry-run, a label write that fails AFTER the state line
+// was printed exits 5 (refused) or 6 (could-not-check) and prints no "applied:" line — the
+// label is NOT on the PR, whatever the state line said.
 package main
 
 import (
@@ -50,18 +56,27 @@ rederive   verify-desk's pre-change re-read: reports every Verify-table row pres
 --dry-run  (check only) resolves the verdict and prints it, but never writes the label.
 --main     (rederive only) the ref to merge-base HEAD against; default origin/main.
 
-Exit: 0 ok/clean · 3 disabled · 4 rate-limited · 5 refused · 6 could-not-check.`
+Exit: 0 ok/clean · 3 disabled · 4 rate-limited · 5 refused · 6 could-not-check.
+
+RESULT (check): the state= line is the result, never the exit code alone. state=checked-failed,
+printed with "gate-forced: wrote-to-the-test", is the labelled case: it exits 0 under
+--dry-run, and without --dry-run once the "applied:" line is printed. Without --dry-run, a
+label write that fails after the state line exits 5 (refused) or 6 (could-not-check) and
+prints no "applied:" line — the label is NOT on the PR, whatever the state line said. A
+non-zero exit with no state= line means the check did not run: could-not-check.`
 
 func main() {
-	// check performs a forge write (ApplyLabels); rederive is a local git read. Both declare
-	// the same non-CI-eligible class as the sibling write verbs (desklabel, deskclose): the
-	// roster is read from the config-home file, in CI as well as locally.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskpathguard", nil, os.Args[1:], func([]string) int {
+		// check performs a forge write (ApplyLabels); rederive is a local git read. Both declare
+		// the same non-CI-eligible class as the sibling write verbs (desklabel, deskclose): the
+		// roster is read from the config-home file, in CI as well as locally.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

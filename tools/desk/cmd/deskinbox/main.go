@@ -64,12 +64,14 @@ Flow section alone does not redden the exit — see plugins/assay/commands/inbox
 `
 
 func main() {
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, time.Now()))
+	os.Exit(deskkit.PerfRun("deskinbox", nil, os.Args[1:], func([]string) int {
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:], os.Stdout, os.Stderr, time.Now())
+	}))
 }
 
 func run(args []string, stdout, stderr io.Writer, now time.Time) int {
