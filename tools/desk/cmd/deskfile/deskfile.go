@@ -62,8 +62,9 @@ const needsDecisionLabel = "needs-decision"
 // escalationLabels are the labels whose `new` filings MUST carry evidence: such a filing is
 // a blocker claim, and a blocker claim with nothing to quote is not a blocker claim. The gate
 // is the tool half of the two-layer blocker-evidence rule. `human-only` is deliberately NOT
-// here — it marks an ACT, not a claim (brief 05 of its tracking stream) — and the gate binds `new` only,
-// so `attach` observations (not fresh claims) are unaffected.
+// here — it marks an ACT, not a claim (brief 05 of its tracking stream), and has its own act gate
+// (isHumanOnlyHandoff / bodyHasActFence, below) — and the gate binds `new` only, so `attach`
+// observations (not fresh claims) are unaffected.
 var escalationLabels = map[string]bool{
 	needsDecisionLabel: true,
 	"help wanted":      true,
@@ -132,6 +133,188 @@ func isEvidenceHeading(line string) bool {
 	}
 	rest := strings.TrimSpace(strings.TrimLeft(line, "#"))
 	return strings.HasPrefix(strings.ToLower(rest), "evidence")
+}
+
+// --- the human-only act gate ---------------------------------------------------------
+//
+// A human-only filing hands the driver an ACT only they can perform, so the act has to be in
+// the body in runnable form — the `ask-decision` skill's Act block: a fenced `sh` block that
+// runs top to bottom, or, for a browser-click step, a fenced `url` block holding the one URL
+// and the field values. A filing that only describes the act in prose makes the driver
+// reconstruct the command, and that reconstruction is where a hand-off goes wrong.
+//
+// The gate is the TOOL half of a two-layer rule (the skills carry the other): `deskfile new`
+// REFUSES (exit 5) a filing that is a human-only hand-off — labelled `human-only`, or whose
+// body's first non-blank line opens with `BLOCKED-ON-HUMAN` — when the body carries no act
+// fence. It is DISTINCT from the blocker-evidence gate above: that one asks a CLAIM for its
+// evidence; this one asks an ACT for its runnable form. The only bypass is `--force-new --reason`, and a
+// filing that takes it is audited with actGateBypassNote so the bypass is visible on the line.
+const (
+	// humanOnlyLabel is the label that marks a filing as an act owed to the driver.
+	humanOnlyLabel = "human-only"
+	// blockedOnHumanMarker opens the first non-blank line of a BLOCKED-ON-HUMAN report.
+	blockedOnHumanMarker = "BLOCKED-ON-HUMAN"
+	// actGateBypassNote is appended to the audit detail of a filing that was a human-only
+	// hand-off with no act fence and was filed anyway under --force-new --reason.
+	actGateBypassNote = "act-gate=bypassed:force-new"
+)
+
+// isHumanOnlyHandoff reports whether a `new` filing is a human-only hand-off: it carries the
+// human-only label, or its body's first non-blank line opens with the BLOCKED-ON-HUMAN marker.
+// Markdown decoration ahead of the marker (a heading `#`, emphasis `*`/`_`, a quote `>`) is
+// ignored, and the match is case-insensitive, so dressing the marker does not step around
+// the gate.
+func isHumanOnlyHandoff(labels []string, body string) bool {
+	if hasLabel(labels, humanOnlyLabel) {
+		return true
+	}
+	for _, ln := range strings.Split(body, "\n") {
+		t := strings.TrimSpace(ln)
+		if t == "" {
+			continue
+		}
+		t = strings.TrimLeft(t, "#*_> \t")
+		return len(t) >= len(blockedOnHumanMarker) &&
+			strings.EqualFold(t[:len(blockedOnHumanMarker)], blockedOnHumanMarker)
+	}
+	return false
+}
+
+// bodyHasActFence reports whether body carries an act block: a fenced block whose info string
+// is `sh` or `url` (```sh, ```url), closed, with at least one non-blank line inside. An
+// unclosed or empty fence is not a block a driver can run.
+//
+// Fences follow CommonMark: any run of three or more backticks or tildes opens one, whatever
+// its info string, and only a bare run of the SAME character at least as long closes it. So
+// an ```sh line quoted inside another fence (a ```text block showing an example) is content,
+// not an act block, and an ```sh line inside an open block does not close it. A fence line
+// may be indented at most three columns past the list item it sits in (past the margin,
+// outside a list); one indented four or more is indented code, not a fence. List items are
+// tracked only as far as that rule needs: a marker line (`-`, `*`, `+`, `1.`, `1)`) opens
+// one, and a less-indented line after a blank line, a fence line or another marker closes it.
+func bodyHasActFence(body string) bool {
+	var (
+		open, act, content bool
+		char               byte
+		width, base        int
+		items              []int // content column of each enclosing list item, innermost last
+		prevBlank          = true
+	)
+	for _, ln := range strings.Split(body, "\n") {
+		col, rest := indentOf(ln)
+		t := strings.TrimSpace(rest)
+		if open {
+			c, n := fenceRun(t)
+			if n >= width && c == char && col-base <= 3 && strings.TrimSpace(t[n:]) == "" {
+				if act && content {
+					return true
+				}
+				open, prevBlank = false, false
+				continue
+			}
+			if t != "" {
+				content = true
+			}
+			continue
+		}
+		if t == "" {
+			prevBlank = true
+			continue
+		}
+		_, n := fenceRun(t)
+		_, _, marker := listMarker(rest, col)
+		for len(items) > 0 && col < items[len(items)-1] && (prevBlank || n > 0 || marker) {
+			items = items[:len(items)-1]
+		}
+		prevBlank = false
+		top := 0
+		if len(items) > 0 {
+			top = items[len(items)-1]
+		}
+		// Each marker on the line opens an item; what follows the last one is its content.
+		for col-top <= 3 {
+			mcol, mrest, ok := listMarker(rest, col)
+			if !ok {
+				break
+			}
+			items = append(items, mcol)
+			extra, r := indentOf(mrest)
+			col, rest, top = mcol+extra, r, mcol
+		}
+		t = strings.TrimSpace(rest)
+		c, n := fenceRun(t)
+		if n == 0 || col-top > 3 {
+			continue
+		}
+		info := strings.Fields(t[n:])
+		open, char, width, base, content = true, c, n, top, false
+		act = len(info) > 0 && (strings.EqualFold(info[0], "sh") || strings.EqualFold(info[0], "url"))
+	}
+	return false
+}
+
+// indentOf returns the indentation of line ln in columns (a tab advances to the next multiple
+// of four) and the line with that indentation removed.
+func indentOf(ln string) (int, string) {
+	col := 0
+	for i := 0; i < len(ln); i++ {
+		switch ln[i] {
+		case ' ':
+			col++
+		case '\t':
+			col += 4 - col%4
+		default:
+			return col, ln[i:]
+		}
+	}
+	return col, ""
+}
+
+// listMarker reports whether rest (a line's text after its indentation, which sits at column
+// col) opens with a list-item marker, and if so returns the column the item's content starts
+// at and the text from there on. The content column follows CommonMark: one to four spaces
+// after the marker count, more than four means the content is one space past the marker.
+func listMarker(rest string, col int) (int, string, bool) {
+	m := 0
+	switch {
+	case rest != "" && (rest[0] == '-' || rest[0] == '*' || rest[0] == '+'):
+		m = 1
+	default:
+		for m < len(rest) && m < 9 && rest[m] >= '0' && rest[m] <= '9' {
+			m++
+		}
+		if m == 0 || m >= len(rest) || (rest[m] != '.' && rest[m] != ')') {
+			return 0, "", false
+		}
+		m++
+	}
+	if m == len(rest) {
+		return col + m + 1, "", true
+	}
+	if rest[m] != ' ' && rest[m] != '\t' {
+		return 0, "", false
+	}
+	scol, after := indentOf(rest[m:])
+	if after == "" || scol > 4 {
+		return col + m + 1, strings.TrimPrefix(rest[m:], rest[m:m+1]), true
+	}
+	return col + m + scol, after, true
+}
+
+// fenceRun returns the fence character and the length of the run of it that opens line t,
+// or (0, 0) when t does not open with a run of three or more backticks or tildes.
+func fenceRun(t string) (byte, int) {
+	if t == "" || (t[0] != '`' && t[0] != '~') {
+		return 0, 0
+	}
+	n := 0
+	for n < len(t) && t[n] == t[0] {
+		n++
+	}
+	if n < 3 {
+		return 0, 0
+	}
+	return t[0], n
 }
 
 // composeSkillBugTitle renders the deterministic skill-bug title from the section the desk
@@ -468,6 +651,12 @@ type auditCtx struct {
 	// forge. Appended after addressedTo, never prepended (see raisedBy for why).
 	lane string
 
+	// actGate records that the human-only act gate was BYPASSED under --force-new --reason
+	// (actGateBypassNote), empty otherwise. Appended to the audit detail after addressedTo —
+	// never prepended, for the createSentMarker-prefix reason above — so every outcome line of
+	// a bypassed filing names the bypass, not only the success line.
+	actGate string
+
 	// createSent is set immediately BEFORE the `gh issue create` exec and stamps
 	// createSentMarker onto the audit detail. It is the discriminator the per-session
 	// budget reads to tell "the create was sent and we cannot confirm it" (charges) from
@@ -506,6 +695,9 @@ func (a *auditCtx) log(result, detail string) {
 	}
 	if a.lane != "" {
 		detail = strings.TrimSpace(detail + " | " + deskkit.StripControl(a.lane))
+	}
+	if a.actGate != "" {
+		detail = strings.TrimSpace(detail + " | " + a.actGate)
 	}
 	e := deskkit.Entry{
 		Tool:       "deskfile",
@@ -615,15 +807,15 @@ func cmdNew(args []string) (err error) {
 		"passed; refuses if no receipt was recorded in the last "+skillBugReceiptWindow.String()+")")
 	section := fs.String("section", "", "the skill + section the desk was following (composed into the skill-bug body; requires --correction)")
 	reading := fs.String("reading", "", "the desk's one-line reading of what the skill should have said (composed into the skill-bug body; requires --correction)")
-	forceNew := fs.Bool("force-new", false, "bypass the DEDUPE search AND the blocker-evidence gate (escape hatch; requires --reason)")
+	forceNew := fs.Bool("force-new", false, "bypass the DEDUPE search, the blocker-evidence gate, the fork-test gate (needs-decision filings) AND the human-only act gate, all on the one --reason (escape hatch; requires --reason)")
 	forceFile := fs.Bool("force-file", false, "raise the new-issue RATE for this ONE filing so it files even when the "+
 		"rate is spent (escape hatch; requires --reason). Distinct from --force-new, which bypasses dedupe; "+
 		"--force-file does NOT weaken dedupe and does NOT reset the rate count (the filing is still audited and charged).")
 	reason := fs.String("reason", "", "stated reason for --force-new / --force-file (required with either)")
 	noFork := fs.String("no-fork", "", "re-routes a filing that turned out to have fewer than two workable options "+
 		"(the `deskfile new` fork-test gate's refusal names this flag): one of "+noForkBriefContradicts+" | "+
-		noForkWrongRepo+" | "+noForkToolFalsePositive+". Files WITHOUT the needs-decision label, and refuses a one-way item (deskkit.OneWay) — "+
-		"that stays on the driver's queue")
+		noForkWrongRepo+" | "+noForkToolFalsePositive+". Files WITHOUT the needs-decision label, and refuses a one-way item (deskkit.OneWay, or a "+
+		"human-only hand-off: the human-only label or a body led by BLOCKED-ON-HUMAN) — that stays on the driver's queue")
 	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskfile", "new")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
@@ -822,7 +1014,8 @@ func cmdNew(args []string) (err error) {
 	// --no-fork content requirements: each re-route names what its body must carry, checked
 	// against the shape rather than trusting free text. FIRST, the one-way check: every
 	// --no-fork value files WITHOUT needs-decision, so a one-way item (a one-way caller label,
-	// or a one-way term anywhere in title+body — deskkit.OneWay) is refused here rather than
+	// a one-way term anywhere in title+body — deskkit.OneWay — or a human-only hand-off, the
+	// act gate's own test) is refused here rather than
 	// steered off the driver's queue. The only way forward for it is a needs-decision filing.
 	if noForkVal != "" {
 		ac.lane = "no-fork=" + noForkVal
@@ -946,6 +1139,29 @@ func cmdNew(args []string) (err error) {
 					"with it; if it produces a success, proceed. Override with --force-new --reason only if the "+
 					"evidence genuinely cannot be produced (audited).", lbl))
 		}
+	}
+
+	// Human-only act gate: a human-only hand-off (label `human-only`, or a body whose first
+	// non-blank line opens with BLOCKED-ON-HUMAN) must carry the act in runnable form — a
+	// ```sh or ```url fence (the ask-decision skill's Act block). Refuse (exit 5) when it
+	// carries neither. The only bypass is --force-new --reason, and a bypassed filing is
+	// audited with actGateBypassNote. attach is a separate verb and unaffected.
+	if isHumanOnlyHandoff(labels, string(body)) && !bodyHasActFence(string(body)) {
+		if !*forceNew {
+			return deskkit.Refused(
+				"refused: this filing is a human-only hand-off (label " + humanOnlyLabel + ", or a body whose " +
+					"first non-blank line opens with " + blockedOnHumanMarker + ") and its body carries no act block. Put the act the " +
+					"driver must perform in a fenced ```sh block that runs top to bottom (a dry run on paste, live only " +
+					"on that act's own opt-in; plain-text comments in the header only and an echo opening each step, the only control on a first zsh paste; " +
+					"the zsh comment guard first, for later pastes; a per-act function name; `# fill:` " +
+					"for values only the driver can supply, each secret read as `NAME=; read -rs NAME || exit 1`), " +
+					"or, for a browser step, a fenced ```url block with the one URL and the field values — the " +
+					"Act block the ask-decision skill defines. A prose description of the act makes the driver " +
+					"reconstruct the command. Override with --force-new --reason only if the act genuinely " +
+					"cannot be written as a block (audited; it also waives the dedupe search, the blocker-evidence gate and, " +
+					"on a needs-decision filing, the fork-test gate).")
+		}
+		ac.actGate = actGateBypassNote
 	}
 
 	// Dedupe gate. --force-new bypasses the search entirely (the operator vouches the

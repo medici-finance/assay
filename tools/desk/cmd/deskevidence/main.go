@@ -8,13 +8,13 @@
 // Reads the local file at <repo-path>, BodyChecks it, fetches the
 // current file from GitHub on <branch> to get the tree SHA, checks
 // idempotency (same content at same head → noop), and commits via the
-// GitHub Contents API AS the verifier App. The commit author is
+// conditional forge API AS the verifier App. The commit author is
 // the verifier App because the API call uses the App's installation
 // token — unforgeable (a PAT commit would be example-org, which is the
 // whole point).
 //
 // The tool has NO push, no merge — commit only (weakest-verb). "Commit
-// only" does NOT mean the write is local: a Contents-API PUT carries the
+// only" does NOT mean the write is local: a forge commit carries the
 // branch, so the commit lands on the REMOTE branch as soon as the call
 // returns. There is nothing left to push and nothing to stage — including
 // on main. Because of that, main/master are refused unless VERIFIER_MAIN_OK
@@ -53,8 +53,9 @@ USAGE:
   deskevidence --version
 
 Commits the content of the local file at --evidence-file (a repo-relative path)
-to the same path on <branch> via the GitHub Contents API, using the verifier App
-installation token. Author = the verifier App.
+to the same path on <branch> through a conditional forge write, using the verifier
+credential. GitHub batches admission and destination reads, then commits only if
+the validated file revision is unchanged. GitLab retains its protected-branch MR path.
 
 --root <dir> resolves a repo-relative --evidence-file against <dir> (e.g. the verifier
 worktree) instead of the current working directory, so a stale cwd cannot read the wrong

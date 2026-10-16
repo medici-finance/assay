@@ -1,0 +1,47 @@
+{
+  "test": "go test ./cmd/clusterguard/... -count=1",
+  "control": {
+    "name": "CONTROL — the read-only tier stops consulting the classification (every verb passes under ASSAY_ALLOW_CLUSTER=1)",
+    "file": "cmd/clusterguard/shim.go",
+    "old": "\tcase tierReadOnly:\n\t\tif ro {",
+    "new": "\tcase tierReadOnly:\n\t\tif true {"
+  },
+  "mutations": [
+    {
+      "name": "an unlisted pre-verb flag is read as boolean again, so the token after it is taken as the verb (the --username get delete false pass)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\t\treturn verbScan{unlisted: a} // unknown arity: unclassifiable",
+      "new": "\t\t\tcontinue"
+    },
+    {
+      "name": "an unlisted pre-verb flag is guessed to consume the next token, still recorded for the refusal text (the --debug uninstall list false pass)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\t\treturn verbScan{unlisted: a} // unknown arity: unclassifiable",
+      "new": "\t\t\tif i+1 < len(args) {\n\t\t\t\ts := scanVerb(cli, args[i+2:])\n\t\t\t\ts.unlisted = a\n\t\t\t\treturn s\n\t\t\t}\n\t\t\treturn verbScan{unlisted: a}"
+    },
+    {
+      "name": "an unlisted pre-verb flag takes one value and the next non-flag token is the verb, cobra-style (the --warnings-as-errors delete events false pass)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\t\treturn verbScan{unlisted: a} // unknown arity: unclassifiable",
+      "new": "\t\t\tif i+2 < len(args) && !strings.HasPrefix(args[i+2], \"-\") {\n\t\t\t\treturn verbScan{verb: args[i+2], unlisted: a}\n\t\t\t}\n\t\t\treturn verbScan{unlisted: a}"
+    },
+    {
+      "name": "a listed value flag no longer consumes its value (-n ns get classifies on ns)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\t\t\ti++ // skip the value this flag consumes\n",
+      "new": "\n"
+    },
+    {
+      "name": "a self-contained --flag=value is treated as an unlisted flag (the documented workaround stops classifying)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\t\tif strings.Contains(a, \"=\") {",
+      "new": "\t\t\tif false && strings.Contains(a, \"=\") {"
+    },
+    {
+      "name": "the unclassified-flag refusal stops naming the flag and the --flag=value form",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\tif scan.unlisted != \"\" && len(readOnlyVerbs[cli]) > 0 {",
+      "new": "\t\tif false && scan.unlisted != \"\" && len(readOnlyVerbs[cli]) > 0 {"
+    }
+  ]
+}

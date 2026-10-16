@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -41,21 +40,19 @@ func initFiles() []struct{ path, body string } {
 	}
 }
 
-// runInit scaffolds the report pack into root, creating each target only if
+// initOptions are the `init` verb's parsed settings (cli.go declares them).
+type initOptions struct {
+	Root   string
+	DryRun bool
+}
+
+// initMain scaffolds the report pack into root, creating each target only if
 // absent, then prints next steps. `--dry-run` previews every rendered file and
 // writes nothing.
-func runInit(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	root := fs.String("root", ".", "target repo root to scaffold the report pack into")
-	dryRun := fs.Bool("dry-run", false, "preview every file that would be created and write nothing")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-
+func initMain(o initOptions, stdout, stderr io.Writer) int {
 	files := initFiles()
 
-	if *dryRun {
+	if o.DryRun {
 		for _, f := range files {
 			fmt.Fprintf(stdout, "would create  %s\n", f.path)
 			fmt.Fprintln(stdout, "----------------------------------------")
@@ -67,7 +64,7 @@ func runInit(args []string, stdout, stderr io.Writer) int {
 
 	var created, skipped []string
 	for _, f := range files {
-		abs := filepath.Join(*root, filepath.FromSlash(f.path))
+		abs := filepath.Join(o.Root, filepath.FromSlash(f.path))
 		if _, err := os.Stat(abs); err == nil {
 			skipped = append(skipped, f.path)
 			continue
