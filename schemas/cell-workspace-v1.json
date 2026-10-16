@@ -106,7 +106,7 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 4096,
-          "pattern": "^(/|[A-Za-z]:[\\\\/]|\\\\\\\\)"
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\\x00-\\x1f\\x7f/\\\\.]|\\.\\.[^\\x00-\\x1f\\x7f/\\\\])[^\\x00-\\x1f\\x7f/\\\\]*|\\.)([\\\\/]((\\.?[^\\x00-\\x1f\\x7f/\\\\.]|\\.\\.[^\\x00-\\x1f\\x7f/\\\\])[^\\x00-\\x1f\\x7f/\\\\]*|\\.?))*)?$"
         }
       }
     },
@@ -194,7 +194,7 @@
       }
     },
     "Path": {
-      "description": "Platform-native logical path and the resolved physical path the effect boundary verified.",
+      "description": "Platform-native logical path and the resolved physical path the effect boundary verified. Every path in these documents (here, cell.root and the Git directories) is an absolute local path: a POSIX root or a drive root, never a network root, a .. segment or a control character (spec section 3).",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -206,13 +206,13 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 4096,
-          "pattern": "^(/|[A-Za-z]:[\\\\/]|\\\\\\\\)"
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\\x00-\\x1f\\x7f/\\\\.]|\\.\\.[^\\x00-\\x1f\\x7f/\\\\])[^\\x00-\\x1f\\x7f/\\\\]*|\\.)([\\\\/]((\\.?[^\\x00-\\x1f\\x7f/\\\\.]|\\.\\.[^\\x00-\\x1f\\x7f/\\\\])[^\\x00-\\x1f\\x7f/\\\\]*|\\.?))*)?$"
         },
         "physical": {
           "type": "string",
           "minLength": 1,
           "maxLength": 4096,
-          "pattern": "^(/|[A-Za-z]:[\\\\/]|\\\\\\\\)"
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\\x00-\\x1f\\x7f/\\\\.]|\\.\\.[^\\x00-\\x1f\\x7f/\\\\])[^\\x00-\\x1f\\x7f/\\\\]*|\\.)([\\\\/]((\\.?[^\\x00-\\x1f\\x7f/\\\\.]|\\.\\.[^\\x00-\\x1f\\x7f/\\\\])[^\\x00-\\x1f\\x7f/\\\\]*|\\.?))*)?$"
         }
       }
     },
@@ -229,13 +229,13 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 4096,
-          "pattern": "^(/|[A-Za-z]:[\\\\/]|\\\\\\\\)"
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\\x00-\\x1f\\x7f/\\\\.]|\\.\\.[^\\x00-\\x1f\\x7f/\\\\])[^\\x00-\\x1f\\x7f/\\\\]*|\\.)([\\\\/]((\\.?[^\\x00-\\x1f\\x7f/\\\\.]|\\.\\.[^\\x00-\\x1f\\x7f/\\\\])[^\\x00-\\x1f\\x7f/\\\\]*|\\.?))*)?$"
         },
         "admin_dir": {
           "type": "string",
           "minLength": 1,
           "maxLength": 4096,
-          "pattern": "^(/|[A-Za-z]:[\\\\/]|\\\\\\\\)"
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\\x00-\\x1f\\x7f/\\\\.]|\\.\\.[^\\x00-\\x1f\\x7f/\\\\])[^\\x00-\\x1f\\x7f/\\\\]*|\\.)([\\\\/]((\\.?[^\\x00-\\x1f\\x7f/\\\\.]|\\.\\.[^\\x00-\\x1f\\x7f/\\\\])[^\\x00-\\x1f\\x7f/\\\\]*|\\.?))*)?$"
         }
       }
     },

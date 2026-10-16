@@ -60,6 +60,60 @@
       "file": "contract.go",
       "old": "\tStateRetired:    nil,",
       "new": "\tStateRetired:    {StateActive},"
+    },
+    {
+      "name": "the canonical encoding HTML-escapes <, > and & as json.Marshal does, so a payload digest cannot be reproduced from the spec's canonical bytes",
+      "file": "contract.go",
+      "old": "\tenc.SetEscapeHTML(false)",
+      "new": "\tenc.SetEscapeHTML(true)"
+    },
+    {
+      "name": "the canonical encoding keeps the encoder's trailing newline",
+      "file": "contract.go",
+      "old": "\tb := bytes.TrimSuffix(buf.Bytes(), []byte(\"\\n\"))",
+      "new": "\tb := buf.Bytes()"
+    },
+    {
+      "name": "U+2028 stays escaped in the canonical encoding instead of being written as UTF-8",
+      "file": "contract.go",
+      "old": "\t\t\tcase \"2028\":",
+      "new": "\t\t\tcase \"2028-\":"
+    },
+    {
+      "name": "an escaped backslash followed by the text u2028 is rewritten as a line separator",
+      "file": "contract.go",
+      "old": "\t\tout = append(out, b[i], b[i+1])\n\t\ti++",
+      "new": "\t\tout = append(out, b[i])"
+    },
+    {
+      "name": "identifiers admit a space (the visible-ASCII range starts one character early)",
+      "file": "contract.go",
+      "old": "idRe         = regexp.MustCompile(`^[!-~]{1,256}$`)",
+      "new": "idRe         = regexp.MustCompile(`^[ -~]{1,256}$`)"
+    },
+    {
+      "name": "a network (UNC) root is admitted as an absolute path",
+      "file": "contract.go",
+      "old": "absPathPattern = `^(/|[A-Za-z]:[\\\\/])((`",
+      "new": "absPathPattern = `^(/|[A-Za-z]:[\\\\/]|\\\\\\\\)((`"
+    },
+    {
+      "name": "a .. segment is admitted after the first separator",
+      "file": "contract.go",
+      "old": "`|\\.?))*)?$`",
+      "new": "`|\\.?|\\.\\.))*)?$`"
+    },
+    {
+      "name": "a control character is admitted inside a path segment",
+      "file": "contract.go",
+      "old": "pathChar       = `[^\\x00-\\x1f\\x7f/\\\\]`",
+      "new": "pathChar       = `[^\\x00/\\\\]`"
+    },
+    {
+      "name": "a path that is not valid UTF-8 is admitted",
+      "file": "contract.go",
+      "old": "!utf8.ValidString(p) ||",
+      "new": "false ||"
     }
   ]
 }

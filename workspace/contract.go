@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Schema is the one schema version this package reads and writes. A document naming any other
@@ -345,7 +346,20 @@ var (
 	branchRe     = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._/-]*$`)
 	capabilityRe = regexp.MustCompile(`^[a-z][a-z0-9.-]*(?:/v[0-9]+)?$`)
 	repoKeyRe    = regexp.MustCompile(`^[a-z0-9-]{1,32}-[0-9a-f]{16}$`)
-	absPathRe    = regexp.MustCompile(`^(?:/|[A-Za-z]:[\\/]|\\\\)`)
+	absPathRe    = regexp.MustCompile(absPathPattern)
+)
+
+// absPathPattern is the whole-path rule of spec section 3, written once so that the schema's
+// path patterns can carry the identical string (TestWorkspaceSchemaCoverage compares them): a
+// POSIX root not followed by a second separator, or a drive root; no network (UNC) root, so no
+// path begins with two separators; no `..` segment between either separator; no control
+// character. A segment is any run of permitted characters other than `..` (the first one also
+// not empty, which is what keeps a second separator off the root).
+const (
+	pathChar       = `[^\x00-\x1f\x7f/\\]`
+	pathCharNoDot  = `[^\x00-\x1f\x7f/\\.]`
+	pathSegment    = `(\.?` + pathCharNoDot + `|\.\.` + pathChar + `)` + pathChar + `*`
+	absPathPattern = `^(/|[A-Za-z]:[\\/])((` + pathSegment + `|\.)([\\/](` + pathSegment + `|\.?))*)?$`
 )
 
 // checkSchema is the one version gate every decoder and validator runs first: a document of
@@ -358,8 +372,8 @@ func checkSchema(s string) error {
 }
 
 func checkAbs(field, p string) error {
-	if p == "" || len(p) > 4096 || strings.ContainsAny(p, "\x00\n\r") || !absPathRe.MatchString(p) {
-		return refuse(ReasonInvalid, field, "want an absolute path")
+	if p == "" || len(p) > 4096 || !utf8.ValidString(p) || !absPathRe.MatchString(p) {
+		return refuse(ReasonInvalid, field, "want an absolute local path without a .. segment or control character")
 	}
 	return nil
 }
@@ -561,16 +575,55 @@ func (r Record) Key() Key {
 		Scope: scopeOf(r.Kind, r.Session, r.Task), AttemptID: r.AttemptID, RequestID: r.RequestID}
 }
 
-// Digest is the payload digest of a request: sha256 over its canonical encoding (the fields in
-// schema order, no insignificant whitespace). Two requests with equal digests are the same
-// request, however their documents were spaced.
+// Digest is the payload digest of a request: sha256 over its canonical encoding (spec section
+// 4.2). Two requests with equal digests are the same request, however their documents were
+// spaced or their strings escaped.
 func (q Request) Digest() string {
-	b, err := json.Marshal(q)
+	b, err := canonical(q)
 	if err != nil {
 		panic(err) // unreachable: every field is a string, slice of strings or struct of them
 	}
 	sum := sha256.Sum256(b)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// canonical is the canonical encoding of spec section 4.2: members in schema (struct field)
+// order, absent optional members omitted, no insignificant whitespace and nothing after the
+// value, and strings escaped only where JSON requires it. json.Marshal is not that encoding: it
+// also escapes <, > and & (HTML safety) and U+2028/U+2029, which the identifiers and paths of
+// this contract may carry, so a digest over its output could not be reproduced from the spec.
+func canonical(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	// Encode terminates the value with exactly one newline, which is not part of the encoding.
+	b := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
+	// The encoder escapes U+2028 and U+2029 even with HTML escaping off; write them as UTF-8.
+	// Every backslash in the encoder's output opens an escape inside a string, so walking the
+	// escapes pairwise never mistakes an escaped backslash followed by "u2028" for one.
+	out := make([]byte, 0, len(b))
+	for i := 0; i < len(b); i++ {
+		if b[i] != '\\' || i+1 >= len(b) {
+			out = append(out, b[i])
+			continue
+		}
+		if b[i+1] == 'u' && i+5 < len(b) {
+			switch string(b[i+2 : i+6]) {
+			case "2028":
+				out, i = utf8.AppendRune(out, 0x2028), i+5
+				continue
+			case "2029":
+				out, i = utf8.AppendRune(out, 0x2029), i+5
+				continue
+			}
+		}
+		out = append(out, b[i], b[i+1])
+		i++
+	}
+	return out, nil
 }
 
 // Replay decides a request that arrives with the key of an existing record: the same payload
@@ -843,7 +896,7 @@ func decode(data []byte, v any) error {
 	if err := strict.Decode(v); err != nil {
 		return refuse(ReasonMalformed, "", "%v", err)
 	}
-	again, err := json.Marshal(v)
+	again, err := canonical(v)
 	if err != nil {
 		return refuse(ReasonMalformed, "", "%v", err)
 	}

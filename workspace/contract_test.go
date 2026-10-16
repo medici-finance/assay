@@ -81,7 +81,7 @@ func TestWorkspaceContractRoundTrip(t *testing.T) {
 				t.Errorf("%s: digest %s, want %s", name, got, digest)
 			}
 			if !strings.Contains(name, "-pretty") {
-				enc, _ := json.Marshal(q)
+				enc, _ := canonical(q)
 				if raw := readFixture(t, name); !bytes.Equal(enc, raw) {
 					t.Errorf("%s: canonical re-encoding differs from the fixture:\n got %s\nwant %s", name, enc, raw)
 				}
@@ -100,7 +100,7 @@ func TestWorkspaceContractRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if enc, _ := json.Marshal(rec); !bytes.Equal(enc, raw) {
+		if enc, _ := canonical(rec); !bytes.Equal(enc, raw) {
 			t.Fatalf("record re-encoding differs:\n got %s\nwant %s", enc, raw)
 		}
 		if rec.PayloadDigest != exp.Digests["request-worker.json"] {
@@ -264,6 +264,107 @@ func TestWorkspaceContractRoundTrip(t *testing.T) {
 			keys[k] = r
 		}
 	})
+
+	// The canonical encoding escapes only what JSON requires (spec section 4.2). The escape
+	// fixtures pin <, >, &, quote, backslash, non-ASCII and U+2028 through expected.json; this
+	// pins the one case a fixture cannot show by its digest alone: an identifier whose visible
+	// ASCII text spells a backslash-u-2028 escape stays that text, escaped backslash and all.
+	t.Run("canonical-escaping", func(t *testing.T) {
+		q := mustRequest(t, "request-escape.json")
+		lit := `x\` + "u2028y"
+		q.Task.ID = lit
+		b, err := canonical(q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := `"id":"x\\` + `u2028y"`; !bytes.Contains(b, []byte(want)) {
+			t.Fatalf("escaped backslash not kept: %s", b)
+		}
+		back, err := DecodeRequest(b)
+		if err != nil || back.Task.ID != lit || back.Digest() != q.Digest() {
+			t.Fatalf("canonical bytes do not round-trip: %v %q", err, back.Task.ID)
+		}
+		for _, r := range []rune{0x2028, 0x2029} {
+			q.Cell.Root = "/srv/" + string(r)
+			b, _ := canonical(q)
+			if !bytes.Contains(b, []byte(q.Cell.Root)) || bytes.HasSuffix(b, []byte("\n")) {
+				t.Fatalf("U+%04X not written as UTF-8, or a trailing newline: %q", r, b)
+			}
+		}
+	})
+
+	// Identifiers are 1-256 visible ASCII characters, at every identifier member (spec section 3).
+	t.Run("identifier-charset", func(t *testing.T) {
+		accept := []string{"!", "~", `<&>"\'` + "`$;|/..", strings.Repeat("a", 256)}
+		refuse := []string{"", " ", "a b", "a\tb", "a\n", "\x7f", "a\x00", "caf" + string(rune(0xe9)),
+			string(rune(0xa0)), string(rune(0x202e)), string(rune(0x200b)), strings.Repeat("a", 257)}
+		set := map[string]func(*Request, string){
+			"request_id":      func(q *Request, v string) { q.RequestID = v },
+			"attempt_id":      func(q *Request, v string) { q.AttemptID = v },
+			"task.id":         func(q *Request, v string) { q.Task.ID = v },
+			"session.session": func(q *Request, v string) { q.Session.Session = v },
+		}
+		for field, edit := range set {
+			for _, v := range accept {
+				q := mustRequest(t, "request-worker.json")
+				edit(&q, v)
+				if err := q.Validate(); err != nil {
+					t.Errorf("%s %q refused: %v", field, v, err)
+				}
+			}
+			for _, v := range refuse {
+				q := mustRequest(t, "request-worker.json")
+				edit(&q, v)
+				var r *Refusal
+				if err := q.Validate(); !errors.As(err, &r) || r.Reason != ReasonInvalid || r.Field != field {
+					t.Errorf("%s %q: want invalid at %s, got %v", field, v, field, err)
+				}
+			}
+		}
+	})
+
+	// Paths are absolute local paths: a POSIX or drive root, no network (UNC) root, no `..`
+	// segment between either separator, no control character, valid UTF-8 (spec section 3).
+	t.Run("path-rules", func(t *testing.T) {
+		bs := `\`
+		accept := []string{"/", "/srv/cells/alpha", "/a/./b", "/a//b", "/...", "/a/..b", "/a/b..",
+			"C:/x", "C:" + bs + "x" + bs + "y", "/caf" + string(rune(0xe9)) + string(rune(0x2028)),
+			"/a b", "/" + strings.Repeat("a", 4095)}
+		refuse := []string{"", "rel", "C:x", "//srv/share", bs + bs + "srv" + bs + "share",
+			bs + bs + "?" + bs + "C:" + bs + "x", "//?/C:/x", "/" + bs + "x", "C:" + bs + bs + "x",
+			"/..", "/a/..", "/a/../b", "/a" + bs + ".." + bs + "b", "C:" + bs + "..", "C:/x/../y",
+			"/a\tb", "/a\nb", "/a\rb", "/a\x00b", "/a\x01b", "/a\x1fb", "/a\x7fb", "/a\xffb",
+			"/" + strings.Repeat("a", 4096)}
+		for _, v := range accept {
+			if err := checkAbs("cell.root", v); err != nil {
+				t.Errorf("%q refused: %v", v, err)
+			}
+		}
+		for _, v := range refuse {
+			q := mustRequest(t, "request-worker.json")
+			q.Cell.Root = v
+			var r *Refusal
+			if err := q.Validate(); !errors.As(err, &r) || r.Reason != ReasonInvalid || r.Field != "cell.root" {
+				t.Errorf("cell.root %q: want invalid, got %v", v, err)
+			}
+		}
+		rec, _ := DecodeRecord(readFixture(t, "record-worker.json"))
+		for field, edit := range map[string]func(*Record){
+			"path.logical":   func(r *Record) { r.Path.Logical += "/../x" },
+			"path.physical":  func(r *Record) { r.Path.Physical = bs + bs + "host" + bs + "share" },
+			"git.common_dir": func(r *Record) { r.Git.CommonDir = "//host/share/.git" },
+			"git.admin_dir":  func(r *Record) { r.Git.AdminDir += "\x1b" },
+		} {
+			r := rec
+			g := *rec.Git
+			r.Git = &g
+			edit(&r)
+			var ref *Refusal
+			if err := r.Validate(); !errors.As(err, &ref) || ref.Reason != ReasonInvalid || ref.Field != field {
+				t.Errorf("%s: want invalid, got %v", field, err)
+			}
+		}
+	})
 }
 
 // schemaDefs maps each contract type to its $defs entry in schemas/cell-workspace-v1.json.
@@ -271,6 +372,15 @@ var schemaDefs = map[string]any{
 	"Request": Request{}, "Record": Record{}, "Result": Result{}, "CellRef": CellRef{},
 	"RepoRef": RepoRef{}, "SessionRef": SessionRef{}, "Ref": Ref{}, "Subject": Subject{},
 	"Path": Path{}, "GitIdentity": GitIdentity{}, "Outcome": Outcome{},
+}
+
+// schemaPatterns maps every identifier and path member of the schema to the Go rule that checks
+// it, so the published pattern and the implementation cannot drift apart.
+var schemaPatterns = map[string]*regexp.Regexp{
+	"SessionRef.session": idRe, "Ref.id": idRe, "Request.request_id": idRe, "Request.attempt_id": idRe,
+	"Record.request_id": idRe, "Record.attempt_id": idRe, "Result.request_id": idRe,
+	"CellRef.root": absPathRe, "Path.logical": absPathRe, "Path.physical": absPathRe,
+	"GitIdentity.common_dir": absPathRe, "GitIdentity.admin_dir": absPathRe,
 }
 
 func schemaEnums() map[string][]string {
@@ -333,6 +443,15 @@ func schemaProblems(doc map[string]any) []string {
 			out = append(out, "$defs."+name+" required "+strings.Join(req, ",")+" != "+strings.Join(wantReq, ","))
 		}
 	}
+	for member, re := range schemaPatterns {
+		def, prop, _ := strings.Cut(member, ".")
+		d, _ := defs[def].(map[string]any)
+		props, _ := d["properties"].(map[string]any)
+		p, _ := props[prop].(map[string]any)
+		if got, _ := p["pattern"].(string); got != re.String() {
+			out = append(out, "$defs."+member+" pattern "+got+" != Go "+re.String())
+		}
+	}
 	for name, want := range schemaEnums() {
 		def, _ := defs[name].(map[string]any)
 		var got []string
@@ -368,14 +487,19 @@ func TestWorkspaceSchemaCoverage(t *testing.T) {
 			t.Errorf("$defs.%s.schema const %q, want %q", name, c, Schema)
 		}
 	}
-	// The comparison must be able to fail: a schema missing a field, or a widened enum, is caught.
+	// The comparison must be able to fail: a schema missing a field, a widened enum, or a widened
+	// identifier or path pattern, is caught.
 	var doctored map[string]any
 	_ = json.Unmarshal(raw, &doctored)
 	delete(doctored["$defs"].(map[string]any)["Record"].(map[string]any)["properties"].(map[string]any), "generation")
 	k := doctored["$defs"].(map[string]any)["Kind"].(map[string]any)
 	k["enum"] = append(k["enum"].([]any), "sandbox")
-	if n := len(schemaProblems(doctored)); n != 2 {
-		t.Errorf("doctored schema: want 2 problems, got %d", n)
+	ref := doctored["$defs"].(map[string]any)["Ref"].(map[string]any)["properties"].(map[string]any)
+	ref["id"].(map[string]any)["pattern"] = "^[ -~]{1,256}$"
+	root := doctored["$defs"].(map[string]any)["CellRef"].(map[string]any)["properties"].(map[string]any)
+	root["root"].(map[string]any)["pattern"] = `^(/|[A-Za-z]:[\\/]|\\\\)`
+	if n := len(schemaProblems(doctored)); n != 4 {
+		t.Errorf("doctored schema: want 4 problems, got %d", n)
 	}
 }
 

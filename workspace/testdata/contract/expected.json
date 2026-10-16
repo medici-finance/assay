@@ -3,10 +3,13 @@
     "request-worker.json": "sha256:0ad7da13ac70a422ab43bf57d26bb2217bf362d534f6c2823cf3cbd0873c035c",
     "request-worker-pretty.json": "sha256:0ad7da13ac70a422ab43bf57d26bb2217bf362d534f6c2823cf3cbd0873c035c",
     "request-desk.json": "sha256:e1f3df4695a2c07f440710a863eaf3536217b48805bb6b6b9d23e88da5892843",
-    "request-review.json": "sha256:35dfc04882a94667ebf3b629973f80ba7520bc11a9f4fd391da4f1a6dcf29912"
+    "request-review.json": "sha256:35dfc04882a94667ebf3b629973f80ba7520bc11a9f4fd391da4f1a6dcf29912",
+    "request-escape.json": "sha256:c679c6e32b21079fc2b6d386f600bc1f5b38c81947df0fe5e7cbc9526cabfde5",
+    "request-escape-pretty.json": "sha256:c679c6e32b21079fc2b6d386f600bc1f5b38c81947df0fe5e7cbc9526cabfde5"
   },
   "repo_keys": {
     "request-worker.json": "widgets-103052e15af2ff8e",
+    "request-escape.json": "widgets-103052e15af2ff8e",
     "request-desk.json": "widgets-103052e15af2ff8e",
     "request-review.json": "widgets-97d848de73806223"
   },

@@ -50,14 +50,26 @@ jobs:
   workspace:
     runs-on: medici-builder-public
     steps:
+      # persist-credentials:false: this job compiles and runs repository code (its tests
+      # and the mutation harness) and pushes nothing, so the read token stays out of
+      # .git/config.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Go
+        env:
+          # sha256 of go${GO_VERSION}.linux-amd64.tar.gz from go.dev/dl, the same pin
+          # ci.yml and release.yml carry for this GO_VERSION; bump them together. A
+          # GO_VERSION change without a matching digest fails this step closed.
+          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
           echo "fetching $url"
           curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          # Verify BEFORE unpacking into a PATH-prepended directory.
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
           mkdir -p "${HOME}/go-toolchain"
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"

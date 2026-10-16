@@ -36,6 +36,10 @@ Key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 | Allocation | `allocation_id`: a lowercase RFC 9562 UUID | Assigned by the allocator when it reserves intent. |
 | Subject | `{commit, mode, branch?}`: a full lowercase commit id (40 or 64 hex), `branch` or `detached` | Pinned before any checkout is created. `review`, `verify` and `check` workspaces hold a detached subject; a detached subject names no branch. |
 
+Every identifier a caller chooses — `request_id`, `attempt_id`, a task or claim reference's `id`, and a role session — is 1–256 visible ASCII characters (U+0021–U+007E): no space, control, or non-ASCII character. The characters JSON and HTML treat specially (`"`, `\`, `<`, `>`, `&`) are allowed, which is why section 4.2 fixes how they are written.
+
+Every path in these documents — the cell root, a record's logical and physical paths, and its Git common and administration directories — is an absolute local path: valid UTF-8 of at most 4096 bytes that starts at a POSIX root (`/` not followed by a second separator) or a drive root (`C:/` or `C:\`). It is never a network root (`//host/share`, `\\host\share`, `\\?\`), never contains a `..` segment between either separator, and never contains a control character (U+0000–U+001F or U+007F). The schema carries this rule as one pattern on every path member, the same string the reference implementation checks.
+
 ## 4. Requests
 
 A request is a JSON object (`$defs.Request`). Version 1 defines one operation, `allocate`. The other lifecycle operations (attach, renew, finish, reconcile, inventory, retirement, adoption, transfer) are added by the versions that implement them; until then a reader refuses them as `unsupported-capability`.
@@ -55,7 +59,15 @@ The last three are one check: the document must equal its own canonical re-encod
 
 ### 4.2 Canonical encoding and payload digest
 
-The canonical encoding of a document is its members in schema order with no insignificant whitespace and with absent optional members omitted. The payload digest of a request is `sha256:` followed by the lowercase hex SHA-256 of its canonical encoding. Two documents that differ only in whitespace have the same digest.
+The canonical encoding of a document is its members in schema order with no insignificant whitespace and with absent optional members omitted, as UTF-8 with nothing before or after the value — no byte-order mark and no trailing newline. A string is written as it is, except that:
+
+- `"` and `\` are written `\"` and `\\`;
+- U+0008, U+0009, U+000A, U+000C and U+000D are written `\b`, `\t`, `\n`, `\f` and `\r`;
+- every other character below U+0020 is written `\u00` followed by two lowercase hex digits.
+
+Nothing else is escaped: `<`, `>`, `&`, `/`, U+007F, every non-ASCII character, and U+2028 and U+2029 are written as their UTF-8 bytes. (This is the string form of RFC 8785. An encoder whose default escapes HTML-significant characters or the line and paragraph separators — Go's `json.Marshal`, for one — does not produce it unless told not to.)
+
+The payload digest of a request is `sha256:` followed by the lowercase hex SHA-256 of its canonical encoding. The bytes a request arrived as are never hashed: two documents that differ only in whitespace, or in how a string is escaped, have the same digest.
 
 ### 4.3 Idempotency
 
@@ -158,4 +170,4 @@ The census ([`docs/workspace-callers.md`](../docs/workspace-callers.md)) records
 
 ## 10. Conformance
 
-`workspace/testdata/contract/` holds the conformance fixtures: valid requests (one per owner scope, one non-canonically spaced), a record, one result per outcome family, a changed-payload replay, and negative documents each paired in `expected.json` with the reason it MUST produce. The expected payload digests and repository keys in `expected.json` are computed independently of the implementation (a SHA-256 of the fixture bytes and of `forge NUL repository`). A conforming implementation, in any language, decodes every fixture to those identities and refuses every negative fixture with its named reason. `TestWorkspaceSchemaCoverage` holds the published schema and the Go types to the same members, required set and closed value sets.
+`workspace/testdata/contract/` holds the conformance fixtures: valid requests (one per owner scope; one non-canonically spaced; one carrying `<`, `>`, `&`, `"`, `\`, a non-ASCII character and U+2028 in its identifiers and paths, in canonical form and as a spaced twin that escapes every one of those characters), a record, one result per outcome family, a changed-payload replay, and negative documents each paired in `expected.json` with the reason it MUST produce. The expected payload digests and repository keys in `expected.json` are computed independently of the implementation (a SHA-256 of the fixture bytes and of `forge NUL repository`). A conforming implementation, in any language, decodes every fixture to those identities and refuses every negative fixture with its named reason. `TestWorkspaceSchemaCoverage` holds the published schema and the Go types to the same members, required set and closed value sets.
