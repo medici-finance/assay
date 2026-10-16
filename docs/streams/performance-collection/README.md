@@ -313,7 +313,7 @@ Use stable subject/rule/baseline/episode identity for one finding and its issue/
 Repeated triggers, lost acknowledgments and restart reconcile the same logical effect.
 Refresh authority/evidence at effect time. Bound investigations, tokens/cost, CPU/wall,
 forge calls, concurrency and issues/PRs per occurrence; failed or unknown accounting holds.
-Proposals cannot raise budgets, alter their policy, disable a check, or merge their own PR.
+Proposals cannot raise budgets, alter their policy, disable a check, or merge their own PR, and their repair PRs are never admitted to an automated merge lane.
 The worker creates a candidate/draft PR with a reproducer, correctness floor and comparable
 before/after measurement. Independent verification and human gates remain intact. A merged
 repair is awaiting outcome verification until a comparable after-window demonstrates the
