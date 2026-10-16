@@ -33,7 +33,7 @@ consumers:
 
 files: `statusgen/portfolio/`, `statusgen/portfolio.go` (planned), `statusgen/main.go`, `schemas/portfolio-view-v1.json` (planned), `docs/portfolio-views.md` (planned), `statusgen/testdata/portfolio/`, `docs/contracts.md`; `changelog/statusgen-25-portfolio.md` (planned).
 
-facts (d484dd5df, 13 October 2026):
+facts (d484dd5df, 13 October 2026; the R7 line refreshed against main after PR #2890):
 - /23 supplies product binding assessment; /24 supplies capacity; operations/02 supplies obligations.
 - R7 public serving/cockpit ownership is the `cell-api` stream (named in the amendment manifest; ratified with PR #2890, merged); its scaffolding and serving brief are still owed. This slice supplies the pure consumer API.
 - The operations prerequisites remain parked until explicitly admitted; a dashboard is not the first unblocking move.
