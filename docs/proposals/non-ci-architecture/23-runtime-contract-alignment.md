@@ -21,7 +21,7 @@ library/release consumer; it does not create independent runtime authority.
 |---|---|
 | Definitions, acceptance requirements and policy | Reviewed Git sources and existing decision owners; immutable revision references, not caller-supplied replacements |
 | Eligibility and evidence applicability | Existing pure evaluators plus R1 records; missing facts, wrong candidate and unavailable corroboration hold |
-| Attempts, leases, schedules, budgets and effect intent/receipt | R2 PostgreSQL coordination; one transaction owner and stable logical operation identity |
+| Attempts, leases, schedules and effect intent/receipt | R2 PostgreSQL coordination; one transaction owner and stable logical operation identity. Operation-count budgets are best-effort estimates, separate from effect reservations. |
 | Execution isolation and operator authority | R3 runner/cell operation; protected operator incarnation, exclusive mutating repository assignment and separate credentials |
 | Provider effects and ambiguous outcomes | R4 role executors; current admission, reconciliation and no blind retry |
 | Source and forge observations | R6 typed forge/source service; admitted observations and exact revisions, no acceptance or publication grant from SQL |
@@ -120,8 +120,10 @@ a live lease. Managed admission/publication requires current cell coordination a
 authority. Losing a cache permits scoped fallback when available; losing coordination pauses
 affected admission. Do not equate offline inspection with offline admission.
 
-Required evidence/audit and budget accounting use the existing retention and recovery owners.
-Diagnostic loss cannot erase a human decision or become a fresh budget allowance. Authentication,
+Required evidence/audit use the existing retention and recovery owners. Operation-count budget
+accounting follows the [best-effort contract](11-target-architecture.md#operation-count-budgets-are-best-effort):
+small drift and counter loss do not impose transactional durability or hold an otherwise-authorized
+effect. Diagnostic loss cannot erase a human decision or clear an unresolved effect. Authentication,
 authenticated requester, represented actor and executing provider identity remain distinct.
 Retention must identify whether a record is canonical, normally durable operational state,
 rebuildable or disposable; required-record uncertainty remains visible.

@@ -126,6 +126,20 @@ Package R3 later amends this brief for runner **guard events, budgets, resource 
 custody** (delivery sequence, operating obligations). That is not authored here; do not
 implement it under these rows.
 
+## Operation-count accounting amendment — 2026-10-15
+
+Use the target's [best-effort operation-count contract](../../proposals/non-ci-architecture/11-target-architecture.md#operation-count-budgets-are-best-effort)
+for desk/tool operation pacing. Small overcounts and undercounts are acceptable;
+unavailable usage estimates are reported and do not alone refuse an otherwise-authorized
+launch or receipt delivery. Counter maintenance needs no global network-spanning lock
+or exact budget reservation. Include target doc 15's concurrent-drift/counter-loss cases.
+
+This does not make required budget/profile configuration optional or treat its absence
+as unlimited. Existing fail-closed cases still apply to missing configuration and hard
+resource/time/cost limits. Shared capacity, launch identity, generation fencing, stop state
+and unknown launch/cancel reconciliation retain their contracts. Existing Task/Verify
+rows and Evidence are preserved with this explicit operation-count scope.
+
 ## Task
 
 1. Move `tools/desk/internal/cellprocess` into `loopadmin/process` as the module's one process runner, without copying it: keep its process-tree containment and uncertain-cleanup result unchanged, delete the old package, and re-point cellctl's cadence path at the moved package through a `require` plus relative `replace` of the loopadmin module in `tools/desk/go.mod` (the pattern `tools/loopresolve/go.mod` uses for `cellconfig`); cellctl's existing cadence tests stay green unchanged, and the tools/desk release build must resolve the relative `replace`. Extend the process-launch audit so it also scans `loopadmin/` and re-key the runner's exec-site entry to the moved path; the audit must not lose sight of that exec site. Implement one shared process/session supervisor over /20 and that runner. Accept only authenticated caller-scoped, operator-approved launch profiles and validated assignment/reservation references. Support standing-desk and workflow-stage modes with identical adapter and lifecycle semantics. An operator may run separate per-role processes of the same binary; reuse does not imply a privileged all-role daemon.

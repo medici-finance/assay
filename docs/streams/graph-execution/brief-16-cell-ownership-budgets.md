@@ -138,6 +138,22 @@ Package R3 later amends this brief for **exclusive repository assignment**: oper
 rejects overlapping mutating assignment of one external repository before capabilities issue
 (15:49). That is not authored here; do not implement it under these rows.
 
+## Operation-count accounting amendment — 2026-10-15
+
+Apply the target's [best-effort operation-count contract](../../proposals/non-ci-architecture/11-target-architecture.md#operation-count-budgets-are-best-effort).
+Small count drift from concurrent admission, delayed updates and recovery is acceptable;
+operation-count maintenance does not require exact budget reservations, a global lock
+across network work or complete audit reconstruction. Missing estimates are reported as
+unavailable and do not alone hold otherwise-authorized work. Configured pacing still
+uses available estimates.
+
+The cumulative spend, hard resource/time/cost limits, cancellation/stop state, ownership
+generations and unresolved-effect reservations above retain their contracts. Existing
+concurrent-reservation and restore tests qualify those contracts, not an exact desk/tool
+operation quota. Include the concurrent-count and counter-loss cases in target doc 15
+without weakening the existing ownership and unknown-effect cases. This amendment changes
+no completed Evidence or current runtime behavior.
+
 ## Task
 
 1. Define durable reservation and ownership-generation seams, cancellation intent, cumulative attempt budgets and stop/override retention. Use existing storage where possible; adapter conformance must reject non-durable required stores.

@@ -147,6 +147,20 @@ PostgreSQL suite: store a context, restore/reload it after its lease/access boun
 its binding-to-evaluator flow cannot admit the action. A valid positive case must remain.
 No mandatory Git journal or signature infrastructure is introduced. Existing Evidence remains.
 
+## Operation-count accounting amendment — 2026-10-15
+
+The store consumes the target's [best-effort operation-count contract](../../proposals/non-ci-architecture/11-target-architecture.md#operation-count-budgets-are-best-effort).
+Operation-count estimates may drift or be unavailable after restart/reconstruction;
+report missing coverage and preserve/reconcile them where practical. Their update is not
+a mandatory part of admission's intent/outbox transaction, and counter failure alone
+cannot hold otherwise-authorized work or demand an operator reset. No global lock across
+network work or exact budget-slot reservation is required.
+
+The store's required intent, effect identity, approval, incarnation and unknown-outcome
+records remain transactional and fail closed as already specified. Qualify both sides
+using target doc 15's counter-loss and authority-history-loss scenarios. This is an
+additive implementation obligation; existing Task/Verify rows and Evidence are preserved.
+
 ## Task
 
 1. Create the workflow Go module and a single-controller SQLite store (engine superseded 2026-10-13: PostgreSQL per the R2 amendment above) with transactions, versioned migrations and content-addressed artifact references. Select and pin a maintained driver; document supported filesystem/durability assumptions. Persist canonical instance/node/attempt IDs, revisions, wait/stop state and artifact manifests. No second work identity or claim authority.

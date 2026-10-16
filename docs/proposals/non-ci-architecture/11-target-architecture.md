@@ -99,7 +99,7 @@ The cockpit exposes effective policy, evidence provenance and next required act.
 |---|---|---|
 | Definitions and planning | Work definitions, persistent product direction, product and architecture targets, requirements, contracts, change sets and their revisions | Markdown remains the narrative; structured records make selected relationships traversable. Plans do not assert deployment. |
 | Work and policy | Eligibility, dependency satisfaction, delivery facts, review currency, acceptance obligations, portfolio policy evaluation and explainable holds | Pure evaluation over explicit observations and policy versions. No token minting, process launch or hidden network reads. |
-| Runtime coordination | Attempts, leases/generations, schedules, cancellations, recovery, bounded budgets and effect intents | A simple desk item need not instantiate a general workflow graph. Both desk and workflow adapters use the same admission and ownership semantics. |
+| Runtime coordination | Attempts, leases/generations, schedules, cancellations, recovery, best-effort operation-count budgets and effect intents | A simple desk item need not instantiate a general workflow graph. Both desk and workflow adapters use the same admission and ownership semantics. |
 | Evidence and decisions | Evidence subjects, applicability, independent verification, human decisions, publication receipts and acceptance assessment | Execution success cannot grant acceptance; evidence publication cannot answer a human gate. |
 | Provider effects | Typed external reads/writes, repository coordinates, identity, conditional effects and reconciliation | Credential custody stays outside working sessions. Each effect executor has only its role's authority; no universal credential broker. |
 | Continuing operations and quality | Enduring journeys/practices/workflows, assessment definitions, due observations and improvement hypotheses | Delivery verification does not prove operational benefit. qualgen-style measures feed this domain rather than silently changing authorization. |
@@ -261,6 +261,29 @@ The runtime coordination owner also owns [workspace retirement and pending reeva
 Efficiency guards detect repeated calls/failures, no progress and exhausted output/time/cost budgets. Emit attributed events with attempt, candidate, guard/version, triggering observation, corrective action and outcome; bound and redact stored payloads. Distinguish a model-directed nudge from deterministic refusal or cancellation. A legitimate repeated read must be able to observe changed state; equal tool arguments do not prove equal intent or stale data. Budgets come from the admitted operation profile, with explicit unavailable measurements.
 
 Authority controls remain at the executor: scope, policy, candidate, lease generation and stable effect identity. An in-memory duplicate-call cache is only an efficiency aid; it cannot prove that a timed-out write did not occur or prevent replay after restart. A model-based comment critic may improve prose, but its failure policy must never bypass an authorization or publication check. A model's completion assessment is an attributed suggestion, not independent evidence, acceptance or permission to mark a change ready. Existing role and human gates remain controlling.
+
+### Operation-count budgets are best effort
+
+**15 October 2026 amendment.** Counts used to pace desk/tool operations, such as issue
+filing, per-change or per-repository writes and daily operation caps, are best-effort
+operational controls. Small overcounts and undercounts are acceptable, including drift
+from concurrent admission, delayed observations, restart or a missed counter update.
+These limits do not promise an exact quota or an accounting total. An enabled limiter
+still applies its configured policy to the available estimate; this is not permission
+to discard the limiter or widen the operator's configured value.
+
+Use inexpensive local or aggregated counters, falling back to a local estimate when a
+shared counter is unavailable so configured pacing can continue. Exact counting must not require a global
+lock across network work, a durable budget reservation, or full audit-history replay.
+An unavailable count is reported as unavailable, never as a measured zero, and does not
+by itself hold an otherwise-authorized operation. Preserve and reconcile counts where
+practical; counter maintenance failure must not become a publication failure.
+
+This tolerance applies only to operation-count budgets. It grants no operation, target,
+credential or human approval. Effect identity, duplicate prevention, ownership/fencing,
+required evidence and reconciliation of unknown effects retain their existing contracts.
+Their durable reservations protect an operation, not a budget slot. Provider-enforced
+quotas and separate time, cost, resource or human-gate contracts are unchanged.
 
 ## Public Assay includes the control plane and cockpit
 

@@ -165,3 +165,18 @@ rows remain owners; no separate implementation programme is opened. Actual patch
 Historical Evidence is byte-preserved. /28 receives reciprocal unblocks only, not Task/Verify
 changes. The merged forge-neutral/39–45 and performance-collection/01–06 are reused unchanged.
 R3/R4 custody and R5/R7/R8 integration/migration remain their existing proof obligations.
+
+## Best-effort operation-count budgets — 15 October 2026
+
+Controlling delta: [operation-count budgets](11-target-architecture.md#operation-count-budgets-are-best-effort).
+Small overcounts and undercounts are acceptable. This revision separates their recovery
+from effect identity, authority and required evidence in docs 14, 15, 19 and 23.
+
+| Consumer | Applied amendment | Qualification |
+|---|---|---|
+| R2 store/ownership: graph-execution/16 and /19 | Dated operation-count exception; exact budget slots and counter-loss holds are not required | Concurrent drift and counter-loss cases from doc 15; ownership, durable intent and unknown-effect cases remain required |
+| R3 supervisor: graph-execution/26 | Distinguish required budget/profile configuration and hard resource limits from an unavailable operation-count estimate | Missing configuration still refuses; operation-count update loss alone does not refuse an otherwise-authorized launch |
+
+Existing Task/Verify rows and historical Evidence remain intact; the dated amendments
+define the operation-count scope for their implementation. No installed limiter, default,
+credential, executor activation or hard resource limit changes in this documentation PR.
