@@ -133,8 +133,11 @@ func (e *evidenceLandingForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*Wr
 	if e.attempted {
 		return nil, Refused("evidence publication already attempted; obtain a fresh snapshot and reconcile the previous outcome")
 	}
+	// The cached bytes were read at e.branch, so they serve only a write whose
+	// probe ref is exactly that branch: a direct write to it, or a side branch
+	// started from it. Any other start branch keeps the native probe.
 	if g, ok := e.Forge.(*GitLabForge); ok && e.gitlab != nil && repo == e.repo && in.File == e.file &&
-		(in.Branch == e.branch || in.StartBranch == e.branch) && (e.prior != nil || e.absent) {
+		gitlabWriteProbeRef(in) == e.branch && (e.prior != nil || e.absent) {
 		if e.prior != nil && e.prior.Exists {
 			if err := expectedSHAPrecondition(in, true, e.prior.SHA); err != nil {
 				return nil, err

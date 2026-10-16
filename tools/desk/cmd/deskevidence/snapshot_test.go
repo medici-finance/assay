@@ -257,3 +257,118 @@ func TestEvidenceSnapshotCreateUsesBranchPrecondition(t *testing.T) {
 		})
 	}
 }
+
+// Each destination fault keeps the published bytes otherwise valid, so only the
+// named guard stands between it and a write, and the refusal must come from the
+// snapshot reader rather than a later gate. A symlink's blob is its target path;
+// a binary or size-mismatched blob is converted text; a same-length edit keeps
+// every size check green and only the Git blob hash can tell.
+func TestEvidenceSnapshotRefusesNonRegularOrUnboundDestination(t *testing.T) {
+	const link = "../elsewhere/brief-01-example.md"
+	tampered := strings.Replace(fixturePlan, "Pending.", "Pendinf.", 1)
+	if len(tampered) != len(fixturePlan) || tampered == fixturePlan {
+		t.Fatal("tampered fixture must keep the length and change the bytes")
+	}
+	for _, fault := range []string{"symlink", "symlink-plan-bytes", "executable", "binary", "byte-size", "same-length-tamper"} {
+		t.Run(fault, func(t *testing.T) {
+			lf := newLandingFixture(t)
+			lf.api.snapshotChange = func(repo map[string]any) {
+				f := repo["ref"].(map[string]any)["target"].(map[string]any)["file"].(map[string]any)
+				b := f["object"].(map[string]any)
+				switch fault {
+				case "symlink":
+					f["mode"] = 0120000
+					b["text"], b["oid"], b["byteSize"] = link, blobID(link), len(link)
+				case "symlink-plan-bytes":
+					f["mode"] = 0120000
+				case "executable":
+					f["mode"] = 0100755
+				case "binary":
+					b["isBinary"] = true
+				case "byte-size":
+					b["byteSize"] = len(fixturePlan) + 1
+				case "same-length-tamper":
+					b["text"] = tampered
+				}
+			}
+			fragment := filepath.Join(t.TempDir(), "evidence.md")
+			writeFixtureFile(t, fragment, "| 1 | `true` | 0 | ok | 2026-10-06 | verifier |\n")
+			code, calls := lf.land(t, "--root", lf.home, "--brief-path", fixtureBrief, "--evidence-file", fragment)
+			if code == 0 || len(calls) != 1 || len(lf.api.puts) != 0 || lf.api.files[fixtureBrief] != fixturePlan {
+				t.Fatalf("destination fault %s reached the write: code=%d calls=%+v err=%s", fault, code, calls, lf.errBuf)
+			}
+			want := "destination is not a complete regular text blob"
+			if fault == "same-length-tamper" {
+				want = "destination bytes do not match the returned Git blob"
+			}
+			if !strings.Contains(lf.errBuf.String(), want) {
+				t.Fatalf("fault %s refused by the wrong guard; want %q: %s", fault, want, lf.errBuf)
+			}
+		})
+	}
+}
+
+// The snapshot's own completeness gate refuses unknown body-edit history and a
+// comments page whose hasNextPage is null. Admission would refuse some of these
+// later as well; the reason pins that the snapshot itself never hands an
+// incomplete history to the trust reducer.
+func TestEvidenceSnapshotRefusesIncompleteHistoryAtTheSnapshot(t *testing.T) {
+	for _, fault := range []string{"body-history-unknown", "comments-page-info-null"} {
+		t.Run(fault, func(t *testing.T) {
+			lf := newLandingFixture(t)
+			lf.api.snapshotChange = func(repo map[string]any) {
+				issue := repo["issue"].(map[string]any)
+				switch fault {
+				case "body-history-unknown":
+					delete(issue, "lastEditedAt")
+				case "comments-page-info-null":
+					issue["comments"].(map[string]any)["pageInfo"] = map[string]any{"hasNextPage": nil}
+				}
+			}
+			fragment := filepath.Join(t.TempDir(), "evidence.md")
+			writeFixtureFile(t, fragment, "| 1 | `true` | 0 | ok | 2026-10-06 | verifier |\n")
+			code, calls := lf.land(t, "--root", lf.home, "--brief-path", fixtureBrief, "--evidence-file", fragment)
+			if code == 0 || len(calls) != 1 || len(lf.api.puts) != 0 {
+				t.Fatalf("incomplete history accepted: fault=%s code=%d calls=%+v err=%s", fault, code, calls, lf.errBuf)
+			}
+			if want := "incomplete attestation issue, labels or history"; !strings.Contains(lf.errBuf.String(), want) {
+				t.Fatalf("fault %s not refused by the snapshot completeness gate; want %q: %s", fault, want, lf.errBuf)
+			}
+		})
+	}
+}
+
+// One publication forge writes at most once, in process. A second write on
+// the same scoped forge, after a confirmed write or a lost acknowledgement,
+// must refuse before any request leaves; the CLI stopping is not the guard.
+func TestEvidenceSnapshotSecondInProcessWriteRefuses(t *testing.T) {
+	for _, lost := range []bool{false, true} {
+		t.Run(map[bool]string{false: "after-write", true: "after-lost-ack"}[lost], func(t *testing.T) {
+			lf := newLandingFixture(t)
+			f, repo, _, err := admitLanding(lf.home, fixtureRepo, "example-org", "tracker", fixtureBrief, "main", &auditCtx{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			in := deskkit.WriteFileInput{File: fixtureBrief, Branch: "main", Content: []byte(fixturePlan + "\nmore evidence\n"), Message: "Evidence: fixture", AppendOnly: true}
+			lf.api.loseCommitAck = lost
+			if _, err := f.WriteFile(repo, in); (err != nil) != lost || len(lf.api.puts) != 1 {
+				t.Fatalf("first write: lost=%v err=%v puts=%d", lost, err, len(lf.api.puts))
+			}
+			lf.api.loseCommitAck = false
+			before := len(lf.api.calls)
+			in.Content = append(in.Content, []byte("second evidence\n")...)
+			_, err = f.WriteFile(repo, in)
+			if err == nil || !strings.Contains(err.Error(), "evidence publication already attempted") {
+				t.Fatalf("second in-process write was not refused by the publication guard: %v", err)
+			}
+			for _, c := range lf.api.calls[before:] {
+				if c.Method != http.MethodGet {
+					t.Fatalf("second in-process write reached the forge: %+v", lf.api.calls[before:])
+				}
+			}
+			if len(lf.api.puts) != 1 {
+				t.Fatalf("second in-process write landed: %+v", lf.api.puts)
+			}
+		})
+	}
+}
