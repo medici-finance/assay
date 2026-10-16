@@ -37,7 +37,7 @@ fires within one observer interval instead of relying on a worker to remember it
 > Bindings for your harness — which mechanism each `capability:*` names — are in
 > `../../references/<harness>.md`.
 
-> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
 > Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
 
@@ -441,9 +441,20 @@ actual selected model and tier. When the worker returns the opened PR, send that
 selection to the coordinator desk (`the-desk`), which runs the printed
 `deskdispatch --stamp-only --repo <repo> --pr <N> --model <actual-model> --tier <tier>`
 command with the original kit. Require its applied-and-verified receipt before treating
-the PR as model-attested. Both this worker-desk and its child are refused by stamp-only;
+the PR's authoring as model-attested. A worker-kit stamp writes the `authored-model:` /
+`authored-tier:` pair, never `dispatched-*`. The `dispatched-*` pair is the review session's attestation,
+and it is the only one the capability floor reads. Both this worker-desk and its child are refused by stamp-only;
 a shared `DESK_SESSION` is claim custody, not stamp authority. Never switch identity or
 redispatch a worker just to obtain the stamp.
+
+To give a fresh dispatch a stamp target before its PR exists, add `--attest-worker` (with
+`--model`, `--tier` and `--brief`, or an `issue-<N>` item). The verb creates, stamps, closes and
+reads back a dispatcher-authored `[worker-attestation]` record before it emits the prompt. If
+any of those steps fails, it emits no prompt and releases the claim (exit 6). Do not retry
+by hand. The prompt carries one exact `Worker-Attestation:` line for the PR description,
+and the coordinator's `--stamp-only` call (optionally `--attestation <N>`) refuses a change
+whose branch, kit or model/tier disagrees with that record. The record constrains the PR
+stamp; it never stands in for it.
 
 ## Dispatch — `deskdispatch <item-key>` runs the ceremony
 
@@ -473,7 +484,9 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   the claim tool `deskdispatch` resolved. **That tool is `deskclaim-ref` by default** — the
   cross-platform claim binary installed with desk-tools (`tools/desk/cmd/deskclaim-ref`), verbs
   `acquire` / `progress` / `release` / `steal` / `show` / `list`, deskkit exit codes **0** ok ·
-  **5** refused (a live holder owns it) · **6** unverifiable (never "assume free"). The fallback:
+  **5** refused (a live holder owns it) · **6** unverifiable (never "assume free"); `list` alone
+  adds **7** partial — some claims listed, some refs unreadable and named on stderr — which is
+  incomplete, never idle. The fallback:
   a repo may ship its own `tools/dispatch-claim.sh`, and `deskdispatch`'s claim-acquire step
   **prefers `deskclaim-ref` whenever it is on PATH**, falling back to that script when the binary
   is absent and the resolved root (`--claim-root` when given, else `--root`) carries it — and
@@ -766,11 +779,18 @@ Before each loop cycle (orphan sweep, slot refill):
 
 ```bash
 [ -f "$HOME/.config/assay/STOP" ] && echo "STOP flag active — exiting loop" && exit 0
+case "$ASSAY_CELL" in ""|*[!a-z0-9-]*) ;; *) [ -f "$HOME/.config/assay/STOP.cell.$ASSAY_CELL" ] && echo "STOP.cell.$ASSAY_CELL active — exiting loop" && exit 0 ;; esac
 [ -n "$DESK_LOOP" ] && [ -f "$HOME/.config/assay/STOP.$DESK_LOOP" ] && echo "STOP.$DESK_LOOP active — exiting loop" && exit 0
+case "$ASSAY_CELL" in ""|*[!a-z0-9-]*) ;; *) [ -n "$DESK_LOOP" ] && [ -f "$HOME/.config/assay/STOP.cell.$ASSAY_CELL.$DESK_LOOP" ] && echo "STOP.cell.$ASSAY_CELL.$DESK_LOOP active — exiting loop" && exit 0 ;; esac
 ```
 
+`ASSAY_CELL` is the cell marker `cellctl` stamps on every desk it launches: `STOP.cell.<cell>` stops every
+loop of that cell, `STOP.cell.<cell>.<name>` one loop of it. A session with no marker skips both cell lines; a
+marker outside `[a-z0-9-]` builds no path here and is refused (exit 6) by the Guard. Cell flags only add a
+stop — they never lift `DISABLED`, `STOP` or `STOP.<name>`.
+
 A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispatch. Precedence:
-`DISABLED` > `STOP` > `STOP.<name>`; `deskkit.Guard()` enforces them at the tool layer independently.
+`DISABLED` > `STOP` > `STOP.cell.<cell>` > `STOP.<name>` = `STOP.cell.<cell>.<name>`; `deskkit.Guard()` enforces them at the tool layer independently.
 
 ## Guardrails
 

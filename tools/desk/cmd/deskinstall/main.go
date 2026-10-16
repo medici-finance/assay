@@ -125,7 +125,9 @@ refusal naming both modes, never a silent precedence.
 exit (mode 1, and mode 2 without --check): 0 installed/placed · 5 refused
 exit (mode 2 with --check): 0 clean · 1 drift · 2 could-not-check`
 
-func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
+func main() {
+	os.Exit(deskkit.PerfRun("deskinstall", nil, os.Args[1:], func([]string) int { return run(os.Args[1:], os.Stdout, os.Stderr) }))
+}
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version" || args[0] == "version") {

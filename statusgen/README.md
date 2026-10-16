@@ -176,6 +176,20 @@ a merged PR carrying the trailer makes the brief `implemented` at the merge SHA,
 open PR makes it `in-progress`, and a search that ran and found nothing makes it
 `todo` — always with the witness it read, so a negative is never a bare default.
 
+Not every merged trailer PR is the implementation. A PR that only authored the
+brief (it adds the brief's file and touches only board READMEs, brief files and
+changelog fragments) is dropped from the fold (`briefauthoring.go`). A merge the
+brief's own `delivery:` list declares partial —
+`{in: "<alias>#<N>", covers: partial, note: ...}` with the alias resolving
+through `graph-repos.yaml` to the reconciled `--repo`, and no `covers: full`
+entry for the same PR — is work in progress: it derives `in-progress`, never
+`implemented`, in the trailer fold, in the `--backfill` match and in `regen`'s
+drift comparator alike (`briefdelivery.go`). Use it for a skeleton or one slice
+of a multi-PR delivery. A claim naming another repo is the sibling-merge
+detector's, not this one's. A partial claim whose alias cannot be resolved here
+(unknown, withheld, or no registry) makes the brief `unknown` and refuses
+`--apply`.
+
 ```bash
 # Online: read the repo's PRs over the REST API and derive.
 statusgen reconcile --root . --repo medici-finance/assay --json

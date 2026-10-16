@@ -19,6 +19,9 @@ type laneForge interface {
 	ListChangedFiles(repo deskkit.ForgeRepo, number int) ([]deskkit.ChangedFile, error)
 	ReviewsAtHead(repo deskkit.ForgeRepo, number int) ([]deskkit.Review, error)
 	ChecksAtHead(repo deskkit.ForgeRepo, sha string) (*deskkit.ChecksAtHead, error)
+	// GetCommit reads the head commit's committer date for reviewer-approved's re-anchor
+	// test (#3093): an APPROVED submitted before the head commit existed is not a verdict at it.
+	GetCommit(repo deskkit.ForgeRepo, sha string) (*deskkit.RepoCommit, error)
 	RequiredStatusChecks(repo deskkit.ForgeRepo, branch string) ([]string, error)
 	ListLabelEvents(repo deskkit.ForgeRepo, number int) ([]deskkit.LabelEvent, error)
 	ListComments(repo deskkit.ForgeRepo, number int) ([]deskkit.Comment, error)

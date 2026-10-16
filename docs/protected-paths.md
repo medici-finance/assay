@@ -46,7 +46,14 @@ before the three conditions above are evaluated at all.
 `deskpathguard check` reports one of `checked-clean`, `checked-failed` or `could-not-check` —
 matching the verify-integrity stream's own rule. A diff that could not be read (a deleted or
 unreadable head) is **`could-not-check`** (exit 6): it is never rendered as clean, and the
-label is never applied on a could-not-check verdict.
+label is never applied on a could-not-check verdict. `checked-clean` and `checked-failed` both
+exit 0 when the check ran — so a caller reads the `state=` line, not the exit code alone, to tell
+them apart (`checked-failed` also prints `gate-forced: wrote-to-the-test`). The exit code is still
+a signal for the write: without `--dry-run`, a `checked-failed` check whose label write fails
+after the state line exits 5 (refused) or 6 (could-not-check) and prints no `applied:` line — the
+label is **not** on the PR, and a caller who read only the `state=` line would wrongly conclude
+the gate was forced. A non-zero exit with no `state=` line means the check did not run, which is
+`could-not-check`.
 
 ## What this check does NOT do
 

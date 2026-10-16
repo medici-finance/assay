@@ -102,6 +102,11 @@ type pruneOpts struct {
 	// cellsRoot is the cells root Step D sweeps, already resolved from --cells-root /
 	// $CELLS_ROOT / the compiled default by cmdPrune. "" skips the pass.
 	cellsRoot string
+	// minIdle is the ACTIVITY gate's window (activity.go): a worktree whose newest
+	// activity evidence is younger than this is held by the ordinary arm and the
+	// dead-session arm alike. Always positive from the flag; 0 (the fixture suite only)
+	// disables the gate.
+	minIdle time.Duration
 }
 
 // cmdPrune implements `deskwt prune [--repo <path>] [--interval <dur>]
@@ -181,8 +186,11 @@ type pruneOpts struct {
 //	  cell can sit over its byte budget — or the filesystem under its free-space floor —
 //	  indefinitely. Every sweep runs cellcache.Check over each marked cache root under
 //	  the cells root (--cells-root, then $CELLS_ROOT, then the compiled default), with
-//	  the package's own semantics: reclaim only under pressure, never while a consumer
-//	  holds a lease, never a warm purge. A root whose owning directory this sweep just
+//	  the package's own semantics: never a warm purge; whole roots go only under
+//	  pressure with no consumer record; otherwise, under pressure or above the
+//	  high-water mark, build/ entries are trimmed oldest first to the low-water mark,
+//	  never below the policy's safety floor, while active records protect mod/ and
+//	  gopath/. A root whose owning directory this sweep just
 //	  removed is reaped as an orphan, gated on its lease set re-read under its own lock
 //	  at act time. The pass is SILENT when every cache is within policy; the summary
 //	  line gains a cache segment only when it reclaimed, reaped, or found pressure it
@@ -250,6 +258,10 @@ func cmdPrune(args []string) (err error) {
 		"skip the cell-cache pressure pass (run the worktree arms and branch GC only)")
 	cellsRootFlag := fs.String("cells-root", "",
 		"cells root the cache pressure pass sweeps for marked cell Go-cache roots (default: $CELLS_ROOT, then the per-user data-directory default)")
+	// --min-idle is the activity gate's window (activity.go). It can be tuned, never
+	// disabled: a removal gate with an off switch is a --force by another name.
+	minIdleStr := fs.String("min-idle", "",
+		"hold any worktree git shows activity in more recently than this (e.g. 2h; default "+defaultMinIdle.String()+"); must be positive")
 	positionals, perr := parseInterspersed(fs, args)
 	if perr != nil {
 		// TIER TWO: a help screen is not a refusal and writes no audit row (deskkit/helprequest.go).
@@ -258,7 +270,7 @@ func cmdPrune(args []string) (err error) {
 		}
 		return deskkit.Refused("refused: prune takes no flags but --repo, --interval, " +
 			"--reclaim-stale-locks, --reap-dead-sessions, --lock-ttl, --dry-run, --singleton-ttl, " +
-			"--no-singleton, --no-branches, --branches-only, --no-cache and --cells-root " +
+			"--no-singleton, --no-branches, --branches-only, --no-cache, --cells-root and --min-idle " +
 			"(there is no --force): " + perr.Error())
 	}
 	if len(positionals) != 0 {
@@ -274,6 +286,7 @@ func cmdPrune(args []string) (err error) {
 		branchesOnly:      *branchesOnly,
 		noCache:           *noCache,
 		cellsRoot:         cellsRootForSweep(*cellsRootFlag),
+		minIdle:           defaultMinIdle,
 	}
 	// Reaping needs the named lock as ownership evidence. Reclaiming it first
 	// loses that proof in a live sweep while dry-run retains it. Refuse before
@@ -303,6 +316,19 @@ func cmdPrune(args []string) (err error) {
 	}
 	if opts.noCache && *cellsRootFlag != "" {
 		return deskkit.Refused("refused: --cells-root scopes the cache pressure pass, which --no-cache skips")
+	}
+	if s := strings.TrimSpace(*minIdleStr); s != "" {
+		if opts.branchesOnly {
+			return deskkit.Refused("refused: --branches-only runs no worktree arm, so --min-idle has no effect with it")
+		}
+		d, derr := time.ParseDuration(s)
+		if derr != nil {
+			return deskkit.Refused("refused: --min-idle is not a valid duration (e.g. 2h): " + *minIdleStr)
+		}
+		if d <= 0 {
+			return deskkit.Refused("refused: --min-idle must be positive (the activity gate tunes, never disables): " + *minIdleStr)
+		}
+		opts.minIdle = d
 	}
 	if s := strings.TrimSpace(*singletonTTLStr); s != "" {
 		d, derr := time.ParseDuration(s)
@@ -607,7 +633,8 @@ func sweepWithSingleton(guard *pathGuard, dir, cwd string, opts pruneOpts) (prun
 		return res, true, "", err
 	}
 	now := time.Now()
-	s, outcome, why := acquirePruneSingleton(cwd, opts.singletonTTL, now)
+	key := singletonKey(guard, cwd)
+	s, outcome, why := acquirePruneSingleton(key, opts.singletonTTL, now)
 	switch outcome {
 	case singletonHeld, singletonRecent:
 		return pruneResult{}, false, why, nil
@@ -616,8 +643,21 @@ func sweepWithSingleton(guard *pathGuard, dir, cwd string, opts pruneOpts) (prun
 	if outcome == singletonUnavailable {
 		res.warns = append(res.warns, why+" — sweeping anyway (the singleton deduplicates work; it never gates it)")
 	}
-	s.release(cwd, time.Now())
+	s.release(key, time.Now())
 	return res, true, "", err
+}
+
+// singletonKey is what the prune singleton is keyed on: the repository's resolved
+// git-common-dir, the one directory every worktree of a repository shares. A sweep
+// covers every worktree of the repository whichever of them it starts in, so two sweeps
+// started from two different worktrees are the SAME sweep and must contend on one lock;
+// keyed on the invocation's working directory they each took their own and ran at once.
+// A guard without a common dir (never built by newPathGuard) falls back to cwd.
+func singletonKey(guard *pathGuard, cwd string) string {
+	if guard != nil && guard.commonDir != "" {
+		return guard.commonDir
+	}
+	return cwd
 }
 
 // sweepCtx is the per-sweep state that used to be rebuilt per candidate. Three things live
@@ -876,8 +916,24 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 		}
 	}
 
-	// The sweep's clock, read once: the fresh-worktree safety window's age test.
+	// The sweep's clock, read once: the fresh-worktree safety window's age test and the
+	// activity gate's.
 	sweepNow := time.Now()
+
+	// Verifier admissions, read once per sweep (#2830). An admitted verifier home is
+	// clean and, once main moves on, merged — so the ordinary gates would remove it while
+	// its Evidence still has to land from it. A registry that cannot be read holds every
+	// candidate this sweep.
+	admissions, admErr := guard.verifierAdmissions()
+
+	// The activity gate's admin map, read once per sweep (after the reclaim pass's
+	// bookkeeping prune, so it maps the registration as it stands). A failed read is kept,
+	// not returned: every candidate is then HELD as unverifiable, never judged idle.
+	var admins map[string]string
+	var adminsErr error
+	if opts.minIdle > 0 {
+		admins, adminsErr = guard.worktreeAdminDirs()
+	}
 
 	// pendingRemoved collects the trees deleted in this loop. Their admin entries are
 	// dropped ONCE after the loop (see the batched deregistration below), not per removal.
@@ -930,6 +986,28 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 		// asked moved, and the reported reason for each is unchanged.
 		protected := rt == guard.sharedCheckout || rt == cwd || !guard.allowed(rt)
 
+		// The admission hold binds BOTH arms: the dead-session arm removes unlocked, clean,
+		// pushed trees and locked trees of dead sessions, and an admitted home is either.
+		// The activity gate binds BOTH removal arms too, so both holds are decided once,
+		// here. A protected tree is never a candidate, so it is never asked.
+		admHold := ""
+		idleHold := ""
+		if !protected {
+			idleHold = activityHold(admins, adminsErr, rt, opts.minIdle, sweepNow)
+			if admErr != nil {
+				admHold = "could-not-check: verifier admissions: " + errText(admErr)
+			} else {
+				admHold = admissionHoldReason(admissions, rt, sweepNow)
+			}
+		}
+		if opts.reapDeadSessions && admHold != "" {
+			v := reapVerdict{path: rt, reason: admHold}
+			if isLocked {
+				v.session = sessionFromLockReason(reason)
+			}
+			res.plan = append(res.plan, v)
+		}
+
 		if opts.reapDeadSessions && protected {
 			// Named in the plan rather than omitted from it: a plan an operator signs off
 			// must account for every registered worktree, and "this path was never a
@@ -937,7 +1015,14 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 			res.plan = append(res.plan, reapVerdict{path: rt, reason: "protected: " + protectedReason(guard, cwd, rt)})
 		}
 
-		if opts.reapDeadSessions && !protected {
+		if opts.reapDeadSessions && !protected && admHold == "" && idleHold != "" {
+			// Recent activity is a live session whatever its lock (or the lack of one)
+			// says: KEEP, named in the plan, before ownership is even asked. It falls
+			// through to the ordinary arm, which holds it on the same gate.
+			res.plan = append(res.plan, reapVerdict{path: rt, reason: "held: " + idleHold})
+		}
+
+		if opts.reapDeadSessions && !protected && admHold == "" && idleHold == "" {
 			mt, haveMtime := reapMtimes[rt]
 			v := judgeReap(sc, rt, reason, isLocked, mt, haveMtime, opts.lockTTL, reapRoster, reapNow)
 			if v.reap {
@@ -981,6 +1066,16 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 		}
 		if protected {
 			res.skips = append(res.skips, skipEntry{rt, protectedReason(guard, cwd, rt)})
+			continue
+		}
+		if admHold != "" {
+			res.skips = append(res.skips, skipEntry{rt, admHold})
+			continue
+		}
+		// Activity gate: ahead of every content gate. It is a handful of stats, and a tree
+		// in use is held whatever its content would prove.
+		if idleHold != "" {
+			res.skips = append(res.skips, skipEntry{rt, idleHold})
 			continue
 		}
 

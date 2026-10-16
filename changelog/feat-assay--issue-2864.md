@@ -1,0 +1,2 @@
+### Fixed
+- The desk-verb guard reads the per-run stop key straight from the worktree's own config file, once per process, instead of running `git config --worktree`, which walks every registered worktree first. On a repository with hundreds of worktrees each verb no longer pays that walk before it starts work, and test binaries no longer run git against the developer's own worktree for this lookup.

@@ -54,6 +54,9 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 		"BASH_ENV": "",
 		"ENV":      "",
 	}
+	// Resolve from cell configuration even when the invoking shell differs. Only the
+	// normalized non-secret opt-in crosses argv; never copy arbitrary config values.
+	values[envAssayTelemetry] = c.telemetryValue()
 	// Record the operator context only when capture found an operator-side
 	// resource. From an already cell-scoped parent it stays unset, and the house
 	// check then refuses the cell link compared with itself.
@@ -62,7 +65,7 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 	}
 	// Forward only named non-secret launch context. Values are config overrides
 	// on argv, so copying the entire environment here would disclose credentials.
-	for _, key := range []string{"CLAUDE_CONFIG_DIR", "GOCACHE", "GOMODCACHE", "GOPATH", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION"} {
+	for _, key := range []string{"CLAUDE_CONFIG_DIR", "GOCACHE", "GOMODCACHE", "GOPATH", "GOFLAGS", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION"} {
 		for _, kv := range env {
 			k, value, ok := strings.Cut(kv, "=")
 			if ok && strings.EqualFold(k, key) {

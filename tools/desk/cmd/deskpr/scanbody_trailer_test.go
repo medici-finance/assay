@@ -22,7 +22,7 @@ import (
 // exercise the gate in isolation.
 func TestRequireTrailerExemptsScanBodyMarker(t *testing.T) {
 	// (a) exempt: a derived scan-carrier body (marker at head) passes with no trailer,
-	// reporting issue number 0 (a derived body names no reactions surface).
+	// reporting issue number 0 (a derived body names no issue).
 	scanBody := []byte(deskkit.ScanBodyMarker + "\nAutomated inbound scan. This body is DERIVED.\n\n- **created:** 78\n- **retired:** 128\n")
 	if n, err := requireTrailer(scanBody, "", ""); err != nil {
 		t.Fatalf("scanbody-marker body must be exempt from the trailer gate; got: %v", err)

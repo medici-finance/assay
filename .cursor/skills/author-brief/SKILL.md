@@ -53,6 +53,24 @@ Before you finalize the order: for each "smallest unblocking move," **verify it 
 check the code/config/bug tracker, don't assume. If a proposed first step depends on something
 unproven, that something is the real head. Say so explicitly.
 
+## Carry quality obligations into execution
+
+Carry applicable quality attributes and cost-model obligations from the controlling spec
+into the brief's existing Context, Task, DoD and Verify fields. Name the affected path or
+quality scenario, operating conditions, acceptance target or unresolved decision, behaviour
+to preserve, and evidence owner and method. For performance, retain workload and budget. Cite the source; do not silently invent or relax
+budgets. If the source omits a consequential constraint, surface the gap before committing
+work that depends on it. Keep unrelated briefs free of boilerplate quality checklists.
+
+Where algorithm or data structure choice is consequential, state what needs comparison and
+why. An unresolved choice that could invalidate downstream work needs a bounded spike ahead
+of that work, with a decision criterion and explicit dependencies. Verification should cover
+applicable resource budgets and scaling as well as functional equivalence; a faster result
+that skips required behaviour does not pass. Reuse the spec's workload and measurement
+conditions so that the evidence answers the original requirement. Keep cross-cutting
+obligations traceable to the briefs that implement them and the brief that verifies the
+end-to-end result; passing isolated component checks is insufficient for a system target.
+
 ## Brief structure (one file per unit of work)
 
 `docs/<phase>/brief-<NN>-<slug>.md` (or whatever your repo's convention is — match existing phase docs).
@@ -556,6 +574,17 @@ it is an authoring convention only.
 | `pipeline-exit-sunk` | a shell pipeline whose real exit status is sunk by a later stage, so the row cannot fail — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `prose-led-command` | a prose Command cell whose first code span — the text the lift returns — is a mention (a file, a path, an `owner/repo`, a code identifier, a word ahead of the real command), not a command; verifyrun records the row could-not-run until the command is marked with a `cmd:` code span | advisory |
 | `rE2-literal-pipe` | a `\|` inside a `go test -run`/`-bench` selector is a literal pipe in RE2, not alternation — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
+| `runtime-resource-claim-without-principal` | a runtime resource claim (or a release of a claimed resource) not authorized by a human or organization principal, or ownership no succeeded claim backs | fatal |
+| `runtime-resource-credential-not-rotated` | a runtime resource claim with no recorded rotation of the agent credential, or a release with no recorded revocation | fatal |
+| `runtime-resource-credential-outlives-ttl` | a runtime resource whose agent credential lifetime exceeds the resource's ttl | fatal |
+| `runtime-resource-expired` | an unclaimed runtime resource past its ttl, or a claimed one past its retention, still recorded as live | fatal |
+| `runtime-resource-receipt-missing` | a runtime resource effect recorded succeeded with no adapter receipt | fatal |
+| `runtime-resource-schema-violation` | a runtime resource record that breaks runtime-resource-v1's shape, repeats an effect id, or carries a ttl, lifetime or timestamp the rules cannot evaluate | fatal |
+| `runtime-resource-state-unsupported` | a runtime resource record whose state is not the one its receipts support, read in order (the latest authoritative observation wins), or whose receipt time is outside its effect's window | fatal |
+| `runtime-resource-ttl-exceeds-bound` | a runtime resource requested for longer than its adapter's registered max-ttl | fatal |
+| `runtime-resource-unknown-adapter` | a runtime resource record whose adapter is not in the adapter registry, is not registered for the record's class, or does not implement a verb the record uses | fatal |
+| `runtime-resource-unreconciled-effect` | a runtime resource effect with outcome unknown left unreconciled, or another effect issued while one is pending | fatal |
+| `runtime-resource-unreconciled-release` | a runtime resource release counted done with no later reconcile receipt observing the resource absent | fatal |
 | `shredded-cell` | a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `stream-cap` | a change that adds an active stream past the per-root active-stream cap (ASSAY_STREAM_CAP) with no offsetting park — no net new streams past the cap | fatal |
 | `stream-source` | a change that adds an active stream README citing no `spec:`, or a `spec:` whose header is not `**Status:** approved` — a stream is scaffolded only from an approved spec | fatal |

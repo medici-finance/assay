@@ -47,15 +47,17 @@ nothing. deskcalibrate REFUSES a same-vendor sample.
 Exit: 0 ok · 5 refused · 6 unverifiable.`
 
 func main() {
-	// deskcalibrate reads the roster to learn the reviewer role's vendor, so
-	// ciEligible=false: config-home file only, never the environment, in CI as
-	// well as locally — the declaration every acting read verb makes.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("deskcalibrate", nil, os.Args[1:], func([]string) int {
+		// deskcalibrate reads the roster to learn the reviewer role's vendor, so
+		// ciEligible=false: config-home file only, never the environment, in CI as
+		// well as locally — the declaration every acting read verb makes.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:], os.Stdout, os.Stderr)
+	}))
 }
 
 func run(args []string, stdout, stderr *os.File) int {

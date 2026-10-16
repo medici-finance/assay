@@ -149,10 +149,20 @@ type prBase struct {
 	// detected without re-flagging on every unrelated `updatedAt` bump (see
 	// detectNonCommitResolution).
 	LastEditedAt string `json:"lastEditedAt"`
-	Labels       []struct {
+	// UpdatedAt is the forge's last-activity time for the PR, from the same list read. It
+	// keys the per-PR skip (prfacts.go) together with the head sha; "" (a backend that does
+	// not report it) disables the skip for this PR.
+	UpdatedAt string `json:"updatedAt,omitempty"`
+	Labels    []struct {
 		Name string `json:"name"`
 	} `json:"labels"`
-	HeadRefOid        string  `json:"headRefOid"`
+	HeadRefOid string `json:"headRefOid"`
+	// HeadCommittedDate is the head commit's committer date (RFC3339), read on the SAME
+	// commit node as the rollup and bound to headRefOid (deskkit.OpenChange.HeadCommittedAt).
+	// "" when the backend does not carry it — classifyPRFrom then reads the commit itself.
+	// It is what lets the review reduction refuse an approval the forge RE-ANCHORED onto
+	// this head from an older one (#3093).
+	HeadCommittedDate string  `json:"headCommittedDate,omitempty"`
 	HeadRefName       string  `json:"headRefName"`
 	BaseRefName       string  `json:"baseRefName"` // branch filters in the zero-CI probe (#1652) match against this
 	MergeStateStatus  string  `json:"mergeStateStatus"`
@@ -229,17 +239,19 @@ func warnTruncated(repo string, n int, truncated bool, limit int) bool {
 // change from different fields.
 func prBaseFromChange(c deskkit.OpenChange) prBase {
 	pb := prBase{
-		Number:           c.Number,
-		Title:            c.Title,
-		Body:             c.Body,
-		State:            c.State,
-		IsDraft:          c.Draft,
-		CreatedAt:        c.CreatedAt,
-		LastEditedAt:     c.LastEditedAt,
-		HeadRefOid:       c.HeadSHA,
-		HeadRefName:      c.HeadRef,
-		BaseRefName:      c.BaseRef,
-		MergeStateStatus: c.MergeStateStatus,
+		Number:            c.Number,
+		Title:             c.Title,
+		Body:              c.Body,
+		State:             c.State,
+		IsDraft:           c.Draft,
+		CreatedAt:         c.CreatedAt,
+		LastEditedAt:      c.LastEditedAt,
+		UpdatedAt:         c.UpdatedAt,
+		HeadRefOid:        c.HeadSHA,
+		HeadCommittedDate: c.HeadCommittedAt,
+		HeadRefName:       c.HeadRef,
+		BaseRefName:       c.BaseRef,
+		MergeStateStatus:  c.MergeStateStatus,
 	}
 	pb.Author.Login = c.Author.Login
 	for _, l := range c.Labels {
@@ -964,6 +976,11 @@ func reduceReviews(reviews []review, head string) reviewState {
 	// FLAGGING on an advisory surface a human reads, never toward granting a flip, so it is
 	// the safe direction — but it IS a divergence, not an exact mirror. Any change that
 	// makes the board's reduction the basis of a mutating decision must close it first.
+	// NOT a divergence (#3093): both reductions decide on reviews with STALE grants removed
+	// — an APPROVED or security pass at head submitted before the head commit's committer
+	// date, which the forge re-anchored from an older head. Without that, the new commit_id
+	// below reads as a genuine push and a re-anchored APPROVED clears a standing CR. The
+	// board's caller (classifyPRFrom) applies withoutStaleGrants; ready's applies its twin.
 	var lastCommit string
 	var commitBlocked bool
 	var effState, effCommit, effSubmittedAt string
@@ -1683,6 +1700,11 @@ type Header struct {
 	// an out-of-installation repo to per-repo could-not-check rather than failing the
 	// whole sweep. Absent = this verb read every repo it swept, or swept none.
 	RepoCoverage *repoCoverage `json:"repoCoverage,omitempty"`
+	// Cost (#2421) is what the `actions` sweep spent against the forge's read quota:
+	// requests, how many came back 304 (not charged) or were skipped by the per-PR reuse,
+	// by endpoint class, and the lowest remaining quota each rate-limit resource reported
+	// with its reset time. Omitted on every verb but `actions`. See readcost.go.
+	Cost *sweepCost `json:"cost,omitempty"`
 }
 
 // Report is what a subcommand hands back to main: a value to marshal as JSON, a table
@@ -2124,13 +2146,17 @@ func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []stri
 	}
 	part.truncated = truncated
 	ciRequired := deskkit.CIRequired(repo)
+	// #2421: the previous sweep's per-PR facts for this repo (prfacts.go). Saved only when the
+	// whole repo classified, so a failed sweep never replaces good facts with partial ones.
+	facts := loadPRFacts(repo)
 	outcomes, err := sweepConcurrent(prs, sweepConcurrency, func(p prBase) (prOutcome, error) {
 		rv, have := queued[p.Number]
-		return classifyPRFrom(repo, p, rv, have, ciRequired, briefScore, knownBriefs, redBases, now)
+		return classifyPRFrom(repo, p, rv, have, ciRequired, briefScore, knownBriefs, redBases, now, facts)
 	})
 	if err != nil {
 		return actionsPartial{}, err
 	}
+	facts.save()
 	// Assemble the partial in PR-list order (byte-identical to the serial version).
 	for _, oc := range outcomes {
 		part.currentOpen = append(part.currentOpen, oc.id)
@@ -2150,7 +2176,7 @@ func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []stri
 // shared mutable state — it returns a prOutcome — so it is safe to run for many PRs at
 // once. All gh reads inside it fail CLOSED, naming the repo/PR.
 func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (prOutcome, error) {
-	return classifyPRFrom(repo, p, nil, false, ciRequired, briefScore, knownBriefs, redBases, now)
+	return classifyPRFrom(repo, p, nil, false, ciRequired, briefScore, knownBriefs, redBases, now, nil)
 }
 
 // classifyPRFrom is classifyPR with the PR's reviews optionally supplied by the caller's
@@ -2158,7 +2184,10 @@ func classifyPR(repo string, p prBase, ciRequired bool, briefScore map[string]in
 // the same instant as p's head, and the per-PR review read is skipped; haveReviews=false
 // reads them per-PR (fetchReviews) exactly as classifyPR always has. Everything downstream
 // of the review set is the same code either way.
-func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews bool, ciRequired bool, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time) (prOutcome, error) {
+//
+// facts (#2421) supplies the previous sweep's per-PR read results for reuse when this PR's
+// head, updatedAt, base and check rollup are unchanged; nil reads everything fresh.
+func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews bool, ciRequired bool, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time, facts *prFactStore) (prOutcome, error) {
 	id := fmt.Sprintf("%s#%d", repo, p.Number)
 
 	// Trust gate (deskkit/trust.go): untrusted author + no current blessing → quarantine.
@@ -2209,6 +2238,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 	// existing !ever arm to NEEDS-REVIEW (never a cleared state), reusing the existing
 	// contract instead of a second degrade mechanism.
 	var rs reviewState
+	var staleGrantNote string
 	reviews, err := snapReviews, error(nil)
 	if !haveReviews {
 		reviews, err = fetchReviews(repo, p.Number)
@@ -2217,8 +2247,21 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 		degrade(fmt.Sprintf("could not read reviews (%v) — degrading to no verdict "+
 			"established rather than failing the sweep", err))
 	} else {
-		rs = reduceReviews(reviews, p.HeadRefOid)
-		rs = applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body, p.LastEditedAt)
+		// #3093: the forge can re-anchor an older review's commit_id onto this head. Both
+		// reductions decide on the reviews with every grant at head that was submitted
+		// BEFORE the head commit's committer date removed (withoutStaleGrants — blocks are
+		// never removed); a head date that could not be read removes every grant at head
+		// and degrades the row.
+		grantReviews, stale, gerr := withoutStaleGrants(repo, p, reviews)
+		if gerr != nil {
+			degrade(gerr.Error())
+		} else if stale > 0 {
+			staleGrantNote = fmt.Sprintf(" — ignored %d App grant(s) reported at head %s but submitted before "+
+				"its committer date: re-anchored from an older head, they verify nothing here (#3093)",
+				stale, short(p.HeadRefOid))
+		}
+		rs = reduceReviews(grantReviews, p.HeadRefOid)
+		rs = applyBodyEditReverification(rs, grantReviews, p.HeadRefOid, p.Body, p.LastEditedAt)
 	}
 
 	// #1652: an empty rollup is ambiguous until probed. The probe runs ONLY on a truly
@@ -2301,7 +2344,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 			// change-level: this PR's own changed files, for the benign-merge compare. A
 			// read failure here is a fact about ONE PR — reuse fetchChangedFiles' own
 			// truncation contract (degrade to RE-REVIEW) rather than a second mechanism.
-			own, complete, ownErr := fetchChangedFiles(repo, p.Number)
+			own, complete, ownErr := facts.changedFiles(repo, p)
 			if ownErr != nil {
 				in.ownFilesChanged = true
 				degrade(fmt.Sprintf("could not read this PR's own changed files for the "+
@@ -2309,7 +2352,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 			} else {
 				// change-level: the interval between the reviewed sha and head, for the same
 				// compare. Same treatment: a could-not-check for this row, not the repo.
-				changed, cmpErr := changedFilesBetween(repo, rs.lastSHA, p.HeadRefOid)
+				changed, cmpErr := facts.interval(repo, p, rs.lastSHA)
 				if cmpErr != nil {
 					in.ownFilesChanged = true
 					degrade(fmt.Sprintf("could not compare the reviewed sha to head (%v) — "+
@@ -2338,7 +2381,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 	// failure gets the same fail-closed treatment the `!complete` case below already
 	// gives a truncated diff, because both mean the same thing to this gate: the
 	// trigger it exists to catch might be in the part that could not be read.
-	files, complete, rcErr := fetchChangedFiles(repo, p.Number)
+	files, complete, rcErr := facts.changedFiles(repo, p)
 	if rcErr != nil {
 		complete = false
 		degrade(fmt.Sprintf("could not read changed files for risk classification (%v) — "+
@@ -2370,6 +2413,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 	in.riskReason = riskReason
 
 	action, note := classify(in)
+	note += staleGrantNote
 	if rs.bodyEditReverified {
 		note += " — same-head APPROVE accepted under the documented body-edit re-verification class " +
 			"(deskflip re-verifies it at the gate)"
@@ -2425,7 +2469,31 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 	}}, nil
 }
 
+// lastSweepCost is the cost of the most recent actions sweep in this process, for the one
+// stderr summary line run() prints — set on success and on a floor refusal alike.
+var lastSweepCost *sweepCost
+
+// cmdActions runs one metered actions sweep (#2421): the meter is reset and the refuse-floor
+// armed for its duration, and a sweep during which the forge reported quota below the floor
+// is refused (exit 4, naming the reset time) whether or not the sweep itself completed — a
+// board read with requests withheld part-way would look complete, so it is never printed.
 func cmdActions(hdr *Header, mergeNowThreshold, unreviewedThreshold time.Duration) (*Report, error) {
+	boardMeter.begin(rateFloor)
+	rep, err := actionsSweep(hdr, mergeNowThreshold, unreviewedThreshold)
+	boardMeter.end()
+	cost := boardMeter.snapshot()
+	lastSweepCost = &cost
+	if cost.FloorBreach != nil {
+		return nil, cost.floorError(time.Now())
+	}
+	if err != nil {
+		return nil, err
+	}
+	pruneBoardCache(time.Now())
+	return rep, nil
+}
+
+func actionsSweep(hdr *Header, mergeNowThreshold, unreviewedThreshold time.Duration) (*Report, error) {
 	hdr.Scope = boardScope() // #359: a sweeping verb states its coverage
 	rep := actionsReport{Header: *hdr, Rows: []actionRow{}, Tombstones: []tombstone{}, External: []externalRow{}}
 	currentOpen := map[string]bool{}
@@ -2600,6 +2668,10 @@ func cmdActions(hdr *Header, mergeNowThreshold, unreviewedThreshold time.Duratio
 	if zeroNever > 0 || zeroUnver > 0 {
 		detail += fmt.Sprintf(" zeroCI[checks-never-ran=%d unverified=%d]", zeroNever, zeroUnver)
 	}
+
+	// #2421: the sweep's read cost rides in the header. Every read is done by now.
+	cost := boardMeter.snapshot()
+	rep.Header.Cost = &cost
 
 	return &Report{value: rep, detail: detail, render: func(w io.Writer) {
 		fmt.Fprintf(w, "asOf %s\n", hdr.AsOf)

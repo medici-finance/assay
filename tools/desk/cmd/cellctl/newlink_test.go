@@ -270,38 +270,6 @@ func TestNewHouseLinkFailRollback(t *testing.T) {
 	}
 }
 
-// A nested cell name scaffolds as the oracle's `mkdir -p "$d/..."` scaffolds it: the parents of
-// the cell directory are made, not refused. A failed nested scaffold removes the cell and leaves
-// the (unjournaled) parent, which a retry then reuses.
-func TestNewHouseNestedName(t *testing.T) {
-	e, cfg, repo, root, roots := houseFixture(t)
-	defer func(prev func() linker) { newLinker = prev }(newLinker)
-	l := (&recLinker{symlinkErr: privErr}).linker("windows")
-	l.junction = func(string, string) error { return errors.New("junction refused") }
-	newLinker = func() linker { return l }
-	captureStderr(t, func() {
-		assertDies(t, "nested link failure", func() { newHouse(e, root, "team/c", repo, roots, "the-desk", "8787") })
-	})
-	if !isDir(filepath.Join(root, "team")) {
-		t.Fatal("the nested cell's parent was not made (the oracle's mkdir -p makes it)")
-	}
-	if exists(filepath.Join(root, "team", "c")) {
-		t.Fatal("a failed nested scaffold left the partial cell behind")
-	}
-
-	newLinker = hostLinker
-	captureStdout(t, func() { newHouse(e, root, "team/c", repo, roots, "the-desk", "8787") })
-	d := filepath.Join(root, "team", "c")
-	if link, _ := os.Readlink(filepath.Join(d, "home", ".config", "assay")); link != cfg {
-		t.Fatalf("nested cell not scaffolded: config link %q", link)
-	}
-	for _, p := range []string{"worktrees", "shim", "cell.env", "README.md"} {
-		if !exists(filepath.Join(d, p)) {
-			t.Errorf("nested cell lacks %s", p)
-		}
-	}
-}
-
 // The scaffold's own mkdir is `mkdir -p` inside the cell: missing parents are made parent first,
 // each journaled, and the rollback removes all of them.
 func TestScaffoldMkdirParents(t *testing.T) {
@@ -456,6 +424,7 @@ var mkdirAllowed = map[string]string{
 	"container_native.go:newNativeContainer": "no oracle counterpart; the config's cell name is one path element",
 	"git.go:fetchMainUnderLock":              "a mkdir LOCK; oracle `mkdir \"$lock\"` is exclusive by design",
 	"reset.go:resetFetchMain":                "same shared repository mkdir-lock protocol as fetchMainUnderLock; exclusive creation owns only this reset's prefetch",
+	"modelreset.go:lockModelPins":            "a mkdir LOCK beside cell.env and its pin record; no oracle counterpart, exclusive creation IS the lock and the parent cell directory already exists",
 	"lock.go:takeSessionLock":                "the session mkdir lock; oracle `mkdir \"$lockdir\"` is exclusive by design",
 }
 

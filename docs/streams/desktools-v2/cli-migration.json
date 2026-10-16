@@ -8,6 +8,26 @@
   "exclusion_rules": [
     {
       "class": "test",
+      "pattern": "tools/forge-import-check",
+      "reason": "source-only verification instrument run explicitly by go run or go test from forge-neutral briefs 37 and 38 verify rows; it parses a target tree, never builds or executes it, and is never installed or released as an operator CLI (#2743)"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/release/go_cache.py",
+      "reason": "internal release workflow cache adapter imported by fixed workflow calls; no shebang, main guard, argument parser or independent operator entrypoint (#138)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/go_cache_test.py",
+      "reason": "offline release cache provenance and archive fixtures executed by build-test through the regression package (#138)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/go_cache_mutation.py",
+      "reason": "offline planted release cache guard failures in disposable copies; validation utility, never an operator entrypoint (#138)"
+    },
+    {
+      "class": "test",
       "pattern": "docs/qualification/codex-goals/2026-10-12/validate.py",
       "reason": "offline assertions over retained native Goal qualification artifacts for issue #2696; invoked by readers of that evidence index, never installed or released as an operator CLI"
     },
@@ -140,6 +160,16 @@
       "class": "library",
       "pattern": "tools/fleet-gitlab-roles.sh",
       "reason": "role table sourced by the two GitLab fleet scripts; no shebang, never executed"
+    },
+    {
+      "class": "library",
+      "pattern": "statusgen/pushcred.sh",
+      "reason": "board-push credential functions sourced by the board-writer workflow steps and embedded in the GitLab CI template statusgen init writes; no shebang, never executed"
+    },
+    {
+      "class": "library",
+      "pattern": "statusgen/boardadd.sh",
+      "reason": "board-staging function (board_add) embedded verbatim in both CI templates statusgen init writes (issue #2915); no shebang, never executed"
     }
   ],
   "entrypoints": [
@@ -849,6 +879,23 @@
       "complexity": "simple",
       "basis": "924 LOC, ~5 verbs, ~4 flags at 3ad1ad83c871",
       "owner": "desktools-v2/31",
+      "state": "pending"
+    },
+    {
+      "executable": "deskperf",
+      "path": "tools/desk/cmd/deskperf",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "docs/telemetry.md",
+        "docs/streams/desk-tools/brief-23-usage-and-timing-telemetry.md"
+      ],
+      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "complexity": "simple",
+      "basis": "339 LOC, ~2 verbs, ~8 flags at 2ebdde50982a",
+      "owner": "desktools-v2/56",
       "state": "pending"
     },
     {

@@ -95,8 +95,71 @@ receiver, publishing its retention policy, and enabling transmission is
 Console-side work tracked separately. Until then, `--telemetry-dry-run` is the
 only meaningful mode, and it is purely local.
 
+## Desk-tools: the local perf history
+
+The desk tools (`tools/desk/`) keep a separate, **local-only** performance log under the
+same promise and the same environment variable. With `ASSAY_TELEMETRY=1` exported, the
+67 operational desk commands each append one `perf-v1` record per completed invocation to
+`~/.config/assay/perf/<YYYY-MM-DD>.jsonl`; `deskperf report` and `deskperf boot` read it back.
+Day files are kept for 7 UTC days and pruned on write. With the variable unset — or set to
+anything other than exactly `1` — nothing is created: no directory, no file, no install id.
+
+It sends nothing. No file that implements it opens a network connection, and there is no
+endpoint or sender for it anywhere. That is why it has **one** switch rather than two: the
+two-switch rule above exists so that no inherited environment can cause a *send*, and this
+log is a file on your own disk. The single switch still means consent — a user who never
+opted in gets nothing new. **The two-switch rule binds any future remote sink for these
+records in full**: a sender for the perf history needs its own explicit flag in addition
+to `ASSAY_TELEMETRY=1`, exactly as `statusgen --telemetry` does.
+
+Every record carries exactly these fields and no field capable of holding free text:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | Record schema version, `perf-v1`. Adding any field bumps it. |
+| `ts` | string | UTC timestamp, second resolution. |
+| `tool` | string | The desk tool's canonical key from a compiled-in roster; anything else is `other`. |
+| `verb` | string | The tool's own registered subcommand, or `other`; a boot step is `step:<name>` from `deskboot`'s compiled step list (else `step:other`). Never argv text. |
+| `role` | string | `$DESK_LOOP` mapped onto the compiled loop-name roster; unset or unknown is `none`. |
+| `wallMs` | int | Wall-clock duration of the invocation (or boot step). |
+| `cpuMs` | int, optional | Process user+system CPU; **omitted** where it cannot be measured (Windows, boot steps), so "unmeasured" never reads as zero. |
+| `exit` | int | The verb's exit code. |
+| `result` | string | The exit code mapped onto a fixed word (`ok`, `disabled`, `refused`, `unverifiable`); never the input. |
+| `childProcs` | int | Child processes the invocation started through the shared subprocess runner (`deskkit.Run`). |
+| `childWallMs` | int | The summed wall time of those counted children. |
+| `forgeCalls` | int | HTTP round-trips through the forge client's counting transport (counted, never inspected). |
+| `sourceSHA` | string | The binary's build stamp when it is hex, else `unpinned`. |
+| `install` | string | 32 random hex characters minted once per state directory. Identifies nothing but the install. |
+
+`childProcs` and `forgeCalls` count only what passes through those two shared seams, so
+they are lower bounds, not totals. A verb that starts its own children or makes its own
+HTTP calls outside them is not counted. The known cases: `deskboot` starts its boot-step
+children through its own runner; `desktoken`'s token mint and `deskpost`'s posts use their
+own direct HTTP client; and the repository-visibility read uses one when no client is
+injected. A `0` from those tools means "not counted", not "none made".
+
+Never recorded: argv, flag values, repo, PR or issue numbers, branch, path, title, body,
+error text, session tag, environment values, hostname, user name, or tokens. A test plants a
+repo slug, a PR number, a branch, an absolute path, a session tag and a token-shaped
+environment value, and asserts none of them appears in the written bytes.
+
+The perf history is not the desk audit ledger and never reads or writes it. It also holds no
+agent usage: per-invocation tokens and cost belong to the agent runner's own usage record.
+
 ## Dependency posture
 
 The client uses the Go standard library only (`net/http`), consistent with
 `statusgen`'s stdlib + `yaml.v3` rule. No third-party telemetry SDK is
 introduced.
+
+### Command coverage
+
+Every operational command under tools/desk/cmd has exactly one optional performance wrapper.
+The inventory test maintains two explicit exceptions: deskperf must not measure its own report
+reads, and muhar is a developer mutation harness. The original seven commands keep their
+registered verb vocabularies; added commands record the fixed `other` verb. User argv, file
+paths, subjects, credentials and free-form error messages never enter these records.
+On/off does not change exit codes or stdout/stderr; a failed sink cannot fail an operation.
+Coverage is terminal observations, not a running-process census: killed or still-running
+commands may have no record. Child and forge counters retain the documented lower bounds;
+adding wrappers does not make custom runners or HTTP clients counted transports.

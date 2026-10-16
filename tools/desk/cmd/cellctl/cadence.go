@@ -14,6 +14,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
 	"github.com/medici-finance/assay/tools/desk/internal/cellprocess"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/tick"
 )
 
@@ -136,7 +137,22 @@ func (c *Cell) recordRoleChild(pid int) {
 }
 
 func (c *Cell) cadenceGuard(role string) error {
-	for _, p := range []string{filepath.Join(c.cadenceDir(role), "STOP"), filepath.Join(c.Config, "DISABLED"), filepath.Join(c.Config, "STOP"), filepath.Join(c.Config, "STOP."+role)} {
+	paths := []string{filepath.Join(c.cadenceDir(role), "STOP"), filepath.Join(c.Config, "DISABLED"), filepath.Join(c.Config, "STOP"), filepath.Join(c.Config, "STOP."+role)}
+	// The cell-scoped stop flags (STOP.cell.<cell>, STOP.cell.<cell>.<role>) stop the
+	// supervisor between passes as the Guard stops a pass's own verbs. c.Name was held to
+	// the cell-name rule by the loader, which is what makes a path built from it safe; a
+	// name outside it (a hand-built Cell) builds no cell-flag path.
+	if deskkit.ValidCellName(c.Name) {
+		names := []string{role}
+		if class, known := deskkit.LoopFlagNames(role); known {
+			names = class // the role's whole name class, as the Guard reads it
+		}
+		paths = append(paths, filepath.Join(c.Config, deskkit.CellStopFlagName(c.Name, "")))
+		for _, n := range names {
+			paths = append(paths, filepath.Join(c.Config, deskkit.CellStopFlagName(c.Name, n)))
+		}
+	}
+	for _, p := range paths {
 		_, err := os.Lstat(p)
 		if err == nil {
 			return fmt.Errorf("stopped by %s", p)
@@ -279,26 +295,36 @@ func cmdCadence(cell string, args []string) {
 			if action == "recover" && !confirmed {
 				die("cadence recover requires --confirm-stopped after checking that the prior harness and all its children have stopped")
 			}
-			lease, err := cellcadence.Acquire(dir)
-			if err != nil {
-				die("cadence: cannot change active role: %v", err)
+			if err := c.clearCadence(role, action == "recover"); err != nil {
+				die("%v", err)
 			}
-			func() {
-				defer lease.Close()
-				if action == "recover" {
-					if err := os.Remove(filepath.Join(dir, "checkpoint.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
-						die("cadence recover: %v", err)
-					}
-				}
-				if err := os.Remove(filepath.Join(dir, "STOP")); err != nil && !errors.Is(err, os.ErrNotExist) {
-					die("cadence resume: %v", err)
-				}
-			}()
 			fmt.Printf("[cadence] %s %s recorded; start the role to run it\n", role, action)
 		default:
 			die("cadence: unknown action %q", action)
 		}
 	}
+}
+
+// clearCadence is `cadence resume` and, with recover, `cadence recover --confirm-stopped`: the
+// one code path that clears a role's retained checkpoint under its lease. The caller has
+// established that the prior harness and all its children have stopped — the operator's word on
+// the CLI, or the reconcile preflight's pid-and-start-time evidence.
+func (c *Cell) clearCadence(role string, recover bool) error {
+	dir := c.cadenceDir(role)
+	lease, err := cellcadence.Acquire(dir)
+	if err != nil {
+		return fmt.Errorf("cadence: cannot change active role: %w", err)
+	}
+	defer lease.Close()
+	if recover {
+		if err := os.Remove(filepath.Join(dir, "checkpoint.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("cadence recover: %w", err)
+		}
+	}
+	if err := os.Remove(filepath.Join(dir, "STOP")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("cadence resume: %w", err)
+	}
+	return nil
 }
 
 func (c *Cell) printCadenceStatus(role string) {

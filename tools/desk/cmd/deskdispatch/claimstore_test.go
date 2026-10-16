@@ -3,7 +3,8 @@ package main
 // claimstore_test.go — the claim-store seam: step 1 asks deskkit.ResolveClaimStore where the claim
 // is kept. A store that does not resolve refuses BEFORE anything durable happens — no child
 // process, no worktree, no credential minted — and a resolved store is named on the step's
-// report line.
+// report line. A valid store this build does not ship resolves to the legacy store under its
+// own NOTICE (medici-finance/assay#2753).
 
 import (
 	"os"
@@ -40,8 +41,6 @@ func countMints(t *testing.T) *int {
 
 func TestDispatchRefusesBeforeWorktreeOnStoreRefusal(t *testing.T) {
 	for _, c := range []struct{ why, line, want string }{
-		{"a valid store this build does not ship", deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreFile, "ships the file store"},
-		{"the served store, not shipped either", deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreService, "ships the served store"},
 		{"forge-ref selected explicitly", deskkit.EnvClaimStore + "=" + deskkit.ClaimStoreForgeRef, "cannot be selected"},
 		{"an unknown store", deskkit.EnvClaimStore + "=nfs", "Valid values are file and service"},
 		{"a malformed declaration", deskkit.EnvClaimSingleHost + "=true", "the only value is yes"},
@@ -106,5 +105,52 @@ func TestDispatchReportsTheResolvedClaimStore(t *testing.T) {
 	}
 	if !strings.Contains(errOut, toolName+": "+deskkit.ClaimStoreLegacyNotice) {
 		t.Errorf("the removal NOTICE was not printed:\n%s", errOut)
+	}
+}
+
+// TestDispatchUnshippedFallback — ASSAY_CLAIM_STORE=file (or service) names a valid store
+// this build does not ship: the dispatch no longer exits 6, the claim goes to the legacy
+// forge-ref store exactly as an unset key's would, and the NOTICE names the configured store
+// and the release that ships it.
+// regression: #2753
+func TestDispatchUnshippedFallback(t *testing.T) {
+	for _, c := range []struct{ store, ships string }{
+		{deskkit.ClaimStoreFile, "ships the file store"},
+		{deskkit.ClaimStoreService, "ships the served store"},
+	} {
+		t.Run(c.store, func(t *testing.T) {
+			s := &stub{}
+			home, root := s.install(t)
+			plantScripts(t, root)
+			s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
+			withClaimStoreKey(t, home, deskkit.EnvClaimStore+"="+c.store+"\n"+deskkit.EnvClaimSingleHost+"=yes")
+			mints := countMints(t)
+
+			promptFile := filepath.Join(t.TempDir(), "prompt.md")
+			_, errOut, rc := ddRunCapture(t, []string{"example-stream--07", "--root", root, "--repo", allowedRepo,
+				"--kit", "worker", "--prompt-file", promptFile})
+			if rc != deskkit.ExitOK {
+				t.Fatalf("dispatch rc = %d, want 0 (an unshipped store is ignored, never exit %d); stderr:\n%s",
+					rc, deskkit.ExitUnverifiable, errOut)
+			}
+			if !s.ran("dispatch-claim.sh acquire example-stream--07") {
+				t.Fatal("the unshipped store's fallback did not take the claim through the legacy claim tool")
+			}
+			if *mints != 1 {
+				t.Fatalf("the forge-ref store needs the role credential: minted %d time(s), want 1", *mints)
+			}
+			if !strings.Contains(errOut, ", store forge-ref (legacy), authenticated by ") {
+				t.Errorf("the claim-acquire line does not name the legacy store:\n%s", errOut)
+			}
+			if strings.Contains(errOut, deskkit.ClaimStoreLegacyNotice) {
+				t.Errorf("the UNSET notice was printed for a key the operator did set:\n%s", errOut)
+			}
+			for _, f := range []string{toolName + ": NOTICE: " + deskkit.EnvClaimStore + "=" + c.store,
+				"does not ship", c.ships} {
+				if !strings.Contains(errOut, f) {
+					t.Errorf("the unshipped-store NOTICE does not carry %q:\n%s", f, errOut)
+				}
+			}
+		})
 	}
 }

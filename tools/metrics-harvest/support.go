@@ -75,9 +75,33 @@ func main() {
 func defaultConfigPath() string {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
-		return "domains.yaml"
+		thisFile = ""
 	}
-	return filepath.Join(filepath.Dir(thisFile), "domains.yaml")
+	return configPathFrom(thisFile, func(p string) bool {
+		_, err := os.Stat(p)
+		return err == nil
+	})
+}
+
+// configPathFrom resolves the default config path from this source file's
+// recorded path. A -trimpath build records a module-relative path
+// (github.com/…/metrics-harvest/support.go) with no directory on disk behind
+// it, so the source directory cannot be recovered; the two invocations the
+// default supports are then told apart by which of their config paths exists —
+// domains.yaml in the working directory (`go run .`), else
+// tools/metrics-harvest/domains.yaml under it (`go run ./tools/metrics-harvest`
+// from the repo root). With neither present the plain name is returned, so the
+// read refusal names the file that was looked for.
+func configPathFrom(thisFile string, exists func(string) bool) string {
+	if filepath.IsAbs(thisFile) {
+		return filepath.Join(filepath.Dir(thisFile), "domains.yaml")
+	}
+	for _, p := range []string{"domains.yaml", filepath.Join("tools", "metrics-harvest", "domains.yaml")} {
+		if exists(p) {
+			return p
+		}
+	}
+	return "domains.yaml"
 }
 
 // defaultRoot derives the repo root from the config file's location: the config

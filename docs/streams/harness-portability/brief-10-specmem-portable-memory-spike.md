@@ -201,5 +201,38 @@ RISK-VALUE: NAMED, NOT DERIVED — max-age-days = 45 @ freshness.yaml:53 — a r
 
 **VERIFY: FAIL** — 3 of 4 rows pass (1, 2, 4); row 3 is unmet because the doc quotes no two-harness output. Satisfying it needs a human-run live session or a recorded ruling (#1834, OPEN). Status stays implemented.
 
+### Non-implementer verifier re-run: 2026-10-15 (UTC), assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk), merged main a1c0a9c1e8a3bbd4de6f223eabc10ed9a27a1e68
+
+Runner is not the implementer. Own detached temporary worktree at the merged head a1c0a9c1e8a3. Offline envelope observed (`KUBECONFIG=/dev/null`); no third-party tool was downloaded, installed or executed. No PR, no push, no status flip. Admitted by `deskdispatch --check-verifier` (exit 0, run 20c90d53e848, brief sha256 8ba38ea4201c). Run window 2026-10-15 05:11Z to 05:15Z. Every row was executed by hand as authored, with no execution witness.
+
+Grounding, written from the brief before reading any diff: merged main should hold the findings doc. The doc should carry faithfulness verdicts and quote the SAME SpecMem query issued from Claude Code and from a second harness (Codex or jcode), with both returned outputs shown and compared. It should also give a go/no-go read, and freshness.yaml should register the doc.
+
+| # | Command | Expect | Observed (exit + key output line) | Date | Runner |
+|---|---------|--------|-----------------------------------|------|--------|
+| 1 | `test -f docs/research/specmem-portability-spike.md` | exit 0, the findings doc exists | PASS, exit 0. The doc is present, 177 lines, sha256 4cd77c28c8ac. Discharges Verify row 1. | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 2 | `grep -qiE -e identical -e degraded -e portable -e native-only docs/research/specmem-portability-spike.md` | exit 0, faithfulness verdicts present | PASS, exit 0. Case-insensitive line counts per term: identical 8, degraded 5, portable 11, native-only 7. Discharges Verify row 2. | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 3 | (dereferencing) the doc records the SAME query run from BOTH harnesses with their actual returned output quoted | two harnesses' outputs for one query are both quoted and compared | FAIL, checked by reading the whole doc; the expectation is unmet. The doc quotes no returned output from either harness. Its header line says "the live cross-harness run is BLOCKED (see §7)". Its §8 table marks item 3 BLOCKED: "no live SpecMem server + second harness offline (§7); protocol to discharge in §6 — no fabricated output". Its §6 gives only a protocol to run later. A live SpecMem MCP server plus a second MCP-capable harness is outside this offline envelope, so this verifier could not produce the record either. Discharges Verify row 3. | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 4 | `grep -q 'specmem-portability-spike' freshness.yaml` | exit 0, the empirical file is registered | PASS, exit 0. Entry at freshness.yaml line 51: last-reviewed "2026-08-24", max-age-days 45, upstreams empty. Discharges Verify row 4. | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+
+Verification-Attestation: medici-finance/assay#3024 run=20c90d53e8487c4c1ff3cadc678334023f1f465c7fe861efe14f2e23995ccc99 source=a1c0a9c1e8a3bbd4de6f223eabc10ed9a27a1e68 brief=docs/streams/harness-portability/brief-10-specmem-portable-memory-spike.md model=claude-opus-5-5 tier=any
+
+Findings:
+
+- **No change in the deliverable since the 2026-10-11 record.** Between 63bd67f01a01 and this head, the only commit touching the brief, the findings doc or freshness.yaml is a0463071d (#2613). That commit landed the brief's Evidence text only. The doc (sha256 4cd77c28c8ac) and freshness.yaml (sha256 227d07cccc36) are byte-identical to that run's inputs. The delivering change is still d73d7c996 (#1814), the only commit that ever touched the doc.
+- **Row 3 is the sole failure.** The deliverable does not meet the row: no two-harness output is quoted. The cause is environmental, not a coding defect, because the live run needs a SpecMem MCP server and a second MCP-capable harness. Closing it needs one of three things: a human-run live two-harness session following the doc's §6 protocol, a recorded ruling that the row closes as blocked-by-design, or a re-baseline of the row by the brief author. Tracked at #1834; its state was not read in this offline run.
+- **The freshness registration is past its clock.** last-reviewed 2026-08-24 plus max-age-days 45 makes the entry stale from 2026-10-08, seven days before this run. This is not a Verify row. It needs a freshness review of the doc that re-checks the upstream SpecMem claims and bumps last-reviewed.
+
+Risk-bearing value enumeration (scope: the diff of d73d7c996 for this item, meaning the findings doc and its freshness.yaml entry, plus the brief's named deliverables; nothing in scope changed since):
+
+- max-age-days = 45 @ freshness.yaml:53. If wrong, the doc is flagged stale early or late; an edit undoes it.
+- last-reviewed = "2026-08-24" @ freshness.yaml:52. If wrong, the staleness date shifts; an edit undoes it.
+- upstreams = [] @ freshness.yaml:54. If wrong, upstream changes do not invalidate the doc; an edit undoes it. The inline comment gives the reason: the SpecMem upstream is not a locally tracked clone.
+
+All three are reversible operational knobs and rank last; none is irreversible. The findings doc introduces no operational literal; its NO-GO read is a conclusion, and the brief says it informs and does not gate. Frontmatter risk is all-no.
+
+RISK-VALUE: NAMED, NOT DERIVED — max-age-days = 45 @ freshness.yaml:53 — a reversible staleness knob. All 8 max-age-days entries in freshness.yaml are 45, and the comment block above the entry gives "45-day leash" as the shared policy for empirical third-party harness facts. That is consistency, not a first-principles derivation, and none is needed for a reversible knob.
+
+**VERIFY: FAIL** — 3 of 4 rows pass (1, 2, 4). Row 3 is unmet because the doc quotes no two-harness output for a shared query. Satisfying it needs a human-run live session, a recorded ruling, or a row re-baseline (#1834). Status stays implemented.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the harness-portability README table.

@@ -1344,11 +1344,15 @@ cmd_show(){
     local key="$1" flag="$2" eff="$3" src
     if [[ -n "$flag" ]]; then src="flag"
     elif env_file_value "$envfile" "$key" >/dev/null; then src="cell.env"
+    elif [[ "$key" == "ASSAY_TELEMETRY" && -n "${ASSAY_TELEMETRY+x}" ]]; then src="process environment"
     else src="default"
     fi
     printf '[show] %s=%s (%s)\n' "$key" "$eff" "$src"
   }
   echo "[show] cell=$CELL dir=$CELL_DIR"
+  local telemetry_value=0
+  [[ "${ASSAY_TELEMETRY:-}" != "1" ]] || telemetry_value=1
+  [[ -z "${ASSAY_TELEMETRY+x}" ]] || show_line ASSAY_TELEMETRY "" "$telemetry_value"
   # Surface the repair-admission opt-in whenever cell.env carries it, on or off — so `show`
   # answers "would a desk booted from this cell turn the dispatch gate on" the same way a
   # DRY_RUN boot would. "on" is what the launch composes; anything else is identical absence.
@@ -2016,7 +2020,7 @@ check_codex_harness(){
 # exclusive — only the active harness's var is ever exported — and DESK_ROOTS/TERM/LANG are
 # present only when the source they come from (cell.env CELL_ROOTS; the launching shell) carries
 # one.
-SCRUBBED_ENV_KEYS="HOME ZDOTDIR SHELL PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION DESK_LOOP DESK_SESSION DESK_ROOTS TERM LANG"
+SCRUBBED_ENV_KEYS="HOME ZDOTDIR SHELL PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME ASSAY_TELEMETRY GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION DESK_LOOP DESK_SESSION DESK_ROOTS TERM LANG"
 
 # scrubbed_harness_path <harness>: resolves the harness binary ONCE, on the PARENT shell's PATH —
 # the one parent-derived element the composed PATH below keeps (named and pinned, never a bare
@@ -2044,6 +2048,7 @@ scrubbed_env_value(){
     PATH) printf '%s' "$composed_path" ;;
     TMPDIR) printf '%s' "$CELL_DIR/tmp" ;;
     KUBECONFIG) printf '%s' "/dev/null" ;;
+    ASSAY_TELEMETRY) if [[ -n "${ASSAY_TELEMETRY+x}" ]]; then if [[ "$ASSAY_TELEMETRY" == "1" ]]; then printf 1; else printf 0; fi; fi ;;
     ASSAY_CONFIG_HOME) printf '%s' "$CELL_CONFIG" ;;
     GH_CONFIG_DIR) printf '%s' "$CELL_HOME/.config/gh" ;;
     GIT_CONFIG_GLOBAL) printf '%s' "$CELL_HOME/.gitconfig" ;;
@@ -2637,8 +2642,8 @@ cmd_status(){
   return 0
 }
 
-# first_window sets FIRST_NAME / FIRST_CMD — the window that is NOT a role: the deskd watcher, the
-# deskd itself, or (on a cell with no deskd) a line saying so.
+# first_window sets FIRST_NAME / FIRST_CMD — the window that is NOT a role: the deskd watcher or the
+# deskd itself. A cell with no deskd has NO such window (both come back empty).
 #
 # STANDING deskd FROM `up` — the attended affirmation, and how far it carries.
 #
@@ -2653,12 +2658,14 @@ cmd_status(){
 # own affirmation). A cron or CI invocation has neither, and there `up` stands the role windows
 # but NOT deskd, and says so. It is never silent in either direction.
 #
-# A house cell has no deskd unless DESKD=1: its first window is a plain shell in the cell
-# directory that says so, and the role windows follow.
+# A house cell has no deskd unless DESKD=1: it opens no placeholder window for that. The one-line
+# "no deskd" note goes to up's own stderr, once, and only the role windows open (tmux creates its
+# session with the first role window instead).
 first_window(){
   if [[ "$DESKD" != "1" ]]; then
-    FIRST_NAME=cell
-    FIRST_CMD="echo '[cell] $CELL is a $CELL_KIND cell with no deskd (DESKD=1 in cell.env to stand one)'"
+    echo "[cell] $CELL is a $CELL_KIND cell with no deskd (DESKD=1 in cell.env to stand one)" >&2
+    FIRST_NAME=""
+    FIRST_CMD=""
   elif deskd_up; then
     FIRST_NAME=deskd
     FIRST_CMD="echo '[deskd] already up on $DESKD_ADDR — watching /healthz every 60s'; while :; do date -u +%H:%MZ; curl -s --max-time 5 http://$DESKD_ADDR/healthz | head -c 240; echo; sleep 60; done"
@@ -2792,6 +2799,11 @@ cmd_up(){
     fi
   fi
   first_window
+  # Nothing to open is not an error, but it is never silent, and no empty session is created for it.
+  if [[ -z "$FIRST_NAME" && -z "${roles// /}" && -z "$automate" ]]; then
+    echo "[cell] $CELL: nothing to open — no deskd window (DESKD is not 1), no comms window, and no role window (ROLES is empty after --no-the-desk)" >&2
+    return 0
+  fi
   if [[ "${DRY_RUN:-0}" == "1" ]]; then
     echo "[dry-run] cell=$CELL kind=$CELL_KIND${CELL_KIND_OVERRIDE:+ (override)} cockpit=$COCKPIT session=$SESSION config=$cfg"
     if [[ "$persist" == "1" ]]; then
@@ -2800,7 +2812,7 @@ cmd_up(){
     [[ -n "$MODEL_OVERRIDE" ]] && echo "[dry-run] model=$MODEL_OVERRIDE (override) — applied to every role window below"
     [[ -n "$HARNESS_OVERRIDE" ]] && echo "[dry-run] harness=$HARNESS_OVERRIDE — applied to every role window below"
     [[ -n "$up_provider" ]] && echo "[dry-run] provider=$up_provider (override) — applied to every role window below"
-    echo "[dry-run] $FIRST_NAME: $FIRST_CMD"
+    [[ -n "$FIRST_NAME" ]] && echo "[dry-run] $FIRST_NAME: $FIRST_CMD"
     local r
     for r in $roles; do
       if [[ -n "$automate" ]]; then
@@ -2830,17 +2842,28 @@ up_tmux(){
     [[ "$attach" == "1" ]] && exec tmux attach -t "$SESSION"
     return 0
   fi
-  tmux new-session -d -s "$SESSION" -n "$FIRST_NAME" -c "$CELL_DIR" "$FIRST_CMD; echo '[$FIRST_NAME] exited'; exec \$SHELL"
+  # The session is created with its FIRST window: the deskd window when there is one, else the
+  # first role window — a cell with no deskd gets no placeholder pane to hold the session open.
+  local have_session=0
+  if [[ -n "$FIRST_NAME" ]]; then
+    tmux new-session -d -s "$SESSION" -n "$FIRST_NAME" -c "$CELL_DIR" "$FIRST_CMD; echo '[$FIRST_NAME] exited'; exec \$SHELL"
+    have_session=1
+  fi
   local role name
   for role in $roles; do
     case "$role" in pr-review-desk) name=review;; the-desk) name=the-desk;; *) name="${role%-desk}";; esac
-    tmux new-window -t "$SESSION" -n "$name" -c "$CELL_DIR" "$(role_cmd "$role" "$cfg"); echo '[$role] exited'; exec \$SHELL"
+    if [[ "$have_session" == "1" ]]; then
+      tmux new-window -t "$SESSION" -n "$name" -c "$CELL_DIR" "$(role_cmd "$role" "$cfg"); echo '[$role] exited'; exec \$SHELL"
+    else
+      tmux new-session -d -s "$SESSION" -n "$name" -c "$CELL_DIR" "$(role_cmd "$role" "$cfg"); echo '[$role] exited'; exec \$SHELL"
+      have_session=1
+    fi
     # Stagger the windows: each one fetches the shared .git, and starting them at once puts every
     # window into the fetch lock's retry loop at the same moment.
     sleep 2
   done
   tmux select-window -t "$SESSION:the-desk" 2>/dev/null || true
-  echo "[cell] $SESSION up: $FIRST_NAME +$roles (config=$cfg)"
+  echo "[cell] $SESSION up: ${FIRST_NAME:+$FIRST_NAME +}$roles (config=$cfg)"
   echo "[cell] attach: tmux attach -t $SESSION   ·   down: cellctl down $CELL"
   [[ "$attach" == "1" ]] && exec tmux attach -t "$SESSION"
   return 0
@@ -2964,14 +2987,18 @@ up_herdr(){
     || die "herdr is the resolved cockpit but this build's 'herdr pane --help' advertises no 'run' — nothing can execute the role command in a tab; re-run with --cockpit tmux"
   help_has list herdr workspace \
     || die "herdr is the resolved cockpit but this build's 'herdr workspace --help' advertises no 'list' — cannot tell whether a herdr window is already open to host the role tabs; re-run with --cockpit tmux"
-  local new_wsid="" new_default_tab="" started=""
+  local new_wsid="" new_default_tab="" started="" first_label
+  # The workspace is labelled after the first window it will hold: the deskd window when there is
+  # one, else the first role window.
+  local -a role_list; read -ra role_list <<<"$roles"
+  first_label="${FIRST_NAME:-${role_list[0]:-}}"
   if [[ -z "$(herdr_window_id)" ]]; then
-    started="$(herdr_start_window "${CELL}-${FIRST_NAME}")"
+    started="$(herdr_start_window "${CELL}-${first_label}")"
     new_wsid="${started%%|*}"
     new_default_tab="${started#*|}"
     echo "[cell] no herdr window was open — started one"
   fi
-  herdr_window "${CELL}-${FIRST_NAME}" "$FIRST_CMD" "$new_wsid"
+  [[ -n "$FIRST_NAME" ]] && herdr_window "${CELL}-${FIRST_NAME}" "$FIRST_CMD" "$new_wsid"
   local role
   for role in $roles; do
     herdr_window "${CELL}-${role}" "$(role_cmd "$role" "$cfg")" "$new_wsid"
@@ -2981,7 +3008,7 @@ up_herdr(){
   # The freshly-created workspace's own default tab is never wanted — drop it now that the
   # workspace holds the cell's own labelled tabs too (safe: see herdr_start_window above).
   [[ -n "$new_default_tab" ]] && { herdr tab close "$new_default_tab" >/dev/null 2>&1 || true; }
-  echo "[cell] $CELL up in herdr: ${CELL}-${FIRST_NAME} +$roles (config=$cfg)"
+  echo "[cell] $CELL up in herdr: ${FIRST_NAME:+${CELL}-${FIRST_NAME} +}$roles (config=$cfg)"
   echo "[cell] each window is the tab labelled <cell>-<role>   ·   down: cellctl down $CELL"
 }
 
@@ -3052,7 +3079,7 @@ up_orca(){
     sleep 2
   done
   echo "[cell] $CELL up in orca: one terminal per role ($roles), config=$cfg"
-  echo "[cell] the first window's command is not opened in orca — run it yourself if you want it: $FIRST_CMD"
+  [[ -z "$FIRST_CMD" ]] || echo "[cell] the first window's command is not opened in orca — run it yourself if you want it: $FIRST_CMD"
   echo "[cell] down: cellctl down $CELL"
 }
 
