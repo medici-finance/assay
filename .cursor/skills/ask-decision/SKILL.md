@@ -283,8 +283,9 @@ function; a pin inside an `if`, loop, group or subshell, after `||`, `&&`, `|` o
 or `env`, or followed by a pipe; after the pin, a set of `GH_TOKEN` or `GITHUB_TOKEN` (a bare
 assignment, or one given to `export`, `declare`, `typeset`, `local` or `readonly`), an
 `unset GH_TOKEN`, and `export -n GH_TOKEN` or `declare +x GH_TOKEN` (the builtin's name may be
-quoted or escaped); and a `gh` step run through `env -i` or `env -u GH_TOKEN` (also as a short
-cluster such as `-vi`, or abbreviated: `--ignore-env`), `sudo` or `doas`. It reads a `gh` step as the word `gh` in command
+quoted or escaped); a `gh` step run through `env -u GH_TOKEN`, `sudo` or `doas`; and any `env` word before a `gh`
+step that is not `NAME=value`, `-u NAME`, `--unset=NAME` or `--` (that allowlist is the whole
+model of `env`: `env -i`, a cluster, any other option refuses). It reads a `gh` step as the word `gh` in command
 position, after `run`, a pipe, `&&`, `then`, `time`, `env`, `command`, `sudo` and the like (their
 options are skipped; `command -v gh` is a lookup, not a step), never in an `echo`'s quoted text.
 Like the read check it is syntactic and best effort. The lint refuses the shapes it models; the
@@ -293,7 +294,7 @@ one can run with no pin, and a token change in one can undo the pin): a `gh` run
 `sh -c`, `bash -c`, `xargs`, `nice`, `timeout`, `stdbuf`, `exec -c` or a wrapper command the
 lint does not name, or one whose name is quoted, escaped or given by path (`\env`, `"sudo"`,
 `\builtin`, `/usr/bin/env -i gh`); a wrapper option that takes a separate argument and is not in
-the lint's list (`env -S`, say); a token set from a file by `env --env0-from=FILE`;
+the lint's list (`time --output FILE`, say);
 an alias; a command name built from an expansion; a function
 that wraps `gh`, or one that shadows `export` or `unset`; a pin inside a heredoc body; a `trap …
 DEBUG`; a `gh` step inside a process substitution (`<( )`, `>( )`), after a leading redirect

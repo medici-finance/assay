@@ -361,8 +361,30 @@ func TestActPinFlagsSpellings(t *testing.T) {
 		"env -iPmenu":         `  env -iPmenu gh issue edit 1 -R o/r`,
 		"env -iS":             `  env -iS gh issue edit 1 -R o/r`,
 		"env -0iu name":       `  env -0iu GH_TOKEN gh issue edit 1 -R o/r`,
+		"env -v-i":            `  env -v-i gh issue edit 1 -R o/r`,
+		"env -v-":             `  env -v- gh issue edit 1 -R o/r`,
+		"env --i":             `  env --i gh issue edit 1 -R o/r`,
+		"env --vi":            `  env --vi gh issue edit 1 -R o/r`,
+		"env -S-i":            `  env -S-i gh issue edit 1 -R o/r`,
+		"env -S string":       `  env -S 'gh issue edit 1 -R o/r'`,
+		"env -S joined":       `  env -S"gh issue edit 1 -R o/r"`,
+		"env -i sh -c":        `  env -i sh -c 'gh issue edit 1 -R o/r'`,
 	} {
 		rows[name] = shapeRow{[]string{pinLine, exportLine, line}, "does not reach"}
+	}
+	// Over-refused by design: these keep the token, but env before gh is an
+	// allowlist, so every other option word refuses.
+	for name, line := range map[string]string{
+		"env -v":         `  env -v gh issue edit 1 -R o/r`,
+		"env -vu other":  `  env -vu FOO gh issue edit 1 -R o/r`,
+		"env -vuFOO":     `  env -vuFOO gh issue edit 1 -R o/r`,
+		"env -vC dir":    `  env -vC /tmp gh issue edit 1 -R o/r`,
+		"env -Ci dir":    `  env -Ci gh issue edit 1 -R o/r`,
+		"env --chdir":    `  env --chdir /tmp gh issue edit 1 -R o/r`,
+		"env --ignore-x": `  env --block-signal gh issue edit 1 -R o/r`,
+		"env -ai":        `  env -ai gh issue edit 1 -R o/r`,
+	} {
+		rows[name] = shapeRow{[]string{pinLine, exportLine, line}, "outside the env allowlist"}
 	}
 	for name, line := range map[string]string{
 		"no pin env -iC dir":  `  env -iC /tmp gh issue edit 1 -R o/r`,
@@ -377,17 +399,14 @@ func TestActPinFlagsSpellings(t *testing.T) {
 }
 
 // TestActPinSpellingsClean — spellings that leave the pinned token alone draw
-// nothing, so the cluster and quote handling does not over-refuse.
+// nothing: the env allowlist (NAME=value, -u NAME, --unset=NAME, --) and quoted
+// builtin names other than the token's.
 func TestActPinSpellingsClean(t *testing.T) {
 	for name, body := range map[string][]string{
-		"env -v":               {pinLine, exportLine, `  env -v gh issue edit 1 -R o/r`},
-		"env -vu other":        {pinLine, exportLine, `  env -vu FOO gh issue edit 1 -R o/r`},
-		"env -vuFOO":           {pinLine, exportLine, `  env -vuFOO gh issue edit 1 -R o/r`},
-		"env -vC dir":          {pinLine, exportLine, `  env -vC /tmp gh issue edit 1 -R o/r`},
-		"env -Ci dir":          {pinLine, exportLine, `  env -Ci gh issue edit 1 -R o/r`},
-		"env -ai":              {pinLine, exportLine, `  env -ai gh issue edit 1 -R o/r`},
-		"env --chdir":          {pinLine, exportLine, `  env --chdir /tmp gh issue edit 1 -R o/r`},
-		"env --ignore-x":       {pinLine, exportLine, `  env --block-signal gh issue edit 1 -R o/r`},
+		"env assign":           {pinLine, exportLine, `  env FOO=1 gh issue edit 1 -R o/r`},
+		"env -u FOO":           {pinLine, exportLine, `  env -u FOO gh issue edit 1 -R o/r`},
+		"env --unset=FOO":      {pinLine, exportLine, `  env --unset=FOO gh issue edit 1 -R o/r`},
+		"env --":               {pinLine, exportLine, `  env -- gh issue edit 1 -R o/r`},
 		"escaped unset other":  {pinLine, exportLine, `  \unset FOO`, editLine},
 		"quoted export other":  {pinLine, exportLine, `  "export" FOO=1`, editLine},
 		"escaped export plain": {pinLine, exportLine, `  \export GITHUB_TOKEN`, editLine},
@@ -404,7 +423,7 @@ func TestActPinSpellingsClean(t *testing.T) {
 // the same at every site that states it, so no site claims more than the check
 // does; § stands for a backtick. The PR body carries the same text and is
 // checked by the author, outside this test.
-const actUnmodelledList = "The lint refuses the shapes it models; the pin inside the function is the control. Not modelled (examples, not exhaustive; a §gh§ step in one can run with no pin, and a token change in one can undo the pin): a §gh§ run through §eval§, §sh -c§, §bash -c§, §xargs§, §nice§, §timeout§, §stdbuf§, §exec -c§ or a wrapper command the lint does not name, or one whose name is quoted, escaped or given by path (§\\env§, §\"sudo\"§, §\\builtin§, §/usr/bin/env -i gh§); a wrapper option that takes a separate argument and is not in the lint's list (§env -S§, say); a token set from a file by §env --env0-from=FILE§; an alias; a command name built from an expansion; a function that wraps §gh§, or one that shadows §export§ or §unset§; a pin inside a heredoc body; a §trap … DEBUG§; a §gh§ step inside a process substitution (§<( )§, §>( )§), after a leading redirect such as §2>&1§, or in a §case§ arm whose pattern opens with §(§; a §case§ pattern §)§ that no §esac§ closes; an §export§ or §unset§ of the token run under §||§, §&&§, §&§ or a pipe; a change of either token variable by §read§, §printf -v§, §for§, §select§, §let§, §mapfile§, §getopts§, §source§, §.§, a nameref, §eval§, zsh §integer§ or §float§, or zsh §${GH_TOKEN::=…}§; a token change by an §export§ option cluster holding §n§ (§-pn§), by a bare §local§, §declare§ or §typeset§ of the token with no value (zsh), or by zsh §unset -m§. The pin governs §gh§ only: a §git push§ uses git's credential helper, and §GH_HOST§ and the enterprise-token variables are left alone, which matters only against a GitHub Enterprise Server host."
+const actUnmodelledList = "The lint refuses the shapes it models; the pin inside the function is the control. Not modelled (examples, not exhaustive; a §gh§ step in one can run with no pin, and a token change in one can undo the pin): a §gh§ run through §eval§, §sh -c§, §bash -c§, §xargs§, §nice§, §timeout§, §stdbuf§, §exec -c§ or a wrapper command the lint does not name, or one whose name is quoted, escaped or given by path (§\\env§, §\"sudo\"§, §\\builtin§, §/usr/bin/env -i gh§); a wrapper option that takes a separate argument and is not in the lint's list (§time --output FILE§, say); an alias; a command name built from an expansion; a function that wraps §gh§, or one that shadows §export§ or §unset§; a pin inside a heredoc body; a §trap … DEBUG§; a §gh§ step inside a process substitution (§<( )§, §>( )§), after a leading redirect such as §2>&1§, or in a §case§ arm whose pattern opens with §(§; a §case§ pattern §)§ that no §esac§ closes; an §export§ or §unset§ of the token run under §||§, §&&§, §&§ or a pipe; a change of either token variable by §read§, §printf -v§, §for§, §select§, §let§, §mapfile§, §getopts§, §source§, §.§, a nameref, §eval§, zsh §integer§ or §float§, or zsh §${GH_TOKEN::=…}§; a token change by an §export§ option cluster holding §n§ (§-pn§), by a bare §local§, §declare§ or §typeset§ of the token with no value (zsh), or by zsh §unset -m§. The pin governs §gh§ only: a §git push§ uses git's credential helper, and §GH_HOST§ and the enterprise-token variables are left alone, which matters only against a GitHub Enterprise Server host."
 
 // squashSpace drops the Go comment markers and folds every run of whitespace.
 func squashSpace(s string) string {

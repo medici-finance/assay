@@ -427,20 +427,24 @@ or `shell` fence that defines a function named `driver_act…`) to six rules:
      `declare +x GH_TOKEN` (also `typeset`), which take it out of the
      environment; the builtin's name may be quoted or escaped (`\unset`,
      `"export"`);
-   - after the pin, a `gh` step run through `env -i`, `env -u GH_TOKEN`
-     (`-uGH_TOKEN`, `--unset GH_TOKEN`, `--unset=GH_TOKEN`,
-     `--ignore-environment`, short options in a cluster such as `-vi` or
-     `-vu GH_TOKEN`, and a long option abbreviated to a unique prefix such as
-     `--ignore-env`), `sudo` or `doas`, none of which hands the step
-     the pinned token.
+   - after the pin, a `gh` step run through `env -u GH_TOKEN` (also
+     `--unset=GH_TOKEN`), `sudo` or `doas`, none of which hands the step
+     the pinned token;
+   - any `env` word before a `gh` step that is not `NAME=value`, `-u NAME`
+     (two words), `--unset=NAME` or `--`. That allowlist is the whole model
+     of `env`: `env -i`, a short cluster, any other long option or a lone `-`
+     refuses, and so does every later word naming `gh` in that command (a
+     `-S` string, `sh -c` text). It over-refuses on purpose: GNU and BSD
+     `env` read clusters differently, so no per-letter model is attempted.
 
    A `gh` step is the word `gh` (or a path ending `/gh`, quoted or not) in
    command position: at the start of a command, after `;`, `&`, `|`, `&&`,
    `||`, `then`, `else`, `do`, `{`, `(`, `$(`, or after `run`, `command`,
    `exec`, `env`, `nohup`, `builtin`, `time`, `sudo`, `doas`. The options of
    those words (`-i`, `-p`, `-E`, `--`, and the options that take a separate
-   argument: `env -u`/`-C`, `time -f`/`-o`, `exec -a`, `sudo -u`/`-g`/`-h`/`-p`/
-   `-r`/`-t`/`-C`/`-D`/`-R`/`-T`/`-U`, `doas -u`/`-C`) and leading `NAME=value`
+   argument: `time -f`/`-o`, `exec -a`, `sudo -u`/`-g`/`-h`/`-p`/
+   `-r`/`-t`/`-C`/`-D`/`-R`/`-T`/`-U`, `doas -u`/`-C`; for `env`, the allowlist above)
+   and leading `NAME=value`
    words are skipped to reach it; `command -v` and `command -V` only look a
    name up and are not one. The pin's own `gh auth token --user` is not a step,
    and text inside a quoted string (an `echo` of what would run) is not one. A
@@ -450,8 +454,8 @@ or `shell` fence that defines a function named `driver_act…`) to six rules:
    change in one can undo the pin): a `gh` run through `eval`, `sh -c`, `bash -c`, `xargs`,
    `nice`, `timeout`, `stdbuf`, `exec -c` or a wrapper command the lint does not name, or one
    whose name is quoted, escaped or given by path (`\env`, `"sudo"`, `\builtin`, `/usr/bin/env
-   -i gh`); a wrapper option that takes a separate argument and is not in the lint's list (`env
-   -S`, say); a token set from a file by `env --env0-from=FILE`;
+   -i gh`); a wrapper option that takes a separate argument and is not in the lint's list (`time
+   --output FILE`, say);
    an alias; a command name built from an expansion; a function that wraps `gh`, or
    one that shadows `export` or `unset`; a pin inside a heredoc body; a `trap … DEBUG`; a `gh`
    step inside a process substitution (`<( )`, `>( )`), after a leading redirect such as `2>&1`,

@@ -35,18 +35,21 @@
 //     typeset, local or readonly), an unset of GH_TOKEN, or `export -n
 //     GH_TOKEN` / `declare +x GH_TOKEN`, which takes it out of the environment
 //     (the builtin's name may be quoted or escaped: \unset, "export");
-//  5. no `gh` step after the pin runs through env -i, env -u GH_TOKEN (also
-//     -uGH_TOKEN, --unset GH_TOKEN, --unset=GH_TOKEN, --ignore-environment, a
-//     short cluster such as -vi or -vu GH_TOKEN, a unique abbreviation such as
-//     --ignore-env),
-//     sudo or doas, which start the step without the pinned token.
+//  5. no `gh` step after the pin runs through env -u GH_TOKEN (or
+//     --unset=GH_TOKEN), sudo or doas, which start the step without the pinned
+//     token; and env before a `gh` step is an allowlist: NAME=value words, -u
+//     NAME as two words, --unset=NAME and the -- terminator. Any other word
+//     starting with - (-i, a short cluster, a long option, a lone -) is refused,
+//     reported at the first later word of the command naming gh (a -S string
+//     or sh -c text counts). No per-letter model: GNU and BSD env differ.
 //
 // A `gh` step is a word whose basename is gh (quotes and backslashes removed) in
 // command position: at the start of a command, after a separator, pipe, && or
 // ||, after then, else, do, {, (, ! and the like, and after the words run,
 // command, exec, env, nohup, builtin, time, sudo and doas, whose own options
-// (-i, -p, -E, -- and, for env, command, time, exec, sudo and doas, the listed
-// options that take a separate argument such as env -u NAME and sudo -u USER)
+// (-i, -p, -E, -- and, for command, time, exec, sudo and doas, the listed
+// options that take a separate argument such as sudo -u USER; for env, the
+// allowlist of rule 5)
 // and leading NAME=value words are skipped. command -v and command -V only look
 // a name up and are not a step. The `gh auth token --user` of the pin is not a
 // step. Text inside a quoted string (an echo of what would run) is not a step.
@@ -59,8 +62,8 @@
 // change in one can undo the pin): a `gh` run through `eval`, `sh -c`, `bash -c`, `xargs`,
 // `nice`, `timeout`, `stdbuf`, `exec -c` or a wrapper command the lint does not name, or one
 // whose name is quoted, escaped or given by path (`\env`, `"sudo"`, `\builtin`, `/usr/bin/env
-// -i gh`); a wrapper option that takes a separate argument and is not in the lint's list (`env
-// -S`, say); a token set from a file by `env --env0-from=FILE`;
+// -i gh`); a wrapper option that takes a separate argument and is not in the lint's list (`time
+// --output FILE`, say);
 // an alias; a command name built from an expansion; a function that wraps `gh`, or
 // one that shadows `export` or `unset`; a pin inside a heredoc body; a `trap … DEBUG`; a `gh`
 // step inside a process substitution (`<( )`, `>( )`), after a leading redirect such as `2>&1`,
@@ -95,7 +98,7 @@ var actPassWords = map[string]bool{
 
 // actWrappers are the pass words that run another command and take options of
 // their own; the options are skipped to reach it. The map holds the options of
-// each that take a separate argument (env's are read by actEnvOption).
+// each that take a separate argument (env's words are read by actEnvWord).
 var actWrappers = map[string][]string{
 	"env": nil, "command": nil, "time": {"-f", "-o"},
 	"exec": {"-a"}, "nohup": nil, "builtin": nil,
@@ -219,6 +222,8 @@ func actPinIssues(code []string, name string) []actPinIssue {
 		wrap       string // the wrapper word just seen, whose options are skipped
 		dropAt     = -1   // token index of an env or sudo that drops the pinned token
 		dropWhy    string
+		envBlind   bool   // past a refused env word: any later gh word in the command is a step
+		envBad     string // the refused env word, reported at the gh step it reaches
 	)
 	top := func() string {
 		if len(stack) == 0 {
@@ -227,6 +232,26 @@ func actPinIssues(code []string, name string) []actPinIssue {
 		return stack[len(stack)-1]
 	}
 	inBody := func() bool { return actDepth > 0 && len(stack) >= actDepth }
+	// envReport reports a refused env word once, at the first word after it
+	// that names gh (a -S string or sh -c text counts: over-refusal is the
+	// price of not modelling env's options).
+	envReport := func(k int) {
+		if envBad != "" {
+			add(k, "act block runs a gh step after env %s, which is outside the env allowlist, so the lint takes it as a step the pinned token does not reach: before its command env may take only NAME=value words, -u NAME as two words, --unset=NAME and --", envBad)
+			envBad = ""
+		}
+	}
+	ghStep := func(k int) {
+		envReport(k)
+		if firstGh < 0 {
+			firstGh = k
+		}
+		if inBody() {
+			ghInside = append(ghInside, k)
+		} else {
+			ghOutside = append(ghOutside, k)
+		}
+	}
 	atTop := func() bool { return actDepth > 0 && len(stack) == actDepth }
 	pop := func() {
 		stack = stack[:len(stack)-1]
@@ -280,6 +305,7 @@ func actPinIssues(code []string, name string) []actPinIssue {
 			case "\n", ";", "&", "&&", "||", "|":
 				cmdPos, afterRedir = true, false
 				dropAt = -1
+				envBlind, envBad = false, ""
 			case "(", "$(":
 				stack = append(stack, ")")
 				cmdPos = true
@@ -313,7 +339,13 @@ func actPinIssues(code []string, name string) []actPinIssue {
 		cmdPos = false
 		w := wrap
 		wrap = ""
+		if envBlind && strings.Contains(t.val, "gh") {
+			envReport(k)
+		}
 		if !isCmd {
+			if envBlind && path.Base(t.val) == "gh" {
+				ghStep(k)
+			}
 			continue
 		}
 		if w != "" && strings.HasPrefix(t.val, "-") {
@@ -328,11 +360,21 @@ func actPinIssues(code []string, name string) []actPinIssue {
 			}
 			takes := false
 			if w == "env" {
-				var why string
-				why, takes = actEnvOption(t.val, next)
+				if t.val == "--" {
+					cmdPos = true // the command follows
+					continue
+				}
+				ok, why, tk := actEnvWord(t.val, next)
+				if !ok && !envBlind {
+					envBlind, envBad = true, t.val
+					if strings.Contains(t.val, "gh") {
+						envReport(k)
+					}
+				}
 				if why != "" && inBody() && pinAt >= 0 && k > pinEnd && dropAt < 0 {
 					dropAt, dropWhy = k, why
 				}
+				takes = tk
 			} else {
 				for _, o := range actWrappers[w] {
 					if t.val == o {
@@ -448,14 +490,7 @@ func actPinIssues(code []string, name string) []actPinIssue {
 				add(k, "act block runs a gh step the pinned token does not reach: %s", dropWhy)
 				dropAt = -1
 			}
-			if firstGh < 0 {
-				firstGh = k
-			}
-			if inBody() {
-				ghInside = append(ghInside, k)
-			} else {
-				ghOutside = append(ghOutside, k)
-			}
+			ghStep(k)
 		case t.plain && actCloserFor[t.raw] != "":
 			stack = append(stack, actCloserFor[t.raw])
 			cmdPos = t.raw != "for" && t.raw != "select" && t.raw != "case"
@@ -517,16 +552,15 @@ func actPipeAmp(toks []actTok) []actTok {
 	return out
 }
 
-// actEnvOption reads one option word of env (val) and the word after it
-// (next). why is non-empty when the option starts the command without the
-// pinned GH_TOKEN: it empties the environment (-i, -, --ignore-environment,
-// and a short cluster holding i before any letter not modelled, such as -vi),
-// or unsets GH_TOKEN (-u, --unset, and a short cluster ending in u, such as
-// -vu). takesNext reports that the option takes the next word as its argument:
-// only when u or C ends the cluster and every letter before it is modelled.
-// GNU long options may be abbreviated to a unique prefix.
-func actEnvOption(val, next string) (why string, takesNext bool) {
-	empty := "env " + val + " starts it with an empty environment"
+// actEnvWord reads one word of env before its command (val) and the word after
+// it (next) against the allowlist: -u NAME as two words, or --unset=NAME (and
+// NAME=value words and the -- terminator, which the caller reads). ok is false
+// for every other word that starts with -: a short cluster, a long option or
+// its abbreviation, a lone -. Past such a word the command env runs cannot be
+// told from the words (an option may take the next word, BSD reads - as -i,
+// -S splits its string), so it is refused, never modelled. why is non-empty
+// when an allowed word unsets GH_TOKEN; takesNext reports that it takes next.
+func actEnvWord(val, next string) (ok bool, why string, takesNext bool) {
 	unset := func(name string) string {
 		if name == "GH_TOKEN" {
 			return "env " + val + " unsets GH_TOKEN for it"
@@ -534,50 +568,10 @@ func actEnvOption(val, next string) (why string, takesNext bool) {
 		return ""
 	}
 	switch {
-	case val == "-":
-		return empty, false
-	case strings.HasPrefix(val, "--"):
-		opt, arg, hasArg := strings.Cut(val[2:], "=")
-		switch {
-		case len(opt) >= len("ignore-e") && strings.HasPrefix("ignore-environment", opt):
-			return empty, false
-		case opt != "" && strings.HasPrefix("unset", opt):
-			if hasArg {
-				return unset(arg), false
-			}
-			return unset(next), true
-		case opt != "" && strings.HasPrefix("chdir", opt):
-			return "", !hasArg
-		}
-	case strings.HasPrefix(val, "-"):
-		s := val[1:]
-		// Read the cluster left to right: an i empties the environment, and a u
-		// or C takes the rest of the word, or the next word when it ends the
-		// word. Stop at the first letter not modelled here: the rest of the word
-		// may be its argument (GNU -a, BSD -P), so a u or C in it is not read,
-		// and the next word is not taken.
-		cleared := ""
-		for i := 0; i < len(s); i++ {
-			switch s[i] {
-			case 'i':
-				cleared = empty
-			case 'v', '0':
-			case 'u':
-				rest := s[i+1:]
-				if rest == "" {
-					rest = next
-				}
-				if cleared != "" {
-					return cleared, s[i+1:] == ""
-				}
-				return unset(rest), s[i+1:] == ""
-			case 'C':
-				return cleared, s[i+1:] == ""
-			default:
-				return cleared, false
-			}
-		}
-		return cleared, false
+	case val == "-u":
+		return true, unset(next), true
+	case strings.HasPrefix(val, "--unset=") && len(val) > len("--unset="):
+		return true, unset(val[len("--unset="):]), false
 	}
-	return "", false
+	return false, "", false
 }
