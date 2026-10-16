@@ -543,6 +543,59 @@ func printTokenPath(path string) {
 	fmt.Fprintln(os.Stderr, tokenPathNotice)
 }
 
+// beforeTokenCacheRename is a test seam: when set, writeTokenCacheAtomic calls it after the
+// new token is fully written and synced to the temp file and before the rename that publishes
+// it, so a test can observe the cache path at the one instant a torn write would be visible.
+var beforeTokenCacheRename func()
+
+// writeTokenCacheAtomic publishes token at path (0600) so a concurrent reader sees either the
+// previous contents or the new token, never an empty or partial file.
+//
+// The cache path is shared by every process minting for the same role and installation on the
+// host, and consumers read it with `cat "$(desktoken ...)"` and hand the result to a client as
+// its token. A truncate-then-write publishes an empty file in between, and an empty token makes
+// that client fall back to the host's stored login, so the read runs under the wrong identity
+// instead of failing. The token is therefore written to a temp file in the SAME directory
+// (rename is atomic only within one filesystem), synced, and renamed over the path — the same
+// shape writeVerifyGitLabToken uses for the GitLab custody file. A symlink at path is replaced,
+// not written through; the cache is desktoken's own regular file and the reuse check already
+// refuses a link there.
+func writeTokenCacheAtomic(path, token string) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temp in %s: %w", dir, err)
+	}
+	tmpName := tmp.Name()
+	// Best-effort cleanup of the temp if we bail before the rename lands (a no-op after it).
+	defer func() { _ = os.Remove(tmpName) }()
+
+	if _, err := tmp.Write([]byte(token)); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("write temp: %w", err)
+	}
+	// os.CreateTemp already makes the file 0600; assert it before it becomes the credential.
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("chmod temp: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("sync temp: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp: %w", err)
+	}
+	if beforeTokenCacheRename != nil {
+		beforeTokenCacheRename()
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("rename temp over %s: %w", path, err)
+	}
+	syncDir(dir)
+	return nil
+}
+
 // writePerms records the granted permission map next to the token cache, 0600
 // (it names an App's capability surface — not a secret, but not world-readable
 // either). A failure to record is NOT fatal to the mint: the token is the
@@ -1005,11 +1058,8 @@ func cmdToken(args []string) (err error) {
 	if err := os.Chmod(filepath.Dir(tokenPath), 0o700); err != nil {
 		return deskkit.Unverifiable("chmod token dir", err)
 	}
-	if err := os.WriteFile(tokenPath, []byte(result.Token), 0o600); err != nil {
+	if err := writeTokenCacheAtomic(tokenPath, result.Token); err != nil {
 		return deskkit.Unverifiable("write token to "+tokenPath, err)
-	}
-	if err := os.Chmod(tokenPath, 0o600); err != nil {
-		return deskkit.Unverifiable("chmod token cache", err)
 	}
 	writePerms(tokenPath, result.Permissions)
 	// Record WHICH App and WHICH account this file belongs to, so the next invocation can
