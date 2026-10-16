@@ -428,7 +428,11 @@ be determined or shown complete. The set and the files MUST be read at one resol
 of the branch, and the checkout's commit MUST be an ancestor of it. A changed board entry
 the branch holds as anything but a plain file (a symbolic link, served as its target's
 bytes or as nothing, or a submodule) is an unreadable record to the board and MUST NOT be
-judged as a plain file; the landing does not proceed. Staging the judged files in the
+judged as a plain file; the landing does not proceed. Bytes a forge serves for such an
+entry are used only when the response shows they are the entry's own blob: an entry whose
+served content is not shown to be that blob (a link served as its target's bytes under
+the link's own path, or a file served without its content) is treated as not a plain
+file. Staging the judged files in the
 checkout MUST NOT write through a symbolic link, and MUST NOT stand a plain file where the
 checkout's commit holds a link or a submodule. The checkout itself is never moved. A PR that delivers a `gate: human` brief
 MAY carry an informational banner naming the decision issue and whether a ruling is

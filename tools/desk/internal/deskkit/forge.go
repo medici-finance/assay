@@ -626,9 +626,10 @@ type FileContent struct {
 	Exists bool
 	// Kind is what the forge says the path holds at the ref: FileKindRegular for an ordinary
 	// file served with its own bytes, FileKindSymlink for a symbolic link (served as its
-	// target's bytes or as nothing), FileKindSubmodule for a submodule, or "" when the forge
-	// does not say. A caller that must read a file as a plain record (the decision-gate hold's
-	// branch board) requires FileKindRegular and treats anything else as could-not-check.
+	// target's bytes or as nothing), FileKindSubmodule for a submodule, FileKindUnproven when the
+	// bytes served cannot be shown to be the entry's own, or "" when the forge does not say.
+	// A caller that must read a file as a plain record (the decision-gate hold's branch
+	// board) requires FileKindRegular and treats anything else as could-not-check.
 	// omitempty keeps every file read that predates the field byte-identical in the golden
 	// corpus.
 	Kind string `json:",omitempty"`
@@ -639,6 +640,10 @@ const (
 	FileKindRegular   = "file"
 	FileKindSymlink   = "symlink"
 	FileKindSubmodule = "submodule"
+	// FileKindUnproven is a typed file read whose served bytes are not shown to be the
+	// entry's own blob: a link to a file served as its target's bytes, or a file served with
+	// its content omitted. A caller that needs a plain record refuses it like a link.
+	FileKindUnproven = "unproven"
 )
 
 // ReadFileInput addresses one file at one ref. The fields are a struct rather than positional

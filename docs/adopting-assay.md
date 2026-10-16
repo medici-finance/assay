@@ -617,8 +617,9 @@ identity* — plan for it before you turn protection on, not after the board sil
 > `--decision-gate` check before a landing that bypasses pull requests, judging the board as the
 > target branch holds it (it reads the board files the branch changed since the landing
 > checkout's commit and never moves the checkout; a changed board file the branch holds as a
-> symbolic link or submodule, or a checkout whose commit is not an ancestor of the branch tip,
-> stops the landing as could-not-check), and `deskpr create`
+> symbolic link or submodule, one whose served bytes are not shown to be the entry's own blob,
+> or a checkout whose commit is not an ancestor of the branch tip, stops the landing as
+> could-not-check), and `deskpr create`
 > prepends a banner naming the decision issue to such a PR's body. The banner informs; it blocks
 > nothing. On **GitLab**, layer two is not scaffolded, so the hold there is the well-formed-link
 > check of layer one alone; and because GitLab serves no ref compare, `deskevidence` reports

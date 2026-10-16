@@ -1,20 +1,48 @@
 package deskkit
 
-import "testing"
+import (
+	"crypto/sha1"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"testing"
+)
 
-// regression: S-2266-7 — the Contents API serves a symbolic link to a file as that file
-// (type "file" under the target's path), any other link as itself with no content, and a
-// submodule as type "submodule"; ReadFile must say which, so a caller that needs a plain
-// file can refuse the rest.
+// blobID is the git object id of a blob holding body, in the given hash (sha1 or sha256).
+func blobID(body string, wide bool) string {
+	hdr := fmt.Sprintf("blob %d\x00%s", len(body), body)
+	if wide {
+		s := sha256.Sum256([]byte(hdr))
+		return hex.EncodeToString(s[:])
+	}
+	s := sha1.Sum([]byte(hdr))
+	return hex.EncodeToString(s[:])
+}
+
+// regression: S-2266-7 C-2266-6 S-2266-8 — the Contents API is not a record of the entry's
+// own bytes. A symbolic link to a file is served as type "file" under the REQUESTED path
+// with the link's own blob sha and the target's content; a large file is served with
+// encoding "none" and an empty body. ReadFile must say "regular file" only when the served
+// bytes hash to the served sha, so a caller that needs a plain record can refuse the rest.
 func TestGitHubReadFileKind(t *testing.T) {
 	const file = "docs/streams/sdlc/brief-18.md"
+	const linkText = "other.md" // what a link's own blob holds: its target path
 	cases := []struct {
 		name string
 		resp map[string]any
 		want string
 	}{
-		{"regular file", map[string]any{"type": "file", "path": file, "sha": "b1", "content": ghB64("x\n")}, FileKindRegular},
-		{"link to a file", map[string]any{"type": "file", "path": "docs/streams/sdlc/other.md", "sha": "b2", "content": ghB64("y\n")}, FileKindSymlink},
+		{"regular file", map[string]any{"type": "file", "path": file, "encoding": "base64", "sha": blobID("x\n", false), "content": ghB64("x\n")}, FileKindRegular},
+		{"regular empty file", map[string]any{"type": "file", "path": file, "encoding": "base64", "sha": blobID("", false), "content": ""}, FileKindRegular},
+		{"regular file in a sha256 repository", map[string]any{"type": "file", "path": file, "encoding": "base64", "sha": blobID("x\n", true), "content": ghB64("x\n")}, FileKindRegular},
+		// The live shape of a link to a file: the requested path, the link's blob, the target's bytes.
+		{"link to a file, live shape", map[string]any{"type": "file", "path": file, "encoding": "base64", "sha": blobID(linkText, false), "content": ghB64("y\n")}, FileKindUnproven},
+		{"link to a file, under the target's path", map[string]any{"type": "file", "path": "docs/streams/sdlc/other.md", "encoding": "base64", "sha": "b2", "content": ghB64("y\n")}, FileKindSymlink},
+		// A file the endpoint serves without its content reads as an empty regular file unless the hash is checked.
+		{"content omitted for size", map[string]any{"type": "file", "path": file, "encoding": "none", "sha": blobID("a large file", false), "content": ""}, FileKindUnproven},
+		{"empty body for a non-empty blob", map[string]any{"type": "file", "path": file, "encoding": "base64", "sha": blobID("a large file", false), "content": ""}, FileKindUnproven},
+		{"content not base64-encoded", map[string]any{"type": "file", "path": file, "encoding": "utf-8", "sha": blobID("x\n", false), "content": ghB64("x\n")}, FileKindUnproven},
+		{"served sha is not an object id", map[string]any{"type": "file", "path": file, "encoding": "base64", "sha": "b1", "content": ghB64("x\n")}, FileKindUnproven},
 		{"link to nothing", map[string]any{"type": "symlink", "path": file, "sha": "b3", "target": "../gone.md"}, FileKindSymlink},
 		{"submodule", map[string]any{"type": "submodule", "path": file, "sha": "b4", "submodule_git_url": "https://example.invalid/x.git"}, FileKindSubmodule},
 		{"no type served", map[string]any{"sha": "b5", "content": ghB64("z\n")}, ""},

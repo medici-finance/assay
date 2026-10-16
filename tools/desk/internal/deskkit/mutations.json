@@ -739,6 +739,24 @@
       "file": "internal/deskkit/forge_github.go",
       "old": "\tcase \"symlink\":\n\t\treturn FileKindSymlink",
       "new": "\tcase \"symlink\":\n\t\treturn FileKindRegular"
+    },
+    {
+      "name": "GitHub ReadFile reads a link to a file as a regular file when its served bytes do not hash to the served sha (the live shape: the requested path, the link's blob sha, the target's bytes) — C-2266-6",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tif w.Encoding != \"base64\" || !gitBlobMatches(w.SHA, content) {",
+      "new": "\t\tif w.Encoding != \"base64\" {"
+    },
+    {
+      "name": "GitHub ReadFile reads a file served without proof of its encoding as a regular file (a large file arrives with encoding none and an empty body) — S-2266-8",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\t\tif w.Encoding != \"base64\" || !gitBlobMatches(w.SHA, content) {",
+      "new": "\t\tif !gitBlobMatches(w.SHA, content) {"
+    },
+    {
+      "name": "git blob hash accepts a served sha that is not an object id of either length — S-2266-8",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "\tdefault:\n\t\treturn false\n\t}\n\treturn strings.EqualFold(hex.EncodeToString(sum), sha)",
+      "new": "\tdefault:\n\t\treturn true\n\t}\n\treturn strings.EqualFold(hex.EncodeToString(sum), sha)"
     }
   ],
   "_not_mutated": {

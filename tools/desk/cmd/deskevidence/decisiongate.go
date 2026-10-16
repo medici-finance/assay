@@ -325,8 +325,11 @@ func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branc
 		// staging it as a plain file would judge a board the write does not land on.
 		if fc.Kind != deskkit.FileKindRegular {
 			kind := fc.Kind
-			if kind == "" {
+			switch kind {
+			case "":
 				kind = "an entry the forge did not type"
+			case deskkit.FileKindUnproven:
+				kind = "an entry whose served bytes are not shown to be its own blob (a link served as its target, or content the forge left out)"
 			}
 			return nil, deskkit.Unverifiable(fmt.Sprintf("%s at %s (%s) on %s is %s, not a plain file, so the board the write lands on cannot be judged (decision-gate hold, lifecycle-v1 §4.5)", f.Filename, branch, tip, fr.Slug(), kind), nil)
 		}

@@ -543,6 +543,13 @@ func TestDecisionGateBranchBoard(t *testing.T) {
 			f.fileKinds = map[string]string{brief: deskkit.FileKindSubmodule}
 			f.cmpFiles = freshFiles(brief)
 		}, nil, "not a plain file"},
+		// C-2266-6 / S-2266-8: a link served as its target's bytes under its own path, or a
+		// file served with its content left out, is bytes the board does not read.
+		{"a board entry's served bytes are not shown to be its blob", func(f *fakeForge) {
+			f.setFile(brief, "")
+			f.fileKinds = map[string]string{brief: deskkit.FileKindUnproven}
+			f.cmpFiles = freshFiles(brief)
+		}, nil, "not shown to be its own blob"},
 		{"the forge does not type a board entry", func(f *fakeForge) {
 			f.setFile(brief, "branch brief\n")
 			f.fileKinds = map[string]string{brief: ""}
@@ -790,6 +797,16 @@ func TestBranchBoardLinkServed(t *testing.T) {
 func TestBranchBoardEmptyEntry(t *testing.T) {
 	t.Run("dangling link", func(t *testing.T) { landLinkedBoard(t, deskkit.FileKindSymlink, "") })
 	t.Run("submodule", func(t *testing.T) { landLinkedBoard(t, deskkit.FileKindSubmodule, "") })
+}
+
+// regression: C-2266-6 S-2266-8 — a brief the target branch holds as a link to a file
+// (served as the target's bytes under the brief's own path) or as a file too large for the
+// Contents API to serve with content (an empty body) is bytes the forge did not show to be
+// the entry's blob; staging them judged a board the write does not land on and let the
+// unruled move land.
+func TestBranchBoardUnprovenEntry(t *testing.T) {
+	t.Run("link served as its target", func(t *testing.T) { landLinkedBoard(t, deskkit.FileKindUnproven, briefOf("model", "")) })
+	t.Run("content left out", func(t *testing.T) { landLinkedBoard(t, deskkit.FileKindUnproven, "") })
 }
 
 // symlinkOrSkip makes link point at target, skipping where the platform will not.
