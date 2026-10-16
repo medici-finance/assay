@@ -46,8 +46,8 @@
     {
       "name": "the marker exemption dropped from the lint (a marked row is still flagged)",
       "file": "verifyrows.go",
-      "old": "\tif len(markedCommands(cell)) > 0 {\n\t\treturn \"\", \"\"\n\t}\n\tspans := codeSpans(cell)",
-      "new": "\tspans := codeSpans(cell)"
+      "old": "\tif len(markedCommands(cell)) > 0 {\n\t\treturn \"\", \"\"\n\t}\n\t// A command that is nothing but a shell comment",
+      "new": "\t// A command that is nothing but a shell comment"
     },
     {
       "name": "the path arm stops firing (owner/repo and stream/NN mentions pass)",
