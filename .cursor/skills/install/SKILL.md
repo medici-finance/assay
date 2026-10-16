@@ -155,7 +155,11 @@ and fetched over plain HTTPS.
    (`statusgen init` writes one per platform plus the bare `statusgen` line) is filled from the
    manifest, or the step refuses naming the ones it cannot fill; a DIFFERENT real line is refused
    — a re-pin is a reviewed change, never a silent in-place edit. A refusal leaves the file
-   untouched.
+   untouched. When the step writes and the file has no `assay` umbrella line, it also records
+   `assay <tag>` before the first data line. It does so only if the manifest's tag is a bare
+   `vX.Y.Z` and every per-artifact line pins that tag, so the version marker (`deskversion`,
+   `assay:upgrade-assay`) reads the install as **known**. An existing umbrella line is never
+   touched, and an unchanged file stays byte-identical.
 4. **Fetch and verify**: `assay-install.sh acquire --pins <target>/.assay-versions --dest <bindir>
    --release-home <release_home>` — `<release_home>` is the one named in `paired-versions.yaml`
    (resolve it from there, do not hardcode it in prose). It fetches
@@ -219,11 +223,17 @@ half). The installer **confirms it is present and correct** rather than writing 
 load-bearing properties to confirm:
 
 - **Bootstrap-safe first board.** The regen half must *stage* `STATUS.md` before it decides whether
-  to commit — the init-emitted workflow does `git add STATUS.md` then `git diff --cached --quiet ||
-  git commit`, which correctly sees the untracked first board and commits it. A workflow that
-  instead guards on a *working-tree* `git diff --quiet -- STATUS.md` (no prior `git add`) can't see
-  the untracked first board, so a fresh repo would never generate one — that shape is a defect to
-  report, not to silently patch around.
+  to commit — the init-emitted workflow stages the board paths (`board_add STATUS.md docs/streams`)
+  and then commits when `git status --porcelain` names them, which correctly sees the untracked
+  first board and commits it. A workflow that instead guards on a *working-tree*
+  `git diff --quiet -- STATUS.md` (no prior stage) can't see the untracked first board, so a fresh
+  repo would never generate one — that shape is a defect to report, not to silently patch around.
+- **The board paths are not ignored.** If the target's `.gitignore` matches `STATUS.md` or
+  `docs/streams` (a template that ignores generated files often does), git refuses the path-scoped
+  stage and every regen run on `main` fails. `statusgen init` refuses on such a tree and names the
+  rule; `statusgen --lint` reports it as a PROBLEM; the regen step prints an error naming the rule.
+  None of them edits `.gitignore` or force-adds — the fix (a `!STATUS.md` line, or narrowing the
+  rule) is the adopter's call, so surface it rather than patching it.
 - **Acquisition channel matches this install.** The emitted workflow assumes a `statusgen/` *source
   tree* (`cd statusgen && go run .`). An adopter installing the pinned *release binary* (the normal
   case, step 2) swaps those `go run` steps for `statusgen --root .` against the binary named in
@@ -275,7 +285,11 @@ could-not-check, which is not a pass.
 ### 6. Prove the install
 The install is not done until it is PROVEN:
 
-- **`statusgen --root <target> --lint`** exits **0** (the corpus is lint-clean).
+- **`statusgen --root <target> --lint`** exits **0** (the corpus is lint-clean). This includes the
+  ignore check: lint is a PROBLEM when the target's ignore rules stop git staging `STATUS.md` or
+  `docs/streams`. By hand, the same verdict is
+  `git -C <target> add --dry-run --ignore-missing -- STATUS.md docs/streams` exiting 0 (it stages
+  nothing); `git -C <target> check-ignore -v --no-index STATUS.md` names the rule when it does not.
 - **`statusgen --version`** prints the **pinned tag** (the binary you installed is the one you
   pinned, not a stale one already on `PATH`).
 

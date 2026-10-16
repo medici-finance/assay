@@ -144,6 +144,11 @@ repo must be in the desk scope (compiled-in — org-default;
   ` + strings.Join(deskkit.AllowedRepoScope(), "\n  ") + `
 `
 
+// perfVerbs is deskboard's registered first-argument set for the opt-in local perf record
+// (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
+// "other" otherwise, so no argv text can reach the record.
+var perfVerbs = []string{"--json", "--table", "--delta", "--quiet", "--version"}
+
 func main() {
 	// The roster class is an EXPLICIT declaration, never the zero value by accident
 	// (a correctness review found SetToolClass had no caller anywhere
@@ -161,7 +166,7 @@ func main() {
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("deskboard", perfVerbs, os.Args[1:], func(a []string) int { return run(a, os.Stdout, os.Stderr) }))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -956,11 +961,17 @@ func printBanners(w io.Writer, h Header) {
 	}
 	// Stop flags banner: any active STOP flag or stale HEARTBEAT is surfaced
 	// on every board read so a silently-stopped loop is not discovered by absence.
+	// Cell-scoped flags (STOP.cell.<cell>[.<loop>]) ride the same banner; an INERT one
+	// (unknown loop, malformed or unregistered cell) is tagged so: the first two halt nothing;
+	// the unregistered-cell reason names the root looked in and says it may still be live.
 	if len(h.StopFlags) > 0 {
 		for _, f := range h.StopFlags {
 			tag := "STOP"
-			if f.Stale {
+			switch {
+			case f.Stale:
 				tag = "STALE"
+			case f.Inert:
+				tag = "INERT STOP"
 			}
 			fmt.Fprintf(w, "WARNING: %s flag active — %s: %s\n", tag, f.Name, f.Reason)
 		}

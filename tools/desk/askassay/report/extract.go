@@ -127,7 +127,7 @@ func readLiteral(s string, i int) (string, int, bool) {
 // puts stderr into a caption by hand.
 func ProbeStderrTerms() []Disclosure {
 	return []Disclosure{
-		{Term: "assay-config:", Why: "the desk-tools trust-roster diagnostic block, written to stderr on every invocation including read-only verbs"},
+		{Term: "assay-config:", Why: "the desk-tools trust-roster diagnostic echo, written to stderr on every invocation including read-only verbs: one digest line by default, the full block in CI, on a change, on a refusal or on ASSAY_CONFIG_ECHO=full"},
 		{Term: "TRUSTED_LOGINS", Why: "the trusted-login roster, carried in that diagnostic block"},
 		{Term: "BLESS_LOGIN", Why: "the blessing-login setting, carried in that diagnostic block"},
 		{Term: "class=write source=config", Why: "the roster diagnostic's own class line"},

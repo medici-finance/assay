@@ -1,0 +1,29 @@
+{
+  "test": "go test ./cmd/deskboard/ -run '^TestBannerShowsCellStopFlags$' -count=1",
+  "control": {
+    "name": "CONTROL — invert the INERT tag (a LIVE cell-scoped STOP flag reads as inert, so an armed stop is dismissed as harmless)",
+    "file": "cmd/deskboard/main.go",
+    "old": "\t\tcase f.Inert:\n",
+    "new": "\t\tcase !f.Inert:\n"
+  },
+  "mutations": [
+    {
+      "name": "drop the INERT tag (a cell-scoped STOP flag that halts nothing reads as armed on the board banner)",
+      "file": "cmd/deskboard/main.go",
+      "old": "\t\tcase f.Inert:\n",
+      "new": "\t\tcase false && f.Inert:\n"
+    },
+    {
+      "name": "invert the INERT tag (a LIVE cell-scoped STOP flag reads as inert, so an armed stop is dismissed as harmless)",
+      "file": "cmd/deskboard/main.go",
+      "old": "\t\tcase f.Inert:\n",
+      "new": "\t\tcase !f.Inert:\n"
+    },
+    {
+      "name": "stop surfacing active flags in the board banner (a cell-scoped STOP.cell.<cell>[.<loop>] drain is invisible on every board read)",
+      "file": "cmd/deskboard/main.go",
+      "old": "\tif len(h.StopFlags) > 0 {\n\t\tfor _, f := range h.StopFlags {\n",
+      "new": "\tif false && len(h.StopFlags) > 0 {\n\t\tfor _, f := range h.StopFlags {\n"
+    }
+  ]
+}

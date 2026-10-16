@@ -89,7 +89,7 @@ func TestVerifierDryRunPlanNamesNoBranch(t *testing.T) {
 	if !strings.Contains(out, "branch=(detached off origin/main — verifier touches no branch)") {
 		t.Fatalf("verifier dry-run plan still names a branch:\n%s", out)
 	}
-	body, _ := os.ReadFile(promptFile)
+	body, _ := os.ReadFile(emittedPathFor(promptFile))
 	if strings.Contains(string(body), "feat/example-stream-07") {
 		t.Fatalf("verifier prompt names the brief's feature branch:\n%s", body)
 	}

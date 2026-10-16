@@ -252,8 +252,11 @@ func (ff *etagForge) snapshotLocked() any {
 				"state": "APPROVED", "commit": map[string]any{"oid": p.reviewed}, "body": "Verdict: APPROVE",
 				"submittedAt": time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)}}},
 			"labels": map[string]any{"nodes": []any{}},
-			"commits": map[string]any{"nodes": []any{map[string]any{"commit": map[string]any{"statusCheckRollup": map[string]any{
-				"contexts": map[string]any{"nodes": checks}}}}}},
+			// The head commit's oid + committer date ride on the rollup node, as the live
+			// query serves them (#3093) — so the stale-grant filter needs no per-commit read.
+			"commits": map[string]any{"nodes": []any{map[string]any{"commit": map[string]any{
+				"oid": p.head, "committedDate": "2026-10-12T09:35:00Z", "statusCheckRollup": map[string]any{
+					"contexts": map[string]any{"nodes": checks}}}}}},
 		})
 	}
 	return map[string]any{"data": map[string]any{"repository": map[string]any{"pullRequests": map[string]any{"nodes": nodes}}}}

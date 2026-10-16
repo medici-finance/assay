@@ -40,9 +40,9 @@
 # =============================================================================
 
 # ---- Builder --------------------------------------------------------------
-# golang:1.25 matches the `go 1.25.0` line in both go.mod files (tools/desk and
-# statusgen). Alpine base, CGO off -> fully static Linux binaries.
-FROM golang:1.25-alpine AS builder
+# golang:1.27.2 is the fleet's single Go toolchain and covers the `go 1.27.0`
+# line of every go.mod (#2918). Alpine base, CGO off -> fully static Linux binaries.
+FROM golang:1.27.2-alpine AS builder
 
 # Target GOOS/GOARCH. Defaulted so a plain `docker build` produces linux/amd64
 # without buildx; a buildx build would override these per platform.
@@ -63,6 +63,9 @@ WORKDIR /src
 # The forgeread module is a sibling both modules resolve through a `replace ../forgeread`
 # (stdlib-only, so it adds nothing to download); it must be present before either builds.
 COPY forgeread/ ./forgeread/
+# The comms module (the public cellmsg-v1 contract) is the same kind of sibling: tools/desk
+# resolves it through `replace ../../comms`, and it is stdlib-only.
+COPY comms/ ./comms/
 COPY statusgen/go.mod statusgen/go.sum ./statusgen/
 COPY tools/desk/go.mod ./tools/desk/
 RUN cd statusgen && go mod download

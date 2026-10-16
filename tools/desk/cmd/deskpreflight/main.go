@@ -98,7 +98,9 @@ Exit codes:
   6  PREFLIGHT: COULD-NOT-CHECK n — n checks could not run (fail-closed)`
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, realTools()))
+	os.Exit(deskkit.PerfRun("deskpreflight", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:], os.Stdout, os.Stderr, realTools())
+	}))
 }
 
 // check is one bundled check's three-state result. detail is a human line; for a

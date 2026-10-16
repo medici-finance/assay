@@ -72,6 +72,18 @@ type LaneOutcome struct {
 	// the audit surface: a lane that reports an outcome without the steps that produced it is a
 	// claim, not evidence.
 	Steps []string
+	// Warnings are failures that came AFTER the lane's outward write had landed — a cleanup that
+	// could not put local state back. They do not undo the exit: the artifact exists, so the item
+	// has left the front door, and failing the dispatch would make the ledger report a leak for
+	// an item that did leave. They are never swallowed either: each is a "# WARNING:" step in the
+	// dispatch block and a line of its own in the pass report.
+	Warnings []string
+}
+
+// warn records a post-write failure on both surfaces — the step sequence and the warnings list.
+func (o *LaneOutcome) warn(msg string) {
+	o.Warnings = append(o.Warnings, msg)
+	o.Steps = append(o.Steps, "# WARNING: "+msg)
 }
 
 // Lane is the swappable unit. One method, one direction, no callbacks into the loop.
@@ -161,7 +173,26 @@ type scanCarrierPRLane struct {
 
 func (l scanCarrierPRLane) Name() LaneName { return LaneScanCarrierPR }
 
+// Execute carries the delta, then removes the lane's own title and body files whatever happened —
+// a failed carry must not leave them behind either.
 func (l scanCarrierPRLane) Execute(req LaneRequest) (LaneOutcome, error) {
+	out, err := l.carry(req)
+	// The cleanup is keyed to the worktree path, so it runs only for a path the isolation guard
+	// accepts: an empty or relative one would resolve against whatever directory this runs in.
+	if !req.DryRun && assertIsolatedScanRoot(req.Root, req.Worktree) == nil {
+		titleFile, bodyFile := scanMetaFiles(req.Worktree)
+		for _, p := range []string{titleFile, bodyFile} {
+			if rmErr := os.Remove(p); rmErr != nil && !os.IsNotExist(rmErr) {
+				// A leftover metadata file sits BESIDE the worktree and blocks nothing, so it is
+				// reported, never allowed to turn a landed carry into a dispatch error.
+				out.warn("could not remove the scan metadata file " + p + ": " + rmErr.Error())
+			}
+		}
+	}
+	return out, err
+}
+
+func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 	out := LaneOutcome{Lane: LaneScanCarrierPR, Exit: ExitPlaceholder}
 
 	if err := assertIsolatedScanRoot(req.Root, req.Worktree); err != nil {
@@ -213,12 +244,18 @@ func (l scanCarrierPRLane) Execute(req LaneRequest) (LaneOutcome, error) {
 		return out, err
 	}
 	cutFrom := base
+	// A fresh branch name is new, so -b. The open scan branch is NOT: the pass that opened the PR
+	// cut it, and `git worktree remove` deletes the worktree but not its branch, so a local branch
+	// of that name is still there on the next tick and -b would refuse every coalesce in the window
+	// ("a branch named … already exists"). -B resets it to the fetched remote head instead.
+	branchFlag := "-b"
 	if decision.Act() == CoalesceInto {
 		// Re-cut from the open scan branch, with the remote head merged in first: never scan a
 		// base that is behind the default branch.
 		cutFrom = "origin/" + req.Open.Branch
+		branchFlag = "-B"
 	}
-	if err := step(req.Root, "git", "worktree", "add", req.Worktree, "-b", req.Branch, cutFrom); err != nil {
+	if err := step(req.Root, "git", "worktree", "add", req.Worktree, branchFlag, req.Branch, cutFrom); err != nil {
 		return out, err
 	}
 	if decision.Act() == CoalesceInto {
@@ -246,8 +283,7 @@ func (l scanCarrierPRLane) Execute(req LaneRequest) (LaneOutcome, error) {
 	// The title and body are DERIVED from the branch's own diff on EVERY push, never hand-written
 	// and never carried over from the previous push: the counts describe a diff that grows with
 	// each coalesced commit.
-	titleFile := filepath.Join(req.Worktree, scanTitleFile)
-	bodyFile := filepath.Join(req.Worktree, scanBodyFile)
+	titleFile, bodyFile := scanMetaFiles(req.Worktree)
 	var title string
 	regenerate := func() error {
 		t, err := capture(req.Worktree, "deskscanbody", "emit", "--base", diffBase, "--format", "title")
@@ -309,12 +345,38 @@ func (l scanCarrierPRLane) Execute(req LaneRequest) (LaneOutcome, error) {
 	}
 
 	// 5. put the isolated worktree back.
+	//
+	// The carrier is PUBLISHED by now: the create or the push-and-edit above succeeded. A failure
+	// here is a cleanup failure, never a dispatch failure — returning it as an error once made the
+	// exit ledger report "nothing landed" and the leak check name the item as un-exited while its
+	// carrier PR sat open. So the artifact stands as the item's exit and the failure is reported
+	// on its own line. The worktree is RETAINED for diagnosis: no --force, no other deletion.
 	if err := step(req.Root, "git", "worktree", "remove", req.Worktree); err != nil {
-		return out, err
+		out.warn("cleanup: could not remove worktree " + req.Worktree + ": " + err.Error() +
+			" — worktree retained for diagnosis; the carrier " + out.Artifact + " is published and stands as this item's exit")
+		releaseRetainedBranch(&out, step, req)
 	}
 
 	out.Steps = append(out.Steps, "# coalesce: "+string(decision)+" — "+why)
 	return out, nil
+}
+
+// releaseRetainedBranch detaches the HEAD of a worktree the cleanup could not remove, so the carrier
+// branch is no longer checked out there. Without it the retained worktree still holds the branch,
+// and the next pass inside the coalesce window cannot re-cut it ("already used by worktree"): the
+// retry would fail before it published, and the item would leak on every tick until a human
+// removed the worktree. Detaching moves nothing on disk — HEAD stays on the same commit, and every
+// untracked or modified file stays where it is for diagnosis.
+//
+// The git dir is named EXPLICITLY (the worktree's own .git file) rather than found by walking up
+// from the worktree path: if the path is not a worktree at all, the walk could land in an
+// enclosing repository and detach that one. An explicit git dir that does not exist simply fails.
+func releaseRetainedBranch(out *LaneOutcome, step func(dir, name string, args ...string) error, req LaneRequest) {
+	wt := filepath.Clean(req.Worktree)
+	if err := step(req.Root, "git", "--git-dir="+filepath.Join(wt, ".git"), "--work-tree="+wt, "checkout", "--detach"); err != nil {
+		out.warn("cleanup: could not detach the retained worktree " + wt + ": " + err.Error() +
+			" — it still has " + req.Branch + " checked out, so a later pass cannot coalesce onto that branch until the worktree is removed")
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -433,18 +495,30 @@ func renderStep(dir, name string, args []string) string {
 	return "(" + dir + ") " + name + " " + strings.Join(args, " ")
 }
 
-// scanTitleFile / scanBodyFile are the derived title and body, captured INSIDE the per-run isolated
-// worktree rather than at a fixed shared path. A fixed path under the system temp directory is
-// shared machine-wide, so two parallel scans clobber each other's PR body; a path inside a worktree
-// that exists only for this run cannot collide.
+// scanTitleSuffix / scanBodySuffix name the derived title and body files. They sit BESIDE the per-run
+// isolated worktree (its path plus the suffix), never inside it and never at a fixed shared path:
+//
+//   - a fixed path under the system temp directory is shared machine-wide, so two parallel scans
+//     clobber each other's PR body; a path keyed to a worktree that exists only for this run cannot
+//     collide;
+//   - a file the lane writes INSIDE the worktree is untracked there, and `git worktree remove`
+//     refuses a worktree holding untracked files — every carry then ended in a dispatch error with
+//     the worktree left behind. The worktree holds only what the scan derives and commits.
 const (
-	scanTitleFile = ".scan-title"
-	scanBodyFile  = ".scan-body"
+	scanTitleSuffix = ".scan-title"
+	scanBodySuffix  = ".scan-body"
 	// derivedTitlePlaceholder stands in for the real title on the dry-run path, where no derivation
 	// verb actually ran. It is deliberately not a plausible title: a dry-run step an operator could
 	// mistake for the real one is worse than an obviously synthetic one.
 	derivedTitlePlaceholder = "<derived from the branch diff at run time>"
 )
+
+// scanMetaFiles returns the title and body file paths for a scan worktree: siblings of it, never
+// inside it.
+func scanMetaFiles(worktree string) (title, body string) {
+	wt := filepath.Clean(worktree)
+	return wt + scanTitleSuffix, wt + scanBodySuffix
+}
 
 func writeTextFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o600)

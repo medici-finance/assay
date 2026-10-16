@@ -188,7 +188,7 @@ skill (*Per-forge prerequisites*); the entry grammar itself is defined once in
 the GitHub half:
 
 1. **The automation account** — the identity the fleet *runs as*: it authors PRs, pushes branches, runs CI, mints the reviewer-App token, and posts App reviews. In a solo setup this is one machine account plus the reviewer GitHub App it owns; in a larger setup, the set of role Apps. Everything an agent does, it does as this identity.
-2. **Your human account** — a *separate* personal GitHub account that is **you**, and whose credentials the automation never holds. It does the things only a human may: it is the `ASSAY_BLESS_LOGIN` (the authorization half of the trust gate — `configure-roster`), it posts the sign-off on a `gate:human` brief, it adds the 👍 reaction that clears a public-repo write, and it clicks **merge**.
+2. **Your human account** — a *separate* personal GitHub account that is **you**, and whose credentials the automation never holds. It does the things only a human may: it is the `ASSAY_BLESS_LOGIN` (the authorization half of the trust gate — `configure-roster`), it posts the sign-off on a `gate:human` brief, it decides which public repositories the desk may write to (the `:public` allowed-repos entry), and it clicks **merge**.
 
 **Why this is not optional.** Assay's gates separate *proposing* work (the agents) from *authorizing* it (a human). That separation is only real if the two are different principals on the forge. If the fleet runs as the same account that blesses, approves, and merges, the automation can bless, approve, and merge its *own* work — every human gate becomes self-satisfiable and the model is theater. Under one shared identity, bot-vs-human is undecidable: a verdict, a 👍, or a merge attributed to that account attributes to *both* (§1a). The human account is precisely what the automation must be unable to act as — that is what makes "a human approved this" a claim the fleet cannot forge.
 
@@ -259,9 +259,11 @@ finished `assay:install` run hands you a checklist rather than the impression th
    the protected branch's push-access list naming the board-writer service account, which
    `tools/create-fleet-gitlab.sh` sets and reads back.)
 6. **The ongoing human gates — not one-time.** The ready-flip is the desk's, but the **merge**, the
-   **push to `main`**, the **release tag**, any **history rewrite**, and the **👍 that clears a
-   public write** are yours *every time*, not just at install. The quick-reference table above is
-   the standing list.
+   **push to `main`**, the **release tag** and any **history rewrite** are yours *every time*, not
+   just at install. So is the decision to add a public repository to the allowed-repos set with
+   the `:public` token: it is a one-time, repository-scoped authorization that only you make,
+   and a repository you have not listed stays refused. The quick-reference table above is the
+   standing list.
 7. **Optionally acquire the desk-tools.** If you run the automated desk pipeline, install the pinned
    desk-tools binaries — see the **desk-tools acquisition** (`install-desk-tools` in §3). Without
    them the desk skills fall back to raw `gh`/`git`; with them you get the guards, write-budgets,
@@ -717,7 +719,9 @@ it does **not** consider the repo set — so a roster carrying `ASSAY_BLESS_LOGI
 `ASSAY_TRUSTED_LOGINS` but no `ASSAY_ALLOWED_REPOS` reports `configured=true` and prints no
 refusal. The gap only surfaces later, when a repo-scoped acting command runs against a repo
 `ASSAY_ALLOWED_REPOS` never named. Fill every surface, and read the `assay-config:` echo rather
-than either the exit code or the board's contents.
+than either the exit code or the board's contents. Outside CI a desk tool prints that echo as one
+digest line once it has shown the current configuration; set `ASSAY_CONFIG_ECHO=full` to read
+every line, including the allowed-repo set.
 
 **The board's root set is separate configuration, not roster-derived.** `deskboard nextup`'s
 default roots (`defaultRoots`, same file) are compiled to a fixed default set of repos. Configuring the
@@ -784,12 +788,14 @@ done
 ```
 
 No output. Then the tools agree —
-`deskboard --version 2>&1 >/dev/null | grep -E 'configured=|role-bindings=|ASSAY_ALLOWED_REPOS='`
+`ASSAY_CONFIG_ECHO=full deskboard --version 2>&1 >/dev/null | grep -E 'configured=|role-bindings=|ASSAY_ALLOWED_REPOS='`
 shows `configured=true`, a **non-empty** `ASSAY_ALLOWED_REPOS=`, and every `role=` you rely on in
 `role-bindings=` (an unbound role refuses the check it exists for). This deliberately uses
 `--version`, not `nextup`: it needs no `DESK_ROOTS`, and it does not tempt you into widening your
 own `ASSAY_ALLOWED_REPOS` with the maintainer's repo just to get a command to exit 0 (see the caveat
-above).
+above). `ASSAY_CONFIG_ECHO=full` makes the check print the whole echo on every run; without it, a
+run whose configuration was already shown prints only the one digest line, which carries no
+`role-bindings=` or `ASSAY_ALLOWED_REPOS=`. The forced form reads and writes no echo state.
 
 Finally, prove failure mode 2 is live rather than decorative — drop one surface and watch the tools
 stay quiet:
@@ -804,7 +810,7 @@ stay quiet:
 unset DESK_ROOTS
 cp ~/.config/assay/roster.env ~/.config/assay/roster.env.full
 grep -v '^ASSAY_ALLOWED_REPOS=' ~/.config/assay/roster.env.full > ~/.config/assay/roster.env
-deskboard nextup 2>&1 >/dev/null | grep -E 'configured=|ASSAY_ALLOWED_REPOS='   # configured=true, repos EMPTY
+ASSAY_CONFIG_ECHO=full deskboard nextup 2>&1 >/dev/null | grep -E 'configured=|ASSAY_ALLOWED_REPOS='   # configured=true, repos EMPTY
 deskboard nextup >/dev/null 2>&1; echo "exit=$?"                                # exit=0 — the silent state
 cp ~/.config/assay/roster.env.full ~/.config/assay/roster.env && rm ~/.config/assay/roster.env.full
 ```
@@ -1151,7 +1157,7 @@ need a `deskinstall` that nothing above has placed. #1693 tracks closing this. U
 first `deskinstall` **outside** `--dest`. It must be outside because `deskinstall` rewrites every
 file it places in `--dest`, and Windows does not let a running `.exe` overwrite itself. Two ways:
 
-- **With a Go 1.25 toolchain.** From the clone root, run
+- **With a Go 1.27 toolchain.** From the clone root, run
   `go build -C tools/desk -o $env:TEMP\deskinstall.exe ./cmd/deskinstall`, then run step 1's
   second command as `& $env:TEMP\deskinstall.exe --manifest …`. That run places the pinned,
   sha256-verified release build of the whole toolchain, `deskinstall.exe` included, into `--dest`,
@@ -1207,7 +1213,7 @@ operation still needs Git-Bash or WSL after install: **bulk PAT renewal**. See *
 | Lane | When | What you pin | Need Go? |
 |---|---|---|---|
 | **Channel E (release)** | Adopter wants the published tag (example: `v0.26.0`) | `statusgen-windows-<arch>.exe` + `desk-tools-windows-<arch>.tar.gz` **tag + sha256** in `.assay-versions` | **No.** Bootstrap + `deskinstall` download verified assets. |
-| **Channel D (source SHA)** | Adopter asked for `main` (or any commit that is **not** a release asset) | the assay commit SHA your CI clones and rebuilds — recorded in CI config, **not** as a `-source` `.assay-versions` line (see the channel-D lane below) | **Yes.** A Go 1.25 toolchain, `go build` of `statusgen` and the desk-tools, and CI that clones that SHA and rebuilds. Copying a release sha256 onto a source lane is a lie. |
+| **Channel D (source SHA)** | Adopter asked for `main` (or any commit that is **not** a release asset) | the assay commit SHA your CI clones and rebuilds — recorded in CI config, **not** as a `-source` `.assay-versions` line (see the channel-D lane below) | **Yes.** A Go 1.27 toolchain, `go build` of `statusgen` and the desk-tools, and CI that clones that SHA and rebuilds. Copying a release sha256 onto a source lane is a lie. |
 
 `gh` is not required to *install* either lane. GitHub-shaped *desk* work still wants `gh`; GitLab-shaped desk work wants `glab` / `--forge gitlab`, not a GitHub App PEM path.
 
@@ -1219,7 +1225,7 @@ operation still needs Git-Bash or WSL after install: **bulk PAT renewal**. See *
 - **Channel E:** **No Go toolchain and no `gh` are required to install.** The adopter downloads the
   *pinned release binary*, not a from-source build: the bootstrap fetches over `Invoke-WebRequest`
   and the Go-native installer over `net/http`.
-- **Channel D:** a **Go 1.25** toolchain on `PATH` (or a documented portable install) **is**
+- **Channel D:** a **Go 1.27** toolchain on `PATH` (or a documented portable install) **is**
   required. There is no checksummed Windows asset for an unpublished SHA.
 - **`git`** — needed to clone Assay (bootstrap script lives **in this repo**, not on a blank
   adopter machine) and to run desks. `gh` is GitHub-desk only.
@@ -2272,7 +2278,8 @@ branch → draft-PR → review → verify loop (structure: scaffold-seam → mov
 ## 8. Upgrading after install — the `assay:upgrade-assay` skill
 
 Install and upgrade are **one story with one mechanism**: install writes the `.assay-versions` pin
-(the umbrella line plus the per-artifact tags), and upgrade moves it. The single supported upgrade
+(the per-artifact tags, plus the `assay <vX.Y.Z>` umbrella line when it pins a bare `vX.Y.Z` release
+and every per-artifact line pins that tag), and upgrade moves it. The single supported upgrade
 path is the **`assay:upgrade-assay`** skill (surfaced once the plugin is installed). Do **not**
 hand-edit pins against a release page — that is precisely the drift the pin/umbrella model removes.
 The distribution model this section implements is [`distribution.md`](distribution.md).
@@ -2289,7 +2296,11 @@ highest published bare `vX.Y.Z` release) or to a **named** umbrella version, dry
    for you to run; it never re-points the marketplace or edits the install cache itself.
 
 **What it refuses** (each a distinct exit): an **undetermined** current version (exit 6 — it never
-assumes latest), **inconsistent** records (exit 5 — it names the disagreeing pair), a
+assumes latest). When the only cause is a pin file with **no umbrella line**, as written by an
+install that predates the installer recording the line, re-run with `--adopt-umbrella-from-pins`.
+That flag adopts the release the per-artifact lines pin only after every pinned sha256 matches that
+release's published `checksums.txt`; a mismatch refuses with exit 5, and any other gap with exit 6
+([`distribution.md`](distribution.md) § Adopting the umbrella line). Also refused: **inconsistent** records (exit 5 — it names the disagreeing pair), a
 **per-artifact tag** where an umbrella version was required (exit 7 — the verb moves the whole
 umbrella, e.g. `--to v0.13.0`, never `statusgen/v0.13.0`), and a target that names **no published
 release** (exit 8 — never a nearest-match guess).

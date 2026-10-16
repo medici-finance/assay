@@ -163,7 +163,7 @@ func checkLane(env *comms.Envelope, acl *comms.ACL) error {
 		return fmt.Errorf("%w: nil lane ACL (fail closed, never default-allow)", ErrLaneDenied)
 	}
 	if env.From.Cell == env.To.Cell {
-		if !acl.Allow(env.From.Cell, env.From.Role, env.Verb, env.To.Cell, env.To.Role) {
+		if !acl.AllowEnvelope(env) {
 			return fmt.Errorf("%w: (%s -> %s) verb %q", ErrLaneDenied, env.From.Role, env.To.Role, env.Verb)
 		}
 		return nil

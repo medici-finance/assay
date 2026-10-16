@@ -24,7 +24,7 @@ file points, never re-states; incident rationale lives in the project's findings
 link. Bindings for your harness — which mechanism each `capability:*` names — are in
 `../../references/<harness>.md`.
 
-> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
 > Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
 
@@ -177,13 +177,21 @@ Before each loop cycle (monitor wakeup, board sweep, dispatch), check for active
 
 ```bash
 [ -f "$HOME/.config/assay/STOP" ] && echo "STOP flag active — exiting loop" && exit 0
+case "$ASSAY_CELL" in ""|*[!a-z0-9-]*) ;; *) [ -f "$HOME/.config/assay/STOP.cell.$ASSAY_CELL" ] && echo "STOP.cell.$ASSAY_CELL active — exiting loop" && exit 0 ;; esac
 [ -n "$DESK_LOOP" ] && [ -f "$HOME/.config/assay/STOP.$DESK_LOOP" ] && echo "STOP.$DESK_LOOP active — exiting loop" && exit 0
+case "$ASSAY_CELL" in ""|*[!a-z0-9-]*) ;; *) [ -n "$DESK_LOOP" ] && [ -f "$HOME/.config/assay/STOP.cell.$ASSAY_CELL.$DESK_LOOP" ] && echo "STOP.cell.$ASSAY_CELL.$DESK_LOOP active — exiting loop" && exit 0 ;; esac
 ```
+
+`ASSAY_CELL` is the cell marker `cellctl` stamps on every desk it launches: `STOP.cell.<cell>` stops every
+loop of that cell, `STOP.cell.<cell>.<name>` one loop of it. A session with no marker skips both cell lines; a
+marker outside `[a-z0-9-]` builds no path here and is refused (exit 6) by the Guard. Cell flags only add a
+stop — they never lift `DISABLED`, `STOP` or `STOP.<name>`.
 
 `DESK_LOOP` is set by `deskboot`. A hit means exit cleanly (restart by `rm <flag>` + re-arm).
 Never halt mid-action; a started outward write always completes. Precedence: `DISABLED` > `STOP` >
-`STOP.<name>`. The tool layer (`deskkit.Guard()`) independently enforces these flags — a loop that
-skips its own check is defanged: every outward verb will refuse.
+`STOP.cell.<cell>` > `STOP.<name>` = `STOP.cell.<cell>.<name>`. The tool layer (`deskkit.Guard()`)
+independently enforces these flags — a loop that skips its own check is defanged: every outward verb
+will refuse.
 
 The same cadence tick reads the per-claim **armed stops** across in-flight dispatches with
 `desksupervise status --stops` (the liveness observer's runtime snapshot) — so this window sees a
@@ -289,8 +297,8 @@ failure this section prevents**, and there is no state in this loop called "the 
   push only when the declaration substantiates); the ready-flip reads BOTH lanes' verdicts AT THE FINAL head (stale ≠ pass), CI
   green at that head, mergeable; a `Security-Review: fail` at head blocks everything; dual-track
   out-of-scope FILING waits for both lanes at the same head (the VERDICTS themselves never wait for
-  each other); the human gates (public-repo human +1 before any verdict post, `needs-decision`, the
-  merge) are never parallelised around.
+  each other); the human gates (`needs-decision`, the merge, a public repo's repository-scoped
+  `:public` allowed-repos entry) are never parallelised around.
 - **Never stop-and-wait.** When actionable = 0, do not exit — the watchers keep the loop alive. "I
   dispatched everything I saw" is not a stop condition and is not an idle claim (§HARD GATE).
 - **Priority within a refill:** RE-REVIEW before NEEDS-REVIEW at the same score (the worker is
@@ -314,8 +322,8 @@ reviewloop plan --actions "$ACTIONS" --prs "$PRS"
 ```
 
 `reviewloop plan` classifies every board row against an action table required by test to be
-exhaustive over `deskboard`'s own constants, coalesces outward verbs on (repo, pr, head, verb)
-under the same audit-keyed idempotency the `deskpost` verbs use, and states the idle verdict
+exhaustive over `deskboard`'s own constants, coalesces verbs on (repo, pr, head, verb) from the
+board alone (claims and write idempotency are checked at execution), and states the idle verdict
 three-state. It spawns nothing and writes nothing outward — the desk executes the verbs. Exit 6
 (board unreadable, an ACTION the table does not know, an idle question the board cannot answer) is
 BLIND, never "all clear"; without `--prs` every outward verb is SUPPRESSED as could-not-check.

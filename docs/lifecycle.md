@@ -49,6 +49,13 @@ distinct, owned step, not a side effect of merge.
   node (role `reviewer`, `evidence: review`); post-merge verification is the pattern's `verify`
   node (role `verifier`, `evidence: witness`), which is also the pattern's `join` — its
   integration check.
+- A **workflow instance** (`spec/workflow-instance-v1.md`) binds that pattern to one work
+  item in one Cell and pins the acceptance version the gates review against. A brief's
+  `version:` bump makes an instance bound to the earlier version stale; it is superseded by a
+  new instance, never rewritten in place. `statusgen instance validate --file PATH --json`
+  checks one. Human decisions at a gate are recorded as references to external
+  authenticated acts — the human acts in their own identity — never as a model role or a
+  node with a token of its own.
 
 ## STATUS.md — a single-writer generated artifact
 

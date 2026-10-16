@@ -1643,16 +1643,25 @@ func TestDecay_AgeUnknownIsItsOwnState_400N7(t *testing.T) {
 		return rep, out.String()
 	}
 
+	// #3093 tightened this input: an APPROVED at head whose submitted_at cannot be read
+	// cannot be shown to postdate the head commit (the forge can re-anchor an older review
+	// onto a newer head), so it is NOT approval at head — the same fail-closed rule the
+	// ready gate and deskflip apply. The row therefore never reaches MERGE-NOW, so it can
+	// neither be measured nor sit in the age-unknown lane; what this subtest still pins is
+	// that no unreadable age is ever reported as a measurement or printed as an age.
 	for _, unreadable := range []string{"", "not-a-timestamp", "2026-13-45T99:99:99Z"} {
 		t.Run("unreadable="+unreadable, func(t *testing.T) {
 			rep, _ := run400(t, unreadable)
 			r := findRow(t, rep, 42)
-			if r.Action != actMergeNow {
-				t.Fatalf("action = %s, want %s (the VERDICT is readable; only the age is not)", r.Action, actMergeNow)
+			if r.Action == actMergeNow || r.Action == actFlip || r.Action == actReady {
+				t.Fatalf("action = %s — an approval whose submitted_at is unreadable cannot be shown to "+
+					"postdate the head commit, so it is not approval at head (#3093)", r.Action)
 			}
-			if rep.Header.MergeNowAgeUnknownCount != 1 ||
-				len(rep.Header.MergeNowAgeUnknownPRs) != 1 || rep.Header.MergeNowAgeUnknownPRs[0] != 42 {
-				t.Errorf("an unreadable approval age must get its OWN lane; got count=%d prs=%v",
+			if !strings.Contains(r.Note, "#3093") {
+				t.Errorf("note does not say why the approval was ignored: %s", r.Note)
+			}
+			if rep.Header.MergeNowAgeUnknownCount != 0 {
+				t.Errorf("a row that is not MERGE-NOW must not enter the MERGE-NOW age-unknown lane; got count=%d prs=%v",
 					rep.Header.MergeNowAgeUnknownCount, rep.Header.MergeNowAgeUnknownPRs)
 			}
 			// It must NOT be folded into the measured list — that would claim a
@@ -1665,13 +1674,33 @@ func TestDecay_AgeUnknownIsItsOwnState_400N7(t *testing.T) {
 			if r.ApprovedAge != "" {
 				t.Errorf("approvedAge = %q — the board must not print an age it could not read", r.ApprovedAge)
 			}
-
-			_, table := run400(t, unreadable, "--table")
-			if !strings.Contains(table, "DECAY-AGE-UNKNOWN:") {
-				t.Errorf("--table must NAME the unmeasurable row; got:\n%s", table)
-			}
 		})
 	}
+
+	// The lane stays reachable after #3093 (so it is pinned here, not deleted): a submitted_at
+	// the re-anchor test reads (it trims surrounding whitespace before parsing) but the
+	// board's age parse does not. The approval is at head and postdates the head commit, so
+	// the row is MERGE-NOW — and its age is unmeasured, which must be NAMED, never dropped.
+	t.Run("at head but age unreadable to the decay parse", func(t *testing.T) {
+		padded := " " + time.Now().UTC().Add(-1*time.Minute).Format(time.RFC3339) + " "
+		rep, _ := run400(t, padded)
+		r := findRow(t, rep, 42)
+		if r.Action != actMergeNow {
+			t.Fatalf("action = %s (%s), want %s (the VERDICT is readable; only the age is not)", r.Action, r.Note, actMergeNow)
+		}
+		if rep.Header.MergeNowAgeUnknownCount != 1 ||
+			len(rep.Header.MergeNowAgeUnknownPRs) != 1 || rep.Header.MergeNowAgeUnknownPRs[0] != 42 {
+			t.Errorf("an unreadable approval age must get its OWN lane; got count=%d prs=%v",
+				rep.Header.MergeNowAgeUnknownCount, rep.Header.MergeNowAgeUnknownPRs)
+		}
+		if r.ApprovedAge != "" {
+			t.Errorf("approvedAge = %q — the board must not print an age it could not read", r.ApprovedAge)
+		}
+		_, table := run400(t, padded, "--table")
+		if !strings.Contains(table, "DECAY-AGE-UNKNOWN:") {
+			t.Errorf("--table must NAME the unmeasurable row; got:\n%s", table)
+		}
+	})
 
 	// Positive controls: neither readable state leaks into the new lane.
 	t.Run("readable and fresh", func(t *testing.T) {

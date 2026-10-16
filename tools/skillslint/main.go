@@ -1,4 +1,4 @@
-// Command skillslint runs four offline checks over the plugin tree:
+// Command skillslint runs five offline checks over the plugin tree:
 //
 //	structural       every plugins/assay/skills/*/SKILL.md (lint.go), including
 //	                 the per-skill frontmatter conformance limits — description
@@ -9,6 +9,8 @@
 //	                 (hidden.go)
 //	house values     EVERY *.md under plugins/, at any depth (housevalue.go)
 //	guardrails       derive-or-diff of every shared-guardrail copy (guardrail.go)
+//	ambient auth     no skill or reference tells a desk to read a human's
+//	                 `gh auth token` (ambientauth.go)
 //
 // The house-value half is deliberately wider than the other two: the references
 // and READMEs under plugins/ are as adopter-facing as a skill body, and a
@@ -218,6 +220,28 @@ func main() {
 		}
 	default:
 		fmt.Printf("ENFORCEMENT-BLOCK: PASS — the generated block in %s byte-matches `statusgen enforcement-status`\n", enforcementSitePath)
+	}
+
+	// ambient-auth: HARD. No skill or reference may tell a desk to read a human's
+	// forge-CLI login with `gh auth token` (#3055; see ambientauth.go).
+	aaChecked, aaIssues, aaErr := AmbientAuthIssues(*root)
+	switch {
+	case aaErr != nil:
+		fmt.Fprintf(os.Stderr, "skillslint: %v\n", aaErr)
+		fmt.Fprintf(os.Stderr, "AMBIENT-AUTH: COULD-NOT-CHECK — the skill/reference tree could not be read; a check that read nothing proved nothing\n")
+		if exit < 2 {
+			exit = 2
+		}
+	case len(aaIssues) > 0:
+		for _, is := range aaIssues {
+			fmt.Fprintf(os.Stderr, "skillslint: %s: %s\n", is.Path, is.Msg)
+		}
+		fmt.Fprintf(os.Stderr, "AMBIENT-AUTH: FAIL — %d `gh auth token` instruction(s) across %d markdown file(s)\n", len(aaIssues), aaChecked)
+		if exit < 1 {
+			exit = 1
+		}
+	default:
+		fmt.Printf("AMBIENT-AUTH: PASS — %d markdown file(s) under plugins/assay/skills and plugins/assay/references, no desk told to read a human's `gh auth token`\n", aaChecked)
 	}
 
 	// posix-token: advisory (never exit-affecting, per the lint-debt cadence a hard

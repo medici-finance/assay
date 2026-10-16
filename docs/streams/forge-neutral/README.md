@@ -240,6 +240,15 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 34 | [deskread CI workflow-token transport — an explicit, CI-only, read-only opt-in beside the App custody default](brief-34-deskread-ci-workflow-token-transport.md) | 1 | M | implemented | — | — |
 | 35 | [Human-ruling resolvers onto the read verb — the decision-record ruling check, the transcribe lanes' sign-off check and their verdict-issue read go through deskread; the two ruling checks accept only a User author, the verdict-issue read keeps its Bot pin, and none holds a credential of its own](brief-35-ruling-resolver-onto-the-read-verb.md) | 6 | M | todo | — | — |
 | 36 | [Importable fact reader SDK and first shared read](brief-36-importable-fact-reader-sdk-and-first-shared-read.md) | 1 | L | implemented | — | — |
+| 37 | [Scoped forge mirror with persisted freshness, coverage and polling repair](brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md) | 7 | L | todo | — | — |
+| 38 | [Forge event adapter, feedback observations and durable reevaluation demand](brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md) | 8 | L | todo | — | — |
+| 39 | [Typed forge service contract and scoped client SDK](brief-39-typed-forge-service-contract-and-scoped-client-sdk.md) | 1 | M | todo | — | — |
+| 40 | [Authenticated forge serving and role executor custody](brief-40-authenticated-forge-serving-and-role-executor-custody.md) | 6 | L | todo | — | — |
+| 41 | [Write-through forge receipts and read-after-write projection](brief-41-write-through-forge-receipts-and-read-after-write-projection.md) | 8 | L | todo | — | — |
+| 42 | [SHA-bound source queries and immutable result caching](brief-42-sha-bound-source-queries-and-immutable-result-caching.md) | 7 | L | todo | — | — |
+| 43 | [Incremental forge indexes and dependency-aware invalidation](brief-43-incremental-forge-indexes-and-dependency-aware-invalidation.md) | 8 | M | todo | — | — |
+| 44 | [Shared Git object and fetch reuse qualification trial](brief-44-shared-git-object-and-fetch-reuse-qualification-trial.md) | 8 | M | todo | — | — |
+| 45 | [Forge service fault simulation and scoped cutover qualification](brief-45-forge-service-fault-simulation-and-scoped-cutover-qualification.md) | 9 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -518,6 +527,18 @@ every other brief here, so they interleave with the numbers above rather than re
 
 One-line path: `20 → 21 → 23 → 24 → 28 → 29 → 30 → 32`, with 31 beside 32.
 
+**Forge mirror (non-CI R6, briefs 37–38)**: waves are derived from `depends:` on graph-execution
+briefs, so the numbers interleave with those above:
+
+- **Wave 7** — `forge-neutral/37` (scoped mirror, persisted freshness and coverage, conditional
+  refresh, polling repair; human-gated; depends on graph-execution/28, /29 and /19, and on the
+  implemented forge-neutral/33 and /36 and the verified desktools-v2/09 it builds on).
+- **Wave 8** — `forge-neutral/38` (authenticated event adapter, feedback observations and durable
+  reevaluation demand; human-gated; depends on 37 and on graph-execution/28, /29, /19 and /04).
+
+One-line path: `{graph-execution/28 → 29, graph-execution/19} → 37 → 38`, toward R7 once R7 has
+briefs.
+
 ## Shared conventions the briefs inherit
 
 - **Refusal, never fallback.** Every forge-touching path that cannot be served on the
@@ -566,3 +587,79 @@ Verify or Evidence text changes.
   window ([delivery sequence](../../proposals/non-ci-architecture/16-delivery-sequence.md),
   lines 98–104). Until then a command break fails clearly and never falls back silently to a
   different state store.
+
+## Forge mirror (non-CI R6) — 2026-10-13
+
+The maintainer ratified the whole non-CI target on medici-finance/assay#2500 (23f655f5d). The
+step-3 manifest (`docs/proposals/non-ci-architecture/20-amendment-manifest.md`, landed in
+medici-finance/assay#2739) gives R6, the forge mirror and shared observations, to this stream as
+new briefs. `forge-neutral/37` and `forge-neutral/38` are those briefs. Approval activates nothing;
+activation stays gated per `docs/proposals/non-ci-architecture/16-delivery-sequence.md`.
+
+- **R1 and R2 edges.** Both depend on graph-execution/28 and /29 (R1) and on graph-execution/19,
+  the store the R2 follow-up amends to PostgreSQL coordination. 38 also depends on
+  graph-execution/04 for the intent and outbox handoff R2 amends. Neither brief builds a store,
+  a demand table or an outbox of its own. Each stops with NEEDS_CONTEXT if the R2 amendment it
+  needs has not landed.
+- **forge-neutral/18 is not rebound.** /18 stays in progress with its Task, Verify, sites,
+  dependencies and `deskread` transport unchanged. Each new brief states this in a dated note
+  and pins it with a Verify row that keeps statusgen off every `forgeread` subpackage.
+- **Toward R7.** R7 has no owner yet, so 37 and 38 name no R7 brief in `unblocks:` (the lint
+  refuses an edge to a brief that does not exist). Each carries a dated note naming what R7
+  consumes. When R7's briefs are authored, their `depends:` add the inverse edge here.
+- **Frozen surface.** 37 adds exactly two read operations to the frozen inventory on both
+  backends. Their consuming call site is the mirror source composition, not a verb, and 37's
+  human review covers that. 38 adds no operation.
+
+## Write-through forge service and source queries — 2026-10-14
+
+Extend the existing R6 mirror/event owners with the bounded Scion-inspired architecture
+amendment in the accompanying architecture PR. It supplies caller/executor authentication,
+write-through receipts, exact-SHA queries, immutable reuse and incremental query indexes.
+The query database stays view-only to consumers; provider-confirmed effects update it through
+the existing effect ledger. GitHub/GitLab remain authoritative, and no role gains another's
+credential or approval authority. Private cached content, existence and counts require current
+permission plus the exact source admission. Approval/implementation activates nothing.
+
+The existing R6 draft is merged with main's landed R2 amendments in this authoring branch;
+37 is wave 7 and 38 is wave 8. Reciprocal edges are unioned without changing historical Task,
+Verify, Evidence, human retention decisions or dated source accounts. This resolves the prior
+merge-order prerequisite; it does not certify any R1/R2 implementation or deployed runtime.
+
+| Brief | Bounded delivery | Current implementation state |
+|---|---|---|
+| 39 | Typed service contract and credential-free client surface | Authored; no service implementation |
+| 40 | Authenticated serving and isolated role executor | Authored; needs current incarnation/ownership contract |
+| 41 | Confirmed write receipts, mirror transaction and observation-token reads | Authored; depends on qualified mirror/store/effect implementations |
+| 42 | Exact-SHA FileAt/Diff/MergeBase and immutable result reuse | Authored; existing Git readers are reuse input |
+| 43 | Incremental derived indexes with input/access/time invalidation | Authored; domain evaluators unchanged |
+| 44 | Shared Git-object/fetch reuse experiment and go/no-go report | Authored; no production daemon authorized |
+| 45 | Served fault/recovery/cutover qualification | Authored; actual R3/R4 proofs required before write activation |
+
+**Critical path:** R1 contracts/regression and R2 store -> 37 mirror -> 41 write-through -> 45.
+Parallel authority path: graph-execution/16 -> 40 -> 41; source path: 39 -> 40 -> 42 ->
+43/44 -> 45. Event 38 also feeds 45. Contract 39 is the independently useful first delivery;
+a source-query fixture needs no live forge, cell deployment or newly provisioned credential.
+The real managed-service blockers are qualified R1/R2 and R3/R4 custody, not a shared-cache
+performance experiment. The trial may complete with a no-go result.
+
+**Waves:** 39 at 1; 40 at 6; 37 and 42 at 7; 38, 41, 43 and 44 at 8; 45 at 9. These numbers
+follow current cross-stream dependencies; workers refresh them at dispatch. No new capacity
+allocation is requested here, and in-progress forge-neutral/18 remains unchanged. The new
+local surface is a narrow R6/R4 capability; full remote OIDC ingress/cockpit remains R7.
+
+**Rollout:** qualify contracts and synthetic boundaries; shadow authorized reads; qualify
+real local SQL/executor/recovery; inventory old publishers; accept read and write release
+separately; perform one operator-controlled repository cutover. No direct/raw fallback on
+service failure, no SQL UPDATE publication path and no inferred permission from cache warmth.
+
+### Verification packaging correction — 2026-10-14
+
+The mirror/event source checker and compiler fixtures now live in
+`tools/forge-import-check/`, outside the shipped desk tree. Their exact Verify commands
+are updated (brief versions 2); the source-only harness still compiles and runs every
+selected literal/escaped import case. The desk bridge reads this neutral helper path,
+and its CI registry declares the whole stream-root input without publishing a withheld
+stream name. Disclosure/secret guards retain their rules and negative controls. These
+command-path corrections supersede the earlier unchanged-Verify statement for these two
+rows only; existing human decisions and historical Evidence remain intact.

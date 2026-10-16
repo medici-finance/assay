@@ -183,7 +183,7 @@ func runSend(d *deps, a *sendArgs) (*outcome, error) {
 	//    default-allow and no wildcard. Cross-cell verbs ship empty, so every
 	//    cross-cell message is refused until a recorded ruling opens the set.
 	acl := comms.Compiled()
-	if !acl.Allow(parsed.From.Cell, parsed.From.Role, parsed.Verb, parsed.To.Cell, parsed.To.Role) {
+	if !acl.AllowEnvelope(parsed) {
 		oc.detail = "acl-out-of-lane"
 		return oc, deskkit.Refused(fmt.Sprintf(
 			"refused: acl — lane (%s/%s) --%s--> (%s/%s) is not permitted (deny-by-default; "+

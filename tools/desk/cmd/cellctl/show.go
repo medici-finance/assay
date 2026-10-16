@@ -49,6 +49,8 @@ func cmdShow(c *Cell, v *cli.Values, extra []string) {
 				src = "cell.env"
 			} else if c.Env.Source(key) == layerDefaults {
 				src = cellDefaultsFile
+			} else if key == envAssayTelemetry && c.Env.Source(key) == layerProcess {
+				src = layerProcess
 			}
 		}
 		fmt.Printf("[show] %s=%s (%s)\n", key, eff, src)
@@ -60,6 +62,9 @@ func cmdShow(c *Cell, v *cli.Values, extra []string) {
 	}
 
 	fmt.Printf("[show] cell=%s dir=%s\n", c.Name, c.Dir)
+	if c.Env.IsSet(envAssayTelemetry) {
+		showLine(envAssayTelemetry, "", c.telemetryValue())
+	}
 	// Surface the repair-admission opt-in whenever cell.env carries it, on or off, so `show`
 	// answers "would a desk booted from this cell turn the dispatch gate on" the same way a
 	// DRY_RUN boot would. "on" is what deskLaunch composes; anything else is identical absence
@@ -124,6 +129,18 @@ func cmdShow(c *Cell, v *cli.Values, extra []string) {
 		fmt.Printf("[show] policy=%s sha256=%s (role rows supersede legacy cell defaults below)\n", policyPath, policy.SHA256)
 	}
 
+	// The cheap-default reset a boot would run first, applied read-only so the rows below are
+	// what that boot resolves.
+	pending := map[string]bool{}
+	moves, err := c.pendingModelReset(provider)
+	if err != nil {
+		die("show: cell.env: %v", err)
+	}
+	for _, m := range moves {
+		pending[m.Key] = true
+		fmt.Printf("[show] %s [pending: the next boot writes it]\n", m.notice())
+	}
+
 	for _, r := range c.Roles {
 		if policy != nil {
 			res, err := policy.Resolve(r, providerFlag, modelFlag, harnessFlag)
@@ -147,6 +164,8 @@ func cmdShow(c *Cell, v *cli.Values, extra []string) {
 		src := ""
 		if strings.HasPrefix(rm.Src, "tier:") {
 			src = "default: " + rm.Src
+		} else if pending[rm.Src] {
+			src = "pending model-reset of cell.env " + rm.Src
 		} else if _, ok := envFileValue(envfile, rm.Src); ok {
 			src = "cell.env " + rm.Src
 		} else if c.Env.Source(rm.Src) == layerDefaults {
