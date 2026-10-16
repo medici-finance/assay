@@ -142,7 +142,7 @@ concurrency:
 
 env:
   # Matches ci.yml. Kept in sync with statusgen/go.mod's `go` directive.
-  GO_VERSION: "1.25.0"
+  GO_VERSION: "1.27.2"
   # The desk-tools image (built SEPARATELY by docker-publish.yml under its
   # daily-immutable-tag discipline) NAMED alongside this umbrella release. Literal, not
   # ${{ github.repository }}, so the pin doc + Verify grep resolve it unambiguously.
@@ -494,7 +494,7 @@ jobs:
           # to GO_VERSION above; bump both together — a GO_VERSION change without
           # a matching digest fails this step CLOSED rather than trusting the
           # fetch.
-          GO_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
@@ -794,7 +794,7 @@ jobs:
       # but produced nothing fail loudly rather than ship a quietly smaller pack.
       - name: Upload captured mutation reports (tool-validation pack)
         if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tv-reports-${{ matrix.leg }}-${{ strategy.job-index }}
           path: ${{ runner.temp }}/tv-reports/
@@ -1002,7 +1002,7 @@ jobs:
           # to GO_VERSION above; bump both together — a GO_VERSION change without
           # a matching digest fails this step CLOSED rather than trusting the
           # fetch.
-          GO_SHA256: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
@@ -1316,7 +1316,7 @@ jobs:
         timeout-minutes: 2
         if: steps.release-cache-pack.outcome == 'success'
         continue-on-error: true
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-go-cache-v1
           path: ${{ runner.temp }}/go-cache.tar

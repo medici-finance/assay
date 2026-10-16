@@ -49,7 +49,18 @@ func TestCadenceStopAndRoleOwnership(t *testing.T) {
 	if err := c.cadenceGuard("worker-desk"); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{filepath.Join(d, "STOP"), filepath.Join(c.Config, "STOP"), filepath.Join(c.Config, "STOP.worker-desk"), filepath.Join(c.Config, "DISABLED")} {
+	// regression: PR #2971 — the cell-scoped flags stop the supervisor too, and another
+	// cell's flag or another role's does not.
+	for _, p := range []string{filepath.Join(c.Config, "STOP.cell.other"), filepath.Join(c.Config, "STOP.cell.sample.pr-review-desk")} {
+		if err := os.WriteFile(p, []byte("stop"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.cadenceGuard("worker-desk"); err != nil {
+			t.Fatalf("%s stopped worker-desk of cell sample: %v", p, err)
+		}
+		os.Remove(p)
+	}
+	for _, p := range []string{filepath.Join(d, "STOP"), filepath.Join(c.Config, "STOP"), filepath.Join(c.Config, "STOP.worker-desk"), filepath.Join(c.Config, "DISABLED"), filepath.Join(c.Config, "STOP.cell.sample"), filepath.Join(c.Config, "STOP.cell.sample.worker-desk")} {
 		if err := os.WriteFile(p, []byte("stop"), 0600); err != nil {
 			t.Fatal(err)
 		}

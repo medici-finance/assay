@@ -41,8 +41,9 @@ the mechanism, the other the CI-run proof); `attach` preserves both halves on on
 losing one to a duplicate that gets closed unread. A dedupe-search failure fails CLOSED (exit 6):
 minting a possible duplicate is the more expensive direction, so retry rather than falling back to
 raw `gh issue create`. `deskfile` is documented in `tools/desk/README.md`
-§ "deskfile — the issue-filing gate", and it gates WHETHER/WHERE, never WHO — it never mints an App
-token, filing under whatever `gh` credential is ambient in the caller's session.
+§ "deskfile — the issue-filing gate", and it gates WHETHER/WHERE, never WHO: it files as the
+session's own role App, the credential it resolves from `$DESK_LOOP`, never an ambient `gh` login
+([desk-shell.md §Forge CLI as the role](../../../references/desk-shell.md#forge-cli-as-the-role)).
 
 **Why a bare `gh issue create` is banned.** The intake desk's claims lock is keyed per issue
 NUMBER, so two filings of one defect look like two work items and a naive dispatch fans two workers

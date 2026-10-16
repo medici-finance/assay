@@ -1,0 +1,155 @@
+{
+  "test": "go test . -run '^TestInstance' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL \u2014 import accepts a document altered after export (seal not checked)",
+    "file": "instance.go",
+    "old": "if got := sealDigest(inst); got != inst.Digest {",
+    "new": "if got := sealDigest(inst); false && got != inst.Digest {"
+  },
+  "mutations": [
+    {
+      "name": "row 2: import no longer refuses an instance from another Cell (lower boundary)",
+      "file": "instance.go",
+      "old": "if inst.Work.Cell != expectCell {",
+      "new": "if false && inst.Work.Cell != expectCell {"
+    },
+    {
+      "name": "row 2: a node actor bound in another Cell is accepted",
+      "file": "instance.go",
+      "old": "if n.Actor.Cell != inst.Work.Cell {",
+      "new": "if false && n.Actor.Cell != inst.Work.Cell {"
+    },
+    {
+      "name": "row 5: acceptance takes a stale dependency fingerprint (only a missing observation is stale)",
+      "file": "instance.go",
+      "old": "if !ok || now != b[0].Fingerprint {",
+      "new": "if !ok || now == \"\" {"
+    },
+    {
+      "name": "row 6: export drops the assignment generation",
+      "file": "instance.go",
+      "old": "Generation:    in.Assignment.Generation,",
+      "new": "Generation:    0,"
+    },
+    {
+      "name": "row 6: a same-generation backend change is not a substitution",
+      "file": "instance.go",
+      "old": "case na.Generation == pa.Generation && (na.Backend != pa.Backend || na.RunnerProfile != pa.RunnerProfile):",
+      "new": "case false:"
+    },
+    {
+      "name": "row 1: same id with a changed contract is accepted as a revision",
+      "file": "instance.go",
+      "old": "if pc, nc := contractDigest(prior), contractDigest(next); pc != nc {",
+      "new": "if pc, nc := contractDigest(prior), contractDigest(next); false && pc != nc {"
+    },
+    {
+      "name": "row 1: an unknown required capability is ignored instead of refused",
+      "file": "instance.go",
+      "old": "if !instanceReaderCapabilities[s] {",
+      "new": "if false && !instanceReaderCapabilities[s] {"
+    },
+    {
+      "name": "row 4: a reporter label may stand as a disposition",
+      "file": "instance.go",
+      "old": "if in.Trust.Source == \"reporter\" && in.Trust.Disposition != \"unresolved\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "row 4: acceptance takes evidence with no returned artifact",
+      "file": "instance.go",
+      "old": "if e.Claim == c.Claim && e.Artifact != \"\" && arts[e.Artifact] {",
+      "new": "if e.Claim == c.Claim {"
+    },
+    {
+      "name": "row 4: a handoff answering another acceptance revision is accepted",
+      "file": "instance.go",
+      "old": "if h.AcceptanceVersion != inst.Acceptance.Version || h.AcceptanceRef != inst.Acceptance.Ref {",
+      "new": "if false {"
+    },
+    {
+      "name": "row 4: credential-shaped values pass the scan",
+      "file": "instance.go",
+      "old": "for _, re := range instanceCredentialValue {",
+      "new": "for _, re := range instanceCredentialValue[:0] {"
+    },
+    {
+      "name": "row 5: a dependency trimmed from the handoff's list is skipped, not named",
+      "file": "instance.go",
+      "old": "if len(b) != 1 {",
+      "new": "if len(b) == 0 {\n\t\t\tcontinue\n\t\t}\n\t\tif len(b) != 1 {"
+    },
+    {
+      "name": "row 4: acceptance takes a scope outside the acceptance rows",
+      "file": "instance.go",
+      "old": "if !instanceHolds(inst.Acceptance.Rows, h.Scope) {",
+      "new": "if false {"
+    },
+    {
+      "name": "row 4: acceptance takes a handoff without the acceptance exclusions",
+      "file": "instance.go",
+      "old": "if !sameStrings(h.Exclusions, inst.Acceptance.Exclusions) {",
+      "new": "if false {"
+    },
+    {
+      "name": "row 4: acceptance takes a handoff that drops the attempt's omissions",
+      "file": "instance.go",
+      "old": "!instanceHolds(h.Omissions, cur.Omissions) {",
+      "new": "false {"
+    },
+    {
+      "name": "row 4: acceptance takes a handoff that drops an unresolved input",
+      "file": "instance.go",
+      "old": "if !instanceHolds(h.Unresolved, unresolvedInputs(inst)) {",
+      "new": "if false {"
+    },
+    {
+      "name": "row 4: packet evidence reads present for an artifact the attempt does not hold",
+      "file": "instance.go",
+      "old": "e.Artifact != \"\" && held[e.Artifact] {",
+      "new": "e.Artifact != \"\" {"
+    },
+    {
+      "name": "row 4: decode findings quote credential values (no redaction at the exit)",
+      "file": "instance.go",
+      "old": "return inst, redactFindings(findings, lits), redactFindings(refusals, lits)",
+      "new": "_ = lits\n\treturn inst, findings, refusals"
+    },
+    {
+      "name": "row 4: a credential-shaped field name passes the scan",
+      "file": "instance.go",
+      "old": "if credentialShaped(k) {\n\t\t\t\tseg = instanceRedacted",
+      "new": "if false {\n\t\t\t\tseg = instanceRedacted"
+    },
+    {
+      "name": "row 4: acceptance quotes handoff fields before the credential check",
+      "file": "instance.go",
+      "old": "observed map[string]string) error {\n\tif err := credentialFree(h); err != nil {",
+      "new": "observed map[string]string) error {\n\tif err := credentialFree(h); false && err != nil {"
+    },
+    {
+      "name": "row 4: a YAML parse failure forwards the parser text (which quotes the scalar)",
+      "file": "instance.go",
+      "old": "instFinding(ruleInstanceUnreadable, \"%s\", parseFailureMessage(err))",
+      "new": "instFinding(ruleInstanceUnreadable, \"%v\", err)"
+    },
+    {
+      "name": "row 4: message redaction drops the unanchored authorization-header pattern",
+      "file": "instance.go",
+      "old": "return instanceCredentialInMessage.ReplaceAllString(msg, instanceRedacted)",
+      "new": "return msg"
+    },
+    {
+      "name": "row 4: the parse position is read from anywhere in the parser text, scalar included",
+      "file": "instance.go",
+      "old": "parseSyntaxLine = regexp.MustCompile(`^yaml: line (\\d+):`)",
+      "new": "parseSyntaxLine = regexp.MustCompile(`line (\\d+)`)"
+    },
+    {
+      "name": "row 1: a manifest may repeat a dependency ref",
+      "file": "instance.go",
+      "old": "if seenDep[d.Ref] {",
+      "new": "if false && seenDep[d.Ref] {"
+    }
+  ]
+}

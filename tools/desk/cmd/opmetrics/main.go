@@ -75,7 +75,11 @@ Exit: 0 ok · 3 disabled · 5 refused (bad invocation) · 6 unverifiable (write 
 This tool READS a human's private session transcripts and emits only aggregates.
 It never writes anything under the transcript tree.`
 
-func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
+func main() {
+	os.Exit(deskkit.PerfRun("opmetrics", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:], os.Stdout, os.Stderr)
+	}))
+}
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
