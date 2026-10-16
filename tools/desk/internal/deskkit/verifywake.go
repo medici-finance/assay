@@ -463,7 +463,14 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 	case strings.HasPrefix(input, InputKeyRepoSourcePrefix):
 		repo := strings.TrimPrefix(input, InputKeyRepoSourcePrefix)
 		root := RootForRepo(repo)
-		if root == "" || verifierRepoIdentity(root, repo) != nil {
+		if root == "" {
+			return "", false
+		}
+		// A configured root may reach its checkout through a link; the own-work-tree
+		// check compares git's resolved toplevel to it by string. A root that
+		// cannot be resolved is could-not-check.
+		var err error
+		if _, root, err = verifierHome(root); err != nil || verifierRepoIdentity(root, repo) != nil {
 			return "", false
 		}
 		head, err := verifierGit(root, "rev-parse", "HEAD")

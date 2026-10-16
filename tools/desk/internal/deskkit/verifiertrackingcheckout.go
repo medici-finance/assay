@@ -12,6 +12,13 @@ import (
 // Rejecting their output after checkout would be too late: a configured filter
 // or hook can already have executed. No global/local hook or filter is disabled.
 func checkoutVerifierTracking(root, revision string) error {
+	// The own-work-tree check compares git's resolved toplevel to root by
+	// string, so a caller's linked or differently spelled path is canonicalised
+	// here, at the one choke point, rather than at every caller.
+	_, root, err := verifierHome(root)
+	if err != nil {
+		return err
+	}
 	for _, check := range []func(string) error{verifierOwnWorkTree, verifierNoReplacements, verifierNoLocalAttributes} {
 		if err := check(root); err != nil {
 			return err

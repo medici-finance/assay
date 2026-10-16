@@ -3,6 +3,7 @@ package deskkit
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -179,4 +180,73 @@ func TestCrossRepoDeclarationReasons(t *testing.T) {
 			}
 		})
 	}
+}
+
+// regression: #2485. Admission compares git's resolved work tree to the home by
+// string, so a path reached through a link (the macOS system temp directory,
+// /var -> /private/var) was refused. CI is Linux, where the temp directory is
+// not linked, so each case forces the link itself rather than relying on the
+// host's TMPDIR.
+func TestCrossRepoLinkedPaths(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory links need privileges on Windows")
+	}
+	linkTo := func(t *testing.T, target string) string {
+		t.Helper()
+		parent, err := filepath.EvalSymlinks(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(parent, "link")
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+		return link
+	}
+	t.Run("temp directory", func(t *testing.T) {
+		crossRepoRoster(t)
+		home := crossRepoGitFixture(t, "example-org/one", "source.txt", "observed deliverable\n")
+		brief := "docs/streams/sample/brief-01-check.md"
+		tracking := crossRepoGitFixture(t, "example-org/tracking", brief, "# Plan\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `test -f source.txt` | exit 0 |\n\n## Evidence\n\nPending.\n")
+		realTmp, err := filepath.EvalSymlinks(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("TMPDIR", linkTo(t, realTmp))
+		if err := PrepareVerifierAttestation(home, "example-org/one", filepath.Join(tracking, brief), "gpt-6-astra", "strong"); err != nil {
+			t.Fatalf("linked temp directory refused: %v", err)
+		}
+		r, err := verifierLoad(home)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(filepath.Dir(r.TrackingHome)) })
+		if !strings.HasPrefix(r.TrackingHome, realTmp+string(filepath.Separator)) {
+			t.Fatalf("tracking home %q was not resolved under %q", r.TrackingHome, realTmp)
+		}
+	})
+	t.Run("tracking checkout path", func(t *testing.T) {
+		root := crossRepoGitFixture(t, "example-org/one", "base.txt", "base\n")
+		before := attestGitOutput(t, root, "rev-parse", "HEAD")
+		attestGit(t, root, "update-index", "--add", "--cacheinfo", "160000,"+before+",vendored")
+		attestGit(t, root, "commit", "-m", "gitlink")
+		target := attestGitOutput(t, root, "rev-parse", "HEAD")
+		attestGit(t, root, "checkout", "--detach", before)
+		// The gitlink refusal is the check AFTER the own-work-tree one: reaching it
+		// proves the linked spelling passed that check.
+		err := checkoutVerifierTracking(linkTo(t, root), target)
+		if err == nil || !strings.Contains(err.Error(), "unattested submodule") {
+			t.Fatalf("linked path not canonicalised before the checks: %v", err)
+		}
+	})
+	t.Run("wake root", func(t *testing.T) {
+		crossRepoRoster(t)
+		source := crossRepoGitFixture(t, "example-org/one", "source.txt", "source\n")
+		sha := attestGitOutput(t, source, "rev-parse", "HEAD")
+		t.Setenv(RootsEnv, "example-org/one="+linkTo(t, source))
+		got, ok := NewRootRevisionReader(t.TempDir(), "test-tool").Revision(InputKeyRepoSourcePrefix + "example-org/one")
+		if !ok || got != sha {
+			t.Fatalf("linked configured root read as could-not-check: %q %v", got, ok)
+		}
+	})
 }

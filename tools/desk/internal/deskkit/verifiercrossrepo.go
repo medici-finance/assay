@@ -160,6 +160,12 @@ func prepareVerifierCrossRepo(root, repo, brief, model, tier string) error {
 			_ = os.RemoveAll(base)
 		}
 	}()
+	// The system temp directory is often reached through a link (macOS /var,
+	// /tmp). Every check below compares git's resolved work tree to this path
+	// as a string, so it is canonical from the first byte.
+	if base, err = filepath.EvalSymlinks(base); err != nil {
+		return err
+	}
 	trackingHome := filepath.Join(base, "tree")
 	if _, err := verifierGit(tracking, "clone", "--no-hardlinks", "--no-checkout", "--", tracking, trackingHome); err != nil {
 		return err

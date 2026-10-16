@@ -60,6 +60,8 @@ entries = [
  ('association-ambiguous', 'cmd/verifyloop/association.go', 'if len(repos) != 1 {', 'if false && len(repos) != 1 {', './cmd/verifyloop', '^TestCrossRepoAssociationRefusals$/ambiguous', module),
  ('association-root-origin', 'cmd/verifyloop/association.go', 'if !strings.EqualFold(sourceRepo, repos[0]) {', 'if false && !strings.EqualFold(sourceRepo, repos[0]) {', './cmd/verifyloop', '^TestCrossRepoAssociationRefusals$/deliverable_root_origin', module),
  ('packet-tracking-revision', 'cmd/deskdispatch/packet_verifier.go', 'if in.plan.verifierBriefRevision != "" && head != in.plan.verifierBriefRevision {', 'if false && in.plan.verifierBriefRevision != "" && head != in.plan.verifierBriefRevision {', './cmd/deskdispatch', '^TestCrossRepoDispatchExecution$', module),
+ ('checkout-canonical', 'internal/deskkit/verifiertrackingcheckout.go', '_, root, err := verifierHome(root)', 'var err error', './internal/deskkit', '^TestCrossRepoLinkedPaths$/tracking_checkout_path', module),
+ ('wake-root-canonical', 'internal/deskkit/verifywake.go', 'if _, root, err = verifierHome(root); err != nil || verifierRepoIdentity(root, repo) != nil {', 'if err = nil; verifierRepoIdentity(root, repo) != nil {', './internal/deskkit', '^TestCrossRepoLinkedPaths$/wake_root', module),
 ]
 selected = set(sys.argv[1:])
 known = {e[0] for e in entries}
