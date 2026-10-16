@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// The command-tree checks of the cell-operation contract (desk-containers/15, spec/cell-op-v1.md
+// The command-tree checks of the cell-operation contract (spec/cell-op-v1.md
 // §"State-changing invocations"). They read the cobra tree, so they hold in every build; the rows
 // that run the binary on a terminal are in cellop_consent_tty_test.go (build tag cellopfixture).
 
@@ -83,7 +83,7 @@ var cellopConsentNames = []string{"apply", "run", "now", "foreign"}
 // `scratch --apply` predates the contract: it applies a scratch-retention cleanup that defaults to
 // a dry run and is driven off a terminal by desks and tests, so it is not a cell operation.
 var cellopConsentCarveOuts = map[string]string{
-	"cellctl scratch --apply": "scratch retention cleanup; not a cell operation (desk-containers/15 decision)",
+	"cellctl scratch --apply": "scratch retention cleanup; not a cell operation (recorded decision)",
 }
 
 func commandAt(root *cobra.Command, path string) *cobra.Command {
@@ -208,7 +208,7 @@ func approvalSurfaces(root *cobra.Command) []string {
 	return out
 }
 
-// No approve verb, --approval, --yes/-y, --assume-yes or --skip-verify may ever skip the typed confirm (desk-containers/15).
+// No approve verb, --approval, --yes/-y, --assume-yes or --skip-verify may ever skip the typed confirm (spec/cell-op-v1.md).
 // regression: #2890
 func TestNoApprovalSurface(t *testing.T) {
 	if got := approvalSurfaces(buildRoot()); len(got) != 0 {
@@ -226,7 +226,7 @@ func TestNoApprovalSurface(t *testing.T) {
 	}
 }
 
-// An apply path outside cellopApply would bypass the annotation and terminal gates (desk-containers/15).
+// An apply path outside cellopApply would bypass the annotation and terminal gates (spec/cell-op-v1.md).
 // regression: #2890
 func TestOneApplyPath(t *testing.T) {
 	paths, err := filepath.Glob("*.go")
@@ -251,7 +251,7 @@ func TestOneApplyPath(t *testing.T) {
 	}
 }
 
-// The tree checks must catch an exempted invocation and an unannotated --run, --now or --foreign (desk-containers/15).
+// The tree checks must catch an exempted invocation and an unannotated --run, --now or --foreign (spec/cell-op-v1.md).
 // regression: #2890
 func TestConsentTreeChecks(t *testing.T) {
 	root := buildRoot()

@@ -253,7 +253,7 @@ func jsonBlocks(t *testing.T, rel string) []string {
 	return blocks
 }
 
-// A contract example that drifts from the schema, or a plan example whose digest no longer recomputes, is caught (desk-containers/15).
+// A contract example that drifts from the schema, or a plan example whose digest no longer recomputes, is caught (spec/cell-op-v1.md).
 // regression: #2890
 func TestContractExamplesValidate(t *testing.T) {
 	sv := loadSchema(t)
@@ -285,7 +285,7 @@ func TestContractExamplesValidate(t *testing.T) {
 	}
 }
 
-// A validator that accepts anything would make TestContractExamplesValidate vacuous (desk-containers/15).
+// A validator that accepts anything would make TestContractExamplesValidate vacuous (spec/cell-op-v1.md).
 // regression: #2890
 func TestSchemaRejectsBrokenDocs(t *testing.T) {
 	sv := loadSchema(t)

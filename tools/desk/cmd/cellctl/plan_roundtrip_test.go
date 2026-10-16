@@ -12,7 +12,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/cellop"
 )
 
-// Row 10 of desk-containers/15: the fixture verb's plan and apply, end to end, with the built
+// Row 10 of the cell-operation contract: the fixture verb's plan and apply, end to end, with the built
 // binary on a pseudo-terminal.
 
 // fixtureResult decodes the last cell-op-result line of a run.
@@ -36,7 +36,7 @@ func reasonOf(r cellop.Result) string {
 	return *r.Reason
 }
 
-// A plan applied twice, applied stale or applied with a wrong code ran its action (desk-containers/15).
+// A plan applied twice, applied stale or applied with a wrong code ran its action (spec/cell-op-v1.md).
 // regression: #2890
 func TestPlanApplyRoundTrip(t *testing.T) {
 	w := newCellopWorld(t)

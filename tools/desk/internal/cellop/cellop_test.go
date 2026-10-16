@@ -151,7 +151,7 @@ func consumed(t *testing.T, s Store, id string) bool {
 	return done
 }
 
-// The contract's exit codes are 0 ok, 1 failed/partial, 5 refused, 6 could-not-check, and an unknown outcome never exits 0 (desk-containers/15).
+// The contract's exit codes are 0 ok, 1 failed/partial, 5 refused, 6 could-not-check, and an unknown outcome never exits 0 (spec/cell-op-v1.md).
 // regression: #2890
 func TestOutcomeExitCodes(t *testing.T) {
 	for o, want := range map[Outcome]int{OK: 0, Partial: 1, Failed: 1, Refused: 5, CouldNotCheck: 6, "bogus": 1} {
@@ -169,7 +169,7 @@ func TestOutcomeExitCodes(t *testing.T) {
 	}
 }
 
-// The digest must be sha256 over RFC 8785 bytes with digest and confirm_code omitted, and confirm_code its first 8 characters (desk-containers/15).
+// The digest must be sha256 over RFC 8785 bytes with digest and confirm_code omitted, and confirm_code its first 8 characters (spec/cell-op-v1.md).
 // regression: #2890
 func TestPlanDigestIsJCS(t *testing.T) {
 	p, err := NewPlan("0123456789abcdef01234567", "gc", []string{"b", "a", "b"}, []Action{{
@@ -203,7 +203,7 @@ func TestPlanDigestIsJCS(t *testing.T) {
 	}
 }
 
-// A stored plan is 0600 in a 0700 directory, never overwritten, and decoded strictly (desk-containers/15).
+// A stored plan is 0600 in a 0700 directory, never overwritten, and decoded strictly (spec/cell-op-v1.md).
 // regression: #2890
 func TestStoreModesAndStrictDecode(t *testing.T) {
 	s := StoreFor(t.TempDir())
@@ -247,7 +247,7 @@ func TestStoreModesAndStrictDecode(t *testing.T) {
 	}
 }
 
-// Apply off a terminal, or with a desk-session marker set, must refuse before loading, confirming or consuming (desk-containers/15).
+// Apply off a terminal, or with a desk-session marker set, must refuse before loading, confirming or consuming (spec/cell-op-v1.md).
 // regression: #2890
 func TestApplyRefusesOffTTYAndDeskSession(t *testing.T) {
 	s := StoreFor(t.TempDir())
@@ -280,7 +280,7 @@ func TestApplyRefusesOffTTYAndDeskSession(t *testing.T) {
 	}
 }
 
-// 16 concurrent applies of one plan must run its actions exactly once (consume before effect) (desk-containers/15).
+// 16 concurrent applies of one plan must run its actions exactly once (consume before effect) (spec/cell-op-v1.md).
 // regression: #2890
 func TestConcurrentApplyRunsOnce(t *testing.T) {
 	const n = 16
@@ -328,7 +328,7 @@ func TestConcurrentApplyRunsOnce(t *testing.T) {
 	}
 }
 
-// A plan whose precondition changed must be refused plan-stale and stay unconsumed (desk-containers/15).
+// A plan whose precondition changed must be refused plan-stale and stay unconsumed (spec/cell-op-v1.md).
 // regression: #2890
 func TestApplyReverifies(t *testing.T) {
 	s := StoreFor(t.TempDir())
@@ -369,7 +369,7 @@ func TestApplyReverifies(t *testing.T) {
 	}
 }
 
-// Apply at or after the 10-minute expiry, and apply of a plan that does not list the invoking cell, must be refused (desk-containers/15).
+// Apply at or after the 10-minute expiry, and apply of a plan that does not list the invoking cell, must be refused (spec/cell-op-v1.md).
 // regression: #2890
 func TestPlanExpiryAndForeignCell(t *testing.T) {
 	s := StoreFor(t.TempDir())
@@ -404,7 +404,7 @@ func TestPlanExpiryAndForeignCell(t *testing.T) {
 	expect(t, sess.Apply(p.ID), OK, "")
 }
 
-// The stated bound — a deleted consumed marker allows another apply within expiry only if every precondition still matches, and none after expiry (desk-containers/15).
+// The stated bound — a deleted consumed marker allows another apply within expiry only if every precondition still matches, and none after expiry (spec/cell-op-v1.md).
 // regression: #2890
 func TestMarkerResetBound(t *testing.T) {
 	s := StoreFor(t.TempDir())
@@ -466,7 +466,7 @@ func batch(t *testing.T, s Store, w *world, n int) (Plan, []Plan) {
 	return b, children
 }
 
-// A batch is consumed before its first child runs, and a child found already consumed stops the sequence instead of being skipped (desk-containers/15).
+// A batch is consumed before its first child runs, and a child found already consumed stops the sequence instead of being skipped (spec/cell-op-v1.md).
 // regression: #2890
 func TestBatchConsumedFirstAndStops(t *testing.T) {
 	t.Run("concurrent applies: exactly one proceeds", func(t *testing.T) {
@@ -581,7 +581,7 @@ func nonNotRun(r Result) []ActionResult {
 	return out
 }
 
-// A failure after the consume leaves the plan consumed with a failed (or partial) result, never ok (desk-containers/15).
+// A failure after the consume leaves the plan consumed with a failed (or partial) result, never ok (spec/cell-op-v1.md).
 // regression: #2890
 func TestFailureAfterConsume(t *testing.T) {
 	s := StoreFor(t.TempDir())
@@ -608,7 +608,7 @@ func TestFailureAfterConsume(t *testing.T) {
 	}
 }
 
-// The confirm prompt shows plan, cells and code, states the limit, and reads exactly one line (desk-containers/15).
+// The confirm prompt shows plan, cells and code, states the limit, and reads exactly one line (spec/cell-op-v1.md).
 // regression: #2890
 func TestReadConfirm(t *testing.T) {
 	p := testPlan(t, "example", "running")

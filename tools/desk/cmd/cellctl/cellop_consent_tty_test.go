@@ -15,7 +15,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/cellop"
 )
 
-// Rows 8 and 8b of desk-containers/15, against the cellctl binary built with the fixture
+// Rows 8 and 8b of the cell-operation contract, against the cellctl binary built with the fixture
 // (`-tags cellopfixture`), on a real pseudo-terminal. The fixture registers stand-ins for every
 // verb of the enumerated list whose brief has not landed, so the list is checked end to end today
 // and each real verb, once registered, is checked in its stand-in's place.
@@ -59,7 +59,7 @@ type walkRun struct {
 	run   cellopRun
 }
 
-// An unannotated invocation, or one exempted from the terminal rule, could apply off a terminal (desk-containers/15).
+// An unannotated invocation, or one exempted from the terminal rule, could apply off a terminal (spec/cell-op-v1.md).
 // regression: #2890
 func TestEveryStateChangingInvocationRequiresTTY(t *testing.T) {
 	root := buildRoot()
@@ -265,7 +265,7 @@ func TestEveryStateChangingInvocationRequiresTTY(t *testing.T) {
 	})
 }
 
-// A desk session (ASSAY_CELL, DESK_LOOP, DESK_SESSION) must not apply even on a terminal (desk-containers/15).
+// A desk session (ASSAY_CELL, DESK_LOOP, DESK_SESSION) must not apply even on a terminal (spec/cell-op-v1.md).
 // regression: #2890
 func TestApplyRefusesDeskSession(t *testing.T) {
 	root := buildRoot()

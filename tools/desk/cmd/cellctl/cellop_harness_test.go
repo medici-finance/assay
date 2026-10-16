@@ -18,7 +18,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/cellop"
 )
 
-// The harness for the cellopfixture rows (desk-containers/15 rows 8, 8b and 10): the cellctl
+// The harness for the cellopfixture rows (rows 8, 8b and 10): the cellctl
 // binary built WITH the fixture, a fixture world per run, and runs of that binary on a real
 // pseudo-terminal (openPTY, per OS) or off one. Everything is offline: the world's environment is
 // complete (nothing inherited), PATH is the world's stubs plus the system directories, and

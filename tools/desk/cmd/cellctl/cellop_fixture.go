@@ -18,7 +18,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 )
 
-// The cell-operation FIXTURE (desk-containers/15). It is compiled only with
+// The cell-operation FIXTURE. It is compiled only with
 // `-tags cellopfixture`, so the end-to-end rows run before any real verb adopts the contract, and
 // a release build reports `cellop-fixture` as an unknown command (cellop_fixture_off.go).
 //

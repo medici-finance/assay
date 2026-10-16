@@ -13,7 +13,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/cellop"
 )
 
-// The cell-operation adapter mechanics (desk-containers/15; contract spec/cell-op-v1.md, how-to
+// The cell-operation adapter mechanics (contract spec/cell-op-v1.md, how-to
 // docs/cellctl-machine-seam.md). This file is what a verb brief adopts: it annotates its
 // state-changing invocations, emits cellop results with --json, writes plans with --plan, and
 // applies them only through cellopApply. No verb in the default build adopts it yet; the fixture

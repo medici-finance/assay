@@ -2,7 +2,7 @@
 
 How `cellctl` speaks the cell-operation contract, [`cell-op-v1`](../spec/cell-op-v1.md): what a verb adopting it does, how a plan is made and applied, and what the tests check. The contract itself (documents, reasons, exit codes, the apply order and its stated limit) is the spec; the JSON Schema is [`schemas/cell-op-v1.json`](../schemas/cell-op-v1.json). Command-line forms are in [the `cellctl` command reference](cellctl-cli-reference.md).
 
-No verb in the release build has adopted the contract yet. Each verb adopts it in its own brief (desk-containers 17 to 24), with its own rows. Until then the mechanics are exercised end to end by a fixture verb that exists only in a test build (below).
+No verb in the release build has adopted the contract yet. Each verb adopts it in its own brief (a later brief of its own), with its own rows. Until then the mechanics are exercised end to end by a fixture verb that exists only in a test build (below).
 
 ## The three forms
 
