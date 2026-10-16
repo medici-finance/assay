@@ -177,7 +177,6 @@ allow:
   - path: statusgen/forge_test.go
     shape: ssh-host-alias
     values:
-      - 'git@bitbucket.org'
       - 'git@gitlab.example.com'
       - 'ssh://git@gitlab.example.com'
     reason: *fx-ssh

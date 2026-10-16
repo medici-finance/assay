@@ -86,15 +86,18 @@ const (
 // AllLeakShapes is every shape the stage detects, in report order.
 var AllLeakShapes = []LeakShape{ShapeHomePath, ShapeNoreplyMail, ShapeSSHAlias, ShapeTildeRoot}
 
-// forgeSSHHosts are the hosts an SSH remote may name without being an alias: the forge
-// hosts themselves, including their documented SSH-over-443 endpoints. Compared
+// forgeSSHHosts are the hosts an SSH remote may name without being an alias: the canonical
+// hosts of the public forges, including their documented SSH-over-443 endpoints. A public
+// forge's own host names no machine and no person, so it discloses nothing. Compared
 // case-insensitively. Anything else in host position is a local alias, an internal host or
 // a placeholder, and needs an allow entry.
 var forgeSSHHosts = map[string]bool{
-	"github.com":        true,
-	"ssh.github.com":    true,
-	"gitlab.com":        true,
-	"altssh.gitlab.com": true,
+	"github.com":           true,
+	"ssh.github.com":       true,
+	"gitlab.com":           true,
+	"altssh.gitlab.com":    true,
+	"bitbucket.org":        true,
+	"altssh.bitbucket.org": true,
 }
 
 // shapeRule is one matcher. group is the submatch index whose text is the hit's VALUE;

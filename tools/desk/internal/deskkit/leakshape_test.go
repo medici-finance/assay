@@ -140,6 +140,7 @@ func TestS2ShapeNearMissesClean(t *testing.T) {
 		"remote: git@github.com:example-org/tracker.git",
 		"remote: ssh://git@ssh.github.com:443/example-org/tracker.git",
 		"remote: git@GitLab.com:example-group/proj.git",
+		"remote: " + "git" + "@" + "bitbucket.org" + ":example-team/repo.git",
 		"config: ~/.config/assay/roster.env",
 		"cache: ~/.cache/go-build",
 		"link: https://example.com/home/page",
