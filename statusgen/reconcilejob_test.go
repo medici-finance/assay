@@ -252,6 +252,16 @@ const (
 	runnerTempExpr       = "${{ runner.temp }}"
 )
 
+// rosterEnv is the trust roster the reconcile step forwards to statusgen (the
+// fold's provenance read resolves verifier identities from it, #3082): each
+// key's workflow expression, and the fixture value the rig substitutes — the
+// values the fixture roster (rosterfixture_test.go) already uses.
+var rosterEnv = map[string]struct{ expr, fixture string }{
+	"ASSAY_TRUSTED_BOT_SLUGS": {"${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}", "verifier=assay-verifier-app:300000005"},
+	"ASSAY_HUMAN_LOGIN_MAP":   {"${{ vars.ASSAY_HUMAN_LOGIN_MAP }}", "alex:ada"},
+	"ASSAY_HOME_REPO":         {"${{ vars.ASSAY_HOME_REPO || github.repository }}", "medici-finance/assay"},
+}
+
 type wfStep struct {
 	ID               string            `yaml:"id"`
 	Name             string            `yaml:"name"`
@@ -321,6 +331,9 @@ func stepEnv(t *testing.T, st wfStep, outputs map[string]string) []string {
 		"${{ github.token }}":                 readTokenSentinel,
 		appTokenExpr:                          writeTokenSentinel,
 		"${{ steps.compute.outputs.commit }}": outputs["commit"],
+	}
+	for _, r := range rosterEnv {
+		known[r.expr] = r.fixture
 	}
 	var env []string
 	for k, v := range st.Env {
@@ -1423,6 +1436,67 @@ func TestReconcileJobStepWiring(t *testing.T) {
 	}
 	if job.Steps[publish].Env["GH_TOKEN"] != appTokenExpr {
 		t.Errorf("publish GH_TOKEN = %q, want %q", job.Steps[publish].Env["GH_TOKEN"], appTokenExpr)
+	}
+}
+
+// TestReconcileJobRoster is #3082's regression guard: the reconcile step
+// forwards the trust roster to statusgen, in the live workflow and in its
+// staged copy alike. Without it the fold's provenance read cannot resolve a
+// verifier identity on the scheduled tick.
+func TestReconcileJobRoster(t *testing.T) {
+	for _, p := range []string{"../.github/workflows/assay-statusgen.yml", reconcileWorkflowPath()} {
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var step *wfStep
+		steps := parseWorkflow(t, raw, p).Jobs["reconcile"].Steps
+		for i := range steps {
+			if steps[i].Name == reconcileJobStepName {
+				step = &steps[i]
+			}
+		}
+		if step == nil {
+			t.Errorf("%s: jobs.reconcile has no step named %q", p, reconcileJobStepName)
+			continue
+		}
+		for k, r := range rosterEnv {
+			if got := step.Env[k]; got != r.expr {
+				t.Errorf("%s: reconcile step env %s = %q, want %q", p, k, got, r.expr)
+			}
+		}
+	}
+}
+
+// TestReconcileJobRosterEnv drives the roster read with exactly the env the
+// staged reconcile step hands statusgen (fixture values for the vars), in a
+// runner with no config home, on the CI class (environment transport): the
+// configuration carries no problem and binds a verifier, so the provenance
+// read's accepted-actor policy is available. The CI class is set here
+// explicitly; whether the reconcile verb selects it is not what this pins.
+func TestReconcileJobRosterEnv(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GITHUB_ACTIONS", "true")
+	scanSetToolClass(scanClassForMode(false))
+	t.Cleanup(func() { scanSetToolClass(scanClassWrite); scanReloadConfig() })
+	for _, kv := range stepEnv(t, reconcileStep(t, reconcileJobStepName), nil) {
+		k, v, _ := strings.Cut(kv, "=")
+		t.Setenv(k, v)
+	}
+	scanReloadConfig()
+
+	cfg := scanEffectiveConfig()
+	if cfg.Class != scanClassCI {
+		t.Fatalf("roster class %v, want the CI class", cfg.Class)
+	}
+	if len(cfg.Problems) > 0 {
+		t.Fatalf("the reconcile step's env yields roster problems: %v", cfg.Problems)
+	}
+	if cfg.RoleBots["verifier"] == "" {
+		t.Errorf("the reconcile step's env binds no verifier role (source %q)", cfg.Source)
+	}
+	if p := evidenceActorPolicyFromRoster(); p.Unavailable != "" {
+		t.Errorf("accepted-actor policy unavailable: %s", p.Unavailable)
 	}
 }
 
