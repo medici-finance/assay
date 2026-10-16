@@ -397,7 +397,7 @@ func TestMutateGateRefusesFilesThatAreNotPlainFilesInTheModule(t *testing.T) {
 }
 
 // regression: #3148
-func TestMutateGateRefusesNoOpAndEmptyEdits(t *testing.T) {
+func TestMutateGateRefusesSameAndEmptyEdit(t *testing.T) {
 	mod, spec := fxModule(t, goSuite, fxControl(),
 		fxMutation{Name: "same text", File: "fx.go", Old: "return 5", New: "return 5"},
 		fxMutation{Name: "empty old", File: "fx.go", Old: "", New: "return 5"},
