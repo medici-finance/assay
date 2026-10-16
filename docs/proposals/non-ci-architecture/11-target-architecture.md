@@ -286,7 +286,7 @@ maintainer and naming its compensating bound; nothing here makes that decision.
 
 **Pacing counts are best effort.** A pacing count only shapes the throughput of
 operations that are already authorized and already bounded by the brakes, for example
-dispatch or polling cadence, provider read-refresh rate limits
+poll cadence, launch pacing, provider read-refresh rate limits
 ([storage and forge](14-storage-forge-graph.md)) and the reconstruction rate limit. An
 enabled pacing limiter still applies its configured value to the available estimate;
 this is not permission to discard the limiter or widen that value. Counting needs no
@@ -297,39 +297,47 @@ otherwise-authorized operation, and counter maintenance failure is never a publi
 failure.
 
 **Unknown usage cannot silently become a fresh allowance.** This invariant binds every
-count. A brake satisfies it by holding. A pacing count's fallback estimate is never
+count. A brake satisfies it by holding. A pacing count's estimate is never
 started at zero, and it is **shared**: no process keeps a private estimate that counts
 only its own admissions.
 
-1. The estimate is seeded from the last retained count for the window and, for an
-   effect-class count (below), from the R2 effect intents and receipts already recorded
-   for the window. That is a bounded query over one window, not an audit-history replay.
-2. The shared estimate stays current across processes. It is re-derived from the
-   window's shared records before each admission, or each admission is written back to
-   one shared row that every process reads. Either way, admissions by other processes
-   after the seed are counted, so N processes or K restarts do not each spend the
-   remaining allowance.
-3. Only when neither seed source can be read, as after a whole-database loss mid-window,
+1. An **effect-class** count (below) is always re-derived, before each admission, from
+   the window's durable admission records (R2 effect intents and receipts, or recorded
+   launches in the supervisor journal). That is
+   a bounded query over one window, not an audit-history replay. A cached pacing row
+   may exist only as an optimisation; it never counts as the source, and a skipped or
+   failed row update cannot lower the estimate. Admissions by every process are
+   therefore counted, so N processes or K restarts do not each spend the remaining
+   allowance.
+2. A **read-class** count (below) is seeded from its last retained count for the window
+   and kept in one shared row that every process reads and writes back to. Row updates
+   are best effort.
+3. Only when a count's source (its admission records or its last retained count) cannot be read, as after a whole-database loss mid-window,
    may the estimate reset, once per window, limiter scope and operator incarnation. The
    reset is recorded and reported. A second unseeded reset in the same window, or a
    reset whose record cannot be read, treats the window as exhausted until it rolls over.
 
-**Two kinds of pacing count.** An **effect-class** pacing count paces admissions that
-commit an R2 effect intent before the executor runs, so every admission leaves a shared
-record the seed can read. A **read-class** pacing count paces work that commits no
-effect intent: dispatch or polling cadence, provider read-refresh and the reconstruction
-rate limit. Its only seed is the last retained count, and its increments are themselves
-best effort, so a missed increment is never re-derived.
+**Two kinds of pacing count.** The tie-break is the durable record: a pacing count
+whose admissions leave a durable admission record is **effect-class**, and that record
+governs its estimate. Admissions that commit an R2 effect intent before the executor
+runs are effect-class, and so is launch pacing, whose recorded launches in the supervisor
+journal ([graph-execution/26](../../streams/graph-execution/brief-26-shared-loop-admin.md))
+govern it. A **read-class** pacing count paces work that leaves no durable admission
+record: poll cadence, provider read-refresh and the reconstruction rate limit. Its only
+seed is the last retained count, and its increments are themselves best effort, so a
+missed increment is never re-derived.
 
 **Declared drift bound (effect-class only).** C is the concurrent-admission overshoot:
-at most one admission per process that checks the shared estimate between another
-process's check and its intent commit. Across one window an effect-class pacing count
+at most one admission per process that re-derives the estimate between another
+process's re-derive and its intent commit. Across one window an effect-class pacing count
 admits at most the configured cap + C. When the single recorded reset is used, overshoot
 can happen once before the loss and once after the reset, so the bound is 2 × (cap + C).
 The bound holds per operator incarnation. A whole-database loss erases the reset record
 with everything else, and an absent record cannot be told apart from no reset. Each such
 loss already requires the operator to rotate the incarnation, so every further reset in
-one window sits behind a human act. Within one incarnation, a larger undercount is a
+one window sits behind a human act. Within one incarnation, an absent reset record must
+be detectable rather than read as no reset; the store that owns the records says how
+([graph-execution/19](../../streams/graph-execution/brief-19-durable-instance-store.md)). Within one incarnation, a larger undercount is a
 defect, not tolerated drift.
 
 **Read-class counts have no numeric bound.** A read-class pacing count still seeds

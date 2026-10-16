@@ -46,7 +46,7 @@ consumers:
 - 'operator lifecycle and cockpit: out-of-scope (adopter qualification)'
 - 'loopadmin/journal PostgreSQL schema and migrations: follow-up graph-execution/26 (this brief; flips to fixed-here when the implementation edits the path)'
 - 'spec/operator-incarnation-v1.md (read before each launch): follow-up graph-execution/16'
-version: 5
+version: 6
 id: bcbee0b0-8f12-4e7a-b028-0637b2bab0c3
 ---
 
@@ -140,8 +140,10 @@ their contracts.
 
 Only desk/tool **pacing** counts (cadence or throughput pacing of already-authorized,
 budget-admitted launches) are best effort: no global network-spanning lock or exact budget
-reservation, and one shared fallback estimate, never per-process, seeded from the journal's
-recorded launches in the window, never zero. An unavailable seeded pacing estimate does not alone refuse an
+reservation, and one shared estimate, never per-process. Launch pacing is effect-class,
+because each launch leaves a durable record in the journal: the estimate is re-derived
+from the journal's recorded launches in the window before each launch, never zero, and a
+cached pacing row is never the source. An unavailable seeded pacing estimate does not alone refuse an
 otherwise-authorized launch or receipt delivery.
 
 Qualify against target doc 15's §Operation-count qualification cases; row 9 below carries
