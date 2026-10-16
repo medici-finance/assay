@@ -545,6 +545,31 @@ check "$([[ $((t1 - t0)) -lt 2 ]] && echo 0 || echo 1)" \
 check "$([[ "$(cat "$w/calls.log")" == "o/good" ]] && echo 0 || echo 1)" \
   "the read after the failed mint still happens" "gh calls: $(glog "$w/calls.log")"
 
+# ================================================================ H =========
+echo "H — no gh call in the script runs under the ambient identity (defect-class lint)"
+# regression: #3116
+# bare_gh_calls <file> — the non-comment lines that run a `gh` subcommand WITHOUT a
+# same-line `GH_TOKEN=` assignment: an ambient-identity read, the defect class of
+# #3116. A `gh` read here is only ever `GH_TOKEN=<token> gh ...`.
+bare_gh_calls() {
+  grep -nE '(^|[[:space:](])gh (pr|issue|api|auth|repo|run|search) ' "$1" \
+    | grep -vE '^[0-9]+:[[:space:]]*#' | grep -vF 'GH_TOKEN=' || true
+}
+
+# The planted second instance: a bare ambient read added to a copy of the script
+# must be caught by the same lint (so the lint cannot rot into a no-op).
+planted="$TMPROOT/planted-bare-gh.sh"
+cp "$SCRIPT" "$planted"
+printf '%s\n' 'extra=$(gh issue list --repo o/r --state open)' >> "$planted"
+check "$([[ -n "$(bare_gh_calls "$planted")" ]] && echo 0 || echo 1)" \
+  "the lint catches a planted bare gh call" "lint returned nothing for a script with a bare gh read"
+printf '%s\n' 'extra=$(GH_TOKEN="$t" gh issue list --repo o/r --state open)' > "$planted.ok"
+check "$([[ -z "$(bare_gh_calls "$planted.ok")" ]] && echo 0 || echo 1)" \
+  "the lint passes a token-scoped gh call" "lint flagged a GH_TOKEN-scoped call"
+bare=$(bare_gh_calls "$SCRIPT")
+check "$([[ -z "$bare" ]] && echo 0 || echo 1)" \
+  "no gh call in the script runs without a same-line GH_TOKEN= (no ambient read)" "bare: $bare"
+
 # ============================================================ basics =========
 echo "Basics — arm, quiet, a genuine new issue, and silent seed on expansion"
 

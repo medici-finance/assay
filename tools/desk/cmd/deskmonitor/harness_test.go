@@ -326,11 +326,24 @@ fi
 exit "$(cat "$d/$key.rc")"
 `
 
+// desktokenStubScript is the oracle-side minter: the bash oracles read each repo as a token minted
+// with `desktoken <role> --repo <slug>`, so a stub on PATH prints the path of a placeholder token
+// file (the verb's own mint is stubbed separately, by stubSessionIdentity).
+const desktokenStubScript = `#!/bin/sh
+d=$(dirname "$0")
+printf 'x-parity-minted-token\n' > "$d/oracle-token"
+chmod 600 "$d/oracle-token"
+printf '%s\n' "$d/oracle-token"
+`
+
 func newGHStub(t *testing.T) *ghStub {
 	t.Helper()
 	g := &ghStub{binDir: t.TempDir(), cycleDir: t.TempDir()}
 	g.logPath = filepath.Join(t.TempDir(), "reads.log")
 	if err := os.WriteFile(filepath.Join(g.binDir, "gh"), []byte(ghStubScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(g.binDir, "desktoken"), []byte(desktokenStubScript), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return g

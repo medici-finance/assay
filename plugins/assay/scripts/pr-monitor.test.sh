@@ -16,7 +16,7 @@
 #   cases: seed-silent opened pushed draft-flip state closed push-and-flip
 #          truncation rate-limit-stops-cycle pacing-honoured portability
 #          origin-forms origin-degraded mint-per-repo mint-failed
-#          mint-seed-failed role-unusable mint-bad-custody role-mapping
+#          mint-seed-failed role-unusable mint-bad-custody role-mapping bare-gh-lint
 set -uo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -484,6 +484,32 @@ if want mint-bad-custody; then
     check "$([[ ! -s "$w/calls.log" ]] && echo 0 || echo 1)" \
       "$mode: gh is never invoked (an empty GH_TOKEN would read as the host's login)" "gh calls: $(tr '\n' ';' < "$w/calls.log")"
   done
+fi
+
+# bare_gh_calls <file> — the non-comment lines that run a `gh` subcommand WITHOUT a
+# same-line `GH_TOKEN=` assignment: an ambient-identity read, the defect class of
+# #3116. A `gh` read here is only ever `GH_TOKEN=<token> gh ...`.
+bare_gh_calls() {
+  grep -nE '(^|[[:space:](])gh (pr|issue|api|auth|repo|run|search) ' "$1" \
+    | grep -vE '^[0-9]+:[[:space:]]*#' | grep -vF 'GH_TOKEN=' || true
+}
+
+# regression: #3116
+if want bare-gh-lint; then
+  echo "bare-gh-lint — no gh call in the script runs under the ambient identity"
+  # The planted second instance: a bare ambient read added to a copy of the script
+  # must be caught by the same lint (so the lint cannot rot into a no-op).
+  planted="$TMPROOT/planted-bare-gh.sh"
+  cp "$SCRIPT" "$planted"
+  printf '%s\n' 'extra=$(gh pr list --repo o/r --state open)' >> "$planted"
+  check "$([[ -n "$(bare_gh_calls "$planted")" ]] && echo 0 || echo 1)" \
+    "the lint catches a planted bare gh call" "lint returned nothing for a script with a bare gh read"
+  printf '%s\n' 'extra=$(GH_TOKEN="$t" gh pr list --repo o/r --state open)' > "$planted.ok"
+  check "$([[ -z "$(bare_gh_calls "$planted.ok")" ]] && echo 0 || echo 1)" \
+    "the lint passes a token-scoped gh call" "lint flagged a GH_TOKEN-scoped call"
+  bare=$(bare_gh_calls "$SCRIPT")
+  check "$([[ -z "$bare" ]] && echo 0 || echo 1)" \
+    "no gh call in the script runs without a same-line GH_TOKEN= (no ambient read)" "bare: $bare"
 fi
 
 # ============================================================== role-mapping ==
