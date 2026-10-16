@@ -56,18 +56,21 @@
 //
 // The lint refuses the shapes it models; the pin inside the function is the control. Not
 // modelled (examples, not exhaustive; a `gh` step in one can run with no pin, and a token
-// change in one can undo the pin): a `gh` run through `eval`, `sh -c`, `bash -c`,
-// `xargs`, `nice`, `timeout`, `stdbuf`, `exec -c` or a wrapper command the lint does not
-// name; a wrapper option that takes a separate argument and is not in the lint's list
-// (`env -S`, say); an alias; a command name built from an expansion; a function that
-// wraps `gh`; a `gh` step inside a process substitution (`<( )`, `>( )`), after a leading
-// redirect such as `2>&1`, or in a `case` arm whose pattern opens with `(`; a `case`
-// pattern `)` that no `esac` closes; an `export` or `unset` of the token run under `||`,
-// `&` or a pipe; a change of either token variable by `read`, `printf -v`, `for`,
-// `select`, `let`, `mapfile`, `getopts`, `source`, `.`, a nameref, `eval`, or zsh
-// `${GH_TOKEN::=…}`. The pin governs `gh` only: a `git push` uses git's credential
-// helper, and `GH_HOST` and the enterprise-token variables are left alone, which matters
-// only against a GitHub Enterprise Server host.
+// change in one can undo the pin): a `gh` run through `eval`, `sh -c`, `bash -c`, `xargs`,
+// `nice`, `timeout`, `stdbuf`, `exec -c` or a wrapper command the lint does not name, or one
+// whose name is quoted, escaped or given by path (`\env`, `"sudo"`, `\builtin`, `/usr/bin/env
+// -i gh`); a wrapper option that takes a separate argument and is not in the lint's list (`env
+// -S`, say); an alias; a command name built from an expansion; a function that wraps `gh`, or
+// one that shadows `export` or `unset`; a pin inside a heredoc body; a `trap … DEBUG`; a `gh`
+// step inside a process substitution (`<( )`, `>( )`), after a leading redirect such as `2>&1`,
+// or in a `case` arm whose pattern opens with `(`; a `case` pattern `)` that no `esac` closes;
+// an `export` or `unset` of the token run under `||`, `&&`, `&` or a pipe; a change of either
+// token variable by `read`, `printf -v`, `for`, `select`, `let`, `mapfile`, `getopts`,
+// `source`, `.`, a nameref, `eval`, zsh `integer` or `float`, or zsh `${GH_TOKEN::=…}`; a token
+// change by an `export` option cluster holding `n` (`-pn`), by a bare `local`, `declare` or
+// `typeset` of the token with no value (zsh), or by zsh `unset -m`. The pin governs `gh` only:
+// a `git push` uses git's credential helper, and `GH_HOST` and the enterprise-token variables
+// are left alone, which matters only against a GitHub Enterprise Server host.
 package main
 
 import (
@@ -411,7 +414,7 @@ func actPinIssues(code []string, name string) []actPinIssue {
 					if pinAlone(k) {
 						pinAt, pinEnd = k, end
 					} else {
-						add(k, "the driver-token pin must be its own statement: not after ||, && or |, not under ! or a wrapper such as time or env")
+						add(k, "the driver-token pin must be its own statement: not after ||, &&, | or |&, not under ! or a wrapper such as time or env")
 					}
 				}
 			}
@@ -546,19 +549,27 @@ func actEnvOption(val, next string) (why string, takesNext bool) {
 		}
 	case strings.HasPrefix(val, "-"):
 		s := val[1:]
+		// Read the whole cluster: an i anywhere empties the environment, and a u
+		// or C wherever it falls takes the rest of the word, or the next word.
+		cleared := ""
 		for i := 0; i < len(s); i++ {
 			switch s[i] {
 			case 'i':
-				return empty, false
+				cleared = empty
 			case 'u':
-				if rest := s[i+1:]; rest != "" {
-					return unset(rest), false
+				rest := s[i+1:]
+				if rest == "" {
+					rest = next
 				}
-				return unset(next), true
+				if cleared != "" {
+					return cleared, s[i+1:] == ""
+				}
+				return unset(rest), s[i+1:] == ""
 			case 'C':
-				return "", s[i+1:] == ""
+				return cleared, s[i+1:] == ""
 			}
 		}
+		return cleared, false
 	}
 	return "", false
 }

@@ -349,8 +349,21 @@ func TestActPinFlagsSpellings(t *testing.T) {
 		"env -vC dir -i":      `  env -vC /tmp -i gh issue edit 1 -R o/r`,
 		"run env -vi":         `  run env -vi gh issue edit 1 -R o/r`,
 		"env -vi with assign": `  env -vi FOO=1 gh issue edit 1 -R o/r`,
+		"env -iu name":        `  env -iu GH_TOKEN gh issue edit 1 -R o/r`,
+		"env -viu name":       `  env -viu GH_TOKEN gh issue edit 1 -R o/r`,
+		"env -iuGH_TOKEN":     `  env -iuGH_TOKEN gh issue edit 1 -R o/r`,
+		"env -iC dir":         `  env -iC /tmp gh issue edit 1 -R o/r`,
+		"env -viC dir":        `  env -viC /tmp gh issue edit 1 -R o/r`,
+		"env -iC/tmp":         `  env -iC/tmp gh issue edit 1 -R o/r`,
 	} {
 		rows[name] = shapeRow{[]string{pinLine, exportLine, line}, "does not reach"}
+	}
+	for name, line := range map[string]string{
+		"no pin env -iC dir":  `  env -iC /tmp gh issue edit 1 -R o/r`,
+		"no pin env -iu name": `  env -iu FOO gh issue edit 1 -R o/r`,
+		"no pin env -viu":     `  env -viu FOO gh issue edit 1 -R o/r`,
+	} {
+		rows[name] = shapeRow{[]string{line}, "no driver-token pin"}
 	}
 	wantFinding(t, "spellings", rows)
 }
@@ -382,7 +395,7 @@ func TestActPinSpellingsClean(t *testing.T) {
 // the same at every site that states it, so no site claims more than the check
 // does; § stands for a backtick. The PR body carries the same text and is
 // checked by the author, outside this test.
-const actUnmodelledList = "The lint refuses the shapes it models; the pin inside the function is the control. Not modelled (examples, not exhaustive; a §gh§ step in one can run with no pin, and a token change in one can undo the pin): a §gh§ run through §eval§, §sh -c§, §bash -c§, §xargs§, §nice§, §timeout§, §stdbuf§, §exec -c§ or a wrapper command the lint does not name; a wrapper option that takes a separate argument and is not in the lint's list (§env -S§, say); an alias; a command name built from an expansion; a function that wraps §gh§; a §gh§ step inside a process substitution (§<( )§, §>( )§), after a leading redirect such as §2>&1§, or in a §case§ arm whose pattern opens with §(§; a §case§ pattern §)§ that no §esac§ closes; an §export§ or §unset§ of the token run under §||§, §&§ or a pipe; a change of either token variable by §read§, §printf -v§, §for§, §select§, §let§, §mapfile§, §getopts§, §source§, §.§, a nameref, §eval§, or zsh §${GH_TOKEN::=…}§. The pin governs §gh§ only: a §git push§ uses git's credential helper, and §GH_HOST§ and the enterprise-token variables are left alone, which matters only against a GitHub Enterprise Server host."
+const actUnmodelledList = "The lint refuses the shapes it models; the pin inside the function is the control. Not modelled (examples, not exhaustive; a §gh§ step in one can run with no pin, and a token change in one can undo the pin): a §gh§ run through §eval§, §sh -c§, §bash -c§, §xargs§, §nice§, §timeout§, §stdbuf§, §exec -c§ or a wrapper command the lint does not name, or one whose name is quoted, escaped or given by path (§\\env§, §\"sudo\"§, §\\builtin§, §/usr/bin/env -i gh§); a wrapper option that takes a separate argument and is not in the lint's list (§env -S§, say); an alias; a command name built from an expansion; a function that wraps §gh§, or one that shadows §export§ or §unset§; a pin inside a heredoc body; a §trap … DEBUG§; a §gh§ step inside a process substitution (§<( )§, §>( )§), after a leading redirect such as §2>&1§, or in a §case§ arm whose pattern opens with §(§; a §case§ pattern §)§ that no §esac§ closes; an §export§ or §unset§ of the token run under §||§, §&&§, §&§ or a pipe; a change of either token variable by §read§, §printf -v§, §for§, §select§, §let§, §mapfile§, §getopts§, §source§, §.§, a nameref, §eval§, zsh §integer§ or §float§, or zsh §${GH_TOKEN::=…}§; a token change by an §export§ option cluster holding §n§ (§-pn§), by a bare §local§, §declare§ or §typeset§ of the token with no value (zsh), or by zsh §unset -m§. The pin governs §gh§ only: a §git push§ uses git's credential helper, and §GH_HOST§ and the enterprise-token variables are left alone, which matters only against a GitHub Enterprise Server host."
 
 // squashSpace drops the Go comment markers and folds every run of whitespace.
 func squashSpace(s string) string {

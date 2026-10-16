@@ -448,16 +448,20 @@ or `shell` fence that defines a function named `driver_act…`) to six rules:
    The lint refuses the shapes it models; the pin inside the function is the control. Not
    modelled (examples, not exhaustive; a `gh` step in one can run with no pin, and a token
    change in one can undo the pin): a `gh` run through `eval`, `sh -c`, `bash -c`, `xargs`,
-   `nice`, `timeout`, `stdbuf`, `exec -c` or a wrapper command the lint does not name; a wrapper
-   option that takes a separate argument and is not in the lint's list (`env -S`, say); an
-   alias; a command name built from an expansion; a function that wraps `gh`; a `gh` step inside
-   a process substitution (`<( )`, `>( )`), after a leading redirect such as `2>&1`, or in a
-   `case` arm whose pattern opens with `(`; a `case` pattern `)` that no `esac` closes; an
-   `export` or `unset` of the token run under `||`, `&` or a pipe; a change of either token
-   variable by `read`, `printf -v`, `for`, `select`, `let`, `mapfile`, `getopts`, `source`, `.`,
-   a nameref, `eval`, or zsh `${GH_TOKEN::=…}`. The pin governs `gh` only: a `git push` uses
-   git's credential helper, and `GH_HOST` and the enterprise-token variables are left alone,
-   which matters only against a GitHub Enterprise Server host.
+   `nice`, `timeout`, `stdbuf`, `exec -c` or a wrapper command the lint does not name, or one
+   whose name is quoted, escaped or given by path (`\env`, `"sudo"`, `\builtin`, `/usr/bin/env
+   -i gh`); a wrapper option that takes a separate argument and is not in the lint's list (`env
+   -S`, say); an alias; a command name built from an expansion; a function that wraps `gh`, or
+   one that shadows `export` or `unset`; a pin inside a heredoc body; a `trap … DEBUG`; a `gh`
+   step inside a process substitution (`<( )`, `>( )`), after a leading redirect such as `2>&1`,
+   or in a `case` arm whose pattern opens with `(`; a `case` pattern `)` that no `esac` closes;
+   an `export` or `unset` of the token run under `||`, `&&`, `&` or a pipe; a change of either
+   token variable by `read`, `printf -v`, `for`, `select`, `let`, `mapfile`, `getopts`,
+   `source`, `.`, a nameref, `eval`, zsh `integer` or `float`, or zsh `${GH_TOKEN::=…}`; a token
+   change by an `export` option cluster holding `n` (`-pn`), by a bare `local`, `declare` or
+   `typeset` of the token with no value (zsh), or by zsh `unset -m`. The pin governs `gh` only:
+   a `git push` uses git's credential helper, and `GH_HOST` and the enterprise-token variables
+   are left alone, which matters only against a GitHub Enterprise Server host.
 
 Rule 1's floor refuses a `#` after an operator, and its scanner refuses
    `\'` inside `$'…'`, so a block holding either fails by rule 1; the read
