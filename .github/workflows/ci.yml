@@ -101,6 +101,10 @@ jobs:
               */tools/harnessgen|tools/harnessgen) extra="go test ./..." ;;
               */tools/harnesslint|tools/harnesslint) extra="go test ./..." ;;
               */tools/plugindrift|tools/plugindrift) extra="go test ./..." ;;
+              # perfrec (the shared perf-v1 writer, #3101) runs its own suite: its
+              # deps/audit-ledger guards over the CPU reader files are hermetic and
+              # were latent under build+vet alone.
+              */perfrec|perfrec) extra="go test ./..." ;;
             esac
             if ( cd "$dir" && go build ./... && go vet ./... && eval "$extra" ); then
               echo "${dir}: OK"

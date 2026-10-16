@@ -39,6 +39,8 @@ on:
       # statusgen resolves the forgeread module through a sibling `replace`, so a change
       # there changes what the lint binary is built from.
       - "forgeread/**"
+      # Likewise the perfrec module (the shared perf-v1 writer, #3101).
+      - "perfrec/**"
       - ".github/workflows/assay-statusgen.yml"
       # The reconcile job's run: texts below are what statusgen's job tests
       # execute, so a change to this file's staged copy runs those tests too.
@@ -58,6 +60,8 @@ on:
       # statusgen resolves the forgeread module through a sibling `replace`, so a change
       # there changes what the lint binary is built from.
       - "forgeread/**"
+      # Likewise the perfrec module (the shared perf-v1 writer, #3101).
+      - "perfrec/**"
       - ".github/workflows/assay-statusgen.yml"
   # Hourly board reconcile (derived-board/04). Scheduled workflows run only from
   # the default branch, so the reconcile job always executes main's copy of this
@@ -219,9 +223,10 @@ jobs:
           parent="$(git rev-parse --verify 'HEAD^1^{commit}')"
           rm -rf "${RUNNER_TEMP}/base"
           mkdir -p "${RUNNER_TEMP}/base"
-          # statusgen's go.mod replaces forgeread with the sibling ../forgeread, so the base
-          # tree needs that directory beside it. A base that predates the module has none.
-          git archive "$parent" statusgen $(git ls-tree -d --name-only "$parent" forgeread) | tar -x -C "${RUNNER_TEMP}/base"
+          # statusgen's go.mod replaces forgeread and perfrec with the siblings ../forgeread and
+          # ../perfrec, so the base tree needs those directories beside it. A base that predates
+          # a module has none.
+          git archive "$parent" statusgen $(git ls-tree -d --name-only "$parent" forgeread perfrec) | tar -x -C "${RUNNER_TEMP}/base"
           ( cd "${RUNNER_TEMP}/base/statusgen" && go build -o "${RUNNER_TEMP}/statusgen-base" . )
       # Always the pinned tarball, never a gh already on PATH: the guard's review
       # and comment reads go through it.
