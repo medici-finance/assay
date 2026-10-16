@@ -1095,9 +1095,9 @@ func glCases() []glCase {
 		},
 		{
 			// Both halves of the reaction mapping at once: GitLab's `thumbsup` must arrive as
-			// the `+1` the admission gate matches on, and the BOT's award must NOT be typed
-			// "User" — the gate admits only a human, and GitLab's award payload carries no
-			// bot flag of its own.
+			// the `+1` a caller matches on, and the BOT's award must NOT be typed "User" —
+			// a human-only caller would admit it, and GitLab's award payload carries no bot
+			// flag of its own.
 			name: "issue_reactions_human_and_bot", method: "IssueReactions",
 			setup: func(s *glServer) {
 				s.awards = []map[string]any{
@@ -1111,7 +1111,7 @@ func glCases() []glCase {
 			run: func(f *GitLabForge) (any, error) { return f.IssueReactions(glRepo, 7) },
 		},
 		{
-			// An unresolvable actor is typed EMPTY, never "User": a gate that requires a
+			// An unresolvable actor is typed EMPTY, never "User": a caller that requires a
 			// human must refuse rather than admit an actor whose kind is unknown.
 			name: "issue_reactions_unresolvable_actor", method: "IssueReactions",
 			setup: func(s *glServer) {

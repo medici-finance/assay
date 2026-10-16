@@ -23,6 +23,10 @@ var launchLockAllow = map[string]string{
 	// Per-task execution leases: a busy one means "live task", which Sweep and
 	// Acknowledge classify themselves; a fresh task's lease cannot be busy.
 	"cellscratch/store.go:Store.lock": "per-task execution lease",
+	// The reconcile preflight's non-destructive role-lease probe (#2880): it returns a bool the
+	// caller classifies as "owned by a running window", never a bare ErrLockBusy, and it must
+	// not go through AcquireHeld, which would overwrite a crashed owner's record.
+	"cellcadence/evidence.go:Probe": "reconcile lease probe",
 }
 
 func rawLockSites(dir, name string, src any) ([]string, error) {

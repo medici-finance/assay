@@ -1116,34 +1116,31 @@ func TestFoldPreviewRefusalParity(t *testing.T) {
 	}
 }
 
-// TestFoldPreviewPullsRefusal is C10's other half: the PR read succeeds but
-// the backfill's raw pull list read fails. --apply refuses (the backfill
-// witness set is unread); the read-only form must not list the trailer row.
+// TestFoldPreviewPullsRefusal is C10's other half: the raw pull list read
+// fails. --apply refuses (the backfill witness set is unread) and the
+// read-only form lists no row and names the unread pull list. The trailer fold
+// and the backfill now share ONE pull list read, so "trailer read served,
+// backfill read failed" can no longer happen; a failure of that one read must
+// still be named as the raw pull list, not reported as a clean board.
 // regression: #2472
 func TestFoldPreviewPullsRefusal(t *testing.T) {
 	root := writeFoldFixture(t,
 		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model"}},
 		map[string][3]string{"01": {"todo", "—", "—"}})
 	foldServer(t, nil, foldIssues())
-	pulls, _ := json.Marshal(foldStdPulls()[:1])
-	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.Contains(r.URL.Path, "/issues"):
 			_, _ = w.Write([]byte(`[]`))
+		case strings.HasSuffix(r.URL.Path, "/files"):
+			_, _ = w.Write([]byte(`[{"filename":"internal/fx/fx.go","status":"modified"}]`))
 		case strings.Contains(r.URL.Path, "/pulls"):
 			if r.URL.Query().Get("page") != "" && r.URL.Query().Get("page") != "1" {
 				_, _ = w.Write([]byte(`[]`))
 				return
 			}
-			// Per run: the trailer read (ListPRs) is served, the backfill's
-			// own pull list read fails.
-			calls++
-			if calls%2 == 0 {
-				w.WriteHeader(http.StatusInternalServerError)
-				return
-			}
-			_, _ = w.Write(pulls)
+			// The one pull list read (trailer fold and backfill share it) fails.
+			w.WriteHeader(http.StatusInternalServerError)
 		default:
 			http.NotFound(w, r)
 		}

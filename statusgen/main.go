@@ -275,6 +275,15 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	if pinProblem, has := sameTagPinLint(root); has {
 		problems = append(problems, pinProblem)
 	}
+	// Ignored board paths (#2915): a .gitignore rule that makes git refuse the
+	// regen job's path-scoped add of STATUS.md or docs/streams fails every push
+	// to main. Lint mode only — the regen run itself must still write the board
+	// so the commit step can name the rule (boardadd.sh). See boardignore.go.
+	if mode == "lint" {
+		ignoreProblems, ignoreNotices := boardIgnoreLint(root)
+		problems = append(problems, ignoreProblems...)
+		notices = append(notices, ignoreNotices...)
+	}
 	// The per-stream done/ archive checks — a NOTICE for a
 	// retired placeholder still at the stream root (archive candidate) and a
 	// PROBLEM for any non-done brief/placeholder parked under done/. Additive,
@@ -464,7 +473,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		// snapshot region has drifted from a fresh render, or that has no manifest
 		// beside it. --lint only (the PR gate); STATUS.md-free and offline. Absent
 		// docs/roadmap/drives ⇒ inert.
-		dp, dn := driveRegionLintProblems(root, nowFunc())
+		var dp, dn []string
+		if effScope == "" {
+			dp, dn = driveRegionLintFromBoard(root, streams, nowFunc())
+		} else {
+			// Snapshot frontiers use the full board, including rows outside
+			// the product-scoped checks above. Hydrate those once per sweep.
+			dp, dn = driveRegionLintProblems(root, nowFunc())
+		}
 		problems = append(problems, dp...)
 		notices = append(notices, dn...)
 	}
@@ -764,7 +780,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// A plain --lint (no --forge) does NOT read them at all (forge-neutral/18, the
 	// reach contract in docs/statusgen-lint-reach.md): the claim read is
 	// `git ls-remote --heads origin` — a network round-trip to the forge — and its
-	// dead-claim decay starts `gh pr list` or calls a GitLab API. Offline, the
+	// dead-claim decay starts `gh api graphql` or calls a GitLab API. Offline, the
 	// claim set is could-not-check, rendered as itself through the same degraded
 	// notice a failed read produces; it never decides the lint verdict (every
 	// PROBLEM is counted above, before this line).
@@ -1397,6 +1413,24 @@ func main() {
 	// rather than a `--lint` leg — same shape as `conform`.
 	if len(os.Args) > 1 && os.Args[1] == "patterns" {
 		os.Exit(runPatterns(os.Args[2:], os.Stdout, os.Stderr))
+	}
+	// `statusgen instance validate --file PATH ...` (graph-execution/09) —
+	// validates one workflow-instance-v1 document against its schema, its pattern
+	// and the work item's acceptance version (instance.go). A distinct artifact
+	// class with its own flags, so a subcommand, like `patterns`.
+	if len(os.Args) > 1 && os.Args[1] == "instance" {
+		os.Exit(runInstance(os.Args[2:], os.Stdout, os.Stderr))
+	}
+
+	// `statusgen runtime-resource --lint --adapters FILE [--as-of RFC3339]
+	// PATH...` — validate runtime-resource-v1 records against
+	// schemas/runtime-resource-v1.json, an adapter registry, and the contract
+	// rules a schema cannot express (sdlc/24, runtimeresource.go,
+	// docs/runtime-adapters.md). Offline: it reads the files it is given and
+	// never contacts an adapter. A distinct artifact class, so a subcommand,
+	// same shape as `patterns`.
+	if len(os.Args) > 1 && os.Args[1] == "runtime-resource" {
+		os.Exit(runRuntimeResource(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen migrate brief-v1-to-v2 [--dry-run] [--root DIR]` — the brief-v1 →

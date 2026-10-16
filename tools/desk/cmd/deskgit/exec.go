@@ -10,10 +10,10 @@ import (
 )
 
 // execCommand is the single seam through which every git invocation flows. Production
-// binds it to exec.Command; tests wrap it to RECORD every argv (so the pinned-argv
-// assertions — `--refmap= --upload-pack=git-upload-pack`, the explicit refspec, no
-// caller flag — are checked on the real constructed argv) while still delegating to a
-// real git process against a scratch fixture. Nothing else in this package constructs
+// binds it to exec.Command; tests wrap it to RECORD every argv (so the fixed-argv
+// assertions — the explicit refspec, no caller flag — are checked on the real constructed
+// argv) while still delegating to a real git process against a scratch fixture. Since
+// fetch moved in-process, only push and the repo probes remain on this seam. Nothing else in this package constructs
 // commands, so there is exactly one place argv is built.
 var execCommand = exec.Command
 
@@ -58,11 +58,11 @@ func scrubbedEnv(parent []string) []string {
 // runGit executes `git <args...>` in dir and returns trimmed stdout. Two properties make
 // it safe against an attacker-influenced repo/environment (issue #1555):
 //   - the argv is an explicit slice built from literal verbs — never a shell string and
-//     never a raw caller flag, so `--upload-pack`/`--exec`/a refspec cannot be injected;
+//     never a raw caller flag, so no program-naming option or refspec can be injected;
 //   - the child environment is scrubbed to `envAllowlist`, so no inherited `GIT_*` var
-//     can name a program to run or inject `remote.origin.uploadpack` via config.
+//     can name a program to run or inject program-naming config.
 //
-// It is the credential-free path (every fetch mode, and every repo probe): it passes the
+// It is the credential-free path (every repo probe): it passes the
 // bare scrubbed allowlist, in which GIT_ASKPASS is deliberately absent. The authenticated
 // verbs go through runGitWithEnv with the credentialSupply env instead.
 func runGit(dir string, args ...string) (string, error) {

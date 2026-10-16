@@ -791,14 +791,19 @@ func TestDispatchedReviewPromptCarriesTheRound(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("dispatch rc = %d, want 0\n%s", rc, stderr)
 	}
-	raw, err := os.ReadFile(promptFile)
+	raw, err := os.ReadFile(emittedPathFor(promptFile))
 	if err != nil {
 		t.Fatal(err)
 	}
 	prompt := string(raw)
 	fetch := strings.Index(prompt, "checkout FETCH_HEAD")
 	round := strings.Index(prompt, "### This round — stated by the dispatcher")
-	release := strings.Index(prompt, "Release the dispatch claim once your verdict is posted")
+	// The post-and-release step: the one-step `deskpost finish` line when the key is one finish
+	// accepts (#2493), else the bare release line.
+	release := strings.Index(prompt, "Post your verdict, confirm it and release the dispatch claim")
+	if release < 0 {
+		release = strings.Index(prompt, "Release the dispatch claim once your verdict is posted")
+	}
 	if fetch < 0 || round < fetch || release < round {
 		t.Fatalf("round statement is not between the head fetch and the claim release (fetch %d, round %d, release %d)", fetch, round, release)
 	}
@@ -842,7 +847,7 @@ func TestNonReviewDispatchHasNoRound(t *testing.T) {
 	if rc := run(args); rc != deskkit.ExitOK {
 		t.Fatalf("worker dispatch rc = %d", rc)
 	}
-	raw, err := os.ReadFile(promptFileOf(t, args))
+	raw, err := os.ReadFile(emittedPathFor(promptFileOf(t, args)))
 	if err != nil {
 		t.Fatal(err)
 	}

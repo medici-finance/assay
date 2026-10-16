@@ -11,7 +11,7 @@ import (
 // counterpart in the source PR.
 //
 // In the source, every transport-exec option was refused only INCIDENTALLY — as an
-// "unknown flag" by the FlagSet, or (for `deskgit fetch origin --upload-pack=…`, where
+// "unknown flag" by the FlagSet, or (for `deskgit fetch origin --<flag>=…`, where
 // Go's flag package stops parsing at the first non-flag operand) as an "extra operand".
 // Both refuse, so the source was not exploitable. But an incidental refusal is a weak
 // guard for three reasons, and #1555's whole thesis is that a guard nobody can point at
@@ -28,33 +28,33 @@ import (
 //
 // So the named options below are refused FIRST, explicitly, with their own reason,
 // before the FlagSet ever sees the argv. This is defence in depth, not the only layer:
-// deskgit still builds a fixed git argv, so none of these could reach git regardless.
+// `deskgit push` still builds a fixed git argv, so none of these could reach git regardless,
+// and `deskgit fetch` runs no git child at all (the in-process transport has no program to
+// name), so a flag it does not define is refused by the FlagSet, exit 5.
 //
 // The refusal is deliberately over-broad (prefix matching in BOTH directions) because
-// git honours unambiguous long-option ABBREVIATIONS — `--upload-p` is `--upload-pack`.
+// git honours unambiguous long-option ABBREVIATIONS — `--receive-p` is `--receive-pack`.
 // Fail closed: refusing a flag deskgit does not implement costs nothing.
 
 // deniedTransportExec are the git options that name a program for git to execute, or
 // that inject config which can name one. Each is refused by name.
 //
-//   - upload-pack   — names the program run on the "remote" end. For a local-path
-//     remote that end is THIS machine: the proven #1555 RCE.
-//   - exec          — git fetch's own alias for --upload-pack. Same vector, other spelling.
-//   - receive-pack  — the push-side twin (and `--exec`'s meaning there). deskgit push now
-//     PINS `--receive-pack=git-receive-pack` in its own fixed argv (the push-side twin of
-//     fetch's upload-pack pin), so a caller-supplied `--receive-pack` is refused here by
-//     name — the caller can never override the pinned program by any spelling.
+//   - exec          — git's alias for the program-naming option on the remote end. For a
+//     local-path remote that end is THIS machine: the proven #1555 RCE.
+//   - receive-pack  — the push-side program-naming option (and `--exec`'s meaning there).
+//     deskgit push PINS `--receive-pack=git-receive-pack` in its own fixed argv, so a
+//     caller-supplied `--receive-pack` is refused here by name — the caller can never
+//     override the pinned program by any spelling.
 //   - upload-archive — the git-archive-side program-naming option.
-//   - config-env / c — config injection. `-c remote.origin.uploadpack=<prog>` reaches
-//     upload-pack by another route, and `-c core.sshCommand=…` reaches a shell.
+//   - config-env / c — config injection. `-c remote.origin.uploadpack=<prog>` names a
+//     program by another route, and `-c core.sshCommand=…` reaches a shell.
 //   - exec-path     — relocates git's own helper directory, so every `git-*` helper git
 //     invokes becomes attacker-chosen.
 //
 // Matching is on the option NAME (leading dashes and any `=value` stripped) against this
-// list in both prefix directions, so `--upload-pack=x`, `--upload-p`, `--u`, and
-// `--upload-packet` are all refused.
+// list in both prefix directions, so `--receive-pack=x`, `--receive-p`, `--r`, and
+// `--receive-packet` are all refused.
 var deniedTransportExec = []string{
-	"upload-pack",
 	"receive-pack",
 	"upload-archive",
 	"exec",
@@ -63,7 +63,7 @@ var deniedTransportExec = []string{
 }
 
 // deniedShortOpts are single-character options refused by name. Lowercase `c`, `u` and
-// `e` already fall out of the prefix rule above (prefixes of config-env, upload-pack and
+// `e` already fall out of the prefix rule above (prefixes of config-env, upload-archive and
 // exec respectively); uppercase `-C` does not, and needs its own entry: it changes git's
 // working directory, which would move the fetch off the very worktree whose origin URL
 // deskgit verified — defeating the repo gate rather than the exec guard.
@@ -144,8 +144,8 @@ func checkTransportExec(args []string) error {
 				"refused: -%s is not accepted — it %s (issue #1555)", name, why))
 		}
 		for _, denied := range deniedTransportExec {
-			// Both directions: `--upload-p` abbreviates the denied option, and
-			// `--upload-packet` extends it. Neither is implemented by deskgit, so
+			// Both directions: `--receive-p` abbreviates the denied option, and
+			// `--receive-packet` extends it. Neither is implemented by deskgit, so
 			// refusing both is free.
 			if strings.HasPrefix(denied, name) || strings.HasPrefix(name, denied) {
 				return deskkit.Refused(fmt.Sprintf(

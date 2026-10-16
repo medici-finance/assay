@@ -70,7 +70,7 @@ non-zero exit of the program it runs, which erases the 0/2/3 distinction below.)
 | `--date` | yesterday (UTC) | `YYYY-MM-DD` — the day being rolled up |
 | `--snapshots` | `./snapshots` | directory holding this run's downloaded `metrics-snapshot-*.json` |
 | `--run-id` | none | the CI run id these artifacts came from, recorded in the roll-up |
-| `--config` | `domains.yaml` alongside the source | the grouping config (see the schema below) |
+| `--config` | `domains.yaml` alongside the source (under `-trimpath`: `./domains.yaml`, else `tools/metrics-harvest/domains.yaml`) | the grouping config (see the schema below) |
 | `--root` | derived from `--config` (three directories up) | repo root the `reports/daily/` output is written under |
 
 | Exit | Meaning |

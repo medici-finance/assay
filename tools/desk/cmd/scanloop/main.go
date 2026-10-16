@@ -8,18 +8,20 @@ import (
 )
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident. This tool
-	// ACTS on the roster — it applies the trust gate and writes through the sanctioned verbs — so
-	// ciEligible=false: the config-home file only, never the environment, in CI as well as locally.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// Echo the effective trust/authority configuration before doing anything. The roster, the scan
-	// scope and the write boundary live in settings rather than in a diff, so the RUN is the only
-	// place a change to them becomes visible — and a NARROWING has to be as visible as a widening.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("scanloop", nil, os.Args[1:], func([]string) int {
+		// The roster class is an EXPLICIT declaration, never the zero value by accident. This tool
+		// ACTS on the roster — it applies the trust gate and writes through the sanctioned verbs — so
+		// ciEligible=false: the config-home file only, never the environment, in CI as well as locally.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// Echo the effective trust/authority configuration before doing anything. The roster, the scan
+		// scope and the write boundary live in settings rather than in a diff, so the RUN is the only
+		// place a change to them becomes visible — and a NARROWING has to be as visible as a widening.
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {
@@ -132,6 +134,11 @@ there is no poll at all, so there is nothing to copy.
   the coalesce window      An open scan PR younger than the window absorbs the batch; at or past it
                            the PR stays sealed at a stable head and a fresh one is cut. An age that
                            cannot be read never coalesces.
+  the open scan PR         'run' READS it from the scan target: the youngest open draft scan PR by
+                           this App, whichever session opened it. --scan-pr names it instead and
+                           skips the read; --offline reads nothing, so only --scan-pr coalesces. An
+                           open-PR list that cannot be read refuses the scan dispatch (exit 6) rather
+                           than cutting a possible duplicate. 'plan' does not read the forge.
   the flip boundary        A scan PR that has been flipped ready-for-human (--scan-pr-state ready) is
                            push-quiet: a post-flip push re-signals the review loop, so a new batch
                            opens the NEXT scan PR regardless of the window. A draft/ready state that

@@ -28,13 +28,13 @@
     {
       "name": "the cross-repo prompt drops the `deskpr create --root <tracking>` hint; TestCrossRepoDeliverableRepoResolvesWorktreeClaimAndToken must go red",
       "file": "cmd/deskdispatch/prompt.go",
-      "old": "\tif plan.dl.crossRepo(o.root) {\n\t\t// CROSS-REPO: the PR lands HERE",
-      "new": "\tif false && plan.dl.crossRepo(o.root) {\n\t\t// CROSS-REPO: the PR lands HERE"
+      "old": "\t} else if plan.dl.crossRepo(o.root) {\n\t\t// CROSS-REPO: the PR lands HERE",
+      "new": "\t} else if false && plan.dl.crossRepo(o.root) {\n\t\t// CROSS-REPO: the PR lands HERE"
     },
     {
       "name": "the phantom precondition is skipped, so a phantom reaches admission, the mint and the claim; TestPhantomPreconditionPrecedesAdmissionMintAndClaim must go red",
       "file": "cmd/deskdispatch/dispatch.go",
-      "old": "\tfollowUp, err := phantomCheck(o, repo)",
+      "old": "\tfollowUp, err := phantomCheckFor(o, repo, plan.dl)",
       "new": "\tfollowUp, err := phantomFollowUp{}, error(nil)"
     },
     {
@@ -93,13 +93,13 @@
     },
     {
       "name": "the files: list is not closed by a blank line, so a tagged entry AFTER the list declares a repo; TestTagNeverWidens/tag_after_the_list must go red",
-      "file": "cmd/deskdispatch/deliverable.go",
+      "file": "internal/deskkit/brieffilestags.go",
       "old": "\t\t\tif lt == \"\" {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\tif strings.HasPrefix(lt, \"- \") {\n\t\t\t\ttake(",
       "new": "\t\t\tif lt == \"\" {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tif strings.HasPrefix(lt, \"- \") {\n\t\t\t\ttake("
     },
     {
       "name": "F1: a files: line inside a fenced example is read as the brief's list (the fence skip is dropped); TestTagNeverWidens/tag_in_a_fenced_example must go red",
-      "file": "cmd/deskdispatch/deliverable.go",
+      "file": "internal/deskkit/brieffilestags.go",
       "old": "\t\tif fence != \"\" {\n\t\t\tcontinue // inside a fenced example",
       "new": "\t\tif false && fence != \"\" {\n\t\t\tcontinue // inside a fenced example"
     },
@@ -111,37 +111,37 @@
     },
     {
       "name": "a left-margin line no longer closes the files: list, so a tagged entry after it declares; TestTagNeverWidens/closed_by_a_left-margin_line must go red",
-      "file": "cmd/deskdispatch/deliverable.go",
+      "file": "internal/deskkit/brieffilestags.go",
       "old": "\t\t\tif !strings.HasPrefix(lines[j], \" \") && !strings.HasPrefix(lines[j], \"\\t\") {\n\t\t\t\tbreak",
       "new": "\t\t\tif false && !strings.HasPrefix(lines[j], \" \") && !strings.HasPrefix(lines[j], \"\\t\") {\n\t\t\t\tbreak"
     },
     {
       "name": "the tag is read anywhere in an entry, not only at its head (the ^ anchor is dropped); TestTagNeverWidens/tag_not_at_entry_head must go red",
-      "file": "cmd/deskdispatch/deliverable.go",
+      "file": "internal/deskkit/brieffilestags.go",
       "old": "regexp.MustCompile(\"^`?\\\\[(",
       "new": "regexp.MustCompile(\"`?\\\\[("
     },
     {
       "name": "every files: list is read, not only the first; TestTagNeverWidens/tag_in_a_second_files:_list must go red",
-      "file": "cmd/deskdispatch/deliverable.go",
+      "file": "internal/deskkit/brieffilestags.go",
       "old": "\t\treturn tags\n\t}\n\treturn nil\n}",
       "new": "\t\tcontinue\n\t}\n\treturn tags\n}"
     },
     {
       "name": "F3: a fence closes on a run of the OTHER character (the closer's same-character check is dropped); TestTagNeverWidens/fence_not_closed_by_the_other_kind must go red",
-      "file": "cmd/deskdispatch/deliverable.go",
+      "file": "internal/deskkit/brieffilestags.go",
       "old": "\t\t\tcase f[0] == fence[0] && len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == \"\":",
       "new": "\t\t\tcase len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == \"\":"
     },
     {
       "name": "F3: a fence closes on a run followed by an info string (the closer's nothing-after check is dropped); TestTagNeverWidens/fence_not_closed_by_a_run_with_an_info_string must go red",
-      "file": "cmd/deskdispatch/deliverable.go",
+      "file": "internal/deskkit/brieffilestags.go",
       "old": "\t\t\tcase f[0] == fence[0] && len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == \"\":",
       "new": "\t\t\tcase f[0] == fence[0] && len(f) >= len(fence):"
     },
     {
       "name": "F3: a fence closes on a SHORTER run of its character (the closer's length check is dropped); TestDeclaredTagAfterFencedExample must go red",
-      "file": "cmd/deskdispatch/deliverable.go",
+      "file": "internal/deskkit/brieffilestags.go",
       "old": "\t\t\tcase f[0] == fence[0] && len(f) >= len(fence) && strings.TrimSpace(t[len(f):]) == \"\":",
       "new": "\t\t\tcase f[0] == fence[0] && strings.TrimSpace(t[len(f):]) == \"\":"
     },
@@ -160,8 +160,50 @@
     {
       "name": "#2355: an explicit --repo is silently overridden by --root's origin under the authoring-PR acceptance (--repo the deliverable, --root the tracker); TestAuthoringPRStillRefuses must go red",
       "file": "cmd/deskdispatch/deliverable.go",
-      "old": "\t\tif strings.TrimSpace(o.repo) != \"\" {\n\t\t\treturn d, mismatch(d, \"--root \"+o.root, actual, \"\")",
-      "new": "\t\tif false {\n\t\t\treturn d, mismatch(d, \"--root \"+o.root, actual, \"\")"
+      "old": "\t\tif strings.TrimSpace(o.repo) != \"\" {\n\t\t\treturn mismatch(*d, \"--root \"+o.root, actual, \"\")",
+      "new": "\t\tif false {\n\t\t\treturn mismatch(*d, \"--root \"+o.root, actual, \"\")"
+    },
+    {
+      "name": "#2748: --cross-repo admits a --repo the alias registry does not publish (an unregistered repo trusted by name); TestCrossRepoFlagNearMisses must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\talias, found := reg.aliasFor(r)\n\tif !found {",
+      "new": "\talias, found := reg.aliasFor(r)\n\tif false && !found {"
+    },
+    {
+      "name": "#2748: --cross-repo overrides the brief's explicit deliverable_repo; TestCrossRepoFlagNearMisses must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\tcase declDeliverable != \"\":\n\t\treturn crossRepoRefusal(",
+      "new": "\tcase false && declDeliverable != \"\":\n\t\treturn crossRepoRefusal("
+    },
+    {
+      "name": "#2748: --cross-repo skips the --root-origin witness, so the worktree is cut from a checkout of another repo; TestCrossRepoFlagNearMisses must go red",
+      "file": "cmd/deskdispatch/deliverable.go",
+      "old": "\t\treturn d, d.checkRootOrigin(o)\n\t}\n\n\t// The deliverable alias",
+      "new": "\t\treturn d, nil\n\t}\n\n\t// The deliverable alias"
+    },
+    {
+      "name": "#2748: the --cross-repo prompt drops the exact Cross-repo-brief: trailer line (the worker falls back to a Brief: that resolves against the wrong board); TestCrossRepoFlagDispatches must go red",
+      "file": "cmd/deskdispatch/prompt.go",
+      "old": "\tif plan.dl.crossRepoBrief {",
+      "new": "\tif false && plan.dl.crossRepoBrief {"
+    },
+    {
+      "name": "#2748: the phantom check ignores a Cross-repo-brief: delivery, so a second --cross-repo dispatch spawns a duplicate; TestCrossRepoFlagPhantom must go red",
+      "file": "cmd/deskdispatch/phantom.go",
+      "old": "\t\tif !ok && xrLink != \"\" {",
+      "new": "\t\tif false && xrLink != \"\" {"
+    },
+    {
+      "name": "#2748: under --cross-repo the phantom check drops the Brief: match, so a tag-path delivery of the same home brief is missed and a duplicate is spawned; TestCrossRepoFlagPhantom/tag-path_delivery must go red",
+      "file": "cmd/deskdispatch/phantom.go",
+      "old": "\t\tif !ok && xrLink != \"\" {",
+      "new": "\t\tif xrLink != \"\" {\n\t\t\tok = false\n\t\t}\n\t\tif !ok && xrLink != \"\" {"
+    },
+    {
+      "name": "#2748: a --cross-repo --pr resume prompt points deskpr update at the tracking checkout, whose registry refuses the Cross-repo-brief: link; TestCrossRepoFlagResume must go red",
+      "file": "cmd/deskdispatch/workerkind.go",
+      "old": "\tif plan.dl.crossRepoBrief {",
+      "new": "\tif false && plan.dl.crossRepoBrief {"
     }
   ]
 }

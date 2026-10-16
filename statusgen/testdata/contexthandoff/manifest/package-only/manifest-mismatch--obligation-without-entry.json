@@ -1,0 +1,28 @@
+{
+  "schema": "amendment-manifest-v1",
+  "declared_by": "example:demo:widgets:07",
+  "handoff": "sha256:e7b24a59179679baf3a2e9751a264466a9c224ce7272e2f4bc24ed51b5d69f0e",
+  "entries": [
+    {
+      "obligation": "ob-1",
+      "brief": "widgets:03",
+      "action": "amend",
+      "delivery_paths": [
+        "docs/streams/widgets/brief-03-cache-writer.md"
+      ],
+      "contract_version": "widget-cache-v2",
+      "depends": [],
+      "test_commands": [
+        "go test -count=1 -run '^TestCacheKeyV2$' ./cache/"
+      ],
+      "active_work": "none observed",
+      "effort": "S",
+      "binding": {
+        "patch": {
+          "base_revision": "3f9c2a1",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    }
+  ]
+}

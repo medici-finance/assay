@@ -32,6 +32,9 @@ var knownToolTarballs = map[string]map[string]toolTarball{
 	"GO": {"1.25.0": {
 		amd64: "2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613",
 		arm64: "05de75d6994a2783699815ee553bd5a9327d8b79991de36e38b66862782f54ae",
+	}, "1.27.2": {
+		amd64: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5",
+		arm64: "94f3e30b8e374bc285e7dadc11e0865726b9bc6e85b841ccceaabc0214c6b7c8",
 	}},
 	"GH": {"2.63.2": {
 		amd64: "912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00",
@@ -434,6 +437,63 @@ func toolRunProblem(in dfInstr, tl pinnedTool) string {
 	return ""
 }
 
+// dockerfileToolVersion returns the value of the Dockerfile's `ARG <tool>_VERSION=`
+// line, or "" when there is not exactly one.
+func dockerfileToolVersion(dockerfile, arg string) string {
+	m := regexp.MustCompile(`(?m)^ARG `+regexp.QuoteMeta(arg)+`_VERSION=(\S+)$`).FindAllStringSubmatch(dockerfile, -1)
+	if len(m) != 1 {
+		return ""
+	}
+	return m[0][1]
+}
+
+// TestBasePinVersionFollowsTheDockerfile is the negative case for the version a
+// mutant is built from: with two reviewed GO rows, the Dockerfile's own row must
+// be the one read, and a pin that is not a reviewed row must still fail.
+func TestBasePinVersionFollowsTheDockerfile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the base Dockerfile is a Linux build input; its anchors assume an LF checkout")
+	}
+	skipIfFixtureAbsent(t, baseDockerfilePath, "containers/ is not part of this repository's published file set")
+	raw, err := os.ReadFile(baseDockerfilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	if len(knownToolTarballs["GO"]) < 2 {
+		t.Fatal("this test needs two reviewed GO rows to tell a map-order pick from the Dockerfile's row")
+	}
+	pinned := dockerfileToolVersion(text, "GO")
+	row, ok := knownToolTarballs["GO"][pinned]
+	if !ok {
+		t.Fatalf("Dockerfile pins GO_VERSION=%q, not a reviewed row", pinned)
+	}
+	// Repeated reads agree with the file, whatever order the map yields.
+	for i := 0; i < 50; i++ {
+		if got := dockerfileToolVersion(text, "GO"); got != pinned {
+			t.Fatalf("read %q on pass %d, want %q", got, i, pinned)
+		}
+	}
+	// Another reviewed row's version with this row's checksums is not a reviewed row.
+	var other string
+	for v := range knownToolTarballs["GO"] {
+		if v != pinned && (other == "" || v < other) {
+			other = v
+		}
+	}
+	mutant := strings.Replace(text, "ARG GO_VERSION="+pinned+"\n", "ARG GO_VERSION="+other+"\n", 1)
+	if mutant == text {
+		t.Fatal("the GO_VERSION anchor did not match")
+	}
+	if p := basePinProblem(mutant); p == "" {
+		t.Errorf("GO_VERSION=%s with %s's checksums was not caught (amd64 %s)", other, pinned, row.amd64)
+	}
+	// A version that is in no reviewed row is caught too.
+	if p := basePinProblem(strings.Replace(text, "ARG GO_VERSION="+pinned+"\n", "ARG GO_VERSION=0.0.0\n", 1)); p == "" {
+		t.Error("an unreviewed GO_VERSION was not caught")
+	}
+}
+
 // TestBaseImagePinsTarballs pins the supply-chain half of the base Dockerfile:
 // the real file holds every pin and check, and each mutant that drops, masks,
 // reorders or swaps one is caught.
@@ -531,9 +591,12 @@ func TestBaseImagePinsTarballs(t *testing.T) {
 	mutants["class: gitbuild shell assignment overrides sha"] = swap(gitCurl, "    GIT_TARBALL_SHA256="+strings.Repeat("0", 64)+"; \\\n"+gitCurl)
 	for _, tl := range basePinnedTools {
 		rec := knownToolTarballs[tl.arg]
-		var ver string
-		for v := range rec {
-			ver = v
+		// The version the Dockerfile pins, never a map-order pick: knownToolTarballs
+		// may hold several reviewed rows per tool, and the expected ARG lines must
+		// be the ones the file under test carries.
+		ver := dockerfileToolVersion(text, tl.arg)
+		if _, ok := rec[ver]; !ok {
+			t.Fatalf("containers/base/Dockerfile pins %s_VERSION=%q, which is not a reviewed row in knownToolTarballs", tl.arg, ver)
 		}
 		verArg := "ARG " + tl.arg + "_VERSION=" + ver + "\n"
 		amdArg := "ARG " + tl.arg + "_SHA256_AMD64=" + rec[ver].amd64 + "\n"

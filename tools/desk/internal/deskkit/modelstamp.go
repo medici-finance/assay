@@ -22,6 +22,11 @@ package deskkit
 //	dispatched-tier:<tier>    the strength tier: one of the brief-schema `exec-tier:` values
 //	                          (strong | any). A CLOSED vocabulary, validated on write.
 //
+// A SECOND PAIR FOR AUTHORING (#2760). The coordinator's stamp of the session it launched to
+// AUTHOR a change is `authored-model:` + `authored-tier:` (StampAuthored), never dispatched-*.
+// The two used to share dispatched-*, so whichever stamp ran later replaced the other. Each
+// reader and writer here is scoped to one StampKind; the floor reads dispatched-* only.
+//
 // THE CLAIM IS PRECISE — ATTESTATION OF DISPATCH, NOT SURVEILLANCE OF EXECUTION. The
 // dispatcher attests what it LAUNCHED. It does not claim to have observed every token the
 // session later produced; a session that silently swapped models mid-run is outside what
@@ -108,6 +113,66 @@ const DispatchedModelPrefix = "dispatched-model:"
 // DispatchedTierPrefix carries the strength tier the dispatcher launched. One spelling,
 // same discipline as the model prefix.
 const DispatchedTierPrefix = "dispatched-tier:"
+
+// AuthoredModelPrefix / AuthoredTierPrefix are the AUTHORING pair (#2760): the model and tier
+// the coordinator launched to WRITE a change, applied after the worker's draft PR opens
+// (`deskdispatch --stamp-only --kit worker`). It is a separate namespace from dispatched-*
+// on purpose. Both stamps used to write dispatched-*, so whichever ran later replaced the
+// other: a review dispatch erased the record of who authored the change, and a late
+// authoring stamp erased the review session's attestation the floor reads. dispatched-*
+// stays the REVIEW-session attestation, and no floor reads authored-*.
+const (
+	AuthoredModelPrefix = "authored-model:"
+	AuthoredTierPrefix  = "authored-tier:"
+)
+
+// StampKind names which label pair a stamp lives in. Every reader and writer in this file
+// is scoped to ONE kind, so a re-stamp of one pair can never remove or overwrite the other.
+type StampKind int
+
+const (
+	// StampDispatch is the ZERO VALUE: the dispatched-* pair, the session attestation the
+	// capability floor, the auto-lane and the verifier admission read. The pre-#2760
+	// exported functions (ModelStampLabels, ModelStampOf, AttestedModelStampOf,
+	// ReStampRemovals, ApplyVerifiedModelStamp) are this kind.
+	StampDispatch StampKind = iota
+	// StampAuthored is the authored-* pair: the coordinator's attestation of the model and
+	// tier it launched to author a change. Same writer authority, same three states, its
+	// own labels.
+	StampAuthored
+)
+
+// ModelPrefix is the model-half label prefix of this kind.
+func (k StampKind) ModelPrefix() string {
+	if k == StampAuthored {
+		return AuthoredModelPrefix
+	}
+	return DispatchedModelPrefix
+}
+
+// TierPrefix is the tier-half label prefix of this kind.
+func (k StampKind) TierPrefix() string {
+	if k == StampAuthored {
+		return AuthoredTierPrefix
+	}
+	return DispatchedTierPrefix
+}
+
+// String names the kind for receipts: "authored" or "dispatched".
+func (k StampKind) String() string {
+	if k == StampAuthored {
+		return "authored"
+	}
+	return "dispatched"
+}
+
+// LabelDescription is the description a label of this kind is created with.
+func (k StampKind) LabelDescription() string {
+	if k == StampAuthored {
+		return "Coordinator attestation of the model and tier launched to author this change"
+	}
+	return "Dispatcher attestation of the selected model and tier"
+}
 
 // execTierValues is the tier vocabulary — a MIRROR of the brief-schema `exec-tier:` value
 // set (statusgen/brieffile.go `validExecTier` = {any, strong}). See the file comment for
@@ -200,10 +265,12 @@ type ModelStamp struct {
 // lowercased, non-empty, and made only of [a-z0-9.-] with at least one alphanumeric rune.
 // That is the same lowercase/dash shape RaisedByLabel enforces, for the same reason — a
 // label is published, so a human name or id must not be able to reach one.
-func DispatchedModelLabel(slug string) (string, error) {
+func DispatchedModelLabel(slug string) (string, error) { return StampDispatch.modelLabel(slug) }
+
+func (k StampKind) modelLabel(slug string) (string, error) {
 	want := strings.ToLower(strings.TrimSpace(slug))
 	if want == "" {
-		return "", Refused("dispatched-model: an empty slug is not a stamp — " +
+		return "", Refused(k.ModelPrefix() + " an empty slug is not a stamp — " +
 			"omit the label entirely if the dispatched model is genuinely unrecorded, so the PR reads " +
 			"UNKNOWN rather than carrying a blank model")
 	}
@@ -215,17 +282,17 @@ func DispatchedModelLabel(slug string) (string, error) {
 		case r == '-' || r == '.':
 			// separators, fine
 		default:
-			return "", Refused("dispatched-model: slug " + StripControl(slug) +
+			return "", Refused(k.ModelPrefix() + " slug " + StripControl(slug) +
 				" carries a character outside [a-z0-9.-] — a model slug is lowercase letters, digits, " +
 				"dot and dash only, so a space, an uppercase run or a personal handle cannot reach a " +
 				"published label")
 		}
 	}
 	if !alnum {
-		return "", Refused("dispatched-model: slug " + StripControl(slug) +
+		return "", Refused(k.ModelPrefix() + " slug " + StripControl(slug) +
 			" has no alphanumeric character — a run of only separators is not a model slug")
 	}
-	return DispatchedModelPrefix + want, nil
+	return k.ModelPrefix() + want, nil
 }
 
 // DispatchedTierLabel validates a tier against the exec-tier vocabulary and returns the
@@ -235,20 +302,22 @@ func DispatchedModelLabel(slug string) (string, error) {
 //
 // The refusal enumerates the vocabulary, because "invalid tier" without the set is a
 // refusal the caller cannot act on.
-func DispatchedTierLabel(tier string) (string, error) {
+func DispatchedTierLabel(tier string) (string, error) { return StampDispatch.tierLabel(tier) }
+
+func (k StampKind) tierLabel(tier string) (string, error) {
 	want, ok := CanonicalDispatchTier(tier)
 	if want == "" {
-		return "", Refused("dispatched-tier: an empty tier is not a stamp — " +
+		return "", Refused(k.TierPrefix() + " an empty tier is not a stamp — " +
 			"the tier vocabulary is the brief-schema exec-tier set (" + strings.Join(DispatchTiers(), " | ") +
 			"); omit the label if the tier is genuinely unrecorded")
 	}
 	if !ok {
-		return "", Refused("dispatched-tier: " + StripControl(tier) +
+		return "", Refused(k.TierPrefix() + " " + StripControl(tier) +
 			" is not an exec-tier value. The vocabulary is the brief-schema exec-tier set: " +
 			strings.Join(DispatchTiers(), " | ") + " — it is DERIVED from that one set, not a second " +
 			"list, so a tier outside it groups the metric by a value nothing emits")
 	}
-	return DispatchedTierPrefix + want, nil
+	return k.TierPrefix() + want, nil
 }
 
 // ModelStampLabels builds BOTH halves at once — the two labels the dispatcher applies to a
@@ -256,11 +325,16 @@ func DispatchedTierLabel(tier string) (string, error) {
 // applies a half-stamp from a bad input (the incomplete-stamp state exists for transport
 // failures, not for a writer that should have refused up front).
 func ModelStampLabels(slug, tier string) (labels []string, err error) {
-	ml, err := DispatchedModelLabel(slug)
+	return StampDispatch.Labels(slug, tier)
+}
+
+// Labels builds both halves of a stamp of this kind, validating each (see ModelStampLabels).
+func (k StampKind) Labels(slug, tier string) (labels []string, err error) {
+	ml, err := k.modelLabel(slug)
 	if err != nil {
 		return nil, err
 	}
-	tl, err := DispatchedTierLabel(tier)
+	tl, err := k.tierLabel(tier)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +352,12 @@ func ModelStampLabels(slug, tier string) (labels []string, err error) {
 // evolves). An empty half, a tier outside the set, a conflict, or an incomplete stamp all
 // resolve to Indeterminate. Both returned fields are "" for every state except
 // ModelStamped.
-func ModelStampOf(labels []string) (ModelStamp, ModelState) {
+func ModelStampOf(labels []string) (ModelStamp, ModelState) { return StampDispatch.StampOf(labels) }
+
+// StampOf is the label-content reader for this kind only (see ModelStampOf). Labels of the
+// other kind are not part of this stamp and are ignored.
+func (k StampKind) StampOf(labels []string) (ModelStamp, ModelState) {
+	modelPrefix, tierPrefix := k.ModelPrefix(), k.TierPrefix()
 	modelFound := ""
 	modelCount := 0
 	modelEmpty := false
@@ -293,9 +372,9 @@ func ModelStampOf(labels []string) (ModelStamp, ModelState) {
 	for _, l := range labels {
 		name := strings.ToLower(strings.TrimSpace(l))
 		switch {
-		case strings.HasPrefix(name, DispatchedModelPrefix):
+		case strings.HasPrefix(name, modelPrefix):
 			modelCount++
-			v := strings.TrimSpace(strings.TrimPrefix(name, DispatchedModelPrefix))
+			v := strings.TrimSpace(strings.TrimPrefix(name, modelPrefix))
 			if v == "" {
 				modelEmpty = true
 				continue
@@ -304,9 +383,9 @@ func ModelStampOf(labels []string) (ModelStamp, ModelState) {
 				modelConflict = true
 			}
 			modelFound = v
-		case strings.HasPrefix(name, DispatchedTierPrefix):
+		case strings.HasPrefix(name, tierPrefix):
 			tierCount++
-			v := strings.TrimSpace(strings.TrimPrefix(name, DispatchedTierPrefix))
+			v := strings.TrimSpace(strings.TrimPrefix(name, tierPrefix))
 			if v == "" {
 				tierEmpty = true
 				continue
@@ -396,18 +475,22 @@ type StampTimeline struct {
 func normLabel(name string) string { return strings.ToLower(strings.TrimSpace(name)) }
 
 // isStampLabelName reports whether a NORMALIZED label name is one half of a dispatch stamp.
-func isStampLabelName(name string) bool {
-	return strings.HasPrefix(name, DispatchedModelPrefix) || strings.HasPrefix(name, DispatchedTierPrefix)
+func isStampLabelName(name string) bool { return StampDispatch.isLabel(name) }
+
+func (k StampKind) isLabel(name string) bool {
+	return strings.HasPrefix(name, k.ModelPrefix()) || strings.HasPrefix(name, k.TierPrefix())
 }
 
 // presentStampLabels returns the normalized, de-duplicated dispatched-* labels currently on
 // the PR, sorted, so every caller enumerates the same set in the same order.
-func presentStampLabels(present []string) []string {
+func presentStampLabels(present []string) []string { return StampDispatch.present(present) }
+
+func (k StampKind) present(present []string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, l := range present {
 		n := normLabel(l)
-		if !isStampLabelName(n) || seen[n] {
+		if !k.isLabel(n) || seen[n] {
 			continue
 		}
 		seen[n] = true
@@ -435,10 +518,14 @@ func presentStampLabels(present []string) []string {
 // map with an empty login, because "nobody applied this" and "an actor the timeline does not
 // name applied this" have different remedies and the refusal has to say which one it found.
 func resolveStampAppliers(tl StampTimeline) (appliers map[string]string, unattributed []string) {
+	return StampDispatch.appliers(tl)
+}
+
+func (k StampKind) appliers(tl StampTimeline) (appliers map[string]string, unattributed []string) {
 	standing := map[string]string{}
 	for _, e := range tl.Events {
 		n := normLabel(e.Name)
-		if !isStampLabelName(n) {
+		if !k.isLabel(n) {
 			continue
 		}
 		if e.Removed {
@@ -448,7 +535,7 @@ func resolveStampAppliers(tl StampTimeline) (appliers map[string]string, unattri
 		standing[n] = strings.TrimSpace(e.AppliedBy)
 	}
 	appliers = map[string]string{}
-	for _, n := range presentStampLabels(tl.Present) {
+	for _, n := range k.present(tl.Present) {
 		who, ok := standing[n]
 		if !ok {
 			unattributed = append(unattributed, n)
@@ -514,14 +601,19 @@ func StandingStampApplierAt(tl StampTimeline, label string) (who, createdAt stri
 // than trusting an applier it cannot check. A PR with NO dispatched-* labels is Unknown
 // regardless of the predicate.
 func AttestedModelStampOf(tl StampTimeline, isDispatcher func(applier string) bool) (ModelStamp, ModelState) {
-	if len(presentStampLabels(tl.Present)) == 0 {
-		// No dispatched-* label ON THE PR: the applier question does not arise, and the
+	return StampDispatch.AttestedStampOf(tl, isDispatcher)
+}
+
+// AttestedStampOf is the applier-aware reader for this kind only (see AttestedModelStampOf).
+func (k StampKind) AttestedStampOf(tl StampTimeline, isDispatcher func(applier string) bool) (ModelStamp, ModelState) {
+	if len(k.present(tl.Present)) == 0 {
+		// No label of this kind ON THE PR: the applier question does not arise, and the
 		// content reader will return Unknown. Historical stamp events that were later
 		// removed are deliberately NOT consulted here — a stamp the PR no longer carries is
 		// not an attestation it is making.
-		return ModelStampOf(tl.Present)
+		return k.StampOf(tl.Present)
 	}
-	appliers, unattributed := resolveStampAppliers(tl)
+	appliers, unattributed := k.appliers(tl)
 	if len(unattributed) > 0 {
 		// A standing stamp the timeline read cannot attribute. Could-not-check, never
 		// unstamped: the NOTICE path is the one direction this floor must not fail.
@@ -534,7 +626,7 @@ func AttestedModelStampOf(tl StampTimeline, isDispatcher func(applier string) bo
 			return ModelStamp{}, ModelIndeterminate
 		}
 	}
-	return ModelStampOf(tl.Present)
+	return k.StampOf(tl.Present)
 }
 
 // ForeignStampLabels names the dispatched-* labels the PR CARRIES whose standing
@@ -608,17 +700,25 @@ func ForeignStampLabels(tl StampTimeline, isDispatcher func(applier string) bool
 // every present stamp label whose name is in `want` is removed too — the same fail-closed
 // direction the reader takes.
 func ReStampRemovals(tl StampTimeline, want []string, isDispatcher func(applier string) bool) []string {
+	return StampDispatch.ReStampRemovals(tl, want, isDispatcher)
+}
+
+// ReStampRemovals is the re-stamp removal set for this kind only (see the package-level
+// ReStampRemovals). It never names a label of the other kind: an authoring re-stamp cannot
+// remove a review session's dispatched-* pair, and a review re-stamp cannot remove the
+// authored-* pair (#2760).
+func (k StampKind) ReStampRemovals(tl StampTimeline, want []string, isDispatcher func(applier string) bool) []string {
 	wantSet := map[string]bool{}
 	for _, w := range want {
 		wantSet[normLabel(w)] = true
 	}
-	appliers, unattributed := resolveStampAppliers(tl)
+	appliers, unattributed := k.appliers(tl)
 	unattr := map[string]bool{}
 	for _, u := range unattributed {
 		unattr[u] = true
 	}
 	var out []string
-	for _, n := range presentStampLabels(tl.Present) {
+	for _, n := range k.present(tl.Present) {
 		switch {
 		case !wantSet[n]:
 			// Conflicting / stale / malformed stamp content — must go regardless of applier.

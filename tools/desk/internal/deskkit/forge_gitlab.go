@@ -42,10 +42,10 @@ import (
 //   - ReviewsAtHead: a GitLab approval carries no per-approval SHA or timestamp, so
 //     "at head" has to be established from other facts (approval-reset policy, diff-version
 //     timestamps) and is left UNSET — never guessed — where it cannot be established.
-//   - IssueReactions: the award-emoji payload carries no bot/human discriminator, and the
-//     house admission gate (repovis.go) requires one. This backend resolves it from the
-//     users API rather than defaulting to "User", which would silently let a bot's 👍
-//     satisfy a gate that on GitHub only a human can satisfy.
+//   - IssueReactions: the award-emoji payload carries no bot/human discriminator, and a
+//     caller that admits only a human's reaction needs one. This backend resolves it from
+//     the users API rather than defaulting to "User", which would silently let a bot's 👍
+//     satisfy a check that on GitHub only a human can satisfy.
 //   - PullRequest.ChangedFiles: GitLab reports a TRUNCATABLE count ("1000+"); a truncated
 //     count is reported so the caller's reconciliation can never be satisfied.
 //
@@ -150,9 +150,10 @@ func (g *GitLabForge) client() (*gitlab.Client, error) {
 		gitlab.WithoutRetries(),
 		gitlab.WithCustomLimiter(gitlabNoLimiter{}),
 	}
-	if g.Client != nil {
-		opts = append(opts, gitlab.WithHTTPClient(g.Client))
-	}
+	// The client is always constructed here (when the caller supplied none) so the counting
+	// transport sees every round-trip: perf forgeCalls means the same on both backends.
+	// countingClient copies, never mutates, the caller's client.
+	opts = append(opts, gitlab.WithHTTPClient(countingClient(g.Client)))
 	cl, err := gitlab.NewClient(g.Token, opts...)
 	if err != nil {
 		return nil, Unverifiable("cannot build GitLab API client", err)
@@ -2180,28 +2181,30 @@ func gitlabJobStatus(s string) (status, conclusion string) {
 	}
 }
 
-// IssueReactions returns the award emoji on an issue, mapped onto the reaction vocabulary
-// the house admission gate speaks — INCLUDING the human/bot discriminator that gate needs.
+// IssueReactions returns the award emoji on an issue, mapped onto the GitHub reaction
+// vocabulary — INCLUDING the human/bot discriminator a caller that admits only a human's
+// reaction needs. The public-repo write gate (repovis.go) is repository-scoped and does not
+// read reactions; this is the Forge interface's own read.
 //
 // Two mappings here are security-relevant, and both exist because the naive version silently
-// WEAKENS a control that GitHub enforces:
+// WEAKENS a check that GitHub enforces:
 //
-//  1. NAMES. The gate in repovis.go admits on `Content == "+1"`. GitLab names the same
-//     emoji `thumbsup`. Left unmapped, no GitLab 👍 would ever satisfy the gate; mapped
-//     wrongly, the wrong emoji would. gitlabAwardToReaction is the exact correspondence for
-//     the eight reactions GitHub supports; any other award passes through under its own
-//     name, so it is visible but matches no gate.
-//  2. HUMAN vs BOT. That same gate requires `User.Type == "User"` — a bot's 👍 must not
-//     authorize anything. GitLab's award payload carries only a BasicUser, which has NO bot
-//     flag, so defaulting Type to "User" would let a service account's award satisfy a gate
-//     that on GitHub only a human can. Instead each DISTINCT awarding user is resolved once
-//     through the users API, whose `bot` field is the real discriminator. If that lookup
-//     fails, Type is left EMPTY — which the gate reads as not-a-human and refuses. Never
-//     defaulted to "User".
+//  1. NAMES. A caller matching on `Content == "+1"` sees GitHub's name. GitLab names the same
+//     emoji `thumbsup`. Left unmapped, no GitLab 👍 would ever match; mapped wrongly, the
+//     wrong emoji would. gitlabAwardToReaction is the exact correspondence for the eight
+//     reactions GitHub supports; any other award passes through under its own name, so it is
+//     visible but matches nothing.
+//  2. HUMAN vs BOT. A caller that requires `User.Type == "User"` must not admit a bot's 👍.
+//     GitLab's award payload carries only a BasicUser, which has NO bot flag, so defaulting
+//     Type to "User" would let a service account's award pass a check that on GitHub only a
+//     human can. Instead each DISTINCT awarding user is resolved once through the users API,
+//     whose `bot` field is the real discriminator. If that lookup fails, Type is left EMPTY
+//     — which a human-only caller reads as not-a-human and refuses. Never defaulted to
+//     "User".
 //
 // Like the GitHub backend this walks a SINGLE page: past 100 awards on one issue it reports
-// what it read, and the gate — which requires a POSITIVE match — cannot be opened by an
-// unread award, only closed.
+// what it read, and a caller that requires a POSITIVE match cannot be opened by an unread
+// award, only closed.
 func (g *GitLabForge) IssueReactions(repo ForgeRepo, number int) ([]Reaction, error) {
 	cl, err := g.client()
 	if err != nil {
@@ -2233,8 +2236,8 @@ func (g *GitLabForge) IssueReactions(repo ForgeRepo, number int) ([]Reaction, er
 }
 
 // gitlabActorType resolves whether a user id is a human or a bot, returning "User", "Bot",
-// or "" when it could not be established. The empty answer is the fail-closed one: every
-// house gate that consults it requires the literal "User", so an unresolved actor authorizes
+// or "" when it could not be established. The empty answer is the fail-closed one: a
+// caller that requires the literal "User" refuses it, so an unresolved actor authorizes
 // nothing. A lookup failure is deliberately NOT propagated as an error — one unreadable
 // actor must not blank the whole reaction list, which would hide the awards that DID
 // resolve.
@@ -4175,9 +4178,10 @@ func (g *GitLabForge) triggerClient() (*gitlab.Client, error) {
 		gitlab.WithoutRetries(),
 		gitlab.WithCustomLimiter(gitlabNoLimiter{}),
 	}
-	if g.Client != nil {
-		opts = append(opts, gitlab.WithHTTPClient(g.Client))
-	}
+	// The client is always constructed here (when the caller supplied none) so the counting
+	// transport sees every round-trip: perf forgeCalls means the same on both backends.
+	// countingClient copies, never mutates, the caller's client.
+	opts = append(opts, gitlab.WithHTTPClient(countingClient(g.Client)))
 	cl, err := gitlab.NewAuthSourceClient(gitlab.Unauthenticated{}, opts...)
 	if err != nil {
 		return nil, Unverifiable("cannot build GitLab trigger client", err)

@@ -2,12 +2,14 @@
 brief: assay:assay:graph-execution:14
 title: Bind admission and graph eligibility at the dispatch boundary
 why: A correct policy is ineffective if one dispatcher can bypass it or use a stale assessment. Every admitted attempt needs the same readiness decision and an enforceable runtime binding.
-wave: 3
+wave: 6
 depends:
 - graph-execution/01
 - graph-execution/09
 - graph-execution/13
 - graph-execution/16
+- graph-execution/30
+- graph-execution/31
 unblocks:
 - graph-execution/18
 - graph-execution/21
@@ -31,6 +33,7 @@ sources:
 - freshness-checked 2026-09-18 @ 951ca784d100a7d201a28a34033da6709ec2ec8f
 - docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
 - freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
+- docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md — 2026-10-14 consumer amendment
 exec-tier: strong
 exec-tier-why: Cross-component contracts and independent failure controls must agree; the implementation requires design judgment.
 domain: complicated
@@ -39,7 +42,7 @@ consumers:
 - 'tools/desk/internal/loopengine: fixed-here'
 - 'operator clients: out-of-scope (consume records through their own authorized APIs)'
 - 'workflow/controller: follow-up graph-execution/21'
-version: 3
+version: 4
 id: 00bb0ac0-ea54-437e-9274-629839c91ada
 ---
 
@@ -91,6 +94,22 @@ Expose one callable admission/dispatch seam to existing desk callers and the new
 
 Implement the named failure/flow case below in the declared test surface. This amendment does not record implementation evidence or authorize live activation.
 
+## Public runtime context/provenance amendment — 2026-10-14
+
+Use /30's complete evaluation context and /31's corroborated accountable-principal/proof
+records before dispatch and at acceptance/effect admission. Keep the existing evaluator,
+lease/incarnation and role controls. Obtain current time/access/ownership from trusted
+composition; a cached eligible result or model-supplied actor cannot authorize work.
+Expired bounds, changed membership/policy, incomplete context and missing independence
+corroboration hold the affected action. Offline results are snapshot-bound advice.
+
+Add `TestAdmissionContext` and `TestAdmissionDuty` to the planned graphadmission test
+surface (the file is itself new in this brief): the former changes time/access without changing source hashes; the latter supplies
+different keys for one responsible principal and bypasses the model-facing check to exercise
+trusted provenance selection. Both must refuse the affected admission. Keep a permitted
+positive case. No stronger custody claim or one-human waiver is added. Existing human
+activation gate and historical Evidence remain unchanged.
+
 ## Task
 
 1. Add an opt-in cohort binding that consumes the existing eligibility verdict plus 13 admission and 16 ownership/budget reservation before dispatch. CLI and loop callers use the same implementation; defaults remain current behavior outside the cohort.
@@ -113,6 +132,8 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 4 | check:ci +flow | `(cd tools/desk && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestGraphAdmissionDuplicateAndRetry.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDuplicateAndRetry$" ./... > "$wi_out" && grep -q -- "--- PASS: TestGraphAdmissionDuplicateAndRetry " "$wi_out")` | exit 0; named PASS; duplicate same-state events launch once; a failed launch retries under a new attempt |
 | 5 | check:ci +mutation | `(cd tools/desk && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestGraphAdmissionMovedHeadAtAcceptance.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionMovedHeadAtAcceptance$" ./... > "$wi_out" && grep -q -- "--- PASS: TestGraphAdmissionMovedHeadAtAcceptance " "$wi_out")` | exit 0; named PASS; head movement after launch prevents stale result acceptance at the lower boundary; mutation: bypass the acceptance-boundary head comparison — the named test must fail |
 | 6 | check:ci +flow +mutation | `(cd tools/desk && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDeskProgramRace$" ./... > "$routing_out" && grep -q -- "--- PASS: TestGraphAdmissionDeskProgramRace " "$routing_out")` | exit 0; named PASS; concurrent desk/program claims permit one owner and one launch; direct stale invocation is denied; mutation: skip the claim-generation compare on the program path — the named test must fail |
+| 7 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestAdmissionContext$" ./internal/deskkit/ > "$out" && grep -F -- "--- PASS: TestAdmissionContext " "$out")` | exit 0; named PASS; expired or incomplete evaluation context holds, while a current authorized context permits the existing admission path; mutation: accept a cached eligibility flag |
+| 8 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestAdmissionDuty$" ./internal/deskkit/ > "$out" && grep -F -- "--- PASS: TestAdmissionDuty " "$out")` | exit 0; named PASS; same principal under different keys and uncorroborated caller provenance cannot satisfy independent evidence; mutation: compare only role labels |
 
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.

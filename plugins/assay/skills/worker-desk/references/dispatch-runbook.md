@@ -50,6 +50,17 @@ starves the queue.
 
 ## The tick sweep — the queries, and the three pre-resume guards
 
+Refresh and plan each absolute BOARD ROOT using the role-bound transport:
+
+```bash
+(cd "$root" && deskgit fetch --as worker) && fanoutloop plan --root "$root"
+```
+
+Select the directory before invoking `deskgit`; passing `-C` to the tool is refused.
+Keep the fetch and plan in one chain and record its exit status before processing
+output. A refused or unreadable root is could-not-check, never an empty plan.
+This refresh updates remote-tracking refs; it does not regenerate another root's board.
+
 Two shapes run every tick: the **board-wide instruments**, once for the whole scan set, and the
 **per-slug PR reads**. `SKILL.md` §Sources of work says which source each answers.
 
@@ -131,7 +142,9 @@ re-surfaces onto a board — can zero a stream's whole allowance while it still 
 with `git ls-remote origin 'refs/heads/dispatch/*'` plus the claim tool's `list`/`show` verbs, and file
 what the read shows rather than concluding the stream is drained. The claim tool is **`deskclaim-ref`**
 — installed with desk-tools, verbs `acquire` / `progress` / `release` / `steal` / `show` / `list`,
-deskkit exit codes **0** ok · **5** refused (a live holder owns it) · **6** unverifiable; a repo that
+deskkit exit codes **0** ok · **5** refused (a live holder owns it) · **6** unverifiable, and `list`
+alone exits **7** partial when some claim refs are unreadable (each named on stderr as could-not-check;
+the listing is incomplete, never idle — a bad ref is the maintainer's to remove); a repo that
 ships its own `tools/dispatch-claim.sh` gets that instead, since `deskdispatch` prefers the script when
 the resolved root carries it. Run BOTH reads: the tool acquires and lists in `refs/dispatch/*`, while
 the `ls-remote` pattern above lists the `refs/heads/dispatch/*` branch refs the fleet's Go claim readers

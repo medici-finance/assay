@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"os"
@@ -81,6 +82,10 @@ func refuseAppendedOutcomesLog(targetRepoPath string) error {
 // resolved under its minted verifier token (admitLanding), and admission never
 // resolves one of its own.
 var verifierEvidenceAdmissionFn = deskkit.CheckVerifierEvidenceWithForge
+
+// A package seam keeps offline landing fixtures out of the operator's ledger.
+// Production always uses the shared budget check, under runOutward's audit lock.
+var evidenceWriteBudget = deskkit.AllowWrite
 
 // admitVerifierEvidence runs pre-work admission for the exact path this landing
 // writes, so the attested brief is part of what admits the landing, never only
@@ -320,6 +325,8 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return aerr
 	}
 
+	evidenceRoot := receipt.EvidenceRoot(*root)
+
 	// Resolve the LOCAL read path. With --root set, a repo-relative --evidence-file is read
 	// from that checkout (#1709) rather than the process cwd; the target repo path committed
 	// to the branch stays evidenceRepoPath either way. An absolute --evidence-file names no
@@ -338,7 +345,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 					"or a --brief-path fragment outside --root; got absolute " + evidenceRepoPath)
 			}
 		} else {
-			localReadPath = filepath.Join(*root, evidenceRepoPath)
+			localReadPath = filepath.Join(evidenceRoot, evidenceRepoPath)
 		}
 	}
 
@@ -420,12 +427,35 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// file IS the target's whole content (the caller merged it locally before calling this tool).
 	var commitContent []byte
 	blockAlready := false
+	// The on-behalf-of principal is stamped into every App-run Evidence row this landing ADDS
+	// that carries none (principalstamp.go), from the roster — never from argv or the content —
+	// or the landing refuses here, before any write. On --brief-path the stamp is decided on the
+	// merged brief (so a headerless fragment reads under the brief's own table header, as the
+	// lint will read it) and then applied to the fragment, which is what is merged: the block-
+	// level idempotency check then compares the stamped block with what a stamped earlier
+	// landing left standing.
+	resolveSubject := func() (string, error) { return principalSubjectFn(repoSlug) }
 	if *briefPath != "" {
 		merged, present := mergeEvidenceContent(remoteContent, localContent)
+		stampedMerged, stamped, serr := stampEvidencePrincipal(merged, remoteContent, resolveSubject)
+		if serr != nil {
+			return serr
+		}
+		if len(stamped) > 0 {
+			merged, present = mergeEvidenceContent(remoteContent, stampFragment(localContent, stamped))
+			if !bytes.Equal(merged, stampedMerged) {
+				return deskkit.Unverifiable("on-behalf-of stamp: the stamped fragment did not merge to the stamped brief "+
+					"— refusing rather than land a row whose Runner cell this tool cannot account for", nil)
+			}
+		}
 		commitContent = merged
 		blockAlready = present
 	} else {
-		commitContent = localContent
+		stampedContent, _, serr := stampEvidencePrincipal(localContent, remoteContent, resolveSubject)
+		if serr != nil {
+			return serr
+		}
+		commitContent = stampedContent
 	}
 
 	// Row-scoped README landings. A direct-write target (never
@@ -579,7 +609,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// fallback the local-read resolution above already uses, so "the tree this check lints"
 	// and "the tree a bare --evidence-file would have been read from" are always the same
 	// tree.
-	lintRoot := *root
+	lintRoot := evidenceRoot
 	if lintRoot == "" {
 		lintRoot = "."
 	}
@@ -630,7 +660,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 
 	// Outward-write rate limit. pr=0 is the repo's unnumbered bucket; deskevidence carries a
 	// per-tool override on it (see unnumberedBucketCap in ratelimit.go).
-	if werr := deskkit.AllowWrite(toolName, repoSlug, 0); werr != nil {
+	if werr := evidenceWriteBudget(toolName, repoSlug, 0); werr != nil {
 		return werr
 	}
 
