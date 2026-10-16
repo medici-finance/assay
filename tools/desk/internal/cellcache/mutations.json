@@ -335,7 +335,7 @@
       "name": "trim stops at the target with entries past the trim age left",
       "file": "internal/cellcache/cache.go",
       "old": "if est <= target && !c.mtime.Before(ageCut) {",
-      "new": "if est <= target {"
+      "new": "if est <= target && (true || !c.mtime.Before(ageCut)) {"
     },
     {
       "name": "trim takes newest entries first",
