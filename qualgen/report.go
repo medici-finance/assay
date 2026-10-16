@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -39,42 +38,41 @@ const (
 	ciWriterToken = "ci"
 )
 
-// ciWriterAuthorized reports whether the current process is the authorized CI
-// writer. It reads a single explicit environment variable through the injected
-// getenv (tests pass a stub; production passes os.Getenv), so the guard is
-// exercised without mutating the real environment.
-func ciWriterAuthorized(getenv func(string) string) bool {
-	return getenv(ciWriterEnv) == ciWriterToken
+// ciWriterAuthorized reports whether writer — the value of ciWriterEnv, which
+// cli.go declares as report's one environment-only setting and resolves per
+// invocation — authorizes the committed-view write.
+func ciWriterAuthorized(writer string) bool {
+	return writer == ciWriterToken
 }
 
-func runReport(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("report", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	out := fs.String("out", "", "tracking root to read artifacts from (required)")
-	baselinesPath := fs.String("baselines", "", "optional JSON file of industry baselines overriding the built-in set")
-	write := fs.Bool("write", false, "write the committed QUALITY.md (CI-writer only; a local run is refused and renders to stdout)")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if *out == "" {
+// reportOptions are the `report` verb's parsed settings (cli.go declares them).
+// Writer is the resolved value of ciWriterEnv: "" whether unset or set empty.
+type reportOptions struct {
+	Out, Baselines string
+	Write          bool
+	Writer         string
+}
+
+func reportMain(o reportOptions, stdout, stderr io.Writer) int {
+	if o.Out == "" {
 		fmt.Fprintln(stderr, "qualgen report: --out <dir> is required (the tracking root to read artifacts from)")
 		return 2
 	}
 
-	baselines, err := LoadBaselines(*baselinesPath)
+	baselines, err := LoadBaselines(o.Baselines)
 	if err != nil {
 		fmt.Fprintln(stderr, "qualgen report:", err)
 		return 1
 	}
 
-	store := NewStore(*out)
+	store := NewStore(o.Out)
 	view, err := renderReport(store, baselines)
 	if err != nil {
 		fmt.Fprintln(stderr, "qualgen report:", err)
 		return 1
 	}
 
-	if !*write {
+	if !o.Write {
 		// Local read-and-discard: render to stdout, never touch the committed view.
 		fmt.Fprint(stdout, view)
 		return 0
@@ -83,7 +81,7 @@ func runReport(args []string, stdout, stderr io.Writer) int {
 	// --write is the committed-view path — guarded to CI. A local run is REFUSED
 	// (the block is a stop, not a fallback to a different write): the committed
 	// QUALITY.md is left byte-for-byte untouched.
-	if !ciWriterAuthorized(os.Getenv) {
+	if !ciWriterAuthorized(o.Writer) {
 		fmt.Fprintf(stderr, "qualgen report: REFUSED — --write is the single-writer committed-view path, reachable only by CI (%s=%s). A local run renders to stdout and discards; the committed QUALITY.md is unchanged.\n", ciWriterEnv, ciWriterToken)
 		return 2
 	}
@@ -117,7 +115,7 @@ func latestOf[T any](recs []T, key func(T) string, when func(T) time.Time) map[s
 }
 
 // renderReport builds the QUALITY.md view string from the artifacts under store.
-// It is separated from runReport so tests render without touching stdout or the
+// It is separated from reportMain so tests render without touching stdout or the
 // filesystem write path.
 func renderReport(store *Store, baselines BaselineSet) (string, error) {
 	metrics, err := store.ReadMetrics()

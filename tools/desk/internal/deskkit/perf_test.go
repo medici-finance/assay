@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/perfrec"
 )
 
 // perfTestNow is the fixed clock every perf test runs on.
@@ -40,11 +42,7 @@ func perfFixture(t *testing.T) string {
 	return dir
 }
 
-func resetPerfPrune() {
-	perfPruneMu.Lock()
-	perfPrunedDir = ""
-	perfPruneMu.Unlock()
-}
+func resetPerfPrune() { perfWriter.Reset() }
 
 func perfDayName(daysAgo int) string {
 	return perfTestNow.AddDate(0, 0, -daysAgo).Format("2006-01-02") + ".jsonl"
@@ -95,7 +93,7 @@ func TestPerfRecordGoldenShape(t *testing.T) {
 	got := recs[0]
 	want := []string{"childProcs", "childWallMs", "exit", "forgeCalls", "install", "result", "role",
 		"schema", "sourceSHA", "tool", "ts", "verb", "wallMs"}
-	if _, measurable := processCPUMillis(); measurable {
+	if _, measurable := perfrec.CPUMillis(); measurable {
 		want = append(want, "cpuMs")
 	}
 	sort.Strings(want)
@@ -383,7 +381,7 @@ func TestPerfNeverTouchesTheAuditLedger(t *testing.T) {
 	// No perf code path can open the ledger: no string literal naming it, no ledger function.
 	ledgerFuncs := map[string]bool{"auditPath": true, "segmentPaths": true, "Log": true, "LoadEntries": true,
 		"loadEntriesFrom": true, "LastEntry": true, "FirstTS": true, "rotateIfNeeded": true}
-	for _, src := range []string{"perf.go", "perfread.go", "perfcpu_unix.go", "perfcpu_windows.go"} {
+	for _, src := range []string{"perf.go", "perfread.go"} {
 		f, err := parser.ParseFile(token.NewFileSet(), src, nil, 0)
 		if err != nil {
 			t.Fatalf("parse %s: %v", src, err)
@@ -434,5 +432,34 @@ func BenchmarkPerfAppend(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		perfAppend(rec)
+	}
+}
+
+// launchStepNames is the launch-step roster as the cellctl launch spells it.
+var launchStepNames = []string{
+	"launch-role-lease", "launch-storage-admission", "launch-plugin-enable",
+	"launch-fetch-main", "launch-worktree",
+}
+
+// TestPerfLaunchStepsRecordNamed: each launch step is recorded as "step:<name>" under the
+// cellctl tool, not collapsed to "step:other"; an unknown name still collapses.
+// regression: #3099
+func TestPerfLaunchStepsRecordNamed(t *testing.T) {
+	state := perfFixture(t)
+	for _, s := range launchStepNames {
+		PerfStep("cellctl", s, 5*time.Millisecond, 0)
+	}
+	PerfStep("cellctl", "zz-unknown-step", time.Millisecond, 0)
+	recs, _ := perfLines(t, state)
+	if len(recs) != len(launchStepNames)+1 {
+		t.Fatalf("want %d records, got %d", len(launchStepNames)+1, len(recs))
+	}
+	for i, s := range launchStepNames {
+		if recs[i]["verb"] != "step:"+s || recs[i]["tool"] != "cellctl" {
+			t.Errorf("record %d = %v, want cellctl step:%s", i, recs[i], s)
+		}
+	}
+	if recs[len(launchStepNames)]["verb"] != "step:other" {
+		t.Errorf("unknown step = %v, want step:other", recs[len(launchStepNames)]["verb"])
 	}
 }

@@ -282,8 +282,40 @@ behavior is unchanged. Cross-compilation is not native Windows runtime proof.
 Focused fixtures use small synthetic files, race consumers and cleanup including
 path replacement, check uncertain custody and typed dispatch recovery, and build
 an import-free Go package twice with different HOME values. Toolchain downloads
-and proxy access are disabled. Reproducible mutants live in
-`tools/desk/internal/cellcache/mutations.json`.
+and proxy access are disabled.
+
+### Mutation gate
+
+Reproducible mutants live in `tools/desk/internal/cellcache/mutations.json`, and
+`python3 internal/cellcache/mutate.py` (run from `tools/desk`, about ten minutes;
+`--shard i/n` runs a slice) plants each one and requires a behaviour test
+(`--- FAIL:`) to catch it. It plants them in a temporary copy of the module, so
+the checkout is never written and a killed run leaves it clean. Every mutant ends
+in one of three states: `CAUGHT`, `MISSED`, or `COULD-NOT-MUTATE` (the mutant
+does not compile, its `file` is absolute, escapes the module or is not a file
+there, its `old` text is empty, equals `new` or no longer matches, or the suite
+timed out; `CELLCACHE_MUTATE_SUITE_TIMEOUT` sets the per-suite limit in seconds,
+default 300, at most 3600; any other value, including `nan`, `inf`, zero, a
+negative or non-numeric one, is reported as a broken harness, exit 2, before any
+suite starts). A timeout, or any error while reading a suite's output, kills the
+suite's whole process group. The gate exits 1 on any `MISSED` or `COULD-NOT-MUTATE`. The spec's
+`control` mutation must be caught or the harness is reported broken (exit 2) with
+no per-mutant verdict. SIGTERM and SIGINT stop the running suite and remove the
+copy. The map uses its own runner rather than `muhar` because of one case:
+`muhar`'s per-mutation run scores a mutant whose build fails as caught (its
+schemata mode compiles mutants first and sets non-compiling ones aside, but
+those still rebuild per mutation and count as caught), which is tracked in #2639.
+Counting a build failure as a catch would hide exactly the stale mutations this
+gate must surface.
+
+CI runs the gate through the staged workflow
+`ci/staged-workflows/cellcache-mutate.yml`; until a maintainer promotes it to
+`.github/workflows/` the gate runs only when someone runs it. The
+`TestMutateGate*` tests run on every PR and prove each state and guard above
+against a throwaway module. The guards are each checked by planting their
+removal and seeing a named test fail, including the group kill on timeout (a
+test where the suite's child outlives its shell and holds no pipe), the group
+kill when reading output fails, and each bad-timeout value.
 
 ## Dispatch destination volumes
 

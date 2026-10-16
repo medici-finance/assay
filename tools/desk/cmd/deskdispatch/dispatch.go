@@ -395,30 +395,11 @@ func dispatch(o dispatchOpts) error {
 		}
 	}
 
-	// ADMISSION (example-stream/18) — the per-class reservation gate, serialized across
-	// dispatchers, BEFORE the durable item claim. It is inert unless ASSAY_REPAIR_ADMISSION=on
-	// (returns a nil release and no error), so the shipped default flow is unchanged. When on, an
-	// ADMIT hands back a lease-release that stays held THROUGH stepClaim so the count->decide->claim
-	// window is atomic across hosts; a HOLD or a could-not-check refuses HERE, before any durable
-	// item state exists — a refused fresh dispatch never wedges the item because no claim was taken.
-	admitRelease, admitErr := enforceAdmission(o, plan, repo, auth)
-	if admitErr != nil {
-		return admitErr
-	}
-
-	if err := stepClaim(o, repo, plan.claimTool, plan.claimToolIsScript, auth, plan.claimKey); err != nil {
-		// The admission lease was taken and no item claim was placed — release it so a corrected
-		// re-run is not serialized behind a dispatcher that never claimed. The recovery order
-		// (reserve -> claim -> release) holds: with no item claim there is no occupancy to leak.
-		if admitRelease != nil {
-			admitRelease()
-		}
+	// ADMISSION (example-stream/18) then the durable item claim, as one sequence: see admitAndClaim.
+	if err := admitAndClaim(o, plan, repo, auth, func() error {
+		return stepClaim(o, repo, plan.claimTool, plan.claimToolIsScript, auth, plan.claimKey)
+	}); err != nil {
 		return err
-	}
-	// The item claim is now the durable occupancy; the count->decide->claim window is closed, so
-	// release the serialization lease (a crash before here would have expired it by TTL anyway).
-	if admitRelease != nil {
-		admitRelease()
 	}
 	o.say("%s OK: %s claimed in %s (claim key %s) via %s, store %s, authenticated by %s",
 		stepClaimAcquire, o.item, repo, plan.claimKey, plan.claimTool, plan.claimStore.Label(), auth.source)

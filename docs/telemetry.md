@@ -119,7 +119,7 @@ Every record carries exactly these fields and no field capable of holding free t
 | `schema` | string | Record schema version, `perf-v1`. Adding any field bumps it. |
 | `ts` | string | UTC timestamp, second resolution. |
 | `tool` | string | The desk tool's canonical key from a compiled-in roster; anything else is `other`. |
-| `verb` | string | The tool's own registered subcommand, or `other`; a boot step is `step:<name>` from `deskboot`'s compiled step list (else `step:other`). Never argv text. |
+| `verb` | string | The tool's own registered subcommand, or `other`; a boot step is `step:<name>` from `deskboot`'s compiled step list, and a `cellctl desk` launch phase is `step:launch-<phase>` from `cellctl`'s compiled launch-step list (else `step:other`). Never argv text. |
 | `role` | string | `$DESK_LOOP` mapped onto the compiled loop-name roster; unset or unknown is `none`. |
 | `wallMs` | int | Wall-clock duration of the invocation (or boot step). |
 | `cpuMs` | int, optional | Process user+system CPU; **omitted** where it cannot be measured (Windows, boot steps), so "unmeasured" never reads as zero. |
@@ -142,6 +142,23 @@ Never recorded: argv, flag values, repo, PR or issue numbers, branch, path, titl
 error text, session tag, environment values, hostname, user name, or tokens. A test plants a
 repo slug, a PR number, a branch, an absolute path, a session tag and a token-shaped
 environment value, and asserts none of them appears in the written bytes.
+
+### statusgen writes the same local record
+
+`statusgen` appends to the same history. With `ASSAY_TELEMETRY=1` exported, each `statusgen`
+process writes one `perf-v1` record on exit into the same `~/.config/assay/perf/` day files,
+with `tool` set to `statusgen`, `verb` the mode that ran (a positional sub-command such as
+`verifyrun`, else the first mode flag such as `--lint`, else `regen` for a plain run; a token
+outside that compiled-in roster is `other`), `exit` the process exit code and `result` its
+fixed word. `role` is `none`, `sourceSHA` is the build stamp when it is hex (a release tag or
+`dev` is `unpinned`), and the child and forge counters stay `0` ("not counted"), so
+`deskperf report --tool statusgen` reads it like any other tool. With the variable unset, or
+anything other than exactly `1`, `statusgen` creates nothing and behaves as it did before.
+
+This is the same local file, not the network payload above: the payload still needs
+`--telemetry` as well, and nothing in this section sends anything. The record is written by
+one shared module (`perfrec/`) that the desk tools and `statusgen` both call, so the schema,
+layout, retention and install id exist once.
 
 The perf history is not the desk audit ledger and never reads or writes it. It also holds no
 agent usage: per-invocation tokens and cost belong to the agent runner's own usage record.

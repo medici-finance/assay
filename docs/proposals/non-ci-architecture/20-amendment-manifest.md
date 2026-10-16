@@ -175,3 +175,26 @@ R3/R4 custody and R5/R7/R8 integration/migration remain their existing proof obl
 | Later issue/draft-repair proposal loop | performance-collection/09; continuing-operations assessment and existing desk consumers | Managed activation depends on R2/R3/R4 and the brief's typed graph prerequisites; no new scheduler or autonomous merge |
 
 This is a requested specification/brief amendment, not implementation or activation evidence. It supersedes the "reused unchanged" record above for performance-collection/01, 02 and 06 only: the 15 October operating-report amendment extends those briefs and adds 07–09, with their collection/storage boundaries and runtime authority unchanged.
+
+## Operation-count brakes and pacing — 15 October 2026
+
+Controlling delta: [brake and pacing contract](11-target-architecture.md#pacing-counts-are-best-effort-brakes-fail-closed).
+Counts that bound a runaway or blast radius are brakes and stay fail-closed: write
+ceilings, daily and new-issue caps, the circuit breaker, the child-launch budget, ingress
+and retry budgets. Only pacing counts become best effort, with a shared estimate (always
+re-derived from durable admission records for effect-class counts) and a
+declared drift bound for effect-class counts (cap + C, or
+2 × (cap + C) after one recorded reset per window and operator incarnation); read-class
+pacing counts carry no numeric bound and are unbounded on counter loss.
+Unknown usage still cannot become a fresh allowance. Docs 14, 15, 19 and 23 carry the
+split; doc 15 adds an operation-count qualification section. No brake is relaxed;
+relaxing one is a separate human decision.
+
+| Consumer | Applied amendment | Qualification |
+|---|---|---|
+| R2 store/ownership: graph-execution/16 and /19, versions 7 | Cumulative attempt budgets and brake counts keep fail-closed reservations; pacing counts need no exact budget slot and keep one shared estimate, re-derived from window intents and receipts for effect-class counts, never from a cached row | New Verify rows: brake holds on an unavailable count; restart or per-process fallback cannot multiply a pacing cap |
+| R3 supervisor: graph-execution/26, version 6 | The child-launch budget is classified as a fail-closed brake; only desk/tool pacing is best effort, and launch pacing is effect-class, re-derived from recorded launches | Missing configuration and an unavailable child-launch count both refuse; new Verify row with a mutation that treats the count as under budget |
+
+Existing Task/Verify rows and historical Evidence remain intact; each brief adds rows and
+bumps `version:`. No installed limiter, default, credential, executor activation or hard
+resource limit changes in this documentation PR.
