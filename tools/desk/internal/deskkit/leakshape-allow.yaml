@@ -1,0 +1,652 @@
+# leakshape-allow.yaml — reviewed exceptions for the registry-independent SHAPE stage of the
+# disclosure sweep (leakshape.go; issue #3159).
+#
+# Each entry permits the exact VALUES it lists, of ONE shape, in ONE file:
+#
+#   path    exact repo-relative file (no directories, no globs)
+#   shape   home-path | noreply-id-email | ssh-host-alias | tilde-root
+#   values  the exact matched strings this file may carry (required, non-empty)
+#   reason  why the value is a documented example, not a disclosure (required)
+#
+# A value an entry does not list still fails — in that file or in any other — so a real
+# identity cannot ride in beside an example. An entry whose path or value no longer matches
+# is STALE and fails TestS2ShapeRepoGate: delete it in the same change that removes the
+# example. Adding an entry is a review decision; prefer a reserved example name (an
+# .example / .invalid / .test host, a synthetic id) over a new exception.
+#
+# Shared reasons are YAML anchors (&name) reused by alias (*name).
+allow:
+  - path: .github/workflows/assay-qualgen.yml
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+    reason: &ci-mail "this repo's own CI committer identity (its public board-writer App bot, or the forge's published actions bot), pinned in workflow config so CI commits are attributed; not a personal identity"
+  - path: .github/workflows/assay-statusgen.yml
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: .github/workflows/release.yml
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+      - '41898282+github-actions[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: .github/workflows/verify-gate-close.yml
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: CHANGELOG.md
+    shape: ssh-host-alias
+    values:
+      - 'git@alias'
+      - 'git@host'
+      - 'ssh://git@host'
+    reason: &doc-ssh "placeholder remote spelling in documentation of the remote-URL forms the code parses (scp-like and ssh:// forms, host aliases)"
+  - path: Dockerfile
+    shape: home-path
+    values:
+      - '/home/desk'
+    reason: &ctr-home "the container user's home inside the image, not a host account"
+  - path: ci/staged-workflows/assay-qualgen.yml
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: ci/staged-workflows/assay-statusgen.yml
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: ci/staged-workflows/release.yml
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+      - '41898282+github-actions[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: ci/staged-workflows/verify-gate-close.yml
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: containers/base/Dockerfile
+    shape: home-path
+    values:
+      - '/home/desk'
+    reason: *ctr-home
+  - path: docs/runsheets/reconcile-lane-hunk.diff
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: docs/streams/derived-board/brief-08-witness-ledger.md
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: docs/streams/derived-board/brief-09-incremental-reconcile.md
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: docs/streams/desktools-v2/brief-10-one-outbound-write-check.md
+    shape: noreply-id-email
+    values:
+      - '1234567+example-bot[bot]@users.noreply.github.com'
+    reason: &doc-mail "placeholder noreply address in a design brief; the id and login are examples"
+  - path: docs/streams/windows-port/brief-06-manifest-driven-bootstrap.md
+    shape: home-path
+    values:
+      - 'C:\Users\runneradmin'
+    reason: &win-home "the hosted Windows runner's default account directory, cited as the environment the brief targets"
+  - path: images/assay-harness/Dockerfile
+    shape: home-path
+    values:
+      - '/home/harness'
+    reason: *ctr-home
+  - path: loopadmin/runner/conformance/contract.go
+    shape: ssh-host-alias
+    values:
+      - 'ssh://git@git.example'
+    reason: &fx-ssh "placeholder SSH remote in a test fixture that exercises remote-URL parsing; the host is a reserved example name, a loopback or IPv6 literal, or a deliberate alias"
+  - path: loopadmin/runner/request_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@git.example'
+      - 'ssh://git@git.example'
+    reason: *fx-ssh
+  - path: plugins/assay/commands/inbox.md
+    shape: tilde-root
+    values:
+      - '~/flow.html'
+      - '~/inbox.html'
+    reason: &doc-tilde "documented example path under the reader's own home in usage text; names no account"
+  - path: qualgen/ownership_test.go
+    shape: noreply-id-email
+    values:
+      - '123456+example-worker-app[bot]@users.noreply.github.com'
+    reason: &fx-mail "synthetic numeric-id noreply address in a test fixture that exercises commit-identity handling; the ids are placeholders"
+  - path: statusgen/actingidentity_test.go
+    shape: noreply-id-email
+    values:
+      - '999+assay-verifier-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: statusgen/claimdecay_gitlab.go
+    shape: ssh-host-alias
+    values:
+      - 'git@host'
+      - 'ssh://git@host'
+    reason: *doc-ssh
+  - path: statusgen/claimdecay_gitlab_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@gitlab.example.com'
+      - 'ssh://git@gitlab.example.com'
+    reason: *fx-ssh
+  - path: statusgen/contexthandoff/boundary_test.go
+    shape: tilde-root
+    values:
+      - '~/demo'
+    reason: &fx-tilde "placeholder home-relative path in a test fixture that exercises path expansion or refusal"
+  - path: statusgen/evaluation/rowinputs_test.go
+    shape: tilde-root
+    values:
+      - '~/x'
+    reason: *fx-tilde
+  - path: statusgen/evidenceactor_gitlab1477_test.go
+    shape: noreply-id-email
+    values:
+      - '300000005+assay-verifier-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: statusgen/evidenceactor_test.go
+    shape: noreply-id-email
+    values:
+      - '0+ada@users.noreply.github.com'
+      - '100001+ada@users.noreply.github.com'
+      - '300000005+assay-verifier-app[bot]@users.noreply.github.com'
+      - '300000006+assay-worker-app[bot]@users.noreply.github.com'
+      - '999+assay-verifier-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: statusgen/forge.go
+    shape: ssh-host-alias
+    values:
+      - 'git@host'
+      - 'ssh://git@host'
+    reason: *doc-ssh
+  - path: statusgen/forge_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@bitbucket.org'
+      - 'git@gitlab.example.com'
+      - 'ssh://git@gitlab.example.com'
+    reason: *fx-ssh
+  - path: statusgen/forgeneutral07_test.go
+    shape: noreply-id-email
+    values:
+      - '300000006+assay-worker-app[bot]@users.noreply.github.com'
+      - '999+assay-verifier-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: statusgen/forgeneutral07_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@example.invalid'
+    reason: *fx-ssh
+  - path: statusgen/reconcilefold_test.go
+    shape: noreply-id-email
+    values:
+      - '300000005+assay-verifier-app[bot]@users.noreply.github.com'
+      - '300000006+assay-worker-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: statusgen/rosteracl_test.go
+    shape: home-path
+    values:
+      - 'C:\Users\ada'
+    reason: &fx-home "placeholder home directory in a test fixture that exercises path handling; no real account"
+  - path: statusgen/testdata/contexthandoff/manifest/invalid/bad-value--delivery-home.json
+    shape: tilde-root
+    values:
+      - '~/demo.md'
+    reason: *fx-tilde
+  - path: statusgen/verifyflip_test.go
+    shape: noreply-id-email
+    values:
+      - '100001+ada@users.noreply.github.com'
+      - '300000005+assay-verifier-app[bot]@users.noreply.github.com'
+      - '300000006+assay-worker-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: statusgen/verifyincontainer_test.go
+    shape: home-path
+    values:
+      - '/home/me'
+    reason: *fx-home
+  - path: statusgen/verifyrun_test.go
+    shape: noreply-id-email
+    values:
+      - '1234+assay-issue-loop-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: tools/changelog/release-roll-retry.yml.patch
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: tools/changelog/release.yml.patch
+    shape: noreply-id-email
+    values:
+      - '41898282+github-actions[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: tools/changelog/release.yml.proposed
+    shape: noreply-id-email
+    values:
+      - '41898282+github-actions[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: tools/ci-load/activation/assay-qualgen.yml
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: tools/ci-load/activation/assay-statusgen.yml
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: tools/desk/README.md
+    shape: ssh-host-alias
+    values:
+      - 'git@github-example'
+      - 'git@host'
+      - 'ssh://git@host'
+    reason: *doc-ssh
+  - path: tools/desk/cmd/cellctl/cellenvpath_test.go
+    shape: home-path
+    values:
+      - 'C:\Users\op'
+    reason: *fx-home
+  - path: tools/desk/cmd/cellctl/cellenvpath_test.go
+    shape: tilde-root
+    values:
+      - '~/cells'
+    reason: *fx-tilde
+  - path: tools/desk/cmd/cellctl/cobra.go
+    shape: tilde-root
+    values:
+      - '~/src'
+    reason: *doc-tilde
+  - path: tools/desk/cmd/deskadvisory/advisory_test.go
+    shape: home-path
+    values:
+      - '/home/x'
+    reason: *fx-home
+  - path: tools/desk/cmd/deskboot/deskboot_test.go
+    shape: home-path
+    values:
+      - '/home/someone'
+    reason: *fx-home
+  - path: tools/desk/cmd/deskclaim-ref/deskclaimref_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@gitlab.example.com'
+      - 'git@work-github'
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskclaim-ref/gogit.go
+    shape: ssh-host-alias
+    values:
+      - 'git@alias'
+      - 'git@work-github'
+    reason: *doc-ssh
+  - path: tools/desk/cmd/deskdispatch/originparsehint_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@example-host'
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskdispatch/stampworktreeidentity_test.go
+    shape: noreply-id-email
+    values:
+      - '300000001+assay-desk-app[bot]@users.noreply.github.com'
+      - '300000005+assay-verifier-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskevidence/publishidentity_test.go
+    shape: noreply-id-email
+    values:
+      - '300000003+assay-issue-loop-app[bot]@users.noreply.github.com'
+      - '300000005+assay-verifier-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskevidence/verifiercrossrepo_test.go
+    shape: noreply-id-email
+    values:
+      - '300000005+assay-verifier-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskfile/blockerevidence_test.go
+    shape: home-path
+    values:
+      - '/home/someone'
+    reason: *fx-home
+  - path: tools/desk/cmd/deskgit/asrole_forge_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@github.example.com'
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskgit/deskgit.go
+    shape: ssh-host-alias
+    values:
+      - 'git@github-example'
+    reason: *doc-ssh
+  - path: tools/desk/cmd/deskgit/deskgit_test.go
+    shape: home-path
+    values:
+      - '/home/x'
+    reason: *fx-home
+  - path: tools/desk/cmd/deskgit/deskgit_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@evil.example.com'
+      - 'git@github-example'
+      - 'ssh://evil.example.com'
+      - 'ssh://git@[fd00::1]'
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskpr/deskpr_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@github-alias'
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskpr/main.go
+    shape: ssh-host-alias
+    values:
+      - 'git@host'
+    reason: *doc-ssh
+  - path: tools/desk/cmd/deskpr/publishidentity_test.go
+    shape: noreply-id-email
+    values:
+      - '300000003+assay-issue-loop-app[bot]@users.noreply.github.com'
+      - '300000006+assay-worker-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskpr/publishrange_test.go
+    shape: noreply-id-email
+    values:
+      - '300000005+assay-verifier-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskpr/push_test.go
+    shape: ssh-host-alias
+    values:
+      - 'ssh://git@example.invalid'
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskpr/pushdest_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@127.0.0.1'
+      - 'ssh://git@127.0.0.1'
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskpr/pushtransport_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@example.invalid'
+      - 'ssh://git@example.invalid'
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskreconcile/reconcile.go
+    shape: ssh-host-alias
+    values:
+      - 'git@host'
+      - 'ssh://git@host'
+    reason: *doc-ssh
+  - path: tools/desk/cmd/deskreply/deskreply_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@github-alias'
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskroster/preflight_test.go
+    shape: noreply-id-email
+    values:
+      - '300000005+assay-verifier-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskwt/deskwt_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@github-alias'
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskwt/main.go
+    shape: ssh-host-alias
+    values:
+      - 'git@host'
+    reason: *doc-ssh
+  - path: tools/desk/cmd/deskwt/pushtransport_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@example.invalid'
+      - 'ssh://git@example.invalid'
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskwt/rolefetch_isolation_test.go
+    shape: tilde-root
+    values:
+      - '~/review-ca.pem'
+    reason: *fx-tilde
+  - path: tools/desk/cmd/deskwt/rolefetch_test.go
+    shape: tilde-root
+    values:
+      - '~/TLS'
+      - '~/earlier.pem'
+      - '~/proxy-cert'
+    reason: *fx-tilde
+  - path: tools/desk/cmd/deskwt/roleinit_test.go
+    shape: noreply-id-email
+    values:
+      - '300000001+assay-desk-app[bot]@users.noreply.github.com'
+      - '300000002+assay-intake-loop-app[bot]@users.noreply.github.com'
+      - '300000003+assay-issue-loop-app[bot]@users.noreply.github.com'
+      - '300000004+assay-reviewer-app[bot]@users.noreply.github.com'
+      - '300000005+assay-verifier-app[bot]@users.noreply.github.com'
+      - '300000006+assay-worker-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskwt/roletransport_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@corp-alias'
+    reason: *fx-ssh
+  - path: tools/desk/cmd/fanoutloop/fanoutloop_test.go
+    shape: home-path
+    values:
+      - '/Users/x'
+    reason: *fx-home
+  - path: tools/desk/cmd/scanloop/plan.go
+    shape: ssh-host-alias
+    values:
+      - 'git@host'
+    reason: *doc-ssh
+  - path: tools/desk/cmd/verifyloop/verifyloop_test.go
+    shape: home-path
+    values:
+      - '/Users/x'
+    reason: *fx-home
+  - path: tools/desk/cmd/writeguard/guard_test.go
+    shape: home-path
+    values:
+      - '/Users/test'
+      - '/Users/x'
+    reason: *fx-home
+  - path: tools/desk/internal/clicontract/fixtures.go
+    shape: home-path
+    values:
+      - 'C:\Users\op'
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/basepins_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@host'
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/bodycheck.go
+    shape: home-path
+    values:
+      - '/Users/operator'
+    reason: &doc-home "placeholder operator path in documentation of a path guard"
+  - path: tools/desk/internal/deskkit/bodycheck_test.go
+    shape: home-path
+    values:
+      - '/Users/a'
+      - '/Users/operator'
+      - '/home/user'
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/custodyacl_test.go
+    shape: home-path
+    values:
+      - 'C:\Users\ada'
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/forge_github_golden_test.go
+    shape: noreply-id-email
+    values:
+      - '1+assay-verifier-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: tools/desk/internal/deskkit/forgegit_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@forge.example.invalid'
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/forgeresolve_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@example.selfhosted.test'
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/platform_outbound_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@gitlab.example'
+      - 'ssh://git@gitlab.example'
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/preflight_test.go
+    shape: home-path
+    values:
+      - '/home/desk'
+      - 'C:\Users\desk'
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/preflight_test.go
+    shape: noreply-id-email
+    values:
+      - '300000004+assay-reviewer-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: tools/desk/internal/deskkit/preflight_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@github-alias'
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/preflightalarm_test.go
+    shape: home-path
+    values:
+      - '/home/someone'
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/publishidentity_test.go
+    shape: noreply-id-email
+    values:
+      - '300000003+assay-issue-loop-app[bot]@users.noreply.github.com'
+      - '300000005+assay-verifier-app[bot]@users.noreply.github.com'
+      - '300000006+assay-worker-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: tools/desk/internal/deskkit/pushtransport-mutations.json
+    shape: ssh-host-alias
+    values:
+      - 'git@host'
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/pushtransport.go
+    shape: ssh-host-alias
+    values:
+      - 'git@host'
+      - 'ssh://git@host'
+    reason: *doc-ssh
+  - path: tools/desk/internal/deskkit/pushtransport_rewrite_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@example.com'
+      - 'git@push.example'
+      - 'git@ssh.example'
+      - 'git@ssh.example.com'
+      - 'ssh://git@a-short.example'
+      - 'ssh://git@alias.example'
+      - 'ssh://git@example.com'
+      - 'ssh://git@ssh.example.com'
+      - 'ssh://git@z-long.example'
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/pushtransport_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@example.com'
+      - 'git@host'
+      - 'ssh://example.com'
+      - 'ssh://git@[fd00::1]'
+      - 'ssh://git@example.com'
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/remoterepo.go
+    shape: ssh-host-alias
+    values:
+      - 'git@host'
+      - 'ssh://git@host'
+      - 'ssh://host'
+    reason: *doc-ssh
+  - path: tools/desk/internal/deskkit/remoterepo_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@github-alias'
+      - 'ssh://git@github-alias'
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/rolecredential_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@gitlab.example.com'
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/roleworktreeidentity_test.go
+    shape: noreply-id-email
+    values:
+      - '300000004+assay-reviewer-app[bot]@users.noreply.github.com'
+      - '300000005+assay-verifier-app[bot]@users.noreply.github.com'
+      - '300000006+assay-worker-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: tools/desk/internal/deskkit/rosteracl_test.go
+    shape: home-path
+    values:
+      - 'C:\Users\ada'
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/selfcontain_test.go
+    shape: home-path
+    values:
+      - '/Users/op'
+      - '/Users/operator'
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/structured_test.go
+    shape: home-path
+    values:
+      - '/Users/operator'
+      - '/home/user'
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/testdata/corpus/neg-file-line-findings.txt
+    shape: home-path
+    values:
+      - '/Users/operator'
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/testdata/corpus/pos-opaque-token-material.txt
+    shape: home-path
+    values:
+      - '/Users/operator'
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/tokenidentity_test.go
+    shape: ssh-host-alias
+    values:
+      - 'git@github.example.test'
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/workpad_test.go
+    shape: home-path
+    values:
+      - '/Users/operator'
+      - 'C:\\Users\\operator'
+    reason: *fx-home
+  - path: tools/desk/internal/fleetharness/fleetharness_test.go
+    shape: noreply-id-email
+    values:
+      - '300000006+assay-worker-app[bot]@users.noreply.github.com'
+    reason: *fx-mail
+  - path: tools/release/release.yml.patch
+    shape: noreply-id-email
+    values:
+      - '41898282+github-actions[bot]@users.noreply.github.com'
+    reason: *ci-mail
+  - path: tools/release/release.yml.proposed
+    shape: noreply-id-email
+    values:
+      - '319272446+assay-board-writer[bot]@users.noreply.github.com'
+      - '41898282+github-actions[bot]@users.noreply.github.com'
+    reason: *ci-mail

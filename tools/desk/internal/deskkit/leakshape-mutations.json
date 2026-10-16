@@ -1,0 +1,101 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -timeout 300s -run 'TestS2Shape'",
+  "control": {
+    "name": "CONTROL \u2014 a tree with unallowed hits reports clean (the whole stage is off)",
+    "file": "internal/deskkit/leakshape.go",
+    "old": "\tif len(rep.Hits) > 0 {\n\t\trep.State = StageFailed",
+    "new": "\tif len(rep.Hits) < 0 {\n\t\trep.State = StageFailed"
+  },
+  "mutations": [
+    {
+      "name": "drop the home-path rule (the shape stage goes blind to that shape; with the token registry blind too, nothing reddens the planted tree)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\t{\n\t\tshape: ShapeHomePath,\n\t\t// An absolute home directory: the macOS or Linux users-directory prefix, or a Windows\n\t\t// drive's (one or two backslashes, so a Go/JSON-escaped spelling matches too), then an\n\t\t// account name that does not end in a dot. The left boundary keeps a URL path segment\n\t\t// (\".../site/home/page\") from matching, while still matching a file:// URL.\n\t\tre:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])((?:/(?:Users|home)/|[A-Za-z]:\\\\{1,2}Users\\\\{1,2})[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)`),\n\t\tgroup:     1,\n\t\tprefilter: []string{\"/users/\", \"/home/\", \"users\\\\\"},\n\t\tcanary:    \"cd \" + \"/Us\" + \"ers/\" + \"example-user\" + \"/src\",\n\t},\n",
+      "new": ""
+    },
+    {
+      "name": "drop the noreply-id-email rule (the shape stage goes blind to that shape; with the token registry blind too, nothing reddens the planted tree)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\t{\n\t\tshape: ShapeNoreplyMail,\n\t\t// Digits, a plus sign, a login (an optional bot suffix), then the forge noreply\n\t\t// domain, case-insensitively on the domain.\n\t\tre:        regexp.MustCompile(`([0-9]+\\+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\[bot\\])?@(?i:users\\.noreply\\.github\\.com))`),\n\t\tgroup:     1,\n\t\tprefilter: []string{\"noreply\"},\n\t\tcanary:    \"author \" + \"1234567\" + \"+\" + \"example-login\" + \"@\" + \"users.noreply\" + \".github.com\",\n\t},\n",
+      "new": ""
+    },
+    {
+      "name": "drop the ssh-host-alias (scp form) rule (the shape stage goes blind to that shape; with the token registry blind too, nothing reddens the planted tree)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\t{\n\t\tshape: ShapeSSHAlias,\n\t\t// scp form: the git user, an at sign, a host, a colon, then the path.\n\t\tre:        regexp.MustCompile(`(?:^|[^A-Za-z0-9._-])(git@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)):`),\n\t\tgroup:     1,\n\t\thostGroup: 2,\n\t\tprefilter: []string{\"git@\"},\n\t\tcanary:    \"origin \" + \"git\" + \"@\" + \"example-alias\" + \":\" + \"owner/repo.git\",\n\t},\n",
+      "new": ""
+    },
+    {
+      "name": "drop the ssh-host-alias (ssh:// URL form) rule (the shape stage goes blind to that shape; with the token registry blind too, nothing reddens the planted tree)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\t{\n\t\tshape: ShapeSSHAlias,\n\t\t// URL form: the ssh scheme, an optional user, a host (a name or a bracketed IPv6\n\t\t// literal), an optional port, then the path.\n\t\tre:        regexp.MustCompile(`(ssh://(?:[A-Za-z0-9._-]+@)?([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:.]+\\]))`),\n\t\tgroup:     1,\n\t\thostGroup: 2,\n\t\tprefilter: []string{\"ssh://\"},\n\t\tcanary:    \"origin \" + \"ssh\" + \"://\" + \"git@\" + \"example-alias\" + \"/owner/repo.git\",\n\t},\n",
+      "new": ""
+    },
+    {
+      "name": "drop the tilde-root rule (the shape stage goes blind to that shape; with the token registry blind too, nothing reddens the planted tree)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\t{\n\t\tshape: ShapeTildeRoot,\n\t\t// A tilde-prefixed home-relative root whose first segment is not a dot entry.\n\t\tre:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_~/.-])(~/[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)`),\n\t\tgroup:     1,\n\t\tprefilter: []string{\"~/\"},\n\t\tcanary:    \"cd \" + \"~\" + \"/\" + \"example-work\" + \"/repo\",\n\t},\n",
+      "new": ""
+    },
+    {
+      "name": "treat every SSH host as a forge host (every alias remote is dropped)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "forgeSSHHosts[strings.ToLower(body[m[2*r.hostGroup]:m[2*r.hostGroup+1]])] {",
+      "new": "(forgeSSHHosts[strings.ToLower(body[m[2*r.hostGroup]:m[2*r.hostGroup+1]])] || true) {"
+    },
+    {
+      "name": "allow by (path, shape) only, ignoring the listed values (a real identity rides in beside an example)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\t\t\tallowed[allowKey{e.Path, e.Shape, v}] = true\n\t\t\tdeclared[[2]string{e.Shape, v}] = true\n\t\t}\n\t}\n\n\trecord := func(rel string, line int, shape LeakShape, value string) {\n\t\tk := allowKey{rel, string(shape), value}\n",
+      "new": "\t\t\tallowed[allowKey{e.Path, e.Shape, \"\"}] = true\n\t\t\tdeclared[[2]string{e.Shape, v}] = true\n\t\t}\n\t}\n\n\trecord := func(rel string, line int, shape LeakShape, value string) {\n\t\tk := allowKey{rel, string(shape), \"\"}\n"
+    },
+    {
+      "name": "let the allow file carry any value (blind self-exclusion)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "case rel == allow.Source && allow.Source != \"\" && declared[[2]string{string(shape), value}]:",
+      "new": "case rel == allow.Source && allow.Source != \"\":"
+    },
+    {
+      "name": "drop stale-entry reporting (the allow list rots into a blanket)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\t\t\tif !used[allowKey{e.Path, e.Shape, v}] {",
+      "new": "\t\t\tif false && !used[allowKey{e.Path, e.Shape, v}] {"
+    },
+    {
+      "name": "skip the canary self-test (a broken rule's silence reads as clean)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\tif broken := shapeSelfTest(rules); len(broken) > 0 {",
+      "new": "\tif broken := shapeSelfTest(rules); false && len(broken) > 0 {"
+    },
+    {
+      "name": "skip allow-list validation (a reasonless exception loads)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\tif err := allow.validate(); err != nil {\n\t\treturn cnc(",
+      "new": "\tif err := allow.validate(); false && err != nil {\n\t\treturn cnc("
+    },
+    {
+      "name": "a zero-file sweep certifies clean",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\tif rep.Scanned == 0 {",
+      "new": "\tif false && rep.Scanned == 0 {"
+    },
+    {
+      "name": "certify ignores a failed stage (the shape stage stops binding)",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\t\tcase StageFailed:\n\t\t\tfailed = true",
+      "new": "\t\tcase StageFailed:\n\t\t\tfailed = false"
+    },
+    {
+      "name": "certify reads an unknown verdict as clean",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\t\tdefault:\n\t\t\tunknown = true",
+      "new": "\t\tdefault:\n\t\t\tunknown = false"
+    },
+    {
+      "name": "stop scanning symlink targets",
+      "file": "internal/deskkit/leakshape.go",
+      "old": "\t\t\t\tscan(rel, target, true)",
+      "new": "\t\t\t\t_ = target"
+    }
+  ]
+}
