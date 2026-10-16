@@ -1,6 +1,6 @@
 # Portable execution future state and implementation plan
 
-Extend the future architecture with qualified harness/model/backend profiles,
+- Extend the future architecture with qualified harness/model/backend profiles,
 prepared-environment receipts, explicit preservation and recovery qualification, and
 separate lifecycle observations. Author six agent-execution briefs with typed prerequisites
 and reciprocal graph-execution routing. AX compatibility is a bounded offline investigation;
