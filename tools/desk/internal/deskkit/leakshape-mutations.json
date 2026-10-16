@@ -10,31 +10,31 @@
     {
       "name": "drop the home-path rule (the shape stage goes blind to that shape; with the token registry blind too, nothing reddens the planted tree)",
       "file": "internal/deskkit/leakshape.go",
-      "old": "\t{\n\t\tshape: ShapeHomePath,\n\t\t// An absolute home directory: the macOS or Linux users-directory prefix, or a Windows\n\t\t// drive's (one or two backslashes, so a Go/JSON-escaped spelling matches too), then an\n\t\t// account name that does not end in a dot. The left boundary keeps a URL path segment\n\t\t// (a \"home\" segment deep in a web URL's path) from matching, while still matching a\n\t\t// file:// URL.\n\t\tre:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])((?:/(?:Users|home)/|[A-Za-z]:\\\\{1,2}Users\\\\{1,2})[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)`),\n\t\tgroup:     1,\n\t\tprefilter: []string{\"/users/\", \"/home/\", \"users\\\\\"},\n\t\tcanary:    \"cd \" + \"/Us\" + \"ers/\" + \"example-user\" + \"/src\",\n\t},\n",
+      "old": "\tshapeRuleHome,\n",
       "new": ""
     },
     {
       "name": "drop the noreply-id-email rule (the shape stage goes blind to that shape; with the token registry blind too, nothing reddens the planted tree)",
       "file": "internal/deskkit/leakshape.go",
-      "old": "\t{\n\t\tshape: ShapeNoreplyMail,\n\t\t// Digits, a plus sign, a login (an optional bot suffix), then the forge noreply\n\t\t// domain, case-insensitively on the domain.\n\t\tre:        regexp.MustCompile(`([0-9]+\\+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\\[bot\\])?@(?i:users\\.noreply\\.github\\.com))`),\n\t\tgroup:     1,\n\t\tprefilter: []string{\"noreply\"},\n\t\tcanary:    \"author \" + \"1234567\" + \"+\" + \"example-login\" + \"@\" + \"users.noreply\" + \".github.com\",\n\t},\n",
+      "old": "\tshapeRuleNoreply,\n",
       "new": ""
     },
     {
       "name": "drop the ssh-host-alias (scp form) rule (the shape stage goes blind to that shape; with the token registry blind too, nothing reddens the planted tree)",
       "file": "internal/deskkit/leakshape.go",
-      "old": "\t{\n\t\tshape: ShapeSSHAlias,\n\t\t// scp form: the git user, an at sign, a host, a colon, then the path.\n\t\tre:        regexp.MustCompile(`(?:^|[^A-Za-z0-9._-])(git@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)):`),\n\t\tgroup:     1,\n\t\thostGroup: 2,\n\t\tprefilter: []string{\"git@\"},\n\t\tcanary:    \"origin \" + \"git\" + \"@\" + \"example-alias\" + \":\" + \"owner/repo.git\",\n\t},\n",
+      "old": "\tshapeRuleSSHScp,\n",
       "new": ""
     },
     {
       "name": "drop the ssh-host-alias (ssh:// URL form) rule (the shape stage goes blind to that shape; with the token registry blind too, nothing reddens the planted tree)",
       "file": "internal/deskkit/leakshape.go",
-      "old": "\t{\n\t\tshape: ShapeSSHAlias,\n\t\t// URL form: the ssh scheme, an optional user, a host (a name or a bracketed IPv6\n\t\t// literal), an optional port, then the path.\n\t\tre:        regexp.MustCompile(`(ssh://(?:[A-Za-z0-9._-]+@)?([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?|\\[[0-9A-Fa-f:.]+\\]))`),\n\t\tgroup:     1,\n\t\thostGroup: 2,\n\t\tprefilter: []string{\"ssh://\"},\n\t\tcanary:    \"origin \" + \"ssh\" + \"://\" + \"git@\" + \"example-alias\" + \"/owner/repo.git\",\n\t},\n",
+      "old": "\tshapeRuleSSHURL,\n",
       "new": ""
     },
     {
       "name": "drop the tilde-root rule (the shape stage goes blind to that shape; with the token registry blind too, nothing reddens the planted tree)",
       "file": "internal/deskkit/leakshape.go",
-      "old": "\t{\n\t\tshape: ShapeTildeRoot,\n\t\t// A tilde-prefixed home-relative root whose first segment is not a dot entry.\n\t\tre:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_~/.-])(~/[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)`),\n\t\tgroup:     1,\n\t\tprefilter: []string{\"~/\"},\n\t\tcanary:    \"cd \" + \"~\" + \"/\" + \"example-work\" + \"/repo\",\n\t},\n",
+      "old": "\tshapeRuleTilde,\n",
       "new": ""
     },
     {

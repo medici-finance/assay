@@ -117,58 +117,75 @@ type shapeRule struct {
 	canary    string
 }
 
-// leakShapeRules is the default rule set. Left boundaries are explicit negated classes (RE2
-// has no look-behind, and `\b` is banned), so the boundary character is consumed outside the
-// value group.
+// The default rules, one variable each so a rule is dropped from leakShapeRules by name.
+// Left boundaries are explicit negated classes (RE2 has no look-behind, and `\b` is banned),
+// so the boundary character is consumed outside the value group.
+
+// shapeRuleHome matches an absolute per-user home directory.
+var shapeRuleHome = shapeRule{
+	shape: ShapeHomePath,
+	// An absolute home directory: the macOS or Linux users-directory prefix, or a Windows
+	// drive's (one or two backslashes, so a Go/JSON-escaped spelling matches too), then an
+	// account name that does not end in a dot. The left boundary keeps a URL path segment
+	// (a "home" segment deep in a web URL's path) from matching, while still matching a
+	// file:// URL.
+	re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])((?:/(?:Users|home)/|[A-Za-z]:\\{1,2}Users\\{1,2})[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)`),
+	group:     1,
+	prefilter: []string{"/users/", "/home/", "users\\"},
+	canary:    "cd " + "/Us" + "ers/" + "example-user" + "/src",
+}
+
+// shapeRuleNoreply matches a numeric-id forge noreply email.
+var shapeRuleNoreply = shapeRule{
+	shape: ShapeNoreplyMail,
+	// Digits, a plus sign, a login (an optional bot suffix), then the forge noreply
+	// domain, case-insensitively on the domain.
+	re:        regexp.MustCompile(`([0-9]+\+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\[bot\])?@(?i:users\.noreply\.github\.com))`),
+	group:     1,
+	prefilter: []string{"noreply"},
+	canary:    "author " + "1234567" + "+" + "example-login" + "@" + "users.noreply" + ".github.com",
+}
+
+// shapeRuleSSHScp matches an scp-form SSH remote.
+var shapeRuleSSHScp = shapeRule{
+	shape: ShapeSSHAlias,
+	// scp form: the git user, an at sign, a host, a colon, then the path.
+	re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9._-])(git@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)):`),
+	group:     1,
+	hostGroup: 2,
+	prefilter: []string{"git@"},
+	canary:    "origin " + "git" + "@" + "example-alias" + ":" + "owner/repo.git",
+}
+
+// shapeRuleSSHURL matches an ssh:// URL remote.
+var shapeRuleSSHURL = shapeRule{
+	shape: ShapeSSHAlias,
+	// URL form: the ssh scheme, an optional user, a host (a name or a bracketed IPv6
+	// literal), an optional port, then the path.
+	re:        regexp.MustCompile(`(ssh://(?:[A-Za-z0-9._-]+@)?([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:.]+\]))`),
+	group:     1,
+	hostGroup: 2,
+	prefilter: []string{"ssh://"},
+	canary:    "origin " + "ssh" + "://" + "git@" + "example-alias" + "/owner/repo.git",
+}
+
+// shapeRuleTilde matches a tilde-prefixed home-relative working root.
+var shapeRuleTilde = shapeRule{
+	shape: ShapeTildeRoot,
+	// A tilde-prefixed home-relative root whose first segment is not a dot entry.
+	re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_~/.-])(~/[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)`),
+	group:     1,
+	prefilter: []string{"~/"},
+	canary:    "cd " + "~" + "/" + "example-work" + "/repo",
+}
+
+// leakShapeRules is the default rule set.
 var leakShapeRules = []shapeRule{
-	{
-		shape: ShapeHomePath,
-		// An absolute home directory: the macOS or Linux users-directory prefix, or a Windows
-		// drive's (one or two backslashes, so a Go/JSON-escaped spelling matches too), then an
-		// account name that does not end in a dot. The left boundary keeps a URL path segment
-		// (a "home" segment deep in a web URL's path) from matching, while still matching a
-		// file:// URL.
-		re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])((?:/(?:Users|home)/|[A-Za-z]:\\{1,2}Users\\{1,2})[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)`),
-		group:     1,
-		prefilter: []string{"/users/", "/home/", "users\\"},
-		canary:    "cd " + "/Us" + "ers/" + "example-user" + "/src",
-	},
-	{
-		shape: ShapeNoreplyMail,
-		// Digits, a plus sign, a login (an optional bot suffix), then the forge noreply
-		// domain, case-insensitively on the domain.
-		re:        regexp.MustCompile(`([0-9]+\+[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\[bot\])?@(?i:users\.noreply\.github\.com))`),
-		group:     1,
-		prefilter: []string{"noreply"},
-		canary:    "author " + "1234567" + "+" + "example-login" + "@" + "users.noreply" + ".github.com",
-	},
-	{
-		shape: ShapeSSHAlias,
-		// scp form: the git user, an at sign, a host, a colon, then the path.
-		re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9._-])(git@([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)):`),
-		group:     1,
-		hostGroup: 2,
-		prefilter: []string{"git@"},
-		canary:    "origin " + "git" + "@" + "example-alias" + ":" + "owner/repo.git",
-	},
-	{
-		shape: ShapeSSHAlias,
-		// URL form: the ssh scheme, an optional user, a host (a name or a bracketed IPv6
-		// literal), an optional port, then the path.
-		re:        regexp.MustCompile(`(ssh://(?:[A-Za-z0-9._-]+@)?([A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?|\[[0-9A-Fa-f:.]+\]))`),
-		group:     1,
-		hostGroup: 2,
-		prefilter: []string{"ssh://"},
-		canary:    "origin " + "ssh" + "://" + "git@" + "example-alias" + "/owner/repo.git",
-	},
-	{
-		shape: ShapeTildeRoot,
-		// A tilde-prefixed home-relative root whose first segment is not a dot entry.
-		re:        regexp.MustCompile(`(?:^|[^A-Za-z0-9_~/.-])(~/[A-Za-z0-9_](?:[A-Za-z0-9_.-]*[A-Za-z0-9_-])?)`),
-		group:     1,
-		prefilter: []string{"~/"},
-		canary:    "cd " + "~" + "/" + "example-work" + "/repo",
-	},
+	shapeRuleHome,
+	shapeRuleNoreply,
+	shapeRuleSSHScp,
+	shapeRuleSSHURL,
+	shapeRuleTilde,
 }
 
 // ShapeHit is one shape match the allow file does not cover.
