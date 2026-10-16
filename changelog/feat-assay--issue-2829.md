@@ -1,0 +1,2 @@
+### Fixed
+- `deskdispatch`: when an item key is long enough that `<item>-<session>` passes the 64-character worktree-name bound, the worker and verifier paths now shorten the item part (keeping a short digest of it) and keep the session suffix whole, instead of silently falling back to the bare item name that every session shares. A session id too long to leave room for the item is refused before the claim.
