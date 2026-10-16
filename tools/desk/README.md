@@ -7246,11 +7246,14 @@ Two durable, stateful pollers ship in the plugin tree for a desk window to arm b
 harness `Monitor` tool: `inbound-monitor.sh` watches every repo's open issues and
 `pr-monitor.sh` watches every repo's open PRs (head sha, draft state, state, merge state).
 Both resolve the same repo set (args, `./.assay/repos.txt`, or the origin remote), keep a
-per-repo baseline so a repo's first sight SEEDS silently, poll as the keyring account (never an
-inherited App token that cannot see the private set), and RETAIN a repo's baseline on any read
+per-repo baseline so a repo's first sight SEEDS silently, read each repo under its own per-repo
+role token minted inside the poll (`desktoken <role> --repo <slug>`, the role resolved from
+`$DESK_LOOP`; `inbound-monitor.sh --token-file OWNER=PATH` outranks the mint for that owner) —
+never the ambient `gh` login and never an inherited `GH_TOKEN`; a repo whose mint fails is
+`MONITOR-DEGRADED` (could-not-check, exit 2), not an empty result — and RETAIN a repo's baseline on any read
 they cannot trust rather than go silently blind — a failed read, or a page that comes back at
 the explicit `--limit` (truncated: `gh` gives no truncation signal, so an at-limit read is a
-moving window, not ground truth). Neither script writes to the forge or holds a credential.
+moving window, not ground truth). Neither script writes to the forge or stores a credential (a minted token file is read in place).
 
 **The pacing contract** is the same for both scripts, so a wide repo set cannot become the
 tight-loop poll that trips the forge's secondary rate limit:
