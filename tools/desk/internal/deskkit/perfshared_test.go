@@ -11,8 +11,10 @@ import (
 	"go/token"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -197,5 +199,147 @@ func TestPerfSharedConstantsAgree(t *testing.T) {
 	}
 	if perfrec.RoleNone != "none" || perfrec.Other != "other" {
 		t.Errorf("perfrec fallbacks drifted: %q %q", perfrec.RoleNone, perfrec.Other)
+	}
+}
+
+// perfrecViolations scans every non-test Go file in dir (all build tags, so the per-OS CPU
+// readers are covered too) and returns what breaks the shared writer's local-only and
+// ledger-isolation contract: a string literal naming the audit ledger, a reference to a
+// ledger function, or an import that is not the standard library or that is a network or
+// process-launch package.
+func perfrecViolations(t *testing.T, dir string) []string {
+	t.Helper()
+	ledgerFuncs := map[string]bool{"auditPath": true, "segmentPaths": true, "Log": true, "LoadEntries": true,
+		"loadEntriesFrom": true, "LastEntry": true, "FirstTS": true, "rotateIfNeeded": true}
+	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatalf("no Go files under %s", dir)
+	}
+	var bad []string
+	for _, p := range files {
+		if strings.HasSuffix(p, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(token.NewFileSet(), p, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", p, err)
+		}
+		base := filepath.Base(p)
+		for _, imp := range f.Imports {
+			path, _ := strconv.Unquote(imp.Path.Value)
+			first, _, _ := strings.Cut(path, "/")
+			if strings.Contains(first, ".") || path == "net" || strings.HasPrefix(path, "net/") || path == "os/exec" {
+				bad = append(bad, base+": imports "+path)
+			}
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			switch x := n.(type) {
+			case *ast.BasicLit:
+				if x.Kind == token.STRING && strings.Contains(strings.ToLower(x.Value), "audit") {
+					bad = append(bad, base+": string literal "+x.Value+" names the audit ledger")
+				}
+			case *ast.Ident:
+				if ledgerFuncs[x.Name] {
+					bad = append(bad, base+": references ledger function "+x.Name)
+				}
+			}
+			return true
+		})
+	}
+	return bad
+}
+
+// TestPerfrecStaysLocalAndOffLedger covers the shared writer's own sources, including the
+// per-OS CPU reader files, from a suite CI runs. The perfrec module's own tests assert the
+// same contract but no CI job runs that module's suite, so this is the guard that does. Each
+// planted case is the negative control proving the scan sees that violation.
+//
+// regression: #3101
+func TestPerfrecStaysLocalAndOffLedger(t *testing.T) {
+	for name, src := range map[string]string{
+		"network import":      "package p\n\nimport _ \"net/http\"\n",
+		"net import":          "package p\n\nimport _ \"net\"\n",
+		"process launch":      "package p\n\nimport _ \"os/exec\"\n",
+		"third-party":         "package p\n\nimport _ \"example.com/x/y\"\n",
+		"ledger literal":      "package p\n\nvar f = \"audit.jsonl\"\n",
+		"ledger function":     "package p\n\nfunc f() { LoadEntries() }\n",
+		"tag-excluded reader": "//go:build unix\n\npackage p\n\nimport _ \"net/http\"\n",
+	} {
+		t.Run("planted "+name, func(t *testing.T) {
+			plant := t.TempDir()
+			fname := "zz_planted.go"
+			if name == "tag-excluded reader" {
+				fname = "cpu_windows.go" // excluded from a linux build, so only a tag-blind scan sees it
+			}
+			if err := os.WriteFile(filepath.Join(plant, fname), []byte(src), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if got := perfrecViolations(t, plant); len(got) != 1 {
+				t.Fatalf("the scan missed a planted %s: %v", name, got)
+			}
+		})
+	}
+
+	if bad := perfrecViolations(t, filepath.Join(repoRootFromHere(t), "perfrec")); len(bad) != 0 {
+		t.Fatalf("the shared perf writer breaks its local-only / off-ledger contract:\n  %s", strings.Join(bad, "\n  "))
+	}
+}
+
+// perfrecClosure returns the forbidden packages in perfrec's full dependency closure under
+// the given GOOS (go list -deps): the standard library's own transitive imports included, so
+// a stdlib package that itself reaches the network is caught where the direct-import scan
+// above cannot see it.
+func perfrecClosure(t *testing.T, dir, goos string) []string {
+	t.Helper()
+	cmd := exec.Command("go", "list", "-deps", ".")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOOS="+goos)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("go list -deps (GOOS=%s) in %s: %v", goos, dir, err)
+	}
+	var bad []string
+	for _, d := range strings.Fields(string(out)) {
+		first, _, _ := strings.Cut(d, "/")
+		if d == "net" || strings.HasPrefix(d, "net/") || d == "os/exec" ||
+			(strings.Contains(first, ".") && d != "github.com/medici-finance/assay/perfrec") {
+			bad = append(bad, d)
+		}
+	}
+	return bad
+}
+
+// TestPerfrecClosureCarriesNothingOnline: the shared writer's dependency closure holds no
+// network or process-launch package on any supported OS, with a planted import as the
+// negative control.
+//
+// regression: #3101
+func TestPerfrecClosureCarriesNothingOnline(t *testing.T) {
+	src := filepath.Join(repoRootFromHere(t), "perfrec")
+
+	plant := t.TempDir()
+	for _, f := range []string{"go.mod", "perfrec.go", "cpu_unix.go", "cpu_windows.go"} {
+		b, err := os.ReadFile(filepath.Join(src, f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(plant, f), b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(plant, "zz_planted.go"), []byte("package perfrec\n\nimport _ \"net/http\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := perfrecClosure(t, plant, "linux"); len(got) == 0 {
+		t.Fatal("the closure check missed a planted net/http import")
+	}
+
+	for _, goos := range []string{"linux", "darwin", "windows"} {
+		if bad := perfrecClosure(t, src, goos); len(bad) != 0 {
+			t.Errorf("perfrec's closure on %s reaches %v — it must stay standard-library, offline", goos, bad)
+		}
 	}
 }
