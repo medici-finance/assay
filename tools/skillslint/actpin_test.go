@@ -122,3 +122,147 @@ func TestActPinReportsGhLine(t *testing.T) {
 	// six header lines, then the block: the gh step is block line index 6.
 	wantOneAt(t, issues, 7+6, "no driver-token pin")
 }
+
+// shapeRow is one block body and the finding it must draw.
+type shapeRow struct {
+	body []string
+	want string
+}
+
+func wantFinding(t *testing.T, name string, rows map[string]shapeRow) {
+	t.Helper()
+	for n, c := range rows {
+		_, issues := lintOne(t, "sh", pinBlock(c.body...))
+		found := false
+		for _, is := range issues {
+			if strings.Contains(is.Msg, c.want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s/%s: issues=%+v, want one containing %q", name, n, issues, c.want)
+		}
+	}
+}
+
+const (
+	editLine = `  run gh issue edit 1 -R o/r`
+	pinCmd   = `GH_TOKEN="$(gh auth token --user <driver-login>)" || exit 1`
+)
+
+// TestActPinFlagsDeclared — a declaring builtin carries the token variable
+// after the pin as surely as a bare assignment does.
+func TestActPinFlagsDeclared(t *testing.T) {
+	rows := map[string]shapeRow{}
+	for name, line := range map[string]string{
+		"export":   `  export GH_TOKEN="$other"`,
+		"declare":  `  declare -x GH_TOKEN="$other"`,
+		"typeset":  `  typeset -x GH_TOKEN=$other`,
+		"local":    `  local GH_TOKEN="$other"`,
+		"readonly": `  readonly GH_TOKEN="$other"`,
+		"append":   `  GH_TOKEN+="x"`,
+		"second":   `  export A=1 GH_TOKEN="$other"`,
+	} {
+		rows[name] = shapeRow{[]string{pinLine, exportLine, line, editLine}, "assigns GH_TOKEN after"}
+	}
+	for name, line := range map[string]string{
+		"export github":   `  export GITHUB_TOKEN="$other"`,
+		"declare github":  `  declare -x GITHUB_TOKEN="$other"`,
+		"readonly github": `  readonly GITHUB_TOKEN=$other`,
+	} {
+		rows[name] = shapeRow{[]string{pinLine, exportLine, line, editLine}, "assigns GITHUB_TOKEN after"}
+	}
+	for name, line := range map[string]string{
+		"export -n":  `  export -n GH_TOKEN`,
+		"declare +x": `  declare +x GH_TOKEN`,
+		"typeset +x": `  typeset +x GH_TOKEN`,
+	} {
+		rows[name] = shapeRow{[]string{pinLine, exportLine, line, editLine}, "removes the export"}
+	}
+	wantFinding(t, "declared", rows)
+}
+
+// TestActPinFlagsPinPosition — a pin that is not its own statement does not
+// bind: after || or && it may never run, in a pipe it runs in a subshell.
+func TestActPinFlagsPinPosition(t *testing.T) {
+	wantFinding(t, "position", map[string]shapeRow{
+		"after true or": {[]string{`  true || ` + pinCmd, exportLine, editLine}, "own statement"},
+		"after and":     {[]string{`  true && ` + pinCmd, exportLine, editLine}, "own statement"},
+		"after bang":    {[]string{`  ! ` + pinCmd, exportLine, editLine}, "own statement"},
+		"in a pipe":     {[]string{`  echo | ` + pinCmd, exportLine, editLine}, "own statement"},
+		"after pipe nl": {[]string{`  echo |`, `  ` + pinCmd, exportLine, editLine}, "own statement"},
+		"after or nl":   {[]string{`  true ||`, `  ` + pinCmd, exportLine, editLine}, "own statement"},
+		"under time":    {[]string{`  time ` + pinCmd, exportLine, editLine}, "own statement"},
+		"under env":     {[]string{`  env ` + pinCmd, exportLine, editLine}, "own statement"},
+		"with a tail":   {[]string{`  ` + pinCmd + ` | cat`, exportLine, editLine}, "no driver-token pin"},
+	})
+}
+
+// TestActPinFlagsWrappedGh — a wrapper's own options do not hide the gh step.
+func TestActPinFlagsWrappedGh(t *testing.T) {
+	rows := map[string]shapeRow{}
+	for name, line := range map[string]string{
+		"env -i":         `  env -i gh issue edit 1 -R o/r`,
+		"env assign":     `  env FOO=1 gh issue edit 1 -R o/r`,
+		"env -u":         `  env -u FOO gh issue edit 1 -R o/r`,
+		"command -p":     `  command -p gh issue edit 1 -R o/r`,
+		"time -p":        `  time -p gh issue edit 1 -R o/r`,
+		"sudo":           `  sudo gh issue edit 1 -R o/r`,
+		"sudo -u":        `  sudo -u root gh issue edit 1 -R o/r`,
+		"sudo -E":        `  sudo -E gh issue edit 1 -R o/r`,
+		"doas":           `  doas gh issue edit 1 -R o/r`,
+		"run sudo":       `  run sudo gh issue edit 1 -R o/r`,
+		"exec -a":        `  exec -a x gh issue edit 1 -R o/r`,
+		"nohup dashdash": `  nohup -- gh issue edit 1 -R o/r`,
+	} {
+		rows[name] = shapeRow{[]string{line}, "no driver-token pin"}
+	}
+	wantFinding(t, "wrapped", rows)
+}
+
+// TestActPinFlagsEnvClears — env can drop the pinned token for one step.
+func TestActPinFlagsEnvClears(t *testing.T) {
+	rows := map[string]shapeRow{}
+	for name, line := range map[string]string{
+		"env -i":          `  env -i gh issue edit 1 -R o/r`,
+		"env --ignore":    `  env --ignore-environment gh issue edit 1 -R o/r`,
+		"env -u":          `  env -u GH_TOKEN gh issue edit 1 -R o/r`,
+		"env -uGH_TOKEN":  `  env -uGH_TOKEN gh issue edit 1 -R o/r`,
+		"env --unset eq":  `  env --unset=GH_TOKEN gh issue edit 1 -R o/r`,
+		"env --unset sep": `  env --unset GH_TOKEN gh issue edit 1 -R o/r`,
+		"sudo":            `  sudo gh issue edit 1 -R o/r`,
+		"sudo -E":         `  sudo -E gh issue edit 1 -R o/r`,
+		"sudo -u":         `  sudo -u root gh issue edit 1 -R o/r`,
+		"doas":            `  doas gh issue edit 1 -R o/r`,
+		"run env -i":      `  run env -i gh issue edit 1 -R o/r`,
+		"env -i with set": `  env -i FOO=1 gh issue edit 1 -R o/r`,
+	} {
+		rows[name] = shapeRow{[]string{pinLine, exportLine, line}, "does not reach"}
+	}
+	wantFinding(t, "envclears", rows)
+}
+
+// TestActPinWrappersClean — wrappers that leave the pin alone, and lookups that
+// are not a gh step, draw nothing.
+func TestActPinWrappersClean(t *testing.T) {
+	for name, body := range map[string][]string{
+		"command -v":      {`  command -v gh >/dev/null || exit 1`},
+		"command -V":      {`  command -V gh >/dev/null || exit 1`},
+		"env no gh":       {`  env FOO=1 printenv FOO`},
+		"pinned env -u":   {pinLine, exportLine, `  env -u FOO gh issue edit 1 -R o/r`},
+		"pinned env set":  {pinLine, exportLine, `  env FOO=1 gh issue edit 1 -R o/r`},
+		"pinned command":  {pinLine, exportLine, `  command -p gh issue edit 1 -R o/r`},
+		"pinned time":     {pinLine, exportLine, `  time -p gh issue edit 1 -R o/r`},
+		"pin after nl":    {`  true`, pinLine, exportLine, editLine},
+		"pin after semi":  {`  true; ` + pinCmd, exportLine, editLine},
+		"export github":   {pinLine, exportLine, `  export GITHUB_TOKEN`, editLine},
+		"export other":    {pinLine, exportLine, `  export A=1 B`, editLine},
+		"local other":     {pinLine, exportLine, `  local A="$x"`, editLine},
+		"dash arg of cmd": {pinLine, exportLine, `  run echo -n done`},
+	} {
+		blocks, issues := lintOne(t, "sh", pinBlock(body...))
+		if blocks != 1 || len(issues) != 0 {
+			t.Errorf("%s: blocks=%d issues=%+v, want 1 block and no issue", name, blocks, issues)
+		}
+	}
+}

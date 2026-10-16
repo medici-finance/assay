@@ -268,13 +268,17 @@ The lint also holds the token pin. In a block with a `gh` step, the act function
 driver's token at its top level before the first `gh` step, in the whole shape above: the
 `GH_TOKEN="$(gh auth token --user <driver-login>)"` assignment ending `|| exit` (or `|| { …; exit N; }`),
 a separate `export GH_TOKEN` (an `export` that carries the assignment would report export's
-status, not the read's), and an `unset` of `GITHUB_TOKEN`. A `gh` step ahead of the pin or
-outside the function, a pin inside an `if`, loop, group or subshell, and a later assignment of
-`GH_TOKEN` or `GITHUB_TOKEN` or an `unset GH_TOKEN` are refused. It reads a `gh` step as the
-word `gh` in command position, after `run`, a pipe, `&&`, `then` and the like, never in an
-`echo`'s quoted text. Like the read check it is syntactic and best effort: a `gh` run through
-`eval`, `sh -c`, `xargs`, an alias or a wrapper function, or cleared for one step with
-`env -u`, can pass.
+status, not the read's), and an `unset` of `GITHUB_TOKEN`. The pin must be its own statement. The lint refuses a `gh` step ahead of the pin or outside the
+function; a pin inside an `if`, loop, group or subshell, after `||`, `&&` or `|`, under `!`, `time`
+or `env`, or followed by a pipe; after the pin, a set of `GH_TOKEN` or `GITHUB_TOKEN` (a bare
+assignment, or one given to `export`, `declare`, `typeset`, `local` or `readonly`), an
+`unset GH_TOKEN`, and `export -n GH_TOKEN` or `declare +x GH_TOKEN`; and a `gh` step run through
+`env -i`, `env -u GH_TOKEN`, `sudo` or `doas`. It reads a `gh` step as the word `gh` in command
+position, after `run`, a pipe, `&&`, `then`, `time`, `env`, `command`, `sudo` and the like (their
+options are skipped; `command -v gh` is a lookup, not a step), never in an `echo`'s quoted text.
+Like the read check it is syntactic and best effort and does not model a `gh` run through
+`eval`, `sh -c`, `bash -c`, `xargs`, `nice`, `timeout`, `stdbuf`, an alias or a wrapper function,
+or a token changed by `read` or `printf -v`; a step in one of those can pass.
 
 ```sh
 [ -n "${ZSH_VERSION-}" ] && setopt interactive_comments

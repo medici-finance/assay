@@ -16,28 +16,41 @@
 //
 //  1. a pin, at the top level of the act function (not inside an if, loop,
 //     group or other function), of the exact shape GH_TOKEN="$(gh auth token
-//     --user LOGIN)" followed by || exit, || exit N or || { ...; exit N; };
+//     --user LOGIN)" followed by || exit, || exit N or || { ...; exit N; }, and
+//     standing as its own statement: not after ||, && or |, not under ! or a
+//     wrapper such as time or env, and not followed by a pipe;
 //  2. after it, still at the top level and before the first `gh` step, an
 //     `export GH_TOKEN` (a separate command: `export GH_TOKEN="$(...)"` returns
 //     export's status and would swallow the failure) and an `unset` of
 //     GITHUB_TOKEN;
 //  3. every `gh` step stands inside the act function and after those lines
 //     (a `gh` step before the pin, or outside the function, runs unpinned);
-//  4. nothing after the pin assigns or unsets GH_TOKEN again, or assigns
-//     GITHUB_TOKEN again, so an inline `GH_TOKEN=... gh ...` cannot swap it.
+//  4. nothing after the pin sets either variable again: a GH_TOKEN= or
+//     GITHUB_TOKEN= assignment (also +=, and as an argument of export, declare,
+//     typeset, local or readonly), an unset of GH_TOKEN, or `export -n
+//     GH_TOKEN` / `declare +x GH_TOKEN`, which takes it out of the environment;
+//  5. no `gh` step after the pin runs through env -i, env -u GH_TOKEN (also
+//     -uGH_TOKEN, --unset GH_TOKEN, --unset=GH_TOKEN, --ignore-environment),
+//     sudo or doas, which start the step without the pinned token.
 //
 // A `gh` step is a word whose basename is gh (quotes and backslashes removed) in
 // command position: at the start of a command, after a separator, pipe, && or
-// ||, after then, else, do, {, (, ! and the like, and after run, command, exec,
-// env, nohup and time. The `gh auth token --user` of the pin is not a step.
-// Text inside a quoted string (an echo of what would run) is not a step. A block
-// with no `gh` step needs no pin.
+// ||, after then, else, do, {, (, ! and the like, and after the words run,
+// command, exec, env, nohup, builtin, time, sudo and doas, whose own options
+// (-i, -p, -E, -- and, for env, command, time, exec, sudo and doas, the listed
+// options that take a separate argument such as env -u NAME and sudo -u USER)
+// and leading NAME=value words are skipped. command -v and command -V only look
+// a name up and are not a step. The `gh auth token --user` of the pin is not a
+// step. Text inside a quoted string (an echo of what would run) is not a step.
+// A block with no `gh` step needs no pin.
 //
-// A syntactic, best-effort check, like the read check beside it. It does not
-// model a `gh` run through eval, sh -c, xargs, an alias, a variable-built
-// command name or a function that wraps it, a case pattern `)` that is not
-// closed by esac, or an env -u GH_TOKEN that clears the pin for one step; a
-// step in one of those can pass.
+// A syntactic, best-effort check, like the read check beside it. It does NOT
+// model, and a step in one of these can pass: a `gh` run through eval, sh -c,
+// bash -c, xargs, nice, timeout, stdbuf or any wrapper command not named above,
+// an option of a wrapper that takes a separate argument and is not in the list
+// (env -S, say), an alias, a command name built from an expansion, a function
+// that wraps `gh`, or a case pattern `)` that is not closed by esac; nor a
+// change of either variable by read, printf -v, a nameref or eval.
 package main
 
 import (
@@ -56,7 +69,32 @@ type actPinIssue struct {
 var actPassWords = map[string]bool{
 	"if": true, "then": true, "else": true, "elif": true, "do": true, "while": true,
 	"until": true, "!": true, "time": true, "{": true, "run": true, "command": true,
-	"exec": true, "env": true, "nohup": true, "builtin": true,
+	"exec": true, "env": true, "nohup": true, "builtin": true, "sudo": true, "doas": true,
+}
+
+// actWrappers are the pass words that run another command and take options of
+// their own; the options are skipped to reach it. The map holds the options of
+// each that take a separate argument.
+var actWrappers = map[string][]string{
+	"env": {"-u", "-C", "--unset", "--chdir"}, "command": nil, "time": {"-f", "-o"},
+	"exec": {"-a"}, "nohup": nil, "builtin": nil,
+	"sudo": {"-u", "-g", "-h", "-p", "-r", "-t", "-C", "-D", "-R", "-T", "-U"},
+	"doas": {"-u", "-C"},
+}
+
+// actDeclarers are the builtins that set a shell variable from NAME=value words.
+var actDeclarers = map[string]bool{
+	"export": true, "declare": true, "typeset": true, "local": true, "readonly": true,
+}
+
+// actTokenVar returns GH_TOKEN or GITHUB_TOKEN when w assigns it (NAME= or NAME+=), else "".
+func actTokenVar(w string) string {
+	for _, n := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
+		if strings.HasPrefix(w, n+"=") || strings.HasPrefix(w, n+"+=") {
+			return n
+		}
+	}
+	return ""
 }
 
 // actCloserFor maps a compound-command opener to the word that closes it.
@@ -146,6 +184,10 @@ func actPinIssues(code []string, name string) []actPinIssue {
 		firstGh    = -1
 		ghOutside  []int
 		ghInside   []int
+		bodyOpen   = -1   // token index of the act function body's opener
+		wrap       string // the wrapper word just seen, whose options are skipped
+		dropAt     = -1   // token index of an env or sudo that drops the pinned token
+		dropWhy    string
 	)
 	top := func() string {
 		if len(stack) == 0 {
@@ -177,12 +219,36 @@ func actPinIssues(code []string, name string) []actPinIssue {
 		return false
 	}
 
+	// pinAlone reports whether the command word at k stands as its own
+	// statement: past newlines and NAME=value words, the token before it is
+	// the body's opener, the start, a ; or & or a finished command, and not
+	// ||, && or | (the pin may never run, or runs in a pipe's subshell), nor
+	// ! or a wrapper word (time, env, ...) that runs it as an argument.
+	pinAlone := func(k int) bool {
+		p := k - 1
+		for p >= 0 && p != bodyOpen && (toks[p].op == "\n" || toks[p].op == "" && actIsAssign(toks[p].raw)) {
+			p--
+		}
+		if p < 0 || p == bodyOpen {
+			return true
+		}
+		switch toks[p].op {
+		case "|", "||", "&&":
+			return false
+		case "":
+			return !(toks[p].plain && actPassWords[toks[p].raw])
+		}
+		return true
+	}
+
 	for k := 0; k < len(toks); k++ {
 		t := toks[k]
 		if t.op != "" {
+			wrap = ""
 			switch t.op {
 			case "\n", ";", "&", "&&", "||", "|":
 				cmdPos, afterRedir = true, false
+				dropAt = -1
 			case "(", "$(":
 				stack = append(stack, ")")
 				cmdPos = true
@@ -214,8 +280,65 @@ func actPinIssues(code []string, name string) []actPinIssue {
 		}
 		isCmd := cmdPos
 		cmdPos = false
+		w := wrap
+		wrap = ""
 		if !isCmd {
 			continue
+		}
+		if w != "" && strings.HasPrefix(t.val, "-") {
+			// an option of the wrapper before it: skip it (and its argument) to
+			// reach the command it runs. command -v and -V only look a name up.
+			if w == "command" && (t.val == "-v" || t.val == "-V") {
+				continue
+			}
+			if w == "env" && inBody() && pinAt >= 0 && k > pinEnd && dropAt < 0 {
+				next := ""
+				if k+1 < len(toks) && toks[k+1].op == "" {
+					next = toks[k+1].val
+				}
+				switch {
+				case t.val == "-i", t.val == "-", t.val == "--ignore-environment":
+					dropAt, dropWhy = k, "env "+t.val+" starts it with an empty environment"
+				case (t.val == "-u" || t.val == "--unset") && next == "GH_TOKEN",
+					t.val == "-uGH_TOKEN", t.val == "--unset=GH_TOKEN":
+					dropAt, dropWhy = k, "env "+t.val+" unsets GH_TOKEN for it"
+				}
+			}
+			for _, o := range actWrappers[w] {
+				if t.val == o && k+1 < len(toks) && toks[k+1].op == "" {
+					k++
+					break
+				}
+			}
+			cmdPos, wrap = true, w
+			continue
+		}
+		if actDeclarers[t.raw] && t.plain && inBody() && pinAt >= 0 && k > pinEnd {
+			named := false
+			unexport := false
+			for i := k + 1; i < len(toks); i++ {
+				switch toks[i].op {
+				case "\n", ";", "&", "&&", "||", "|":
+					i = len(toks)
+					continue
+				case "":
+				default:
+					continue
+				}
+				v := toks[i].val
+				if n := actTokenVar(v); n != "" {
+					add(i, "act block assigns %s after the driver token is pinned; the pin must hold for every gh step", n)
+				}
+				if v == "GH_TOKEN" {
+					named = true
+				}
+				if t.raw == "export" && v == "-n" || t.raw != "export" && strings.HasPrefix(v, "+") && strings.Contains(v, "x") {
+					unexport = true
+				}
+			}
+			if named && unexport {
+				add(k, "act block removes the export of GH_TOKEN after the driver token is pinned; the pin must hold for every gh step")
+			}
 		}
 		// command position
 		if k+2 < len(toks) && toks[k+1].op == "(" && toks[k+2].op == ")" && t.plain {
@@ -231,12 +354,12 @@ func actPinIssues(code []string, name string) []actPinIssue {
 				case j < len(toks) && toks[j].op == "(":
 					stack = append(stack, ")")
 					actDepth = len(stack)
-					k = j
+					k, bodyOpen = j, j
 					cmdPos = true
 				case j < len(toks) && toks[j].op == "" && toks[j].raw == "{" && toks[j].plain:
 					stack = append(stack, "}")
 					actDepth = len(stack)
-					k = j
+					k, bodyOpen = j, j
 					cmdPos = true
 				default:
 					add(k, "the act function body is not a ( ) or { } group, so the driver-token pin cannot be located")
@@ -249,13 +372,17 @@ func actPinIssues(code []string, name string) []actPinIssue {
 			continue
 		}
 		switch {
-		case actIsAssign(t.raw):
-			if inBody() && pinAt >= 0 && k > pinEnd && (strings.HasPrefix(t.raw, "GH_TOKEN=") || strings.HasPrefix(t.raw, "GITHUB_TOKEN=")) {
-				add(k, "act block assigns %s after the driver token is pinned; the pin must hold for every gh step", strings.SplitN(t.raw, "=", 2)[0])
+		case actIsAssign(t.raw) || actTokenVar(t.raw) != "":
+			if n := actTokenVar(t.raw); n != "" && inBody() && pinAt >= 0 && k > pinEnd {
+				add(k, "act block assigns %s after the driver token is pinned; the pin must hold for every gh step", n)
 			}
 			if atTop() && pinAt < 0 {
 				if end, ok := pinShape(k); ok {
-					pinAt, pinEnd = k, end
+					if pinAlone(k) {
+						pinAt, pinEnd = k, end
+					} else {
+						add(k, "the driver-token pin must be its own statement: not after ||, && or |, not under ! or a wrapper such as time or env")
+					}
 				}
 			}
 			cmdPos = true // a leading assignment keeps command position
@@ -283,6 +410,10 @@ func actPinIssues(code []string, name string) []actPinIssue {
 			if wordAt(k+1, "auth") && wordAt(k+2, "token") && wordAt(k+3, "--user") {
 				break
 			}
+			if dropAt >= 0 && inBody() && pinAt >= 0 && k > pinEnd {
+				add(k, "act block runs a gh step the pinned token does not reach: %s", dropWhy)
+				dropAt = -1
+			}
 			if firstGh < 0 {
 				firstGh = k
 			}
@@ -299,6 +430,12 @@ func actPinIssues(code []string, name string) []actPinIssue {
 		}
 		if t.plain && actPassWords[t.raw] {
 			cmdPos = true
+			if _, ok := actWrappers[t.raw]; ok {
+				wrap = t.raw
+			}
+			if (t.raw == "sudo" || t.raw == "doas") && inBody() && pinAt >= 0 && k > pinEnd && dropAt < 0 {
+				dropAt, dropWhy = k, t.raw+" resets the environment and runs it as another user"
+			}
 		}
 	}
 

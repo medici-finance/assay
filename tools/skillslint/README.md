@@ -399,7 +399,7 @@ or `shell` fence that defines a function named `driver_act…`) to six rules:
    - a read run through `eval`, `sh -c` or a command name built from an
      expansion.
 
-   6. every `gh` step runs behind the driver's own token, pinned at the top of
+6. every `gh` step runs behind the driver's own token, pinned at the top of
    the act function (`actpin.go`). The driver's shell may hold an exported
    `GH_TOKEN` or `GITHUB_TOKEN`, which `gh` prefers to any stored login, and
    with none exported it uses the active account; either runs the step as the
@@ -409,19 +409,39 @@ or `shell` fence that defines a function named `driver_act…`) to six rules:
    `export GH_TOKEN` (an `export` that carries the assignment returns
    `export`'s status, not the read's) and an `unset GITHUB_TOKEN`. The
    assignment must end `|| exit`, `|| exit N` or `|| { ...; exit N; }`, the
-   fail-closed branch. A `gh` step ahead of the pin or outside the function, a
-   pin inside an `if`, loop, group, subshell or other function, and a later
-   assignment of `GH_TOKEN` or `GITHUB_TOKEN` or `unset GH_TOKEN` are refused.
+   fail-closed branch, and must stand as its own statement. The rule refuses:
+   - a `gh` step ahead of the pin or outside the function;
+   - a pin inside an `if`, loop, group, subshell or other function, after `||`,
+     `&&` or `|` (including a newline after one of them), under `!` or a
+     wrapper word such as `time` or `env`, or followed by a pipe;
+   - after the pin, an assignment of `GH_TOKEN` or `GITHUB_TOKEN` (`NAME=`,
+     `NAME+=`, or as an argument of `export`, `declare`, `typeset`, `local` or
+     `readonly`), an `unset GH_TOKEN`, and `export -n GH_TOKEN` or
+     `declare +x GH_TOKEN` (also `typeset`), which take it out of the
+     environment;
+   - after the pin, a `gh` step run through `env -i`, `env -u GH_TOKEN`
+     (`-uGH_TOKEN`, `--unset GH_TOKEN`, `--unset=GH_TOKEN`,
+     `--ignore-environment`), `sudo` or `doas`, none of which hands the step
+     the pinned token.
+
    A `gh` step is the word `gh` (or a path ending `/gh`, quoted or not) in
    command position: at the start of a command, after `;`, `&`, `|`, `&&`,
    `||`, `then`, `else`, `do`, `{`, `(`, `$(`, or after `run`, `command`,
-   `exec`, `env`, `nohup`, `time`; the pin's own `gh auth token --user` is not
-   one, and text inside a quoted string (an `echo` of what would run) is not
-   one. A block with no `gh` step needs no pin. Syntactic and best effort like
-   rule 5: it does **not** model a `gh` run through `eval`, `sh -c`, `xargs`,
-   an alias, a command name built from an expansion or a function that wraps
-   it, a `case` pattern `)` not closed by `esac`, or `env -u GH_TOKEN` that
-   clears the pin for one step; a step in one of those can pass.
+   `exec`, `env`, `nohup`, `builtin`, `time`, `sudo`, `doas`. The options of
+   those words (`-i`, `-p`, `-E`, `--`, and the options that take a separate
+   argument: `env -u`/`-C`, `time -f`/`-o`, `exec -a`, `sudo -u`/`-g`/`-h`/`-p`/
+   `-r`/`-t`/`-C`/`-D`/`-R`/`-T`/`-U`, `doas -u`/`-C`) and leading `NAME=value`
+   words are skipped to reach it; `command -v` and `command -V` only look a
+   name up and are not one. The pin's own `gh auth token --user` is not a step,
+   and text inside a quoted string (an `echo` of what would run) is not one. A
+   block with no `gh` step needs no pin. Syntactic and best effort like rule 5.
+   It does **not** model, and a step in one of these can pass: a `gh` run
+   through `eval`, `sh -c`, `bash -c`, `xargs`, `nice`, `timeout`, `stdbuf` or
+   any other wrapper command not named above; a wrapper option with a separate
+   argument not in the list (`env -S`); an alias; a command name built from an
+   expansion; a function that wraps it; a `case` pattern `)` not closed by
+   `esac`; or a change of either variable by `read`, `printf -v`, a nameref or
+   `eval`.
 
 Rule 1's floor refuses a `#` after an operator, and its scanner refuses
    `\'` inside `$'…'`, so a block holding either fails by rule 1; the read

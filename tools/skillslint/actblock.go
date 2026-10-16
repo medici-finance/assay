@@ -67,7 +67,8 @@
 //     function and fail closed (actpin.go): GH_TOKEN from `gh auth token --user
 //     <driver-login>` with || exit, export GH_TOKEN, unset GITHUB_TOKEN, all
 //     before the first gh step, so an exported App token or the active account
-//     never decides who runs the act.
+//     never decides who runs the act. actpin.go lists what it refuses and what
+//     it does not model.
 //
 // An act block is recognised as an sh, bash, zsh or shell fence whose body
 // defines an act function (actFuncRe). HARD check: a violation is exit 1.
