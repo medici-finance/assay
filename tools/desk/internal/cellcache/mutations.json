@@ -396,6 +396,12 @@
       "file": "internal/cellcache/policy.go",
       "old": "p.TrimMinAge < int64(MinTrimMinAge/time.Second)",
       "new": "p.TrimMinAge < int64(time.Hour/time.Second)"
+    },
+    {
+      "name": "launch admission takes the locked walk",
+      "file": "cmd/cellctl/cache.go",
+      "old": "r, err := cellcache.Admit(*p, false)",
+      "new": "r, err := cellcache.Check(*p, false)"
     }
   ]
 }
