@@ -7,6 +7,11 @@
   "measured_at": "3ad1ad83c871",
   "exclusion_rules": [
     {
+      "class": "test",
+      "pattern": "docs/research/criterion-evidence-freshness/replay.py",
+      "reason": "source-only offline replay and negative controls for graph-execution/32's frozen synthetic evidence study; explicitly invoked by its brief Verify rows and research README, never installed, packaged or released as an operator CLI"
+    },
+    {
       "class": "library",
       "pattern": "tools/release/images.py",
       "reason": "internal release image producer imported by fixed workflow Python calls; no shebang, main guard, argument parser or independent operator entrypoint (#3204)"

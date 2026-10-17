@@ -300,7 +300,7 @@ func ciCrossModuleRegistry() []ciEntry {
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
 			prJob: floorJob, pushJob: floorJob,
 			reads: []string{
-				"docs/streams/desktools-v2/cli-migration.json", "docs/streams",
+				"docs/streams/desktools-v2/cli-migration.json", "docs/streams", "docs/research",
 				".github/workflows/release.yml", "Makefile", "plugins", "tools", "statusgen",
 			},
 			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
