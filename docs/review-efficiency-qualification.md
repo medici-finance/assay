@@ -21,6 +21,8 @@ environments omit inherited tokens, use disposable configuration homes and disab
 telemetry. HTTP is answered by an in-memory transport below the production GitHub
 adapter; no socket, hostname resolution or live provider is involved. Git uses
 disposable local repositories, with hooks, signing and background maintenance off.
+The package uses the shared `gitquiet.Run` test runner and retains its explicit
+child Git settings; binary cleanup still runs after the suite.
 Command test binaries compile once per qualification process, outside measured
 intervals. Fixture setup and compilation are excluded and declared in the manifest.
 
@@ -35,8 +37,8 @@ belongs to desk-tools/39.
 | Production boundary | What is frozen |
 |---|---|
 | deskboard `sweepActionsRepo` + existing head read | NEEDS-REVIEW, approved-at-head, degraded per-item reads, failed enumeration; full heads obtained through the second read required today |
-| reviewloop `cmdPlan`, `ReadBoard`, `Coalesce`, `Idle` | Full heads, sorted rows, WAIT/SURFACE/NO-OP visibility, uncapped disposition depths, duplicate observations, suppressed unresolved heads, complete/fresh final idle |
-| deskdispatch `prepareReviewRound` | Correctness/security lane independence, duplicate verdicts at one head, full/delta scope, required-check hold and failed-read behavior before any claim |
+| reviewloop `cmdPlan`, `ReadBoard`, `Coalesce`, `Idle` | Actual command stdout: ordered visible rows, printed depths, outward proposals and final idle; internal observations additionally retain full heads, duplicate sweeps and suppressed unresolved heads |
+| deskdispatch `prepareReviewRound`, `writeReviewRound` | Actual rendered round/scope text, correctness/security lane independence, duplicate verdicts at one head, required-check hold and failed-read behavior before any claim; a hold emits no assignment |
 | issueboard `run` with production GitHub issue enumeration | Open versus empty versus access failure; absent data never becomes a successful empty scan |
 
 The oracle also requires named passes from the existing body-edit command flow,
@@ -46,8 +48,19 @@ fail qualification. Historic unsafe behavior is not a golden contract: missing
 heads suppress outward proposals, overflow/failed reads cannot prove idle, and
 documented body-only re-verification must retain its current narrow admission.
 
-Negative controls change a head, remove a WAIT row, reorder rows and change depth.
-They must fail the same comparator that checks the production observations. Do not
+Literal output expectations check the printed row sequence after normalizing only
+column padding, plus printed disposition counts, outward proposals and idle text.
+These assertions read captured stdout, independently of the adapter's internal
+observations. Full-head and duplicate-sweep assertions remain separate because the
+human-facing output abbreviates heads and renders a single sweep.
+
+Negative controls change a head, remove a WAIT row, reorder rows and change depth,
+both in internal observations and in captured output. Further controls remove a
+printed proposal and change the printed idle verdict. Production Go overlays
+replace `cmdPlan`'s row rendering with a placeholder and change the dispatcher's
+DELTA scope text. Each overlay builds an actual command test binary and must fail
+the same literal output comparator, while internal observations remain intact.
+The overlays never edit the checkout. Do not
 regenerate expectations from actual output to make a change pass. A changed
 expectation requires an explanation against the approved semantic contract.
 
@@ -63,8 +76,9 @@ its final idle answer must remain unverifiable even when its visible rows are ap
 Each cycle collects the production board actions and heads, feeds those values
 to the planner, prepares a dispatch for every review candidate, runs a fixed local
 Git-diff reviewer and scans issues. The board, dispatch and reviewer endpoints
-use the same full Git head; all selected candidates contribute their work. No
-model agent, launcher, claim acquisition or consequential write runs. These local
+use the same full Git head; all selected candidates contribute their work. The
+cost cohorts reject missing printed planner rows and missing dispatch diff
+endpoints. No model agent, launcher, claim acquisition or consequential write runs. These local
 reviewer costs must never be represented as model-review costs.
 
 For future comparisons run the same oracle, cohorts and supervision on both source

@@ -34,6 +34,7 @@ type Row struct {
 }
 
 type Response struct {
+	Output       string            `json:"output"`
 	Actions      json.RawMessage   `json:"actions,omitempty"`
 	PRs          json.RawMessage   `json:"prs,omitempty"`
 	Rows         []Row             `json:"rows"`

@@ -226,7 +226,20 @@
         "proposals": "2",
         "proposal/1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:review:false:2",
         "proposal/5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:review:false:2"
-      }
+      },
+      "outputRows": [
+        "example-org/tracker#1 NEEDS-REVIEW DISPATCH head=aaaaaaaaaaaa score=5",
+        "example-org/tracker#2 WAIT-CI WAIT head=aaaaaaaaaaaa score=4",
+        "example-org/tracker#3 CHECK SURFACE head=aaaaaaaaaaaa score=3",
+        "example-org/tracker#4 MERGE-CURR NO-OP head=aaaaaaaaaaaa score=2",
+        "example-org/tracker#5 RE-REVIEW DISPATCH head=aaaaaaaaaaaa score=1"
+      ],
+      "outputContains": [
+        "dispositions: 2 DISPATCH \u00b7 0 FLIP-VERB \u00b7 1 SURFACE \u00b7 1 WAIT \u00b7 1 NO-OP",
+        "IDLE GATE (#79, in code \u2014 a model cannot declare all-clear): NOT-IDLE \u2014 1 NEEDS-REVIEW, 1 RE-REVIEW",
+        "example-org/tracker#1@aaaaaaaaaaaa:review  (deltas coalesced: 1)",
+        "example-org/tracker#5@aaaaaaaaaaaa:review  (deltas coalesced: 1)"
+      ]
     }
   },
   {
@@ -352,7 +365,20 @@
         "proposals": "2",
         "proposal/1": "UNRESOLVED:review:true:2",
         "proposal/5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:review:false:2"
-      }
+      },
+      "outputRows": [
+        "example-org/tracker#1 NEEDS-REVIEW DISPATCH head=UNRESOLVED score=5",
+        "example-org/tracker#2 WAIT-CI WAIT head=aaaaaaaaaaaa score=4",
+        "example-org/tracker#3 CHECK SURFACE head=aaaaaaaaaaaa score=3",
+        "example-org/tracker#4 MERGE-CURR NO-OP head=aaaaaaaaaaaa score=2",
+        "example-org/tracker#5 RE-REVIEW DISPATCH head=aaaaaaaaaaaa score=1"
+      ],
+      "outputContains": [
+        "dispositions: 2 DISPATCH \u00b7 0 FLIP-VERB \u00b7 1 SURFACE \u00b7 1 WAIT \u00b7 1 NO-OP",
+        "IDLE GATE (#79, in code \u2014 a model cannot declare all-clear): NOT-IDLE \u2014 1 NEEDS-REVIEW, 1 RE-REVIEW",
+        "example-org/tracker#1@UNRESOLVED:review  (deltas coalesced: 1)",
+        "example-org/tracker#5@aaaaaaaaaaaa:review  (deltas coalesced: 1)"
+      ]
     }
   },
   {
@@ -388,7 +414,12 @@
       "idle": "IDLE",
       "facts": {
         "proposals": "0"
-      }
+      },
+      "outputRows": [],
+      "outputContains": [
+        "dispositions: 0 DISPATCH \u00b7 0 FLIP-VERB \u00b7 0 SURFACE \u00b7 0 WAIT \u00b7 0 NO-OP",
+        "IDLE GATE (#79, in code \u2014 a model cannot declare all-clear): IDLE"
+      ]
     }
   },
   {
@@ -424,7 +455,12 @@
       "idle": "COULD-NOT-CHECK",
       "facts": {
         "proposals": "0"
-      }
+      },
+      "outputRows": [],
+      "outputContains": [
+        "dispositions: 0 DISPATCH \u00b7 0 FLIP-VERB \u00b7 0 SURFACE \u00b7 0 WAIT \u00b7 0 NO-OP",
+        "IDLE GATE (#79, in code \u2014 a model cannot declare all-clear): COULD-NOT-CHECK"
+      ]
     }
   },
   {
@@ -460,7 +496,12 @@
       "idle": "COULD-NOT-CHECK",
       "facts": {
         "proposals": "0"
-      }
+      },
+      "outputRows": [],
+      "outputContains": [
+        "dispositions: 0 DISPATCH \u00b7 0 FLIP-VERB \u00b7 0 SURFACE \u00b7 0 WAIT \u00b7 0 NO-OP",
+        "IDLE GATE (#79, in code \u2014 a model cannot declare all-clear): COULD-NOT-CHECK"
+      ]
     }
   },
   {
@@ -480,7 +521,8 @@
       "rows": null,
       "depth": {},
       "idle": "",
-      "facts": null
+      "facts": null,
+      "output": ""
     }
   },
   {
@@ -499,7 +541,12 @@
         "known": "true",
         "full": "false",
         "reasons": ""
-      }
+      },
+      "outputContains": [
+        "- Lane: correctness. Round: 2. This lane's FIRST review was at head `1111111111111111111111111111111111111111`.",
+        "- Scope: DELTA (clause 19)",
+        "- The delta: `git diff 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222`."
+      ]
     }
   },
   {
@@ -518,7 +565,11 @@
         "known": "true",
         "full": "true",
         "reasons": "no-verdict-of-its-own"
-      }
+      },
+      "outputContains": [
+        "- Lane: security. Round: 1 \u2014 this lane has not reviewed the change before.",
+        "- Scope: FULL PASS \u2014 reason `no-verdict-of-its-own`"
+      ]
     }
   },
   {
@@ -537,7 +588,12 @@
         "known": "true",
         "full": "false",
         "reasons": ""
-      }
+      },
+      "outputContains": [
+        "- Lane: correctness. Round: 2. This lane's FIRST review was at head `1111111111111111111111111111111111111111`.",
+        "- Scope: DELTA (clause 19)",
+        "- The delta: `git diff 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222`."
+      ]
     }
   },
   {
@@ -556,7 +612,11 @@
         "known": "false",
         "full": "true",
         "reasons": "could-not-determine"
-      }
+      },
+      "outputContains": [
+        "- Lane: correctness. Round: NOT DETERMINED",
+        "- Scope: FULL PASS \u2014 reason `could-not-determine`"
+      ]
     }
   },
   {
@@ -576,7 +636,8 @@
         "full": "false",
         "reasons": "",
         "hold": "review dispatch HELD \u2014 example-org/tracker#77 at head 2222222222222222222222222222222222222222: required-check-red. No reviewer was dispatched, no claim was taken and nothing is recorded as reviewed; this is a delay, not a verdict."
-      }
+      },
+      "output": ""
     }
   },
   {

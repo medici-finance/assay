@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/perfrec"
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 	q "github.com/medici-finance/assay/tools/desk/internal/reviewtest"
 )
 
@@ -28,7 +29,7 @@ var binaries struct {
 }
 
 func TestMain(m *testing.M) {
-	code := m.Run()
+	code := gitquiet.Run(m)
 	if binaries.dir != "" {
 		_ = os.RemoveAll(binaries.dir)
 	}
@@ -158,6 +159,29 @@ func compare(got q.Response, want map[string]json.RawMessage) error {
 	var fields map[string]json.RawMessage
 	_ = json.Unmarshal(b, &fields)
 	for key, raw := range want {
+		if key == "outputContains" {
+			var tokens []string
+			if err := json.Unmarshal(raw, &tokens); err != nil {
+				return err
+			}
+			for _, token := range tokens {
+				if !strings.Contains(got.Output, token) {
+					return fmt.Errorf("command output missing %q", token)
+				}
+			}
+			continue
+		}
+		if key == "outputRows" {
+			var expected []string
+			if err := json.Unmarshal(raw, &expected); err != nil {
+				return err
+			}
+			actual := printedRows(got.Output)
+			if !reflect.DeepEqual(actual, expected) {
+				return fmt.Errorf("command output rows got %q; want %q", actual, expected)
+			}
+			continue
+		}
 		if key == "contains" {
 			var tokens []string
 			_ = json.Unmarshal(raw, &tokens)
@@ -180,6 +204,24 @@ func compare(got q.Response, want map[string]json.RawMessage) error {
 		}
 	}
 	return nil
+}
+
+// printedRows reads only the actual command stream. It normalizes column padding,
+// never derives a disposition/head/score from internal board state. Comparing the
+// whole ordered slice rejects missing, extra and reordered visible rows.
+func printedRows(output string) []string {
+	rows := []string{}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || !strings.Contains(fields[0], "/") || !strings.Contains(fields[0], "#") {
+			continue
+		}
+		if len(fields) > 5 {
+			fields = fields[:5]
+		}
+		rows = append(rows, strings.Join(fields, " "))
+	}
+	return rows
 }
 
 func TestWorkflowOracle(t *testing.T) {
@@ -207,7 +249,7 @@ func TestWorkflowOracle(t *testing.T) {
 	if len(mixed.Rows) != 5 {
 		t.Fatal("mixed control did not run")
 	}
-	for _, mutation := range []string{"wrong-head", "missing-WAIT", "changed-order", "wrong-depth"} {
+	for _, mutation := range []string{"wrong-head", "missing-WAIT", "changed-order", "wrong-depth", "missing-printed-WAIT", "reordered-printed-rows", "wrong-printed-depth", "missing-printed-proposal", "wrong-printed-idle"} {
 		t.Run(mutation, func(t *testing.T) {
 			b, _ := json.Marshal(mixed)
 			var changed q.Response
@@ -221,9 +263,57 @@ func TestWorkflowOracle(t *testing.T) {
 				changed.Rows[0], changed.Rows[1] = changed.Rows[1], changed.Rows[0]
 			case "wrong-depth":
 				changed.Depth["DISPATCH"] = 1
+			case "missing-printed-WAIT":
+				changed.Output = withoutPrintedRow(changed.Output, "example-org/tracker#2")
+			case "reordered-printed-rows":
+				lines := strings.Split(changed.Output, "\n")
+				first, second := -1, -1
+				for i, line := range lines {
+					if strings.HasPrefix(line, "example-org/tracker#1 ") {
+						first = i
+					}
+					if strings.HasPrefix(line, "example-org/tracker#2 ") {
+						second = i
+					}
+				}
+				if first < 0 || second < 0 {
+					t.Fatal("missing printed row control")
+				}
+				lines[first], lines[second] = lines[second], lines[first]
+				changed.Output = strings.Join(lines, "\n")
+			case "wrong-printed-depth":
+				changed.Output = strings.Replace(changed.Output, "dispositions: 2 DISPATCH", "dispositions: 1 DISPATCH", 1)
+			case "missing-printed-proposal":
+				changed.Output = strings.ReplaceAll(changed.Output, "example-org/tracker#1@aaaaaaaaaaaa:review", "removed-proposal")
+			case "wrong-printed-idle":
+				changed.Output = strings.ReplaceAll(changed.Output, "NOT-IDLE — 1 NEEDS-REVIEW, 1 RE-REVIEW", "IDLE — incorrectly quiet")
 			}
 			if compare(changed, mixedWant) == nil {
 				t.Fatal("oracle accepted planted mutation")
+			}
+		})
+	}
+	// Mutate the production rendering path, leaving every internal observation
+	// intact. These overlays never edit the checkout and must fail the same oracle.
+	for _, mutation := range []struct{ tool, path, old, new, fixture, diagnostic string }{
+		{"reviewloop", "cmd/reviewloop/plan.go", "board.RenderRows(stdout)", `fmt.Fprintln(stdout, "rows omitted")`, "planner-mixed", "command output rows"},
+		{"deskdispatch", "cmd/deskdispatch/reviewround.go", "Scope: DELTA (clause 19)", "Scope: OMITTED (clause 19)", "dispatch-delta", "command output missing"},
+	} {
+		t.Run("production-"+mutation.tool, func(t *testing.T) {
+			var selected *oracleCase
+			for i := range cases {
+				if cases[i].Name == mutation.fixture {
+					selected = &cases[i]
+					break
+				}
+			}
+			if selected == nil {
+				t.Fatal("production mutation has no literal fixture")
+			}
+			mutantBin := buildMutant(t, mutation.tool, mutation.path, mutation.old, mutation.new)
+			got, _ := probe(t, mutantBin, mutation.tool, selected.Request, t.TempDir())
+			if err := compare(got, selected.Want); err == nil || !strings.Contains(err.Error(), mutation.diagnostic) {
+				t.Fatalf("production rendering mutation escaped its output assertion: %v", err)
 			}
 		})
 	}
@@ -245,6 +335,51 @@ func TestWorkflowOracle(t *testing.T) {
 			}
 		}
 	}
+}
+
+func buildMutant(t *testing.T, tool, relative, old, replacement string) string {
+	t.Helper()
+	root := moduleRoot(t)
+	original := filepath.Join(root, filepath.FromSlash(relative))
+	source, err := os.ReadFile(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(source), old) != 1 {
+		t.Fatal("production mutation target must match exactly once")
+	}
+	dir := t.TempDir()
+	changed := filepath.Join(dir, "mutant.go")
+	if err = os.WriteFile(changed, []byte(strings.Replace(string(source), old, replacement, 1)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	overlay, err := json.Marshal(map[string]any{"Replace": map[string]string{original: changed}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "overlay.json")
+	if err = os.WriteFile(path, overlay, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "go", "test", "-overlay", path, "-c", "-o", filepath.Join(dir, tool+".test"), "./cmd/"+tool)
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOSUMDB=off")
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build production mutation: %v\n%s", err, b)
+	}
+	return dir
+}
+
+func withoutPrintedRow(output, id string) string {
+	var kept []string
+	for _, line := range strings.Split(output, "\n") {
+		if !strings.HasPrefix(line, id+" ") {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
 }
 
 type cohort struct {
@@ -413,6 +548,9 @@ func TestCostCohort(t *testing.T) {
 					if len(planner.Rows) != len(board.Rows) {
 						t.Error("planner dropped board rows")
 					}
+					if len(printedRows(planner.Output)) != len(board.Rows) {
+						t.Error("planner output dropped board rows")
+					}
 					if (c.Size >= 100 || board.Exit != 0) && planner.Exit != 6 {
 						t.Error("failed/capped population was reported as complete")
 					}
@@ -426,6 +564,9 @@ func TestCostCohort(t *testing.T) {
 						ev = event
 						if dispatch.Facts["head"] != row.Head || dispatch.Exit != 0 {
 							t.Error("dispatcher did not bind board head")
+						}
+						if !strings.Contains(dispatch.Output, "`git diff "+base+" "+row.Head+"`") {
+							t.Error("dispatcher output lost review endpoints")
 						}
 						events = append(events, ev)
 						cmd := exec.Command("git", "--no-pager", "diff", "--no-ext-diff", "--no-textconv", "--numstat", base, head)

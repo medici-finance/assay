@@ -1,8 +1,8 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,8 +22,11 @@ func TestQualificationProbe(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	err := cmdPlan([]string{"--actions", a, "--prs", p, "--now", q.Now}, io.Discard)
-	r := reviewtest.Response{Exit: deskkit.ExitCodeOf(err), HTTPComplete: true, Depth: map[string]int{}}
+	var output bytes.Buffer
+	err := cmdPlan([]string{"--actions", a, "--prs", p, "--now", q.Now}, &output)
+	r := reviewtest.Response{Output: output.String(), Exit: deskkit.ExitCodeOf(err), HTTPComplete: true, Depth: map[string]int{}}
+	// Internal observations retain full SHAs and duplicate-sweep semantics that the
+	// human-facing text abbreviates. The oracle checks Output independently as well.
 	b, readErr := ReadBoard(q.Actions, q.PRs)
 	if readErr == nil {
 		now, e := time.Parse(time.RFC3339, q.Now)

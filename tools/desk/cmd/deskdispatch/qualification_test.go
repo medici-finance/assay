@@ -42,8 +42,10 @@ func TestQualificationProbe(t *testing.T) {
 	}
 	rr, err := roundOf(t, f, key)
 	var text strings.Builder
-	writeReviewRound(&text, rr)
-	r := reviewtest.Response{Exit: deskkit.ExitCodeOf(err), Facts: map[string]string{
+	if err == nil {
+		writeReviewRound(&text, rr)
+	} // a held dispatch produces no assignment
+	r := reviewtest.Response{Output: text.String(), Exit: deskkit.ExitCodeOf(err), Facts: map[string]string{
 		"head": rr.head, "lane": rr.lane, "round": fmt.Sprint(rr.round.number), "known": fmt.Sprint(rr.round.known), "full": fmt.Sprint(rr.scope.full), "reasons": reasonsOf(rr.scope),
 	}, Calls: f.calls}
 	if err != nil {
