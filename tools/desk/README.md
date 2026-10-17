@@ -949,6 +949,29 @@ there is no ready/close/merge verb. Three subcommands:
 - `deskpr edit --body-file F [--title T]` — replace that same open PR's **body**, and
   optionally its **title**. It pushes nothing and runs no git write at all.
 
+### Read-only preflight for published Evidence
+
+Use `deskpr create --check-remote --title T --body-file F` when a conditional
+forge-file write has already published the branch. Unlike offline `--check`, this
+explicitly mints the session-role App token and reads the credentialed push
+endpoint. It reuses the live create path's immutable source/destination proof and
+judges every commit actually new to that destination, then stops before write
+budget, push or PR creation. It refuses unknown, divergent or unreadable remote
+state and new foreign authors or committers. The two check modes are mutually
+exclusive; ordinary `--check` still opens no connection and judges the whole range.
+
+A successful remote check is a snapshot, not permission to ignore a later refusal.
+Run ordinary create from the same owned branch with a fresh body file; it rechecks
+all gates and pins the observed destination tip during its plain push. If either
+operation refuses, stop that operation and retain its evidence. Do not reauthor
+forge-created history, change identity or substitute a raw push.
+
+Conditional `deskevidence` file writes judge their admitted immutable source
+against its fetched-main baseline, independently of an older Evidence destination
+branch. They push no source commits. Exact-run admission, verifier-token custody,
+conditional destination writes and landed-author checks still apply. Local flip
+commits and PR pushes retain their own full new-commit identity gates.
+
 ### `deskpr edit` — correcting a PR's own text
 
 The rework cycle whose finding is "the PR body says X, it should say Y" — a provenance

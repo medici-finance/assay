@@ -361,7 +361,9 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	t.Cleanup(func() { outcomeEvidenceBindingFn = oldEvidenceBinding })
 	oldAdmission := verifierEvidenceAdmissionFn
 	verifierEvidenceAdmissionFn = func(_, _, target string, _ deskkit.Forge) (deskkit.VerifierReceipt, error) {
-		return stubAdmittedReceipt(target), nil
+		r := stubAdmittedReceipt(target)
+		r.Binding.Source = strings.Repeat("a", 40)
+		return r, nil
 	}
 	t.Cleanup(func() { verifierEvidenceAdmissionFn = oldAdmission })
 	oldValidate := receiptValidateFn
