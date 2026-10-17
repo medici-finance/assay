@@ -193,39 +193,6 @@ func parseDispatchCLI(args []string, env dispatchCLI, streams cli.IO) int {
 	})
 }
 
-func runCommand(args []string, production bool) int {
-	env := dispatchCLI{handle: executeMode}
-	env.before = func() error {
-		if production {
-			deskkit.SetToolClass(deskkit.ClassForTool(false))
-			deskkit.EchoEffectiveConfig(os.Stderr)
-			if !deskkit.CheckVerbActivation(os.Stderr) {
-				return deskkit.Unverifiable("deskdispatch activation could not be established", nil)
-			}
-			return nil // Guard and diagnostics remain inside the measured execution.
-		}
-		if err := deskkit.Guard(); err != nil {
-			return err
-		}
-		deskkit.WarnIfUnpinned(os.Stderr)
-		return nil
-	}
-	if production {
-		env.handle = func(mode string, o dispatchOpts, override string) error {
-			var result error
-			deskkit.PerfRun(toolName, perfVerbs, args, func([]string) int {
-				if result = deskkit.Guard(); result == nil {
-					deskkit.WarnIfUnpinned(os.Stderr)
-					result = executeMode(mode, o, override)
-				}
-				return deskkit.ExitCodeOf(result)
-			})
-			return result
-		}
-	}
-	return parseDispatchCLI(args, env, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr})
-}
-
 // Compatibility entrypoints used by existing direct-domain regression tests. They
 // all enter the same Cobra tree; none retains a Go FlagSet or a second parser.
 func cmdDispatch(args []string) error {

@@ -63,6 +63,9 @@ package main
 
 import (
 	"os"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // perfVerbs is deskdispatch's registered first-argument set for the opt-in local perf record
@@ -85,7 +88,40 @@ func main() {
 	// ...and the brief-admission decision hold's read (briefadmission.go). Unwired, a
 	// human-gated brief is never held on its decision issue.
 	decisionWaitForgeFn = liveDecisionWaitForge
-	os.Exit(runCommand(os.Args[1:], true))
+	args := os.Args[1:]
+	// main owns the declared class, echo and one performance wrapper. Cobra
+	// invokes these callbacks only for execution, after help/version and parsing.
+	env := dispatchCLI{
+		before: func() error {
+			deskkit.SetToolClass(deskkit.ClassForTool(false))
+			deskkit.EchoEffectiveConfig(os.Stderr)
+			if !deskkit.CheckVerbActivation(os.Stderr) {
+				return deskkit.Unverifiable("deskdispatch activation could not be established", nil)
+			}
+			return nil
+		},
+		handle: func(mode string, o dispatchOpts, override string) error {
+			var result error
+			deskkit.PerfRun("deskdispatch", perfVerbs, args, func([]string) int {
+				if result = dispatchGuard(); result == nil {
+					result = executeMode(mode, o, override)
+				}
+				return deskkit.ExitCodeOf(result)
+			})
+			return result
+		},
+	}
+	os.Exit(parseDispatchCLI(args, env, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}))
 }
 
-func run(args []string) int { return runCommand(args, false) }
+func dispatchGuard() error {
+	if err := deskkit.Guard(); err != nil {
+		return err
+	}
+	deskkit.WarnIfUnpinned(os.Stderr)
+	return nil
+}
+
+func run(args []string) int {
+	return parseDispatchCLI(args, dispatchCLI{before: dispatchGuard, handle: executeMode}, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr})
+}
