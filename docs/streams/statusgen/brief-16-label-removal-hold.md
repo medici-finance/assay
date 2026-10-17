@@ -29,7 +29,7 @@ gate-why: >-
   stay `no`; the reasoning is under Context.
 decision-trigger: creation
 decision-issue: 2414
-ruling: "https://github.com/medici-finance/assay/issues/2414#issuecomment-6079818525"
+ruling: "https://github.com/medici-finance/assay/issues/2414#issuecomment-6239949151"
 issues: [2414]
 design: DR-label-removal-hold
 outcome: none
