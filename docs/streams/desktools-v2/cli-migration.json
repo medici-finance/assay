@@ -476,11 +476,11 @@
         "plugins/assay/skills/worker-desk/SKILL.md",
         "plugins/assay/skills/pr-review-desk/SKILL.md"
       ],
-      "parser": "manual os.Args parsing",
+      "parser": "Cobra and Viper through tools/desk/internal/cli",
       "complexity": "complex",
       "basis": "8975 LOC, ~19 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/20",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskboot",

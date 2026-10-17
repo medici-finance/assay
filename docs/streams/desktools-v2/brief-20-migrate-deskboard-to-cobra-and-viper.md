@@ -29,14 +29,14 @@ exec-tier-why: >-
   keep working, and a happy-path parser test cannot show that.
 domain: "complicated"
 consumers:
-  - "tools/desk/cmd/deskboard: follow-up desktools-v2/20 (command tree, declared configuration, contract tests)"
-  - "docs/quality/QUALITY.md: follow-up desktools-v2/20 (legacy invocation forms kept; quoted help reconciled)"
-  - "tools/desk/README.md: follow-up desktools-v2/20 (legacy invocation forms kept; quoted help reconciled)"
-  - "docs/adopting-assay.md: follow-up desktools-v2/20 (legacy invocation forms kept; quoted help reconciled)"
-  - "plugins/assay/scripts/assay-inbox.sh: follow-up desktools-v2/20 (legacy invocation forms kept; quoted help reconciled)"
-  - "plugins/assay/skills/worker-desk/SKILL.md: follow-up desktools-v2/20 (legacy invocation forms kept; quoted help reconciled)"
-  - "plugins/assay/skills/pr-review-desk/SKILL.md: follow-up desktools-v2/20 (legacy invocation forms kept; quoted help reconciled)"
-  - "docs/streams/desktools-v2/cli-migration.json: follow-up desktools-v2/20 (owned rows flip to migrated)"
+  - "tools/desk/cmd/deskboard: fixed-here (command tree, declared configuration, contract tests)"
+  - "docs/quality/QUALITY.md: out-of-scope (invocation forms preserved and replayed by cli_test.go; no quoted help changed)"
+  - "tools/desk/README.md: fixed-here (roster introspection example now uses an execution; help and version read no roster)"
+  - "docs/adopting-assay.md: out-of-scope (invocation forms preserved and replayed by cli_test.go; no quoted help changed)"
+  - "plugins/assay/scripts/assay-inbox.sh: out-of-scope (invocation forms preserved and replayed by cli_test.go; no quoted help changed)"
+  - "plugins/assay/skills/worker-desk/SKILL.md: out-of-scope (invocation forms preserved and replayed by cli_test.go; no quoted help changed)"
+  - "plugins/assay/skills/pr-review-desk/SKILL.md: out-of-scope (invocation forms preserved and replayed by cli_test.go; no quoted help changed)"
+  - "docs/streams/desktools-v2/cli-migration.json: fixed-here (owned rows flip to migrated)"
 ---
 
 # Brief 20 — Migrate deskboard to Cobra and Viper
