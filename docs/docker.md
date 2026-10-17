@@ -67,9 +67,11 @@ image.
   builder compiles every binary `CGO_ENABLED=0` (static) with the same version
   stamps the release workflows use, and a small `alpine` final stage carries
   the binaries plus `git`, `gh`, and `ca-certificates` under a non-root user.
-- `.github/workflows/docker-publish.yml` builds the image and pushes to GHCR.
-  It runs on a `desk-tools/v*` tag push, or via `workflow_dispatch` (with a
-  `dry_run` option that builds without publishing).
+- `.github/workflows/release.yml` owns image publication as part of the umbrella
+  release. Its single approved release job uses the prepared Linux binaries,
+  builds/checks all nine images, pushes them, then publishes the tag and release
+  assets with checksummed immutable image references. `dry_run` builds and checks
+  without publishing. See [the release contract](release-images.md).
 
 # Desk images
 
@@ -176,8 +178,9 @@ non-zero, naming exactly what is missing — the fail-closed preflight.
 
 ### How they're built and published
 
-`.github/workflows/docker-publish.yml` builds and pushes the base first, then
+The approved job in `.github/workflows/release.yml` builds the base first, then
 the five desk images `FROM` that just-built base (all stamped with the same
-version/sha tags), and runs `containers/scripts/layer-secret-scan.sh` against all
-six images — a hit fails the publish. Build them locally with the commands in
+umbrella version), and runs `containers/scripts/layer-secret-scan.sh` against all
+six images before any push. A hit stops image and GitHub release publication.
+Build them locally with the commands in
 [`containers/README.md`](../containers/README.md).

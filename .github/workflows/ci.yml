@@ -4,7 +4,7 @@ name: ci
 # WHERE THIS RUNS — the self-hosted runner labelled `medici-builder-public`,
 #   which has no Docker daemon. That is exactly right for `go build`/`go test`,
 #   which need no container runtime. The Docker IMAGE build is a separate
-#   workflow (docker-publish.yml) that runs release-only.
+#   publication job in release.yml, behind its release approval.
 #
 # GO TOOLCHAIN — installed by hand from go.dev/dl, NOT actions/setup-go: the
 #   runner does not reach GitHub's release-asset CDN and its base image ships no

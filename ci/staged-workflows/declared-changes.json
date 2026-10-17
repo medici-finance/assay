@@ -15,8 +15,7 @@
     "reason": "New release-by-merge detector; pending maintainer activation (README Contents)."
   },
   "release.yml": {
-    "mode": "pending",
-    "reason": "Release-owned binaries and all nine images, with checksummed immutable image references before publication; retains the pending release-by-merge authorizer proposal. Promote with docker-publish.yml."
+    "mode": "identical"
   },
   "windows-ci-leg.yml": {
     "mode": "identical"

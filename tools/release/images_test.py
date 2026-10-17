@@ -5,6 +5,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tarfile
@@ -17,6 +18,74 @@ contract = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(contract)
 VERSION = 'v1.2.3'
 SOURCE = 'a' * 40
+
+
+def workflow_jobs(text):
+    return dict(re.findall(r'(?ms)^  ([a-zA-Z0-9_-]+):\n(.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)',
+                           text.split('\njobs:\n', 1)[1]))
+
+
+def workflow_steps(block):
+    return dict(re.findall(r'(?ms)^      - name: ([^\n]+)\n(.*?)(?=^      - |\Z)', block))
+
+
+def publication_problems(text):
+    """Check the approval boundary and the order of externally visible writes."""
+    blocks = workflow_jobs(text)
+    publisher = blocks.get('release', '')
+    problems = []
+    if '\npermissions:\n  contents: read\n' not in text.split('\njobs:\n', 1)[0]:
+        problems.append('workflow defaults must not grant publication writes')
+    approved = [name for name, block in blocks.items()
+                if re.search(r'^    environment: release$', block, re.M)]
+    if approved != ['release']:
+        problems.append('exactly one release-approved job must own publication')
+    match = re.search(r'^    needs: \[(.*?)\]', publisher, re.M)
+    needs = {item.strip() for item in match.group(1).split(',')} if match else set()
+    if not {'resolve', 'guard', 'test', 'artifacts'} <= needs:
+        problems.append('publication must wait for all preparation gates')
+    if 'runs-on: medici-builder-public-release' not in publisher:
+        problems.append('publisher needs the dedicated Docker-capable release runner')
+    for permission in ('contents', 'packages'):
+        if not re.search(r'^      ' + permission + r': write$', publisher, re.M):
+            problems.append(permission + ' write belongs to the approved publisher')
+        if any(re.search(r'^      ' + permission + r': write$', block, re.M)
+               for name, block in blocks.items() if name != 'release'):
+            problems.append(permission + ' write escaped the approved publisher')
+    names = ['Restore the prepared source and verify release artifacts',
+             'Build, verify and publish the release images',
+             'Validate and checksum the published image references',
+             'Dry run — stop before tagging and publishing',
+             'Create and push the dispatched tag',
+             'Create GitHub release and upload assets']
+    positions = [publisher.find('      - name: ' + name + '\n') for name in names]
+    if min(positions) < 0 or positions != sorted(positions):
+        problems.append('images and validated references must precede tag and release writes')
+    if re.search(r'^\s*continue-on-error: true$', publisher, re.M):
+        problems.append('a failed image or reference check must stop publication')
+    steps = workflow_steps(publisher)
+    for name, guard in {
+        'Create and push the dispatched tag': "github.event_name == 'workflow_dispatch' && !inputs.dry_run",
+        'Create GitHub release and upload assets': "${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}",
+        'Validate and checksum the published image references': "${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}",
+    }.items():
+        if not re.search(r'^        if: ' + re.escape(guard) + '$', steps.get(name, ''), re.M):
+            problems.append('missing dry-run guard on ' + name)
+    required = [
+        'git checkout --detach "$SOURCE_SHA"',
+        'from tools.release.images import build_images',
+        "build_images(Path.cwd(), os.environ['RELEASE_TAG'], os.environ['SOURCE_SHA'],",
+        'from tools.release.images_contract import validate',
+        'sha256sum release-images.json verify-runner-image.txt >> checksums.txt',
+        'release-images.json verify-runner-image.txt checksums.txt; do',
+        "publish=os.environ['DRY_RUN'] != 'true'",
+        'persist-credentials: false',
+        "trap 'rm -rf \"$DOCKER_CONFIG\" \"$SOURCE\"' EXIT",
+    ]
+    for value in required:
+        if value not in publisher:
+            problems.append('missing publication guard: ' + value)
+    return problems
 
 
 class ImagesTest(unittest.TestCase):
@@ -135,36 +204,54 @@ if args[:2] == ['image', 'inspect']:
                 if mode in ['exists', 'lookup-fail', 'stale', 'scan-fail']:
                     self.assertFalse(any('"push"' in s for s in self.recorded()))
 
-    def test_staged_release_keeps_images_inside_the_publish_gate(self):
-        import re
+    def test_release_has_one_approval_before_all_publication(self):
         root = HERE.parents[1]
-        main = (root / 'ci/staged-workflows/release.yml').read_text()
-        child = (root / 'ci/staged-workflows/docker-publish.yml').read_text()
+        for path in ['.github/workflows/release.yml', 'ci/staged-workflows/release.yml']:
+            with self.subTest(path=path):
+                main = (root / path).read_text()
+                self.assertEqual(publication_problems(main), [])
+                blocks = workflow_jobs(main)
+                self.assertNotIn('images', blocks)
+                self.assertIn('git archive --format=tar.gz HEAD', blocks['artifacts'])
+                self.assertIn('CGO_ENABLED: "0"', blocks['artifacts'])
+                self.assertIn('git bundle create release-source.bundle', blocks['artifacts'])
+                self.assertNotIn('publish_image:', main)
+                self.assertNotIn('desk_image_tag:', main)
+        self.assertEqual((root / '.github/workflows/release.yml').read_bytes(),
+                         (root / 'ci/staged-workflows/release.yml').read_bytes())
+        self.assertFalse((root / '.github/workflows/docker-publish.yml').exists())
+        self.assertFalse((root / 'ci/staged-workflows/docker-publish.yml').exists())
 
-        def jobs(text):
-            return dict(re.findall(r'(?ms)^  ([a-zA-Z0-9_-]+):\n(.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)',
-                                   text.split('\njobs:\n', 1)[1]))
-
-        def needs(block):
-            value = re.search(r'^    needs: \[(.*?)\]', block, re.M).group(1)
-            return {item.strip() for item in value.split(',')}
-
-        blocks = jobs(main)
-        self.assertTrue({'guard', 'test', 'artifacts'} <= needs(blocks['images']))
-        self.assertTrue({'guard', 'test', 'artifacts', 'images'} <= needs(blocks['release']))
-        self.assertIn('git archive --format=tar.gz HEAD', blocks['artifacts'])
-        self.assertIn('CGO_ENABLED: "0"', blocks['artifacts'])
-        self.assertIn('git bundle create release-source.bundle', blocks['artifacts'])
-        self.assertIn('git checkout --detach "$SOURCE_SHA"', blocks['release'])
-        self.assertIn('from tools.release.images_contract import validate', blocks['release'])
-        self.assertIn('release-images.json verify-runner-image.txt checksums.txt; do', blocks['release'])
-        self.assertIn('environment: release', blocks['release'])
-        self.assertIn('environment: release', jobs(child)['images'])
-        self.assertIn('  workflow_call:', child)
-        self.assertNotIn('  workflow_dispatch:', child)
-        self.assertNotIn('  push:', child)
-        self.assertNotIn('publish_image:', main)
-        self.assertNotIn('desk_image_tag:', main)
+    def test_approval_and_publication_order_regressions_are_rejected(self):
+        root = HERE.parents[1]
+        main = (root / '.github/workflows/release.yml').read_text()
+        self.assertEqual(publication_problems(main), [])
+        mutants = {
+            'default-write': main.replace('\npermissions:\n  contents: read\n',
+                                           '\npermissions:\n  contents: write\n', 1),
+            'missing-approval': main.replace('    environment: release\n', '', 1),
+            'second-approval': main + '\n  second:\n    environment: release\n',
+            'missing-tests': main.replace('needs: [resolve, guard, test, artifacts]',
+                                          'needs: [resolve, guard, artifacts]', 1),
+            'missing-image-step': main.replace('Build, verify and publish the release images', 'removed', 1),
+            'wrong-order': main.replace('Build, verify and publish the release images', 'TEMP', 1)
+                              .replace('Create and push the dispatched tag',
+                                       'Build, verify and publish the release images', 1)
+                              .replace('TEMP', 'Create and push the dispatched tag', 1),
+            'ignored-image-failure': main.replace('Build, verify and publish the release images\n',
+                                                  'Build, verify and publish the release images\n        continue-on-error: true\n', 1),
+            'unguarded-writer': main + '\n  other:\n    permissions:\n      packages: write\n',
+            'missing-ref-check': main.replace('from tools.release.images_contract import validate', 'removed', 1),
+            'missing-checksum': main.replace('sha256sum release-images.json verify-runner-image.txt >> checksums.txt', 'removed', 1),
+            'dry-run-tag': main.replace("if: github.event_name == 'workflow_dispatch' && !inputs.dry_run", 'if: true', 1),
+            'dry-run-release': main.replace("- name: Create GitHub release and upload assets\n        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}",
+                                             '- name: Create GitHub release and upload assets\n        if: true', 1),
+            'dry-run-ref-check': main.replace("- name: Validate and checksum the published image references\n        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}",
+                                               '- name: Validate and checksum the published image references\n        if: true', 1),
+        }
+        for name, mutant in mutants.items():
+            with self.subTest(name=name):
+                self.assertTrue(publication_problems(mutant), name)
 
     def test_wrong_seed_version_stops_before_registry_contact(self):
         (self.root / 'plugins/assay/.claude-plugin/plugin.json').write_text('{"version":"9.9.9"}')
@@ -175,7 +262,6 @@ if args[:2] == ['image', 'inspect']:
         import re
         root = HERE.parents[1]
         main = (root / 'ci/staged-workflows/release.yml').read_text()
-        child = (root / 'ci/staged-workflows/docker-publish.yml').read_text()
         # Execute the real resolver's dispatch branch, without forge contact.
         block = main.split('      - name: Resolve the release tag\n', 1)[1]
         lines = block.split('        run: |\n', 1)[1].splitlines()
@@ -194,13 +280,11 @@ if args[:2] == ['image', 'inspect']:
             self.assertEqual(result.returncode, 0, result.stderr)
             tags.append(dict(line.split('=', 1) for line in output.read_text().splitlines())['tag'])
         self.assertEqual(tags, [VERSION, VERSION])
-        caller = main.split('\n  images:\n', 1)[1].split('\n  release:\n', 1)[0]
-        self.assertIn('version: ${{ needs.resolve.outputs.tag }}', caller)
-        job = child.split('\n  images:\n', 1)[1]
+        job = workflow_jobs(main)['release']
         lock = re.search(r'    concurrency:\n      group: (.+)\n      cancel-in-progress: false\n', job)
         self.assertIsNotNone(lock, 'image publication must serialize before tag-absence checks')
-        self.assertIn('${{ inputs.version }}', lock.group(1))
-        groups = [lock.group(1).replace('${{ inputs.version }}', tag) for tag in tags]
+        self.assertIn('${{ needs.resolve.outputs.tag }}', lock.group(1))
+        groups = [lock.group(1).replace('${{ needs.resolve.outputs.tag }}', tag) for tag in tags]
         self.assertEqual(len(set(groups)), 1)
         self.assertNotIn('${{', groups[0], 'lock must depend only on the normalized version')
 
