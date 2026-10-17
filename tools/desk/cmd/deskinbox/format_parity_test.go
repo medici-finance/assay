@@ -315,7 +315,37 @@ func TestParityWalk(t *testing.T) {
 				URL: "https://example.invalid/issues/11", CreatedAt: createdAt,
 				Labels: []jqLabel{{Name: "needs-decision"}},
 			},
-			body: "## Options\nA. First choice\nB. Second choice\nC. Third choice, this one is recommended\nD. Fourth choice\n",
+			body: "## Options\nA. First choice\nB. Second choice\nC. Third choice (recommended)\nD. Fourth choice\n",
+			k:    0, n: 1,
+		},
+		{
+			name: "no recommendation marker does not label first option",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 17, Title: "No marker",
+				URL: "https://example.invalid/issues/17", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "## Options\nA. We recommend the safe path\nB. Leave it\n",
+			k:    0, n: 1,
+		},
+		{
+			name: "multiple markers do not invent a recommendation",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 18, Title: "Ambiguous markers",
+				URL: "https://example.invalid/issues/18", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "## Options\nA. Keep (recommended)\nB. Leave (recommended)\n",
+			k:    0, n: 1,
+		},
+		{
+			name: "multiline comment cannot contribute options or marker",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 19, Title: "Hidden marker",
+				URL: "https://example.invalid/issues/19", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "## Options\n<!-- hidden\nA. Hidden (recommended)\n-->\nB. Visible\nC. Other (recommended)\n",
 			k:    0, n: 1,
 		},
 		{

@@ -92,10 +92,7 @@ var (
 	decHeadingLineRe    = regexp.MustCompile(`^[ \t]*#{1,6}[ \t]`)
 	decOptionLineRe     = regexp.MustCompile(`^(?:[-*][ \t]*)?(?:\*\*)?[A-Da-d1-4][.)][ \t]`)
 	decOptionCaptureRe  = regexp.MustCompile(`^(?:[-*][ \t]*)?(?:\*\*)?([A-Da-d1-4])[.)][ \t]*(.+)$`)
-	decRecommendWordRe  = regexp.MustCompile(`(?i)recommend`)
-	// Only the leading letter of "Recommended" case-varies, exactly as the oracle's ERE.
-	decTrailingRecRe = regexp.MustCompile(`[ \t]*[—-]?[ \t]*\(?[Rr]ecommended\)?[ \t]*$`)
-	decLeadingRecRe  = regexp.MustCompile(`^\(?[Rr]ecommended\)?[ \t,:;—-]*`)
+	decExactRecRe       = regexp.MustCompile(`(?i)(?:^|[ \t])\(recommended\)(?:[ \t]|$)`)
 )
 
 // DecisionOptions is one ask's parsed Options section, in SOURCE order (the order and the
@@ -127,15 +124,36 @@ func (o DecisionOptions) Walk() []int {
 
 // ParseDecisionOptions parses the Options section of an ask (an issue body or a relay
 // comment): the lines between the first `# Options` heading (any level) and the next
-// heading, the first four lettered list lines, the first one mentioning "recommend" as
-// the recommended option, each text de-markdowned, control-stripped and freed of its
-// "(recommended)" marker.
+// heading, the first four lettered list lines, and a recommendation only when exactly one
+// option contains the standalone `(recommended)` marker. HTML comments are invisible.
 func ParseDecisionOptions(body string) DecisionOptions {
 	var bl []string
+	inComment := false
 	for _, l := range decLines(body) {
-		if !decHTMLCommentRe.MatchString(l) {
-			bl = append(bl, l)
+		for {
+			if inComment {
+				end := strings.Index(l, "-->")
+				if end < 0 {
+					l = ""
+					break
+				}
+				l = l[end+3:]
+				inComment = false
+				continue
+			}
+			start := strings.Index(l, "<!--")
+			if start < 0 {
+				break
+			}
+			end := strings.Index(l[start+4:], "-->")
+			if end < 0 {
+				l = l[:start]
+				inComment = true
+				break
+			}
+			l = l[:start] + l[start+4+end+3:]
 		}
+		bl = append(bl, l)
 	}
 	type rawOpt struct{ let, txt string }
 	var raw []rawOpt
@@ -156,23 +174,26 @@ func ParseDecisionOptions(body string) DecisionOptions {
 			break
 		}
 	}
-	rec := -1
+	rec, marks := -1, 0
 	for i, o := range raw {
-		if decRecommendWordRe.MatchString(o.txt) {
+		matches := decExactRecRe.FindAllStringIndex(decDemd(decClean(decStrip(o.txt))), -1)
+		if len(matches) > 0 {
 			rec = i
-			break
+			marks += len(matches)
 		}
+	}
+	if marks != 1 {
+		rec = -1
 	}
 	out := DecisionOptions{Recommended: -1}
 	for i, o := range raw {
 		v := decStrip(decClean(decDemd(o.txt)))
-		v = decTrailingRecRe.ReplaceAllString(v, "")
-		v = decLeadingRecRe.ReplaceAllString(v, "")
+		v = decExactRecRe.ReplaceAllString(v, " ")
 		v = decStrip(v)
 		if v == "" {
 			continue // dropped, as the oracle drops it; a dropped mark is no mark
 		}
-		if i == rec {
+		if i == rec && rec >= 0 {
 			out.Recommended = len(out.Texts)
 		}
 		out.Letters = append(out.Letters, o.let)

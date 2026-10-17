@@ -45,6 +45,26 @@ func TestParseDecisionOptions(t *testing.T) {
 	if ParseDecisionOptions("no options here\nA. not under a heading\n").Stated() {
 		t.Fatal("options outside an Options section were read")
 	}
+	for _, tc := range []struct {
+		name string
+		body string
+		want int
+	}{
+		{"word is not marker", "## Options\nA. We recommend the safe path\nB. Safe path (recommended)\n", 1},
+		{"negated is not marker", "## Options\nA. Stay (not recommended)\nB. Leave (recommended)\n", 1},
+		{"missing marker", "## Options\nA. We recommend A\nB. Keep B\n", -1},
+		{"multiple markers are ambiguous", "## Options\nA. Keep (recommended)\nB. Leave (recommended)\n", -1},
+		{"repeated marker on one option is ambiguous", "## Options\nA. Keep (recommended) and (recommended)\nB. Leave\n", -1},
+		{"markdown-wrapped exact marker", "## Options\nA. Keep **(Recommended)**\nB. Leave\n", 0},
+		{"commented options are invisible", "## Options\n<!-- hide\nB. Hidden (recommended)\n-->\nA. Visible\nC. Other (recommended)\n", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ParseDecisionOptions(tc.body)
+			if got.Recommended != tc.want {
+				t.Fatalf("recommended index = %d, want %d (options=%+v)", got.Recommended, tc.want, got)
+			}
+		})
+	}
 }
 
 // regression: medici-finance/assay#2426 (C-2, C-3, SEC-3, SEC-4, SEC-6) — every row below
