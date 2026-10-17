@@ -11,7 +11,7 @@ import (
 // regression: #2794
 func TestWriteReceiptObject(t *testing.T) {
 	dir := t.TempDir()
-	git := func(args ...string) string {
+	git := func(t *testing.T, args ...string) string {
 		t.Helper()
 		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
@@ -21,19 +21,19 @@ func TestWriteReceiptObject(t *testing.T) {
 		}
 		return strings.TrimSpace(string(out))
 	}
-	git("init", "-q")
+	git(t, "init", "-q")
 	if err := os.WriteFile(filepath.Join(dir, "EVIDENCE.md"), []byte("old row\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	git("add", "EVIDENCE.md")
-	git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "Evidence fixture")
-	baseCommit := git("rev-parse", "HEAD")
+	git(t, "add", "EVIDENCE.md")
+	git(t, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "Evidence fixture")
+	baseCommit := git(t, "rev-parse", "HEAD")
 	if err := os.WriteFile(filepath.Join(dir, "EVIDENCE.md"), []byte("row\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	git("add", "EVIDENCE.md")
-	git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "Landed Evidence")
-	commit, blob := git("rev-parse", "HEAD"), git("rev-parse", "HEAD:EVIDENCE.md")
+	git(t, "add", "EVIDENCE.md")
+	git(t, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "Landed Evidence")
+	commit, blob := git(t, "rev-parse", "HEAD"), git(t, "rev-parse", "HEAD:EVIDENCE.md")
 	for _, backend := range []string{"github", "gitlab"} {
 		for _, scenario := range []string{"create", "update", "noop"} {
 			t.Run(backend+"/"+scenario, func(t *testing.T) {
@@ -77,14 +77,14 @@ func TestWriteReceiptObject(t *testing.T) {
 					}
 					return
 				}
-				if kind := git("cat-file", "-t", string(res.CommitSHA)); kind != "commit" {
+				if kind := git(t, "cat-file", "-t", string(res.CommitSHA)); kind != "commit" {
 					t.Fatalf("landing receipt names a %s object, want commit", kind)
 				}
-				if got := git("show", string(res.CommitSHA)+":EVIDENCE.md"); got != "row" {
+				if got := git(t, "show", string(res.CommitSHA)+":EVIDENCE.md"); got != "row" {
 					t.Fatalf("receipt does not locate landed Evidence: %q", got)
 				}
-				git("merge-base", "--is-ancestor", baseCommit, string(res.CommitSHA))
-				if got := git("show", string(res.CommitSHA)+"^:EVIDENCE.md"); got != "old row" {
+				git(t, "merge-base", "--is-ancestor", baseCommit, string(res.CommitSHA))
+				if got := git(t, "show", string(res.CommitSHA)+"^:EVIDENCE.md"); got != "old row" {
 					t.Fatalf("receipt is not the introduction commit: %s", got)
 				}
 				wantContent := blob

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -70,7 +71,7 @@ func TestLandingCommitReceipt(t *testing.T) {
 				if code := run(args); code != 0 {
 					t.Fatalf("exit %d: %s", code, errBuf)
 				}
-				detail := lastAudit(t).Detail
+				detail := lastAudit(t).Detail + "\n" + stdout.(*bytes.Buffer).String()
 				if !strings.Contains(detail, commit) || strings.Contains(detail, "file-blob") || strings.Contains(detail, "later-commit") {
 					t.Fatalf("wrong commit receipt: %s", detail)
 				}
