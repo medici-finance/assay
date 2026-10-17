@@ -45,7 +45,13 @@ var version string
 var perfVerbs = []string{"--json", "--table", "--delta", "--quiet", "--version"}
 
 func main() {
-	os.Exit(execute(os.Args[1:], os.Stdout, os.Stderr, startup))
+	args := os.Args[1:]
+	// Keep the registered performance wrapper at the process entrypoint, but call it
+	// only after Cobra selected an execution (help and version never record samples).
+	record := func(run func() int) int {
+		return deskkit.PerfRun("deskboard", perfVerbs, args, func([]string) int { return run() })
+	}
+	os.Exit(executeRecorded(args, os.Stdout, os.Stderr, startup, record))
 }
 
 // startup retains the execution-only authority checks. Help and version never enter it.
@@ -111,6 +117,10 @@ func boardBindings() []cli.Binding {
 }
 
 func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) int {
+	return executeRecorded(args, stdout, stderr, pre, nil)
+}
+
+func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer) int, record func(func() int) int) int {
 	build := func() *cobra.Command {
 		root := cli.NewRoot("deskboard", "read-only cross-repo board")
 		root.Long = "Read-only cross-repo board. Output is JSON except stalled (table by default).\nAll roster, custody, scope, kill-switch and admission checks apply to execution."
@@ -141,9 +151,11 @@ func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) i
 						return boardExit(n)
 					}
 				}
-				return boardCode(deskkit.PerfRun("deskboard", perfVerbs, args, func([]string) int {
-					return runBoard(sub, rest, args, o, stdout, stderr)
-				}))
+				invoke := func() int { return runBoard(sub, rest, args, o, stdout, stderr) }
+				if record != nil {
+					return boardCode(record(invoke))
+				}
+				return boardCode(invoke())
 			}
 		}
 		root.Args = cobra.NoArgs
