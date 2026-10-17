@@ -5703,6 +5703,14 @@ is `Unverifiable`, never a silent success. When it takes over a stale claim its 
 prior-owner=<o> because=old-no-live-signal`, so a later sweep can see the reclaim happened
 through the tool — under the flock — rather than by hand.
 
+`list` preserves readable claim rows, but exits **6** if any claim file could not be
+read or parsed. Its diagnostic names each skipped file and says the listing is incomplete;
+a partial listing never means an item is free. The library returns those readable claims
+alongside a typed `ClaimListError` carrying skipped basenames and the underlying causes.
+`deskroster list` retains valid rows and marks ownership unverified; `scanloop plan` shows
+unknown claim states and exits 6. Recovery and liveness may still compare-and-delete an
+individually readable claim under the existing lock; unreadable claims remain untouched.
+
 ### Branch liveness — reclaiming a `--branch` claim through the tool (`stale` + the probe)
 
 A claim recorded with `--branch` is protected from age-only reclaim: `deskkit.isStale` will not
