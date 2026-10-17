@@ -35,6 +35,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
@@ -282,15 +283,11 @@ func originRemoteURL() string {
 
 // gogitOriginURL is the in-process go-git reader (originRemoteURL step 1).
 func gogitOriginURL(dir string) string {
-	top, err := gitcore.Toplevel(dir)
+	r, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{DetectDotGit: true})
 	if err != nil {
 		return ""
 	}
-	r, err := gitcore.Open(top)
-	if err != nil {
-		return ""
-	}
-	u, err := r.RemoteURL("origin")
+	u, err := gitcore.RemoteURL(r, "origin")
 	if err != nil {
 		return ""
 	}

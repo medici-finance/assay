@@ -2,6 +2,9 @@ package gitcore
 
 import (
 	"bytes"
+	"fmt"
+
+	"github.com/go-git/go-git/v5"
 
 	"github.com/go-git/go-git/v5/config"
 	format "github.com/go-git/go-git/v5/plumbing/format/config"
@@ -37,4 +40,13 @@ func (r *Repo) fetchConfig() (*config.Config, error) {
 		return nil, err
 	}
 	return corrected, nil
+}
+
+// RemoteURL reads the first URL through the shared adapter for a repository opened
+// by the caller. It does not reopen the repository or select another config source.
+func RemoteURL(repo *git.Repository, name string) (string, error) {
+	if repo == nil {
+		return "", fmt.Errorf("gitcore: remote-url %s: no repository", name)
+	}
+	return (&Repo{repo: repo}).RemoteURL(name)
 }
