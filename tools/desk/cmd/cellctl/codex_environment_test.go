@@ -140,7 +140,9 @@ func TestCodexSupervisionAcrossLaunchPaths(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			for _, instruction := range []string{
-				"bounded waits up to 60 seconds or the next required check",
+				"Block on existing child/command handles until the next required check",
+				"After an early timeout, re-arm the wait",
+				"operator-selected outer cadence after a clean handoff",
 				`fork_turns="none"`,
 				"independent reviews, stop checks and required freshness checks",
 			} {

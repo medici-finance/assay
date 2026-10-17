@@ -47,17 +47,36 @@ decisions, budgets, breakers, explicit stop-orders) are unchanged.
 
 ## Supervision and context
 
-Use completion notifications for in-flight agents and keep one handle for each running
-command. When nothing actionable changed, wait on those handles until a completion,
-human input, a required stop/liveness check, or the next role sweep is due. Use bounded
-waits rather than repeated immediate status reads. A timeout alone is not a reason to
-repeat the full board, roster, logs and process inventory. Keep the role's cadence,
-fresh-sweep idle gate, slot refill and stop checks; a failed read remains could-not-check.
-For external CI without a completion signal, check at the existing watch cadence and
-honor retry-after/backoff rather than starting overlapping watchers.
-Keep one owner for each routine watch: the item agent reports meaningful changes to its
-supervisor, which need not run the same CI/log watch in parallel. The supervisor still
-performs every required independent verdict readback and final ready/claim check.
+The supervisor reacts to events; it is not a second worker or a model-powered timer.
+After dispatch, retain the child/command handles and the next required sweep/stop-check
+deadline. Return to model work only for a child result or actionable message, human
+steering, a failed watcher, or a due role check. On a completion, consume that result,
+perform the required independent verdict readback, and refill the available slot.
+A notification is a cue, never evidence of a posted verdict or a drained queue.
+
+When nothing actionable changed, block on the existing event/command handle until the
+next required deadline, using the longest wait the exposed tool and harness instructions
+permit. Do not invent a shorter polling interval. On an early timeout, re-arm the wait
+with the remaining time; do not inventory agents/processes, reread logs or manuals,
+refresh the whole board, send progress pings, or print an unchanged status summary.
+Run the required stop/liveness and fresh queue checks when due, then return to waiting.
+A failed read remains could-not-check. Completion events refill slots without waiting
+for the next queue sweep; the role's sweep cadence and stop obligations remain intact.
+
+Keep one owner for each routine CI/log watch. Use a non-model watcher with the existing
+cadence and retry-after/backoff, reporting terminal status, actionable failure, watcher
+failure or the role's required liveness signal. Do not create an agent whose only job
+is to repeatedly ask whether another agent or CI job has finished. The supervisor does
+not duplicate the item's routine watch, but still performs every required independent
+verdict readback and final ready/claim check. Save full logs to files.
+
+If only a future cadence is due, wait interruptibly in the current turn. Never end a
+turn just to have a standing objective immediately restart the same unchanged checks.
+If the harness cannot wait efficiently or cannot wake after the turn ends, state that
+capability gap and use the existing operator-selected outer cadence mechanism; do not
+imitate a durable monitor with repeated model turns or a new polling daemon. Switching
+launch modes requires the existing clean handoff; do not abandon children, claims or
+processes, change the driver's Goal, or claim idle without the required fresh sweep.
 
 Read the role and applicable references at boot. While their content remains available
 in context, continue from it; a new turn does not require rereading unchanged manuals.

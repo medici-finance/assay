@@ -2,9 +2,9 @@
   "schema": 1,
   "files": {
     ".cursor/references/claude-code.md": "54247c41cd6dd76081d52ba87c01007a692197ed56171b634820d053981cc5d8",
-    ".cursor/references/codex.md": "ffa0687471885ef073bde1bc4cc69428c2f20518f8a31b8f76b4ad7a8e6409f9",
+    ".cursor/references/codex.md": "f64d6c809b9a881e4a33ceb6fa88d6e02e8a5918b8389631bc1fe56900289060",
     ".cursor/references/cursor.md": "eb2529e42aa4689ae6c3815e85086a28c28764d256933a889938ec4660ada30e",
-    ".cursor/references/desk-common.md": "ac841702e7474e49aa7d99b98b28c2c66a41852f3b98218cdad7e4b6a26af777",
+    ".cursor/references/desk-common.md": "a55749e6d83fd6b23deeca9a05c6ea7b642d686f89648b7a99f1553df3deb356",
     ".cursor/references/desk-shell.md": "f996335375694a88a5d4dc3229236c8bb023a519ee6d4fc26838745121d368c0",
     ".cursor/references/standing-note.md": "2f2868fdd8f122903e30e1b720a0efb7940165946e379adad2e6378a4d4e58c0",
     ".cursor/references/tick-contract.md": "65e6ac141091a31120f5eefd126891409ed1a92c376d6ef3f99fd8ea52e86ee7",

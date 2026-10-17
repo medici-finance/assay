@@ -75,19 +75,32 @@ and [native Goal RPC](https://learn.chatgpt.com/docs/app-server).
 Apply [desk-common](./desk-common.md#supervision-and-context) with the tools actually
 exposed by this session; these are usage instructions, not a new capability qualification.
 
-- For V2 children, use `wait_agent` completion/message notifications. Prefer one bounded
-  wait of up to 60 seconds, shortened to the next required sweep or stop check. Do not
-  surround every wait with `list_agents`; use an inventory to recover missing handles
-  or reconcile an actual lifecycle change. A notification is a cue to inspect its result,
-  not proof that a verdict was posted or the queue drained.
-- For a yielded `exec` use `wait` on that cell; for an ongoing command use `write_stdin`
-  on its session. Keep the existing handle, choose a supported longer wait up to 60 seconds
-  or the next due check, and bound returned output. Reserve immediate/one-second polls for
-  a specific interactive or near-completion need. Do not relaunch an unchanged command.
-- While children or commands are running, keep the turn open and wait or do independent
-  work. Ending a turn merely to have the Goal immediately restart the same status checks
-  adds no progress. With only a future cadence due, use an interruptible bounded wait;
-  do not create a shell polling daemon or claim native Goals provide a durable timer.
+- For V2 children, use one `wait_agent` mailbox wait for the live pool. It wakes on
+  child messages/completions; its timeout is a maximum, not a delay before handling
+  results. Set it to the remaining time before the next required sweep/stop check,
+  capped by the exposed tool limit and higher-priority harness instructions. There is
+  no desk-imposed 60-second cap. Do not surround waits with `list_agents`; inventory
+  only to recover missing handles or reconcile a real lifecycle change. On timeout
+  before a required deadline, re-arm the wait without another status inspection.
+- For a yielded `exec`, use `wait` on that cell; for an ongoing command use
+  `write_stdin` on its existing session. Choose the longest permitted wait before the
+  next required check and bound returned output. Reserve immediate/one-second polls
+  for a specific interactive need. Do not relaunch an unchanged command or add a
+  second CI watcher. A quiet watcher is not a reason to ask its owner for progress.
+- Keep the turn open while waiting for in-flight work. A final response followed by
+  automatic Goal continuation is not an event subscription. With only a future
+  cadence due, use the available interruptible wait. Higher-priority harness wait
+  limits still apply: if they force frequent wakeups, report the limitation rather
+  than claiming Claude-like idle efficiency. Goals provide neither a durable timer
+  nor an external-event monitor.
+- For an operator-selected outer scheduler, use the existing
+  [cellctl cadence](../../../docs/cellctl-cadence.md#switching-an-existing-interactive-house)
+  path. It runs bounded ticks with Goals disabled and waits outside the model between
+  passes. Preserve the clean handoff and ownership checks; never start a second owner,
+  silently switch an interactive desk, pause/complete its Goal, or drop in-flight work.
+  This fallback is fixed-cadence, not event-driven wakeup. Updated plugin/launcher
+  instructions affect new launches; existing sessions need an explicitly authorized
+  instruction update. Neither installation nor compliance is established by this text.
 - When `spawn_agent` exposes `fork_turns`, use `fork_turns="none"` for a new item. Supply
   the dispatch assignment/packet paths, lane, required instructions and shell constraints
   explicitly rather than copying the supervisor's history. Readback and admission still
