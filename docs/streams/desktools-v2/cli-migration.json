@@ -123,6 +123,16 @@
     },
     {
       "class": "test",
+      "pattern": "containers/postgres/drill.sh",
+      "reason": "throwaway-server verification drill for the local PostgreSQL scripts (desk-containers/26 Verify row 7): starts its own two disposable compose projects, runs one pass of about 21 checks against provision-cell.sh and restore.sh and exits non-zero on any failure (it carries no mutation code: the five mutations are manual edit-and-rerun steps in the brief's Verify row 7); a test instrument, never the operator's backup, restore or provisioning path"
+    },
+    {
+      "class": "library",
+      "pattern": "containers/postgres/lib.sh",
+      "reason": "shared helper sourced by the containers/postgres operator scripts (desk-containers/26); no shebang, no main guard, no argument parser and never run on its own"
+    },
+    {
+      "class": "test",
       "pattern": "tools/gremlins/run.sh",
       "reason": "daily Gremlins mutation discovery sweep (issue #2647); runs the desk packages' tests against mutants in a disposable checkout from a staged CI workflow, not released and not an operator entrypoint"
     },
@@ -1841,6 +1851,91 @@
       "complexity": "simple",
       "basis": "167 lines at 73434c9469ab",
       "owner": "desktools-v2/50",
+      "state": "pending"
+    },
+    {
+      "executable": "provision-cell.sh",
+      "path": "containers/postgres/provision-cell.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "docs/postgres.md",
+        "containers/README.md",
+        "containers/postgres/drill.sh"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "184 lines at 176847f81475",
+      "owner": "desktools-v2/55",
+      "state": "pending"
+    },
+    {
+      "executable": "restore.sh",
+      "path": "containers/postgres/restore.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "docs/postgres.md",
+        "containers/README.md",
+        "containers/postgres/drill.sh"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "247 lines at 176847f81475",
+      "owner": "desktools-v2/55",
+      "state": "pending"
+    },
+    {
+      "executable": "check-isolation.sh",
+      "path": "containers/postgres/check-isolation.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "docs/postgres.md",
+        "containers/README.md",
+        "containers/postgres/drill.sh"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "96 lines at 176847f81475",
+      "owner": "desktools-v2/50",
+      "state": "pending"
+    },
+    {
+      "executable": "backup.sh",
+      "path": "containers/postgres/backup.sh",
+      "kind": "script",
+      "module": "bash",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "docs/postgres.md",
+        "containers/README.md",
+        "containers/postgres/drill.sh"
+      ],
+      "parser": "bash manual flag loop",
+      "complexity": "simple",
+      "basis": "123 lines at 176847f81475",
+      "owner": "desktools-v2/41",
+      "state": "pending"
+    },
+    {
+      "executable": "scram-verifier.py",
+      "path": "containers/postgres/scram-verifier.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "repo tooling; run by an operator on the host that runs the local PostgreSQL compose project (docs/postgres.md); not released or built by a workflow",
+      "consumers": [
+        "containers/postgres/provision-cell.sh",
+        "containers/postgres/drill.sh",
+        "docs/postgres.md"
+      ],
+      "parser": "Python sys.argv (one subcommand, selftest; password on stdin)",
+      "complexity": "simple",
+      "basis": "85 lines at 176847f81475",
+      "owner": "desktools-v2/43",
       "state": "pending"
     },
     {

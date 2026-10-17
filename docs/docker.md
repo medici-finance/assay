@@ -181,3 +181,8 @@ the five desk images `FROM` that just-built base (all stamped with the same
 version/sha tags), and runs `containers/scripts/layer-secret-scan.sh` against all
 six images — a hit fails the publish. Build them locally with the commands in
 [`containers/README.md`](../containers/README.md).
+
+## Local PostgreSQL for host cells
+
+A separate compose project, `containers/postgres/`, runs one loopback-only PostgreSQL server
+with one database and restricted role per cell — see [`docs/postgres.md`](postgres.md).

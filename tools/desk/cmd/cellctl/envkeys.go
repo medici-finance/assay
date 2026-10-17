@@ -247,6 +247,10 @@ func buildEnvKeys() []envKey {
 			unread: "written into cell.env by `cellctl new` and documented; the deskd credential now comes from the role credential path, so nothing in cellctl reads it back"},
 		envKey{key: "ORGS", class: envCell, desc: "GitHub cells: the orgs the cell's deskd reads.",
 			why: "is the set of organisations one cell mints tokens for"},
+		envKey{key: "CELL_DB_DSN", class: envCell, desc: "The cell database's libpq connection string, with no password; exported to every role window as ASSAY_CELL_DB_DSN (unset: no database).",
+			why: "is one cell's own database and role"},
+		envKey{key: "CELL_DB_PASSFILE", class: envCell, desc: "The absolute path of the cell database's pgpass file (mode 0600 or 0400); exported as PGPASSFILE when CELL_DB_DSN is set.",
+			why: "is one cell's database credential file"},
 
 		// ── not a lever: switches for one run ────────────────────────────────────────────────
 		envKey{key: "CELLS_ROOT", class: envNotLever, from: envFromRun,
