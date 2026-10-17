@@ -92,7 +92,9 @@ validate_line() {
     *"$(printf '\t')"*) die "the line contains a tab; fields are single-space separated"; return 1 ;;
   esac
 
-  if ! grep -Eq "$GRAMMAR" <<<"$line"; then
+  # Match the whole argument. A line-oriented grep can accept one record while
+  # field() reads another, bypassing the closed sets and cross-field rules.
+  if ! [[ "$line" =~ $GRAMMAR ]]; then
     die "does not match the published grammar: $line"
     printf '  expected: tick role=<role> outcome=<outcome> swept=<n|-> acted=<n|-> filed=<n|-> duration=<s>\n' >&2
     printf '  roles:    %s\n' "$ROLES" >&2
