@@ -9,6 +9,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // dispatchCLI keeps parsing/configuration distinct from every domain authority.
@@ -104,7 +105,13 @@ func newDispatchCLI(mode string, env dispatchCLI) *cobra.Command {
 			return deskkit.Refused(err.Error())
 		}
 		if mode == "" && v.Bool("kits") {
-			if len(args) != 0 || cmd.Flags().NFlag() != 1 {
+			executionFlag := false
+			cmd.Flags().Visit(func(f *pflag.Flag) {
+				if f.Name != "kits" && f.Name != "trace" {
+					executionFlag = true
+				}
+			})
+			if len(args) != 0 || executionFlag {
 				return &deskkit.DeskError{Code: cli.ExitUsage, Msg: "--kits accepts no execution arguments"}
 			}
 			for _, k := range kitNames() {
@@ -195,6 +202,7 @@ func runCommand(args []string, production bool) int {
 			if !deskkit.CheckVerbActivation(os.Stderr) {
 				return deskkit.Unverifiable("deskdispatch activation could not be established", nil)
 			}
+			return nil // Guard and diagnostics remain inside the measured execution.
 		}
 		if err := deskkit.Guard(); err != nil {
 			return err
@@ -205,7 +213,13 @@ func runCommand(args []string, production bool) int {
 	if production {
 		env.handle = func(mode string, o dispatchOpts, override string) error {
 			var result error
-			deskkit.PerfRun(toolName, perfVerbs, args, func([]string) int { result = executeMode(mode, o, override); return deskkit.ExitCodeOf(result) })
+			deskkit.PerfRun(toolName, perfVerbs, args, func([]string) int {
+				if result = deskkit.Guard(); result == nil {
+					deskkit.WarnIfUnpinned(os.Stderr)
+					result = executeMode(mode, o, override)
+				}
+				return deskkit.ExitCodeOf(result)
+			})
 			return result
 		}
 	}

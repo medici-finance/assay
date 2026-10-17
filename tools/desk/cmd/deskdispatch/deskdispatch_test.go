@@ -1102,14 +1102,19 @@ func TestClaimRefusalWithNoHolderIsNotReportedAsACollision(t *testing.T) {
 
 // A key that would be read as a flag, or that carries a parent-directory segment, is
 // refused before it reaches any child process.
+// regression: #2111
 func TestHostileItemKeysRefused(t *testing.T) {
 	for _, key := range []string{"--force", "../escape", "a b", ""} {
 		s := &stub{}
 		_, root := s.install(t)
 		plantScripts(t, root)
 		rc := run([]string{key, "--root", root})
-		if rc != deskkit.ExitRefused {
-			t.Errorf("key %q rc = %d, want %d (refused)", key, rc, deskkit.ExitRefused)
+		want := deskkit.ExitRefused
+		if key == "--force" {
+			want = 2
+		} // CLI syntax, before domain admission.
+		if rc != want {
+			t.Errorf("key %q rc = %d, want %d (refused)", key, rc, want)
 		}
 		if len(s.calls) != 0 {
 			t.Errorf("key %q reached a child process: %v", key, s.calls)

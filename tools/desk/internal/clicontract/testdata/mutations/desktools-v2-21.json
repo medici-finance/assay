@@ -1,5 +1,5 @@
 {
-  "test": "go test -timeout 120s -count=1 ./cmd/deskdispatch -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms)$'",
+  "test": "go test -timeout 120s -count=1 ./cmd/deskdispatch -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestHostileItemKeysRefused|TestStampOnlyRejectsArgs)$'",
   "control": {
     "name": "CONTROL: usage exit is wrong",
     "file": "cmd/deskdispatch/cli.go",

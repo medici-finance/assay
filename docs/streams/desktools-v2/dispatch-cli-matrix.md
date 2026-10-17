@@ -70,6 +70,29 @@ and verifier recovery retain their independent role checks even when called dire
 
 ## Consuming forms
 
+The production Go caller outside the command package is
+`statusgen/verifieradmission.go:29`; it invokes
+`deskdispatch --check-verifier --root ROOT --brief BRIEF`. The typed verifier
+mode and every path spelling are covered by the owner tests; the existing statusgen
+admission tests keep the subprocess failure/receipt contract.
+
+| Consuming surface | Invocation retained | Coverage |
+|---|---|---|
+| worker skill and tools README | `deskdispatch ITEM --tier TIER --kit worker --repo REPO --root ROOT --claim-root ROOT --model MODEL --branch BRANCH --brief BRIEF --gate-human --pr N --rework --attest-worker --prompt-file FILE --quiet --dry-run --worktree PATH --cross-repo` (applicable subsets) | every item flag reaches typed dispatch options; inherited domain tests retain invalid-combination refusal |
+| worker skill and tools README | `deskdispatch --stamp-only --repo REPO --pr N --model MODEL --tier TIER --kit KIT --attestation N --dry-run` | stamp mode flow/defaults/unknown input; existing stamp custody/readback tests |
+| review skill and tools README | `deskdispatch ALIAS--pr-N[--security] --kit review --tier TIER --model MODEL --repo REPO --pr N --prompt-file FILE` | item mode flag flow; existing review-key, fresh allocation and source/round tests |
+| verifier skill, statusgen and tools README | `deskdispatch --check-verifier --root HOME --brief PATH` | verifier typed flow/path forms; existing verifier admission tests |
+| verifier skill and tools README | `deskdispatch --attest-verifier --root HOME --dry-run` | recovery typed flow; existing independent coordinator admission tests |
+| verifier skill and tools README | `deskdispatch ITEM --kit verifier --model MODEL --tier TIER --brief PATH` | item options; existing verifier detached/worktree/receipt tests |
+| command reference and embedded prompts | `deskdispatch --kits`, `deskdispatch --version`, root and mode help | actual binary under absent/malformed config; zero config/effect counters |
+| tools README diagnostics | `DESK_TRACE=1 deskdispatch ITEM ...`, `deskdispatch --trace ITEM ...`, `deskdispatch ITEM ... --trace` | existing trace owner plus global placement and trace-like values |
+| outbound override owner | `deskdispatch ITEM --force-scan-override REASON ...` | string reaches typed handoff; existing validator/context owner preserved |
+
+The generated Cursor skill copies use the same forms as their canonical plugin skills.
+No invocation or quoted flag listing in the named contract/quality/manifest consumers
+requires rewriting: they reference domain behavior, source ownership or regression names.
+
+
 The inventory below is all tracked Go, shell, PowerShell, Markdown and workflow files
 mentioning this entrypoint at pickup, excluding its own package and generated views.
 Historical Evidence and unrelated quoted prose are retained. Executable and documented

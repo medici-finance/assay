@@ -28,7 +28,7 @@ func TestCLIHelpOffline(t *testing.T) {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	modes := []string{"--stamp-only", "--check-verifier", "--attest-verifier"}
-	forms := [][]string{{"-h"}, {"--help"}, {"help"}, {"-help"}, {"--version"}, {"-version"}, {"--kits"}}
+	forms := [][]string{{"-h"}, {"--help"}, {"help"}, {"-help"}, {"--version"}, {"-version"}, {"--kits"}, {"--trace", "--kits"}, {"--kits", "--trace"}}
 	for _, mode := range modes {
 		forms = append(forms, clicontract.HelpForms(mode)...)
 		forms = append(forms, clicontract.GoFlagHelpForms(mode)...)
@@ -192,6 +192,40 @@ func TestCLILegacyForms(t *testing.T) {
 						}
 					})
 				}
+			}
+		}
+	}
+	for _, mode := range []string{"", "--stamp-only", "--check-verifier", "--attest-verifier"} {
+		for _, binding := range dispatchBindings(mode) {
+			if binding.Key == "trace" || binding.Key == "kits" {
+				continue
+			}
+			first, last := "first", "last"
+			var want any = last
+			switch binding.Kind {
+			case cli.Bool:
+				first, last = "true", "false"
+				want = false
+			case cli.Int:
+				first, last = "3", "7"
+				want = 7
+			}
+			args := []string{"issue-7"}
+			if mode != "" {
+				args = []string{mode}
+			}
+			args = append(args, "--"+binding.Flag+"="+first, "-"+binding.Flag+"="+last)
+			var out bytes.Buffer
+			calls := 0
+			env := dispatchCLI{handle: func(_ string, o dispatchOpts, override string) error {
+				calls++
+				if got := cliFields(o, override)[binding.Key]; !reflect.DeepEqual(got, want) {
+					t.Errorf("repeat %s got %#v want %#v", binding.Key, got, want)
+				}
+				return nil
+			}}
+			if code := parseDispatchCLI(args, env, cli.IO{Out: &out, Err: &out}); code != 0 || calls != 1 {
+				t.Fatalf("repeat %s code=%d calls=%d %s", binding.Key, code, calls, &out)
 			}
 		}
 	}
