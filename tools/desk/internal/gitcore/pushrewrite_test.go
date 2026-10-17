@@ -9,6 +9,8 @@ import (
 
 // regression: #3281
 func TestFetchRewriteScope(t *testing.T) {
+	// These synthetic public-forge remotes are rewrite keys only; no host is contacted.
+	// Canonical forge hosts are admitted by the existing disclosure-shape policy.
 	const target = "https://github.com/example/project.git"
 	for _, tc := range []struct {
 		name, raw, want string
@@ -16,13 +18,13 @@ func TestFetchRewriteScope(t *testing.T) {
 	}{
 		{"push-only", target, target, [][]string{{"url.https://github.com/.pushInsteadOf", "https://github.com/"}}},
 		{"unmatched-push", target, target, [][]string{{"url.https://elsewhere.invalid/.pushInsteadOf", "unmatched:"}}},
-		{"longest-fetch", "alias:team/project.git", target, [][]string{
-			{"url.https://elsewhere.invalid/.insteadOf", "alias:"},
-			{"url.https://github.com/example/.insteadOf", "alias:team/"},
-			{"url.https://push.invalid/.pushInsteadOf", "alias:team/"},
+		{"longest-fetch", "github.com:example-team/project.git", target, [][]string{
+			{"url.https://elsewhere.invalid/.insteadOf", "github.com:"},
+			{"url.https://github.com/example/.insteadOf", "github.com:example-team/"},
+			{"url.https://push.invalid/.pushInsteadOf", "github.com:example-team/"},
 		}},
-		{"both-options", "alias:project.git", target, [][]string{
-			{"url.https://github.com/example/.insteadOf", "alias:"},
+		{"both-options", "github.com:project.git", target, [][]string{
+			{"url.https://github.com/example/.insteadOf", "github.com:"},
 			{"url.https://github.com/example/.pushInsteadOf", "other:"},
 		}},
 	} {
