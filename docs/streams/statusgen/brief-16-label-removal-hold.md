@@ -28,6 +28,8 @@ gate-why: >-
   automated actor can turn into dispatchable work without a human act. The four risk answers
   stay `no`; the reasoning is under Context.
 decision-trigger: creation
+decision-issue: 2414
+ruling: "https://github.com/medici-finance/assay/issues/2414#issuecomment-6079818525"
 issues: [2414]
 design: DR-label-removal-hold
 outcome: none
