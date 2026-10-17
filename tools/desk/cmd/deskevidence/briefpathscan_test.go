@@ -135,6 +135,25 @@ func TestDirectWriteRefusalNamesEvidenceFileLine(t *testing.T) {
 	}
 }
 
+// regression: #3283
+// TestScanDestLineHunks pins diagnostics to the destination file line across separated
+// additions, context and a deletion; the scanner must still refuse and redact the same run.
+func TestScanDestLineHunks(t *testing.T) {
+	prior := "one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\neleven\ntwelve\nold\nfourteen\nfifteen\n"
+	next := "one\ntwo\nthree\nnew\nfive\nsix\nseven\neight\nnine\nten\neleven\ntwelve\nkey is " + fixtureFingerprint + "\nfourteen\nfifteen\n"
+	added := addedLines([]byte(prior), []byte(next))
+	err := evidenceOutboundCheck("example-org/tracker", "docs/streams/x/brief.md", added, []byte(next))
+	if err == nil || !deskkit.IsRefused(err) {
+		t.Fatalf("want secret-scan refusal, got %v", err)
+	}
+	if want := "docs/streams/x/brief.md:13"; !strings.Contains(err.Error(), want) {
+		t.Fatalf("diagnostic does not name destination line %s: %v", want, err)
+	}
+	if strings.Contains(err.Error(), fixtureFingerprint) {
+		t.Fatalf("refusal leaked the offending span: %v", err)
+	}
+}
+
 // TestPreexistingRunIsNoticedNotRefused: the other origin. When the brief already carries a
 // secret-shaped run and the landing's own bytes are clean, the landing goes through and the
 // tool SAYS on stderr where the pre-existing run lives (`pre-existing in <brief-path>:<line>`),

@@ -937,25 +937,24 @@ func rowDelta(older, newer []byte) (added, removed int) {
 // already say, whichever line of the file it lands on (#1161). Order follows newer's own
 // line order, which keeps the result readable; reBase64ish (the scanner's high-entropy run
 // detector) never matches across a newline, so nothing a line-oriented diff could split a
-// run across is lost by joining the added lines back with "\n".
+// run across is lost by blanking unchanged lines in place. Keeping those blanks is what makes
+// the scanner's line number the destination file's line number (#3283).
 //
-// Unlike rowDelta this does NOT trim or drop blank lines: a blank line carries no secret, so
-// including it costs the scanner nothing, and dropping it would risk gluing two unrelated lines'
-// characters together across what was a line boundary in the original file.
+// Unlike rowDelta this does NOT trim or drop lines: unchanged lines become blank placeholders
+// rather than disappearing, and a blank line carries no secret. Keeping every destination
+// line also avoids gluing unrelated characters together across an original line boundary.
 func addedLines(older, newer []byte) []byte {
 	present := map[string]bool{}
 	for _, ln := range strings.Split(string(older), "\n") {
 		present[ln] = true
 	}
-	var out strings.Builder
-	for _, ln := range strings.Split(string(newer), "\n") {
+	lines := strings.Split(string(newer), "\n")
+	for i, ln := range lines {
 		if present[ln] {
-			continue
+			lines[i] = ""
 		}
-		out.WriteString(ln)
-		out.WriteByte('\n')
 	}
-	return []byte(out.String())
+	return []byte(strings.Join(lines, "\n"))
 }
 
 // auditCtx accumulates fields for the ONE audit line per invocation.
