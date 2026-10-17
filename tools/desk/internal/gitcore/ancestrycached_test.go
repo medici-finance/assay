@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+// regression: #3187
 func TestCachedAncestryMatchesGit(t *testing.T) {
 	cf := newContainsFixture(t)
 	for _, mode := range []string{"no-graph", "graph", "split-graph"} {
@@ -62,6 +63,7 @@ func TestCachedAncestryMatchesGit(t *testing.T) {
 	}
 }
 
+// regression: #3187
 func TestCachedAncestryDecodesSharedHistoryOnce(t *testing.T) {
 	const commits = 80
 	f, shas := linearFixture(t, commits, 4)

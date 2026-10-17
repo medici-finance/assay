@@ -13,6 +13,7 @@ import (
 
 // Count real work, not elapsed time: every candidate must be judged while the
 // mainline is walked once and a repeated non-mainline proof is computed once.
+// regression: #3187
 func TestSweepReapReusesAncestry(t *testing.T) {
 	work, roots := newPerfFixture(t, 40, 500)
 	side := mustGit(t, work, "rev-parse", "refs/heads/side")
@@ -69,6 +70,7 @@ func TestSweepReapReusesAncestry(t *testing.T) {
 	}
 }
 
+// regression: #3187
 func TestSweepDetachedReviewsShareReachability(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -108,6 +110,7 @@ func TestSweepDetachedReviewsShareReachability(t *testing.T) {
 	}
 }
 
+// regression: #3187
 func TestSweepRejectsChangedCommonStore(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -123,6 +126,7 @@ func TestSweepRejectsChangedCommonStore(t *testing.T) {
 	}
 }
 
+// regression: #3187
 func TestSweepReapHoldsUnreadableHead(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -136,6 +140,7 @@ func TestSweepReapHoldsUnreadableHead(t *testing.T) {
 	assertExists(t, rt)
 }
 
+// regression: #3187
 func TestSweepAdminInventoryRefreshesBetweenSweeps(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -161,6 +166,7 @@ func TestSweepAdminInventoryRefreshesBetweenSweeps(t *testing.T) {
 	}
 }
 
+// regression: #3187
 func TestSweepAdminInventoryScalesAcrossHusksAndAtTipTrees(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
@@ -203,6 +209,7 @@ func TestSweepAdminInventoryScalesAcrossHusksAndAtTipTrees(t *testing.T) {
 	}
 }
 
+// regression: #3187
 func TestSweepAdminIdentityFailsClosed(t *testing.T) {
 	for _, bad := range []string{"duplicate", "unreadable", "malformed", "moved", "changed-malformed", "removed"} {
 		t.Run(bad, func(t *testing.T) {

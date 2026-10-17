@@ -1,0 +1,23 @@
+{
+  "test": "go test ./cmd/deskwt -run '^TestSweepAdminIdentityFailsClosed$' -count=1 -v -timeout 30s",
+  "control": {
+    "name": "accept duplicate admin identity",
+    "file": "cmd/deskwt/sweepread.go",
+    "old": "if index.ambiguous[rt] {",
+    "new": "if false && index.ambiguous[rt] {"
+  },
+  "mutations": [
+    {
+      "name": "accept incomplete admin inventory",
+      "file": "cmd/deskwt/sweepread.go",
+      "old": "if index.err != nil {",
+      "new": "if false && index.err != nil {"
+    },
+    {
+      "name": "trust a selected pointer after it changes",
+      "file": "cmd/deskwt/sweepread.go",
+      "old": "if err != nil || !filepath.IsAbs(pointer) || filepath.Base(pointer) != \".git\" || resolvePath(filepath.Dir(pointer)) != rt {",
+      "new": "if false && (err != nil || !filepath.IsAbs(pointer) || filepath.Base(pointer) != \".git\" || resolvePath(filepath.Dir(pointer)) != rt) {"
+    }
+  ]
+}
