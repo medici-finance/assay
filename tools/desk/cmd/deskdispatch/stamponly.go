@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -11,30 +10,13 @@ import (
 
 // This is a bounded entry to the existing stamp step, never a dispatch with steps
 // skipped. Its flag set cannot carry claims, allocations, hooks, or prompt output.
-func cmdStampOnly(args []string) (err error) {
-	fs := flag.NewFlagSet("deskdispatch --stamp-only", flag.ContinueOnError)
-	fs.SetOutput(new(strings.Builder))
-	o := dispatchOpts{stampOnly: true}
-	fs.StringVar(&o.repo, "repo", "", "target owner/repo (required)")
-	fs.IntVar(&o.pr, "pr", 0, "already-open change number (required)")
-	fs.StringVar(&o.model, "model", "", "exact model selected by the dispatcher (required)")
-	fs.StringVar(&o.tier, "tier", "", "selected execution tier (required)")
-	fs.StringVar(&o.kit, "kit", "worker", "original dispatch kit")
-	fs.IntVar(&o.attestation, "attestation", 0, "the worker pre-work attestation record this change was admitted under "+
-		"(also read from the change's Worker-Attestation: line); a disagreeing selection, kit, repo or branch refuses")
-	fs.BoolVar(&o.dryRun, "dry-run", false, "read and report without mutation")
+func executeStampOnly(o dispatchOpts) (err error) {
 	defer func() {
 		// Dry-run does not even append a local audit record.
 		if !o.dryRun {
 			audit(o, err)
 		}
 	}()
-	if e := fs.Parse(args); e != nil {
-		return deskkit.Refused("stamp-only: " + e.Error())
-	}
-	if fs.NArg() != 0 {
-		return deskkit.Refused("stamp-only accepts flags only, no item key")
-	}
 	if o.attestation < 0 {
 		return deskkit.Refused("stamp-only: --attestation must be a positive record number")
 	}
