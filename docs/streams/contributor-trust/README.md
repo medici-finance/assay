@@ -98,7 +98,7 @@ precisely the case where prior good behaviour predicts nothing.
 | 06 | [Contributor-facing documents — state the bar honestly, and ask for verification rather than assertion](brief-06-contributor-facing-docs.md) | 0 | S | implemented | — | — |
 | 07 | [Agent contributors — disclosure of automated authorship, and tiering the operating human rather than the tool](brief-07-agent-contributors.md) | 1 | S | todo | — | — |
 | 08 | [External-contribution metrics — inbound pull requests by tier and outcome, on the board](brief-08-external-contribution-metrics.md) | 1 | S | todo | — | — |
-| 09 | [External-contributor credit in release notes — the aggregator names the author a fork change came from](brief-09-external-contributor-credit.md) | 1 | S | todo | — | — |
+| 09 | [External-contributor credit in release notes — the aggregator names the author a fork change came from](brief-09-external-contributor-credit.md) | 1 | S | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
