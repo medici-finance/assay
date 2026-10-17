@@ -48,13 +48,13 @@ func TestMutantTimeoutIsReported(t *testing.T) {
 	}
 	writeFixture(t, filepath.Join(root, "go.mod"), "module fixture\n\ngo 1.21\n")
 	writeFixture(t, filepath.Join(pkg, "p.go"), "package pkg\nfunc Control() int { return 1 }\nfunc Mutant() int { return 2 }\n")
-	writeFixture(t, filepath.Join(pkg, "p_test.go"), "package pkg\nimport (\"os\"; \"strings\"; \"testing\"; \"time\")\nfunc TestValues(t *testing.T) { b, _ := os.ReadFile(\"p.go\"); s := string(b); if strings.Contains(s, \"return 0\") { t.Fatal(\"control\") }; if strings.Contains(s, \"return 3\") { time.Sleep(2*time.Second) } }\n")
 	spec := map[string]any{
 		"root":      root,
-		"test":      "go test ./pkg -count=1",
+		"test":      "if grep -q 'return 0' pkg/p.go; then exit 1; fi; if grep -q 'return 3' pkg/p.go; then sleep 2; fi",
+		"build":     "true",
 		"control":   Mutation{Name: "positive-control", File: "pkg/p.go", Old: "return 1", New: "return 0"},
 		"mutations": []Mutation{{Name: "slow-mutant", File: "pkg/p.go", Old: "return 2", New: "return 3"}},
-		"timeout":   map[string]any{"multiplier": 1, "floor": "20ms", "baseline": "30s"},
+		"timeout":   map[string]any{"multiplier": 0.01, "floor": "20ms", "baseline": "30s"},
 	}
 	body, err := json.Marshal(spec)
 	if err != nil {
