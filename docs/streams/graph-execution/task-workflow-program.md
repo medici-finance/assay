@@ -107,3 +107,19 @@ Measure original accepted-and-subsequently-verified work, full attempt/preparati
 ## Contract ownership and documentation
 
 Public work depends only on public contracts and fake-provider conformance. Adopter-only data, cohort decisions, installed secrets, operator acts and private measurements stay in adopting repositories. All consumers share canonical IDs and versions; unsupported mandatory fields refuse rather than silently downgrading. Each implementation updates its declared lifecycle/enforcement/runner documentation and cross-module CI path registry. No public brief depends on an adopter's private brief.
+
+## Proposed native improvement evidence — 17 October 2026
+
+[The desk-improvement contract](../desk-improvement/spec.md#8-runtime-evidence-responsibilities)
+adds actual source emission to the future execution path. After the current owners land,
+desk-improvement/05 binds canonical run/outcome records, /06 captures supervisor lifecycle
+and usage, /07 workflow attempt/decision facts, and /08 standing per-item semantic outcomes.
+Source operation receipts, role/subject bindings, failed/no-PR attempts and unknown usage
+must survive source→assessment export. A successful invocation does not imply accepted work.
+
+These are measurement consumers of the existing PostgreSQL, recovery and authority owners;
+there is no reverse prerequisite from foundations to their new consumers. /10 qualifies
+actual native emission and cross-mode replay. Offline retained-input cards can precede the
+runtime; a claim of native measurement requires its producer/build/profile evidence. The
+[future-state amendment](../../proposals/non-ci-architecture/22-desk-improvement.md) keeps
+policy adoption and real enrollment under their existing separate gates.
