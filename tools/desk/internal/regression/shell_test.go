@@ -92,7 +92,9 @@ func requireBash4(t testing.TB) string {
 	if err != nil {
 		t.Skip("prerequisite: Bash 4 or newer is required for the POSIX regression fixtures; bash was not found on PATH")
 	}
-	out, err := exec.Command(bash, "--version").Output()
+	cmd := exec.Command(bash, "--version")
+	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null")
+	out, err := cmd.Output()
 	if err != nil {
 		t.Skipf("prerequisite: Bash 4 or newer is required for the POSIX regression fixtures; could not read bash version: %v", err)
 	}
