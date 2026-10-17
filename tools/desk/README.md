@@ -201,7 +201,9 @@ The digest is sha256 over the full block, so it moves on any change in either di
 - `ASSAY_CONFIG_ECHO=full` is set (any value other than `compact` counts as `full`); this forced
   form neither reads nor updates the state file.
 
-To read every line on an execution: `ASSAY_CONFIG_ECHO=full deskboard prs --table`.
+To inspect every roster line without board roots or forge reads:
+`ASSAY_CONFIG_ECHO=full deskroster repos --scope write`.
+Inspect its exit status as well as the echo; an empty write scope is could-not-check (exit 6).
 Help (`deskboard help <verb>`, `<verb> --help`) and version are offline and read no roster.
 
 ### 3. Learn the exit codes before you run a write verb
