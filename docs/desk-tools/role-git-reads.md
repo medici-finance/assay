@@ -12,6 +12,9 @@ boundary. It reads every advertised branch and emits one versioned JSON envelope
 with the repository, `complete: true` and a `heads` array (possibly empty). Errors
 emit no successful envelope. The role comes from `DESK_LOOP`; there is no caller
 role override, ambient login, credential environment or persistent config change.
+Heads reads retain audit and breaker visibility without charging outward-write
+budgets. Both the bounded and fallback ledger readers use the shared explicit
+read classification; unknown operations and results keep conservative charging.
 
 `deskboard` always adds `--role-claims` to its pinned `statusgen --next-up` child.
 Statusgen uses `deskgit heads` for that flag or a nonempty `DESK_LOOP`. A missing

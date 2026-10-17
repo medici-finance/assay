@@ -553,12 +553,12 @@ type auditPoint struct {
 }
 
 // chargesPointBudget separates audit visibility from outward-write charging.
-// deskgit fetch is read-only even when its outcome is unverifiable. Recognizing
+// deskgit fetch and heads are read-only even when their outcome is unverifiable. Recognizing
 // those existing audit rows here fixes both ledger readers without rewriting
 // history or removing progress/refusal events from the circuit breakers.
 // Missing/unknown verbs, tools and results retain the fail-closed default.
 func chargesPointBudget(e auditPoint) bool {
-	if e.tool == "deskgit" && e.verb == "fetch" &&
+	if e.tool == "deskgit" && (e.verb == "fetch" || e.verb == "heads") &&
 		(e.result == ResultOK || e.result == ResultUnverifiable) {
 		return false
 	}

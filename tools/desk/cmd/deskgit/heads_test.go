@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gittest"
@@ -32,6 +33,14 @@ func TestHeadsRoleTransport(t *testing.T) {
 		return path, "", err
 	})
 	defer restore()
+	// A read audit must not consume the remaining outward-write slot. Exercise
+	// the real handler, persisted ledger and AllowWriteAt, not a copied predicate.
+	now := time.Now().UTC()
+	for i := 0; i < deskkit.RateLimitPerPRPerHour-1; i++ {
+		if err := deskkit.Log(deskkit.Entry{Tool: "deskgit", Verb: "push", Repo: allowedSlug, Result: deskkit.ResultOK, TS: now.Format(time.RFC3339)}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	var code int
 	out := captureStdoutStderr(t, func() { code = run([]string{"heads", "--repo", allowedSlug}) })
 	if code != 0 || !strings.Contains(out, "feat/queue-01") || !strings.Contains(out, `"complete":true`) {
@@ -39,6 +48,18 @@ func TestHeadsRoleTransport(t *testing.T) {
 	}
 	if requests.Requests.Load() == 0 || mints != 1 {
 		t.Fatalf("wire custody not exercised: requests=%d mints=%d", requests.Requests.Load(), mints)
+	}
+	if err := deskkit.AllowWriteAt("deskgit", allowedSlug, 0, now); err != nil {
+		t.Fatalf("real heads consumed the remaining write budget: %v", err)
+	}
+	seen := false
+	for _, e := range readAudit(t) {
+		if e.Tool == "deskgit" && e.Verb == "heads" && e.Result == deskkit.ResultOK && e.Repo == allowedSlug {
+			seen = true
+		}
+	}
+	if !seen {
+		t.Fatal("read classification removed the real heads audit")
 	}
 	requests.Broken.Store(true)
 	out = captureStdoutStderr(t, func() { code = run([]string{"heads", "--repo", allowedSlug}) })

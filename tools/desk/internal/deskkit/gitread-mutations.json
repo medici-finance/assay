@@ -114,6 +114,12 @@
       "file": "../../forgeread/heads.go",
       "old": "!strings.HasPrefix(head, \"refs/heads/\")",
       "new": "false && !strings.HasPrefix(head, \"refs/heads/\")"
+    },
+    {
+      "name": "heads audit charged as outward write",
+      "file": "internal/deskkit/ratelimit.go",
+      "old": "e.verb == \"fetch\" || e.verb == \"heads\"",
+      "new": "e.verb == \"fetch\""
     }
   ]
 }
