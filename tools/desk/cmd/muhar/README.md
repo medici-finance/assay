@@ -325,7 +325,9 @@ The spec is one JSON object. Fields not listed here are ignored.
 
 | Field | Required | Meaning |
 |---|---|---|
-| `test` | yes | The suite command, run with `sh -c`. A **non-zero exit means the suite failed**, which for a mutation means `CAUGHT`. It may use pipes and `&&`. |
+| `test` | yes | The suite command, run with `sh -c`. After the mutant builds, a non-zero test exit means `CAUGHT`; a timeout is also `CAUGHT` and is marked on that mutant's line. It may use pipes and `&&`. |
+| `build` | no | Optional build command, run before each Go mutant's tests. If omitted, a `.go` mutation is checked with `go test -vet=off -c` for its package, carrying simple build flags and environment assignments from `test`. It compiles without executing tests or package initializers. Complex test commands use the mutated package alone; set `build` when it needs extra tags or a broader build. A build failure is `COULD_NOT_MUTATE`, and the suite is not run. Non-Go mutations have no automatic build step. |
+| `timeout` | no | Object with `multiplier` (default `5`), `floor` (default `20s`) and optional `baseline` limit (default `30m`). The pristine suite must finish within `baseline`; each mutation's build plus test run shares `max(floor, measured baseline × multiplier)`. A timed-out test is flagged `TIMEOUT` on its `CAUGHT` line; a build timeout is `COULD_NOT_MUTATE`. |
 | `control` | yes | A mutation object (below) the suite **must** catch. `control.name` and `control.old` must be non-empty, or `muhar` exits 1 before running anything. |
 | `mutations` | no | An array of mutation objects, run in order. An empty or missing array is allowed: the run checks the baseline and the control, then reports `Totals: 0 caught, …`. |
 | `root` | no | The directory that relative `file` paths resolve against and that the test command runs in. If it is empty, both use the directory `muhar` was started in. A relative `root` is resolved from that directory too, not from the spec file's location. |
@@ -342,8 +344,9 @@ A mutation object:
 A mutation becomes `COULD_NOT_MUTATE`, and the suite is not run for it, when:
 `old` is empty, `old` equals `new`, `old` is not in the file, the file cannot be
 read, stat'ed or written, or the bytes read back from disk after writing are
-not the intended mutant. When the control fails any of these checks, the whole
-run is `HARNESS BROKEN`.
+not the intended mutant. It also applies when the mutated Go package cannot be
+built. When the control fails any of these checks, the whole run is
+`HARNESS BROKEN`.
 
 After each mutation the original bytes are written back, whatever the verdict.
 (One exception: see [Interrupting a run](#interrupting-a-run).)
@@ -453,10 +456,10 @@ report is only the two `HARNESS BROKEN` lines.
 
 | Verdict | Means | What to do |
 |---|---|---|
-| `CAUGHT` | The mutation was proven on disk and the test command exited non-zero. | Nothing: the behaviour is tested. |
+| `CAUGHT` | The mutation was proven on disk and its test command exited non-zero, or timed out. A timeout is marked on the per-mutant line. | Nothing: the behaviour is tested or the mutant did not terminate within its measured bound. |
 | `NOT_CAUGHT` | The mutation was proven on disk and the test command exited 0. | A real finding. Add a test that fails with this edit in place, then re-run. |
-| `COULD_NOT_MUTATE` | The edit could not be planted or proven, so the suite was not run. The reason is printed in brackets. | Fix the spec (usually `old` no longer matches the code). This is **not** a pass: that behaviour was not checked. |
-| `HARNESS BROKEN` | The baseline was red, the control could not be planted, the control was not caught, or a `-j` copy could not be made. | Fix the suite, the control or the environment. Ignore everything else about this run. |
+| `COULD_NOT_MUTATE` | The edit could not be planted or proven, or the mutated Go package could not be built, so the suite did not judge it. The reason is printed on the line. | Fix the spec or source. This is **not** a pass: that behaviour was not checked. |
+| `HARNESS BROKEN` | The baseline was red or timed out, the control could not be planted, built or caught, or a `-j` copy could not be made. | Fix the suite, the control or the environment. Ignore everything else about this run. |
 
 ## Exit codes
 

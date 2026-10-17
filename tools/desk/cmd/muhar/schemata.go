@@ -61,6 +61,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -668,10 +669,34 @@ func (h *Harness) schemataFor(root string, p *schemaPlan) *schemaTree {
 // whose suite -select narrows skips schemata (selectNarrows, selection.go).
 func (h *Harness) runMutation(root string, t *schemaTree, i int) (Result, error) {
 	m := h.Mutations[i]
-	if t != nil && t.ids[schemaID(i)] && !h.selectNarrows(root, m) && h.SchemaTest(root, t.overlay, schemaID(i)) {
-		return Caught, nil
+	deadline := time.Time{}
+	if h.MutationTimeout > 0 {
+		deadline = time.Now().Add(h.MutationTimeout)
 	}
-	return h.runOne(root, m)
+	remaining := func() time.Duration {
+		if deadline.IsZero() {
+			return 0
+		}
+		left := time.Until(deadline)
+		if left <= 0 {
+			return time.Nanosecond
+		}
+		return left
+	}
+	if t != nil && t.ids[schemaID(i)] && !h.selectNarrows(root, m) {
+		if h.SchemaRun != nil {
+			out := h.SchemaRun(root, t.overlay, schemaID(i), remaining())
+			if out.TimedOut {
+				return Caught, fmt.Errorf("TIMEOUT after %s", h.MutationTimeout)
+			}
+			if out.Err == nil && out.Failed {
+				return Caught, nil
+			}
+		} else if h.SchemaTest(root, t.overlay, schemaID(i)) {
+			return Caught, nil
+		}
+	}
+	return h.runOneWithLimit(root, m, remaining())
 }
 
 func (h *Harness) logf(format string, args ...any) {
