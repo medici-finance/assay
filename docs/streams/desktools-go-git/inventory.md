@@ -326,10 +326,10 @@ copies are byte-identical (SHA-256 prefix `b9ae49bee74f`).
 The branch's **179 -> 172** pair remains true for its named revisions. The
 canonical delivery pair is **199 -> 192**, with the same reduction of **seven
 counted seam lines** and no direct-spawn increase. The delivering diff removes
-five matches in `cmd/deskadvisory/advisory.go` (the `runGit` declaration, its
+five matches in `tools/desk/cmd/deskadvisory/advisory.go` (the `runGit` declaration, its
 `execCommand` launch, and the init/fetch/checkout calls), one in
-`cmd/deskgit/deskgit.go` (fetch invocation), and one in
-`cmd/deskmerge/currency.go` (fetch invocation). The counter counts matching source
+`tools/desk/cmd/deskgit/deskgit.go` (fetch invocation), and one in
+`tools/desk/cmd/deskmerge/currency.go` (fetch invocation). The counter counts matching source
 lines, including helper declarations; seven matches does not mean seven network
 operations.
 
@@ -338,27 +338,27 @@ operations.
 There are **265 commits** from `3c8326f95` to `44054ca37`. Normalizing away line
 numbers and whitespace in the counter's matching lines gives this complete
 file-level accounting. Values are added/removed matches, not a claim that each
-match is a distinct runtime operation. All paths are relative to `tools/desk/`.
+match is a distinct runtime operation. All paths are repository-relative.
 
 | File | Direct delta | Seam delta | Counted additions / route |
 |---|---:|---:|---|
-| `cmd/cellctl/reset.go` | +2 | +2 | worktree listing and its git runner; branch enumeration and common-dir resolution; outside brief 05's fetch sites |
-| `internal/deskkit/dispatchrecord.go` | +1 | 0 | worktree-scoped dispatch-ref config read; outside brief 05 |
-| `cmd/cellctl/deskd.go` | 0 | +1 | origin config read; outside brief 05 |
-| `cmd/deskdispatch/packet_worker.go` | 0 | +1 | worker packet HEAD read; outside brief 05 |
-| `cmd/deskwt/branchgc.go` | 0 | +5 | branch enumeration, parent reads, log/patch-id and guarded ref deletion; outside brief 05 |
-| `cmd/deskwt/huskremove.go` | 0 | +2 | worktree lock/unlock; linked-worktree follow-on scope |
-| `cmd/deskwt/lockreclaim.go` | 0 | +1 | worktree lock; linked-worktree follow-on scope |
-| `cmd/deskwt/stalereg.go` | 0 | +4 | ref validation/resolution, worktree lock/prune; outside brief 05 |
-| `internal/deskkit/publishidentity.go` | 0 | +1 | ref resolution added; ancestor check changes its source argument (one old match replaced by one new match) |
-| `cmd/deskwt/branchcollision.go` | 0 | 0 | guarded update-ref gains `--no-deref` (one match replaced by one match) |
+| `tools/desk/cmd/cellctl/reset.go` | +2 | +2 | worktree listing and its git runner; branch enumeration and common-dir resolution; outside brief 05's fetch sites |
+| `tools/desk/internal/deskkit/dispatchrecord.go` | +1 | 0 | worktree-scoped dispatch-ref config read; outside brief 05 |
+| `tools/desk/cmd/cellctl/deskd.go` | 0 | +1 | origin config read; outside brief 05 |
+| `tools/desk/cmd/deskdispatch/packet_worker.go` | 0 | +1 | worker packet HEAD read; outside brief 05 |
+| `tools/desk/cmd/deskwt/branchgc.go` | 0 | +5 | branch enumeration, parent reads, log/patch-id and guarded ref deletion; outside brief 05 |
+| `tools/desk/cmd/deskwt/huskremove.go` | 0 | +2 | worktree lock/unlock; linked-worktree follow-on scope |
+| `tools/desk/cmd/deskwt/lockreclaim.go` | 0 | +1 | worktree lock; linked-worktree follow-on scope |
+| `tools/desk/cmd/deskwt/stalereg.go` | 0 | +4 | ref validation/resolution, worktree lock/prune; outside brief 05 |
+| `tools/desk/internal/deskkit/publishidentity.go` | 0 | +1 | ref resolution added; ancestor check changes its source argument (one old match replaced by one new match) |
+| `tools/desk/cmd/deskwt/branchcollision.go` | 0 | 0 | guarded update-ref gains `--no-deref` (one match replaced by one match) |
 | **Total** | **+3** | **+17** | **+20**, explaining 179 -> 199 before the fetch delivery |
 
 These additions are outside the three migrated fetch sites; this accounting does
 not certify them as migrated or authorize a higher current ratchet. Brief 08
 still owns the final outside-allowlist enforcement; linked-worktree operations
 remain the named follow-on. Later main's net **+1** versus the delivery is a
-`worktree lock` seam in `cmd/deskwt/deskwt.go`; direct matches have net zero change
+`worktree lock` seam in `tools/desk/cmd/deskwt/deskwt.go`; direct matches have net zero change
 (other additions, removals and rewrites cancel). The current advisory count is
 reported separately so future main growth cannot invalidate this brief's pinned
 delivery proof. No live ratchet, counter, CI assertion, lifecycle cell or security-posture gate
