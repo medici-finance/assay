@@ -70,8 +70,36 @@ verifier). The plan ends with one summary line:
 verify-desk plan: wait=<n> dispatchable=<n> could-not-check=<n>
 ```
 
-`wait` counts briefs held on an open blocker. Briefs held because a read could not be made are
+`wait` counts briefs held on an open blocker or awaiting an Evidence PR merge. Briefs held because a read could not be made are
 counted under `could-not-check`, never under `wait` or `dispatchable`.
 
 Receipts whose predicate is `referenced-action-completed` or `declared-deadline-reached`
 keep their own evaluation, which is unchanged by this rule.
+
+## Pending Evidence PRs
+
+The plan joins both single-root and configured-root queue items to open changes through
+the same allowlisted verifier-role forge source as blocker reads. A matching brief is
+listed as `awaiting-merge #N` only when the change has a pinned, independent verifier author,
+a same-repository immutable head, a complete changed-file read, and real Evidence carrying
+the exact closed, never-edited, dispatcher-stamped pre-work attestation. Fenced examples,
+unrelated briefs, unbound actors and incomplete cross-repository associations establish no hold.
+Missing files, unreadable populations and unverifiable provenance are could-not-check.
+`--no-forge` cannot establish absence of pending Evidence, so its queue is could-not-check.
+
+Without a failed/blocked wake receipt, pending Evidence holds only at its exact attested
+source (both sources for a cross-repository run). With a receipt, the existing writer
+re-derives the original observation's input map; narrowed or substituted maps are rejected.
+The existing hold evaluator then decides inputs, blocker, deadline, action, explicit recheck
+and partial-row wakes. Only the brief's landed Evidence hash is substituted after both
+current and pending plans match the attested plan. Other input keys retain their existing
+meaning, including the conservative whole-source key for a cross-repository deliverable.
+Declared input membership changes also wake. A newer landed outcome supersedes an older
+pending receipt. This scheduling state grants no acceptance or lifecycle authority.
+
+Consumers: `cmdPlan` renders the shared `VerifyLoop.SelectQueue` result; its single-root and
+multi-root arms join pending Evidence once after scanning. The engine adapter refuses a
+pending or unreadable item at `Dispatch`, before interim or native runners. The two explicit
+`verdict` executors use the board-only `scanAwaiting` to execute a requested fresh observation;
+they do not discover PRs or turn pending scheduling evidence into a verdict. The stream scan
+and outcome readers retain their existing board and record responsibilities.
