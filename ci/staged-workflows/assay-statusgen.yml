@@ -163,9 +163,11 @@ jobs:
   corroborate:
     if: github.event_name == 'pull_request'
     runs-on: medici-builder-public
-    # --corroborate reads the PR's reviews, comments and file list.
+    # --corroborate reads the PR's reviews, comments and file list; the
+    # decision-gate step reads the decision issue and its ruling comment.
     permissions:
       contents: read
+      issues: read
       pull-requests: read
     # GOENV=off: Go's per-user env file (written by `go env -w`, which an
     # earlier job on a reused runner could have run) is ignored. GOTOOLCHAIN=local:
@@ -282,6 +284,42 @@ jobs:
             exit 1
           fi
           "${RUNNER_TEMP}/statusgen-base" --root . --corroborate --pr "${PR_NUMBER}"
+      # The decision-gate hold, both layers (spec/lifecycle-v1.md §4.5): a
+      # gate: human brief this PR moves to implemented, verified or done,
+      # relabels away from human, or drops needs a ruling: link to an unedited
+      # comment by a human-mapped login (never a bot) on its decision issue,
+      # naming the brief by its board id. Judged against the PR's merge-base.
+      # It never runs at a PR's ready-flip. This check binds a merge only once
+      # a repository admin makes it a required status check (branch
+      # protection); merging this workflow does not do that.
+      - name: statusgen --decision-gate (gate:human status transitions)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # name:login pairs; unset leaves every login unmapped, so every ruling
+          # is refused. Fails closed.
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          # No path pre-filter here: the hold guards docs/archive/ as well as
+          # docs/streams/, and the binary already decides from the PR's own
+          # file listing whether the board was touched (and fails closed when
+          # that listing cannot be shown complete). A shell filter could only
+          # drift from that path set.
+          # The guard is built from the base. Until the base carries the hold
+          # (the PR that introduces it), there is nothing to run: say so.
+          help="$("${RUNNER_TEMP}/statusgen-base" --help 2>&1 || true)"
+          if ! printf '%s' "$help" | grep -q -- '-decision-gate'; then
+            echo "::notice::the base statusgen predates the decision-gate hold — not run on this PR"
+            exit 0
+          fi
+          live="$(gh pr view "${PR_NUMBER}" --json baseRefName --jq .baseRefName)"
+          if [ "$live" != "$BASE_REF" ]; then
+            echo "::error::PR base is now ${live}, not ${BASE_REF} as tied above (retargeted mid-run) — the retarget's own run judges it"
+            exit 1
+          fi
+          "${RUNNER_TEMP}/statusgen-base" --root . --decision-gate --pr "${PR_NUMBER}"
 
   regen:
     environment: board-writer
@@ -540,8 +578,12 @@ jobs:
   #      witnessed todo|in-progress -> implemented Status cell. A row whose write
   #      would add a lint PROBLEM (a risk-gated brief with no design record) is
   #      held: reported in the job log on every tick, and in the commit and PR
-  #      body, never written. A reconcile that could not read the PRs exits
-  #      nonzero and fails the tick.
+  #      body, never written. So is a row on a stream an active drive names
+  #      whose move would re-render that drive's plan-page snapshot region: the
+  #      job never passes `--regenerate`, the opt-in under which `--apply` also
+  #      writes docs/roadmap/drives/<slug>.md, a path the check below refuses.
+  #      A reconcile that could not read the PRs exits nonzero and fails the
+  #      tick.
   #   2. `statusgen regen --readmes` — re-renders the marker-wrapped tables from
   #      brief frontmatter. Everything outside the markers is untouched.
   #   3. `statusgen --lint` — the full lint over the result; a failure fails the
@@ -722,6 +764,10 @@ jobs:
         env:
           # The READ token: statusgen reconcile resolves it from GITHUB_TOKEN.
           GITHUB_TOKEN: ${{ github.token }}
+          # The fold's provenance read resolves verifier identities from the roster (#3082).
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+          ASSAY_HOME_REPO: ${{ vars.ASSAY_HOME_REPO || github.repository }}
         run: |
           set -euo pipefail
           statusgen="${RUNNER_TEMP}/statusgen"

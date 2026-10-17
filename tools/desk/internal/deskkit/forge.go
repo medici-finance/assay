@@ -624,7 +624,27 @@ type FileContent struct {
 	// and empty" (true, Content == nil). A caller that must merge into an existing document
 	// reads Exists, never len(Content).
 	Exists bool
+	// Kind is what the forge says the path holds at the ref: FileKindRegular for an ordinary
+	// file served with its own bytes, FileKindSymlink for a symbolic link (served as its
+	// target's bytes or as nothing), FileKindSubmodule for a submodule, FileKindUnproven when the
+	// bytes served cannot be shown to be the entry's own, or "" when the forge does not say.
+	// A caller that must read a file as a plain record (the decision-gate hold's branch
+	// board) requires FileKindRegular and treats anything else as could-not-check.
+	// omitempty keeps every file read that predates the field byte-identical in the golden
+	// corpus.
+	Kind string `json:",omitempty"`
 }
+
+// The FileContent.Kind values.
+const (
+	FileKindRegular   = "file"
+	FileKindSymlink   = "symlink"
+	FileKindSubmodule = "submodule"
+	// FileKindUnproven is a typed file read whose served bytes are not shown to be the
+	// entry's own blob: a link to a file served as its target's bytes, or a file served with
+	// its content omitted. A caller that needs a plain record refuses it like a link.
+	FileKindUnproven = "unproven"
+)
 
 // ReadFileInput addresses one file at one ref. The fields are a struct rather than positional
 // arguments so the interface method takes no parameter that reads as an endpoint address (the
@@ -1075,6 +1095,16 @@ type IssueStateHistory struct {
 // membership, not order; Complete=false means a SHA missing from the list is could-not-check.
 type ChangeCommits struct {
 	SHAs     []string
+	Complete bool
+}
+
+// LabelHistory is IssueLabelHistory's (op 64) result: every label add and remove event of one
+// issue, oldest first, INCLUDING an event whose label the forge no longer names (Name is empty,
+// the action, time and actor are kept). Complete=false means the walk stopped at its page bound
+// with the forge still paginating, so the list is a prefix of the history and a consumer must
+// read it as could-not-check, never as the whole.
+type LabelHistory struct {
+	Events   []LabelEvent
 	Complete bool
 }
 
@@ -1724,6 +1754,15 @@ type Forge interface {
 	ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error)
 	// ListIssueLabelEvents reads issue stamp provenance without conflating an issue with a change.
 	ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error)
+	// IssueLabelHistory (op 64, the label-removal hold brief) reads ONE issue's whole label add/remove
+	// history with each actor's login AND numeric id, keeping the events of a label the forge no
+	// longer names (an empty Name), and reports Complete=false when the walk reached its page
+	// bound. It is its own operation, not a change to ListIssueLabelEvents, because that read
+	// drops the unnamed events (deliberately: an unnamed stamp attests to nothing) and errors,
+	// rather than reports, a page bound, and seven current readers depend on exactly that. A
+	// transport or permission failure is an error. Consumers: cmd/deskread's `label-events`
+	// kind (statusgen's label-removal hold) and cmd/issueboard's un-briefed-row classifier.
+	IssueLabelHistory(repo ForgeRepo, number int) (*LabelHistory, error)
 	// ListComments returns the comments/notes on a change or issue, oldest first.
 	ListComments(repo ForgeRepo, number int) ([]Comment, error)
 	// ListCommentsTyped is ListComments for a caller that has STATED which kind of object

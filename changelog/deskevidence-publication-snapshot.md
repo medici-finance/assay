@@ -1,2 +1,0 @@
-### Changed
-- `deskevidence` batches GitHub admission and destination reads, then commits against the validated file revision: a normal single-file Evidence update takes one read and one conditional write. GitLab reuses issue, file and project reads while retaining native provenance checks, file-revision preconditions and the protected-default-branch merge-request path. Conflicts and uncertain acknowledgements stop without an automatic replay; outcome records and overflowing histories may require additional reads.

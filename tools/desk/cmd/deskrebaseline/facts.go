@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
 )
 
 // facts.go — gather the RowFacts the classifier decides on, from a real checkout: which
@@ -84,7 +86,10 @@ func gatherRowFacts(repoRoot string, row verifyRow, riskBearing bool, riskReason
 
 	// Behaviour probe only when there is no stale-path question to answer first.
 	if f.PathRef == "" || f.PathExists {
-		if row.Command != "" {
+		// A command that is only a shell comment runs nothing and exits 0 (#2684): the
+		// probe would read that as "the row still passes", so it is not probed. The
+		// raw cell's verdict is used when the row was parsed from one (review S1).
+		if row.Command != "" && row.CommentLed == "" && !verifycmd.CommentOnly(row.Command) {
 			ran, rc := runCommand(repoRoot, row.Command)
 			f.CommandProbed = true
 			f.CommandRan = ran

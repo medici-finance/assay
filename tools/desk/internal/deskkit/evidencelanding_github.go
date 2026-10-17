@@ -171,7 +171,9 @@ func (g *GitHubForge) evidenceSnapshot(repo ForgeRepo, number int, file, branch 
 		if fmt.Sprintf("%x", h.Sum(nil)) != b.OID {
 			return bad("destination bytes do not match the returned Git blob")
 		}
-		s.file = &FileContent{Content: content, SHA: b.OID, Exists: true}
+		// The checks above prove a regular-mode, complete text blob whose bytes hash to its
+		// own object id, so the read is a plain file (S-2266-8's FileKindRegular).
+		s.file = &FileContent{Content: content, SHA: b.OID, Exists: true, Kind: FileKindRegular}
 	}
 	return s, nil
 }

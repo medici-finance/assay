@@ -56,6 +56,22 @@ type fakeForge struct {
 	// serialisation tests use it to observe what a concurrent invocation can do.
 	onPut func()
 
+	// cmpFiles are the files CompareRefs reports the branch changed since the base ref;
+	// cmpErr is its error; cmpIncomplete marks the commit interval as not fully read;
+	// cmpCalls records "<base>...<head>" per call.
+	cmpFiles      []deskkit.ChangedFile
+	cmpErr        error
+	cmpIncomplete bool
+	cmpCalls      []string
+	// cmpBehind is the BehindBy the compare reports (the home's HEAD not an ancestor).
+	cmpBehind int
+	// fileKinds is what ReadFile reports a path holds (deskkit.FileContent.Kind); a path
+	// not named is a regular file.
+	fileKinds map[string]string
+	// commitSHAs maps a ref GetCommit is asked for onto the SHA it resolves to; a ref not
+	// named resolves to itself.
+	commitSHAs map[string]string
+
 	hits    []string
 	reads   []deskkit.ReadFileInput
 	writes  []deskkit.WriteFileInput
@@ -128,19 +144,26 @@ func (f *fakeForge) RepoDefaultBranch(repo deskkit.ForgeRepo) (string, error) {
 	return "main", nil
 }
 
-// CompareRefs answers the ancestry read the join-key dereference makes.
+// CompareRefs answers both compare reads a landing makes: the ancestry read of the join-key
+// dereference (compareStatus, compareErr, recorded in joinReads) and the decision gate's
+// branch-board read (cmpFiles, cmpErr, cmpIncomplete, recorded in cmpCalls).
 func (f *fakeForge) CompareRefs(repo deskkit.ForgeRepo, base, head string) (*deskkit.RefComparison, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	key := repo.Slug() + ":" + base + "..." + head
 	f.joinReadLocked("CompareRefs %s %s...%s", repo.Slug(), base, head)
+	f.cmpCalls = append(f.cmpCalls, base+"..."+head)
 	if f.compareErr != nil {
 		return nil, f.compareErr
 	}
-	if st, ok := f.compareStatus[key]; ok {
-		return &deskkit.RefComparison{Status: st}, nil
+	if f.cmpErr != nil {
+		return nil, f.cmpErr
 	}
-	return &deskkit.RefComparison{Status: "ahead"}, nil
+	st := "ahead"
+	if s, ok := f.compareStatus[key]; ok {
+		st = s
+	}
+	return &deskkit.RefComparison{Files: f.cmpFiles, CommitsComplete: !f.cmpIncomplete, Status: st, BehindBy: f.cmpBehind}, nil
 }
 
 // serveLocked answers one read of path (the caller holds f.mu): a scripted path advances its
@@ -203,7 +226,11 @@ func (f *fakeForge) ReadFile(_ deskkit.ForgeRepo, in deskkit.ReadFileInput) (*de
 		return nil, deskkit.Unverifiable("not found: "+in.File,
 			&deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: in.File})
 	}
-	return &deskkit.FileContent{Content: []byte(c), SHA: sha, Exists: true}, nil
+	kind := deskkit.FileKindRegular
+	if k, set := f.fileKinds[in.File]; set {
+		kind = k
+	}
+	return &deskkit.FileContent{Content: []byte(c), SHA: sha, Exists: true, Kind: kind}, nil
 }
 
 func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*deskkit.WriteFileResult, error) {
@@ -291,6 +318,9 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 	f.getCommitCalls++
 	if f.commitErr != nil {
 		return nil, f.commitErr
+	}
+	if resolved, ok := f.commitSHAs[sha]; ok {
+		sha = resolved
 	}
 	return &deskkit.RepoCommit{SHA: sha, AuthorLogin: f.commitAuthorLogin}, nil
 }
@@ -390,6 +420,12 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	oldLintDiff := lintDiffFn
 	lintDiffFn = func(string, string, []byte) ([]string, error) { return nil, nil }
 	t.Cleanup(func() { lintDiffFn = oldLintDiff })
+	oldDecisionGate := decisionGateDiffFn
+	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit) ([]string, error) { return nil, nil }
+	t.Cleanup(func() { decisionGateDiffFn = oldDecisionGate })
+	oldBranchBoard := decisionGateBranchBoardFn
+	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
+	t.Cleanup(func() { decisionGateBranchBoardFn = oldBranchBoard })
 	oldOutcome := outcomeGuardFn
 	outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error { return nil }
 	t.Cleanup(func() { outcomeGuardFn = oldOutcome })

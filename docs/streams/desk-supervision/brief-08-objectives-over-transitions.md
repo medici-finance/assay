@@ -31,7 +31,7 @@ exec-tier-why: >-
   passes is the failure to design against.
 consumers:
   - "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md (new kit): fixed-here"
-  - "tools/desk/cmd/deskdispatch/references/common-clauses.md: out-of-scope (the objective kit includes the common clauses byte-identical; the guards are not the variable under test)"
+  - "tools/desk/cmd/deskdispatch/references/common-clauses.md: fixed-here (extraction markers only; common-clause guard prose is unchanged)"
   - "plugins/assay/skills/worker-desk/SKILL.md: out-of-scope (no skill-body change in this brief; adoption is a separate brief citing the report)"
 version: 1
 id: eb82d786-ffc7-46d0-ae5e-98172a4b78f9
@@ -50,8 +50,16 @@ files:
 - `tools/desk/cmd/deskdispatch/main.go` — register the kit under `--kit worker-objective`.
 - `tools/skillbench/fixtures/worker-kit/` (new) — the task set: five briefs from this
   repo's own closed streams, re-runnable offline, each with a deterministic `check`.
-- `docs/streams/desk-supervision/08-report.md` (new) — the skillbench report plus the
-  wedge count per arm and the decision line.
+- `docs/streams/desk-supervision/08-report.md` — the stored skillbench reduction and
+  the observer-dependent decision, with missing evidence reported as could-not-check.
+- `docs/streams/desk-supervision/verify.d/08-reduction.sh` — rerun the reducer with a
+  scratch output path and check its report-file oracle.
+- `docs/streams/desk-supervision/verify.d/08-consumers.py` — corroborate all three
+  consumer routes against the exact historical delivery diff.
+- `docs/streams/desk-supervision/verify.d/08-mutations.py` — plant a failed task
+  result and an additional consumer in scratch; require each oracle to reject it.
+- `docs/streams/desktools-v2/cli-migration.json` — classify these three source-only
+  acceptance instruments as tests, using exact-path entries.
 
 single-point-of-failure: the task set — if the five tasks do not exercise a state the
 procedural kit anticipates and the objective kit must discover, the comparison measures
@@ -90,22 +98,45 @@ facts:
    would change.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits` | exit 0; output contains `worker-objective` |
-| 2 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --dry-run --kit worker-objective --root . assay/desk-supervision/08 \| grep -c 'KUBECONFIG=/dev/null'` | output is `1` or more (common clauses present) |
-| 3 | `cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md` | exit 0 (byte-identical inclusion) |
-| 4 | `ls tools/skillbench/fixtures/worker-kit/ \| wc -l` | output is `5` |
-| 5 | `cd tools/skillbench && GOWORK=off go run . --arms ../../docs/streams/desk-supervision/08-arms \| grep -c 'check_pass_rate'` | output is `1` or more |
-| 6 | `for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done` | each line is `15` or more (5 tasks × ≥3 runs) |
-| 7 | `grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md` | exit 0; exactly one line |
-| 8 | `grep -c 'wedges' docs/streams/desk-supervision/08-report.md` | output is `1` or more |
-| 9 | `statusgen --root . --consumers --brief desk-supervision/08` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
+| # | Command | Expect | Class |
+|---|---------|--------|-------|
+| 1 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits` | exit 0; output contains `worker-objective` | check |
+| 2 | `bash -o pipefail -c 'cd tools/desk && GOWORK=off GOPROXY=off go run ./cmd/deskdispatch assay/desk-supervision/08 --dry-run --kit worker-objective --root ../.. \| grep -F "KUBECONFIG=/dev/null" >/dev/null'` | exit 0 (common clauses present; producer failure is retained) | check |
+| 3 | `cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md` | exit 0 (byte-identical inclusion) | check |
+| 4 | `ls tools/skillbench/fixtures/worker-kit/ \| wc -l` | output is `5` | check |
+| 5 | `bash docs/streams/desk-supervision/verify.d/08-reduction.sh` | exit 0; output contains `Safety floor (task-check pass rate): held` | check |
+| 6 | `for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done` | each line is `15` or more (5 tasks × ≥3 runs) | check |
+| 7 | `grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md` | exit 0; exactly one line | check |
+| 8 | `grep -c 'wedges' docs/streams/desk-supervision/08-report.md` | output is `1` or more | check |
+| 9 | `python3 docs/streams/desk-supervision/verify.d/08-consumers.py` | exit 0; output contains `CORROBORATED: 3 consumer routes` | check |
+| 10 | `python3 docs/streams/desk-supervision/verify.d/08-mutations.py` | exit 0; output contains `2 planted defects rejected` | check +mutation |
 
 Pre-mortem → detection: "the objective kit quietly drops a guard" → row 3; "the report
 declares a winner from one run" → row 6; "the decision is prose with no numbers" → row 7;
 "wedge rate is asserted, not read from the observer" → row 8 plus review of the cited log
 lines. Review-only: whether the five tasks are representative.
+
+## Rework boundary — 2026-10-17
+
+The kit, fixtures and 30 stored runs were delivered by #1266. This rework repairs the
+command/oracle defects in rows 2, 5 and 9 tracked in #1363; it does not repeat that
+comparison. Row 9 reads only delivery `badd7b58c` against its first parent, so later
+skill edits cannot be misattributed to this item. Its consumer route now records the
+actual marker-only common-clause change; it never permits a guard-prose change.
+
+The rework CLI classifications are read by `tools/desk/internal/clicontract`;
+`TestCLIInventory` and `TestCLIRoutingMutations` validate their exact paths and
+retain the independent discovery, stale-rule and shipped-entrypoint checks. These
+classifications do not change the original delivery's three historical kit consumers.
+
+The later finding #2816 remains an acceptance blocker: the stored artifacts include
+no observer log, so duration records cannot establish wedges. The report now states
+could-not-check for both wedges and the adoption decision. **Row 7 remains red until
+the original observer-based decision rule can actually be evaluated.** A row 8 word
+count only locates the discussion; it does not prove observer coverage or satisfy
+Task 3. No revised offline criterion or new comparison is claimed here. The separate
+row 3 execution-witness parser issue remains tracked in #2679; the byte comparison
+still applies unchanged. Historical verifier receipts below remain historical.
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
