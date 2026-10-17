@@ -37,7 +37,10 @@ package main
 // offline envelope every other --lint check keeps.
 
 import (
+	"encoding/json"
 	"fmt"
+
+	"github.com/medici-finance/assay/statusgen/productintent"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -57,16 +60,17 @@ const requirementsDirName = "requirements"
 // Verify row could be written against; folding them into one paragraph is what
 // makes acceptance criteria unrollable in the first place.
 type requirementEntry struct {
-	ID          string   `yaml:"id"`
-	Date        string   `yaml:"date"`
-	Title       string   `yaml:"title"`
-	Impact      string   `yaml:"impact"`
-	AskedBy     string   `yaml:"asked-by"`
-	Acceptance  []string `yaml:"acceptance"`
-	Status      string   `yaml:"status"`
-	SatisfiedBy []string `yaml:"satisfied-by,omitempty"`
-	Body        string   `yaml:"-"`
-	File        string   `yaml:"-"` // basename, for messages
+	ProductIntent productintent.Document `yaml:"-"`
+	ID            string                 `yaml:"id"`
+	Date          string                 `yaml:"date"`
+	Title         string                 `yaml:"title"`
+	Impact        string                 `yaml:"impact"`
+	AskedBy       string                 `yaml:"asked-by"`
+	Acceptance    []string               `yaml:"acceptance"`
+	Status        string                 `yaml:"status"`
+	SatisfiedBy   []string               `yaml:"satisfied-by,omitempty"`
+	Body          string                 `yaml:"-"`
+	File          string                 `yaml:"-"` // basename, for messages
 }
 
 // requirementImpactOrder is the ordered severity axis registers-v1 §3.5
@@ -242,6 +246,27 @@ func parseRequirementFile(raw []byte) (*requirementEntry, error) {
 	if err := yaml.Unmarshal([]byte(fm), &e); err != nil {
 		return nil, err
 	}
+	// Decode only the optional extension strictly; preserve legacy base semantics.
+	var fields map[string]any
+	if err := yaml.Unmarshal([]byte(fm), &fields); err != nil {
+		return nil, err
+	}
+	if extension, present := fields["product-intent"]; present {
+		if extension == nil {
+			return nil, fmt.Errorf("product-intent: expected an extension object")
+		}
+		data, err := json.Marshal(extension)
+		if err != nil {
+			return nil, fmt.Errorf("product-intent: %w", err)
+		}
+		e.ProductIntent, err = productintent.Decode(data)
+		if err != nil {
+			return nil, err
+		}
+		if r := e.ProductIntent.Record(); r != nil && r.Subject.Requirement != e.ID {
+			return nil, fmt.Errorf("product-intent: subject requirement differs from base id")
+		}
+	}
 	e.Body = strings.TrimSpace(body)
 	return &e, nil
 }
@@ -296,6 +321,9 @@ func requirementRegisterProblems(root string) []string {
 	idOwner := map[string]string{}
 	for _, e := range entries {
 		p := label(e)
+		if version := e.ProductIntent.Version(); version != "" && version != productintent.Schema && e.ProductIntent.Mandatory() {
+			add("%s: unsupported mandatory product-intent version %q", p, version)
+		}
 		if e.ID == "" {
 			add("%s: id is required — a requirement with no typed id cannot be cited", p)
 		} else if !requirementIDRe.MatchString(e.ID) {
@@ -363,9 +391,19 @@ func requirementRegisterNotices(root string) []string {
 		// repeating it as a NOTICE would double-report one fault.
 		return nil
 	}
-	return []string{fmt.Sprintf(
+	var extensionNotices []string
+	for _, e := range entries {
+		if v := e.ProductIntent.Version(); v != "" {
+			state := "supported; approval and observations require explicit evidence snapshots"
+			if v != productintent.Schema {
+				state = "unsupported; payload retained, never evaluated"
+			}
+			extensionNotices = append(extensionNotices, fmt.Sprintf("docs/streams/%s/%s: product-intent %s: %s", requirementsDirName, e.File, v, state))
+		}
+	}
+	return append(extensionNotices, fmt.Sprintf(
 		"docs/streams/%s: %s parsed — traceability is checked (orphan-requirement and untraced-brief are advisory NOTICEs, dangling-satisfies is a PROBLEM; registers-v1 §6.5)",
-		requirementsDirName, requirementCountPhrase(len(entries)))}
+		requirementsDirName, requirementCountPhrase(len(entries))))
 }
 
 // requirementCountPhrase renders an entry count with correct grammar, so the

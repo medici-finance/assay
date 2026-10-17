@@ -1,7 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+
+	"github.com/medici-finance/assay/statusgen/productintent"
+	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
 	"strings"
@@ -598,4 +602,186 @@ func TestRegisterDotfilesAreNotStrays(t *testing.T) {
 	if problems := requirementRegisterProblems(root); len(problems) != 0 {
 		t.Errorf("a dot-prefixed housekeeping file must raise nothing; got:\n%s", joined(problems))
 	}
+}
+
+// regression: F-product-intent
+func TestProductIntentLegacyAndRevisionFlow(t *testing.T) {
+	f := validRequirementFixture()
+	f.Status = "satisfied"
+	f.SatisfiedBy = []string{"sdlc/02"}
+	legacy, err := parseRequirementFile([]byte(f.render()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := productintent.Resolve(legacy.ProductIntent, productintent.Evidence{}, legacy.Status); got.State != "unbound" {
+		t.Fatalf("legacy invented binding: %+v", got)
+	}
+	data, err := os.ReadFile("testdata/productintent/record.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	compact, err := json.Marshal(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	render := func(extension []byte) string {
+		return strings.Replace(f.render(), "---\n\n", "product-intent: "+string(extension)+"\n---\n\n", 1)
+	}
+	root := t.TempDir()
+	writeFile(t, root, "docs/streams/requirements/product.md", render(compact))
+	entries, err := parseRequirementsDir(root)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("reader: %v %+v", err, entries)
+	}
+	entry := entries[0]
+	if entry.ID != legacy.ID || entry.Status != legacy.Status || joined(entry.Acceptance) != joined(legacy.Acceptance) || joined(entry.SatisfiedBy) != joined(legacy.SatisfiedBy) || entry.Body != legacy.Body {
+		t.Fatal("extension rewrote original acceptance or satisfaction claim")
+	}
+	if p := requirementRegisterProblems(root); len(p) != 0 {
+		t.Fatal(p)
+	}
+	if !containsAll(requirementRegisterNotices(root), "product-intent-v1", "supported") {
+		t.Fatal("supported extension invisible")
+	}
+	r := entry.ProductIntent.Record()
+	e := productintent.Evidence{Authorities: []string{"product-council"}}
+	for _, d := range r.Directions {
+		e.Decisions = append(e.Decisions, productintent.Decision{Reference: d.Decision, Subject: productintent.Revision{Subject: r.Subject, Kind: "direction", Revision: d.Revision}, Authority: "product-council", Verdict: "approved", Source: "synthetic-decision", Available: true})
+	}
+	for _, target := range r.Targets {
+		e.Decisions = append(e.Decisions, productintent.Decision{Reference: target.Decision, Subject: productintent.Revision{Subject: r.Subject, Kind: "target", Revision: target.Revision}, Authority: "product-council", Verdict: "approved", Source: "synthetic-decision", Available: true})
+	}
+	got := productintent.Resolve(entry.ProductIntent, e, entry.Status)
+	if len(got.Targets) != 2 || got.Targets[0].Direction.Revision != "d1" || got.Targets[1].Direction.Revision != "d2" || got.Targets[0].Approval != "approved" || got.Targets[1].Approval != "approved" || len(got.Targets[0].Observed) != 1 || got.Targets[0].Observed[0].Source != "synthetic-source-one" || len(got.Targets[1].Observed) != 0 {
+		t.Fatalf("revision or evidence overwritten: %+v", got)
+	}
+	prior := entry.ProductIntent.Record()
+	prior.Targets = prior.Targets[:1]
+	prior.Directions = prior.Directions[:1]
+	if err := productintent.CheckHistory(*prior, *r); err != nil {
+		t.Fatal(err)
+	}
+	for _, revision := range []string{"t1", "t2"} {
+		mutant := entry.ProductIntent.Record()
+		mutant.Targets[0].Revision = revision
+		mutant.Targets[0].DirectionRevision = "d2"
+		if productintent.CheckHistory(*prior, *mutant) == nil {
+			t.Fatal("prior target overwritten")
+		}
+	}
+	for _, mandatory := range []bool{false, true} {
+		extension := fmt.Sprintf(`{"schema":"product-intent-v2","mandatory":%v,"future":42}`, mandatory)
+		writeFile(t, root, "docs/streams/requirements/product.md", render([]byte(extension)))
+		problems := requirementRegisterProblems(root)
+		if mandatory != containsAll(problems, "unsupported mandatory") {
+			t.Fatalf("mandatory=%v problems=%v", mandatory, problems)
+		}
+		if !containsAll(requirementRegisterNotices(root), "unsupported", "never evaluated") {
+			t.Fatal("future extension silently accepted")
+		}
+	}
+	for _, extension := range []string{`null`, `{"schema":"product-intent-v1","unexpected":true}`, strings.Replace(string(compact), "REQ-evidence-visible", "REQ-other-identity", 1)} {
+		if _, err := parseRequirementFile([]byte(render([]byte(extension)))); err == nil {
+			t.Fatalf("invalid extension accepted: %s", extension)
+		}
+	}
+	// Withdrawal keeps the original target/evidence snapshots reachable.
+	f.Status = "withdrawn"
+	withdrawn, err := parseRequirementFile([]byte(render(compact)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := productintent.Resolve(withdrawn.ProductIntent, e, withdrawn.Status); got.State != "withdrawn" || len(got.Targets) != 2 {
+		t.Fatalf("withdrawn identity lost: %+v", got)
+	}
+}
+
+// TestProductSchemaBridge is a test-only entrypoint to the actual production
+// conform validator, not a second schema evaluator. File paths are supplied only
+// by the offline parity test; the bridge also exercises controls without them.
+// regression: F-product-intent
+func TestProductSchemaBridge(t *testing.T) {
+	schemaBytes, err := os.ReadFile("../schemas/product-intent-v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	schema, err := parseSchema(schemaBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keywords func(map[string]any)
+	keywords = func(node map[string]any) {
+		for key, value := range node {
+			if !schemaKeywords[key] {
+				t.Fatalf("production conform does not support keyword %q", key)
+			}
+			switch key {
+			case "properties":
+				for _, child := range value.(map[string]any) {
+					keywords(child.(map[string]any))
+				}
+			case "items":
+				keywords(value.(map[string]any))
+			}
+		}
+	}
+	keywords(schema.raw)
+	fixture, err := os.ReadFile("testdata/productintent/record.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record map[string]any
+	if err := yaml.Unmarshal(fixture, &record); err != nil {
+		t.Fatal(err)
+	}
+	if problems := validateValue(schema, record, ""); len(problems) != 0 {
+		t.Fatal(problems)
+	}
+	target := record["targets"].([]any)[0].(map[string]any)
+	delete(target, "revision")
+	if problems := validateValue(schema, record, ""); len(problems) == 0 {
+		t.Fatal("production schema control accepted missing revision")
+	}
+	input, output := os.Getenv("PRODUCT_INTENT_CORPUS"), os.Getenv("PRODUCT_INTENT_RESULTS")
+	if input == "" && output == "" {
+		return
+	}
+	if input == "" || output == "" {
+		t.Fatal("parity bridge requires both owned fixture paths")
+	}
+	data, err := os.ReadFile(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var corpus []struct {
+		Name  string
+		Data  json.RawMessage
+		Valid bool
+	}
+	if err := json.Unmarshal(data, &corpus); err != nil {
+		t.Fatal(err)
+	}
+	if len(corpus) == 0 {
+		t.Fatal("empty parity corpus")
+	}
+	results := make([]bool, 0, len(corpus))
+	for _, c := range corpus {
+		var value any
+		if err := yaml.Unmarshal(c.Data, &value); err != nil {
+			t.Fatal(err)
+		}
+		results = append(results, len(validateValue(schema, value, "")) == 0)
+	}
+	encoded, err := json.Marshal(results)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(output, encoded, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("actual conform evaluated %d cases", len(corpus))
 }
