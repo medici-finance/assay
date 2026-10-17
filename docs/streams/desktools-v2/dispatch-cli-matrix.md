@@ -344,3 +344,16 @@ package suite and regression floor exercise real domain consumers and rollback.
 - `tools/desk/internal/weight/weight_test.go`
 - `tools/harnessgen/redaction_test.go`
 - `tools/lint-human-decision-defaults.sh`
+
+## Other script consumers
+
+The Python/JavaScript and extensionless-launcher sweep found no additional production
+invocation. Its two Python hits are mutation fixtures:
+`tools/desk/cmd/deskdispatch/testdata/stamp_mutations.py` and
+`tools/desk/internal/deskkit/testdata/crossrepo_mutations.py`.
+All 15 stamp and 48 cross-repository anchors were checked against the migrated tree.
+The stamp runner's required-tier default plant now targets the Cobra declaration in
+`cli.go`, preserving the same mutation and required-input assertion after the Go FlagSet
+was removed. The other 62 anchors remain unchanged. The stamp runner executes each
+selected Go test with its existing 60-second bound; the CLI owner's muhar spec separately
+covers eager config/telemetry effects, source widening, legacy flags and generated help.
