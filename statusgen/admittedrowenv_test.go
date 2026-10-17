@@ -84,6 +84,7 @@ func TestAdmittedRowsStripGitEnv(t *testing.T) {
 	}
 }
 
+// regression: #2715
 // TestAdmittedRowsPinGrep: grep's pattern settings in the home's config cannot
 // change what an admitted row's git grep matches. The unadmitted control
 // proves the setting changes the match there.
