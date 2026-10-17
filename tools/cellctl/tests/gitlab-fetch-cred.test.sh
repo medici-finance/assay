@@ -34,7 +34,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-gitlab-fetch.XXXXXX")" && pwd -P)"
 # chmod first: the unremovable-FETCH_HEAD case below leaves a read-only directory if it aborts.
-trap 'chmod -R u+w "$T" 2>/dev/null; rm -rf "$T"' EXIT
+trap 'suite_status=$?; if declare -F private_deskwt_finish >/dev/null; then private_deskwt_finish || suite_status=1; fi; chmod -R u+w "$T" 2>/dev/null; rm -rf "$T"; exit "$suite_status"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
 
@@ -92,7 +92,11 @@ chmod +x "$T/bin/git"
 # shellcheck source=SCRIPTDIR/private-path.sh
 source "$HERE/private-path.sh"
 private_path "$T/bin"
+private_deskwt "$T/bin"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
+# regression: #2738 — normal-path isolation and real-launch positive control.
+private_deskwt_check "$CELLCTL" "$T/gh-checkout"
+
 printf 'cells: []\n' > "$T/cells.yaml"
 
 # roster.env is a file-EXISTENCE precondition only ($CELL_CONFIG/roster.env, both in cmd_desk and
@@ -246,6 +250,7 @@ out="$("$CELLCTL" check gl-cell 2>&1)" && rc=0 || rc=$?
 assert "check fails (exit 1) when CELL_REPO's fetch transport cannot be reached" '[[ $rc -eq 1 ]]'
 assert "the new row itself names the MISS (not just the earlier checkout-exists row)" 'grep -q "MISS  GitLab fetch transport reachable" <<<"$out"'
 sed -i.bak "s#^CELL_REPO=.*#CELL_REPO=$T/gl-checkout#" "$GLCELL/cell.env"; rm -f "$GLCELL/cell.env.bak"
+
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "gitlab-fetch-cred.test.sh: OK"; else echo "gitlab-fetch-cred.test.sh: $fails FAILED"; exit 1; fi
