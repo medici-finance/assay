@@ -93,7 +93,7 @@ exposed by this session; these are usage instructions, not a new capability qual
   than claiming Claude-like idle efficiency. Goals provide neither a durable timer
   nor an external-event monitor.
 - For an operator-selected outer scheduler, use the existing
-  [cellctl cadence](../../../docs/cellctl-cadence.md#switching-an-existing-interactive-house)
+  [cellctl cadence](https://github.com/medici-finance/assay/blob/121a255f535634e473012a40d7378bef420d68e5/docs/cellctl-cadence.md#switching-an-existing-interactive-house)
   path. It runs bounded ticks with Goals disabled and waits outside the model between
   passes. Preserve the clean handoff and ownership checks; never start a second owner,
   silently switch an interactive desk, pause/complete its Goal, or drop in-flight work.
