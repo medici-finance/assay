@@ -42,13 +42,22 @@ def require(ok, reason):
         raise Miss(reason)
 
 
+def producer_jobs(jobs):
+    # The monolithic workflow builds in release; the split producer builds in
+    # artifacts. The final publisher has no cache receipt steps and is never a
+    # candidate. Workflow/source identity and all receipt checks still apply.
+    return [job for job in jobs if job['name'] in ('release', 'artifacts') and
+            all(any(step['name'] == name for step in job['steps'])
+                for name in PRODUCER_STEPS)]
+
+
 def select_artifact(run, jobs, artifacts, log, repo, workflow_id, current_run):
     require(run['id'] != current_run and run['workflow_id'] == workflow_id and
             run['path'] == WORKFLOW and run['event'] == 'workflow_dispatch' and
             run['head_branch'] == 'main' and run['repository']['full_name'] == repo and
             run['head_repository']['full_name'] == repo and
             run['status'] == 'completed' and run['conclusion'] == 'success', 'producer run')
-    producers = [j for j in jobs if j['name'] == 'release']
+    producers = producer_jobs(jobs)
     require(len(producers) == 1, 'producer job count')
     job = producers[0]
     require(job['run_id'] == run['id'] and job['run_attempt'] == run['run_attempt'] and
@@ -126,6 +135,10 @@ def unpack(archive, destination, digest, key):
                         target.parent.mkdir(parents=True, exist_ok=True)
                         with t.extractfile(member) as source, target.open('xb') as out:
                             shutil.copyfileobj(source, out)
+                        # open('xb') ignores the member mode; Go execs cached
+                        # `go run` binaries directly, so restore the exec bit.
+                        if member.mode & 0o100:
+                            target.chmod(0o755)
                 (stage/'build').mkdir(exist_ok=True); (stage/'mod').mkdir(exist_ok=True)
                 stage.rename(destination)
         except (zipfile.BadZipFile, tarfile.TarError, OSError, ValueError) as e:
@@ -223,7 +236,7 @@ def restore(root, key, env):
             jobs = api.json('/actions/runs/%s/attempts/%s/jobs?per_page=100' %
                             (run['id'], run['run_attempt']))
             require(jobs['total_count'] == len(jobs['jobs']), 'jobs truncated')
-            producers = [j for j in jobs['jobs'] if j['name'] == 'release']
+            producers = producer_jobs(jobs['jobs'])
             require(len(producers) == 1, 'producer job count')
             log = api.get('/actions/jobs/%s/logs' % producers[0]['id'],limit=16*1024**2).decode('utf-8')
             artifacts = api.json('/actions/runs/%s/artifacts?per_page=100' % run['id'])

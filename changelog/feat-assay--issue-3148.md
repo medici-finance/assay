@@ -1,2 +1,0 @@
-### Fixed
-- The cell Go-cache mutation gate (`tools/desk/internal/cellcache/mutate.py`) now reports a mutant that does not compile as `COULD-NOT-MUTATE` and fails on it, instead of folding it into `MISSED`. It reads and enforces the spec's `control` mutation, refuses a mutation whose `file` escapes the module, and plants mutations in a temporary copy so a killed run can no longer leave a mutated source file behind. `--shard i/n` splits the run, and a staged `cellcache-mutate.yml` workflow runs the gate in CI once a maintainer promotes it.
