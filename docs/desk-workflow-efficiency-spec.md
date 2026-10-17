@@ -1,8 +1,14 @@
 # Decision-oriented desk reads and dispatch efficiency
 
-**Status:** draft — 17 October 2026. Proposed addition to the future architecture; no
-implementation, brief amendment, caller switch, retirement or collection profile is activated.
-**Proposed routing:** existing desk-tools, desktools-v2, forge-neutral and
+**Status:** routed — 17 October 2026. This PR records approval and authors its citing briefs.
+**Routes-to:** docs/streams/desk-tools/ (with existing measurement and service amendments).
+**Approval:** approved — 17 October 2026. The maintainer confirmed that merging
+[PR #3322](https://github.com/medici-finance/assay/pull/3322) was approval, and explicitly
+authorized brief authoring on 17 October 2026. Approved source head:
+`7504e6dbbaaba3faab6bf64b1c987fb756b4a980`; merge:
+`067c7f02bd39997d719d0f64d8576efbc6f55bcc`. Approval authorizes the design and its
+decomposition; caller switches, retirement and collection retain their delivery gates.
+**Approved delivery routing:** existing desk-tools, desktools-v2, forge-neutral and
 performance-collection owners, with adopter cutover and retirement owners. The
 [change map](desk-workflow-efficiency-change-map.md) distinguishes reuse, amendments and gaps.
 **Source pin:** public Assay `fed652fcd0094e42c52d6586ced409623b9a3b15` (17 October 2026).
@@ -292,13 +298,15 @@ invalidation duties. Unbounded batching/concurrency could trade lower latency fo
 GraphQL or secondary-limit cost. The selected proposal is bounded library extraction and
 complete decision-oriented observations, compatible with later R6 ingestion.
 
-Approval is revision-bound and does not activate anything. The maintainer must decide the
-proposed adapter names/compatibility window, the measurement profile delta and explicit
-performance tradeoffs on a declared workload. Recommendation: approve the contract and
-direct-read-first scope; choose workload-specific cost limits before comparison, preserving
-existing privacy and effect gates. Default while unruled: this remains a draft.
+Approval is revision-bound and does not activate anything. The maintainer approved the
+contract, logical adapter names and direct-read-first scope by merging #3322, explicitly
+confirmed on 17 October 2026. Implementers must declare the actual compatibility window,
+release/pin versions, selected measurement-profile fields and workload-specific cost
+tradeoffs before qualification; existing privacy and effect gates still apply.
 
-After approval, author the bounded follow-ons and owner-local amendments in the
-[change map](desk-workflow-efficiency-change-map.md). Preserve completed briefs and their
-Evidence, avoid adding this scope to already-L units, and refresh active work before changing
-its contract. No existing brief is broadened or completed by a prose mapping alone.
+The [change map](desk-workflow-efficiency-change-map.md#authored-delivery-routing) now
+routes the implementation to desk-tools/37–44 and bounded amendments of the existing
+performance-collection and forge-neutral owners. The authoring PR proposes these briefs;
+its merge completes routing, not implementation. Preserve completed briefs and Evidence.
+The active CLI ports and pending supervision/improvement proposals have explicit pickup
+checkpoints. No implementation is declared complete by these amendments.

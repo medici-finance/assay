@@ -215,6 +215,14 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 34 | [Pinned golangci-lint across every Go module](brief-34-pinned-golangci-lint-across-every-go-module.md) | 1 | M | todo | — | — |
 | 35 | [Go security analysis with gosec and govulncheck](brief-35-go-security-analysis-with-gosec-and-govulncheck.md) | 2 | L | todo | — | — |
 | 36 | [The scheduled board reconcile's PR class becomes generated output — auto-approve lane (default) or direct-CI single-writer, per the driver's ruling on #2688](brief-36-reconcile-generated-class.md) | 1 | S | implemented | — | — |
+| 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | todo | — | — |
+| 38 | [Correct desk performance attribution and counter coverage](brief-38-correct-desk-performance-attribution-and-counter-coverage.md) | 2 | M | todo | — | — |
+| 39 | [Extract shared review observation and pure planning contracts](brief-39-extract-shared-review-observation-and-pure-planning-contracts.md) | 2 | M | todo | — | — |
+| 40 | [Deliver one review queue observation and offline planning bridge](brief-40-deliver-one-review-queue-observation-and-offline-planning-bridge.md) | 3 | M | todo | — | — |
+| 41 | [Share exact-source review preparation context](brief-41-share-exact-source-review-preparation-context.md) | 3 | M | todo | — | — |
+| 42 | [Narrow issue discovery projections before enrichment](brief-42-narrow-issue-discovery-projections-before-enrichment.md) | 3 | M | todo | — | — |
+| 43 | [Migrate review callers with qualified versions and rollback](brief-43-migrate-review-callers-with-qualified-versions-and-rollback.md) | 4 | M | todo | — | — |
+| 44 | [Qualify complete workflow cost and last-consumer retirement](brief-44-qualify-complete-workflow-cost-and-last-consumer-retirement.md) | 5 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -269,3 +277,29 @@ in PR #2620. They do not mark desk-tools/32 implemented or resurrect its closed 
   alternation.
 - The desk-tools binaries are consumed as pinned release binaries via `.assay-versions`;
   desk-tools source changes are authored here under `tools/desk/`.
+
+## Review-efficiency follow-ons
+
+Approved source: [workflow-efficiency spec](../../desk-workflow-efficiency-spec.md),
+with [consolidation and active-work checkpoints](../../desk-workflow-efficiency-change-map.md#authored-delivery-routing).
+The maintainer confirmed merge of #3322 as approval on 17 October 2026. Briefs 37–44
+are implementation contracts, not delivery claims. Preserve /23–27 implementation/Evidence.
+
+Critical path: `37 -> (38 and 39) -> (40 and 41) -> 43 -> 44`.
+The smallest unblocking move is /37's independent semantic/cost fixture; the missing
+complete observation and attribution were checked against current source. Building the
+whole mirror, a persistent cache, or the future runtime first does not resolve this blocker.
+
+- Wave 1: 37 (no new prerequisite).
+- Wave 2: 38 and 39 after 37.
+- Wave 3: 40 and 41 after 38+39; 42 after 38 runs independently.
+- Wave 4: 43 after 40+41; review migration does not wait for issue projection 42.
+- Wave 5: 44 after 41+42+43.
+
+The richer phase schema, adapters and tool panel amend performance-collection/01, /02,
+/07 (stream remains parked). Future serving amends forge-neutral/37–45; only its /39
+public contract mapping waits for desk-tools/39 and /45 qualification for desk-tools/43–44.
+The early lane has no reverse service/DB dependency. Active parser ports #3248/#3302,
+proposed supervision #3325 and generic improvement #3305 are pickup checkpoints, not
+assumptions of shipped behavior. Read-only release, installed caller adoption, writer
+handover and control retirement are separate claims with their existing gates.
