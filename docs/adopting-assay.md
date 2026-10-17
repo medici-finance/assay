@@ -667,14 +667,21 @@ wider than the repo you are adopting into — read **§3a** before you install i
 
 **Applicability — probe, don't assume.** The roster machinery landed in a recent release; this primitive applies from the
 first `desk-tools` / `statusgen` release cut that carries it. On an older pin there is no roster
-and nothing here has an effect. The build tells you which you have — every roster-reading tool
-echoes its effective configuration to **stderr** on every run, including `--version`:
+and nothing here has an effect. Inspect the installed tool's roster support with a local
+configuration read, before configuring any board roots:
 
 ```bash
-deskboard --version 2>&1 | grep -q '^assay-config:' && echo "roster present" || echo "pre-roster pin — skip"
+ASSAY_CONFIG_ECHO=full deskroster repos --scope write
+echo "inspection exit=$?"
 ```
 
-At the toolkit versions current as this is written it prints `skip`.
+A supported build prints its `assay-config:` block to **stderr** and the effective write
+scope to stdout. An absent or malformed roster, or an empty write scope, exits 6 with a
+diagnostic; that means roster inspection could not succeed, not that this primitive can be
+skipped. If the command is unavailable or prints no configuration block, check the installed
+`desk-tools` pin and the diagnostic before deciding whether it predates roster support.
+`deskboard --version` reports only the build stamp and reads no configuration, so it cannot
+answer this applicability question.
 
 Who is trusted, which repos the tools may write to, and which paths force a security review are
 **adopter configuration**, deliberately held outside every ref the tools evaluate — so the pull
@@ -775,8 +782,9 @@ populated from it — see below for why one entry is not enough). Skip this and 
 fails on a fresh adopter checkout with `exit=6`, `root .../assay for repo
 medici-finance/assay is not readable` — naming a repo that is not yours. **This
 primitive's own Verify below does not use `deskboard nextup` and does not need `DESK_ROOTS` at
-all** — it uses `deskboard --version`, which emits the identical `assay-config:` echo. Read on
-only once you are ready to stand up the actual cross-repo board.
+all** — it uses `deskroster repos --scope write`, which reads and prints the effective
+write scope and its `assay-config:` echo without resolving board roots or contacting a forge.
+Read on only once you are ready to stand up the actual cross-repo board.
 
 `DESK_ROOTS` is a **comma-separated list that replaces the defaults outright, not a single
 override** — and `deskboard nextup` unconditionally
@@ -843,13 +851,29 @@ grep -qiE '^ASSAY_REPO_FORGES=(.*,)?<owner>/<name>=(github|gitlab)(,|$)' ~/.conf
   || echo "MISSING: ASSAY_REPO_FORGES entry for <owner>/<name>"
 ```
 
-No output. Then the tools agree —
-`ASSAY_CONFIG_ECHO=full deskboard --version 2>&1 >/dev/null | grep -E 'configured=|role-bindings=|ASSAY_ALLOWED_REPOS='`
-shows `configured=true`, a **non-empty** `ASSAY_ALLOWED_REPOS=`, and every `role=` you rely on in
-`role-bindings=` (an unbound role refuses the check it exists for). This deliberately uses
-`--version`, not `nextup`: it needs no `DESK_ROOTS`, and it does not tempt you into widening your
-own `ASSAY_ALLOWED_REPOS` with the maintainer's repo just to get a command to exit 0 (see the caveat
-above). `ASSAY_CONFIG_ECHO=full` makes the check print the whole echo on every run; without it, a
+No output. Then inspect the effective values, retaining the inspection command's own exit
+status rather than the status of a filtering pipeline:
+
+```bash
+roster_echo=$(mktemp)
+ASSAY_CONFIG_ECHO=full deskroster repos --scope write 2>"$roster_echo"
+roster_status=$?
+grep -E 'configured=|role-bindings=|ASSAY_ALLOWED_REPOS=' "$roster_echo"
+printf 'inspection exit=%s\n' "$roster_status"
+```
+
+Require `inspection exit=0`, `configured=true`, a **non-empty** `ASSAY_ALLOWED_REPOS=`, and
+every `role=` you rely on in `role-bindings=` (an unbound role refuses the check it exists
+for). Compare the printed write scope with the repos you intend to authorize; exit 0 alone
+does not establish that every intended repo or role is present. On a nonzero exit, read the
+full diagnostic in `"$roster_echo"` and correct the configuration before proceeding. A partial
+roster with no allowed repos can still say `configured=true`; this inspection exits 6 for
+that empty write scope.
+
+This local scope read needs no `DESK_ROOTS` and does not contact a forge. It does not require
+widening your own `ASSAY_ALLOWED_REPOS` with the maintainer's repo to inspect configuration
+(see the caveat above). `deskboard` help and version remain offline and do not inspect the roster.
+`ASSAY_CONFIG_ECHO=full` makes the check print the whole echo on every run; without it, a
 run whose configuration was already shown prints only the one digest line, which carries no
 `role-bindings=` or `ASSAY_ALLOWED_REPOS=`. The forced form reads and writes no echo state.
 

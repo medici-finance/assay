@@ -86,12 +86,12 @@ func TestPerfCommandKit(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"deskboard", []string{"--version"}, "version"},
-		{"deskboard", []string{"--help"}, "help"},
+		{"deskboard", []string{"--version"}, ""},
+		{"deskboard", []string{"--help"}, ""},
 		{"deskboard", []string{"--json", "actions"}, "actions"},
-		{"deskboard", []string{"--quiet", "next-up"}, "dispatch"},
+		{"deskboard", []string{"next-up"}, "dispatch"},
 		{"deskboard", []string{"--throughput"}, "throughput"},
-		{"deskboard", []string{"private-argument"}, "other"},
+		{"deskboard", []string{"private-argument"}, ""},
 		{"issueboard", []string{"--version"}, "--version"},
 		{"issueboard", []string{"--help"}, "--help"},
 		{"issueboard", []string{"--root", ".", "intake"}, "intake"},
@@ -109,6 +109,12 @@ func TestPerfCommandKit(t *testing.T) {
 		t.Run(tc.tool+"/"+strings.Join(tc.args, "_"), func(t *testing.T) {
 			home := t.TempDir()
 			rec, _, code, raw := perfEntry(t, bin, tc.tool, home, "1", tc.args)
+			if tc.want == "" {
+				if len(raw) != 0 {
+					t.Fatalf("help/version/parse refusal unexpectedly recorded: %s", raw)
+				}
+				return
+			}
 			if rec.Verb != tc.want || rec.Tool != tc.tool || rec.Exit != code || rec.Schema != "perf-v1" {
 				t.Fatalf("record %+v, want verb=%s exit=%d", rec, tc.want, code)
 			}

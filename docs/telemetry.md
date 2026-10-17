@@ -142,8 +142,9 @@ own direct HTTP client; and other command-specific direct transports remain outs
 `deskboard` records the parsed operation, preserving canonical aliases (`todo`, `next`
 and `next-up` map to `dispatch`). Output flags are not operations. `issueboard` records
 `board`, `issues` or `intake` from its selected handler, including the default board.
-Help/version retain allowlisted spellings; an invocation rejected before operation
-selection can remain `other`. A failed operation still carries its selected operation
+The deskboard Cobra adapter keeps help/version and parse refusals outside its
+recording callback (no sample); the other adapters retain allowlisted spellings or
+`other` for early rejection. A failed operation still carries its selected operation
 and original exit. No parser is duplicated to obtain attribution.
 
 `deskdispatch` records `dispatch:worker`, `dispatch:worker-objective`, `dispatch:review`
