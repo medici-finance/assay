@@ -1,0 +1,113 @@
+{
+  "test": "go test ./cmd/deskgit ./cmd/deskdispatch ./cmd/deskboard ./internal/deskkit -run '^(TestHeadsRoleTransport|TestHeadsRefusals|TestResumeRoleTransport|TestRawReadSecondPlant|TestBoardRequiresRoleClaims|TestGitReadGitLab)$' -count=1 -timeout=45s && (cd ../../statusgen && go test . -run '^(TestDeskClaimsNoFallback|TestRoleClaimsPartial|TestClaimBridgeFlow)$' -count=1 -timeout=60s)",
+  "control": {
+    "name": "credential removed from the real HTTP channel",
+    "file": "internal/deskkit/gitread.go",
+    "old": "gitcore.BasicAuthAs(user, cred.Token)",
+    "new": "gitcore.BasicAuthAs(user, \"\")"
+  },
+  "mutations": [
+    {
+      "name": "session role mismatch admitted",
+      "file": "internal/deskkit/gitread.go",
+      "old": "if role != bound {",
+      "new": "if false && role != bound {"
+    },
+    {
+      "name": "multiple origin destinations admitted",
+      "file": "internal/deskkit/gitread.go",
+      "old": "if len(urls) != 1 {",
+      "new": "if false && len(urls) != 1 {"
+    },
+    {
+      "name": "expected repository binding removed",
+      "file": "internal/deskkit/gitread.go",
+      "old": "(expectedRepo != \"\" && slug != expectedRepo)",
+      "new": "(false && expectedRepo != \"\" && slug != expectedRepo)"
+    },
+    {
+      "name": "credential host binding removed for GitLab",
+      "file": "internal/deskkit/gitread.go",
+      "old": "if !strings.EqualFold(u.Hostname(), host) {",
+      "new": "if false && !strings.EqualFold(u.Hostname(), host) {"
+    },
+    {
+      "name": "credential port binding removed",
+      "file": "internal/deskkit/gitread.go",
+      "old": "if port != expectedPort {",
+      "new": "if false && port != expectedPort {"
+    },
+    {
+      "name": "forge-qualified role binding removed",
+      "file": "internal/deskkit/gitread.go",
+      "old": "if err := assertEntryForgeAgrees(role, res.Kind); err != nil {",
+      "new": "if err := assertEntryForgeAgrees(role, res.Kind); false && err != nil {"
+    },
+    {
+      "name": "moved source head accepted",
+      "file": "cmd/deskdispatch/worktree.go",
+      "old": "r.err != nil || strings.TrimSpace(r.stdout) != head",
+      "new": "r.err != nil"
+    },
+    {
+      "name": "raw second reader allowed by the class guard",
+      "file": "cmd/deskdispatch/reviewguard_test.go",
+      "old": "case \"rev-parse\":",
+      "new": "case \"rev-parse\", \"ls-remote\":"
+    },
+    {
+      "name": "board drops the required role boundary",
+      "file": "cmd/deskboard/dispatch.go",
+      "old": ", \"--role-claims\")",
+      "new": ")"
+    },
+    {
+      "name": "explicit desk flag ignored",
+      "file": "../../statusgen/gitinfo.go",
+      "old": "roleClaimReads || os.Getenv(\"DESK_LOOP\") != \"\"",
+      "new": "false || os.Getenv(\"DESK_LOOP\") != \"\""
+    },
+    {
+      "name": "desk loop ignored",
+      "file": "../../statusgen/gitinfo.go",
+      "old": "roleClaimReads || os.Getenv(\"DESK_LOOP\") != \"\"",
+      "new": "roleClaimReads || false"
+    },
+    {
+      "name": "partial branch advertisement accepted",
+      "file": "../../forgeread/heads.go",
+      "old": "|| !env.Complete",
+      "new": "|| false"
+    },
+    {
+      "name": "wrong envelope repository accepted",
+      "file": "../../forgeread/heads.go",
+      "old": "env.Repo != repo",
+      "new": "false"
+    },
+    {
+      "name": "unknown envelope schema accepted",
+      "file": "../../forgeread/heads.go",
+      "old": "env.Schema != EnvelopeSchema",
+      "new": "false"
+    },
+    {
+      "name": "missing heads accepted as empty",
+      "file": "../../forgeread/heads.go",
+      "old": "|| env.Heads == nil",
+      "new": "|| false"
+    },
+    {
+      "name": "duplicate branch advertisement accepted",
+      "file": "../../forgeread/heads.go",
+      "old": "|| seen[head]",
+      "new": "|| false"
+    },
+    {
+      "name": "nonbranch advertisement accepted",
+      "file": "../../forgeread/heads.go",
+      "old": "!strings.HasPrefix(head, \"refs/heads/\")",
+      "new": "false && !strings.HasPrefix(head, \"refs/heads/\")"
+    }
+  ]
+}

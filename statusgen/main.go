@@ -1683,6 +1683,7 @@ func main() {
 	span := flag.Int("span", defaultSpanOfControl, "Next-up span-of-control cap: max items shown (default 20 — agent-worked queue, not the human EEMUA-191 7±2)")
 	overflowT := flag.Int("overflow-threshold", -1, "eligible-brief count above which Next-up flags overflow; <0 = same as --span")
 	mainHealthFlag := flag.String("main-health", "", "the INJECTED main-health input for the drives critical tier's main-red arm: `green`, or `red:<owner/repo#N>[,...]` naming the issue(s) tracking the red main. statusgen never reads live CI; omit the flag and the arm reports could-not-check (named on the board while a drive is active), never a silent green")
+	roleClaimsFlag := flag.Bool("role-claims", false, "read claims through deskgit as the bound desk role; never fall back to ambient Git")
 	requireClaimsFlag := flag.Bool("require-claims", false, "fail (exit 1, nothing written) instead of emitting a degraded board when the origin claim read fails")
 	// FINDINGS alarm-KPI knobs (ISA-18.2). Standalone
 	// block so sibling statusgen flag PRs merge trivially.
@@ -1969,6 +1970,7 @@ func main() {
 	// the board must still render, wearing its degradation. A caller that
 	// dispatches from the board sets this and gets exit 1 instead.
 	requireClaims = *requireClaimsFlag
+	roleClaimReads = *roleClaimsFlag
 	// The main-red arm's injected input (drives phase 3). A malformed value is a
 	// usage refusal — never a silent fallback to could-not-check or to green.
 	if mh, err := parseMainHealth(*mainHealthFlag); err != nil {

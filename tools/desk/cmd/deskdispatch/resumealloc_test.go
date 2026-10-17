@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -10,10 +11,12 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gittest"
 )
 
 // The forge is offline, but dispatch's allocation child and every Git command
 // are real. An argv-only stub cannot catch a producer/allocator contract mismatch.
+// regression: #3327
 func TestResumeRealAllocator(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "deskwt")
 	if runtime.GOOS == "windows" {
@@ -49,6 +52,15 @@ func TestResumeRealAllocator(t *testing.T) {
 	git(root, "init", "--bare", remote)
 	git(root, "remote", "add", "origin", remote)
 	git(root, "push", "origin", main+":refs/heads/main", head+":refs/heads/"+branch)
+	git(root, "remote", "set-url", "origin", "https://github.com/"+allowedRepo+".git")
+	gittest.RoleHTTP(t, filepath.Dir(filepath.Dir(remote)), "resume-role-fixture")
+	restore := deskkit.SetRoleTokenMinter(func(role, owner string) (string, string, error) {
+		path := filepath.Join(os.Getenv("HOME"), "resume.token")
+		err := os.WriteFile(path, []byte("resume-role-fixture"), 0600)
+		return path, "", err
+	})
+	defer restore()
+	refreshResume = liveRefreshResume
 	// All allocator calls execute the shipped command, never a substituted success.
 	execCommand = func(name string, args ...string) *exec.Cmd {
 		if name == "deskwt" {

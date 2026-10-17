@@ -175,7 +175,7 @@ type dispatchReport struct {
 // nextUpForRoot runs `statusgen --next-up` against ONE root and returns its view.
 // Every failure is Unverifiable and names the root — the caller aborts (fail-closed).
 func nextUpForRoot(bin, absRoot, repo string) (dispatchView, error) {
-	cmd := exec.Command(bin, "--next-up", "--root", absRoot)
+	cmd := exec.Command(bin, "--next-up", "--root", absRoot, "--role-claims")
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
