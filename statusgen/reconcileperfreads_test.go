@@ -228,3 +228,65 @@ func TestHandSaidReplayTwoBriefs(t *testing.T) {
 		}
 	}
 }
+
+// regression: #3018
+func TestHandSaidKeepsDeletedRow(t *testing.T) {
+	dir := t.TempDir()
+	runGit(t, dir, "init", "-q", "-b", "main")
+	runGit(t, dir, "config", "user.email", "test@example.com")
+	runGit(t, dir, "config", "user.name", "test")
+	runGit(t, dir, "config", "commit.gpgsign", "false")
+	rel := filepath.Join("docs", "streams", "demo", "README.md")
+	abs := filepath.Join(dir, rel)
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	readme := func(state string, includeDeleted bool) string {
+		content := "---\nstream: demo\nstatus: active\npriority: P1\n---\n\n" +
+			"| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
+			"|---|-------|------|--------|--------|----------|----------|\n" +
+			"| 01 | Retained thing | 0 | M | todo | — | — |\n"
+		if includeDeleted {
+			content += "| 02 | Deleted thing | 0 | M | " + state + " | — | — |\n"
+		}
+		return content
+	}
+	for i, snapshot := range []struct {
+		state string
+		keep  bool
+	}{{"todo", true}, {"done", true}, {"", false}} {
+		if err := os.WriteFile(abs, []byte(readme(snapshot.state, snapshot.keep)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		runGit(t, dir, "add", rel)
+		date := "2026-07-0" + strconv.Itoa(i+1) + "T10:00:00Z"
+		runGitEnv(t, dir, []string{"GIT_AUTHOR_DATE=" + date, "GIT_COMMITTER_DATE=" + date}, "commit", "-q", "-m", "snapshot")
+	}
+
+	wantState, wantSHA, found := perBriefHandSaid(dir, "demo", "02")
+	if !found || wantState != "done" {
+		t.Fatalf("fixture drift: per-brief walk = (%q, %v), want retained done state", wantState, found)
+	}
+	hashes := gitLogHashes(t, dir, rel)
+	if len(hashes) != 3 || wantSHA != hashes[1] {
+		t.Fatalf("fixture drift: deleted row's last state came from %q, want second snapshot %v", wantSHA, hashes)
+	}
+
+	for name, got := range map[string]func() (string, string, bool){
+		"replay": func() (string, string, bool) {
+			h, ok := handSaidReplay(dir, "demo")["02"]
+			return h.state, h.sha, ok
+		},
+		"per-brief API": func() (string, string, bool) {
+			return handSaidBeforeGeneration(dir, "demo", "02")
+		},
+		"memoized lookup": func() (string, string, bool) {
+			return newHandSaidLookup(dir)("demo", "02")
+		},
+	} {
+		state, sha, found := got()
+		if state != wantState || sha != wantSHA || !found {
+			t.Errorf("%s = (%q, %q, %v), per-brief walk = (%q, %q, %v)", name, state, sha, found, wantState, wantSHA, true)
+		}
+	}
+}

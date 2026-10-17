@@ -17,7 +17,8 @@
   ],
   "result": {
     "Changed": true,
-    "SHA": "blob-new",
+    "ContentID": "blob-new",
+    "CommitSHA": "c0ffee",
     "Author": "assay-verifier-app[bot]",
     "DefaultBranchNotWritable": false,
     "Rows": 0,

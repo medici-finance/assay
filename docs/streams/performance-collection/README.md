@@ -324,3 +324,7 @@ and effect execution reuse R2 schedules/leases/budgets, R3 supervision and R4 ef
 receipt reconciliation. No new cron daemon, direct forge-writing report command, or database
 trigger launches workers. Shadow assessment, then deduplicated issues, then bounded draft-PR
 proposals are separate rollout modes; activation requires the applicable recorded policy.
+
+## Workflow-efficiency contract amendment — 17 October 2026
+
+The stream stays parked. /01, /02 and /07 receive bounded phase/correlation, producer and tool-panel acceptance from the approved workflow-efficiency spec. There is no new spool, profile activation or DB/API requirement for early local qualification. See the [delivery map](../../desk-workflow-efficiency-change-map.md#authored-delivery-routing). Existing Evidence and activation gates remain unchanged.

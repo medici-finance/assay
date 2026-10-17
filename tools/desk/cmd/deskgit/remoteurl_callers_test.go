@@ -34,19 +34,14 @@ import (
 // #1623 fixed and removed deskpr (preflight now gates on `git remote get-url --all origin`, and
 // create/update gate the push on `git remote get-url --push --all origin`) and deskmerge
 // (resolveRepoRoot gates the fetch on git's resolution; the merge gates its push destinations in
-// the scratch worktree the push leaves from). It also assessed the sites below and the one site
-// this scan cannot see:
-//
-//   - deskclaim-ref (cmd/deskclaim-ref/gogit.go, originRemoteURL — go-git's Remote().Config(),
-//     not a RemoteURL call, so the scan does not count it): NOT a gate git contradicts. The
-//     origin read supplies only the HOST hint and the default slug; the tool then dials
-//     `https://<host>/<owner>/<name>.git` itself, built from deskkit.ForgeKindFromSlugAndHost,
-//     through go-git's own transport. No git verb resolves origin after the read, so there is no
-//     second resolution to disagree with it.
+// the scratch worktree the push leaves from). It also assessed the sites below.
 var remoteURLAllowList = map[string]struct {
 	calls  int
 	reason string
 }{
+	"cmd/deskclaim-ref/gogit.go": {1, "assessed #1623; shared adapter since #3281 — supplies " +
+		"the host hint and default slug only; claim transport builds a canonical URL from " +
+		"ForgeKindFromSlugAndHost. No git verb resolves origin after the read."},
 	"cmd/deskwt/deskwt.go": {1, "OPEN class site (assessed #1623, fix owned by the deskwt-side " +
 		"work, not this change): currentRepo gates IsAllowedRepo, and role-init then runs " +
 		"`git fetch --no-tags origin main`, which resolves origin itself (worktree/global scope, " +
@@ -56,8 +51,8 @@ var remoteURLAllowList = map[string]struct {
 		"after it (the reply goes through the forge API, never git transport)."},
 	"cmd/deskpushguard/main.go": {1, "fallback only when the pre-push hook received no URL " +
 		"argument; the normal path takes the URL git itself hands the hook."},
-	"internal/deskkit/remoterepo.go": {1, "OriginRepoSlug reads the RAW configured value on " +
-		"purpose, so the identity is not insteadOf-expanded (see its doc comment)."},
+	"internal/deskkit/remoterepo.go": {1, "OriginRepoSlug reads the repository-local URL, with " +
+		"fetch insteadOf applied by gitcore; it parses identity and does not run a git transport."},
 	"internal/deskkit/preflight.go": {2, "deriveRepoSlug only labels the mint's owner; the landing " +
 		"probe reads the remote only as a forge-KIND hint (well-known host table, roster first) and " +
 		"lists the kind's canonical URL in-process — no git verb resolves the remote after it."},

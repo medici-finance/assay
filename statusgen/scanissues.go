@@ -412,7 +412,24 @@ func existingPlaceholderIssues(streams []*Stream) map[string]bool {
 // resolved marker put it there.
 //
 // Output is sorted (repo, then issue) for deterministic dry-run and write order.
-func planScan(root string, streams []*Stream, list issueLister, bless issueBlessChecker) (plans []scanPlan, closeOuts []closeOutPlan, notices []string, skipped []scanRepoSkip) {
+func planScan(root string, streams []*Stream, list issueLister, bless issueBlessChecker, hold labelHoldChecker) (plans []scanPlan, closeOuts []closeOutPlan, notices []string, skipped []scanRepoSkip) {
+	// The label-removal hold (labelremovalhold.go) runs on all three admission paths — create,
+	// root reactivate and archive reactivate — for an open issue with no excluded label now.
+	// held reports whether the issue is held and, if so, records ONE NOTICE for it.
+	holdMemo := newLabelHoldMemo(hold)
+	held := func(repo string, issue int, action string) bool {
+		isHeld, clause, detail := holdMemo.gate(repo, issue)
+		if isHeld {
+			msg := fmt.Sprintf("scan-issues: %s#%d NOT %s — %s: %s", repo, issue, action, clause, detail)
+			for _, n := range notices {
+				if n == msg {
+					return true
+				}
+			}
+			notices = append(notices, msg)
+		}
+		return isHeld
+	}
 	existing := existingPlaceholderIssues(streams)
 	// (D3): archived placeholders (already moved into
 	// `<stream>/done/`) count as EXISTING — a reopened issue reactivates its
@@ -490,6 +507,11 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 			path := filepath.Join(dir, placeholderFileName(repo, iss.Number))
 			if _, err := os.Stat(path); err == nil {
 				continue // a file already occupies the target path — never overwrite
+			}
+			// Label-removal hold: after the trust gate (a quarantined issue costs no extra
+			// read) and after the occupied-path check (nothing would be created anyway).
+			if held(repo, iss.Number, "created") {
+				continue
 			}
 			gate := derivePlaceholderGate(labels, iss.Title)
 			rel, err := filepath.Rel(root, path)
@@ -570,6 +592,9 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 				// in place. Reactivation doesn't care WHICH resolved marker put it
 				// at done.
 				if ph.Status == "done" {
+					if held(repo, ph.Issue, "reactivated") {
+						continue
+					}
 					// Dest "" — already at the root.
 					closeOuts = append(closeOuts, reactivatePlan(repo, openIssue[ph.Issue], ph.Path, rel, ""))
 				}
@@ -587,6 +612,9 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 					continue
 				}
 				if !openSet[ph.Issue] || openExcluded[ph.Issue] {
+					continue
+				}
+				if held(repo, ph.Issue, "reactivated") {
 					continue
 				}
 				rel, err := filepath.Rel(root, path)
@@ -638,7 +666,7 @@ func scanReadSummary(total int, skipped []scanRepoSkip) string {
 // close-out of resolved placeholders in one sweep, and either lists
 // everything (--dry-run) or writes the files. It never pushes, never mutates
 // GitHub, and never touches STATUS.md. Returns a process exit code.
-func runScanIssues(root string, dryRun bool, list issueLister, comments commentLister, bless issueBlessChecker) int {
+func runScanIssues(root string, dryRun bool, list issueLister, comments commentLister, bless issueBlessChecker, hold labelHoldChecker) int {
 	// P3: the effective-configuration echo now runs ONCE from main, for every mode
 	// (it used to fire only here, so --lint — the mode the consumer's CI runs —
 	// printed nothing about the roster it judged with).
@@ -680,7 +708,7 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 	unblockPlans, unblockNotices := planUnblock(streams, comments)
 	notices := append([]string(nil), unblockNotices...)
 
-	plans, closeOuts, scanNotices, skipped := planScan(root, streams, list, bless)
+	plans, closeOuts, scanNotices, skipped := planScan(root, streams, list, bless, hold)
 	notices = append(notices, scanNotices...)
 	emitNotices(notices) // per-repo gh failures ALSO surface as NOTICE
 
