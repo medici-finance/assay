@@ -326,7 +326,9 @@ correctness). A **mutating** response does not converge harmlessly: hence §Clos
    reuses the class record, never rediscovers it. A production-down or security symptom stays `todo`;
    the driver's own-login `bleed` reply naming a parked symptom sets it `todo`, `Parked` dropped.
    **Re-park:** a scanner `reactivate` (excluded label removed or reopened) sets a parked row `todo`,
-   body kept, so each pass re-blocks a `todo` row still saying `Parked`. `intended-control` is a
+   body kept, so each pass re-blocks a `todo` row still saying `Parked`; when the excluded label was
+   removed by anything other than a rostered human, the scanner holds the item until the
+   ratifying identity has commented on the issue since the label was applied. `intended-control` is a
    wording fix for its refusal-text owner, never design work.
 2. **`close-candidate` — the brief-write for a no-merge close.** When an issue must close with NO
    merged fix (`FIXED-NOT-CLOSED | WONTFIX | DUPLICATE | STALE`), mark the placeholder frontmatter

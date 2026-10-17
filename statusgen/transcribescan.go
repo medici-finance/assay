@@ -294,9 +294,30 @@ type transcribeDelta struct {
 // A per-issue trust failure or unreadable author is a clauseSkip, never a
 // default-board.
 func planTranscribeScan(root string, streams []*Stream, homeRepo string,
-	list issueLister, comments commentLister, resolveAuthor authorResolver, bless issueBlessChecker) (transcribeDelta, error) {
+	list issueLister, comments commentLister, resolveAuthor authorResolver, bless issueBlessChecker, hold labelHoldChecker) (transcribeDelta, error) {
 
 	var d transcribeDelta
+
+	// The label-removal hold (labelremovalhold.go) runs on all three admission paths. A hold
+	// is a clauseSkip naming the hold clause; the issue is not created or reactivated.
+	holdMemo := newLabelHoldMemo(hold)
+	held := func(issue int, action string) bool {
+		isHeld, clause, detail := holdMemo.gate(homeRepo, issue)
+		if !isHeld {
+			return false
+		}
+		for _, sk := range d.Skips {
+			if sk.Issue == issue && sk.Clause == clause {
+				return true
+			}
+		}
+		d.Skips = append(d.Skips, clauseSkip{
+			Issue:  issue,
+			Clause: clause,
+			Reason: fmt.Sprintf("NOT %s — %s", action, detail),
+		})
+		return true
+	}
 
 	issues, err := list(homeRepo)
 	if err != nil {
@@ -370,6 +391,9 @@ func planTranscribeScan(root string, streams []*Stream, homeRepo string,
 		if _, serr := os.Stat(path); serr == nil {
 			continue // a file already occupies the target path — never overwrite
 		}
+		if held(iss.Number, "created") {
+			continue
+		}
 		gate := derivePlaceholderGate(labels, iss.Title)
 		rel, rerr := filepath.Rel(root, path)
 		if rerr != nil {
@@ -422,6 +446,9 @@ func planTranscribeScan(root string, streams []*Stream, homeRepo string,
 				continue
 			}
 			if ph.Status == "done" {
+				if held(ph.Issue, "reactivated") {
+					continue
+				}
 				d.CloseOuts = append(d.CloseOuts, reactivatePlan(homeRepo, openIssue[ph.Issue], ph.Path, rel, ""))
 			}
 		}
@@ -434,6 +461,9 @@ func planTranscribeScan(root string, streams []*Stream, homeRepo string,
 				continue
 			}
 			if !openSet[ph.Issue] || openExcluded[ph.Issue] {
+				continue
+			}
+			if held(ph.Issue, "reactivated") {
 				continue
 			}
 			rel, rerr := filepath.Rel(root, path)
@@ -484,7 +514,7 @@ func planTranscribeScan(root string, streams []*Stream, homeRepo string,
 // direct-author authorization over the full rostered set is implemented here.
 func runTranscribeScan(root string, dryRun bool,
 	list issueLister, comments commentLister, resolveAuthor authorResolver,
-	bless issueBlessChecker, resolveSignoff commentResolver) int {
+	bless issueBlessChecker, hold labelHoldChecker, resolveSignoff commentResolver) int {
 
 	// P1: unset roster is CLOSED — identical posture to --scan-issues. This lane
 	// WRITES durable work items from issues arbitrary external users can author, and
@@ -527,7 +557,7 @@ func runTranscribeScan(root string, dryRun bool,
 	}
 	attachPlaceholders(streams)
 
-	delta, err := planTranscribeScan(root, streams, homeRepo, list, comments, resolveAuthor, bless)
+	delta, err := planTranscribeScan(root, streams, homeRepo, list, comments, resolveAuthor, bless, hold)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen --transcribe-scan:", err)
 		return 1
