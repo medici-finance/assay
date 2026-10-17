@@ -10,7 +10,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -67,9 +69,10 @@ func TestReg1145ShimCredential(t *testing.T) {
 // t.TempDir cleanup.
 func runShellFixture(t testing.TB, path, tmp string, budget time.Duration) ([]byte, error) {
 	t.Helper()
+	bash := requireBash4(t)
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "bash", path)
+	cmd := exec.CommandContext(ctx, bash, path)
 	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null", "TMPDIR="+tmp,
 		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull,
 		"GIT_TEMPLATE_DIR="+gitquiet.TemplateDir(t))
@@ -79,6 +82,29 @@ func runShellFixture(t testing.TB, path, tmp string, budget time.Duration) ([]by
 		return out, fmt.Errorf("fixture exceeded its %s deadline: %w (%v)", budget, ctx.Err(), err)
 	}
 	return out, err
+}
+
+var bashVersionRE = regexp.MustCompile(`version ([0-9]+)\.([0-9]+)`)
+
+func requireBash4(t testing.TB) string {
+	t.Helper()
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("prerequisite: Bash 4 or newer is required for the POSIX regression fixtures; bash was not found on PATH")
+	}
+	out, err := exec.Command(bash, "--version").Output()
+	if err != nil {
+		t.Skipf("prerequisite: Bash 4 or newer is required for the POSIX regression fixtures; could not read bash version: %v", err)
+	}
+	match := bashVersionRE.FindSubmatch(out)
+	if len(match) != 3 {
+		t.Skip("prerequisite: Bash 4 or newer is required for the POSIX regression fixtures; could not parse bash --version")
+	}
+	major, err := strconv.Atoi(string(match[1]))
+	if err != nil || major < 4 {
+		t.Skipf("prerequisite: Bash 4 or newer is required for the POSIX regression fixtures; found Bash %s.%s", match[1], match[2])
+	}
+	return bash
 }
 
 // TestShellDeadline proves the wrapper's deadline is real and finite: a fixture that
