@@ -15,6 +15,7 @@ func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = fixtureGitEnv(os.Environ())
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -39,11 +40,26 @@ func runGitEnv(t *testing.T, dir string, env []string, args ...string) {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(append(os.Environ(), fixtureGitIdentity...), env...)
+	cmd.Env = append(append(fixtureGitEnv(os.Environ()), fixtureGitIdentity...), env...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
+}
+
+// fixtureGitEnv removes caller Git controls that can change fixture setup or
+// positive controls. Tests that need a particular Git environment pass it
+// explicitly to runGitEnv; production row environments are tested separately.
+func fixtureGitEnv(env []string) []string {
+	filtered := make([]string, 0, len(env))
+	for _, entry := range env {
+		key, _, _ := strings.Cut(entry, "=")
+		if key == "GIT_NO_REPLACE_OBJECTS" || strings.HasPrefix(key, "GIT_CONFIG_") {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
 }
 
 // fixedDate is deliberately expressed with a non-UTC offset (+05:30). git
