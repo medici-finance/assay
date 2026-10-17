@@ -16,6 +16,7 @@
 #   cases: accepts-four-outcomes rejects-unknown-outcome rejects-unknown-role
 #          rejects-field-order rejects-missing-token rejects-missing-field
 #          rejects-space-in-value rejects-zero-for-unknown
+#          rejects-multiline
 #          rejects-unknown-for-completed rejects-ok-without-act
 #          rejects-refused-with-sweep check-takes-last-line
 #          check-refuses-empty regexp-is-the-applied-one contract-citation
@@ -75,6 +76,31 @@ if want accepts-four-outcomes; then
   # A count may be unknown in any position, not only swept.
   accepts "tick role=the-desk outcome=could-not-check swept=- acted=- filed=- duration=3" \
     "every count may be unknown"
+fi
+
+# regression: #2819
+if want rejects-multiline; then
+  echo "rejects-multiline — validate checks ONE whole argument, not any matching line"
+  good="tick role=verify-desk outcome=could-not-check swept=- acted=0 filed=0 duration=1"
+  # Plant independent bad records beside a good record in BOTH orders. Neither
+  # shape nor cross-field values may come from a different physical line.
+  for bad in \
+    "tick role=verify-desk outcome=unobserved swept=2 acted=0 filed=0 duration=1" \
+    "tick role=verify-desk outcome=could-not-check swept=0 acted=0 filed=0 duration=1" \
+    "tick role=verify-desk outcome=could-not-check swept=7 acted=0 filed=0 duration=1" \
+    "tick role=nope outcome=noop swept=0 acted=0 filed=0 duration=1" \
+    "tick role=verify-desk outcome=noop swept=- acted=0 filed=0 duration=1" \
+    "tick role=verify-desk outcome=ok swept=2 acted=0 filed=0 duration=1" \
+    "tick role=verify-desk outcome=refused swept=2 acted=0 filed=0 duration=1"; do
+    rejects "$bad"$'\n'"$good" "bad record before a valid record: $bad"
+    rejects "$good"$'\n'"$bad" "bad record after a valid record: $bad"
+  done
+  rejects "$good"$'\n'"$good" "two valid records are still not one line"
+  rejects $'\n'"$good" "a leading blank physical line is rejected"
+  rejects "$good"$'\n' "a trailing blank physical line is rejected"
+  rejects "$good"$'\n\n' "multiple trailing physical lines are rejected"
+  rejects "$good"$'\r\n'"$good" "CRLF-separated records are rejected"
+  rejects "$good"$'\r'"$good" "CR-separated records are rejected"
 fi
 
 # ======================================================== shape rejections ====
