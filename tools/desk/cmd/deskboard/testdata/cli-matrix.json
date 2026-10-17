@@ -1,0 +1,16 @@
+{
+  "flags": {"table": false, "json": false, "delta": false, "quiet": false, "out": "", "min-age-hours": "48", "merge-now-threshold": "20m", "unreviewed-threshold": "30m", "tier": ""},
+  "rate-floor": [
+    {"name":"default","want":500},
+    {"name":"env","env":"700","want":700},
+    {"name":"trim-env","env":" 700 ","want":700},
+    {"name":"empty-env","env":"","want":500},
+    {"name":"space-env","env":"  ","want":500},
+    {"name":"flag","env":"700","flag":"25","want":25},
+    {"name":"zero","env":"700","flag":"0","want":0},
+    {"name":"empty-flag","env":"700","flag":"","refused":true},
+    {"name":"invalid-env","env":"bad","refused":true},
+    {"name":"flag-over-invalid-env","env":"bad","flag":"50","want":50},
+    {"name":"negative","flag":"-1","refused":true}
+  ]
+}
