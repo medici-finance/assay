@@ -2051,14 +2051,14 @@ func main() {
 		// the un-block comment read and the trust-gate bless read (defaultScanCommentLister,
 		// defaultScanBlessChecker, #1255). A `gh` read left on this path 401s on every rostered
 		// repo under scanloop's replaced HOME.
-		exitProcess(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker))
+		exitProcess(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker, defaultScanLabelHoldChecker))
 	}
 	// Same-repo scan transcriber (scan-lane/01, R-7): self-contained,
 	// STATUS.md-free. The workflow's "run" step. INERT until the R-7 sign-off
 	// resolves; --dry-run is the no-write "--check" surface.
 	if *transcribeScanMode {
 		exitProcess(runTranscribeScan(*root, *scanDryRun,
-			ghIssueLister, issueCommentLister, ghAuthorResolver, ghIssueBlessChecker, ghCommentResolver))
+			ghIssueLister, issueCommentLister, ghAuthorResolver, ghIssueBlessChecker, defaultScanLabelHoldChecker, ghCommentResolver))
 	}
 	// Cross-repo scan-delta transcriber (the house-private brief, R-7 clause 4):
 	// self-contained, STATUS.md-free. INERT until the SAME R-7 sign-off
