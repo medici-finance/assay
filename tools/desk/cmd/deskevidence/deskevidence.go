@@ -386,16 +386,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			" resolves outside docs/streams/ — deskevidence only writes under that tree")
 	}
 
-	// PUBLISH-identity gate (#1490 lane B). deskevidence commits AS the verifier App via the
-	// Contents API, so the Evidence commit itself is correctly attributed — but the witness
-	// Runner attribution is derived from the verifier WORKTREE's identity, which is exactly
-	// the value #1490 saw come out wrong when a dispatch provisioned the worktree with a stale
-	// role. This refuses, before the landing reads the branch, if the worktree it is authored
-	// from carries commits ahead of the target branch that are not the verifier's — a signal
-	// the worktree's identity cannot be trusted to derive attribution from. Local (git +
-	// roster); in the sanctioned post-merge verify flow the worktree sits at the target
-	// branch, so the range is empty and this is a clean no-op.
-	if ierr := publishIdentityGate(*root, branch); ierr != nil {
+	// The source was admitted independently of the conditional-write destination.
+	// Judge its immutable identity boundary against fetched main, never an older
+	// Evidence branch. The actual new write remains under verifier App custody.
+	if ierr := publishEvidenceIdentityGate(*root, receipt); ierr != nil {
 		return ierr
 	}
 

@@ -1,0 +1,41 @@
+{
+  "test": "go test ./cmd/deskevidence ./cmd/deskpr ./internal/deskkit -run 'TestEvidenceSourceIdentity|TestEvidenceIdentityBinding|TestCreateRemoteCheck|TestPubIdentityCallersTip' -count=1 -timeout=90s",
+  "control": {
+    "name": "CONTROL: judge Evidence source against the destination again",
+    "file": "cmd/deskevidence/deskevidence.go",
+    "old": "publishEvidenceIdentityGate(*root, receipt)",
+    "new": "publishIdentityGate(*root, branch)"
+  },
+  "mutations": [
+    {
+      "name": "outcome lane judges the source against its older destination",
+      "file": "cmd/deskevidence/outcomerecord.go",
+      "old": "publishEvidenceIdentityGate(root, receipt)",
+      "new": "publishIdentityGate(root, branch)"
+    },
+    {
+      "name": "conditional write discards the immutable admitted source",
+      "file": "cmd/deskevidence/github.go",
+      "old": "Source: receipt.Binding.Source,",
+      "new": "Source: \"\","
+    },
+    {
+      "name": "conditional write judges destination history as source history",
+      "file": "cmd/deskevidence/github.go",
+      "old": "Dir: dir, Base: \"main\", Source: receipt.Binding.Source,",
+      "new": "Dir: dir, Base: \"evidence\", Source: receipt.Binding.Source,"
+    },
+    {
+      "name": "remote preflight falls through into outward writes",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "if *checkRemote {\n\t\tac.successResult = deskkit.ResultDryRun",
+      "new": "if false && *checkRemote {\n\t\tac.successResult = deskkit.ResultDryRun"
+    },
+    {
+      "name": "confirmed destination skips new-commit identity gate",
+      "file": "cmd/deskpr/createpublish.go",
+      "old": "if err := publishIdentityGate(s.dir, base, tip, head.String()); err != nil {",
+      "new": "if err := publishIdentityGate(s.dir, base, tip, head.String()); false && err != nil {"
+    }
+  ]
+}
