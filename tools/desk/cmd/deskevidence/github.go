@@ -245,7 +245,10 @@ func checkWriteAttribution(fg deskkit.Forge, fr deskkit.ForgeRepo, res *deskkit.
 	if err != nil || c == nil || c.SHA != string(res.CommitSHA) {
 		return "commit=could-not-check", deskkit.Unverifiable("could-not-check: the write receipt could not be dereferenced as the exact landed commit", err)
 	}
-	if res.Author == "" && strings.TrimSpace(c.AuthorLogin) != "" {
+	if res.Author != "" && !isVerifierBot(res.Author) {
+		return checkAttribution(nil, fr, "", res.Author)
+	}
+	if strings.TrimSpace(c.AuthorLogin) != "" {
 		detail, err, _ := resolvedCommitAuthor(c.AuthorLogin, want)
 		return detail, err
 	}

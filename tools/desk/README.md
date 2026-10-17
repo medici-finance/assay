@@ -4840,7 +4840,8 @@ Landing receipts separate `WriteFileResult.ContentID`, the opaque file precondit
 response. Neither backend infers a commit from a blob digest or a later branch head.
 Both Evidence and outcome-record landings, direct or through a draft change, dereference
 the exact receipt as a commit before checking attribution. Missing or unresolvable commit
-identity is could-not-check (exit 6). Successful output and the audit carry the full commit
+identity is could-not-check (exit 6). A resolved account that contradicts the verifier
+binding also fails, even when the write response display-author matches. Successful output and the audit carry the full commit
 id for ancestry joins. A backend noop reports only the content id and creates no commit.
 
 After the PUT, the commit GitHub actually created is checked: `commit.author.name` must be

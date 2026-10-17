@@ -486,6 +486,12 @@
       "file": "cmd/deskevidence/github.go",
       "old": "if res == nil || res.Changed {",
       "new": "if true {"
+    },
+    {
+      "name": "#2794: ignore a conflicting commit account when the response author matches",
+      "file": "cmd/deskevidence/github.go",
+      "old": "if strings.TrimSpace(c.AuthorLogin) != \"\" {",
+      "new": "if res.Author == \"\" && strings.TrimSpace(c.AuthorLogin) != \"\" {"
     }
   ]
 }

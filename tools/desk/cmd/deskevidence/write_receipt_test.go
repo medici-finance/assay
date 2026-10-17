@@ -11,7 +11,7 @@ import (
 
 // regression: #2794
 func TestReceiptAttribution(t *testing.T) {
-	for _, fault := range []string{"valid", "missing", "blob", "moved", "wrong-author", "unknown-author"} {
+	for _, fault := range []string{"valid", "missing", "blob", "moved", "wrong-author", "wrong-account", "unknown-author"} {
 		t.Run(fault, func(t *testing.T) {
 			f, _ := setupFake(t)
 			res := &deskkit.WriteFileResult{Changed: true, ContentID: "blob-id", CommitSHA: "exact-commit", Author: verifierBotDisplay()}
@@ -24,6 +24,8 @@ func TestReceiptAttribution(t *testing.T) {
 				f.commitSHAs = map[string]string{"exact-commit": "other-commit"}
 			case "wrong-author":
 				res.Author = "someone-else"
+			case "wrong-account":
+				f.commitAuthorLogin = "someone-else"
 			case "unknown-author":
 				res.Author = ""
 			}
