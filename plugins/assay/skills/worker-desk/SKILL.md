@@ -312,6 +312,8 @@ or one unreadable repo, is exit 6 COULD-NOT-CHECK for the WHOLE board, never a s
    or a risk call is **intake's job**. When in doubt, leave it to intake AND LEAVE A TRACE (a `question`
    on the issue naming the fork) — intake's strong tier picks the default a reversible fork proceeds on.
 
+An issue the board shows as `AWAIT` for its label history is not un-briefed work, whatever its current labels.
+
 **Priority is LOWEST of the dispatch sources** (WIP-draining work → board rows → un-briefed issues),
 but the ordering is a tie-break, not a hold: an empty slot with a qualifying issue and nothing above
 it dispatches NOW. Claim under the SAME issue-shaped key the placeholder lane uses, `<repo>--issue-<NN>`
