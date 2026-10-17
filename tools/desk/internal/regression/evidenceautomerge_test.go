@@ -17,6 +17,7 @@ import (
 
 // The existing live build-test job runs this package on every push and PR.
 // These suites use API stubs and scratch fixtures; none contacts GitHub.
+// regression: #3020
 func TestEvidenceAutomergeRefusal(t *testing.T) {
 	shellFloor(t, "tools/evidence-automerge/automerge-refusal_test.sh")
 }
