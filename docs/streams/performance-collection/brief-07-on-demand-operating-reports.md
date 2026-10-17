@@ -12,7 +12,7 @@ gate-why: "Report collection, exposure and recurring effect boundaries need acce
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: 29c71b10-6ca6-4594-bc10-1f294a5d1463
 authored: "2026-10-15 by reporting authoring session"
 sources:
@@ -20,6 +20,8 @@ sources:
   - docs/streams/continuing-operations/spec.md
   - docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md
   - "freshness-checked 2026-10-15 at public main d430e8f18"
+  - "docs/desk-workflow-efficiency-spec.md"
+  - "freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d; approved spec and consolidation amendment"
 exec-tier: strong
 exec-tier-why: "Cross-source identity, coverage, authority and migration must agree."
 domain: complicated
@@ -32,13 +34,14 @@ consumers:
   - "docs/performance-collection.md: follow-up performance-collection/07"
   - "docs/contracts.md: follow-up performance-collection/07"
   - "changelog/operating-reports.md: follow-up performance-collection/07"
+  - "perfdata/report/phasecost_test.go: follow-up performance-collection/07"
 ---
 
 # Brief 07 — On-demand three-report bundle and thin skill
 
 ## Context
 
-files: `perfdata/report/` (planned), `perfdata/cmd/perfdata/` (planned), `perfdata/testdata/operating-reports/` (planned), `plugins/assay/skills/operating-report/SKILL.md` (planned), `docs/performance-collection.md` (planned), `docs/contracts.md`, `changelog/operating-reports.md` (planned)
+files: `perfdata/report/` (planned), `perfdata/cmd/perfdata/` (planned), `perfdata/testdata/operating-reports/` (planned), `plugins/assay/skills/operating-report/SKILL.md` (planned), `docs/performance-collection.md` (planned), `docs/contracts.md`, `changelog/operating-reports.md` (planned), `perfdata/report/phasecost_test.go` (planned)
 
 facts:
 - This is authored todo scope, not deployed capability. Collection briefs 01/02 produce the bounded source contract; no database or remote endpoint is needed by local reports.
@@ -87,6 +90,24 @@ Default if no answer: none — acceptance/activation remains held; offline imple
 5. Prove local report operation with no cell database, network, credentials or hosted runtime. Compose over public typed export contracts; if reuse needs extraction from package main, record it as an explicit owner change before importing. Changing output filters cannot bypass current source authorization. No raw prompt, title (issue, PR, brief, workpad, session or window title), error text or credential appears in any report output, public or not; free-text source fields such as recorded blocker reasons are reduced to bounded typed values before rendering.
 6. Document command examples and retirement parity for the temporary perf-v1 triage aid. A released local triage selector must reproduce recorded total-wall/CPU/forge focus ranking, sample counts and unknown/lower-bound behavior before the temporary reader is retired.
 
+
+### Approved workflow-efficiency amendment — 17 October 2026
+
+Extend the existing tool panel, not the number of reports, with bounded phase/endpoint/caller
+breakdowns and matched complete-cycle views. Show per-field coverage, own vs descendant CPU,
+overlapping elapsed intervals, attempts vs points, retries/304s, actual/estimated basis and
+unknowns. Reconstruct complete dispatcher-plus-agent cohorts using source-qualified correlation;
+never sum parent aggregates with children or compare pooled builds/workloads as controlled wins.
+Keep baseline/subject and tool-only/supervision-only/combined changes separate when #3325 is
+adopted; tokens are not a substitute for CPU or forge points. Allow local qualification exports
+consumed by desk-tools/44 without DB/API/upload; the parked stream is optional to early
+qualification. Pending #3305 owns reusable scorecard/experiment policy if landed, not this report
+renderer.
+
+This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
+obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
+authoring change claims no implementation or operational adoption.
+
 ## Verify
 
 Named commands below are implementation deliverables. Each must run the named test (not succeed with no matching tests).
@@ -99,6 +120,7 @@ Named commands below are implementation deliverables. Each must run the named te
 | 4 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./report/... -run '^TestOperatingReportReplayAndTriageParity$' > "$o" && grep -F -- '--- PASS: TestOperatingReportReplayAndTriageParity ' "$o")` | exit 0; named PASS; same snapshot/config has identical JSON and deterministic chart data; legacy triage ranking/coverage agrees |
 | 5 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./report/... -run '^TestOperatingReportRedaction$' > "$o" && grep -F -- '--- PASS: TestOperatingReportRedaction ' "$o")` | exit 0; named PASS; credential-, prompt-, title- and error-shaped strings seeded into fixture sources (including blocker reasons) are absent from the JSON, the HTML and the manifest |
 | 6 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/07` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
+| 7 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPhaseReportFlow$' ./report/... > "$o" && grep -F -- '--- PASS: TestPhaseReportFlow ' "$o")` | exit 0; named PASS. Nested/failed/missing-child fixture produces correct component/cycle tables and unknowns; hidden downstream work or double-counted parent/child makes the expected report fail. |
 
 ## Evidence
 

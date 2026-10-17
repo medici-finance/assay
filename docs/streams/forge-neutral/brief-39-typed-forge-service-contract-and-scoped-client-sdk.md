@@ -2,8 +2,8 @@
 brief: assay:assay:forge-neutral:39
 title: "Typed forge service contract and scoped client SDK"
 why: "The mirror and the desk write paths lack a shared caller contract for scoped queries, operation receipts and read-after-write visibility. A small typed contract lets both clients use the same meanings without importing credentials or the entire desk module."
-wave: 1
-depends: []
+wave: 3
+depends: ["desk-tools/39"]
 unblocks: ["forge-neutral/40", "forge-neutral/42"]
 effort: M
 gate: human
@@ -13,7 +13,7 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 1
+version: 2
 id: a2814dbf-4d0c-4cef-bfc6-aceaf50dd255
 authored: 2026-10-14 by forge-service authoring
 sources:
@@ -22,6 +22,8 @@ sources:
   - docs/streams/forge-neutral/README.md
   - freshness-checked 2026-10-14 @ 0cb90058470f9608f76b96e2055e7327d9c5c178
   - R6 proposal inspected at c5e8a3f8da3c715b72efa8d8d6b5e74e659ebd52; main merged into this authoring branch without editing historical Evidence
+  - "docs/desk-workflow-efficiency-spec.md"
+  - "freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d; approved spec and consolidation amendment"
 exec-tier: strong
 exec-tier-why: Cross-component identity, privacy, concurrency and failure semantics require design judgment and negative controls.
 domain: complicated
@@ -37,13 +39,14 @@ consumers:
   - "changelog/forge-service-contract.md: follow-up forge-neutral/39"
   - "statusgen/evaluation/: out-of-scope (existing domain evaluation meaning preserved)"
   - "plugins/assay/skills/: out-of-scope (no caller wired to an unshipped service)"
+  - "forgeread/service/reviewmapping_test.go: follow-up forge-neutral/39"
 ---
 
 # Brief 39 — Typed forge service contract and scoped client SDK
 
 ## Context
 
-files: `forgeread/service/` (planned), `forgeread/client/` (planned), `forgeread/testdata/service/` (planned), `spec/forge-service-v1.md` (planned), `schemas/forge-service-v1.json` (planned), `docs/forge-service.md` (planned), `docs/library-first.md`, `docs/contracts.md`, `changelog/forge-service-contract.md` (planned). Paths not present at the source pin are planned deliverables; existing
+files: `forgeread/service/` (planned), `forgeread/client/` (planned), `forgeread/testdata/service/` (planned), `spec/forge-service-v1.md` (planned), `schemas/forge-service-v1.json` (planned), `docs/forge-service.md` (planned), `docs/library-first.md`, `docs/contracts.md`, `changelog/forge-service-contract.md` (planned), `forgeread/service/reviewmapping_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
 files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
@@ -104,6 +107,22 @@ webhook payload decisions are not answered by this section.
 
 5. Publish the local fixture example and mapping from existing reader/desk outputs. Retain existing schema fixtures unchanged. Register transport ownership only in docs/contracts.md; policy, evidence, candidate and effect meanings stay with their current owners. Remote login, managed serving and write activation are later consumers.
 
+
+### Approved workflow-efficiency amendment — 17 October 2026
+
+Carry review-observation-v1 and role issue projection envelopes through the public typed service
+contract, preserving scope, provenance, per-input completeness/freshness, exact SHA/applicability,
+all action rows and same-population depth. Reuse the semantic contract from desk-tools/39 through an
+explicit legal extraction/mapping; tools/desk/internal cannot be imported from forgeread or
+statusgen. Keep forgeread root pure/credential-free and eligibility/coverage meanings with
+statusgen/evaluation. A transport DTO is not a second evaluator. Version matrix covers old
+OpenIssues consumers and unknown mandatory schema. The direct bridge may ship before this service;
+no private consumer is a prerequisite.
+
+This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
+obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
+authoring change claims no implementation or operational adoption.
+
 ## Interface contract
 
 Use forge-service-v1 from 39, mirror admission/freshness from 37, event hints/demand from 38,
@@ -126,6 +145,7 @@ boundary and independent expectation, not another implementation of the same che
 | 2 | check:ci +flow +mutation | `(cd forgeread && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeServiceClientFlow$' ./client/... > "$r" && grep -F -- '--- PASS: TestForgeServiceClientFlow ' "$r")` | exit 0; named PASS. Real fixture HTTP server -> client -> typed reader exposes confirmed/newer/pending correctly; unauthorized object existence is not exposed. No arbitrary host, redirect or role can widen the admitted transport. |
 | 3 | check:ci +flow +mutation | `(cd forgeread && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestServicePackageBoundaries$' ./... > "$r" && grep -F -- '--- PASS: TestServicePackageBoundaries ' "$r")` | exit 0; named PASS. Dependency closure keeps root/offline free of service HTTP/database/custody and forbids environment discovery in the new packages; positive stdlib-only closure passes and the planted transitive ambient-credential variant fails. |
 | 4 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/39` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
+| 5 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewServiceMapping$' ./service/... > "$o" && grep -F -- '--- PASS: TestReviewServiceMapping ' "$o")` | exit 0; named PASS. Independent review-observation/projection fixtures roundtrip through public encoder/client with exact scope/head/depth and null semantics; malformed schema or cmd/internal import is rejected. |
 
 ## Pre-mortem and detection
 
