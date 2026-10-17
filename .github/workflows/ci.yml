@@ -97,6 +97,10 @@ jobs:
             # behind, and un-wired they let both land green.
             extra=true
             case "$dir" in
+              # M2 mine/trace/report flow and the changed legacy CLI contract
+              # must execute on PRs; build/vet and rendering existing artifacts
+              # do not reach the trace append path (review F-m2-ci).
+              */qualgen|qualgen) extra="GOWORK=off go test -count=1 -timeout=60s -run '^(TestM2.*|TestCLILegacyForms)$' ." ;;
               */tools/desk|tools/desk) extra="go test ./..." ;;
               */tools/harnessgen|tools/harnessgen) extra="go test ./..." ;;
               */tools/harnesslint|tools/harnesslint) extra="go test ./..." ;;
