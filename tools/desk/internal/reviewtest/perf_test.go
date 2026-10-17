@@ -212,11 +212,11 @@ func TestPerfCoverageFlow(t *testing.T) {
 			t.Fatalf("counter mutation not rejected: %v\n%s", err, log)
 		}
 	})
-	cmd = exec.Command("go", "test", "-count=1", "-v", "-run", "^TestPerfProcessCoverage$", "./internal/deskkit")
+	cmd = exec.Command("go", "test", "-count=1", "-v", "-run", "^TestPerf(ProcessCoverage|AccountTransport)$", "./internal/deskkit")
 	cmd.Dir = moduleRoot(t)
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOSUMDB=off")
 	log, err = cmd.CombinedOutput()
-	if err != nil || !strings.Contains(string(log), "--- PASS: TestPerfProcessCoverage ") {
+	if err != nil || !strings.Contains(string(log), "--- PASS: TestPerfProcessCoverage ") || !strings.Contains(string(log), "--- PASS: TestPerfAccountTransport ") {
 		t.Fatalf("production process paths: %v\n%s", err, log)
 	}
 	fmt.Fprintln(os.Stdout, "counter scope: own-process CPU; descendant CPU and GraphQL points unknown; no perf-v1 expansion")

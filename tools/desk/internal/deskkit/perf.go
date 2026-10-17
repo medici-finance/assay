@@ -75,7 +75,8 @@ var (
 	perfSelectedVerb atomic.Pointer[string]
 )
 
-// perfCountChild records one child started through deskkit.Run and its wall time.
+// perfCountChild records one attempt through the shared process observers and
+// its wall time, including an attempt that could not start.
 func perfCountChild(d time.Duration) {
 	perfChildProcs.Add(1)
 	perfChildWallNs.Add(int64(d))
