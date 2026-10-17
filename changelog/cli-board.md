@@ -1,0 +1,1 @@
+- Migrate deskboard to generated Cobra help and allowlisted Viper settings, preserving board output, execution checks, aliases, and rate-floor precedence.
