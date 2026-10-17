@@ -436,6 +436,7 @@ func TestOutboundConformance(t *testing.T) {
 // separated hunks, context and a deletion, including the same scanner refusal controls.
 func TestPushHunkDestLine(t *testing.T) {
 	setup(t)
+	SetOutboundContext(OutboundContext{})
 	fingerprint := "0123456789ABCDEF0123" + "456789ABCDEF01234567"
 	diff := "diff --git a/docs/streams/x/brief.md b/docs/streams/x/brief.md\n" +
 		"index 1111111..2222222 100644\n--- a/docs/streams/x/brief.md\n+++ b/docs/streams/x/brief.md\n" +
