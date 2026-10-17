@@ -2841,7 +2841,7 @@ func (g *GitHubForge) writeEvidenceFileFromSnapshot(repo ForgeRepo, in WriteFile
 
 	// Idempotency: byte-identical content already on the branch is a noop, no write.
 	if exists && bytes.Equal(priorContent, in.Content) {
-		res.SHA = priorSHA
+		res.ContentID = ContentID(priorSHA)
 		return res, nil
 	}
 
@@ -2867,7 +2867,8 @@ func (g *GitHubForge) writeEvidenceFileFromSnapshot(repo ForgeRepo, in WriteFile
 		return nil, err
 	}
 	res.Changed = true
-	res.SHA = w.Content.SHA
+	res.ContentID = ContentID(w.Content.SHA)
+	res.CommitSHA = CommitSHA(w.Commit.SHA)
 	res.Author = w.Commit.Author.Name
 	return res, nil
 }
