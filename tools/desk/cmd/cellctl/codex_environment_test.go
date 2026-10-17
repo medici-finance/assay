@@ -128,6 +128,30 @@ func TestCodexShellInstructionsArePlatformSpecific(t *testing.T) {
 	}
 }
 
+// regression: #3324
+// Exercise both prompt-producing paths: scrubbed cells bypass codexRolePrompt.
+// This checks emitted instructions, not whether a live model follows them.
+func TestCodexSupervisionAcrossLaunchPaths(t *testing.T) {
+	scrubbed := harnessArgv("codex", "worker-desk", "selected-model", "session", "/wt")
+	for name, prompt := range map[string]string{
+		"host-unix":    codexRolePrompt("worker-desk", "darwin", "/bin/bash"),
+		"host-windows": codexRolePrompt("worker-desk", "windows", ""),
+		"scrubbed":     scrubbed[len(scrubbed)-1],
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, instruction := range []string{
+				"bounded waits up to 60 seconds or the next required check",
+				`fork_turns="none"`,
+				"independent reviews, stop checks and required freshness checks",
+			} {
+				if strings.Count(prompt, instruction) != 1 {
+					t.Errorf("launch must carry %q exactly once", instruction)
+				}
+			}
+		})
+	}
+}
+
 func TestCodexNativeOperatorHomes(t *testing.T) {
 	c := codexEnvironmentCell(t)
 	// Windows-shaped, so the windows resolver's absolute-path check holds on any host.

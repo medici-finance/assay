@@ -70,6 +70,34 @@ can stop for blocking conditions, interruption or continuation limits; it is not
 promise of permanent unattended service. See the official [Goals guide](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex)
 and [native Goal RPC](https://learn.chatgpt.com/docs/app-server).
 
+## Supervision and context
+
+Apply [desk-common](./desk-common.md#supervision-and-context) with the tools actually
+exposed by this session; these are usage instructions, not a new capability qualification.
+
+- For V2 children, use `wait_agent` completion/message notifications. Prefer one bounded
+  wait of up to 60 seconds, shortened to the next required sweep or stop check. Do not
+  surround every wait with `list_agents`; use an inventory to recover missing handles
+  or reconcile an actual lifecycle change. A notification is a cue to inspect its result,
+  not proof that a verdict was posted or the queue drained.
+- For a yielded `exec` use `wait` on that cell; for an ongoing command use `write_stdin`
+  on its session. Keep the existing handle, choose a supported longer wait up to 60 seconds
+  or the next due check, and bound returned output. Reserve immediate/one-second polls for
+  a specific interactive or near-completion need. Do not relaunch an unchanged command.
+- While children or commands are running, keep the turn open and wait or do independent
+  work. Ending a turn merely to have the Goal immediately restart the same status checks
+  adds no progress. With only a future cadence due, use an interruptible bounded wait;
+  do not create a shell polling daemon or claim native Goals provide a durable timer.
+- When `spawn_agent` exposes `fork_turns`, use `fork_turns="none"` for a new item. Supply
+  the dispatch assignment/packet paths, lane, required instructions and shell constraints
+  explicitly rather than copying the supervisor's history. Readback and admission still
+  bind to the actual selected model; preserve the role's tier and independent-review rules.
+  If isolated child context is unavailable, state the limitation and use the supported
+  dispatch mechanism without dropping required instructions or review coverage.
+- Keep same-item follow-ups brief: changed head, remaining findings, next action and
+  artifact paths. Read a compact checkpoint after compaction, then restore any missing
+  binding instructions and revalidate mutable facts at their existing boundaries.
+
 ## Degradation — per skill (Codex CLI, v1 target)
 
 Reproduced from the ruled matrix (ruling C, Codex CLI column) — the serial-fanout

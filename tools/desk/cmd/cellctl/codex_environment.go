@@ -110,9 +110,14 @@ func codexRolePrompt(role, goos, bash string) string {
 		prompt += "\nUse the native Windows command shell with profile loading disabled; do not require Bash, zsh, or WSL."
 	}
 	prompt += "\nEvery deskdispatch that will post a model-attested result must include --model with the actual selected worker model. Check the dispatch receipt for a successful model stamp before spending work on that dispatch; a skipped stamp is not a successful review admission."
-	prompt += `
+	return codexSupervisionPrompt(prompt)
+}
+
+// Both host and scrubbed launches use the same reminder without changing their
+// shell/environment composition or native Goal admission.
+func codexSupervisionPrompt(prompt string) string {
+	return prompt + `
 Apply the loaded desk-common supervision/context procedure and Codex binding: wait on existing child/command handles with bounded waits up to 60 seconds or the next required check; do not repeatedly inventory or poll unchanged work. Keep the turn open while waiting for in-flight work instead of ending it just to trigger another Goal turn. Continue from instructions already in context; reload missing or changed instructions after compaction or source changes. For each new item use a fresh child context (fork_turns="none" when supported), passing the admitted assignment/packet paths and required instructions explicitly; reserve child reuse for the same item and lane. Preserve prior findings, refusals, claims, human holds, independent reviews, stop checks and required freshness checks.`
-	return prompt
 }
 
 func codexBashPath() (string, error) {
