@@ -30,6 +30,12 @@
       "file": "cmd/deskdispatch/cli.go",
       "old": "strings.Join(dispatchSteps, \", \")",
       "new": "\"undocumented\""
+    },
+    {
+      "name": "main eagerly records telemetry for help and version",
+      "file": "cmd/deskdispatch/main.go",
+      "old": "os.Exit(parseDispatchCLI(args, env, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}))",
+      "new": "os.Exit(deskkit.PerfRun(\"deskdispatch\", perfVerbs, args, func([]string) int { return parseDispatchCLI(args, env, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}) }))"
     }
   ]
 }

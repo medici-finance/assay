@@ -59,6 +59,7 @@ func TestCLIHelpOffline(t *testing.T) {
 					defer cancel()
 					cmd := exec.CommandContext(ctx, bin, args...)
 					cmd.Env = []string{"HOME=" + home, "USERPROFILE=" + home, "PATH=" + t.TempDir(), "KUBECONFIG=/dev/null", "DESK_TOOLS_DISABLED=1", "ASSAY_CONFIG_ECHO=full", "ASSAY_TELEMETRY=1", "DESK_MIN_FREE_BYTES=invalid", "CELL_GO_CACHE_ROOT=" + filepath.Join(home, "unreadable-cache")}
+					beforeFiles := cliHomeStamp(t, home)
 					var out, errs bytes.Buffer
 					cmd.Stdout = &out
 					cmd.Stderr = &errs
@@ -70,6 +71,9 @@ func TestCLIHelpOffline(t *testing.T) {
 					}
 					if errs.Len() != 0 {
 						t.Errorf("help read config or ran activation: %s", &errs)
+					}
+					if afterFiles := cliHomeStamp(t, home); !reflect.DeepEqual(beforeFiles, afterFiles) {
+						t.Error("help/version wrote configuration, telemetry or lock/cache state")
 					}
 				})
 			}
@@ -317,4 +321,33 @@ func cliDefault(mode, key string) any {
 	default:
 		return ""
 	}
+}
+
+// cliHomeStamp observes silent opt-in telemetry writes as well as config/cache state.
+func cliHomeStamp(t *testing.T, root string) map[string]string {
+	t.Helper()
+	files := map[string]string{}
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			files[rel] = "directory"
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		files[rel] = string(data)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
 }
