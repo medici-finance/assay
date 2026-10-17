@@ -75,7 +75,7 @@ consumers:
   - "`gitcore.RefsContaining` / `contains.go`'s `reachIndex`: out-of-scope (read as the PRECEDENT, reused as a pattern, not called. It answers the dual question — which tips contain one commit — and its index is built for a fan-out this sweep does not have; wiring prune through it would build a parent→children adjacency over the whole ref set to answer N single-membership questions)."
   - "The `deskboot` worktree-prune step and the `--interval` supervisor: out-of-scope as POLICY (whether a boot step should sweep at all, versus leaving it to the supervisor, is a house guardrail decision recorded on the adopter side and not settled here). Both are affected MECHANICALLY by the singleton and neither is edited: the supervisor takes the lock per TICK rather than for its lifetime, precisely so it cannot lock out a manual sweep — Verify row 12."
   - "`deskkit.TryLockExclusive` / `UnlockFile` / `ErrLockBusy`: out-of-scope (consumed exactly as they are; no new locking primitive is written and neither platform arm is touched)."
-version: 1
+version: 2
 id: 77c06d5e-1772-433f-ad39-327f9603c466
 ---
 
@@ -466,7 +466,7 @@ facts — the design:
 | 17 | check:ci | `cd tools/desk && go test -timeout 600s ./cmd/deskwt/... ./internal/gitcore/... -count=1` | exit 0 — every existing test of both touched packages |
 | 18 | check:ci | `cd tools/desk && gofmt -l cmd/deskwt internal/gitcore > /tmp/dt26-fmt.out; test ! -s /tmp/dt26-fmt.out` | exit 0 |
 | 19 | check:ci | `cd statusgen && go run . --root .. --lint; echo $?` | 0 |
-| 20 | check:ci +dereference | `cd statusgen && go run . --root .. --consumers --brief assay:assay:desk-tools:26; echo $?` | 0 — the routing claims in `consumers:` are RESOLVED against this branch's own diff: every `fixed-here` entry is touched by the diff and every `out-of-scope` one is not. Exit 2 is COULD-NOT-CHECK (no diff to take — a fully merged tree) and is reported AS ITSELF, never as a pass |
+| 20 | check:ci +dereference | `d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach b02ea2b35 && statusgen --consumers --root "$d" --brief desk-tools/26 --base 288055a89~1; s=$?; rm -rf "$d"; exit $s` | exit 0; output contains `summary: 3 corroborated, 0 disproved, 6 unchecked, 0 brief(s) claiming nothing` — the routing claims in `consumers:` are RESOLVED against the delivering diff: every `fixed-here` entry is touched by it and every `out-of-scope` one is not. The check runs in a throwaway shared clone checked out at b02ea2b35, the squash that delivered this brief in #1064, with the base pinned to the parent of 288055a89, the commit that authored this brief in #1051, so the diff it reads is the authoring and delivering changes on any later main. The six unchecked entries are out-of-scope judgements a reviewer weighs. Exit 2 is COULD-NOT-CHECK (no diff to take) and is reported AS ITSELF, never as a pass |
 
 Pre-mortem → detection map:
 
