@@ -48,8 +48,11 @@ type fakeForge struct {
 	commitAuthorLogin string
 	commitErr         error
 	getCommitCalls    int
+	getCommitSHAs     []string
+	writeReceipt      *deskkit.WriteFileResult
 	// prHeadSHA is the HeadSHA GetPullRequest reports for the draft change opened on the GitLab
-	// landing path, and prErr its error. Empty HeadSHA leaves the online resolution with no sha.
+	// landing path, and prErr its error. It also supplies a deliberately different head in
+	// the receipt regression: attribution must use the write receipt instead.
 	prHeadSHA string
 	prErr     error
 	// onPut runs at the top of WriteFile, inside deskevidence's audit flock — the
@@ -269,7 +272,10 @@ func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*
 	} else if author == "" {
 		author = verifierBotDisplay()
 	}
-	return &deskkit.WriteFileResult{Changed: true, SHA: "new-sha", Author: author}, nil
+	if f.writeReceipt != nil {
+		return f.writeReceipt, nil
+	}
+	return &deskkit.WriteFileResult{Changed: true, ContentID: "new-blob", CommitSHA: "new-sha", Author: author}, nil
 }
 
 func (f *fakeForge) CreateDraftChange(_ deskkit.ForgeRepo, in deskkit.DraftChangeInput) (*deskkit.PullRef, error) {
@@ -290,8 +296,8 @@ func (f *fakeForge) OpenMergeHold(_ deskkit.ForgeRepo, number int) (string, erro
 	return "disc-4242", nil
 }
 
-// GetPullRequest serves the head sha the online attribution resolution reads on the GitLab
-// draft-landing path (#1477). Only the HeadSHA field is populated (all deskevidence reads).
+// GetPullRequest serves delivery joins and supplies a distinct draft head for the receipt
+// regression. Attribution must not read this mutable head as the landed commit.
 func (f *fakeForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -316,6 +322,7 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.getCommitCalls++
+	f.getCommitSHAs = append(f.getCommitSHAs, sha)
 	if f.commitErr != nil {
 		return nil, f.commitErr
 	}

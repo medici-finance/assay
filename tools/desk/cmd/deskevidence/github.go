@@ -181,8 +181,8 @@ func isVerifierBot(author string) bool {
 //     already on the remote (a Contents-API write is not a local commit), so this is a report
 //     rather than a prevention — which is why it must be loud.
 //
-// fg/fr/sha are the seam the online resolution uses; on GitHub author is always populated, so
-// the online path is never reached there and GitHub behaviour is unchanged.
+// fg/fr/sha are the seam this fallback uses. Receipt callers first dereference the exact
+// commit in checkWriteAttribution and retain the response-author check as well.
 func checkAttribution(fg deskkit.Forge, fr deskkit.ForgeRepo, sha, author string) (detail string, err error) {
 	want, bound := deskkit.RoleAppLogin("verifier")
 	switch {
@@ -227,10 +227,48 @@ func resolveAuthorOnline(fg deskkit.Forge, fr deskkit.ForgeRepo, sha, want strin
 	if cerr != nil || c == nil || strings.TrimSpace(c.AuthorLogin) == "" {
 		return "", nil, false
 	}
-	if strings.EqualFold(c.AuthorLogin, want) {
-		return "author=" + want + " (resolved online: the landed commit's GitLab account username matches the verifier binding)", nil, true
+	return resolvedCommitAuthor(c.AuthorLogin, want)
+}
+
+func resolvedCommitAuthor(login, want string) (string, error, bool) {
+	if strings.EqualFold(login, want) {
+		return "author=" + want + " (resolved online: the landed commit's forge account username matches the verifier binding)", nil, true
 	}
-	return "attribution=WRONG (online-resolved " + c.AuthorLogin + ")", deskkit.Unverifiable(
-		"the Evidence write landed attributed online to "+c.AuthorLogin+", not "+want+
+	return "attribution=WRONG (online-resolved " + login + ")", deskkit.Unverifiable(
+		"the Evidence write landed attributed online to "+login+", not "+want+
 			" — the Evidence row does NOT carry the verifier identity; check the verifier App custody binding", nil), true
+}
+
+// checkWriteAttribution verifies that the receipt dereferences to the exact commit before
+// accepting even a provider-reported verifier author. A blob or a moving branch is no receipt.
+func checkWriteAttribution(fg deskkit.Forge, fr deskkit.ForgeRepo, res *deskkit.WriteFileResult) (string, error) {
+	if res == nil || res.CommitSHA == "" {
+		return "commit=could-not-check", deskkit.Unverifiable("could-not-check: the write returned no landed commit identity", nil)
+	}
+	want, bound := deskkit.RoleAppLogin("verifier")
+	if !bound {
+		return checkAttribution(nil, fr, "", res.Author)
+	}
+	c, err := fg.GetCommit(fr, string(res.CommitSHA))
+	if err != nil || c == nil || c.SHA != string(res.CommitSHA) {
+		return "commit=could-not-check", deskkit.Unverifiable("could-not-check: the write receipt could not be dereferenced as the exact landed commit", err)
+	}
+	if res.Author != "" && !isVerifierBot(res.Author) {
+		return checkAttribution(nil, fr, "", res.Author)
+	}
+	if strings.TrimSpace(c.AuthorLogin) != "" {
+		detail, err, _ := resolvedCommitAuthor(c.AuthorLogin, want)
+		return detail, err
+	}
+	return checkAttribution(nil, fr, "", res.Author)
+}
+
+func reportWriteNoop(res *deskkit.WriteFileResult, target string, ac *auditCtx) bool {
+	if res == nil || res.Changed {
+		return false
+	}
+	ac.successResult = deskkit.ResultNoop
+	ac.detail = fmt.Sprintf("noop: %s already has identical content (content id %s); no commit created", target, res.ContentID)
+	fmt.Fprintln(stdout, ac.detail)
+	return true
 }

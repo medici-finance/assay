@@ -4856,6 +4856,17 @@ to be either `return "", <non-nil error>` or an ID from one of exactly three san
 sources (the `VERIFIER_INSTALL_ID` override, the process cache, GitHub's parsed answer).
 Adding a fourth source is then a deliberate edit to a named allow-list, in a diff.
 
+Landing receipts separate `WriteFileResult.ContentID`, the opaque file precondition, from
+`CommitSHA`, the exact commit created by the write. GitHub supplies `content.sha` and
+`commit.sha` separately. GitLab uses one Commit API action with the existing file's
+`last_commit_id` and optional `start_branch`, and takes the commit id from that write's
+response. Neither backend infers a commit from a blob digest or a later branch head.
+Both Evidence and outcome-record landings, direct or through a draft change, dereference
+the exact receipt as a commit before checking attribution. Missing or unresolvable commit
+identity is could-not-check (exit 6). A resolved account that contradicts the verifier
+binding also fails, even when the write response display-author matches. Successful output and the audit carry the full commit
+id for ancestry joins. A backend noop reports only the content id and creates no commit.
+
 After the PUT, the commit GitHub actually created is checked: `commit.author.name` must be
 `assay-verifier-app[bot]`. Three states, not two — matches → ok; a **different** name →
 Unverifiable (exit 6), naming what landed, because a Contents-API commit is already on the

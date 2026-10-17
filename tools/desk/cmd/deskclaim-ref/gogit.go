@@ -287,14 +287,11 @@ func gogitOriginURL(dir string) string {
 	if err != nil {
 		return ""
 	}
-	rem, err := r.Remote("origin")
+	u, err := gitcore.RemoteURL(r, "origin")
 	if err != nil {
 		return ""
 	}
-	if urls := rem.Config().URLs; len(urls) > 0 {
-		return urls[0]
-	}
-	return ""
+	return u
 }
 
 // nativeGitOriginURL shells `git remote get-url origin` (originRemoteURL step 2). git resolves

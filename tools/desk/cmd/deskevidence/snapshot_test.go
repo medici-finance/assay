@@ -69,7 +69,8 @@ func (a *attestationAPI) serveEvidenceGraphQL(w http.ResponseWriter, r *http.Req
 	return false
 }
 
-func TestEvidenceSnapshotTwoRequests(t *testing.T) {
+// regression: #2794
+func TestEvidenceReceiptRequests(t *testing.T) {
 	lf := newLandingFixture(t)
 	fragment := filepath.Join(t.TempDir(), "evidence.md")
 	writeFixtureFile(t, fragment, "| 1 | `true` | 0 | ok | 2026-10-06 | verifier |\n")
@@ -78,8 +79,8 @@ func TestEvidenceSnapshotTwoRequests(t *testing.T) {
 	if code != deskkit.ExitOK {
 		t.Fatalf("landing failed: %s", lf.errBuf)
 	}
-	if len(calls) != 2 || calls[0].Operation != "snapshot" || calls[1].Operation != "commit" {
-		t.Fatalf("want one batched read and one conditional commit, got %+v", calls)
+	if len(calls) != 3 || calls[0].Operation != "snapshot" || calls[1].Operation != "commit" || calls[2].Operation != "receipt" {
+		t.Fatalf("want snapshot, conditional commit, and exact commit receipt check, got %+v", calls)
 	}
 	assertOneMintedIdentity(t, calls)
 	if !strings.Contains(lf.api.puts[0].Message, lf.receipt.EvidenceBinding()) {
@@ -117,7 +118,7 @@ func TestEvidenceSnapshotUnrelatedCommitDoesNotConflict(t *testing.T) {
 		lf.api.files["unrelated.txt"] = "concurrent unrelated change\n"
 	}
 	code, calls := lf.land(t, "--root", lf.home, "--brief-path", fixtureBrief, "--evidence-file", fragment)
-	if code != 0 || len(calls) != 2 || len(lf.api.puts) != 1 || lf.api.files["unrelated.txt"] != "concurrent unrelated change\n" {
+	if code != 0 || len(calls) != 3 || len(lf.api.puts) != 1 || lf.api.files["unrelated.txt"] != "concurrent unrelated change\n" {
 		t.Fatalf("unrelated commit should remain compatible: code=%d calls=%+v err=%s", code, calls, lf.errBuf)
 	}
 }
@@ -193,7 +194,7 @@ func TestEvidenceSnapshotOverflowUsesCompleteReader(t *testing.T) {
 			fragment := filepath.Join(t.TempDir(), "evidence.md")
 			writeFixtureFile(t, fragment, "| 1 | `true` | 0 | ok | 2026-10-06 | verifier |\n")
 			code, calls := lf.land(t, "--root", lf.home, "--brief-path", fixtureBrief, "--evidence-file", fragment)
-			if code != 0 || len(calls) != 3 || calls[1].Method != "GET" || len(lf.api.puts) != 1 {
+			if code != 0 || len(calls) != 4 || calls[1].Method != "GET" || len(lf.api.puts) != 1 {
 				t.Fatalf("complete-reader fallback failed: code=%d calls=%+v err=%s", code, calls, lf.errBuf)
 			}
 		})
