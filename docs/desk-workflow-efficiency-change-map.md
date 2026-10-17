@@ -1,8 +1,11 @@
 # Desk workflow efficiency — reconciliation with existing work
 
-**Status:** draft — 17 October 2026. Proposed routing for the
-[specification](desk-workflow-efficiency-spec.md), not new brief IDs, assignments or amended
-acceptance. Source: public Assay `fed652fcd0094e42c52d6586ced409623b9a3b15`.
+**Status:** routed — 17 October 2026.
+**Routes-to:** docs/streams/desk-tools/ (with amendments in performance-collection and forge-neutral). The maintainer
+confirmed merge of #3322 as approval. This authoring change adds the briefs and owner-local
+Task/Verify amendments below; merge completes routing, not their implementation or adoption.
+Refreshed main: `fb85924c039c27e7d2aa80e055bfce118e46125d`. Historical dispositions in the
+original table remain source-qualified; current active-work checkpoints are recorded below.
 
 ## What can be folded, and what cannot
 
@@ -11,7 +14,7 @@ completed implementation and Evidence; do not reopen it under a second name. Mos
 here is a bounded follow-on to shipped mechanisms. Several pending owners are already L;
 route the extra requirement through that owner but split implementation rather than growing
 one unreviewable brief. Spec approval must be followed by actual brief amendments and
-consumer/Verify updates; this map performs none of those transitions.
+consumer/Verify updates; the accompanying brief diffs now propose those Task/Verify and consumer changes.
 
 | Existing owner, status at source pin | Disposition | Exact overlap and proposed treatment |
 |---|---|---|
@@ -65,8 +68,7 @@ The first dependency is a frozen observation/semantic preservation contract and 
 attribution, not the full runtime. Then collection/extraction and pure planning can be
 qualified against fake providers, followed by a compatible release and actual caller
 migration. Persistent mirror/service integration follows its own existing dependencies;
-publisher migration retains its fenced handover. Precise brief IDs, sizes and dependency
-waves are assigned by author-brief after approval, with existing active work refreshed.
+publisher migration retains its fenced handover. Precise brief IDs, sizes and dependency waves are assigned below; active work was refreshed before authoring.
 
 ## Concrete caller and retirement coverage
 
@@ -82,4 +84,62 @@ waves are assigned by author-brief after approval, with existing active work ref
 
 Refresh this inventory at implementation and before deletion. A grep match nominates a
 caller; inspect whether it executes, documents, tests or merely cites the surface. No
-consumer, control or brief is retired by this draft.
+consumer, control or brief is retired by this authoring change.
+
+## Authored delivery routing
+
+All new units are M, strong tier. Existing L owners receive bounded contract/acceptance
+amendments; these do not authorize a broad producer or profiler expansion. Additional
+integrations require focused follow-ons if they exceed those seams. No completed brief or
+Evidence is reopened. The numbering below is in the existing desk-tools stream.
+
+| Brief | Scope | Depends on | Spec acceptance |
+|---|---|---|---|
+| desk-tools/37 | Independent behavior oracle and matched complete-cycle cost fixture | none | A1–A10 fixture foundation |
+| desk-tools/38 | Legacy command/kit attribution and existing counter coverage | /37 | A6–A7 within perf-v1 coverage |
+| desk-tools/39 | Actual pure classification/planning extraction and observation contract | /37 | A1–A3, A9 schema |
+| desk-tools/40 | Complete ReviewQueue and offline PlanReview bridges | /38, /39 | A1–A3 |
+| desk-tools/41 | Shared exact-source PrepareReview context | /38, /39 | A4, A8 |
+| desk-tools/42 | Narrow work-ready/intake/inbox projections and actual discovery callers | /38 | A5, A9 |
+| desk-tools/43 | Review skill, watcher, coordinator/inbox/depth migration and version rollback | /40, /41 | A3, A9 |
+| desk-tools/44 | Complete-cycle qualification and bounded retirement record | /41, /42, /43 | A8–A10; all correctness criteria rerun |
+
+| Existing owner amended | Concrete additional acceptance |
+|---|---|
+| performance-collection/01 | Phase/correlation schema and reducer, CPU coverage, attempts/points distinctions and no double count; A6–A7 |
+| performance-collection/02 | Existing producer seams, versioned attribution and honest old-input gaps; A6–A7 |
+| performance-collection/07 | Existing tool panel gains phase/endpoint and full-cycle comparison views; A6–A8 |
+| forge-neutral/37–38 | Scope/coverage and event/poll repair for review and issue consumers; A2–A3, A5 |
+| forge-neutral/39–40 | Legal public contract mapping and current admitted serving/custody; A1–A4, A9 |
+| forge-neutral/41–43 | Context/effect boundary, exact-source keys and measured incremental invalidation; A3–A4 |
+| forge-neutral/44 | Complete review-preparation cohort in existing Git trial; A4, A8 |
+| forge-neutral/45 | Actual served review/issue consumer journeys plus installed-version/fault qualification; A1–A5, A9 |
+
+Richer measurement remains owned by the parked performance-collection stream. Its
+implementation/consent, DB/API and report availability are not prerequisites for local
+cost qualification or early direct-reader shipping. No new collection policy is enabled.
+The served path follows its existing runtime dependencies: /39 now requires the qualified
+review contract (/39 in desk-tools); /45 requires compatible callers and cost qualification
+(/43–44 in desk-tools). There is no inverse dependency from the early bridge to R6/service.
+
+## Active-work checkpoints — 17 October 2026
+
+- [#3248](https://github.com/medici-finance/assay/pull/3248) and
+  [#3302](https://github.com/medici-finance/assay/pull/3302) are open board/dispatch CLI
+  migrations. Their existing parser/config/stdout/exit acceptance is preserved. New semantic
+  work coordinates with their selected main adapter at pickup, rather than expanding an
+  active L or doing a second parser port.
+- [#3325](https://github.com/medici-finance/assay/pull/3325), inspected at
+  `12c36383ff5885bd54918939a64c55b3f50f041a`, is draft supervision/context guidance plus
+  a Codex launcher reminder. It owns one routine watch owner, bounded handle waits and
+  new-item context isolation. It supplies no runtime enforcement, queue/plan/context
+  implementation or measured saving. /43 references its shared procedure if qualified;
+  /37 and /44 separate tool-only, supervision-only and combined arms, recording installed
+  plugin/launcher versions. It does not block /38–42 or justify deleting independent checks.
+- [#3305](https://github.com/medici-finance/assay/pull/3305) is a pending, parked generic
+  improvement/scorecard proposal. Its reusable reducer, experiment and quality-view work
+  is not duplicated by the bounded /37 technical fixture. If merged, /44 consumes qualified
+  output; an unmerged plan is not a producer dependency or activation decision.
+
+Refresh these PR states and their source heads at implementation. No external task was
+messaged and no active PR contract was silently changed by this authoring change.
