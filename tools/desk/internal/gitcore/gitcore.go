@@ -865,16 +865,19 @@ func (r *Repo) AheadCount(base, head string) (int, error) {
 	return count, nil
 }
 
-// RemoteURL returns the URL configured for the named remote, matching
-// `git config --get remote.<name>.url` / `git ls-remote --get-url <name>` — both read
-// the SAME value; the brief's own facts note that `ls-remote --get-url` collapses to
-// this read with no `insteadOf` layer to expand.
+// RemoteURL returns the first URL for the named remote from repository-local config,
+// with fetch insteadOf rules applied, as RemoteURLs does. Legacy callers may also see
+// a pushurl when no fetch URL exists; fetch destination gates must use RemoteURLs.
 func (r *Repo) RemoteURL(name string) (string, error) {
-	remote, err := r.repo.Remote(name)
+	cfg, err := r.fetchConfig()
 	if err != nil {
 		return "", fmt.Errorf("gitcore: remote-url %s: %w", name, err)
 	}
-	urls := remote.Config().URLs
+	remote, ok := cfg.Remotes[name]
+	if !ok {
+		return "", fmt.Errorf("gitcore: remote-url %s: %w", name, git.ErrRemoteNotFound)
+	}
+	urls := remote.URLs
 	if len(urls) == 0 {
 		return "", fmt.Errorf("gitcore: remote-url %s: no URL configured", name)
 	}
@@ -891,7 +894,7 @@ func (r *Repo) RemoteURL(name string) (string, error) {
 // strings returned are the strings a following Fetch should be handed, so the gate and the
 // connection cannot disagree.
 func (r *Repo) RemoteURLs(name string) ([]string, error) {
-	cfg, err := r.repo.Config()
+	cfg, err := r.fetchConfig()
 	if err != nil {
 		return nil, fmt.Errorf("gitcore: remote-urls %s: %w", name, err)
 	}
