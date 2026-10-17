@@ -7,6 +7,11 @@
   "measured_at": "3ad1ad83c871",
   "exclusion_rules": [
     {
+      "class": "test",
+      "pattern": "docs/streams/desktools-go-git/reproduce-05-counts.bash",
+      "reason": "source-only offline verification instrument for issue #3035 and desktools-go-git/05 row 6; runs counters on pinned local Git archives, never installed or released as an operator CLI"
+    },
+    {
       "class": "library",
       "pattern": "tools/release/images.py",
       "reason": "internal release image producer imported by fixed workflow Python calls; no shebang, main guard, argument parser or independent operator entrypoint (#3204)"
