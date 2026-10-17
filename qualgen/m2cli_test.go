@@ -49,8 +49,9 @@ func cliOK(t *testing.T, args ...string) string {
 	return out.String()
 }
 
-// regression: #1589. This exercises real parsing, issue-label linkage, blame,
+// This exercises real parsing, issue-label linkage, blame,
 // persistence, rendering and the PR/check consumer boundary against a planted bug.
+// regression: #1589
 func TestM2CLIFlow(t *testing.T) {
 	repo, inducing, fix := m2Fixture(t)
 	out := t.TempDir()
@@ -98,6 +99,7 @@ func TestM2CLIFlow(t *testing.T) {
 	}
 }
 
+// regression: #1589
 func TestM2MissingEvidence(t *testing.T) {
 	for _, mode := range []string{"missing-issue", "no-denominator", "addition-only"} {
 		t.Run(mode, func(t *testing.T) {
@@ -129,6 +131,7 @@ func TestM2MissingEvidence(t *testing.T) {
 	}
 }
 
+// regression: #1589
 func TestM2CustomLabelsAndCorrection(t *testing.T) {
 	repo, _, fix := m2Fixture(t)
 	source := m2Source(t, fix, fix)
@@ -153,6 +156,7 @@ func TestM2CustomLabelsAndCorrection(t *testing.T) {
 	}
 }
 
+// regression: #1589
 func TestM2StaleSourceAndSnapshot(t *testing.T) {
 	repo, _, fix := m2Fixture(t)
 	source := sourceFile(t, m2Source(t, fix, fix))
@@ -177,6 +181,7 @@ func TestM2StaleSourceAndSnapshot(t *testing.T) {
 	}
 }
 
+// regression: #1589
 func TestM2SourceValidation(t *testing.T) {
 	_, _, fix := m2Fixture(t)
 	valid := m2Source(t, fix, fix)
@@ -214,6 +219,7 @@ func TestM2SourceValidation(t *testing.T) {
 	}
 }
 
+// regression: #1589
 func TestM2LibraryArtifactsReport(t *testing.T) {
 	repo, _, fix := m2Fixture(t)
 	store := NewStore(t.TempDir())
@@ -227,6 +233,7 @@ func TestM2LibraryArtifactsReport(t *testing.T) {
 	}
 }
 
+// regression: #1589
 func TestM2UnfinishedPassIgnored(t *testing.T) {
 	repo, _, fix := m2Fixture(t)
 	out := t.TempDir()
@@ -250,6 +257,7 @@ func TestM2UnfinishedPassIgnored(t *testing.T) {
 	}
 }
 
+// regression: #1589
 func TestM2FirstPassIncomplete(t *testing.T) {
 	repo, _, fix := m2Fixture(t)
 	store := NewStore(t.TempDir())
@@ -271,6 +279,7 @@ func TestM2FirstPassIncomplete(t *testing.T) {
 	}
 }
 
+// regression: #1589
 func TestM2MergeFixCountedOnce(t *testing.T) {
 	repo, _, _ := m2Fixture(t)
 	// A second branch fix is visible both as a branch commit and as its merge.
