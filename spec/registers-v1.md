@@ -402,13 +402,107 @@ A reader who wants to know whether an ask was actually met follows the citation 
 brief and reads its Evidence. The register's job is to make that walk possible, not to
 perform it.
 
-### Product-intent extension planning (13 October 2026)
+### 6.4.1 Optional `product-intent-v1` extension
 
-The [future architecture amendment](../docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md)
-routes optional direction/target/observed records to statusgen/22. This is a planning
-reference, not an implemented addition to section 6.2 or a new mandatory REQ field.
-That brief must land schema/parser parity and migration with the normative extension.
-Existing acceptance, satisfaction, append-only history and tombstone rules remain controlling.
+The REQUIREMENTS owner optionally carries `product-intent:` in the existing frontmatter.
+The semantic owner is `statusgen/productintent` (`Decode`, `Validate`, `Resolve`,
+`CheckHistory`); the shape is `schemas/product-intent-v1.json`. This extension adds no
+mandatory base field and changes neither REQ IDs nor acceptance, status, satisfaction,
+`outcome:` or `satisfies:` meaning. It does not add `outcome-revision` to brief readers;
+that consumer binding remains statusgen/23's separately versioned work.
+
+Example synthetic extension (the complete two-revision fixture, including observed
+and operational references, is `statusgen/testdata/productintent/record.json`):
+
+```yaml
+product-intent:
+  schema: product-intent-v1
+  subject: {repository: example/product, requirement: REQ-evidence-visible}
+  kind: capability
+  owner: product-owner
+  status: active
+  directions:
+    - revision: direction-one
+      rationale: Readers can check published claims
+      owner: product-owner
+      decision: {repository: example/product, kind: decision, id: direction, revision: v1}
+  targets:
+    - revision: target-one
+      direction-revision: direction-one
+      condition: Evidence is accessible
+      measure: accessible claims
+      unit: percent
+      window: first release
+      confidence: unknown
+      basis: baseline gap
+      decision: {repository: example/product, kind: decision, id: target, revision: v1}
+```
+
+| Member | Supported meaning |
+|---|---|
+| `schema` | Required literal `product-intent-v1` for evaluated records. |
+| `mandatory` | Optional boolean, default false; controls unsupported-version refusal, never approval. |
+| `subject` | Required `repository` (`owner/repo`, lower-case name segments) and existing `requirement` (`REQ-<slug>`). Reader requires the same base REQ ID. A repository is an explicit coordinate, not an alias registry or access grant. |
+| `kind`, `owner`, `status` | Required kind `feature`, `capability` or `journey`, accountable owner text, and `active` or `withdrawn`. This classifies intent; it creates no operational definition. |
+| `directions` | Nonempty ordered history. Each has unique `revision`, nonblank `rationale`, `owner`, and a qualified `decision` reference. |
+| `targets` | Nonempty ordered history. Each has unique `revision`, existing `direction-revision`, nonblank `condition`, `measure`, `unit`, `window`, `basis`, `confidence` and a qualified `decision`. Optional boolean `approved` is retained solely as an author claim and ignored by resolution. |
+| `observed` | Optional ordered summary/reference history. Each has an existing `target-revision`, qualified `assessment`, nonblank `source`, `attributed-to`, `window`, `limitations`, `confidence`, and `date` shaped `YYYY-MM-DD`. This is a date shape, not calendar or freshness verification. No assessment content or benefit is inferred. |
+| `operational-references` | Optional ordered qualified references whose kind is exactly `journey`, `operational-workflow` or `practice`. Delivery `workflow-pattern` and `workflow-instance` are different kinds and refused. Definitions and assessment ledgers remain continuing-operations' responsibility. |
+
+A qualified reference has exactly `repository`, `kind`, `id`, `revision`. Record IDs and
+revisions use lower-case `[a-z0-9][a-z0-9._-]*`; revisions are stable tokens, not selected
+by list position or a mutable filename. Confidence is exactly `low`, `medium`, `high` or
+`unknown`. Text must contain a character other than ASCII space/tab/CR/LF. Unknown
+members, wrong types, nulls, duplicate JSON/YAML keys and trailing JSON are refused in
+supported records. JSON Schema checks shape; the reader additionally checks revision
+uniqueness and direction/observation links. Neither layer resolves external references.
+
+`Decode` accepts JSON bytes; no bytes means the legacy absence. The filesystem adapter
+uses the existing YAML codec and passes only the optional extension to this package.
+A present YAML null is malformed, not legacy absence. `Document.Raw` and `Record` return
+copies. `Resolve` returns detached qualified revisions and original direction/evidence
+references, without modifying the supplied snapshots.
+
+Approval requires a separately supplied `Evidence` snapshot: a decision's exact
+reference and qualified `(subject, direction-or-target kind, revision)` binding, available
+source, authorized principal and `approved` verdict. Both the direction and target must
+resolve approved. Authorities are supplied separately from records and decisions. Missing,
+unavailable, unauthorized, mismatched or conflicting evidence yields `unknown`; a resolved
+rejection remains `rejected`. The adapter supplying evidence owns source authenticity,
+freshness, visibility and authority policy; this pure package does not authenticate a
+forge comment or establish the authority set. No production adapter is activated here.
+The parser never promotes its own claim boolean or base `status: satisfied` into approval.
+
+Resolution states are `unbound` (legacy absence), `unsupported` (retained future envelope),
+`unknown` (unresolved decision/base status), `known` (resolved bindings, not observed
+benefit), or `withdrawn`. Each target retains its own approval verdict, including historical
+verdicts under a tombstone; a withdrawn target's state is always `withdrawn`, never a
+current approved binding. Base REQ withdrawal also withdraws every target. Observed
+references remain evidence pointers even when the decision is unavailable.
+
+`CheckHistory(before, after)` requires prior direction, target, observed and operational
+reference lists to remain identical prefixes; new revisions/references append. Subject and
+kind cannot change, revision IDs cannot be reused, and withdrawal cannot resurrect. Owners
+and display names may change while historical bindings stay intact. This API needs an
+explicit prior snapshot: parsing one current file alone cannot prove no history was removed.
+Git tombstone enforcement remains the register's existing responsibility; no new writer,
+ledger, polling, network, scheduler or dispatch authority is introduced.
+
+| Input | Reader/evaluator behavior |
+|---|---|
+| Legacy REQ without extension | Original base validation; explicitly `unbound`, no invented target or approval. |
+| Supported v1 | Strict decode and semantic validation; resolve only against supplied evidence. |
+| Unsupported version, absent/false `mandatory` | Retain envelope bytes, emit explicit unsupported NOTICE, never evaluate payload. |
+| Unsupported version, `mandatory: true` | Same retained unsupported state; requirement lint emits a hard PROBLEM. |
+| Malformed supported extension | Parse/validation error, never silently dropped. |
+
+The frozen same-input schema/parser corpus is exercised by
+`TestProductIntentSchemaParity` through the actual production `conform` validator via a
+test-only bridge. Keyword coverage fails if the schema exceeds that validator's supported
+set. The production validator is unchanged; no alternate evaluator or new dependency is
+installed. These are locally runnable Verify checks: current CI builds/vets statusgen but
+does not run its full suite or these named tests. Independent verification must run the
+brief's exact named commands; a green build is not their execution evidence.
 
 ### 6.5 The brief citation (`satisfies:`) and the requirement-ref grammar
 

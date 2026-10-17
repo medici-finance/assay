@@ -1,0 +1,66 @@
+[
+  {
+    "name": "overwrite-prior-target",
+    "path": "productintent/decode.go",
+    "before": "d.record = &r",
+    "after": "r.Targets[0] = r.Targets[len(r.Targets)-1]\n d.record = &r",
+    "package": ".",
+    "test": "TestProductIntentLegacyAndRevisionFlow"
+  },
+  {
+    "name": "trust-record-claim",
+    "path": "productintent/decode.go",
+    "before": "state := \"unknown\"",
+    "after": "if target.Approved != nil && *target.Approved { approval = \"approved\" }\n state := \"unknown\"",
+    "package": "./productintent",
+    "test": "TestProductIntentApprovalAndUnknown"
+  },
+  {
+    "name": "permit-missing-revision",
+    "path": "productintent/decode.go",
+    "before": "!nameRE.MatchString(t.Revision)",
+    "after": "false",
+    "package": "./productintent",
+    "test": "TestProductIntentSchemaParity"
+  },
+  {
+    "name": "drop-history-check",
+    "path": "productintent/decode.go",
+    "before": "func CheckHistory(before, after Record) error {",
+    "after": "func CheckHistory(before, after Record) error { return nil\n",
+    "package": "./productintent",
+    "test": "TestProductHistory"
+  },
+  {
+    "name": "return-stored-record",
+    "path": "productintent/records.go",
+    "before": "return &r",
+    "after": "return d.record",
+    "package": "./productintent",
+    "test": "TestProductIntentApprovalAndUnknown"
+  },
+  {
+    "name": "disarm-pure-boundary",
+    "path": "productintent/records_test.go",
+    "before": "return &ErrorBoundary{path}",
+    "after": "return nil",
+    "package": "./productintent",
+    "test": "TestProductBoundary"
+  },
+  {
+    "name": "schema-missing-revision",
+    "path": "../schemas/product-intent-v1.json",
+    "before": "\"required\": [\n          \"revision\",\n          \"direction-revision\",",
+    "after": "\"required\": [\n          \"direction-revision\",",
+    "package": ".",
+    "test": "TestProductSchemaBridge"
+  },
+  {
+    "name": "allow-case-alias",
+    "path": "productintent/decode.go",
+    "before": "func exactFields(value any, typ reflect.Type) error {",
+    "after": "func exactFields(value any, typ reflect.Type) error { return nil\n",
+    "package": "./productintent",
+    "test": "TestProductIntentSchemaParity"
+  }
+]
