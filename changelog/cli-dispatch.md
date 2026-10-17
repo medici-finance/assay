@@ -1,0 +1,1 @@
+- Migrate every deskdispatch CLI mode to Cobra and declared Viper bindings; help and version run before configuration and custody reads, with existing dispatch, stamp and verifier checks preserved.

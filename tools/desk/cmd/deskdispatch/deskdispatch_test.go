@@ -1222,14 +1222,14 @@ func TestStepListIsTheDocumentedContract(t *testing.T) {
 		if dispatchSteps[i] != want[i] {
 			t.Errorf("dispatchSteps[%d] = %q, want %q", i, dispatchSteps[i], want[i])
 		}
-		if !strings.Contains(usage, want[i]) {
+		if !strings.Contains(dispatchHelp(), want[i]) {
 			t.Errorf("step %q is not documented in --help", want[i])
 		}
 	}
 }
 
 func TestHelpNamesTheEngineSeam(t *testing.T) {
-	if !strings.Contains(usage, "engine seam: DISPATCH") {
+	if !strings.Contains(dispatchHelp(), "engine seam: DISPATCH") {
 		t.Error("deskdispatch --help does not name its engine seam")
 	}
 }

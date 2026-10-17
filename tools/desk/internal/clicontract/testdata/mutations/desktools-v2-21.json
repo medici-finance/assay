@@ -1,0 +1,29 @@
+{
+  "test": "go test -timeout 120s -count=1 ./cmd/deskdispatch -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms)$'",
+  "control": {
+    "name": "CONTROL: usage exit is wrong",
+    "file": "cmd/deskdispatch/cli.go",
+    "old": "VersionTemplate: \"{{.Version}}\\n\", GoFlagCompat: true,",
+    "new": "VersionTemplate: \"{{.Version}}\\n\", UsageExit: 1, GoFlagCompat: true,"
+  },
+  "mutations": [
+    {
+      "name": "help reads configuration before Cobra",
+      "file": "cmd/deskdispatch/cli.go",
+      "old": "mode, args := modeArgs(args)",
+      "new": "if env.before != nil { _ = env.before() }\n\tmode, args := modeArgs(args)"
+    },
+    {
+      "name": "undeclared environment becomes a root config source",
+      "file": "cmd/deskdispatch/cli.go",
+      "old": "set := cli.Declare(root, dispatchBindings(mode)...)",
+      "new": "bindings := dispatchBindings(mode)\n\tfor i := range bindings { if bindings[i].Key == \"root\" { bindings[i].Env = []string{\"DESKDISPATCH_ROOT\"} } }\n\tset := cli.Declare(root, bindings...)"
+    },
+    {
+      "name": "drop single-dash legacy flags",
+      "file": "cmd/deskdispatch/cli.go",
+      "old": "GoFlagCompat: true,",
+      "new": "GoFlagCompat: false,"
+    }
+  ]
+}

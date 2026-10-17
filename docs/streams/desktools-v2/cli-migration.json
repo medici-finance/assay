@@ -639,11 +639,11 @@
         "plugins/assay/skills/pr-review-desk/SKILL.md",
         "tools/desk/internal/regression/MANIFEST.md"
       ],
-      "parser": "Go flag: FlagSet",
+      "parser": "Cobra via internal/cli; declared Viper bindings",
       "complexity": "complex",
       "basis": "4627 LOC, ~5 verbs, ~15 flags at 3ad1ad83c871",
       "owner": "desktools-v2/21",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskdisposition",
