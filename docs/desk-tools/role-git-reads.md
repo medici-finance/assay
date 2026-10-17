@@ -30,6 +30,12 @@ existing zero-network behavior. The new statusgen flag and deskgit command must
 be released together; a board using an older pinned statusgen fails visibly on
 the unsupported flag rather than silently reading with ambient credentials.
 
+The PR build-test job explicitly invokes `bash statusgen/test-role-claims.sh`
+after warming module dependency caches. It executes the bridge, no-fallback and
+partial-envelope regressions offline. The workflow's unfiltered push and pull-request
+triggers cover statusgen, desk transport/custody and forgeread changes. The mutation
+suite reuses this invocation rather than maintaining a separate test selector.
+
 ## Consumer inventory
 
 - Existing-change source refresh: `deskdispatch/worktree.go`, repaired here.

@@ -221,6 +221,13 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test: "statusgen/claimbridge_test.go", module: "statusgen",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"statusgen", "tools/desk", "forgeread", "perfrec"},
+			runInvokes: []string{"bash statusgen/test-role-claims.sh"},
+			why:        "the statusgen consumer builds the desk heads child and exercises its custody and shared envelope through the same offline invocation used by PR CI",
+		},
+		{
 			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads: []string{

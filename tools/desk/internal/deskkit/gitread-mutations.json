@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskgit ./cmd/deskdispatch ./cmd/deskboard ./internal/deskkit -run '^(TestHeadsRoleTransport|TestHeadsRefusals|TestResumeRoleTransport|TestRawReadSecondPlant|TestBoardRequiresRoleClaims|TestGitReadGitLab)$' -count=1 -timeout=45s && (cd ../../statusgen && go test . -run '^(TestDeskClaimsNoFallback|TestRoleClaimsPartial|TestClaimBridgeFlow)$' -count=1 -timeout=60s)",
+  "test": "go test ./cmd/deskgit ./cmd/deskdispatch ./cmd/deskboard ./internal/deskkit -run '^(TestHeadsRoleTransport|TestHeadsRefusals|TestResumeRoleTransport|TestRawReadSecondPlant|TestBoardRequiresRoleClaims|TestGitReadGitLab)$' -count=1 -timeout=45s && bash ../../statusgen/test-role-claims.sh",
   "control": {
     "name": "credential removed from the real HTTP channel",
     "file": "internal/deskkit/gitread.go",
