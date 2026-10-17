@@ -106,7 +106,8 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 4096,
-          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.?))*)?$"
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f/\\\\.]|\\.\\.[^\u0000-\u001f/\\\\])[^\u0000-\u001f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f/\\\\.]|\\.\\.[^\u0000-\u001f/\\\\])[^\u0000-\u001f/\\\\]*|\\.?))*)?$",
+          "description": "At most 4096 bytes in decoded UTF-8, including the root; the Go validator is authoritative. maxLength counts characters and is only a necessary ceiling (spec section 3)."
         }
       }
     },
@@ -206,13 +207,15 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 4096,
-          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.?))*)?$"
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f/\\\\.]|\\.\\.[^\u0000-\u001f/\\\\])[^\u0000-\u001f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f/\\\\.]|\\.\\.[^\u0000-\u001f/\\\\])[^\u0000-\u001f/\\\\]*|\\.?))*)?$",
+          "description": "At most 4096 bytes in decoded UTF-8, including the root; the Go validator is authoritative. maxLength counts characters and is only a necessary ceiling (spec section 3)."
         },
         "physical": {
           "type": "string",
           "minLength": 1,
           "maxLength": 4096,
-          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.?))*)?$"
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f/\\\\.]|\\.\\.[^\u0000-\u001f/\\\\])[^\u0000-\u001f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f/\\\\.]|\\.\\.[^\u0000-\u001f/\\\\])[^\u0000-\u001f/\\\\]*|\\.?))*)?$",
+          "description": "At most 4096 bytes in decoded UTF-8, including the root; the Go validator is authoritative. maxLength counts characters and is only a necessary ceiling (spec section 3)."
         }
       }
     },
@@ -229,13 +232,15 @@
           "type": "string",
           "minLength": 1,
           "maxLength": 4096,
-          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.?))*)?$"
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f/\\\\.]|\\.\\.[^\u0000-\u001f/\\\\])[^\u0000-\u001f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f/\\\\.]|\\.\\.[^\u0000-\u001f/\\\\])[^\u0000-\u001f/\\\\]*|\\.?))*)?$",
+          "description": "At most 4096 bytes in decoded UTF-8, including the root; the Go validator is authoritative. maxLength counts characters and is only a necessary ceiling (spec section 3)."
         },
         "admin_dir": {
           "type": "string",
           "minLength": 1,
           "maxLength": 4096,
-          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.?))*)?$"
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f/\\\\.]|\\.\\.[^\u0000-\u001f/\\\\])[^\u0000-\u001f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f/\\\\.]|\\.\\.[^\u0000-\u001f/\\\\])[^\u0000-\u001f/\\\\]*|\\.?))*)?$",
+          "description": "At most 4096 bytes in decoded UTF-8, including the root; the Go validator is authoritative. maxLength counts characters and is only a necessary ceiling (spec section 3)."
         }
       }
     },
@@ -448,5 +453,6 @@
         }
       }
     }
-  }
+  },
+  "$comment": "Paths are limited to 4096 decoded UTF-8 bytes by the authoritative Go validator (spec section 3). JSON Schema maxLength counts characters and is only a necessary ceiling, not the byte check. Wire UTF-8 and surrogate-pair integrity must be checked before a JSON parser can replace malformed input."
 }

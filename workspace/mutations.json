@@ -1,5 +1,5 @@
 {
-  "test": "go test . -count=1 -timeout 120s -run '^(TestWorkspaceContractRoundTrip|TestWorkspaceSchemaCoverage)$'",
+  "test": "go test . -count=1 -timeout 60s -run '^(TestWorkspaceContractRoundTrip|TestWorkspaceSchemaCoverage|TestWireUnicode|TestWireOtherDecoders|TestPathByteLimit)$'",
   "control": {
     "name": "CONTROL \u2014 accept unknown schema: a cell-workspace/v2 (or schema-less) document is read as v1",
     "file": "contract.go",
@@ -114,6 +114,18 @@
       "file": "contract.go",
       "old": "!utf8.ValidString(p) ||",
       "new": "false ||"
+    },
+    {
+      "name": "workspace decoders bypass wire integrity and silently replace malformed Unicode",
+      "file": "contract.go",
+      "old": "\tif err := checkWire(data); err != nil {",
+      "new": "\tif err := checkWire(data); false && err != nil {"
+    },
+    {
+      "name": "path bound counts Unicode characters instead of decoded UTF-8 bytes",
+      "file": "contract.go",
+      "old": "len(p) > 4096",
+      "new": "utf8.RuneCountInString(p) > 4096"
     }
   ]
 }
