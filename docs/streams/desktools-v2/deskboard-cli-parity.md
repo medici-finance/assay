@@ -74,7 +74,7 @@ The replacement guide commands were exercised against the built tools with a her
 config home, no board roots, and only the inspection binary and required shell utilities
 on PATH. A valid roster reports its scope
 and exits 0; missing, malformed and empty-repo rosters exit 6 with their configuration
-diagnostics. Version continues to exit 0 with zero stderr in all four cases. The old
+diagnostics. `deskboard` version continues to exit 0 with zero stderr in all four cases. The old
 applicability pipeline misclassified the valid roster as pre-roster; the old verification
 grep exited 1. These consumer checks supplement the parser replay above; parser replay
 alone did not exercise the former roster echo.

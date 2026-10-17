@@ -872,7 +872,7 @@ that empty write scope.
 
 This local scope read needs no `DESK_ROOTS` and does not contact a forge. It does not require
 widening your own `ASSAY_ALLOWED_REPOS` with the maintainer's repo to inspect configuration
-(see the caveat above). Help and version remain offline and do not inspect the roster.
+(see the caveat above). `deskboard` help and version remain offline and do not inspect the roster.
 `ASSAY_CONFIG_ECHO=full` makes the check print the whole echo on every run; without it, a
 run whose configuration was already shown prints only the one digest line, which carries no
 `role-bindings=` or `ASSAY_ALLOWED_REPOS=`. The forced form reads and writes no echo state.

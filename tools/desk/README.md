@@ -204,7 +204,7 @@ The digest is sha256 over the full block, so it moves on any change in either di
 To inspect every roster line without board roots or forge reads:
 `ASSAY_CONFIG_ECHO=full deskroster repos --scope write`.
 Inspect its exit status as well as the echo; an empty write scope is could-not-check (exit 6).
-Help (`deskboard help <verb>`, `<verb> --help`) and version are offline and read no roster.
+`deskboard` help (`deskboard help <verb>`, `<verb> --help`) and version are offline and read no roster.
 
 ### 3. Learn the exit codes before you run a write verb
 
