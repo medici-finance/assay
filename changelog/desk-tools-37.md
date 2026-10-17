@@ -1,0 +1,1 @@
+- Add an offline review-workflow oracle and reproducible cost cohorts across board, plan, dispatch and issue reads. Reports keep own CPU, overlapping wall intervals, HTTP attempts and unknown quota/descendant coverage separate; no shipped command or budget changes.

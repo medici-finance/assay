@@ -10,7 +10,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-17 by statusgen newbrief
 sources:
   - docs/desk-workflow-efficiency-spec.md
@@ -22,17 +22,25 @@ exec-tier: strong
 exec-tier-why: Semantic extraction, cost coverage and cross-caller failure behavior require independent contract judgment.
 domain: complicated
 consumers:
-  - "tools/desk/cmd/deskboard/: follow-up desk-tools/37"
-  - "tools/desk/cmd/reviewloop/: follow-up desk-tools/37"
-  - "tools/desk/cmd/deskdispatch/: follow-up desk-tools/37"
-  - "tools/desk/cmd/issueboard/: follow-up desk-tools/37"
+  - "tools/desk/cmd/deskboard/: fixed-here (test-only production sweep adapter)"
+  - "tools/desk/cmd/reviewloop/: fixed-here (test-only production plan adapter)"
+  - "tools/desk/cmd/deskdispatch/: fixed-here (test-only pre-claim round and hold adapter)"
+  - "tools/desk/cmd/issueboard/: fixed-here (test-only command and HTTP enumeration adapter)"
 ---
 
 # Brief 37 — Review workflow semantic oracle and matched cost baseline
 
 ## Context
 
-files: `tools/desk/internal/reviewtest/` (planned), `tools/desk/internal/reviewtest/testdata/` (planned), `docs/review-efficiency-qualification.md` (planned), `changelog/desk-tools-37.md` (planned)
+files: `tools/desk/internal/reviewtest/`, `tools/desk/internal/reviewtest/testdata/`, `tools/desk/cmd/{deskboard,reviewloop,deskdispatch,issueboard}/qualification_test.go`, `tools/desk/internal/deskkit/citrigger_test.go`, `docs/review-efficiency-qualification.md`, `changelog/desk-tools-37.md`
+
+Implementation scope clarification (v2): the commands are separate `package main`
+packages, so the fixture reaches their production handlers through test-binary adapters.
+The four `_test.go` bridges add no shipped flags or alternative policy implementation.
+The CI reader classification records that compiling those adapters stays within the desk
+module. Cost coverage is explicit: local issue enumeration reaches the production HTTP
+adapter; other typed fakes and the fixed Git reviewer do not establish full provider,
+model, launcher or descendant CPU cost. Filling those counters remains desk-tools/38.
 
 facts: 17 October 2026 at the source pin above. Existing implementation is described in
 approved spec §2. All named tests and paths marked planned below are deliverables, not
