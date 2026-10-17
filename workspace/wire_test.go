@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -27,11 +28,19 @@ func replaceWire(t *testing.T, raw []byte, field string, token []byte) []byte {
 
 // regression: #3150
 func TestWireUnicode(t *testing.T) {
-	for _, name := range []string{"invalid-utf8", "lone-high", "lone-low", "utf8-surrogate"} {
+	for _, name := range []string{"invalid-utf8.json.hex", "lone-high.json", "lone-low.json", "utf8-surrogate.json.hex"} {
 		t.Run(name, func(t *testing.T) {
-			raw, err := os.ReadFile(filepath.Join("testdata", "wire", name+".json"))
+			raw, err := os.ReadFile(filepath.Join("testdata", "wire", name))
 			if err != nil {
 				t.Fatal(err)
+			}
+			// .hex explicitly declares space-separated wire bytes, decoded before
+			// the real production decoder sees them. No Unicode decoding occurs.
+			if strings.HasSuffix(name, ".hex") {
+				raw, err = hex.DecodeString(strings.Join(strings.Fields(string(raw)), ""))
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 			_, err = DecodeRequest(raw)
 			wantReason(t, err, ReasonMalformed)
