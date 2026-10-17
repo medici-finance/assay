@@ -42,6 +42,12 @@ func vfGitCommand(root string, args ...string) *exec.Cmd {
 	return cmd
 }
 
+func vfGitCommandEnv(root string, env []string, args ...string) *exec.Cmd {
+	cmd := vfGitCommand(root, args...)
+	cmd.Env = append(cmd.Env, env...)
+	return cmd
+}
+
 // TestVflipEveryMergeBase (criss-cross): two branches from the PASS, one
 // carrying the verifier's later FAIL; a human merges them dropping the FAIL
 // (X), the verifier merges them keeping it (Y), and another App merges Y into
@@ -239,7 +245,7 @@ func TestVflipIgnoreRevsConfig(t *testing.T) {
 		t.Fatal("edited row not found")
 	}
 	L := strconv.Itoa(line) + "," + strconv.Itoa(line)
-	out, err := vfGitCommand(root, "blame", "--line-porcelain", "-L", L, "--", vfBriefRel).Output()
+	out, err := vfGitCommandEnv(root, []string{"GIT_CONFIG_GLOBAL=" + cfg}, "blame", "--line-porcelain", "-L", L, "--", vfBriefRel).Output()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -94,6 +94,11 @@ func TestAdmittedRowsPinGrep(t *testing.T) {
 		t.Run(map[bool]string{true: "admitted", false: "control"}[admit], func(t *testing.T) {
 			root, _ := admittedFixture(t, admit)
 			runGit(t, root, "config", "grep.patternType", "fixed")
+			if !admit {
+				// The control is meant to show the fixture's local config. An
+				// admitted row's inherited numbered config would mask that plant.
+				t.Setenv("GIT_CONFIG_COUNT", "0")
+			}
 			code := verifyrunRow(t, root, row)
 			if admit && code != verifyrunExitPass {
 				t.Fatalf("admitted row's git grep followed the home's grep.patternType (exit %d)", code)
