@@ -27,7 +27,7 @@ sources:
 exec-tier: strong
 exec-tier-why: "question (b): two sweeps (every reviewer-role forge write; every claim reader) whose misses are invisible unless the sweep method itself is re-derivable"
 domain: complicated
-version: 1
+version: 2
 id: e90319ae-edc8-4dc2-8127-f9e609c4704c
 ---
 
@@ -101,7 +101,7 @@ facts:
 | 2 | check +dereference | `grep -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md > /tmp/fn20-rows.txt && ! grep -v -e 'of [0-9][0-9]* succeeded' -e 'determined' -e 'COULD-NOT-CHECK' /tmp/fn20-rows.txt` | exit 0 and no line printed — each row quotes a probe count or a determination result, or says COULD-NOT-CHECK |
 | 3 | gate:model +dereference | Re-run the local-disk control of Task 3 from the recorded command text | exactly one of N succeeded; a different count is checked-failed on this brief |
 | 4 | check | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the reviewer write inventory |
-| 5 | check | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the claim reader inventory or is the claim tool itself |
+| 5 | check | `git grep -l -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' 4f9ed47c -- 'tools/desk/cmd/*.go' 'tools/desk/internal/*.go' \| grep -v _test.go \| sed 's/^4f9ed47c://' \| sort` | 14 files, every one listed appears in the claim reader inventory (§3.1b) or is the claim tool itself. Pinned to the tree the inventory was measured against, so files added by later briefs cannot read as gaps in this brief's measurement |
 
 ## Pre-mortem → detection map
 | Failure mode of the work | Caught by |
