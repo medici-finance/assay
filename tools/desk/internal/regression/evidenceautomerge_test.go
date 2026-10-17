@@ -19,12 +19,12 @@ import (
 // These suites use API stubs and scratch fixtures; none contacts GitHub.
 // regression: #2777
 func TestEvidenceAutomergeRefusal(t *testing.T) {
-	shellFloor(t, "tools/evidence-automerge/automerge-refusal_test.sh")
+	shellFloorBash4(t, "tools/evidence-automerge/automerge-refusal_test.sh")
 }
 
 // regression: #2777
 func TestEvidenceAutomergeStep(t *testing.T) {
-	shellFloor(t, "tools/evidence-automerge/automerge-step_test.sh")
+	shellFloorBash4(t, "tools/evidence-automerge/automerge-step_test.sh")
 }
 
 func TestEvidenceAutomergePoll(t *testing.T) {

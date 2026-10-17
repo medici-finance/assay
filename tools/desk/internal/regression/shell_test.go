@@ -34,14 +34,30 @@ const maxShellBudget = 5 * time.Minute
 
 func shellFloor(t *testing.T, relative string) {
 	t.Helper()
+	skipWindowsShellFixture(t)
+	shellFloorWithBash(t, relative, requireBash(t))
+}
+
+func shellFloorBash4(t *testing.T, relative string) {
+	t.Helper()
+	skipWindowsShellFixture(t)
+	shellFloorWithBash(t, relative, requireBash4(t))
+}
+
+func skipWindowsShellFixture(t *testing.T) {
+	t.Helper()
 	if runtime.GOOS == "windows" {
-		t.Skip("POSIX fleet/shim fixture: exercised on Linux/macOS; native Windows behavior has its own suite")
+		t.Skip("POSIX fixture: exercised on Linux/macOS; native Windows behavior has its own suite")
 	}
+}
+
+func shellFloorWithBash(t *testing.T, relative, bash string) {
+	t.Helper()
 	root, err := filepath.Abs("../../../..")
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := runShellFixture(t, filepath.Join(root, filepath.FromSlash(relative)), t.TempDir(), shellBudget)
+	out, err := runShellFixtureWithBash(t, bash, filepath.Join(root, filepath.FromSlash(relative)), t.TempDir(), shellBudget)
 	if err != nil {
 		t.Fatalf("fixture suite %s: %v\n%s", relative, err, out)
 	}
@@ -69,7 +85,12 @@ func TestReg1145ShimCredential(t *testing.T) {
 // t.TempDir cleanup.
 func runShellFixture(t testing.TB, path, tmp string, budget time.Duration) ([]byte, error) {
 	t.Helper()
-	bash := requireBash4(t)
+	bash := requireBash(t)
+	return runShellFixtureWithBash(t, bash, path, tmp, budget)
+}
+
+func runShellFixtureWithBash(t testing.TB, bash, path, tmp string, budget time.Duration) ([]byte, error) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bash, path)
@@ -84,27 +105,36 @@ func runShellFixture(t testing.TB, path, tmp string, budget time.Duration) ([]by
 	return out, err
 }
 
+func requireBash(t testing.TB) string {
+	t.Helper()
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("prerequisite: bash is required for POSIX regression fixtures; bash was not found on PATH")
+	}
+	return bash
+}
+
 var bashVersionRE = regexp.MustCompile(`version ([0-9]+)\.([0-9]+)`)
 
 func requireBash4(t testing.TB) string {
 	t.Helper()
 	bash, err := exec.LookPath("bash")
 	if err != nil {
-		t.Skip("prerequisite: Bash 4 or newer is required for the POSIX regression fixtures; bash was not found on PATH")
+		t.Skip("prerequisite: Bash 4 or newer is required for the evidence-automerge fixtures; bash was not found on PATH")
 	}
 	cmd := exec.Command(bash, "--version")
 	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null")
 	out, err := cmd.Output()
 	if err != nil {
-		t.Skipf("prerequisite: Bash 4 or newer is required for the POSIX regression fixtures; could not read bash version: %v", err)
+		t.Skipf("prerequisite: Bash 4 or newer is required for the evidence-automerge fixtures; could not read bash version: %v", err)
 	}
 	match := bashVersionRE.FindSubmatch(out)
 	if len(match) != 3 {
-		t.Skip("prerequisite: Bash 4 or newer is required for the POSIX regression fixtures; could not parse bash --version")
+		t.Skip("prerequisite: Bash 4 or newer is required for the evidence-automerge fixtures; could not parse bash --version")
 	}
 	major, err := strconv.Atoi(string(match[1]))
 	if err != nil || major < 4 {
-		t.Skipf("prerequisite: Bash 4 or newer is required for the POSIX regression fixtures; found Bash %s.%s", match[1], match[2])
+		t.Skipf("prerequisite: Bash 4 or newer is required for the evidence-automerge fixtures; found Bash %s.%s", match[1], match[2])
 	}
 	return bash
 }
@@ -150,16 +180,24 @@ func shellBudgetFaults(name string, src []byte) (int, []string) {
 			if !ok {
 				return true
 			}
-			if id, ok := call.Fun.(*ast.Ident); !ok || id.Name != "runShellFixture" {
+			id, ok := call.Fun.(*ast.Ident)
+			if !ok || (id.Name != "runShellFixture" && id.Name != "runShellFixtureWithBash") {
 				return true
+			}
+			if fn.Name.Name == "runShellFixture" && id.Name == "runShellFixtureWithBash" {
+				return true // The wrapper forwards a caller's budget; it is not a fixture site.
 			}
 			sites++
-			if len(call.Args) != 4 {
-				faults = append(faults, fmt.Sprintf("%s: runShellFixture with %d arguments", fset.Position(call.Pos()), len(call.Args)))
+			wantArgs := 4
+			if id.Name == "runShellFixtureWithBash" {
+				wantArgs = 5
+			}
+			if len(call.Args) != wantArgs {
+				faults = append(faults, fmt.Sprintf("%s: %s with %d arguments", fset.Position(call.Pos()), id.Name, len(call.Args)))
 				return true
 			}
-			if id, ok := call.Args[3].(*ast.Ident); !ok || id.Name != "shellBudget" {
-				faults = append(faults, fmt.Sprintf("%s: runShellFixture budget is not shellBudget", fset.Position(call.Pos())))
+			if budget, ok := call.Args[wantArgs-1].(*ast.Ident); !ok || budget.Name != "shellBudget" {
+				faults = append(faults, fmt.Sprintf("%s: %s budget is not shellBudget", fset.Position(call.Pos()), id.Name))
 			}
 			return true
 		})
