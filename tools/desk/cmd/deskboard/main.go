@@ -31,8 +31,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/spf13/cobra"
 )
 
 // version is an optional bare-`vX.Y.Z` build stamp (`-ldflags -X main.version`).
@@ -40,275 +42,232 @@ import (
 // release, where the namespaced ReleaseTag stamp supplies the version instead.
 var version string
 
-var usage = `deskboard — read-only cross-repo board (desk-tools)
-
-usage:
-  deskboard prs                     open PRs across the fixed repo set
-  deskboard actions                 per-PR ACTION classification (+ tombstones, security gate)
-  deskboard reviews <repo> <pr>     review states + which head each verdict landed at
-  deskboard queue                   open verify-gate issues (awaiting-verification view)
-  deskboard throughput              per-stage QUEUE DEPTH vs POOL SLOTS (dispatch / review /
-                                    verify / intake), naming the bottleneck stage and the
-                                    exact "deskroster set --role LOOP --width N" that widens
-                                    it. Depths are derived from dispatch, actions and
-                                    awaiting — nothing re-parses the board. SLOTS is the
-                                    loop's resolved pool width (CAPACITY, not live
-                                    occupancy). A stage whose depth could not be read is
-                                    could-not-check and is EXCLUDED from bottleneck
-                                    selection, never counted as an empty queue; the output
-                                    always states how many of the four stages it read.
-                                    Also accepted as --throughput.
-  deskboard health                  default-branch ("is main red?") health per watched
-                                    repo — three states: green / RED / COULD-NOT-CHECK
-                                    (#295; also rides in the actions header + banner)
-  deskboard dispatch                cross-repo DISPATCH queue — the work to START: briefs at
-                                    todo/in-progress that are eligible and UNCLAIMED (no open
-                                    origin-branch claim), merged from every configured root via
-                                    the PINNED statusgen's --next-up (the SAME claim-filtered,
-                                    capped Next-up selection STATUS.md shows). Honest about
-                                    caps: reports the held-back decomposition (N by per-stream
-                                    caps, M by span) and per-root claim-degradation, so an empty
-                                    queue is distinguishable from a throttled one (#321).
-                                    Drops the rows deskdispatch refuses at claim-acquire: a
-                                    gate: human brief whose decision issue is open and unruled
-                                    and, with --tier T, a brief whose exec-tier is stricter
-                                    than T (no --tier: no tier filter; each row carries its
-                                    execTier). Aliases: todo, next, next-up.
-  deskboard awaiting                cross-repo AWAITING-VERIFICATION queue — briefs at
-                                    implemented/verified, merged from every configured root
-                                    via the PINNED statusgen.
-                                    NOT the dispatch queue: it contains no todo brief, and
-                                    dispatching from it sends workers at finished work — use
-                                    ` + "`dispatch`" + ` to find work to start (#321)
-  deskboard nextup                  deprecated alias for ` + "`awaiting`" + ` — the name says
-                                    dispatch queue, the rows are the verification backlog
-                                    (the real dispatch queue is ` + "`deskboard dispatch`" + `)
-  deskboard scope                   reconcile the watched repo set against the owners' repos
-                                    with open PRs — names every repo the board does NOT read
-  deskboard policydrift             compiled-in repo VISIBILITY vs the GitHub API
-                                   ; exit 6 + loud stderr on any drift
-  deskboard stalled                 stalled-draft detector + shepherd dispatch list:
-                                    open drafts whose reviewer-App
-                                    verdict at head is CHANGES_REQUESTED and whose author
-                                    has not pushed or commented in --min-age-hours.
-                                    Disposition is advisory (shepherd / close-candidate).
-  deskboard diff <repo> <pr>        the PR diff (reviewer read)
-  deskboard files <repo> <pr> [path]  changed files, or one file's contents (reviewer read)
-  deskboard --version               source SHA / build time
-
-flags:
-  --table                   human-readable table to stdout + STALE/audit banners to stderr
-                            (default output is JSON; banner signal rides in the JSON header).
-                            NOTE: the stalled verb inverts this — its default IS the human table
-                            (a discovery verb for a human/desk scan); pass --json for the
-                            machine shape the dispatch consumer reads.
-  --json                    emit JSON (stalled default is the human table; this flag
-                            selects the JSON shape for stalled). No-op on other verbs,
-                            which already default to JSON.
-  --min-age-hours N         stalled: the stall window in hours (default 48).
-  --merge-now-threshold D   MERGE-NOW approved-age decay threshold (default 20m)
-  --rate-floor N            actions: stop the sweep (exit 4, naming the quota reset time)
-                            once the forge reports fewer than N core or graphql requests
-                            remaining. Default 500; env DESKBOARD_RATE_FLOOR sets it when the
-                            flag is absent; 0 disables. A stopped sweep prints no board.
-  --unreviewed-threshold D  age past which an open PR with NO reviewer verdict is named
-                            in an UNREVIEWED line (default 30m; #359 temporal axis).
-                            A NEGLECT alarm, not the review trigger — a fresh PR is
-                            NEEDS-REVIEW immediately, at any age; this line firing means
-                            the cadenced sweep missed it.
-  --delta                   (prs/actions/queue/nextup only) print only rows CHANGED since
-                            the prior snapshot — new, removed, or field-changed. First run
-                            or a corrupt/missing/schema-mismatched snapshot prints full
-                            output with a label (never a silent empty diff). Implies the
-                            text/table path (console discipline).
-  --quiet                   (prs/actions/queue/nextup only) one summary line: counts per
-                            state bucket + delta count vs snapshot + actionable count
-                            (on actions: NEEDS-REVIEW + RE-REVIEW — the dispatch gate).
-                            Composable with --delta (quiet line first, changed rows after).
-                            Implies the text/table path.
-  --out <path>              write the primary output (the JSON, or the table when --table is
-                            set) to this file instead of stdout — a per-invocation scratch
-                            file the caller mints itself (desk-shell.md §Scratch files),
-                            replacing a shell redirect (deskboard actions > file becomes
-                            deskboard actions --out file) with no dependency on the
-                            invoking shell supporting a redirect. Banners and the audit line
-                            are unaffected: they still go to stderr / the audit log exactly as
-                            without --out. Not composable with --delta/--quiet, which already
-                            select their own (text) output path.
-
-env (nextup):
-  DESK_ROOTS      override root PATHS: "<owner>/<repo>=<path>,..." (repos must stay
-                  inside the fixed set below; the set itself is compiled in)
-  STATUSGEN_BIN   statusgen binary to run (default: statusgen on PATH — install the
-                  pinned release per tools/statusgen/README.md; the in-repo
-                  tools/statusgen copy is FROZEN and is never run)
-
-repo must be in the desk scope (compiled-in — org-default;
-"medici-finance/*" means every current and future repo in that org):
-  ` + strings.Join(deskkit.AllowedRepoScope(), "\n  ") + `
-`
-
-// perfVerbs is deskboard's registered first-argument set for the opt-in local perf record
-// (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
-// "other" otherwise, so no argv text can reach the record.
 var perfVerbs = []string{"--json", "--table", "--delta", "--quiet", "--version"}
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident
-	// (a correctness review found SetToolClass had no caller anywhere
-	// in the tree, so every tool was ClassWrite only because nothing ever set it).
-	// This tool ACTS on the roster, so ciEligible=false: config-home file only, never
-	// the environment, in CI as well as locally.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// Every run echoes the EFFECTIVE trust/authority
-	// configuration to stderr before it does anything. The roster, the allowed-repo
-	// set and the risk-path additions live in repository settings or a config-home
-	// file, not in a diff — so the RUN is the only place a change to them becomes
-	// visible, and a NARROWING has to be as visible as a widening. Logins and paths
-	// only; never a token or a credential path.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
+	args := os.Args[1:]
+	// Keep the registered performance wrapper at the process entrypoint, but call it
+	// only after Cobra selected an execution (help and version never record samples).
+	record := func(run func() int) int {
+		return deskkit.PerfRun("deskboard", perfVerbs, args, func([]string) int { return run() })
 	}
-	os.Exit(deskkit.PerfRun("deskboard", perfVerbs, os.Args[1:], func(a []string) int { return run(a, os.Stdout, os.Stderr) }))
+	os.Exit(executeRecorded(args, os.Stdout, os.Stderr, startup, record))
+}
+
+// startup retains the execution-only authority checks. Help and version never enter it.
+func startup(stderr io.Writer) int {
+	deskkit.SetToolClass(deskkit.ClassForTool(false))
+	deskkit.EchoEffectiveConfig(stderr)
+	if !deskkit.CheckVerbActivation(stderr) {
+		return deskkit.ExitUnverifiable
+	}
+	return 0
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	// --version short-circuits before Guard (pure introspection, no side effects).
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
-		s, b := deskkit.Version()
-		fmt.Fprintf(stdout, "deskboard sourceSHA=%s builtAt=%s releaseTag=%s\n", s, b, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
-	}
+	return execute(args, stdout, stderr, nil)
+}
 
-	// kill switch FIRST, before any read. Guard audits result=disabled itself.
-	if err := deskkit.Guard(); err != nil {
+// These seams let the contract tests observe the typed boundary without a forge or roster.
+var boardGuard = deskkit.Guard
+var boardHeader = buildHeader
+var boardDispatch = dispatch
+var boardLookupEnv = os.LookupEnv
+var boardResolved func(*cli.Values)
+
+type boardExit int
+
+func (e boardExit) Error() string { return fmt.Sprintf("exit %d", e) }
+func (e boardExit) ExitCode() int { return int(e) }
+func boardCode(n int) error {
+	if n == 0 {
+		return nil
+	}
+	return boardExit(n)
+}
+
+type boardOptions struct {
+	table, delta, quiet, json bool
+	out, tier                 string
+	minAge, floor             int
+	merge, unreviewed         time.Duration
+}
+
+func versionLine() string {
+	s, b := deskkit.Version()
+	return fmt.Sprintf("deskboard sourceSHA=%s builtAt=%s releaseTag=%s", s, b, deskkit.ReleaseTagOrDev())
+}
+
+func boardBindings() []cli.Binding {
+	return []cli.Binding{
+		{Key: "table", Kind: cli.Bool, Flag: "table", Persistent: true, Default: false, Usage: "human table with STALE/audit banners on stderr"},
+		{Key: "json", Kind: cli.Bool, Flag: "json", Persistent: true, Default: false, Usage: "JSON output (stalled otherwise defaults to a table)"},
+		{Key: "delta", Kind: cli.Bool, Flag: "delta", Persistent: true, Default: false, Usage: "only changed rows (prs/actions/queue/nextup)"},
+		{Key: "quiet", Kind: cli.Bool, Flag: "quiet", Persistent: true, Default: false, Usage: "summary line (prs/actions/queue/nextup)"},
+		{Key: "out", Kind: cli.String, Flag: "out", Persistent: true, Default: "", Usage: "write primary output to a caller-minted file"},
+		{Key: "min-age-hours", Kind: cli.String, Flag: "min-age-hours", Persistent: true, Default: "48", Usage: "stalled draft window in positive hours"},
+		{Key: "merge-now-threshold", Kind: cli.String, Flag: "merge-now-threshold", Persistent: true, Default: "20m", Usage: "MERGE-NOW approved-age decay duration"},
+		{Key: "unreviewed-threshold", Kind: cli.String, Flag: "unreviewed-threshold", Persistent: true, Default: "30m", Usage: "UNREVIEWED neglect alarm duration"},
+		{Key: "rate-floor", Kind: cli.String, Flag: "rate-floor", Persistent: true, Usage: "actions quota floor; 0 disables; flag overrides DESKBOARD_RATE_FLOOR (default 500)"},
+		// Separate binding preserves the legacy trimmed, first-non-empty fallback.
+		{Key: "rate-floor-env", Kind: cli.String, Env: []string{rateFloorEnv}},
+		{Key: "tier", Kind: cli.String, Flag: "tier", Persistent: true, Default: "", Usage: "dispatch execution tier (any or strong)"},
+		{Key: "throughput", Kind: cli.Bool, Flag: "throughput", Persistent: true, Hidden: true, Default: false, Usage: "legacy alias for the throughput verb"},
+	}
+}
+
+func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) int {
+	return executeRecorded(args, stdout, stderr, pre, nil)
+}
+
+func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer) int, record func(func() int) int) int {
+	build := func() *cobra.Command {
+		root := cli.NewRoot("deskboard", "read-only cross-repo board")
+		root.Long = "Read-only cross-repo board. Output is JSON except stalled (table by default).\nAll roster, custody, scope, kill-switch and admission checks apply to execution."
+		set := cli.Declare(root, boardBindings()...)
+		handler := func(sub string) func(*cobra.Command, []string) error {
+			return func(_ *cobra.Command, rest []string) error {
+				o, err := resolveBoard(set)
+				if err != nil {
+					fmt.Fprintln(stderr, err)
+					return boardExit(deskkit.ExitRefused)
+				}
+				if o.out != "" && (o.delta || o.quiet) {
+					fmt.Fprintln(stderr, "deskboard: --out is not supported together with --delta/--quiet")
+					return boardExit(deskkit.ExitRefused)
+				}
+				if sub == "stalled" && o.table && o.json {
+					fmt.Fprintln(stderr, "deskboard: stalled: --table and --json are contradictory; pass one")
+					return boardExit(deskkit.ExitRefused)
+				}
+				if o.delta || o.quiet {
+					if _, ok := deltaExtractors[sub]; !ok {
+						fmt.Fprintln(stderr, "deskboard: --delta/--quiet are supported on prs, actions, queue, and nextup only")
+						return boardExit(deskkit.ExitRefused)
+					}
+				}
+				if pre != nil {
+					if n := pre(stderr); n != 0 {
+						return boardExit(n)
+					}
+				}
+				invoke := func() int { return runBoard(sub, rest, args, o, stdout, stderr) }
+				if record != nil {
+					return boardCode(record(invoke))
+				}
+				return boardCode(invoke())
+			}
+		}
+		root.Args = cobra.NoArgs
+		root.RunE = func(c *cobra.Command, a []string) error {
+			v, _ := c.Flags().GetBool("throughput")
+			if !v {
+				fmt.Fprintln(stderr, "deskboard: a subcommand is required (see --help)")
+				return boardExit(deskkit.ExitRefused)
+			}
+			return handler("throughput")(c, a)
+		}
+		for _, v := range []struct {
+			name, short string
+			aliases     []string
+		}{
+			{"prs", "open PRs across watched repos", nil}, {"actions", "per-PR ACTION classification", nil},
+			{"queue", "open verify-gate issues", nil}, {"throughput", "queue depth versus pool slots", nil},
+			{"health", "default-branch health per watched repo", nil},
+			{"dispatch", "eligible unclaimed work to start", []string{"todo", "next", "next-up"}},
+			{"awaiting", "awaiting-verification queue", nil}, {"nextup", "deprecated alias for awaiting", nil},
+			{"scope", "reconcile watched repos against open PRs", nil}, {"policydrift", "repo visibility drift", nil},
+			{"stalled", "stalled drafts and shepherd candidates", nil},
+			{"reviews", "review states at each head", nil}, {"diff", "PR diff", nil}, {"files", "changed files or one file's content", nil},
+		} {
+			name := v.name
+			cmd := &cobra.Command{Use: name, Short: v.short, Aliases: v.aliases, Args: cobra.NoArgs}
+			if name == "reviews" || name == "diff" || name == "files" {
+				cmd.Use += " <repo> <pr>"
+				if name == "files" {
+					cmd.Use += " [path]"
+				}
+				cmd.Args = func(c *cobra.Command, a []string) error {
+					max := 2
+					if name == "files" {
+						max = 3
+					}
+					if err := cobra.RangeArgs(2, max)(c, a); err != nil {
+						return err
+					}
+					n, err := strconv.Atoi(a[1])
+					if err != nil || n <= 0 {
+						return fmt.Errorf("pr %q is not a positive integer", a[1])
+					}
+					return nil
+				}
+			}
+			cmd.RunE = func(c *cobra.Command, a []string) error { return handler(c.CalledAs())(c, a) }
+			root.AddCommand(cmd)
+		}
+		root.AddCommand(&cobra.Command{Use: "version", Hidden: true, Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error { fmt.Fprintln(stdout, versionLine()); return nil }})
+		return root
+	}
+	return cli.Run(build, args, cli.Options{IO: cli.IO{Out: stdout, Err: stderr}, Version: versionLine(), VersionTemplate: "{{.Version}}\n", UsageExit: deskkit.ExitRefused})
+}
+
+func resolveBoard(set *cli.Set) (boardOptions, error) {
+	v, err := set.Resolve(cli.Inputs{LookupEnv: boardLookupEnv})
+	if err != nil {
+		return boardOptions{}, err
+	}
+	if boardResolved != nil {
+		boardResolved(v)
+	}
+	o := boardOptions{table: v.Bool("table"), json: v.Bool("json"), delta: v.Bool("delta"), quiet: v.Bool("quiet"), out: v.String("out"), tier: v.String("tier")}
+	o.minAge, err = strconv.Atoi(v.String("min-age-hours"))
+	if err != nil || o.minAge <= 0 {
+		return o, deskkit.Refused("deskboard: --min-age-hours requires a positive integer")
+	}
+	o.merge, err = time.ParseDuration(v.String("merge-now-threshold"))
+	if err != nil {
+		return o, deskkit.Refused("deskboard: --merge-now-threshold: invalid duration")
+	}
+	o.unreviewed, err = time.ParseDuration(v.String("unreviewed-threshold"))
+	if err != nil {
+		return o, deskkit.Refused("deskboard: --unreviewed-threshold: invalid duration")
+	}
+	raw, source := v.String("rate-floor"), "--rate-floor"
+	if !v.IsSet("rate-floor") {
+		raw, source = strings.TrimSpace(v.String("rate-floor-env")), rateFloorEnv
+		if raw == "" {
+			raw = strconv.Itoa(defaultRateFloor)
+		}
+	}
+	o.floor, err = strconv.Atoi(raw)
+	if err != nil || o.floor < 0 {
+		return o, deskkit.Refused("deskboard: " + source + ": must be a non-negative integer")
+	}
+	if v.Source("tier") == cli.Flag {
+		var ok bool
+		o.tier, ok = deskkit.CanonicalDispatchTier(o.tier)
+		if !ok {
+			return o, deskkit.Refused("deskboard dispatch: --tier is outside the tier vocabulary")
+		}
+	}
+	return o, nil
+}
+
+func runBoard(sub string, rest, args []string, o boardOptions, stdout, stderr io.Writer) int {
+	if err := boardGuard(); err != nil {
 		fmt.Fprintln(stderr, err)
 		return deskkit.ExitCodeOf(err)
 	}
-
-	// Brief-reading version gate (example-stream/06 §6): a stamped deskboard below
-	// v1.0.0 refuses a brief-v2 tree (exit 6) before it reads any board.
 	if code := deskkit.RefuseIfTreeV2BelowV1(deskkit.RootsFromArgs(args), deskkit.EffectiveToolVersion(version), "deskboard", stderr); code != 0 {
 		return code
 	}
-
-	table := false
-	delta := false
-	quiet := false
-	jsonOut := false
-	minAgeHours := stalledMinAgeDefault
-	mergeNowThreshold := 20 * time.Minute
-	// #359: the UNREVIEWED line is a NEGLECT ALARM, never the review trigger — the
-	// classifier surfaces a fresh PR as NEEDS-REVIEW immediately, at any age, and the
-	// desk's cadenced `actions --delta --quiet` sweep is what dispatches it. The
-	// original default was 2h, rationalised as "the desk reviews within minutes, so
-	// this fires only on the PR nothing was ever going to pick up" — but while
-	// --delta/--quiet existed only on verbs with no review state, the quiet loop had
-	// no classified sweep, this alarm was the desk's first loud signal, and 2h became
-	// the desk's de-facto review latency. 30m keeps it comfortably past a healthy
-	// ~5-minute cadence (six missed sweeps) while making a dead trigger path loud in
-	// half an hour instead of two.
-	unreviewedThreshold := 30 * time.Minute
-	outPath := ""
-	rateFloorFlag := ""
+	table, delta, quiet, jsonOut := o.table, o.delta, o.quiet, o.json
+	minAgeHours, mergeNowThreshold, unreviewedThreshold, outPath := o.minAge, o.merge, o.unreviewed, o.out
+	rateFloor = o.floor
 	lastSweepCost = nil
-	var pos []string
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch a {
-		case "--table":
-			table = true
-		case "--delta":
-			delta = true
-		case "--quiet":
-			quiet = true
-		case "--json":
-			jsonOut = true
-		case "--out":
-			i++
-			if i >= len(args) {
-				fmt.Fprintln(stderr, "deskboard: --out requires a file path argument")
-				return deskkit.ExitRefused
-			}
-			outPath = args[i]
-		case "--rate-floor":
-			i++
-			if i >= len(args) {
-				fmt.Fprintln(stderr, "deskboard: --rate-floor requires a non-negative integer argument (e.g. 500)")
-				return deskkit.ExitRefused
-			}
-			rateFloorFlag = args[i]
-			if rateFloorFlag == "" {
-				fmt.Fprintln(stderr, "deskboard: --rate-floor: empty value: must be a non-negative integer")
-				return deskkit.ExitRefused
-			}
-		case "--min-age-hours":
-			i++
-			if i >= len(args) {
-				fmt.Fprintln(stderr, "deskboard: --min-age-hours requires a positive integer argument (e.g. 48)")
-				return deskkit.ExitRefused
-			}
-			n, err := strconv.Atoi(args[i])
-			if err != nil || n <= 0 {
-				fmt.Fprintln(stderr, "deskboard: --min-age-hours: invalid value "+strconv.Quote(args[i])+": must be a positive integer")
-				return deskkit.ExitRefused
-			}
-			minAgeHours = n
-		case "--merge-now-threshold":
-			i++
-			if i >= len(args) {
-				fmt.Fprintln(stderr, "deskboard: --merge-now-threshold requires a duration argument (e.g. 20m)")
-				return deskkit.ExitRefused
-			}
-			d, err := time.ParseDuration(args[i])
-			if err != nil {
-				fmt.Fprintln(stderr, "deskboard: --merge-now-threshold: invalid duration "+strconv.Quote(args[i])+": "+err.Error())
-				return deskkit.ExitRefused
-			}
-			mergeNowThreshold = d
-		case "--unreviewed-threshold":
-			i++
-			if i >= len(args) {
-				fmt.Fprintln(stderr, "deskboard: --unreviewed-threshold requires a duration argument (e.g. 2h)")
-				return deskkit.ExitRefused
-			}
-			d, err := time.ParseDuration(args[i])
-			if err != nil {
-				fmt.Fprintln(stderr, "deskboard: --unreviewed-threshold: invalid duration "+strconv.Quote(args[i])+": "+err.Error())
-				return deskkit.ExitRefused
-			}
-			unreviewedThreshold = d
-		case "--throughput":
-			// deskboard's modes are SUBCOMMANDS; `throughput` is the canonical spelling and
-			// the one every other verb's shape matches. This alias exists because the verb
-			// was specified as a flag, and a spelling that silently does nothing is worse
-			// than either choice — it would look like a board with no bottleneck.
-			pos = append(pos, "throughput")
-		case "-h", "--help":
-			fmt.Fprint(stdout, usage)
-			return deskkit.ExitOK
-		default:
-			pos = append(pos, a)
-		}
-	}
-	if len(pos) == 0 {
-		fmt.Fprint(stderr, usage)
-		return deskkit.ExitRefused
-	}
+	hdr := boardHeader()
 
-	floor, ferr := resolveRateFloor(rateFloorFlag)
-	if ferr != nil {
-		fmt.Fprintln(stderr, ferr)
-		return deskkit.ExitCodeOf(ferr)
-	}
-	rateFloor = floor
-
-	sub := pos[0]
-	rest := pos[1:]
-	hdr := buildHeader()
-
-	rep, err := dispatch(sub, rest, hdr, mergeNowThreshold, unreviewedThreshold, minAgeHours)
+	rep, err := boardDispatch(sub, rest, hdr, mergeNowThreshold, unreviewedThreshold, minAgeHours, o.tier)
 	// #2421: one read-cost line per actions sweep, on success and on refusal alike.
 	if sub == "actions" && lastSweepCost != nil {
 		fmt.Fprintln(stderr, lastSweepCost.line())
@@ -423,7 +382,7 @@ var boardWideVerbs = map[string]bool{
 
 // dispatch routes a subcommand to its handler, validating repo args against the fixed
 // set — a bad repo or arity is a Refused (exit 5), never a guessed default.
-func dispatch(sub string, rest []string, hdr Header, mergeNowThreshold, unreviewedThreshold time.Duration, minAgeHours int) (*Report, error) {
+func dispatch(sub string, rest []string, hdr Header, mergeNowThreshold, unreviewedThreshold time.Duration, minAgeHours int, tier string) (*Report, error) {
 	// #489: a board-wide verb with an empty repo set reads NOTHING, and before this
 	// guard each one reported that as a clean result at exit 0 — `policydrift`, the
 	// drift GATE, returned "no drift" without checking anything; `health` printed
@@ -461,9 +420,13 @@ func dispatch(sub string, rest []string, hdr Header, mergeNowThreshold, unreview
 		// Next-up selection the STATUS.md board shows — merged cross-root here. The
 		// verb is deliberately distinct from `awaiting`: dispatching from `awaiting`
 		// sends workers at finished work.
-		tier, err := dispatchTierArg(rest)
-		if err != nil {
-			return nil, err
+		// CLI validation is not authority: direct handler callers retain the tier boundary.
+		if tier != "" {
+			canonical, ok := deskkit.CanonicalDispatchTier(tier)
+			if !ok {
+				return nil, deskkit.Refused("deskboard dispatch: --tier is outside the tier vocabulary")
+			}
+			tier = canonical
 		}
 		return cmdDispatch(hdr, sub, tier)
 	case "throughput":
