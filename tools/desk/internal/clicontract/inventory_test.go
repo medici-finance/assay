@@ -89,19 +89,35 @@ func TestCLIInventory(t *testing.T) {
 	checkOwnTestNames(t, fsys)
 }
 
-// regression: graph-execution/32
+// regression: #3307
 func TestCLIResearchReplay(t *testing.T) {
 	base, raw := realTree(t)
 	reg := decode(t, raw)
 	const replay = "docs/research/criterion-evidence-freshness/replay.py"
 	var exact bool
 	for _, rule := range reg.ExclusionRules {
-		if rule.Pattern == replay && rule.Class == "test" && strings.Contains(rule.Reason, "graph-execution/32") {
-			exact = true
+		if rule.Pattern != replay || rule.Class != "test" {
+			continue
 		}
+		owners := 0
+		for _, word := range strings.Fields(rule.Reason) {
+			id := strings.TrimSuffix(word, "'s")
+			if !ownerRE.MatchString(id) {
+				continue
+			}
+			owner, err := LoadBrief(base, id)
+			if err != nil || owner == nil || !strings.Contains(owner.Text, replay) {
+				t.Fatalf("replay route must name its actual owning brief: %q, %v", id, err)
+			}
+			owners++
+		}
+		if owners != 1 {
+			t.Fatalf("replay route must name exactly one owning brief; got %d", owners)
+		}
+		exact = true
 	}
 	if !exact {
-		t.Fatal("research replay needs an exact test-class route naming graph-execution/32")
+		t.Fatal("research replay needs an exact test-class route naming its owning brief")
 	}
 	if problems := Validate(base, reg); len(problems) != 0 {
 		t.Fatalf("baseline routing: %v", problems)
