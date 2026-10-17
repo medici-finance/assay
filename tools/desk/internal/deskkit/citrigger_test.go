@@ -221,6 +221,13 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test: "tools/desk/cmd/deskpushguard/hookentrypoints_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"Makefile", "scripts/build-windows.ps1", "tools/desk/hooks/pre-push"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the unconditional build-test floor checks both hook installer entrypoints and the published portable shim",
+		},
+		{
 			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads: []string{

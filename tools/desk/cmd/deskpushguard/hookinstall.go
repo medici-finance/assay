@@ -59,11 +59,15 @@ rem Written by deskpushguard hook-install; resolves deskpushguard.exe from PATH.
 deskpushguard.exe %*
 `
 
-// hookMarker is the substring writeShimIfClear looks for to recognise a hook file this
-// installer (or the Makefile's verbatim copy of tools/desk/hooks/pre-push, which
-// carries the same tool name) already wrote, so a re-run is an idempotent no-op rather
-// than a refusal or a clobber.
-const hookMarker = "deskpushguard"
+// legacyUnixShim is the exact formerly shipped hook, not a tool-name ownership
+// heuristic. Only line-ending conversion is accepted; local edits remain foreign.
+const legacyUnixShim = `#!/bin/sh
+# Desk push guard — git pre-push hook shim.
+# Committed into .githooks/pre-push (F-13 core.hooksPath); covers all worktrees.
+# ` + "`make desk-install`" + ` refreshes it on each install run.
+set -e
+exec /opt/desk-tools/bin/deskpushguard "$@"
+`
 
 // writeHooks writes the pre-push hook shim(s) for targetOS into dir (normally
 // ".githooks"). On a non-windows target it writes only "pre-push" (the PATH-resolving
@@ -80,24 +84,34 @@ func writeHooks(dir, targetOS string, force bool) (installed []string, err error
 		return nil, fmt.Errorf("hook-install: cannot create %s: %w", dir, err)
 	}
 
-	unixPath := filepath.Join(dir, "pre-push")
-	wrote, werr := writeShimIfClear(unixPath, unixShim, 0o755, force)
-	if werr != nil {
-		return nil, werr
+	type shim struct {
+		path, content string
+		mode          os.FileMode
 	}
-	if wrote {
-		installed = append(installed, unixPath)
-	}
-
+	shims := []shim{{filepath.Join(dir, "pre-push"), unixShim, 0o755}}
 	if targetOS == "windows" {
-		cmdPath := filepath.Join(dir, "pre-push.cmd")
-		wrote, werr := writeShimIfClear(cmdPath, windowsCmdShim, 0o644, force)
-		if werr != nil {
-			return nil, werr
+		shims = append(shims, shim{filepath.Join(dir, "pre-push.cmd"), windowsCmdShim, 0o644})
+	}
+	// Check the whole pair before changing either half. A foreign Windows
+	// partner must not leave a newly installed or migrated Unix half behind.
+	var pending []shim
+	for _, sh := range shims {
+		write, err := shimNeedsWrite(sh.path, sh.content, force)
+		if err != nil {
+			return nil, err
 		}
-		if wrote {
-			installed = append(installed, cmdPath)
+		if write {
+			pending = append(pending, sh)
 		}
+	}
+	for _, sh := range pending {
+		if err := os.WriteFile(sh.path, []byte(sh.content), sh.mode); err != nil {
+			return installed, fmt.Errorf("hook-install: cannot write %s: %w", sh.path, err)
+		}
+		if err := os.Chmod(sh.path, sh.mode); err != nil {
+			return installed, fmt.Errorf("hook-install: cannot set mode on %s: %w", sh.path, err)
+		}
+		installed = append(installed, sh.path)
 	}
 
 	return installed, nil
@@ -146,29 +160,23 @@ func runHookInstall(args []string, stderr io.Writer) int {
 	return deskkit.ExitOK
 }
 
-// writeShimIfClear writes content to path unless a FOREIGN hook (one this installer
-// did not write, identified by the hookMarker substring) is already there — mirroring
-// desk-hook-install's existing idempotent-skip / refuse-without-FORCE behaviour so
-// both entry points read the same as one mechanism to an operator. wrote=false with a
-// nil error is the idempotent-skip case: content already present, nothing changed.
-func writeShimIfClear(path, content string, mode os.FileMode, force bool) (wrote bool, err error) {
-	existing, rerr := os.ReadFile(path)
-	if rerr == nil {
-		if strings.Contains(string(existing), hookMarker) {
-			return false, nil // already installed by us -- idempotent no-op
-		}
-		if !force {
-			firstLine := string(existing)
-			if i := strings.IndexByte(firstLine, '\n'); i >= 0 {
-				firstLine = firstLine[:i]
-			}
-			return false, fmt.Errorf(
-				"hook-install: refusing to clobber existing non-deskpushguard hook %s (%q) -- pass --force to overwrite",
-				path, firstLine)
-		}
+// shimNeedsWrite distinguishes exact current content, known legacy content, and
+// foreign hooks. Explicit --force retains its existing foreign-overwrite contract.
+func shimNeedsWrite(path, content string, force bool) (bool, error) {
+	existing, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return true, nil
 	}
-	if err := os.WriteFile(path, []byte(content), mode); err != nil {
-		return false, fmt.Errorf("hook-install: cannot write %s: %w", path, err)
+	if err != nil {
+		return false, fmt.Errorf("hook-install: cannot read %s: %w", path, err)
 	}
-	return true, nil
+	normalized := strings.ReplaceAll(string(existing), "\r\n", "\n")
+	if normalized == content {
+		return false, nil
+	}
+	if (content == unixShim && normalized == legacyUnixShim) || force {
+		return true, nil
+	}
+	firstLine := strings.SplitN(string(existing), "\n", 2)[0]
+	return false, fmt.Errorf("hook-install: refusing to clobber existing non-deskpushguard hook %s (%q) -- pass --force to overwrite", path, firstLine)
 }
