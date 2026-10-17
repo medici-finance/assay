@@ -173,8 +173,8 @@ func isVerifierBot(author string) bool {
 //     already on the remote (a Contents-API write is not a local commit), so this is a report
 //     rather than a prevention — which is why it must be loud.
 //
-// fg/fr/sha are the seam the online resolution uses; on GitHub author is always populated, so
-// the online path is never reached there and GitHub behaviour is unchanged.
+// fg/fr/sha are the seam this fallback uses. Receipt callers first dereference the exact
+// commit in checkWriteAttribution and retain the response-author check as well.
 func checkAttribution(fg deskkit.Forge, fr deskkit.ForgeRepo, sha, author string) (detail string, err error) {
 	want, bound := deskkit.RoleAppLogin("verifier")
 	switch {

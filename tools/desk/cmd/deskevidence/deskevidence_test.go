@@ -51,7 +51,8 @@ type fakeForge struct {
 	getCommitSHAs     []string
 	writeReceipt      *deskkit.WriteFileResult
 	// prHeadSHA is the HeadSHA GetPullRequest reports for the draft change opened on the GitLab
-	// landing path, and prErr its error. Empty HeadSHA leaves the online resolution with no sha.
+	// landing path, and prErr its error. It also supplies a deliberately different head in
+	// the receipt regression: attribution must use the write receipt instead.
 	prHeadSHA string
 	prErr     error
 	// onPut runs at the top of WriteFile, inside deskevidence's audit flock — the
@@ -295,8 +296,8 @@ func (f *fakeForge) OpenMergeHold(_ deskkit.ForgeRepo, number int) (string, erro
 	return "disc-4242", nil
 }
 
-// GetPullRequest serves the head sha the online attribution resolution reads on the GitLab
-// draft-landing path (#1477). Only the HeadSHA field is populated (all deskevidence reads).
+// GetPullRequest serves delivery joins and supplies a distinct draft head for the receipt
+// regression. Attribution must not read this mutable head as the landed commit.
 func (f *fakeForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

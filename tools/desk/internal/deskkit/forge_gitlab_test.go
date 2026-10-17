@@ -112,8 +112,8 @@ type glServer struct {
 	// not yet on the not-yet-created target branch. When nil, the GET is ref-agnostic — a file
 	// in repoFile is served on any ref, which is what every pre-existing case relies on.
 	repoFileRefs map[string]bool
-	// updateFileStatus, when set, is the status the Repository-Files PUT (update) route returns
-	// instead of 200 — the failed-update case (a race that removed the path between the probe
+	// updateFileStatus, when set, is the status the Commit API update-action route returns
+	// instead of 201 — the failed-update case (a race that removed the path between the probe
 	// and the write, or a caller bug), which must surface as could-not-check and NEVER be
 	// retried as a create (issue #1412's widening guard).
 	updateFileStatus int
