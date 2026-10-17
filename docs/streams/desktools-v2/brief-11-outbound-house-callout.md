@@ -259,6 +259,98 @@ Verification-Attestation: medici-finance/assay#2529 run=833edec95be1d57610ce8fd0
 
 **VERIFY: PASS** — 11/11 rows observed passing at a4bc0c0cfe06; fail-first checks for rows 3 and 4 reddened as the brief states; row 11 is vacuous on a clean tree and its consumers claims were checked by hand. Routed to the human gate (sensitive-data), not flip-eligible.
 
+### Fresh independent verification — 2026-10-13
+
+**VERIFY: FAIL** — primary check-definition blocker medici-finance/assay#2802. Sensitive-data=yes selects all 11 rows; the genuine fail-first run records ten base-green/non-discriminating rows (1–9, 11) and one base-red row (10). Raw head-command exit-0 count is 11/11; required risk-row acceptance is 1/11, with 10 FAIL. Supplementary negative controls do not change the original Base cells. The additional maintainer sign-off wait remains open at medici-finance/assay#2775; the design choice on medici-finance/assay#2375 is a different act. No lifecycle flip, sign-off, ready flip or merge is claimed.
+
+Actual UTC observation interval: 2026-10-13T18:40:09Z to 2026-10-13T19:10:58.071470Z. Native model gpt-6.1-sol; admitted tier strong; runner assay-verifier-app[bot] (on-behalf-of human:ian). Delivery medici-finance/assay#2383: merge SHA 8284cf0296c8860401b9e6574c7a7aaa328b0ed9; actual sole parent b7217d55004a68182290209f1c0f2dc8f35d711f. Observed merged source 53c536312471f5b569c7af4ea6f6f34f3fb5de0c.
+
+Used unchanged source-built statusgen, actual version dev, binary SHA256 149044119eb95cd5b64c6e705bfedf977b5b2ca242944fa370495460e8343d59; installed version was v1.0.41. Genuine corrected runner: verifyrun --fail-first --base b7217d55004a68182290209f1c0f2dc8f35d711f --dry-run; actual exit 1; log SHA256 6aae9d6ecd223a11d212a38b94954418a2db48f3d0523e1f5469ecfb2eaf261c. All commands were audited for local fixture side effects; no live, billed, production or authenticated infrastructure probe was run.
+
+Isolation correction: the first full-history row fanout is supplemental only. All 11 authoritative head readings were repeated by fresh fork_turns=none native row agents, each receiving this brief and its own row, with a timestamped expectation before source/test reads. Rows 1–5 then repeated pre-admission/head/post-admission using explicitly supplied Bash and login:false after initial flag omissions; older logs remain superseded transport-incomplete observations. Row 6 initial policy/brief-only calls also omitted that field, while its expectation, source reads, admission and execution supplied it. There is no claim that every historical call complied. All accepted pre/post execution receipts bind the same exact run/source/model/tier.
+
+Isolation audit SHA256 eac32aeee66c10cf111f3b5478384f868dcd02076c0f7d2b7273281f4382ff12; all 11 expectation-before-source orderings and 22 accepted admission bindings were independently read back.
+
+#### Head requirement observations (separate from risk acceptance)
+
+| # | Command | Requirement | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `cd tools/desk && go build ./... && go vet ./internal/deskkit/` | build/vet exit 0 | exit 0; build and vet produced no stdout/stderr; risk row FAIL (base non-discriminating) | 2026-10-13 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/ -run TestOutboundCalloutConformance -v` | named conformance test executes | exit 0; actual named PASS; H1–H7 and 20 subtests passed, no skips/cache marker; risk row FAIL (base non-discriminating) | 2026-10-13 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestCalloutAllowCannotClearCompiledBlock -v` | compiled refusal before consult; zero executions; authored negative control red | exit 0; actual named PASS; zero stub executions asserted. Scratch reversed ordering: exit 1, stub executed once; risk row FAIL (base non-discriminating) | 2026-10-13 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestBrokenCalloutBlocks -v` | seven named fail-closed cases; authored nil-error control red | exit 0; actual named PASS; seven H4 subtests. Scratch Run-error return nil: exit 1, four expected failures; risk row FAIL (base non-discriminating) | 2026-10-13 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run TestRequiredCalloutAbsentRefusesPublicOnly -v` | required public/unknown refuses; private passes | exit 0; actual named PASS; roster, environment and collapsed-roster paths passed; risk row FAIL (base non-discriminating) | 2026-10-13 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 6 | `cd tools/desk && go test ./internal/deskkit/ -run TestOutboundCalloutEnvironmentCarriesNoToken -v` | explicit environment excludes caller tokens | exit 0; actual named PASS; fabricated token variables absent from dumped allowlisted environment; risk row FAIL (base non-discriminating) | 2026-10-13 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run TestCalloutReasonNeverReachesForgeOrAudit -v` | reason absent from forge and nonempty runtime audit | exit 0; actual named PASS; ten subcases; 11 nonempty runtime audits retained and searched; correct digest, no reason/diagnostic/body; risk row FAIL (base non-discriminating) | 2026-10-13 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 8 | `cd tools/desk && go test ./cmd/deskfile/ ./cmd/deskpr/ -run 'TestHouseCallout' -v` | block reached through both real verb flows | exit 0; BOTH required PASS lines; commit/file subcases; zero issue-file, push and PR-create attempts; genuine nonempty audit assertions; risk row FAIL (base non-discriminating) | 2026-10-13 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 9 | `cd tools/desk && go test ./internal/deskkit/ -run TestRosterRecognisesOutboundCalloutKeys -v` | three roster keys accepted together | exit 0; actual named PASS; all three keys load; parser, shared recognition and startup echo traced; risk row FAIL (base non-discriminating) | 2026-10-13 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 10 | `grep -c 'ASSAY_OUTBOUND_CALLOUT' tools/desk/README.md` | count ≥3 and all three keys documented | exit 0; stdout 6; all three DISTINCT keys and invented executable example present; risk row PASS | 2026-10-13 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 11 | `statusgen --consumers --root .` | consumer routing claims independently checked | exit 0; selected 0 briefs / 0 claims, so instrument is VACUOUS. Independent source/delivery trace supports five consumer routes; no risk-gate pass; risk row FAIL (base non-discriminating) | 2026-10-13 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+#### Genuine execution witness (unchanged generated attribution and Base cells)
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd tools/desk && go build ./... && go vet ./internal/deskkit/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-13 | assay-verifier-app[bot] @ 53c536312471 (on-behalf-of human:ian) (forge-identity) | base=b7217d55004a green rc=0 · head=53c536312471 |
+| 2 | `cd tools/desk && go test -timeout 10m ./internal/deskkit/ -run TestOutboundCalloutConformance -v` | pass exit=0 | sha256:af7e4bdc23d4 | 2026-10-13 | assay-verifier-app[bot] @ 53c536312471 (on-behalf-of human:ian) (forge-identity) | base=b7217d55004a green rc=0 · head=53c536312471 |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run TestCalloutAllowCannotClearCompiledBlock -v` | pass exit=0 | sha256:53d121f5ee73 | 2026-10-13 | assay-verifier-app[bot] @ 53c536312471 (on-behalf-of human:ian) (forge-identity) | base=b7217d55004a green rc=0 · head=53c536312471 |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run TestBrokenCalloutBlocks -v` | pass exit=0 | sha256:3d152fddc991 | 2026-10-13 | assay-verifier-app[bot] @ 53c536312471 (on-behalf-of human:ian) (forge-identity) | base=b7217d55004a green rc=0 · head=53c536312471 |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run TestRequiredCalloutAbsentRefusesPublicOnly -v` | pass exit=0 | sha256:ec894f6ba6a8 | 2026-10-13 | assay-verifier-app[bot] @ 53c536312471 (on-behalf-of human:ian) (forge-identity) | base=b7217d55004a green rc=0 · head=53c536312471 |
+| 6 | `cd tools/desk && go test ./internal/deskkit/ -run TestOutboundCalloutEnvironmentCarriesNoToken -v` | pass exit=0 | sha256:4712b4ad92a6 | 2026-10-13 | assay-verifier-app[bot] @ 53c536312471 (on-behalf-of human:ian) (forge-identity) | base=b7217d55004a green rc=0 · head=53c536312471 |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run TestCalloutReasonNeverReachesForgeOrAudit -v` | pass exit=0 | sha256:6783424b9f66 | 2026-10-13 | assay-verifier-app[bot] @ 53c536312471 (on-behalf-of human:ian) (forge-identity) | base=b7217d55004a green rc=0 · head=53c536312471 |
+| 8 | `cd tools/desk && go test ./cmd/deskfile/ ./cmd/deskpr/ -run 'TestHouseCallout' -v` | pass exit=0 | sha256:2a3c967f71dc | 2026-10-13 | assay-verifier-app[bot] @ 53c536312471 (on-behalf-of human:ian) (forge-identity) | base=b7217d55004a green rc=0 · head=53c536312471 |
+| 9 | `cd tools/desk && go test ./internal/deskkit/ -run TestRosterRecognisesOutboundCalloutKeys -v` | pass exit=0 | sha256:21193373fed6 | 2026-10-13 | assay-verifier-app[bot] @ 53c536312471 (on-behalf-of human:ian) (forge-identity) | base=b7217d55004a green rc=0 · head=53c536312471 |
+| 10 | `grep -c 'ASSAY_OUTBOUND_CALLOUT' tools/desk/README.md` | pass exit=0 | sha256:06e9d52c1720 | 2026-10-13 | assay-verifier-app[bot] @ 53c536312471 (on-behalf-of human:ian) (forge-identity) | base=b7217d55004a red rc=1 · head=53c536312471 |
+| 11 | `statusgen --consumers --root .` | pass exit=0 | sha256:6c1c2509702c | 2026-10-13 | assay-verifier-app[bot] @ 53c536312471 (on-behalf-of human:ian) (forge-identity) | base=b7217d55004a green rc=0 · head=53c536312471 |
+Verification-Attestation: medici-finance/assay#2800 run=00215bd7a38609f7fafc37963720530878aa8cd2b2588ef3b7b166361a8f3110 source=53c536312471f5b569c7af4ea6f6f34f3fb5de0c brief=docs/streams/desktools-v2/brief-11-outbound-house-callout.md model=gpt-6.1-sol tier=strong
+
+#### Original Context inputs
+
+| Input | Observed SHA256 / state |
+|---|---|
+| changelog/feat-desktools-v2-11.md | ABSENT at source head |
+| tools/desk/README.md | 08b362b9ed59c20bb5cba563d8deddcbbf719e4ad23eae3ae6be3525b2044aa5 |
+| tools/desk/internal/deskkit/callout.go | 1f39302f91584401adb84da2e3bd9ca7504f1e1f6df705d966a06faf773862fa |
+| tools/desk/internal/deskkit/outbound.go | 4a9f820078278234ffee6ebc53475a663e1696afe435e845a55dfd154c55b376 |
+| tools/desk/internal/deskkit/outboundcallout.go | a8353a0ece0b03e0e6af2b6f3f0cfe6436af4dec3907b15db96cb13260572945 |
+| tools/desk/internal/deskkit/outboundcallout_test.go | 7f213e43ab4e3542ad120f8a33fd949afa4b721a6c0d30216d65befcc1a7264a |
+| tools/desk/internal/deskkit/rosterconfig.go | 4ce4c85b86532c72d74b9993c5adb160864ae779c4027e2bd452c67cd1291e1d |
+| tools/desk/internal/deskkit/testdata/outbound-callout/allow.sh | 29629402da9cdef3022a2934e2d1eed202128db68f970b27d3b1db7d7239676d |
+| tools/desk/internal/deskkit/testdata/outbound-callout/big.sh | 084d023701b3f4334ae01af9ab537249379c03bf1ef36c6f8c09792bd61ec732 |
+| tools/desk/internal/deskkit/testdata/outbound-callout/block-kind.sh | 2f83ab359540b2453326d3cd142d81a553a0d679020ba0ab0231ba9326fd3657 |
+| tools/desk/internal/deskkit/testdata/outbound-callout/block.sh | 35da2a7fd9ce4306daf32f6e30c41bb1e5072b91a042ae4692b0c1bd610c9852 |
+| tools/desk/internal/deskkit/testdata/outbound-callout/empty.sh | 9cd013b07208718e75a8c68a03d32271c7c5ce5495846bae0c5085cacc1c5452 |
+| tools/desk/internal/deskkit/testdata/outbound-callout/env.sh | a9b62c2c1772cba2a572841a4f92f90e925df4ee76aad85454499a11984c3ea3 |
+| tools/desk/internal/deskkit/testdata/outbound-callout/example-sweep.sh | d31075d08a8fd178d9743d6df1f4faca2de4d09507a822a4998346210df47f97 |
+| tools/desk/internal/deskkit/testdata/outbound-callout/exit3.sh | 06ebbbfef73bc89f663dbc5a150a5b8cb787a51b7c7d27bd1047796bbf25f645 |
+| tools/desk/internal/deskkit/testdata/outbound-callout/maybe.sh | dd11fabe976b807725d3afdd897f66f0e382edca1c9fcf04715388a6cebbedd8 |
+| tools/desk/internal/deskkit/testdata/outbound-callout/say.sh | 1408c522062980a6e446d3bceb9e78a96f382a496b15dd04d9c6c4d25f5caab6 |
+| tools/desk/internal/deskkit/testdata/outbound-callout/sleep.sh | f9242c70f57db3fc0bddf1599ae462780ea69f886b31f8b3de5f90b53a840e9c |
+| brief_full | 55ffe905a40ab8a7265e4d88daae419cd0e8a80b7d474ef1308fbf231807bb21 |
+| brief_requirements | 80071f77a7b8037bf50e17cbc6079e1aaf2bb9ef3f36ca72406eff8eafe9a74f |
+| tools/desk/internal/deskkit/testdata/outbound-callout — directory, 11 tracked members | membership SHA256 fe1891b08f6b170b189db79577d37e3b7e8412722835d2adeba99c76ac293548 |
+| delivery_fragment_sha256 | 79a85ae8e5dafd657602f9071c6b01f3eac302dcefdcac03dbe0a47627a24439 |
+
+Complete membership/input manifest SHA256 9733f4489daed57883c9149014ecb07f6c93f96297796f64ce3e18901aa8fc65. The per-PR changelog fragment is absent at the observed main source; its delivered bytes are hashed separately above.
+
+#### Risk-value enumeration, ranking and derivation
+
+Enumeration over the full 28-file delivery diff plus brief Task/Context literals retained 1,389 conservative added-line literal occurrences (SHA256 2e8c86308bab0624932a89a5a3d27574cf82e75b914d217aefa29a04567aaf8a) and 858 Go AST BasicLit occurrences (SHA256 cf8b62e09cff2da87571a7da071904e23352271199ed66fc9a34e3b7c66bc3e2). Rank first the authority/environment values that can cause irreversible publication or disclosure; then envelope meaning; reversible timing/output bounds and invented fixtures rank last. Per-entry ranking artifact SHA256 e5a649281c9f55dbb63e1f5c793ec997c693fe8af8780069cbf5e67e62802d5f; derivation report SHA256 538d785ad794862d2043f2626619e738b0e20aba53319e6de7a031ba6b698b16.
+
+RISK-VALUE: DERIVED — outboundCalloutEnv keys = {"PATH", "HOME", "TMPDIR", "LANG"} @ tools/desk/internal/deskkit/outboundcallout.go:205 — the brief explicitly permits exactly those four variables; a non-nil slice is passed at :284 and Callout.Run installs it at tools/desk/internal/deskkit/callout.go:131-132. Caller forge-token variables are outside that set. This proves environment filtering, not filesystem or OS isolation of a deployment-supplied executable.
+RISK-VALUE: DERIVED — accepted verdicts = {"allow", "block"} @ tools/desk/internal/deskkit/outboundcallout.go:302,:309 — the brief's response contract requires those exact first tokens; empty/other tokens and execution errors refuse. An allow is reachable only after outboundCompiledCheck returned nil (tools/desk/internal/deskkit/outbound.go:241-244), preserving the lower-layer refusal independently of the callout.
+RISK-VALUE: DERIVED — outboundCalloutRequiredPublic = "public" @ tools/desk/internal/deskkit/outboundcallout.go:68 — option 1 and Context require public and unknown targets to refuse an absent callout while private targets remain unaffected; :271 tests visibility != private, matching that contract. The fresh human sign-off for implemented-to-verified remains open; the historical design choice is a different act.
+RISK-VALUE: DERIVED — RuleHouseCallout = "house.callout" @ tools/desk/internal/deskkit/outboundcallout.go:55 — the brief specifies this stable rule id for both a block and a broken callout; returned error and audit use tool-owned literals, while the executable's reason/answer/diagnostic go to local stderr only.
+RISK-VALUE: DERIVED — outboundCalloutRequestVersion = 1 @ tools/desk/internal/deskkit/outboundcallout.go:65 — this is the first envelope version, explicitly specified by Context; the meaning-preserving field names are version, verb, role, repo, visibility, kind, fields, name and text (:216-227).
+
+Reversible named bounds: MinOutboundCalloutTimeout=1s and MaxOutboundCalloutTimeout=60s at outboundcallout.go:60-61; maxCalloutReasonRunes=300 at :71; existing DefaultCalloutTimeout=5s, calloutWaitDelay=250ms and maxCalloutOutput=64<<10 at callout.go:46,51,56. They match the authored contract/shared precedent; no independently reproduced optimal performance bound is claimed. The executable inherits the caller values of the permitted variables; environment filtering does not provide filesystem/OS confinement.
+
+Task 7 record: the delivering PR body records the implementer-machine measurement: 20 writes, 18.9 ms with callout versus 0.27 ms without, approximately 19 ms per consult. This is a record check, not a newly reproduced benchmark. Manual consumer trace covers compiled-last consultation, explicit Env with prior callers unchanged, deskkit and statusgen key recognition, deskkit startup echo, contract/example, and deployment-owned executable/data exclusion. The unchanged-main consumers instrument itself checks no claims.
+
+#### Wake receipt inputs and condition
+
+Primary blocker_kind=check-definition; blocker_ref=medici-finance/assay#2802; next actor=worker/brief author. Wake after a reviewed repair changes the executable Verify plan or observed check implementation so the required fail-first checks discriminate on the actual delivering parent. Secondary protected wait=human-action, medici-finance/assay#2775; requires an actual maintainer sign-off through the project path. Historical design approval does not wake that wait. Inputs: attested source, brief/plan hashes, original Context hashes/membership above, genuine tool binary/version and fail-first base, and current blocker issue states (both OPEN; sign-off issue has zero comments on fresh read).
+
 ## Review
 Gate: human (sensitive-data: yes — a deployment-supplied executable receives the text of every
 outward write and decides whether it leaves). MANDATORY human sign-off; the human rules the
