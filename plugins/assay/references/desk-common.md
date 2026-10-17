@@ -44,6 +44,42 @@ on the driver surface, and a manual human kick that moves queued work is an
 incident to file on the project's methodology tracker. Hard gates (human-gated
 decisions, budgets, breakers, explicit stop-orders) are unchanged.
 
+## Supervision and context
+
+Use completion notifications for in-flight agents and keep one handle for each running
+command. When nothing actionable changed, wait on those handles until a completion,
+human input, a required stop/liveness check, or the next role sweep is due. Use bounded
+waits rather than repeated immediate status reads. A timeout alone is not a reason to
+repeat the full board, roster, logs and process inventory. Keep the role's cadence,
+fresh-sweep idle gate, slot refill and stop checks; a failed read remains could-not-check.
+For external CI without a completion signal, check at the existing watch cadence and
+honor retry-after/backoff rather than starting overlapping watchers.
+Keep one owner for each routine watch: the item agent reports meaningful changes to its
+supervisor, which need not run the same CI/log watch in parallel. The supervisor still
+performs every required independent verdict readback and final ready/claim check.
+
+Read the role and applicable references at boot. While their content remains available
+in context, continue from it; a new turn does not require rereading unchanged manuals.
+After compaction or a source change, recover the missing or changed instructions before
+acting. Use the existing [standing note](./standing-note.md), not a second checkpoint
+schema: keep item/repository, lane and exact head, worktree, child and command handles,
+unresolved findings/holds and evidence paths under In-flight; keep last sweep and next
+due check under Board/Monitors. This remains a re-probe index, never authority, fresh
+queue evidence or a verdict.
+Save full logs to files and bring back status, relevant failure excerpts and paths.
+
+Give each new item a fresh agent context with its admitted assignment and packet paths,
+required role instructions and shell/identity constraints. Reuse a child for follow-up
+on that same item and lane, not as a permanent slot accumulating unrelated assignments.
+Before retiring a child, retain its evidence and resolve live processes/claims through
+their existing lifecycle. A fresh context must not bypass a refusal, outstanding finding,
+claim or human hold. Re-review handoffs carry prior findings and their evidence; separate
+review lanes remain independent and do not inherit the implementer's conclusions.
+
+Reduce duplicate supervision, not review scope: retain the required source/diff reads,
+omission follow-up, tests, model admission, independent verdicts and consequential
+freshness checks. Use the harness binding for concrete wait and dispatch mechanisms.
+
 ## Worktree hygiene
 
 Worktree sprawl is owned by `deskwt prune` — it runs at boot and under its own interval
