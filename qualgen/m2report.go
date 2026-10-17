@@ -8,6 +8,7 @@ import (
 )
 
 const metricM2Run = "defect_trace_run"
+const metricM2Started = "defect_trace_started"
 
 // M2Run identifies one completed, all-history M2 snapshot. Raw fix and trace
 // schemas stay unchanged; this metrics-family record supplies provenance and
@@ -45,6 +46,11 @@ func (s *Store) latestM2Run() (*M2Run, error) {
 	return latest, nil
 }
 
+func (s *Store) m2Started() (bool, error) {
+	runs, err := readFamily[M2Run](s, map[string]bool{metricM2Started: true})
+	return len(runs) > 0, err
+}
+
 func (s *Store) m2Stale(run *M2Run) (bool, error) {
 	header, err := s.ReadHeader()
 	if err != nil {
@@ -58,6 +64,16 @@ func writeM2Section(b *strings.Builder, store *Store) error {
 	run, err := store.latestM2Run()
 	if err != nil {
 		return err
+	}
+	if run == nil {
+		started, err := store.m2Started()
+		if err != nil {
+			return err
+		}
+		if started {
+			b.WriteString("not measured — the first CLI defect pass did not complete; retry mine with --fix-source. Partial records are not a completed corpus.\n\n")
+			return nil
+		}
 	}
 	stale, err := store.m2Stale(run)
 	if err != nil {
@@ -99,6 +115,7 @@ func writeM2Section(b *strings.Builder, store *Store) error {
 		}
 		current = keep
 		fmt.Fprintf(b, "Repository: `%s`; HEAD: `%s`; source SHA-256: `%s`.\n\n", mdCell(run.Repository), run.HeadSHA, run.SourceDigest)
+		fmt.Fprintf(b, "Configured defect labels: %s.\n\n", mdCell(strings.Join(run.DefectLabels, ", ")))
 		fmt.Fprintf(b, "First-parent candidates: %d; unresolved fix identification: %d; source-declared merged-PR denominator: %d (0 means unavailable).\n\n", run.Candidates, run.Unidentified, run.MergedPRCount)
 	} else {
 		b.WriteString("Trace artifacts supplied without a completed CLI snapshot; source/identification coverage is unavailable.\n\n")

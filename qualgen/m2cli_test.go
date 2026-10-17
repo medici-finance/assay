@@ -250,6 +250,27 @@ func TestM2UnfinishedPassIgnored(t *testing.T) {
 	}
 }
 
+func TestM2FirstPassIncomplete(t *testing.T) {
+	repo, _, fix := m2Fixture(t)
+	store := NewStore(t.TempDir())
+	at := mustTime(t, "2020-01-05T00:00:00Z")
+	if err := store.Append(KindMetric, M2Run{Metric: metricM2Started, HeadSHA: fix, MinedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	corpus := TraceDefects(openRepo(t, repo), []DefectFix{identifiedFix(fix, 2, 7)}, nil)
+	if err := corpus.WriteTo(store, 2, at); err != nil {
+		t.Fatal(err)
+	}
+	view := cliOK(t, "report", "--out", store.root)
+	if !strings.Contains(view, "first CLI defect pass did not complete") || strings.Contains(view, "| defect_inducing_rate | 0.5") {
+		t.Fatal(view)
+	}
+	density, err := store.ReadDefectDensity()
+	if err != nil || len(density) != 0 {
+		t.Fatalf("partial first-pass density used: %+v %v", density, err)
+	}
+}
+
 func TestM2MergeFixCountedOnce(t *testing.T) {
 	repo, _, _ := m2Fixture(t)
 	// A second branch fix is visible both as a branch commit and as its merge.

@@ -203,6 +203,12 @@ func appendM2(store *Store, repo *git.Repository, source *FixSource, labels []st
 		}
 	}
 	corpus := TraceDefects(repo, fixes, source)
+	// Mark CLI ownership before any trace/metric append. Without this marker,
+	// a failed first pass would be indistinguishable from a library-written
+	// corpus, which remains a supported input to report.
+	if err := store.Append(KindMetric, M2Run{Metric: metricM2Started, HeadSHA: source.HeadSHA, SourceDigest: source.digest, MinedAt: at}); err != nil {
+		return err
+	}
 	// Append only new/changed facts. Retrying a completed or partial pass does
 	// not duplicate identical fix/trace rows. Metrics are timestamped snapshots.
 	path, _ := store.tablePath(KindDefect)

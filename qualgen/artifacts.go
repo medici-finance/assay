@@ -350,6 +350,10 @@ func (s *Store) ReadDefectDensity() ([]DefectMetricRecord, error) {
 		return nil, err
 	}
 	if run == nil {
+		started, err := s.m2Started()
+		if err != nil || started {
+			return nil, err
+		}
 		return records, nil
 	} // library-written artifacts remain readable
 	stale, err := s.m2Stale(run)
