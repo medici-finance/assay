@@ -66,6 +66,13 @@ func TestResumeRoleTransport(t *testing.T) {
 	if mints != 1 || requests.Requests.Load() == 0 {
 		t.Fatalf("credential boundary not reached: mints=%d requests=%d", mints, requests.Requests.Load())
 	}
+	readResumeChange = func(dispatchOpts, string) (deskkit.PullRequest, error) {
+		return deskkit.PullRequest{State: "open", HeadRef: "fix/source", HeadSHA: head, CrossRepo: deskkit.CrossRepoSame}, nil
+	}
+	plan := dispatchPlan{repo: "example-org/agents"}
+	if err := resolveResume(dispatchOpts{root: fixture.Dir, pr: 42, kit: "worker"}, &plan); err == nil {
+		t.Fatal("auto-derived target repository was not bound to source refresh")
+	}
 	if _, err := worktreeBase(dispatchOpts{root: fixture.Dir, repo: sourceRepo}, "fix/source", resumeSHA); err == nil {
 		t.Fatal("moved forge head accepted")
 	}

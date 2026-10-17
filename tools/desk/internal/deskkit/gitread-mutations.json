@@ -4,7 +4,7 @@
     "name": "credential removed from the real HTTP channel",
     "file": "internal/deskkit/gitread.go",
     "old": "gitcore.BasicAuthAs(user, cred.Token)",
-    "new": "gitcore.BasicAuthAs(user, \"\")"
+    "new": "gitcore.BasicAuthAs(user, cred.Token[:0])"
   },
   "mutations": [
     {
@@ -48,6 +48,12 @@
       "file": "cmd/deskdispatch/worktree.go",
       "old": "r.err != nil || strings.TrimSpace(r.stdout) != head",
       "new": "r.err != nil"
+    },
+    {
+      "name": "auto-derived target repo not forwarded to refresh",
+      "file": "cmd/deskdispatch/resume.go",
+      "old": "refreshOpts.repo = plan.repo",
+      "new": "refreshOpts.repo = o.repo"
     },
     {
       "name": "raw second reader allowed by the class guard",

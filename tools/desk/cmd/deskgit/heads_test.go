@@ -116,6 +116,7 @@ func TestHeadsRefusals(t *testing.T) {
 
 // Test-only executable bridge: the subprocess still runs the real heads handler,
 // custody file reader and go-git HTTP auth. Only the dial is confined to loopback.
+// regression: #3327
 func TestHeadsBridge(t *testing.T) {
 	if os.Getenv("ASSAY_HEADS_TEST") != "1" {
 		return
