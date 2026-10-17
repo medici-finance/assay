@@ -13,10 +13,11 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 1
+version: 2
 id: 1cb50a0e-129b-4009-a1e1-bf9fe498f765
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
@@ -132,6 +133,18 @@ reject that variant; record the failing control with the restored production pas
 satisfy a flow row with a route registry, a prose legend or zero selected tests. Test fixtures
 qualify their named local boundary; provider permission inventories, deployment workload and
 operator cutover remain explicit evidence/acceptance obligations.
+
+## Performance reuse amendment — 2026-10-16
+
+Separate transport/setup overhead from native-Git and go-git object/checkout costs in
+the trial. Retain the existing no-daemon-by-default conclusion space. Use declared cold/warm
+repositories, ref/worktree counts and source revisions; record fetch sharing, object/index
+opens, CPU, bytes, external elapsed time and measurement coverage. Credential lookup inside
+an existing role executor reuses /58–59 when that consumer is available; this trial does
+not invent a broker or pass credentials into statusgen. Existing deskwt prune and cache
+admission optimizations remain baseline features. A lower subprocess count alone does not
+establish reduced provider requests, disk work or end-to-end time.
+
 
 ## Evidence
 

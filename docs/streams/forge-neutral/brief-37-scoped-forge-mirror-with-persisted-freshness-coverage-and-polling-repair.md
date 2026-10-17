@@ -12,10 +12,11 @@ gate-why: "sensitive-data is yes because the mirror copies private pull request,
 issues: []
 outcome: none
 schema: brief-v2
-version: 2
+version: 3
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - docs/proposals/non-ci-architecture/20-amendment-manifest.md — R6 owner row and the "R2–R8 amendment scope" R6 paragraph
   - docs/proposals/non-ci-architecture/16-delivery-sequence.md — package R6 (pagination, lost/reordered events, permission loss and partial scans preserve uncertainty; a client outage cannot cause a poll storm)
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md — "Reuse and expand the existing forge-mirror work" (pipeline, one ingestion owner per scope, overlap windows, stale-not-deleted, centralised refresh)
@@ -280,6 +281,8 @@ provider transports only.
 | 18 | check:ci +mutation | `GOWORK=off GOPROXY=off GOTOOLCHAIN=local go run tools/forge-import-check/check_env_imports.go forgeread/mirror` | exit 0 and output `0`: the shared source-only checker parses every non-test Go file below the target and decodes each import path with `strconv.Unquote`. No decoded `os` or `syscall` import is allowed, including raw, escaped, plain, aliased and dot imports. Build-constrained files are scanned regardless of the current platform; `*_test.go` files remain excluded. Missing/empty targets, parse/decode/walk errors and symbolic links fail closed with no clean count. It fails at authoring because the target package is absent. The companion `check_env_imports_test.go` compiles synthetic raw/escaped imports offline without calling their environment-read functions, then runs both rows' exact commands; ordinary aliases, build-tagged files, excluded tests and clean imports remain controls. **Mutation**: use the former literal matcher or stop decoding import literals; compiler-valid raw/escaped `os` and `syscall` plants evade rejection and the fixture test fails. **Mutation**: plant any of those imports in shipped `mirror` source; the row reports a nonzero count and exit status |
 | 19 | check:ci +mutation | `(cd workflow && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorCoverageFactMapping$" ./store/... > "$result" && grep -F -- "--- PASS: TestMirrorCoverageFactMapping " "$result")` | exit 0; named PASS. Every mirror coverage state maps to exactly one graph-execution/28 fact-completeness value, and only `complete` inside the freshness window maps to present: `never-read`, `partial`, each `unavailable` reason class and a stale `complete` never do. The mapping lives in `workflow/store/`, not in `forgeread`. **Mutation**: map `partial` to present, and the test fails |
 
+| 20 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshBurstScopeAndCallBudget$' ./mirror/... > "$out" && grep -F -- '--- PASS: TestRefreshBurstScopeAndCallBudget ' "$out")` | exit 0; named PASS; 50 equivalent requests share one paginated inventory, two admissions remain isolated and outage retries stay within the explicit fixture budget; global authorization sharing or per-client scan fallback fails |
+
 ## Pre-mortem
 
 An unfinished walk reads as the whole population (rows 2, 8). A failed scan deletes or hides rows
@@ -296,6 +299,21 @@ dependency on statusgen and a module cycle forms (row 17). A mirror file reads c
 secret through a direct `os` or `syscall` import under a name the ambient-token rule does not know (row 18; cgo is outside that check). Partial
 coverage maps to a present fact (row 19). Retention of private content after access loss remains the
 human decision above; row 16 pins whichever option is chosen.
+
+## Performance reuse amendment — 2026-10-16
+
+Keep the mirror as the single online refresh/coalescing owner; do not start another
+poller or ingest cache from a desk command. Extend the existing refresh tests with a
+50-caller same-admission burst and two simultaneously different admissions. Exactly one
+scripted paginated inventory should serve equivalent concurrent refresh demand; different
+provider/host/repository/permission or admission/access epochs cannot share authorization.
+Requests on permission loss, stale data or provider failure retain coverage/backoff rather
+than triggering one full scan per caller. Count provider calls, coalesced waiters, bytes and
+cache outcomes at the trusted composition boundary; no credential or recorder dependency
+is imported into forgeread's offline root. The 50-caller case is synthetic request-count
+acceptance, not a production latency threshold. Existing /09 review snapshots and conditional
+board reads are baseline features, not newly credited savings.
+
 
 ## Evidence
 

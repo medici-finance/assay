@@ -212,27 +212,28 @@ adapters and preservation tests; do not use missing quality evidence to justify 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Local performance event contract, spool and offline report](brief-01-local-performance-event-contract-spool-and-offline-report.md) | 0 | L | todo | — | — |
-| 02 | [Producer adapters for workflow, usage and local performance](brief-02-producer-adapters-for-workflow-usage-and-local-performance.md) | 1 | L | todo | — | — |
+| 02 | [Producer adapters for workflow, usage and local performance](brief-02-producer-adapters-for-workflow-usage-and-local-performance.md) | 2 | L | todo | — | — |
 | 03 | [Separate TimescaleDB performance database and storage adapter](brief-03-separate-timescaledb-performance-database-and-storage-adapter.md) | 1 | L | todo | — | — |
 | 04 | [Authenticated performance ingestion API](brief-04-authenticated-performance-ingestion-api.md) | 2 | L | todo | — | — |
 | 05 | [Explicit resumable upload from the local spool](brief-05-explicit-resumable-upload-from-the-local-spool.md) | 1 | M | todo | — | — |
 | 06 | [Collection replay, retention, recovery and release qualification](brief-06-collection-replay-retention-recovery-and-release-qualification.md) | 3 | M | todo | — | — |
-| 07 | [On-demand three-report bundle and thin skill](brief-07-on-demand-operating-reports.md) | 2 | L | todo | — | — |
-| 08 | [Daily report generation and report-pack qualification](brief-08-daily-report-generation.md) | 3 | M | todo | — | — |
+| 07 | [On-demand three-report bundle and thin skill](brief-07-on-demand-operating-reports.md) | 3 | L | todo | — | — |
+| 08 | [Daily report generation and report-pack qualification](brief-08-daily-report-generation.md) | 4 | M | todo | — | — |
 | 09 | [Bounded performance issue and repair-PR loop](brief-09-bounded-performance-repair-loop.md) | 7 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path and dependency waves
 
-The first useful path is `01 local collection contract → 02 real source adapters →
+The first useful path is `01 local collection contract + desktools-v2/61 instrument contract → 02 real source adapters →
 07 on-demand reports → 08 daily generation`. Collection is delivered and its coverage
 checked before report integration. No database, hosted API, general journey schema or
 full managed runtime is a prerequisite for local reporting.
 
 - Wave 0: 01 — local contract, bounded spool, coverage and offline reader.
-- Wave 1: 02 — source adapters; 03 — separate database; 05 — explicit uploader.
-- Wave 2: 07 — on-demand three-report bundle; 04 — authenticated ingestion.
-- Wave 3: 08 — daily generation through the same report entrypoint; 06 — remote-path qualification.
+- Wave 1: desktools-v2/61 — shared local instrument contract; 03 — separate database; 05 — explicit uploader.
+- Wave 2: 02 — version-selected source adapters; 04 — authenticated ingestion.
+- Wave 3: 07 — on-demand three-report bundle; 06 — remote-path qualification.
+- Wave 4: 08 — daily generation through the same report entrypoint.
 - Wave 7: 09 — bounded issue/repair proposal loop, held by its typed graph-execution
   prerequisites (graph-execution/14 and /26 are wave 6, /16 wave 5). Those external
   prerequisites can dominate delivery time.
@@ -324,3 +325,13 @@ and effect execution reuse R2 schedules/leases/budgets, R3 supervision and R4 ef
 receipt reconciliation. No new cron daemon, direct forge-writing report command, or database
 trigger launches workers. Shadow assessment, then deduplicated issues, then bounded draft-PR
 proposals are separate rollout modes; activation requires the applicable recorded policy.
+
+## Local instrument reuse — 2026-10-16
+
+Fresh main already supplies perfrec and statusgen's local adapter. Desktools-v2/61 owns
+their compatible boundary/schema evolution; /62 and statusgen/26 own producer phases.
+Brief 01 preserves separate correlated collection semantics. Brief 02 consumes the
+versioned fixture contract from /61 and therefore moves to wave 2; /06 remains wave 3.
+The dependency is one-way: immediate local measurements and credential improvements do
+not wait for this stream, a collector or a database. Import old/new timing bases and
+availability explicitly; do not fabricate comparable zeroes or additive nested time.

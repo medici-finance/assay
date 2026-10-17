@@ -12,10 +12,11 @@ gate-why: "Correlated operational measurements and their access/retention bounda
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 id: 1f12e2ac-a0b9-4881-a452-4be522f432ad
 authored: 2026-10-13 by performance collection authoring
 sources:
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - docs/streams/performance-collection/README.md
   - docs/telemetry.md
   - docs/proposals/non-ci-architecture/11-target-architecture.md
@@ -27,6 +28,7 @@ exec-tier-why: Cross-component privacy, identity, concurrency and loss semantics
 domain: complicated
 outcome: none
 consumers:
+  - "perfrec/: out-of-scope (desktools-v2/61 owns the existing local recorder; this brief defines the separate correlated collection contract)"
   - "perfdata/go.mod: follow-up performance-collection/01"
   - "perfdata/event.go: follow-up performance-collection/01"
   - "perfdata/event_test.go: follow-up performance-collection/01"
@@ -148,6 +150,22 @@ Bypass the profile/field filter, make the sink propagate disk-full into the call
 row must traverse actual public producer/reader or served interfaces. Scope/retention
 adequacy and deployment workload selection are review judgments; their measured evidence
 is required before activation, not invented from component-test success.
+
+## Performance reuse amendment — 2026-10-16
+
+Fresh main already carries perfrec, shared by desk-tools and statusgen/perfrecord.go. Keep
+that local-only recorder and its existing consent/history as an independent instrument;
+desktools-v2/61 owns its schema/boundary evolution, not this correlated-spool contract.
+Define timing basis, inclusive/exclusive semantics, availability and instrument/schema
+version explicitly on imported observations. A legacy perf-v1 total and a new entrypoint
+measurement are not interchangeable samples. Nested phase, child and parent durations
+cannot be added into causal elapsed-time savings. The contract accepts bounded typed
+observations without requiring a database, network collector or runtime service.
+
+Preserve the historical sources and the merged reporting amendment as dated history;
+the current implementation state is the shared perfrec module at eba941721. This amendment
+does not replace its writer or retrospectively widen old payload/consent promises.
+
 
 ## Evidence
 
