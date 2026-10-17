@@ -131,9 +131,6 @@ func writeFixture(t *testing.T, path, text string) {
 
 func muharTestBinary(t *testing.T) string {
 	t.Helper()
-	if bin := os.Getenv("MUHAR_TEST_BINARY"); bin != "" {
-		return bin
-	}
 	bin := filepath.Join(t.TempDir(), "muhar")
 	build := exec.Command("go", "build", "-o", bin, ".")
 	if output, err := build.CombinedOutput(); err != nil {
