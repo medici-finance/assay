@@ -26,7 +26,7 @@ type dispatchCLI struct {
 func modeArgs(args []string) (string, []string) {
 	mode := ""
 	i := 0
-	for i < len(args) && (args[i] == "--trace" || args[i] == "-trace") {
+	for i < len(args) && (args[i] == "--trace" || args[i] == "-trace" || strings.HasPrefix(args[i], "--trace=") || strings.HasPrefix(args[i], "-trace=")) {
 		i++
 	}
 	if i < len(args) {

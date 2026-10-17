@@ -32,6 +32,7 @@ func TestCLIHelpOffline(t *testing.T) {
 	for _, mode := range modes {
 		forms = append(forms, clicontract.HelpForms(mode)...)
 		forms = append(forms, clicontract.GoFlagHelpForms(mode)...)
+		forms = append(forms, []string{mode, "--version"}, []string{mode, "-version"})
 	}
 	forms = append(forms, []string{"issue-1", "--help"}, []string{"--trace", "--help"})
 	for _, cfg := range clicontract.MalformedConfigs {
@@ -238,6 +239,9 @@ func TestCLILegacyForms(t *testing.T) {
 		{[]string{"--repo", "global", "issue-7"}, 0, "issue-7", "global", ""},
 		{[]string{"--", "-item"}, 0, "-item", "", ""},
 		{[]string{"--trace", "--stamp-only", "--repo", "example/repo"}, 0, "", "example/repo", "--stamp-only"},
+		{[]string{"--trace=false", "--stamp-only", "--repo", "example/repo"}, 0, "", "example/repo", "--stamp-only"},
+		{[]string{"-trace=true", "--stamp-only", "--repo", "example/repo"}, 0, "", "example/repo", "--stamp-only"},
+		{[]string{"--trace=bad", "--stamp-only"}, 2, "", "", ""},
 		{[]string{"--stamp-only", "--repo", "example/repo", "--trace"}, 0, "", "example/repo", "--stamp-only"},
 		{[]string{"issue-7", "--trace", "--repo=-trace"}, 0, "issue-7", "-trace", ""},
 		{[]string{"issue-7", "--no-such-flag"}, 2, "", "", ""},

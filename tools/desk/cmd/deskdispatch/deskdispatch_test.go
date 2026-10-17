@@ -1217,6 +1217,7 @@ func TestDryRunEmitsThePromptForEveryTier(t *testing.T) {
 	}
 }
 
+// regression: #2111
 func TestStepListIsTheDocumentedContract(t *testing.T) {
 	want := []string{"claim-acquire", "worktree-create", "roster-register", "decision-gate",
 		"model-stamp", "queue-label", "prompt-emit"}
@@ -1233,6 +1234,7 @@ func TestStepListIsTheDocumentedContract(t *testing.T) {
 	}
 }
 
+// regression: #2111
 func TestHelpNamesTheEngineSeam(t *testing.T) {
 	if !strings.Contains(dispatchHelp(), "engine seam: DISPATCH") {
 		t.Error("deskdispatch --help does not name its engine seam")

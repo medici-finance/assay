@@ -1,5 +1,5 @@
 {
-  "test": "go test -timeout 120s -count=1 ./cmd/deskdispatch -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestHostileItemKeysRefused|TestStampOnlyRejectsArgs)$'",
+  "test": "go test -timeout 120s -count=1 ./cmd/deskdispatch -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestHostileItemKeysRefused|TestStampOnlyRejectsArgs|TestStepListIsTheDocumentedContract|TestHelpNamesTheEngineSeam)$'",
   "control": {
     "name": "CONTROL: usage exit is wrong",
     "file": "cmd/deskdispatch/cli.go",
@@ -24,6 +24,12 @@
       "file": "cmd/deskdispatch/cli.go",
       "old": "GoFlagCompat: true,",
       "new": "GoFlagCompat: false,"
+    },
+    {
+      "name": "generated help omits the dispatch-step contract",
+      "file": "cmd/deskdispatch/cli.go",
+      "old": "strings.Join(dispatchSteps, \", \")",
+      "new": "\"undocumented\""
     }
   ]
 }
