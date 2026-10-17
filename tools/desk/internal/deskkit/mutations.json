@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance'",
   "schemata": true,
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
@@ -787,6 +787,12 @@
       "file": "internal/deskkit/forge_gitlab.go",
       "old": "entry.LastCommitID = gitlab.Ptr(priorSHA)",
       "new": "entry.LastCommitID = nil"
+    },
+    {
+      "name": "#2794: retry a rejected GitLab file update",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "return nil, g.mapErr(http.MethodPost, fmt.Sprintf(\"/projects/%s/repository/commits\", proj), cerr)",
+      "new": "_, _, _ = cl.Commits.CreateCommit(repo.Slug(), opt)\n\t\treturn nil, g.mapErr(http.MethodPost, fmt.Sprintf(\"/projects/%s/repository/commits\", proj), cerr)"
     }
   ],
   "_not_mutated": {
