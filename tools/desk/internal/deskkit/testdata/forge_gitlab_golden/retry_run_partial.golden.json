@@ -1,0 +1,19 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines/9001/jobs",
+      "query": "page=1\u0026per_page=100"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/jobs/71/retry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/jobs/72/retry"
+    }
+  ],
+  "err": "retrying job \"lint\" failed after retrying 1 job(s) (\"test\"): could-not-check: POST /projects/medici-finance%2Fassay/jobs/72/retry — permission or tier gate (HTTP 403): the token's role, or the instance's GitLab tier, does not expose this endpoint: forge API POST /projects/medici-finance%2Fassay/jobs/72/retry returned HTTP 403: {message: 403 Forbidden}",
+  "not_found": false
+}

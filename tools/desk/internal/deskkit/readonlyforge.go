@@ -221,6 +221,10 @@ func (r *readOnlyForge) RunStatus(repo ForgeRepo, run RunRef) (*RunState, error)
 	return r.inner.RunStatus(repo, run)
 }
 
+func (r *readOnlyForge) RunLog(repo ForgeRepo, run RunRef) ([]RunLogPart, error) {
+	return r.inner.RunLog(repo, run)
+}
+
 func (r *readOnlyForge) PushTransportHint(repo ForgeRepo) PushTransport {
 	return r.inner.PushTransportHint(repo)
 }
@@ -297,4 +301,8 @@ func (r *readOnlyForge) RunWorkflow(repo ForgeRepo, in RunWorkflowInput) (RunRef
 
 func (r *readOnlyForge) ApproveGate(repo ForgeRepo, run RunRef, in ApproveGateInput) error {
 	return readOnlyRefusal("ApproveGate")
+}
+
+func (r *readOnlyForge) RetryRun(repo ForgeRepo, run RunRef) error {
+	return readOnlyRefusal("RetryRun")
 }

@@ -56,6 +56,8 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 		"SetMergeHold", "WriteFile",
 		// Ops 55-58, added under the freeze rule by forge-neutral brief 33 with deskread kinds as consumers.
 		"ListIssues", "IssueStateEvents", "ListChangeCommits", "RepoDefaultBranch",
+		// Ops 62-63, added under the freeze rule by forge-neutral brief 17 with deskrun log and retry as consumers.
+		"RunLog", "RetryRun",
 	}
 	sort.Strings(want)
 

@@ -536,6 +536,7 @@ var obClass = map[string]string{
 	"CloseIssue": "notext", "CloseIssueTyped": "notext", "ReopenIssue": "notext",
 	"MarkReadyForReview": "notext", "SetMergeHold": "notext", "DeleteRef": "notext",
 	"OpenMergeHold": "notext", "RunWorkflow": "notext", "ApproveGate": "notext",
+	"RetryRun": "notext",
 
 	"GetPullRequest": "read", "GetIssue": "read", "GetIssueTyped": "read",
 	"OpenChangeForBranch": "read", "SearchIssues": "read", "ListLabels": "read",
@@ -548,7 +549,7 @@ var obClass = map[string]string{
 	"GetCommit": "read", "ListFileCommits": "read", "ListCommitChanges": "read",
 	"CompareRefs": "read", "SearchOpenChanges": "read", "ListWorkflowFiles": "read",
 	"ChangeDiff": "read", "RefExists": "read", "MatchingRefs": "read",
-	"RepoHardeningRead": "read", "ReadMergeHold": "read", "RunStatus": "read",
+	"RepoHardeningRead": "read", "ReadMergeHold": "read", "RunStatus": "read", "RunLog": "read",
 	"PushTransportHint": "read",
 	"ListIssues":        "read", "IssueStateEvents": "read", "ListChangeCommits": "read",
 	"RepoDefaultBranch": "read",
