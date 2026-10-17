@@ -35,7 +35,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # (the bash oracle, the default, or the Go port) — desk-containers/10.
 CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-modelns.XXXXXX")" && pwd -P)"
-trap 'rm -rf "$T"' EXIT
+trap 'suite_status=$?; if declare -F private_deskwt_finish >/dev/null; then private_deskwt_finish || suite_status=1; fi; rm -rf "$T"; exit "$suite_status"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
 
@@ -101,7 +101,11 @@ chmod +x "$T/bin/codex"
 # shellcheck source=SCRIPTDIR/private-path.sh
 source "$HERE/private-path.sh"
 private_path "$T/bin"
+private_deskwt "$T/bin"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
+# regression: #2738 — normal-path isolation and real-launch positive control.
+private_deskwt_check "$CELLCTL" "$REPO"
+
 
 set_kv(){ # replace or add VAR=VAL in a cell's cell.env; VAL="" removes the line entirely
   local cellenv="$1" var="$2" val="$3"
@@ -212,6 +216,7 @@ assert "omitting --harness resolves the namespace from the cell's own CELL_HARNE
 
 out="$("$CELLCTL" set ns-cell worker-desk 2>&1)" && rc=0 || rc=$?
 assert "the role-sugar form needs --model" '[[ $rc -ne 0 ]] && grep -q -- "--model" <<<"$out"'
+
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "model-namespace.test.sh: OK"; else echo "model-namespace.test.sh: $fails FAILED"; exit 1; fi
