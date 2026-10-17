@@ -10,7 +10,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-17 by statusgen newbrief
 sources:
   - docs/desk-workflow-efficiency-spec.md
@@ -22,24 +22,32 @@ exec-tier: strong
 exec-tier-why: Semantic extraction, cost coverage and cross-caller failure behavior require independent contract judgment.
 domain: complicated
 consumers:
-  - "tools/desk/cmd/deskperf/: follow-up desk-tools/38"
-  - "tools/desk/internal/deskkit/: follow-up desk-tools/38"
-  - "tools/desk/cmd/deskboard/: follow-up desk-tools/38"
-  - "tools/desk/cmd/deskdispatch/: follow-up desk-tools/38"
-  - "tools/desk/cmd/issueboard/: follow-up desk-tools/38"
+  - "tools/desk/cmd/deskperf/: out-of-scope (unchanged reader accepts additive verb strings; exercised by existing command suite and LoadPerfHistory flow)"
+  - "tools/desk/internal/deskkit/: fixed-here (production attribution/counters and regression paths)"
+  - "tools/desk/cmd/deskboard/: fixed-here (production attribution/counters and regression paths)"
+  - "tools/desk/cmd/deskdispatch/: fixed-here (production attribution/counters and regression paths)"
+  - "tools/desk/cmd/issueboard/: fixed-here (production attribution/counters and regression paths)"
+  - "tools/desk/internal/reviewtest/perf_test.go: fixed-here (actual entrypoints, optional sink and planted production mutations)"
+  - "docs/review-efficiency-qualification.md: fixed-here (production entrypoint acceptance and honest remaining coverage)"
+  - "docs/telemetry.md: fixed-here (closed vocabulary, inventory and measurement limits)"
+  - "tools/desk/cmd/deskread/: out-of-scope (existing reader/parser is unchanged; shared process/client helpers gain counters without caller changes)"
+  - "tools/desk/cmd/deskwt/: out-of-scope (existing hook caller and process policy unchanged)"
+  - "tools/desk/cmd/deskroster/: out-of-scope (existing liveness/visibility readers preserve results; shared transport now observes attempts)"
+  - "tools/desk/cmd/verifyloop/: out-of-scope (existing verifier Git caller and policy unchanged)"
+  - "perfrec/: out-of-scope (closed schema and offline writer unchanged)"
 ---
 
 # Brief 38 — Correct desk performance attribution and counter coverage
 
 ## Context
 
-files: `tools/desk/internal/deskkit/perf.go` (existing), `tools/desk/internal/deskkit/perf_test.go` (existing), `tools/desk/internal/deskkit/perfcoverage_test.go` (existing), `tools/desk/cmd/deskboard/main.go` (existing), `tools/desk/cmd/deskdispatch/main.go` (existing), `tools/desk/cmd/issueboard/main.go` (existing), `tools/desk/internal/reviewtest/` (planned), `docs/telemetry.md` (existing), `changelog/desk-tools-38.md` (planned)
+files: `tools/desk/internal/deskkit/{perf,runtool,forgetransport,roletoken,verifierattestation,verifiertrackingcheckout,hooks,killswitch,dispatchrecord,callout,untrustscan,riskcallout,layaadvisor,trustliveness,trustliveness_gitlab,repovis}.go` (existing), `tools/desk/internal/deskkit/{perfprocess,citrigger}_test.go` (new/existing), `tools/desk/cmd/deskboard/{board,dispatch,nextup}.go` (existing), `tools/desk/cmd/deskboard/{perfchild,perfleaf,perfentry}_test.go` (new), `tools/desk/cmd/deskdispatch/{dispatch,stamponly,kits}.go` (existing), `tools/desk/cmd/{deskdispatch,issueboard}/perfentry_test.go` (new), `tools/desk/internal/deskkit/perf.go` (existing), `tools/desk/internal/deskkit/perf_test.go` (existing), `tools/desk/internal/deskkit/perfcoverage_test.go` (existing), `tools/desk/cmd/deskboard/main.go` (existing), `tools/desk/cmd/deskdispatch/main.go` (existing), `tools/desk/cmd/issueboard/main.go` (existing), `tools/desk/internal/reviewtest/` (planned), `docs/telemetry.md` (existing), `docs/review-efficiency-qualification.md` (existing), `changelog/desk-tools-38.md` (planned)
 
-facts: 17 October 2026 at the source pin above. Existing implementation is described in
+facts: 17 October 2026 at the source pin above. Version 2 expands the declared paths to the actual shared process/client observers and test-only entrypoint adapters; no execution policy or perf-v1 field changes. Implementation is stacked behind desk-tools/37 and must not land before that prerequisite. The deskboard CLI port #3248 merged at pickup; reconcile its handler adapter before publishing. The deskdispatch port #3302 remains open; preserve its parser acceptance separately. Existing implementation is described in
 approved spec §2. All named tests and paths marked planned below are deliverables, not
 passing claims. desk-tools/23 remains implemented, /24–25 done, /27 retains its own
 verification debt; desktools-v2/09 is verified and /45 implemented. Refresh actual source,
-claims and open PRs at pickup. #3248 and #3302 are active CLI ports; #3325 is proposed
+claims and open PRs at pickup. #3248 is merged and #3302 remains an active CLI port; #3325 is proposed
 supervision guidance and #3305 proposed generic improvement planning. Neither draft is
 assumed shipped. The initial blocker is the missing complete observation and attribution,
 not the full future runtime.

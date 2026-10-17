@@ -178,7 +178,7 @@ func nextUpForRoot(bin, absRoot, repo string) (dispatchView, error) {
 	cmd := exec.Command(bin, "--next-up", "--root", absRoot)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	out, err := deskkit.OutputProcess(cmd)
 	if err != nil {
 		detail := strings.TrimSpace(stderr.String())
 		if detail != "" {

@@ -99,7 +99,7 @@ generic experiment planning proposed in #3305.
 | Component | Recorded meaning and limit |
 |---|---|
 | Own CPU | OS user + system CPU for each direct subprocess, plus parent self CPU where supported. Sum these disjoint own-process measurements once. |
-| Descendant/inclusive CPU | Explicit `null`; a direct-child sample is not a complete process tree. desk-tools/38 owns closing this attribution gap. |
+| Descendant/inclusive CPU | Explicit `null`; a direct-child sample is not a complete process tree. perf-v1 cannot express this process-tree coverage; performance-collection/01–02 own richer attribution. |
 | Wall | Cycle start/end envelope and individual intervals. Use interval union for overlapping child coverage, never summed parallel durations. |
 | HTTP attempts | Every actual transport attempt from production issue enumeration, including method, path, query, body hash and response status. Typed deskboard/dispatch and issue-policy fakes bypass HTTP, so whole-workflow coverage is partial. |
 | Retries / 304s | Preserve every attempt and status 304. Retry lineage is `null` without a client signal; repeated endpoint reads do not prove retries. A transport control checks 200/304/503 preservation. |
@@ -115,6 +115,25 @@ tradeoff separately. An unknown component prevents a claim about that component.
 No production caches, token memoization, audit-tail behavior, read pools or
 conditional-read implementations change here. Their production effect is not
 qualified by typed fakes. Existing caps, breakers, trust and audit controls remain
-owned by their existing paths. Exact production HTTP/child coverage belongs to /38,
+owned by their existing paths. The selected production HTTP/child paths are qualified by /38; whole-workflow coverage remains partial,
 shared semantics to /39, combined observations/preparation to /40–42, caller
 migration to /43 and qualification/retirement to /44.
+
+
+## Production attribution qualification (desk-tools/38)
+
+Run the named `TestPerfCommandKit` and `TestPerfCoverageFlow` acceptance rows in
+brief 38. These compile the actual command packages, invoke their `main` entrypoints
+in disposable processes, read the resulting perf-v1 history with the existing reader,
+and exercise raw subprocess and resolver/cache/floor transports. Source-overlay
+mutations remove the actual dispatch-kit selection and restore the counter outside
+the local-refusal boundary; the corresponding observed-output assertions reject both.
+A failing 503 read, caller retry and validated 304 account for three actual attempts;
+a locally refused floor read accounts for zero. These tests qualify counter semantics,
+not a new retry policy or production speed claim.
+
+The [telemetry inventory](telemetry.md#review-workflow-attribution-and-coverage)
+names instrumented and remaining paths. Keep the six baseline cohorts unchanged:
+new counter coverage changes the observation boundary, so old/new values need the
+producer version and coverage alongside them. No descendant/inclusive CPU value,
+endpoint breakdown or quota-point total is reconstructed from perf-v1 zeros.

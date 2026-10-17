@@ -68,9 +68,11 @@ func PerfEnabled() bool { return perfrec.Enabled() }
 // is cheaper than the branch that would skip it) and reset at PerfRun entry; with the switch
 // off they are never read and never leave memory.
 var (
-	perfChildProcs  atomic.Int64
-	perfChildWallNs atomic.Int64
-	perfForgeCalls  atomic.Int64
+	perfChildProcs   atomic.Int64
+	perfChildWallNs  atomic.Int64
+	perfForgeCalls   atomic.Int64
+	perfActive       atomic.Bool
+	perfSelectedVerb atomic.Pointer[string]
 )
 
 // perfCountChild records one child started through deskkit.Run and its wall time.
@@ -113,11 +115,18 @@ func PerfRun(tool string, verbs []string, args []string, run func([]string) int)
 		return run(args)
 	}
 	perfResetCounters()
+	perfSelectedVerb.Store(nil)
+	perfActive.Store(true)
+	defer perfActive.Store(false)
 	began := time.Now()
 	code := run(args)
 	wall := time.Since(began)
 
-	rec := newPerfRecord(tool, perfVerb(verbs, args), wall, code)
+	verb := perfVerb(verbs, args)
+	if selected := perfSelectedVerb.Load(); selected != nil {
+		verb = *selected
+	}
+	rec := newPerfRecord(tool, verb, wall, code)
 	children, childWall, forge := PerfCounters()
 	rec.ChildProcs = children
 	rec.ChildWallMs = childWall.Milliseconds()
@@ -127,6 +136,17 @@ func PerfRun(tool string, verbs []string, args []string, run func([]string) int)
 	}
 	perfAppend(rec)
 	return code
+}
+
+// PerfCommand selects an attribution from a command's compiled vocabulary after its
+// real parser resolves the operation. It changes no execution or consent behavior.
+// Unknown values become "other"; raw argv and kit values never enter a record.
+func PerfCommand(roster []string, selected string) {
+	if !perfActive.Load() {
+		return
+	}
+	verb := perfVerb(roster, []string{selected})
+	perfSelectedVerb.Store(&verb)
 }
 
 // perfBootSteps is the compiled roster of boot-step names PerfStep accepts — deskboot's own

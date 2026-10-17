@@ -151,7 +151,7 @@ repo must be in the desk scope (compiled-in — org-default;
 // perfVerbs is deskboard's registered first-argument set for the opt-in local perf record
 // (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
 // "other" otherwise, so no argv text can reach the record.
-var perfVerbs = []string{"--json", "--table", "--delta", "--quiet", "--version"}
+var perfVerbs = []string{"prs", "actions", "queue", "health", "awaiting", "nextup", "scope", "dispatch", "throughput", "policydrift", "stalled", "reviews", "diff", "files", "version", "help", "--version", "--help", "-h"}
 
 func main() {
 	// The roster class is an EXPLICIT declaration, never the zero value by accident
@@ -176,6 +176,7 @@ func main() {
 func run(args []string, stdout, stderr io.Writer) int {
 	// --version short-circuits before Guard (pure introspection, no side effects).
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
+		deskkit.PerfCommand(perfVerbs, "version")
 		s, b := deskkit.Version()
 		fmt.Fprintf(stdout, "deskboard sourceSHA=%s builtAt=%s releaseTag=%s\n", s, b, deskkit.ReleaseTagOrDev())
 		return deskkit.ExitOK
@@ -286,6 +287,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 			// than either choice — it would look like a board with no bottleneck.
 			pos = append(pos, "throughput")
 		case "-h", "--help":
+			deskkit.PerfCommand(perfVerbs, "help")
 			fmt.Fprint(stdout, usage)
 			return deskkit.ExitOK
 		default:
@@ -305,6 +307,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	rateFloor = floor
 
 	sub := pos[0]
+	perfSub := sub
+	switch sub {
+	case "todo", "next", "next-up":
+		perfSub = "dispatch"
+	}
+	deskkit.PerfCommand(perfVerbs, perfSub)
 	rest := pos[1:]
 	hdr := buildHeader()
 
