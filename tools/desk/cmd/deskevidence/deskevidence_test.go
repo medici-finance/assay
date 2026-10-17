@@ -48,6 +48,8 @@ type fakeForge struct {
 	commitAuthorLogin string
 	commitErr         error
 	getCommitCalls    int
+	getCommitSHAs     []string
+	writeReceipt      *deskkit.WriteFileResult
 	// prHeadSHA is the HeadSHA GetPullRequest reports for the draft change opened on the GitLab
 	// landing path, and prErr its error. Empty HeadSHA leaves the online resolution with no sha.
 	prHeadSHA string
@@ -269,7 +271,10 @@ func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*
 	} else if author == "" {
 		author = verifierBotDisplay()
 	}
-	return &deskkit.WriteFileResult{Changed: true, SHA: "new-sha", Author: author}, nil
+	if f.writeReceipt != nil {
+		return f.writeReceipt, nil
+	}
+	return &deskkit.WriteFileResult{Changed: true, ContentID: "new-blob", CommitSHA: "new-sha", Author: author}, nil
 }
 
 func (f *fakeForge) CreateDraftChange(_ deskkit.ForgeRepo, in deskkit.DraftChangeInput) (*deskkit.PullRef, error) {
@@ -316,6 +321,7 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.getCommitCalls++
+	f.getCommitSHAs = append(f.getCommitSHAs, sha)
 	if f.commitErr != nil {
 		return nil, f.commitErr
 	}

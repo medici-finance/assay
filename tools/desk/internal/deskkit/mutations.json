@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject'",
   "schemata": true,
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
@@ -763,6 +763,30 @@
       "file": "internal/deskkit/forge_github.go",
       "old": "\t\tif cur.Kind != FileKindRegular {\n\t\t\theld := cur.Kind",
       "new": "\t\tif false && cur.Kind != FileKindRegular {\n\t\t\theld := cur.Kind"
+    },
+    {
+      "name": "#2794: return the GitHub blob as the commit receipt",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "res.CommitSHA = CommitSHA(w.Commit.SHA)",
+      "new": "res.CommitSHA = CommitSHA(w.Content.SHA)"
+    },
+    {
+      "name": "#2794: infer the GitLab receipt from the prior file commit",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "res.CommitSHA = CommitSHA(commit.ID)",
+      "new": "res.CommitSHA = CommitSHA(priorSHA)"
+    },
+    {
+      "name": "#2794: fabricate a commit on an unchanged GitHub file",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "res.ContentID = ContentID(priorSHA)\n\t\treturn res, nil",
+      "new": "res.ContentID = ContentID(priorSHA)\n\t\tres.CommitSHA = CommitSHA(priorSHA)\n\t\treturn res, nil"
+    },
+    {
+      "name": "#2794: drop the GitLab action file precondition",
+      "file": "internal/deskkit/forge_gitlab.go",
+      "old": "entry.LastCommitID = gitlab.Ptr(priorSHA)",
+      "new": "entry.LastCommitID = nil"
     }
   ],
   "_not_mutated": {

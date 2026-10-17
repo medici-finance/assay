@@ -46,13 +46,19 @@ func TestGitLabEvidenceLandingRequests(t *testing.T) {
 						enc(map[string]any{"last_commit_id": "observed-file-commit", "blob_id": "blob", "content": base64.StdEncoding.EncodeToString([]byte("old evidence\n"))})
 						return
 					}
+					w.WriteHeader(405)
+				case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/repository/commits"):
 					var in struct {
-						LastCommitID string `json:"last_commit_id"`
-						StartBranch  string `json:"start_branch"`
-						Branch       string
+						StartBranch string `json:"start_branch"`
+						Branch      string `json:"branch"`
+						Actions     []struct {
+							LastCommitID string `json:"last_commit_id"`
+							Action       string `json:"action"`
+							FilePath     string `json:"file_path"`
+						} `json:"actions"`
 					}
 					_ = json.NewDecoder(r.Body).Decode(&in)
-					if in.LastCommitID != "observed-file-commit" {
+					if len(in.Actions) != 1 || in.Actions[0].LastCommitID != "observed-file-commit" || in.Actions[0].Action != "update" || in.Actions[0].FilePath != file {
 						t.Errorf("lost snapshot precondition: %+v", in)
 					}
 					if scenario == "conflict" {
@@ -64,7 +70,7 @@ func TestGitLabEvidenceLandingRequests(t *testing.T) {
 						t.Errorf("lost inline branch creation: %+v", in)
 					}
 					written = true
-					enc(map[string]any{"file_path": file})
+					enc(map[string]any{"id": "landed-commit"})
 				case r.Method == "GET" && strings.HasSuffix(r.URL.Path, repo.Slug()):
 					enc(map[string]any{"visibility": "private", "default_branch": "main"})
 				default:
