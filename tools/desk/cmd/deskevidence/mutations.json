@@ -468,6 +468,30 @@
       "file": "internal/deskkit/evidencelanding.go",
       "old": "\tif e.attempted {\n\t\treturn nil, Refused(\"evidence publication already attempted",
       "new": "\tif false {\n\t\treturn nil, Refused(\"evidence publication already attempted"
+    },
+    {
+      "name": "#2794: accept a provider author without resolving the commit receipt",
+      "file": "cmd/deskevidence/github.go",
+      "old": "c, err := fg.GetCommit(fr, string(res.CommitSHA))",
+      "new": "c, err := &deskkit.RepoCommit{SHA: string(res.CommitSHA)}, error(nil)"
+    },
+    {
+      "name": "#2794: publish a file precondition as the direct Evidence receipt",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "string(res.CommitSHA), delta, attr)",
+      "new": "string(res.ContentID), delta, attr)"
+    },
+    {
+      "name": "#2794: call a backend noop a new commit",
+      "file": "cmd/deskevidence/github.go",
+      "old": "if res == nil || res.Changed {",
+      "new": "if true {"
+    },
+    {
+      "name": "#2794: ignore a conflicting commit account when the response author matches",
+      "file": "cmd/deskevidence/github.go",
+      "old": "if strings.TrimSpace(c.AuthorLogin) != \"\" {",
+      "new": "if res.Author == \"\" && strings.TrimSpace(c.AuthorLogin) != \"\" {"
     }
   ]
 }
