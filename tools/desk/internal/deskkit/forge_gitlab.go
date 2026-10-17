@@ -3557,61 +3557,85 @@ func (g *GitLabForge) MatchingRefs(repo ForgeRepo, refPrefix string) ([]string, 
 // documented shape: the event survives, the label record does not). It is dropped rather than
 // emitted as an unnamed attestation, because a stamp nobody can name attests to nothing.
 func (g *GitLabForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
-	cl, err := g.client()
+	out, complete, err := g.labelEventsWalk(repo, number, false, false)
 	if err != nil {
 		return nil, err
 	}
-	path := fmt.Sprintf("/projects/%s/merge_requests/%d/resource_label_events",
-		g.projectPath(repo), number)
-	var out []LabelEvent
-	for page := 1; page <= gitlabMaxNotePage; page++ {
-		chunk, resp, lerr := cl.ResourceLabelEvents.ListMergeRequestsLabelEvents(repo.Slug(), int64(number),
-			&gitlab.ListLabelEventsOptions{
-				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
-			})
-		if lerr != nil {
-			return nil, g.mapErr(http.MethodGet, path, lerr)
-		}
-		for _, e := range chunk {
-			if e == nil || (e.Action != "add" && e.Action != "remove") || strings.TrimSpace(e.Label.Name) == "" {
-				continue
-			}
-			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username, CreatedAt: gitlabTime(e.CreatedAt), Removed: e.Action == "remove"})
-		}
-		if resp == nil || resp.NextPage == 0 {
-			return out, nil
-		}
+	if !complete {
+		return nil, fmt.Errorf("label timeline exceeded page bound")
 	}
-	return nil, fmt.Errorf("label timeline exceeded page bound")
+	return out, nil
 }
 
 func (g *GitLabForge) ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
-	cl, err := g.client()
+	out, complete, err := g.labelEventsWalk(repo, number, true, false)
 	if err != nil {
 		return nil, err
 	}
-	path := fmt.Sprintf("/projects/%s/issues/%d/resource_label_events",
-		g.projectPath(repo), number)
+	if !complete {
+		return nil, fmt.Errorf("label timeline exceeded page bound")
+	}
+	return out, nil
+}
+
+// IssueLabelHistory (op 64) is the issue's whole label history with the page bound REPORTED
+// (Complete=false) and the events of a DELETED label KEPT: GitLab keeps such an event and stops
+// naming the label, and ListIssueLabelEvents drops it. The unnamed event is returned with an
+// empty Name so a consumer can tell "an event the forge no longer names" from "no event".
+func (g *GitLabForge) IssueLabelHistory(repo ForgeRepo, number int) (*LabelHistory, error) {
+	out, complete, err := g.labelEventsWalk(repo, number, true, true)
+	if err != nil {
+		return nil, err
+	}
+	return &LabelHistory{Events: out, Complete: complete}, nil
+}
+
+// labelEventsWalk reads a merge request's (issue=false) or an issue's (issue=true) resource
+// label events, add and remove only. keepUnnamed keeps an event whose label has been deleted
+// (empty name); the existing reads pass false. The bool is false when the page bound was hit
+// with the forge still advertising a next page.
+func (g *GitLabForge) labelEventsWalk(repo ForgeRepo, number int, issue, keepUnnamed bool) ([]LabelEvent, bool, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, false, err
+	}
+	kind := "merge_requests"
+	if issue {
+		kind = "issues"
+	}
+	path := fmt.Sprintf("/projects/%s/%s/%d/resource_label_events", g.projectPath(repo), kind, number)
 	var out []LabelEvent
 	for page := 1; page <= gitlabMaxNotePage; page++ {
-		chunk, resp, lerr := cl.ResourceLabelEvents.ListIssueLabelEvents(repo.Slug(), int64(number),
-			&gitlab.ListLabelEventsOptions{
-				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
-			})
+		opt := &gitlab.ListLabelEventsOptions{
+			ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
+		}
+		var (
+			chunk []*gitlab.LabelEvent
+			resp  *gitlab.Response
+			lerr  error
+		)
+		if issue {
+			chunk, resp, lerr = cl.ResourceLabelEvents.ListIssueLabelEvents(repo.Slug(), int64(number), opt)
+		} else {
+			chunk, resp, lerr = cl.ResourceLabelEvents.ListMergeRequestsLabelEvents(repo.Slug(), int64(number), opt)
+		}
 		if lerr != nil {
-			return nil, g.mapErr(http.MethodGet, path, lerr)
+			return nil, false, g.mapErr(http.MethodGet, path, lerr)
 		}
 		for _, e := range chunk {
-			if e == nil || (e.Action != "add" && e.Action != "remove") || strings.TrimSpace(e.Label.Name) == "" {
+			if e == nil || (e.Action != "add" && e.Action != "remove") {
 				continue
 			}
-			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username, CreatedAt: gitlabTime(e.CreatedAt), Removed: e.Action == "remove"})
+			if !keepUnnamed && strings.TrimSpace(e.Label.Name) == "" {
+				continue
+			}
+			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username, AppliedByID: e.User.ID, CreatedAt: gitlabTime(e.CreatedAt), Removed: e.Action == "remove"})
 		}
 		if resp == nil || resp.NextPage == 0 {
-			return out, nil
+			return out, true, nil
 		}
 	}
-	return nil, fmt.Errorf("label timeline exceeded page bound")
+	return out, false, nil
 }
 
 // gitlabNoteIDScheme prefixes the opaque comment id this backend mints. Like
