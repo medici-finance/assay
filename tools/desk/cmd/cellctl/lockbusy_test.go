@@ -53,7 +53,7 @@ func TestTwoLaunchesOneCell(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			evidence := filepath.Join(t.TempDir(), "result")
-			env := append(os.Environ(), "CELL_SCRATCH_FIXTURE=1", "ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP="+role, "SCRATCH_EVIDENCE="+evidence)
+			env := fixtureProcessEnv("CELL_SCRATCH_FIXTURE=1", "ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP="+role, "SCRATCH_EVIDENCE="+evidence)
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			results[i] = c.executeCadencePass(ctx, role, "claude", []string{os.Args[0], "--fixture-prompt"}, env, t.TempDir())
