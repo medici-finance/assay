@@ -466,6 +466,17 @@ func flipLatestPass(evidence string) (flipPass, error) {
 	if after, _ := flipDateRunnerRows(lines[last.line+1:]); len(after) > 0 {
 		return flipPass{}, refuseFlip("runner mismatch: %d Date/Runner row(s) follow the latest PASS — record each run's rows after the previous verdict and before its own", len(after))
 	}
+	if hasProtectedTableMarker(stripped) {
+		// A newer unfinished protected record must not borrow this PASS.
+		// Keep this in the shared selector so callers passing p.Run cannot
+		// discard a live tail before closure, audit or coverage sees it.
+		for _, line := range strings.Split(stripCode(stripped), "\n")[last.line+1:] {
+			line = strings.TrimSpace(strikethroughRe.ReplaceAllString(line, ""))
+			if line != "" && !strings.HasPrefix(line, ">") {
+				return flipPass{}, refuseFlip("protected table: live content follows the latest PASS; complete the current run before closing")
+			}
+		}
+	}
 	rows, at := flipDateRunnerRows(lines[start:last.line])
 	if len(rows) == 0 {
 		return flipPass{}, refuseFlip("runner mismatch: no Date/Runner rows are recorded for the latest PASS")

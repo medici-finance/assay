@@ -242,6 +242,19 @@ func TestProtectedRerun(t *testing.T) {
 			if err := os.WriteFile(path, []byte(body), 0644); err != nil {
 				t.Fatal(err)
 			}
+			// Flip and reconcile pass this selector's p.Run to the same audit.
+			p, err := flipLatestPass(c.evidence)
+			selectedPass := false
+			if err == nil {
+				findings, refusal := closureWitnesses(verify, p.Run, path)
+				selectedPass = refusal == "" && len(findings) > 0
+				for _, f := range findings {
+					selectedPass = selectedPass && closureSatisfied(f)
+				}
+			}
+			if selectedPass != c.pass {
+				t.Fatalf("selected-run closure pass=%v: selector error=%v", c.pass, err)
+			}
 			resetReadMemo()
 			info := &briefInfo{File: filepath.ToSlash(strings.TrimPrefix(path, root+string(filepath.Separator))), Row: &briefInfoRow{Status: "verified", Verified: "2026-08-13 human:alex"}}
 			if err := checkBriefInfoVerified(root, info); (err == nil) != c.pass {
@@ -314,5 +327,21 @@ func TestProtectedMainDrift(t *testing.T) {
 	}
 	if got := evaluateCoverage(root, streams, coverageOptions{Revision: delivery})["vf/01"]; got.Released {
 		t.Fatal("changed original acceptance was credited")
+	}
+}
+
+// regression: #3342
+func TestProtectedUnmarked(t *testing.T) {
+	// Unmarked evidence keeps the ordinary latest-witness contract, including
+	// historic records that do not use the protected run-verdict convention.
+	evidence := witnessTableFor(vfRow1, vfRow2) + "\nVERIFY: FAIL\n" + witnessTableFor(vfRow1, vfRow2)
+	findings, refusal := closureWitnesses(vfVerify, evidence)
+	if refusal != "" || len(findings) != 2 {
+		t.Fatalf("ordinary evidence changed: %s %+v", refusal, findings)
+	}
+	for _, f := range findings {
+		if f.State != statePass {
+			t.Fatalf("ordinary witness no longer passes: %+v", f)
+		}
 	}
 }

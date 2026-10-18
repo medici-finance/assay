@@ -24,17 +24,23 @@ func closureSatisfied(f checkFinding) bool {
 	return f.State == statePass || f.State == stateAuthorAdded
 }
 
+// hasProtectedTableMarker uses the same live-text hygiene as the marker reader.
+func hasProtectedTableMarker(evidence string) bool {
+	stripped, _ := stripRowComments(evidence)
+	for _, line := range strings.Split(stripCode(stripped), "\n") {
+		if strings.HasPrefix(line, "Verification-Table:") {
+			return true
+		}
+	}
+	return false
+}
+
 // protectedAcceptance returns only owed original rows plus explicit uncredited
 // supplemental dispositions. Without a live marker, the ordinary table is owed
 // in full. A quoted example, hash or author-added label grants no exemption.
 func protectedAcceptance(verify, evidence string, paths ...string) (protectedPlan, string) {
 	stripped, _ := stripRowComments(evidence)
-	live := stripCode(stripped)
-	protected := false
-	for _, line := range strings.Split(live, "\n") {
-		protected = protected || strings.HasPrefix(line, "Verification-Table:")
-	}
-	if !protected {
+	if !hasProtectedTableMarker(stripped) {
 		return protectedPlan{Verify: verify, Evidence: evidence}, ""
 	}
 	// Callers that already selected p.Run supply no verdict. Complete Evidence
@@ -43,14 +49,6 @@ func protectedAcceptance(verify, evidence string, paths ...string) (protectedPla
 		p, err := flipLatestPass(evidence)
 		if err != nil {
 			return protectedPlan{}, "protected table: " + err.Error()
-		}
-		// A newer unfinished record must not borrow the last completed PASS.
-		// Comments and quoted examples after it do not start a live run.
-		for _, line := range strings.Split(live, "\n")[p.Marks[len(p.Marks)-1]+1:] {
-			line = strings.TrimSpace(strikethroughRe.ReplaceAllString(line, ""))
-			if line != "" && !strings.HasPrefix(line, ">") {
-				return protectedPlan{}, "protected table: live content follows the latest PASS; complete the current run before closing"
-			}
 		}
 		evidence = p.Run
 		stripped, _ = stripRowComments(evidence)
