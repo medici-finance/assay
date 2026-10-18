@@ -40,7 +40,7 @@ consumers:
 
 files: tools/desk/internal/deskkit/preflight.go, tools/desk/cmd/verifyloop/preflight.go, tools/desk/cmd/verifyloop/dispatch.go, tools/desk/cmd/verifyloop/association.go, tools/desk/cmd/verifyloop/attestation.go, tools/desk/internal/deskkit/verifierattestation.go, changelog/verifier-world-evidence.md, tools/desk/cmd/verifyloop/flow_50_test.go, tools/desk/internal/deskkit/flow_50_test.go
 facts:
-- verifyloop preflight already checks the operating envelope and runner table, including per-root coverage. Verifier admission already binds source/home/run associations.
+- verifyloop preflight already checks the operating envelope and runner table, including per-root coverage. Verifier admission already binds the source, verifier home and run associations.
 - Wake readers already distinguish unchanged, changed and unreadable declared inputs; reuse those boundaries.
 - Reading a live cluster or production endpoint is not a prerequisite check this workflow may perform, even read-only.
 
