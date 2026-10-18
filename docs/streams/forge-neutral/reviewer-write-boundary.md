@@ -83,51 +83,75 @@ Out of scope: how verdicts, comments and the ready flip are posted.
 
 ### 3.1a Reviewer write inventory (brief 20, task 1)
 
-Read at `4f9ed47c` (origin/main, 2026-09-18). Every desk-tool site that constructs a `Forge`
-under the reviewer identity — literally (`ForgeFor(repo, "reviewer")`, `ReviewDispatcherRole`)
-or via the session's minted role (`DESK_LOOP=pr-review-desk` → role `reviewer`, per
-`tools/desk/internal/deskkit/roletoken.go:41-47`) — with the forge operations it performs
-under that identity and the permission each needs. **Read** / **PR write** / **issue write**
-follow GitHub's own split (labels and comments on a PR are the Issues API, so they are issue
-write even when the target is a PR); **repository write** is `contents` or a ref push.
+Read at `4f9ed47c` (origin/main, 2026-09-18); **re-read at `a724e99d` (origin/main, 2026-10-18)**
+after the inventory drifted from the tree it describes (#1606). Line numbers below are from the
+re-read. Every desk-tool site that constructs a `Forge` under the reviewer identity — literally
+(`ForgeFor(repo, "reviewer")`, `ReviewDispatcherRole`, deskpost's `forgeForReviewer` wrapper,
+deskdispatch's `stampRoleForKit` for the review kit) or via the session's minted role
+(`DESK_LOOP=pr-review-desk` → role `reviewer`, per `tools/desk/internal/deskkit/roletoken.go:44`)
+— with the forge operations it performs under that identity and the permission each needs.
+**Read** / **PR write** / **issue write** follow GitHub's own split (labels and comments on a PR
+are the Issues API, so they are issue write even when the target is a PR); **repository write**
+is `contents` or a ref push or delete.
 
 | Site | Forge ops performed as `reviewer` | Permission |
 |---|---|---|
-| `tools/desk/cmd/deskdispatch/dispatch.go:872-918,1271` (review-kit claim acquire, `ReviewDispatcherRole`) | mints the reviewer token and hands it to `deskclaim-ref`, which does a compare-and-swap push of `refs/heads/dispatch/<key>` | **repository write** (the dispatch claim — the one row Task 1 expects) |
-| `tools/desk/cmd/deskpost/claimliveness.go:53` | `Forge.RefExists` on the claim ref (age-out read for the model-floor stamp) | read |
-| `tools/desk/cmd/deskpost/forgeclient.go:75-81` (`forgeForReviewer`) + its consumers in the same package | `GetPullRequest`, `GetIssue(Typed)`, `ListChangedFiles`, `ListReviews`, `ChecksAtHead`, `combinedStatusAt`, `RefExists` (claim liveness, mirrors claimliveness.go) — all read; `PostReview` (`/pulls/{n}/reviews`) — **PR write**; `MarkReadyForReview` (the ready-flip GraphQL mutation) — **PR write**; `SetMergeHold`/`ReadMergeHold` — on GitHub `SetMergeHold` is `ErrMergeHoldNotApplicable` (no-op); on GitLab it adds/resolves a merge-request discussion note — **PR write**, never repository write | read + PR write |
-| `tools/desk/cmd/deskpost/comment.go:176` | `PostComment` → `/issues/{n}/comments` (posts as the reviewer App) | issue write |
+| `tools/desk/cmd/deskdispatch/dispatch.go` (review kit; `stampRoleForKit` → `ReviewDispatcherRole` at `:2030-2035`) | (a) claim acquire: `resolveClaimAuth` (`:1463`) hands the reviewer credential to the claim tool, which does a compare-and-swap push of `refs/dispatch/<key>` (`cmd/deskclaim-ref/claim.go:40`) — **repository write**, the dispatch claim; (b) model-stamp step `stepStamp` (`:1769`, forge resolved at `:1822`): `GetPullRequest`, `ListLabelEvents` — read; `ApplyVerifiedStamp` (`:1899`) → `ApplyLabels` — issue write; (c) queue-label step `applyQueueLabelReal` (`:1959-1964`): `ApplyLabels` — issue write | **repository write** (the dispatch claim — the one row Task 1 expects) + read + issue write |
+| `tools/desk/cmd/deskdispatch/stamponly.go:61` (`--stamp-only`) | requires the session role to equal `stampRoleForKit(kit)` — the reviewer for the review kit — then runs the same `stepStamp` as row (b) above | read + issue write |
+| `tools/desk/cmd/deskdispatch/packet_review.go:81` (`reviewPacketForgeFn`, `ResolveForge(fr, ReviewDispatcherRole)`) | the resolved forge is held only through the read-only `reviewPacketForge` interface (`:66-71`): `GetPullRequest`, `ChecksAtHead`, `ReviewsAtHead`, `ListChangedFiles`, `ChangeDiff`, `ReadFile` | read |
+| `tools/desk/cmd/deskdispatch/reviewroundread.go:58` (`liveReviewRoundForge`, `ResolveForge(fr, ReviewDispatcherRole)`) | the resolved forge is held only through the read-only `reviewRoundForge` interface (`:32-43`): `GetPullRequest`, `GetIssue`, `ReviewsAtHead`, `ListChangedFiles`, `ChecksAtHead`, `RequiredStatusChecks`, `ListLabelEvents`, `ListIssueLabelEvents`, `PRTrustEvents`, `IssueTrustEvents`, `CompareRefs`, `GetCommit` | read |
+| `tools/desk/cmd/deskdispatch/workerattestation.go:68`, `tools/desk/cmd/deskdispatch/prompt.go:212` | **not reviewer sites**: workerattestation.go resolves its forge under `stampRoleForKit(kit)`, but `validateWorkerAttestation` (`:21-27`) refuses any kit whose role is not `worker`, so the role there is always the dispatcher's; prompt.go names `stampRoleForKit` only in the comment on `kitRole` (a commit-identity mapping, no forge call) | n/a |
+| `tools/desk/cmd/deskpost/claimliveness.go:44-60` (`ghClient.claimLiveness`, `ForgeFor(fr, "reviewer")` at `:51`) | `MatchingRefs` over each review-claim family prefix through `ReadReviewClaims` (`:57-58`; age-out read for the model-floor stamp) | read |
+| `tools/desk/cmd/deskpost/forgeclient.go:88-90` (`forgeForReviewer`) + its consumers in the same package (`newForgeBackend` at `:120`; `finish.go`, next row) | `GetPullRequest`, `GetIssue(Typed)`, `ListChangedFiles`, `ListReviews`, `ChecksAtHead`, `combinedStatusAt`, `MatchingRefs` (claim liveness, `:232-237`, mirrors claimliveness.go) — all read; `PostReview` (`/pulls/{n}/reviews`) — **PR write**; `MarkReadyForReview` (the ready-flip GraphQL mutation) — **PR write**; `SetMergeHold`/`ReadMergeHold` — on GitHub `SetMergeHold` is `ErrMergeHoldNotApplicable` (no-op); on GitLab it adds/resolves a merge-request discussion note — **PR write** | read + PR write |
+| `tools/desk/cmd/deskpost/finish.go:336-375` (`releaseReviewClaim`, `forgeForReviewer` at `:359`) | with a configured claim store, `Store.Remove` (no forge call); with none (the legacy forge-ref store), `DeleteRef` of `dispatch/<key>` under `DispatchClaimActiveRefsPrefix` (`:363-364`), then on a 404/422 `RefExists` of the same ref | **repository write** (the dispatch claim — releasing it) + read |
+| `tools/desk/cmd/deskpost/comment.go:189-202` | `PostComment` / `PostCommentTyped` → `/issues/{n}/comments` (posts as the reviewer App) | issue write |
 | `tools/desk/cmd/deskpost/label.go:158` | `ApplyLabels` (verdict/size/surface labels) → create-label + issue-labels endpoints | issue write |
-| `tools/desk/internal/deskkit/modelstamp.go:607-634` | declares the `ReviewDispatcherRole = "reviewer"` constant the model-capability floor accepts; **makes no forge call itself** — it is why the grep in Verify row 4 finds it, not a site to add a permission to | n/a (declaration, not a call site) |
-| `tools/desk/cmd/deskflip/flip.go` (`RequireRole("reviewer")`; `flipRole = "pr-review-desk"` → role `reviewer` via `TokenRoleForLoop`) | reads: `ReadMergeHold`, `ListLabelEvents`, `GetPullRequest`, `ChecksAtHead`, `RequiredStatusChecks`, `ReviewsAtHead`, `ListChangedFiles`; writes: `ApplyLabels` (queue labels, `flip.go:1316`) — issue write; `SetMergeHold` (`flip.go:856`) — PR write on GitLab, no-op on GitHub | read + issue write + PR write |
+| `tools/desk/internal/deskkit/modelstamp.go:753-780` | declares the `ReviewDispatcherRole = "reviewer"` constant (`:773`) the model-capability floor accepts; **makes no forge call itself** — it is why the grep in Verify row 4 finds it, not a site to add a permission to | n/a (declaration, not a call site) |
+| `tools/desk/cmd/deskflip/flip.go` (`RequireRole(reviewerRole)` at `:178`; `flipRole = "pr-review-desk"` at `:102` → role `reviewer` via `TokenRoleForLoop`) | reads: `ReadMergeHold`, `ListLabelEvents`, `GetPullRequest`, `ChecksAtHead`, `RequiredStatusChecks`, `ReviewsAtHead`, `ListChangedFiles`; writes: `ApplyLabels` (queue labels, `flip.go:1502`) — issue write; `SetMergeHold` (`flip.go:939`) — PR write on GitLab, no-op on GitHub | read + issue write + PR write |
+| `tools/desk/cmd/deskautolane/` (`laneLoop = "pr-review-desk"` at `lane.go:28` → role `reviewer` via `TokenRoleForLoop`, forge resolved at `forge.go:56`) | reads the lane's change and conditions; writes: `ApplyLabels` (`lane.go:538`, `:734`) and `PostComment` (the eject comment, `lane.go:562`) — issue write. `main.go:25-28`: this release carries **no merge write**; the lane merge, when it ships, is a repository write and belongs in this table | read + issue write |
 | `tools/desk/cmd/deskclose/superseded.go` (reviewer's confirm/dispute half of the supersession lane; `mintedRole` from `DESK_LOOP`) | reads: `ListCommentsTyped`, `GetIssueTyped`/`GetIssue`, `GetPullRequest`; writes on confirm/dispute: `PostCommentTyped` (verdict/back-reference), `ApplyLabels` (`needs-decision`), `CloseIssueTyped` (confirm path) — all issue write | read + issue write |
-| `tools/desk/cmd/desklabel/` (`mintedRole` from `DESK_LOOP`; reviewer when run under `pr-review-desk`) | reads: `GetIssueTyped`/`GetIssue`; writes: `ApplyLabels` | read + issue write |
+| `tools/desk/cmd/desklabel/` (`mintedRole` from `DESK_LOOP`, `forge.go:31`; reviewer when run under `pr-review-desk`) | reads: `GetIssueTyped`/`GetIssue`; writes: `ApplyLabels` | read + issue write |
 
-**Result: repository write — the dispatch claim only.** Every other reviewer-role site is read,
-PR write or issue write; no finding to file for Task 1.
+**Result: repository write — the dispatch claim only** (acquired by deskdispatch through the
+claim tool; released by `deskpost finish` directly). Every other reviewer-role site is read, PR
+write or issue write; no finding to file for Task 1. The re-read adds four sites the 2026-09-18
+read predates (packet_review.go, reviewroundread.go, finish.go's release, deskautolane) and the
+model-stamp and queue-label steps in dispatch.go; none changes the result.
 
 ### 3.1b Claim reader inventory (brief 20, task 2 — brief 22's work list)
 
-Every site outside `cmd/deskclaim-ref` (the claim tool itself) that the Verify row 5 grep
-(`ClaimRefsPrefix` / `ClaimRefPath` / `refs/dispatch`) turns up, with what it does when the
-namespace is empty.
+Every site outside `cmd/deskclaim-ref` (the claim tool itself) that the Verify row 5 grep turns
+up, with what it does when the namespace is empty. Since the re-read of 2026-10-18 the grep
+searches `ClaimRefsPrefix` / `ClaimRefPath` / `refs/dispatch` **and**
+`DispatchClaimActiveRefsPrefix` / `ReadReviewClaims` / `ReviewClaimFamil`: code now names the
+namespace claims are actually acquired in through the `DispatchClaimActiveRefsPrefix` constant
+(`refs/dispatch/`, `tools/desk/internal/deskkit/claimref.go:71`), and the original three patterns
+did not find the sites that read or release a claim through it (#1606). Two namespaces are in
+use: the claim tool acquires under `refs/dispatch/`, while `ClaimRefsPrefix` is
+`refs/heads/dispatch/` (the split recorded at `claimref.go:63-70`, issue 708); the table says
+which one each site reads. Re-read at `a724e99d` (origin/main, 2026-10-18); line numbers are
+from that read.
 
 | Site | What it does | On an empty namespace |
 |---|---|---|
-| `tools/desk/cmd/desksupervise/live.go:29-70` | lists the claim namespace on the remote (in-process `gitcore.List`, authenticated as the session's role) to get live claim keys, then shells to the consumer's own `tools/dispatch-claim.sh show <key>` per key (T8) | no keys enumerated — reports zero live claims |
-| `tools/desk/cmd/desksupervise/actions.go:60-88` (`doReclaim`) | resolves a `Forge` under the session's own role and calls `Forge.DeleteRef` directly on `dispatch/<key>` — releases a stale claim WITHOUT going through `deskclaim-ref` | a ref already gone (404/422) is treated as a no-op, not a failure |
-| `tools/desk/cmd/deskpost/claimliveness.go:41-61` | direct `Forge.RefExists` read of the claim ref for the model-floor stamp age-out (§3.1a) | `RefExists` false → `ClaimLivenessFromRefPresence` reports the claim released, ages the stamp out |
-| `tools/desk/cmd/deskpost/forgeclient.go:229-241` | the same read, mirrored onto `forgeBackend` so the GitLab-capable path doesn't need a second `ForgeFor` construction | same as above |
-| `tools/desk/cmd/fanoutloop/land.go:81-154` | releases the worker-dispatch claim once a PR lands, again via `Forge.DeleteRef`, not `deskclaim-ref` | `IsForgeNotFound` → no-op (already released) |
-| `tools/desk/internal/loopengine/writescope_io.go:14-65` | reads the local git object store for `claimRefPrefix = deskkit.ClaimRefsPrefix` to derive in-flight write scope, a local-repo read rather than a forge one | no matching refs → empty write-scope, not an error |
-| `tools/desk/cmd/deskroster/` (list join, per the brief's own facts) | joins the roster listing against live claim state for display | an empty claim set just means no roster row is annotated as claimed |
-| `plugins/assay/skills/pr-shepherd/SKILL.md:27-41`, `plugins/assay/skills/worker-desk/SKILL.md:140` | tell the human/agent reader to run `git ls-remote origin 'refs/heads/dispatch/*'` directly — a documented reader outside every tool | an empty `ls-remote` output means no held claims (the skill text does not special-case it) |
-| `tools/desk/internal/deskkit/claimref.go`, `tools/desk/internal/gitcore/claimref.go` | **not readers**: `claimref.go` is the single namespace-definition file (`ClaimRefsPrefix`, `ClaimRefPath`) every writer and reader above derives its path from; `tools/desk/internal/gitcore/claimref.go` is the legacy tag-naming-scheme note the in-process `gitcore.List` reader above is built on. Library/definition code, not independent call sites | n/a |
-| `tools/desk/internal/deskkit/forge.go:1219-1223`, `tools/desk/internal/deskkit/forge_gitlab.go:3072-3126` | the `Forge.RefExists`/`DeleteRef` interface doc and the GitLab backend's own guard restricting a non-`refs/heads` ref read/delete to the claim namespace. Library/guard code the sites above call through — not itself a claim read | n/a |
-| `tools/desk/cmd/deskdispatch/dispatch.go` (comment at `:89`), `tools/desk/cmd/deskdispatch/main.go` (comment at `:30`) | comment-only mentions of the `refs/dispatch/<id>` namespace (documenting the wire protocol the claim tool speaks); dispatch.go's actual claim acquisition goes through `deskclaim-ref` (§3.1a) | n/a — no functional read here |
+| `tools/desk/cmd/desksupervise/live.go:35-128` | lists every advertised ref on the remote (in-process `gitcore.List`, `:45`, authenticated as the session's role via `claimListOpts`, `:119-131`), keeps those under `DispatchClaimActiveRefsPrefix` (`:61`) and fetches each claim's tag payload (`gitcore.FetchTagPayload`, `:52`); `showClaim` (`:135`) still shells to the consumer's `tools/dispatch-claim.sh show <key>` | no keys enumerated — reports zero live claims |
+| `tools/desk/cmd/desksupervise/actions.go:47-70` (`doReclaim` / `reclaimVersion`) | releases a stale claim WITHOUT going through `deskclaim-ref`: a conditional push of the claim ref to zero (`gitcore.PushRefUpdate`, `:61`), from the version it assessed, only when the ref is `DispatchClaimActiveRefsPrefix + key` (`:55`) | nothing listed means nothing to reclaim; a push the remote does not apply (ref already gone or moved) is held as an error, not counted as a release |
+| `tools/desk/cmd/deskpost/claimliveness.go:44-60` | lists each review-claim family (`refs/dispatch/<short>--pr-<N>`) through `ReadReviewClaims` and `Forge.MatchingRefs` for the model-floor stamp age-out (§3.1a) | every family's listing succeeds and is empty → `ClaimReleased`, the stamp ages out; any listing error → `Unknown`, nothing changes |
+| `tools/desk/cmd/deskpost/forgeclient.go:232-237` | the same read, mirrored onto `forgeBackend` so the GitLab-capable path doesn't need a second `ForgeFor` construction | same as above (GitLab's `MatchingRefs` answers could-not-check for this namespace, so it reports `Unknown`) |
+| `tools/desk/cmd/deskpost/finish.go:336-375` (`releaseReviewClaim`) | releases the review-dispatch claim WITHOUT going through `deskclaim-ref` when no claim store is configured: `Forge.DeleteRef` of `dispatch/<key>` under `DispatchClaimActiveRefsPrefix` (`:363-364`), as the reviewer (§3.1a) | a 404/422 delete is followed by `RefExists`; only a positive "absent" reports already-released, anything else is a failure |
+| `tools/desk/cmd/fanoutloop/land.go:113-161` | releases the worker-dispatch claim once a PR lands, via `Forge.DeleteRef` of `ClaimRefPath(key)` (`:123`, `:138`) — the `refs/heads/dispatch/` form, not the `refs/dispatch/` namespace the claim tool acquires in; the dry-run sink (`:47-49`) only prints | `refAlreadyGone` (`IsForgeNotFound`, `:161`) → no-op (already released) |
+| `tools/desk/internal/loopengine/writescope_io.go:14-69` | reads the local git object store (`git for-each-ref`, `:65`) for `claimRefPrefix = deskkit.ClaimRefsPrefix` (`:31`) to derive in-flight write scope — a local-repo read rather than a forge one, in the `refs/heads/dispatch/` form | no matching refs → empty write-scope, not an error |
+| `tools/desk/cmd/deskroster/` (list join, per the brief's own facts) | the brief's facts name a roster list join against live claim state; the 2026-10-18 re-read finds no reference in `cmd/deskroster/` to the claim namespace, a claim constant or the claim tool, so no claim read is found there today | n/a on the re-read — no claim read found |
+| `plugins/assay/skills/pr-shepherd/SKILL.md:27-43`, `plugins/assay/skills/worker-desk/SKILL.md:161` | tell the human/agent reader to run `git ls-remote origin 'refs/heads/dispatch/*'` directly — a documented reader outside every tool (worker-desk's row also names `desksupervise status --stops` and the claim tool's `list`/`show`, and says to run both because the namespaces differ) | an empty `ls-remote` output means no held claims (the skill text does not special-case it) |
+| `tools/desk/internal/deskkit/claimref.go`, `tools/desk/internal/gitcore/claimref.go` | **not readers**: `claimref.go` is the single namespace-definition file (`ClaimRefsPrefix`, `ClaimRefPath`, `DispatchClaimActiveRefsPrefix`, `ReviewClaimFamilies`, `ReadReviewClaims`) every writer and reader above derives its path from; `tools/desk/internal/gitcore/claimref.go:46-48` is the tag-naming note (`claimTagName`) the in-process `gitcore.List` reader above is built on. Library/definition code, not independent call sites | n/a |
+| `tools/desk/internal/deskkit/forge.go:1877-1900,2012`, `tools/desk/internal/deskkit/forge_gitlab.go:3453-3540`, `tools/desk/internal/deskkit/forge_github.go:2558-2564` | the `Forge.RefExists`/`MatchingRefs`/`DeleteRef` interface docs, the GitLab backend's guard restricting a non-`refs/heads` ref read/delete to the claim namespace and its could-not-check `MatchingRefs`, and the GitHub `MatchingRefs` doc comment. Library/guard code the sites above call through — not itself a claim read | n/a |
+| `tools/desk/cmd/deskdispatch/reviewlane.go:67-75` (`reviewLaneForClaim`) | **not a reader**: derives the review lane from the claim KEY string by comparing `DispatchClaimActiveRefsPrefix + key` against `ReviewClaimFamilies`; no forge or git read | n/a — no read here |
+| `tools/desk/cmd/deskdispatch/dispatch.go` (comment at `:97`), `tools/desk/cmd/deskdispatch/main.go` (comment at `:30`), `tools/desk/cmd/deskdispatch/repairadmission.go` (comment at `:249`), `tools/desk/internal/deskkit/repoalias.go` (comment at `:34`) | comment-only mentions: dispatch.go and main.go document the `refs/dispatch/<id>` wire protocol the claim tool speaks (dispatch.go's actual claim acquisition goes through `deskclaim-ref`, §3.1a); repairadmission.go notes that the admission lease key lives in the same namespace, and the lease is taken through the claim tool; repoalias.go notes that short labels feed `ReviewClaimFamilies` | n/a — no functional read here |
 
-**Every file the Verify row 5 grep names is accounted for above** (either as a reader, or,
-for `tools/desk/cmd/deskclaim-ref/claim.go` and `tools/desk/cmd/deskclaim-ref/main.go`, as the claim tool itself).
+**Every file the Verify row 5 grep names is accounted for above** (either as a reader or
+releaser, a definition/library/comment-only file, or, for
+`tools/desk/cmd/deskclaim-ref/claim.go` and `tools/desk/cmd/deskclaim-ref/main.go`, the claim
+tool itself).
 
 ### 3.2 What the adopter docs say about topology — this decides the default store
 
