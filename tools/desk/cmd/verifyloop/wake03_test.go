@@ -197,6 +197,7 @@ func TestWakeRecheckOverridesHold(t *testing.T) {
 
 // Verify row 5: the plan over the checked-in fixture, three blockers open — three WAIT lines
 // each naming its ref, and the summary line.
+// regression: #2798
 func TestPlanWakeFixture(t *testing.T) {
 	old := issueSourceFn
 	t.Cleanup(func() { issueSourceFn = old })

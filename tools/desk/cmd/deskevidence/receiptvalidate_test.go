@@ -52,6 +52,7 @@ func briefWithFiles(paths ...string) string {
 }
 
 // TestReceiptInputsCoverDeliverables is Verify row 13.
+// regression: #2798
 func TestReceiptInputsCoverDeliverables(t *testing.T) {
 	dir := t.TempDir()
 	rvGitIn(t, dir, "init", "-q", "-b", "main")
@@ -96,14 +97,18 @@ func TestReceiptInputsCoverDeliverables(t *testing.T) {
 	rvGitIn(t, dir, "commit", "-qm", "brief 03 base")
 	sha3 := rvGitIn(t, dir, "rev-parse", "HEAD")
 
-	t.Run("a directory entry needs one file: key under it", func(t *testing.T) {
+	t.Run("a directory entry needs every file: key under it", func(t *testing.T) {
 		missing := deskkit.WakeReceipt{Brief: "example-stream/03", SHA: sha3, Inputs: map[string]string{"tool": "v1"}}
 		if err := validateReceiptInputsCoverDeliverables(dir, missing); deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 			t.Fatalf("directory with no nested file: key: exit = %v, want Refused (err=%v)", deskkit.ExitCodeOf(err), err)
 		}
-		covered := deskkit.WakeReceipt{Brief: "example-stream/03", SHA: sha3, Inputs: map[string]string{"tool": "v1", "file:foo/bar.go": "h1"}}
+		covered := deskkit.WakeReceipt{Brief: "example-stream/03", SHA: sha3, Inputs: map[string]string{"tool": "v1", "file:foo/bar.go": "h1", "file:foo/baz.go": "h2"}}
 		if err := validateReceiptInputsCoverDeliverables(dir, covered); err != nil {
-			t.Fatalf("directory covered by a nested file: key must pass: %v", err)
+			t.Fatalf("directory covered by every nested file: key must pass: %v", err)
+		}
+		delete(covered.Inputs, "file:foo/baz.go")
+		if err := validateReceiptInputsCoverDeliverables(dir, covered); deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "foo/baz.go") {
+			t.Fatalf("partial directory coverage accepted: %v", err)
 		}
 	})
 

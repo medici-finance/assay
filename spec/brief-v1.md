@@ -170,7 +170,17 @@ brief lifecycle or a universal observation mandate.
 
 The body MUST contain a `## Context` section. It MUST include:
 
-- A `files:` line listing exact paths the implementer touches.
+- A `files:` field listing repository-relative paths the implementer touches, as
+  bare or backtick-quoted list items or inline comma-separated declarations.
+  Literal files/directories, segment globs (`*`, `?`, character classes) and
+  bounded finite brace alternatives are supported. A declaration ends before
+  its em-dash description or a colon after a quoted path; descriptions and
+  parenthesized annotations do not declare additional paths. The field ends at
+  the next blank line, Context field or section. Examples inside fences do not
+  declare paths. Duplicate Context sections/fields are ambiguous and refused.
+  Abbreviations, placeholders, recursive `**` and malformed/escaping paths MUST
+  be reported explicitly, never interpreted as absent deliverables. See the
+  [declaration and observation contract](../docs/declared-input-scope.md).
 - A `facts:` block containing 3-5 project facts as `key: value` pairs (no narrative prose).
 
 If the brief changes a SHARED VALUE (a party, identity, environment variable name,

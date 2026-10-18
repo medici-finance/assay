@@ -63,8 +63,25 @@ retired — see desk-supervision/24's Task step 8). Either shape's content is ex
 
 Input revisions cover the **Verify definition**, the **relevant deliverable/dependency
 revisions**, and the **applicable tool version**. Keys are opaque to the evaluator; the
-already-authorized reader interprets them (the offline reader understands `tool` and
-`file:<repo-relative-path>`).
+already-authorized reader interprets them. The offline reader understands `tool`,
+`file:<repo-relative-path>`, and `scope:<canonical-declaration>`. Each scope digest
+records the admitted declaration's path kinds and sorted membership, including a
+literal planned path's absence. Directory/glob member additions or removals and
+planned-file creation can therefore wake work without a pre-existing content key.
+File keys still hash the original admitted observation Source; the brief's key
+still hashes landed Evidence, and the supplied tool-version contract is retained.
+
+The [declaration contract](../../declared-input-scope.md) is shared by derivation,
+all-file coverage, Source-to-Evidence shape checks and the root reader. A new
+declaration, kind or membership between Source and Evidence requires fresh admission
+and observation. No target-branch repair replaces the original observed bytes.
+Historical receipts stay immutable. If today's declarations need scope keys a
+historical receipt lacks, the root reader reports could-not-check and requires a
+fresh admission/observation; it cannot assert an unchanged hold. An independently
+observed input change still fires even when another scope could not be checked.
+Older readers encountering the new scope keys report could-not-check on unknown
+keys. Custom readers must opt into the optional scope-completeness interface to
+provide this authoring-aware check; opaque reader semantics otherwise stay intact.
 
 ### Blocker kinds (closed set) → next actor
 

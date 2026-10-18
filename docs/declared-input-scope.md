@@ -1,0 +1,123 @@
+# Declared verification input scope
+
+Issue #2798 closes a shared parsing/expansion defect: declarations silently became
+an empty or partial wake input scope. A single error-returning parser and tree
+resolver now own the writer, coverage and Source-to-Evidence shape contract.
+
+## Declaration grammar
+
+Only `files:` inside one unfenced `## Context` declares inputs. A field can start
+inline or continue as list items. Bare and backtick-quoted repository paths are
+equivalent. Commas, semicolons, `+` and `and` separate declarations. Optional bold
+action labels, parenthesized annotations and the existing `and tests`/`their tests`
+annotations are prose; name actual test paths when those tests belong to scope.
+An em-dash description, or a colon after a quoted path, ends the declaration part
+of that line. Backticks inside that description, facts, other sections and fenced
+examples do not add files. A blank line, another Context field or section ends the
+field. Duplicate Context sections or files fields are refused explicitly.
+
+Supported path forms:
+
+- Literal files and directories; a directory includes every nested file. A trailing
+  slash is normalized. A literal not yet present has an absence scope digest and
+  no content hash; that is distinct from an unreadable tree.
+- Segment globs interpreted by Go `path.Match`: `*`, `?` and character classes.
+  Matched directories include their descendants. A glob with no match has an empty
+  membership digest. Patterns use slash separators on every host.
+- Finite brace alternatives, such as `cmd/{one,two}/main.go`, expanded before tree
+  resolution. At most 256 expansions per declaration; nested/empty alternatives
+  are refused. This supports the existing desk-tools/37 and /38 declarations.
+
+Placeholders (`<slug>`), ellipses (`...`, `…`), recursive `**`, malformed glob/brace
+syntax, noncanonical paths, absolute/drive paths, traversal, backslashes, controls
+and whitespace within paths are explicit refusals. There is no shell expansion,
+abbreviation guessing or out-of-repository lookup. One path is at most 4096 bytes;
+canonical declarations and selected files are bounded at 4096. Exceeding a bound
+is reported, never truncated to a partial successful scope. Other historical prose
+forms need an explicit declaration repair and fresh observation.
+
+## Observation and reader contract
+
+`BriefDeclaredFiles` returns declarations or an error. `ResolveDeclaredScope`
+returns the exact existing files and one `scope:` digest per canonical declaration.
+Membership digests hash sorted, NUL-separated kind/path terms. Globs include
+matched directory membership; content hashes are separate `file:` keys. Successful
+absence, empty membership, unsupported syntax and unreadable state remain distinct.
+
+`BuildOutcomeRecord` reads declarations and deliverable bytes from the admitted
+observation tree. Coverage requires every selected existing file. The admission
+binding independently compares the exact derived input set, preserves the supplied
+tool version, and refuses declaration/kind/membership changes before Evidence
+landing. The landed brief is the only file hashed from landed Evidence. A content
+repair can wake the original failure; a new membership shape requires fresh
+independent verification rather than relabelling the old observation.
+
+The root reader checks required scope-key coverage before claiming unchangedness.
+Historical partial receipts therefore remain intact and become could-not-check;
+they do not acquire new hashes from the current branch. Known observed changes
+still fire. No declared files is a legitimate empty declaration set; an unsupported
+declaration is an error. Generic/custom input readers retain opaque semantics
+unless they implement `CheckReceiptScope`.
+
+Local enumeration never follows ancestor directory symlinks. A final symlink is a
+Git-style blob whose content hash is its link text. Read/enumeration errors are
+could-not-check. Local extra files can conservatively wake a directory/glob scope;
+the reader does not infer that untracked files were in the admitted Git snapshot.
+
+## Consumer inventory
+
+| Consumer | Disposition |
+|---|---|
+| deskkit receipt derivation | Shared parser, expansion, file hashes and membership digests |
+| deskevidence coverage | Same expansion, every selected file required |
+| deskevidence observation/shape binding | Exact original Source inputs; fresh admission on shape changes |
+| verifyloop failed/blocked scheduling | Shared `Unchanged` and `EvaluateWake`; root completeness plus scope revisions |
+| statusgen outcome-register reader | Reads scheduling history; does not evaluate wake input revisions |
+
+The Go engineering catalogue selects no generic Markdown parser for this semantic
+field. This reuses the existing deskkit owner and standard-library `path.Match`,
+filesystem and Git-tree adapters; it adds no dependency, CLI or second writer.
+The small field grammar is intentionally not a general Markdown implementation.
+
+## Corpus observations
+
+Inventory results below describe declarations at the named immutable source, not
+a new Verify result or a migration of historical Evidence/outcomes. Source manifests
+of an entire execution snapshot are provenance, not a declaration that every tracked
+file belongs to the receipt scope.
+
+The independently observed desk-tools/37 and /38 failure proposals cover 12 and 44
+implementation files respectively, plus their brief and tool. The shared resolver
+retains those exact file sets. Their real failed acceptance rows remain owed;
+this parser fix grants no lifecycle promotion and rewrites none of those receipts.
+
+
+At source `6de70c43819e` (485 tracked `docs/streams/**/brief-*.md` files),
+the repaired parser and Git-tree resolver produced 183 supported scopes, 299
+explicit refusals and three Context sections with no files field. The refusals
+are 35 unsupported path forms, 232 unsupported declaration tails, 27 unclosed
+single-line annotations, one unclosed path quote, one empty tail/path and three
+unsupported annotated field markers. These are first diagnostics per brief,
+not counts of every bad token. None was counted as a successfully empty scope.
+
+| Named example | Canonical declarations | Existing implementation files |
+|---|---:|---:|
+| cellctl-windows/00 (bare paths) | 4 | 6 |
+| forge-neutral/36 (inline and continued paths) | 20 | 52 |
+| fresh-views/02 (globs and descriptions) | 3 | 59 |
+| desk-tools/37 (finite braces and directories) | 9 | 12 |
+| desk-tools/38 (finite braces and directories) | 40 | 44 |
+
+The 12/44 sets were compared exactly with the independently observed failure
+proposals, excluding each proposal's brief/tool keys; equality held. This checks
+scope preservation, not the historical execution result. Both existing failed
+verdicts and their original admission/source bindings remain authoritative.
+
+Representative unsupported authoring is explicit: `changelog/<branch-slug>.md`
+(forge-neutral briefs), `tools/desk/**` recursive patterns, and abbreviated prose
+such as `files (created/extended by this phase):` in statusgen/05. Preserve existing
+Evidence while replacing such declarations with exact paths/segment globs for a
+fresh admitted observation. The three Contexts without a files field are
+ desk-tools/31, /33 and /36; they remain the parser's explicit no-declaration case,
+not a successful parse of the 299 refused declarations. This inventory does not
+silently narrow their actual verification scope or assert those briefs are closed.

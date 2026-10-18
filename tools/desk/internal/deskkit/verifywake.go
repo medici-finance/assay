@@ -307,6 +307,10 @@ type WakeInputs interface {
 	ActionCompleted(ref string) (done bool, ok bool)
 }
 
+// Readers that know the authoring contract can additionally reject incomplete
+// historical scopes. Generic/custom readers retain their own declared semantics.
+type receiptScopeReader interface{ CheckReceiptScope(WakeReceipt) error }
+
 // EvaluateWake decides whether the receipt's held work should stay held, wake, be reported as
 // could-not-check, or be reclassified. It is pure: all external observation comes through reader
 // and the clock through now, so a fake reader and a fake clock exercise every path.
@@ -320,6 +324,11 @@ func (r WakeReceipt) EvaluateWake(reader WakeInputs, now time.Time) WakeDecision
 	switch r.WakePredicate {
 	case WakeRelevantInputChanged:
 		var changed, unreadable []string
+		if scope, ok := reader.(receiptScopeReader); ok {
+			if err := scope.CheckReceiptScope(r); err != nil {
+				unreadable = append(unreadable, "declared scope: "+err.Error())
+			}
+		}
 		for _, in := range wakeSortedKeys(r.Inputs) {
 			cur, ok := reader.Revision(in)
 			if !ok {
@@ -330,15 +339,13 @@ func (r WakeReceipt) EvaluateWake(reader WakeInputs, now time.Time) WakeDecision
 				changed = append(changed, in)
 			}
 		}
-		// Could-not-check is decided FIRST: an unreadable input means unchangedness is not
-		// establishable, so we never claim a hold on a partially-read scope.
-		if len(unreadable) > 0 {
-			return WakeDecision{State: WakeCouldNotCheck, Unreadable: unreadable,
-				Reason: base + " — could-not-check: unreadable declared input(s): " + strings.Join(unreadable, ", ")}
-		}
 		if len(changed) > 0 {
 			return WakeDecision{State: WakeFire, Changed: changed,
 				Reason: base + " — woke: changed input(s): " + strings.Join(changed, ", ")}
+		}
+		if len(unreadable) > 0 {
+			return WakeDecision{State: WakeCouldNotCheck, Unreadable: unreadable,
+				Reason: base + " — could-not-check: unreadable declared input(s): " + strings.Join(unreadable, ", ")}
 		}
 		return WakeDecision{State: WakeHold, Reason: base + " — all " + strconv.Itoa(len(r.Inputs)) + " declared input(s) unchanged"}
 
@@ -484,6 +491,9 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 		return head, true
 	case strings.HasPrefix(input, inputKeyFilePrefix):
 		rel := strings.TrimPrefix(input, inputKeyFilePrefix)
+		if _, err := (rootScopeTree{root: rr.Root}).safePath(rel); err != nil {
+			return "", false
+		}
 		// Contain the read within the root: a key that climbs out is could-not-check, never a
 		// read of an arbitrary path.
 		clean := filepath.Clean(rel)
@@ -508,6 +518,13 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 		}
 		sum := sha256.Sum256(b)
 		return hex.EncodeToString(sum[:]), true
+	case strings.HasPrefix(input, InputKeyScopePrefix):
+		decl := strings.TrimPrefix(input, InputKeyScopePrefix)
+		scope, err := ResolveDeclaredScope([]string{decl}, rootScopeTree{root: rr.Root})
+		if err != nil {
+			return "", false
+		}
+		return scope.Shapes[input], true
 	default:
 		return "", false
 	}
@@ -551,6 +568,11 @@ func Unchanged(r WakeReceipt, tree WakeInputs) (InputsState, string) {
 		return InputsCouldNotCheck, "could-not-check the receipt declares no inputs"
 	}
 	var changed, unreadable []string
+	if scope, ok := tree.(receiptScopeReader); ok {
+		if err := scope.CheckReceiptScope(r); err != nil {
+			unreadable = append(unreadable, "declared scope: "+err.Error())
+		}
+	}
 	for _, in := range wakeSortedKeys(r.Inputs) {
 		cur, ok := tree.Revision(in)
 		switch {
