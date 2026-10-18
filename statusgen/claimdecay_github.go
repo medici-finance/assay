@@ -21,10 +21,13 @@ package main
 // the same reason `gh` did.
 //
 // Credential: GH_TOKEN, then GITHUB_TOKEN (what a workflow step passes), then —
-// only when neither is set and `gh` happens to be on PATH — `gh auth token`, so a
-// desk machine that relied on gh's own login keeps decaying. `gh` is never
-// REQUIRED. GitHub's GraphQL API refuses unauthenticated calls, so no credential
-// at all is a named could-not-check before any request, never an anonymous try.
+// only when neither is set and `gh` happens to be on PATH — `gh auth token
+// --hostname github.com`, so a desk machine that relied on gh's own login keeps
+// decaying. `gh` is never REQUIRED. An endpoint guessed from the origin host (a
+// GitHub Enterprise Server) gets only an enterprise credential, never the
+// github.com one (githubDecayToken). GitHub's GraphQL API refuses unauthenticated
+// calls, so no credential at all is a named could-not-check before any request,
+// never an anonymous try.
 //
 // Three-state contract (docs/three-state-instrument-rule.md): every exit is a
 // listing that was read in full, or an error naming why it could not be. A
@@ -38,6 +41,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -55,42 +59,91 @@ var githubDecayMaxPages = 1000
 // reach guard (lintoffline_test.go) watches and tests replace.
 var githubDecayClient = &http.Client{Timeout: 30 * time.Second}
 
-// githubDecayToken returns the credential for the branch read and where it came
-// from (for the could-not-check text). Empty when there is none.
-func githubDecayToken() (token, source string) {
-	for _, env := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
+// githubDecayToken returns the credential for a request to endpoint, where it
+// came from (for the could-not-check text), and the variables that would have
+// supplied it (for the no-credential text). Token and source are empty when
+// there is none.
+//
+// The credential stays on the host it was issued for — the split `gh` itself
+// makes:
+//
+//   - An endpoint DERIVED from the origin remote's host (the GitHub Enterprise
+//     Server guess in githubDecayEndpoint) gets only an enterprise credential:
+//     GH_ENTERPRISE_TOKEN, GITHUB_ENTERPRISE_TOKEN, then `gh auth token
+//     --hostname <host>`. Never GH_TOKEN, GITHUB_TOKEN or gh's github.com login:
+//     the derivation trusts any host with a "github" label, so an origin on a
+//     lookalike host would otherwise receive the github.com credential on a
+//     plain regen.
+//   - github.com's endpoint, or one the operator set in GITHUB_GRAPHQL_URL, gets
+//     GH_TOKEN, then GITHUB_TOKEN, then `gh auth token --hostname <host>`.
+//
+// `gh` is consulted only when it is on PATH, and always with --hostname: a bare
+// `gh auth token` answers with the github.com login whatever host is asked about.
+func githubDecayToken(endpoint string, derived bool) (token, source string, vars []string) {
+	vars = []string{"GH_TOKEN", "GITHUB_TOKEN"}
+	if derived {
+		vars = []string{"GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
+	}
+	for _, env := range vars {
 		if v := strings.TrimSpace(os.Getenv(env)); v != "" {
-			return v, env
+			return v, env, vars
 		}
+	}
+	host := githubCredentialHost(endpoint)
+	if host == "" {
+		return "", "", vars
 	}
 	if _, err := exec.LookPath("gh"); err != nil {
-		return "", ""
+		return "", "", vars
 	}
-	if out, err := exec.Command("gh", "auth", "token").Output(); err == nil {
+	if out, err := exec.Command("gh", "auth", "token", "--hostname", host).Output(); err == nil {
 		if v := strings.TrimSpace(string(out)); v != "" {
-			return v, "`gh auth token`"
+			return v, "`gh auth token --hostname " + host + "`", vars
 		}
 	}
-	return "", ""
+	return "", "", vars
 }
 
-// githubGraphQLEndpoint returns the GraphQL endpoint for the repository behind
-// root. GITHUB_GRAPHQL_URL (set by Actions, and by an operator on a GitHub
-// Enterprise host) wins. Otherwise a remote whose host carries the label "github"
-// and is not github.com itself is a GitHub Enterprise Server host, answered at
-// https://<host>/api/graphql; anything else — github.com, an SSH host alias, an
-// unreadable remote — is github.com's endpoint.
-func githubGraphQLEndpoint(root string) string {
+// githubCredentialHost is the host a credential for endpoint is issued for:
+// github.com for its API host, the endpoint's own host otherwise. Empty when the
+// endpoint does not parse to a host.
+func githubCredentialHost(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Hostname() == "" {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "api.github.com" {
+		return "github.com"
+	}
+	return host
+}
+
+// githubDecayEndpoint returns the GraphQL endpoint for the repository behind
+// root, and whether it was DERIVED from the origin remote's host rather than set
+// by the operator or defaulted. GITHUB_GRAPHQL_URL (set by Actions, and by an
+// operator on a GitHub Enterprise host) wins. Otherwise a remote whose host
+// carries the label "github" and is not github.com itself is taken for a GitHub
+// Enterprise Server host, answered at https://<host>/api/graphql — derived, so
+// githubDecayToken sends it only an enterprise credential. Anything else —
+// github.com, an SSH host alias, an unreadable remote — is github.com's endpoint.
+func githubDecayEndpoint(root string) (endpoint string, derived bool) {
 	if v := strings.TrimSpace(os.Getenv("GITHUB_GRAPHQL_URL")); v != "" {
-		return v
+		return v, false
 	}
 	if raw, err := remoteOriginURL(root); err == nil {
 		host := remoteHost(raw)
 		if classifyForgeHost(host) == forgeGitHub && host != "github.com" && !strings.HasSuffix(host, ".github.com") {
-			return "https://" + host + "/api/graphql"
+			return "https://" + host + "/api/graphql", true
 		}
 	}
-	return "https://api.github.com/graphql"
+	return "https://api.github.com/graphql", false
+}
+
+// githubGraphQLEndpoint is githubDecayEndpoint's endpoint alone.
+func githubGraphQLEndpoint(root string) string {
+	endpoint, _ := githubDecayEndpoint(root)
+	return endpoint
 }
 
 // githubDecayRepo returns the owner and name to query: the `origin` remote's
@@ -128,16 +181,22 @@ type githubBranchPageInfo struct {
 // walk and is returned as it stands: listMergedClosedBranches refuses it with
 // the page number, so it is never read as an empty page.
 func githubBranchPRPages(root string) ([]byte, error) {
-	token, source := githubDecayToken()
+	endpoint, derived := githubDecayEndpoint(root)
+	token, source, vars := githubDecayToken(endpoint, derived)
 	if token == "" {
-		return nil, fmt.Errorf("no GitHub API token: set GH_TOKEN or GITHUB_TOKEN (in a workflow, the job's token with pull-requests read), " +
-			"or log in with `gh`; the GitHub GraphQL API does not answer unauthenticated reads")
+		if derived {
+			host := githubCredentialHost(endpoint)
+			return nil, fmt.Errorf("no GitHub API token for %s: set %s, or log in with `gh auth login --hostname %s` "+
+				"(the github.com credential is never sent to another host); the GitHub GraphQL API does not answer unauthenticated reads",
+				host, strings.Join(vars, " or "), host)
+		}
+		return nil, fmt.Errorf("no GitHub API token: set %s (in a workflow, the job's token with pull-requests read), "+
+			"or log in with `gh`; the GitHub GraphQL API does not answer unauthenticated reads", strings.Join(vars, " or "))
 	}
 	owner, name, err := githubDecayRepo(root)
 	if err != nil {
 		return nil, err
 	}
-	endpoint := githubGraphQLEndpoint(root)
 	var pages []json.RawMessage
 	var cursor any // JSON null on the first page
 	for page := 1; page <= githubDecayMaxPages; page++ {

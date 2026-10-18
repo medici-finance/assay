@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -241,4 +244,113 @@ func TestGitHubDecayTarget(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDecayTokenStaysOnItsHost: the github.com credential (GH_TOKEN,
+// GITHUB_TOKEN, gh's github.com login) is never sent to a host the endpoint was
+// merely GUESSED from — an origin on any host with a "github" label, a lookalike
+// included. That host gets only an enterprise credential, and the enterprise
+// credential never goes to github.com. An endpoint the operator set explicitly
+// (GITHUB_GRAPHQL_URL) is an opt-in and gets the ordinary credential.
+//
+// regression: SEC-2 on #3384
+func TestDecayTokenStaysOnItsHost(t *testing.T) {
+	const lookalike = "https://github.lookalike.example/acme/widgets.git"
+	setOrigin := func(t *testing.T, origin string) {
+		prev := remoteOriginURL
+		remoteOriginURL = func(string) (string, error) { return origin, nil }
+		t.Cleanup(func() { remoteOriginURL = prev })
+	}
+	sawToken := func(calls []graphqlCall, token string) bool {
+		for _, c := range calls {
+			if strings.Contains(c.Auth, token) {
+				return true
+			}
+		}
+		return false
+	}
+
+	t.Run("lookalike-origin-never-gets-github-token", func(t *testing.T) {
+		offlineGitHubEnv(t, "com-token")
+		t.Setenv("GITHUB_TOKEN", "com-token-2")
+		t.Setenv("GH_ENTERPRISE_TOKEN", "")
+		t.Setenv("GITHUB_ENTERPRISE_TOKEN", "")
+		setOrigin(t, lookalike)
+		calls := fakeGraphQL(t, func(int, map[string]any) (int, string) { return 200, branchPage(false, "", nil) })
+		_, err := githubBranchPRPages("/repo")
+		if err == nil || !strings.Contains(err.Error(), "GH_ENTERPRISE_TOKEN") || !strings.Contains(err.Error(), "github.lookalike.example") {
+			t.Fatalf("a guessed enterprise host with no enterprise credential must be a could-not-check naming it; got %v", err)
+		}
+		if len(*calls) != 0 || sawToken(*calls, "com-token") {
+			t.Fatalf("the github.com credential reached a guessed host: %+v", *calls)
+		}
+	})
+
+	t.Run("lookalike-origin-gets-enterprise-token-only", func(t *testing.T) {
+		offlineGitHubEnv(t, "com-token")
+		t.Setenv("GH_ENTERPRISE_TOKEN", "ent-token")
+		setOrigin(t, lookalike)
+		calls := fakeGraphQL(t, func(int, map[string]any) (int, string) { return 200, branchPage(false, "", nil) })
+		if _, err := githubBranchPRPages("/repo"); err != nil {
+			t.Fatalf("read with an enterprise credential: %v", err)
+		}
+		if len(*calls) != 1 || (*calls)[0].URL != "https://github.lookalike.example/api/graphql" || (*calls)[0].Auth != "Bearer ent-token" {
+			t.Fatalf("want one POST to the enterprise endpoint with the enterprise bearer; got %+v", *calls)
+		}
+	})
+
+	t.Run("github-com-never-gets-enterprise-token", func(t *testing.T) {
+		offlineGitHubEnv(t, "")
+		t.Setenv("GH_ENTERPRISE_TOKEN", "ent-token")
+		calls := fakeGraphQL(t, func(int, map[string]any) (int, string) { return 200, branchPage(false, "", nil) })
+		if _, err := githubBranchPRPages("/repo"); err == nil || !strings.Contains(err.Error(), "GH_TOKEN") {
+			t.Fatalf("github.com with only an enterprise credential must be a could-not-check; got %v", err)
+		}
+		if len(*calls) != 0 {
+			t.Fatalf("the enterprise credential reached github.com: %+v", *calls)
+		}
+	})
+
+	t.Run("operator-endpoint-is-an-opt-in", func(t *testing.T) {
+		offlineGitHubEnv(t, "com-token")
+		t.Setenv("GITHUB_GRAPHQL_URL", "https://ghe.example/api/graphql")
+		calls := fakeGraphQL(t, func(int, map[string]any) (int, string) { return 200, branchPage(false, "", nil) })
+		if _, err := githubBranchPRPages("/repo"); err != nil {
+			t.Fatalf("read at the operator's endpoint: %v", err)
+		}
+		if len(*calls) != 1 || (*calls)[0].URL != "https://ghe.example/api/graphql" || (*calls)[0].Auth != "Bearer com-token" {
+			t.Fatalf("want one POST to GITHUB_GRAPHQL_URL with GH_TOKEN; got %+v", *calls)
+		}
+	})
+
+	t.Run("gh-is-asked-for-the-guessed-host", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("the gh stand-in is a POSIX shell script")
+		}
+		offlineGitHubEnv(t, "com-token")
+		t.Setenv("GH_ENTERPRISE_TOKEN", "")
+		t.Setenv("GITHUB_ENTERPRISE_TOKEN", "")
+		setOrigin(t, lookalike)
+		dir := t.TempDir()
+		argLog := filepath.Join(dir, "gh-args")
+		// The stand-in answers only a host-scoped ask, the way gh does for a
+		// host it holds a login for; a bare `gh auth token` gets nothing.
+		script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"" + argLog + "\"\n" +
+			"[ \"$*\" = \"auth token --hostname github.lookalike.example\" ] && echo host-token\nexit 0\n"
+		if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", dir)
+		calls := fakeGraphQL(t, func(int, map[string]any) (int, string) { return 200, branchPage(false, "", nil) })
+		if _, err := githubBranchPRPages("/repo"); err != nil {
+			t.Fatalf("read with gh's host-scoped login: %v", err)
+		}
+		args, _ := os.ReadFile(argLog)
+		if got := strings.TrimSpace(string(args)); got != "auth token --hostname github.lookalike.example" {
+			t.Fatalf("gh must be asked for the guessed host's login only; asked %q", got)
+		}
+		if len(*calls) != 1 || (*calls)[0].Auth != "Bearer host-token" || sawToken(*calls, "com-token") {
+			t.Fatalf("want one request carrying gh's host-scoped token; got %+v", *calls)
+		}
+	})
 }
