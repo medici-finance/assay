@@ -119,7 +119,7 @@ func verifierFixtureRepo(t *testing.T, root string, extra map[string]string) {
 	plantRoster(t, "ASSAY_BLESS_LOGIN=example-human:2001\nASSAY_TRUSTED_LOGINS=example-human:2001\nASSAY_TRUSTED_BOT_SLUGS=desk=example-desk:1,verifier=example-verifier:2\nASSAY_ALLOWED_REPOS=example-org/one:ci:private\n")
 	git := func(args ...string) {
 		t.Helper()
-		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		cmd := verifierFixtureGitCommand(append([]string{"-C", root}, args...)...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %s %v", args, out, err)
 		}
@@ -275,10 +275,10 @@ func TestVerifierAttestationCopiedHomeCannotRebind(t *testing.T) {
 		t.Fatal(err)
 	}
 	other := t.TempDir()
-	if out, err := exec.Command("git", "clone", "--no-hardlinks", root, other).CombinedOutput(); err != nil {
+	if out, err := verifierFixtureGitCommand("clone", "--no-hardlinks", root, other).CombinedOutput(); err != nil {
 		t.Fatalf("%s: %v", out, err)
 	}
-	if out, err := exec.Command("git", "-C", other, "checkout", "--detach").CombinedOutput(); err != nil {
+	if out, err := verifierFixtureGitCommand("-C", other, "checkout", "--detach").CombinedOutput(); err != nil {
 		t.Fatalf("%s: %v", out, err)
 	}
 	r, _ := verifierLoad(root)
@@ -316,9 +316,26 @@ func TestVerifierAttestationDryPlanRequiresExistingBinding(t *testing.T) {
 
 func attestGit(t *testing.T, root string, args ...string) {
 	t.Helper()
-	if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+	if out, err := verifierFixtureGitCommand(append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %s %v", args, out, err)
 	}
+}
+
+// verifierFixtureGitCommand keeps caller Git controls from changing fixture
+// setup and positive controls. Tests that exercise caller-controlled config
+// set it directly at the row boundary they are checking.
+func verifierFixtureGitCommand(args ...string) *exec.Cmd {
+	cmd := exec.Command("git", args...)
+	env := make([]string, 0, len(os.Environ()))
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		if key == "GIT_NO_REPLACE_OBJECTS" || strings.HasPrefix(key, "GIT_CONFIG_") {
+			continue
+		}
+		env = append(env, entry)
+	}
+	cmd.Env = env
+	return cmd
 }
 
 func TestAttestActorSeparation(t *testing.T) {
@@ -335,6 +352,7 @@ func TestAttestActorSeparation(t *testing.T) {
 	}
 }
 
+// regression: #2715
 // The same reader is used before execution and before Evidence landing. Each
 // fixture alters the real dispatched home, leaving the immutable record intact.
 func TestAttestSourceClosure(t *testing.T) {
@@ -794,7 +812,7 @@ func attrTreeUnsetsFilter(t *testing.T, root, name string) {
 
 func attestIn(t *testing.T, root, stdin string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+	cmd := verifierFixtureGitCommand(append([]string{"-C", root}, args...)...)
 	cmd.Stdin = strings.NewReader(stdin)
 	out, err := cmd.Output()
 	if err != nil {
@@ -805,13 +823,14 @@ func attestIn(t *testing.T, root, stdin string, args ...string) string {
 
 func attestOut(t *testing.T, root string, args ...string) string {
 	t.Helper()
-	out, err := exec.Command("git", append([]string{"-C", root}, args...)...).Output()
+	out, err := verifierFixtureGitCommand(append([]string{"-C", root}, args...)...).Output()
 	if err != nil {
 		t.Fatalf("git %v: %v", args, err)
 	}
 	return string(out)
 }
 
+// regression: #2715
 // The tree reader must resolve the dispatched commit's real objects even when a
 // replacement exists; the separate replace-ref refusal is pinned above.
 func TestVerifierTreeIgnoresReplacements(t *testing.T) {
