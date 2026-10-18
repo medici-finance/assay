@@ -23,10 +23,19 @@ fresh regen — the drift gate). The model is **single-writer**: only one CI
 job (typically triggered on push to the default branch) ever commits
 `STATUS.md`; every other context (PRs, local runs) only reads or lints.
 
-Both gate modes always end stdout with exactly one machine-parseable verdict
-line — `LINT: PASS` / `LINT: FAIL <n> problem(s)` for `--lint`, `CHECK: PASS`
-/ `CHECK: DRIFT <n>` for `--check` — so a caller reads the outcome from the
-output itself instead of interrogating the exit code in a separate shell.
+After evaluating sources, both gate modes end stdout with exactly one
+machine-parseable verdict line: `LINT: PASS` / `LINT: FAIL <n> problem(s)` for
+`--lint`, and `CHECK: PASS` / `CHECK: DRIFT <n>` for `--check`.
+
+A configuration refusal stops `--lint` **before evaluation**, with exit **5**
+and exactly `LINT: REFUSED configuration; trust-dependent checks could-not-check`
+on stdout. The existing `assay-config: REFUSED` diagnostics and a summary on
+stderr explain the unavailable trust axis. This also applies to repeated
+`--root` and `--diff-base`; a refusal is never a demotable source problem.
+Ordinary lint success remains exit **0**, source problems exit **1**, and
+argument/usage errors exit **2**. Check the exit status from the same invocation;
+`go run` wraps a binary's nonzero status, so use the built binary when the exact
+code matters. See [the caller inventory](../docs/statusgen-lint-refusal.md).
 
 ## Layout
 

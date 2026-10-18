@@ -10,7 +10,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 3
 authored: 2026-10-17 by statusgen newbrief
 sources:
   - docs/desk-workflow-efficiency-spec.md
@@ -22,17 +22,27 @@ exec-tier: strong
 exec-tier-why: Semantic extraction, cost coverage and cross-caller failure behavior require independent contract judgment.
 domain: complicated
 consumers:
-  - "tools/desk/cmd/deskboard/: follow-up desk-tools/37"
-  - "tools/desk/cmd/reviewloop/: follow-up desk-tools/37"
-  - "tools/desk/cmd/deskdispatch/: follow-up desk-tools/37"
-  - "tools/desk/cmd/issueboard/: follow-up desk-tools/37"
+  - "tools/desk/cmd/deskboard/: fixed-here (test-only production sweep adapter)"
+  - "tools/desk/cmd/reviewloop/: fixed-here (test-only production plan adapter)"
+  - "tools/desk/cmd/deskdispatch/: fixed-here (test-only pre-claim round and hold adapter)"
+  - "tools/desk/cmd/issueboard/: fixed-here (test-only command and HTTP enumeration adapter)"
 ---
 
 # Brief 37 — Review workflow semantic oracle and matched cost baseline
 
 ## Context
 
-files: `tools/desk/internal/reviewtest/` (planned), `tools/desk/internal/reviewtest/testdata/` (planned), `docs/review-efficiency-qualification.md` (planned), `changelog/desk-tools-37.md` (planned)
+files: `tools/desk/internal/reviewtest/`, `tools/desk/internal/reviewtest/testdata/`, `tools/desk/cmd/{deskboard,reviewloop,deskdispatch,issueboard}/qualification_test.go`, `tools/desk/internal/deskkit/citrigger_test.go`, `docs/review-efficiency-qualification.md`, `changelog/desk-tools-37.md`
+
+Implementation scope clarification (v2): the commands are separate `package main`
+packages, so the fixture reaches their production handlers through test-binary adapters.
+The four `_test.go` bridges add no shipped flags or alternative policy implementation.
+The v3 observation boundary includes captured planner stdout and dispatch round text;
+literal output assertions and production-rendering overlays supplement internal values.
+The CI reader classification records that compiling those adapters stays within the desk
+module. Cost coverage is explicit: local issue enumeration reaches the production HTTP
+adapter; other typed fakes and the fixed Git reviewer do not establish full provider,
+model, launcher or descendant CPU cost. Filling those counters remains desk-tools/38.
 
 facts: 17 October 2026 at the source pin above. Existing implementation is described in
 approved spec §2. All named tests and paths marked planned below are deliverables, not
@@ -100,9 +110,10 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestWorkflowOracle$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestWorkflowOracle ' "$o")` | exit 0; named PASS. Literal intended actions, exact heads, lane independence, holds, order and uncapped depths agree with existing production entrypoints; a planted wrong head, missing WAIT row and changed ordering each fail. |
+| 1 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestWorkflowOracle$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestWorkflowOracle ' "$o")` | exit 0; named PASS. Literal actions, exact heads, lanes and holds agree with production paths; captured command output preserves visible row order, counts, proposals, idle and round text. Wrong-head/WAIT/order/depth controls and production planner-row/dispatch-scope overlays each fail the oracle. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCostCohort$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestCostCohort ' "$o")` | exit 0; named PASS. Fixture manifest reproduces cold/steady, skew/growth, concurrency and failed/partial runs; complete parent/child CPU, wall and request coverage is explicit. Unknown costs never become zero. |
 | 3 | check:ci +dereference | `statusgen --root . --consumers --brief desk-tools/37` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
+| 4 | check:ci | `(cd tools/desk && GOWORK=off go test -count=1 -v -run '^TestGitPackagesInstallQuiet$' ./internal/gitquiet)` | exit 0; named PASS; the new Git-fixture package uses the shared quiet runner without weakening fixture controls or cleanup. |
 
 ## Pre-mortem and detection
 

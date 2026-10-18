@@ -335,17 +335,17 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 // stubAdmittedReceipt is the receipt the stubbed admission returns: a binding to the brief a
 // verify-outcome record target (docs/streams/verify-outcomes/<stream>/<NN>-<digest>.json) is
 // keyed to, so the writer's TARGET-TIE re-check of the final path has a real binding to hold.
-// Any other target yields the empty receipt.
+// Every admitted fixture includes a source; non-outcome targets need no brief tie.
 func stubAdmittedReceipt(target string) deskkit.VerifierReceipt {
+	r := deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{Source: strings.Repeat("a", 40)}}
 	rest, ok := strings.CutPrefix(target, deskkit.OutcomeRecordsDir+"/")
 	if !ok {
-		return deskkit.VerifierReceipt{}
+		return r
 	}
 	stream, file, _ := strings.Cut(rest, "/")
 	nn, _, _ := strings.Cut(file, "-")
-	return deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{
-		Brief: "docs/streams/" + stream + "/brief-" + nn + "-stub.md",
-	}}
+	r.Binding.Brief = "docs/streams/" + stream + "/brief-" + nn + "-stub.md"
+	return r
 }
 
 // setupFake wires isolation: a temp HOME with the fixture roster (so trust/write-auth decisions

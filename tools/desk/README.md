@@ -952,6 +952,29 @@ there is no ready/close/merge verb. Three subcommands:
 - `deskpr edit --body-file F [--title T]` — replace that same open PR's **body**, and
   optionally its **title**. It pushes nothing and runs no git write at all.
 
+### Read-only preflight for published Evidence
+
+Use `deskpr create --check-remote --title T --body-file F` when a conditional
+forge-file write has already published the branch. Unlike offline `--check`, this
+explicitly mints the session-role App token and reads the credentialed push
+endpoint. It reuses the live create path's immutable source/destination proof and
+judges every commit actually new to that destination, then stops before write
+budget, push or PR creation. It refuses unknown, divergent or unreadable remote
+state and new foreign authors or committers. The two check modes are mutually
+exclusive; ordinary `--check` still opens no connection and judges the whole range.
+
+A successful remote check is a snapshot, not permission to ignore a later refusal.
+Run ordinary create from the same owned branch with a fresh body file; it rechecks
+all gates and pins the observed destination tip during its plain push. If either
+operation refuses, stop that operation and retain its evidence. Do not reauthor
+forge-created history, change identity or substitute a raw push.
+
+Conditional `deskevidence` file writes judge their admitted immutable source
+against its fetched-main baseline, independently of an older Evidence destination
+branch. They push no source commits. Exact-run admission, verifier-token custody,
+conditional destination writes and landed-author checks still apply. Local flip
+commits and PR pushes retain their own full new-commit identity gates.
+
 ### `deskpr edit` — correcting a PR's own text
 
 The rework cycle whose finding is "the PR body says X, it should say Y" — a provenance
@@ -5716,6 +5739,14 @@ is `Unverifiable`, never a silent success. When it takes over a stale claim its 
 `reclaimed` (not `acquired`) and its audit line carries `reclaimed age=<m>m ttl=<m>m
 prior-owner=<o> because=old-no-live-signal`, so a later sweep can see the reclaim happened
 through the tool — under the flock — rather than by hand.
+
+`list` preserves readable claim rows, but exits **6** if any claim file could not be
+read or parsed. Its diagnostic names each skipped file and says the listing is incomplete;
+a partial listing never means an item is free. The library returns those readable claims
+alongside a typed `ClaimListError` carrying skipped basenames and the underlying causes.
+`deskroster list` retains valid rows and marks ownership unverified; `scanloop plan` shows
+unknown claim states and exits 6. Recovery and liveness may still compare-and-delete an
+individually readable claim under the existing lock; unreadable claims remain untouched.
 
 ### Branch liveness — reclaiming a `--branch` claim through the tool (`stale` + the probe)
 

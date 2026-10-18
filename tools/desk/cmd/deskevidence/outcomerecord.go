@@ -173,8 +173,8 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused(fmt.Sprintf("refused: outcome record exceeds %d bytes (%d)", maxBytes, len(commitContent)))
 	}
 
-	// PUBLISH-identity gate — see cmdEvidence's own call for the full rationale (#1490 lane B).
-	if ierr := publishIdentityGate(root, branch); ierr != nil {
+	// Same admitted-source boundary as the conditional Evidence-file lane.
+	if ierr := publishEvidenceIdentityGate(root, receipt); ierr != nil {
 		return ierr
 	}
 

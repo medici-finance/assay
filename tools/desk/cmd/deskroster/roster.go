@@ -215,8 +215,8 @@ func pruneBeacon(session string, closed []WorkEntry) error {
 
 // loadClaims reads every claim through the canonical deskkit tolerant reader, so a claim
 // written in ANY of the three historical shapes (item 2) appears in the
-// roster. It preserves the prior best-effort semantics: a missing dir is empty, and an
-// individual unreadable/malformed file is skipped rather than blanking the whole list.
+// roster. A missing dir is empty; an incomplete listing preserves readable claims
+// alongside its typed error so display consumers can report partial ownership.
 func loadClaims() ([]deskkit.Claim, error) {
 	dir, err := claimsDir()
 	if err != nil {
@@ -624,7 +624,11 @@ func cmdList() error {
 	// 2. Load claims.
 	claims, err := loadClaims()
 	if err != nil {
-		return deskkit.Unverifiable("cannot load claims", err)
+		var partial *deskkit.ClaimListError
+		if !errors.As(err, &partial) {
+			return deskkit.Unverifiable("cannot load claims", err)
+		}
+		snapshotErrors = append(snapshotErrors, fmt.Errorf("claims listing incomplete: %w", err))
 	}
 
 	// Build a set of (repo,pr) covered by beacons for the unclaimed scan.

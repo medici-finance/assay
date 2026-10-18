@@ -87,23 +87,31 @@ var publishIdentityGateFn = deskkit.PublishIdentityMatchesRole
 // so a gate quietly stubbed out in the shipped binary fails its seam-reality test loudly.
 var productionPublishIdentityGateFn = publishIdentityGateFn
 
-// publishIdentityGate refuses (exit 5) when a commit the verifier worktree would publish
-// against <base> is not authored AND committed by the verifier App's bound identity (#1490
-// lane B). deskevidence commits Evidence via the Contents API AS the verifier App, so its
-// own landing is correctly attributed; this gate is the defence-in-depth layer over the
-// worktree it reads and derives witness attribution FROM — the verifier worktree #1490
-// flags, whose stale `user.*` is the fault the whole class is about. deskevidence always
-// acts as the verifier, so the role is fixed. No worktree branch is pushed here;
-// the shared gate snapshots HEAD once for this witness-only check.
+// publishIdentityGate judges all local branch commits before and after flip's
+// local commit. That lane may later push them; conditional forge-file writes
+// use the separate admitted-source boundary below instead.
 func publishIdentityGate(dir, base string) error {
 	if strings.TrimSpace(dir) == "" {
 		dir = "."
 	}
-	// RemoteTip is deliberately empty (#1967): Base here is already the branch the Evidence
-	// lands on, so refs/remotes/origin/<base>..HEAD is exactly "commits this worktree holds
-	// that the remote target branch does not" — there is no separate PR head to exclude.
+	// No already-published PR tip narrows flip's local branch check.
 	return publishIdentityGateFn(deskkit.PublishIdentityInput{
 		Dir: dir, Base: strings.TrimPrefix(base, "refs/heads/"), RemoteTip: "", Role: "verifier",
+	})
+}
+
+// publishEvidenceIdentityGate judges the immutable admitted source against the
+// fetched-main history it was dispatched from, not against the destination of a
+// conditional file write. No source commit is pushed by either Evidence lane.
+// The shared gate still rejects new foreign commits; the landing retains its
+// verifier-token custody, attestation binding, CAS and landed-author checks.
+func publishEvidenceIdentityGate(dir string, receipt deskkit.VerifierReceipt) error {
+	if receipt.Binding.Source == "" {
+		return deskkit.Refused("publish-identity: Evidence has no admitted source")
+	}
+	return publishIdentityGateFn(deskkit.PublishIdentityInput{
+		Dir: dir, Base: "main", Source: receipt.Binding.Source,
+		RemoteTip: "", Role: "verifier",
 	})
 }
 
