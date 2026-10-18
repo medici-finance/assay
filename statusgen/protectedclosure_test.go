@@ -9,7 +9,7 @@ import (
 
 // regression: #3342
 func TestProtectedClosureRows(t *testing.T) {
-	for _, name := range []string{"squash", "merge", "expect-edited", "command-edited", "divergent-original"} {
+	for _, name := range []string{"squash", "merge", "expect-edited", "command-edited", "divergent-original", "row-removed", "row-renumbered", "class-changed", "duplicate-id"} {
 		t.Run(name, func(t *testing.T) {
 			o := vfDefaults()
 			o.status, o.verified, o.evidence = "verified", "2026-08-13 human:alex", ""
@@ -41,6 +41,18 @@ func TestProtectedClosureRows(t *testing.T) {
 			if name == "command-edited" {
 				currentVerify = strings.Replace(currentVerify, "`true`", "`echo changed`", 1)
 			}
+			if name == "row-removed" {
+				currentVerify = strings.Replace(currentVerify, "| 1 | `true` | exit 0 |\n", "", 1)
+			}
+			if name == "row-renumbered" {
+				currentVerify = strings.Replace(currentVerify, "| 1 |", "| 8 |", 1)
+			}
+			if name == "class-changed" {
+				currentVerify = "| # | Class | Command | Expect |\n|---|---|---|---|\n| 1 | gate:human | `true` | exit 0 |\n| 2 | check | `false` | exit 1 |\n| 3 | check | `printf supplemental` | exit 0 |\n"
+			}
+			if name == "duplicate-id" {
+				currentVerify += "| 1 | `echo duplicate` | exit 0 |\n"
+			}
 			delivered := strings.Replace(string(raw), baselineVerify, currentVerify, 1)
 			if name == "merge" {
 				vfGit(t, root, vfMailWorker, "checkout", "-q", "-b", "delivery")
@@ -69,11 +81,14 @@ func TestProtectedClosureRows(t *testing.T) {
 			marker := "Verification-Table: delivery=" + delivery + " base=" + base + " original=" + original + "\n\n"
 			supplemental := "| 3 | `printf supplemental` | author-added; execution exit=0 sandbox=unshare; no acceptance credit | sha256:bbbbbbbbbbbb | 2026-08-13 | human:alex @ " + delivery + " |\n"
 			evidence := marker + witnessTableFor(vfRow1, row2) + "\n" + supplemental
+			if name == "row-renumbered" {
+				evidence += strings.Replace(strings.Replace(supplemental, "| 3 |", "| 8 |", 1), "`printf supplemental`", "`true`", 1)
+			}
 			cases := []struct {
 				name, verify, evidence string
 				accepted               bool
 			}{
-				{"originals-pass", currentVerify, evidence, name != "divergent-original"},
+				{"originals-pass", currentVerify, evidence, name == "squash" || name == "merge" || name == "expect-edited" || name == "command-edited"},
 				{"missing-provenance", vfVerify + added, strings.TrimPrefix(evidence, marker), false},
 				{"quoted-provenance", vfVerify + added, "> " + evidence, false},
 				{"fenced-provenance", vfVerify + added, "```\n" + marker + "```\n" + strings.TrimPrefix(evidence, marker), false},
