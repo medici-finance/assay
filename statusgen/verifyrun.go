@@ -1484,7 +1484,7 @@ func appendWitnessTable(path, table string) error {
 // checkFinding is one Verify row's audit result.
 type checkFinding struct {
 	ID     string
-	State  string // pass | fail | could-not-run  (the AUDIT's verdict, not the witness's)
+	State  string // pass | fail | could-not-run | author-added (authenticated disposition)
 	Detail string
 }
 
@@ -1548,6 +1548,8 @@ func checkExitCode(findings []checkFinding) int {
 	code := verifyrunExitPass
 	for _, f := range findings {
 		switch f.State {
+		case stateAuthorAdded:
+			continue // no acceptance credit; provenance was established by the audit
 		case stateCouldNotRun:
 			return verifyrunExitCouldNot
 		case stateFail:

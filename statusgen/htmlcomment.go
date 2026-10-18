@@ -116,17 +116,18 @@ func unterminatedCommentIn(verify, evidence string) string {
 // `statusgen verifyrun --check`. None of them runs the lint, so each would
 // otherwise pass a witness table that a line-start unterminated opener hides
 // on the rendered page. It refuses such a section (refusal != "", no findings)
-// and otherwise returns checkWitnesses' findings. TestWitnessCallerAllowList
+// and otherwise audits the applicable original rows, with any authenticated
+// author-added dispositions reported separately. TestWitnessCallerAllowList
 // pins that those verbs reach checkWitnesses only through here.
 func closureWitnesses(verify, evidence string, paths ...string) (findings []checkFinding, refusal string) {
 	if what := unterminatedCommentIn(verify, evidence); what != "" {
 		return nil, what
 	}
-	acceptance, added, refusal := protectedAcceptance(verify, evidence, paths...)
+	plan, refusal := protectedAcceptance(verify, evidence, paths...)
 	if refusal != "" {
 		return nil, refusal
 	}
-	return append(checkWitnesses(acceptance, evidence), added...), ""
+	return append(checkWitnesses(plan.Verify, evidence), plan.Added...), ""
 }
 
 // unterminatedCommentProblems is the #1939 lint: a PROBLEM for every brief file

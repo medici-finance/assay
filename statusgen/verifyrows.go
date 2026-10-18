@@ -1629,7 +1629,7 @@ func namedSelector(pat string) (name string, ok bool) {
 // anchored to the empty string, so it matches no test name (every Go test name
 // is non-empty) and `go test` runs zero tests by design. This is deliberately
 // the exact literal string, not "empty after stripping one `^`/`$`": an
-// UNANCHORED empty pattern (`-run ''`) has the opposite meaning in Go — an
+// UNANCHORED empty pattern (`-run ”`) has the opposite meaning in Go — an
 // empty regexp matches every name as a substring, so it runs everything.
 func selectsNoTests(pat string) bool {
 	return pat == "^$"
@@ -1833,8 +1833,8 @@ func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK
 			scoped := closed && !postBase // a pre-existing closed record
 			verify := bf.Verify
 			if closed {
-				if acceptance, _, refusal := protectedAcceptance(bf.Verify, bf.Evidence, path); refusal == "" {
-					verify = acceptance
+				if plan, refusal := protectedAcceptance(bf.Verify, bf.Evidence, path); refusal == "" {
+					verify = plan.Verify
 				}
 			}
 			var cmds []string

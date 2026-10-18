@@ -13,6 +13,12 @@ import (
 
 const stateAuthorAdded = "author-added"
 
+type protectedPlan struct {
+	Verify   string
+	Added    []checkFinding
+	Original string // authenticated immutable acceptance-definition revision
+}
+
 func closureSatisfied(f checkFinding) bool {
 	return f.State == statePass || f.State == stateAuthorAdded
 }
@@ -20,7 +26,7 @@ func closureSatisfied(f checkFinding) bool {
 // protectedAcceptance returns only owed original rows plus explicit uncredited
 // supplemental dispositions. Without a live marker, the ordinary table is owed
 // in full. A quoted example, hash or author-added label grants no exemption.
-func protectedAcceptance(verify, evidence string, paths ...string) (string, []checkFinding, string) {
+func protectedAcceptance(verify, evidence string, paths ...string) (protectedPlan, string) {
 	stripped, _ := stripRowComments(evidence)
 	rawLines := strings.Split(stripped, "\n")
 	var marker string
@@ -29,26 +35,26 @@ func protectedAcceptance(verify, evidence string, paths ...string) (string, []ch
 			continue
 		}
 		if line != rawLines[i] {
-			return "", nil, "protected table: Verification-Table must be literal live text, without code spans"
+			return protectedPlan{}, "protected table: Verification-Table must be literal live text, without code spans"
 		}
 		if marker != "" {
-			return "", nil, "protected table: multiple Verification-Table markers"
+			return protectedPlan{}, "protected table: multiple Verification-Table markers"
 		}
 		marker = strings.TrimSpace(line)
 	}
 	if marker == "" {
-		return verify, nil, ""
+		return protectedPlan{Verify: verify}, ""
 	}
 	fields := strings.Fields(marker)
 	if len(fields) != 4 || !strings.HasPrefix(fields[1], "delivery=") || !strings.HasPrefix(fields[2], "base=") || !strings.HasPrefix(fields[3], "original=") {
-		return "", nil, "protected table: expected Verification-Table: delivery=<full-sha> base=<full-sha> original=<full-sha>"
+		return protectedPlan{}, "protected table: expected Verification-Table: delivery=<full-sha> base=<full-sha> original=<full-sha>"
 	}
 	delivery, base, original := strings.TrimPrefix(fields[1], "delivery="), strings.TrimPrefix(fields[2], "base="), strings.TrimPrefix(fields[3], "original=")
 	if !isObjectID(delivery) || !isObjectID(base) || !isObjectID(original) || len(paths) != 1 || paths[0] == "" {
-		return "", nil, "protected table: full object ids and the brief's repository path are required"
+		return protectedPlan{}, "protected table: full object ids and the brief's repository path are required"
 	}
 	dir, file := filepath.Dir(paths[0]), filepath.Base(paths[0])
-	refuse := func(err any) (string, []checkFinding, string) { return "", nil, fmt.Sprint("protected table: ", err) }
+	refuse := func(err any) (protectedPlan, string) { return protectedPlan{}, fmt.Sprint("protected table: ", err) }
 	// Reuse the qualified source-provenance primitive. This authenticates the
 	// delivery and baseline snapshots, not whether a witness applies to code:
 	// that remains the independent content comparison in witnessTreeApplies.
@@ -180,7 +186,7 @@ func protectedAcceptance(verify, evidence string, paths ...string) (string, []ch
 		}
 		added = append(added, checkFinding{row.ID, stateAuthorAdded, "supplemental row; no acceptance credit (immutable original table preserved)"})
 	}
-	return baseline, added, ""
+	return protectedPlan{Verify: baseline, Added: added, Original: original}, ""
 }
 
 // The lint shares exactly the same original-row audit as the closure verbs.

@@ -124,3 +124,10 @@ fail-first and row-strength checks retain the original acceptance table. Human r
 gates, verifier authorship, admission and full closure lint remain required. The
 marker proves local immutable object contents and ancestry; it is not a forge
 identity attestation, permission or a replacement for independent verification.
+
+Coverage observes the same original acceptance rows. Its typed
+`AcceptanceRevision` records the validated original definition revision; the
+evaluator reads that actual historical Expect and compares it to the selected
+original Expect. The witness keeps its execution revision and all content and
+dependency checks. Invalid provenance creates an explicit held claim, including
+when a separate pattern supplies other passing claims.

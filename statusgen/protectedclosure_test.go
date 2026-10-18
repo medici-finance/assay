@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // regression: #3342
@@ -119,6 +121,9 @@ func TestProtectedClosureRows(t *testing.T) {
 				t.Run(c.name, func(t *testing.T) {
 					body := strings.Replace(delivered, currentVerify, c.verify, 1)
 					body = strings.Replace(body, "## Evidence\n", "## Evidence\n"+c.evidence, 1)
+					// Fixture execution witnesses name this fixture's actual code
+					// revision, so coverage also checks real immutable row history.
+					body = strings.ReplaceAll(body, " @ "+vfSHA, " @ "+delivery)
 					if err := os.WriteFile(path, []byte(body), 0644); err != nil {
 						t.Fatal(err)
 					}
@@ -143,6 +148,41 @@ func TestProtectedClosureRows(t *testing.T) {
 					problems := protectedClosureProblems(streams)
 					if c.accepted && len(problems) != 0 {
 						t.Fatalf("lint disagreements: %v", problems)
+					}
+					switch c.name {
+					case "originals-pass", "missing-provenance", "tampered-base", "missing-object", "original-fails", "original-wrong-exit", "supplement-pass-credit":
+						coverage := evaluateCoverage(root, streams, coverageOptions{Revision: delivery})["vf/01"]
+						if coverage.Released != c.accepted {
+							t.Fatalf("coverage released=%v accepted=%v: %+v", coverage.Released, c.accepted, coverage.Claims)
+						}
+						if c.accepted && c.name == "originals-pass" {
+							bf, ok, err := parseBriefFile(path)
+							if err != nil || !ok {
+								t.Fatalf("parse: %v", err)
+							}
+							obs := observeBrief(root, path, "vf/01", bf)
+							if len(obs.VerifyRows) != 2 || obs.AcceptanceRevision != original || obs.AcceptanceProblem != "" {
+								t.Fatalf("observed original contract: %+v", obs)
+							}
+							for _, rev := range []string{"unfixed-ref", strings.Repeat("f", 40)} {
+								bad := obs
+								bad.AcceptanceRevision = rev
+								got := evaluation.EvaluateCoverage(evaluation.CoverageInput{Revision: delivery, Briefs: []evaluation.BriefObservation{bad}}, newCoverageRepo(root))["vf/01"]
+								if got.Released || got.Claims[0].Result != covCouldNotCheck {
+									t.Fatalf("invalid definition %s released: %+v", rev, got)
+								}
+							}
+							if name == "expect-edited" {
+								for _, rev := range []string{"", delivery} {
+									changed := obs
+									changed.AcceptanceRevision = rev
+									got := evaluation.EvaluateCoverage(evaluation.CoverageInput{Revision: delivery, Briefs: []evaluation.BriefObservation{changed}}, newCoverageRepo(root))["vf/01"]
+									if got.Released || got.Claims[1].Result != covError {
+										t.Fatalf("historical Expect guard %s: %+v", rev, got)
+									}
+								}
+							}
+						}
 					}
 					if c.accepted {
 						findings, refusal := closureWitnesses(c.verify, c.evidence, path)
