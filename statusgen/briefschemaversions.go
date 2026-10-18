@@ -77,8 +77,8 @@ func pinnedStatusgenFor(path string) string {
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 			break
 		}
-		if filepath.Base(dir) == "streams" && filepath.Base(filepath.Dir(dir)) == "docs" {
-			// A source export may have no .git: its docs/streams anchor is
+		if (filepath.Base(dir) == "streams" || filepath.Base(dir) == "archive") && filepath.Base(filepath.Dir(dir)) == "docs" {
+			// A source export may have no .git: its docs/streams or docs/archive anchor is
 			// enough to bound the search to the owning root.
 			root := filepath.Dir(filepath.Dir(dir))
 			raw, err := os.ReadFile(filepath.Join(root, ".assay-versions"))

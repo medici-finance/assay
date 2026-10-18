@@ -128,6 +128,9 @@ func parseWithdrawalKeys(data map[string]any, bf *BriefFile, addBad func(string,
 			if err != nil {
 				addBad("superseded-by: %v", err)
 			} else {
+				for i := range list {
+					list[i] = strings.TrimSpace(list[i])
+				}
 				w.SupersededBy = list
 			}
 		}
@@ -431,6 +434,7 @@ func withdrawnRowProblems(streams []*Stream) []string {
 
 // resolveSuccessor normalizes both supported spellings without reading a forge.
 func (r *withdrawalResolver) resolveSuccessor(root, ref string) (string, string, string, bool) {
+	ref = strings.TrimSpace(ref)
 	if refInRepoBriefRe.MatchString(ref) {
 		p := strings.SplitN(ref, "/", 2)
 		return root, p[0], p[1], true

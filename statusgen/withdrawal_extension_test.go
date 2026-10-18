@@ -220,3 +220,23 @@ func TestWithdrawalRecordedHumanRulingStillWorks(t *testing.T) {
 		t.Fatalf("recorded ruling refused: %s", out)
 	}
 }
+
+func TestWithdrawalSuccessorWhitespaceCannotHideCycles(t *testing.T) {
+	fm := func(n, refs string) string {
+		return withdrawnFM(n, 0, "", "withdrawn-date: 2026-10-18\nwithdrawn-reason: replanned\nsuperseded-by: ["+refs+"]\n")
+	}
+	_, p, _ := withdrawnTree(t, []wdRow{{num: "01", status: "withdrawn", file: fm("01", "' alpha/02 '")}, {num: "02", status: "withdrawn", file: fm("02", "' tc:tr:alpha:01 '")}})
+	if !hasProblem(p, "superseded-by", "cycle") {
+		t.Fatalf("whitespace hid a configured cycle: %v", p)
+	}
+}
+
+func TestWithdrawalArchivedExportDoesNotBorrowParentPin(t *testing.T) {
+	parent := t.TempDir()
+	mustWrite(t, filepath.Join(parent, ".assay-versions"), "statusgen v99.0.0 sha\n")
+	path := filepath.Join(parent, "export", "docs", "archive", "alpha", "done", "brief-01-x.md")
+	mustWrite(t, path, "brief")
+	if got := pinnedStatusgenFor(path); got != "" {
+		t.Fatalf("archived export borrowed the parent's pin: %s", got)
+	}
+}
