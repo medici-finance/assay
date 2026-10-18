@@ -17,6 +17,7 @@ version: 2
 id: dd9e0da4-b348-4311-a31c-83605c8a6522
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
@@ -155,6 +156,18 @@ reject that variant; record the failing control with the restored production pas
 satisfy a flow row with a route registry, a prose legend or zero selected tests. Test fixtures
 qualify their named local boundary; provider permission inventories, deployment workload and
 operator cutover remain explicit evidence/acceptance obligations.
+
+## Performance reuse amendment — 2026-10-16
+
+Use canonical parsing/evaluation owners on exact admitted source snapshots, retaining
+the reverse dependency and full-recompute oracle already specified. Incorporate the
+manifest/membership invalidation lessons from desktools-v2/60 without importing that
+desk-specific activation algorithm. A new source/consumer outside the previous read set,
+changed derivation version, dirty snapshot or access epoch must invalidate the necessary
+result even if all previously read hashes match. Report file reads/parses, recomputation,
+cache hit/miss and request costs separately; faster stale results fail. Statusgen/26 is the
+credential-free offline measurement consumer; serving indexes do not become its authority.
+
 
 ## Evidence
 

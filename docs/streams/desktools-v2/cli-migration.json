@@ -8,6 +8,11 @@
   "exclusion_rules": [
     {
       "class": "test",
+      "pattern": "docs/research/criterion-evidence-freshness/replay.py",
+      "reason": "source-only offline replay and negative controls for graph-execution/32's frozen synthetic evidence study; explicitly invoked by its brief Verify rows and research README, never installed, packaged or released as an operator CLI"
+    },
+    {
+      "class": "test",
       "pattern": "statusgen/test-role-claims.sh",
       "reason": "offline fixed-selector transport regression suite shared by PR CI and mutation qualification; never installed or released as an operator entrypoint (#3327)"
     },

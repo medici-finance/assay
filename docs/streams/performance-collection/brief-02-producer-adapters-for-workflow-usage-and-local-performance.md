@@ -2,8 +2,8 @@
 brief: assay:assay:performance-collection:02
 title: "Producer adapters for workflow, usage and local performance"
 why: "A logger with only synthetic input cannot explain desk delays or rework. Bounded adapters should turn existing performance, dispatch, historian and runner observations into locally useful measurements without waiting for the full cell runtime."
-wave: 1
-depends: ["performance-collection/01"]
+wave: 2
+depends: ["performance-collection/01", "desktools-v2/61"]
 unblocks: ["performance-collection/06", "performance-collection/07"]
 effort: L
 gate: human
@@ -16,6 +16,8 @@ version: 3
 id: 20aa552e-a2cf-4e0d-959c-0b47c9091d0a
 authored: 2026-10-13 by performance collection authoring
 sources:
+  - "assay:assay:desktools-v2:62 — consumer routing for the 2026-10-16 performance amendment"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - docs/streams/performance-collection/README.md
   - docs/telemetry.md
   - docs/proposals/non-ci-architecture/11-target-architecture.md
@@ -29,6 +31,8 @@ exec-tier-why: Cross-component privacy, identity, concurrency and loss semantics
 domain: complicated
 outcome: none
 consumers:
+  - "perfrec/testdata/: follow-up performance-collection/02 (read both instrument versions; no second writer)"
+  - "statusgen/perfrecord.go: out-of-scope (statusgen/26 owns producer integration; this brief imports selected records)"
   - "perfdata/adapters/: follow-up performance-collection/02"
   - "perfdata/cmd/perfdata/: follow-up performance-collection/02"
   - "perfdata/testdata/sources/: follow-up performance-collection/02"
@@ -158,6 +162,7 @@ below, exercising production code rather than an independently reimplemented che
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/02` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
 | 6 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v -run '^TestOperatingReportSourceCoverage$' ./... > "$o" && grep -F -- '--- PASS: TestOperatingReportSourceCoverage ' "$o")` | exit 0; named test runs and passes, including the negative cases in Task 8. |
 | 7 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPhaseProducerFlow$' ./... > "$o" && grep -F -- '--- PASS: TestPhaseProducerFlow ' "$o")` | exit 0; named PASS. Real adapter fixtures reconstruct nested work without double count; old perf-v1 yields unknown fields. Consent-off, drop/slow sink and missing children preserve domain results and expose coverage. |
+| 8 | check:ci +flow +mutation | `(cd perfdata && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerformanceInstrumentVersionImport$' ./adapters/... > "$out" && grep -F -- '--- PASS: TestPerformanceInstrumentVersionImport ' "$out")` | exit 0; named PASS; legacy and successor desk/statusgen fixtures preserve boundary, nullable coverage and stable import identity; mixed-version naive totals and absent-to-zero plants fail |
 
 ## Pre-mortem and detection
 
@@ -165,6 +170,22 @@ Drop the candidate binding, add cumulative samples, or allow sink errors to repl
 row must traverse actual public producer/reader or served interfaces. Scope/retention
 adequacy and deployment workload selection are review judgments; their measured evidence
 is required before activation, not invented from component-test success.
+
+## Performance reuse amendment — 2026-10-16
+
+Import both the existing perf-v1 and the deliberately versioned successor from
+desktools-v2/61 through read-only adapters. Preserve their instrument versions, timing
+boundaries, measurement availability and phase/child inclusion. Keep samples separated or
+explicitly normalize only where supported; never infer zero from an old absent counter.
+Actual board/dispatch/token records from /62 and statusgen/26 are consumer fixtures; they
+do not require an active service or add producer hooks here. Retain legacy import behavior
+when newer producers are unavailable. Do not add raw command text, repository identifiers,
+credential metadata or local paths to exported payloads. Follow the existing profile,
+pseudonymization, retention and remote-consent contract.
+
+The dependency on /61 is for the concrete versioned adapter fixtures; the hotpath local
+logging and credential work do not wait on this importer, perfdata or its database.
+
 
 ## Evidence
 

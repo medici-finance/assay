@@ -1,2 +1,0 @@
-- Propose reusable desk scorecards, analysis/experiment/follow-up validation, role procedures and read-only Improve integration.
-- Add explicit native evidence work for loop-admin, workflow and standing desk modes, preserving existing record and coordination owners.

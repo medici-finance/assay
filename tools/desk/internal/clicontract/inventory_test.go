@@ -89,6 +89,66 @@ func TestCLIInventory(t *testing.T) {
 	checkOwnTestNames(t, fsys)
 }
 
+// regression: #3307
+func TestCLIResearchReplay(t *testing.T) {
+	base, raw := realTree(t)
+	reg := decode(t, raw)
+	const replay = "docs/research/criterion-evidence-freshness/replay.py"
+	var exact bool
+	for _, rule := range reg.ExclusionRules {
+		if rule.Pattern != replay || rule.Class != "test" {
+			continue
+		}
+		owners := 0
+		for _, word := range strings.Fields(rule.Reason) {
+			id := strings.TrimSuffix(word, "'s")
+			if !ownerRE.MatchString(id) {
+				continue
+			}
+			owner, err := LoadBrief(base, id)
+			if err != nil || owner == nil || !strings.Contains(owner.Text, replay) {
+				t.Fatalf("replay route must name its actual owning brief: %q, %v", id, err)
+			}
+			owners++
+		}
+		if owners != 1 {
+			t.Fatalf("replay route must name exactly one owning brief; got %d", owners)
+		}
+		exact = true
+	}
+	if !exact {
+		t.Fatal("research replay needs an exact test-class route naming its owning brief")
+	}
+	if problems := Validate(base, reg); len(problems) != 0 {
+		t.Fatalf("baseline routing: %v", problems)
+	}
+	for _, planted := range []string{
+		"docs/research/criterion-evidence-freshness/other.py",
+		"docs/research/another-study/replay.py",
+	} {
+		t.Run(planted, func(t *testing.T) {
+			fsys := newOverlay(base, map[string]string{planted: "#!/usr/bin/env python3\nprint('planted')\n"})
+			problems := Validate(fsys, decode(t, raw))
+			if !strings.Contains(strings.Join(problems, "\n"), "unrouted entrypoint "+planted+" (script)") {
+				t.Fatalf("neighboring script must remain unrouted: %v", problems)
+			}
+			t.Log(strings.Join(problems, "\n"))
+		})
+	}
+	t.Run("shipped-replay", func(t *testing.T) {
+		makefile, err := fs.ReadFile(base, "Makefile")
+		if err != nil {
+			t.Fatal(err)
+		}
+		fsys := newOverlay(base, map[string]string{"Makefile": string(makefile) + "\nresearch-cli:\n\tcp " + replay + " replay-cli\n"})
+		problems := Validate(fsys, decode(t, raw))
+		if !strings.Contains(strings.Join(problems, "\n"), "shipped entrypoint "+replay+" is excluded") {
+			t.Fatalf("shipping the replay must invalidate its test route: %v", problems)
+		}
+		t.Log(strings.Join(problems, "\n"))
+	})
+}
+
 func hasRow(reg *Registry, p string) bool {
 	for _, e := range reg.Entrypoints {
 		if e.Path == p {

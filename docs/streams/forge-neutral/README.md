@@ -667,3 +667,12 @@ rows only; existing human decisions and historical Evidence remain intact.
 ## Workflow-efficiency contract amendment — 17 October 2026
 
 The approved workflow-efficiency spec adds review/issue consumer acceptance to /37–45. /39 maps the qualified desk-tools/39 contract through a legal public API; /45 requires desk-tools/43–44 caller/cost qualification. Direct-reader /38–44 in desk-tools do not depend on this service path. See the [delivery map](../../desk-workflow-efficiency-change-map.md#authored-delivery-routing). Existing Evidence and activation gates remain unchanged.
+
+## Performance reuse — 2026-10-16
+
+The immediate local lane remains desktools-v2/58–62 plus statusgen/26. This stream keeps
+the shared online ownership: /37 refresh coalescing and coverage, /38 event hints, /40
+isolated role executors, /43 incremental recomputation, /44 Git reuse trial and /45
+served qualification. /40 now explicitly consumes /58–59's internal provider; /45 consumes
+/62's matched workload. Their existing later waves and activation gates remain. No
+local credential/startup fix is made dependent on the service or PostgreSQL.

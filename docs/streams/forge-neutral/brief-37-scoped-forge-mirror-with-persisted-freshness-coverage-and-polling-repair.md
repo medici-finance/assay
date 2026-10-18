@@ -16,6 +16,7 @@ version: 3
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - docs/proposals/non-ci-architecture/20-amendment-manifest.md — R6 owner row and the "R2–R8 amendment scope" R6 paragraph
   - docs/proposals/non-ci-architecture/16-delivery-sequence.md — package R6 (pagination, lost/reordered events, permission loss and partial scans preserve uncertainty; a client outage cannot cause a poll storm)
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md — "Reuse and expand the existing forge-mirror work" (pipeline, one ingestion owner per scope, overlap windows, stale-not-deleted, centralised refresh)
@@ -300,6 +301,10 @@ provider transports only.
 | 19 | check:ci +mutation | `(cd workflow && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorCoverageFactMapping$" ./store/... > "$result" && grep -F -- "--- PASS: TestMirrorCoverageFactMapping " "$result")` | exit 0; named PASS. Every mirror coverage state maps to exactly one graph-execution/28 fact-completeness value, and only `complete` inside the freshness window maps to present: `never-read`, `partial`, each `unavailable` reason class and a stale `complete` never do. The mapping lives in `workflow/store/`, not in `forgeread`. **Mutation**: map `partial` to present, and the test fails |
 | 20 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorReviewCoverage$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorReviewCoverage ' "$o")` | exit 0; named PASS. Admitted review/issue populations preserve exact head and partial/denied/page coverage; removing a required input cannot return complete-empty or leak another admission. |
 
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 21 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshBurstScopeAndCallBudget$' ./mirror/... > "$out" && grep -F -- '--- PASS: TestRefreshBurstScopeAndCallBudget ' "$out")` | exit 0; named PASS; 50 equivalent requests share one paginated inventory, two admissions remain isolated and outage retries stay within the explicit fixture budget; global authorization sharing or per-client scan fallback fails |
+
 ## Pre-mortem
 
 An unfinished walk reads as the whole population (rows 2, 8). A failed scan deletes or hides rows
@@ -316,6 +321,21 @@ dependency on statusgen and a module cycle forms (row 17). A mirror file reads c
 secret through a direct `os` or `syscall` import under a name the ambient-token rule does not know (row 18; cgo is outside that check). Partial
 coverage maps to a present fact (row 19). Retention of private content after access loss remains the
 human decision above; row 16 pins whichever option is chosen.
+
+## Performance reuse amendment — 2026-10-16
+
+Keep the mirror as the single online refresh/coalescing owner; do not start another
+poller or ingest cache from a desk command. Extend the existing refresh tests with a
+50-caller same-admission burst and two simultaneously different admissions. Exactly one
+scripted paginated inventory should serve equivalent concurrent refresh demand; different
+provider/host/repository/permission or admission/access epochs cannot share authorization.
+Requests on permission loss, stale data or provider failure retain coverage/backoff rather
+than triggering one full scan per caller. Count provider calls, coalesced waiters, bytes and
+cache outcomes at the trusted composition boundary; no credential or recorder dependency
+is imported into forgeread's offline root. The 50-caller case is synthetic request-count
+acceptance, not a production latency threshold. Existing /09 review snapshots and conditional
+board reads are baseline features, not newly credited savings.
+
 
 ## Evidence
 

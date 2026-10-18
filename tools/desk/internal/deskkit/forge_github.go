@@ -2878,6 +2878,9 @@ func (g *GitHubForge) writeEvidenceFileFromSnapshot(repo ForgeRepo, in WriteFile
 			in.File, in.Branch, res.PriorRows, res.Rows))
 	}
 
+	if in.ExpectedHead != "" {
+		return g.writePinnedEvidence(repo, in, res)
+	}
 	body := map[string]any{
 		"message": in.Message,
 		"content": base64.StdEncoding.EncodeToString(in.Content),

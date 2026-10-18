@@ -166,6 +166,60 @@ func TestRefix_EarlierFixAfterInducer_NotCounted(t *testing.T) {
 	}
 }
 
+// regression: #3079
+func TestRefix_EqualTime_NotCounted(t *testing.T) {
+	const equal = "2024-03-14T09:26:53Z"
+	stamp, err := time.Parse(time.RFC3339, equal)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, via := range []string{"regression-of", "defect-class"} {
+		t.Run(via, func(t *testing.T) {
+			e := DefectFix{FixCommitSHA: refixE1, FixPRNumber: 100, ClosedIssue: &IssueRef{Number: 1}, Tier: Tier1, Identified: Measured(true)}
+			f := DefectFix{FixCommitSHA: refixF1, FixPRNumber: 200, ClosedIssue: &IssueRef{Number: 2}, Tier: Tier2, Identified: Measured(true)}
+			tr := DefectTrace{FixCommit: refixF1, TraceState: TraceTraced, InducingCommits: []string{refixInd1}}
+
+			linkage := stubRegressionLinkage{}
+			switch via {
+			case "regression-of":
+				linkage.regressionOf = func(cand DefectFix) ([]RegressionRef, bool, error) {
+					if cand.FixCommitSHA == refixF1 {
+						return []RegressionRef{{PRNumber: 100}}, true, nil
+					}
+					return nil, false, nil
+				}
+			case "defect-class":
+				linkage.defectClass = func(ref IssueRef) (string, bool, error) {
+					if ref.Number == 1 || ref.Number == 2 {
+						return "class-widget-nil-deref", true, nil
+					}
+					return "", false, nil
+				}
+			}
+
+			ct := fixedCommitTime{refixE1: stamp, refixInd1: stamp}
+			rec := ComputeRefix("w1", []DefectFix{e, f}, []DefectTrace{tr}, linkage, ct.at, "", stamp)
+
+			if rec.RefixCount.State != StateMeasuredZero {
+				t.Fatalf("equal-time %s candidate must be a measured non-re-fix, got %+v", via, rec.RefixCount)
+			}
+			if rec.RefixRate.State != StateMeasuredZero {
+				t.Fatalf("equal-time %s candidate must leave the rate measured-zero, got %+v", via, rec.RefixRate)
+			}
+			if rec.LinkageCoverage.State != StateMeasured || rec.LinkageCoverage.Value != 1 {
+				t.Fatalf("equal-time %s linkage must remain resolved, got %+v", via, rec.LinkageCoverage)
+			}
+			if len(rec.Refixes) != 0 {
+				t.Fatalf("equal-time %s candidate must not be listed as a re-fix, got %+v", via, rec.Refixes)
+			}
+			if rec.TierComposition.Tier1Count != 0 || rec.TierComposition.Tier2Count != 1 || rec.TierComposition.Tier3Count != 0 {
+				t.Fatalf("equal-time result must preserve traced-fix tier provenance, got %+v", rec.TierComposition)
+			}
+		})
+	}
+}
+
 // TestRefix_NoLinkageConfigured_CouldNotMeasure is Verify #5: with no
 // `regression-of:` anywhere and no class prefix configured, the rate and
 // coverage are could-not-measure — NEVER rounded down to a fabricated

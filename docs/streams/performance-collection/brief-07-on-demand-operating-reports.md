@@ -2,7 +2,7 @@
 brief: assay:assay:performance-collection:07
 title: "On-demand three-report bundle and thin skill"
 why: "Operators need one reproducible view of completions, stream movement and tool costs from collected data, without more provider calls."
-wave: 2
+wave: 3
 depends: ["performance-collection/02"]
 unblocks: ["performance-collection/08"]
 effort: L
@@ -16,6 +16,7 @@ version: 2
 id: 29c71b10-6ca6-4594-bc10-1f294a5d1463
 authored: "2026-10-15 by reporting authoring session"
 sources:
+  - "2026-10-16 wave reconciliation at origin/main 9f9bb35de: performance-collection/02 consumes desktools-v2/61; reporting scope and historical Evidence unchanged"
   - docs/streams/performance-collection/README.md
   - docs/streams/continuing-operations/spec.md
   - docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md
