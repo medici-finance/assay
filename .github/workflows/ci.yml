@@ -60,6 +60,15 @@ jobs:
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
 
+      # Run before the all-module sweep: statusgen alone does not depend on the
+      # desk child compiled by its offline bridge test. Match the release gate.
+      - name: Test and vet statusgen
+        run: |
+          set -euo pipefail
+          go version
+          bash statusgen/prepare-test-deps.test.sh
+          cd statusgen && go test ./... && go vet ./...
+
       - name: Build and vet every module
         run: |
           set -euo pipefail
