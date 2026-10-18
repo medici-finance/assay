@@ -257,10 +257,19 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if err := json.Unmarshal(commitContent, &outcome); err != nil {
 		return deskkit.Refused("refused: invalid outcome record: " + err.Error())
 	}
-	if err := outcomeEvidenceBindingFn(evidenceRoot, fg, fr, branch, receipt, outcome.SHA); err != nil {
+	landedRoot, landedHead, cleanup, err := landedClosureFn(evidenceRoot, targetRepoPath, nil, commitContent, false, fg, fr, branch)
+	if err != nil {
 		return err
 	}
-	if err := outcomeObservationBindingFn(evidenceRoot, fg, fr, branch, receipt, outcome); err != nil {
+	defer cleanup()
+	closureRef := branch
+	if landedHead != "" {
+		closureRef = landedHead
+	}
+	if err := outcomeEvidenceBindingFn(evidenceRoot, fg, fr, closureRef, receipt, outcome.SHA); err != nil {
+		return err
+	}
+	if err := outcomeObservationBindingFn(evidenceRoot, fg, fr, closureRef, receipt, outcome); err != nil {
 		return err
 	}
 
@@ -287,10 +296,10 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// added log line today: "before" is empty (a brand-new file), "after" is the record's own
 	// canonical bytes. isVerifyOutcomesSidecar recognises this per-file path, so the gates
 	// activate for a `verified` record precisely as they did for an appended log line.
-	if err := outcomeGuardFn(lintRoot, targetRepoPath, nil, commitContent, fg, fr, branch); err != nil {
+	if err := outcomeGuardFn(lintRoot, landedRoot, targetRepoPath, nil, commitContent, fg, fr, closureRef); err != nil {
 		return err
 	}
-	introduced, lerr := lintDiffFn(lintRoot, targetRepoPath, commitContent)
+	introduced, lerr := lintDiffFn(landedRoot, targetRepoPath, commitContent)
 	if lerr != nil {
 		return lerr
 	}
@@ -299,7 +308,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 			"refused: landing %s would introduce %d new statusgen PROBLEM(s) not present in %s before this change:\n%s",
 			targetRepoPath, len(introduced), lintRoot, strings.Join(introduced, "\n")))
 	}
-	if verr := gateVerifiedSidecarLanding(targetRepoPath, lintRoot, nil, commitContent, false); verr != nil {
+	if verr := gateVerifiedSidecarLanding(targetRepoPath, landedRoot, nil, commitContent, false); verr != nil {
 		return verr
 	}
 
@@ -312,7 +321,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused("refused: invalid --outcome-record JSON: " + jerr.Error())
 	}
 	if wr.Schema == deskkit.SchemaWakeV1 {
-		if verr := receiptValidateFn(lintRoot, fg, fr, branch, repoSlug, wr); verr != nil {
+		if verr := receiptValidateFn(lintRoot, fg, fr, closureRef, repoSlug, wr); verr != nil {
 			return verr
 		}
 	}
@@ -326,17 +335,22 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return oerr
 	}
 
-	res, werr := fg.WriteFile(fr, deskkit.WriteFileInput{
+	writeInput := deskkit.WriteFileInput{
 		File:    targetRepoPath,
 		Branch:  branch,
 		Content: commitContent,
 		Message: "Evidence: verify-outcome record for " + wr.Brief + ac.attestationTrailer() + commitSuffix,
-	})
+	}
+	writeInput.ExpectedHead = landedHead
+	res, werr := fg.WriteFile(fr, writeInput)
 	if werr != nil {
 		return werr
 	}
 
 	if res.DefaultBranchNotWritable {
+		if landedHead != "" {
+			return deskkit.Unverifiable("pinned verified outcome cannot fall back to a different branch", nil)
+		}
 		return landOutcomeRecordAsChange(fg, fr, repoSlug, branch, targetRepoPath, commitContent, wr.Brief, ac)
 	}
 
