@@ -75,6 +75,12 @@ const (
 	// evidence only: it never authorizes verified/done or a write. Legacy/incomplete receipts
 	// are NOT bucketed here — they stay eligible for one classification pass.
 	dispWaitReceipt
+	// dispBaseHeld: the overlays above would hand this item to a model, but the CANONICAL
+	// queue classification (statusgen's queueFor, composed under --base-queue; see applyBase in
+	// plan.go for the precedence) says it is not model-judge work this run: runnable offline by
+	// the verify runner, a continuation owned by another party (CI auto-flip, implementer
+	// rework), a human action, or in a paused/parked stream. It can only ever DEMOTE.
+	dispBaseHeld
 )
 
 // String is the stable bucket slug used in the plan output and tests.
@@ -98,6 +104,8 @@ func (d disposition) String() string {
 		return "could-not-check"
 	case dispWaitReceipt:
 		return "wait"
+	case dispBaseHeld:
+		return "queue-held"
 	default:
 		return "unknown"
 	}
@@ -138,6 +146,8 @@ func (d disposition) whyItWaits() string {
 		return "a verified outcome is in the sidecar and Evidence is filled, but the status flip has not landed — file/point at the stuck flip, never re-run"
 	case dispWaitReceipt:
 		return "a failed/blocked verification whose wake condition is unchanged — re-verifying now reproduces the same non-verdict; the line names the blocker, the next actor, and what will wake it"
+	case dispBaseHeld:
+		return "the canonical verification queue classes it as something other than judge-dispatch work (runner, continuation, human action, paused or parked) — the line names the class, owner and next act"
 	default:
 		return ""
 	}

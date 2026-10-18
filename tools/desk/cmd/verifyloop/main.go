@@ -6,7 +6,7 @@
 //
 // Subcommands:
 //
-//	verifyloop plan --root <repo> [--sha <targetSHA>]
+//	verifyloop plan --root <repo> [--sha <targetSHA>] [--json] [--base-queue]
 //	    Deterministic scheduler OUTPUT: read the Awaiting queue, compute each item's tier, and
 //	    print the EXACT dispatch instruction the operator would execute (or the human-route
 //	    note for a risk-flagged item). No agents are spawned, nothing is written — this is the
@@ -24,7 +24,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
@@ -106,6 +105,8 @@ func cmdPlan(args []string) error {
 	sha := fs.String("sha", "", "merged-main target SHA verifiers run against")
 	runner := fs.String("runner", "", "this session's runner identity (author!=runner guard)")
 	noForge := fs.Bool("no-forge", false, "read no blocker issue: every held receipt's blocker is could-not-check")
+	asJSON := fs.Bool("json", false, "emit the plan as one JSON document on stdout (diagnostics go to stderr)")
+	baseQueue := fs.Bool("base-queue", false, "compose statusgen's canonical queue classification under the overlays (it can only demote)")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("bad flags: " + err.Error())
 	}
@@ -119,112 +120,32 @@ func cmdPlan(args []string) error {
 	// stream root — the same deskkit.ConfiguredRoots map deskboard reads — with a PER-ROOT
 	// envelope preflight: a RED (or unreadable) sibling is reported and skipped, never a
 	// whole-pass abort, so a desk booted on one root still sees the others' queues.
-	skippedRoots := 0
-	if multiRootPlan(args) {
-		if strings.TrimSpace(*sha) != "" {
-			return deskkit.Refused("refused: --sha names ONE merged-main SHA but the plan spans every " +
-				deskkit.RootsEnv + " root, each with its own main — pass --root to narrow to one")
-		}
-		roots, rerr := deskkit.ConfiguredRoots()
-		if rerr != nil {
-			return rerr
-		}
-		fmt.Printf("verify-desk plan: %d configured root(s) (%s)\n", len(roots), deskkit.RootsEnv)
-		for _, rc := range roots {
-			abs, err := deskkit.ResolveRoot(rc)
-			if err != nil {
-				skippedRoots++
-				fmt.Printf("-- root %s: could-not-check — skipped: %v\n", rc.Repo, err)
-				continue
-			}
-			if err := preflightRoot(abs); err != nil {
-				skippedRoots++
-				fmt.Printf("-- root %s (%s): PREFLIGHT RED — skipped: %v\n", rc.Repo, abs, err)
-				continue
-			}
-			fmt.Printf("-- root %s (%s): preflight green\n", rc.Repo, abs)
-			v.Roots = append(v.Roots, deskkit.RootConfig{Repo: rc.Repo, Path: abs})
-		}
-	}
-
-	items, err := v.SelectQueue()
+	//
+	// The plan is built as ONE value (plan.go) and rendered from it, as text or as JSON.
+	doc, err := buildPlan(v, planOpts{root: *root, sha: *sha, runner: *runner,
+		multi: multiRootPlan(args), baseQueue: *baseQueue})
 	if err != nil {
-		return deskkit.Unverifiable("cannot read the Awaiting queue", err)
+		return err
 	}
-	if len(v.Roots) > 0 {
-		fmt.Printf("verify-desk plan: %d brief(s) awaiting across %d root(s) (tier-1 first, oldest-first within class)\n",
-			len(items), len(v.Roots))
+	if *asJSON {
+		// stdout carries the JSON document and nothing else; the human-readable summary of
+		// what the plan could not cover goes to stderr.
+		if err := renderPlanJSON(doc); err != nil {
+			return deskkit.Unverifiable("cannot render the plan as JSON", err)
+		}
+		for _, g := range doc.Gaps {
+			fmt.Fprintln(os.Stderr, "verifyloop plan: "+g)
+		}
 	} else {
-		fmt.Printf("verify-desk plan: %d brief(s) awaiting (tier-1 first, oldest-first within class)\n", len(items))
+		renderPlanText(doc)
 	}
-
-	// bucketed collects the non-dispatchable dispositions (deferred + the three buckets) so
-	// the dispatchable list stays the genuinely-actionable set and the rest are surfaced with a
-	// count and a one-line "why it waits", never silently listed as DISPATCH (queueclass.go).
-	bucketed := map[disposition][]bucketMember{}
-	dispatchable := 0
-	// forEvidence collects the DISPATCH-FOR-EVIDENCE set (queueclass.go): printed AFTER every
-	// DISPATCH block, each with its human-gate reason and the Evidence-only limit on the header.
-	var forEvidence []string
-	for _, it := range items {
-		// author != runner is a STRUCTURAL engine guard, shown here for transparency.
-		if err := loopengine.CheckAuthorRunner(it, *runner); err != nil {
-			fmt.Printf("\n-- %s: REFUSED (%v) — needs a different runner\n", it.ID, err)
-			continue
-		}
-		tier, terr := v.TierPolicy(it)
-		if terr != nil {
-			fmt.Printf("\n-- %s: tier error: %v\n", it.ID, terr)
-			continue
-		}
-		disp, reason := classifyItem(it, tier)
-		if disp == dispDispatchForEvidence {
-			prompt := renderEvidenceOnlyPrompt(it, reason)
-			if err := assertNoSharedCheckout(prompt); err != nil {
-				return deskkit.Refused(err.Error())
-			}
-			forEvidence = append(forEvidence, fmt.Sprintf("\n=== DISPATCH-FOR-EVIDENCE %s (tier=%s)%s — ROUTE-HUMAN: %s — %s ===\n%s\n",
-				it.ID, loopengine.TierLocal, rootTag(it), reason, evidenceOnlyMarker, prompt))
-			continue
-		}
-		if disp != dispDispatch {
-			bucketed[disp] = append(bucketed[disp], bucketMember{ID: it.ID, Reason: reason})
-			continue
-		}
-		prompt := renderDispatchPrompt(it, tier)
-		if err := assertNoSharedCheckout(prompt); err != nil {
-			return deskkit.Refused(err.Error())
-		}
-		dispatchable++
-		fmt.Printf("\n=== DISPATCH %s (tier=%s)%s ===\n%s\n", it.ID, tier, rootTag(it), prompt)
-		if why := payloadValue(it, "wake_reason"); why != "" {
-			fmt.Printf("wake: %s\n", why)
-		}
-	}
-
-	for _, block := range forEvidence {
-		fmt.Print(block)
-	}
-	if len(forEvidence) > 0 {
-		fmt.Printf("\nverify-desk plan: %d dispatch-for-evidence (Evidence rows + outcome sidecar only; flip never)\n", len(forEvidence))
-	}
-	printBuckets(dispatchable, bucketed)
-	if skippedRoots > 0 {
+	if doc.Skipped > 0 {
 		// The plan printed is complete for every root that was read; the exit code says the
 		// queue it shows is NOT the whole queue. Could-not-check is never rounded up to green.
 		return deskkit.Unverifiable(fmt.Sprintf(
-			"%d configured root(s) skipped (preflight red or unreadable) — this plan is not the whole queue", skippedRoots), nil)
+			"%d configured root(s) skipped (preflight red or unreadable) — this plan is not the whole queue", doc.Skipped), nil)
 	}
 	return nil
-}
-
-// rootTag is the provenance suffix on a multi-root DISPATCH header (" root=<path>"); empty on
-// a single-root plan, so that output stays byte-identical.
-func rootTag(it loopengine.Item) string {
-	if r := payloadValue(it, "root"); r != "" {
-		return " root=" + r
-	}
-	return ""
 }
 
 // bucketMember is one non-dispatchable queue item: its ID plus the per-item reason detail
@@ -262,7 +183,7 @@ func printBuckets(dispatchable int, bucketed map[disposition][]bucketMember) {
 	}
 	fmt.Printf("\nverify-desk plan: %d dispatchable, %d deferred/bucketed (not offline-convertible this run)\n",
 		dispatchable, total)
-	for _, disp := range []disposition{dispCouldNotCheck, dispDeferred, dispWaitReceipt, dispAwaitingHuman, dispStuckFlip, dispAwaitingOnlineLane, dispInRepair} {
+	for _, disp := range []disposition{dispCouldNotCheck, dispDeferred, dispWaitReceipt, dispAwaitingHuman, dispStuckFlip, dispAwaitingOnlineLane, dispInRepair, dispBaseHeld} {
 		members := bucketed[disp]
 		if len(members) == 0 {
 			continue
@@ -294,6 +215,7 @@ const usage = `verifyloop — verify-desk reference consumer of the drain engine
 
 USAGE:
   verifyloop plan    [--root <repo>] [--sha <targetSHA>] [--runner <id>] [--no-forge]
+                     [--json] [--base-queue]
   verifyloop verdict --root <repo> [--dry-run] [--window 5m] [--runner <id>] [--pem <path>]
                      [--unsigned-out <file>]
   verifyloop --dry-run [--root <repo>]        # shorthand for 'verdict --dry-run'
@@ -310,6 +232,25 @@ preflight PER ROOT (a red or unreadable sibling is reported and skipped, never a
 abort; the exit is then 6 because the plan is not the whole queue), and names the root on every
 item (<owner>/<repo>:<stream>/<NN>, plus root=<path> on the DISPATCH header). An explicit --root
 narrows to that one root; with DESK_ROOTS unset the plan is the single --root read (default .).
+
+'plan' is built as ONE plan value and rendered from it. --json prints that value as a single
+JSON document on stdout and nothing else (the text lines, and any note about what the plan could
+not cover, never reach stdout in that mode; gaps go to stderr). The document names every root with
+an explicit state (healthy, skipped on a red preflight, unreadable), every item with its kind,
+disposition, tier, reason and authority (flip, evidence-only or none), the counts, and whether the
+plan is complete. A skipped or unreadable root is a named gap and exit 6, never a zero.
+
+'plan --base-queue' composes statusgen's CANONICAL queue classification (the queueClass fields on
+'statusgen --gate-scores' rows, read with STATUSGEN_BIN or statusgen on PATH) under verifyloop's own
+overlays. PRECEDENCE: the overlays decide first (could-not-check, blocked-until, human gate or
+risk, stuck-flip, wake receipt, in-repair, online lane) and a held item stays held; the canonical
+class is applied last and can only DEMOTE an item the overlays would dispatch. A DISPATCH item must
+be judgment-dispatch, else it is held as queue-held (runnable-offline, continuation, human-action,
+paused, parked) with the class, owner and next act on its line; an unreadable class, a row the
+canonical queue does not have, or a statusgen that predates the contract is could-not-check, never
+dispatch. A DISPATCH-FOR-EVIDENCE item stays Evidence-only: human-action and judgment-dispatch keep
+it, the other classes demote it, and it never gains flip authority. Without --base-queue the plan
+is exactly the overlay plan.
 
 'plan' FAILS SAFE on risk: any brief with gate:human OR any risk answer yes (irreversible
 first) is bucketed under awaiting-human / ROUTE-HUMAN, never DISPATCH. A model MAY gather
