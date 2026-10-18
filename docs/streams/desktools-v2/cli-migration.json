@@ -8,6 +8,11 @@
   "exclusion_rules": [
     {
       "class": "test",
+      "pattern": "statusgen/test-role-claims.sh",
+      "reason": "offline fixed-selector transport regression suite shared by PR CI and mutation qualification; never installed or released as an operator entrypoint (#3327)"
+    },
+    {
+      "class": "test",
       "pattern": "docs/streams/desk-supervision/verify.d/08-consumers.py",
       "reason": "offline acceptance assertion over the original brief-08 delivery diff and consumer routes; run only by desk-supervision/08 Verify rows, never installed or released as an operator CLI (#1363)"
     },
