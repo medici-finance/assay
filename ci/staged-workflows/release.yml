@@ -1408,16 +1408,77 @@ jobs:
           sha256sum prepared-source.tar.gz image-bugs-gc-linux-amd64 release-highlights.md checksums.txt > build-inputs.sha256
           if [ -f release-source.bundle ]; then sha256sum release-source.bundle >> build-inputs.sha256; fi
 
-      - name: Upload prepared release artifacts
+      # Independent platform artifacts let download-artifact transfer up to five
+      # platforms concurrently. Store the already-gzipped suites without another
+      # compression pass; the loose binaries remain unstripped.
+      - name: Upload prepared release artifacts (darwin-arm64)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-build
+          name: release-build-darwin-arm64
           retention-days: 7
           if-no-files-found: error
+          compression-level: 0
           path: |
-            statusgen-*
-            qualgen-*
-            desk-tools-*.tar.gz
+            statusgen-darwin-arm64
+            qualgen-darwin-arm64
+            desk-tools-darwin-arm64.tar.gz
+
+      - name: Upload prepared release artifacts (darwin-amd64)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-darwin-amd64
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            statusgen-darwin-amd64
+            qualgen-darwin-amd64
+            desk-tools-darwin-amd64.tar.gz
+
+      - name: Upload prepared release artifacts (linux-amd64)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-linux-amd64
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            statusgen-linux-amd64
+            qualgen-linux-amd64
+            desk-tools-linux-amd64.tar.gz
+
+      - name: Upload prepared release artifacts (windows-amd64)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-windows-amd64
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            statusgen-windows-amd64.exe
+            qualgen-windows-amd64.exe
+            desk-tools-windows-amd64.tar.gz
+
+      - name: Upload prepared release artifacts (windows-arm64)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-windows-arm64
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            statusgen-windows-arm64.exe
+            qualgen-windows-arm64.exe
+            desk-tools-windows-arm64.tar.gz
+
+      - name: Upload prepared release artifacts (common)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-common
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
             cursor-bundle.tar.gz
             checksums.txt
             tool-validation-*.json
@@ -1447,7 +1508,8 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: release-build
+          pattern: release-build-*
+          merge-multiple: true
           path: .
       - name: Restore the prepared source and verify release artifacts
         env:
