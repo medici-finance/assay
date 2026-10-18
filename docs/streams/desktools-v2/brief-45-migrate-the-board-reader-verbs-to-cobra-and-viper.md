@@ -153,6 +153,37 @@ Verification-Attestation: medici-finance/assay#3131 run=e776bd95590d87e3541cb5b4
 | 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:6ae32eba5297 | 2026-10-16 | assay-verifier-app[bot] @ 1948dc087370+dirty (on-behalf-of human:ian) (forge-identity) |
 Verification-Attestation: medici-finance/assay#3131 run=e776bd95590d87e3541cb5b48da80152d3e404adde9dcb3c153b496e2deb5173 source=1948dc0873705930b202f0e747047df844010d1a brief=docs/streams/desktools-v2/brief-45-migrate-the-board-reader-verbs-to-cobra-and-viper.md model=claude-opus-5-5 tier=any
 
+### Verifier pass — 2026-10-18, assay-verifier-app[bot] (verify-desk, non-implementer, strong tier), merged main 6dfb616ef
+
+Re-verification at merged main 6dfb616ef. The delivering change is still 186d262f6 (#2978). Since the 2026-10-16 pass, three later commits touched the owned packages: #2541 (issue label history in issueboard and deskread), #3331 (test oracle) and #3332 (perf attribution in main.go). None of them changes the Cobra tree, the declared keys or the mutation spec. Host: darwin, go1.27.2, git 2.56.0, statusgen v1.0.49. Each row ran from the repo root of the detached home at 6dfb616ef, with KUBECONFIG=/dev/null, a throwaway HOME and TMPDIR in the session scratch outside the home, and the real Go caches. Before running anything I wrote down what each Expect cell predicts. Row 4's spec holds 9 mutations (3 owned commands × 3 plants) plus one positive control.
+
+| # | Command | Expected | Observed | Date / runner |
+|---|---------|----------|----------|---------------|
+| 1 | Verify row 1 | exit 0; 3 PASS lines | exit 0; count 3 — `--- PASS: TestCLIHelpOffline` in deskinbox (2.19s), issueboard (2.12s) and deskread (3.47s), each package `ok` | 2026-10-18 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 2 | Verify row 2 | exit 0; 3 PASS lines | exit 0; count 3 — `--- PASS: TestCLIConfigFlow` in all three packages, each `ok` | 2026-10-18 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 3 | Verify row 3 | exit 0; 3 PASS lines | exit 0; count 3 — `--- PASS: TestCLILegacyForms` in all three packages, each `ok` | 2026-10-18 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 4 | Verify row 4 | exit 0; last line `Totals: 9 caught, 0 NOT CAUGHT, 0 could-not-mutate.` | exit 0; `Harness healthy: baseline GREEN, positive control CAUGHT.` then 9 CAUGHT (help after a config read, an undeclared env binding and a dropped legacy form, for each of issueboard, deskinbox and deskread); last line `Totals: 9 caught, 0 NOT CAUGHT, 0 could-not-mutate.` git status was clean afterwards | 2026-10-18 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 5 | Verify row 5 | exit 0 | exit 0; `ok` for deskinbox, issueboard and deskread | 2026-10-18 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 6 | Verify row 6 | exit 0 | exit 0; no vet output for GOOS=windows | 2026-10-18 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 7 | Verify row 7 | exit 0; PASS | exit 0; `--- PASS: TestCLIOwnerMigrated (16.43s)`, clicontract `ok`. The registry has three rows owned by desktools-v2/45 (deskinbox, deskread, issueboard), all in state `migrated` | 2026-10-18 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 8 | Verify row 8 | exit 0 | exit 0; last line `seed passes=26` | 2026-10-18 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 9 | Verify row 9 | exit 0; none disproved | exit 0; `consumers: no brief files in the diff against 6dfb616ef5463fa886e89ab7b07803d30006c58a — nothing to corroborate`. At merged main the diff is empty, so this row shows only that nothing is disproved. Supplementary run with base 186d262f6^ and the filter for desktools-v2/45: exit 0, `summary: 0 corroborated, 0 disproved, 15 unchecked`. Every entry is unchecked because no consumer line changed since that base, so it adds no positive evidence | 2026-10-18 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+
+Review-gate reading (the brief's Review section): in all three packages the non-test source now reads os.Args only to pass it into deskkit.PerfRun and then execute, which builds the cli.Run (Cobra) tree. No flag.Parse, flag.NewFlagSet or `case "--` arm is left in non-test source.
+
+Risk-bearing value. The brief has risk metadata, with all four fields "no" and irreversible "no". The tools are read-only board readers. I enumerated anyway, over the main.go diffs of the three owned packages in 186d262f6, and re-resolved line numbers at 6dfb616ef:
+- `UsageExit = deskkit.ExitRefused` (ExitRefused = 5 @ tools/desk/internal/deskkit/exitcodes.go:51) @ tools/desk/cmd/deskinbox/main.go:199, tools/desk/cmd/issueboard/main.go:209, tools/desk/cmd/deskread/main.go:323. If this is wrong, callers that branch on the exit code misread a bad-argument refusal. An edit and a release undo it.
+- execute-failure return `deskkit.ExitUnverifiable` (= 6 @ tools/desk/internal/deskkit/exitcodes.go:55), in each main.go. This is the same value the pre-change parsers returned (for example, issueboard main.go:109 at 186d262f6^). Reversible.
+- `max-parallel Default = "6"` @ tools/desk/cmd/deskread/main.go:277, with lower bound `n < 1` refused @ tools/desk/cmd/deskread/main.go:563. Both are unchanged from the pre-change `readOpts{maxParallel: 6}` and its `n < 1` check. Reversible concurrency knob.
+- `sla-days Default = strconv.Itoa(escalateSLADays)`, with escalateSLADays = 6 @ tools/desk/cmd/issueboard/board.go:91. This alarm threshold already existed and this diff did not change it. Reversible.
+- `root Default = "."` (issueboard persistent flag). This is the same default as before. Reversible.
+
+RISK-VALUE: DERIVED — UsageExit = deskkit.ExitRefused (5) @ tools/desk/cmd/issueboard/main.go:209 (same in deskinbox main.go:199 and deskread main.go:323) — the Ground rules require existing exit codes to be preserved. Before the change, every bad-argument path in the three parsers returned deskkit.ExitRefused, and the deskkit contract defines that as 5, "refused". The issueboard help text at main.go:85 documents "5 refused (bad arguments)". The muhar positive control (5 → 6) was CAUGHT in row 4, so the owner tests pin this value.
+
+Verification-Attestation: medici-finance/assay#3394 run=2c511c0bd0c1674ba2cbae721ec7a3e650d621670d4bfb3565c40549ea196fa6 source=6dfb616ef5463fa886e89ab7b07803d30006c58a brief=docs/streams/desktools-v2/brief-45-migrate-the-board-reader-verbs-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: PASS** — 9/9 rows pass at merged main 6dfb616ef.
+
 
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.
