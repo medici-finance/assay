@@ -1,12 +1,15 @@
 ---
 brief: "assay:assay:desktools-v2:17"
-title: "Enforce complete Cobra and Viper adoption across the tool suite"
+title: "Enforce Cobra and Viper on every new command and every surviving CLI"
 why: >-
-  A cellctl-only migration would leave inconsistent behavior in the rest of the suite. Close
-  the rollout only when every maintained entrypoint is migrated or deliberately retired and
-  executable compatibility checks prevent new custom parsers from returning.
+  A cellctl-only migration would leave inconsistent behavior in the rest of the suite, and a
+  new tool built for the target architecture on a hand-rolled parser would restart the debt.
+  Close the rollout only when every surviving maintained entrypoint is migrated or retired,
+  every new command builds on the shared foundation, and executable checks prevent custom
+  parsers from returning. Verbs whose parser port was withdrawn because their domain retires
+  are exempt until they are retired.
 wave: 5
-depends: ["desktools-v2/16", "desktools-v2/18", "desktools-v2/19", "desktools-v2/20", "desktools-v2/21", "desktools-v2/22", "desktools-v2/23", "desktools-v2/24", "desktools-v2/25", "desktools-v2/26", "desktools-v2/27", "desktools-v2/28", "desktools-v2/29", "desktools-v2/30", "desktools-v2/31", "desktools-v2/32", "desktools-v2/33", "desktools-v2/34", "desktools-v2/35", "desktools-v2/36", "desktools-v2/37", "desktools-v2/38", "desktools-v2/39", "desktools-v2/40", "desktools-v2/41", "desktools-v2/42", "desktools-v2/43", "desktools-v2/44", "desktools-v2/45", "desktools-v2/46", "desktools-v2/47", "desktools-v2/48", "desktools-v2/49", "desktools-v2/50", "desktools-v2/51", "desktools-v2/52", "desktools-v2/53", "desktools-v2/54", "desktools-v2/55", "desktools-v2/56", "desktools-v2/57"]
+depends: ["desktools-v2/16", "desktools-v2/18", "desktools-v2/19", "desktools-v2/20", "desktools-v2/22", "desktools-v2/23", "desktools-v2/25", "desktools-v2/29", "desktools-v2/30", "desktools-v2/35", "desktools-v2/42", "desktools-v2/44", "desktools-v2/45", "desktools-v2/46", "desktools-v2/47", "desktools-v2/48", "desktools-v2/49", "desktools-v2/50", "desktools-v2/51", "desktools-v2/52", "desktools-v2/53", "desktools-v2/54", "desktools-v2/55", "desktools-v2/56", "desktools-v2/57"]
 unblocks: []
 effort: "L"
 gate: "model"
@@ -14,7 +17,7 @@ risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-da
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 1
+version: 2
 id: "4dcb4036-a55c-4a56-af87-2efe09225307"
 authored: "2026-10-03 by coordinator"
 sources:
@@ -46,7 +49,9 @@ files:
 - `changelog/cli-suite-conformance.md` (planned).
 
 facts:
-- /15 landed exhaustive source discovery (`tools/desk/internal/clicontract`, TestCLIInventory) and a concrete migration brief for every remaining entrypoint: children /18–/54, all in this brief's depends alongside the /16 reference. `cli-migration.json` routes every discovered entrypoint to one of them; /29 waits on /45 and /54 on /30, which puts this brief in wave 5.
+- /15 landed exhaustive source discovery (`tools/desk/internal/clicontract`, TestCLIInventory) and a concrete migration brief for every remaining entrypoint. `cli-migration.json` routes every discovered entrypoint to one of them; /29 waits on /45, which puts this brief in wave 5.
+- **Rescoped 2026-10-18** under the ratified target architecture (`docs/proposals/non-ci-architecture/11-target-architecture.md`, "What happens to today's tools": do not port the entire command matrix; `docs/proposals/non-ci-architecture/13-migration-and-decisions.md`: no parser migration is a prerequisite). The per-verb ports /21, /24, /26–/28, /31–/34, /36–/41 and /43 are `withdrawn`; their rows (and the GitLab token-renewal script, which windows-port/17 retires) are state `exempt` in the registry: they keep their current parser until retired, and they are not dependencies of this brief. This brief's depends are the reference /16 plus every surviving child: statusgen, qualgen, deskboard, deskwt, deskfleet, deskapps, the inbox launcher, the GitLab provisioner, the install path, comms client, metrics, board readers, release/provenance, admin, standalone module CLIs, harness/CI guards, skill lint, plugin scripts, changelog/CI/security/go-analysis script ports, deskperf and intake-eval.
+- The new-tool rule is normative in `docs/streams/desktools-v2/cli-contract.md` §7: every new command-line tool or verb adapter for the target architecture is built on the /15 foundation. The enforcement check reads the tree, not the registry's promises: a new `main` package that bypasses the foundation fails.
 - `TestCLIOwnerMigrated` (from /15) is each child's own completion check; this brief's TestCLIComplete is the suite-wide one.
 - `tools/desk/cmd/*` alone misses statusgen, qualgen and module-local operator/maintenance CLIs. The registry must be checked against independent discovery and release/build declarations.
 - Existing tools use different output/exit contracts; uniform libraries do not authorize replacing those contracts with Cobra defaults.
@@ -71,7 +76,9 @@ claims that they already exist.
 
 ## Task
 
-1. Refuse completion until every maintained CLI discovered from tracked source/build/release declarations is either migrated by its named child brief or retired by a merged change that also removes its consumers. No pending row, arbitrary exclusion or source-only import counts as adopted. All children authored by /15 must be actual dependency edges here; recompute waves and README critical path when those edges land. Do not migrate dozens of commands in this final brief.
+1. Refuse completion until every maintained CLI discovered from tracked source/build/release declarations is either migrated by its named child brief, retired by a merged change that also removes its consumers, or `exempt` (its parser port withdrawn because its domain retires). No pending row, arbitrary exclusion or source-only import counts as adopted. Every surviving child must be an actual dependency edge here; withdrawn children are not. Recompute waves and the README critical path when edges change. Do not migrate dozens of commands in this final brief.
+   - **Exempt rows are bounded, not a loophole.** An exempt row needs a reason naming its retirement path and an owner brief that exists (TestCLIInventory already refuses either missing). Before completion, re-check each exempt row against the target's tools table: a row whose domain survives (for example an installer or upgrade command with its own consumers) is re-routed to a bounded surviving owner, which then becomes a dependency edge here. An exempt row is never flipped to migrated without the owner tests.
+   - **New commands.** Discovery treats every `main` package and script launcher added after this rescope as a new tool: it must be a `pending`/`migrated` row whose package imports the shared foundation (`tools/desk/internal/cli`, or Cobra plus the contract's Viper rules in a standalone module). A new row may never be `exempt`, and a new desk-module `main` package that does not import the adapter fails TestCLINewCommandsUseFoundation.
 2. Own the final coverage check for CLI platform cases delivered by /15, /16 and every migration child; none are deferred to /12. Run a shared black-box matrix against every migrated command tree: root and nested help/version without config/auth/effects, conventional flag/value/-- forms, required args and invalid inputs, approved env/config/default precedence, explicit-empty behavior, machine output and stable execution exits. Each configuration-capable tool must demonstrate Viper's resolved value reaching its handler. A tool without config demonstrates declared flags/defaults through its Viper instance, without invented config surfaces. Test hidden entrypoints' parsing separately while preserving their documented machine protocol.
 3. Add independent source-level checks, with narrow documented compatibility adapters, detecting reintroduced manual os.Args dispatch, flag.FlagSet production parsing, duplicated handwritten help or global Viper use. Do not confuse legitimate raw argv forwarding AFTER `--`, test fixtures, shell data-format decoders or unrelated libraries' flag use with a second parser. Compile the supported Go targets and run native Windows behavior cases through the existing CI lane; a cross-build is not a native behavior pass.
 4. Exercise negative controls: a planted maintained command omitted from the registry, a false migrated row whose handler ignores Viper, a help handler that reads config or triggers an effect, a new manual parser and a removed config-source restriction must each fail the corresponding check. Existing lower-level authorization/custody regression tests must stay independent of this harness.
@@ -87,6 +94,7 @@ claims that they already exist.
 | 4 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./internal/clicontract -run '^TestCLICIGates$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLICIGates " "$f"` | exit 0 with TestCLICIGates PASS; the actual workflow and cross-module trigger registry include the checks; a staged-only patch fails this row |
 | 5 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; inherited behavior floor preserved |
 | 6 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
+| 7 | check +mutation | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./internal/clicontract -run '^TestCLINewCommandsUseFoundation$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLINewCommandsUseFoundation " "$f"` | (added 2026-10-18) exit 0 with TestCLINewCommandsUseFoundation PASS; a planted new `tools/desk/cmd/<x>` main package routed `pending` without importing the shared adapter fails, a planted new standalone-module `main` on a raw `flag.FlagSet` fails, a planted new row marked `exempt` fails, and an exempt row with no retirement reason fails |
 
 ## Pre-mortem
 
@@ -100,4 +108,5 @@ never substituted by cross-compilation or a Linux path fixture.
 <!-- Independent verifier records actual command, exit, output, date and runner. -->
 
 ## Review
-Gate: model. Reject completion based only on cellctl, imports or a staged CI patch.
+Gate: model. Reject completion based only on cellctl, imports or a staged CI patch, and reject an
+exempt row whose domain the target keeps.

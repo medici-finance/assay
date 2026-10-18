@@ -11,6 +11,9 @@ why: >-
 wave: 1
 depends: []
 unblocks: ["auto-triage/02", "auto-triage/03"]
+withdrawn-date: "2026-10-18"
+superseded-by: ["graph-execution/08"]
+withdrawn-reason: "The culprit-identifier contract (gate-red admission by run provenance, the culprit record, the conservative judgement default and the withheld-detail rule) is folded into graph-execution/08 as the gate-red class of the signal-triggered pattern; under the ratified target (docs/proposals/non-ci-architecture/11-target-architecture.md, one semantic owner per domain) no standalone tools/autotriage classifier is built."
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -33,6 +36,8 @@ id: 2e97241c-23a2-4269-9e1e-a5eb081680c6
 ---
 
 # Brief 01 — culprit identifier
+
+> **Withdrawn 2026-10-18 — superseded by `graph-execution/08` (merged into it).** The culprit-identifier contract (gate-red admission by run provenance, the culprit record, the conservative judgement default and the withheld-detail rule) is folded into graph-execution/08 as the gate-red class of the signal-triggered pattern; under the ratified target (docs/proposals/non-ci-architecture/11-target-architecture.md, one semantic owner per domain) no standalone tools/autotriage classifier is built. Not executable.
 
 ## Context
 

@@ -38,13 +38,17 @@ claiming an approval that has not happened.
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Culprit identifier — parse a failing whole-tree gate into check + file:line + mechanical/judgement class](brief-01-culprit-identifier.md) | 1 | M | todo | — | — |
-| 02 | [Mechanical responder — file the bug and open a fixing draft PR, autonomously, for the mechanical class](brief-02-mechanical-responder.md) | 2 | M | todo | — | — |
-| 03 | [Judgement responder — file the bug and route it with a recommended default, for the judgement and opaque classes](brief-03-judgement-responder.md) | 2 | M | todo | — | — |
+| 01 | [Culprit identifier — parse a failing whole-tree gate into check + file:line + mechanical/judgement class](brief-01-culprit-identifier.md) | 1 | M | withdrawn | — | — |
+| 02 | [Mechanical responder — file the bug and open a fixing draft PR, autonomously, for the mechanical class](brief-02-mechanical-responder.md) | 2 | M | withdrawn | — | — |
+| 03 | [Judgement responder — file the bug and route it with a recommended default, for the judgement and opaque classes](brief-03-judgement-responder.md) | 2 | M | withdrawn | — | — |
 | 04 | [Never-invisible watchdog — escalate any red whole-tree gate that no responder acted on within N minutes](brief-04-never-invisible-watchdog.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
+
+**2026-10-18:** briefs 01–03 are `withdrawn`, merged into the signal-triggered pattern of the
+graph-execution stream (its gate-red class); brief 04's front matter carries the new edge. The
+text below is the original plan, kept for history.
 
 `auto-triage/01` (culprit identifier — parse the failing gate into `check` + `file:line`
 + mechanical/judgement class) → `auto-triage/02` (mechanical responder — file + open a

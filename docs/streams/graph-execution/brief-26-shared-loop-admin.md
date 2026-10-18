@@ -71,6 +71,7 @@ risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this st
 
 ## Ground rules
 
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - Work in an isolated branch; no merge, deployment or live infrastructure contact.
 - Offline fixtures/fake providers only in this brief; a concrete adapter does not authorize provider calls.
 - Stop at implemented; independent verification owns verified/done.

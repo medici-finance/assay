@@ -9,7 +9,10 @@ why: >-
   of a bare stack trace, without the automation ever guessing a fix or a withheld token.
 wave: 2
 depends: ["auto-triage/01"]
-unblocks: ["auto-triage/04"]
+unblocks: []
+withdrawn-date: "2026-10-18"
+superseded-by: ["graph-execution/08"]
+withdrawn-reason: "The judgement-responder obligations (every route carries a recommended default, the withheld-detail path, sanitized text, ceilings failing closed) are folded into graph-execution/08's judgement decision exit; the live adapter and its autonomous-action gate belong to the later dispatch brief that 08 names."
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -44,6 +47,8 @@ id: 2b1b6409-6509-4d8e-a91d-9d0fc08f40a2
 ---
 
 # Brief 03 — judgement responder
+
+> **Withdrawn 2026-10-18 — superseded by `graph-execution/08` (merged into it).** The judgement-responder obligations (every route carries a recommended default, the withheld-detail path, sanitized text, ceilings failing closed) are folded into graph-execution/08's judgement decision exit; the live adapter and its autonomous-action gate belong to the later dispatch brief that 08 names. Not executable.
 
 ## Context
 

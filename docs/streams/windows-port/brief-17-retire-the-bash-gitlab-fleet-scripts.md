@@ -110,6 +110,14 @@ facts:
   are removed in the same commit as the deletion. The windows-port/16 golden test
   (`TestFleetTablesGolden` (planned)) is the guard that remains, and row 3 proves it reddens on a missing
   role.
+- **CLI registry (folded 2026-10-18 from desktools-v2/54).** The token-renewal half of the
+  security-script port left desktools-v2/54: this brief retires `tools/renew-fleet-gitlab-tokens.sh`,
+  so its Cobra/Viper port is not executed. Its row in `docs/streams/desktools-v2/cli-migration.json`
+  is `exempt` with this brief as owner. On deletion, flip that row (and the
+  `tools/create-fleet-gitlab.sh` row) to `retired` in the same commit; that registry edit is the one
+  exception to the "do NOT edit anything under `docs/streams/`" rule, because the registry is a live
+  routing file checked by TestCLIInventory, not a record. Under Option 3 (do not
+  retire), re-route the renewal row to a bounded Cobra/Viper owner instead.
 - **Git-Bash stays for one thing.** The Claude Code SessionStart hooks still need `bash` + `jq`
   (`docs/adopting-assay.md` Windows prerequisites). Only the fleet-provisioning half of that
   prerequisite goes. The hooks half stays, and row 8 guards it.

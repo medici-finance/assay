@@ -11,7 +11,7 @@ why: >-
   inside what the roles are already allowed to do.
 wave: 1
 depends: ["graph-execution/02"]
-unblocks: []
+unblocks: ["auto-triage/04"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -45,6 +45,35 @@ facts:
 - **Two exits, one selector.** A `decision` node after confirm reads the signal class: `outage` ⇒ the exit is a mitigation left for a human to execute (the pattern's last node is a `decision` owned by a human, no automated effect); `regression` ⇒ the exit is the propose node's draft PR into the ordinary review lane. Both exits end at a human; the pattern never removes one.
 - **Signal liveness is a precondition, not a deliverable.** A dead signal source makes the pattern report nothing and look healthy. The pattern's first node declares `input: signal {source, liveness-check}` and the eligibility evaluator (01) holds the instance when the liveness check is `could-not-check`; delivering the liveness checks themselves is outside this brief and outside this stream.
 - **Roles.** contain / confirm / root-cause / propose run as `worker`; the outage exit is a human `decision`; review of the propose exit is `reviewer`. Every App role a node names (`worker`, `reviewer`) exists in `topology.yaml`'s `apps:` list. `human` is not one of those roles and is never looked up there: `topology.yaml`'s `humans:` list ships empty by design, and its entries — when populated — carry `name`/`login`/`id`, never `role:`. The outage decision's human owner is a fixed node kind this pattern itself declares, not a topology-resolved role.
+**Folded scope — 2026-10-18 (from auto-triage/01–03, withdrawn into this brief).** A red
+whole-tree gate (a red `main` or scheduled check) is one signal class of this pattern, and the
+auto-triage response is an instance of it rather than a parallel tool. Under the ratified target
+architecture (`docs/proposals/non-ci-architecture/11-target-architecture.md`: work/policy is pure
+evaluation over explicit observations; provider effects run through role-bound executors), the
+standalone `tools/autotriage` classifier and responders are not built. Their unique obligations
+become pattern obligations here, checked by the same lint:
+- **Gate-red input admission.** The `signal` input for the gate-red class admits only a run
+  triggered by `schedule`, or by `push` whose ref resolves to `main`; a `pull_request` run or a
+  push to any other ref is refused wholesale (no instance, not a lower-confidence one), because
+  its log text is contributor-authored.
+- **Culprit record.** The confirm node's required evidence for the gate-red class is a culprit
+  record `{check, file, line, problem, class: mechanical | judgement, origin: {trigger, ref}}`.
+  Conservative default: anything not resolved to a concrete `file:line` with a known
+  deterministic remedy is `judgement`. A gate that withholds its detail by design (a
+  withheld-content leak scan) is always `judgement` with `file: null`, never reconstructed from
+  a diff.
+- **Mechanical exit = the propose node, narrowed.** For `mechanical`, the propose node's draft
+  PR is limited to the closed remedy set `gofmt | stray-file-deletion | exact-stale-string-replace`
+  on the culprit file, checked against the canonicalized path; a remedy outside the set, or any
+  path under `.github/workflows/` or other gate configuration, routes to the judgement exit.
+- **Judgement exit = a human decision with a default.** For `judgement`, the exit is a human
+  `decision` node that must carry a recommended default next step; a route with no default is
+  invalid. Published text derived from CI output is fenced and inert.
+- **Effect limits.** One open artifact per culprit (dedupe), an open-artifact ceiling and a
+  per-window rate, each failing closed to an escalation signal (consumed by auto-triage/04).
+- **Activation stays gated.** Running the pattern autonomously on a live signal is the later
+  dispatch brief this brief's consumers already name; that brief carries the autonomous-action
+  human gate (`DR-auto-triage`), the dry-run default and the live adapters on the runner contract.
 - Single-point-of-failure note: the ONE control is the `pattern-effect-exceeds-role` lint on the pattern file. Second, independent layer: the pattern's own containment taxonomy is a closed enumeration checked by a separate schema rule (an unknown effect value fails parsing before the role check runs). Third, out-of-band: the roster's role binding at run time refuses an effect the role is not bound to, in a different component (the desk tools) on a different signal.
 
 ## Ground rules
@@ -58,6 +87,7 @@ facts:
 2. Fixture directory with the valid instance and three mutated copies: (a) contain node with an added `guard-config-edit` effect; (b) root-cause node with the replay-fixture evidence marked `mandatory: false`; (c) propose node with a `merge` effect. Tests assert the lint reddens each with the rule name.
 3. One paragraph in `spec/workflow-pattern-v1.md` (planned) on signal-instantiated patterns and the liveness precondition; one paragraph in `docs/dependency-graph-design.md` naming the third pattern.
 4. Changelog fragment.
+5. (folded 2026-10-18) Encode the gate-red class per the folded-scope facts: the admission predicate on the `signal` input, the culprit record as the confirm node's required evidence, the closed remedy set on the propose node, the default-carrying judgement decision and the effect limits. Add mutated copies (d) a gate-red input admitting `pull_request`, (e) a propose node whose remedy set adds an edit under `.github/workflows/`, (f) a judgement decision with no recommended default, (g) a withheld-detail gate classed `mechanical`; tests assert the lint reddens each with the rule name.
 
 ## Verify
 | # | Class | Command | Expect |
@@ -70,6 +100,10 @@ facts:
 | 6 | check +dereference | for r in $(grep -oE 'role: [a-z]+' spec/workflow-patterns/signal-triggered-v1.yaml \| sort -u \| cut -d' ' -f2); do [ "$r" = human ] \&\& continue; grep -q "role: $r" topology.yaml \|\| echo "unknown role $r"; done | prints nothing — every non-human role the pattern names exists in `topology.yaml`'s `apps:` list, checked against that file's actual `role: <name>` entries. `human` is skipped, not looked up: `topology.yaml`'s `humans:` list ships empty by design (its header: "SHIPS EMPTY, and that is the fail-closed direction") and its entries, when populated, carry `name`/`login`/`id` keys — never `role:` — so the outage decision's human owner is never resolved against `topology.yaml`; it is the one node owner this pattern fixes structurally rather than by topology lookup |
 | 7 | check | statusgen --root . --consumers --brief assay:assay:graph-execution:08 --diff-base origin/main; echo rc=$? | tail -1 | `rc=0` on the implementing branch — the pattern-bank follow-up flipped to fixed-here is corroborated by the diff |
 | 8 | check | statusgen --root . --lint; echo rc=$? | tail -1 | `rc=0` |
+| 9 | check:ci +mutation | cd statusgen && go test -count=1 -v -run '^TestSignalTriggeredGateRedAdmission$' ./... 2>&1 \| grep -F -- '--- PASS: TestSignalTriggeredGateRedAdmission ' | exit 0; mutated copy (d) reddens: a gate-red input that admits a `pull_request` run, or a push to a non-`main` ref, is refused (folded from auto-triage/01) |
+| 10 | check:ci +mutation | cd statusgen && go test -count=1 -v -run '^TestSignalTriggeredRemedySetClosed$' ./... 2>&1 \| grep -F -- '--- PASS: TestSignalTriggeredRemedySetClosed ' | exit 0; mutated copy (e) reddens: the mechanical propose node cannot name a remedy outside the closed set or a gate-configuration path (folded from auto-triage/02) |
+| 11 | check:ci +mutation | cd statusgen && go test -count=1 -v -run '^TestSignalTriggeredJudgementCarriesDefault$' ./... 2>&1 \| grep -F -- '--- PASS: TestSignalTriggeredJudgementCarriesDefault ' | exit 0; mutated copy (f) reddens: a judgement decision without a recommended default is invalid (folded from auto-triage/03) |
+| 12 | check:ci +mutation | cd statusgen && go test -count=1 -v -run '^TestSignalTriggeredWithheldNeverMechanical$' ./... 2>&1 \| grep -F -- '--- PASS: TestSignalTriggeredWithheldNeverMechanical ' | exit 0; mutated copy (g) reddens: a withheld-detail gate can only be `judgement` with `file: null` (folded from auto-triage/01) |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item — (command, exit code, output line(s) or hash, date, runner). "verified" requires this section filled by someone who did NOT implement. -->

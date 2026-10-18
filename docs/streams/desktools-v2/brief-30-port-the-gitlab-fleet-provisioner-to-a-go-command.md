@@ -8,7 +8,7 @@ why: >-
   the provisioning idempotent.
 wave: 3
 depends: ["desktools-v2/16"]
-unblocks: ["desktools-v2/17", "desktools-v2/54"]
+unblocks: ["desktools-v2/17"]
 effort: "M"
 gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "yes"}

@@ -60,6 +60,7 @@ facts:
   - Single-point-of-failure note: the ONE control is the holdout byte-identity assertion (ii). Second, independent layer: the `permitted_method` column reddens a revision that reaches the outcome by widening authority even when every holdout is untouched; third, out-of-band: the 02 pattern lint (`pattern-effect-exceeds-role`) runs on the v2 file in CI regardless of what the replay says.
 
 ## Ground rules
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - NEVER git push / trigger workflows / run mutating kubectl. Leave commits per the task instructions only.
 - Public tree: records, fixtures and the report carry `example-org/*` placeholders and role names only; no login, no adopter repo, no adopter number.
 - Exactly ONE pattern revision is proposed in this brief. A second observed failure is a finding entry, not a second revision.

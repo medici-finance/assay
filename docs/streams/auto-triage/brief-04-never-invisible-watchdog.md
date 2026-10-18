@@ -8,7 +8,7 @@ why: >-
   confidence. This brief is the fail-safe: a red whole-tree gate with no responder action
   within a bounded window is itself escalated, so no red ever goes silent.
 wave: 3
-depends: ["auto-triage/02", "auto-triage/03"]
+depends: ["graph-execution/08"]
 unblocks: []
 effort: M
 gate: human
@@ -44,6 +44,8 @@ id: 5c1f85bd-ef4f-421e-93c7-2eacbc68f9fd
 ---
 
 # Brief 04 — never-invisible watchdog
+
+> **Dependency note — 2026-10-18.** The two responder briefs of this stream were merged into the signal-triggered pattern; the escalation signal this watchdog observes is now that pattern's effect-limit escalation, and the front-matter edge says so.
 
 ## Context
 

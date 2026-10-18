@@ -9,7 +9,10 @@ why: >-
   every fix and no gate is ever weakened to make the red pass.
 wave: 2
 depends: ["auto-triage/01"]
-unblocks: ["auto-triage/04"]
+unblocks: []
+withdrawn-date: "2026-10-18"
+superseded-by: ["graph-execution/08"]
+withdrawn-reason: "The mechanical-responder obligations (closed remedy set, no gate-configuration edits, canonicalized paths, dedupe, ceilings failing closed to escalation, sanitized text) are folded into graph-execution/08's propose exit; the live adapter and its autonomous-action gate belong to the later dispatch brief that 08 names."
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -46,6 +49,8 @@ id: 739df04b-fc17-473d-8697-32ecdc7a3c36
 ---
 
 # Brief 02 — mechanical responder
+
+> **Withdrawn 2026-10-18 — superseded by `graph-execution/08` (merged into it).** The mechanical-responder obligations (closed remedy set, no gate-configuration edits, canonicalized paths, dedupe, ceilings failing closed to escalation, sanitized text) are folded into graph-execution/08's propose exit; the live adapter and its autonomous-action gate belong to the later dispatch brief that 08 names. Not executable.
 
 ## Context
 

@@ -6,7 +6,10 @@ why: >-
   FlagSets by hand. The move must keep every refusal while giving the verbs real help.
 wave: 3
 depends: ["desktools-v2/16"]
-unblocks: ["desktools-v2/17"]
+unblocks: []
+withdrawn-date: "2026-10-18"
+superseded-by: ["forge-neutral/39", "forge-neutral/40", "forge-neutral/41"]
+withdrawn-reason: "The ratified target (docs/proposals/non-ci-architecture/11-target-architecture.md §\"What happens to today's tools\": thin adapters, do not port the entire command matrix; 13-migration-and-decisions.md: no parser migration is a prerequisite) retires or re-homes this domain: forge writes move to the write-through forge service and role-bound executors (docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md; forge-neutral/39-41). The owned entrypoints keep their current parser, routed exempt in cli-migration.json, until retired."
 effort: "M"
 gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "yes"}
@@ -43,6 +46,8 @@ decision-trigger: "spec"
 ---
 
 # Brief 26 — Migrate deskclose to Cobra and Viper
+
+> **Withdrawn 2026-10-18 — superseded by `forge-neutral/39`, `forge-neutral/40`, `forge-neutral/41`.** The ratified target (docs/proposals/non-ci-architecture/11-target-architecture.md §"What happens to today's tools": thin adapters, do not port the entire command matrix; 13-migration-and-decisions.md: no parser migration is a prerequisite) retires or re-homes this domain: forge writes move to the write-through forge service and role-bound executors (docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md; forge-neutral/39-41). The owned entrypoints keep their current parser, routed exempt in cli-migration.json, until retired. The Cobra/Viper requirement now binds new tools instead (`docs/streams/desktools-v2/cli-contract.md` §7). Not executable.
 
 ## Context
 

@@ -8,7 +8,10 @@ why: >-
   worktree, branch or claim a given invocation produces.
 wave: 3
 depends: ["desktools-v2/16"]
-unblocks: ["desktools-v2/17"]
+unblocks: []
+withdrawn-date: "2026-10-18"
+superseded-by: ["graph-execution/14", "graph-execution/22", "graph-execution/26"]
+withdrawn-reason: "The ratified target (docs/proposals/non-ci-architecture/11-target-architecture.md §\"What happens to today's tools\": thin adapters, do not port the entire command matrix; 13-migration-and-decisions.md: no parser migration is a prerequisite) retires or re-homes this domain: dispatch admission moves to the work/policy evaluator at the dispatch boundary (graph-execution/14) on the isolated runner (R3: graph-execution/22, /26). The owned entrypoints keep their current parser, routed exempt in cli-migration.json, until retired."
 effort: "L"
 gate: "model"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
@@ -43,6 +46,8 @@ consumers:
 ---
 
 # Brief 21 — Migrate deskdispatch to Cobra and Viper
+
+> **Withdrawn 2026-10-18 — superseded by `graph-execution/14`, `graph-execution/22`, `graph-execution/26`.** The ratified target (docs/proposals/non-ci-architecture/11-target-architecture.md §"What happens to today's tools": thin adapters, do not port the entire command matrix; 13-migration-and-decisions.md: no parser migration is a prerequisite) retires or re-homes this domain: dispatch admission moves to the work/policy evaluator at the dispatch boundary (graph-execution/14) on the isolated runner (R3: graph-execution/22, /26). The owned entrypoints keep their current parser, routed exempt in cli-migration.json, until retired. The Cobra/Viper requirement now binds new tools instead (`docs/streams/desktools-v2/cli-contract.md` §7). Not executable.
 
 ## Context
 

@@ -425,6 +425,12 @@ have a bounded Go-port owner. A small tool is not an exception.
 
 ### Rollout and acceptance
 
+**Amendment, 2026-10-18.** Under the ratified target architecture, Cobra/Viper is a
+requirement for every **new** command and verb adapter and for every surviving CLI, not a
+port of every existing verb: ports of verbs whose domain retires are withdrawn and their
+entrypoints are `exempt` until retired. Normative text: [cli-contract.md §7](cli-contract.md#7-new-tools-and-retiring-tools--2026-10-18).
+The paragraphs below stand for the surviving tools.
+
 `desktools-v2/15` supplies the foundation, a source-derived complete inventory, and **authors
 bounded implementation briefs for every remaining tool in that same deliverable**. Each row
 names its existing implementation owner; no unassigned bucket or promise to plan later is
