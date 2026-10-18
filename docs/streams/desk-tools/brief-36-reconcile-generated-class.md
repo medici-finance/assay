@@ -164,6 +164,8 @@ source=6dfb616ef5463fa886e89ab7b07803d30006c58a
 brief=docs/streams/desk-tools/brief-36-reconcile-generated-class.md model=claude-opus-5-5
 tier=strong. Each row was run by hand in the admitted detached home.
 
+Verification-Attestation: medici-finance/assay#3396 run=ca035a175f23923903119a940e1328a1b7671ee51d79dac2536d56c1d279a901 source=6dfb616ef5463fa886e89ab7b07803d30006c58a brief=docs/streams/desk-tools/brief-36-reconcile-generated-class.md model=claude-opus-5-5 tier=strong
+
 | # | Command | Expected | Observed | Date / runner |
 |---|---------|----------|----------|---------------|
 | 1 | grep -rq '2688' on the issue-flow rulings register, then echo ok | prints ok | exit 0, prints `ok`. The R-8 section cites 2688, and its Sign-off line (line 36) is still empty. | 2026-10-18 verify-desk verifier (claude-opus-5-5) |
