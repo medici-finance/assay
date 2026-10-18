@@ -40,11 +40,12 @@ import (
 // Key: "<path from tools/desk>|<enclosing func>|<kind>|<tip expression>".
 var publishIdentitySites = map[string]string{
 	// The wrappers: the only literals. Each passes its tip through explicitly.
-	"cmd/deskpr/exec.go|publishIdentityGate|literal|remoteTip": "deskpr wrapper; the tip is chosen per call site below",
-	`cmd/deskevidence/github.go|publishIdentityGate|literal|""`: "deskevidence writes Evidence to the base branch itself; " +
-		"origin/<base>..HEAD is already exactly what the remote lacks",
-	"cmd/deskpr/exec.go|publishIdentityGate|direct|-":         "the deskpr wrapper calls its seam",
-	"cmd/deskevidence/github.go|publishIdentityGate|direct|-": "the deskevidence wrapper calls its seam",
+	"cmd/deskpr/exec.go|publishIdentityGate|literal|remoteTip":          "deskpr wrapper; the tip is chosen per call site below",
+	`cmd/deskevidence/github.go|publishIdentityGate|literal|""`:         "used only by flip for local branch commits; its entire base-to-HEAD range is checked",
+	`cmd/deskevidence/github.go|publishEvidenceIdentityGate|literal|""`: "conditional file writes judge the immutable admitted source against fetched main; no source commit is pushed",
+	"cmd/deskevidence/github.go|publishEvidenceIdentityGate|direct|-":   "the conditional-write wrapper calls the same role gate with the admitted Source",
+	"cmd/deskpr/exec.go|publishIdentityGate|direct|-":                   "the deskpr wrapper calls its seam",
+	"cmd/deskevidence/github.go|publishIdentityGate|direct|-":           "the deskevidence wrapper calls its seam",
 
 	// deskpr's callers.
 	`cmd/deskpr/deskpr.go|cmdCreate|call|""`: "offline create --check judges the whole range; live create uses prepareCreatePush",
@@ -57,9 +58,9 @@ var publishIdentitySites = map[string]string{
 	"cmd/deskpr/deskpr.go|cmdUpdate|call|full.HeadSHA": "live stage: the forge's own PR head, judged immediately before " +
 		"the plain (never forced) push; unknown or non-ancestor widens to the whole range",
 
-	// deskevidence's callers: its wrapper takes no tip at all.
-	"cmd/deskevidence/deskevidence.go|cmdEvidence|call|-":            "deskevidence wrapper fixes RemoteTip to \"\"",
-	"cmd/deskevidence/outcomerecord.go|cmdOutcomeRecordWrite|call|-": "deskevidence wrapper fixes RemoteTip to \"\"",
+	// Conditional-write callers bind the source independently of their destination.
+	"cmd/deskevidence/deskevidence.go|cmdEvidence|call|-":            "conditional-write wrapper fixes RemoteTip to \"\" and pins the admitted source against main",
+	"cmd/deskevidence/outcomerecord.go|cmdOutcomeRecordWrite|call|-": "conditional-write wrapper fixes RemoteTip to \"\" and pins the admitted source against main",
 	// flip (#2074) judges a fresh local branch before and after its commit: the
 	// wrapper's empty tip is the widest range, every commit not on the base.
 	"cmd/deskevidence/flip.go|runFlip|call|-": "deskevidence wrapper fixes RemoteTip to \"\"",
@@ -149,7 +150,7 @@ func publishIdentitySitesIn(fset *token.FileSet, f *ast.File, rel string) []publ
 				switch typeName(x.Fun) {
 				case "PublishIdentityMatchesRole", "publishIdentityGateFn", "productionPublishIdentityGateFn":
 					add("direct", "-", false)
-				case "publishIdentityGate":
+				case "publishIdentityGate", "publishEvidenceIdentityGate":
 					tip := "-"
 					if len(x.Args) >= 3 {
 						tip = src(x.Args[2])

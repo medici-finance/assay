@@ -221,6 +221,13 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test: "statusgen/claimbridge_test.go", module: "statusgen",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"statusgen", "tools/desk", "forgeread", "perfrec"},
+			runInvokes: []string{"bash statusgen/test-role-claims.sh"},
+			why:        "the statusgen consumer builds the desk heads child and exercises its custody and shared envelope through the same offline invocation used by PR CI",
+		},
+		{
 			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads: []string{
@@ -236,7 +243,7 @@ func ciCrossModuleRegistry() []ciEntry {
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"tools/release", ".github/workflows/release.yml", "ci/staged-workflows/release.yml"},
 			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
-			why:        "the unconditional build-test floor executes release cache provenance, archive, and workflow fixtures",
+			why:        "the unconditional build-test floor executes release cache provenance, image artifact contracts, archive, and workflow fixtures",
 		},
 		{
 			test: "tools/desk/cmd/deskinstall/cursor_sync_test.go", module: "tools/desk",
@@ -263,6 +270,14 @@ func ciCrossModuleRegistry() []ciEntry {
 		},
 		{test: "tools/desk/cmd/deskdispatch/verifierattestation_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob, reads: []string{"statusgen/verifyrun.go", "statusgen/verifieradmission.go"}, runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""}, why: "the verifier dispatch fixture builds the actual statusgen executor and proves that two Verify rows require the shared pre-work admission"},
 		{test: "tools/desk/cmd/deskdispatch/verifiercrossrepo_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob, reads: []string{"statusgen/verifyrun.go", "statusgen/verifieradmission.go"}, runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""}, why: "the cross-repository dispatch fixture builds the actual statusgen executor and checks isolated tracking Evidence and deliverable row execution"},
+		{
+			test:   "tools/desk/internal/deskkit/release_authorizer_api_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"ci/staged-workflows/release.yml", ".github/workflows/release.yml"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the offline API fixture executes both release resolve shells and must run when either workflow changes",
+		},
 		{
 			test:   "tools/desk/internal/deskkit/stageddrift_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
@@ -2135,8 +2150,10 @@ func globToRegexp(g string) (*regexp.Regexp, error) {
 // gone, or that the scanner no longer flags, is a hard failure — so the list
 // cannot rot into a blanket suppression.
 var ciRegistryOptOut = map[string]string{
-	"tools/desk/internal/deskkit/appisolation_test.go": `WalkDir("../..") from internal/deskkit reads only tools/desk test sources, within its own module; tools/** already covers every observed edit`,
-	"tools/desk/internal/gitcore/ackguard_test.go":     `filepath.Join("..", "..") from internal/gitcore resolves to tools/desk. The receive-pack reference inventory reads only non-test Go files in this same module; tools/** already triggers its CI job`,
+	"tools/desk/internal/reviewtest/perf_test.go":          `moduleRoot is tools/desk; command probe binaries, own-module legacy perf fixtures, and disposable homes only. No source from another module is read; CI runs the desk module on every PR`,
+	"tools/desk/internal/reviewtest/qualification_test.go": `filepath.Join("..", "..") from internal/reviewtest resolves to tools/desk, its own module. The test compiles command test binaries and reads its own testdata; all other files are disposable fixtures. It reads Git revision/status metadata but no sibling-module source. ci.yml runs go test ./... for tools/desk on every PR`,
+	"tools/desk/internal/deskkit/appisolation_test.go":     `WalkDir("../..") from internal/deskkit reads only tools/desk test sources, within its own module; tools/** already covers every observed edit`,
+	"tools/desk/internal/gitcore/ackguard_test.go":         `filepath.Join("..", "..") from internal/gitcore resolves to tools/desk. The receive-pack reference inventory reads only non-test Go files in this same module; tools/** already triggers its CI job`,
 	"tools/harnesslint/lint_test.go": `filepath.Join(refs, "..", "skills") joins ".." onto a t.TempDir() ` +
 		`returned by copyRefs, deliberately pointing at a NONEXISTENT sibling of the temp dir to exercise the ` +
 		`absent-roster could-not-check path (TestCheckBindings_ClosureFailsWithoutRoster / ` +

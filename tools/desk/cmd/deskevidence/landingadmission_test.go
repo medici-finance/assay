@@ -43,9 +43,10 @@ type attestationAPI struct {
 	timeline           []map[string]any
 	unexpected         []string
 
-	files map[string]string // branch content, by repo path
-	puts  []contentsPut     // every Contents-API write, in order
-	calls []apiCall         // every request, in order
+	commits map[string]bool   // only ids returned by successful writes, never blobs
+	files   map[string]string // branch content, by repo path
+	puts    []contentsPut     // every Contents-API write, in order
+	calls   []apiCall         // every request, in order
 }
 
 // contentsPut is one Contents-API write the offline API accepted.
@@ -57,7 +58,9 @@ type apiCall struct{ Method, Path, Authorization, Operation string }
 // contentsPrefix is the Contents-API path of the fixture repository.
 const contentsPrefix = "/repos/example-org/tracker/contents/"
 
-// blobID is a stand-in blob id: stable for equal content, different otherwise.
+// blobID is the git object id of a blob holding content: what the Contents API serves as a
+// file's `sha`, and what the backend checks the served bytes against before it reports a
+// plain file (S-2266-8).
 func blobID(content string) string {
 	sum := sha1.Sum(append([]byte(fmt.Sprintf("blob %d\x00", len(content))), []byte(content)...))
 	return hex.EncodeToString(sum[:])
@@ -74,7 +77,7 @@ func (a *attestationAPI) serveContents(w http.ResponseWriter, r *http.Request, f
 			enc(map[string]any{"message": "Not Found"})
 			return
 		}
-		enc(map[string]any{"sha": blobID(content), "encoding": "base64",
+		enc(map[string]any{"type": "file", "path": file, "sha": blobID(content), "encoding": "base64",
 			"content": base64.StdEncoding.EncodeToString([]byte(content))})
 	case http.MethodPut:
 		a.calls[len(a.calls)-1].Operation = "commit"
@@ -100,6 +103,10 @@ func (a *attestationAPI) serveContents(w http.ResponseWriter, r *http.Request, f
 		if a.commit != nil {
 			sha = a.commit(file, string(decoded))
 		}
+		if a.commits == nil {
+			a.commits = map[string]bool{}
+		}
+		a.commits[sha] = true
 		if a.loseCommitAck {
 			w.WriteHeader(http.StatusBadGateway)
 			return
@@ -131,6 +138,14 @@ func (a *attestationAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 	a.calls = append(a.calls, apiCall{Method: r.Method, Path: p, Authorization: r.Header.Get("Authorization")})
 	switch {
+	case r.Method == http.MethodGet && strings.Contains(p, "/commits/"):
+		sha := p[strings.LastIndex(p, "/")+1:]
+		if !a.commits[sha] {
+			w.WriteHeader(422)
+			return
+		}
+		a.calls[len(a.calls)-1].Operation = "receipt"
+		enc(map[string]any{"sha": sha, "author": map[string]any{"login": "assay-verifier-app[bot]"}})
 	case strings.Contains(p, contentsPrefix):
 		a.serveContents(w, r, p[strings.Index(p, contentsPrefix)+len(contentsPrefix):])
 	case r.Method == http.MethodPost && strings.HasSuffix(p, "/repos/example-org/tracker/issues"):

@@ -41,6 +41,9 @@ func admittedOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskki
 	if err != nil {
 		return nil, err
 	}
+	if kerr := plainFileRead(landed, fr, b.Brief, branch, "the outcome receipt's landed brief", true); kerr != nil {
+		return nil, kerr
+	}
 	tree, err := newGitOutcomeTree(root, b.TrackingSource)
 	if err != nil {
 		return nil, err
@@ -77,6 +80,9 @@ func validateOutcomeEvidenceBinding(root string, fg deskkit.Forge, fr deskkit.Fo
 	landed, err := fg.ReadFile(fr, deskkit.ReadFileInput{File: b.Brief, Ref: branch})
 	if err != nil {
 		return deskkit.Unverifiable("cannot read landed Evidence for the outcome record", err)
+	}
+	if kerr := plainFileRead(landed, fr, b.Brief, branch, "the outcome record's landed Evidence", true); kerr != nil {
+		return kerr
 	}
 	if !landed.Exists || !bytes.Equal(atCommit, landed.Content) {
 		return deskkit.Refused("refused: outcome record does not name the Evidence as landed on its target branch")

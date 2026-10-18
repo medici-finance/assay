@@ -39,7 +39,7 @@ func githubSeamClient() *http.Client {
 	if githubTransportWrapper == nil {
 		return nil
 	}
-	return &http.Client{Transport: githubTransportWrapper(http.DefaultTransport)}
+	return &http.Client{Transport: countedTransport{next: githubTransportWrapper(countRoundTrips(http.DefaultTransport))}}
 }
 
 // countingTransport counts each HTTP round-trip for the opt-in local perf record
@@ -47,6 +47,14 @@ func githubSeamClient() *http.Client {
 // request or a response: one atomic add, then the wrapped transport's own answer verbatim.
 // It lives here, beside the transport seam, so the perf files themselves import no network
 // package at all.
+// countedTransport marks a composed adapter whose leaf already counts attempts.
+// The outer adapter may refuse locally; only the leaf represents HTTP work.
+type countedTransport struct{ next http.RoundTripper }
+
+func (c countedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return c.next.RoundTrip(req)
+}
+
 type countingTransport struct{ next http.RoundTripper }
 
 func (c countingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -60,7 +68,8 @@ func countRoundTrips(rt http.RoundTripper) http.RoundTripper {
 	if rt == nil {
 		rt = http.DefaultTransport
 	}
-	if _, already := rt.(countingTransport); already {
+	switch rt.(type) {
+	case countingTransport, countedTransport:
 		return rt
 	}
 	return countingTransport{next: rt}

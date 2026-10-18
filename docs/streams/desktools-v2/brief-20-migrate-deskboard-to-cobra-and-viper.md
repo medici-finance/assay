@@ -31,14 +31,14 @@ exec-tier-why: >-
   keep working, and a happy-path parser test cannot show that.
 domain: "complicated"
 consumers:
-  - "tools/desk/cmd/deskboard: follow-up desktools-v2/20 (command tree, declared configuration, contract tests)"
-  - "docs/quality/QUALITY.md: follow-up desktools-v2/20 (legacy invocation forms kept; quoted help reconciled)"
-  - "tools/desk/README.md: follow-up desktools-v2/20 (legacy invocation forms kept; quoted help reconciled)"
-  - "docs/adopting-assay.md: follow-up desktools-v2/20 (legacy invocation forms kept; quoted help reconciled)"
-  - "plugins/assay/scripts/assay-inbox.sh: follow-up desktools-v2/20 (legacy invocation forms kept; quoted help reconciled)"
-  - "plugins/assay/skills/worker-desk/SKILL.md: follow-up desktools-v2/20 (legacy invocation forms kept; quoted help reconciled)"
-  - "plugins/assay/skills/pr-review-desk/SKILL.md: follow-up desktools-v2/20 (legacy invocation forms kept; quoted help reconciled)"
-  - "docs/streams/desktools-v2/cli-migration.json: follow-up desktools-v2/20 (owned rows flip to migrated)"
+  - "tools/desk/cmd/deskboard: fixed-here (command tree, declared configuration, contract tests)"
+  - "docs/quality/QUALITY.md: out-of-scope (invocation forms preserved and replayed by cli_test.go; no quoted help changed)"
+  - "tools/desk/README.md: fixed-here (roster inspection uses deskroster repos --scope write; help and version read no roster)"
+  - "docs/adopting-assay.md: fixed-here (applicability and verification use local deskroster write-scope inspection without board roots; retain command exit and inspect effective values)"
+  - "plugins/assay/scripts/assay-inbox.sh: out-of-scope (invocation forms preserved and replayed by cli_test.go; no quoted help changed)"
+  - "plugins/assay/skills/worker-desk/SKILL.md: out-of-scope (invocation forms preserved and replayed by cli_test.go; no quoted help changed)"
+  - "plugins/assay/skills/pr-review-desk/SKILL.md: out-of-scope (invocation forms preserved and replayed by cli_test.go; no quoted help changed)"
+  - "docs/streams/desktools-v2/cli-migration.json: fixed-here (owned rows flip to migrated)"
 ---
 
 # Brief 20 — Migrate deskboard to Cobra and Viper
@@ -93,6 +93,8 @@ they already exist.
 | 8 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
 | 9 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
 
+| # | Class | Command | Expect |
+|---|---|---|---|
 | 10 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCLIHelpDoesNotDiscoverManifests$' ./cmd/deskboard/ > "$out" && grep -F -- '--- PASS: TestCLIHelpDoesNotDiscoverManifests ' "$out")` | exit 0; named PASS; compiled help/version with malformed config and a large manifest fixture performs zero operational config/discovery/custody reads; moving discovery before help fails |
 
 ## Pre-mortem

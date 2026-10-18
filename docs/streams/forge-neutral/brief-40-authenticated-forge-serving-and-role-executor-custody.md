@@ -23,6 +23,8 @@ sources:
   - docs/streams/forge-neutral/README.md
   - freshness-checked 2026-10-14 @ 0cb90058470f9608f76b96e2055e7327d9c5c178
   - R6 proposal inspected at c5e8a3f8da3c715b72efa8d8d6b5e74e659ebd52; main merged into this authoring branch without editing historical Evidence
+  - "docs/desk-workflow-efficiency-spec.md"
+  - "freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d; approved spec and consolidation amendment"
 exec-tier: strong
 exec-tier-why: Cross-component identity, privacy, concurrency and failure semantics require design judgment and negative controls.
 domain: complicated
@@ -42,13 +44,14 @@ consumers:
   - "changelog/forge-service-auth.md: follow-up forge-neutral/40"
   - "statusgen/evaluation/: out-of-scope (existing domain evaluation meaning preserved)"
   - "plugins/assay/skills/: out-of-scope (no caller wired to an unshipped service)"
+  - "tools/desk/internal/forgeservice/auth/reviewcustody_test.go: follow-up forge-neutral/40"
 ---
 
 # Brief 40 — Authenticated forge serving and role executor custody
 
 ## Context
 
-files: `tools/desk/internal/forgeservice/auth/` (planned), `tools/desk/internal/forgeservice/server/` (planned), `tools/desk/internal/forgeexecutor/` (planned), `tools/desk/cmd/forgeserve/` (planned), `tools/desk/cmd/forge-executor/` (planned), `tools/desk/internal/deskkit/forgeresolve.go`, `tools/desk/internal/deskkit/outboundforge.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `changelog/forge-service-auth.md` (planned). Paths not present at the source pin are planned deliverables; existing
+files: `tools/desk/internal/forgeservice/auth/` (planned), `tools/desk/internal/forgeservice/server/` (planned), `tools/desk/internal/forgeexecutor/` (planned), `tools/desk/cmd/forgeserve/` (planned), `tools/desk/cmd/forge-executor/` (planned), `tools/desk/internal/deskkit/forgeresolve.go`, `tools/desk/internal/deskkit/outboundforge.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `changelog/forge-service-auth.md` (planned), `tools/desk/internal/forgeservice/auth/reviewcustody_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
 files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
@@ -111,6 +114,20 @@ webhook payload decisions are not answered by this section.
 
 6. Use operator-selected entitlement leases/access epochs and injected clocks; test invalidation, expiry, revocation and authority rollback. No instantaneous recall of returned bytes or already-submitted requests is promised. R7 will bind remote OIDC/workload authentication to the same policy ports; do not ship an exposed remote login or new identity provider here.
 
+
+### Approved workflow-efficiency amendment — 17 October 2026
+
+Serve the shared queue/context/issue contracts under current caller admission including counts,
+errors and pagination; one cached result cannot answer a different admitted scope or newer cutoff.
+Query results remain advisory. Mutable permission/claim/head and effect preconditions remain
+rechecked at their consequential boundaries. Do not transfer publisher credentials or role authority
+into query composition, and do not assume a source-qualified read bridge qualifies executor
+activation. Reuse existing custody and the selected boundary; no second broker or service.
+
+This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
+obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
+authoring change claims no implementation or operational adoption.
+
 ## Interface contract
 
 Use forge-service-v1 from 39, mirror admission/freshness from 37, event hints/demand from 38,
@@ -134,8 +151,11 @@ boundary and independent expectation, not another implementation of the same che
 | 3 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeCredentialContainment$' ./internal/forgeservice/... > "$r" && grep -F -- '--- PASS: TestForgeCredentialContainment ' "$r")` | exit 0; named PASS. Real disposable process boundary hides executor custody from the client/query process, preserves represented/executing identities, and contains no credentials in results/logs/snapshots. A fake credential inventory alone is not a process-isolation pass. |
 | 4 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestAccessEpochAndRevocation$' ./internal/forgeservice/... > "$r" && grep -F -- '--- PASS: TestAccessEpochAndRevocation ' "$r")` | exit 0; named PASS. Warm cache -> revoke/increment access epoch or expire entitlement lease -> next in-bound query/operation refuses within the configured contract; old SQL generation after rollback cannot reactivate a grant. New permitted epoch remains a positive control. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/40` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
+| 6 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewServingCustody$' ./internal/forgeservice/... > "$o" && grep -F -- '--- PASS: TestReviewServingCustody ' "$o")` | exit 0; named PASS. Permitted review-context/queue path succeeds while changed admission/expiry refuses even for reused bytes/counts; saved context cannot authorize a role write or bypass the executor recheck. |
 
-| 6 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestExecutorProviderReuseAndRoleSeparation$' ./internal/forgeservice/... > "$out" && grep -F -- '--- PASS: TestExecutorProviderReuseAndRoleSeparation ' "$out")` | exit 0; named PASS; served repeated requests use the real internal provider with zero minter children, expire correctly and refuse cross-role/executor access; token broker or exec-per-request plants fail |
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 7 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestExecutorProviderReuseAndRoleSeparation$' ./internal/forgeservice/... > "$out" && grep -F -- '--- PASS: TestExecutorProviderReuseAndRoleSeparation ' "$out")` | exit 0; named PASS; served repeated requests use the real internal provider with zero minter children, expire correctly and refuse cross-role/executor access; token broker or exec-per-request plants fail |
 
 ## Pre-mortem and detection
 

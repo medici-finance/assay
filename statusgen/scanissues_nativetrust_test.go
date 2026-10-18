@@ -149,7 +149,7 @@ func TestScanIssuesTrustAndUnblockReadsUseNativeForgeNotGH(t *testing.T) {
 
 	var code int
 	out := captureStdout(t, func() {
-		code = runScanIssues(root, false, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker)
+		code = runScanIssues(root, false, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker, labelHoldClearAll)
 	})
 	if code != 0 {
 		t.Fatalf("runScanIssues exited %d with no working gh, want 0; stdout:\n%s", code, out)
@@ -314,7 +314,7 @@ func TestScanIssuesMainWiresNativeReads(t *testing.T) {
 	if m == nil {
 		t.Fatal("main.go: the --scan-issues runScanIssues call was not found")
 	}
-	if got, want := string(m[1]), "defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker"; got != want {
+	if got, want := string(m[1]), "defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker, defaultScanLabelHoldChecker"; got != want {
 		t.Errorf("main.go wires --scan-issues with (%s), want (%s) — every read on the scanloop path goes "+
 			"through the native forge", got, want)
 	}

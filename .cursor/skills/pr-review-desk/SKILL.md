@@ -27,10 +27,12 @@ link. Bindings for your harness — which mechanism each `capability:*` names �
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> **Every `gh` call carries this role's `GH_TOKEN`, reads included.** When no desk verb covers a forge call, run it only through the recipe in [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role), never a hand-typed shortcut. That recipe takes the role from `$DESK_LOOP`, mints it with `desktoken`, scopes the token to that one command without exporting it, and stops before `gh` unless the mint exited 0 and the token file holds a non-whitespace token. A bare `gh` call runs as the host's stored login, which is usually a human's, so a desk never runs one, not even for a read.
+
 > Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
 
 
-> Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
+> Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
 **References**, each carrying text the reviewer prompt needs verbatim:
 `references/leak-audience-check.md` (leak/audience axes for an outward-facing artifact),
@@ -842,9 +844,9 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      The PR body must state that the hunk is `reconcile --backfill --apply` output (the rows the
      read-only form reports as `wouldApply`) and name the witness PR for each row; that statement
      is a CLAIM, and the run above is the only evidence.
-     The carve-out exists because `--apply` only ever writes this one Status-only transition, and
-     only from a real merged-PR witness, so a PR carrying its output byte-for-byte adds nothing the
-     tool would not write itself. The code-existence check is the second layer on every admitted
+     The carve-out exists because `--apply` without `--regenerate` (the reproduce run never passes it) only ever
+     writes this one Status-only transition, and only from a real merged-PR witness, so a PR carrying its output
+     adds nothing the tool would not write itself. The code-existence check is the second layer on every admitted
      row, because no witness alone can tell whether this brief's work landed: a trailer-less
      branch-name or body match; a trailer whose `<stream>/<NN>` may belong to a different brief
      delivered into the same repo, whichever board tracks it; and a trailer in a body edited after

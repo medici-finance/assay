@@ -124,6 +124,8 @@ Keep repo/role and credential-source selection in deskkit and the explicit shim/
 | 7 | `d=$(mktemp -d) && cd tools/desk && go test -timeout 45s ./cmd/deskdispatch/ -run '^TestGitLabRepoCustody$' -v > "$d/out" 2>&1 && grep -E '^--- PASS: TestGitLabRepoCustody \(' "$d/out"` | exit 0 and anchored PASS — explicit GitLab role PAT is selected per target, absent/wrong-role custody refuses; planned until accepted (desktools-v2/13 GitLab row) |
 | 8 | `d=$(mktemp -d) && cd tools/desk && go test -timeout 45s ./cmd/cellctl/ -run '^TestShimWindowsScope$' -v > "$d/out" 2>&1 && grep -E '^--- PASS: TestShimWindowsScope \(' "$d/out"` | exit 0 and anchored PASS — Go selection seam covers HOME/USERPROFILE and refuses ambient identity; no Windows runtime claim, planned until accepted (OS: Windows) (desktools-v2/13 Windows row) |
 
+| # | Class | Command | Expect |
+|---|---|---|---|
 | 9 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestScopedProviderWarmCacheIsolation$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestScopedProviderWarmCacheIsolation ' "$out")` | exit 0; named PASS; two repository grants under the same role/account remain distinct through Go and child handoff; a role/owner-only key is a failing control |
 
 ## Performance reuse amendment — 2026-10-16

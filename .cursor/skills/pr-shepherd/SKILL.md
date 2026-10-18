@@ -68,6 +68,8 @@ Work in your **own worktree** (`capability:isolate-workspace`), never the shared
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> **Every `gh` call carries this role's `GH_TOKEN`, reads included.** When no desk verb covers a forge call, run it only through the recipe in [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role), never a hand-typed shortcut. That recipe takes the role from `$DESK_LOOP`, mints it with `desktoken`, scopes the token to that one command without exporting it, and stops before `gh` unless the mint exited 0 and the token file holds a non-whitespace token. A bare `gh` call runs as the host's stored login, which is usually a human's, so a desk never runs one, not even for a read.
+
 ```bash
 git fetch origin <branch>:<branch>            # branch may not exist locally yet
 git worktree add ../pr-<N> <branch>           # or check the PR out inside your own worktree
@@ -253,7 +255,10 @@ discarded; it must never be the explanation for a verdict you cannot show.
 
 ## 6. Watch loop
 
-While the PR is open, poll it — or arm a `capability:durable-monitor` on it:
+Use [desk-common §Supervision and context](../../references/desk-common.md#supervision-and-context)
+for watch ownership, bounded waits and same-item continuation. While the PR is open, poll it
+at a bounded interval (the supervising desk's cadence where defined), honoring backoff — or
+arm a `capability:durable-monitor` on it:
 
 ```bash
 gh pr view <N> --json state,mergeable,reviews,statusCheckRollup

@@ -1,6 +1,7 @@
 package loopengine
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -347,12 +348,17 @@ func reclaimForLiveness(cfg Config, item string) (bool, error) {
 	}
 	claims, err := deskkit.List(toClaimConfig(cfg))
 	if err != nil {
-		return false, err
+		var partial *deskkit.ClaimListError
+		if !errors.As(err, &partial) {
+			return false, err
+		}
 	}
+	// A readable match can still be compared under the lock. If no match was
+	// readable, an incomplete enumeration is unknown, never a missing claim.
 	for _, c := range claims {
 		if c.Item == item {
 			return deskkit.ReleaseMatching(toClaimConfig(cfg), c)
 		}
 	}
-	return false, nil
+	return false, err
 }

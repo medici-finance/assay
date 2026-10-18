@@ -308,6 +308,51 @@ func fetchIssueEvents(repo string, num int) (events []deskkit.ContentEvent, comp
 	return tp.Events, tp.Complete, nil
 }
 
+// labelHistoryHold is the issue board's SUPERSET test over an issue's label history
+// (the label-removal hold). It is deliberately NOT the scanner's rule: the decision (who removed the
+// label, whether a ratifying comment followed) lives in ONE place, statusgen's label-removal
+// hold, and the board must not grow a second copy to keep in step. The board only asks the
+// coarser question — does this history give the scanner anything to decide? — so it errs
+// toward AWAIT: the history is incomplete, or holds ANY event for an excluded label (applied or
+// removed, by anyone), or holds any event whose label the forge no longer names. A correctly
+// released issue costs one scan interval at most: the scanner admits it and writes its
+// placeholder, and an issue with a placeholder is no longer an un-briefed row.
+//
+// held is true in all three cases; reason is the bracketed text the row
+// carries; unverifiable is true only when the history was incomplete (a could-not-check reason).
+func labelHistoryHold(h *deskkit.LabelHistory) (held, unverifiable bool, reason string) {
+	if h == nil || !h.Complete {
+		return true, true, "label history could-not-check: the forge's history is incomplete — held until the scanner decides"
+	}
+	set := excludedLabelSet()
+	for _, e := range h.Events {
+		name := strings.ToLower(strings.TrimSpace(e.Name))
+		if name == "" {
+			return true, false, "label history holds an event for a label the forge no longer names — held until the scanner decides"
+		}
+		if set[name] {
+			return true, false, fmt.Sprintf("label history holds an event for %q — held until the scanner decides", e.Name)
+		}
+	}
+	return false, false, ""
+}
+
+// fetchLabelHistory reads an un-briefed issue's whole label history for labelHistoryHold. It is
+// paid ONLY for an issue that would otherwise classify CREATE-PLACEHOLDER. A read error is
+// returned as could-not-check and fails the board as fetchIssueEvents's does; an incomplete
+// history is NOT an error — the caller degrades that one row.
+func fetchLabelHistory(repo string, num int) (*deskkit.LabelHistory, error) {
+	f, fr, ferr := forgeFor(repo)
+	if ferr != nil {
+		return nil, ferr
+	}
+	h, herr := f.IssueLabelHistory(fr, num)
+	if herr != nil {
+		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read the label history for %s#%d", repo, num), herr)
+	}
+	return h, nil
+}
+
 // labelNames flattens gh's label objects to their names, dropping blanks.
 func labelNames(labels []ghLabel) []string {
 	out := make([]string, 0, len(labels))
@@ -540,6 +585,11 @@ type issueClassifyInput struct {
 	// the SLA with no response from that role's App becomes visible (ESCALATE) without the
 	// addressee's cooperation. The human-response clock rule (agedPastSLA) is unchanged.
 	addresseeResponded bool
+
+	// labelHistoryHold is set when the issue's label history is incomplete, holds ANY event for
+	// an excluded label, or holds any unnamed event (labelHistoryHold). It turns what would be
+	// CREATE-PLACEHOLDER into AWAIT and changes no other outcome (the label-removal hold).
+	labelHistoryHold bool
 }
 
 // classifyIssue maps one repo+issue's state to its ACTION (issue #703 spec):
@@ -588,6 +638,9 @@ func classifyIssue(in issueClassifyInput) string {
 	if in.excludedLabel {
 		return actNone // system-emitted label — a closeable state, not work
 	}
+	if in.labelHistoryHold {
+		return actAwait // not un-briefed work: the scanner has a hold decision to make on its history
+	}
 	return actCreatePlaceholder
 }
 
@@ -616,6 +669,10 @@ type issueBoardRow struct {
 	// ESCALATE (conservative) and rendered with a could-not-check marker instead of an age —
 	// so one over-long thread surfaces for a human look rather than taking the whole board down.
 	EscalationUnverifiable bool
+	// HistoryHold is the bracketed reason an un-briefed issue is AWAIT for its label history
+	// (the label-removal hold); HistoryUnverifiable marks the could-not-check form (an incomplete read).
+	HistoryHold         string
+	HistoryUnverifiable bool
 }
 
 // externalRow is an open issue quarantined by the trust gate: untrusted author and no
@@ -758,6 +815,23 @@ func computeIssueBoard(root string, now time.Time, slaDays int, toFilter string)
 				addresseeResponded: addresseeResponded,
 			})
 			row := issueBoardRow{Repo: repo, Number: iss.Number, Title: iss.Title, Action: action, AgeDays: ageDays, EscalationUnverifiable: escalationUnverifiable}
+			// An issue that would be offered as un-briefed work pays ONE label-history read
+			// (the label-removal hold): history that gives the scanner a hold decision to make turns the
+			// row into AWAIT. An issue with a placeholder, or already NONE/ESCALATE/ADDRESSED,
+			// pays nothing. A read error fails the board; an incomplete history degrades this row.
+			if action == actCreatePlaceholder {
+				hist, herr := fetchLabelHistory(repo, iss.Number)
+				if herr != nil {
+					return nil, nil, herr
+				}
+				if held, unver, reason := labelHistoryHold(hist); held {
+					row.Action = classifyIssue(issueClassifyInput{
+						open: true, hasPlaceholder: hasPh, labelHistoryHold: true,
+						excludedLabel: hasExcludedLabel(names),
+					})
+					row.HistoryHold, row.HistoryUnverifiable = reason, unver
+				}
+			}
 			if addressed {
 				row.AddrRole = addrRole
 			}
@@ -877,6 +951,9 @@ func renderIssueLane(w io.Writer, rows []issueBoardRow) {
 				// An addressed item that aged out shows WHO it was waiting on.
 				t = fmt.Sprintf("%s [to %s, unanswered]", t, r.AddrRole)
 			}
+		}
+		if r.HistoryHold != "" {
+			t = fmt.Sprintf("%s [%s]", t, r.HistoryHold)
 		}
 		fmt.Fprintf(w, "%-20s %-40s %s\n", issueActionLabel(r), shortRepo(r.Repo)+"#"+strconv.Itoa(r.Number), t)
 	}

@@ -460,6 +460,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		hp, hn := humanStampProblems(root, streams)
 		problems = append(problems, hp...)
 		notices = append(notices, hn...)
+		// Decision-gate hold, layer one (lifecycle-v1 §4.5): a gate: human brief
+		// moved to implemented/verified/done, relabelled, or dropped against the
+		// merge-base needs a well-formed ruling: link to a comment on its recorded
+		// decision issue. Offline; who wrote the comment is layer two's to check
+		// (--decision-gate, and the same lane in --corroborate / --close-verify).
+		dgp, dgn := decisionGateHoldProblems(root)
+		problems = append(problems, dgp...)
+		notices = append(notices, dgn...)
 		// Stale-issue alarm (methodology-metrics/28): a NOTICE + board line when
 		// an open issue has been sitting past the threshold, mirroring the intake-
 		// debt alarm applied to issues. OPT-IN: it reads through the run's
@@ -1675,6 +1683,7 @@ func main() {
 	span := flag.Int("span", defaultSpanOfControl, "Next-up span-of-control cap: max items shown (default 20 — agent-worked queue, not the human EEMUA-191 7±2)")
 	overflowT := flag.Int("overflow-threshold", -1, "eligible-brief count above which Next-up flags overflow; <0 = same as --span")
 	mainHealthFlag := flag.String("main-health", "", "the INJECTED main-health input for the drives critical tier's main-red arm: `green`, or `red:<owner/repo#N>[,...]` naming the issue(s) tracking the red main. statusgen never reads live CI; omit the flag and the arm reports could-not-check (named on the board while a drive is active), never a silent green")
+	roleClaimsFlag := flag.Bool("role-claims", false, "read claims through deskgit as the bound desk role; never fall back to ambient Git")
 	requireClaimsFlag := flag.Bool("require-claims", false, "fail (exit 1, nothing written) instead of emitting a degraded board when the origin claim read fails")
 	// FINDINGS alarm-KPI knobs (ISA-18.2). Standalone
 	// block so sibling statusgen flag PRs merge trivially.
@@ -1747,7 +1756,9 @@ func main() {
 	consumersBase := flag.String("base", remoteMainRef, "--consumers: base ref for the three-dot diff")
 	consumersBrief := flag.String("brief", "", "--consumers: check only this brief (<stream>/<NN>); default = every brief file in the diff")
 	corroborateMode := flag.Bool("corroborate", false, "check human:<name> stamps against PR reviews/comments for corroboration (requires --pr)")
-	corroboratePRs := flag.String("pr", "", "comma-separated PR numbers (required with --corroborate)")
+	corroboratePRs := flag.String("pr", "", "comma-separated PR numbers (required with --corroborate; with --decision-gate, the PRs to judge)")
+	decisionGateMode := flag.Bool("decision-gate", false, "the decision-gate hold, both layers (lifecycle-v1 §4.5): refuse a gate: human brief moved to implemented/verified/done, relabelled, or dropped without a human ruling on its decision issue. Needs --pr <N> or --decision-gate-base <rev>")
+	decisionGateBase := flag.String("decision-gate-base", "", "with --decision-gate: judge the working tree against this local revision (e.g. HEAD, for an uncommitted landing) instead of a PR's merge-base")
 	// Daily factory-floor bottleneck report: per-stage
 	// WIP + dwell, constraint location, shift detection, prescribed ToC action.
 	// Self-contained diagnostic sub-command — never reads or writes STATUS.md.
@@ -1852,6 +1863,14 @@ func main() {
 	// a PR that never touched it. Whoever reads that CI log needs the roster in the
 	// same log.
 	scanEchoEffectiveConfig(os.Stderr)
+	// A refused process configuration cannot enter any --lint evaluator. Keep
+	// this ahead of ordinary, multi-root and differential dispatch: none may
+	// turn an unavailable trust axis into PASS (or demote it as a base defect).
+	if *lintMode && len(scanEffectiveConfig().Problems) > 0 {
+		fmt.Fprintln(os.Stderr, "statusgen: configuration REFUSED; trust-dependent checks could-not-check")
+		fmt.Fprintln(os.Stdout, "LINT: REFUSED configuration; trust-dependent checks could-not-check")
+		exitProcess(5)
+	}
 
 	resolvedRoots, rootErr := resolveRoots(roots)
 	if rootErr != nil {
@@ -1879,6 +1898,7 @@ func main() {
 			"--transcribe-scan-delta": *transcribeScanDeltaMode,
 			"--transcribe-verdict":    *transcribeVerdictMode,
 			"--close-verify":          *closeVerifyID != "",
+			"--decision-gate":         *decisionGateMode,
 			"--auto-flip-model":       *autoFlipModelMode,
 			"--alarms":                *alarmsMode,
 			"--verif-backlog":         *verifBacklogMode,
@@ -1958,6 +1978,7 @@ func main() {
 	// the board must still render, wearing its degradation. A caller that
 	// dispatches from the board sets this and gets exit 1 instead.
 	requireClaims = *requireClaimsFlag
+	roleClaimReads = *roleClaimsFlag
 	// The main-red arm's injected input (drives phase 3). A malformed value is a
 	// usage refusal — never a silent fallback to could-not-check or to green.
 	if mh, err := parseMainHealth(*mainHealthFlag); err != nil {
@@ -2040,14 +2061,14 @@ func main() {
 		// the un-block comment read and the trust-gate bless read (defaultScanCommentLister,
 		// defaultScanBlessChecker, #1255). A `gh` read left on this path 401s on every rostered
 		// repo under scanloop's replaced HOME.
-		exitProcess(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker))
+		exitProcess(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker, defaultScanLabelHoldChecker))
 	}
 	// Same-repo scan transcriber (scan-lane/01, R-7): self-contained,
 	// STATUS.md-free. The workflow's "run" step. INERT until the R-7 sign-off
 	// resolves; --dry-run is the no-write "--check" surface.
 	if *transcribeScanMode {
 		exitProcess(runTranscribeScan(*root, *scanDryRun,
-			ghIssueLister, issueCommentLister, ghAuthorResolver, ghIssueBlessChecker, ghCommentResolver))
+			ghIssueLister, issueCommentLister, ghAuthorResolver, ghIssueBlessChecker, defaultScanLabelHoldChecker, ghCommentResolver))
 	}
 	// Cross-repo scan-delta transcriber (the house-private brief, R-7 clause 4):
 	// self-contained, STATUS.md-free. INERT until the SAME R-7 sign-off
@@ -2147,6 +2168,9 @@ func main() {
 			period = "weekly"
 		}
 		exitProcess(runCynefin(*root, period, *doraJSON))
+	}
+	if *decisionGateMode {
+		exitProcess(runDecisionGate(*root, *corroboratePRs, *decisionGateBase))
 	}
 	if *corroborateMode {
 		exitProcess(runCorroborate(*corroboratePRs))

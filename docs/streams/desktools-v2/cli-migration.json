@@ -8,6 +8,41 @@
   "exclusion_rules": [
     {
       "class": "test",
+      "pattern": "statusgen/test-role-claims.sh",
+      "reason": "offline fixed-selector transport regression suite shared by PR CI and mutation qualification; never installed or released as an operator entrypoint (#3327)"
+    },
+    {
+      "class": "test",
+      "pattern": "docs/streams/desk-supervision/verify.d/08-consumers.py",
+      "reason": "offline acceptance assertion over the original brief-08 delivery diff and consumer routes; run only by desk-supervision/08 Verify rows, never installed or released as an operator CLI (#1363)"
+    },
+    {
+      "class": "test",
+      "pattern": "docs/streams/desk-supervision/verify.d/08-reduction.sh",
+      "reason": "offline acceptance assertion over stored skillbench artifacts using a scratch report; run only by desk-supervision/08 Verify rows, never installed or released as an operator CLI (#1363)"
+    },
+    {
+      "class": "test",
+      "pattern": "docs/streams/desk-supervision/verify.d/08-mutations.py",
+      "reason": "offline planted defects that prove the brief-08 acceptance assertions reject broken inputs; run only by desk-supervision/08 Verify rows, never installed or released as an operator CLI (#1363)"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/release/images.py",
+      "reason": "internal release image producer imported by fixed workflow Python calls; no shebang, main guard, argument parser or independent operator entrypoint (#3204)"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/release/images_contract.py",
+      "reason": "pure image reference validation library imported by release workflow and offline fixtures; no standalone CLI or network calls (#3204)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/images_test.py",
+      "reason": "offline image producer and manifest fixtures executed by build-test through the regression package; never an operator entrypoint (#3204)"
+    },
+    {
+      "class": "test",
       "pattern": "tools/forge-import-check",
       "reason": "source-only verification instrument run explicitly by go run or go test from forge-neutral briefs 37 and 38 verify rows; it parses a target tree, never builds or executes it, and is never installed or released as an operator CLI (#2743)"
     },
@@ -461,11 +496,11 @@
         "plugins/assay/skills/worker-desk/SKILL.md",
         "plugins/assay/skills/pr-review-desk/SKILL.md"
       ],
-      "parser": "manual os.Args parsing",
+      "parser": "Cobra and Viper through tools/desk/internal/cli",
       "complexity": "complex",
       "basis": "8975 LOC, ~19 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/20",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskboot",
@@ -745,6 +780,23 @@
       "basis": "1455 LOC, ~2 verbs, ~5 flags at 3ad1ad83c871",
       "owner": "desktools-v2/34",
       "state": "pending"
+    },
+    {
+      "executable": "deskgitlab",
+      "path": "tools/desk/cmd/deskgitlab",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/create-fleet-gitlab.sh",
+        "tools/create-fleet-gitlab_test.sh",
+        "tools/desk/README.md"
+      ],
+      "parser": "Cobra via tools/desk/internal/cli",
+      "complexity": "simple",
+      "basis": "~1500 LOC, 1 verb, 13 flags (desktools-v2/30)",
+      "owner": "desktools-v2/30",
+      "state": "migrated"
     },
     {
       "executable": "deskinbox",
@@ -2131,10 +2183,11 @@
         "plugins/assay/skills/adopt/SKILL.md"
       ],
       "parser": "bash manual flag loop",
-      "complexity": "complex",
-      "basis": "1166 lines at 3ad1ad83c871",
+      "complexity": "simple",
+      "basis": "1166 lines at 3ad1ad83c871; 43-line adapter onto deskgitlab create after desktools-v2/30",
       "owner": "desktools-v2/30",
-      "state": "pending"
+      "state": "migrated",
+      "migrated_to": "tools/desk/cmd/deskgitlab"
     },
     {
       "executable": "pre-push",

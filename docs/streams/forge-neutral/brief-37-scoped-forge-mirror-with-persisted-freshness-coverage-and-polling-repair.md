@@ -27,6 +27,8 @@ sources:
   - docs/streams/forge-neutral/brief-33-forge-reads-for-statusgen-s-remaining-sites.md — the all-state issue and change reads the inventory pass reuses
   - docs/streams/desktools-v2/brief-09-access-pattern-queries.md — `ReviewQueueSnapshot`, the tuned one-query change and review snapshot this brief reuses
   - freshness-checked 2026-10-13 @ 4696d598e (origin/main)
+  - "docs/desk-workflow-efficiency-spec.md"
+  - "freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d; approved spec and consolidation amendment"
 exec-tier: strong
 exec-tier-why: "Question (c), silent failure toward a pass: an unfinished scan that advances a watermark, an absence read as deletion, or a refused read cached as an empty list all pass a happy-path test and hand every consumer a confident wrong answer."
 domain: complicated
@@ -42,13 +44,14 @@ consumers:
   - "statusgen/: out-of-scope (forge-neutral/18 owns statusgen's forge reads; this brief adds no statusgen link and no deskread kind)"
   - "comments, check and status observations, event delivery and reevaluation demand: follow-up forge-neutral/38"
   - "tools/forge-import-check/: fixed-here (source-only verification helper relocation; not a runtime mirror implementation)"
+  - "forgeread/mirror/reviewcoverage_test.go: follow-up forge-neutral/37"
 ---
 
 # Brief 37 — Scoped forge mirror with persisted freshness, coverage and polling repair
 
 ## Context
 
-files: `tools/forge-import-check/check_env_imports.go` (source-only helper), `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures), `forgeread/mirror/` (new), `forgeread/mirror/mirrortest/` (new), `forgeread/adapters/access.go`,
+files: `tools/forge-import-check/check_env_imports.go` (source-only helper), `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures), `forgeread/mirror/` (new), `forgeread/mirror/mirrortest/` (new), `forgeread/adapters/access.go`, `forgeread/mirror/reviewcoverage_test.go` (planned)
 `forgeread/adapters/github/`, `forgeread/adapters/gitlab/`, `forgeread/README.md`,
 `tools/desk/internal/deskkit/forge.go`, `tools/desk/internal/deskkit/forge_github.go`,
 `tools/desk/internal/deskkit/forge_gitlab.go`, `tools/desk/internal/deskkit/sharedread.go`,
@@ -253,6 +256,22 @@ Default if no answer: none. The mirror stays unactivated and the brief stays hel
    inventory: a partial mirror coverage assesses as could-not-check, never pass. Update
    `forgeread/README.md` and add the changelog fragment.
 
+
+### Approved workflow-efficiency amendment — 17 October 2026
+
+Include complete review and role-specific issue consumers in mirror scope/coverage fixtures:
+requested versus admitted population, per-input observation times/versions, head/body/review/check
+applicability and comment/page completeness. Bulk readers must reuse admitted refreshes and
+distinguish partial/stale/permission outcomes from complete-empty; no queue-specific second mirror
+or policy booleans. This is the existing R6 ingestion/custody owner. Early direct
+queue/prepare/issue bridges in desk-tools/39–42 remain independent of this mirror and PostgreSQL.
+Consumer-contract conformance is selected through serving /39 and final /45, not a new dependency
+that blocks the mirror kernel.
+
+This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
+obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
+authoring change claims no implementation or operational adoption.
+
 ## Verify
 
 Named tests are implementation deliverables and fail at authoring (they do not exist yet). Each one
@@ -280,8 +299,11 @@ provider transports only.
 | 17 | check +mutation | `test -f forgeread/go.mod && { grep -n -w -e require -e replace forgeread/go.mod \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: `forgeread` keeps no module dependency, so no subpackage can import `statusgen/domain` or a `workflow` package, and no forgeread-to-statusgen require cycle can form. The graph-execution/28 mapping stays in `workflow`. Passes at authoring as an invariant guard. **Mutation**: a planted `require github.com/medici-finance/assay/statusgen v0.0.0` line counts `1` |
 | 18 | check:ci +mutation | `GOWORK=off GOPROXY=off GOTOOLCHAIN=local go run tools/forge-import-check/check_env_imports.go forgeread/mirror` | exit 0 and output `0`: the shared source-only checker parses every non-test Go file below the target and decodes each import path with `strconv.Unquote`. No decoded `os` or `syscall` import is allowed, including raw, escaped, plain, aliased and dot imports. Build-constrained files are scanned regardless of the current platform; `*_test.go` files remain excluded. Missing/empty targets, parse/decode/walk errors and symbolic links fail closed with no clean count. It fails at authoring because the target package is absent. The companion `check_env_imports_test.go` compiles synthetic raw/escaped imports offline without calling their environment-read functions, then runs both rows' exact commands; ordinary aliases, build-tagged files, excluded tests and clean imports remain controls. **Mutation**: use the former literal matcher or stop decoding import literals; compiler-valid raw/escaped `os` and `syscall` plants evade rejection and the fixture test fails. **Mutation**: plant any of those imports in shipped `mirror` source; the row reports a nonzero count and exit status |
 | 19 | check:ci +mutation | `(cd workflow && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorCoverageFactMapping$" ./store/... > "$result" && grep -F -- "--- PASS: TestMirrorCoverageFactMapping " "$result")` | exit 0; named PASS. Every mirror coverage state maps to exactly one graph-execution/28 fact-completeness value, and only `complete` inside the freshness window maps to present: `never-read`, `partial`, each `unavailable` reason class and a stale `complete` never do. The mapping lives in `workflow/store/`, not in `forgeread`. **Mutation**: map `partial` to present, and the test fails |
+| 20 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorReviewCoverage$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorReviewCoverage ' "$o")` | exit 0; named PASS. Admitted review/issue populations preserve exact head and partial/denied/page coverage; removing a required input cannot return complete-empty or leak another admission. |
 
-| 20 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshBurstScopeAndCallBudget$' ./mirror/... > "$out" && grep -F -- '--- PASS: TestRefreshBurstScopeAndCallBudget ' "$out")` | exit 0; named PASS; 50 equivalent requests share one paginated inventory, two admissions remain isolated and outage retries stay within the explicit fixture budget; global authorization sharing or per-client scan fallback fails |
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 21 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshBurstScopeAndCallBudget$' ./mirror/... > "$out" && grep -F -- '--- PASS: TestRefreshBurstScopeAndCallBudget ' "$out")` | exit 0; named PASS; 50 equivalent requests share one paginated inventory, two admissions remain isolated and outage retries stay within the explicit fixture budget; global authorization sharing or per-client scan fallback fails |
 
 ## Pre-mortem
 

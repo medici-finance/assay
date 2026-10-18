@@ -1,3 +1,0 @@
-### Fixed
-
-- Repair admission (desk-supervision/18) is now proven across processes: its tests run dispatchers as separate processes racing on a shared claim store, kill them at each lease and claim boundary, and drive the repair cycle from forge observations through restarts (#2163). Occupancy no longer skips held claims whose key merely ends in `--admission`; only the scope's own lease is excluded. Replaying a merge observation after a restart no longer reopens a resolved repair obligation into a second reverification. The forge-observation step (`ApplyForgeObservation`) moved into `deskkit`, so `fanoutloop` and `deskdispatch` share one implementation.

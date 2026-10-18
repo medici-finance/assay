@@ -103,6 +103,8 @@ coordinate overlapping files with the extraction owner when both changes are in 
 | 8 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
 | 9 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
 
+| # | Class | Command | Expect |
+|---|---|---|---|
 | 10 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCLIHelpHasNoDiscoveryOrForge$' ./... > "$out" && grep -F -- '--- PASS: TestCLIHelpHasNoDiscoveryOrForge ' "$out")` | exit 0; named PASS; compiled help/version returns under malformed source/config with zero stream discovery and deskread starts; moving a load before help fails |
 
 ## Pre-mortem

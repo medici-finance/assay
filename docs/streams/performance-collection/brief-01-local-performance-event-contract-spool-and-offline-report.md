@@ -23,6 +23,8 @@ sources:
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/continuing-operations/spec.md
   - freshness-checked 2026-10-13 @ 0cb90058470f9608f76b96e2055e7327d9c5c178
+  - "docs/desk-workflow-efficiency-spec.md"
+  - "freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d; approved spec and consolidation amendment"
 exec-tier: strong
 exec-tier-why: Cross-component privacy, identity, concurrency and loss semantics require design judgment and negative controls.
 domain: complicated
@@ -52,13 +54,14 @@ consumers:
   - "perfdata/postgres/: follow-up performance-collection/03"
   - "perfdata/ingest/: follow-up performance-collection/04"
   - "perfdata/upload/: follow-up performance-collection/05"
+  - "perfdata/phasecost_test.go: follow-up performance-collection/01"
 ---
 
 # Brief 01 — Local performance event contract, spool and offline report
 
 ## Context
 
-files: `perfdata/go.mod` (planned), `perfdata/event.go` (planned), `perfdata/event_test.go` (planned), `perfdata/consent.go` (planned), `perfdata/local/` (planned), `perfdata/report/` (planned), `perfdata/cmd/perfdata/` (planned), `perfdata/testdata/` (planned), `spec/performance-event-v1.md` (planned), `schemas/performance-event-v1.json` (planned), `schemas/performance-batch-v1.json` (planned), `docs/telemetry.md` (existing), `docs/performance-collection.md` (planned), `docs/contracts.md` (existing), `docs/proposals/non-ci-architecture/11-target-architecture.md` (existing), `docs/proposals/non-ci-architecture/14-storage-forge-graph.md` (existing), `docs/proposals/non-ci-architecture/16-delivery-sequence.md` (existing), `docs/streams/continuing-operations/proposed-briefs.md` (existing), `changelog/performance-collection-01.md` (planned)
+files: `perfdata/go.mod` (planned), `perfdata/event.go` (planned), `perfdata/event_test.go` (planned), `perfdata/consent.go` (planned), `perfdata/local/` (planned), `perfdata/report/` (planned), `perfdata/cmd/perfdata/` (planned), `perfdata/testdata/` (planned), `spec/performance-event-v1.md` (planned), `schemas/performance-event-v1.json` (planned), `schemas/performance-batch-v1.json` (planned), `docs/telemetry.md` (existing), `docs/performance-collection.md` (planned), `docs/contracts.md` (existing), `docs/proposals/non-ci-architecture/11-target-architecture.md` (existing), `docs/proposals/non-ci-architecture/14-storage-forge-graph.md` (existing), `docs/proposals/non-ci-architecture/16-delivery-sequence.md` (existing), `docs/streams/continuing-operations/proposed-briefs.md` (existing), `changelog/performance-collection-01.md` (planned), `perfdata/phasecost_test.go` (planned)
 
 facts (source pin in frontmatter; planned paths/tests are deliverables, not implemented claims):
 - The fresh main has no perfdata module; loopadmin/runner/{request,result,usage}.go already defines invocation, work and nullable usage types. No online supervisor is needed to validate and store bounded observations.
@@ -119,6 +122,25 @@ Default if no answer: none — acceptance remains pending. The decision is prese
 
 8. Freeze the three-report input snapshot and per-source coverage manifest described in the README. Preserve legacy raw retention while supporting explicitly configured 90-day distribution retention; count/sum plus retained samples or versioned mergeable histograms must support pooled Avg/P95. Report collection-on/off cost, drops and retention loss. No composed three-panel rendering or network read is required by this collection brief; the low-level offline reader in Task 5 remains in scope. Add TestReportDistributionRetention proving two unequal daily sample sets pool correctly and missing days stay unknown.
 
+
+### Approved workflow-efficiency amendment — 17 October 2026
+
+Extend the existing bounded event schema and local reducer with selected phases (boot/auth/audit,
+collect/page/enrich/classify, plan, workspace/source/packet, claim/recheck, child execution),
+parent-child correlation and explicit own/descendant/inclusive CPU coverage. Distinguish actual HTTP
+attempts by bounded endpoint class, retries/304s and actual/estimated/unknown GraphQL points. Do not
+serialize raw URLs/argv/identities or expand profiles implicitly. Aliased correlation follows the
+existing selected profile; tool-only profiles cannot smuggle workflow identity. Prevent parent-
+summary plus child-event double counting and never sum overlapping wall intervals as elapsed time.
+Preserve perf-v1/telemetry-v1 and existing privacy, seven-day policy, optional-sink isolation and
+schema/version rules. This remains one event/spool/report owner, not a parallel profiler. No DB/API
+is needed for local tests and the stream remains parked. Bound implementation to this schema/reducer
+contract; defer extra producer integrations to /02.
+
+This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
+obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
+authoring change claims no implementation or operational adoption.
+
 ## Interface contract
 
 Inputs and outputs use performance-event-v1 and performance-batch-v1 from 01, with
@@ -143,6 +165,7 @@ below, exercising production code rather than an independently reimplemented che
 | 4 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLocalCostAndBounds$' ./local/... > "$o" && grep -F -- '--- PASS: TestLocalCostAndBounds ' "$o")` | exit 0; named PASS. Bounded queue and flush under slow I/O; matched small-event append median below inherited 1 ms target on declared reference fixture, with p95/max and on/off overhead reported. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/01` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
 | 6 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v -run '^TestReportDistributionRetention$' ./... > "$o" && grep -F -- '--- PASS: TestReportDistributionRetention ' "$o")` | exit 0; named test runs and passes, including the negative cases in Task 8. |
+| 7 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPhaseCostSchema$' ./... > "$o" && grep -F -- '--- PASS: TestPhaseCostSchema ' "$o")` | exit 0; named PASS. A nested/overlapping fixture reconstructs CPU coverage, endpoint attempts and unknown quota without double counting; planted free text, profile escalation or unknown-as-zero is refused. |
 
 ## Pre-mortem and detection
 

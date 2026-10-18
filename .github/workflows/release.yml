@@ -31,9 +31,9 @@ name: release
 #
 # WHERE THIS RUNS — a self-hosted runner labelled `medici-builder-release`, a
 # DEDICATED release-only label, separate from the label the general CI pipeline
-# uses. EVERY job in this workflow runs on that dedicated label, so the release
-# pipeline has its own isolated runner pool and never shares runners with
-# general CI. (PREREQUISITE — a repo-admin act tracked in the PR body:
+# uses. Binary/test jobs use that label; the single approved publisher uses
+# the dedicated daemonful `medici-builder-public-release` label. The release
+# pipeline never shares runners with general CI. (PREREQUISITE — a repo-admin act:
 # a runner registered with the `medici-builder-release` label must exist before
 # a release can run.) Go is installed BY HAND from go.dev/dl (NOT
 # actions/setup-go): that runner does not reach GitHub's release-asset CDN
@@ -74,10 +74,10 @@ name: release
 #     checksums.txt, built and uploaded to the SAME immutable draft as the
 #     statusgen binaries, then published once. The `test` job carries the four
 #     release-blocking desk-tools gate-bar assertions (docs/desk-tools-gate-bar.md).
-#   * image — `ghcr.io/medici-finance/assay/desk-tools`, built SEPARATELY by
-#     docker-publish.yml (daily-immutable-tag discipline) and NOT rebuilt
-#     here; this release only NAMES the image ref in its notes so consumers can
-#     pin it in `.assay-versions`.
+#   * images — the single release job builds and verifies all nine images from
+#     the prepared source and Linux binary artifacts, then pushes them before
+#     tagging and publishing their checksummed references with the binaries.
+#     One release Environment approval covers this entire publication sequence.
 
 on:
   push:
@@ -89,23 +89,13 @@ on:
         required: true
         type: string
       dry_run:
-        description: "Validate only: resolve the version, prove the tag is free, run the tests, and BUILD the artifacts — then stop. Cuts no tag, publishes no release, uploads nothing."
-        required: false
-        default: false
-        type: boolean
-      desk_image_tag:
-        description: "desk-tools image tag to NAME in the release notes (the image is built separately by docker-publish.yml under its daily-immutable-tag discipline; this release does not rebuild it). Default v0.1.0 — the currently published image."
-        required: false
-        default: "v0.1.0"
-        type: string
-      publish_image:
-        description: "Push the freshly built assay-harness image to GHCR. Default false — publication is a deliberate, gated decision. Off = build + inspect only, push nothing. A tag-push is build-only too (the harness image job builds behind the test gate; publication is a dispatch-flag decision)."
+        description: "Validate, test and build binaries/images. Cuts no tag and publishes no release or images; temporary CI artifacts pass build inputs between jobs."
         required: false
         default: false
         type: boolean
 
 permissions:
-  contents: write
+  contents: read
 
 # One release attempt per version at a time. Never cancel-in-progress: cancelling
 # a run mid-publish is exactly the half-finished state the ordering below exists
@@ -115,10 +105,10 @@ permissions:
 # (a `${{ }}` expression has no string op to prepend the `v` conditionally). So
 # dispatching "0.9.0" and "v0.9.0" land in DIFFERENT concurrency groups even
 # though both resolve to tag v0.9.0, and two such runs could proceed in parallel.
-# This is bounded by the non-force tag push in `release`: the second run's
-# `git push refs/tags/v0.9.0` is rejected once the first has pushed, so at most
-# one run publishes. (The push-path key is github.ref_name, already the exact
-# tag, so it has no such gap.)
+# The publication job therefore has its OWN concurrency group on the normalized
+# tag, acquired before registry absence checks. A second attempt sees existing image
+# tags and stops. The final non-force Git tag push also refuses a competing cut.
+# The push-path key is github.ref_name, already the exact tag.
 concurrency:
   group: release-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
   cancel-in-progress: false
@@ -126,17 +116,6 @@ concurrency:
 env:
   # Matches ci.yml. Kept in sync with statusgen/go.mod's `go` directive.
   GO_VERSION: "1.27.2"
-  # The desk-tools image (built SEPARATELY by docker-publish.yml under its
-  # daily-immutable-tag discipline) NAMED alongside this umbrella release. Literal, not
-  # ${{ github.repository }}, so the pin doc + Verify grep resolve it unambiguously.
-  DESK_IMAGE: ghcr.io/medici-finance/assay/desk-tools
-  # The assay-harness image: the headless-agent harness — toolkit binaries + the
-  # `assay` plugin pre-seeded via CLAUDE_CODE_PLUGIN_SEED_DIR (images/assay-harness/
-  # Dockerfile). UNLIKE DESK_IMAGE (built separately by docker-publish.yml), this
-  # image is BUILT in this umbrella lane, behind the same `needs: test` gate as
-  # the binaries; its registry PUSH is a deliberate, gated decision (the `image` job below).
-  # Literal, for the same reason DESK_IMAGE is.
-  HARNESS_IMAGE: ghcr.io/medici-finance/assay/assay-harness
 
 jobs:
   # Work out WHICH tag this run is about, before anything is built or written.
@@ -149,15 +128,18 @@ jobs:
     runs-on: medici-builder-release
     permissions:
       contents: read
+      # RELEASE BY MERGE (iso-9001/07) — resolve the tag-push authorizer from
+      # the merged release PR; needs to read the PR the tag's commit came from.
+      pull-requests: read
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       message: ${{ steps.tag.outputs.message }}
       # RELEASE-AUTHORIZER TRACEABILITY (iso-9001/04) — who authorized this
       # release, as a job output the create-release step can put IN the release
-      # body. One value, derived once, from the same $ACTOR the tag message
-      # already uses: the dispatch actor on the dispatch path; an explicit
-      # not-recorded on the tag-push path (never blank, and never the pushing
-      # token's identity). A readable copy of the authorization that happens in
+      # body. The dispatch path uses the same $ACTOR as the tag message; the
+      # tag-push path resolves the recorded merger of the marked release PR
+      # through its detail endpoint (never blank or the pushing token's identity).
+      # A readable copy of the authorization that happens in
       # the gated `release` environment — the environment, not this value, is
       # the authority.
       authorizer: ${{ steps.tag.outputs.authorizer }}
@@ -171,6 +153,12 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           REF_NAME: ${{ github.ref_name }}
           ACTOR: ${{ github.actor }}
+          # RELEASE BY MERGE (iso-9001/07) — the tag-push path resolves the
+          # authorizer from the merged release PR via the API; a login/title/body
+          # is user-controlled, so it rides in via env:, never interpolated into run:.
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
@@ -231,12 +219,86 @@ jobs:
             fi
             tag="$REF_NAME"
             emit message ""
-            # No dispatch actor exists on this path — the tag already existed
-            # when the run started. The honest value is an explicit
-            # not-recorded, never blank (a blank reads as "nobody", a
-            # stronger claim than the truth) and never the pushing token's
-            # identity dressed up as an authorizer (iso-9001/04).
-            emit authorizer "not recorded (tag-push path: the tag pre-exists the run, so there is no dispatch actor)"
+            # RELEASE BY MERGE (iso-9001/07) — the authorizer on the tag-push path.
+            # iso-9001/04 emitted "not recorded" here because the tag pre-exists the
+            # run. Under release-by-merge the tag is created (by release-on-merge.yml,
+            # with an App token so this workflow fires) at the MERGE COMMIT of a release
+            # PR, so the authorizer IS recoverable: the merged PR's merged_by.login.
+            # Resolve it from the tag's commit, and REFUSE to build a release for any
+            # v* tag whose commit is not a merged release PR — a stray or hand-cut tag,
+            # whatever identity created it, builds nothing. The PR title/body/login are
+            # user-controlled, so they ride in via a file the python helper reads —
+            # never interpolated into a run: line (iso-9001/04's rule, same reasoning).
+            prs="$RUNNER_TEMP/tagpush_prs.json"
+            st=$(curl -sS --retry 3 -o "$prs" -w '%{http_code}' \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPO}/commits/${SHA}/pulls")
+            if [ "$st" != "200" ]; then
+              echo "::error::could not list PRs for ${SHA} (HTTP $st) — refusing rather than guessing"; cat "$prs"; exit 1
+            fi
+            # The commit-PR list does not include merged_by. Select the release
+            # PR there, then use its detail endpoint for the recorded merger.
+            # Both responses must satisfy the SAME marker/commit predicate.
+            helper="$RUNNER_TEMP/tagpush_pr.py"
+            cat > "$helper" <<'PY_RESOLVE'
+          import json, os, re, sys
+          mode, path = sys.argv[1:3]
+          payload = json.load(open(path, encoding="utf-8"))
+          sha = os.environ["SHA"]
+          want = os.environ["TAG_WANT"]
+          def matches(pr):
+              return (isinstance(pr, dict)
+                      and type(pr.get("number")) is int and pr["number"] > 0
+                      and bool(pr.get("merged_at"))
+                      and pr.get("merge_commit_sha") == sha
+                      and pr.get("title") == "release: " + want
+                      and isinstance(pr.get("body"), str)
+                      and re.search(r'(?m)^RELEASE: ' + re.escape(want) + r'[ \t]*$', pr["body"]))
+          if mode == "select":
+              if not isinstance(payload, list):
+                  sys.exit("commit PR response is not a list")
+              for pr in payload:
+                  if matches(pr):
+                      print(pr["number"])
+                      break
+              else:
+                  sys.exit("no matching merged release PR")
+          elif mode == "detail":
+              number = int(sys.argv[3])
+              if not matches(payload) or payload["number"] != number:
+                  sys.exit("release PR detail does not match the selected merged release PR")
+              merger = payload.get("merged_by")
+              login = merger.get("login") if isinstance(merger, dict) else None
+              if not isinstance(login, str) or not login or "\n" in login or "\r" in login:
+                  sys.exit("release PR records no single-line merged_by login")
+              sys.stdout.write(login)
+          else:
+              sys.exit("unknown release PR lookup mode")
+          PY_RESOLVE
+            number_file="$RUNNER_TEMP/tagpush_pr.number"
+            if ! TAG_WANT="$tag" python3 "$helper" select "$prs" > "$number_file"; then
+              echo "::error::${tag} commit ${SHA} is not a merged release PR (title 'release: ${tag}' + a 'RELEASE: ${tag}' body line) — refusing to release. Release-by-merge cuts tags only from merged release PRs; a stray or hand-cut v* tag builds nothing."; exit 1
+            fi
+            read -r number < "$number_file"
+            detail="$RUNNER_TEMP/tagpush_pr_detail.json"
+            st=$(curl -sS --retry 3 -o "$detail" -w '%{http_code}' \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPO}/pulls/${number}")
+            if [ "$st" != "200" ]; then
+              echo "::error::could not read release PR #${number} (HTTP $st) — refusing rather than guessing"; exit 1
+            fi
+            login_file="$RUNNER_TEMP/tagpush_pr.login"
+            if ! TAG_WANT="$tag" python3 "$helper" detail "$detail" "$number" > "$login_file"; then
+              echo "::error::release PR #${number} has invalid detail or records no merged_by login — refusing to release ${tag} with no recorded authorizer"; exit 1
+            fi
+            login=$(cat "$login_file")
+            # The merger is the authorizer: the merge is the human gate (branch
+            # protection records merged_by), so this closes iso-9001/04's tag-push gap.
+            emit authorizer "$login (merged release PR #$number)"
           fi
           emit tag "$tag"
           echo "Resolved release tag: $tag"
@@ -423,7 +485,7 @@ jobs:
   # size). Each test/vet/gate-bar/sweep step below runs in EXACTLY ONE leg (its
   # `if: matrix.leg == …`); the checkout + Go install prelude runs in every leg
   # (jobs share no filesystem). Downstream gating is unchanged: `needs: test` on
-  # a matrix job waits for EVERY leg to succeed, so `release` and `image` still
+  # a matrix job waits for EVERY leg to succeed, so `release` and `images` still
   # sit behind the full suite.
   #   statusgen    — statusgen test/vet + the three named gate bars
   #   desk-tools   — desk-tools test/vet
@@ -444,7 +506,7 @@ jobs:
     strategy:
       # No fail-fast: a red leg must not cancel the others' verdicts — a release
       # fix wants the full picture in one run. The gate is unchanged either way:
-      # any red leg still blocks `release` and `image`.
+      # any red leg still blocks `release` and `images`.
       fail-fast: false
       matrix:
         include:
@@ -498,6 +560,7 @@ jobs:
         run: |
           set -euo pipefail
           go version
+          bash statusgen/prepare-test-deps.test.sh
           cd statusgen && go test ./... && go vet ./...
 
       # desk-tools is its own Go module at tools/desk/. Same full-suite gate,
@@ -784,27 +847,17 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  release:
+  artifacts:
     needs: [resolve, guard, test]
     # A dry run runs this job up to and including the BUILD, then stops. The
     # whole point of a dry run is to prove the artifacts build (and the guard +
     # tests pass) BEFORE a version number is burned — a dry run that built
     # nothing would validate nothing. So the checkout / Go install / build /
-    # checksum steps run unconditionally; only the two mutating steps — cut the
-    # tag and publish the release — carry `!dry_run`. "Publishes nothing" is
-    # still structural: on a dry run there is no step left that tags or uploads.
+    # checksum steps run unconditionally. This job has no publishing step or
+    # repository write permission; release publication follows the image gate.
     runs-on: medici-builder-release
-    # M1 — the human gate. `release` is the only job that pushes a tag and
-    # publishes, so it (and only it) runs in the `release` environment. With the
-    # release environment's required human reviewer set, a canonical release
-    # pauses here for a named human to approve — converting "any holder of the
-    # shared token can cut a release" into "a person clicked approve".
-    # PREREQUISITE (a repo-admin act tracked in the PR body): the `release`
-    # environment must be created with a required human reviewer, or this
-    # gate is a no-op.
-    environment: release
     permissions:
-      contents: write
+      contents: read
       # Read prior-run artifacts and the producing job log receipt.
       # No Actions cache service or write permission is used.
       actions: read
@@ -812,6 +865,10 @@ jobs:
       # pull request a fragment arrived on (contributor-trust/09). It grants no
       # write of any kind and authorizes nothing.
       pull-requests: read
+    env:
+      CGO_ENABLED: "0"
+    outputs:
+      source_sha: ${{ steps.capture.outputs.source_sha }}
     steps:
       # persist-credentials:false (H2) — do NOT leave the contents:write token in
       # .git/config while `go build` compiles arbitrary repo code below. The tag
@@ -1184,7 +1241,7 @@ jobs:
       #
       # The tag rides in via env: (RELEASE_TAG), never a `${{ }}` splice inside
       # run: — a tag name is attacker-shaped text. This is a pure Go cross-compile;
-      # it does NOT build the container image (docker-publish.yml owns that).
+      # the release-owned reusable image job consumes the resulting Linux bytes.
       - name: Build and package desk-tools binaries
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
@@ -1329,14 +1386,206 @@ jobs:
         run: |
           printf 'ASSAY_RELEASE_CACHE_V1 %s %s %s %s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$CACHE_ID" "$CACHE_DIGEST"
 
-      # A dry run has now built + checksummed the artifacts (proving build, guard
-      # and tests all pass) and stops here: the two mutating steps below both
-      # carry `!dry_run`, so no tag is cut, no release is published, nothing is
-      # uploaded.
+      - name: Build image-only bugs-gc binary
+        run: |
+          set -euo pipefail
+          (cd tools/bugs-gc && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o ../../image-bugs-gc-linux-amd64 .)
+
+      - name: Capture the exact prepared release source
+        id: capture
+        env:
+          BASE_SHA: ${{ github.sha }}
+          NOTES_PATH: ${{ steps.changelog.outputs.notes_path }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          echo "source_sha=$sha" >> "$GITHUB_OUTPUT"
+          git archive --format=tar.gz HEAD > prepared-source.tar.gz
+          if [ "$sha" != "$BASE_SHA" ]; then
+            git bundle create release-source.bundle HEAD "^$BASE_SHA"
+          fi
+          cp "$NOTES_PATH" release-highlights.md
+          sha256sum prepared-source.tar.gz image-bugs-gc-linux-amd64 release-highlights.md checksums.txt > build-inputs.sha256
+          if [ -f release-source.bundle ]; then sha256sum release-source.bundle >> build-inputs.sha256; fi
+
+      # Independent platform artifacts let download-artifact transfer up to five
+      # platforms concurrently. Store the already-gzipped suites without another
+      # compression pass; the loose binaries remain unstripped.
+      - name: Upload prepared release artifacts (darwin-arm64)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-darwin-arm64
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            statusgen-darwin-arm64
+            qualgen-darwin-arm64
+            desk-tools-darwin-arm64.tar.gz
+
+      - name: Upload prepared release artifacts (darwin-amd64)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-darwin-amd64
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            statusgen-darwin-amd64
+            qualgen-darwin-amd64
+            desk-tools-darwin-amd64.tar.gz
+
+      - name: Upload prepared release artifacts (linux-amd64)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-linux-amd64
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            statusgen-linux-amd64
+            qualgen-linux-amd64
+            desk-tools-linux-amd64.tar.gz
+
+      - name: Upload prepared release artifacts (windows-amd64)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-windows-amd64
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            statusgen-windows-amd64.exe
+            qualgen-windows-amd64.exe
+            desk-tools-windows-amd64.tar.gz
+
+      - name: Upload prepared release artifacts (windows-arm64)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-windows-arm64
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            statusgen-windows-arm64.exe
+            qualgen-windows-arm64.exe
+            desk-tools-windows-arm64.tar.gz
+
+      - name: Upload prepared release artifacts (common)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build-common
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            cursor-bundle.tar.gz
+            checksums.txt
+            tool-validation-*.json
+            tool-validation-*.md
+            image-bugs-gc-linux-amd64
+            prepared-source.tar.gz
+            build-inputs.sha256
+            release-source.bundle
+            release-highlights.md
+
+  release:
+    needs: [resolve, guard, test, artifacts]
+    runs-on: medici-builder-public-release
+    # One approval covers every publication write: images first, then tag/assets.
+    environment: release
+    concurrency:
+      group: release-images-${{ needs.resolve.outputs.tag }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      actions: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: release-build-*
+          merge-multiple: true
+          path: .
+      - name: Restore the prepared source and verify release artifacts
+        env:
+          SOURCE_SHA: ${{ needs.artifacts.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          for tool in python3 curl git sha256sum docker tar; do command -v "$tool" >/dev/null; done
+          sha256sum -c build-inputs.sha256
+          if [ -f release-source.bundle ]; then git fetch ./release-source.bundle HEAD; fi
+          git checkout --detach "$SOURCE_SHA"
+          sha256sum -c checksums.txt
+      - name: Build, verify and publish the release images
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          SOURCE_SHA: ${{ needs.artifacts.outputs.source_sha }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+          REGISTRY_PREFIX: ghcr.io/${{ github.repository }}
+          VERIFY_RUNNER_IMAGE: ghcr.io/${{ github.repository_owner }}/verify-runner
+          GHCR_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+          INPUT: ${{ github.workspace }}
+          OUTPUT: ${{ runner.temp }}/release-image-refs
+        run: |
+          set -euo pipefail
+          DOCKER_CONFIG="$(mktemp -d)"
+          SOURCE="$(mktemp -d "$RUNNER_TEMP/release-image-source.XXXXXX")"
+          export DOCKER_CONFIG
+          trap 'rm -rf "$DOCKER_CONFIG" "$SOURCE"' EXIT
+          # Keep the Docker build context separate from the binary downloads
+          # and Git metadata used by the final tag/release publisher.
+          tar -xzf "$INPUT/prepared-source.tar.gz" -C "$SOURCE"
+          if [ "$DRY_RUN" != true ]; then
+            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          fi
+          cd "$SOURCE"
+          python3 - <<'PY_IMAGES'
+          import os
+          from pathlib import Path
+          from tools.release.images import build_images
+          build_images(Path.cwd(), os.environ['RELEASE_TAG'], os.environ['SOURCE_SHA'],
+                       os.environ['REGISTRY_PREFIX'], os.environ['VERIFY_RUNNER_IMAGE'],
+                       os.environ['INPUT'], os.environ['OUTPUT'], publish=os.environ['DRY_RUN'] != 'true')
+          PY_IMAGES
+      - name: Validate and checksum the published image references
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        env:
+          SOURCE_SHA: ${{ needs.artifacts.outputs.source_sha }}
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+          IMAGE_REFS: ${{ runner.temp }}/release-image-refs
+        run: |
+          set -euo pipefail
+          cp "$IMAGE_REFS/release-images.json" "$IMAGE_REFS/verify-runner-image.txt" .
+          python3 - <<'PY_REFS'
+          import json, os
+          from pathlib import Path
+          from tools.release.images_contract import validate
+          validate(json.loads(Path('release-images.json').read_text()),
+                   os.environ['RELEASE_TAG'], os.environ['SOURCE_SHA'],
+                   Path('verify-runner-image.txt').read_text(), os.environ['REPOSITORY'])
+          PY_REFS
+          sha256sum release-images.json verify-runner-image.txt >> checksums.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        with:
+          name: release-image-refs
+          path: ${{ runner.temp }}/release-image-refs
+          if-no-files-found: error
+          retention-days: 7
+      # A dry run has built/checksummed the binaries and verified all nine
+      # images without pushing. The tag and GitHub publication steps also
+      # refuse dry runs, so no published artifact or version number is created.
       - name: Dry run — stop before tagging and publishing
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run
         run: |
-          echo "Dry run: artifacts built and checksummed; cutting no tag and publishing no release."
+          echo "Dry run: binaries and all nine images built and checked; no images pushed, no tag cut, no release published."
           echo "::notice::Dry run complete — build + guard + tests passed. No tag cut, no release published."
 
       # THE LAST POSSIBLE MOMENT. Dispatch only (and never on a dry run); the
@@ -1393,12 +1642,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
-          # DESK_IMAGE is the workflow-level literal; the tag defaults to the
-          # currently published image (v0.1.0) and is overridable on dispatch.
-          DESK_IMAGE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.desk_image_tag || 'v0.1.0' }}
           # CHANGELOG discipline — the aggregated fragment highlights, lifted
           # ABOVE the asset-inventory boilerplate in the release body below.
-          NOTES_PATH: ${{ steps.changelog.outputs.notes_path }}
+          NOTES_PATH: release-highlights.md
           # RELEASE-AUTHORIZER TRACEABILITY (iso-9001/04) — who authorized this
           # cut, resolved upstream, named in the release body below. Rides in
           # via env:, never a ${{ }} splice inside run: — a login is
@@ -1433,9 +1679,8 @@ jobs:
             echo "Creating draft release ${RELEASE_TAG}."
             # draft:true — see the WHY DRAFT-THEN-PUBLISH note above. The release
             # is published (draft flipped false) only after every asset is on.
-            # The notes NAME the desk-tools image ref (built separately by
-            # docker-publish.yml) as an artifact line alongside the binaries.
-            desk_image_ref="${DESK_IMAGE}:${DESK_IMAGE_TAG}"
+            # The notes list immutable references produced by this release run.
+            image_manifest="release-images.json"
             # CHANGELOG discipline — the release body LEADS with the descriptive
             # aggregated fragment highlights (produced by the CHANGELOG-discipline
             # step above, and required non-empty there), then the asset-inventory
@@ -1449,8 +1694,8 @@ jobs:
             # line honest — it records authorization, not build provenance,
             # and claims no signature or attestation the pipeline does not
             # perform. The authorizer rides in via env: and is read by the
-            # helper below exactly like RELEASE_TAG and DESK_IMAGE_REF.
-            body=$(RELEASE_TAG="$RELEASE_TAG" DESK_IMAGE_REF="$desk_image_ref" NOTES_PATH="$NOTES_PATH" RELEASE_AUTHORIZER="$RELEASE_AUTHORIZER" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; img=os.environ["DESK_IMAGE_REF"]; auth=os.environ["RELEASE_AUTHORIZER"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + qualgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * qualgen-<platform>\n  * desk-tools-<platform>.tar.gz\n  * cursor-bundle.tar.gz (versioned Cursor source payload; SHA-256 integrity, not provenance)\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\ndesk-tools image (built separately by docker-publish.yml, daily-immutable-tag; pin the ref in .assay-versions):\n  * "+img+"\n\nSee checksums.txt for every asset sha256.\n\nRelease authorization (traceability to the person authorizing release):\n  authorized-by: "+auth+"\n  This records who authorized the release cut, not who or what built the artifact; the pipeline carries no signature or provenance attestation, and the human approval in the gated release environment (not this line) is the authorization it names."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
+            # helper below exactly like RELEASE_TAG and IMAGE_MANIFEST.
+            body=$(RELEASE_TAG="$RELEASE_TAG" IMAGE_MANIFEST="$image_manifest" NOTES_PATH="$NOTES_PATH" RELEASE_AUTHORIZER="$RELEASE_AUTHORIZER" python3 -c 'import os,json; tag=os.environ["RELEASE_TAG"]; images=json.load(open(os.environ["IMAGE_MANIFEST"],encoding="utf-8"))["images"]; img="\n".join("  * "+i["name"]+": "+i["ref"] for i in images); auth=os.environ["RELEASE_AUTHORIZER"]; highlights=open(os.environ["NOTES_PATH"],encoding="utf-8").read().strip(); inventory="assay release "+tag+" - statusgen + qualgen + desk-tools + drainloop.\n\nBinaries (pin per-platform by sha256 in .assay-versions):\n  * statusgen-<platform>\n  * qualgen-<platform>\n  * desk-tools-<platform>.tar.gz\n  * cursor-bundle.tar.gz (versioned Cursor source payload; SHA-256 integrity, not provenance)\n\nSource components (cloned or imported at this tag; pin the umbrella <tag>, never a per-component tag):\n  * github.com/medici-finance/assay/drainloop\n\nContainer images produced by this release (pin immutable references from release-images.json):\n"+img+"\n\nSee checksums.txt for every asset sha256.\n\nRelease authorization (traceability to the person authorizing release):\n  authorized-by: "+auth+"\n  This records who authorized the release cut, not who or what built the artifact; the pipeline carries no signature or provenance attestation, and the human approval in the gated release environment (not this line) is the authorization it names."; notes="## Highlights\n\n"+highlights+"\n\n---\n\n"+inventory; print(json.dumps({"tag_name":tag,"name":tag,"draft":True,"body":notes}))')
             status=$(curl -sS --retry 3 -o "$rel_json" -w '%{http_code}' -X POST "${auth[@]}" \
               -d "$body" "${api}/releases")
             if [ "$status" != "201" ]; then
@@ -1495,7 +1740,7 @@ jobs:
                    desk-tools-darwin-arm64.tar.gz desk-tools-darwin-amd64.tar.gz desk-tools-linux-amd64.tar.gz \
                    desk-tools-windows-amd64.tar.gz desk-tools-windows-arm64.tar.gz \
                    "tool-validation-${RELEASE_TAG}.md" "tool-validation-${RELEASE_TAG}.json" \
-                   cursor-bundle.tar.gz checksums.txt; do
+                   cursor-bundle.tar.gz release-images.json verify-runner-image.txt checksums.txt; do
             # Fail loudly if this name is already published — never swap the bytes.
             existing_id=$(NAME="$f" ASSETS_JSON="$assets_json" python3 -c 'import os,json; d=json.load(open(os.environ["ASSETS_JSON"])) if os.path.exists(os.environ["ASSETS_JSON"]) else []; d=d if isinstance(d,list) else []; print(next((str(a.get("id","")) for a in d if a.get("name")==os.environ["NAME"]), ""))' 2>/dev/null || true)
             if [ -n "${existing_id:-}" ]; then
@@ -1526,7 +1771,7 @@ jobs:
               echo "::error::could not publish release ${RELEASE_TAG} (HTTP $pub_status)"; cat "$RUNNER_TEMP/publish.json"; exit 1
             fi
           fi
-          echo "Published ${RELEASE_TAG} with statusgen + qualgen + desk-tools binaries + checksums.txt (desk-tools image: ${DESK_IMAGE}:${DESK_IMAGE_TAG})."
+          echo "Published ${RELEASE_TAG} with statusgen + qualgen + desk-tools binaries + checksums.txt (including checksummed container-image references)."
 
   # ───────────────────────────────────────────────────────────────────────────
   # CHANGELOG ROLL — its OWN job, deliberately NOT a trailing step of `release`.
@@ -1603,12 +1848,13 @@ jobs:
       # commits under the SAME identity that already writes STATUS.md straight
       # to main: the assay-board-writer App, whose ruleset bypass covers exactly
       # this class of generated-file write. App perms: contents:write on THIS
-      # repo only; key held in the main-only board-writer Environment (BOARD_APP_*).
+      # repo only; key held in the main-only board-writer Environment. Its public
+      # App client ID is BOARD_APP_CLIENT_ID there; the private key stays secret.
       - name: Mint assay-board-writer App token (changelog roll)
         id: roll-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          app-id: ${{ secrets.BOARD_APP_ID }}
+          client-id: ${{ vars.BOARD_APP_CLIENT_ID }}
           private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
 
       # CHANGELOG discipline — the SAME credit resolution as the release job, so
@@ -1840,172 +2086,3 @@ jobs:
             attempt=$((attempt + 1))
             echo "push rejected: ${DEFAULT_BRANCH} moved. Re-syncing and re-aggregating (attempt ${attempt}/${attempts})"
           done
-
-  # ───────────────────────────────────────────────────────────────────────────
-  # CONTAINER CHANNEL — the assay-harness image. ONE umbrella run emits both
-  # shapes: the `release` job above cuts the binaries + checksums.txt, and THIS
-  # job builds the harness image tagged with the SAME umbrella vX.Y.Z, its
-  # immutable DIGEST emitted alongside the tag (consumers pin by content hash).
-  #
-  # BEHIND `needs: [resolve, guard, test]` — the SAME gate the binary `release`
-  # job inherits. An image lane that skipped the test gate would reopen the
-  # untested-release hole on a second channel; do not weaken this dependency.
-  #
-  # WHY docker build ON medici-builder-public-release. That label is daemon-ful —
-  # docker-publish.yml already uses it to build the combined desk-tools image with
-  # plain `docker build` — so this job MATCHES ASSAY'S image convention (docker
-  # build on that label). (A reviewer may instead prefer this build live in
-  # docker-publish.yml alongside the desk-tools image.)
-  #
-  # WHY PUBLICATION IS A FLAG, NOT A REWRITE. Publishing to a public registry is
-  # a deliberate, gated decision — WHETHER the image is pushed is a dispatch-flag
-  # call, not automatic. So the
-  # image is always BUILT (behind the test gate) and inspected; the registry PUSH
-  # is gated on the `publish_image` dispatch input (default false). With the flag
-  # off — and on every tag-push — the image is built and NOTHING is pushed.
-  image:
-    needs: [resolve, guard, test]
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
-    runs-on: medici-builder-public-release
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # Resolve the image ref from the umbrella tag. In assay the umbrella tag is
-      # a plain vX.Y.Z (no `/`), but `tr '/' '-'` is kept so a prefixed tag could
-      # never produce an illegal registry tag. The repo is lowercased — GHCR
-      # requires it. RELEASE_TAG rides in via env:, never a `${{ }}` splice into
-      # run: — a tag name is attacker-shaped text.
-      - name: Compute the image ref
-        id: ref
-        env:
-          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
-        run: |
-          set -euo pipefail
-          image_tag=$(printf '%s' "${RELEASE_TAG}" | tr '/' '-')
-          repo=$(printf '%s' "${HARNESS_IMAGE}" | tr '[:upper:]' '[:lower:]')
-          echo "ref=${repo}:${image_tag}" >> "$GITHUB_OUTPUT"
-          echo "Image ref: ${repo}:${image_tag}"
-
-      # THE VISIBILITY GATE: log in only when we intend to push — a
-      # dispatch with publish_image=true. A tag-push, or a dispatch with the flag
-      # off, never touches the registry.
-      - name: Log in to GHCR
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_image }}
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-
-      # ONE build, always (behind the test gate). Plain `docker build` against the
-      # runner's Docker daemon (DOCKER_HOST is set on medici-builder-public-release),
-      # single-arch linux/amd64 — the same mechanics docker-publish.yml uses. The
-      # binaries are STAMPED via build-args so the image self-reports the umbrella
-      # version (the Dockerfile FAILS CLOSED on an empty ASSAY_VERSION). `--iidfile`
-      # records the built image's config id even on the no-push path.
-      - name: Build the harness image
-        id: build
-        env:
-          IMAGE_REF: ${{ steps.ref.outputs.ref }}
-          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
-          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
-          SOURCE_REVISION: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          SHA_SHORT="${GITHUB_SHA::12}"
-          # The image pre-seeds plugins/ and .claude-plugin/ from this working
-          # tree (CLAUDE_CODE_PLUGIN_SEED_DIR). Stamp the plugin manifest to the
-          # umbrella version exactly as `release` does for the tagged tree (#789),
-          # so the seeded plugin self-reports the version of the image it rides
-          # in. Working-tree only — nothing is committed or pushed from here; on
-          # the tag-push path the tree already carries it and this is a no-op.
-          bash plugins/assay/scripts/stamp-plugin-version.sh stamp "$RELEASE_TAG"
-          docker build \
-            --iidfile "${RUNNER_TEMP}/harness.iid" \
-            --build-arg "ASSAY_VERSION=${RELEASE_TAG}" \
-            --build-arg "STATUSGEN_TAG=${RELEASE_TAG}" \
-            --build-arg "DESK_SOURCE_SHA=${SHA_SHORT}" \
-            --build-arg "DESK_BUILT_AT=$(date -u +%FT%TZ)" \
-            --build-arg "SOURCE_URL=${SOURCE_URL}" \
-            --build-arg "SOURCE_REVISION=${SOURCE_REVISION}" \
-            -t "${IMAGE_REF}" \
-            -f images/assay-harness/Dockerfile \
-            .
-          echo "built ${IMAGE_REF} (config id $(cat "${RUNNER_TEMP}/harness.iid"))"
-
-      # THE PUSH — a single flag-gated step. `docker push` publishes the
-      # umbrella-versioned tag; the registry MANIFEST digest is then read back
-      # with `docker inspect .RepoDigests` and is what consumers
-      # pin (a tag is mutable at a registry, a digest is not). Fail closed if a
-      # push produced no RepoDigest.
-      - name: Push the harness image and record its digest
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_image }}
-        env:
-          IMAGE_REF: ${{ steps.ref.outputs.ref }}
-          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
-        run: |
-          set -euo pipefail
-          docker push "${IMAGE_REF}"
-          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE_REF}" 2>/dev/null || true)
-          if [ -z "$digest" ]; then
-            echo "::error::the image was pushed but no RepoDigest is recorded — refusing to record a tag with no immutable digest"
-            exit 1
-          fi
-          {
-            echo "### assay-harness image"
-            echo ""
-            echo "| field | value |"
-            echo "|---|---|"
-            echo "| umbrella | \`${RELEASE_TAG}\` |"
-            echo "| tag | \`${IMAGE_REF}\` |"
-            echo "| pinnable ref | \`${digest}\` |"
-            echo "| pushed | true |"
-          } >> "${GITHUB_STEP_SUMMARY}"
-          echo "pushed ${digest}"
-
-      # BUILD-ONLY path (publish_image off, or any tag-push): the image is built
-      # and its config id computed, nothing is pushed. A registry MANIFEST digest
-      # exists only after a push, so record the config id and say so.
-      - name: Note build-only (no push)
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.publish_image) }}
-        env:
-          IMAGE_REF: ${{ steps.ref.outputs.ref }}
-          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
-        run: |
-          set -euo pipefail
-          iid=""
-          if [ -s "${RUNNER_TEMP}/harness.iid" ]; then iid=$(cat "${RUNNER_TEMP}/harness.iid"); fi
-          {
-            echo "### assay-harness image (build-only)"
-            echo ""
-            echo "| field | value |"
-            echo "|---|---|"
-            echo "| umbrella | \`${RELEASE_TAG}\` |"
-            echo "| tag (unpushed) | \`${IMAGE_REF}\` |"
-            echo "| config id | \`${iid}\` |"
-            echo "| pushed | false |"
-          } >> "${GITHUB_STEP_SUMMARY}"
-          echo "::notice::publish_image off (or tag-push) — image built and inspected, NOTHING pushed (registry push is flag-gated). A registry manifest digest exists only after a push."
-
-      # GHCR packages are created PRIVATE on first push. Best-effort flip to
-      # PUBLIC so the image pulls anonymously (mirrors docker-publish.yml). The
-      # default GITHUB_TOKEN usually lacks org package-admin; a failure here is
-      # EXPECTED and non-fatal — an org owner then flips visibility once by hand.
-      - name: Make package public (best-effort)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_image }}
-        continue-on-error: true
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          code="$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${GHCR_TOKEN}" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            https://api.github.com/orgs/medici-finance/packages/container/assay%2Fassay-harness \
-            -d '{"visibility":"public"}')"
-          echo "visibility PATCH -> HTTP $code"
-          if [ "$code" != "204" ] && [ "$code" != "200" ]; then
-            echo "::warning::could not set assay-harness package visibility to public (HTTP $code); an org owner must flip it in GHCR package settings."
-          fi

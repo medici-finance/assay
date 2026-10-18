@@ -749,4 +749,9 @@ else
   fail=1
 fi
 
+# Keep exact-label precision and same-binary secret coverage in the full suite.
+if ! LAYER_SECRET_SCAN="$SCAN" sh "$HERE/layer-secret-scan.labels.test.sh"; then
+  fail=1
+fi
+
 exit "$fail"

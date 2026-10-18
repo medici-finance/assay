@@ -15,8 +15,7 @@
     "reason": "New release-by-merge detector; pending maintainer activation (README Contents)."
   },
   "release.yml": {
-    "mode": "pending",
-    "reason": "Intentional release-by-merge tag authorizer proposal (README Contents)."
+    "mode": "identical"
   },
   "windows-ci-leg.yml": {
     "mode": "identical"
@@ -27,9 +26,6 @@
   "assay-qualgen.yml": {
     "mode": "pending",
     "reason": "Classified board push (#2910): credential preflight and per-class push failures in the QUALITY.md regen; pending maintainer promotion (README Contents)."
-  },
-  "verify-gate-close.yml": {
-    "mode": "identical"
   },
   "forge-surface-control.yml": {
     "mode": "identical"

@@ -126,6 +126,18 @@
       "file": "reconcileholdinc.go",
       "old": "n := len(s.Briefs) - len(s.Placeholders)",
       "new": "n := len(s.Briefs)"
+    },
+    {
+      "name": "the --regenerate opt-in is ignored (a default --apply re-renders drive plan pages, which no landing caller commits)",
+      "file": "reconcileapply.go",
+      "old": "opts.regenerate && found && len(kinds) > 0",
+      "new": "found && len(kinds) > 0"
+    },
+    {
+      "name": "the verb turns --regenerate on whether or not it was given",
+      "file": "reconcile.go",
+      "old": "regenerate: *regenerate}",
+      "new": "regenerate: true}"
     }
   ]
 }

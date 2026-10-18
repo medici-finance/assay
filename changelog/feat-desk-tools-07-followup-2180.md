@@ -1,2 +1,0 @@
-### Fixed
-- `clusterguard`'s read-only tier (`ASSAY_ALLOW_CLUSTER=1`) no longer lets a mutating call through behind a flag it does not know. A flag before the subcommand that is neither in the guard's value-flag table nor written `--flag=value` now makes the call unclassifiable, so it is refused: real `kubectl --username get delete pod x` runs `delete`, and the guard used to read it as `get`. An operator whose read-only call is refused this way writes the flag as `--flag=value` or after the subcommand.
