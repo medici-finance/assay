@@ -177,9 +177,11 @@ mutated "$WORK/merged.sh" "$?"
 # literal trailing backslash used by the case alternatives.
 # shellcheck disable=SC1003,SC2016
 {
+# Revert to the previous exact case rather than leave a blank after a shell
+# line continuation; this removes only recognition of the new packing.
 swap label-remove \
   '    /usr/local/bin/deskpr:"sk-"decidedunverifiablecheck | \' \
-  ''
+  '    /usr/local/bin/deskpr:"sk-"decidedunverifiablecannot | \'
 swap label-prefix \
   '    /usr/local/bin/deskpr:"sk-"decidedunverifiablecheck | \' \
   '    /usr/local/bin/deskpr:"sk-"decided* | \'
