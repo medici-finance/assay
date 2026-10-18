@@ -434,6 +434,8 @@ or output. A value copied from the work under test verifies only that the work a
   single-point-of-failure note names: the reviewer's `deskpathguard check` is the one control
   until the paths land in branch protection, and this re-derivation catches an edit the check
   missed because it reads git history, not a label.
+  Before recording closure, follow `docs/protected-paths.md` § "Recording closure after
+  re-derivation" for the immutable table marker and explicit uncredited supplemental rows.
 
 ## Risk-bearing value — desk-side routing
 

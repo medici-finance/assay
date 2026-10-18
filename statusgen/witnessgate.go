@@ -239,8 +239,12 @@ func failFirstGateChecks(root string, streams []*Stream) (problems, notices []st
 			if !ok {
 				continue
 			}
-			rows := briefVerifyRows(art.Verify)
-			unplaced := verifyUnplacedRows(art.Verify)
+			acceptance, _, refusal := protectedAcceptance(art.Verify, art.Evidence, art.Path)
+			if refusal != "" {
+				continue // protectedClosureProblems reports the same refusal.
+			}
+			rows := briefVerifyRows(acceptance)
+			unplaced := verifyUnplacedRows(acceptance)
 			if len(rows) == 0 && len(unplaced) == 0 {
 				continue // no Verify table: verifySectionProblems' business
 			}

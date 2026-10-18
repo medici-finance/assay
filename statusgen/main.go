@@ -602,6 +602,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// cell. Transition-scoped like unrunGateChecks below: only a closure
 	// this branch made is a PROBLEM. See witnessgate.go.
 	wgProblems, wgNotices := witnessGateChecks(root, checkStreams)
+	problems = append(problems, protectedClosureProblems(checkStreams)...)
 	problems = append(problems, wgProblems...)
 	notices = append(notices, wgNotices...)
 	// Missing EXECUTION WITNESS, but only for closures THIS branch makes: a

@@ -1831,8 +1831,14 @@ func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK
 			}
 			postBase := closed && okName && baseOK && !grandfathered[briefID]
 			scoped := closed && !postBase // a pre-existing closed record
+			verify := bf.Verify
+			if closed {
+				if acceptance, _, refusal := protectedAcceptance(bf.Verify, bf.Evidence, path); refusal == "" {
+					verify = acceptance
+				}
+			}
 			var cmds []string
-			verifyRowTable(bf.Verify, func(r verifyRowCells) {
+			verifyRowTable(verify, func(r verifyRowCells) {
 				where := "a Verify row"
 				if r.Num != "" {
 					where = "Verify row " + r.Num

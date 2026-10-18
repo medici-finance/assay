@@ -1987,7 +1987,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 func runVerifyrunCheck(path, verify, evidence string, stdout *os.File) int {
 	// The audit does not run the lint, so it refuses an unterminated `<!--`
 	// itself (#1939) rather than report rows the rendered page may hide.
-	findings, refusal := closureWitnesses(verify, evidence)
+	findings, refusal := closureWitnesses(verify, evidence, path)
 	if refusal != "" {
 		fmt.Fprintf(stdout, "%s: refused — %s\n", path, refusal)
 		return verifyrunExitCouldNot
@@ -2001,8 +2001,8 @@ func runVerifyrunCheck(path, verify, evidence string, stdout *os.File) int {
 		counts[f.State]++
 		fmt.Fprintf(stdout, "row %s: %s — %s\n", f.ID, f.State, f.Detail)
 	}
-	fmt.Fprintf(stdout, "%s: %d pass, %d fail, %d could-not-run/missing (of %d Verify rows)\n",
-		path, counts[statePass], counts[stateFail], counts[stateCouldNotRun], len(findings))
+	fmt.Fprintf(stdout, "%s: %d pass, %d fail, %d could-not-run/missing (of %d Verify rows); %d author-added with no acceptance credit\n",
+		path, counts[statePass], counts[stateFail], counts[stateCouldNotRun], len(findings), counts[stateAuthorAdded])
 	return checkExitCode(findings)
 }
 

@@ -385,7 +385,7 @@ func checkBriefInfoVerified(root string, info *briefInfo) error {
 	// This verb does not run the lint, so it refuses the #1939 case itself: a
 	// closure is never authorized over a section the parser and the rendered
 	// page may read differently.
-	findings, refusal := closureWitnesses(verify, evidence)
+	findings, refusal := closureWitnesses(verify, evidence, filepath.Join(root, filepath.FromSlash(info.File)))
 	if refusal != "" {
 		return fmt.Errorf("verified outcome requires well-formed Verify and Evidence sections: %s", refusal)
 	}
@@ -405,7 +405,7 @@ func checkBriefInfoVerified(root string, info *briefInfo) error {
 	}
 	var failures []string
 	for _, finding := range findings {
-		if finding.State != statePass {
+		if !closureSatisfied(finding) {
 			failures = append(failures, fmt.Sprintf("row %s: %s — %s", finding.ID, finding.State, finding.Detail))
 		}
 	}

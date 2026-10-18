@@ -85,3 +85,42 @@ never treated as a witness of anything.
 This is the single-point-of-failure's second layer (see the brief's `facts:`): the reviewer
 check above is the ONE control until the house ruleset lands; this re-derivation is what
 catches an edit the check missed, because it reads git history rather than a label.
+
+### Recording closure after re-derivation
+
+The independent verifier puts one live marker in the current Evidence run, before
+its final verdict (full immutable Git object IDs, not branch names):
+
+```text
+Verification-Table: delivery=<sha> base=<sha> original=<sha>
+```
+
+`delivery` is the landed implementation commit. For a squash delivery, `base` is
+its exact parent; for a two-parent merge, it is the parents' unique merge-base.
+`original` is the actual pre-change re-derivation revision. It must be an ancestor
+of `base`, and its complete parsed Verify table must equal the table at `base`.
+If main changed that table while the delivery was in flight, closure refuses;
+retain the independent re-derivation and resolve the discrepancy explicitly.
+Missing objects, root/octopus deliveries and ambiguous merge bases refuse too.
+
+The current Verify section must still equal the delivered section. Every original
+row ID remains mandatory, with its original Command, Expect and class; removing or
+renumbering one refuses. An edited command needs a witness of the original command,
+and an edited Expect cannot change the required original process exit. As with
+ordinary witnesses, output assertions require independent inspection of the recorded
+output hash and primary output. The audit does not reconstruct output from a hash.
+
+Each added row's latest matching witness reports `author-added; execution exit=0
+sandbox=unshare; no acceptance credit` (with the actual observed exit and sandbox).
+It is a supplemental disposition, never a passing acceptance witness. Retain the
+normal witness columns and primary execution evidence. A later pass claim does not
+override this accounting. The execution command does not automatically rewrite a
+current-table run into a re-derived run: the verifier must retain the original
+commands and results before producing the closure record.
+
+`verifyrun --check`, `brief --check-verified`, `verifyclosure`, the verified flip,
+the reconciliation fold and lint use the same protected-table evaluator. Lint's
+fail-first and row-strength checks retain the original acceptance table. Human row
+gates, verifier authorship, admission and full closure lint remain required. The
+marker proves local immutable object contents and ancestry; it is not a forge
+identity attestation, permission or a replacement for independent verification.

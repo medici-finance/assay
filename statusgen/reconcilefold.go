@@ -176,7 +176,7 @@ func foldVerified(d reconcileFoldData, coverage map[string]Coverage) (w WitnessI
 	}
 	// closureWitnesses, never checkWitnesses directly (the htmlcomment.go class
 	// guard): an unterminated `<!--` opener refuses the audit.
-	findings, refusal := closureWitnesses(d.verify, p.Run)
+	findings, refusal := closureWitnesses(d.verify, p.Run, d.path)
 	if refusal != "" || len(findings) == 0 || checkExitCode(findings) != verifyrunExitPass {
 		return WitnessInfo{}, false, ""
 	}

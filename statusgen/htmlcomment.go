@@ -118,11 +118,15 @@ func unterminatedCommentIn(verify, evidence string) string {
 // on the rendered page. It refuses such a section (refusal != "", no findings)
 // and otherwise returns checkWitnesses' findings. TestWitnessCallerAllowList
 // pins that those verbs reach checkWitnesses only through here.
-func closureWitnesses(verify, evidence string) (findings []checkFinding, refusal string) {
+func closureWitnesses(verify, evidence string, paths ...string) (findings []checkFinding, refusal string) {
 	if what := unterminatedCommentIn(verify, evidence); what != "" {
 		return nil, what
 	}
-	return checkWitnesses(verify, evidence), ""
+	acceptance, added, refusal := protectedAcceptance(verify, evidence, paths...)
+	if refusal != "" {
+		return nil, refusal
+	}
+	return append(checkWitnesses(acceptance, evidence), added...), ""
 }
 
 // unterminatedCommentProblems is the #1939 lint: a PROBLEM for every brief file

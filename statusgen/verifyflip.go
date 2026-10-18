@@ -295,7 +295,7 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 			return verifyFlipPlan{}, refuseFlip("gate-class: Verify row %s has unknown class %q — the verb cannot tell who decides it", r.ID, r.Class)
 		}
 	}
-	findings, refusal := closureWitnesses(verify, run)
+	findings, refusal := closureWitnesses(verify, run, path)
 	if refusal != "" {
 		return verifyFlipPlan{}, refuseFlip("%s", refusal)
 	}
@@ -305,7 +305,7 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 	if checkExitCode(findings) != verifyrunExitPass {
 		var bad []string
 		for _, f := range findings {
-			if f.State != statePass {
+			if !closureSatisfied(f) {
 				bad = append(bad, "row "+f.ID+": "+f.State)
 			}
 		}
