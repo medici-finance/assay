@@ -36,7 +36,7 @@ classified board push (#2910) in their board-push steps, the same text as their
 reads an expired credential as a moved main. `ci-load.diff` shows only the trigger
 change; the push steps are tested in place by `statusgen/pushcred_test.go`.
 The `assay-statusgen.yml` copy also checks out full history (`fetch-depth: 0`) in its
-`regen` job (#3364), the same as its staged twin, so activating it cannot bring back a
+`regen` job (#3364), the same line as its staged twin and the live workflow, so activating it cannot bring back a
 shallow regen that reads a consumed changelog fragment as a missing path; that checkout
 is pinned by `TestBoardRegenFullHistory` in `statusgen`.
 

@@ -123,10 +123,7 @@ jobs:
           # Persist the App token as the push credential (checkout default), so
           # the STATUS.md `git push` below authenticates as assay-board-writer[bot].
           token: ${{ steps.app-token.outputs.token }}
-          # Full history, as in lint: a shallow checkout leaves the consumed-
-          # changelog-fragment exemption could-not-check, so a fragment a release
-          # consumed reads as a missing path and fails this job (#3364).
-          fetch-depth: 0
+          fetch-depth: 0 # consumedFragmentIndex needs changelog/ history; a shallow regen reads a consumed fragment as a false PROBLEM (#3364)
       - name: Install Go
         run: |
           set -euo pipefail

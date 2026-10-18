@@ -125,10 +125,11 @@ reviewable artifact, not a run.
   out with `fetch-depth: 0`, as the `lint` job already does. The regen runs the same history-reading
   checks as `--lint` (the consumed-changelog-fragment exemption, the Evidence staleness read), and
   on a shallow clone those are could-not-check by design, so a release that consumes a fragment a
-  brief names turns the default-branch regen red while the PR lint passes. **Pending promotion**:
-  the one-line `fetch-depth: 0` under the live `regen` job's checkout `with:` can be applied on its
-  own, ahead of the rest of the staged copy. `TestBoardRegenFullHistory` in `statusgen` pins it on
-  this copy and on the `tools/ci-load/activation/` copy.
+  brief names turns the default-branch regen red while the PR lint passes. **Live**: the same
+  one-line `fetch-depth: 0` landed on its own in the live `regen` job's checkout `with:` (#3385),
+  and this copy's line is now byte-identical to it; the rest of the staged copy (#2910) stays
+  pending. `TestBoardRegenFullHistory` in `statusgen` pins the line on the live file, this copy
+  and the `tools/ci-load/activation/` copy.
 - `gremlins-daily.yml` — the daily Gremlins mutation sweep (#2647) over the desk tools'
   muhar-spec packages (`tools/gremlins/run.sh`). **Discovery, never a gate**: surviving
   mutants go to the job summary and the uploaded JSON artifact as leads, and survivors in

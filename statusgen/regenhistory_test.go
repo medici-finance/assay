@@ -97,11 +97,11 @@ func TestGitLabRegenFullHistory(t *testing.T) {
 	}
 }
 
-// regenWorkflowCopies are this repository's own board-workflow copies that a
-// maintainer promotes over the live file. The live file itself cannot be
-// edited by automation, so it is not asserted here; a promotion from either
-// copy carries the full-history checkout.
+// regenWorkflowCopies are this repository's own board workflow and the copies
+// a maintainer promotes over it. The live file carries the full-history
+// checkout, and a promotion from either copy keeps it.
 var regenWorkflowCopies = []string{
+	"../.github/workflows/assay-statusgen.yml",
 	"../ci/staged-workflows/assay-statusgen.yml",
 	"../tools/ci-load/activation/assay-statusgen.yml",
 }
