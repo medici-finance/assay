@@ -54,6 +54,18 @@ func TestProtectedClosureRows(t *testing.T) {
 				vfGit(t, root, vfMailHuman, "merge", "--no-ff", "-q", "-m", "delivery", "delivery")
 			}
 			delivery := vfRev(t, root, "HEAD")
+			// Same delivered table on a real sibling: table equality alone must
+			// not authenticate an unlanded delivery snapshot.
+			vfGit(t, root, vfMailWorker, "checkout", "-q", "-b", "offbranch", base)
+			if err := os.WriteFile(path, []byte(delivered), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(root, "offbranch.txt"), []byte("sibling\n"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			vfCommit(t, root, vfMailWorker)
+			sibling := vfRev(t, root, "HEAD")
+			vfGit(t, root, vfMailWorker, "checkout", "-q", "--detach", delivery)
 			marker := "Verification-Table: delivery=" + delivery + " base=" + base + " original=" + original + "\n\n"
 			supplemental := "| 3 | `printf supplemental` | author-added; execution exit=0 sandbox=unshare; no acceptance credit | sha256:bbbbbbbbbbbb | 2026-08-13 | human:alex @ " + delivery + " |\n"
 			evidence := marker + witnessTableFor(vfRow1, row2) + "\n" + supplemental
@@ -69,6 +81,7 @@ func TestProtectedClosureRows(t *testing.T) {
 				{"code-spliced-marker", currentVerify, strings.Replace(evidence, "Verification-Table:", "Verification-Table: `example`", 1), false},
 				{"tampered-base", vfVerify + added, strings.Replace(evidence, "base="+base, "base="+delivery, 1), false},
 				{"missing-object", vfVerify + added, strings.Replace(evidence, "delivery="+delivery, "delivery="+strings.Repeat("f", 40), 1), false},
+				{"offbranch-delivery", currentVerify, strings.Replace(evidence, "delivery="+delivery, "delivery="+sibling, 1), false},
 				{"tampered-original", currentVerify, strings.Replace(evidence, "original="+base, "original="+delivery, 1), false},
 				{"missing-original", currentVerify, strings.Replace(evidence, "original="+base, "original="+strings.Repeat("f", 40), 1), false},
 				{"short-object", currentVerify, strings.Replace(evidence, "delivery="+delivery, "delivery="+delivery[:12], 1), false},

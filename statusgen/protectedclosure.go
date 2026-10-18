@@ -49,7 +49,15 @@ func protectedAcceptance(verify, evidence string, paths ...string) (string, []ch
 	}
 	dir, file := filepath.Dir(paths[0]), filepath.Base(paths[0])
 	refuse := func(err any) (string, []checkFinding, string) { return "", nil, fmt.Sprint("protected table: ", err) }
-	if historyGit(dir, "merge-base", "--is-ancestor", delivery, "HEAD").Run() != nil {
+	// Reuse the qualified source-provenance primitive. This authenticates the
+	// delivery and baseline snapshots, not whether a witness applies to code:
+	// that remains the independent content comparison in witnessTreeApplies.
+	head, err := historyGit(dir, "rev-parse", "--verify", "HEAD^{commit}").Output()
+	if err != nil || !isObjectID(strings.TrimSpace(string(head))) {
+		return refuse("cannot resolve HEAD as an immutable commit")
+	}
+	bases, err := flipMergeBases(dir, delivery, strings.TrimSpace(string(head)))
+	if err != nil || len(bases) != 1 || bases[0] != delivery {
 		return refuse("delivery is absent or not an ancestor of HEAD")
 	}
 	out, err := historyGit(dir, "show", "-s", "--format=%P", "--end-of-options", delivery).Output()
@@ -70,7 +78,8 @@ func protectedAcceptance(verify, evidence string, paths ...string) (string, []ch
 	default:
 		return refuse("delivery must have one parent (squash) or two parents (merge)")
 	}
-	if base != expected || historyGit(dir, "merge-base", "--is-ancestor", original, base).Run() != nil {
+	bases, err = flipMergeBases(dir, original, base)
+	if base != expected || err != nil || len(bases) != 1 || bases[0] != original {
 		return refuse("base is not the exact delivery baseline, or original is not its ancestor")
 	}
 	read := func(rev string) (string, error) {
