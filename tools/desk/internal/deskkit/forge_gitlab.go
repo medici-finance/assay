@@ -4045,6 +4045,9 @@ func gitlabWriteProbeRef(in WriteFileInput) string {
 // writeEvidenceFile shares the native write implementation with a scoped landing.
 // known binds prior to the validator snapshot; LastCommitID remains enforced by GitLab.
 func (g *GitLabForge) writeEvidenceFile(repo ForgeRepo, in WriteFileInput, project *gitlab.Project, prior *FileContent, known bool) (*WriteFileResult, error) {
+	if in.ExpectedHead != "" {
+		return nil, Unverifiable("verified outcome requires an atomic branch-head write precondition; this GitLab writer supports only file revisions", nil)
+	}
 	cl, err := g.client()
 	if err != nil {
 		return nil, err

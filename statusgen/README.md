@@ -343,7 +343,7 @@ statusgen brief desk-tools/12 --root . --text
 ```
 
 It is **read-only**: it never writes STATUS.md or any generated file, touches no
-network, and shells out to nothing. Resolution is exact — exactly one brief file
+network; optional closure checks may read local Git history. Resolution is exact — exactly one brief file
 must match the key: zero files, or more than one (the numeric-prefix collision a
 hand-rolled glob cannot detect), is an error naming what it found, exit 2, and no
 JSON body — so a consumer never reads a partial or wrong answer as success. A legacy
@@ -356,8 +356,16 @@ RELATIVE to `--root`, so the output carries no machine path.
 `verified` or `done`, a dated Verified stamp, and a passing execution witness for
 every Verify row. It returns exit 1 with no JSON when that closure check fails;
 resolution/usage failures remain exit 2. This check does not grandfather missing
-witnesses and does not replace `statusgen --lint`. `deskevidence` uses both before
-appending a new verified outcome receipt.
+witnesses and does not replace `statusgen --lint`.
+
+Adding `--check-attribution` (requires `--check-verified`) also requires an accepted
+Evidence author under the same roster policy and Git blame judge as lint, without
+lint's historical severity classification. A known rejected identity returns 1;
+unavailable policy/history or a graft-hidden attribution returns 2. Both suppress
+JSON. Default resolution and `--check-verified` alone retain their behavior.
+`deskevidence` requests both flags and full lint before a new verified outcome.
+Its release must be paired with a statusgen release supporting this flag; an older
+statusgen returns an unknown-flag error and publication fails closed.
 
 ### `phantoms` — the sibling-merge-unreconciled dedicated exit code
 
