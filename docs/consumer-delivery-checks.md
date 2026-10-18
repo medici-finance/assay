@@ -45,11 +45,11 @@ or permission to close a brief.
 | Brief | Delivery | Corroborated / disproved / unchecked | Disposition |
 |---|---|---|---|
 | apps-installer/02 | 08d96323a459 | 3 / 0 / 1 | migrated; exclusion still owed |
-| contributor-trust/01 | 2f3b5da4a33b | 3 / 0 / 1 | migrated; exclusion still owed |
+| contributor-trust/01 | 01da8dfd6625 | 3 / 0 / 1 | migrated; exclusion still owed |
 | contributor-trust/02 | 849f93e5f506 | 5 / 0 / 1 | migrated; exclusion still owed |
 | contributor-trust/04 | 2083064fdeb2 | 3 / 0 / 1 | migrated existing bounded row to the shared mode |
 | contributor-trust/06 | a5c828683251 | 3 / 0 / 1 | migrated; exclusion still owed |
-| desk-supervision/09 | 162c07b751a4 | 1 / 0 / 3 | migrated; original checks of exclusions retained |
+| desk-supervision/09 | dfbd883d58f1 | 1 / 0 / 3 | migrated; original checks of exclusions retained |
 | desk-supervision/13 | d8552d943f3c | 2 / 2 / 1 | **open hold on #1915**: delivered routes name untouched sets.go and ackbeacon.go; expected success retained, so the corrected range exposes a real red |
 | desk-containers/08 | 21a3e1474c61 | 4 / 0 / 5 | bounded authoring/deferred claims only; does not attest implementation |
 | desk-containers/09 | 58a019271393 | 3 / 0 / 1 | migrated; exclusion still owed |
@@ -57,7 +57,7 @@ or permission to close a brief.
 | measured-status/02 | a11ac41674c0 | 1 / 0 / 0 | migrated; implements a delivery with no Brief trailer |
 | desk-tools/23 | b2050d8c735a | 1 / 0 / 4 | migrated; exclusions remain owed |
 | desk-tools/37 | e28201023c74 | 4 / 0 / 0 | migrated actual implementation #3331, rather than later verification-control repairs |
-| desk-tools/38 | eded7ba6e446 | 8 / 0 / 7 | migrated actual implementation #3332; seven review obligations retained |
+| desk-tools/38 | eded7ba6e446 | 8 / 0 / 7 | migrated actual implementation #3332 (its incorrect `Brief: desk-tools/37` trailer does not identify /38); seven review obligations retained |
 | measured-status/03 | 0842782 | 0 / 0 / 1 in the existing bounded branch check | **open hold on #1915**: Option 2 routes only to issue #1722; no corroborated consumer exists. Retain the unchecked obligation and existing row; do not manufacture a consumer pass |
 | graph-execution/04, desk-containers/11, harness-portability/18 | not delivered | not checked | provisional pre-merge rows; implementation owns actual endpoint pins under the authoring contract above |
 | cellctl-windows/00 | 2a6460e85c78 | not rerun here | existing separate check-definition issue #2045 retains custody |

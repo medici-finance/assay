@@ -189,6 +189,7 @@ and the desk disagree about a tier" is caught by row 6. "The published model lea
 existence as something readers may request" is caught by row 7. "A capability is added to a
 tier by an inline conditional somewhere rather than to the table" — no row; review-only, it is
 a code-shape judgement the reviewer makes from the diff.
+
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -104,6 +105,29 @@ func TestDeliveryCLI(t *testing.T) {
 	out, err := exec.Command(bin, "--root", root, "--consumers", "--brief", "alpha/01", "--delivery", delivery, "--base", base).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "summary: 1 corroborated, 0 disproved, 0 unchecked") {
 		t.Fatalf("delivery CLI: %v: %s", err, out)
+	}
+	// Extracting the shared emitter must preserve the ordinary branch output.
+	briefPath := filepath.Join(root, "docs/streams/alpha/brief-01-claims.md")
+	briefText, err := os.ReadFile(briefPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, briefPath, strings.ReplaceAll(string(briefText), "web/fixed.go", "web/untouched.go"))
+	branch := exec.Command(bin, "--root", root, "--consumers", "--brief", "alpha/01", "--base", base)
+	var stdout, stderr bytes.Buffer
+	branch.Stdout, branch.Stderr = &stdout, &stderr
+	err = branch.Run()
+	var failureLine string
+	for _, line := range strings.Split(stderr.String(), "\n") {
+		if strings.HasPrefix(line, "statusgen: --consumers:") {
+			failureLine = line
+		}
+	}
+	if err == nil || failureLine != "statusgen: --consumers: 1 routing claim(s) DISPROVED by the diff against "+base {
+		t.Fatalf("branch stderr compatibility: %v: %q", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "base "+base+" (committed diff + uncommitted working tree), 1 brief(s)") {
+		t.Fatalf("branch header compatibility: %s", stdout.String())
 	}
 	out, err = exec.Command(bin, "--root", root, "--delivery", delivery).CombinedOutput()
 	if err == nil || !strings.Contains(string(out), "--delivery requires --consumers") {

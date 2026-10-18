@@ -176,7 +176,7 @@ until this is decided.
 | 7 | `cd tools/desk && ./deskprovenance --dry-run --fixture cmd/deskprovenance/testdata/bulk-sweep-author.json` | exit 1; output contains `not a judgement of the change` (the abstention is present on the flagged path, which is the path where it matters) | check |
 | 8 | `git -C . grep -n -e follower -e employer -e geograph -- tools/desk/internal/deskkit/provenance.go` | exit 1; no matching line (the excluded categories appear nowhere in the gatherer) | check |
 | 9 | `grep -n 'deliberately' docs/contributor-provenance.md` | exit 0; at least one matching line naming the excluded signals | check |
-| 10 | `o=$(statusgen --root . --consumers --brief contributor-trust/01 --delivery 2f3b5da4a33b5c3c49eae0a87a7429d12616f458 --base 468a3082b1f0c738a36144ecdf754175a69131bc); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | exit 0; exact `summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing`. Claims are read from the immutable delivered snapshot and compared only with its first-parent diff. The 1 UNCHECKED entries remain individual review obligations; this row does not discharge their truth. | check |
+| 10 | `o=$(statusgen --root . --consumers --brief contributor-trust/01 --delivery 01da8dfd6625f2fd70f1a70cf929170a2ef7c8a7 --base 4bf9c299243b41a9300ce058723d1e4b9083c77e); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | exit 0; exact `summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing`. Claims are read from the immutable delivered snapshot and compared only with its first-parent diff. The 1 UNCHECKED entries remain individual review obligations; this row does not discharge their truth. | check |
 
 Pre-mortem to detection map. "A signal fails to read and the card says everything is fine" is
 caught by row 4, which requires both the third exit state and the visible token. "The card
@@ -188,6 +188,7 @@ verb fetches the head to compute a diff-touches-continuous-integration signal" �
 can prove a negative mechanically; the ground rule forbids it and the reviewer reads the
 gatherer for a fetch, which is review-only. "The wording is technically neutral and still
 lands badly" — no row; review-only by design, since tone is the review gate's judgement.
+
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).

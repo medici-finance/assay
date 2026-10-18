@@ -124,6 +124,7 @@ passing" is caught by row 7. "The skill-body paragraph inlines a house value int
 body" is caught by row 9. "The fact-check lane enumerates claims badly — it finds three of a
 body's seven assertions" — no row; extraction quality is a review-gate judgement, and the
 contract only requires that every claim it does extract carries a state.
+
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).

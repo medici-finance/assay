@@ -608,12 +608,16 @@ func runConsumers(root, base, briefFilter string) int {
 		verdicts = append(verdicts, corroborateBrief(root, streams, changedSet, inherited, bf)...)
 	}
 
-	return emitConsumers(base+" (committed diff + uncommitted working tree)", len(briefs), verdicts, claimless, false)
+	return emitConsumers(base, len(briefs), verdicts, claimless, false)
 }
 
 func emitConsumers(base string, briefCount int, verdicts []consumerVerdict, claimless []string, requireEvidence bool) int {
 	nC, nD, nU := 0, 0, 0
-	fmt.Printf("consumers corroboration — base %s, %d brief(s)\n", base, briefCount)
+	label := base
+	if !requireEvidence {
+		label += " (committed diff + uncommitted working tree)"
+	}
+	fmt.Printf("consumers corroboration — base %s, %d brief(s)\n", label, briefCount)
 	current := ""
 	for _, v := range verdicts {
 		if v.Brief != current {

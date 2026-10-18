@@ -209,6 +209,7 @@ the console reads" → rows 7, 8; "tokens stays a dead const stub" → row 8; "a
 name is joined into the beacon path unvalidated" (security review finding S-1) → row 11.
 Review-only: whether the chosen field set is the right vitals to collect (a knob for brief 14 to
 consume, not a defect here).
+
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).

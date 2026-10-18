@@ -167,6 +167,7 @@ names of internal automation identities" is caught by row 8. "The security repor
 copied into the new section and the two copies drift" is caught by row 9, which requires a
 link. "The prose is technically complete and reads as hostile" — no row; tone is the review
 gate's judgement and this table explicitly gates presence only.
+
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).
