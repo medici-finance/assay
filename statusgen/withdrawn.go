@@ -170,6 +170,28 @@ func (r *withdrawalResolver) findBrief(root, stream, num string) *Brief {
 	return nil
 }
 
+// successorsOf returns the superseded-by list of the withdrawn brief
+// stream/num under root, read from its OWN brief file. The README row's
+// SupersededBy is wired only when checkBriefFiles reaches that file, which can
+// be after the dependent brief is checked (same stream, later number) or never
+// (a stream outside this run's checked set) — so the row is only a fallback.
+func (r *withdrawalResolver) successorsOf(root, stream, num string, row *Brief) []string {
+	if s := r.byRoot[root][stream]; s != nil {
+		for _, path := range briefFilePaths(s) {
+			_, n, ok := expectedBriefID(path)
+			if !ok || n != num {
+				continue
+			}
+			bf, ok, err := parseBriefFile(path)
+			if err == nil && ok && bf.Withdrawal != nil {
+				return bf.Withdrawal.SupersededBy
+			}
+			break
+		}
+	}
+	return row.SupersededBy
+}
+
 // rootIdentity returns the "<cell>:<alias>" a root identifies itself as: the
 // registry's `self:` key when it declares one, else the cell:alias prefix of the
 // first brief-v2-family `brief:` id found in that root's streams. "" = unknown.
@@ -287,8 +309,8 @@ func checkDependsOnWithdrawn(notice func(string, ...any), path string, bf *Brief
 			continue
 		}
 		succ := "no successor (won't-fix)"
-		if len(target.SupersededBy) > 0 {
-			succ = "successor " + strings.Join(target.SupersededBy, ", ")
+		if list := res.successorsOf(s.Root, parts[0], parts[1], target); len(list) > 0 {
+			succ = "successor " + strings.Join(list, ", ")
 		}
 		notice("%s: depends on %s, which is withdrawn — %s; re-point the dependency (a withdrawn brief never satisfies a depends edge)", path, dep, succ)
 	}
