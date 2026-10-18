@@ -64,3 +64,59 @@ func TestFetchURLs(t *testing.T) {
 		}
 	}
 }
+
+// regression: #3281
+func TestFetchURLs_PushInsteadOf(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		fetch      []string
+		insteadOf  map[string]string // base -> prefix
+		pushInst   map[string]string // base -> prefix
+		want       []string
+	}{
+		{
+			name:      "pushInsteadOf-only does not rewrite fetch URL",
+			fetch:     []string{"https://github.com/example/project.git"},
+			pushInst:  map[string]string{"https://github.com/": "https://github.com/"},
+			want:      []string{"https://github.com/example/project.git"},
+		},
+		{
+			name:      "insteadOf rewrites while pushInsteadOf does not corrupt non-matching fetch URL",
+			fetch:     []string{"alias:first.git", "https://github.com/second.git"},
+			insteadOf: map[string]string{"https://github.com/": "alias:"},
+			pushInst:  map[string]string{"https://github.com/": "https://github.com/"},
+			want:      []string{"https://github.com/first.git", "https://github.com/second.git"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := gittest.NewFixture(t)
+			config := func(args ...string) {
+				t.Helper()
+				if _, err := f.Git(append([]string{"config"}, args...)...); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for base, prefix := range tc.insteadOf {
+				config("url."+base+".insteadOf", prefix)
+			}
+			for base, prefix := range tc.pushInst {
+				config("url."+base+".pushInsteadOf", prefix)
+			}
+			for _, u := range tc.fetch {
+				config("--add", "remote.origin.url", u)
+			}
+			repo, err := Open(f.Dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := repo.RemoteURLs("origin")
+			if err != nil {
+				t.Fatalf("RemoteURLs(origin) = %v, want nil", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("RemoteURLs(origin) = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+

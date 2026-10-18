@@ -21,6 +21,7 @@ package gitcore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -35,6 +36,7 @@ import (
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/cache"
+	gitconfig "github.com/go-git/go-git/v5/plumbing/format/config"
 	fdiff "github.com/go-git/go-git/v5/plumbing/format/diff"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
@@ -870,12 +872,11 @@ func (r *Repo) AheadCount(base, head string) (int, error) {
 // the SAME value; the brief's own facts note that `ls-remote --get-url` collapses to
 // this read with no `insteadOf` layer to expand.
 func (r *Repo) RemoteURL(name string) (string, error) {
-	remote, err := r.repo.Remote(name)
+	urls, err := r.RemoteURLs(name)
 	if err != nil {
-		return "", fmt.Errorf("gitcore: remote-url %s: %w", name, err)
-	}
-	urls := remote.Config().URLs
-	if len(urls) == 0 {
+		if errors.Is(err, git.ErrRemoteNotFound) {
+			return "", fmt.Errorf("gitcore: remote-url %s: %w", name, git.ErrRemoteNotFound)
+		}
 		return "", fmt.Errorf("gitcore: remote-url %s: no URL configured", name)
 	}
 	return urls[0], nil
@@ -887,27 +888,83 @@ func (r *Repo) RemoteURL(name string) (string, error) {
 // rather than silently narrowed to its first entry.
 //
 // Same scope as RemoteURL: the repository's own config file only (go-git reads no global or
-// worktree scope), with that file's url.<base>.insteadOf rules already applied by go-git. The
-// strings returned are the strings a following Fetch should be handed, so the gate and the
-// connection cannot disagree.
+// worktree scope), with that file's url.<base>.insteadOf rules applied (pushInsteadOf-only rules
+// are ignored and do not rewrite fetch destinations). The strings returned are the strings a
+// following Fetch should be handed, so the gate and the connection cannot disagree.
 func (r *Repo) RemoteURLs(name string) ([]string, error) {
 	cfg, err := r.repo.Config()
 	if err != nil {
 		return nil, fmt.Errorf("gitcore: remote-urls %s: %w", name, err)
 	}
-	remote, ok := cfg.Remotes[name]
-	if !ok {
+	if _, ok := cfg.Remotes[name]; !ok {
 		return nil, fmt.Errorf("gitcore: remote-urls %s: %w", name, git.ErrRemoteNotFound)
 	}
-	// go-git appends raw url entries before pushurl entries, then applies insteadOf
-	// in place. Count fetch entries in the SAME config snapshot and retain that
-	// rewritten prefix; reading raw values alone would lose the rewrite. Do not
-	// deduplicate: two actual fetch entries must remain visible to the caller.
-	n := len(cfg.Raw.Section("remote").Subsection(name).OptionAll("url"))
-	if n == 0 {
+	// go-git's pinned parser treats pushInsteadOf-only subsections as having an empty
+	// insteadOf prefix, prepending the subsection base to any fetch destination.
+	// Read the raw fetch URLs from the config snapshot and apply insteadOf rules
+	// explicitly, ignoring empty insteadOf prefixes so pushInsteadOf rules never
+	// corrupt fetch URLs. Do not deduplicate: two actual fetch entries must remain
+	// visible to the caller.
+	rawURLs := cfg.Raw.Section("remote").Subsection(name).OptionAll("url")
+	if len(rawURLs) == 0 {
 		return nil, fmt.Errorf("gitcore: remote-urls %s: no fetch URL configured", name)
 	}
-	return append([]string(nil), remote.URLs[:n]...), nil
+	rules := parseInsteadOfRules(cfg.Raw)
+	urls := make([]string, len(rawURLs))
+	for i, u := range rawURLs {
+		urls[i] = applyInsteadOf(u, rules)
+	}
+	return urls, nil
+}
+
+type insteadOfRule struct {
+	base   string
+	prefix string
+}
+
+func parseInsteadOfRules(raw *gitconfig.Config) []insteadOfRule {
+	if raw == nil {
+		return nil
+	}
+	sec := raw.Section("url")
+	if sec == nil {
+		return nil
+	}
+	var rules []insteadOfRule
+	for _, sub := range sec.Subsections {
+		if sub.Name == "" {
+			continue
+		}
+		// One rule per section, its last insteadOf value — the in-process reader's own
+		// reading. The fetch connects to the string returned here, so gate and connection
+		// still agree on a multi-valued insteadOf.
+		prefix := sub.Option("insteadOf")
+		if prefix == "" {
+			continue
+		}
+		rules = append(rules, insteadOfRule{
+			base:   sub.Name,
+			prefix: prefix,
+		})
+	}
+	return rules
+}
+
+func applyInsteadOf(rawURL string, rules []insteadOfRule) string {
+	var longest insteadOfRule
+	matched := false
+	for _, rule := range rules {
+		if strings.HasPrefix(rawURL, rule.prefix) {
+			if !matched || len(rule.prefix) > len(longest.prefix) {
+				longest = rule
+				matched = true
+			}
+		}
+	}
+	if matched {
+		return longest.base + rawURL[len(longest.prefix):]
+	}
+	return rawURL
 }
 
 // CommitVerifyQuiet reports whether rev resolves to a commit, matching
