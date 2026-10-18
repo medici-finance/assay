@@ -106,7 +106,7 @@ or removing any human gate (spec §5 states the divergence).
 | 23 | [Immutable candidate workspaces and independent check inputs](brief-23-candidate-workspaces.md) | 7 | M | todo | — | — |
 | 24 | [Versioned author implement review pattern with bounded repair](brief-24-internal-specialist-pattern.md) | 10 | M | todo | — | — |
 | 25 | [Exact-candidate publication and independent review evidence bridge](brief-25-publication-review-bridge.md) | 11 | M | todo | — | — |
-| 26 | [Shared loop-admin launch supervision for desks and workflows](brief-26-shared-loop-admin.md) | 6 | M | todo | — | — |
+| 26 | [Shared loop-admin launch supervision for desks and workflows](brief-26-shared-loop-admin.md) | 6 | L | todo | — | — |
 | 27 | [Standing desk clients for the shared loop-admin](brief-27-standing-desk-loop-admin.md) | 8 | M | todo | — | — |
 | 28 | [Verifier domain contracts with qualified identities and candidate-bound acceptance](brief-28-verifier-domain-contracts.md) | 2 | M | todo | — | — |
 | 29 | [Old and new regression floor for the verifier domain contracts](brief-29-verifier-regression-floor.md) | 3 | M | todo | — | — |

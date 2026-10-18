@@ -14,7 +14,7 @@ unblocks:
 - graph-execution/27
 - graph-execution/21
 - performance-collection/09
-effort: M
+effort: L
 gate: human
 risk:
   regulatory: 'no'
@@ -22,10 +22,13 @@ risk:
   irreversible: 'yes'
   sensitive-data: 'no'
 gate-why: Adds an authenticated launch endpoint and moves the process runner the process-launch audit scans; the owner confirms callers cannot change role, profile or limits and that the audit keeps sight of every exec site.
-issues: []
+issues: [3353]
 schema: brief-v2
 authored: 2026-10-02 by task-workflow authoring session
 sources:
+- "medici-finance/assay#3353 — cell startup scratch scan; measurements on v1.0.48"
+- "medici-finance/assay#3099 — remaining parent launch telemetry coverage"
+- "freshness-checked 2026-10-18 @ 56615f9ab; installed v1.0.49 records source 3cb57291e"
 - docs/streams/graph-execution/task-workflow-program.md
 - freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
 - docs/proposals/non-ci-architecture/20-amendment-manifest.md — R2 owner row, R2 amendment scope (journal records process facts against the shared store) and the storage-routing conflict
@@ -38,6 +41,10 @@ exec-tier: strong
 exec-tier-why: Durable state, authority and cross-component failure cases require design judgment.
 domain: complicated
 consumers:
+- "tools/desk/internal/cellscratch/: follow-up graph-execution/26"
+- "tools/desk/internal/cellcache/: follow-up graph-execution/26"
+- "perfrec/: follow-up graph-execution/26"
+- "perfdata/adapters/: follow-up performance-collection/02 (optional existing phase consumer)"
 - 'workflow/controller: follow-up graph-execution/21'
 - 'loopadmin/adapters: follow-up graph-execution/22 (consumes the supervisor and the moved process runner)'
 - 'tools/desk/internal/loopengine: follow-up graph-execution/27'
@@ -47,7 +54,7 @@ consumers:
 - 'operator lifecycle and cockpit: out-of-scope (adopter qualification)'
 - 'loopadmin/journal PostgreSQL schema and migrations: follow-up graph-execution/26 (this brief; flips to fixed-here when the implementation edits the path)'
 - 'spec/operator-incarnation-v1.md (read before each launch): follow-up graph-execution/16'
-version: 7
+version: 8
 id: bcbee0b0-8f12-4e7a-b028-0637b2bab0c3
 ---
 
@@ -55,7 +62,7 @@ id: bcbee0b0-8f12-4e7a-b028-0637b2bab0c3
 
 ## Context
 
-files: `loopadmin/supervisor/` (planned), `loopadmin/process/` (planned), `tools/desk/internal/cellprocess/` (moved into loopadmin/process by this brief), `tools/desk/cmd/cellctl/cadence.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `tools/desk/internal/forgeban/allowlist.go`, `tools/desk/internal/deskkit/forge_surface_test.go`, `docs/cellctl-cadence.md`, `loopadmin/journal/` (planned), `loopadmin/control/` (planned), `loopadmin/cmd/loop-admin/` (planned), `loopadmin/testdata/supervisor/` (planned), `loopadmin/README.md` (planned), `docs/loop-admin.md` (planned), `.github/workflows/loopadmin.yml` (planned), `changelog/graph-execution-26-loop-admin.md` (planned). Added by the R2 amendment (2026-10-13): `loopadmin/journal/migrations/` (planned).
+files: `loopadmin/supervisor/` (planned), `loopadmin/process/` (planned), `tools/desk/internal/cellprocess/` (moved into loopadmin/process by this brief), `tools/desk/cmd/cellctl/cadence.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `tools/desk/internal/forgeban/allowlist.go`, `tools/desk/internal/deskkit/forge_surface_test.go`, `docs/cellctl-cadence.md`, `loopadmin/journal/` (planned), `loopadmin/control/` (planned), `loopadmin/cmd/loop-admin/` (planned), `loopadmin/testdata/supervisor/` (planned), `loopadmin/README.md` (planned), `docs/loop-admin.md` (planned), `.github/workflows/loopadmin.yml` (planned), `changelog/graph-execution-26-loop-admin.md` (planned). Added by the R2 amendment (2026-10-13): `loopadmin/journal/migrations/` (planned). Additional startup scope: `tools/desk/cmd/cellctl/{up.go,down.go,launch.go,scratch_launch.go,perf.go,telemetry.go,prepare_test.go,launch_perf_test.go}`, `tools/desk/internal/cellscratch/`, `tools/desk/internal/cellcache/`, `tools/desk/internal/deskkit/perf.go`, `perfrec/`, `tools/desk/README.md` (tests named here are planned).
 
 facts: The new loopadmin module is bootstrapped by /20. At main 307fe1699 `tools/desk/internal/cellprocess` already runs one harness invocation and reaps its process group or job, and cellctl's cadence path (`tools/desk/cmd/cellctl/cadence.go`) calls it; the process-launch audit (`TestNoForgeCLIShellout` over the `tools/desk` tree, with the runner's exec site in `tools/desk/internal/forgeban/allowlist.go`) covers it there. `tools/desk/internal/loopengine` owns in-session queue behavior for standing desks; it launches no process. Workflow instance ownership remains outside the supervisor; the shared module has no dependency on the instance store (19). Existing role capabilities and human merge/verification gates remain binding. All named commands/tests below are implementation deliverables, not tests already run.
 
@@ -165,6 +172,66 @@ preserved.
 
 Caller/invocation/subject and validated actor capability enter; typed state, evidence and receipts leave with that identity. Workflow mode additionally binds canonical instance/node/attempt; standing mode binds its desk/role and does not require graph fields. Unknown outcomes remain unknown. Consumers must refuse unsupported mandatory fields and stale generations.
 
+### Cell preparation and startup acceptance — 2026-10-18
+
+This brief owns shared preparation and bounded per-invocation storage admission, carried from
+current cellctl into the single moved process owner. Repair #3353 in the current owner before
+or with relocation; an independently landed issue repair is consumed and regression-tested,
+never copied or reimplemented here. The current-path repair needs no workflow controller,
+new journal, performance service or live enrollment. This brief's existing build dependencies
+and human acceptance still govern the supervisor migration. Effort is L for the expanded
+launch, storage-concurrency and recovery contract; no new stream or command is introduced.
+
+Baseline: #3353 records a v1.0.48 dry-run scratch sweep of 173.16 s, 79 retained tasks and
+101737458866 logical bytes, with partial=false and no reclamation. On 2026-10-18 the installed
+binary reports v1.0.49 and build source 3cb57291e; its recorded scratch, cache, up and telemetry
+source paths are unchanged from v1.0.48 and inspected main 56615f9ab. This is source comparison,
+not a v1.0.49 timing result. Refresh the installed build and source at implementation pickup.
+
+1. Add one idempotent cell-preparation operation to the existing launch owner. `up` completes
+   bounded shared preparation before starting selected roles; direct `desk`, cadence/restart
+   and concurrent `up` use the same contract. Coalesce compatible preparation by cell identity,
+   configuration/profile digest and owner generation; invalidation or failed/partial preparation
+   cannot publish a reusable success. Existing-session attach performs no new launch work.
+   Reuse shared Git/plugin preparation only where repository, resolved revision, harness config
+   and read authority agree. Keep role worktree creation/merge, current stop/profile/budget
+   checks, custody and execution leases per role. Never pass an environment skip flag as proof
+   of authorization or safe storage state.
+2. Separate scratch registration and cache consumer enrollment from full historical accounting.
+   Neither first launch nor direct/repeated role starts may recursively scan protected historical
+   scratch or the full cache to register a consumer. Use the existing storage owner's bounded
+   admission contract, retain current hard pressure/free-space and lease checks, and make stale,
+   missing or corrupt accounting explicit. Any bounded admission refusal must state the
+   corrective maintenance action; unknown accounting is neither a zero nor permission to delete.
+   Do not replace a launch safety check with an unvalidated cached success.
+3. Keep full recursive sweep/accounting in the existing explicit maintenance lifecycle, outside
+   startup/finish critical paths. A long maintenance scan must not hold the admission lock;
+   revalidate ownership, evidence handoff, Git retention, child inactivity and leases under the
+   relevant short lock immediately before any reclamation. Bound retained scan state and report
+   incomplete accounting honestly. `down`/finish records ownership and outcomes promptly;
+   interrupted shutdown recovers conservatively without forcing the next desk to scan history.
+   Preserve pending evidence, resumable work, Git-bearing data and live/unverifiable children.
+4. Correct the existing opt-in parent recorder using resolved effective configuration, including
+   config-only opt-in, without extending consent or collecting secrets. Record shared preparation,
+   lock wait, scratch admission, final cache enrollment, actual child start and cell time to first
+   and all requested starts. Requested, refused, unknown and confirmed starts differ; process
+   lifetime is not startup time. Parent/child correlation must not count shared preparation once
+   per role or sum overlapping intervals. No-opt-in and failed/slow sinks preserve launch results.
+5. Qualify offline through real up/desk/runner/storage seams with fake harnesses and synthetic
+   stores: one and five roles; cold/warm preparation; fixed roles with 1x/10x retained history;
+   simultaneous up/direct starts; cadence restart; maintenance held mid-scan; clean/interrupted
+   down; changed profile/generation; corrupt accounting; and stop/authority refusals. Gate on
+   zero recursive historical scratch/cache walks in admission, one successful shared preparation
+   per compatible cell generation, one live owner per role and unchanged protected-data hashes.
+   Keep wall/CPU/lock-wait distributions with sample counts and build/workload identifiers.
+   No absolute end-to-end latency SLO is ratified by this amendment: report measured values and
+   the remaining budget decision; deterministic work/authority bounds are mandatory acceptance.
+   Update the existing cellctl/cadence documentation and carry these tests through relocation.
+
+Failure detection: repeated walks or a long scan lock fail row 10; receipt bypasses and unsafe
+recovery fail row 11; absent parent phases or changed consent/failure semantics fail row 12.
+All new rows are implementation deliverables and must demonstrate the named negative control.
+
 ## Verify
 
 | # | Class | Command | Expect |
@@ -178,6 +245,9 @@ Caller/invocation/subject and validated actor capability enter; typed state, evi
 | 7 | check:ci +flow +mutation | `(cd loopadmin && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestJournalIncarnationPaused$" ./... > "$routing_out" && grep -q -- "--- PASS: TestJournalIncarnationPaused " "$routing_out")` | exit 0; named PASS; a journal restored from backup under a mismatched or missing operator incarnation starts paused and launches no child until rotation and confirmed group stop; mutation: resume launches when an activation record is present but its incarnation mismatches — the named test must fail |
 | 8 | check:ci +mutation | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestNoEmbeddedJournalEngine$" ./... > "$routing_out" && grep -q -- "--- PASS: TestNoEmbeddedJournalEngine " "$routing_out")` | exit 0; named PASS; no loopadmin package imports a SQLite or other embedded database driver or the `workflow` module; mutation: add an embedded-driver import under `loopadmin/journal` — the named test must fail |
 | 9 | check:ci +flow +mutation | `(cd loopadmin && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLoopAdminLaunchBudgetBrake$" ./... > "$routing_out" && grep -q -- "--- PASS: TestLoopAdminLaunchBudgetBrake " "$routing_out")` | exit 0; named PASS against a real disposable PostgreSQL journal; with the child-launch usage unreadable the launch is refused and no child starts; repeated supervisor restarts within one window cannot launch beyond the configured budget or regain consumed allowance; a seeded pacing estimate alone does not refuse an authorized launch; mutation: treat an unavailable child-launch count as under budget — the named test must fail |
+| 10 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellPrepBounded$' ./... > "$o" && grep -F -- '--- PASS: TestCellPrepBounded ' "$o")` | exit 0; named PASS. Production up/direct/cadence fixtures satisfy Task 5 at 1x/10x history and with maintenance held mid-scan; zero recursive admission walks and one compatible shared preparation. Mutation: restore Sweep in beginScratch or full cache walk at enrollment; test fails. |
+| 11 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellPrepFences$' ./... > "$o" && grep -F -- '--- PASS: TestCellPrepFences ' "$o")` | exit 0; named PASS. Concurrent starts, stale preparation, changed profiles, missing accounting and interrupted down preserve per-role leases, stop/authority gates and protected hashes. Mutation: accept a stale preparation receipt as a current role lease or reclaim unacknowledged work; test fails. |
+| 12 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellLaunchTelemetry$' ./... > "$o" && grep -F -- '--- PASS: TestCellLaunchTelemetry ' "$o")` | exit 0; named PASS. Config-only opt-in records preparation through confirmed child start; missing/unknown child starts remain incomplete, shared work counted once, no-opt-in writes nothing and slow/failed sink changes no launch result. Mutation: gate parent recording only on ambient environment or omit final enrollment; test fails. |
 
 ## Pre-mortem and dispatch checks
 

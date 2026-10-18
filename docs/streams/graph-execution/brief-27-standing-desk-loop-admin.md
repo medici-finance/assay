@@ -21,6 +21,9 @@ issues: []
 schema: brief-v2
 authored: 2026-10-02 by task-workflow authoring session
 sources:
+- "medici-finance/assay#3353 — cell startup scratch scan; measurements on v1.0.48"
+- "medici-finance/assay#3099 — remaining parent launch telemetry coverage"
+- "freshness-checked 2026-10-18 @ 56615f9ab; installed v1.0.49 records source 3cb57291e"
 - docs/streams/graph-execution/task-workflow-program.md
 - freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
 exec-tier: strong
@@ -34,7 +37,7 @@ consumers:
 - 'workflow/controller: out-of-scope (separate caller delivered by graph-execution/21)'
 - 'plugins/assay/skills/worker-desk/SKILL.md desk-supervision/34 usage-record step: follow-up graph-execution/27 (this brief; for an enrolled worker role the step is skipped because the /26 journal records that run''s usage; flips to fixed-here when the implementation edits the path)'
 - 'tools/desk/cmd/deskusage/ record path (desk-supervision/34''s verb; the enrolled-worker skip): follow-up graph-execution/27 (this brief; `deskusage record` writes nothing for an enrolled worker role, Verify row 5; flips to fixed-here when the implementation edits the path)'
-version: 4
+version: 5
 id: af7e88a8-b411-40f9-b205-6b93f04ebed8
 ---
 
@@ -42,7 +45,7 @@ id: af7e88a8-b411-40f9-b205-6b93f04ebed8
 
 ## Context
 
-files: `tools/desk/internal/loopengine/loopadmin.go` (planned), `tools/desk/internal/loopengine/loopadmin_test.go` (planned), `tools/desk/internal/deskkit/loopadminprofile.go` (planned), `tools/desk/internal/deskkit/loopadminprofile_test.go` (planned), `tools/desk/go.mod`, `tools/desk/go.sum`, `tools/desk/cmd/cellctl/launch.go`, `tools/desk/cmd/cellctl/cadence.go`, `tools/desk/internal/cellcadence/`, `loopadmin/clients/desk/` (planned), `plugins/assay/references/loop-admin.md` (planned), `plugins/assay/skills/{the-desk,intake-desk,worker-desk,pr-review-desk,verify-desk}/SKILL.md` (mode-selection integration only), `tools/desk/cmd/deskusage/record.go` (planned) (desk-supervision/34 creates it; this brief adds the enrolled-worker skip only), `loopadmin/testdata/desk/` (planned), `docs/loop-admin.md` (planned), `.github/workflows/ci.yml`, `changelog/graph-execution-27-standing-desks.md` (planned).
+files: `tools/desk/internal/loopengine/loopadmin.go` (planned), `tools/desk/internal/loopengine/loopadmin_test.go` (planned), `tools/desk/internal/deskkit/loopadminprofile.go` (planned), `tools/desk/internal/deskkit/loopadminprofile_test.go` (planned), `tools/desk/go.mod`, `tools/desk/go.sum`, `tools/desk/cmd/cellctl/launch.go`, `tools/desk/cmd/cellctl/cadence.go`, `tools/desk/internal/cellcadence/`, `loopadmin/clients/desk/` (planned), `plugins/assay/references/loop-admin.md` (planned), `plugins/assay/skills/{the-desk,intake-desk,worker-desk,pr-review-desk,verify-desk}/SKILL.md` (mode-selection integration only), `tools/desk/cmd/deskusage/record.go` (planned) (desk-supervision/34 creates it; this brief adds the enrolled-worker skip only), `loopadmin/testdata/desk/` (planned), `docs/loop-admin.md` (planned), `.github/workflows/ci.yml`, `changelog/graph-execution-27-standing-desks.md` (planned). Additional startup scope: `tools/desk/cmd/cellctl/{up.go,down.go,prepare_test.go}` (integration with /26; no new preparation engine).
 
 facts: The new loopadmin module is bootstrapped by /20. At main 307fe1699 a standing desk is launched by cellctl's launch path — `deskLaunch` in `tools/desk/cmd/cellctl/launch.go`, then `runInteractiveHarness` or `runCadencedHarness` in `tools/desk/cmd/cellctl/cadence.go` — under the per-role lease and checkpoint of `tools/desk/internal/cellcadence`, which refuses to replace an owner that did not finish. That cellctl path is the legacy desk launch path this brief transfers enrolled roles from. `tools/desk/internal/loopengine` owns in-session queue behavior for engine-backed desks. Workflow instance ownership remains outside the supervisor; the shared module has no dependency on the instance store (19). Existing role capabilities and human merge/verification gates remain binding. All named commands/tests below are implementation deliverables, not tests already run.
 
@@ -83,6 +86,25 @@ mode, process-launch audit and cross-journal recovery tests. No cell taxonomy de
 
 Caller/invocation/subject and validated actor capability enter; typed state, evidence and receipts leave with that identity. Workflow mode additionally binds canonical instance/node/attempt; standing mode binds its desk/role and does not require graph fields. Unknown outcomes remain unknown. Consumers must refuse unsupported mandatory fields and stale generations.
 
+### Cell startup integration — 2026-10-18
+
+Consume /26's shared preparation and bounded storage admission; this brief does not create a
+second maintenance owner. Include `up` for a five-role cell, direct `desk`, cadence restart,
+concurrent starts and interrupted `down` in the existing offline five-role fixture. Exercise
+both enrolled and non-enrolled roles with workflow instance storage absent. Task 4's legacy
+path preservation means behavior and authority compatibility, including the /26 startup repair;
+it does not freeze the expensive historical sweep. Attaching to an existing role starts nothing.
+
+Keep one compatible cell preparation across roles and fresh per-role admission. Reuse never
+bypasses stop flags, role leases, approved profiles, budget or owner-generation fences. Add
+1x/10x protected history and a maintenance scan held mid-traversal: role launch must not walk
+that history or wait for its full scan. Check protected bytes after restart/rollback. Record
+first/all confirmed starts, incomplete requests and shared versus role costs using /26's
+existing opt-in producer; no optional collector is needed. A missing phase is unknown.
+
+The new row is an implementation deliverable, with the mutation as its pre-mortem control.
+Existing custody, rollout, legacy rollback and human gates remain unchanged.
+
 ## Verify
 
 | # | Class | Command | Expect |
@@ -92,6 +114,7 @@ Caller/invocation/subject and validated actor capability enter; typed state, evi
 | 3 | check:ci +flow +mutation | `(cd tools/desk && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestStandingDeskLauncherTransferUnknown$" ./... > "$routing_out" && grep -q -- "--- PASS: TestStandingDeskLauncherTransferUnknown " "$routing_out")` | exit 0; named PASS; legacy and shared launchers cannot own the same binding generation — with an enrolled role running, a cellctl legacy launch of that role is refused by the cellcadence per-role lease; unknown stop holds rollback and direct role escalation is denied; mutation: skip the cellcadence per-role lease when the shared launcher starts an enrolled role — the named test must fail |
 | 4 | check:ci +flow +mutation | `(cd tools/desk && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestStandingDeskStopHolds$" ./... > "$routing_out" && grep -q -- "--- PASS: TestStandingDeskStopHolds " "$routing_out")` | exit 0; named PASS; with the existing desk stop control set for an enrolled role, the shared supervisor launches nothing for that role, standing or child, until the stop clears; mutation: drop the stop-control mapping into the common envelope — the named test must fail |
 | 5 | check:ci +flow +mutation +dereference | `(cd tools/desk && test -d cmd/deskusage && usage_out=$(mktemp) && trap 'rm -f "$usage_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestStandingDeskEnrolledWorkerOneUsageRecord$" ./... > "$usage_out" && grep -q -- "--- PASS: TestStandingDeskEnrolledWorkerOneUsageRecord " "$usage_out")` | exit 0; named PASS; with `tools/desk/cmd/deskusage` absent the row exits 1. The test completes one worker run per arm through the offline fixture, with `ASSAY_USAGE_DIR` and the /26 journal in temp dirs, then calls the real `deskusage record --claim-key <key>` exactly as desk-supervision/34's Task 5 skill step does, and counts usage records for that run's `dispatch_ref` in BOTH stores: enrolled worker → journal 1, `usage.jsonl` 0; non-enrolled worker → journal 0, `usage.jsonl` 1; the total is exactly 1 in each arm; an unreadable binding → exit 5 and `usage.jsonl` byte-identical; mutation: keep the record for an enrolled worker role (the enrollment check in `deskusage record` reports not-enrolled) — `usage.jsonl` gains a second record for the run, the total is 2, and the named test must fail |
+| 6 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStandingCellPrep$' ./... > "$o" && grep -F -- '--- PASS: TestStandingCellPrep ' "$o")` | exit 0; named PASS. Five-role mixed enrollment, direct starts and restart/rollback consume one preparation contract; 1x/10x history and in-flight maintenance cause no recursive admission walks, duplicate owner or data loss. Mutation: one role falls back to synchronous Sweep, or stale preparation bypasses a stop; test fails. |
 
 ## Pre-mortem and dispatch checks
 
