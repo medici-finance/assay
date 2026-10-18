@@ -198,7 +198,7 @@ facts:
 | 7 | check | `cd tools/desk && GOWORK=off go test ./cmd/desksupervise/ -run TestStatusJSONValidatesAgainstSchema -v -count=1` | exit 0; output contains `--- PASS: TestStatusJSONValidatesAgainstSchema` |
 | 8 | check | `python3 -c 'import json; s=json.load(open("schemas/desksupervise-status-v1.json")); item=s["properties"]["claims"]["items"]; assert "resource" in item["properties"], "no resource block"; assert "resource" in item["required"], "resource not required"; print("ok")'` | exit 0; output is `ok` |
 | 9 | check | `grep -c 'could-not-check' schemas/desksupervise-status-v1.json` | output is `1` or more |
-| 10 | check | `statusgen --root . --consumers --brief desk-supervision/13` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
+| 10 | check | `o=$(statusgen --root . --consumers --brief desk-supervision/13 --delivery d8552d943f3c0a64d035abd6c80d9b53e93b8d27 --base f4cb66a3444e9bc8519990847e3e634ecd446b6e); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 4 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | exit 0; exact `summary: 4 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing`. Claims are read from the immutable delivered snapshot and compared only with its first-parent diff. The 1 UNCHECKED entries remain individual review obligations; this row does not discharge their truth. BLOCKED: the delivery currently disproves the sets.go and ackbeacon.go routes; expected success is retained, with no acceptance credit until those claims are independently repaired (#1915). |
 | 11 | check | `cd tools/desk && GOWORK=off go test ./cmd/deskroster/ -run TestSetRefusesMultiSegmentSessionName -v -count=1` | exit 0; output contains `--- PASS: TestSetRefusesMultiSegmentSessionName` (a `--session` value containing `/` or `..` is refused, exit 5, never joined into the beacon path) |
 
 Pre-mortem → detection: "an unset or unreadable vital renders 0 and a consumer reads it as
@@ -209,7 +209,6 @@ the console reads" → rows 7, 8; "tokens stays a dead const stub" → row 8; "a
 name is joined into the beacon path unvalidated" (security review finding S-1) → row 11.
 Review-only: whether the chosen field set is the right vitals to collect (a knob for brief 14 to
 consume, not a defect here).
-
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
      (command, exit code, output line(s) or hash, date, runner).

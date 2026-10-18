@@ -608,8 +608,12 @@ func runConsumers(root, base, briefFilter string) int {
 		verdicts = append(verdicts, corroborateBrief(root, streams, changedSet, inherited, bf)...)
 	}
 
+	return emitConsumers(base+" (committed diff + uncommitted working tree)", len(briefs), verdicts, claimless, false)
+}
+
+func emitConsumers(base string, briefCount int, verdicts []consumerVerdict, claimless []string, requireEvidence bool) int {
 	nC, nD, nU := 0, 0, 0
-	fmt.Printf("consumers corroboration — base %s (committed diff + uncommitted working tree), %d brief(s)\n", base, len(briefs))
+	fmt.Printf("consumers corroboration — base %s, %d brief(s)\n", base, briefCount)
 	current := ""
 	for _, v := range verdicts {
 		if v.Brief != current {
@@ -653,6 +657,10 @@ func runConsumers(root, base, briefFilter string) int {
 	if nD > 0 {
 		fmt.Fprintf(os.Stderr, "statusgen: --consumers: %d routing claim(s) DISPROVED by the diff against %s\n", nD, base)
 		return 1
+	}
+	if requireEvidence && (nC == 0 || len(claimless) > 0) {
+		fmt.Fprintln(os.Stderr, "statusgen: --consumers: COULD-NOT-CHECK: delivery corroborated no routing claims or contains a claimless brief")
+		return 2
 	}
 	return 0
 }
