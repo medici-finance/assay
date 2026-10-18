@@ -14,6 +14,11 @@ type gateScoreRow struct {
 	Stream       string `json:"stream"`
 	Status       string `json:"status"`
 	Repo         string `json:"repo,omitempty"`
+	// The additive queue contract (desk-tools/45); the legacy fields above are
+	// unchanged and still decode without it.
+	QueueVersion int    `json:"queueVersion"`
+	QueueClass   string `json:"queueClass"`
+	QueueValid   bool   `json:"queueValid"`
 }
 
 // TestRunGateScoresHydratesFrontmatter is the end-to-end regression test for
@@ -60,6 +65,13 @@ func TestRunGateScoresHydratesFrontmatter(t *testing.T) {
 	}
 	if got.Status != "implemented" {
 		t.Errorf("status = %q, want implemented", got.Status)
+	}
+	// The queue classification rides on the same row without disturbing the
+	// legacy fields: a gate:model brief with no Verify rows is the desk's to
+	// triage, a judgment-dispatch class, and the classification is valid.
+	if got.QueueVersion != queueContractVersion || got.QueueClass != queueClassJudgment || !got.QueueValid {
+		t.Errorf("queue contract = v%d %q valid=%v, want v%d %q valid=true",
+			got.QueueVersion, got.QueueClass, got.QueueValid, queueContractVersion, queueClassJudgment)
 	}
 }
 

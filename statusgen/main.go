@@ -1156,16 +1156,43 @@ func runGateScores(root string) int {
 		Stream       string `json:"stream"`
 		Status       string `json:"status"`
 		Repo         string `json:"repo,omitempty"`
+		// Queue contract (desk-tools/45, awaiting_bucket.go queueFor): the
+		// CURRENT owned-bucket classification, additive after the legacy
+		// fields. queueVersion lets a consumer refuse a shape it does not
+		// know; queueValid=false with queueWhy marks a could-not-check row
+		// (unknown, never zero).
+		QueueVersion      int    `json:"queueVersion"`
+		QueueClass        string `json:"queueClass"`
+		QueueBucket       string `json:"queueBucket,omitempty"`
+		QueueOwner        string `json:"queueOwner,omitempty"`
+		QueueNextAct      string `json:"queueNextAct,omitempty"`
+		QueueGate         string `json:"queueGate,omitempty"`
+		QueueRisk         bool   `json:"queueRisk"`
+		QueueIrreversible bool   `json:"queueIrreversible"`
+		QueueValid        bool   `json:"queueValid"`
+		QueueWhy          string `json:"queueWhy,omitempty"`
 	}
 	rows := make([]row, 0, len(gates))
 	for _, g := range gates {
+		br := g.Brief
+		q := queueFor(g.Stream, &br)
 		rows = append(rows, row{
-			Brief:        g.Stream.Name + "/" + g.Brief.Num,
-			Score:        g.Score,
-			BlockedCount: g.BlockedCount,
-			Stream:       g.Stream.Name,
-			Status:       g.Brief.Status,
-			Repo:         repo,
+			QueueVersion:      q.Version,
+			QueueClass:        q.Class,
+			QueueBucket:       q.Bucket,
+			QueueOwner:        q.Owner,
+			QueueNextAct:      q.NextAct,
+			QueueGate:         q.Gate,
+			QueueRisk:         q.Risk,
+			QueueIrreversible: q.Irreversible,
+			QueueValid:        q.Valid,
+			QueueWhy:          q.Why,
+			Brief:             g.Stream.Name + "/" + g.Brief.Num,
+			Score:             g.Score,
+			BlockedCount:      g.BlockedCount,
+			Stream:            g.Stream.Name,
+			Status:            g.Brief.Status,
+			Repo:              repo,
 		})
 	}
 	out, err := json.Marshal(rows)
@@ -1814,7 +1841,7 @@ func main() {
 	// tree. No new store; never reads or writes STATUS.md or any register view.
 	graphMode := flag.String("graph", "", "export the derived brief/finding/intake/issue graph in \"dot\" (Graphviz) or \"jsonl\" (one node/edge object per line) form; read-only, deterministic, never touches STATUS.md")
 	// Gate-score emitter: JSON for deskboard consumption.
-	gateScoresMode := flag.Bool("gate-scores", false, "emit awaiting-queue gate scores as JSON (brief, score, blockedCount, stream, status)")
+	gateScoresMode := flag.Bool("gate-scores", false, "emit awaiting-queue gate scores as JSON (brief, score, blockedCount, stream, status, repo, plus the versioned queue* classification: queueVersion, queueClass, queueBucket, queueOwner, queueNextAct, queueGate, queueRisk, queueIrreversible, queueValid, queueWhy)")
 	// Next-up (DISPATCH queue) emitter: JSON for deskboard consumption. Distinct
 	// population from --gate-scores — the same claim-filtered, capped nextUp()
 	// selection the STATUS.md board shows (todo/in-progress, unclaimed, eligible),

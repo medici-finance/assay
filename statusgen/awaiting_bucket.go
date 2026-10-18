@@ -184,6 +184,7 @@ type awaitBrief struct {
 	Status       string // implemented | verified
 	Gate         string // model | human | "" (legacy)
 	Irreversible bool   // risk.irreversible == yes
+	RiskYes      bool   // any risk axis == yes (queueFor's risk fact)
 	Reviewed     string // the README Reviewed cell; "" or "—" = empty
 	BlockedBy    string // "env" or ""
 }
@@ -676,6 +677,11 @@ func awaitInputs(s *Stream, br *Brief) (awaitBrief, awaitRows, awaitEvidence, aw
 				}
 				if bf, ok, perr := parseBriefFile(path); perr == nil && ok {
 					b.Irreversible = strings.EqualFold(strings.TrimSpace(bf.Risk["irreversible"]), "yes")
+					for _, v := range bf.Risk {
+						if strings.EqualFold(strings.TrimSpace(v), "yes") {
+							b.RiskYes = true
+						}
+					}
 					if b.Gate == "" {
 						b.Gate = bf.Gate
 					}
@@ -763,4 +769,101 @@ func loadAwaitOutcomeIndex(root string) awaitOutcomeIndex {
 		idx.latest[key] = awaitOutcome{Outcome: o.Outcome, BlockerKind: o.BlockerKind, BlockerRef: o.BlockerRef, TS: rec.TS}
 	}
 	return idx
+}
+
+// ---------------------------------------------------------------------------
+// The exported queue contract (desk-tools/45).
+//
+// `statusgen --gate-scores` rows carry the CURRENT bucket owner (placeAwaiting /
+// bucketAwaiting above) as additive fields, so a consumer in another module —
+// which can only reach statusgen through its command output, package main being
+// unimportable — reads one classification instead of inferring its own. There is
+// no second classifier here: queueFor calls bucketAwaiting once and maps its
+// answer onto a small versioned class vocabulary.
+//
+// Class vocabulary (queueContractVersion 1), one per bucket or placement:
+//
+//	| queueClass         | Source                                          | Meaning for model verification          |
+//	|--------------------|-------------------------------------------------|-----------------------------------------|
+//	| judgment-dispatch  | desk-actionable (judge or triage)               | the ONLY class that is model-verify work |
+//	| runnable-offline   | runner-pending owned by the verify runner       | the offline runner runs it; no judge     |
+//	| continuation       | CI auto-flip runner-pending; implementer rework | another party/automation already owns it |
+//	| human-action       | human gate; environment-blocked (operator)      | a person must act; no model can advance  |
+//	| unreadable         | could-not-check                                 | UNKNOWN, never zero (queueValid=false)   |
+//	| paused / parked    | stream status                                   | out of the queue, counted only as a total|
+//
+// A consumer that sees a queueVersion it does not know, or a row with no
+// queueVersion at all (an older statusgen), must treat the row as unclassified —
+// a coverage gap — never as a zero or as work.
+const (
+	queueContractVersion = 1
+
+	queueClassJudgment   = "judgment-dispatch"
+	queueClassRunner     = "runnable-offline"
+	queueClassContinue   = "continuation"
+	queueClassHuman      = "human-action"
+	queueClassUnreadable = "unreadable"
+	queueClassPaused     = "paused"
+	queueClassParked     = "parked"
+)
+
+// queueFacts is the queue classification one awaiting brief carries on its
+// --gate-scores row. Every field is additive: the legacy row fields keep their
+// names, order and meaning.
+type queueFacts struct {
+	Version      int
+	Class        string
+	Bucket       string
+	Owner        string
+	NextAct      string
+	Gate         string
+	Risk         bool
+	Irreversible bool
+	Valid        bool
+	Why          string
+}
+
+// queueClassOf maps one bucketAwaiting answer onto the contract's class.
+func queueClassOf(bucket awaitingBucket, owner string) string {
+	switch bucket {
+	case bucketDeskActionable:
+		return queueClassJudgment
+	case bucketRunnerPending:
+		if owner == ownerVerifyRunner {
+			return queueClassRunner
+		}
+		return queueClassContinue
+	case bucketRework:
+		return queueClassContinue
+	case bucketHumanGate, bucketEnvBlocked:
+		return queueClassHuman
+	}
+	return queueClassUnreadable
+}
+
+// queueFor classifies one awaiting (implemented/verified) brief for the
+// --gate-scores seam. A paused or parked stream is a placement, not a bucket
+// (placeAwaiting); everything else is bucketAwaiting's answer, with a
+// could-not-check carried as an explicitly INVALID classification whose reason
+// is the could-not-check text.
+func queueFor(s *Stream, br *Brief) queueFacts {
+	f := queueFacts{Version: queueContractVersion, Valid: true}
+	b, rows, ev, oc := awaitInputs(s, br)
+	f.Gate, f.Risk, f.Irreversible = b.Gate, b.RiskYes || b.Irreversible, b.Irreversible
+	switch s.Status {
+	case "paused":
+		f.Class = queueClassPaused
+		return f
+	case streamStatusParked:
+		f.Class = queueClassParked
+		return f
+	}
+	bucket, owner, next := bucketAwaiting(b, rows, ev, oc)
+	f.Class = queueClassOf(bucket, owner)
+	f.Bucket, f.Owner, f.NextAct = bucket.String(), owner, next
+	if bucket == bucketCouldNotCheck {
+		f.Valid = false
+		f.Why = strings.TrimPrefix(next, couldNotCheckLabel)
+	}
+	return f
 }
