@@ -1254,6 +1254,14 @@ func main() {
 		fmt.Println(statusgenVersion)
 		exitProcess(0)
 	}
+	// `statusgen --version --json` — the same introspection, machine-readable:
+	// the version plus the brief schemas this build supports and the first
+	// release of each (briefschemaversions.go). The bare form above stays
+	// exactly one line, because pin checks compare it verbatim.
+	if len(os.Args) == 3 && (os.Args[1] == "--version" || os.Args[1] == "version") && os.Args[2] == "--json" {
+		printVersionJSON()
+		exitProcess(0)
+	}
 
 	// `statusgen verifyrun` — positional subcommand (like `init` below) that
 	// EXECUTES a brief's Verify rows and writes an execution witness into its

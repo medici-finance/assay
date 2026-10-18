@@ -381,7 +381,7 @@ func consumersCheck(root string, streams []*Stream) (problems, notices []string)
 			// notices about the SHAPE of a closed brief's list are therefore
 			// suppressed; entry-level findings (below) still print, because they
 			// are statements about the world, not demands to edit the file.
-			open := status != "verified" && status != "done"
+			open := status != "verified" && status != "done" && !isWithdrawn(status)
 			if bf.ConsumersProse != "" {
 				notice("%s: consumers: is a prose paragraph, not a routed list — nothing can corroborate it; use `- \"<site>: fixed-here|follow-up <stream>/<NN>|out-of-scope (<why>)\"` items (brief-rule 9)", path)
 				continue

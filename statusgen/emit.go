@@ -297,8 +297,16 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			if !s.LastTouch.IsZero() {
 				touched = s.LastTouch.Format("2006-01-02")
 			}
+			// Withdrawn briefs are terminal and out of the denominator; their own
+			// count rides in Notes, ONLY when one exists (byte-identical otherwise).
+			if wc := withdrawnCount(s); wc > 0 {
+				if note != "" {
+					note += " · "
+				}
+				note += fmt.Sprintf("%d withdrawn", wc)
+			}
 			w("| [%s](docs/streams/%s/README.md) | %s | %s | %d/%d | %s | %s |",
-				s.Name, s.Name, s.Priority, s.Status, doneCount(s), len(s.Briefs), touched, note)
+				s.Name, s.Name, s.Priority, s.Status, doneCount(s), liveBriefCount(s), touched, note)
 		}
 	}
 
@@ -335,7 +343,7 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 				touched = s.LastTouch.Format("2006-01-02")
 			}
 			w("| [%s](docs/streams/%s/README.md) | %s | %d/%d | %s |",
-				s.Name, s.Name, s.Priority, doneCount(s), len(s.Briefs), touched)
+				s.Name, s.Name, s.Priority, doneCount(s), liveBriefCount(s), touched)
 		}
 	}
 
@@ -639,7 +647,7 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 	for _, s := range streams {
 		var open []Brief
 		for _, br := range s.Briefs {
-			if br.Status != "done" {
+			if br.Status != "done" && !isWithdrawn(br.Status) {
 				open = append(open, br)
 			}
 		}
@@ -686,6 +694,44 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 		}
 	}
 
+	// Withdrawn briefs (terminal): retired or merged into a successor. Rendered
+	// ONLY when one exists, so a board with none is byte-identical.
+	withdrawnTotal := 0
+	for _, s := range streams {
+		withdrawnTotal += withdrawnCount(s)
+	}
+	if withdrawnTotal > 0 {
+		w("")
+		w("## Withdrawn briefs")
+		w("")
+		w("_Terminal: retired by a later decision or merged into a successor. Not counted in any done ratio, never dispatched._")
+		for _, s := range streams {
+			var wd []Brief
+			for _, br := range s.Briefs {
+				if isWithdrawn(br.Status) {
+					wd = append(wd, br)
+				}
+			}
+			if len(wd) == 0 {
+				continue
+			}
+			w("")
+			w("### %s (%d withdrawn)", s.Name, len(wd))
+			w("")
+			for _, br := range wd {
+				succ := "no successor"
+				if len(br.SupersededBy) > 0 {
+					succ = "superseded by " + strings.Join(br.SupersededBy, ", ")
+				}
+				date := ""
+				if br.WithdrawnDate != "" {
+					date = " " + br.WithdrawnDate
+				}
+				w("- %s %s — withdrawn%s — %s", br.Num, br.Title, date, succ)
+			}
+		}
+	}
+
 	active, paused, parked, done, total := 0, 0, 0, 0, 0
 	for _, s := range streams {
 		switch s.Status {
@@ -697,7 +743,7 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			parked++
 		}
 		done += doneCount(s)
-		total += len(s.Briefs)
+		total += liveBriefCount(s)
 	}
 	w("")
 	w("## Totals")
@@ -708,6 +754,10 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 	if parked > 0 {
 		parkedClause = fmt.Sprintf(", **%d** parked", parked)
 	}
-	w("**%d** streams (**%d** active, **%d** paused%s) · **%d/%d** briefs done · completed initiatives: see `docs/archive/`", len(streams), active, paused, parkedClause, done, total)
+	withdrawnClause := ""
+	if withdrawnTotal > 0 {
+		withdrawnClause = fmt.Sprintf(" · **%d** withdrawn", withdrawnTotal)
+	}
+	w("**%d** streams (**%d** active, **%d** paused%s) · **%d/%d** briefs done%s · completed initiatives: see `docs/archive/`", len(streams), active, paused, parkedClause, done, total, withdrawnClause)
 	return b.String()
 }

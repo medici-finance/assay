@@ -13,7 +13,10 @@ var (
 	validStreamStatus = map[string]bool{"active": true, "paused": true, "parked": true, "done": true}
 	validPriority     = map[string]bool{"P0": true, "P1": true, "P2": true}
 	validTrack        = map[string]bool{"": true, "product": true, "platform": true, "ecosystem": true}
-	validBriefStatus  = map[string]bool{"todo": true, "in-progress": true, "implemented": true, "verified": true, "done": true, "blocked": true}
+	validBriefStatus  = map[string]bool{"todo": true, "in-progress": true, "implemented": true, "verified": true, "done": true, "blocked": true, statusWithdrawn: true}
+	// validPlaceholderStatus is the placeholder-v1 lifecycle: issue-driven, so it
+	// never takes the terminal `withdrawn` (a placeholder retires by issue close).
+	validPlaceholderStatus = map[string]bool{"todo": true, "in-progress": true, "implemented": true, "verified": true, "done": true, "blocked": true}
 )
 
 // ackRe matches a well-formed desk acknowledgement: "YYYY-MM-DD <who>" (F-09).
@@ -86,7 +89,7 @@ func checkScoped(streams, allStreams []*Stream, findings []Finding) ([]string, [
 			}
 			seen[b.Num] = true
 			if !validBriefStatus[b.Status] {
-				add("%s/brief-%s: invalid status %q — the Status cell takes ONLY a bare lifecycle token (todo / in-progress / implemented / verified / done, or the hold token blocked). A decorated value such as `implemented (#80)` is rejected; the PR association belongs in the PR body or the `Brief:` trailer, never in the Status cell", s.Name, b.Num, b.Status)
+				add("%s/brief-%s: invalid status %q — the Status cell takes ONLY a bare lifecycle token (todo / in-progress / implemented / verified / done, the hold token blocked, or the terminal withdrawn). A decorated value such as `implemented (#80)` is rejected; the PR association belongs in the PR body or the `Brief:` trailer, never in the Status cell", s.Name, b.Num, b.Status)
 			}
 			// Placeholder-v1 rows are exempt from the Verified/Reviewed gate —
 			// their lifecycle is issue-driven (close-out), not

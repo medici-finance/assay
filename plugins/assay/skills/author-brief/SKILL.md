@@ -730,11 +730,21 @@ could-not-check runs serial.
    cells from PR trailers, `verifyrun` witnesses and App approvals — a hand edit inside the markers
    is a lint PROBLEM, the same as hand-editing `STATUS.md`. Columns:
    `| # | Brief | Wave | Effort | Status | Verified | Reviewed |`, Status a bare lifecycle token
-   (`todo` / `in-progress` / `implemented` / `verified` / `done`, or the hold token `blocked`). A
+   (`todo` / `in-progress` / `implemented` / `verified` / `done`, the hold token `blocked`, or the
+   terminal `withdrawn` — see "Withdrawing a brief" below). A
    project not yet wired to `statusgen` hand-maintains the older
    `| # | Brief | Wave | Status | What's deployed/landed |` shape as a stopgap — ✅ / ⚠ / ❌ with a
    terse, honest "what's actually true" note (not aspirational) — but the moment generation is
    live, the table is derived, never hand-edited.
+   **Withdrawing a brief.** A brief retired by a later decision, or merged into another brief,
+   is never parked as `blocked` with prose in its title. Set its Status cell to `withdrawn` (the
+   link text keeps the original title; Verified/Reviewed stay `—`), switch its frontmatter to
+   `schema: brief-v3` (brief-v2 plus three keys), and add:
+   `withdrawn-date: "YYYY-MM-DD"`, `superseded-by: ["<stream>/<NN>" | "<cell>:<alias>:<stream>:<NN>"]`
+   (`[]` = won't-fix) and a one-sentence `withdrawn-reason:`. Put the banner
+   `> **Withdrawn YYYY-MM-DD — superseded by <successor>.** <reason>. Not executable.` under the H1.
+   Never delete the file. A withdrawn brief leaves the done ratio, Next-up and the bottleneck
+   views; re-point any `depends:` on it to the successor (`--lint` NOTICEs the edge).
 2. **Critical path** — an ASCII chain showing the blocking order, with a one-line "smallest unblocking
    move" and a warning if any tempting-but-wrong first step is a dead end.
 3. **Dependency waves** — `Wave 0: [..]  Wave 1: [..]←0  …`, plus the one-line critical path

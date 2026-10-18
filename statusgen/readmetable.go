@@ -503,7 +503,9 @@ func assertedVsDerivedNotices(s *Stream, derived []BriefCell) []string {
 		// asserted map is keyed on, which made the comparator silently blind on
 		// a v2 tree — no drift NOTICE could ever fire there.
 		a, ok := asserted[canonicalBriefKey(c.ID)]
-		if !ok || a == "" {
+		if !ok || a == "" || isWithdrawn(a) {
+			// withdrawn is an authored terminal decision, not a witness-derived
+			// state: no PR witness can confirm or contradict it.
 			continue
 		}
 		if a == c.Cell {
