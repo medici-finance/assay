@@ -691,6 +691,10 @@ type WriteFileInput struct {
 	// against one specific read uses this so nothing that lands after that read can be
 	// overwritten unrefused. Empty means "no precondition beyond the backend's own fetch".
 	ExpectedSHA string
+	// ExpectedHead pins the whole parent tree for a verified-outcome write.
+	// A backend lacking an atomic branch-head precondition must refuse it;
+	// file-level ExpectedSHA alone cannot protect closure in other files.
+	ExpectedHead string
 }
 
 // expectedSHAPrecondition is the backend-neutral half of WriteFileInput.ExpectedSHA, run by
