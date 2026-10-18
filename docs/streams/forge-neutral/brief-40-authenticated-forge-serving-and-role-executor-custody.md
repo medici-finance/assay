@@ -3,7 +3,7 @@ brief: assay:assay:forge-neutral:40
 title: "Authenticated forge serving and role executor custody"
 why: "A shared cache increases the number of callers that can reach private forge data and write paths. Caller authentication, source admission and a separate role executor must be enforced at actual served boundaries so a cached answer or agent-supplied role cannot become authority."
 wave: 6
-depends: ["forge-neutral/39", "graph-execution/16"]
+depends: ["forge-neutral/39", "graph-execution/16", "desktools-v2/58", "desktools-v2/59"]
 unblocks: ["forge-neutral/41", "forge-neutral/42"]
 effort: L
 gate: human
@@ -17,6 +17,7 @@ version: 2
 id: 2b089f0c-6ce5-4e2f-a5bf-d62842845b29
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
@@ -28,6 +29,7 @@ exec-tier: strong
 exec-tier-why: Cross-component identity, privacy, concurrency and failure semantics require design judgment and negative controls.
 domain: complicated
 consumers:
+  - "tools/desk/internal/credential/: follow-up forge-neutral/40 (consume /58\u201359 inside the role executor; no second minter/cache)"
   - "tools/desk/internal/forgeservice/auth/: follow-up forge-neutral/40"
   - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/40"
   - "tools/desk/internal/forgeexecutor/: follow-up forge-neutral/40"
@@ -151,6 +153,10 @@ boundary and independent expectation, not another implementation of the same che
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/40` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
 | 6 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewServingCustody$' ./internal/forgeservice/... > "$o" && grep -F -- '--- PASS: TestReviewServingCustody ' "$o")` | exit 0; named PASS. Permitted review-context/queue path succeeds while changed admission/expiry refuses even for reused bytes/counts; saved context cannot authorize a role write or bypass the executor recheck. |
 
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 7 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestExecutorProviderReuseAndRoleSeparation$' ./internal/forgeservice/... > "$out" && grep -F -- '--- PASS: TestExecutorProviderReuseAndRoleSeparation ' "$out")` | exit 0; named PASS; served repeated requests use the real internal provider with zero minter children, expire correctly and refuse cross-role/executor access; token broker or exec-per-request plants fail |
+
 ## Pre-mortem and detection
 
 For each critical Verify case, retain the valid control and a deliberately wrong subject
@@ -160,6 +166,21 @@ reject that variant; record the failing control with the restored production pas
 satisfy a flow row with a route registry, a prose legend or zero selected tests. Test fixtures
 qualify their named local boundary; provider permission inventories, deployment workload and
 operator cutover remain explicit evidence/acceptance obligations.
+
+## Performance reuse amendment — 2026-10-16
+
+Consume the canonical internal credential provider from desktools-v2/58 and its keyed
+in-flight/expiry handling from /59 inside each already-isolated role executor. Those are
+typed prerequisites, not a reason to pool role keys in the query process. A long-lived
+executor must not exec desktoken per operation or start another credential cache. Carry its
+explicit resolved custody scope and refresh/configuration generation; recheck operation
+authority independently before each effect. Credential reuse is an efficiency aid, never
+proof an executor capability remains authorized. The read service and clients receive no
+publisher token and cannot request arbitrary roles or token values.
+
+Retain the exact separate process/revocation boundary of this brief. Extracting code inside
+one role environment does not remove that boundary or amend statusgen's online read contract.
+
 
 ## Evidence
 
