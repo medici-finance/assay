@@ -26,7 +26,8 @@ named by `RecordName(content)`; before that, one appended line in the shared
 retired — see desk-supervision/24's Task step 8). Either shape's content is exactly the legacy row
 (`ts`, `brief`, `outcome`, `sha`) plus these additive keys, so:
 
-- an older reader that knows only those four keeps working, ignoring the additive fields;
+- an older reader ignores unknown additive JSON fields, but cannot resolve new `scope:` input
+  keys; those receipts report could-not-check rather than unchanged;
 - a legacy record (no `wake_schema`) parses as an **incomplete** receipt and stays visibly
   unclassified — never a fabricated hold;
 - the receipt is REQUIRED on every new `verify-fail` / `blocked` record (the writer refuses one
@@ -184,7 +185,9 @@ Invariants the tests pin (`tools/desk/cmd/verifyloop/wake_test.go`, `tools/desk/
 - **Legacy rows** (pre-v1) stay valid and are read exactly as before; they classify as
   `unclassified` (one pass), which reproduces today's behaviour — the first complete receipt a
   run produces begins the wake scheduling.
-- **Rollback** is the previous released binary/skill pin: the additive fields are ignored by the
-  older reader, and receipts are never erased to make a rollback look clean.
+- **Rollback** is the previous released binary/skill pin. Older readers ignore unknown
+  additive JSON fields, but receipts containing `scope:` input keys report could-not-check
+  because the older reader cannot resolve those keys. Receipts are never erased or
+  relabelled to make a rollback look clean.
 - **Explicit recheck** is the operator's escape hatch: an `explicit-recheck-with-reason` receipt
   wakes the work regardless of the other predicates, with the reason recorded.

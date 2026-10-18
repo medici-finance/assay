@@ -6,7 +6,9 @@ resolver now own the writer, coverage and Source-to-Evidence shape contract.
 
 ## Declaration grammar
 
-Only `files:` inside one unfenced `## Context` declares inputs. A field can start
+Only an exact, column-zero `files:` inside one unfenced `## Context` declares inputs.
+A files marker outside that section, or with unsupported capitalization/formatting,
+is refused rather than treated as an absent declaration. A field can start
 inline or continue as list items. Bare and backtick-quoted repository paths are
 equivalent. Commas, semicolons, `+` and `and` separate declarations. Optional bold
 action labels, parenthesized annotations and the existing `and tests`/`their tests`
@@ -14,7 +16,12 @@ annotations are prose; name actual test paths when those tests belong to scope.
 An em-dash description, or a colon after a quoted path, ends the declaration part
 of that line. Backticks inside that description, facts, other sections and fenced
 examples do not add files. A blank line, another Context field or section ends the
-field. Duplicate Context sections or files fields are refused explicitly.
+field. A list item after that blank is refused as ambiguous until another Context
+field begins; a loose list cannot silently narrow scope. A following field key must be at column zero; a quoted path ending in a
+colon remains a declaration, while indented prose is an explicit unsupported-form
+error. Hyphen-minus and en-dash separators are unsupported; only the documented
+em dash introduces description text. Duplicate Context sections or files fields
+are refused explicitly.
 
 Supported path forms:
 
@@ -32,7 +39,10 @@ Placeholders (`<slug>`), ellipses (`...`, `…`), recursive `**`, malformed glob
 syntax, noncanonical paths, absolute/drive paths, traversal, backslashes, controls
 and whitespace within paths are explicit refusals. There is no shell expansion,
 abbreviation guessing or out-of-repository lookup. One path is at most 4096 bytes;
-canonical declarations and selected files are bounded at 4096. Exceeding a bound
+canonical declarations and selected files are bounded at 4096. Each resolution
+also permits at most 32768 work units, counting declarations, listed members,
+ancestor candidates, candidate matches and path-kind reads across all declarations.
+This bounds overlapping work even when selected files deduplicate. Exceeding a bound
 is reported, never truncated to a partial successful scope. Other historical prose
 forms need an explicit declaration repair and fresh observation.
 
@@ -93,12 +103,12 @@ this parser fix grants no lifecycle promotion and rewrites none of those receipt
 
 
 At source `6de70c43819e` (485 tracked `docs/streams/**/brief-*.md` files),
-the repaired parser and Git-tree resolver produced 183 supported scopes, 299
-explicit refusals and three Context sections with no files field. The refusals
-are 35 unsupported path forms, 232 unsupported declaration tails, 27 unclosed
-single-line annotations, one unclosed path quote, one empty tail/path and three
-unsupported annotated field markers. These are first diagnostics per brief,
-not counts of every bad token. None was counted as a successfully empty scope.
+the repaired parser and Git-tree resolver produced 147 supported scopes and 338
+explicit refusals, with no successful empty scopes in this corpus. These are
+first diagnostics per brief, not counts of every bad token. The initial inventory's
+183 supported/299 refused/three empty classification was corrected after review
+exposed partial declarations and files fields outside Context. The in-module
+regression excerpts preserve the five reviewed declaration-position cases.
 
 | Named example | Canonical declarations | Existing implementation files |
 |---|---:|---:|
@@ -117,7 +127,8 @@ Representative unsupported authoring is explicit: `changelog/<branch-slug>.md`
 (forge-neutral briefs), `tools/desk/**` recursive patterns, and abbreviated prose
 such as `files (created/extended by this phase):` in statusgen/05. Preserve existing
 Evidence while replacing such declarations with exact paths/segment globs for a
-fresh admitted observation. The three Contexts without a files field are
- desk-tools/31, /33 and /36; they remain the parser's explicit no-declaration case,
-not a successful parse of the 299 refused declarations. This inventory does not
-silently narrow their actual verification scope or assert those briefs are closed.
+fresh admitted observation. The files fields under Task in desk-tools/31, /33 and
+/36 now produce explicit out-of-Context refusals. The wrapped prose in derived-board/06
+and composability/04 also refuses explicitly; their earlier partial parses never
+established complete scope. These briefs need declaration repair and fresh admitted
+observation; this inventory grants no historical acceptance credit.

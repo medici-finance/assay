@@ -170,13 +170,17 @@ brief lifecycle or a universal observation mandate.
 
 The body MUST contain a `## Context` section. It MUST include:
 
-- A `files:` field listing repository-relative paths the implementer touches, as
+- A column-zero `files:` field listing repository-relative paths the implementer touches, as
   bare or backtick-quoted list items or inline comma-separated declarations.
+  The following grammar governs verification input receipts, coverage, admission
+  binding and wake scheduling; other coordination-tag readers are outside this contract.
   Literal files/directories, segment globs (`*`, `?`, character classes) and
   bounded finite brace alternatives are supported. A declaration ends before
   its em-dash description or a colon after a quoted path; descriptions and
   parenthesized annotations do not declare additional paths. The field ends at
-  the next blank line, Context field or section. Examples inside fences do not
+  the next blank line, column-zero Context field key or section. Indented
+  non-declaration text and files markers outside Context are explicit refusals.
+  Hyphen-minus/en-dash description separators are unsupported. Examples inside fences do not
   declare paths. Duplicate Context sections/fields are ambiguous and refused.
   Abbreviations, placeholders, recursive `**` and malformed/escaping paths MUST
   be reported explicitly, never interpreted as absent deliverables. See the

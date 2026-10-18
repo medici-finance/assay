@@ -16,12 +16,14 @@ import (
 const InputKeyScopePrefix = "scope:"
 
 const maxScopePaths = 4096
+const maxScopeWork = 32768
 
 // BriefDeclaredFiles reads only declaration positions in Context's files field.
 // Unsupported declarations are errors, never an accidentally empty input scope.
 func BriefDeclaredFiles(content string) ([]string, error) {
 	context, seenContext, block, found := false, false, false, false
 	fence := ""
+	endedByBlank := false
 	var out []string
 	seen := map[string]bool{}
 	for _, raw := range strings.Split(content, "\n") {
@@ -45,13 +47,18 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 				}
 				seenContext = true
 			}
-			block = false
+			block, endedByBlank = false, false
 			continue
+		}
+		markerLine := strings.TrimLeft(strings.ToLower(line), "*_")
+		marker := strings.HasPrefix(markerLine, "files:") || strings.HasPrefix(markerLine, "files ") || strings.HasPrefix(markerLine, "files\t") || strings.HasPrefix(markerLine, "files*") || strings.HasPrefix(markerLine, "files_")
+		if marker && (!context || raw != line) {
+			return nil, Refused("refused: files: field must be at column zero in Context")
 		}
 		if !context {
 			continue
 		}
-		if strings.HasPrefix(line, "files ") || strings.HasPrefix(strings.ToLower(line), "**files") {
+		if marker && !strings.HasPrefix(line, "files:") {
 			return nil, Refused("refused: unsupported Context files: field marker")
 		}
 		if strings.HasPrefix(line, "files:") {
@@ -64,9 +71,16 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 				continue
 			}
 		} else if !block {
+			if endedByBlank {
+				if raw == line && scopeFieldKey(line) {
+					endedByBlank = false
+				} else if strings.HasPrefix(line, "- ") {
+					return nil, Refused("refused: ambiguous files: list continuation after blank line")
+				}
+			}
 			continue
-		} else if line == "" || (strings.HasSuffix(strings.Fields(line)[0], ":") && !strings.HasPrefix(line, "-")) {
-			block = false
+		} else if line == "" || (raw == line && scopeFieldKey(line)) {
+			block, endedByBlank = false, line == ""
 			continue
 		}
 		if !block {
@@ -98,8 +112,22 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 	return out, nil
 }
 
+// scopeFieldKey recognizes a field name, never a quoted path or indented prose.
+func scopeFieldKey(line string) bool {
+	i := strings.IndexByte(line, ':')
+	if i <= 0 {
+		return false
+	}
+	for _, c := range line[:i] {
+		if !(c >= 'a' && c <= 'z') && !(c >= '0' && c <= '9') && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
 func declarationLine(line string) ([]string, error) {
-	for _, sep := range []string{" — ", " – ", " - "} {
+	for _, sep := range []string{" — "} {
 		if i := strings.Index(line, sep); i >= 0 {
 			line = line[:i]
 		}
@@ -118,7 +146,7 @@ func declarationLine(line string) ([]string, error) {
 		if strings.HasPrefix(line, "**") {
 			end := strings.Index(line[2:], "**")
 			if end < 0 {
-				break
+				return nil, Refused("refused: unclosed Context files: action annotation")
 			}
 			line = strings.TrimSpace(line[end+4:])
 			continue
@@ -247,7 +275,18 @@ type DeclaredScope struct {
 func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScope, error) {
 	result := DeclaredScope{Shapes: map[string]string{}}
 	files := map[string]bool{}
+	work := 0
+	consume := func(n int) error {
+		if n > maxScopeWork-work {
+			return Refused("refused: declared scope exceeds resolution work limit")
+		}
+		work += n
+		return nil
+	}
 	for _, decl := range declarations {
+		if err := consume(1); err != nil {
+			return result, err
+		}
 		canonical, err := expandDeclaration(decl)
 		if err != nil {
 			return result, err
@@ -268,14 +307,23 @@ func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScop
 			if len(all) > maxScopePaths {
 				return result, Refused("refused: declared glob exceeds file limit")
 			}
+			if err := consume(len(all)); err != nil {
+				return result, err
+			}
 			candidates := map[string]bool{}
 			for _, f := range all {
 				for p := f; p != "." && p != "/"; p = path.Dir(p) {
+					if err := consume(1); err != nil {
+						return result, err
+					}
 					candidates[p] = true
 				}
 			}
 			paths = nil
 			for p := range candidates {
+				if err := consume(1); err != nil {
+					return result, err
+				}
 				if matched, _ := path.Match(decl, p); matched {
 					paths = append(paths, p)
 				}
@@ -284,6 +332,9 @@ func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScop
 		}
 		var shape []string
 		for _, p := range paths {
+			if err := consume(1); err != nil {
+				return result, err
+			}
 			kind, err := tree.PathKind(p)
 			if err != nil {
 				return result, Unverifiable("cannot resolve declared input "+p, err)
@@ -300,6 +351,9 @@ func ResolveDeclaredScope(declarations []string, tree OutcomeTree) (DeclaredScop
 				}
 				if len(members) > maxScopePaths {
 					return result, Refused("refused: declared directory exceeds file limit")
+				}
+				if err := consume(len(members)); err != nil {
+					return result, err
 				}
 				sort.Strings(members)
 				for _, f := range members {

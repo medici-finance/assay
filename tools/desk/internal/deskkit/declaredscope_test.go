@@ -2,6 +2,7 @@ package deskkit
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -207,5 +208,97 @@ func TestScopeDeclarationPositions(t *testing.T) {
 	}
 	if r.Inputs["file:tools/a.go"] == "" || r.Inputs["file:tools/not-declared.go"] != "" {
 		t.Fatalf("fenced example became declaration: %v", r.Inputs)
+	}
+}
+
+// regression: #2798 / sec-3429-1. These in-module excerpts preserve the
+// declaration positions from the five reviewed briefs without a cross-module read.
+func TestScopeReviewedCorpusRefusesPartial(t *testing.T) {
+	for _, name := range []string{"derived-board-06", "composability-04", "desk-tools-31", "desk-tools-33", "desk-tools-36"} {
+		t.Run(name, func(t *testing.T) {
+			content, err := os.ReadFile(filepath.Join("testdata", "declaredscope", name+".md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if paths, err := BriefDeclaredFiles(string(content)); ExitCodeOf(err) != ExitRefused {
+				t.Fatalf("unsupported real declaration silently narrowed: %v, %v", paths, err)
+			}
+		})
+	}
+}
+
+// regression: #2798 / sec-3429-1.
+func TestScopeContinuationPositions(t *testing.T) {
+	for _, content := range []string{
+		"## Context\nfiles: `tools/a.go`\n  args: [example]\n- tools/b.go\n",
+		"## Context\nfiles: `tools/a.go` - `tools/b.go`\n",
+		"## Context\nfiles: `tools/a.go` – `tools/b.go`\n",
+		"files: tools/a.go\n",
+		"## Task\nfiles: tools/a.go\n",
+		"## Context\n**files**: tools/a.go\n",
+		"## Context\nfiles tools/a.go\n",
+		"## Context\nFiles: tools/a.go\n",
+		"## Context\nFILES: tools/a.go\n",
+		"## Context\n__files__: tools/a.go\n",
+		"## Context\nfiles: tools/a.go, **unclosed\n",
+		"## Context\nfiles: tools/a.go\n  facts: tools/b.go\n",
+	} {
+		if paths, err := BriefDeclaredFiles(content); ExitCodeOf(err) != ExitRefused {
+			t.Errorf("silent partial or empty scope: %q: %v %v", content, paths, err)
+		}
+	}
+	paths, err := BriefDeclaredFiles("## Context\nfiles:\n - `tools/a.go`\n `tools/b.go`: desc\nfacts: commentary\n")
+	if err != nil || strings.Join(paths, ",") != "tools/a.go,tools/b.go" {
+		t.Fatalf("colon declaration lost: %v %v", paths, err)
+	}
+	paths, err = BriefDeclaredFiles("## Task\n```text\nfiles: tools/example.go\n```\n")
+	if err != nil || len(paths) != 0 {
+		t.Fatalf("fenced example became declaration: %v %v", paths, err)
+	}
+	paths, err = BriefDeclaredFiles("## Context\nfacts: no deliverables\n")
+	if err != nil || len(paths) != 0 {
+		t.Fatalf("legitimate absence refused: %v %v", paths, err)
+	}
+}
+
+type scopeWorkTree struct {
+	OutcomeTree
+	calls int
+}
+
+func (s *scopeWorkTree) PathKind(p string) (string, error) {
+	s.calls++
+	return s.OutcomeTree.PathKind(p)
+}
+
+// regression: #2798 / sec-3429-2. Repeated overlapping matches must have a
+// total work bound even when the distinct-file cap never trips.
+func TestScopeResolutionWorkBound(t *testing.T) {
+	tree := fakeTree{files: map[string]string{}}
+	for i := 0; i < 100; i++ {
+		tree.files[fmt.Sprintf("pkg/f%03d.go", i)] = "content"
+	}
+	counted := &scopeWorkTree{OutcomeTree: tree}
+	declarations := make([]string, 4096)
+	for i := range declarations {
+		declarations[i] = "pkg/*"
+	}
+	_, err := ResolveDeclaredScope(declarations, counted)
+	if ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("unbounded duplicate work accepted: %v", err)
+	}
+	if counted.calls > 32768 {
+		t.Fatalf("work limit checked too late: %d reads", counted.calls)
+	}
+}
+
+// regression: #2798 / R3429-A3.
+func TestScopeLooseContinuation(t *testing.T) {
+	if paths, err := BriefDeclaredFiles("## Context\nfiles: tools/a.go\n\n- tools/b.go\n"); ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("loose list silently narrowed: %v %v", paths, err)
+	}
+	paths, err := BriefDeclaredFiles("## Context\nfiles: tools/a.go\n\nfacts:\n- `tools/not-declared.go` is commentary\n")
+	if err != nil || strings.Join(paths, ",") != "tools/a.go" {
+		t.Fatalf("next field confused with loose list: %v %v", paths, err)
 	}
 }
