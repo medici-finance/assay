@@ -221,6 +221,23 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test: "tools/desk/cmd/deskboard/flow_45_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"statusgen/testdata/flowqueue/gate-scores.golden.json"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "deskboard reads the verification-queue rows statusgen printed for the shared fixture, so a statusgen-only change to the queue classification is checked against its consumer on every PR",
+		},
+		{
+			test: "tools/desk/cmd/verifyloop/flow_45_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads: []string{
+				"statusgen/testdata/flowqueue/gate-scores.golden.json",
+				"statusgen/testdata/flowqueue/docs/streams",
+			},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "verifyloop plans the shared fixture tree under the canonical queue rows statusgen printed for it, so a statusgen-only change to the classification or the fixture is checked against its consumer on every PR",
+		},
+		{
 			test: "statusgen/claimbridge_test.go", module: "statusgen",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"statusgen", "tools/desk", "forgeread", "perfrec"},
