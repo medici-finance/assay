@@ -199,13 +199,19 @@ banner directly under the H1:
 > **Withdrawn YYYY-MM-DD — superseded by <successor>.** <reason>. Not executable.
 ```
 
-A conforming linter MUST flag, as hard problems:
+The three keys belong to `brief-v3` only. On a `brief-v1` or `brief-v2` file they are
+unknown keys and MUST be tolerated as written — not parsed, not flagged — because boards
+that predate brief-v3 already carry `superseded-by:` as free prose, and a linter upgrade
+MUST NOT turn a previously valid board red. The one rule that crosses versions is the
+status itself: a conforming linter MUST flag a `withdrawn` row whose brief is not
+`brief-v3`, or that has no typed brief file at all.
 
-- a `withdrawn` row whose brief is not `brief-v3`, or that has no typed brief file at all;
+On a `brief-v3` file a conforming linter MUST flag, as hard problems:
+
 - a withdrawn brief without `withdrawn-date` (or with one that is not a `YYYY-MM-DD`
   calendar date) or without a non-empty `withdrawn-reason`;
-- any of the three keys on a brief whose status is not `withdrawn`, or on a brief that is
-  not `brief-v3`;
+- a `superseded-by` that is not a list of strings;
+- any of the three keys on a brief whose status is not `withdrawn`;
 - a same-repository `superseded-by` entry that does not resolve to an existing brief, an
   entry naming the brief itself, and an entry in neither ref form.
 

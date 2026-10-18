@@ -739,7 +739,7 @@ could-not-check runs serial.
    **Withdrawing a brief.** A brief retired by a later decision, or merged into another brief,
    is never parked as `blocked` with prose in its title. Set its Status cell to `withdrawn` (the
    link text keeps the original title; Verified/Reviewed stay `—`), switch its frontmatter to
-   `schema: brief-v3` (brief-v2 plus three keys), and add:
+   `schema: brief-v3` (brief-v2 plus three keys — they mean nothing on brief-v1/v2), and add:
    `withdrawn-date: "YYYY-MM-DD"`, `superseded-by: ["<stream>/<NN>" | "<cell>:<alias>:<stream>:<NN>"]`
    (`[]` = won't-fix) and a one-sentence `withdrawn-reason:`. Put the banner
    `> **Withdrawn YYYY-MM-DD — superseded by <successor>.** <reason>. Not executable.` under the H1.

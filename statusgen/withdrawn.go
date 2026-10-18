@@ -18,9 +18,12 @@ package main
 // blocked views and the todo count; shown in its own Withdrawn count.
 //
 // Lint (checkBriefFiles → checkWithdrawalFile / withdrawnRowProblems):
-//   - status `withdrawn` and the three keys require schema brief-v3;
-//   - status `withdrawn` ⇔ withdrawn-date AND a non-empty withdrawn-reason;
-//   - any of the three keys on a non-withdrawn brief is a PROBLEM;
+//   - status `withdrawn` requires schema brief-v3 (the only cross-version rule);
+//   - on brief-v1/brief-v2 the three keys are tolerated unknown keys — never
+//     parsed, never flagged (existing boards use `superseded-by:` as prose);
+//   - on brief-v3: status `withdrawn` ⇔ withdrawn-date AND a non-empty
+//     withdrawn-reason, and any of the three keys on a non-withdrawn brief is a
+//     PROBLEM;
 //   - a same-repo `<stream>/<NN>` successor must resolve to an existing brief;
 //   - a global `<cell>:<alias>:<stream>:<NN>` successor is syntax-checked, and
 //     resolved only when the root it names is configured in this run;
@@ -226,11 +229,11 @@ func checkWithdrawalKeys(add, notice func(string, ...any), path, selfID string, 
 	// The withdrawn keys and status exist only in brief-v3 (driver ruling
 	// 2026-10-18: a new key set is a schema version, not a silent extension of
 	// brief-v1/brief-v2).
+	// On brief-v1/brief-v2 the three keys are unknown keys, tolerated as written
+	// (never parsed, never a PROBLEM): only the status itself needs brief-v3.
 	if bf.Schema != briefSchemaV3 {
 		if isWithdrawn(row.Status) {
 			add("%s: brief %s is withdrawn but is schema %s — a withdrawn brief must be schema brief-v3", path, selfID, bf.Schema)
-		} else if w != nil {
-			add("%s: brief %s carries withdrawn keys but is schema %s — withdrawn-date / withdrawn-reason / superseded-by exist only in schema brief-v3", path, selfID, bf.Schema)
 		}
 		return
 	}

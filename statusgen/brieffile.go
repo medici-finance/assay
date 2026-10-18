@@ -117,8 +117,9 @@ type BriefFile struct {
 	SplitFrom string
 	// Withdrawal is the OPTIONAL withdrawn-status record (withdrawn.go): the
 	// `withdrawn-date:`, `withdrawn-reason:` and `superseded-by:` keys, which
-	// exist only in schema brief-v3 (they are type-checked on every schema so a
-	// misplaced key is reported, not ignored). nil when none is present.
+	// exist only in schema brief-v3 and are parsed only there (on brief-v1/v2
+	// they are tolerated unknown keys). nil when none is present or the file is
+	// not brief-v3.
 	// A wrong TYPE is a parse error; the pairing with the README `withdrawn`
 	// Status cell and the successor-ref resolution are checked in
 	// checkBriefFiles, where the README row and the tree are in hand.
@@ -877,11 +878,16 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			addBad("split-from must be a string")
 		}
 	}
-	// withdrawn-date / withdrawn-reason / superseded-by are OPTIONAL but KNOWN
-	// keys (the terminal `withdrawn` status, withdrawn.go). Only TYPES are
-	// checked here; presence rules need the README row and live in
-	// checkBriefFiles.
-	parseWithdrawalKeys(data, bf, addBad)
+	// withdrawn-date / withdrawn-reason / superseded-by are brief-v3 keys (the
+	// terminal `withdrawn` status, withdrawn.go). They are parsed ONLY on a
+	// brief-v3 file: under brief-v1/brief-v2 they are unknown keys and are
+	// tolerated as written — existing boards already use `superseded-by:` as
+	// free prose, and a statusgen upgrade must not redden them. On brief-v3
+	// only TYPES are checked here; presence rules need the README row and live
+	// in checkBriefFiles.
+	if bf.Schema == briefSchemaV3 {
+		parseWithdrawalKeys(data, bf, addBad)
+	}
 	// parallel-streams is an OPTIONAL but KNOWN key (methodology/43): the shards
 	// of an intra-brief split. Absence is the default and is never flagged —
 	// every brief on file today omits it and dispatches to one worker, which is
