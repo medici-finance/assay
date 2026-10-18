@@ -14,10 +14,18 @@ import (
 func landedFixture(t *testing.T, wrong bool) (string, string, string, map[string]string) {
 	t.Helper()
 	root := t.TempDir()
+	workerName, workerEmail, err := deskkit.RoleWorktreeCommitIdentity("worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	verifierName, verifierEmail, err := deskkit.RoleWorktreeCommitIdentity("verifier")
+	if err != nil {
+		t.Fatal(err)
+	}
 	flGit(t, root, "init", "-q", "-b", "main")
 	flGit(t, root, "config", "commit.gpgsign", "false")
-	flGit(t, root, "config", "user.name", "assay-worker-app[bot]")
-	flGit(t, root, "config", "user.email", "300000006+assay-worker-app[bot]@users.noreply.github.com")
+	flGit(t, root, "config", "user.name", workerName)
+	flGit(t, root, "config", "user.email", workerEmail)
 	files := map[string]string{
 		"docs/streams/vf/README.md":         "---\nstream: vf\nstatus: active\npriority: P1\ntrack: platform\n---\n\n# VF\n\n| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n|---|---|---|---|---|---|---|\n| 01 | [check](brief-01-check.md) | 0 | S | implemented | — | 2026-09-22 human:alex |\n",
 		"docs/streams/vf/brief-01-check.md": "---\nbrief: vf/01\ntitle: Check\nwave: 0\ndepends: []\nunblocks: []\neffort: S\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nissues: []\nschema: brief-v1\nauthored: 2026-09-22 by assay-worker-app[bot]\nsources: [fixture]\n---\n\n# Check\n\n## Verify\n| # | Command | Expect |\n|---|---|---|\n| 1 | `true` | exit 0 |\n\n## Evidence\n\n## Review\nGate: model.\n",
@@ -38,13 +46,13 @@ func landedFixture(t *testing.T, wrong bool) (string, string, string, map[string
 	flGit(t, root, "commit", "-q", "-m", "implementation")
 	source := flGit(t, root, "rev-parse", "HEAD")
 	flGit(t, root, "update-ref", "refs/remotes/origin/main", source)
-	runner := "assay-verifier-app[bot] @ " + source[:12]
+	runner := verifierName + " @ " + source[:12]
 	files["docs/streams/vf/README.md"] = strings.Replace(files["docs/streams/vf/README.md"], "| implemented | — |", "| verified | 2026-09-22 "+runner+" |", 1)
 	evidence := "\n| # | Command | Result | Output | Date | Runner |\n|---|---|---|---|---|---|\n| 1 | `true` | pass exit=0 | sha256:abcdef012345 | 2026-09-22 | " + runner + " (on-behalf-of human:alex) |\n\n**VERIFY: PASS**\n"
 	files["docs/streams/vf/brief-01-check.md"] = strings.Replace(files["docs/streams/vf/brief-01-check.md"], "## Evidence\n", "## Evidence\n"+evidence, 1)
 	if !wrong {
-		flGit(t, root, "config", "user.name", "assay-verifier-app[bot]")
-		flGit(t, root, "config", "user.email", verifierBotEmail)
+		flGit(t, root, "config", "user.name", verifierName)
+		flGit(t, root, "config", "user.email", verifierEmail)
 	}
 	write()
 	flGit(t, root, "add", "docs")
