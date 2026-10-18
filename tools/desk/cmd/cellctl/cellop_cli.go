@@ -16,8 +16,9 @@ import (
 // The cell-operation adapter mechanics (contract spec/cell-op-v1.md, how-to
 // docs/cellctl-machine-seam.md). This file is what a verb brief adopts: it annotates its
 // state-changing invocations, emits cellop results with --json, writes plans with --plan, and
-// applies them only through cellopApply. No verb in the default build adopts it yet; the fixture
-// verb and the stand-ins in cellop_fixture.go (build tag cellopfixture) exercise it end to end.
+// applies them only through cellopApply. `up` (up_converge.go) is the first verb of the default
+// build to adopt it; the fixture verb and the stand-ins in cellop_fixture.go (build tag
+// cellopfixture) exercise it end to end for the verbs whose briefs have not landed.
 
 // stateChanging is the cobra annotation every state-changing invocation registers: on the command
 // (every form of it except --plan changes state) or on the flag (only the form with that flag
@@ -184,6 +185,11 @@ type cellopVerb struct {
 	Verb    string
 	Measure func(c *Cell, a cellop.Action) ([]cellop.Precondition, error)
 	Run     func(c *Cell, a cellop.Action) (string, error)
+	// After, when set, runs once the plan has been applied and BEFORE the result is printed: it may
+	// do the work that follows the actions (a verb that goes on to launch something) and fold what
+	// it learned into the result. It is called for every outcome and decides for itself what a
+	// refused or failed apply leaves it to do.
+	After func(c *Cell, r *cellop.Result)
 }
 
 // cellopNewPlan makes and stores a plan for c. It changes nothing but the plan store.
@@ -241,6 +247,9 @@ func cellopApply(cmd *cobra.Command, c *Cell, v cellopVerb, id string) {
 		Now:     time.Now,
 	}
 	r := sess.Apply(id)
+	if v.After != nil {
+		v.After(c, &r)
+	}
 	emitResult(cmd, r)
 	exitWith(r.ExitCode())
 }
