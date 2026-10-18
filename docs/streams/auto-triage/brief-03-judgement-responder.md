@@ -27,7 +27,7 @@ gate-why: >-
   message that leaked the detail would be the exact harm leak-sweep exists to prevent.
 design: DR-auto-triage
 issues: [612, 536]
-schema: brief-v2
+schema: "brief-v3"
 authored: 2026-09-16 by the-desk auto-triage authoring session
 sources:
   - "docs/streams/auto-triage/spec.md — §2 step 4 (judgement → file + route with default); §5 leak-sweep is opaque and always routes; §6 non-goals"

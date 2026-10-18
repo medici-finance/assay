@@ -18,7 +18,7 @@ effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: [611, 1119, 612]
-schema: brief-v2
+schema: "brief-v3"
 authored: 2026-09-16 by the-desk auto-triage authoring session
 sources:
   - "docs/streams/auto-triage/spec.md — the four-step response; §5 what the identifier can and cannot see"

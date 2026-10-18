@@ -15,7 +15,7 @@ effort: "L"
 gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "yes"}
 issues: [2111]
-schema: "brief-v2"
+schema: "brief-v3"
 outcome: none
 version: 2
 id: "147d5b80-d8b8-459e-8698-ff5b0c7bd9eb"

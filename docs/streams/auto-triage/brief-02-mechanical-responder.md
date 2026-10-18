@@ -29,7 +29,7 @@ gate-why: >-
   by a human at zero cost to `main`, but arming autonomous authoring still needs the record.
 design: DR-auto-triage
 issues: [611, 1119]
-schema: brief-v2
+schema: "brief-v3"
 authored: 2026-09-16 by the-desk auto-triage authoring session
 sources:
   - "docs/streams/auto-triage/spec.md — §2 step 3 (mechanical → file + open fixing draft PR); §6 non-goals"
