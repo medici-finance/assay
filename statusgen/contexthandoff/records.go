@@ -3,8 +3,9 @@ package contexthandoff
 // Schema identifiers. A record whose "schema" value is not exactly one of these
 // is refused; a new version is a new identifier, never a silent shape change.
 const (
-	HandoffSchema  = "context-handoff-v1"
-	ManifestSchema = "amendment-manifest-v1"
+	HandoffSchema   = "context-handoff-v1"
+	HandoffSchemaV2 = "context-handoff-v2"
+	ManifestSchema  = "amendment-manifest-v1"
 )
 
 // Target states. A draft or proposed target is a distinct state from an

@@ -42,8 +42,9 @@ ordered states rather than between any two of them.
 ### 2.0a `withdrawn` — the terminal off-path state
 
 `withdrawn` is a seventh valid status value and, like `blocked`, is NOT a position in the
-ordered sequence. It records that a brief will never be executed: a later decision
-retired it, or it was merged into another brief. Unlike `blocked` it is **terminal** —
+ordered sequence. It records that the remaining planned scope will not be executed under this identity:
+a later decision retired it, or moved that scope into another brief. Partial implementation
+and completed historical work remain on record, with their unresolved obligations. Unlike `blocked` it is **terminal** —
 nothing re-enters the sequence from it. The brief's frontmatter records the date, the
 reason and the successor (`brief-v1.md` §3.6).
 
@@ -54,7 +55,9 @@ open-brief counts, and from the stalled, bottleneck and blocked views, and SHOUL
 them in a separate Withdrawn count. A `depends:` edge into a withdrawn brief is never
 satisfied (the linter NOTICEs it, naming the successor). A lower-wave withdrawn brief MUST
 NOT hold the legacy whole-wave rule: it is terminal, the same as `done` for that purpose.
-A stream whose every brief is `done` or `withdrawn` is complete.
+A stream whose every brief is `done` or `withdrawn` is an archive candidate for planned
+work. This does not assert that surviving verification debt, open PRs or active claims
+were settled. Evidence and stamps are retained, and known execution drift remains visible.
 
 A status value that is neither one of the five ordered states, `blocked`, nor `withdrawn`
 MUST be rejected.
@@ -319,7 +322,7 @@ never as a clean pass and never as a blanket failure of every citing brief.
 A `gate: human` brief carries a decision issue (`brief-v1.md` §3.2, `decision-issue:`)
 on which a human decides BEFORE the irreversible act. The decision-gate hold binds that
 decision at the brief's **status transition**: while the decision issue carries no
-human ruling, the brief MUST NOT move to `implemented`, `verified` or `done`.
+human ruling, the brief MUST NOT move to `implemented`, `verified`, `done` or `withdrawn`.
 
 **Scope.** The hold is judged per change, against the base revision the change merges
 onto. A brief is in scope when it carries `gate: human` at the base OR after the change,

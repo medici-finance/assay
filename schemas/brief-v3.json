@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://medici-finance.github.io/assay/schemas/brief-v3.json",
   "title": "brief-v3 frontmatter",
-  "description": "Machine-readable contract for `schema: brief-v3` brief frontmatter. brief-v3 is brief-v2 plus the three keys of the terminal `withdrawn` brief status — `withdrawn-date`, `withdrawn-reason` and `superseded-by` — and nothing else: no brief-v2 field is removed or changed, so every rule of the brief-v2 contract applies unchanged. A brief whose README Status cell is `withdrawn` must be brief-v3; a brief-v3 brief that is not withdrawn is valid too, but carrying any of the three keys on it is a `--lint` PROBLEM. On brief-v1 and brief-v2 files the three keys are unknown keys, tolerated as written and never parsed. brief-v2 is brief-v1 plus the hierarchical `brief:` id (`<cell>:<repo>:<stream>:<NN>`), the brief's own `version:` revision counter, and the RESERVED identity/graph keys `id`, `supersedes`, `gates`, `feathers` and `verify` — no brief-v1 field is removed, and there is deliberately no `status:` key (the lifecycle cell is derived from witnesses, never asserted in frontmatter). Like brief-v1 and brief-v2 this contract is DESCRIPTIVE of the reference validator's per-file, frontmatter-shape rules only: required keys, field types, and closed value sets. It deliberately does NOT encode the cross-file or cross-field rules the reference validator's `--lint` surface owns — the `brief:` id's stream/NN matching the file path, its cell and repo-alias segments resolving in `docs/streams/graph-repos.yaml`, `id` uniqueness across the tree, the reference grammar of each reserved edge's target, the wave/README agreement, the verifier floor, the risk-answer/gate coupling. Where the shape rule and the semantic rule would disagree the shape rule is the LOOSER of the two on purpose: a schema stricter than the validator would reject a brief `--lint` accepts, and the two surfaces must never disagree in that direction. Unknown top-level keys are tolerated (additionalProperties: true) exactly as the validator tolerates them; the `risk` block, each `parallel-streams` entry, each `gates`/`feathers` edge and each `verify` row are the closed objects the validator rejects unknown keys in.",
+  "description": "Machine-readable contract for `schema: brief-v3` brief frontmatter. brief-v3 is brief-v2 plus the withdrawal keys of the terminal `withdrawn` brief status \u2014 `withdrawn-date`, `withdrawn-reason` and `superseded-by` \u2014 and the optional withdrawal-context provenance pointer: no brief-v2 field is removed or changed, so every rule of the brief-v2 contract applies unchanged. A brief whose README Status cell is `withdrawn` must be brief-v3; a brief-v3 brief that is not withdrawn is valid too, but carrying any of the withdrawal keys on it is a `--lint` PROBLEM. On brief-v1 and brief-v2 files the withdrawal keys are unknown keys, tolerated as written and never parsed. brief-v2 is brief-v1 plus the hierarchical `brief:` id (`<cell>:<repo>:<stream>:<NN>`), the brief's own `version:` revision counter, and the RESERVED identity/graph keys `id`, `supersedes`, `gates`, `feathers` and `verify` \u2014 no brief-v1 field is removed, and there is deliberately no `status:` key (the lifecycle cell is derived from witnesses, never asserted in frontmatter). Like brief-v1 and brief-v2 this contract is DESCRIPTIVE of the reference validator's per-file, frontmatter-shape rules only: required keys, field types, and closed value sets. It deliberately does NOT encode the cross-file or cross-field rules the reference validator's `--lint` surface owns \u2014 the `brief:` id's stream/NN matching the file path, its cell and repo-alias segments resolving in `docs/streams/graph-repos.yaml`, `id` uniqueness across the tree, the reference grammar of each reserved edge's target, the wave/README agreement, the verifier floor, the risk-answer/gate coupling. Where the shape rule and the semantic rule would disagree the shape rule is the LOOSER of the two on purpose: a schema stricter than the validator would reject a brief `--lint` accepts, and the two surfaces must never disagree in that direction. Unknown top-level keys are tolerated (additionalProperties: true) exactly as the validator tolerates them; the `risk` block, each `parallel-streams` entry, each `gates`/`feathers` edge and each `verify` row are the closed objects the validator rejects unknown keys in.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -25,22 +25,22 @@
       "const": "brief-v3"
     },
     "brief": {
-      "description": "The hierarchical typed brief id, `<cell>:<repo>:<stream>:<NN>` — four non-empty colon-separated segments, the form `statusgen migrate brief-v1-to-v2` mints. The cell and repo segments are aliases from docs/streams/graph-repos.yaml; RESOLVING them, and matching stream/NN against the file path, needs the tree and is the reference validator's job, so only the four-segment shape is checked here. The brief-v1 `<stream>/<NN>` form is not a brief-v2 id and fails this pattern.",
+      "description": "The hierarchical typed brief id, `<cell>:<repo>:<stream>:<NN>` \u2014 four non-empty colon-separated segments, the form `statusgen migrate brief-v1-to-v2` mints. The cell and repo segments are aliases from docs/streams/graph-repos.yaml; RESOLVING them, and matching stream/NN against the file path, needs the tree and is the reference validator's job, so only the four-segment shape is checked here. The brief-v1 `<stream>/<NN>` form is not a brief-v2 id and fails this pattern.",
       "type": "string",
       "pattern": "^[^:]+:[^:]+:[^:]+:[^:]+$"
     },
     "version": {
-      "description": "The brief's own revision counter (not the schema's): 1 at authoring, bumped on every edit to Task or Verify after first dispatch. Optional — an absent `version:` reads as 1. A present value is an integer >= 1.",
+      "description": "The brief's own revision counter (not the schema's): 1 at authoring, bumped on every edit to Task or Verify after first dispatch. Optional \u2014 an absent `version:` reads as 1. A present value is an integer >= 1.",
       "type": "integer",
       "minimum": 1
     },
     "id": {
-      "description": "RESERVED (brief-v2): the stable object identity, a canonical uuid v4 minted ONCE at authoring and never reused. Optional, and shape-validated only — a uuid is an identity, not a reference, so nothing is resolved. An empty string is accepted for the same reason the reference validator skips it: absence and emptiness are the same non-claim.",
+      "description": "RESERVED (brief-v2): the stable object identity, a canonical uuid v4 minted ONCE at authoring and never reused. Optional, and shape-validated only \u2014 a uuid is an identity, not a reference, so nothing is resolved. An empty string is accepted for the same reason the reference validator skips it: absence and emptiness are the same non-claim.",
       "type": "string",
       "pattern": "^([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})?$"
     },
     "supersedes": {
-      "description": "RESERVED (brief-v2): object lineage — the briefs this one splits or re-baselines, as references in the graph reference grammar. Optional; an empty list (or null) is allowed. Each ref's GRAMMAR and alias resolution is a `--lint` check, not a shape check.",
+      "description": "RESERVED (brief-v2): object lineage \u2014 the briefs this one splits or re-baselines, as references in the graph reference grammar. Optional; an empty list (or null) is allowed. Each ref's GRAMMAR and alias resolution is a `--lint` check, not a shape check.",
       "type": [
         "array",
         "null"
@@ -50,7 +50,7 @@
       }
     },
     "gates": {
-      "description": "RESERVED, OPTIONAL-but-KNOWN (brief-v2): behavioural/ordering edges — parsed, type-checked and lint-validated, not yet gating. Every entry is a MAPPING; `on`, `type` and `reason` are all required, because the point of the field is the machine-attached why. No other key is allowed — a silently dropped key is an edge whose meaning nobody reads.",
+      "description": "RESERVED, OPTIONAL-but-KNOWN (brief-v2): behavioural/ordering edges \u2014 parsed, type-checked and lint-validated, not yet gating. Every entry is a MAPPING; `on`, `type` and `reason` are all required, because the point of the field is the machine-attached why. No other key is allowed \u2014 a silently dropped key is an edge whose meaning nobody reads.",
       "type": [
         "array",
         "null"
@@ -88,7 +88,7 @@
       }
     },
     "feathers": {
-      "description": "RESERVED, OPTIONAL-but-KNOWN (brief-v2): cross-repo/cross-stream edges — the same reserved treatment as `gates`. An entry may be a bare reference STRING (which defaults to type build-dep with no reason) or a mapping carrying the why. In the mapping form `ref` is required and no key other than ref/type/reason is allowed.",
+      "description": "RESERVED, OPTIONAL-but-KNOWN (brief-v2): cross-repo/cross-stream edges \u2014 the same reserved treatment as `gates`. An entry may be a bare reference STRING (which defaults to type build-dep with no reason) or a mapping carrying the why. In the mapping form `ref` is required and no key other than ref/type/reason is allowed.",
       "type": [
         "array",
         "null"
@@ -317,7 +317,7 @@
       }
     },
     "parallel-streams": {
-      "description": "Optional declared shards of an intra-brief split. Only name and files are defined per entry; any other key is rejected. Shape only — whether the split is safe to dispatch is decided elsewhere.",
+      "description": "Optional declared shards of an intra-brief split. Only name and files are defined per entry; any other key is rejected. Shape only \u2014 whether the split is safe to dispatch is decided elsewhere.",
       "type": "array",
       "items": {
         "type": "object",
@@ -358,13 +358,31 @@
       "type": "string"
     },
     "superseded-by": {
-      "description": "The successor list of a withdrawn brief: `<stream>/<NN>` ids in this repo, or global `<cell>:<repo-alias>:<stream>:<NN>` ids for another repo. An empty list means won't-fix (no successor). Same-repo ids must resolve; global ids are syntax-checked and resolved only when the named root is configured — `--lint` rules, not shape rules.",
+      "description": "The successor list of a withdrawn brief: `<stream>/<NN>` ids in this repo, or global `<cell>:<repo-alias>:<stream>:<NN>` ids for another repo. An empty list means won't-fix (no successor). Same-repo ids must resolve; global ids are syntax-checked and resolved only when the named root is configured \u2014 `--lint` rules, not shape rules.",
       "type": [
         "array",
         "null"
       ],
       "items": {
         "type": "string"
+      }
+    },
+    "withdrawal-context": {
+      "description": "Optional shared, revision-bound amendment provenance. Lint reads the local handoff, checks its canonical digest, approval revision, subject, action, successors, preserved history and active-work acknowledgement. Never clears execution drift.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "digest"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
       }
     }
   }

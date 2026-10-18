@@ -1279,6 +1279,9 @@ func main() {
 	// that executes arbitrary commands lifted out of a markdown table has no
 	// business inside it. `--lint` only NOTICEs the ABSENCE of a witness (see
 	// witnessNotices); producing one is always an explicit invocation.
+	if len(os.Args) > 1 && os.Args[1] == "withdrawal-audit" {
+		exitProcess(runWithdrawalAudit(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
 		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
 	}

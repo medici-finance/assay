@@ -5,8 +5,8 @@ package main
 // A brief retired by a later decision, or merged into another brief, is not
 // open work, not blocked work, and not done work. It is WITHDRAWN: the README
 // Status cell carries the bare token `withdrawn`, and the brief file's
-// frontmatter — schema brief-v3, which is brief-v2 plus exactly these three
-// keys — records when, why, and where the work went:
+// frontmatter — schema brief-v3, which is brief-v2 plus withdrawal
+// keys and optional context provenance — records when, why, and where the work went:
 //
 //	schema: brief-v3
 //	withdrawn-date: "2026-10-18"
@@ -32,7 +32,12 @@ package main
 
 import (
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/contexthandoff"
+	"io"
+	"os"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 )
@@ -49,6 +54,15 @@ type Withdrawal struct {
 	HasReason       bool
 	SupersededBy    []string
 	HasSupersededBy bool
+	Context         *WithdrawalContext
+	HasContext      bool
+}
+
+// WithdrawalContext binds a retirement to one immutable context-handoff record.
+// One handoff can cover a whole portfolio amendment; briefs need only its pointer.
+type WithdrawalContext struct {
+	Path   string
+	Digest string
 }
 
 var (
@@ -118,22 +132,47 @@ func parseWithdrawalKeys(data map[string]any, bf *BriefFile, addBad func(string,
 			}
 		}
 	}
-	if w.HasDate || w.HasReason || w.HasSupersededBy {
+	if v, ok := data["withdrawal-context"]; ok {
+		w.HasContext = true
+		m, ok := v.(map[string]any)
+		if !ok {
+			addBad("withdrawal-context must be an object with path and digest")
+		} else {
+			c := &WithdrawalContext{}
+			for k := range m {
+				if k != "path" && k != "digest" {
+					addBad("withdrawal-context has unknown key %q", k)
+				}
+			}
+			c.Path, _ = m["path"].(string)
+			c.Digest, _ = m["digest"].(string)
+			if c.Path == "" || !filepath.IsLocal(c.Path) || filepath.ToSlash(filepath.Clean(c.Path)) != c.Path {
+				addBad("withdrawal-context.path must be a clean repository-relative file path")
+			}
+			if !regexp.MustCompile(`^sha256:[0-9a-f]{64}$`).MatchString(c.Digest) {
+				addBad("withdrawal-context.digest must be sha256:<64 lower-case hex>")
+			}
+			w.Context = c
+		}
+	}
+	if w.HasDate || w.HasReason || w.HasSupersededBy || w.HasContext {
 		bf.Withdrawal = &w
 	}
 }
 
 // withdrawalResolver resolves successor refs against the streams of this run.
 type withdrawalResolver struct {
-	all      []*Stream
-	byRoot   map[string]map[string]*Stream
-	regCache map[string]*graphRepos
-	regSeen  map[string]bool
-	selfID   map[string]string
+	all        []*Stream
+	byRoot     map[string]map[string]*Stream
+	regCache   map[string]*graphRepos
+	regSeen    map[string]bool
+	selfID     map[string]string
+	successors map[string][]string
+	contexts   map[string]withdrawalContextResult
 }
 
 func newWithdrawalResolver(all []*Stream) *withdrawalResolver {
-	r := &withdrawalResolver{all: all, byRoot: map[string]map[string]*Stream{}, regCache: map[string]*graphRepos{}, regSeen: map[string]bool{}, selfID: map[string]string{}}
+	r := &withdrawalResolver{all: all, byRoot: map[string]map[string]*Stream{}, regCache: map[string]*graphRepos{}, regSeen: map[string]bool{}, selfID: map[string]string{}, successors: map[string][]string{}, contexts: map[string]withdrawalContextResult{}}
 	for _, s := range all {
 		m := r.byRoot[s.Root]
 		if m == nil {
@@ -176,6 +215,16 @@ func (r *withdrawalResolver) findBrief(root, stream, num string) *Brief {
 // be after the dependent brief is checked (same stream, later number) or never
 // (a stream outside this run's checked set) — so the row is only a fallback.
 func (r *withdrawalResolver) successorsOf(root, stream, num string, row *Brief) []string {
+	key := root + "/" + stream + "/" + num
+	if list, ok := r.successors[key]; ok {
+		return list
+	}
+	list := r.readSuccessors(root, stream, num, row)
+	r.successors[key] = list
+	return list
+}
+
+func (r *withdrawalResolver) readSuccessors(root, stream, num string, row *Brief) []string {
 	if s := r.byRoot[root][stream]; s != nil {
 		for _, path := range briefFilePaths(s) {
 			_, n, ok := expectedBriefID(path)
@@ -248,9 +297,7 @@ func checkWithdrawalFile(add, notice func(string, ...any), path, selfID string, 
 // checkWithdrawalKeys is the status ⇔ keys pairing for one brief file.
 func checkWithdrawalKeys(add, notice func(string, ...any), path, selfID string, bf *BriefFile, row *Brief, s *Stream, res *withdrawalResolver) {
 	w := bf.Withdrawal
-	// The withdrawn keys and status exist only in brief-v3 (driver ruling
-	// 2026-10-18: a new key set is a schema version, not a silent extension of
-	// brief-v1/brief-v2).
+	// Withdrawal keys and status are versioned explicitly in brief-v3.
 	// On brief-v1/brief-v2 the three keys are unknown keys, tolerated as written
 	// (never parsed, never a PROBLEM): only the status itself needs brief-v3.
 	if bf.Schema != briefSchemaV3 {
@@ -271,6 +318,9 @@ func checkWithdrawalKeys(add, notice func(string, ...any), path, selfID string, 
 			if w.HasSupersededBy {
 				keys = append(keys, "superseded-by")
 			}
+			if w.HasContext {
+				keys = append(keys, "withdrawal-context")
+			}
 			add("%s: brief %s carries %s but its README status is %q — these keys belong only to a `withdrawn` brief; set the Status cell to withdrawn or remove them", path, selfID, strings.Join(keys, ", "), row.Status)
 		}
 		return
@@ -287,12 +337,19 @@ func checkWithdrawalKeys(add, notice func(string, ...any), path, selfID string, 
 	}
 	if w != nil {
 		for _, ref := range w.SupersededBy {
-			checkSuccessorRef(add, path, selfID, bf.Brief, ref, s, res) // briefid:raw only its cell:alias prefix is read, to identify this brief's own root for a global successor id
+			checkSuccessorRef(add, notice, path, selfID, bf.Brief, ref, s, res) // briefid:raw only its cell:alias prefix is read, to identify this brief's own root for a global successor id
 		}
 	}
-	if row.Verified != "" || row.Reviewed != "" {
-		notice("%s: brief %s is withdrawn but its README Verified/Reviewed cells are set — a withdrawn brief was never verified; leave them `—`", path, selfID)
+	// Preserve evidence and stamps: withdrawal retires remaining planned scope,
+	// never the work already executed. Missing provenance is advisory at rollout;
+	// a supplied provenance record must validate, and never suppresses drift.
+	if w != nil && w.Context != nil {
+		checkWithdrawalContext(add, path, bf, s, res)
+	} else if row.Verified != "" || row.Reviewed != "" || evidenceHasContent(bf.Evidence) || bf.Gate == "human" {
+		notice("%s: withdrawn brief %s retains execution/review obligations — preserve Evidence and Verified/Reviewed history; record a withdrawal-context for the revision-bound amendment and active-work treatment (offline claim coverage is could-not-check)", path, selfID)
 	}
+	res.checkSuccessorCycles(add, path, s.Root, s.Name, row.Num)
+
 }
 
 // checkDependsOnWithdrawn NOTICEs every depends edge into a withdrawn brief.
@@ -317,7 +374,7 @@ func checkDependsOnWithdrawn(notice func(string, ...any), path string, bf *Brief
 }
 
 // checkSuccessorRef validates one superseded-by entry.
-func checkSuccessorRef(add func(string, ...any), path, selfID, selfFull, ref string, s *Stream, res *withdrawalResolver) {
+func checkSuccessorRef(add, notice func(string, ...any), path, selfID, selfFull, ref string, s *Stream, res *withdrawalResolver) {
 	ref = strings.TrimSpace(ref)
 	switch {
 	case ref == "":
@@ -339,7 +396,8 @@ func checkSuccessorRef(add func(string, ...any), path, selfID, selfFull, ref str
 		}
 		root, configured := res.rootForGlobal(s.Root, ownID, seg[0], seg[1])
 		if !configured {
-			return // syntax only: the root it names is not configured in this run
+			notice("%s: superseded-by %q: could-not-check target existence or successor chain — root not configured; syntax checked only", path, ref)
+			return
 		}
 		if root == s.Root && seg[2]+"/"+seg[3] == selfID {
 			add("%s: superseded-by %q is the brief itself — a brief cannot supersede itself", path, ref)
@@ -369,4 +427,166 @@ func withdrawnRowProblems(streams []*Stream) []string {
 		}
 	}
 	return out
+}
+
+// resolveSuccessor normalizes both supported spellings without reading a forge.
+func (r *withdrawalResolver) resolveSuccessor(root, ref string) (string, string, string, bool) {
+	if refInRepoBriefRe.MatchString(ref) {
+		p := strings.SplitN(ref, "/", 2)
+		return root, p[0], p[1], true
+	}
+	if globalBriefIDRe.MatchString(ref) {
+		p := strings.Split(ref, ":")
+		target, ok := r.rootForGlobal(root, r.rootIdentity(root), p[0], p[1])
+		return target, p[2], p[3], ok
+	}
+	return "", "", "", false
+}
+
+func (r *withdrawalResolver) checkSuccessorCycles(add func(string, ...any), path, root, stream, num string) {
+	visiting, done := map[string]bool{}, map[string]bool{}
+	var visit func(string, string, string) bool
+	visit = func(root, stream, num string) bool {
+		key := root + "/" + stream + "/" + num
+		if visiting[key] {
+			return true
+		}
+		if done[key] {
+			return false
+		}
+		row := r.findBrief(root, stream, num)
+		if row == nil || !isWithdrawn(row.Status) {
+			return false
+		}
+		visiting[key] = true
+		for _, ref := range r.successorsOf(root, stream, num, row) {
+			rr, ss, nn, ok := r.resolveSuccessor(root, ref)
+			if ok && visit(rr, ss, nn) {
+				return true
+			}
+		}
+		delete(visiting, key)
+		done[key] = true
+		return false
+	}
+	if visit(root, stream, num) {
+		add("%s: superseded-by cycle among configured withdrawn briefs — a successor chain must terminate", path)
+	}
+}
+
+type withdrawalContextResult struct {
+	handoff *contexthandoff.Handoff
+	err     error
+}
+
+func (r *withdrawalResolver) readContext(root, path string) (*contexthandoff.Handoff, error) {
+	key := root + "/" + path
+	if hit, ok := r.contexts[key]; ok {
+		return hit.handoff, hit.err
+	}
+	h, err := readWithdrawalContext(root, path)
+	r.contexts[key] = withdrawalContextResult{h, err}
+	return h, err
+}
+
+func readWithdrawalContext(root, path string) (*contexthandoff.Handoff, error) {
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+	info, err := dir.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > 4<<20 {
+		return nil, fmt.Errorf("handoff must be a regular file no larger than 4 MiB")
+	}
+	f, err := dir.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	raw, err := io.ReadAll(io.LimitReader(f, (4<<20)+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > 4<<20 {
+		return nil, fmt.Errorf("handoff exceeds 4 MiB")
+	}
+	return contexthandoff.DecodeHandoff(raw)
+}
+
+func checkWithdrawalContext(add func(string, ...any), path string, bf *BriefFile, s *Stream, r *withdrawalResolver) {
+	c := bf.Withdrawal.Context
+	// briefid:raw — context-handoff uses fully qualified IDs, not local graph keys.
+	cell, alias, stream, num, valid := parseBriefV2ID(bf.Brief) // briefid:raw — handoff subjects use the full qualified identity
+	if !valid {
+		add("%s: withdrawal-context: brief must have a qualified v2-family identity", path)
+		return
+	}
+	subjectID := cell + ":" + alias + ":" + stream + ":" + num
+	fail := func(format string, a ...any) { add("%s: withdrawal-context: %s", path, fmt.Sprintf(format, a...)) }
+	h, err := r.readContext(s.Root, c.Path)
+	if err != nil {
+		fail("%v", err)
+		return
+	}
+	if h.Digest() != c.Digest {
+		fail("digest does not match the canonical handoff; re-evaluate the amendment")
+		return
+	}
+	if err := h.RequireApproved(); err != nil {
+		fail("%v", err)
+		return
+	}
+	var obligation *contexthandoff.Amendment
+	var impact *contexthandoff.Impact
+	for i := range h.Impacts {
+		if h.Impacts[i].Subject == subjectID {
+			impact = &h.Impacts[i]
+		}
+	}
+	for i := range h.Amendments {
+		if h.Amendments[i].Subject == subjectID {
+			obligation = &h.Amendments[i]
+		}
+	}
+	if impact == nil || obligation == nil || (obligation.Action != "retire" && obligation.Action != "replace" && obligation.Action != "split") {
+		fail("no retire/replace/split obligation for %s", subjectID)
+		return
+	}
+	want := append([]string{}, obligation.ReplacedBy...)
+	got := []string{}
+	for _, ref := range bf.Withdrawal.SupersededBy {
+		if refInRepoBriefRe.MatchString(ref) {
+			p := strings.SplitN(ref, "/", 2)
+			ref = cell + ":" + alias + ":" + p[0] + ":" + p[1]
+		}
+		got = append(got, ref)
+	}
+	sort.Strings(want)
+	sort.Strings(got)
+	if strings.Join(want, "\n") != strings.Join(got, "\n") {
+		fail("successors do not match the bound amendment's replaced_by")
+		return
+	}
+	// Active claims are reconciled explicitly. A plan's intent to cancel is not
+	// proof its worker stopped, so this consumer requires acknowledgement.
+	for _, w := range h.ActiveWork {
+		if w.Subject == subjectID && !w.Acknowledged {
+			fail("active-work treatment for %s is not acknowledged by its owner", subjectID)
+		}
+	}
+	if evidenceHasContent(bf.Evidence) || impact.Evidence != nil || impact.Lifecycle == "implemented" || impact.Lifecycle == "verified" || impact.Lifecycle == "done" {
+		preserved := false
+		for _, history := range h.History {
+			if history.Subject == subjectID {
+				preserved = true
+			}
+		}
+		if !preserved {
+			fail("executed work has no preserved-history record for %s", subjectID)
+		}
+	}
 }

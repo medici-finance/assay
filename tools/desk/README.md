@@ -1597,6 +1597,13 @@ the gate consume the same distinction is the natural follow-up, not this PR.
 
 ## deskboard stalled — the stalled-draft detector
 
+A PR whose owning brief is `withdrawn` receives advisory disposition `reconcile`,
+before the behind-main close-candidate heuristic. Inspect surviving code, evidence
+and current claims before retargeting it or proposing closure through the ordinary
+independent confirmation gates. Retirement alone is neither completed work nor a
+stopped worker. Use `statusgen withdrawal-audit` against a candidate board to find
+these overlaps before rollout, including PRs that are fresh and thus not stalled.
+
 The review loop assumes a persistent worker: the reviewer requests changes, the worker
 fixes and replies. Sessions die, so sometimes nobody replies — and nothing noticed. The
 measurement that motivated this verb: **all 80 open PRs across at+tracker were drafts, 74 of

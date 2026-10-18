@@ -73,6 +73,25 @@ func pinnedStatusgenFor(path string) string {
 			}
 			return ""
 		}
+		// Stop at this checkout's boundary, never borrow a parent's pin.
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			break
+		}
+		if filepath.Base(dir) == "streams" && filepath.Base(filepath.Dir(dir)) == "docs" {
+			// A source export may have no .git: its docs/streams anchor is
+			// enough to bound the search to the owning root.
+			root := filepath.Dir(filepath.Dir(dir))
+			raw, err := os.ReadFile(filepath.Join(root, ".assay-versions"))
+			if err == nil {
+				for _, line := range strings.Split(string(raw), "\n") {
+					f := strings.Fields(line)
+					if len(f) >= 2 && f[0] == "statusgen" {
+						return f[1]
+					}
+				}
+			}
+			break
+		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			break
