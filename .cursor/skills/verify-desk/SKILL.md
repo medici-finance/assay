@@ -572,8 +572,10 @@ brief at `verified` with a refused close.
 **Land as each verdict arrives.** A PASS in hand and not on main within one landing cycle is a defect:
 the board shows phantom verification debt, other sessions re-report "stuck" briefs, and merged→verified
 lead time inflates by pure reporting latency. The Age column measures exactly that. Everything else this
-desk posts goes out under the role App via the desk verbs (`deskpost` / `deskpr` / `deskreply` /
+desk posts goes out under the role App via the desk verbs (`deskpr` / `deskreply` /
 `deskfile --raised-by verifier`), minted with `desktoken verifier` — never a bare forge call.
+For comments, use `deskfile attach` on issues or `deskreply` on this desk's own PRs;
+`deskpost comment` is reserved for `pr-review-desk`.
 **Standing-doctrine pointer (2026-08-17):** the verdict-transcription lane (`docs/streams/verdict-lane/`,
 ruling R-6) would replace this path with signed verdict issues and a main-side sole writer; until R-6 is
 SIGNED and the lane armed (cutover = verdict-lane/06), this section stands unchanged.
