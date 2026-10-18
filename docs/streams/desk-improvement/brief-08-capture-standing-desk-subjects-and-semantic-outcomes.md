@@ -2,15 +2,15 @@
 brief: "assay:assay:desk-improvement:08"
 title: "Capture standing desk subjects and semantic outcomes"
 why: "A long-running desk process may handle many items or none; role decisions and semantic outcomes require explicit receipts rather than a successful invocation inferred as delivery."
-wave: 3
-depends: ["desk-improvement/05", "desk-improvement/06"]
+wave: 4
+depends: ["desk-improvement/04", "desk-improvement/05", "desk-improvement/06"]
 unblocks: ["desk-improvement/10"]
 effort: "M"
 gate: "model"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
 issues: []
 schema: "brief-v2"
-version: 1
+version: 2
 id: "0622d0f4-7752-4a0c-8f56-f1afb1f6e44f"
 authored: "2026-10-17 by desk-improvement authoring"
 sources: ["docs/streams/desk-improvement/spec.md", "docs/proposals/non-ci-architecture/11-target-architecture.md", "freshness-checked 2026-10-17 @ 2f56cf289; reconcile implementation claims and current PRs at pickup"]

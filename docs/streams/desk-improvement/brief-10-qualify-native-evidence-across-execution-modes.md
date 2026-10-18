@@ -2,7 +2,7 @@
 brief: "assay:assay:desk-improvement:10"
 title: "Qualify native evidence across execution modes"
 why: "Passing schemas and isolated calculations cannot prove that actual desk/workflow modes preserve complete evidence through diagnosis, decision and later evaluation."
-wave: 4
+wave: 5
 depends: ["desk-improvement/04", "desk-improvement/07", "desk-improvement/08", "desk-improvement/09"]
 unblocks: []
 effort: "M"
@@ -10,7 +10,7 @@ gate: "model"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
 issues: []
 schema: "brief-v2"
-version: 1
+version: 2
 id: "b5e6bc3f-3702-4755-a023-0bd4eb16160e"
 authored: "2026-10-17 by desk-improvement authoring"
 sources: ["docs/streams/desk-improvement/spec.md", "docs/proposals/non-ci-architecture/11-target-architecture.md", "freshness-checked 2026-10-17 @ 2f56cf289; reconcile implementation claims and current PRs at pickup"]

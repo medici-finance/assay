@@ -3,14 +3,14 @@ brief: "assay:assay:desk-improvement:06"
 title: "Capture native loop-admin lifecycle and usage evidence"
 why: "Native process, recovery and usage facts must be emitted by their runtime owner; a reducer cannot infer them from PRs or handwritten summaries."
 wave: 2
-depends: ["desk-improvement/05"]
+depends: ["desk-improvement/02", "desk-improvement/05"]
 unblocks: ["desk-improvement/07", "desk-improvement/08"]
 effort: "M"
 gate: "model"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
 issues: []
 schema: "brief-v2"
-version: 1
+version: 2
 id: "bd47632e-b4ad-4205-aef6-6ce7672eb5b1"
 authored: "2026-10-17 by desk-improvement authoring"
 sources: ["docs/streams/desk-improvement/spec.md", "docs/proposals/non-ci-architecture/11-target-architecture.md", "freshness-checked 2026-10-17 @ 2f56cf289; reconcile implementation claims and current PRs at pickup"]

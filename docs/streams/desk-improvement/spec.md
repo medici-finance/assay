@@ -331,9 +331,9 @@ to assessment inputs; it is not another envelope or ledger of work state.
 
 | Producer | Facts required for its supported mode | New brief / prerequisite |
 |---|---|---|
-| Shared runner/supervisor | caller, mode, invocation/generation, request/profile digests, requested/resolved/observed model, lifecycle, time precision, usage and completeness, stop/recovery; source watermark/gaps | desk-improvement/06 after /05 and graph-execution/26 + /22 |
+| Shared runner/supervisor | caller, mode, invocation/generation, request/profile digests, requested/resolved/observed model, lifecycle, time precision, usage and completeness, stop/recovery; source watermark/gaps | desk-improvement/06 after /02, /05 and graph-execution/26 + /22 |
 | Workflow controller | work/instance/node/attempt, frozen intent/candidate, admission reason, waits, cancellation, effect/acceptance receipts, findings/dispositions and all terminal/nonterminal outcomes | desk-improvement/07 after /06 and graph-execution/21 |
-| Standing desk client | role/subject and invocation associations, source decision/receipt, per-item attempt, disposition, review/verification subject and result, coordinator opportunity facts | desk-improvement/08 after /06 and graph-execution/27 + brief-quality/07 |
+| Standing desk client | role/subject and invocation associations, source decision/receipt, per-item attempt, disposition, review/verification subject and result, coordinator opportunity facts | desk-improvement/08 after /04–06 and graph-execution/27 + brief-quality/07 |
 | Human-action source | authorized distinct act identity, scope, occurrence precision and explicit measured spans where available | Existing event/decision owner; /05 binds the permitted fields, not a transcript miner |
 | Offline adapter | native-to-normalized mapping, source/reducer versions, input digests, censoring and missingness | /02 and /03; absent runtime sources remain explicit gaps |
 
@@ -367,7 +367,7 @@ target, dispatch work, change a risk gate or adopt policy.
 
 | Stage | Capability / completion condition |
 |---|---|
-| Offline assessment | /01–03 after continuing-operations/01–02 contracts, with permitted retained inputs; useful partial cards do not require the runtime or full cockpit |
+| Offline assessment | /01 → /02 → /03 after continuing-operations/01–02 contracts; /02 supplies the CLI/reducer that /03 extends. Permitted retained inputs support useful partial cards before the runtime or full cockpit |
 | Operating procedure | /04 supplies configurable role profiles, diagnosis and experimental discipline; invocation is manual until a deployment separately authorizes cadence |
 | Qualified native evidence | /05–08 implement and test actual process, workflow and standing desk producers against the existing record owners |
 | Read-only improvement view | /09 consumes the same versioned evidence/protocol/result/follow-up; existing human route stays authoritative |

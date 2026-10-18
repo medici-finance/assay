@@ -2,7 +2,7 @@
 brief: "assay:assay:desk-improvement:09"
 title: "Integrate qualified improvement evidence into Improve"
 why: "Qualified evidence must be visible at the existing process-decision surface while preserving human adoption and the cadence limit."
-wave: 2
+wave: 3
 depends: ["desk-improvement/02", "desk-improvement/03"]
 unblocks: ["desk-improvement/10"]
 effort: "M"
@@ -10,7 +10,7 @@ gate: "model"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
 issues: []
 schema: "brief-v2"
-version: 2
+version: 3
 id: "7b83ddb1-68c8-4931-a732-04321c16efe2"
 authored: "2026-10-17 by desk-improvement authoring"
 sources: ["docs/streams/desk-improvement/spec.md", "docs/proposals/non-ci-architecture/11-target-architecture.md", "freshness-checked 2026-10-17 @ 2f56cf289; reconcile implementation claims and current PRs at pickup"]

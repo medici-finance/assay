@@ -31,10 +31,10 @@ cannot rewrite a target, fill work quotas, relax acceptance or select a provider
 | Capability | New owner brief | Existing implementation prerequisites |
 |---|---|---|
 | Source-to-assessment binding | desk-improvement/05 | graph-execution/06 and brief-quality/05 |
-| Supervisor lifecycle/usage capture | desk-improvement/06 | /05, graph-execution/26 and /22 |
+| Supervisor lifecycle/usage capture | desk-improvement/06 | /02, /05, graph-execution/26 and /22 |
 | Workflow subject/decision capture | desk-improvement/07 | /05–06 and graph-execution/21 |
-| Standing desk per-item outcome capture | desk-improvement/08 | /05–06, graph-execution/27 and brief-quality/07 |
-| Calculation, protocol and procedure | desk-improvement/01–04 | Offline source inspection; no adopter corpus/runtime gate |
+| Standing desk per-item outcome capture | desk-improvement/08 | /04–06, graph-execution/27 and brief-quality/07 |
+| Calculation, protocol and procedure | desk-improvement/01–04 | /01 → /02 CLI/reducer → /03 validation → /04 shared reference; continuing-operations/01–02 supply semantic contracts; no adopter corpus/runtime gate |
 | Read-only Improve view | desk-improvement/09 | /02 and /03 |
 | Native cross-mode qualification | desk-improvement/10 | /04, /07–09 |
 

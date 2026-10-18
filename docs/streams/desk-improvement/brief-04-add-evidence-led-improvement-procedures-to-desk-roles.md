@@ -2,15 +2,15 @@
 brief: "assay:assay:desk-improvement:04"
 title: "Add evidence-led improvement procedures to desk roles"
 why: "Roles need a repeatable way to explain evidence, test a change and revisit its outcome; collecting metrics alone does not establish improvement."
-wave: 2
+wave: 3
 depends: ["desk-improvement/03"]
-unblocks: ["desk-improvement/10"]
+unblocks: ["desk-improvement/08", "desk-improvement/10"]
 effort: "M"
 gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "yes", "sensitive-data": "no"}
 issues: []
 schema: "brief-v2"
-version: 1
+version: 2
 id: "7825545d-ccfe-4444-8a88-5dca6b4a7a17"
 authored: "2026-10-17 by desk-improvement authoring"
 sources: ["docs/streams/desk-improvement/spec.md", "docs/proposals/non-ci-architecture/11-target-architecture.md", "freshness-checked 2026-10-17 @ 2f56cf289; reconcile implementation claims and current PRs at pickup"]

@@ -2,15 +2,15 @@
 brief: "assay:assay:desk-improvement:03"
 title: "Validate analysis experiments and follow-up offline"
 why: "Experiments must distinguish actual benefit from missing attempts, leaked answers or a favorable window, and follow-up must remain bound to the original decision."
-wave: 1
-depends: ["desk-improvement/01"]
+wave: 2
+depends: ["desk-improvement/01", "desk-improvement/02"]
 unblocks: ["desk-improvement/04", "desk-improvement/09"]
 effort: "M"
 gate: "model"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
 issues: []
 schema: "brief-v2"
-version: 1
+version: 2
 id: "7e965aa7-804f-4e35-9f03-5549e8e9a77d"
 authored: "2026-10-17 by desk-improvement authoring"
 sources: ["docs/streams/desk-improvement/spec.md", "docs/proposals/non-ci-architecture/11-target-architecture.md", "freshness-checked 2026-10-17 @ 2f56cf289; reconcile implementation claims and current PRs at pickup"]
@@ -34,7 +34,7 @@ files:
 - `qualgen/deskquality/followup.go (planned)`
 - `qualgen/deskquality/experiment_test.go (planned)`
 - `qualgen/deskquality/testdata/experiments/ (planned synthetic cases)`
-- `qualgen/desks.go (01/02 CLI adapter; add validation operation)`
+- `qualgen/desks.go (02 CLI adapter; add validation operation)`
 - `docs/desk-improvement.md (planned usage/reference protocol)`
 - `changelog/desk-improvement-03.md` (planned) — use the actual unique implementation branch slug
 

@@ -4,13 +4,13 @@ title: "Implement configurable scorecards and pure reduction"
 why: "A common deterministic reducer makes scorecards comparable without creating another collector, lifecycle or source of execution authority."
 wave: 1
 depends: ["desk-improvement/01"]
-unblocks: ["desk-improvement/09"]
+unblocks: ["desk-improvement/03", "desk-improvement/06", "desk-improvement/09"]
 effort: "M"
 gate: "model"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "no"}
 issues: []
 schema: "brief-v2"
-version: 2
+version: 3
 id: "fa4383a3-e8e0-46be-8527-e39fed79c964"
 authored: "2026-10-17 by desk-improvement authoring"
 sources: ["docs/streams/desk-improvement/spec.md", "docs/proposals/non-ci-architecture/11-target-architecture.md", "freshness-checked 2026-10-17 @ 2f56cf289; reconcile implementation claims and current PRs at pickup"]
