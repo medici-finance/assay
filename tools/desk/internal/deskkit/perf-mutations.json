@@ -16,8 +16,8 @@
     {
       "name": "widen the field allowlist by one planted value: the verb field carries the argv (repo, PR, branch, path)",
       "file": "internal/deskkit/perf.go",
-      "old": "rec := newPerfRecord(tool, perfVerb(verbs, args), wall, code)",
-      "new": "rec := newPerfRecord(tool, strings.Join(args, \" \"), wall, code)"
+      "old": "rec := newPerfRecord(tool, verb, wall, code)",
+      "new": "verb = strings.Join(args, \" \")\n\trec := newPerfRecord(tool, verb, wall, code)"
     },
     {
       "name": "widen the field allowlist by one planted value: the role field carries DESK_SESSION",

@@ -132,6 +132,21 @@ A failing 503 read, caller retry and validated 304 account for three actual atte
 a locally refused floor read accounts for zero. These tests qualify counter semantics,
 not a new retry policy or production speed claim.
 
+Optional-sink preservation uses successful ordinary `main` invocations: a changed-file
+list from the production Forge client, a real local intake entry, and stamp application
+with production write/read-back against a bounded fixture transport. Both consent-off
+and a broken sink must retain output and work, preserve a nonempty audit prefix and
+append exactly one matching successful audit row. Only execution timestamps are
+normalized. Missing/unreadable audit state fails the assertion.
+
+Budget state is the audit ledger itself. Each case seeds one remaining charge for its
+tool plus an exhausted unrelated bucket and an open breaker, then queries the actual
+`AllowWriteAt` reader before and after the ordinary invocation. The appended row must
+have the same charging effect in both modes; the other refusals must remain in force.
+These are observations of existing ledger policy, not new write gates on read commands.
+Production overlays that skip armed execution or truncate audit history must fail the
+same preservation assertions. All effects stay inside disposable local fixtures.
+
 The [telemetry inventory](telemetry.md#review-workflow-attribution-and-coverage)
 names instrumented and remaining paths. Keep the six baseline cohorts unchanged:
 new counter coverage changes the observation boundary, so old/new values need the
