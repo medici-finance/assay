@@ -130,6 +130,8 @@ marker proves local immutable object contents and ancestry; it is not a forge
 identity attestation, permission or a replacement for independent verification.
 This local history proof is relative to the checked HEAD: the independent verifier
 still identifies the actual delivery; it does not bind that identity to a forge PR.
+Run protected closure from a landed-mainline checkout; a branch that imports it
+only through a merge can fail closed.
 
 Coverage observes the same original acceptance rows. Its typed
 `AcceptanceRevision` records the validated original definition revision; the
@@ -140,7 +142,10 @@ when a separate pattern supplies other passing claims.
 
 Retain previous Evidence runs. Each protected run contains its own marker and
 witnesses, followed by its final strict `**VERIFY: PASS**` verdict. Closure,
-audit, coverage and lint select that same latest run, never borrowing an earlier
-marker or witness. Duplicate live markers within one run, a latest failed or
+audit, coverage, flip, reconciliation and lint select that same latest run, never
+borrowing an earlier marker or witness. Duplicate live markers within one run, a latest failed or
 malformed verdict, and unfinished live content after the last PASS refuse
-closure. A caller that already selected a run passes that run alone.
+closure. A caller with an already-selected run retains full Evidence through
+the shared context adapter: earlier protection still requires current provenance,
+while ordinary unmarked records audit only their selected run. Passing the selected
+text alone loses that context and is not a valid protected closure input.

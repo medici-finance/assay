@@ -40,7 +40,7 @@
     {
       "name": "closure audit (closureWitnesses)",
       "file": "reconcilefold.go",
-      "old": "findings, refusal := closureWitnesses(d.verify, p.Run, d.path)",
+      "old": "findings, refusal := closureWitnesses(d.verify, closureEvidenceForRun(d.evidence, p.Run), d.path)",
       "new": "findings, refusal := checkWitnesses(d.verify, p.Run), \"\""
     },
     {

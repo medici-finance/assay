@@ -3,3 +3,4 @@
 - Coverage uses the same original acceptance contract and explicit held provenance observations. Evaluator generation 2 identifies the typed original-definition revision without changing witness execution revisions or content applicability.
 - Protected closure, audit, coverage and lint select the latest complete run while retaining prior Evidence; duplicate current markers and unfinished or failed current runs hold. Two-parent deliveries require unchanged main acceptance since divergence. Existing mutation controls remain executable against their current guard anchors.
 - Protected provenance requires the delivery on the observed HEAD first-parent chain before using its mainline baseline; arbitrary reachable history grants no supplemental accounting.
+- Flip and reconciliation retain complete protected Evidence context through the shared run adapter; a newer unmarked PASS cannot replace current provenance. Ordinary records still audit only the selected run.

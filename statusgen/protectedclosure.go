@@ -35,6 +35,16 @@ func hasProtectedTableMarker(evidence string) bool {
 	return false
 }
 
+// closureEvidenceForRun retains the full protected context for the canonical
+// audit to select its current run. Ordinary records keep the caller's selected
+// run, so an older ordinary witness cannot fill a missing current-run row.
+func closureEvidenceForRun(full, run string) string {
+	if hasProtectedTableMarker(full) {
+		return full
+	}
+	return run
+}
+
 // protectedAcceptance returns only owed original rows plus explicit uncredited
 // supplemental dispositions. Without a live marker, the ordinary table is owed
 // in full. A quoted example, hash or author-added label grants no exemption.
@@ -43,8 +53,9 @@ func protectedAcceptance(verify, evidence string, paths ...string) (protectedPla
 	if !hasProtectedTableMarker(stripped) {
 		return protectedPlan{Verify: verify, Evidence: evidence}, ""
 	}
-	// Callers that already selected p.Run supply no verdict. Complete Evidence
-	// histories use the same strict current-run selector as flip and reconcile.
+	// Protected callers retain complete Evidence through closureEvidenceForRun.
+	// Select its strict current run here; earlier markers establish protected
+	// context but cannot supply missing current provenance or witnesses.
 	if len(flipVerdictTokens(strings.Split(stripped, "\n"))) > 0 {
 		p, err := flipLatestPass(evidence)
 		if err != nil {

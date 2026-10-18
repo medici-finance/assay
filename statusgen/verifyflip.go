@@ -295,7 +295,7 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 			return verifyFlipPlan{}, refuseFlip("gate-class: Verify row %s has unknown class %q — the verb cannot tell who decides it", r.ID, r.Class)
 		}
 	}
-	findings, refusal := closureWitnesses(verify, run, path)
+	findings, refusal := closureWitnesses(verify, closureEvidenceForRun(bf.Evidence, run), path)
 	if refusal != "" {
 		return verifyFlipPlan{}, refuseFlip("%s", refusal)
 	}
