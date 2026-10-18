@@ -13,6 +13,7 @@ unblocks: []
 withdrawn-date: "2026-10-18"
 superseded-by: ["graph-execution/08"]
 withdrawn-reason: "The mechanical-responder obligations (closed remedy set, no gate-configuration edits, canonicalized paths, dedupe, ceilings failing closed to escalation, sanitized text) are folded into graph-execution/08's propose exit; the live adapter and its autonomous-action gate belong to the later dispatch brief that 08 names."
+decision-issue: 3420
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

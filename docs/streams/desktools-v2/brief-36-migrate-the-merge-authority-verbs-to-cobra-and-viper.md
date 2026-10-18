@@ -11,6 +11,7 @@ unblocks: []
 withdrawn-date: "2026-10-18"
 superseded-by: ["graph-execution/04", "graph-execution/25"]
 withdrawn-reason: "The ratified target (docs/proposals/non-ci-architecture/11-target-architecture.md §\"What happens to today's tools\": thin adapters, do not port the entire command matrix; 13-migration-and-decisions.md: no parser migration is a prerequisite) retires or re-homes this domain: merge authority becomes a role-bound effect with stable effect identity (R4: graph-execution/04, /25). The owned entrypoints keep their current parser, routed exempt in cli-migration.json, until retired."
+decision-issue: 3420
 effort: "L"
 gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "yes"}

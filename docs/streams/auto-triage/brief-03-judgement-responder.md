@@ -13,6 +13,7 @@ unblocks: []
 withdrawn-date: "2026-10-18"
 superseded-by: ["graph-execution/08"]
 withdrawn-reason: "The judgement-responder obligations (every route carries a recommended default, the withheld-detail path, sanitized text, ceilings failing closed) are folded into graph-execution/08's judgement decision exit; the live adapter and its autonomous-action gate belong to the later dispatch brief that 08 names."
+decision-issue: 3420
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
