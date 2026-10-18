@@ -720,12 +720,24 @@ Two consequences worth stating before you debug them:
 - A stray unrecognised `ASSAY_*` key — a one-character typo — collapses the **whole**
   configuration to unconfigured and every tool refuses. Keys outside the `ASSAY_` namespace are
   echoed and ignored, so a co-tenant tool may share the file.
-- `ASSAY_HUMAN_LOGIN_MAP` is load-bearing for `statusgen --lint` itself — an absent or
-  wrong-shaped roster fails lint (`LINT: FAIL`), not just repo-scoped acting commands. Sequencing
-  matters: this primitive lands at Scenario 1 step 6, but step 4 (`add-statusgen-ci`) and step 9
-  (`first-board`) both Verify on `--lint` exiting 0. Land the CI `env:` passthrough
-  in the same change that adds the roster, or an adopter's CI turns
-  red on briefs the roster change never touched.
+- `ASSAY_HUMAN_LOGIN_MAP` is load-bearing for the trust-dependent checks in
+  `statusgen --lint`. A configuration the loader refuses now exits **5** before
+  evaluation, printing `LINT: REFUSED configuration; trust-dependent checks could-not-check`
+  rather than PASS. A parsed but incomplete CI roster retains the existing per-check
+  behavior; this does not require every reporting-mode roster to be fully configured.
+  Land the CI `env:` passthrough in the same change that adds the roster so checks
+  do not lose their human mapping.
+
+**Keep the pinned binary compatible with the shared roster's keys.** Source-checked
+examples: [v1.0.29's statusgen loader](https://github.com/medici-finance/assay/blob/v1.0.29/statusgen/rosterconfig.go)
+does not recognize `ASSAY_OS_USER_LOGIN_MAP`, while
+[v1.0.39's loader](https://github.com/medici-finance/assay/blob/v1.0.39/statusgen/rosterconfig.go)
+recognizes that desk-only key. These examples are not a complete minimum-version
+matrix. When an older binary refuses a newer roster key, deliberately re-pin to a
+release whose loader recognizes the keys you use, following the release/checksum
+procedure. Do not remove the key or substitute a reduced roster to obtain a green
+lint. The unknown-`ASSAY_*` refusal policy remains unchanged; its policy decision
+is tracked in [#1261](https://github.com/medici-finance/assay/issues/1261).
 
 **A bad TRUST value still refuses everything; a bad EXTENSION value now refuses only its own
 dependents.** The six fail-closed trust surfaces — `ASSAY_BLESS_LOGIN`, `ASSAY_TRUSTED_LOGINS`,

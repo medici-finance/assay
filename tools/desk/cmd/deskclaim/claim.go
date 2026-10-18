@@ -262,7 +262,7 @@ func cmdList(args []string) error {
 		return err
 	}
 	claims, lerr := deskkit.List(deskkit.ClaimConfig{ClaimsDir: dir})
-	if lerr != nil {
+	if lerr != nil && len(claims) == 0 {
 		audit("list", deskkit.ResultUnverifiable, "", lerr.Error())
 		return lerr
 	}
@@ -285,6 +285,10 @@ func cmdList(args []string) error {
 			branch = "-"
 		}
 		fmt.Printf("%-10s %-28s %-16s %s\n", kindOrDash(c.Kind), c.Item, ownerOrDash(c.Owner), branch)
+	}
+	if lerr != nil {
+		audit("list", deskkit.ResultUnverifiable, "", lerr.Error())
+		return lerr
 	}
 	audit("list", deskkit.ResultOK, "", fmt.Sprintf("%d claims", len(claims)))
 	return nil

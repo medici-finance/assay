@@ -45,6 +45,61 @@ on the driver surface, and a manual human kick that moves queued work is an
 incident to file on the project's methodology tracker. Hard gates (human-gated
 decisions, budgets, breakers, explicit stop-orders) are unchanged.
 
+## Supervision and context
+
+The supervisor reacts to events; it is not a second worker or a model-powered timer.
+After dispatch, retain the child/command handles and the next required sweep/stop-check
+deadline. Return to model work only for a child result or actionable message, human
+steering, a failed watcher, or a due role check. On a completion, consume that result,
+perform the required independent verdict readback, and refill the available slot.
+A notification is a cue, never evidence of a posted verdict or a drained queue.
+
+When nothing actionable changed, block on the existing event/command handle until the
+next required deadline, using the longest wait the exposed tool and harness instructions
+permit. Do not invent a shorter polling interval. On an early timeout, re-arm the wait
+with the remaining time; do not inventory agents/processes, reread logs or manuals,
+refresh the whole board, send progress pings, or print an unchanged status summary.
+Run the required stop/liveness and fresh queue checks when due, then return to waiting.
+A failed read remains could-not-check. Completion events refill slots without waiting
+for the next queue sweep; the role's sweep cadence and stop obligations remain intact.
+
+Keep one owner for each routine CI/log watch. Use a non-model watcher with the existing
+cadence and retry-after/backoff, reporting terminal status, actionable failure, watcher
+failure or the role's required liveness signal. Do not create an agent whose only job
+is to repeatedly ask whether another agent or CI job has finished. The supervisor does
+not duplicate the item's routine watch, but still performs every required independent
+verdict readback and final ready/claim check. Save full logs to files.
+
+If only a future cadence is due, wait interruptibly in the current turn. Never end a
+turn just to have a standing objective immediately restart the same unchanged checks.
+If the harness cannot wait efficiently or cannot wake after the turn ends, state that
+capability gap and use the existing operator-selected outer cadence mechanism; do not
+imitate a durable monitor with repeated model turns or a new polling daemon. Switching
+launch modes requires the existing clean handoff; do not abandon children, claims or
+processes, change the driver's Goal, or claim idle without the required fresh sweep.
+
+Read the role and applicable references at boot. While their content remains available
+in context, continue from it; a new turn does not require rereading unchanged manuals.
+After compaction or a source change, recover the missing or changed instructions before
+acting. Use the existing [standing note](./standing-note.md), not a second checkpoint
+schema: keep item/repository, lane and exact head, worktree, child and command handles,
+unresolved findings/holds and evidence paths under In-flight; keep last sweep and next
+due check under Board/Monitors. This remains a re-probe index, never authority, fresh
+queue evidence or a verdict.
+Save full logs to files and bring back status, relevant failure excerpts and paths.
+
+Give each new item a fresh agent context with its admitted assignment and packet paths,
+required role instructions and shell/identity constraints. Reuse a child for follow-up
+on that same item and lane, not as a permanent slot accumulating unrelated assignments.
+Before retiring a child, retain its evidence and resolve live processes/claims through
+their existing lifecycle. A fresh context must not bypass a refusal, outstanding finding,
+claim or human hold. Re-review handoffs carry prior findings and their evidence; separate
+review lanes remain independent and do not inherit the implementer's conclusions.
+
+Reduce duplicate supervision, not review scope: retain the required source/diff reads,
+omission follow-up, tests, model admission, independent verdicts and consequential
+freshness checks. Use the harness binding for concrete wait and dispatch mechanisms.
+
 ## Worktree hygiene
 
 Worktree sprawl is owned by `deskwt prune` — it runs at boot and under its own interval
