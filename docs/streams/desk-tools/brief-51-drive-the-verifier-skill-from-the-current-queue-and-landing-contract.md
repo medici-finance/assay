@@ -20,7 +20,7 @@ exec-tier: strong
 exec-tier-why: "Cross-component queue, input provenance and effect boundaries must agree; a subtle error can suppress needed verification or advance the wrong state."
 domain: complicated
 outcome: none
-version: 1
+version: 2
 id: af2553b5-b208-4d3d-aab1-5d8c518b2add
 consumers:
   - "tools/desk/internal/deskkit/citrigger_test.go: follow-up desk-tools/51 (register the skill-body cross-module read; existing CI already runs on every push and pull request)"
@@ -72,6 +72,8 @@ Default if no answer: hold.
 4. Test rendered actions against the same fixture plans and CLI help, including stale source, unreadable roots and a human/risk item. Preserve generated guardrail blocks and run the existing skill parity/lint procedure. Register any cross-module or skill-body fixture reads and their CI triggering paths in the existing cross-module registry.
 5. Document the minimum released paired tool versions and rollout/reversal requirements. Source merge alone must not instruct a consumer of an older pin to invoke a missing mode.
 
+6. At implementation delivery, convert all 7 consumer entries that name this brief from `follow-up desk-tools/51` to `fixed-here`, preserving the exact sites and notes. These are deferred only in the authoring PR. Every owed path must occur in the delivering diff; a self-follow-up proves only that this brief exists. The consumer Verify row requires 7 corroborated, zero disproved and zero unchecked entries. Any proposed exclusion or reroute needs a reviewed brief amendment with its residual obligation, rather than silently lowering the count.
+
 ## Interface contract
 
 One table derived from implemented actions and permissions, never a second dispatch policy or activation instruction.
@@ -87,10 +89,13 @@ One table derived from implemented actions and permissions, never a second dispa
 
 New test names below are planned contracts. The named PASS assertion must fail if a selector runs no test. Run commands from the repository root.
 
+Consumer-diff provenance: obtain the full immutable `DELIVERY_HEAD` and `DELIVERY_BASE` from this brief's actual delivering PR; the base is its reviewed merge-base, not whichever main happens to be current. Record both SHAs and the command output in Evidence. After merge, use the delivery merge's second parent as the head and the merge-base of its two parents as the base, as described in `docs/brief-rules.md`. Run the consumer row in a separate checkout at that exact head, with those variables set; never move an already admitted verifier home to satisfy it. An absent delivery binding or empty/unrelated diff is could-not-check, never acceptance. The literal coverage summary accounts for every entry; no unchecked residue is accepted by this authored contract.
+
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd tools/desk && go test ./cmd/verifyloop -run "^TestFlowSkill$" -count=1 -v > "${TMPDIR:-/tmp}/flow-51-tools-desk-cmd-verifyloop.log" 2>&1 && grep -F -e "--- PASS: TestFlowSkill " "${TMPDIR:-/tmp}/flow-51-tools-desk-cmd-verifyloop.log"` | exit 0; output contains the named PASS line. Cases: each fixture plan resolves to an existing supported action; human/Evidence-only cases never suggest a model flip; stale prerequisite and missing release capability yield a hold | check:ci +mutation +flow +dereference |
-| 2 | `statusgen --root . --consumers` | exit 0; the implementation diff corroborates declared routing | check +flow |
+| 2 | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up desk-tools/51' docs/streams/desk-tools/brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/51 --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 7 corroborated, 0 disproved, 0 unchecked' "$o"` | exit 0; exact delivering head/base, no self-deferred route, and all 7 consumer sites corroborated by the implementation diff. Zero unchecked residue; missing implementation, an empty diff or a routing-only authoring tree must not pass | check +flow +dereference |
+| 3 | `cd statusgen && GOWORK=off go test . -run "^TestConsumersGateFiresOnFalseFixedHere$" -count=1 -v > "${TMPDIR:-/tmp}/flow-51-consumer-negative.log" 2>&1 && grep -F -e "--- PASS: TestConsumersGateFiresOnFalseFixedHere " "${TMPDIR:-/tmp}/flow-51-consumer-negative.log"` | exit 0; named PASS. Negative control: an owed fixed-here consumer exists but is absent from the implementation diff, so corroboration must exit 1; adding that path to the diff restores exit 0 | check:ci +mutation +dereference |
 
 
 ## Evidence

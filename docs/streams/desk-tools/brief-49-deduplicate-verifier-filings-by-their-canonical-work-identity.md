@@ -20,7 +20,7 @@ exec-tier: strong
 exec-tier-why: "Cross-component queue, input provenance and effect boundaries must agree; a subtle error can suppress needed verification or advance the wrong state."
 domain: complicated
 outcome: none
-version: 1
+version: 2
 id: 2aad844d-9d46-42bb-8597-6a27eba517ad
 consumers:
   - "tools/desk/cmd/verifyloop/flow_49_test.go: follow-up desk-tools/49 (planned test contract)"
@@ -71,6 +71,8 @@ Default if no answer: hold.
 3. Keep legacy title dedupe for filings without a structured identity and retain the current audited force-new reason path. A failed or truncated exact read is unknown and files nothing; an ambiguous response is reconciled before another create.
 4. Extend the existing typed forge seam and caller; do not add a private issue cache or activate the dry-run repair sink. Test varied titles for one case, a second independent case and cross-root collisions.
 
+5. At implementation delivery, convert all 7 consumer entries that name this brief from `follow-up desk-tools/49` to `fixed-here`, preserving the exact sites and notes. These are deferred only in the authoring PR. Every owed path must occur in the delivering diff; a self-follow-up proves only that this brief exists. The consumer Verify row requires 7 corroborated, zero disproved and zero unchecked entries. Any proposed exclusion or reroute needs a reviewed brief amendment with its residual obligation, rather than silently lowering the count.
+
 ## Interface contract
 
 One exact identity before existing fuzzy matching; no new global suppress-all-on-brief rule or automatic issue closure.
@@ -86,11 +88,14 @@ One exact identity before existing fuzzy matching; no new global suppress-all-on
 
 New test names below are planned contracts. The named PASS assertion must fail if a selector runs no test. Run commands from the repository root.
 
+Consumer-diff provenance: obtain the full immutable `DELIVERY_HEAD` and `DELIVERY_BASE` from this brief's actual delivering PR; the base is its reviewed merge-base, not whichever main happens to be current. Record both SHAs and the command output in Evidence. After merge, use the delivery merge's second parent as the head and the merge-base of its two parents as the base, as described in `docs/brief-rules.md`. Run the consumer row in a separate checkout at that exact head, with those variables set; never move an already admitted verifier home to satisfy it. An absent delivery binding or empty/unrelated diff is could-not-check, never acceptance. The literal coverage summary accounts for every entry; no unchecked residue is accepted by this authored contract.
+
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd tools/desk && go test ./cmd/deskfile -run "^TestFlowFileKey$" -count=1 -v > "${TMPDIR:-/tmp}/flow-49-tools-desk-cmd-deskfile.log" 2>&1 && grep -F -e "--- PASS: TestFlowFileKey " "${TMPDIR:-/tmp}/flow-49-tools-desk-cmd-deskfile.log"` | exit 0; output contains the named PASS line. Cases: same case under unrelated titles is deduped; distinct cases and cross-root same numbers remain separate; unreadable/partial search creates nothing; audited override still records its reason | check:ci +mutation +flow +dereference |
 | 2 | `cd tools/desk && go test ./cmd/verifyloop -run "^TestFlowFileKey$" -count=1 -v > "${TMPDIR:-/tmp}/flow-49-tools-desk-cmd-verifyloop.log" 2>&1 && grep -F -e "--- PASS: TestFlowFileKey " "${TMPDIR:-/tmp}/flow-49-tools-desk-cmd-verifyloop.log"` | exit 0; output contains the named PASS line. Cases: same case under unrelated titles is deduped; distinct cases and cross-root same numbers remain separate; unreadable/partial search creates nothing; audited override still records its reason | check:ci +mutation +flow +dereference |
-| 3 | `statusgen --root . --consumers` | exit 0; the implementation diff corroborates declared routing | check +flow |
+| 3 | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up desk-tools/49' docs/streams/desk-tools/brief-49-deduplicate-verifier-filings-by-their-canonical-work-identity.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/49 --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 7 corroborated, 0 disproved, 0 unchecked' "$o"` | exit 0; exact delivering head/base, no self-deferred route, and all 7 consumer sites corroborated by the implementation diff. Zero unchecked residue; missing implementation, an empty diff or a routing-only authoring tree must not pass | check +flow +dereference |
+| 4 | `cd statusgen && GOWORK=off go test . -run "^TestConsumersGateFiresOnFalseFixedHere$" -count=1 -v > "${TMPDIR:-/tmp}/flow-49-consumer-negative.log" 2>&1 && grep -F -e "--- PASS: TestConsumersGateFiresOnFalseFixedHere " "${TMPDIR:-/tmp}/flow-49-consumer-negative.log"` | exit 0; named PASS. Negative control: an owed fixed-here consumer exists but is absent from the implementation diff, so corroboration must exit 1; adding that path to the diff restores exit 0 | check:ci +mutation +dereference |
 
 
 ## Evidence

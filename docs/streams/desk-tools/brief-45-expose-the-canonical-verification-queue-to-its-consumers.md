@@ -20,7 +20,7 @@ exec-tier: strong
 exec-tier-why: "Cross-component queue, input provenance and effect boundaries must agree; a subtle error can suppress needed verification or advance the wrong state."
 domain: complicated
 outcome: none
-version: 1
+version: 2
 id: b40ce6af-2881-4f1a-874e-59182406b326
 consumers:
   - "tools/desk/cmd/verifyloop/flow_45_test.go: follow-up desk-tools/45 (planned test contract)"
@@ -77,6 +77,8 @@ Default if no answer: hold.
 3. Make verifyloop render text and an opt-in JSON plan from the same plan value. Keep diagnostics off JSON stdout and include explicit healthy/skipped/unreadable root coverage. Compose existing receipt/blocked/online/risk overlays with the canonical base classification and document precedence. Keep Evidence-only human work separate from authority to flip.
 4. Use shared fixtures for board/JSON/planner agreement across every class and mixed roots. A test reading another module must join the existing cross-module registry and its triggering paths; do not silently make the cross-component contract advisory.
 
+5. At implementation delivery, convert all 12 consumer entries that name this brief from `follow-up desk-tools/45` to `fixed-here`, preserving the exact sites and notes. These are deferred only in the authoring PR. Every owed path must occur in the delivering diff; a self-follow-up proves only that this brief exists. The consumer Verify row requires 12 corroborated, zero disproved and zero unchecked entries. Any proposed exclusion or reroute needs a reviewed brief amendment with its residual obligation, rather than silently lowering the count.
+
 ## Interface contract
 
 One canonical queue meaning, additive JSON fields and explicit unknown coverage; no new independent classifier or subprocess per row.
@@ -92,12 +94,15 @@ One canonical queue meaning, additive JSON fields and explicit unknown coverage;
 
 New test names below are planned contracts. The named PASS assertion must fail if a selector runs no test. Run commands from the repository root.
 
+Consumer-diff provenance: obtain the full immutable `DELIVERY_HEAD` and `DELIVERY_BASE` from this brief's actual delivering PR; the base is its reviewed merge-base, not whichever main happens to be current. Record both SHAs and the command output in Evidence. After merge, use the delivery merge's second parent as the head and the merge-base of its two parents as the base, as described in `docs/brief-rules.md`. Run the consumer row in a separate checkout at that exact head, with those variables set; never move an already admitted verifier home to satisfy it. An absent delivery binding or empty/unrelated diff is could-not-check, never acceptance. The literal coverage summary accounts for every entry; no unchecked residue is accepted by this authored contract.
+
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd statusgen && go test ./... -run "^TestFlowQueue$" -count=1 -v > "${TMPDIR:-/tmp}/flow-45-statusgen-allallall.log" 2>&1 && grep -F -e "--- PASS: TestFlowQueue " "${TMPDIR:-/tmp}/flow-45-statusgen-allallall.log"` | exit 0; output contains the named PASS line. Cases: all base buckets, paused/parked and unknown; existing JSON fields remain compatible; corrupt Evidence does not become an empty queue | check:ci +mutation +flow +dereference |
 | 2 | `cd tools/desk && go test ./cmd/deskboard -run "^TestFlowQueue$" -count=1 -v > "${TMPDIR:-/tmp}/flow-45-tools-desk-cmd-deskboard.log" 2>&1 && grep -F -e "--- PASS: TestFlowQueue " "${TMPDIR:-/tmp}/flow-45-tools-desk-cmd-deskboard.log"` | exit 0; output contains the named PASS line. Cases: ./cmd/deskboard ./cmd/verifyloop: one fixture is consistently classified by both consumers; missing fields/roots suppress widening and preserve partial coverage | check:ci +mutation +flow +dereference |
 | 3 | `cd tools/desk && go test ./cmd/verifyloop -run "^TestFlowQueue$" -count=1 -v > "${TMPDIR:-/tmp}/flow-45-tools-desk-cmd-verifyloop.log" 2>&1 && grep -F -e "--- PASS: TestFlowQueue " "${TMPDIR:-/tmp}/flow-45-tools-desk-cmd-verifyloop.log"` | exit 0; output contains the named PASS line. Cases: ./cmd/deskboard ./cmd/verifyloop: one fixture is consistently classified by both consumers; missing fields/roots suppress widening and preserve partial coverage | check:ci +mutation +flow +dereference |
-| 4 | `statusgen --root . --consumers` | exit 0; the implementation diff corroborates declared routing | check +flow |
+| 4 | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up desk-tools/45' docs/streams/desk-tools/brief-45-expose-the-canonical-verification-queue-to-its-consumers.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/45 --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 12 corroborated, 0 disproved, 0 unchecked' "$o"` | exit 0; exact delivering head/base, no self-deferred route, and all 12 consumer sites corroborated by the implementation diff. Zero unchecked residue; missing implementation, an empty diff or a routing-only authoring tree must not pass | check +flow +dereference |
+| 5 | `cd statusgen && GOWORK=off go test . -run "^TestConsumersGateFiresOnFalseFixedHere$" -count=1 -v > "${TMPDIR:-/tmp}/flow-45-consumer-negative.log" 2>&1 && grep -F -e "--- PASS: TestConsumersGateFiresOnFalseFixedHere " "${TMPDIR:-/tmp}/flow-45-consumer-negative.log"` | exit 0; named PASS. Negative control: an owed fixed-here consumer exists but is absent from the implementation diff, so corroboration must exit 1; adding that path to the diff restores exit 0 | check:ci +mutation +dereference |
 
 
 ## Evidence

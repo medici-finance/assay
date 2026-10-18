@@ -20,7 +20,7 @@ exec-tier: strong
 exec-tier-why: "Cross-component queue, input provenance and effect boundaries must agree; a subtle error can suppress needed verification or advance the wrong state."
 domain: complicated
 outcome: none
-version: 1
+version: 2
 id: b5cb55be-755f-4166-8f27-cfe3af63556c
 consumers:
   - "tools/desk/internal/deskkit/flow_50_test.go: follow-up desk-tools/50 (planned test contract)"
@@ -74,6 +74,8 @@ Default if no answer: hold.
 4. Invalidate the prerequisite record if source, tool or relevant sibling changes between admission and landing. Make landing consume the same run-bound record; a stale successful preflight cannot authorize a later tree.
 5. Test instrument missing, pin drift, changed sibling, denied capability, zero scanned paths and a second root with unreadable prerequisites. Preserve the existing admission guard rather than replace it with a self-authored prose banner.
 
+6. At implementation delivery, convert all 9 consumer entries that name this brief from `follow-up desk-tools/50` to `fixed-here`, preserving the exact sites and notes. These are deferred only in the authoring PR. Every owed path must occur in the delivering diff; a self-follow-up proves only that this brief exists. The consumer Verify row requires 9 corroborated, zero disproved and zero unchecked entries. Any proposed exclusion or reroute needs a reviewed brief amendment with its residual obligation, rather than silently lowering the count.
+
 ## Interface contract
 
 A minimal prerequisite record in the existing admission owner; no additional service, production contact or credential scope.
@@ -89,11 +91,14 @@ A minimal prerequisite record in the existing admission owner; no additional ser
 
 New test names below are planned contracts. The named PASS assertion must fail if a selector runs no test. Run commands from the repository root.
 
+Consumer-diff provenance: obtain the full immutable `DELIVERY_HEAD` and `DELIVERY_BASE` from this brief's actual delivering PR; the base is its reviewed merge-base, not whichever main happens to be current. Record both SHAs and the command output in Evidence. After merge, use the delivery merge's second parent as the head and the merge-base of its two parents as the base, as described in `docs/brief-rules.md`. Run the consumer row in a separate checkout at that exact head, with those variables set; never move an already admitted verifier home to satisfy it. An absent delivery binding or empty/unrelated diff is could-not-check, never acceptance. The literal coverage summary accounts for every entry; no unchecked residue is accepted by this authored contract.
+
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd tools/desk && go test ./internal/deskkit -run "^TestFlowWorld$" -count=1 -v > "${TMPDIR:-/tmp}/flow-50-tools-desk-internal-deskkit.log" 2>&1 && grep -F -e "--- PASS: TestFlowWorld " "${TMPDIR:-/tmp}/flow-50-tools-desk-internal-deskkit.log"` | exit 0; output contains the named PASS line. Cases: required prerequisite failure spends no row; environment unknown is distinct from FAIL; source/tool drift invalidates admission; a healthy root stays visible beside an unreadable root | check:ci +mutation +flow +dereference |
 | 2 | `cd tools/desk && go test ./cmd/verifyloop -run "^TestFlowWorld$" -count=1 -v > "${TMPDIR:-/tmp}/flow-50-tools-desk-cmd-verifyloop.log" 2>&1 && grep -F -e "--- PASS: TestFlowWorld " "${TMPDIR:-/tmp}/flow-50-tools-desk-cmd-verifyloop.log"` | exit 0; output contains the named PASS line. Cases: required prerequisite failure spends no row; environment unknown is distinct from FAIL; source/tool drift invalidates admission; a healthy root stays visible beside an unreadable root | check:ci +mutation +flow +dereference |
-| 3 | `statusgen --root . --consumers` | exit 0; the implementation diff corroborates declared routing | check +flow |
+| 3 | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up desk-tools/50' docs/streams/desk-tools/brief-50-bind-verifier-environment-evidence-to-the-run-admission.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/50 --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 9 corroborated, 0 disproved, 0 unchecked' "$o"` | exit 0; exact delivering head/base, no self-deferred route, and all 9 consumer sites corroborated by the implementation diff. Zero unchecked residue; missing implementation, an empty diff or a routing-only authoring tree must not pass | check +flow +dereference |
+| 4 | `cd statusgen && GOWORK=off go test . -run "^TestConsumersGateFiresOnFalseFixedHere$" -count=1 -v > "${TMPDIR:-/tmp}/flow-50-consumer-negative.log" 2>&1 && grep -F -e "--- PASS: TestConsumersGateFiresOnFalseFixedHere " "${TMPDIR:-/tmp}/flow-50-consumer-negative.log"` | exit 0; named PASS. Negative control: an owed fixed-here consumer exists but is absent from the implementation diff, so corroboration must exit 1; adding that path to the diff restores exit 0 | check:ci +mutation +dereference |
 
 
 ## Evidence

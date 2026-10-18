@@ -20,7 +20,7 @@ exec-tier: strong
 exec-tier-why: "Cross-component queue, input provenance and effect boundaries must agree; a subtle error can suppress needed verification or advance the wrong state."
 domain: complicated
 outcome: none
-version: 1
+version: 2
 id: c2ff642d-db3c-47d3-a49d-03b05fbb0dde
 consumers:
   - "tools/desk/cmd/verifyloop/flow_47_test.go: follow-up desk-tools/47 (planned test contract)"
@@ -74,6 +74,8 @@ Default if no answer: hold.
 4. Exercise interruption before Evidence, after accepted Evidence, after local flip and after uncertain remote response. Resume must reconcile exact content/commit receipts, preserve accepted runner attribution, add no PROBLEM, and never enable gitDurable by default.
 5. Record actual effect cost for capacity planning, with distinct completed/remaining/unknown effects. Preserve the existing publication, admission, append-only and before/after lint checks.
 
+6. At implementation delivery, convert all 9 consumer entries that name this brief from `follow-up desk-tools/47` to `fixed-here`, preserving the exact sites and notes. These are deferred only in the authoring PR. Every owed path must occur in the delivering diff; a self-follow-up proves only that this brief exists. The consumer Verify row requires 9 corroborated, zero disproved and zero unchecked entries. Any proposed exclusion or reroute needs a reviewed brief amendment with its residual obligation, rather than silently lowering the count.
+
 ## Interface contract
 
 One resumable operation in the existing Evidence owner, with explicit receipts per effect and no additional authority.
@@ -89,12 +91,15 @@ One resumable operation in the existing Evidence owner, with explicit receipts p
 
 New test names below are planned contracts. The named PASS assertion must fail if a selector runs no test. Run commands from the repository root.
 
+Consumer-diff provenance: obtain the full immutable `DELIVERY_HEAD` and `DELIVERY_BASE` from this brief's actual delivering PR; the base is its reviewed merge-base, not whichever main happens to be current. Record both SHAs and the command output in Evidence. After merge, use the delivery merge's second parent as the head and the merge-base of its two parents as the base, as described in `docs/brief-rules.md`. Run the consumer row in a separate checkout at that exact head, with those variables set; never move an already admitted verifier home to satisfy it. An absent delivery binding or empty/unrelated diff is could-not-check, never acceptance. The literal coverage summary accounts for every entry; no unchecked residue is accepted by this authored contract.
+
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd tools/desk && go test ./cmd/verifyloop -run "^TestFlowResume$" -count=1 -v > "${TMPDIR:-/tmp}/flow-47-tools-desk-cmd-verifyloop.log" 2>&1 && grep -F -e "--- PASS: TestFlowResume " "${TMPDIR:-/tmp}/flow-47-tools-desk-cmd-verifyloop.log"` | exit 0; output contains the named PASS line. Cases: crash at each boundary, same-run retry is idempotent, uncertain write is reconciled, denied channel stops, branch profile does not touch main, risk/human cases remain Evidence-only | check:ci +mutation +flow +dereference |
 | 2 | `cd tools/desk && go test ./cmd/deskevidence -run "^TestFlowResume$" -count=1 -v > "${TMPDIR:-/tmp}/flow-47-tools-desk-cmd-deskevidence.log" 2>&1 && grep -F -e "--- PASS: TestFlowResume " "${TMPDIR:-/tmp}/flow-47-tools-desk-cmd-deskevidence.log"` | exit 0; output contains the named PASS line. Cases: crash at each boundary, same-run retry is idempotent, uncertain write is reconciled, denied channel stops, branch profile does not touch main, risk/human cases remain Evidence-only | check:ci +mutation +flow +dereference |
 | 3 | `cd statusgen && go test ./... -run "^TestFlowFlipBoundary$" -count=1 -v > "${TMPDIR:-/tmp}/flow-47-statusgen-allallall.log" 2>&1 && grep -F -e "--- PASS: TestFlowFlipBoundary " "${TMPDIR:-/tmp}/flow-47-statusgen-allallall.log"` | exit 0; output contains the named PASS line. Cases: strict PASS/provenance/sha/runner validation and all human/risk exclusions survive the continuation path | check:ci +mutation +flow +dereference |
-| 4 | `statusgen --root . --consumers` | exit 0; the implementation diff corroborates declared routing | check +flow |
+| 4 | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up desk-tools/47' docs/streams/desk-tools/brief-47-resume-interrupted-evidence-landing-through-the-existing-sanctioned-paths.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/47 --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 9 corroborated, 0 disproved, 0 unchecked' "$o"` | exit 0; exact delivering head/base, no self-deferred route, and all 9 consumer sites corroborated by the implementation diff. Zero unchecked residue; missing implementation, an empty diff or a routing-only authoring tree must not pass | check +flow +dereference |
+| 5 | `cd statusgen && GOWORK=off go test . -run "^TestConsumersGateFiresOnFalseFixedHere$" -count=1 -v > "${TMPDIR:-/tmp}/flow-47-consumer-negative.log" 2>&1 && grep -F -e "--- PASS: TestConsumersGateFiresOnFalseFixedHere " "${TMPDIR:-/tmp}/flow-47-consumer-negative.log"` | exit 0; named PASS. Negative control: an owed fixed-here consumer exists but is absent from the implementation diff, so corroboration must exit 1; adding that path to the diff restores exit 0 | check:ci +mutation +dereference |
 
 
 ## Evidence
