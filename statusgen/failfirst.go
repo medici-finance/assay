@@ -367,7 +367,6 @@ func runFailFirstBase(plan shellPlan, sandbox, root, base string, rows []verifyR
 	wt := filepath.Join(tmp, "tree")
 	defer func() {
 		_, _ = gitOut(root, "worktree", "remove", "--force", wt)
-		_, _ = gitOut(root, "worktree", "prune")
 		_ = os.RemoveAll(tmp)
 	}()
 	if _, err := gitOut(root, "worktree", "add", "--detach", "--quiet", wt, base); err != nil {

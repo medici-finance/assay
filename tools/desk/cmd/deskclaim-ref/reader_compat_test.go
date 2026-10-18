@@ -60,11 +60,13 @@ func TestClaimReaderCompatibility(t *testing.T) {
 			if tc.linked {
 				dir = linked
 			}
-			if tc.scope == "global" {
-				// Fixture.Git disables ambient globals. Seed only this owned file;
-				// originRemoteURL still reads it through the test's explicit env.
+			switch tc.scope {
+			case "":
+			case "global":
+				// The shared fixture pins its own global config to the null device, so
+				// write this rule into the test-owned file the reader sees as global.
 				local("-C", dir, "config", "--file", global, "url."+selected+".insteadOf", common)
-			} else if tc.scope != "" {
+			default:
 				local("-C", dir, "config", "--"+tc.scope, "url."+selected+".insteadOf", common)
 			}
 			before := regression.TreeDigest(t, root)
