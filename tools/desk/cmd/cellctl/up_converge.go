@@ -15,7 +15,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/cellop"
 )
 
-// `cellctl up` converges the cell (desk-containers/17). Before it composes any window it classifies
+// `cellctl up` converges the cell (example-stream/17). Before it composes any window it classifies
 // each targeted role from the same probes the reconcile preflight (#2880) already trusts:
 //
 //   - up:     a live process holds the role's cadence lease. The role is left alone: no second launch,
