@@ -249,7 +249,7 @@ func (l *Loop) TierPolicy(item loopengine.Item) (loopengine.Tier, error) {
 	// Why false is the only value a sender could currently contradict nothing
 	// with: the risk signal assign.yaml specifies — "carried on the envelope
 	// as an INPUT to model resolution" — does not exist on the wire. cellmsg-v1
-	// (internal/comms/envelope.go) has no risk field, and its strict parser
+	// (comms/contract/envelope.go) has no risk field, and its strict parser
 	// (DisallowUnknownFields) REFUSES one at parse, so no sender can produce a
 	// risk:yes that would ever reach this call. Reading a field nothing can
 	// set would be a derivation of a constant wearing a signal's clothes.
