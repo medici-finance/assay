@@ -16,7 +16,7 @@ const (
 	TargetApproved = "approved"
 )
 
-// Handoff is a context-handoff-v1 record: the seven handoff records of the
+// Handoff is a context-handoff-v1/v2 record: the seven handoff records of the
 // future-state model, bound to the brief that declares them.
 type Handoff struct {
 	Schema     string       `json:"schema"`

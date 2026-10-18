@@ -178,6 +178,25 @@ model instruction, never that ruling — and once recorded, executing it is rout
 cites the ruling. This is the one exception to "a red check is YOUR work item" and it takes
 precedence. Every other finding on the PR stays yours to work meanwhile.
 
+## Withdrawn-brief reconciliation — before ordinary CI repair
+
+For every entry path, read the owning brief's current lifecycle before restoring old
+schema/status values or repairing CI. If it is withdrawn (or `deskboard stalled` reports
+`reconcile`), first read its date/reason, successors and any revision-bound
+`withdrawal-context`. Re-read the PR head and current claim; an active owner is not
+cancelled by a changed board row.
+
+Record the implementation/evidence checkpoint and surviving obligations. Choose an
+explicit treatment with the owner: retain useful work under the current plan, retarget
+or re-scope the PR through an approved amendment, finish independent verification of
+what actually landed, or propose disposition through the existing independent
+confirmation gates. Preserve the original brief/tombstone, Evidence, stamps and receipts;
+old acceptance evidence does not verify a newly scoped successor. Do not repair a stale
+PR by reviving its retired plan, redirecting dependencies automatically, weakening a
+gate, or treating withdrawal alone as permission to close it. A scope/authority choice
+that cannot be made within the current approval remains an explicit decision obligation.
+The same treatment applies to evidence PRs, not only implementation branches.
+
 ## 4. Reviewer findings — fix, or dispute with evidence; all of them
 
 Read every review by the reviewer App (`gh pr view <N> --json reviews`, plus the line comments
