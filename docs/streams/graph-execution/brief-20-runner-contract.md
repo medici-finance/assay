@@ -45,6 +45,36 @@ facts: The loopadmin Go module is planned here and must build without the workfl
 
 single-point-of-failure: the generation fence in the runner contract's result acceptance — behind it, each caller's own authority check (claim generation at the desk, admission at the controller), which rejects a fenced result that a faulty adapter still reports as success.
 
+## Verification environment — local Linux containers (2026-10-18)
+
+A local Docker Linux engine is now available on the macOS verification host. The
+2026-10-15 Evidence block's "no running daemon" condition is historical, not a
+current prerequisite for this brief. A remote Linux host or completion of the
+verify-runner release-image automation is not required to attempt the existing
+Linux witness locally.
+
+Run the five existing Verify commands and the `statusgen verifyrun` witness in a
+local Linux container with `--network none`. Use the supported
+`--sandbox container-netns` mode for an already isolated container namespace;
+Docker network isolation alone does not make a bare macOS witness valid. Check
+that the container has only loopback before running the witness. Do not weaken
+network isolation to download missing dependencies: prepare the approved image,
+Linux toolchain, source at the exact candidate revision and dependency cache
+before the network-off run. Keep credentials, host configuration and the Docker
+socket outside the container; use a disposable source copy and capture evidence
+outside the source under verification.
+
+Record the immutable image identity, architecture, Go/statusgen versions, source
+revision, network mode, row exits and witness output. A 2026-10-18 local preflight
+confirmed a Linux Docker daemon and a cached Linux/amd64 verification image
+reporting Go 1.27.2 and statusgen v1.0.46. This establishes local availability,
+not image-release qualification or a new verification result for this brief.
+The independent verifier must check the selected image/toolchain against the
+current verification requirements and produce the actual witness; missing tools,
+dependencies or namespace isolation remain could-not-check with their precise
+cause. Preserve prior Evidence and the five Verify rows. This amendment neither
+closes a fleet-wide environment issue nor advances implemented to verified/done.
+
 ## Read first
 
 - [Task workflow specification](task-workflow-program.md).
