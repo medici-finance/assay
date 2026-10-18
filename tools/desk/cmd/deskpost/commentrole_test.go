@@ -8,10 +8,16 @@ import (
 )
 
 // regression: #2202
+// regression: #3146
 func TestCommentCallerRole(t *testing.T) {
 	for _, loop := range deskkit.KnownLoopNames() {
-		if loop == "pr-review-desk" {
-			continue // The existing comment success tests cover the reviewer path.
+		canonical, known := deskkit.CanonicalLoopName(loop)
+		if !known {
+			t.Fatalf("known loop %q has no canonical identity", loop)
+		}
+		role, hasRole := deskkit.TokenRoleForLoop(canonical)
+		if hasRole && role == "reviewer" {
+			continue // The existing comment success tests cover the reviewer role.
 		}
 		for _, kind := range []string{"issue", "mr", "auto"} {
 			t.Run(loop+"/"+kind, func(t *testing.T) {
@@ -44,6 +50,7 @@ func TestCommentCallerRole(t *testing.T) {
 // A planted second caller invokes the shared comment path without the CLI's loop
 // check. Admission must be owned by that path, not merely by command dispatch.
 // regression: #2202
+// regression: #3146
 func TestCommentRoleBypass(t *testing.T) {
 	for _, tc := range []struct {
 		loop string
@@ -62,7 +69,7 @@ func TestCommentRoleBypass(t *testing.T) {
 				t.Fatalf("direct caller: exit=%d comments=%d network=%d; want exit=%d and zero contact",
 					code, f.postedCmt, len(f.hits), tc.code)
 			}
-			if !strings.Contains(errBuf.String(), "DESK_LOOP") && !strings.Contains(errBuf.String(), "worker") {
+			if !strings.Contains(errBuf.String(), "DESK_LOOP") || !strings.Contains(errBuf.String(), "worker") {
 				t.Fatalf("missing role diagnostic: %s", errBuf.String())
 			}
 		})
