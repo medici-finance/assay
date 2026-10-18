@@ -24,15 +24,36 @@ func closureSatisfied(f checkFinding) bool {
 	return f.State == statePass || f.State == stateAuthorAdded
 }
 
-// hasProtectedTableMarker uses the same live-text hygiene as the marker reader.
-func hasProtectedTableMarker(evidence string) bool {
-	stripped, _ := stripRowComments(evidence)
-	for _, line := range strings.Split(stripCode(stripped), "\n") {
+// normalizedProtectedEvidence has had complete row comments removed exactly
+// once. A selected flipPass.Run already has this normalization; marker readers
+// must not strip it again, since comment removal is not generally idempotent.
+type normalizedProtectedEvidence string
+
+func normalizeProtectedEvidence(raw string) normalizedProtectedEvidence {
+	stripped, _ := stripRowComments(raw)
+	return normalizedProtectedEvidence(stripped)
+}
+
+type protectedMarker struct {
+	text    string
+	literal bool
+}
+
+// protectedMarkers is the single scan for both classification and validation.
+// Its typed input distinguishes raw Evidence from the already-normalized run.
+func protectedMarkers(text normalizedProtectedEvidence) []protectedMarker {
+	rawLines := strings.Split(string(text), "\n")
+	var markers []protectedMarker
+	for i, line := range strings.Split(stripCode(string(text)), "\n") {
 		if strings.HasPrefix(line, "Verification-Table:") {
-			return true
+			markers = append(markers, protectedMarker{strings.TrimSpace(line), line == rawLines[i]})
 		}
 	}
-	return false
+	return markers
+}
+
+func hasProtectedTableMarker(evidence string) bool {
+	return len(protectedMarkers(normalizeProtectedEvidence(evidence))) > 0
 }
 
 // closureEvidenceForRun retains the full protected context for the canonical
@@ -49,38 +70,34 @@ func closureEvidenceForRun(full, run string) string {
 // supplemental dispositions. Without a live marker, the ordinary table is owed
 // in full. A quoted example, hash or author-added label grants no exemption.
 func protectedAcceptance(verify, evidence string, paths ...string) (protectedPlan, string) {
-	stripped, _ := stripRowComments(evidence)
-	if !hasProtectedTableMarker(stripped) {
+	text := normalizeProtectedEvidence(evidence)
+	markers := protectedMarkers(text)
+	if len(markers) == 0 {
 		return protectedPlan{Verify: verify, Evidence: evidence}, ""
 	}
 	// Protected callers retain complete Evidence through closureEvidenceForRun.
 	// Select its strict current run here; earlier markers establish protected
 	// context but cannot supply missing current provenance or witnesses.
-	if len(flipVerdictTokens(strings.Split(stripped, "\n"))) > 0 {
+	if len(flipVerdictTokens(strings.Split(string(text), "\n"))) > 0 {
 		p, err := flipLatestPass(evidence)
 		if err != nil {
 			return protectedPlan{}, "protected table: " + err.Error()
 		}
 		evidence = p.Run
-		stripped, _ = stripRowComments(evidence)
+		// flipLatestPass normalized the complete Evidence once before slicing
+		// this run. Scan that view directly, without another comment removal.
+		markers = protectedMarkers(normalizedProtectedEvidence(p.Run))
 	}
-	rawLines := strings.Split(stripped, "\n")
-	var marker string
-	for i, line := range strings.Split(stripCode(stripped), "\n") {
-		if !strings.HasPrefix(line, "Verification-Table:") {
-			continue
-		}
-		if line != rawLines[i] {
-			return protectedPlan{}, "protected table: Verification-Table must be literal live text, without code spans"
-		}
-		if marker != "" {
-			return protectedPlan{}, "protected table: multiple Verification-Table markers in the current run"
-		}
-		marker = strings.TrimSpace(line)
-	}
-	if marker == "" {
+	if len(markers) == 0 {
 		return protectedPlan{}, "protected table: the current run has no Verification-Table marker"
 	}
+	if len(markers) != 1 {
+		return protectedPlan{}, "protected table: multiple Verification-Table markers in the current run"
+	}
+	if !markers[0].literal {
+		return protectedPlan{}, "protected table: Verification-Table must be literal live text, without code spans"
+	}
+	marker := markers[0].text
 	fields := strings.Fields(marker)
 	if len(fields) != 4 || !strings.HasPrefix(fields[1], "delivery=") || !strings.HasPrefix(fields[2], "base=") || !strings.HasPrefix(fields[3], "original=") {
 		return protectedPlan{}, "protected table: expected Verification-Table: delivery=<full-sha> base=<full-sha> original=<full-sha>"

@@ -419,7 +419,7 @@ type flipPass struct {
 	StampErr error
 	Runner   string
 	SHA      string
-	Run      string
+	Run      string // row comments normalized once before slicing; marker scans must not repeat it
 	Marks    []int
 	RunStart int
 }
@@ -466,7 +466,7 @@ func flipLatestPass(evidence string) (flipPass, error) {
 	if after, _ := flipDateRunnerRows(lines[last.line+1:]); len(after) > 0 {
 		return flipPass{}, refuseFlip("runner mismatch: %d Date/Runner row(s) follow the latest PASS — record each run's rows after the previous verdict and before its own", len(after))
 	}
-	if hasProtectedTableMarker(stripped) {
+	if len(protectedMarkers(normalizedProtectedEvidence(stripped))) > 0 {
 		// A newer unfinished protected record must not borrow this PASS.
 		// Keep this in the shared selector so callers passing p.Run cannot
 		// discard a live tail before closure, audit or coverage sees it.

@@ -149,3 +149,7 @@ closure. A caller with an already-selected run retains full Evidence through
 the shared context adapter: earlier protection still requires current provenance,
 while ordinary unmarked records audit only their selected run. Passing the selected
 text alone loses that context and is not a valid protected closure input.
+
+Marker classification and validation share one normalized Evidence view. A run
+selected from that view keeps its normalization; consumers do not normalize the
+same marker text again. Ordinary selected-run witness isolation remains required.

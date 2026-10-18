@@ -229,7 +229,7 @@ func TestProtectedRerun(t *testing.T) {
 		{"old-failure-new-pass", strings.Replace(run, "**VERIFY: PASS**", "**VERIFY: FAIL**", 1) + "\n" + run, true},
 		{"latest-failed", run + "\n" + strings.Replace(run, "**VERIFY: PASS**", "**VERIFY: FAIL**", 1), false},
 		{"latest-failed-original", run + "\n" + strings.Replace(run, row1, strings.Replace(row1, "pass", "fail", 1), 1), false},
-		{"latest-missing-row", run + "\n" + strings.Replace(run, row1, "", 1), false},
+		{"latest-missing-row", run + "\n" + strings.Replace(run, row1+"\n", "", 1), false},
 		{"duplicate-current-marker", run + "\n" + marker + run, false},
 		{"latest-unfinished", run + "\n" + marker + table, false},
 		{"latest-marker-only", run + "\n" + marker, false},
@@ -244,9 +244,15 @@ func TestProtectedRerun(t *testing.T) {
 			}
 			// Selected-run callers retain full protected context for the audit.
 			p, err := flipLatestPass(c.evidence)
+			if c.name == "latest-missing-row" && err != nil {
+				t.Fatalf("missing-row fixture must reach witness audit: %v", err)
+			}
 			selectedPass := false
 			if err == nil {
 				findings, refusal := closureWitnesses(verify, closureEvidenceForRun(c.evidence, p.Run), path)
+				if c.name == "latest-missing-row" && (refusal != "" || len(findings) == 0 || findings[0].State != stateCouldNotRun || !strings.Contains(findings[0].Detail, "no execution witness")) {
+					t.Fatalf("missing-row fixture did not reach intended audit: %s %+v", refusal, findings)
+				}
 				selectedPass = refusal == "" && len(findings) > 0
 				for _, f := range findings {
 					selectedPass = selectedPass && closureSatisfied(f)
@@ -451,9 +457,19 @@ func TestProtectedRerunConsumers(t *testing.T) {
 				current = ordinary
 			}
 			if c.missingRow {
-				current = strings.Replace(current, strings.ReplaceAll(vfRow1, vfSHA, delivery), "", 1)
+				current = strings.Replace(current, strings.ReplaceAll(vfRow1, vfSHA, delivery)+"\n", "", 1)
 			}
 			evidence := previous + "\n" + current
+			if c.missingRow {
+				p, err := flipLatestPass(evidence)
+				if err != nil {
+					t.Fatalf("fixture must reach the witness audit: %v", err)
+				}
+				findings, refusal := closureWitnesses(verify, p.Run, path)
+				if refusal != "" || len(findings) != 3 || findings[0].State != stateCouldNotRun || !strings.Contains(findings[0].Detail, "no execution witness") {
+					t.Fatalf("fixture does not isolate a missing current witness: %s %+v", refusal, findings)
+				}
+			}
 			body := strings.Replace(bare, "## Evidence\n", "## Evidence\n"+evidence, 1)
 			if err := os.WriteFile(path, []byte(body), 0644); err != nil {
 				t.Fatal(err)
@@ -485,6 +501,9 @@ func TestProtectedRerunConsumers(t *testing.T) {
 			code, out, diag := runVF(t, root, "--sha", delivery)
 			if (code == verifyflipExitOK) != c.pass {
 				t.Errorf("actual flip pass=%v: code=%d out=%s diag=%s", c.pass, code, out, diag)
+			}
+			if c.missingRow && !strings.Contains(diag, "row 1: could-not-run") {
+				t.Errorf("flip must reach the missing-witness audit: %s", diag)
 			}
 			if c.missingMarker && !strings.Contains(diag, "current run has no Verification-Table marker") {
 				t.Errorf("flip must refuse missing current provenance: %s", diag)
@@ -522,6 +541,62 @@ func TestProtectedRerunConsumers(t *testing.T) {
 			got, err := os.ReadFile(path)
 			if err != nil || string(got) != body {
 				t.Error("consumer changed retained Evidence")
+			}
+		})
+	}
+}
+
+// regression: #3342
+func TestProtectedMarkerViews(t *testing.T) {
+	marker := "Verification-Table: example\n"
+	// Generated view boundaries use invalid example metadata, not an execution
+	// record. They pin agreement when normalization is not idempotent.
+	opener := "<!--"
+	for _, boundary := range []struct {
+		name string
+		at   int
+	}{{"one", 1}, {"two", 2}, {"three", 3}} {
+		t.Run("view-boundary-"+boundary.name, func(t *testing.T) {
+			raw := opener[:boundary.at] + "<!-- normalization note -->" + opener[boundary.at:] + "\n" + marker + "-->\n"
+			view := normalizeProtectedEvidence(raw)
+			if len(protectedMarkers(view)) != 1 || !hasProtectedTableMarker(raw) {
+				t.Fatal("one normalized view must retain the example marker")
+			}
+			_, why := protectedAcceptance(vfVerify, raw)
+			if !strings.Contains(why, "expected Verification-Table:") {
+				t.Fatalf("classification and marker validation disagree: %s", why)
+			}
+		})
+	}
+	for _, c := range []struct {
+		name, evidence string
+		candidates     int
+		refusal        string
+	}{
+		{"live", marker, 1, "expected Verification-Table:"},
+		{"quoted", "> " + marker, 0, ""},
+		{"fenced", "```\n" + marker + "```\n", 0, ""},
+		{"commented", "<!--\n" + marker + "-->\n", 0, ""},
+		{"adjacent-comments", "<!-- first --><!-- second -->\n" + marker, 1, "expected Verification-Table:"},
+		{"code-span", "`Verification-Table: example`\n", 0, ""},
+		{"spliced", "Verification-Table: `example`\n", 1, "literal live text"},
+		{"multiple", marker + marker, 2, "multiple Verification-Table"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			view := normalizeProtectedEvidence(c.evidence)
+			if got := len(protectedMarkers(view)); got != c.candidates {
+				t.Fatalf("candidates=%d want%d", got, c.candidates)
+			}
+			if hasProtectedTableMarker(c.evidence) != (c.candidates > 0) {
+				t.Fatal("raw classification differs from normalized marker scan")
+			}
+			plan, why := protectedAcceptance(vfVerify, c.evidence)
+			if c.refusal == "" {
+				if why != "" || plan.Evidence != c.evidence || plan.Verify != vfVerify {
+					t.Fatalf("ordinary view changed: %+v %s", plan, why)
+				}
+			} else if !strings.Contains(why, c.refusal) {
+				t.Fatalf("marker reader=%q want%q", why, c.refusal)
 			}
 		})
 	}
