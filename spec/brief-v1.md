@@ -154,6 +154,67 @@ This is a conservation check, not an authorization one: it never licenses loweri
 and a genuinely clean split whose risky work all went to a sibling conserves by keeping the
 child's flags UP, not down.
 
+### 3.5 Schema versions
+
+A brief's `schema:` value names the frontmatter contract it is validated against. Each version
+is a strict superset of the one before it; no field is removed or changed in meaning.
+
+| Schema | Adds | Machine-readable contract | First `statusgen` release that reads it |
+|--------|------|---------------------------|------------------------------------------|
+| `brief-v1` | this document's fields (§3.1, §3.2) | `schemas/brief-v1.json` | v0.9.0 (the earliest published release) |
+| `brief-v2` | the hierarchical `brief:` id `<cell>:<repo>:<stream>:<NN>`, `version:`, and the identity/graph keys `id`, `supersedes`, `gates`, `feathers`, `verify` | `schemas/brief-v2.json` | v1.0.0 |
+| `brief-v3` | the withdrawn-status keys `withdrawn-date`, `withdrawn-reason`, `superseded-by` (§3.6) | `schemas/brief-v3.json` | next release <!-- TRACKING: the release cut fills in the tag that first ships brief-v3. --> |
+
+A `statusgen` release declares the versions it reads, and the first release of each, in
+machine-readable form: `statusgen --version --json` prints
+`{"version": …, "briefSchemas": […], "briefSchemaFirstRelease": {…}}`. The bare
+`statusgen --version` stays a single line holding the tag, because pin checks compare it
+verbatim.
+
+Schema evolution fails closed. A file with no `schema:` key at all is a legacy brief and is
+exempt (§3.1). A `schema:` value in the brief family (`brief-v<N>`) that the binary does not
+recognize MUST NOT fall into that exemption. A conforming linter MUST refuse it loudly,
+naming the schema the file needs, the versions the binary supports, where the first
+supporting release is listed (this table), and the `statusgen` the repository pins in
+`.assay-versions`. A `schema:` value outside the brief family (`contract-v1`,
+`placeholder-v1`, …) names a different document kind and stays out of this parser's scope.
+
+### 3.6 Withdrawn briefs (`brief-v3`)
+
+A brief that a later decision retires, or that is merged into another brief, is
+**withdrawn** (`lifecycle-v1.md` §2.0a). It is not deleted: the file stays, for history and
+links. A withdrawn brief MUST be `schema: brief-v3` and MUST carry:
+
+| Field | Type | Requirement | Description |
+|-------|------|-------------|-------------|
+| `withdrawn-date` | string | REQUIRED when withdrawn | `YYYY-MM-DD` date of the withdrawal. |
+| `withdrawn-reason` | string | REQUIRED when withdrawn, non-empty | One sentence: why, citing the decision, and what (if anything) survives where. |
+| `superseded-by` | array[string] | OPTIONAL | The successor brief(s): `<stream>/<NN>` for this repository, or the global brief id `<cell>:<repo-alias>:<stream>:<NN>` (the brief-v2 `brief:` form) for another one. `[]` means won't-fix: no successor. For a duplicate merged into another brief it names the survivor. |
+
+The stream README row carries the bare Status token `withdrawn`; its link text keeps the
+brief's original title, and the Verified and Reviewed cells stay `—`. The body keeps a
+banner directly under the H1:
+
+```
+> **Withdrawn YYYY-MM-DD — superseded by <successor>.** <reason>. Not executable.
+```
+
+A conforming linter MUST flag, as hard problems:
+
+- a `withdrawn` row whose brief is not `brief-v3`, or that has no typed brief file at all;
+- a withdrawn brief without `withdrawn-date` (or with one that is not a `YYYY-MM-DD`
+  calendar date) or without a non-empty `withdrawn-reason`;
+- any of the three keys on a brief whose status is not `withdrawn`, or on a brief that is
+  not `brief-v3`;
+- a same-repository `superseded-by` entry that does not resolve to an existing brief, an
+  entry naming the brief itself, and an entry in neither ref form.
+
+A global `superseded-by` id is syntax-checked, and resolved only when the root it names is
+configured in the run (by that root's registry `self:` key, or by the `<cell>:<alias>`
+prefix of its own brief-v2 ids); an unconfigured root is not an error. A brief whose
+`depends:` names a withdrawn brief MUST get a NOTICE naming the successor, so the edge is
+re-pointed: a withdrawn brief never satisfies a dependency.
+
 ### Product-target binding planning (13 October 2026)
 
 The [future architecture amendment](../docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md)

@@ -39,8 +39,25 @@ implying progress. Board reporting that orders the lifecycle (bottleneck, roadma
 trend views) SHOULD render `blocked` as a terminal-for-now bucket alongside the five
 ordered states rather than between any two of them.
 
-A status value that is neither one of the five ordered states nor `blocked` MUST be
-rejected.
+### 2.0a `withdrawn` — the terminal off-path state
+
+`withdrawn` is a seventh valid status value and, like `blocked`, is NOT a position in the
+ordered sequence. It records that a brief will never be executed: a later decision
+retired it, or it was merged into another brief. Unlike `blocked` it is **terminal** —
+nothing re-enters the sequence from it. The brief's frontmatter records the date, the
+reason and the successor (`brief-v1.md` §3.6).
+
+A conforming implementation MUST accept `withdrawn` as a valid status and MUST NOT offer a
+`withdrawn` brief in the Next-up batch (section 5) or any dispatch view. It MUST exclude
+withdrawn briefs from the done-ratio denominator ("briefs done x/y"), from the todo and
+open-brief counts, and from the stalled, bottleneck and blocked views, and SHOULD show
+them in a separate Withdrawn count. A `depends:` edge into a withdrawn brief is never
+satisfied (the linter NOTICEs it, naming the successor). A lower-wave withdrawn brief MUST
+NOT hold the legacy whole-wave rule: it is terminal, the same as `done` for that purpose.
+A stream whose every brief is `done` or `withdrawn` is complete.
+
+A status value that is neither one of the five ordered states, `blocked`, nor `withdrawn`
+MUST be rejected.
 
 ### 2.1 `todo`
 

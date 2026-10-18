@@ -365,11 +365,12 @@ sources: ["fixture"]
 		}
 	})
 	t.Run("version-mismatch-exit-2", func(t *testing.T) {
-		// brief-v3 is the marker no embedded contract describes. (Before brief-v2
-		// was embedded this case was spelled brief-v2 — the three-state behaviour
-		// is unchanged, it is the boundary that moved.)
+		// brief-v4 is the marker no embedded contract describes. (Before brief-v2
+		// and brief-v3 were embedded this case was spelled brief-v2, then
+		// brief-v3 — the three-state behaviour is unchanged, it is the boundary
+		// that moved.)
 		root := t.TempDir()
-		write(root, "docs/streams/t/brief-01-v3.md", strings.Replace(clean, "schema: brief-v1", "schema: brief-v3", 1))
+		write(root, "docs/streams/t/brief-01-v4.md", strings.Replace(clean, "schema: brief-v1", "schema: brief-v4", 1))
 		var out, errb bytes.Buffer
 		if code := runConform([]string{"--root", root}, &out, &errb); code != conformExitCouldNot {
 			t.Fatalf("want exit 2, got %d; out=%s", code, out.String())
@@ -407,7 +408,7 @@ sources: ["fixture"]
 	})
 	t.Run("emit-schema-unknown-version-refuses", func(t *testing.T) {
 		var out, errb bytes.Buffer
-		if code := runConform([]string{"--emit-schema", "--schema", "brief-v3"}, &out, &errb); code != conformExitUsageError {
+		if code := runConform([]string{"--emit-schema", "--schema", "brief-v4"}, &out, &errb); code != conformExitUsageError {
 			t.Fatalf("want exit 2 (usage), got %d", code)
 		}
 		if out.Len() != 0 {

@@ -107,7 +107,7 @@ type Brief struct {
 	RawCell  string
 	Wave     int
 	Effort   string
-	Status   string // todo | in-progress | implemented | verified | done | blocked
+	Status   string // todo | in-progress | implemented | verified | done | blocked | withdrawn
 	Verified string // "" = unset
 	Reviewed string // "" = unset
 	// StaleRef is the finding ID when THIS brief is named by an unresolved
@@ -228,6 +228,17 @@ type Brief struct {
 	// (nextup.go) as an eligibility exclusion in the same shape as HomedIn;
 	// NEVER a Next-up score input.
 	MergedInSibling string
+	// WithdrawnDate, WithdrawnReason and SupersededBy are the brief-v3
+	// `withdrawn-date:` / `withdrawn-reason:` / `superseded-by:` frontmatter keys,
+	// wired from BriefFile by checkBriefFiles (withdrawn.go). They describe a
+	// brief whose README Status cell is the terminal `withdrawn` token: the date
+	// it was withdrawn, why, and the successor brief id(s) the work moved to
+	// (`<stream>/<NN>` in this repo, or a global `<cell>:<alias>:<stream>:<NN>`
+	// id; empty = won't-fix, no successor). Display and lint inputs only —
+	// NEVER a Next-up score input.
+	WithdrawnDate   string
+	WithdrawnReason string
+	SupersededBy    []string
 }
 
 // DeliveryClaim is one entry of a brief's `delivery:` frontmatter list: a
