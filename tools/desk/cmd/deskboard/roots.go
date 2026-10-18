@@ -114,7 +114,7 @@ func runPerRoot[T any](rs rootSet, work func(deskkit.RootConfig) (T, error)) ([]
 }
 
 // ---------------------------------------------------------------------------
-// Queue-contract coverage (desk-tools/45).
+// Queue-contract coverage (brief 45).
 //
 // `statusgen --gate-scores` rows carry the verification queue's classification
 // (statusgen/awaiting_bucket.go queueFor). A root is only COUNTED toward a queue

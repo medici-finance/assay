@@ -1,6 +1,6 @@
 package main
 
-// flow_45_test.go — the verifyloop half of the verification-queue contract (desk-tools/45).
+// flow_45_test.go — the verifyloop half of the verification-queue contract (brief 45).
 //
 // The classification is statusgen's. The fixture is the one the statusgen and deskboard tests
 // share: the tree statusgen/testdata/flowqueue and the rows statusgen printed for it
@@ -158,6 +158,37 @@ func TestFlowQueue(t *testing.T) {
 			if (it.ID == "flowq/01" || it.ID == "flowq/10") && (it.Kind == kindDispatch || it.Authority == authFlip) {
 				t.Errorf("%s (human gate / irreversible risk) became model dispatch with a lying base", it.ID)
 			}
+		}
+	})
+
+	// The precedence table, asserted on the composer itself.
+	t.Run("base composes under overlays", func(t *testing.T) {
+		it := loopengine.Item{ID: "flowq/01"}
+		look := func(class string) *baseLookup {
+			return &baseLookup{state: "canonical", rows: map[string]baseRow{
+				"flowq/01": {Brief: "flowq/01", QueueVersion: queueContractVersion, QueueClass: class, QueueValid: true},
+			}}
+		}
+		// An overlay hold is never overridden or demoted by the base.
+		for _, d := range []disposition{dispStuckFlip, dispAwaitingHuman} {
+			got, _, pb := applyBase(it, d, "overlay", look("human-action"))
+			if got != d || pb == nil {
+				t.Errorf("overlay %v under a human-action base = %v (base %v), want it kept with the base recorded", d, got, pb)
+			}
+		}
+		// A plain dispatch survives only a judgment-dispatch base.
+		if got, _, _ := applyBase(it, dispDispatch, "r", look("judgment-dispatch")); got != dispDispatch {
+			t.Errorf("dispatch under a judgment base = %v, want dispatch", got)
+		}
+		if got, _, _ := applyBase(it, dispDispatch, "r", look("human-action")); got != dispBaseHeld {
+			t.Errorf("dispatch under a human-action base = %v, want queue-held", got)
+		}
+		// Evidence-only dispatch may stay under human action, and no further.
+		if got, _, _ := applyBase(it, dispDispatchForEvidence, "r", look("human-action")); got != dispDispatchForEvidence {
+			t.Errorf("evidence dispatch under a human-action base = %v, want it kept", got)
+		}
+		if got, _, _ := applyBase(it, dispDispatchForEvidence, "r", look("continuation")); got != dispBaseHeld {
+			t.Errorf("evidence dispatch under a continuation base = %v, want queue-held", got)
 		}
 	})
 

@@ -1,0 +1,47 @@
+{
+  "test": "go test . -run '^TestFlowQueue$' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — classify an unreadable answer as human action (the could-not-check collapse)",
+    "file": "awaiting_bucket.go",
+    "old": "\treturn queueClassUnreadable\n}",
+    "new": "\treturn queueClassHuman\n}"
+  },
+  "mutations": [
+    {
+      "name": "only desk-actionable work is judgment-dispatch: promote a human gate to judgment work",
+      "file": "awaiting_bucket.go",
+      "old": "\tcase bucketHumanGate, bucketEnvBlocked:\n\t\treturn queueClassHuman",
+      "new": "\tcase bucketHumanGate, bucketEnvBlocked:\n\t\treturn queueClassJudgment"
+    },
+    {
+      "name": "rework counts as judgment work instead of continuation",
+      "file": "awaiting_bucket.go",
+      "old": "\tcase bucketRework:\n\t\treturn queueClassContinue",
+      "new": "\tcase bucketRework:\n\t\treturn queueClassJudgment"
+    },
+    {
+      "name": "a runner-pending brief is always continuation (the verify runner no longer owns offline work)",
+      "file": "awaiting_bucket.go",
+      "old": "\t\tif owner == ownerVerifyRunner {\n\t\t\treturn queueClassRunner\n\t\t}\n",
+      "new": ""
+    },
+    {
+      "name": "a could-not-check answer stays marked valid",
+      "file": "awaiting_bucket.go",
+      "old": "\t\tf.Valid = false\n",
+      "new": ""
+    },
+    {
+      "name": "a paused stream falls through to the bucket answer",
+      "file": "awaiting_bucket.go",
+      "old": "\t\tf.Class = queueClassPaused\n\t\treturn f",
+      "new": "\t\tf.Class = queueClassJudgment\n\t\treturn f"
+    },
+    {
+      "name": "the contract version is not stamped on the row",
+      "file": "awaiting_bucket.go",
+      "old": "f := queueFacts{Version: queueContractVersion, Valid: true}",
+      "new": "f := queueFacts{Valid: true}"
+    }
+  ]
+}

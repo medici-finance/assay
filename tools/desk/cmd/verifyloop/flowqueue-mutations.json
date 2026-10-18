@@ -1,0 +1,35 @@
+{
+  "test": "go test ./cmd/verifyloop -run '^TestFlowQueue$' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — an unreadable canonical row keeps its dispatch (the could-not-check collapse)",
+    "file": "cmd/verifyloop/plan.go",
+    "old": "\tif !row.QueueValid {\n\t\treturn dispCouldNotCheck,",
+    "new": "\tif false && !row.QueueValid {\n\t\treturn dispCouldNotCheck,"
+  },
+  "mutations": [
+    {
+      "name": "a missing canonical classification keeps the dispatch",
+      "file": "cmd/verifyloop/plan.go",
+      "old": "\t\treturn dispCouldNotCheck, \"canonical queue: \" + why,",
+      "new": "\t\treturn disp, reason, nil\n\t\treturn dispCouldNotCheck, \"canonical queue: \" + why,"
+    },
+    {
+      "name": "a human-action row keeps a plain dispatch",
+      "file": "cmd/verifyloop/plan.go",
+      "old": "\tcase \"human-action\":\n\t\tif disp == dispDispatchForEvidence {",
+      "new": "\tcase \"human-action\":\n\t\tif true {"
+    },
+    {
+      "name": "any non-judgment class keeps the dispatch (the base no longer demotes)",
+      "file": "cmd/verifyloop/plan.go",
+      "old": "\treturn dispBaseHeld, fmt.Sprintf(",
+      "new": "\treturn disp, fmt.Sprintf("
+    },
+    {
+      "name": "the base overrides an overlay hold",
+      "file": "cmd/verifyloop/plan.go",
+      "old": "\tif disp != dispDispatch && disp != dispDispatchForEvidence {",
+      "new": "\tif false {"
+    }
+  ]
+}

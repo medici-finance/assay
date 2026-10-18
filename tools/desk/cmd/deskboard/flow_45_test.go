@@ -1,6 +1,6 @@
 package main
 
-// flow_45_test.go — the deskboard half of the verification-queue contract (desk-tools/45).
+// flow_45_test.go — the deskboard half of the verification-queue contract (brief 45).
 //
 // The classification is statusgen's (statusgen/awaiting_bucket.go queueFor); this test pins
 // that deskboard CONSUMES it rather than re-deriving it. The fixture is the one the

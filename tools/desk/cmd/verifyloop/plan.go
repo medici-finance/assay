@@ -1,6 +1,6 @@
 package main
 
-// plan.go — ONE plan value for `verifyloop plan` (desk-tools/45).
+// plan.go — ONE plan value for `verifyloop plan` (brief 45).
 //
 // cmdPlan used to print as it decided, so the text WAS the plan and nothing else could read
 // it. It now builds a planDoc first and renders from it: the text renderer (renderPlanText) and

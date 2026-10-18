@@ -66,7 +66,7 @@ type gateScoreRow struct {
 	Stream       string `json:"stream"`
 	Status       string `json:"status"`
 	Repo         string `json:"repo,omitempty"`
-	// The versioned queue classification (statusgen queueFor, desk-tools/45).
+	// The versioned queue classification (statusgen queueFor, brief 45).
 	// Absent from an older statusgen: such a row is "unclassified", a coverage
 	// gap, never a zero (rowSupported / classOf in roots.go).
 	QueueVersion      int    `json:"queueVersion,omitempty"`

@@ -1,0 +1,35 @@
+{
+  "test": "go test ./cmd/deskboard -run '^TestFlowQueue$' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — count every implemented brief toward verify depth (the old throughput meaning)",
+    "file": "cmd/deskboard/throughput.go",
+    "old": "row.Status == \"implemented\" && row.Class == queueClassJudgment",
+    "new": "row.Status == \"implemented\""
+  },
+  "mutations": [
+    {
+      "name": "a coverage gap no longer marks the depth as a lower bound",
+      "file": "cmd/deskboard/throughput.go",
+      "old": "\t\tif c.gap() {\n\t\t\tpartial = appendBlind(",
+      "new": "\t\tif false && c.gap() {\n\t\t\tpartial = appendBlind("
+    },
+    {
+      "name": "a partial depth still lets the advice widen a stage",
+      "file": "cmd/deskboard/throughput.go",
+      "old": "\t\tif s.Partial != \"\" && s.Depth != nil {\n\t\t\treturn fmt.Sprintf(\"COVERAGE-GAP",
+      "new": "\t\tif false && s.Partial != \"\" && s.Depth != nil {\n\t\t\treturn fmt.Sprintf(\"COVERAGE-GAP"
+    },
+    {
+      "name": "rows from an old statusgen are not counted as an unsupported root",
+      "file": "cmd/deskboard/roots.go",
+      "old": "\t\tcase queueClassUnclassified:\n\t\t\tunsupported++",
+      "new": "\t\tcase queueClassUnclassified:\n\t\t\t_ = unsupported"
+    },
+    {
+      "name": "an unreadable root reports healthy with zero rows",
+      "file": "cmd/deskboard/roots.go",
+      "old": "\t\tc.State, c.Reason, c.Rows = rootUnreadable, readErr.Error(), 0",
+      "new": "\t\tc.Reason, c.Rows = readErr.Error(), 0"
+    }
+  ]
+}
