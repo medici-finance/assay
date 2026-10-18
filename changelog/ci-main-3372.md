@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen`'s dead-claim decay no longer needs the `gh` CLI: it reads branch pull-request state in process over the GitHub GraphQL API, authenticated by `GH_TOKEN` or `GITHUB_TOKEN` (falling back to `gh auth token` only when `gh` is installed). A board regen on a runner without `gh` now decays closed-PR branches instead of reporting could-not-check; with no token it names the variable to set.
