@@ -291,8 +291,8 @@ func TestWithdrawnIsTerminalForArchive(t *testing.T) {
 	}
 }
 
-// The drift comparator never reports a withdrawn row against derived witnesses.
-func TestWithdrawnNoDriftNotice(t *testing.T) {
+// A never-started withdrawal does not conflict with an unstarted todo witness.
+func TestWithdrawnUnstartedHasNoDriftNotice(t *testing.T) {
 	s := mkStream("alpha", "active", "P1", Brief{Num: "01", Status: "withdrawn"})
 	if n := assertedVsDerivedNotices(s, []BriefCell{{ID: "alpha/01", Cell: "todo"}}); len(n) != 0 {
 		t.Errorf("want no drift NOTICE for a withdrawn row; got %v", n)

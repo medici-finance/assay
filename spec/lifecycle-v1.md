@@ -42,8 +42,9 @@ ordered states rather than between any two of them.
 ### 2.0a `withdrawn` — the terminal off-path state
 
 `withdrawn` is a seventh valid status value and, like `blocked`, is NOT a position in the
-ordered sequence. It records that a brief will never be executed: a later decision
-retired it, or it was merged into another brief. Unlike `blocked` it is **terminal** —
+ordered sequence. It records that the remaining planned scope will not be executed under this identity:
+a later decision retired it, or moved that scope into another brief. Partial implementation
+and completed historical work remain on record, with their unresolved obligations. Unlike `blocked` it is **terminal** —
 nothing re-enters the sequence from it. The brief's frontmatter records the date, the
 reason and the successor (`brief-v1.md` §3.6).
 
@@ -54,7 +55,9 @@ open-brief counts, and from the stalled, bottleneck and blocked views, and SHOUL
 them in a separate Withdrawn count. A `depends:` edge into a withdrawn brief is never
 satisfied (the linter NOTICEs it, naming the successor). A lower-wave withdrawn brief MUST
 NOT hold the legacy whole-wave rule: it is terminal, the same as `done` for that purpose.
-A stream whose every brief is `done` or `withdrawn` is complete.
+A stream whose every brief is `done` or `withdrawn` is an archive candidate for planned
+work. This does not assert that surviving verification debt, open PRs or active claims
+were settled. Evidence and stamps are retained, and known execution drift remains visible.
 
 A status value that is neither one of the five ordered states, `blocked`, nor `withdrawn`
 MUST be rejected.
@@ -319,7 +322,7 @@ never as a clean pass and never as a blanket failure of every citing brief.
 A `gate: human` brief carries a decision issue (`brief-v1.md` §3.2, `decision-issue:`)
 on which a human decides BEFORE the irreversible act. The decision-gate hold binds that
 decision at the brief's **status transition**: while the decision issue carries no
-human ruling, the brief MUST NOT move to `implemented`, `verified` or `done`.
+human ruling, the brief MUST NOT move to `implemented`, `verified`, `done` or `withdrawn`.
 
 **Scope.** The hold is judged per change, against the base revision the change merges
 onto. A brief is in scope when it carries `gate: human` at the base OR after the change,
@@ -328,9 +331,11 @@ so a change cannot escape the hold by editing the gate in the same change.
 **What a conforming implementation MUST refuse.** For an in-scope brief whose decision
 issue has no human ruling, a change that:
 
-1. leaves the brief's status at `implemented`, `verified` or `done` where, at the base, its
-   status ranked lower or the brief was not on the board (a **move**; the ranks are
-   `implemented` < `verified` < `done`, and every other status ranks below all three);
+1. leaves the brief's status at `implemented`, `verified`, `done` or `withdrawn` where,
+   at the base, its status ranked lower or the brief was not on the board (a **move**;
+   the guarded-act ranks are `implemented` < `verified` < `done` < `withdrawn`, and
+   every other status ranks below them). This ranking guards retirement; it does not
+   place withdrawal in the progress lifecycle or attest completed work;
 2. changes the brief's `gate` away from `human`, or removes the key (a **relabel**);
 3. leaves no brief after the change that is the same brief as a `gate: human` base brief
    and still on the board (a **drop**). The README table is the board: a base brief that

@@ -401,7 +401,10 @@ func (r *reader) handoff(v any) *Handoff {
 	const p = "$"
 	m := r.object(v, p, "schema", "declared_by", "target", "discovery", "impacts", "amendments", "history", "active_work", "readiness")
 	h := &Handoff{}
-	h.Schema = r.constant(m, p, "schema", HandoffSchema, RuleSchemaVersion)
+	h.Schema = r.enum(m, p, "schema", HandoffSchema, HandoffSchemaV2)
+	if r.err != nil && r.err.Path == "$.schema" && r.err.Rule == RuleBadValue {
+		r.err.Rule = RuleSchemaVersion
+	}
 	h.DeclaredBy = r.declaredBy(m, p)
 	h.Target = r.target(m["target"], p+".target")
 	h.Discovery = r.discovery(m["discovery"], p+".discovery")
@@ -409,7 +412,7 @@ func (r *reader) handoff(v any) *Handoff {
 	items, paths := r.array(m, p, "impacts", 0)
 	h.Impacts = make([]Impact, 0, len(items))
 	for i, it := range items {
-		h.Impacts = append(h.Impacts, r.impact(it, paths[i]))
+		h.Impacts = append(h.Impacts, r.impact(it, paths[i], h.Schema))
 	}
 	items, paths = r.array(m, p, "amendments", 0)
 	h.Amendments = make([]Amendment, 0, len(items))
@@ -540,11 +543,15 @@ func (r *reader) discovery(v any, p string) Discovery {
 	return d
 }
 
-func (r *reader) impact(v any, p string) Impact {
+func (r *reader) impact(v any, p, schema string) Impact {
 	m := r.object(v, p, "subject", "lifecycle", "evidence", "relationship", "disposition", "reason")
+	lifecycles := []string{"todo", "in-progress", "implemented", "verified", "done", "blocked", "unknown"}
+	if schema == HandoffSchemaV2 {
+		lifecycles = append(lifecycles, "withdrawn")
+	}
 	im := Impact{
 		Subject:   r.qid(m, p, "subject"),
-		Lifecycle: r.enum(m, p, "lifecycle", "todo", "in-progress", "implemented", "verified", "done", "blocked", "unknown"),
+		Lifecycle: r.enum(m, p, "lifecycle", lifecycles...),
 		Evidence:  r.optStr(m, p, "evidence", locatorRe, "locator"),
 	}
 	rp := p + ".relationship"

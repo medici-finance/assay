@@ -495,7 +495,7 @@ func assertedVsDerivedNotices(s *Stream, derived []BriefCell) []string {
 	}
 	var notices []string
 	for _, c := range derived {
-		if c.Cell == "unknown" || c.Cell == "" {
+		if (c.Cell == "unknown" || c.Cell == "") && c.MergedPR == "" {
 			continue
 		}
 		// canonicalBriefKey, not the raw c.ID: a brief-v2 hierarchical id
@@ -503,9 +503,13 @@ func assertedVsDerivedNotices(s *Stream, derived []BriefCell) []string {
 		// asserted map is keyed on, which made the comparator silently blind on
 		// a v2 tree — no drift NOTICE could ever fire there.
 		a, ok := asserted[canonicalBriefKey(c.ID)]
-		if !ok || a == "" || isWithdrawn(a) {
-			// withdrawn is an authored terminal decision, not a witness-derived
-			// state: no PR witness can confirm or contradict it.
+		if !ok || a == "" {
+			continue
+		}
+		// A never-started retirement does not conflict with a todo witness.
+		// Open or merged work still needs explicit reconciliation, even when
+		// its current evidence fold is unknown. Withdrawal is not verification.
+		if isWithdrawn(a) && c.Cell == "todo" && c.MergedPR == "" {
 			continue
 		}
 		if a == c.Cell {

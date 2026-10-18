@@ -232,7 +232,9 @@ type gateSnapshot map[string]*gateBrief
 // including briefs a stream moved into its done/ folder.
 var gateBoardPathRe = regexp.MustCompile(`^docs/(streams|archive)/([^/]+)/(README\.md|brief-[^/]+\.md|done/brief-[^/]+\.md)$`)
 
-// gateStatusRank orders the statuses the hold covers. Every other status ranks 0.
+// gateStatusRank orders guarded acts, not lifecycle progress. Withdrawal is a
+// guarded retirement, never completion; it must not bypass a human decision.
+// Every other status ranks 0.
 func gateStatusRank(s string) int {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "implemented":
@@ -241,6 +243,8 @@ func gateStatusRank(s string) int {
 		return 2
 	case "done":
 		return 3
+	case statusWithdrawn:
+		return 4
 	}
 	return 0
 }
