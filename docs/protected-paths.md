@@ -95,7 +95,8 @@ its final verdict (full immutable Git object IDs, not branch names):
 Verification-Table: delivery=<sha> base=<sha> original=<sha>
 ```
 
-`delivery` is the landed implementation commit. For a squash delivery, `base` is
+`delivery` is the landed implementation commit on the observed HEAD's first-parent
+chain. Other reachable commits do not establish mainline delivery. For a squash delivery, `base` is
 its exact parent; for a two-parent merge, it is the parents' unique merge-base.
 Before using a two-parent merge baseline, the evaluator also requires the first-parent
 main acceptance table to equal the divergence table; otherwise independent
@@ -127,6 +128,8 @@ fail-first and row-strength checks retain the original acceptance table. Human r
 gates, verifier authorship, admission and full closure lint remain required. The
 marker proves local immutable object contents and ancestry; it is not a forge
 identity attestation, permission or a replacement for independent verification.
+This local history proof is relative to the checked HEAD: the independent verifier
+still identifies the actual delivery; it does not bind that identity to a forge PR.
 
 Coverage observes the same original acceptance rows. Its typed
 `AcceptanceRevision` records the validated original definition revision; the

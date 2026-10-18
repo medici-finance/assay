@@ -109,6 +109,25 @@ func protectedAcceptance(verify, evidence string, paths ...string) (protectedPla
 	default:
 		return refuse("delivery must have one parent (squash) or two parents (merge)")
 	}
+	// An arbitrary ancestor can belong to a merged side branch. Only a
+	// delivery on the observed HEAD's first-parent chain gives parents[0]
+	// the mainline role used by the baseline checks below. Excluding that
+	// parent bounds the walk without treating side-branch reachability as
+	// delivery proof. historyGit retains replace/graft isolation.
+	if !isObjectID(parents[0]) {
+		return refuse("delivery first parent is not an immutable object id")
+	}
+	mainline, err := historyGit(dir, "rev-list", "--first-parent", "--end-of-options", strings.TrimSpace(string(head)), "^"+parents[0]).Output()
+	if err != nil {
+		return refuse("cannot read the immutable first-parent delivery history")
+	}
+	onMainline := false
+	for _, id := range strings.Fields(string(mainline)) {
+		onMainline = onMainline || id == delivery
+	}
+	if !onMainline {
+		return refuse("delivery is not on the observed HEAD's first-parent chain; record the actual mainline delivery and re-derive its baseline")
+	}
 	bases, err = flipMergeBases(dir, original, base)
 	if base != expected || err != nil || len(bases) != 1 || bases[0] != original {
 		return refuse("base is not the exact delivery baseline, or original is not its ancestor")

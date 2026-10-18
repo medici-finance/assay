@@ -345,3 +345,67 @@ func TestProtectedUnmarked(t *testing.T) {
 		}
 	}
 }
+
+// regression: #3342
+func TestProtectedMainlineDelivery(t *testing.T) {
+	o := vfDefaults()
+	o.status, o.verified, o.evidence = "verified", "2026-08-13 human:alex", ""
+	root, _ := vfFixture(t, o)
+	path := vfBrief(root)
+	original := vfRev(t, root, "HEAD")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vfGit(t, root, vfMailWorker, "checkout", "-q", "-b", "implementation")
+	if err := os.WriteFile(filepath.Join(root, "implementation.txt"), []byte("change\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	vfCommit(t, root, vfMailWorker)
+	vfGit(t, root, vfMailHuman, "checkout", "-q", "main")
+	verify := vfVerify + "| 3 | `printf supplemental` | exit 0 |\n"
+	bare := strings.Replace(string(raw), vfVerify, verify, 1)
+	if err := os.WriteFile(path, []byte(bare), 0644); err != nil {
+		t.Fatal(err)
+	}
+	vfCommit(t, root, vfMailHuman)
+	mainTip := vfRev(t, root, "HEAD")
+	vfGit(t, root, vfMailWorker, "checkout", "-q", "implementation")
+	vfGit(t, root, vfMailWorker, "merge", "--no-ff", "-q", "-m", "synchronize", "main")
+	synchronized := vfRev(t, root, "HEAD")
+	vfGit(t, root, vfMailHuman, "checkout", "-q", "main")
+	vfGit(t, root, vfMailHuman, "merge", "--no-ff", "-q", "-m", "delivery", "implementation")
+	landing := vfRev(t, root, "HEAD")
+	for _, c := range []struct {
+		name, delivery, base, original, result string
+		pass                                   bool
+	}{
+		{"non-mainline", synchronized, original, original, "author-added; execution exit=0; no acceptance credit", false},
+		{"root", original, original, original, "author-added; execution exit=0; no acceptance credit", false},
+		{"landing", landing, mainTip, mainTip, "pass; execution exit=0", true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			evidence := "Verification-Table: delivery=" + c.delivery + " base=" + c.base + " original=" + c.original + "\n\n" + strings.ReplaceAll(witnessTableFor(vfRow1, vfRow2), vfSHA, landing) + "\n| 3 | `printf supplemental` | " + c.result + " | sha256:bbbbbbbbbbbb | 2026-08-13 | " + vfRunner + " @ " + landing + " |\n"
+			body := strings.Replace(bare, "## Evidence\n", "## Evidence\n"+evidence, 1)
+			if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+				t.Fatal(err)
+			}
+			resetReadMemo()
+			_, refusal := protectedAcceptance(verify, evidence, path)
+			if (refusal == "") != c.pass {
+				t.Errorf("mainline proof pass=%v: %s", c.pass, refusal)
+			}
+			result, diag := captureVerifyrun(t, []string{"--check", "--brief", path})
+			if (result.code == 0) != c.pass {
+				t.Errorf("audit pass=%v: %d %s", c.pass, result.code, diag)
+			}
+			streams, _, err := loadStreams(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := evaluateCoverage(root, streams, coverageOptions{Revision: landing})["vf/01"]; got.Released != c.pass {
+				t.Errorf("coverage pass=%v: %+v", c.pass, got)
+			}
+		})
+	}
+}
