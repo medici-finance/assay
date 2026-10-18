@@ -638,13 +638,15 @@ for one role; a window that never takes its lease is a `failed` row. On an exist
 session `up` adds only the missing windows. A cell with a `deskd` window or a configured comms
 window starts those first, as before.
 
-It ends with one table, one row per targeted role: `up`, `already-up`, `reconciled+up` or `failed`
-(with the first line of the error, verbatim). The exit code is 0 when every role is `up`,
-`already-up` or `reconciled+up`, otherwise 1. `--json` prints the `cell-op-result` document
+It ends with one table, one row per targeted role: `up`, `already-up`, `reconciled+up`, `scheduled` or `failed`
+(with the first line of the error, verbatim). `scheduled` is a cadenced role that took its lease and is
+resting until its next pass is due (its last pass was under one interval ago): it has no role child yet,
+and the detail names the next due time. The exit code is 0 when every role is `up`, `already-up`,
+`reconciled+up` or `scheduled`, otherwise 1. `--json` prints the `cell-op-result` document
 ([the machine seam](cellctl-machine-seam.md)) with one entry per role and nothing else on stdout.
 
 **Stale roles.** A hand-closed window leaves a checkpoint behind; `up` does not clear it for you.
-`cellctl up <cell> --plan` writes ONE plan that clears every stale role of the cell (it works off a
+`cellctl up <cell> --plan` writes ONE plan that clears every stale role among the targeted roles (`--role` limits them; otherwise the cell's `ROLES`) and stale comms state (it works off a
 terminal and changes nothing else; with nothing stale it writes no plan). `cellctl up <cell>
 --apply <plan-id>` works on a terminal only: it shows the plan, takes the typed confirm,
 re-measures each role, clears the stale state and then launches the targets, reporting the cleared

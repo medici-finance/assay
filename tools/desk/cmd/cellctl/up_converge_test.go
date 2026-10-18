@@ -42,6 +42,16 @@ func init() {
 		os.Exit(1)
 	}
 	logEvent("lease")
+	if os.Getenv("CELLCTL_UP_IDLE") == "1" { // a cadenced role resting until its next pass: lease, checkpoint, no child
+		now := time.Now().UTC()
+		b, _ := json.Marshal(cellcadence.State{Schema: cellcadence.Schema, Cell: "example", Role: role, PID: os.Getpid(),
+			Interval: time.Hour, Budget: time.Minute, NextDue: now.Add(40 * time.Minute), Heartbeat: now,
+			LastStart: now.Add(-20 * time.Minute), LastFinish: now.Add(-19 * time.Minute), Sequence: 1, Outcome: "ok"})
+		if os.WriteFile(filepath.Join(dir, "checkpoint.json"), b, 0o600) != nil {
+			logEvent("checkpoint-failed")
+			os.Exit(1)
+		}
+	}
 	d, _ := time.ParseDuration(os.Getenv("CELLCTL_UP_DELAY"))
 	time.Sleep(d)
 	if os.Getenv("CELLCTL_UP_NOCHILD") != "1" {
@@ -265,6 +275,20 @@ func TestUpConverge(t *testing.T) {
 		}
 	})
 
+	t.Run("a cadenced role resting until its next pass is scheduled, not failed", func(t *testing.T) {
+		w := newUpWorld(t, "worker-desk", 0, "CELLCTL_UP_NOCHILD=1", "CELLCTL_UP_IDLE=1")
+		r := w.up(t, "--role", "worker-desk", "--lease-wait", "20s")
+		states, details, _ := upTable(t, r.Stdout)
+		if r.Code != 0 || states["worker-desk"] != "scheduled" || !strings.Contains(details["worker-desk"], "next pass due") {
+			t.Fatalf("exit %d, rows %v %v\n%s%s", r.Code, states, details, r.Stdout, r.Stderr)
+		}
+		again := w.up(t, "--role", "worker-desk")
+		states, _, _ = upTable(t, again.Stdout)
+		if again.Code != 0 || states["worker-desk"] != "already-up" {
+			t.Errorf("an immediate re-run: exit %d, rows %v\n%s", again.Code, states, again.Stdout)
+		}
+	})
+
 	t.Run("dry run launches nothing", func(t *testing.T) {
 		w := newUpWorld(t, upFive, 50*time.Millisecond)
 		w.hold(t, "worker-desk")
@@ -277,6 +301,29 @@ func TestUpConverge(t *testing.T) {
 			t.Errorf("a dry run reached tmux: %v %q", w.timeline(t), w.calls(t))
 		}
 	})
+}
+
+func TestUpConvergeDryRunJSON(t *testing.T) {
+	w := newUpWorld(t, upFive, 50*time.Millisecond)
+	w.hold(t, "worker-desk")
+	r := w.run(t, []string{"DRY_RUN=1"}, "up", "example", "--cockpit", "tmux", "--no-attach", "--json")
+	var doc struct {
+		Outcome string `json:"outcome"`
+		Roles   []struct {
+			Role  string `json:"role"`
+			State string `json:"state"`
+		} `json:"roles"`
+	}
+	if err := json.Unmarshal([]byte(r.Stdout), &doc); err != nil {
+		t.Fatalf("a dry run under --json wrote no document: %v\n%s", err, r.Stdout)
+	}
+	got := map[string]string{}
+	for _, ro := range doc.Roles {
+		got[ro.Role] = ro.State
+	}
+	if r.Code != 0 || doc.Outcome != "ok" || got["worker-desk"] != "already-up" || got["verify-desk"] != "would-start" || len(w.timeline(t)) != 0 {
+		t.Errorf("dry run json: exit %d outcome %q roles %v", r.Code, doc.Outcome, got)
+	}
 }
 
 func TestUpConvergeNeverTouchesLiveRole(t *testing.T) {

@@ -34,8 +34,24 @@ const (
 	upStateUp           = "up"
 	upStateAlreadyUp    = "already-up"
 	upStateReconciledUp = "reconciled+up"
+	upStateScheduled    = "scheduled"
 	upStateFailed       = "failed"
+
+	// Dry-run only: what a real run would do to a role it did not find up.
+	upStateWouldStart = "would-start"
+	upStateStale      = "stale"
 )
+
+// upDryRunRow is a role's dry-run state for --json, from the same probe the dry-run line shows.
+func upDryRunRow(c *Cell, p upProbe) upRow {
+	switch p.Kind {
+	case probeUp:
+		return upRow{Role: p.Role, State: upStateAlreadyUp, PID: p.PID}
+	case probeStale:
+		return upRow{Role: p.Role, State: upStateStale, Detail: c.staleHint(p)}
+	}
+	return upRow{Role: p.Role, State: upStateWouldStart, Detail: "no window is open; a real run opens one"}
+}
 
 // The classes a role is probed into.
 const (
@@ -184,28 +200,39 @@ func (c *Cell) staleHint(p upProbe) string {
 // child. The lease record names the child only after the launch passed lease acquisition and the
 // scratch sweep, so that is the gate the next window waits on. A launch that took the lease and
 // released it without a child failed; one that never took it within wait failed too.
-func (c *Cell) awaitRoleLease(role string, wait time.Duration) error {
+//
+// A cadenced role relaunched less than one interval after its last pass holds the lease and idles
+// until its next pass is due, so it never names a child. That is a healthy launch, not a failed
+// one: a live holder whose checkpoint is idle (not running), whose next pass is still in the future
+// and whose heartbeat is newer than the launch (since) is scheduled. The returned string is the
+// scheduled detail, empty when a child started.
+func (c *Cell) awaitRoleLease(role string, wait time.Duration, since time.Time) (string, error) {
 	dir := c.cadenceDir(role)
 	deadline := time.Now().Add(wait)
 	sawLease := false
 	for {
 		busy, err := cellcadence.Probe(dir)
 		if err != nil {
-			return fmt.Errorf("the role lease could not be probed: %v", err)
+			return "", fmt.Errorf("the role lease could not be probed: %v", err)
 		}
 		if busy {
 			sawLease = true
 			if h, herr := cellcadence.Holder(dir); herr == nil && h != nil && h.ChildPID > 0 {
-				return nil
+				return "", nil
+			}
+			if st, serr := cellcadence.Read(dir); serr == nil && st.Mode == "" && !st.Running &&
+				st.Cell == c.Name && st.Role == role &&
+				!st.Heartbeat.Before(since) && st.NextDue.After(time.Now()) {
+				return "holds the role lease; next pass due " + st.NextDue.UTC().Format(time.RFC3339), nil
 			}
 		} else if sawLease {
-			return errors.New("the role lease was released before a role child started: the launch failed after taking it")
+			return "", errors.New("the role lease was released before a role child started: the launch failed after taking it")
 		}
 		if !time.Now().Before(deadline) {
 			if sawLease {
-				return fmt.Errorf("the role lease is held but no role child started within %s", wait)
+				return "", fmt.Errorf("the role lease is held but no role child started within %s", wait)
 			}
-			return fmt.Errorf("no role lease was taken within %s: the window did not start the role", wait)
+			return "", fmt.Errorf("no role lease was taken within %s: the window did not start the role", wait)
 		}
 		time.Sleep(upPoll)
 	}
@@ -214,7 +241,7 @@ func (c *Cell) awaitRoleLease(role string, wait time.Duration) error {
 // convergeRoles brings every probed role to its final state, one launch at a time. open starts the
 // role's window and returns the window's first error line. reconciled names the roles whose stale
 // state was just cleared by an applied plan.
-func (c *Cell) convergeRoles(probes []upProbe, reconciled map[string]bool, gate func(role string) error, open func(role string) error) []upRow {
+func (c *Cell) convergeRoles(probes []upProbe, reconciled map[string]bool, gate func(role string, since time.Time) (string, error), open func(role string) error) []upRow {
 	var rows []upRow
 	for _, p := range probes {
 		switch p.Kind {
@@ -230,11 +257,13 @@ func (c *Cell) convergeRoles(probes []upProbe, reconciled map[string]bool, gate 
 		case probeStale:
 			rows = append(rows, upRow{Role: p.Role, State: upStateFailed, Detail: c.staleHint(p)})
 		default:
+			launched := time.Now().UTC().Add(-time.Second)
 			if err := open(p.Role); err != nil {
 				rows = append(rows, upRow{Role: p.Role, State: upStateFailed, Detail: firstOutLine(err.Error())})
 				continue
 			}
-			if err := gate(p.Role); err != nil {
+			sched, err := gate(p.Role, launched)
+			if err != nil {
 				rows = append(rows, upRow{Role: p.Role, State: upStateFailed, Detail: firstOutLine(err.Error())})
 				continue
 			}
@@ -242,7 +271,10 @@ func (c *Cell) convergeRoles(probes []upProbe, reconciled map[string]bool, gate 
 			if reconciled[p.Role] {
 				state = upStateReconciledUp
 			}
-			rows = append(rows, upRow{Role: p.Role, State: state})
+			if sched != "" {
+				state = upStateScheduled
+			}
+			rows = append(rows, upRow{Role: p.Role, State: state, Detail: sched})
 		}
 	}
 	return rows
@@ -460,6 +492,10 @@ func withRoles(r *cellop.Result, rows []upRow) {
 		if len(r.Actions) > 0 || failed < len(rows) {
 			o = cellop.Partial
 		}
-		r.Finish(o, cellop.ReasonActionFailed, fmt.Sprintf("%d of %d roles failed after the plan was applied", failed, len(rows)), time.Now())
+		what := fmt.Sprintf("%d of %d roles failed", failed, len(rows))
+		if len(r.Actions) > 0 {
+			what += " after the plan was applied"
+		}
+		r.Finish(o, cellop.ReasonActionFailed, what, time.Now())
 	}
 }

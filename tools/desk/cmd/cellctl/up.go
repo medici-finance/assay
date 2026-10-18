@@ -262,6 +262,18 @@ func (ctl *upControl) restore() {
 	}
 }
 
+// emit writes the one cell-op-result document of a --json run that launched nothing (a dry run,
+// or a cell with nothing to open) and exits; without --json it does nothing.
+func (ctl *upControl) emit(c *Cell, started time.Time, rows []upRow) {
+	if !ctl.json || ctl.applyID != "" {
+		return
+	}
+	ctl.restore()
+	r := upResult(c.Name, started, rows)
+	emitResult(ctl.cmd, r)
+	exitWith(r.ExitCode())
+}
+
 func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 	if c.Kind == "container" || c.Kind == "scrubbed" {
 		// Container and scrubbed cells run exactly one desk, and `up` hands it the typed desk
@@ -298,6 +310,7 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 
 	ctl.toStderr()
 	defer ctl.restore()
+	started0 := time.Now()
 	noTheDesk, attach, persist := v.Bool("no-the-desk"), !v.Bool("no-attach") && !ctl.json && ctl.applyID == "", v.Bool("set")
 	wait := v.Duration("lease-wait")
 	if wait <= 0 {
@@ -341,6 +354,9 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 	}
 	fmt.Printf("[cockpit] %s (%s)\n", res.Cockpit, res.Why)
 	o.Cockpit = res.Cockpit
+	if automate != "" && ctl.applyID != "" {
+		die("up: --apply cannot be combined with --automate (scheduled automations open no window and hold no lease, so there is nothing to apply)")
+	}
 	if automate != "" && res.Cockpit != "orca" {
 		die("up: --automate is an orca-only shape (scheduled automations behind an exit-code precheck); the resolved cockpit is %s", res.Cockpit)
 	}
@@ -491,6 +507,7 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 		// Nothing to open is not an error (the operator asked for --no-the-desk on a cell whose only
 		// role is the-desk), but it is never silent, and no empty session is created for it.
 		fmt.Fprintf(os.Stderr, "[cell] %s: nothing to open — no deskd window (DESKD is not 1), no comms window, and no role window (ROLES is empty after --no-the-desk)\n", c.Name)
+		ctl.emit(c, started0, nil)
 		return
 	}
 
@@ -521,18 +538,25 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 			fmt.Printf("[dry-run] %s: %s\n", firstName, firstCmd)
 		}
 		if automate != "" {
+			var rows []upRow
 			for _, r := range roles {
+				rows = append(rows, upRow{Role: r, State: upStateWouldStart, Detail: "orca automation on " + automate})
 				fmt.Printf("[dry-run] %s: orca automations create --name %s-%s --repo path:%s --trigger '%s' --precheck '%s check %s' --provider claude --prompt /assay:%s\n",
 					r, c.Name, r, c.Repo, automate, selfPath(), c.Name, r)
 			}
+			ctl.emit(c, started0, rows)
 			return
 		}
 		// Each role's disposition comes from the probes a real run acts on. An absent role keeps
 		// its line: the command its window would run.
 		probes, _ := probe(roles)
+		var rows []upRow
 		for _, p := range probes {
-			fmt.Println(c.upDryRunLine(p, c.paneRoleCmd(p.Role, cfg, o)))
+			cmd := c.paneRoleCmd(p.Role, cfg, o)
+			fmt.Println(c.upDryRunLine(p, cmd))
+			rows = append(rows, upDryRunRow(c, p))
 		}
+		ctl.emit(c, started0, rows)
 		return
 	}
 	if persist {
@@ -635,11 +659,11 @@ func knownRolesOrdered(set map[string]bool) []string {
 // lease record (the launch took the lease and passed the scratch sweep, or failed); on a cell with
 // no role lease, the fixed stagger the windows have always had, since each one fetches the shared
 // .git and starting them at once puts every window into the fetch lock's retry loop together.
-func (c *Cell) roleGate(wait time.Duration) func(string) error {
+func (c *Cell) roleGate(wait time.Duration) func(string, time.Time) (string, error) {
 	if c.Kind == "house" {
-		return func(role string) error { return c.awaitRoleLease(role, wait) }
+		return func(role string, since time.Time) (string, error) { return c.awaitRoleLease(role, wait, since) }
 	}
-	return func(string) error { time.Sleep(upStagger); return nil }
+	return func(string, time.Time) (string, error) { time.Sleep(upStagger); return "", nil }
 }
 
 // upStagger paces the windows of a cell that has no role lease to wait on.

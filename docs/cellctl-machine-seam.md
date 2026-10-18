@@ -104,7 +104,7 @@ When a verb lands, its stand-in in the fixture build (below) steps aside for it,
 
 `cellctl up <cell>` converges the cell (see [the command reference](cellctl.md#cellctl-desk-up-down)). Its three forms:
 
-- **bare**: starts the roles that are not running, one window at a time, and prints a table with one row per targeted role (`up`, `already-up`, `reconciled+up`, `failed`). A running role is never relaunched; a stale one is a `failed` row naming `up --plan`. Allowed off a terminal. With `--json` the same result is a `cell-op-result` with one entry per role and nothing else on stdout.
+- **bare**: starts the roles that are not running, one window at a time, and prints a table with one row per targeted role (`up`, `already-up`, `reconciled+up`, `scheduled`, `failed`). A running role is never relaunched; a stale one is a `failed` row naming `up --plan`. Allowed off a terminal. With `--json` the same result is a `cell-op-result` with one entry per role and nothing else on stdout; a dry run under `--json` lists each role as `already-up`, `stale` or `would-start`, and `--apply` cannot be combined with `--automate`.
 - **`--plan`**: writes ONE plan for the whole cell, one `reconcile-<role>` action per stale role (and `reconcile-comms` for stale comms state). Each action's preconditions are the role's measured disposition and stale class. A cell with nothing stale writes no plan and returns an ok result. Works off a terminal.
 - **`--apply <plan-id>`** (annotated, terminal only): shows the plan, takes the typed confirm, re-measures every action and runs it, then launches the targeted roles. A role that came alive since the plan is refused `plan-stale` (exit 5) naming the role, and nothing is launched. Alive and could-not-check records are never planned.
 

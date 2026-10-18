@@ -706,8 +706,9 @@ func upCmd() *cobra.Command {
 			"--role <name> (repeatable) limits the run to those roles; --no-the-desk and --with-the-desk stay as aliases.\n\n" +
 			"Launches are serialized: role N+1 opens only after role N holds its lease and has passed the scratch\n" +
 			"sweep (or has failed); --lease-wait bounds that wait per role. The run ends with one row per targeted role\n" +
-			"(up, already-up, reconciled+up, failed with the first error line) and exits 0 when no row failed, else 1.\n\n" +
-			"--plan writes ONE cell-op plan clearing every stale role of the cell and changes nothing else; --apply\n" +
+			"(up, already-up, reconciled+up, scheduled, failed with the first error line) and exits 0 when no row failed, else 1.\n\n" +
+			"--plan writes ONE cell-op plan clearing every stale role among the targeted roles (--role limits them; else the\n" +
+			"cell's ROLES) and stale comms state, and changes nothing else; --apply\n" +
 			"<plan-id>, on a terminal only, shows it, takes the typed confirm, re-measures and runs it, then launches\n" +
 			"the targeted roles. A role that came alive between plan and apply is refused as plan-stale, by name.\n" +
 			"--json prints the cell-op-v1 document (one entry per role) and nothing else on stdout.\n\n" +
@@ -728,7 +729,7 @@ func upCmd() *cobra.Command {
 		bStr("automate", "orca only: schedule one automation per role (a 5-field cron string or a preset)"),
 		bBool("dry-run", "print each role's disposition, the cockpit and the per-role commands; change and launch nothing (as DRY_RUN=1)"),
 		cli.Binding{Key: "role", Kind: cli.StringArray, Flag: "role", Usage: "converge only this role; repeatable"},
-		bBool("plan", "write one plan that reconciles every stale role of the cell and change nothing else"),
+		bBool("plan", "write one plan that reconciles every stale targeted role (and stale comms state) and change nothing else"),
 		bBool("json", "print the result as cell-op-v1 JSON, one entry per role, and nothing else on stdout"),
 		bStr("apply", "apply a stored reconcile plan on this terminal, then launch the targeted roles"),
 		cli.Binding{Key: "lease-wait", Kind: cli.Duration, Flag: "lease-wait", Default: upDefaultLeaseWait, Usage: "how long to wait for each launched role to take its lease and pass the scratch sweep"},

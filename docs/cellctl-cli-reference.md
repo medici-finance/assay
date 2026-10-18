@@ -227,7 +227,7 @@ converge the cell: open a window for every role that is not already up
   --model                    string   model for THIS run only, passed through verbatim to the harness
   --no-attach                         do not attach to the session after opening it
   --no-the-desk                       do not open the the-desk window
-  --plan                              write one plan that reconciles every stale role of the cell and change nothing else
+  --plan                              write one plan that reconciles every stale targeted role (and stale comms state) and change nothing else
   --provider                 string   provider for this run (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)
   --role                     stringArray converge only this role; repeatable
   --set                               persist every override given into cell.env
