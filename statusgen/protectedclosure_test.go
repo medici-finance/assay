@@ -249,7 +249,7 @@ func TestProtectedRerun(t *testing.T) {
 			}
 			selectedPass := false
 			if err == nil {
-				findings, refusal := closureWitnesses(verify, closureEvidenceForRun(c.evidence, p.Run), path)
+				findings, refusal := closureRunWitnesses(verify, c.evidence, p.Run, path)
 				if c.name == "latest-missing-row" && (refusal != "" || len(findings) == 0 || findings[0].State != stateCouldNotRun || !strings.Contains(findings[0].Detail, "no execution witness")) {
 					t.Fatalf("missing-row fixture did not reach intended audit: %s %+v", refusal, findings)
 				}
@@ -597,6 +597,35 @@ func TestProtectedMarkerViews(t *testing.T) {
 				}
 			} else if !strings.Contains(why, c.refusal) {
 				t.Fatalf("marker reader=%q want%q", why, c.refusal)
+			}
+		})
+	}
+}
+
+// regression: #3342
+func TestProtectedMarkerSelectedBoundary(t *testing.T) {
+	opener := "<!--"
+	for _, boundary := range []struct {
+		name string
+		at   int
+	}{{"one", 1}, {"two", 2}, {"three", 3}} {
+		t.Run(boundary.name, func(t *testing.T) {
+			// Invalid example metadata exercises the selected-run entry point
+			// without an execution-history or delivery-provenance assertion.
+			raw := opener[:boundary.at] + "<!-- normalization note -->" + opener[boundary.at:] + " note -->Verification-Table: example\n" + witnessTableFor(vfRow1, vfRow2) + "\n**VERIFY: PASS**\n"
+			if hasProtectedTableMarker(raw) {
+				t.Fatal("raw record should be ordinary")
+			}
+			p, err := flipLatestPass(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !hasProtectedTableMarker(p.Run) {
+				t.Fatal("fixture must change classification at the selected-run boundary")
+			}
+			_, refusal := closureRunWitnesses(vfVerify, raw, p.Run)
+			if !strings.Contains(refusal, "selected run changes marker classification") {
+				t.Fatalf("selected boundary did not refuse ambiguity: %s", refusal)
 			}
 		})
 	}

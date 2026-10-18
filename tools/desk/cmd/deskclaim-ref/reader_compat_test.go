@@ -60,7 +60,11 @@ func TestClaimReaderCompatibility(t *testing.T) {
 			if tc.linked {
 				dir = linked
 			}
-			if tc.scope != "" {
+			if tc.scope == "global" {
+				// Fixture.Git disables ambient globals. Seed only this owned file;
+				// originRemoteURL still reads it through the test's explicit env.
+				local("-C", dir, "config", "--file", global, "url."+selected+".insteadOf", common)
+			} else if tc.scope != "" {
 				local("-C", dir, "config", "--"+tc.scope, "url."+selected+".insteadOf", common)
 			}
 			before := regression.TreeDigest(t, root)

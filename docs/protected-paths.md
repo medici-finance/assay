@@ -150,6 +150,9 @@ the shared context adapter: earlier protection still requires current provenance
 while ordinary unmarked records audit only their selected run. Passing the selected
 text alone loses that context and is not a valid protected closure input.
 
-Marker classification and validation share one normalized Evidence view. A run
-selected from that view keeps its normalization; consumers do not normalize the
-same marker text again. Ordinary selected-run witness isolation remains required.
+Marker classification and validation use the same canonical marker scan.
+The shared selected-run audit preserves full-record classification: protected
+records retain full history, ordinary records audit only their selected run, and
+a selected string that would newly classify as protected refuses as ambiguous.
+Ordinary canonical auditing can normalize selected text internally; no assumption
+that comment removal is idempotent grants an exemption or older-row credit.

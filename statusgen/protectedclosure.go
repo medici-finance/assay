@@ -24,9 +24,9 @@ func closureSatisfied(f checkFinding) bool {
 	return f.State == statePass || f.State == stateAuthorAdded
 }
 
-// normalizedProtectedEvidence has had complete row comments removed exactly
-// once. A selected flipPass.Run already has this normalization; marker readers
-// must not strip it again, since comment removal is not generally idempotent.
+// normalizedProtectedEvidence identifies a comment-removed marker-scan view.
+// Comment removal is not idempotent. Selected-run auditing must preserve the
+// full record's classification through closureRunWitnesses, not a raw string.
 type normalizedProtectedEvidence string
 
 func normalizeProtectedEvidence(raw string) normalizedProtectedEvidence {
@@ -56,14 +56,19 @@ func hasProtectedTableMarker(evidence string) bool {
 	return len(protectedMarkers(normalizeProtectedEvidence(evidence))) > 0
 }
 
-// closureEvidenceForRun retains the full protected context for the canonical
-// audit to select its current run. Ordinary records keep the caller's selected
-// run, so an older ordinary witness cannot fill a missing current-run row.
-func closureEvidenceForRun(full, run string) string {
+// closureRunWitnesses owns the full-record/selected-run boundary. Protected
+// records retain full history for the canonical audit to select its current run.
+// Ordinary records audit only normalizedRun. If that canonical audit would newly
+// interpret the selected string as protected, the record is ambiguous: refuse,
+// never grant an exemption or return full ordinary history to fill missing rows.
+func closureRunWitnesses(verify, full, normalizedRun string, paths ...string) ([]checkFinding, string) {
 	if hasProtectedTableMarker(full) {
-		return full
+		return closureWitnesses(verify, full, paths...)
 	}
-	return run
+	if hasProtectedTableMarker(normalizedRun) {
+		return nil, "protected table: selected run changes marker classification; record literal current provenance and re-run the audit"
+	}
+	return closureWitnesses(verify, normalizedRun, paths...)
 }
 
 // protectedAcceptance returns only owed original rows plus explicit uncredited
@@ -75,7 +80,7 @@ func protectedAcceptance(verify, evidence string, paths ...string) (protectedPla
 	if len(markers) == 0 {
 		return protectedPlan{Verify: verify, Evidence: evidence}, ""
 	}
-	// Protected callers retain complete Evidence through closureEvidenceForRun.
+	// Selected-run callers preserve record classification through closureRunWitnesses.
 	// Select its strict current run here; earlier markers establish protected
 	// context but cannot supply missing current provenance or witnesses.
 	if len(flipVerdictTokens(strings.Split(string(text), "\n"))) > 0 {
