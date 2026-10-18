@@ -48,8 +48,11 @@ type fakeForge struct {
 	commitAuthorLogin string
 	commitErr         error
 	getCommitCalls    int
+	getCommitSHAs     []string
+	writeReceipt      *deskkit.WriteFileResult
 	// prHeadSHA is the HeadSHA GetPullRequest reports for the draft change opened on the GitLab
-	// landing path, and prErr its error. Empty HeadSHA leaves the online resolution with no sha.
+	// landing path, and prErr its error. It also supplies a deliberately different head in
+	// the receipt regression: attribution must use the write receipt instead.
 	prHeadSHA string
 	prErr     error
 	// onPut runs at the top of WriteFile, inside deskevidence's audit flock — the
@@ -269,7 +272,10 @@ func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*
 	} else if author == "" {
 		author = verifierBotDisplay()
 	}
-	return &deskkit.WriteFileResult{Changed: true, SHA: "new-sha", Author: author}, nil
+	if f.writeReceipt != nil {
+		return f.writeReceipt, nil
+	}
+	return &deskkit.WriteFileResult{Changed: true, ContentID: "new-blob", CommitSHA: "new-sha", Author: author}, nil
 }
 
 func (f *fakeForge) CreateDraftChange(_ deskkit.ForgeRepo, in deskkit.DraftChangeInput) (*deskkit.PullRef, error) {
@@ -290,8 +296,8 @@ func (f *fakeForge) OpenMergeHold(_ deskkit.ForgeRepo, number int) (string, erro
 	return "disc-4242", nil
 }
 
-// GetPullRequest serves the head sha the online attribution resolution reads on the GitLab
-// draft-landing path (#1477). Only the HeadSHA field is populated (all deskevidence reads).
+// GetPullRequest serves delivery joins and supplies a distinct draft head for the receipt
+// regression. Attribution must not read this mutable head as the landed commit.
 func (f *fakeForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -316,6 +322,7 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.getCommitCalls++
+	f.getCommitSHAs = append(f.getCommitSHAs, sha)
 	if f.commitErr != nil {
 		return nil, f.commitErr
 	}
@@ -328,17 +335,17 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 // stubAdmittedReceipt is the receipt the stubbed admission returns: a binding to the brief a
 // verify-outcome record target (docs/streams/verify-outcomes/<stream>/<NN>-<digest>.json) is
 // keyed to, so the writer's TARGET-TIE re-check of the final path has a real binding to hold.
-// Any other target yields the empty receipt.
+// Every admitted fixture includes a source; non-outcome targets need no brief tie.
 func stubAdmittedReceipt(target string) deskkit.VerifierReceipt {
+	r := deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{Source: strings.Repeat("a", 40)}}
 	rest, ok := strings.CutPrefix(target, deskkit.OutcomeRecordsDir+"/")
 	if !ok {
-		return deskkit.VerifierReceipt{}
+		return r
 	}
 	stream, file, _ := strings.Cut(rest, "/")
 	nn, _, _ := strings.Cut(file, "-")
-	return deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{
-		Brief: "docs/streams/" + stream + "/brief-" + nn + "-stub.md",
-	}}
+	r.Binding.Brief = "docs/streams/" + stream + "/brief-" + nn + "-stub.md"
+	return r
 }
 
 // setupFake wires isolation: a temp HOME with the fixture roster (so trust/write-auth decisions

@@ -23,6 +23,7 @@ id: 6e926827-9af4-4d89-a62d-84c808e364c1
 consumers:
   - "spec/operational-subject-v1.md, schemas/operational-subject-v1.json, statusgen/operations: follow-up continuing-operations/01"
   - "statusgen/operations observation obligations: follow-up continuing-operations/02"
+version: 2
 ---
 
 # Brief 01 — Operational subjects linked to product intent
@@ -91,3 +92,9 @@ named PASS fails the row; do not substitute a skipped or zero-test run.
 Gate: model; all risk answers no because this slice processes synthetic/explicit offline
 snapshots and makes no live policy, publication or deployment change. Review semantic
 compatibility and the real consumer flow; later live integration derives its own risk gate.
+
+## Proposed desk assessment consumer — 2026-10-17
+
+desk-improvement/01 declares its build-dependency gate on continuing-operations/01. It reuses operational identity/observation
+lineage rather than defining a duplicate. This is a consumer note, not a reverse prerequisite;
+original Task/Verify/Evidence and activation conditions remain unchanged.

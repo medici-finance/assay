@@ -1,0 +1,10 @@
+{
+  "test": "go test ./cmd/deskwt -run '^TestSweepReapHoldsUnreadableHead$' -count=1 -v -timeout 30s",
+  "control": {
+    "name": "collapse unreadable upstream ancestry into a negative answer",
+    "file": "cmd/deskwt/deadsession.go",
+    "old": "return false, \"\", deskkit.Unverifiable(\"cannot compare HEAD with its upstream \"+upstream, aerr)",
+    "new": "return false, \"\", nil"
+  },
+  "mutations": []
+}

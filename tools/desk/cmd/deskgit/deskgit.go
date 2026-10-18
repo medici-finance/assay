@@ -319,6 +319,8 @@ func (a *auditCtx) finalize(err error) {
 		result = deskkit.ResultDisabled
 	case deskkit.ExitRefused:
 		result = deskkit.ResultRefused
+	case deskkit.ExitRateLimited:
+		result = deskkit.ResultRateLimited
 	default:
 		result = deskkit.ResultUnverifiable
 	}
