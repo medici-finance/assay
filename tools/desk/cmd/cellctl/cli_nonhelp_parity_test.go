@@ -467,8 +467,8 @@ var deliberateDiffs = map[string]deliberateDiff{
 	"kind-whole-line/1": noDeskdDiff("example"),
 	"kind-whole-line/9": noDeskdDiff("scrub"),
 	"desk-scrubbed/2": {code: 0, stdoutReplace: func() []string {
-		return []string{bashQuote(`Invoke the "assay:worker-desk" skill now.`), bashQuote(codexStandingPrompt("worker-desk", `Invoke the "assay:worker-desk" skill now.`))}
-	}, stderrReplace: []string{"", ""}, why: "#2696: scrubbed Codex argv carries the qualified native bootstrap"},
+		return []string{bashQuote(`Invoke the "assay:worker-desk" skill now.`), bashQuote(codexStandingPrompt("worker-desk", codexSupervisionPrompt(`Invoke the "assay:worker-desk" skill now.`)))}
+	}, stderrReplace: []string{"", ""}, why: "#2696, #3324: scrubbed Codex argv carries native admission and shared supervision guidance; all other bytes remain equal"},
 
 	// Maintenance adds wipe to cache diagnostics; all other transcript bytes stay identical.
 	"cache-enabled/0": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},

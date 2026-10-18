@@ -1,0 +1,10 @@
+{
+  "test": "go test ./cmd/deskwt -run '^TestSweepRejectsChangedCommonStore$' -count=1 -v -timeout 30s",
+  "control": {
+    "name": "trust a cached handle after common-store redirection",
+    "file": "cmd/deskwt/prune.go",
+    "old": "if resolvePath(common) != sc.commonDir {",
+    "new": "if false && resolvePath(common) != sc.commonDir {"
+  },
+  "mutations": []
+}

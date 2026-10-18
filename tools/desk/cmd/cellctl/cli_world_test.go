@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
 
 // The fixture world shared by the CLI contract tests (desktools-v2/16). Every world is built
@@ -59,7 +61,8 @@ func newCLIWorld(t *testing.T, extraEnv string) *cliWorld {
 		}
 	}
 	gi := exec.Command("git", "init", "-q", w.repoDir)
-	gi.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + root, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"}
+	gi.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + root, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
+		"GIT_TEMPLATE_DIR=" + gitquiet.TemplateDir(t)}
 	if out, err := gi.CombinedOutput(); err != nil {
 		t.Fatalf("git init %s: %v\n%s", w.repoDir, err, out)
 	}

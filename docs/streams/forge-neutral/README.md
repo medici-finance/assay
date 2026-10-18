@@ -242,7 +242,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 36 | [Importable fact reader SDK and first shared read](brief-36-importable-fact-reader-sdk-and-first-shared-read.md) | 1 | L | implemented | — | — |
 | 37 | [Scoped forge mirror with persisted freshness, coverage and polling repair](brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md) | 7 | L | todo | — | — |
 | 38 | [Forge event adapter, feedback observations and durable reevaluation demand](brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md) | 8 | L | todo | — | — |
-| 39 | [Typed forge service contract and scoped client SDK](brief-39-typed-forge-service-contract-and-scoped-client-sdk.md) | 1 | M | todo | — | — |
+| 39 | [Typed forge service contract and scoped client SDK](brief-39-typed-forge-service-contract-and-scoped-client-sdk.md) | 3 | M | todo | — | — |
 | 40 | [Authenticated forge serving and role executor custody](brief-40-authenticated-forge-serving-and-role-executor-custody.md) | 6 | L | todo | — | — |
 | 41 | [Write-through forge receipts and read-after-write projection](brief-41-write-through-forge-receipts-and-read-after-write-projection.md) | 8 | L | todo | — | — |
 | 42 | [SHA-bound source queries and immutable result caching](brief-42-sha-bound-source-queries-and-immutable-result-caching.md) | 7 | L | todo | — | — |
@@ -663,3 +663,7 @@ and its CI registry declares the whole stream-root input without publishing a wi
 stream name. Disclosure/secret guards retain their rules and negative controls. These
 command-path corrections supersede the earlier unchanged-Verify statement for these two
 rows only; existing human decisions and historical Evidence remain intact.
+
+## Workflow-efficiency contract amendment — 17 October 2026
+
+The approved workflow-efficiency spec adds review/issue consumer acceptance to /37–45. /39 maps the qualified desk-tools/39 contract through a legal public API; /45 requires desk-tools/43–44 caller/cost qualification. Direct-reader /38–44 in desk-tools do not depend on this service path. See the [delivery map](../../desk-workflow-efficiency-change-map.md#authored-delivery-routing). Existing Evidence and activation gates remain unchanged.

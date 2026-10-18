@@ -254,7 +254,10 @@ discarded; it must never be the explanation for a verdict you cannot show.
 
 ## 6. Watch loop
 
-While the PR is open, poll it — or arm a `capability:durable-monitor` on it:
+Use [desk-common §Supervision and context](../../references/desk-common.md#supervision-and-context)
+for watch ownership, bounded waits and same-item continuation. While the PR is open, poll it
+at a bounded interval (the supervising desk's cadence where defined), honoring backoff — or
+arm a `capability:durable-monitor` on it:
 
 ```bash
 gh pr view <N> --json state,mergeable,reviews,statusCheckRollup

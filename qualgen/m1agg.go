@@ -73,6 +73,8 @@ type MetricRecord struct {
 // churn window (§4.2), the window bucket size for the per-window grain, and the
 // author-identity partition (§3.1).
 type M1Config struct {
+	FixSource       *FixSource
+	DefectLabels    []string
 	BlockMin        int
 	ChurnWindowDays int
 	// WindowDays buckets the per-window churn grain (calendar bucketing of

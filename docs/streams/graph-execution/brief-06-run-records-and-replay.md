@@ -40,7 +40,7 @@ sources:
 exec-tier: strong
 exec-tier-why: "(a) the run-record field set and the replay-fixture derivation are design decisions the facts do not fully pre-specify; (b) correctness is cross-artifact — a pattern revision, its regression run and the holdout assertion must agree, and a loop that scores outcome only would silently reward a route that broke a constraint."
 domain: complex
-version: 3
+version: 4
 id: 227c272b-dc4c-4528-9066-9e8db14d223d
 consumers:
 - 'workflow/internalreview: follow-up graph-execution/24'
@@ -109,3 +109,11 @@ Implement the named failure/flow case below in the declared test surface. This a
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
 The reviewer's questions: (1) was the replay fixture derived from a run the 05 report actually records as failed, or from an injected fault — and does the report say which? (2) does the v2 revision reach its outcome by narrowing a declaration (acceptable) or by widening an effect set (row 4 must have caught it)? (3) is there exactly one revision?
+
+## Proposed measurement consumer — 2026-10-17
+
+desk-improvement/05 consumes this brief for run/attempt/subject bindings; existing run-record schema stays the source owner.
+This is a forward consumer-routing amendment only: the new consumer waits on this owner,
+not the reverse. Original Task/Verify and completed Evidence are unchanged. Reconcile any
+active implementation claim before adding capture hooks. Native emission qualification is
+delivered by the named follow-up; this source contract alone does not claim it exists.

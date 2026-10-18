@@ -407,6 +407,7 @@ func TestResetPlanRefusesConfigInsideWorktree(t *testing.T) {
 	}
 }
 
+// regression: #2955
 func TestResetDryRunAndAdmission(t *testing.T) {
 	f := newCLIWorld(t, "")
 	resetFixtureGit(t, f.repoDir, "symbolic-ref", "HEAD", "refs/heads/main")
@@ -419,7 +420,7 @@ func TestResetDryRunAndAdmission(t *testing.T) {
 		t.Fatalf("dry reset: %+v", r)
 	}
 	if after := snapshotTree(t, f.root); after != before {
-		t.Fatal("dry reset mutated fixture")
+		t.Fatalf("dry reset mutated fixture:\nbefore:\n%s\nafter:\n%s", strings.ReplaceAll(before, f.root, "<ROOT>"), strings.ReplaceAll(after, f.root, "<ROOT>"))
 	}
 	c := &Cell{Name: "example", Dir: f.cellDir, Env: envWith(map[string]string{})}
 	maintenanceCommand = "up"

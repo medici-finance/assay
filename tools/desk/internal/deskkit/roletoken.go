@@ -140,7 +140,7 @@ var tokenMinter = func(role, owner string) (path string, stderr string, err erro
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
-	err = cmd.Run()
+	err = RunProcess(cmd)
 	return strings.TrimSpace(out.String()), strings.TrimSpace(errb.String()), err
 }
 
