@@ -25,7 +25,7 @@ description: >-
 
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
-> Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
+> Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
 The **intake-desk** is the generic front door of the process-desk pipeline — the first of the four
 desks (`intake-desk → worker-desk → pr-review-desk → verify-desk`). Where pr-review-desk watches
@@ -327,7 +327,9 @@ correctness). A **mutating** response does not converge harmlessly: hence §Clos
    reuses the class record, never rediscovers it. A production-down or security symptom stays `todo`;
    the driver's own-login `bleed` reply naming a parked symptom sets it `todo`, `Parked` dropped.
    **Re-park:** a scanner `reactivate` (excluded label removed or reopened) sets a parked row `todo`,
-   body kept, so each pass re-blocks a `todo` row still saying `Parked`. `intended-control` is a
+   body kept, so each pass re-blocks a `todo` row still saying `Parked`; when the excluded label was
+   removed by anything other than a rostered human, the scanner holds the item until the
+   ratifying identity has commented on the issue since the label was applied. `intended-control` is a
    wording fix for its refusal-text owner, never design work.
 2. **`close-candidate` — the brief-write for a no-merge close.** When an issue must close with NO
    merged fix (`FIXED-NOT-CLOSED | WONTFIX | DUPLICATE | STALE`), mark the placeholder frontmatter

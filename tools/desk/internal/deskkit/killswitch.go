@@ -92,7 +92,7 @@ func worktreeRunKeyIn(dir string) string {
 	git := func(args ...string) (string, error) {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = dir
-		out, err := cmd.Output()
+		out, err := OutputProcess(cmd)
 		return strings.TrimSpace(string(out)), err
 	}
 	path, err := git("rev-parse", "--git-path", "config.worktree")

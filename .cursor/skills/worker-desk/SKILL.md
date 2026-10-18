@@ -47,7 +47,7 @@ fires within one observer interval instead of relying on a worker to remember it
 
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
-> Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
+> Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
 ## Boot
 
@@ -312,6 +312,8 @@ or one unreadable repo, is exit 6 COULD-NOT-CHECK for the WHOLE board, never a s
    copy, security, prod-deploy, irreversible actions). Anything needing scoping, splitting, a decision
    or a risk call is **intake's job**. When in doubt, leave it to intake AND LEAVE A TRACE (a `question`
    on the issue naming the fork) — intake's strong tier picks the default a reversible fork proceeds on.
+
+An issue the board shows as `AWAIT` for its label history is not un-briefed work, whatever its current labels.
 
 **Priority is LOWEST of the dispatch sources** (WIP-draining work → board rows → un-briefed issues),
 but the ordering is a tie-break, not a hold: an empty slot with a qualifying issue and nothing above

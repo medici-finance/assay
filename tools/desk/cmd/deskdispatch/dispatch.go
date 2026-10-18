@@ -230,6 +230,7 @@ func cmdDispatch(args []string) error {
 	if err := fs.Parse(args[1:]); err != nil {
 		return deskkit.Refused("deskdispatch: bad flags: " + err.Error())
 	}
+	deskkit.PerfCommand(perfVerbs, perfKitVerb("dispatch", *kit))
 	if err := applyOverride(); err != nil {
 		return err
 	}

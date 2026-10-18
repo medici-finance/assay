@@ -386,16 +386,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			" resolves outside docs/streams/ — deskevidence only writes under that tree")
 	}
 
-	// PUBLISH-identity gate (#1490 lane B). deskevidence commits AS the verifier App via the
-	// Contents API, so the Evidence commit itself is correctly attributed — but the witness
-	// Runner attribution is derived from the verifier WORKTREE's identity, which is exactly
-	// the value #1490 saw come out wrong when a dispatch provisioned the worktree with a stale
-	// role. This refuses, before the landing reads the branch, if the worktree it is authored
-	// from carries commits ahead of the target branch that are not the verifier's — a signal
-	// the worktree's identity cannot be trusted to derive attribution from. Local (git +
-	// roster); in the sanctioned post-merge verify flow the worktree sits at the target
-	// branch, so the range is empty and this is a clean no-op.
-	if ierr := publishIdentityGate(*root, branch); ierr != nil {
+	// The source was admitted independently of the conditional-write destination.
+	// Judge its immutable identity boundary against fetched main, never an older
+	// Evidence branch. The actual new write remains under verifier App custody.
+	if ierr := publishEvidenceIdentityGate(*root, receipt); ierr != nil {
 		return ierr
 	}
 
@@ -740,23 +734,23 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		return landEvidenceAsChange(fg, fr, repoSlug, branch, targetRepoPath, commitContent, appendOnly, *allowShrink, remoteContent, rowScopeSHA, ac)
 	}
 
-	// Post-condition: the write that landed must carry the verifier App's identity. Checked
-	// against what the forge reported the write recorded, not the token we sent (#228). On a
-	// forge that reports no author (GitLab), checkAttribution resolves the landed commit's
-	// account online via the typed forge (res.SHA); on GitHub the author is populated and no
-	// online read happens.
-	attr, aerr := checkAttribution(fg, fr, res.SHA, res.Author)
+	if reportWriteNoop(res, targetRepoPath, ac) {
+		return nil
+	}
+
+	// Verify the exact write receipt resolves as a commit before accepting its author.
+	attr, aerr := checkWriteAttribution(fg, fr, res)
 	// Name the net row delta so a success line can no longer hide a replace or a deletion
 	// behind a "committed … success" (#1709).
 	added, removed := rowDelta(remoteContent, commitContent)
 	delta := fmt.Sprintf("+%d/-%d rows", added, removed)
-	base := fmt.Sprintf("committed %s to %s on %s (sha %s, %s)", targetRepoPath, repoSlug, branch, shortSHA(res.SHA), delta)
+	base := fmt.Sprintf("committed %s to %s on %s (sha %s, %s)", targetRepoPath, repoSlug, branch, string(res.CommitSHA), delta)
 	ac.detail = base + " — " + attr
 	if aerr != nil {
 		return aerr
 	}
 	fmt.Fprintf(stdout, "committed %s to %s on %s (sha %s, %s) — %s\n",
-		targetRepoPath, repoSlug, branch, shortSHA(res.SHA), delta, attr)
+		targetRepoPath, repoSlug, branch, string(res.CommitSHA), delta, attr)
 	return nil
 }
 
@@ -809,6 +803,10 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 				"row was NOT landed", side), nil)
 	}
 
+	if reportWriteNoop(res, target, ac) {
+		return nil
+	}
+
 	// CreateHeldDraftChange, never the raw CreateDraftChange: the draft must carry the desk's
 	// merge-hold marker thread, or deskflip's reviewer-approved condition has nothing to release
 	// and refuses the Evidence change however it was reviewed (#2254).
@@ -828,31 +826,21 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		return perr
 	}
 
-	// On a forge that reports no author for the side-branch write (GitLab), resolve the landed
-	// commit's account ONLINE (#1477): fetch the side branch's head sha from the draft change
-	// just opened and hand it to checkAttribution, which maps it to the committing account's
-	// username via the typed forge. Only reached when the write carried no author — a populated
-	// author (GitHub) takes the ordinary path and issues no extra read.
-	headSHA := ""
-	if res.Author == "" && pr != nil {
-		if got, gerr := fg.GetPullRequest(fr, pr.Number); gerr == nil && got != nil {
-			headSHA = got.HeadSHA
-		}
-	}
-	attr, aerr := checkAttribution(fg, fr, headSHA, res.Author)
+	// Attribute the exact write receipt, never the draft change's mutable head.
+	attr, aerr := checkWriteAttribution(fg, fr, res)
 	added, removed := rowDelta(remoteContent, content)
 	delta := fmt.Sprintf("+%d/-%d rows", added, removed)
 	loc := fmt.Sprintf("change #%d", pr.Number)
 	if pr.URL != "" {
 		loc = pr.URL
 	}
-	ac.detail = fmt.Sprintf("landed %s on %s in %s via draft %s (%s) — default branch not directly writable — %s",
-		target, repoSlug, side, loc, delta, attr)
+	ac.detail = fmt.Sprintf("landed %s on %s in %s via draft %s (commit %s, %s) — default branch not directly writable — %s",
+		target, repoSlug, side, loc, res.CommitSHA, delta, attr)
 	if aerr != nil {
 		return aerr
 	}
-	fmt.Fprintf(stdout, "landed %s on %s: %s takes no direct write, so wrote branch %s and opened draft %s (%s) — %s\n",
-		target, repoSlug, base, side, loc, delta, attr)
+	fmt.Fprintf(stdout, "landed %s on %s: %s takes no direct write, so wrote branch %s and opened draft %s (commit %s, %s) — %s\n",
+		target, repoSlug, base, side, loc, res.CommitSHA, delta, attr)
 	return nil
 }
 

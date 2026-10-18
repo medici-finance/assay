@@ -7,6 +7,21 @@
   "measured_at": "3ad1ad83c871",
   "exclusion_rules": [
     {
+      "class": "test",
+      "pattern": "docs/streams/desk-supervision/verify.d/08-consumers.py",
+      "reason": "offline acceptance assertion over the original brief-08 delivery diff and consumer routes; run only by desk-supervision/08 Verify rows, never installed or released as an operator CLI (#1363)"
+    },
+    {
+      "class": "test",
+      "pattern": "docs/streams/desk-supervision/verify.d/08-reduction.sh",
+      "reason": "offline acceptance assertion over stored skillbench artifacts using a scratch report; run only by desk-supervision/08 Verify rows, never installed or released as an operator CLI (#1363)"
+    },
+    {
+      "class": "test",
+      "pattern": "docs/streams/desk-supervision/verify.d/08-mutations.py",
+      "reason": "offline planted defects that prove the brief-08 acceptance assertions reject broken inputs; run only by desk-supervision/08 Verify rows, never installed or released as an operator CLI (#1363)"
+    },
+    {
       "class": "library",
       "pattern": "tools/release/images.py",
       "reason": "internal release image producer imported by fixed workflow Python calls; no shebang, main guard, argument parser or independent operator entrypoint (#3204)"
@@ -476,11 +491,11 @@
         "plugins/assay/skills/worker-desk/SKILL.md",
         "plugins/assay/skills/pr-review-desk/SKILL.md"
       ],
-      "parser": "manual os.Args parsing",
+      "parser": "Cobra and Viper through tools/desk/internal/cli",
       "complexity": "complex",
       "basis": "8975 LOC, ~19 verbs, ~0 flags at 3ad1ad83c871",
       "owner": "desktools-v2/20",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "deskboot",

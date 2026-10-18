@@ -327,6 +327,7 @@ func TestCLILegacyForms(t *testing.T) {
 			{[]string{"issues", "--repo", "o/r", "--repo", "o2/r2"}, "issues", []string{"o/r", "o2/r2"}, nil, nil, "", false, 6},
 			{[]string{"issues", "--repo", " o/r ", "--repo=o/r"}, "issues", []string{"o/r"}, nil, nil, "", false, 6},
 			{[]string{"comments", "--issue", "o/r#5"}, "comments", nil, []issueTarget{{Repo: "o/r", Number: 5}}, nil, "", false, 6},
+			{[]string{"label-events", "--issue", "o/r#3"}, "label-events", nil, []issueTarget{{Repo: "o/r", Number: 3}}, nil, "", false, 6},
 			{[]string{"comments", "--change", "o/r#7"}, "comments", nil, nil, []issueTarget{{Repo: "o/r", Number: 7}}, "", false, 6},
 			{[]string{"trust", "--issue", "o/r#1", "--issue", "o/r#2", "--issue", "o/r#1"}, "trust", nil, []issueTarget{{Repo: "o/r", Number: 1}, {Repo: "o/r", Number: 2}}, nil, "", false, 6},
 			// Flags written before the kind now reach it (the hand-rolled reader refused them).
@@ -352,8 +353,8 @@ func TestCLILegacyForms(t *testing.T) {
 		}{
 			{nil, "Usage:"},
 			{[]string{"bogus"}, `refused: unknown read kind "bogus" — the kind set is closed`},
-			{[]string{"label-events"}, `refused: unknown read kind "label-events"`},
-			{[]string{"label-events", "--issue", "o/r#3"}, "unknown flag: --issue"},
+			{[]string{"bogus-kind"}, `refused: unknown read kind "bogus-kind"`},
+			{[]string{"bogus-kind", "--issue", "o/r#3"}, "unknown flag: --issue"},
 			{[]string{"issues", "--bogus"}, "unknown flag: --bogus"},
 			{[]string{"issues", "--repo"}, "flag needs an argument"},
 			{[]string{"issues", "--repo", "o/r", "extra"}, `unknown command "extra"`},
@@ -383,4 +384,28 @@ func TestCLILegacyForms(t *testing.T) {
 			}
 		}
 	})
+}
+
+// regression: F-label-events-kind — label-events is a real per-issue kind: --issue addresses it, and
+// a repo or change address is refused by the kind's own addressing check (the CLI table above
+// stubs the read, so this test calls the check the read runs).
+func TestLabelEventsAddressing(t *testing.T) {
+	issue := []issueTarget{{Repo: "o/r", Number: 3}}
+	o := readOpts{issues: issue}
+	if err := checkAddressing("label-events", &o); err != nil || len(o.items) != 1 {
+		t.Errorf("label-events --issue: err %v items %v; want it addressed", err, o.items)
+	}
+	for _, c := range []struct {
+		name string
+		o    readOpts
+		want string
+	}{
+		{"repo", readOpts{repos: []string{"o/r"}}, `--repo does not address the "label-events" kind`},
+		{"change", readOpts{changes: issue}, `--change does not address the "label-events" kind`},
+	} {
+		o := c.o
+		if err := checkAddressing("label-events", &o); err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("label-events with %s: err %v; want it to contain %q", c.name, err, c.want)
+		}
+	}
 }
