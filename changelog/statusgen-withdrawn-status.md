@@ -1,0 +1,2 @@
+### Added
+- statusgen: a terminal `withdrawn` brief status. A withdrawn brief carries `withdrawn-date`, `withdrawn-reason` and an optional `superseded-by` successor list in its frontmatter; it is excluded from the done-ratio denominator, Next-up and dispatch, the stalled/bottleneck/blocked views and the todo count, and is shown in its own Withdrawn count. Lint enforces the status/keys pairing, resolves same-repo successors, syntax-checks cross-repo successor ids, and raises a NOTICE on any brief whose `depends` names a withdrawn brief.
