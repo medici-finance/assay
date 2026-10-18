@@ -331,9 +331,11 @@ so a change cannot escape the hold by editing the gate in the same change.
 **What a conforming implementation MUST refuse.** For an in-scope brief whose decision
 issue has no human ruling, a change that:
 
-1. leaves the brief's status at `implemented`, `verified` or `done` where, at the base, its
-   status ranked lower or the brief was not on the board (a **move**; the ranks are
-   `implemented` < `verified` < `done`, and every other status ranks below all three);
+1. leaves the brief's status at `implemented`, `verified`, `done` or `withdrawn` where,
+   at the base, its status ranked lower or the brief was not on the board (a **move**;
+   the guarded-act ranks are `implemented` < `verified` < `done` < `withdrawn`, and
+   every other status ranks below them). This ranking guards retirement; it does not
+   place withdrawal in the progress lifecycle or attest completed work;
 2. changes the brief's `gate` away from `human`, or removes the key (a **relabel**);
 3. leaves no brief after the change that is the same brief as a `gate: human` base brief
    and still on the board (a **drop**). The README table is the board: a base brief that
