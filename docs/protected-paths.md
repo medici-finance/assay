@@ -97,6 +97,9 @@ Verification-Table: delivery=<sha> base=<sha> original=<sha>
 
 `delivery` is the landed implementation commit. For a squash delivery, `base` is
 its exact parent; for a two-parent merge, it is the parents' unique merge-base.
+Before using a two-parent merge baseline, the evaluator also requires the first-parent
+main acceptance table to equal the divergence table; otherwise independent
+re-derivation is required.
 `original` is the actual pre-change re-derivation revision. It must be an ancestor
 of `base`, and its complete parsed Verify table must equal the table at `base`.
 If main changed that table while the delivery was in flight, closure refuses;
@@ -131,3 +134,10 @@ evaluator reads that actual historical Expect and compares it to the selected
 original Expect. The witness keeps its execution revision and all content and
 dependency checks. Invalid provenance creates an explicit held claim, including
 when a separate pattern supplies other passing claims.
+
+Retain previous Evidence runs. Each protected run contains its own marker and
+witnesses, followed by its final strict `**VERIFY: PASS**` verdict. Closure,
+audit, coverage and lint select that same latest run, never borrowing an earlier
+marker or witness. Duplicate live markers within one run, a latest failed or
+malformed verdict, and unfinished live content after the last PASS refuse
+closure. A caller that already selected a run passes that run alone.

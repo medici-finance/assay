@@ -15,6 +15,7 @@ const stateAuthorAdded = "author-added"
 
 type protectedPlan struct {
 	Verify   string
+	Evidence string // only the selected current run; earlier records remain on disk
 	Added    []checkFinding
 	Original string // authenticated immutable acceptance-definition revision
 }
@@ -28,6 +29,32 @@ func closureSatisfied(f checkFinding) bool {
 // in full. A quoted example, hash or author-added label grants no exemption.
 func protectedAcceptance(verify, evidence string, paths ...string) (protectedPlan, string) {
 	stripped, _ := stripRowComments(evidence)
+	live := stripCode(stripped)
+	protected := false
+	for _, line := range strings.Split(live, "\n") {
+		protected = protected || strings.HasPrefix(line, "Verification-Table:")
+	}
+	if !protected {
+		return protectedPlan{Verify: verify, Evidence: evidence}, ""
+	}
+	// Callers that already selected p.Run supply no verdict. Complete Evidence
+	// histories use the same strict current-run selector as flip and reconcile.
+	if len(flipVerdictTokens(strings.Split(stripped, "\n"))) > 0 {
+		p, err := flipLatestPass(evidence)
+		if err != nil {
+			return protectedPlan{}, "protected table: " + err.Error()
+		}
+		// A newer unfinished record must not borrow the last completed PASS.
+		// Comments and quoted examples after it do not start a live run.
+		for _, line := range strings.Split(live, "\n")[p.Marks[len(p.Marks)-1]+1:] {
+			line = strings.TrimSpace(strikethroughRe.ReplaceAllString(line, ""))
+			if line != "" && !strings.HasPrefix(line, ">") {
+				return protectedPlan{}, "protected table: live content follows the latest PASS; complete the current run before closing"
+			}
+		}
+		evidence = p.Run
+		stripped, _ = stripRowComments(evidence)
+	}
 	rawLines := strings.Split(stripped, "\n")
 	var marker string
 	for i, line := range strings.Split(stripCode(stripped), "\n") {
@@ -38,12 +65,12 @@ func protectedAcceptance(verify, evidence string, paths ...string) (protectedPla
 			return protectedPlan{}, "protected table: Verification-Table must be literal live text, without code spans"
 		}
 		if marker != "" {
-			return protectedPlan{}, "protected table: multiple Verification-Table markers"
+			return protectedPlan{}, "protected table: multiple Verification-Table markers in the current run"
 		}
 		marker = strings.TrimSpace(line)
 	}
 	if marker == "" {
-		return protectedPlan{Verify: verify}, ""
+		return protectedPlan{}, "protected table: the current run has no Verification-Table marker"
 	}
 	fields := strings.Fields(marker)
 	if len(fields) != 4 || !strings.HasPrefix(fields[1], "delivery=") || !strings.HasPrefix(fields[2], "base=") || !strings.HasPrefix(fields[3], "original=") {
@@ -119,6 +146,12 @@ func protectedAcceptance(verify, evidence string, paths ...string) (protectedPla
 	if err != nil {
 		return refuse("cannot read original baseline: " + err.Error())
 	}
+	if len(parents) == 2 {
+		mainTable, err := read(parents[0])
+		if err != nil || !reflect.DeepEqual(briefVerifyRows(mainTable), briefVerifyRows(baseline)) {
+			return refuse("pre-delivery main acceptance differs from the divergence baseline; independent re-derivation is required")
+		}
+	}
 	old, err := read(original)
 	if err != nil {
 		return refuse("cannot read original table: " + err.Error())
@@ -186,7 +219,7 @@ func protectedAcceptance(verify, evidence string, paths ...string) (protectedPla
 		}
 		added = append(added, checkFinding{row.ID, stateAuthorAdded, "supplemental row; no acceptance credit (immutable original table preserved)"})
 	}
-	return protectedPlan{Verify: baseline, Added: added, Original: original}, ""
+	return protectedPlan{Verify: baseline, Evidence: evidence, Added: added, Original: original}, ""
 }
 
 // The lint shares exactly the same original-row audit as the closure verbs.

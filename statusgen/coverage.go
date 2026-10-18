@@ -192,7 +192,7 @@ func observeBrief(root, path, id string, bf *BriefFile) evaluation.BriefObservat
 		}
 		obs.VerifyRows = append(obs.VerifyRows, row)
 	}
-	for rowID, rows := range parseEvidenceRows(bf.Evidence) {
+	for rowID, rows := range parseEvidenceRows(plan.Evidence) {
 		for _, er := range rows {
 			if !isWitnessRow(er.Text) {
 				continue

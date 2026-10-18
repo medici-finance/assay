@@ -127,7 +127,7 @@ func closureWitnesses(verify, evidence string, paths ...string) (findings []chec
 	if refusal != "" {
 		return nil, refusal
 	}
-	return append(checkWitnesses(plan.Verify, evidence), plan.Added...), ""
+	return append(checkWitnesses(plan.Verify, plan.Evidence), plan.Added...), ""
 }
 
 // unterminatedCommentProblems is the #1939 lint: a PROBLEM for every brief file

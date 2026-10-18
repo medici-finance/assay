@@ -195,3 +195,124 @@ func TestProtectedClosureRows(t *testing.T) {
 		})
 	}
 }
+
+// regression: #3342
+func TestProtectedRerun(t *testing.T) {
+	o := vfDefaults()
+	o.status = "verified"
+	o.verified = "2026-08-13 human:alex"
+	o.evidence = ""
+	root, _ := vfFixture(t, o)
+	path := vfBrief(root)
+	base := vfRev(t, root, "HEAD")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verify := vfVerify + "| 3 | `printf supplemental` | exit 0 |\n"
+	bare := strings.Replace(string(raw), vfVerify, verify, 1)
+	if err := os.WriteFile(path, []byte(bare), 0644); err != nil {
+		t.Fatal(err)
+	}
+	vfCommit(t, root, vfMailWorker)
+	delivery := vfRev(t, root, "HEAD")
+	marker := "Verification-Table: delivery=" + delivery + " base=" + base + " original=" + base + "\n\n"
+	row1 := strings.ReplaceAll(vfRow1, vfSHA, delivery)
+	table := strings.ReplaceAll(witnessTableFor(vfRow1, vfRow2), vfSHA, delivery) + "\n| 3 | `printf supplemental` | author-added; execution exit=0; no acceptance credit | sha256:bbbbbbbbbbbb | 2026-08-13 | " + vfRunner + " @ " + delivery + " |\n"
+	run := marker + table + "\n**VERIFY: PASS**\n"
+	cases := []struct {
+		name, evidence string
+		pass           bool
+	}{
+		{"single", run, true},
+		{"two-runs", run + "\n" + run, true},
+		{"old-failure-new-pass", strings.Replace(run, "**VERIFY: PASS**", "**VERIFY: FAIL**", 1) + "\n" + run, true},
+		{"latest-failed", run + "\n" + strings.Replace(run, "**VERIFY: PASS**", "**VERIFY: FAIL**", 1), false},
+		{"latest-failed-original", run + "\n" + strings.Replace(run, row1, strings.Replace(row1, "pass", "fail", 1), 1), false},
+		{"latest-missing-row", run + "\n" + strings.Replace(run, row1, "", 1), false},
+		{"duplicate-current-marker", run + "\n" + marker + run, false},
+		{"latest-unfinished", run + "\n" + marker + table, false},
+		{"latest-marker-only", run + "\n" + marker, false},
+		{"latest-loose-pass", run + "\n" + strings.Replace(run, "**VERIFY: PASS**", "VERIFY: PASS", 1), false},
+		{"latest-missing-marker", run + "\n" + strings.TrimPrefix(run, marker), false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			body := strings.Replace(bare, "## Evidence\n", "## Evidence\n"+c.evidence, 1)
+			if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+				t.Fatal(err)
+			}
+			resetReadMemo()
+			info := &briefInfo{File: filepath.ToSlash(strings.TrimPrefix(path, root+string(filepath.Separator))), Row: &briefInfoRow{Status: "verified", Verified: "2026-08-13 human:alex"}}
+			if err := checkBriefInfoVerified(root, info); (err == nil) != c.pass {
+				t.Fatalf("closure pass=%v: %v", c.pass, err)
+			}
+			code, out, diag := captureVerifyclosure(t, []string{"--root", root, "--brief", "vf/01"})
+			if (code == 0) != c.pass {
+				t.Fatalf("closure CLI=%d %s %s", code, out, diag)
+			}
+			result, diag := captureVerifyrun(t, []string{"--check", "--brief", path})
+			if (result.code == 0) != c.pass {
+				t.Fatalf("audit=%d %s", result.code, diag)
+			}
+			streams, _, err := loadStreams(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if problems := protectedClosureProblems(streams); (len(problems) == 0) != c.pass {
+				t.Fatalf("lint pass=%v: %v", c.pass, problems)
+			}
+			if got := evaluateCoverage(root, streams, coverageOptions{Revision: delivery})["vf/01"]; got.Released != c.pass {
+				t.Fatalf("coverage pass=%v: %+v", c.pass, got)
+			}
+			got, err := os.ReadFile(path)
+			if err != nil || string(got) != body {
+				t.Fatal("audit changed retained Evidence")
+			}
+		})
+	}
+}
+
+// regression: #3342
+func TestProtectedMainDrift(t *testing.T) {
+	o := vfDefaults()
+	o.status = "verified"
+	o.verified = "2026-08-13 human:alex"
+	o.evidence = ""
+	root, _ := vfFixture(t, o)
+	path := vfBrief(root)
+	base := vfRev(t, root, "HEAD")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vfGit(t, root, vfMailWorker, "checkout", "-q", "-b", "implementation")
+	if err := os.WriteFile(filepath.Join(root, "implementation.txt"), []byte("change\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	vfCommit(t, root, vfMailWorker)
+	vfGit(t, root, vfMailHuman, "checkout", "-q", "main")
+	verify := vfVerify + "| 3 | `printf supplemental` | exit 0 |\n"
+	bare := strings.Replace(string(raw), vfVerify, verify, 1)
+	if err := os.WriteFile(path, []byte(bare), 0644); err != nil {
+		t.Fatal(err)
+	}
+	vfCommit(t, root, vfMailHuman)
+	vfGit(t, root, vfMailHuman, "merge", "--no-ff", "-q", "-m", "delivery", "implementation")
+	delivery := vfRev(t, root, "HEAD")
+	evidence := "Verification-Table: delivery=" + delivery + " base=" + base + " original=" + base + "\n\n" + strings.ReplaceAll(witnessTableFor(vfRow1, vfRow2), vfSHA, delivery) + "\n| 3 | `printf supplemental` | author-added; execution exit=0; no acceptance credit | sha256:bbbbbbbbbbbb | 2026-08-13 | " + vfRunner + " @ " + delivery + " |\n"
+	if err := os.WriteFile(path, []byte(strings.Replace(bare, "## Evidence\n", "## Evidence\n"+evidence, 1)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	resetReadMemo()
+	if _, refusal := protectedAcceptance(verify, evidence, path); refusal == "" {
+		t.Fatal("main acceptance changed after divergence; require independent re-derivation")
+	}
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := evaluateCoverage(root, streams, coverageOptions{Revision: delivery})["vf/01"]; got.Released {
+		t.Fatal("changed original acceptance was credited")
+	}
+}
