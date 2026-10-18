@@ -146,8 +146,18 @@ func TestWithdrawnLintRules(t *testing.T) {
 			wantProb: []string{"brief-23", "must be schema brief-v3"}},
 		{name: "withdrawn brief on schema brief-v1", row: wdRow{num: "24", status: "withdrawn", file: schemaFM("brief-v1", "24", 0, "", "")},
 			wantProb: []string{"brief-24", "must be schema brief-v3"}},
-		{name: "withdrawn keys on a brief-v1 live brief", row: wdRow{num: "25", status: "todo", file: schemaFM("brief-v1", "25", 0, "", validWithdrawal)},
-			wantProb: []string{"brief-25", "exist only in schema brief-v3"}},
+		// Backward compatibility: on brief-v1/brief-v2 the three keys are unknown
+		// keys, tolerated as written — boards already carry a prose
+		// `superseded-by:` string on blocked/implemented/done briefs.
+		{name: "withdrawn keys on a brief-v1 live brief are ignored", row: wdRow{num: "25", status: "todo", file: schemaFM("brief-v1", "25", 0, "", validWithdrawal)}},
+		{name: "v2 prose superseded-by string, status blocked", row: wdRow{num: "27", status: "blocked", file: schemaFM("brief-v2", "27", 0, "",
+			"superseded-by: \"merged into the follow-up brief; see its README row\"\n")}},
+		{name: "v2 prose superseded-by string, status done", row: wdRow{num: "28", status: "done", file: schemaFM("brief-v2", "28", 0, "",
+			"superseded-by: \"merged into the follow-up brief; see its README row\"\n")}},
+		{name: "v1 prose superseded-by string, status implemented", row: wdRow{num: "29", status: "implemented", file: schemaFM("brief-v1", "29", 0, "",
+			"superseded-by: \"merged elsewhere\"\nwithdrawn-date: someday\n")}},
+		{name: "v3 prose superseded-by string is a PROBLEM", row: wdRow{num: "32", status: "blocked", file: withdrawnFM("32", 0, "",
+			"superseded-by: \"merged into the follow-up brief\"\n")}, wantProb: []string{"brief-32", "superseded-by"}},
 		{name: "live brief-v3 brief without keys is valid", row: wdRow{num: "26", status: "todo", file: withdrawnFM("26", 0, "", "")}},
 		{name: "depends on withdrawn brief", row: wdRow{num: "30", status: "todo", wave: 1, file: withdrawnFM("30", 1, "[\"alpha/01\"]", "")},
 			wantNotice: []string{"brief-30", "depends on alpha/01, which is withdrawn", "successor alpha/02"}},
@@ -366,5 +376,52 @@ func TestBriefV3SchemaCoverage(t *testing.T) {
 	}
 	if len(problems) > 0 {
 		t.Fatalf("committed brief-v3 schema drifted from the validated contract:\n  - %s", strings.Join(problems, "\n  - "))
+	}
+}
+
+// Backward compatibility of the generated board: a brief-v1/brief-v2 file with a
+// prose `superseded-by:` string still parses, so its generated README row is
+// rendered unchanged and no "hand edit to a generated table" PROBLEM appears.
+func TestWithdrawnKeysOnV2DoNotChangeGeneratedTable(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs", "streams", "alpha")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	prose := "superseded-by: \"merged into the follow-up brief\"\n"
+	for num, schema := range map[string]string{"01": "brief-v2", "02": "brief-v1"} {
+		if err := os.WriteFile(filepath.Join(dir, "brief-"+num+"-x.md"), []byte(schemaFM(schema, num, 0, "", prose)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readme := "---\nstream: alpha\nstatus: active\npriority: P1\ntrack: platform\nboard: generated\n---\n\n# Alpha\n\n" +
+		briefsMarkerBegin + "\n" + briefsMarkerEnd + "\n"
+	path := filepath.Join(dir, "README.md")
+	if err := os.WriteFile(path, []byte(readme), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reg := "schema: graph-repos-v1\ncell: tc\nrepos:\n  tr: {cell: tc, repo: medici-finance/assay}\n"
+	if err := os.WriteFile(filepath.Join(root, "docs", "streams", "graph-repos.yaml"), []byte(reg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows := streamBriefRows(streams[0]); len(rows) != 2 {
+		t.Fatalf("both prose-superseded-by briefs must render a generated row; got %d rows", len(rows))
+	}
+	if _, err := rewriteReadmeRegion(streams[0], path); err != nil {
+		t.Fatal(err)
+	}
+	streams, _, err = loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := checkReadmeTables(streams); len(p) > 0 {
+		t.Errorf("want no generated-table PROBLEM; got:\n%s", strings.Join(p, "\n"))
+	}
+	if p, _ := checkBriefFiles(streams, streams); hasProblem(p, "superseded-by") || hasProblem(p, "withdrawn") {
+		t.Errorf("a v1/v2 prose superseded-by must raise no PROBLEM; got:\n%s", strings.Join(p, "\n"))
 	}
 }
