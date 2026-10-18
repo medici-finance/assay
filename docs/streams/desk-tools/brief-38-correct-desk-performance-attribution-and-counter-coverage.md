@@ -122,6 +122,35 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 ## Evidence
 
 <!-- Independent verifier appends one row per Verify command after implementation. -->
+**VERIFY: FAIL** — environment-blocked / could-not-check; no implementation failure proven and no certification. The mandatory execution witness returned exit 2 before every Verify row: the required Linux network-off sandbox is unavailable on the Darwin host. This is a runner capability limitation, not an observed implementation failure. No named acceptance test executed in this witness.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCommandKit$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCommandKit ' "$o")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-18 | assay-verifier-app[bot] @ 8f1206fe5eb4 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCoverageFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCoverageFlow ' "$o")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-18 | assay-verifier-app[bot] @ 8f1206fe5eb4 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `statusgen --root . --consumers --brief desk-tools/38` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-18 | assay-verifier-app[bot] @ 8f1206fe5eb4 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#3336 run=616125540e6d554df4b3278c1ff15cd3a77acc1db20bdd66c012e6b23660535e source=8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae brief=docs/streams/desk-tools/brief-38-correct-desk-performance-attribution-and-counter-coverage.md model=gpt-6.1-sol tier=strong
+
+
+Independent source review at 8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae supports the stated attribution and shared-counter routing, subject to the unavailable mandatory execution witness and the consumer-check limitation below. Additive verb strings remain accepted by the unchanged perf-v1 reader. This review does not replace execution evidence.
+
+RISK-VALUE: DERIVED — perfKitVerb.unknown = "other" @ tools/desk/cmd/deskdispatch/kits.go:127 — the brief requires explicit unknown attribution without private argv; a fixed fallback carries no caller text.
+RISK-VALUE: DERIVED — perfActive.start = true @ tools/desk/internal/deskkit/perf.go:120 — selection must be enabled only while the already-consented invocation executes; the deferred false at line 121 ends its lifetime even when returning.
+RISK-VALUE: DERIVED — perfActive.finish = false @ tools/desk/internal/deskkit/perf.go:121 — a completed invocation must not retain an active selector for later work.
+
+Risk-path trigger: topology.yaml lines 203–206 classify the changed deskkit and deskboard paths. The frontmatter's all-no risk answers do not remove that path classification. Those triggers require the literal derivation/security-review obligations; they do not rewrite this brief's gate:model/all-no frontmatter into a human gate. This run provides no certification.
+
+The stream README still lists brief 38 as todo at the verified source despite delivery merge eded7ba6e4461a3afac436ff7196987d83268bb3. Its lifecycle cells were not edited during verification.
+
+Runner capability follow-up: [assay#1800](https://github.com/medici-finance/assay/issues/1800). A supported runner must retain this exact run's admission and immutable source closure before a new result can certify the rows.
+
+Supplemental local diagnostics, independently rerun at the attested source after resolving the guard's output-target ambiguity with literal absolute temporary paths:
+
+- Row 1's Go selection and named-PASS assertion: exit 0, `--- PASS: TestPerfCommandKit (8.07s)`; full inner output sha256:b9854bb764bdf901b657c145200aeac6bf27ee8c2d808fa333478cd1ac618e89. The actual-kit-assignment production mutation was rejected.
+- Row 2's Go selection and named-PASS assertion: exit 0, `--- PASS: TestPerfCoverageFlow (16.08s)`; full inner output sha256:d19d1da18d53aafc283d07fb4ca743aa0c7844f38565b36b199d0d14d54f4132. Ordinary deskboard/issueboard/deskdispatch work, skipped-work/audit-erasure/local-refusal mutations, production raw-process paths and account transports passed their assertions.
+- Row 3's consumer command, with --root spelled as its equivalent admitted absolute directory: exit 2, `COULD-NOT-CHECK: assay:assay:desk-tools:38 is not in the diff against 8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae, so this run carries no evidence about its claims — no entry was corroborated and none was disproved.` The installed command requires a delivering branch-head/merge-base diff to corroborate a merged brief. The admitted source was not changed to obtain that result.
+
+These local diagnostics do not supply the required Linux network-off execution witness and do not turn its three could-not-run rows into passes. No product behavior failure was observed; the consumer row also has a post-merge invocation limitation.
 
 ## Review
 
