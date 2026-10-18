@@ -13,7 +13,7 @@ func TestVerifiedOutcomeGateBeforeWrite(t *testing.T) {
 	for _, dry := range []bool{false, true} {
 		t.Run(map[bool]string{false: "write", true: "dry-run"}[dry], func(t *testing.T) {
 			f, _ := setupFake(t)
-			outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error {
+			outcomeGuardFn = func(string, string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error {
 				return deskkit.Refused("closure still implemented")
 			}
 			file := "docs/streams/verify-outcomes.jsonl"
@@ -119,7 +119,7 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 				}
 				return nil, nil
 			}
-			err := guardVerifiedOutcomes(root, "docs/streams/verify-outcomes-2026-09.jsonl", []byte(tc.before), []byte(tc.after), f, deskkit.ForgeRepo{}, "main")
+			err := guardVerifiedOutcomes(root, root, "docs/streams/verify-outcomes-2026-09.jsonl", []byte(tc.before), []byte(tc.after), f, deskkit.ForgeRepo{}, "main")
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("error=%v wantErr=%v", err, tc.wantErr)
 			}

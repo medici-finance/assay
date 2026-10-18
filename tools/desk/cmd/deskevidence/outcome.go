@@ -20,7 +20,7 @@ var closureCheckFn = checkVerifiedClosure
 
 // Check only added records: historical successes must not prevent recording a
 // later failure. Reuse the canonical brief parser and witness validator.
-func guardVerifiedOutcomes(root, target string, before, after []byte, fg deskkit.Forge, repo deskkit.ForgeRepo, branch string) error {
+func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte, fg deskkit.Forge, repo deskkit.ForgeRepo, branch string) error {
 	if !isVerifyOutcomesSidecar(target) {
 		return nil
 	}
@@ -48,7 +48,7 @@ func guardVerifiedOutcomes(root, target string, before, after []byte, fg deskkit
 			continue
 		}
 		seen[row.Brief] = true
-		file, err := closureCheckFn(root, row.Brief)
+		file, err := closureCheckFn(landedRoot, row.Brief)
 		if err != nil {
 			return err
 		}
@@ -72,7 +72,7 @@ func guardVerifiedOutcomes(root, target string, before, after []byte, fg deskkit
 		}
 	}
 	if len(seen) > 0 {
-		problems, err := statusgenLintFn(root)
+		problems, err := statusgenLintFn(landedRoot)
 		if err != nil {
 			return err
 		}
