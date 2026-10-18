@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -57,7 +58,11 @@ func landedFixture(t *testing.T, wrong bool) (string, string, string, map[string
 // regression: #3343
 func TestLandedHistory(t *testing.T) {
 	bin := t.TempDir()
-	build := exec.Command("go", "build", "-o", filepath.Join(bin, "statusgen"), ".")
+	name := "statusgen"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	build := exec.Command("go", "build", "-o", filepath.Join(bin, name), ".")
 	build.Dir = "../../../../statusgen"
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build statusgen: %v %s", err, out)
