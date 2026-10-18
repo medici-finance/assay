@@ -610,7 +610,7 @@ func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool
 		// Legacy wave rule: every lower-wave brief in the same stream
 		// must be done or verified.
 		for _, o := range s.Briefs {
-			// A withdrawn lower-wave brief is terminal and never holds the wave.
+			// A withdrawn lower-wave brief is closed to dispatch and never holds the wave.
 			if o.Wave < b.Wave && o.Status != "done" && o.Status != "verified" && !isWithdrawn(o.Status) {
 				return false
 			}

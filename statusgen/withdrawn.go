@@ -1,6 +1,6 @@
 package main
 
-// withdrawn.go — the terminal `withdrawn` brief status.
+// withdrawn.go — the off-path `withdrawn` brief status.
 //
 // A brief retired by a later decision, or merged into another brief, is not
 // open work, not blocked work, and not done work. It is WITHDRAWN: the README
@@ -13,7 +13,7 @@ package main
 //	superseded-by: ["stream/28", "cell:alias:stream:30"]   # [] = won't-fix
 //	withdrawn-reason: "One sentence: why, and what survives where."
 //
-// Semantics (spec/brief-v1.md §3.6, spec/lifecycle-v1.md §2.0a): terminal; excluded from the
+// Semantics (spec/brief-v1.md §3.6, spec/lifecycle-v1.md §2.0a): retired; excluded from the
 // done-ratio denominator, the Next-up/dispatch queue, the stalled/bottleneck/
 // blocked views and the todo count; shown in its own Withdrawn count.
 //

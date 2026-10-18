@@ -67,7 +67,7 @@ func checkArchivedPlaceholders(streams []*Stream) (problems, notices []string) {
 			}
 			status, known := byNum[m[1]]
 			if known && status != "done" && !isWithdrawn(status) {
-				prob("%s: brief under %s/ has README-row status %q — only `status: done` (or terminal `withdrawn`) work may be archived (no parking active work out of sight)", path, archiveDirName, status)
+				prob("%s: brief under %s/ has README-row status %q — only `status: done` (or `withdrawn`) work may be archived (no parking active work out of sight)", path, archiveDirName, status)
 			}
 		}
 	}

@@ -263,7 +263,7 @@ var (
 	// placeholder-v1, …) stays exempt.
 	briefSchemaCurrent = "brief-v1"
 	briefSchemaV2      = "brief-v2"
-	// briefSchemaV3 is brief-v2 plus the terminal `withdrawn` status keys
+	// briefSchemaV3 is brief-v2 plus the off-path `withdrawn` status keys
 	// (withdrawn-date / withdrawn-reason / superseded-by, withdrawn.go). Every
 	// brief-v2 rule applies to it unchanged — see isBriefV2Family.
 	briefSchemaV3           = "brief-v3"
@@ -879,7 +879,7 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 		}
 	}
 	// withdrawn-date / withdrawn-reason / superseded-by are brief-v3 keys (the
-	// terminal `withdrawn` status, withdrawn.go). They are parsed ONLY on a
+	// off-path `withdrawn` status, withdrawn.go). They are parsed ONLY on a
 	// brief-v3 file: under brief-v1/brief-v2 they are unknown keys and are
 	// tolerated as written — existing boards already use `superseded-by:` as
 	// free prose, and a statusgen upgrade must not redden them. On brief-v3
