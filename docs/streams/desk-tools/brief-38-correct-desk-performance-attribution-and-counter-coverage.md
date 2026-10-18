@@ -208,6 +208,10 @@ The brief remains implemented, without a Verified stamp, until the provenance fi
 
 The separate frozen-admission-history outcome-writer defect remains tracked in #3343. It does not resolve the primary-artifact review finding.
 
+Admission binding (pre-work dispatch provenance only; not an accepted verification result):
+
+Verification-Attestation: medici-finance/assay#3336 run=616125540e6d554df4b3278c1ff15cd3a77acc1db20bdd66c012e6b23660535e source=8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae brief=docs/streams/desk-tools/brief-38-correct-desk-performance-attribution-and-counter-coverage.md model=gpt-6.1-sol tier=strong
+
 **VERIFY: BLOCKED** — provenance review and artifact-access approval pending.
 
 ## Review
