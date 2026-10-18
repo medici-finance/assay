@@ -153,6 +153,7 @@ var statusKeyedLintRules = []statusKeyedLintRule{
 	{"deployTransitionProblems", func(e *lintEnv) []string { return deployTransitionProblems(e.root, e.streams) }, deployIncremental},
 	{"attributionProblems", func(e *lintEnv) []string { p, _ := attributionProblems(e.streams); return p }, attributionIncremental},
 	{"verifyRowClassProblems", func(e *lintEnv) []string { return verifyRowClassProblems(e.streams) }, streamLocal},
+	{"protectedClosureProblems", func(e *lintEnv) []string { return protectedClosureProblems(e.streams) }, streamLocal},
 	{"danglingSatisfiesProblems", func(e *lintEnv) []string { return danglingSatisfiesProblems(e.root, e.streams) }, statusInvariant},
 	// Reads the tree itself (it re-renders each drive-snapshot region from disk),
 	// which is why a move is evaluated with the README already written.
