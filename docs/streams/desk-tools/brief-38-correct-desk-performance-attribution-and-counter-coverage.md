@@ -121,8 +121,8 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 
 ## Evidence
 
-Historical record (superseded for closure while provenance is reviewed):
-
+> Historical record (superseded for closure while provenance is reviewed):
+> 
 > Historical host run — superseded by the admitted Linux run below; retained as quotation.
 > 
 > > <!-- Independent verifier appends one row per Verify command after implementation. -->
@@ -197,22 +197,67 @@ Historical record (superseded for closure while provenance is reviewed):
 > The path-trigger derivation/security-review obligations do not rewrite the brief's gate:model/all-no frontmatter into a human gate. Existing collection consent and activation remain separate. The README's todo discrepancy remains recorded; this verifier made no lifecycle or README edit. The broader host-runner capability issue remains independently tracked by [assay#1800](https://github.com/medici-finance/assay/issues/1800); this explicitly approved local container run does not claim a fleet-wide runner fix.
 > 
 > **VERIFY: PASS** — mandatory rows now executed with `sandbox=unshare`; consumer routing is accepted through the explicit delivery-diff/source review below, not through the command's unchecked entries. This supersedes the earlier host-only environment hold for this source and run; the historical host result remains recorded.
+> 
+> Review follow-up — 2026-10-18, assay-verifier-app[bot].
+> 
+> The earlier record is preserved above as historical quotation. Its tool-emitted fingerprints do not make the original underlying row stdout/stderr available: the first Docker attempt did not retain those bytes. A new execution cannot authenticate an earlier fingerprint. The retained original reports, literal inventory, rederivation, supplemental outputs and admission logs have been preserved separately for inspection.
+> 
+> An independent verifier has completed a separately identified new attempt with captured row output, exact fingerprint comparison and genuine admission before execution and after normal credential recovery. This observed runtime result is not yet an accepted verification: access to primary artifacts and the authorization record remains under review. The earlier final admission failure from an expired cached credential is retained beside the later successful recovery check; no source or sandbox rule was changed to pass it.
+> 
+> The brief remains implemented, without a Verified stamp, until the provenance findings are independently cleared. No prior or new execution summary substitutes for inspectable primary proof. Publication of the prepared restricted artifact index awaits the driver's authorization; no restricted payload was posted after the publication refusal.
+> 
+> The separate frozen-admission-history outcome-writer defect remains tracked in #3343. It does not resolve the primary-artifact review finding.
+> 
+> Admission binding (pre-work dispatch provenance only; not an accepted verification result):
+> 
+> Verification-Attestation: medici-finance/assay#3336 run=616125540e6d554df4b3278c1ff15cd3a77acc1db20bdd66c012e6b23660535e source=8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae brief=docs/streams/desk-tools/brief-38-correct-desk-performance-attribution-and-counter-coverage.md model=gpt-6.1-sol tier=strong
+> 
+> **VERIFY: BLOCKED** — provenance review and artifact-access approval pending.
 
-Review follow-up — 2026-10-18, assay-verifier-app[bot].
+Primary-artifact audit follow-up — 2026-10-18, independent non-implementer inspection.
 
-The earlier record is preserved above as historical quotation. Its tool-emitted fingerprints do not make the original underlying row stdout/stderr available: the first Docker attempt did not retain those bytes. A new execution cannot authenticate an earlier fingerprint. The retained original reports, literal inventory, rederivation, supplemental outputs and admission logs have been preserved separately for inspection.
+**2026-10-18 independent inspection of retained execution evidence**
 
-An independent verifier has completed a separately identified new attempt with captured row output, exact fingerprint comparison and genuine admission before execution and after normal credential recovery. This observed runtime result is not yet an accepted verification: access to primary artifacts and the authorization record remains under review. The earlier final admission failure from an expired cached credential is retained beside the later successful recovery check; no source or sandbox rule was changed to pass it.
+A non-implementer has now inspected the authorized primary approval and execution artifacts for the fresh captured attempt at source `8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae`. All 70 final-manifest entries match their sizes and full SHA-256 values. All 9 namespace recorder records agree with raw byte counts, hashes, exact argv and zero exits, without capture errors; six are isolation/helper probes and three are the authored rows. This is an audit of the recorded attempt, not a new execution or model stamp. The original first-Docker attempt's discarded row streams remain unavailable and are not reconstructed by this audit.
 
-The brief remains implemented, without a Verified stamp, until the provenance findings are independently cleared. No prior or new execution summary substitutes for inspectable primary proof. Publication of the prepared restricted artifact index awaits the driver's authorization; no restricted payload was posted after the publication refusal.
+The original human approval explicitly covers the temporary disposable seccomp exception while every check remains network-isolated. Pre-admission and the separately recovered final admission bind to the exact same original run/source/brief/plan/home. The first final-admission failure and launcher exit 5 remain preserved; normal custody recovery later succeeded without rerunning acceptance rows or altering the source. The recorder invokes real unshare and its qualification covers exact combined bytes, nonzero exit, refusal, child signal and isolated namespace, with fail-closed capture storage. Harness tool versions/build hashes are separately recorded from the tested source.
 
-The separate frozen-admission-history outcome-writer defect remains tracked in #3343. It does not resolve the primary-artifact review finding.
+Recorded row 1: exit 0, `--- PASS: TestPerfCommandKit (7.85s)`, raw SHA-256 f438799207e68f585599a51e14d235eef4725045617e1f6b74062a5c12322872. Recorded row 2: exit 0, `--- PASS: TestPerfCoverageFlow (11.68s)`, raw SHA-256 8af17bf2e8dc2252d0639c7c6fee9e185dcd6df199abee911d055e4434f7ff01. Recorded row 3: exit 0, raw SHA-256 3d75f17e3e49f52355b5184f039ba303c86550ffe9c75d50fc3ccfbff78180c3; its explicit result remains 0 corroborated / 0 disproved / 15 unchecked. That is not automated corroboration. Public excerpts are separately identified and do not inherit a redacted raw artifact's digest.
 
-Admission binding (pre-work dispatch provenance only; not an accepted verification result):
+Independent inspection of delivery merge eded7ba6e4461a3afac436ff7196987d83268bb3 against its first parent confirms all 8 fixed-here sites in its diff and all 7 out-of-scope categories unchanged there. Source review supports the unchanged reader/caller-policy exclusions and observation-only shared process/client substitutions, alongside the recorded production-flow assertions. This supplies the stated manual routing review; it does not relabel unchecked entries as automatic passes or claim every caller regression suite ran. Existing measurement limits remain.
 
+Relevant tool/source, reader/schema, brief, README and qualification/telemetry document bytes are unchanged between admitted 8f and observed main 06587d38fc8195bde31098616f7143f287a06baa. The execution claim remains bound to 8f.
+
+The primary approval/artifact-access hold is resolved for this inspection.
+
+The driver authorized the restricted evidence index and it was posted for the authorized reviewer audience. A separate non-implementer has now inspected the primary execution bytes, manifests, recorder qualification and original approval excerpt. Artifact access and provenance are established for this fresh attempt; the normal PR review remains independent. No additional Verify command was run for this audit.
+
+Captured native execution witnesses for the separate fresh attempt:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCommandKit$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCommandKit ' "$o")` | pass exit=0 sandbox=unshare | sha256:f438799207e6 | 2026-10-18 | assay-verifier-app[bot] @ 8f1206fe5eb4+dirty (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCoverageFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCoverageFlow ' "$o")` | pass exit=0 sandbox=unshare | sha256:8af17bf2e8dc | 2026-10-18 | assay-verifier-app[bot] @ 8f1206fe5eb4+dirty (on-behalf-of human:ian) (forge-identity) |
+| 3 | `statusgen --root . --consumers --brief desk-tools/38` | pass exit=0 sandbox=unshare | sha256:3d75f17e3e49 | 2026-10-18 | assay-verifier-app[bot] @ 8f1206fe5eb4+dirty (on-behalf-of human:ian) (forge-identity) |
 Verification-Attestation: medici-finance/assay#3336 run=616125540e6d554df4b3278c1ff15cd3a77acc1db20bdd66c012e6b23660535e source=8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae brief=docs/streams/desk-tools/brief-38-correct-desk-performance-attribution-and-counter-coverage.md model=gpt-6.1-sol tier=strong
 
-**VERIFY: BLOCKED** — provenance review and artifact-access approval pending.
+Exact command-output excerpts for the named-PASS assertions (complete row streams, not retained inner verbose test logs):
+
+Row 1: 37 bytes, SHA-256 `f438799207e68f585599a51e14d235eef4725045617e1f6b74062a5c12322872`.
+
+```text
+--- PASS: TestPerfCommandKit (7.85s)
+```
+
+Row 2: 40 bytes, SHA-256 `8af17bf2e8dc2252d0639c7c6fee9e185dcd6df199abee911d055e4434f7ff01`.
+
+```text
+--- PASS: TestPerfCoverageFlow (11.68s)
+```
+
+The consumer row contains a configuration-bearing prefix in its raw stream. Its complete raw bytes remain restricted and were independently hashed; public excerpts are separately redacted and do not claim the raw digest. The raw consumer output SHA-256 is `3d75f17e3e49f52355b5184f039ba303c86550ffe9c75d50fc3ccfbff78180c3`; the actual summary is 0 corroborated, 0 disproved, 15 unchecked. Exact delivery merge `eded7ba6e4461a3afac436ff7196987d83268bb3` against its first parent corroborates the eight fixed-here sites. All seven out-of-scope groups remain unchanged there and their reader, policy and schema exclusions were checked against source. These are independent semantic judgments; no unchecked tool result is counted as automatic corroboration.
+
+**VERIFY: BLOCKED** — all three rows and bounded expectations have observed passing results with inspected primary proof. Formal completion remains blocked by the frozen-history outcome writer defect [#3343](https://github.com/medici-finance/assay/issues/3343) and normal independent PR disposition. Lifecycle remains implemented with no Verified stamp. The audit supplies no new execution stamp, ready flip, merge or operational activation.
 
 ## Review
 
