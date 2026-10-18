@@ -58,3 +58,17 @@ handoff/workpad. No per-brief KPI, scheduled meeting, service or observation rec
 required. This applies equally to the toolkit and software produced with it. Existing
 outcome/observation records remain their single owners; workflow throughput does not
 stand in for product benefit or settled verification debt.
+
+## Reproducing the behavioral regression checks
+
+Build the existing mutation harness from `tools/desk` with
+`go build -o /tmp/assay-withdrawal-muhar ./cmd/muhar`, then run from `statusgen`:
+
+```sh
+/tmp/assay-withdrawal-muhar -spec withdrawn-mutations.json -j 2
+```
+
+The pristine test baseline must pass and the human-gate positive control must fail.
+Each of the ten listed mutations must be caught, with zero `NOT CAUGHT` and zero
+`could-not-mutate`. A broken harness run carries no evidence. This uses the existing
+harness and committed regression tests; it is a release check, not a new adopter process.
