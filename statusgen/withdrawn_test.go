@@ -425,3 +425,27 @@ func TestWithdrawnKeysOnV2DoNotChangeGeneratedTable(t *testing.T) {
 		t.Errorf("a v1/v2 prose superseded-by must raise no PROBLEM; got:\n%s", strings.Join(p, "\n"))
 	}
 }
+
+// A brief depending on two withdrawn briefs later in its own stream (checked
+// AFTER it, so their README rows are not yet wired) still names each one's
+// cross-repo successors, never "no successor".
+func TestDependsOnWithdrawnNamesSuccessorsInFileOrder(t *testing.T) {
+	_, _, notices := withdrawnTree(t, []wdRow{
+		{num: "11", status: "todo", wave: 1, file: withdrawnFM("11", 1, "[\"alpha/21\", \"alpha/22\"]", "")},
+		{num: "21", status: "withdrawn", file: withdrawnFM("21", 0, "",
+			"withdrawn-date: \"2026-10-18\"\nsuperseded-by: [\"cell:other:composability:03\"]\nwithdrawn-reason: \"x\"\n")},
+		{num: "22", status: "withdrawn", file: withdrawnFM("22", 0, "",
+			"withdrawn-date: \"2026-10-18\"\nsuperseded-by: [\"cell:other:graph-execution:22\", \"cell:other:graph-execution:25\"]\nwithdrawn-reason: \"x\"\n")},
+	})
+	for _, want := range [][]string{
+		{"brief-11", "depends on alpha/21", "successor cell:other:composability:03"},
+		{"brief-11", "depends on alpha/22", "successor cell:other:graph-execution:22, cell:other:graph-execution:25"},
+	} {
+		if !hasProblem(notices, want...) {
+			t.Errorf("want NOTICE %q; got:\n%s", want, strings.Join(linesFor(notices, "depends on"), "\n"))
+		}
+	}
+	if n := linesFor(linesFor(notices, "brief-11"), "no successor"); len(n) > 0 {
+		t.Errorf("withdrawn deps with successors must not read as won't-fix: %v", n)
+	}
+}
