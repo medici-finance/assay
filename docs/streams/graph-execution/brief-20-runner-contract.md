@@ -75,6 +75,18 @@ dependencies or namespace isolation remain could-not-check with their precise
 cause. Preserve prior Evidence and the five Verify rows. This amendment neither
 closes a fleet-wide environment issue nor advances implemented to verified/done.
 
+This is a verification-environment update within the existing
+[library-first ownership map](../../library-first.md) and
+[future runtime architecture](../../proposals/non-ci-architecture/11-target-architecture.md).
+Docker supplies disposable execution isolation; it does not become a second runner
+protocol, queue, scheduler, evidence store or acceptance authority. Reuse the existing
+`statusgen verifyrun` witness and this brief's conformance kit. Supervisor /26 and
+adapter /22 retain process-launch ownership, and /27 retains standing-desk adoption;
+this local verification path neither implements nor activates those consumers. Future
+runner integration must consume the same contract and evidence, not recreate this
+verification workflow. Image release/pinning automation remains its existing owner's
+work and can proceed independently of this local witness attempt.
+
 ## Read first
 
 - [Task workflow specification](task-workflow-program.md).
