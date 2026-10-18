@@ -23,18 +23,18 @@ outcome: none
 version: 2
 id: b40ce6af-2881-4f1a-874e-59182406b326
 consumers:
-  - "tools/desk/cmd/verifyloop/flow_45_test.go: follow-up desk-tools/45 (planned test contract)"
-  - "tools/desk/cmd/deskboard/flow_45_test.go: follow-up desk-tools/45 (planned test contract)"
-  - "statusgen/flow_45_test.go: follow-up desk-tools/45 (planned test contract)"
-  - "statusgen/main.go: follow-up desk-tools/45 (this implementation brief)"
-  - "statusgen/awaiting_bucket.go: follow-up desk-tools/45 (this implementation brief)"
-  - "statusgen/gatescores_e2e_test.go: follow-up desk-tools/45 (this implementation brief)"
-  - "tools/desk/cmd/deskboard/roots.go: follow-up desk-tools/45 (this implementation brief)"
-  - "tools/desk/cmd/deskboard/throughput.go: follow-up desk-tools/45 (this implementation brief)"
-  - "tools/desk/cmd/verifyloop/main.go: follow-up desk-tools/45 (this implementation brief)"
-  - "tools/desk/cmd/verifyloop/queueclass.go: follow-up desk-tools/45 (this implementation brief)"
-  - "tools/desk/internal/deskkit/citrigger_test.go: follow-up desk-tools/45 (this implementation brief)"
-  - "changelog/verify-queue-contract.md: follow-up desk-tools/45 (this implementation brief)"
+  - "tools/desk/cmd/verifyloop/flow_45_test.go: fixed-here (planned test contract)"
+  - "tools/desk/cmd/deskboard/flow_45_test.go: fixed-here (planned test contract)"
+  - "statusgen/flow_45_test.go: fixed-here (planned test contract)"
+  - "statusgen/main.go: fixed-here (this implementation brief)"
+  - "statusgen/awaiting_bucket.go: fixed-here (this implementation brief)"
+  - "statusgen/gatescores_e2e_test.go: fixed-here (this implementation brief)"
+  - "tools/desk/cmd/deskboard/roots.go: fixed-here (this implementation brief)"
+  - "tools/desk/cmd/deskboard/throughput.go: fixed-here (this implementation brief)"
+  - "tools/desk/cmd/verifyloop/main.go: fixed-here (this implementation brief)"
+  - "tools/desk/cmd/verifyloop/queueclass.go: fixed-here (this implementation brief)"
+  - "tools/desk/internal/deskkit/citrigger_test.go: fixed-here (this implementation brief)"
+  - "changelog/verify-queue-contract.md: fixed-here (this implementation brief)"
 ---
 
 # Brief 45 — Expose the canonical verification queue to its consumers
