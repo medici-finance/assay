@@ -23,6 +23,7 @@ outcome: none
 version: 1
 id: af2553b5-b208-4d3d-aab1-5d8c518b2add
 consumers:
+  - "tools/desk/internal/deskkit/citrigger_test.go: follow-up desk-tools/51 (register the skill-body cross-module read; existing CI already runs on every push and pull request)"
   - "tools/desk/cmd/verifyloop/flow_51_test.go: follow-up desk-tools/51 (planned test contract)"
   - "plugins/assay/skills/verify-desk/SKILL.md: follow-up desk-tools/51 (this implementation brief)"
   - "tools/desk/cmd/deskdispatch/references/verifier-prompt.md: follow-up desk-tools/51 (this implementation brief)"
@@ -35,7 +36,7 @@ consumers:
 
 ## Context
 
-files: plugins/assay/skills/verify-desk/SKILL.md, tools/desk/cmd/deskdispatch/references/verifier-prompt.md, tools/desk/cmd/verifyloop/main.go, tools/desk/README.md, changelog/verifier-lane-actions.md, tools/desk/cmd/verifyloop/flow_51_test.go
+files: plugins/assay/skills/verify-desk/SKILL.md, tools/desk/cmd/deskdispatch/references/verifier-prompt.md, tools/desk/cmd/verifyloop/main.go, tools/desk/README.md, tools/desk/internal/deskkit/citrigger_test.go, changelog/verifier-lane-actions.md, tools/desk/cmd/verifyloop/flow_51_test.go
 facts:
 - The current skill already documents one-file Evidence landing, a PR-required lane and the separately gated verdict-transcription future. Preserve those permissions.
 - The plan already has explicit wait and Evidence-only states. No unconditional rule that all human/risk items are model-flippable is valid.
