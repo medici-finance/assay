@@ -37,9 +37,19 @@ type withdrawalAuditReport struct {
 	Affected    []withdrawalAuditItem `json:"affected"`
 }
 
+var withdrawalAuditHeadRe = regexp.MustCompile(`^[0-9a-f]{40,64}$`)
+
 func auditWithdrawals(streams []*Stream, prs []withdrawalAuditPR) withdrawalAuditReport {
 	report := withdrawalAuditReport{Schema: "withdrawal-audit-v1", Coverage: "snapshot-only; re-read heads and claims before acting; unlisted PRs and indirect consumers are could-not-check", SnapshotPRs: len(prs), Affected: []withdrawalAuditItem{}}
 	res := newWithdrawalResolver(streams)
+	branchPatterns := map[string]*regexp.Regexp{}
+	for _, s := range streams {
+		for _, b := range s.Briefs {
+			if isWithdrawn(b.Status) {
+				branchPatterns[s.Name+"/"+b.Num] = regexp.MustCompile(`(^|[/_-])` + regexp.QuoteMeta(s.Name) + `[/_-]` + regexp.QuoteMeta(b.Num) + `($|[/_-])`)
+			}
+		}
+	}
 	for _, pr := range prs {
 		for _, s := range streams {
 			for _, b := range s.Briefs {
@@ -50,7 +60,7 @@ func auditWithdrawals(streams []*Stream, prs []withdrawalAuditPR) withdrawalAudi
 				// Path match covers both implementation and evidence PRs. A README
 				// match is intentionally broad: it may alter any lifecycle row in it.
 				basis := []string{}
-				matched := regexp.MustCompile(`(^|[/_-])` + regexp.QuoteMeta(s.Name) + `[/_-]` + regexp.QuoteMeta(b.Num) + `($|[/_-])`).MatchString(pr.HeadRefName)
+				matched := branchPatterns[id].MatchString(pr.HeadRefName)
 				if matched {
 					basis = append(basis, "branch identity")
 				}
@@ -109,7 +119,7 @@ func runWithdrawalAudit(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	for _, pr := range prs {
-		if pr.Number < 1 || !regexp.MustCompile(`^[0-9a-f]{40,64}$`).MatchString(pr.HeadRefOid) || pr.Files == nil {
+		if pr.Number < 1 || !withdrawalAuditHeadRe.MatchString(pr.HeadRefOid) || pr.Files == nil {
 			fmt.Fprintln(stderr, "withdrawal-audit: each PR needs a positive number, immutable headRefOid and files array")
 			return 2
 		}

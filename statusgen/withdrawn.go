@@ -582,7 +582,7 @@ func checkWithdrawalContext(add func(string, ...any), path string, bf *BriefFile
 			fail("active-work treatment for %s is not acknowledged by its owner", subjectID)
 		}
 	}
-	if evidenceHasContent(bf.Evidence) || impact.Evidence != nil || impact.Lifecycle == "implemented" || impact.Lifecycle == "verified" || impact.Lifecycle == "done" {
+	if evidenceHasContent(bf.Evidence) || impact.Evidence != nil || impact.Lifecycle == "in-progress" || impact.Lifecycle == "implemented" || impact.Lifecycle == "verified" || impact.Lifecycle == "done" {
 		preserved := false
 		for _, history := range h.History {
 			if history.Subject == subjectID {

@@ -485,9 +485,12 @@ func readmeDriftRows(current, expected string) []string {
 // asks for: it compares each brief's ASSERTED README Status cell against
 // the cell DeriveLifecycle computes from the witnesses, and returns one NOTICE per
 // disagreement. A derived `unknown` (the offline / could-not-look state) never
-// produces a NOTICE — a could-not-check is not a drift (the three-state
-// invariant). This makes board-vs-witness drift VISIBLE before the fleet-wide hard
-// flip to a witness-written cell, without changing what the board renders.
+// produces a drift NOTICE for active scope — a could-not-check is not drift
+// (the three-state invariant). A withdrawn assertion with a known merged PR
+// still calls for reconciliation of that existing work, without claiming its
+// unknown verification fold passed or failed. This makes board-vs-witness drift
+// VISIBLE before the fleet-wide hard flip to a witness-written cell, without
+// changing what the board renders.
 func assertedVsDerivedNotices(s *Stream, derived []BriefCell) []string {
 	asserted := map[string]string{}
 	for i := range s.Briefs {
@@ -495,15 +498,15 @@ func assertedVsDerivedNotices(s *Stream, derived []BriefCell) []string {
 	}
 	var notices []string
 	for _, c := range derived {
-		if (c.Cell == "unknown" || c.Cell == "") && c.MergedPR == "" {
-			continue
-		}
 		// canonicalBriefKey, not the raw c.ID: a brief-v2 hierarchical id
 		// (<cell>:<repo>:<stream>:<NN>) never equals the stream/NN shape the
 		// asserted map is keyed on, which made the comparator silently blind on
 		// a v2 tree — no drift NOTICE could ever fire there.
 		a, ok := asserted[canonicalBriefKey(c.ID)]
 		if !ok || a == "" {
+			continue
+		}
+		if (c.Cell == "unknown" || c.Cell == "") && (!isWithdrawn(a) || c.MergedPR == "") {
 			continue
 		}
 		// A never-started retirement does not conflict with a todo witness.

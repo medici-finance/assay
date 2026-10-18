@@ -732,7 +732,7 @@ could-not-check runs serial.
    is a lint PROBLEM, the same as hand-editing `STATUS.md`. Columns:
    `| # | Brief | Wave | Effort | Status | Verified | Reviewed |`, Status a bare lifecycle token
    (`todo` / `in-progress` / `implemented` / `verified` / `done`, the hold token `blocked`, or the
-   terminal `withdrawn` — see "Withdrawing a brief" below). A
+   off-path `withdrawn` — see "Withdrawing a brief" below). A
    project not yet wired to `statusgen` hand-maintains the older
    `| # | Brief | Wave | Status | What's deployed/landed |` shape as a stopgap — ✅ / ⚠ / ❌ with a
    terse, honest "what's actually true" note (not aspirational) — but the moment generation is

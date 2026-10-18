@@ -239,7 +239,7 @@ file checksum. Lint strictly decodes context-handoff-v1 or
 record's exact target revision, and finds this brief's retire/replace/split obligation.
 Its normalized `replaced_by` list MUST match `superseded-by`. Observed active work on the
 brief MUST have an acknowledged treatment, including cancellation/reconciliation. An
-executed impact or a brief carrying Evidence MUST have a preserved-history entry.
+executed impact (including in-progress work) or a brief carrying Evidence MUST have a preserved-history entry.
 
 One handoff can cover many briefs. This pointer does not duplicate the target, approval,
 claim, history or metric payload into every brief. A valid record is internally consistent;

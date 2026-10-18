@@ -39,14 +39,18 @@ implying progress. Board reporting that orders the lifecycle (bottleneck, roadma
 trend views) SHOULD render `blocked` as a terminal-for-now bucket alongside the five
 ordered states rather than between any two of them.
 
-### 2.0a `withdrawn` — the terminal off-path state
+### 2.0a `withdrawn` — off-path retirement
 
 `withdrawn` is a seventh valid status value and, like `blocked`, is NOT a position in the
 ordered sequence. It records that the remaining planned scope will not be executed under this identity:
 a later decision retired it, or moved that scope into another brief. Partial implementation
-and completed historical work remain on record, with their unresolved obligations. Unlike `blocked` it is **terminal** —
-nothing re-enters the sequence from it. The brief's frontmatter records the date, the
-reason and the successor (`brief-v1.md` §3.6).
+and completed historical work remain on record, with their unresolved obligations. It is
+closed to dispatch. Reviving that identity requires an explicit plan amendment that
+re-establishes its scope and acceptance criteria, reconciles its withdrawal metadata and
+successors, and passes the ordinary lifecycle gates. For a human-gated brief, leaving
+withdrawn for implemented, verified or done is a fresh guarded move (§4.5); retirement
+is not completion progress. The brief's frontmatter records the date, the reason and
+the successor (`brief-v1.md` §3.6).
 
 A conforming implementation MUST accept `withdrawn` as a valid status and MUST NOT offer a
 `withdrawn` brief in the Next-up batch (section 5) or any dispatch view. It MUST exclude
@@ -54,7 +58,7 @@ withdrawn briefs from the done-ratio denominator ("briefs done x/y"), from the t
 open-brief counts, and from the stalled, bottleneck and blocked views, and SHOULD show
 them in a separate Withdrawn count. A `depends:` edge into a withdrawn brief is never
 satisfied (the linter NOTICEs it, naming the successor). A lower-wave withdrawn brief MUST
-NOT hold the legacy whole-wave rule: it is terminal, the same as `done` for that purpose.
+NOT hold the legacy whole-wave rule: it is closed to dispatch, like `done` for that purpose.
 A stream whose every brief is `done` or `withdrawn` is an archive candidate for planned
 work. This does not assert that surviving verification debt, open PRs or active claims
 were settled. Evidence and stamps are retained, and known execution drift remains visible.
@@ -334,8 +338,11 @@ issue has no human ruling, a change that:
 1. leaves the brief's status at `implemented`, `verified`, `done` or `withdrawn` where,
    at the base, its status ranked lower or the brief was not on the board (a **move**;
    the guarded-act ranks are `implemented` < `verified` < `done` < `withdrawn`, and
-   every other status ranks below them). This ranking guards retirement; it does not
-   place withdrawal in the progress lifecycle or attest completed work;
+   every other status ranks below them). On the base side, withdrawn ranks below
+   implemented/verified/done when leaving withdrawal, so re-entry into any of those
+   statuses is a fresh move. An unchanged withdrawn status is not a move. This ranking
+   guards retirement and reactivation; it does not place withdrawal in the progress
+   lifecycle or attest completed work;
 2. changes the brief's `gate` away from `human`, or removes the key (a **relabel**);
 3. leaves no brief after the change that is the same brief as a `gate: human` base brief
    and still on the board (a **drop**). The README table is the board: a base brief that
