@@ -4,7 +4,7 @@ title: Extract shared review observation and pure planning contracts
 why: "Queue classification and plan assembly live inside commands, so callers repeat collection and cannot consume one complete observation through a pure shared boundary."
 wave: 2
 depends: ["desk-tools/37"]
-unblocks: ["forge-neutral/39", "desk-tools/40", "desk-tools/41"]
+unblocks: ["forge-neutral/39", "desk-tools/40", "desk-tools/41", "graph-execution/27"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -24,6 +24,7 @@ domain: complicated
 gate-why: Review/issue observations can expose scoped operational facts; implemented coverage and authority boundaries require the existing human acceptance.
 decision-trigger: spec
 consumers:
+  - "tools/desk/internal/deskclient/: follow-up graph-execution/27"
   - "tools/desk/cmd/deskboard/: follow-up desk-tools/39"
   - "tools/desk/cmd/reviewloop/: follow-up desk-tools/39"
   - "tools/desk/cmd/deskdispatch/: follow-up desk-tools/39"
@@ -121,3 +122,11 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 Retain the derived frontmatter gate. Approval of the source spec is recorded; this brief
 adds implementation acceptance rather than reopening that decision. Existing adopter
 writer/custody/equivalence and collection consent gates remain separate.
+
+## Standing-desk consumer routing — 2026-10-18
+
+graph-execution/27 consumes this brief's existing pure policy/projection API from a
+tools/desk-local binding. It does not import cmd/main across modules, duplicate the
+classifier, change this brief's acceptance or add a process supervisor here. Preserve
+the current oracle, authority boundary and planned library home. This is a forward
+consumer, not a dependency on future workflow/controller delivery.
