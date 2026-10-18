@@ -32,6 +32,6 @@
   },
   "assay-statusgen.yml": {
     "mode": "pending",
-    "reason": "Classified board push (#2910): credential preflight and per-class push failures in regen and model-autoflip, plus the lint job step running their tests; pending maintainer promotion (README Contents)."
+    "reason": "Classified board push (#2910): credential preflight and per-class push failures in regen and model-autoflip, plus the lint job step running their tests; and a full-history regen checkout (fetch-depth: 0) so a consumed changelog fragment is evaluated rather than could-not-check (#3364); pending maintainer promotion (README Contents)."
   }
 }

@@ -121,6 +121,14 @@ reviewable artifact, not a run.
   guard cannot build a base that already has the module. **This part is promoted** into the
   live `.github/workflows/assay-statusgen.yml` in the same pull request that adds `perfrec/`
   (#3113); the rest of the staged copy (#2910) stays pending.
+- `assay-statusgen.yml` — full-history regen part (#3364): the staged copy's `regen` job checks
+  out with `fetch-depth: 0`, as the `lint` job already does. The regen runs the same history-reading
+  checks as `--lint` (the consumed-changelog-fragment exemption, the Evidence staleness read), and
+  on a shallow clone those are could-not-check by design, so a release that consumes a fragment a
+  brief names turns the default-branch regen red while the PR lint passes. **Pending promotion**:
+  the one-line `fetch-depth: 0` under the live `regen` job's checkout `with:` can be applied on its
+  own, ahead of the rest of the staged copy. `TestBoardRegenFullHistory` in `statusgen` pins it on
+  this copy and on the `tools/ci-load/activation/` copy.
 - `gremlins-daily.yml` — the daily Gremlins mutation sweep (#2647) over the desk tools'
   muhar-spec packages (`tools/gremlins/run.sh`). **Discovery, never a gate**: surviving
   mutants go to the job summary and the uploaded JSON artifact as leads, and survivors in
