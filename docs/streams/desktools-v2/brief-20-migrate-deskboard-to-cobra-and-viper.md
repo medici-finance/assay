@@ -101,6 +101,51 @@ Only imports change while the old parser stays: TestCLIOwnerMigrated and /17's s
 
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->
+<!-- Independent verifier records actual command, exit, output, date and runner. -->
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskboard -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-18 | assay-verifier-app[bot] @ 56615f9ab834 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskboard -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-18 | assay-verifier-app[bot] @ 56615f9ab834 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskboard -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-18 | assay-verifier-app[bot] @ 56615f9ab834 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-20.json` | pass exit=0 | sha256:5af695d3f0fc | 2026-10-18 | assay-verifier-app[bot] @ 56615f9ab834 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskboard/...` | pass exit=0 | sha256:ca8052c3bfe2 | 2026-10-18 | assay-verifier-app[bot] @ 56615f9ab834 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskboard` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-18 | assay-verifier-app[bot] @ 56615f9ab834 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/20 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:5682054eb457 | 2026-10-18 | assay-verifier-app[bot] @ 56615f9ab834 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:93db08669734 | 2026-10-18 | assay-verifier-app[bot] @ 56615f9ab834 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:5c9d86c64ea1 | 2026-10-18 | assay-verifier-app[bot] @ 56615f9ab834 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#3359 run=f26761b905f34c6eaf1288515597d0eb1ea3728ef1bf5ad0a5dd575db83f94a2 source=56615f9ab834a2218709271e55ce3cc4ba80c991 brief=docs/streams/desktools-v2/brief-20-migrate-deskboard-to-cobra-and-viper.md model=gpt-6.1-sol tier=strong
+
+
+### Independent observations — 2026-10-18
+
+Source: 56615f9ab834a2218709271e55ce3cc4ba80c991. Delivering PR [#3248](https://github.com/medici-finance/assay/pull/3248) is merged as cc86c03eb5d44f91b7a4cf9aa1fb777c63ef62f0; it is an ancestor of the observed source. Runner: assay-verifier-app[bot], independent gpt-6.1-sol / strong. Expectations were written from the brief and CLI contract before implementation/diff inspection.
+
+The execution-witness table above is the original statusgen verifyrun result (exit 0). The following table is a separate exact-command replay retaining complete output, including the files to which rows 1–3 and 7 redirect. Each numbered row discharges the matching Verify row.
+
+| # | Command | Expected | Observed | Date / runner |
+|---|---|---|---|---|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskboard -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | Verify 1: exit 0 | exit=0; --- PASS: TestCLIHelpOffline (1.14s) | 2026-10-18 assay-verifier-app[bot] / gpt-6.1-sol |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskboard -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | Verify 2: exit 0 | exit=0; --- PASS: TestCLIConfigFlow (0.01s) | 2026-10-18 assay-verifier-app[bot] / gpt-6.1-sol |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskboard -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | Verify 3: exit 0 | exit=0; --- PASS: TestCLILegacyForms (0.04s) | 2026-10-18 assay-verifier-app[bot] / gpt-6.1-sol |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-20.json` | Verify 4: exit 0; all 7 mutations caught | exit=0; Harness healthy: baseline GREEN, positive control CAUGHT. Totals: 7 caught, 0 NOT CAUGHT, 0 could-not-mutate. | 2026-10-18 assay-verifier-app[bot] / gpt-6.1-sol |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskboard/...` | Verify 5: exit 0 | exit=0; ok github.com/medici-finance/assay/tools/desk/cmd/deskboard 12.011s | 2026-10-18 assay-verifier-app[bot] / gpt-6.1-sol |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskboard` | Verify 6: exit 0 | exit=0; no output; Windows-target vet completed | 2026-10-18 assay-verifier-app[bot] / gpt-6.1-sol |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/20 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | Verify 7: exit 0 | exit=0; --- PASS: TestCLIOwnerMigrated (2.61s) | 2026-10-18 assay-verifier-app[bot] / gpt-6.1-sol |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | Verify 8: exit 0 | exit=0; seed passes=26 | 2026-10-18 assay-verifier-app[bot] / gpt-6.1-sol |
+| 9 | `statusgen --root . --consumers` | Verify 9: exit 0 | exit=0; summary: 0 corroborated, 0 disproved, 8 unchecked, 0 brief(s) claiming nothing | 2026-10-18 assay-verifier-app[bot] / gpt-6.1-sol |
+
+Row 9 satisfies only its stated no-disproved-routing criterion. Its eight UNCHECKED claims were unchanged relative to this already-merged checkout; this instrument does not corroborate them. Source review of the delivering diff confirmed the roster-inspection documentation routes through deskroster repos --scope write; parser replay covers the retained board callers. Native Windows behavior remains with the CI lane; row 6 checks cross-compilation only.
+
+Protected-path follow-up: a complete forge label-history read found current wrote-to-the-test and approval-needed on PR #3248. That label was discovered after the original witness had started. deskpathguard rederive exited 0 with "0 row(s), 0 author-added, base=56615f9ab834a2218709271e55ce3cc4ba80c991"; zero rows is a tool limitation here, not proof of coverage. A direct byte comparison of the entire Verify table at delivering parent cc86c03^ and the admitted source returned True, establishing that all nine commands and expectations predate this delivery. The full-output replay ran after that comparison. The status-transition wording in docs/protected-paths.md lines 62–65 and the brief's gate:model metadata are returned to the supervisor for lifecycle handling; this verifier changes no lifecycle field.
+
+Risk enumeration: topology.yaml line 206 classes the changed deskboard path. The retained mechanical inventory covers all 14 files in cc86c03^..cc86c03, with 613 added-line string, number and boolean tokens, each source-located and ranked. Highest are the dispatch filter binding and accepted vocabulary; CLI bounds/arity/output tokens follow; documentation, registry, test and mutation literals rank last. All are reversible by edit/redeploy. Operational defaults remain min-age-hours="48" (main.go:108), merge-now-threshold="20m" (:109), unreviewed-threshold="30m" (:110), false output/throughput flags (:103–106,115), empty out (:107), quota floor 500 (readcost.go:63), floor minimum 0 (main.go:251), positive age/PR minimum 1 (:232,:207), and reviews/diff arity 2 versus files 2..3 (:199–203). No risk yes or risk-bearing/live/mutating/end-to-end Verify class exists, so fail-first is not required.
+
+RISK-VALUE: DERIVED — tier.default = "" @ tools/desk/cmd/deskboard/main.go:114 — omitted tier retains the pre-delivery admission contract: a board without a dispatcher tier applies no tier filter; an explicitly supplied empty or unknown tier is refused before execution.
+
+RISK-VALUE: DERIVED — execTierValues = []string{"any", "strong"} @ tools/desk/internal/deskkit/modelstamp.go:183 — the CLI and direct domain boundary both call CanonicalDispatchTier, whose single vocabulary mirrors the brief-schema exec-tier set; the parser migration introduces no new tier authority.
+
+**VERIFY: PASS** — all nine stated Verify rows passed at the admitted source; lifecycle eligibility remains with the supervisor.
 
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.
