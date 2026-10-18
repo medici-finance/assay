@@ -63,8 +63,8 @@ func landedFixture(t *testing.T, wrong bool) (string, string, string, map[string
 	return root, source, landed, files
 }
 
-// regression: #3343
-func TestLandedHistory(t *testing.T) {
+func landedStatusgenOnPath(t *testing.T) {
+	t.Helper()
 	bin := t.TempDir()
 	name := "statusgen"
 	if runtime.GOOS == "windows" {
@@ -76,70 +76,130 @@ func TestLandedHistory(t *testing.T) {
 		t.Fatalf("build statusgen: %v %s", err, out)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	for _, wrong := range []bool{false, true} {
-		for _, target := range []string{"docs/streams/verify-outcomes/vf/01-test.json", "docs/streams/verify-outcomes.jsonl"} {
-			t.Run(map[bool]string{false: "verifier", true: "worker"}[wrong]+filepath.Ext(target), func(t *testing.T) {
-				f, _ := setupFake(t)
-				for _, line := range strings.Split(fixtureRoster, "\n") {
-					if key, value, ok := strings.Cut(line, "="); ok && strings.HasPrefix(key, "ASSAY_") {
-						t.Setenv(key, value)
+}
+
+// regression: #3343
+func TestLandedHistory(t *testing.T) {
+	landedStatusgenOnPath(t)
+	for _, baseline := range []string{"old", "equal", "descended"} {
+		for _, wrong := range []bool{false, true} {
+			for _, target := range []string{"docs/streams/verify-outcomes/vf/01-test.json", "docs/streams/verify-outcomes.jsonl"} {
+				t.Run(baseline+"/"+map[bool]string{false: "verifier", true: "worker"}[wrong]+filepath.Ext(target), func(t *testing.T) {
+					f, errbuf := setupFake(t)
+					for _, line := range strings.Split(fixtureRoster, "\n") {
+						if key, value, ok := strings.Cut(line, "="); ok && strings.HasPrefix(key, "ASSAY_") {
+							t.Setenv(key, value)
+						}
 					}
-				}
-				root, source, head, files := landedFixture(t, wrong)
-				f.commitSHAs = map[string]string{"main": head}
-				for p, b := range files {
-					f.setFile(p, b)
-				}
-				record := []byte("{\"brief\":\"vf/01\",\"outcome\":\"verified\"}\n")
-				landed, got, cleanup, err := landedClosureTree(root, target, nil, record, false, f, deskkit.ForgeRepo{}, "main")
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer cleanup()
-				if got != head || landed == root {
-					t.Fatal("closure did not get exact separate landed checkout")
-				}
-				if flGit(t, landed, "rev-parse", "HEAD") != head {
-					t.Fatal("wrong checkout head")
-				}
-				old, err := statusgenLintAt(root)
-				if err != nil || len(old) == 0 {
-					t.Fatalf("frozen history should fail attribution, problems=%v err=%v", old, err)
-				}
-				verifiedClosureCheckFn = verifiedClosureCheckAt
-				err = guardVerifiedOutcomes(root, landed, target, nil, record, f, deskkit.ForgeRepo{}, head)
-				if wrong {
-					if err == nil {
-						t.Fatal("worker-authored closure accepted")
+					root, source, head, files := landedFixture(t, wrong)
+					if baseline != "old" {
+						mainHead := head
+						if baseline == "descended" {
+							flGit(t, root, "checkout", "-q", "-f", "--detach", head)
+							flGit(t, root, "commit", "-q", "--allow-empty", "-m", "later main")
+							mainHead = flGit(t, root, "rev-parse", "HEAD")
+							flGit(t, root, "checkout", "-q", "--detach", source)
+							for p, b := range files {
+								if err := os.WriteFile(filepath.Join(root, p), []byte(b), 0644); err != nil {
+									t.Fatal(err)
+								}
+							}
+						}
+						flGit(t, root, "update-ref", "refs/remotes/origin/main", mainHead)
 					}
-				} else {
+					f.commitSHAs = map[string]string{"main": head}
+					for p, b := range files {
+						f.setFile(p, b)
+					}
+					record := []byte("{\"brief\":\"vf/01\",\"outcome\":\"verified\"}\n")
+					landed, got, cleanup, err := landedClosureTree(root, target, nil, record, false, f, deskkit.ForgeRepo{}, "main")
 					if err != nil {
 						t.Fatal(err)
 					}
-					introduced, err := lintDiffAt(landed, target, record)
-					if err != nil || len(introduced) != 0 {
-						t.Fatalf("lint diff=%v err=%v", introduced, err)
+					defer cleanup()
+					if got != head || landed == root {
+						t.Fatal("closure did not get exact separate landed checkout")
 					}
-					if err := gateVerifiedSidecarLanding(target, landed, nil, record, false); err != nil {
-						t.Fatal(err)
+					if flGit(t, landed, "rev-parse", "HEAD") != head {
+						t.Fatal("wrong checkout head")
 					}
-				}
-				cleanup()
-				if _, err := os.Stat(landed); !os.IsNotExist(err) {
-					t.Fatal("landed checkout leaked")
-				}
-				if flGit(t, root, "rev-parse", "HEAD") != source {
-					t.Fatal("admitted HEAD moved")
-				}
-				for p, b := range files {
-					got, err := os.ReadFile(filepath.Join(root, p))
-					if err != nil || string(got) != b {
-						t.Fatal("admitted bytes changed")
+					// Full lint still needs the fetched baseline for its other
+					// transition gates, independently of strict actor acceptance.
+					if flGit(t, landed, "rev-parse", "refs/remotes/origin/main") != flGit(t, root, "rev-parse", "refs/remotes/origin/main") {
+						t.Fatal("landed lint baseline differs from fetched main")
 					}
-				}
-			})
+					old, err := statusgenLintAt(root)
+					if baseline == "old" && (err != nil || len(old) == 0) {
+						t.Fatalf("frozen history should fail attribution, problems=%v err=%v", old, err)
+					}
+					verifiedClosureCheckFn = verifiedClosureCheckAt
+					err = guardVerifiedOutcomes(root, landed, target, nil, record, f, deskkit.ForgeRepo{}, head)
+					if wrong {
+						if err == nil {
+							t.Fatal("worker-authored closure accepted")
+						}
+					} else {
+						if err != nil {
+							t.Fatal(err)
+						}
+						introduced, err := lintDiffAt(landed, target, record)
+						if err != nil || len(introduced) != 0 {
+							t.Fatalf("lint diff=%v err=%v", introduced, err)
+						}
+						if err := gateVerifiedSidecarLanding(target, landed, nil, record, false); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if filepath.Ext(target) == ".json" {
+						// Exercise both active command routes with the real landed
+						// checkout and strict attribution guard, before any mutation.
+						landedClosureFn = landedClosureTree
+						outcomeGuardFn = guardVerifiedOutcomes
+						for _, direct := range []bool{false, true} {
+							raw := "{\"ts\":\"2026-09-22T02:00:00Z\",\"brief\":\"vf/01\",\"outcome\":\"verified\",\"rows_passed\":1,\"rows_total\":1,\"sha\":\"" + source + "\"}\n"
+							recordFile := writeRepoFile(t, "record.json", raw)
+							args := []string{"example-org/tracker", "main", "--root", root, "--outcome-record", recordFile}
+							if direct {
+								rel := "docs/streams/verify-outcomes/vf/01-direct.json"
+								recordFile = filepath.Join(root, rel)
+								if err := os.MkdirAll(filepath.Dir(recordFile), 0755); err != nil {
+									t.Fatal(err)
+								}
+								if err := os.WriteFile(recordFile, []byte(raw), 0644); err != nil {
+									t.Fatal(err)
+								}
+								args = []string{"example-org/tracker", "main", "--root", root, "--evidence-file", rel}
+							}
+							f.writes = nil
+							errbuf.Reset()
+							code := run(args)
+							if wrong {
+								if code != deskkit.ExitRefused || len(f.writes) != 0 {
+									t.Fatalf("direct=%v exit=%d writes=%d: %s", direct, code, len(f.writes), errbuf.String())
+								}
+							} else if code != 0 || len(f.writes) != 1 || f.writes[0].ExpectedHead != head {
+								t.Fatalf("direct=%v exit=%d writes=%+v: %s", direct, code, f.writes, errbuf.String())
+							}
+						}
+					}
+					cleanup()
+					if _, err := os.Stat(landed); !os.IsNotExist(err) {
+						t.Fatal("landed checkout leaked")
+					}
+					if flGit(t, root, "rev-parse", "HEAD") != source {
+						t.Fatal("admitted HEAD moved")
+					}
+					for p, b := range files {
+						got, err := os.ReadFile(filepath.Join(root, p))
+						if err != nil || string(got) != b {
+							t.Fatal("admitted bytes changed")
+						}
+					}
+				})
+			}
 		}
 	}
+
 }
 
 // regression: #3343

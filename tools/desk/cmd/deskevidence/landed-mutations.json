@@ -36,6 +36,12 @@
       "file": "internal/deskkit/forge_github.go",
       "old": "if in.ExpectedHead != \"\" {",
       "new": "if false && in.ExpectedHead != \"\" {"
+    },
+    {
+      "name": "strict selected closure attribution omitted",
+      "file": "cmd/deskevidence/outcome.go",
+      "old": "\"--check-attribution\", ",
+      "new": ""
     }
   ]
 }

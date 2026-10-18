@@ -4724,6 +4724,10 @@ they applied to an added log line; `verify-fail` is never gated.
 **Committed closure history.** A new `verified` outcome (including a direct per-file
 Evidence write) runs full lint, identity attribution, the pending-record lint diff
 and closure acceptance in a disposable checkout of the exact target commit.
+The existing `statusgen brief --check-verified` call also requests
+`--check-attribution`, checking this closure through statusgen's canonical actor
+policy and judge. This requires a paired statusgen release with that capability;
+an older binary's unknown-flag error is could-not-check, with no fallback.
 The admitted home keeps its original detached HEAD; its refreshed brief and stream
 README must match the landed commit byte for byte. Fetch the target branch and
 `origin/main` before publication: missing local commit history or baseline is
