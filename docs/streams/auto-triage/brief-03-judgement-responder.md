@@ -8,7 +8,7 @@ why: >-
   bug and ROUTES it with a recommended default, so a human gets a named next-step instead
   of a bare stack trace, without the automation ever guessing a fix or a withheld token.
 wave: 2
-depends: ["auto-triage/01"]
+depends: []
 unblocks: []
 withdrawn-date: "2026-10-18"
 superseded-by: ["graph-execution/08"]

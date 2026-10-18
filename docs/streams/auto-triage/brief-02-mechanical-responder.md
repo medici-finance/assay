@@ -8,7 +8,7 @@ why: >-
   recurring mechanical toil is discharged without a person — while the human still merges
   every fix and no gate is ever weakened to make the red pass.
 wave: 2
-depends: ["auto-triage/01"]
+depends: []
 unblocks: []
 withdrawn-date: "2026-10-18"
 superseded-by: ["graph-execution/08"]
