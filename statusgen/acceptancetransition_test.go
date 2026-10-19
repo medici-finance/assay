@@ -103,7 +103,7 @@ func (f transitionFixture) evidence(t *testing.T, mutate func(string) string) {
 
 // regression: #3467
 func TestAcceptanceTransition(t *testing.T) {
-	cases := []string{"approved", "approved-merge", "tampered-current", "changed-expect", "offline", "absent", "bot", "stale", "edited", "other-brief", "wrong-base", "wrong-original", "wrong-amendment", "missing-row", "old-witness", "supplement-credit", "original-launder", "missing-provenance", "duplicate", "fenced", "quoted", "lost-history"}
+	cases := []string{"approved", "approved-merge", "approved-scp", "approved-ssh", "approved-crlf", "origin-gitlab", "origin-ghe", "origin-ssh-port", "issue-marker-missing", "issue-marker-other", "tampered-current", "changed-expect", "offline", "absent", "bot", "stale", "edited", "other-brief", "wrong-base", "wrong-original", "wrong-amendment", "missing-row", "old-witness", "supplement-credit", "original-launder", "missing-provenance", "duplicate", "fenced", "quoted", "lost-history"}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
 			f := transitionFixtureAt(t, name == "approved-merge")
@@ -135,6 +135,22 @@ func TestAcceptanceTransition(t *testing.T) {
 				return ev
 			})
 			switch name {
+			case "approved-scp":
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "git@github.com:"+rlRepo+".git")
+			case "approved-ssh":
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "ssh://git@github.com:22/"+rlRepo+".git")
+			case "approved-crlf":
+				f.forge.commentBody = strings.ReplaceAll(f.forge.commentBody, `\n`, `\r\n`)
+			case "origin-gitlab":
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "https://gitlab.example/"+rlRepo+".git")
+			case "origin-ghe":
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "git@ghe.example:"+rlRepo+".git")
+			case "origin-ssh-port":
+				vfGit(t, f.root, vfMailHuman, "remote", "set-url", "origin", "ssh://git@other.example:2222/"+rlRepo+".git")
+			case "issue-marker-missing":
+				f.forge.issueBody = rlIssueJSON("Decision without an acceptance-transition marker.")
+			case "issue-marker-other":
+				f.forge.issueBody = rlIssueJSON("<!-- acceptance-transition: docs/streams/vf/brief-02-other.md -->")
 			case "offline":
 				transitionForge = false
 			case "absent":
@@ -169,7 +185,7 @@ func TestAcceptanceTransition(t *testing.T) {
 			for _, v := range findings {
 				pass = pass && closureSatisfied(v)
 			}
-			want := name == "approved" || name == "approved-merge"
+			want := strings.HasPrefix(name, "approved")
 			if pass != want {
 				t.Fatalf("closure accepted=%v want=%v: %s %+v", pass, want, why, findings)
 			}

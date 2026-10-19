@@ -1,10 +1,10 @@
 {
-  "test": "go test . -run '^Test(AcceptanceTransition|TransitionExecution|TransitionCISkip)$' -count=1 -timeout 90s",
+  "test": "go test . -run '^Test(AcceptanceTransition|TransitionExecution|TransitionCISkip)$' -count=1 -timeout 240s",
   "control": {
     "name": "approval payload binding removed",
     "file": "acceptancetransition.go",
-    "old": "if strings.TrimSpace(out.Body) != payload {",
-    "new": "if false && strings.TrimSpace(out.Body) != payload {"
+    "old": "if strings.TrimSpace(strings.ReplaceAll(out.Body, \"\\r\\n\", \"\\n\")) != payload {",
+    "new": "if false && strings.TrimSpace(strings.ReplaceAll(out.Body, \"\\r\\n\", \"\\n\")) != payload {"
   },
   "mutations": [
     {
@@ -18,6 +18,24 @@
       "file": "verifyrun.go",
       "old": "rows = briefVerifyRows(protectedExecution.Verify)",
       "new": "rows = briefVerifyRows(verify)"
+    },
+    {
+      "name": "origin host binding removed",
+      "file": "acceptancetransition.go",
+      "old": "if err != nil || remoteHost(string(origin)) != \"github.com\" {",
+      "new": "if err != nil {"
+    },
+    {
+      "name": "decision issue marker bypassed",
+      "file": "acceptancetransition.go",
+      "old": "return strings.Contains(iss.Body, \"<!-- acceptance-transition: \"+rel+\" -->\")",
+      "new": "return true || strings.Contains(iss.Body, \"<!-- acceptance-transition: \"+rel+\" -->\")"
+    },
+    {
+      "name": "CRLF comment normalization removed",
+      "file": "acceptancetransition.go",
+      "old": "strings.TrimSpace(strings.ReplaceAll(out.Body, \"\\r\\n\", \"\\n\")) != payload",
+      "new": "strings.TrimSpace(out.Body) != payload"
     }
   ]
 }

@@ -190,7 +190,11 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		return fail("cannot resolve brief path")
 	}
 	rel = filepath.ToSlash(rel)
-	repo := witnessOriginRepo(root)
+	origin, err := historyGit(root, "remote", "get-url", "origin").Output()
+	if err != nil || remoteHost(string(origin)) != "github.com" {
+		return fail("could-not-check repository authority: approval requires a github.com origin")
+	}
+	repo := originOwnerRepo(strings.TrimSpace(string(origin)))
 	if repo == "" {
 		return fail("cannot bind approval to the repository origin")
 	}
@@ -210,7 +214,7 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	if !out.Present || out.Reason != rulingOK {
 		return fail("human approval could not be corroborated: " + out.Detail)
 	}
-	if strings.TrimSpace(out.Body) != payload {
+	if strings.TrimSpace(strings.ReplaceAll(out.Body, "\r\n", "\n")) != payload {
 		return fail("human approval does not name the exact transition payload")
 	}
 	// Rewrite only the command cell in the original table. Unchanged commands,

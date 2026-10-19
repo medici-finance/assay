@@ -200,7 +200,10 @@ rows=2,3
 
 The existing ruling resolver reads the comment and its parent issue directly.
 It verifies repository, issue membership, unedited timestamps and the mapped
-non-bot author. The transition owner additionally requires that exact payload.
+non-bot author. The transition owner additionally requires that exact payload, normalizing only
+CRLF line endings to LF before comparison. Approval reads are bound to github.com;
+other origin hosts refuse before contact, even when owner/repository names match.
+GitHub HTTPS, SCP-style SSH and SSH URL origins remain supported.
 Missing, edited, stale, bot-authored, cross-brief or unverifiable approval refuses.
 The human approves a specific immutable amendment, not arbitrary future changes.
 
