@@ -256,7 +256,7 @@ func (h Hooks) Run(name string, he HookEnv) (ran bool, err error) {
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
-	runErr := cmd.Run()
+	runErr := RunProcess(cmd)
 
 	if ctx.Err() == context.DeadlineExceeded {
 		return true, Unverifiable(fmt.Sprintf("hook %s timed out after %s (killed)%s",

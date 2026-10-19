@@ -13,15 +13,18 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 1
+version: 2
 id: 1cb50a0e-129b-4009-a1e1-bf9fe498f765
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
   - freshness-checked 2026-10-14 @ 0cb90058470f9608f76b96e2055e7327d9c5c178
   - R6 proposal inspected at c5e8a3f8da3c715b72efa8d8d6b5e74e659ebd52; main merged into this authoring branch without editing historical Evidence
+  - "docs/desk-workflow-efficiency-spec.md"
+  - "freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d; approved spec and consolidation amendment"
 exec-tier: strong
 exec-tier-why: Cross-component identity, privacy, concurrency and failure semantics require design judgment and negative controls.
 domain: complicated
@@ -33,13 +36,14 @@ consumers:
   - "changelog/scion-git-reuse-trial.md: follow-up forge-neutral/44"
   - "statusgen/evaluation/: out-of-scope (existing domain evaluation meaning preserved)"
   - "plugins/assay/skills/: out-of-scope (no caller wired to an unshipped service)"
+  - "tools/desk/internal/gitcore/reviewreuse_test.go: follow-up forge-neutral/44"
 ---
 
 # Brief 44 — Shared Git object and fetch reuse qualification trial
 
 ## Context
 
-files: `tools/desk/internal/gitcore/sharedreuse_test.go` (planned), `tools/desk/internal/gitcore/testdata/sharedreuse/` (planned), `docs/research/2026-10-14-scion-git-reuse/README.md` (planned), `docs/cellctl-maintenance.md`, `changelog/scion-git-reuse-trial.md` (planned). Paths not present at the source pin are planned deliverables; existing
+files: `tools/desk/internal/gitcore/sharedreuse_test.go` (planned), `tools/desk/internal/gitcore/testdata/sharedreuse/` (planned), `docs/research/2026-10-14-scion-git-reuse/README.md` (planned), `docs/cellctl-maintenance.md`, `changelog/scion-git-reuse-trial.md` (planned), `tools/desk/internal/gitcore/reviewreuse_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
 files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
@@ -100,6 +104,20 @@ webhook payload decisions are not answered by this section.
 
 5. Write the public report with correctness results and cost/operability tradeoffs. A no-go/current-path result completes the trial. If an improvement is warranted, propose its owner, migration, custody and acceptance budget for a separate brief; do not ship it under this investigation. Detached review heads remain under existing candidate/workspace authority.
 
+
+### Approved workflow-efficiency amendment — 17 October 2026
+
+Add measured review round/packet/workspace source workloads from desk-tools/37 to the existing
+bounded Git reuse trial. Separate savings already obtained by one preparation context from optional
+common-store/fetch reuse; keep baseline versions/cache state, concurrent clients, exact-source
+correctness, maintenance/failure and retained-object costs. CPU, wall, provider-equivalent attempts
+and actual/unknown points are separate. No-go remains successful completion of the experiment; it
+grants no daemon/store/cache rollout or implicit adoption.
+
+This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
+obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
+authoring change claims no implementation or operational adoption.
+
 ## Interface contract
 
 Use forge-service-v1 from 39, mirror admission/freshness from 37, event hints/demand from 38,
@@ -122,6 +140,7 @@ boundary and independent expectation, not another implementation of the same che
 | 2 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedGitReuseLifecycle$' ./internal/gitcore/... > "$r" && grep -F -- '--- PASS: TestSharedGitReuseLifecycle ' "$r")` | exit 0; named PASS. Concurrent disposable clients retain access after another workspace retires; interrupted fetch, removed alternate, maintenance overlap and disk pressure expose safe held/unavailable states. Required evidence survives. |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedGitReuseAuthorization$' ./internal/gitcore/... > "$r" && grep -F -- '--- PASS: TestSharedGitReuseAuthorization ' "$r")` | exit 0; named PASS. Shared bytes cannot disclose a private canary through another repo/admission. Query fixture bypasses the route and tests source membership, not only an upper UI filter. |
 | 4 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/44` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
+| 5 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewGitReuseTrial$' ./internal/gitcore/... > "$o" && grep -F -- '--- PASS: TestReviewGitReuseTrial ' "$o")` | exit 0; named PASS. Complete preparation cohort isolates context deduplication from optional Git reuse, preserves assigned-head oracle and includes failure/maintenance cost; a wrong cached object fails regardless of latency. |
 
 ## Pre-mortem and detection
 
@@ -132,6 +151,18 @@ reject that variant; record the failing control with the restored production pas
 satisfy a flow row with a route registry, a prose legend or zero selected tests. Test fixtures
 qualify their named local boundary; provider permission inventories, deployment workload and
 operator cutover remain explicit evidence/acceptance obligations.
+
+## Performance reuse amendment — 2026-10-16
+
+Separate transport/setup overhead from native-Git and go-git object/checkout costs in
+the trial. Retain the existing no-daemon-by-default conclusion space. Use declared cold/warm
+repositories, ref/worktree counts and source revisions; record fetch sharing, object/index
+opens, CPU, bytes, external elapsed time and measurement coverage. Credential lookup inside
+an existing role executor reuses /58–59 when that consumer is available; this trial does
+not invent a broker or pass credentials into statusgen. Existing deskwt prune and cache
+admission optimizations remain baseline features. A lower subprocess count alone does not
+establish reduced provider requests, disk work or end-to-end time.
+
 
 ## Evidence
 

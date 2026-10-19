@@ -849,7 +849,7 @@ func TestScanIssuesRefusalIsBehavioural(t *testing.T) {
 		return false, nil
 	}
 
-	code := runScanIssues(root, false, list, comments, bless)
+	code := runScanIssues(root, false, list, comments, bless, labelHoldClearAll)
 	if code == 0 {
 		t.Fatal("runScanIssues returned 0 with NO roster configured. Unset is CLOSED: with no " +
 			"roster there is nothing to gate arbitrary external issue text with, and a scan that " +

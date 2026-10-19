@@ -1,0 +1,686 @@
+[
+  {
+    "name": "board-needs-review",
+    "tool": "deskboard",
+    "request": {
+      "case": "needs-review",
+      "size": 1
+    },
+    "want": {
+      "exit": 0,
+      "rows": [
+        {
+          "id": "example-org/tracker#1",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "NEEDS-REVIEW",
+          "disposition": ""
+        }
+      ],
+      "depth": {
+        "NEEDS-REVIEW": 1
+      },
+      "facts": {
+        "truncated": "false",
+        "headSource": "second production open-PR read; actions omits head",
+        "degradedRows": "0"
+      }
+    }
+  },
+  {
+    "name": "board-approved",
+    "tool": "deskboard",
+    "request": {
+      "case": "approved",
+      "size": 1
+    },
+    "want": {
+      "exit": 0,
+      "rows": [
+        {
+          "id": "example-org/tracker#1",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "MERGE-NOW",
+          "disposition": ""
+        }
+      ],
+      "depth": {
+        "MERGE-NOW": 1
+      },
+      "facts": {
+        "truncated": "false",
+        "headSource": "second production open-PR read; actions omits head",
+        "degradedRows": "0"
+      }
+    }
+  },
+  {
+    "name": "board-partial",
+    "tool": "deskboard",
+    "request": {
+      "case": "partial",
+      "size": 1
+    },
+    "want": {
+      "exit": 0,
+      "rows": [
+        {
+          "id": "example-org/tracker#1",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "NEEDS-REVIEW",
+          "disposition": ""
+        }
+      ],
+      "depth": {
+        "NEEDS-REVIEW": 1
+      },
+      "facts": {
+        "truncated": "false",
+        "headSource": "second production open-PR read; actions omits head",
+        "degradedRows": "1"
+      }
+    }
+  },
+  {
+    "name": "board-access",
+    "tool": "deskboard",
+    "request": {
+      "case": "access-failure",
+      "size": 1
+    },
+    "want": {
+      "exit": 6,
+      "rows": null,
+      "depth": {},
+      "facts": {
+        "truncated": "false",
+        "headSource": "second production open-PR read; actions omits head",
+        "degradedRows": "0"
+      }
+    }
+  },
+  {
+    "name": "planner-mixed",
+    "tool": "reviewloop",
+    "request": {
+      "case": "mixed",
+      "size": 1,
+      "actions": {
+        "asOf": "2026-10-17T12:00:00Z",
+        "scope": {
+          "repos": [
+            "example-org/tracker"
+          ],
+          "count": 1,
+          "source": "fixture"
+        },
+        "prPopulation": {
+          "complete": true,
+          "cap": 100
+        },
+        "rows": [
+          {
+            "repo": "example-org/tracker",
+            "number": 5,
+            "action": "RE-REVIEW",
+            "score": 1
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 4,
+            "action": "MERGE-CURR",
+            "score": 2
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 3,
+            "action": "CHECK",
+            "score": 3
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 2,
+            "action": "WAIT-CI",
+            "score": 4
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 1,
+            "action": "NEEDS-REVIEW",
+            "score": 5
+          }
+        ]
+      },
+      "prs": {
+        "prs": [
+          {
+            "repo": "example-org/tracker",
+            "number": 1,
+            "headSHA": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 2,
+            "headSHA": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 3,
+            "headSHA": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 4,
+            "headSHA": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 5,
+            "headSHA": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      },
+      "now": "2026-10-17T12:01:00Z"
+    },
+    "want": {
+      "exit": 0,
+      "rows": [
+        {
+          "id": "example-org/tracker#1",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "NEEDS-REVIEW",
+          "disposition": "DISPATCH"
+        },
+        {
+          "id": "example-org/tracker#2",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "WAIT-CI",
+          "disposition": "WAIT"
+        },
+        {
+          "id": "example-org/tracker#3",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "CHECK",
+          "disposition": "SURFACE"
+        },
+        {
+          "id": "example-org/tracker#4",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "MERGE-CURR",
+          "disposition": "NO-OP"
+        },
+        {
+          "id": "example-org/tracker#5",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "RE-REVIEW",
+          "disposition": "DISPATCH"
+        }
+      ],
+      "depth": {
+        "DISPATCH": 2,
+        "WAIT": 1,
+        "SURFACE": 1,
+        "NO-OP": 1
+      },
+      "idle": "NOT-IDLE",
+      "facts": {
+        "proposals": "2",
+        "proposal/1": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:review:false:2",
+        "proposal/5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:review:false:2"
+      },
+      "outputRows": [
+        "example-org/tracker#1 NEEDS-REVIEW DISPATCH head=aaaaaaaaaaaa score=5",
+        "example-org/tracker#2 WAIT-CI WAIT head=aaaaaaaaaaaa score=4",
+        "example-org/tracker#3 CHECK SURFACE head=aaaaaaaaaaaa score=3",
+        "example-org/tracker#4 MERGE-CURR NO-OP head=aaaaaaaaaaaa score=2",
+        "example-org/tracker#5 RE-REVIEW DISPATCH head=aaaaaaaaaaaa score=1"
+      ],
+      "outputContains": [
+        "dispositions: 2 DISPATCH \u00b7 0 FLIP-VERB \u00b7 1 SURFACE \u00b7 1 WAIT \u00b7 1 NO-OP",
+        "IDLE GATE (#79, in code \u2014 a model cannot declare all-clear): NOT-IDLE \u2014 1 NEEDS-REVIEW, 1 RE-REVIEW",
+        "example-org/tracker#1@aaaaaaaaaaaa:review  (deltas coalesced: 1)",
+        "example-org/tracker#5@aaaaaaaaaaaa:review  (deltas coalesced: 1)"
+      ]
+    }
+  },
+  {
+    "name": "planner-missing-head",
+    "tool": "reviewloop",
+    "request": {
+      "case": "missing-head",
+      "size": 1,
+      "actions": {
+        "asOf": "2026-10-17T12:00:00Z",
+        "scope": {
+          "repos": [
+            "example-org/tracker"
+          ],
+          "count": 1,
+          "source": "fixture"
+        },
+        "prPopulation": {
+          "complete": true,
+          "cap": 100
+        },
+        "rows": [
+          {
+            "repo": "example-org/tracker",
+            "number": 5,
+            "action": "RE-REVIEW",
+            "score": 1
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 4,
+            "action": "MERGE-CURR",
+            "score": 2
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 3,
+            "action": "CHECK",
+            "score": 3
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 2,
+            "action": "WAIT-CI",
+            "score": 4
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 1,
+            "action": "NEEDS-REVIEW",
+            "score": 5
+          }
+        ]
+      },
+      "prs": {
+        "prs": [
+          {
+            "repo": "example-org/tracker",
+            "number": 2,
+            "headSHA": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 3,
+            "headSHA": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 4,
+            "headSHA": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "repo": "example-org/tracker",
+            "number": 5,
+            "headSHA": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      },
+      "now": "2026-10-17T12:01:00Z"
+    },
+    "want": {
+      "exit": 0,
+      "rows": [
+        {
+          "id": "example-org/tracker#1",
+          "head": "UNRESOLVED",
+          "action": "NEEDS-REVIEW",
+          "disposition": "DISPATCH"
+        },
+        {
+          "id": "example-org/tracker#2",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "WAIT-CI",
+          "disposition": "WAIT"
+        },
+        {
+          "id": "example-org/tracker#3",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "CHECK",
+          "disposition": "SURFACE"
+        },
+        {
+          "id": "example-org/tracker#4",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "MERGE-CURR",
+          "disposition": "NO-OP"
+        },
+        {
+          "id": "example-org/tracker#5",
+          "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "action": "RE-REVIEW",
+          "disposition": "DISPATCH"
+        }
+      ],
+      "depth": {
+        "DISPATCH": 2,
+        "WAIT": 1,
+        "SURFACE": 1,
+        "NO-OP": 1
+      },
+      "idle": "NOT-IDLE",
+      "facts": {
+        "proposals": "2",
+        "proposal/1": "UNRESOLVED:review:true:2",
+        "proposal/5": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:review:false:2"
+      },
+      "outputRows": [
+        "example-org/tracker#1 NEEDS-REVIEW DISPATCH head=UNRESOLVED score=5",
+        "example-org/tracker#2 WAIT-CI WAIT head=aaaaaaaaaaaa score=4",
+        "example-org/tracker#3 CHECK SURFACE head=aaaaaaaaaaaa score=3",
+        "example-org/tracker#4 MERGE-CURR NO-OP head=aaaaaaaaaaaa score=2",
+        "example-org/tracker#5 RE-REVIEW DISPATCH head=aaaaaaaaaaaa score=1"
+      ],
+      "outputContains": [
+        "dispositions: 2 DISPATCH \u00b7 0 FLIP-VERB \u00b7 1 SURFACE \u00b7 1 WAIT \u00b7 1 NO-OP",
+        "IDLE GATE (#79, in code \u2014 a model cannot declare all-clear): NOT-IDLE \u2014 1 NEEDS-REVIEW, 1 RE-REVIEW",
+        "example-org/tracker#1@UNRESOLVED:review  (deltas coalesced: 1)",
+        "example-org/tracker#5@aaaaaaaaaaaa:review  (deltas coalesced: 1)"
+      ]
+    }
+  },
+  {
+    "name": "planner-quiet",
+    "tool": "reviewloop",
+    "request": {
+      "case": "quiet",
+      "size": 1,
+      "actions": {
+        "asOf": "2026-10-17T12:00:00Z",
+        "scope": {
+          "repos": [
+            "example-org/tracker"
+          ],
+          "count": 1,
+          "source": "fixture"
+        },
+        "prPopulation": {
+          "complete": true,
+          "cap": 100
+        },
+        "rows": []
+      },
+      "prs": {
+        "prs": []
+      },
+      "now": "2026-10-17T12:01:00Z"
+    },
+    "want": {
+      "exit": 0,
+      "rows": null,
+      "depth": {},
+      "idle": "IDLE",
+      "facts": {
+        "proposals": "0"
+      },
+      "outputRows": [],
+      "outputContains": [
+        "dispositions: 0 DISPATCH \u00b7 0 FLIP-VERB \u00b7 0 SURFACE \u00b7 0 WAIT \u00b7 0 NO-OP",
+        "IDLE GATE (#79, in code \u2014 a model cannot declare all-clear): IDLE"
+      ]
+    }
+  },
+  {
+    "name": "planner-overflow",
+    "tool": "reviewloop",
+    "request": {
+      "case": "overflow",
+      "size": 1,
+      "actions": {
+        "asOf": "2026-10-17T12:00:00Z",
+        "scope": {
+          "repos": [
+            "example-org/tracker"
+          ],
+          "count": 1,
+          "source": "fixture"
+        },
+        "prPopulation": {
+          "complete": false,
+          "cap": 100
+        },
+        "rows": []
+      },
+      "prs": {
+        "prs": []
+      },
+      "now": "2026-10-17T12:01:00Z"
+    },
+    "want": {
+      "exit": 6,
+      "rows": null,
+      "depth": {},
+      "idle": "COULD-NOT-CHECK",
+      "facts": {
+        "proposals": "0"
+      },
+      "outputRows": [],
+      "outputContains": [
+        "dispositions: 0 DISPATCH \u00b7 0 FLIP-VERB \u00b7 0 SURFACE \u00b7 0 WAIT \u00b7 0 NO-OP",
+        "IDLE GATE (#79, in code \u2014 a model cannot declare all-clear): COULD-NOT-CHECK"
+      ]
+    }
+  },
+  {
+    "name": "planner-stale",
+    "tool": "reviewloop",
+    "request": {
+      "case": "stale",
+      "size": 1,
+      "actions": {
+        "asOf": "2026-10-17T11:00:00Z",
+        "scope": {
+          "repos": [
+            "example-org/tracker"
+          ],
+          "count": 1,
+          "source": "fixture"
+        },
+        "prPopulation": {
+          "complete": true,
+          "cap": 100
+        },
+        "rows": []
+      },
+      "prs": {
+        "prs": []
+      },
+      "now": "2026-10-17T12:01:00Z"
+    },
+    "want": {
+      "exit": 6,
+      "rows": null,
+      "depth": {},
+      "idle": "COULD-NOT-CHECK",
+      "facts": {
+        "proposals": "0"
+      },
+      "outputRows": [],
+      "outputContains": [
+        "dispositions: 0 DISPATCH \u00b7 0 FLIP-VERB \u00b7 0 SURFACE \u00b7 0 WAIT \u00b7 0 NO-OP",
+        "IDLE GATE (#79, in code \u2014 a model cannot declare all-clear): COULD-NOT-CHECK"
+      ]
+    }
+  },
+  {
+    "name": "planner-access",
+    "tool": "reviewloop",
+    "request": {
+      "case": "invalid",
+      "size": 1,
+      "actions": {},
+      "prs": {
+        "prs": []
+      },
+      "now": "2026-10-17T12:01:00Z"
+    },
+    "want": {
+      "exit": 6,
+      "rows": null,
+      "depth": {},
+      "idle": "",
+      "facts": null,
+      "output": ""
+    }
+  },
+  {
+    "name": "dispatch-delta",
+    "tool": "deskdispatch",
+    "request": {
+      "case": "delta",
+      "size": 1
+    },
+    "want": {
+      "exit": 0,
+      "facts": {
+        "head": "2222222222222222222222222222222222222222",
+        "lane": "correctness",
+        "round": "2",
+        "known": "true",
+        "full": "false",
+        "reasons": ""
+      },
+      "outputContains": [
+        "- Lane: correctness. Round: 2. This lane's FIRST review was at head `1111111111111111111111111111111111111111`.",
+        "- Scope: DELTA (clause 19)",
+        "- The delta: `git diff 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222`."
+      ]
+    }
+  },
+  {
+    "name": "dispatch-security",
+    "tool": "deskdispatch",
+    "request": {
+      "case": "security",
+      "size": 1
+    },
+    "want": {
+      "exit": 0,
+      "facts": {
+        "head": "2222222222222222222222222222222222222222",
+        "lane": "security",
+        "round": "1",
+        "known": "true",
+        "full": "true",
+        "reasons": "no-verdict-of-its-own"
+      },
+      "outputContains": [
+        "- Lane: security. Round: 1 \u2014 this lane has not reviewed the change before.",
+        "- Scope: FULL PASS \u2014 reason `no-verdict-of-its-own`"
+      ]
+    }
+  },
+  {
+    "name": "dispatch-duplicate-lane",
+    "tool": "deskdispatch",
+    "request": {
+      "case": "duplicate-lane",
+      "size": 1
+    },
+    "want": {
+      "exit": 0,
+      "facts": {
+        "head": "2222222222222222222222222222222222222222",
+        "lane": "correctness",
+        "round": "2",
+        "known": "true",
+        "full": "false",
+        "reasons": ""
+      },
+      "outputContains": [
+        "- Lane: correctness. Round: 2. This lane's FIRST review was at head `1111111111111111111111111111111111111111`.",
+        "- Scope: DELTA (clause 19)",
+        "- The delta: `git diff 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222`."
+      ]
+    }
+  },
+  {
+    "name": "dispatch-access-failure",
+    "tool": "deskdispatch",
+    "request": {
+      "case": "access-failure",
+      "size": 1
+    },
+    "want": {
+      "exit": 0,
+      "facts": {
+        "head": "2222222222222222222222222222222222222222",
+        "lane": "correctness",
+        "round": "0",
+        "known": "false",
+        "full": "true",
+        "reasons": "could-not-determine"
+      },
+      "outputContains": [
+        "- Lane: correctness. Round: NOT DETERMINED",
+        "- Scope: FULL PASS \u2014 reason `could-not-determine`"
+      ]
+    }
+  },
+  {
+    "name": "dispatch-required-check-red",
+    "tool": "deskdispatch",
+    "request": {
+      "case": "required-check-red",
+      "size": 1
+    },
+    "want": {
+      "exit": 5,
+      "facts": {
+        "head": "2222222222222222222222222222222222222222",
+        "lane": "correctness",
+        "round": "0",
+        "known": "false",
+        "full": "false",
+        "reasons": "",
+        "hold": "review dispatch HELD \u2014 example-org/tracker#77 at head 2222222222222222222222222222222222222222: required-check-red. No reviewer was dispatched, no claim was taken and nothing is recorded as reviewed; this is a delay, not a verdict."
+      },
+      "output": ""
+    }
+  },
+  {
+    "name": "issues-access",
+    "tool": "issueboard",
+    "request": {
+      "case": "access-failure",
+      "size": 1
+    },
+    "want": {
+      "exit": 6,
+      "facts": {
+        "output": ""
+      }
+    }
+  },
+  {
+    "name": "issues-empty",
+    "tool": "issueboard",
+    "request": {
+      "case": "empty",
+      "size": 1
+    },
+    "want": {
+      "exit": 0,
+      "contains": [
+        "(no open issues across owned repos)"
+      ]
+    }
+  },
+  {
+    "name": "issues-open",
+    "tool": "issueboard",
+    "request": {
+      "case": "open",
+      "size": 1
+    },
+    "want": {
+      "exit": 0,
+      "contains": [
+        "CREATE-PLACEHOLDER",
+        "fixture"
+      ]
+    }
+  }
+]

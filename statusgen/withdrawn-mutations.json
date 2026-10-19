@@ -1,0 +1,107 @@
+{
+  "test": "go test . -run 'TestWithdrawal|TestWithdrawn' -count=1 -timeout 120s",
+  "control": {
+    "name": "CONTROL: human-gated withdrawal bypass",
+    "file": "decisiongatehold.go",
+    "old": "case statusWithdrawn:\n\t\treturn 4",
+    "new": "case statusWithdrawn:\n\t\treturn 0"
+  },
+  "mutations": [
+    {
+      "name": "archive",
+      "file": "archivecheck.go",
+      "old": " && !isWithdrawn(status)",
+      "new": ""
+    },
+    {
+      "name": "bottleneck",
+      "file": "bottleneck.go",
+      "old": "if isWithdrawn(b.Status) {",
+      "new": "if false {"
+    },
+    {
+      "name": "consumers",
+      "file": "consumers.go",
+      "old": " && !isWithdrawn(status)",
+      "new": ""
+    },
+    {
+      "name": "legacy-wave",
+      "file": "drivefrontier.go",
+      "old": " && !isWithdrawn(o.Status)",
+      "new": ""
+    },
+    {
+      "name": "roadmap-wave",
+      "file": "roadmap.go",
+      "old": " || isWithdrawn(b.Status)",
+      "new": ""
+    },
+    {
+      "name": "portfolio-total",
+      "file": "roadmap.go",
+      "old": "if isWithdrawn(b.Status) {",
+      "new": "if false {"
+    },
+    {
+      "name": "stream-total",
+      "file": "roadmap_streampage.go",
+      "old": "if isWithdrawn(st) {",
+      "new": "if isWithdrawn(st) && false {"
+    },
+    {
+      "name": "telemetry",
+      "file": "telemetry.go",
+      "old": "\"withdrawn\":   true,",
+      "new": ""
+    },
+    {
+      "name": "execution-drift",
+      "file": "readmetable.go",
+      "old": "if !ok || a == \"\" {",
+      "new": "if !ok || a == \"\" || isWithdrawn(a) {"
+    },
+    {
+      "name": "provenance-digest",
+      "file": "withdrawn.go",
+      "old": "if h.Digest() != c.Digest {",
+      "new": "if false {"
+    },
+    {
+      "name": "human-gated-reactivation",
+      "file": "decisiongatehold.go",
+      "old": "if isWithdrawn(strings.ToLower(strings.TrimSpace(s))) && !isWithdrawn(strings.ToLower(strings.TrimSpace(head))) {",
+      "new": "if false {"
+    },
+    {
+      "name": "unknown-fold-scope",
+      "file": "readmetable.go",
+      "old": "(!isWithdrawn(a) || c.MergedPR == \"\")",
+      "new": "(c.MergedPR == \"\")"
+    },
+    {
+      "name": "provenance-approval",
+      "file": "withdrawn.go",
+      "old": "if err := h.RequireApproved(); err != nil {",
+      "new": "if err := h.RequireApproved(); false {"
+    },
+    {
+      "name": "provenance-action",
+      "file": "withdrawn.go",
+      "old": "(obligation.Action != \"retire\" && obligation.Action != \"replace\" && obligation.Action != \"split\")",
+      "new": "false"
+    },
+    {
+      "name": "retained-history-notice",
+      "file": "withdrawn.go",
+      "old": "} else if row.Verified != \"\" || row.Reviewed != \"\" || evidenceHasContent(bf.Evidence) || bf.Gate == \"human\" {",
+      "new": "} else if false {"
+    },
+    {
+      "name": "in-progress-history",
+      "file": "withdrawn.go",
+      "old": "impact.Lifecycle == \"in-progress\" || ",
+      "new": ""
+    }
+  ]
+}

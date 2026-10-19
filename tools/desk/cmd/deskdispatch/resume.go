@@ -69,7 +69,9 @@ func resolveResume(o dispatchOpts, plan *dispatchPlan) error {
 	}
 	source := &resumeSource{branch: branch, head: change.HeadSHA}
 	if !o.dryRun {
-		if _, err := worktreeBase(o, branch, change.HeadSHA); err != nil {
+		refreshOpts := o
+		refreshOpts.repo = plan.repo
+		if _, err := worktreeBase(refreshOpts, branch, change.HeadSHA); err != nil {
 			return err
 		}
 		source.verified = true

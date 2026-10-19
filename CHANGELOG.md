@@ -23,6 +23,117 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.50 — 2026-10-19
+
+### Added
+- A cadenced house role relaunched less than one interval after its last pass is reported `scheduled` (next due time in the detail) rather than `failed`; `up --json` also documents dry runs, and `up --apply` is refused with `--automate`.
+- Reactivating human-gated withdrawn work into implemented/verified/done remains guarded. Unknown evidence folds on other lifecycle states remain could-not-check; in-progress withdrawal impacts require preserved history.
+- The three withdrawn keys are parsed only on brief-v3 files. On brief-v1 and brief-v2 they stay tolerated unknown keys, so existing boards that use `superseded-by:` as prose lint unchanged.
+- Withdrawal retains existing evidence/stamps and execution drift, detects configured successor cycles, and labels unconfigured successor coverage could-not-check. Optional `withdrawal-context` binds to a shared approved handoff digest and checks amendment, successors, preserved history and acknowledged active work; absent context stays advisory during rollout.
+- `cellctl up --json` prints the `cell-op-result` document with one entry per role. The final table and exit code (0 only when every role ends up) are the same without it.
+- `cellctl up --plan` writes one cell-op plan clearing every stale targeted role (and stale comms state); `up --apply <plan-id>` applies it on a terminal after the typed confirm, refusing `plan-stale` by role name, and reports the cleared roles `reconciled+up`.
+- `cellctl up` converges the cell: a role whose cadence lease is held is reported `already-up` and never relaunched, an absent role is launched, and a stale one is a `failed` row that points at `up --plan`. Launches are serialized on the lease, and `--role <name>` (repeatable) and `--lease-wait` select and bound them.
+- `context-handoff-v2` represents withdrawn impacted history without changing v1 or amendment-manifest-v1. `statusgen withdrawal-audit` reports affected open implementation/evidence PRs from an offline snapshot; `deskboard stalled` routes a withdrawn owner to reconciliation. See `docs/withdrawal-rollout.md` for consumer upgrade order and open-PR handling.
+- statusgen: `statusgen --version --json` prints the brief schemas this build reads and the first release of each; `spec/brief-v1.md` §3.5 carries the schema-version table. A brief whose schema is newer than the binary is refused with the schema it needs, the supported set and the statusgen the repo pins.
+- statusgen: an off-path `withdrawn` brief status, carried by the new brief schema `brief-v3` (brief-v2 plus `withdrawn-date`, `withdrawn-reason` and `superseded-by`; contract `schemas/brief-v3.json`). A withdrawn brief is excluded from the done-ratio denominator, Next-up and dispatch, the stalled/bottleneck/blocked views and the todo count, and is shown in its own Withdrawn count and STATUS.md section. Lint requires brief-v3 and the date/reason keys on a withdrawn brief, rejects the keys anywhere else, resolves same-repo successors, syntax-checks cross-repo successor ids, and raises a NOTICE on any brief whose `depends` names a withdrawn brief.
+
+### Fixed
+- Cellctl child-process fixtures clear inherited managed-cache policy before launching test helpers.
+- Consumer Verify checks can inspect an immutable delivery and its parent without confusing inherited claims with an empty merged-main diff. Known active rows now pin their historical ranges and exact counts, and authoring lint reports unbounded consumer checks.
+- Corrected reviewer-loop attribution in the forge-neutral conformance report and aligned verify/intake desk comment guidance with the reviewer-only `deskpost comment` role.
+- Coverage uses the same original acceptance contract and explicit held provenance observations. Evaluator generation 2 identifies the typed original-definition revision without changing witness execution revisions or content applicability.
+- Deliberate house-cell worktree-tool tests explicitly select their owned stub while normal cases use cellctl's own worktree path.
+- Fail-first verification cleanup removes only its owned temporary worktree and scratch, preserving unrelated prunable registrations.
+- Flip and reconciliation retain complete protected Evidence context through the shared run adapter; a newer unmarked PASS cannot replace current provenance. Ordinary records still audit only the selected run.
+- Git fixture subprocesses in statusgen and deskkit tests now ignore inherited admitted-row Git controls, keeping their planted config and replacement-object controls deterministic.
+- Isolate shared golden Git fixtures from global and system configuration, keeping their existing commit hashes stable when caller configuration enables signing.
+- Made the comment-role tests identify reviewer loops by role and require both parts of the worker-role diagnostic.
+- Make the cell cadence guard regression test stop through the guard rather than racing explicit cancellation.
+- Pin concurrent-fix timestamp boundaries in both explicit and defect-class re-fix linkage tests.
+- Protected classification and validation share a canonical marker scan; the selected-run audit refuses classification ambiguity before ordinary auditing. Direct consumer isolation tests require the missing-witness audit to run before asserting refusal.
+- Protected closure, audit, coverage and lint select the latest complete run while retaining prior Evidence; duplicate current markers and unfinished or failed current runs hold. Two-parent deliveries require unchanged main acceptance since divergence. Existing mutation controls remain executable against their current guard anchors.
+- Protected provenance requires the delivery on the observed HEAD first-parent chain before using its mainline baseline; arbitrary reachable history grants no supplemental accounting.
+- Seven cellctl shell fixtures now isolate worktree launches from an installed `deskwt`, with shared recording/refusing stubs, real-launch positive controls and checks that run even when a case aborts.
+- The board regen job on the default branch now checks out full history (`fetch-depth: 0`), like the lint job. On a shallow checkout a changelog fragment consumed by a release read as a missing path, so the default-branch board regen failed while PR lint passed.
+- The board regen job on the default branch now passes the workflow token to statusgen and grants `pull-requests: read`, so dead-claim decay can read branch pull-request state in CI instead of running without credentials.
+- The claim-reader compatibility test writes its global-scope rewrite rule into its own test-owned global config file, so it passes again now that shared Git fixtures pin their global config to the null device.
+- The forge-neutral claim-store spec's reviewer write and claim reader inventories (§3.1a, §3.1b) are re-read against the current tree. They now list the review-packet and review-round reads, `deskpost finish`'s review-claim release, the auto-approve lane, the `desksupervise` claim list and reclaim (also as a reviewer site), and `deskroster`'s read of the machine-local claims directory. §3.1a also gains a table of the verbs that reach the reviewer only through the session's minted role. Brief 20's Verify rows 4 and 5 now also search for the names newer code uses (`DispatchClaimActiveRefsPrefix`, `forgeForReviewer`, `stampRoleForKit`, the review-claim family readers). Row 4 also searches for the minted-role names (`SessionTokenRole`, `TokenRoleForLoop`, `mintedRole`, `RequireRole(`). A missed reviewer write or claim reader that uses those names now fails the check again. Row 5 still cannot see readers of the machine-local claims directory. The re-read changes the finding: the reviewer's repository write is not the dispatch claim only, because `deskgit push` and `deskpr create`/`update` push branches under the reviewer role without refusing it (medici-finance/assay#3419).
+- The shared audit returns findings/refusal across the full-record and selected-run boundary; it never returns full ordinary history to fill rows. Claim-reader compatibility fixtures seed only their explicitly owned global file, preserving fixture Git isolation.
+- The statusgen board-push test rig no longer flakes on temporary-directory cleanup ("directory not empty"): its Git configuration switches off automatic maintenance, so no detached `git maintenance run --auto` child is left writing into the fixture repository after a `TestBoardPush*` or `TestGitlabRegen*` subtest returns. A new test traces the rig's commit, fetch and push and fails if any of them starts automatic housekeeping.
+- Verification closure preserves original acceptance rows while recording independently re-derived supplemental rows without acceptance-pass credit. Immutable delivery, baseline and original-table provenance must agree across closure readers and lint.
+- Verified outcome records validate the committed target's actual verifier history while preserving the admitted source home. GitHub binds publication atomically to that inspected parent; providers without that condition refuse the verified write. New outcomes also require statusgen's opt-in selected-brief attribution check; unavailable capability or policy fails closed.
+- When the consumed-fragment exemption cannot be evaluated because the checkout is a shallow clone, the path PROBLEM now says so and names the remedy (`fetch-depth: 0` / `GIT_DEPTH "0"`) instead of only "history unreadable". The PROBLEM itself still fires.
+- `statusgen init` now scaffolds the board regen job on full history (GitHub `fetch-depth: 0`, GitLab `GIT_DEPTH: "0"`), the same as the lint job, so adopters get the fix this repository's own live regen job received. On a shallow regen a changelog fragment consumed by a release read as a missing path and turned the default branch red while the PR lint passed. The staged and activation copies of this repository's board workflow now carry the same line as the live workflow.
+- `statusgen`'s dead-claim decay no longer needs the `gh` CLI: it reads branch pull-request state in process over the GitHub GraphQL API, authenticated by `GH_TOKEN` or `GITHUB_TOKEN` (falling back to `gh auth token --hostname github.com` only when `gh` is installed). A board regen on a runner without `gh` now decays closed-PR branches instead of reporting could-not-check; with no token it names the variable to set. When the endpoint is guessed from a GitHub Enterprise `origin` host, only `GH_ENTERPRISE_TOKEN`, `GITHUB_ENTERPRISE_TOKEN` or gh's login for that host is sent there, never the github.com credential.
+
+### Changed
+- Add a reproducible offline study of criterion edits, existing evidence freshness controls, and the limits of authored requirement satisfaction claims.
+- Clarify that the runner-contract verification can use local Docker Linux containers with network disabled; retain historical evidence and require a fresh independent witness.
+- Planned the rename of the `pr-review-desk` role to `review-desk` (desk-tools brief 53). The design keeps `pr-review-desk` as a permanent alias for stop flags, `DESK_LOOP`, cellctl role arguments, the comms lane list, spec role sets, worktrees and claims, adds a deprecated redirect skill for at least one release, and adds a lint against new uses of the old name. The `to:reviewer` label is unchanged. This entry records the plan only. Nothing is implemented yet.
+- Prioritized internal credential reuse, concurrent lookup sharing, startup discovery and shared performance measurements, with explicit statusgen consumers and amendments to the existing collection and forge-service plans. These are implementation briefs; no runtime behavior or deployment changes yet.
+
+## v1.0.49 — 2026-10-18
+
+### Added
+- Scanner label-removal hold: before `statusgen --scan-issues` or `--transcribe-scan` creates a placeholder, or reactivates a retired one, for an open issue that no longer carries an excluded label (`verify-gate`, `live-verify`, `needs-decision`, `review-request`, `needs-human`), it reads the issue's label history. If the label was removed by anything other than a rostered human, the issue stays held until the ratifying identity has commented since the label was applied; an unreadable, partial or incomplete history holds as could-not-check. Both scanners report the hold (a NOTICE, or a `label-removal-hold` clause skip) and exit as before.
+- The issue board shows an un-briefed issue whose label history holds an excluded-label or unnamed event as `AWAIT`, not `CREATE-PLACEHOLDER`, with the reason in brackets; an unreadable history fails the board as could-not-check (exit 6).
+- `deskread label-events` kind and a new forge read op, `IssueLabelHistory`, returning an issue's whole label history (events whose label the forge no longer names are kept, with a completeness flag); `deskkit.LabelEvent` now carries the actor's numeric id.
+
+### Fixed
+- Add coverage proving hand-said replay retains a brief's last state after its row is deleted from a later pre-generation snapshot.
+- Bind existing-change source refresh and cross-root board claim reads to the dispatching session's role credential, with complete-read checks and no ambient Git fallback in desk mode.
+- CLI fixture repositories explicitly disable detached Git maintenance before snapshot and cleanup checks, preserving whole-tree dry-reset immutability assertions.
+- Cellctl and evidence automerge tests now report a clear prerequisite when Bash 4 or newer is unavailable.
+- Conditional Evidence publication judges its immutable admitted source independently of an older destination branch. A read-only remote PR preflight confirms already-published history without weakening new-commit identity checks.
+- Dry-reset fixture failures now show normalized before/after snapshots for diagnosis.
+- Evidence and outcome landing receipts now distinguish file preconditions from exact commit identifiers on GitHub and GitLab, and check the landed commit before attributing it to the verifier.
+- Evidence publication recognizes a typed missing-destination GraphQL response while retaining complete attestation and conditional-write checks.
+- Fetch audit records no longer spend the push write budget, and budget refusals no longer charge themselves as uncertain writes. Existing write caps and circuit breakers remain unchanged.
+- Include cockpit calls, supervisor output and the checkpoint in failed comms startup fixture diagnostics for all three cockpits.
+- Keep push-only URL rewrites out of repository-local fetch URL resolution, including the claim reader, while preserving fetch rewrite rules and destination gates.
+- Let the comms supervisor wait through transient ownership-probe collisions using the existing bounded role-lease acquisition, while retaining refusal of a persistent owner.
+- Local claim listings now report unreadable or malformed files instead of silently under-counting claims; displays preserve readable rows, plans fail closed, and recovery leaves unreadable claims untouched.
+- Make heartbeat guard boundary tests independent of host scheduling by freezing time at 24 hours and advancing the test clock by one nanosecond for the stale case.
+- Preserve the regression coverage from #3345 for push-only URL rewrites, including local fetches from linked worktrees, while retaining the shared fetch adapter and legacy first-URL compatibility from #3313.
+- Repair the objective-kit comparison's verification commands and historical consumer routing; withdraw unsupported wedge counts and adoption claims when observer evidence is absent.
+- Retain reader compatibility while sharing URL normalization.
+- Run the role-bound claim transport regressions explicitly in PR CI through the shared offline mutation/test invocation.
+- Statusgen's full PR and release test suites prepare cross-module child dependencies, preserve Go caches across fixture isolation, and distinguish configured lint telemetry from configuration refusal.
+- The desksupervise status schema now accepts its unknown-model sentinel exactly once, and its validator rejects overlapping `oneOf` alternatives.
+- `assay-inbox --flow` keeps rendering could-not-check results when a failed reader emits no diagnostic beyond its configuration banner.
+- `deskwt prune` reuses mainline ancestry and shared-store reachability data across dead-session candidates, and inventories worktree admin pointers once per sweep. Mutable refs and selected admin pointers are checked again when read; ambiguous or unreadable registrations remain held.
+- `statusgen --lint` now exits 5 with a REFUSED verdict when configuration loading refuses, instead of reporting PASS while trust-dependent checks could not run.
+
+### Changed
+- Add an offline review-workflow oracle and reproducible cost cohorts across board, plan, dispatch and issue reads. Literal command-output checks and production-rendering mutations preserve visible rows and round text. Reports keep own CPU, overlapping wall intervals, HTTP attempts and unknown quota/descendant coverage separate; no shipped command or budget changes.
+- Add explicit native evidence work for loop-admin, workflow and standing desk modes, preserving existing record and coordination owners.
+- Approve the workflow-efficiency design and author eight focused desk-tool follow-ons. Fold phase measurement and future serving acceptance into their existing owners; preserve completed Evidence and distinguish supervision guidance, compatible caller adoption and control retirement.
+- Correct review-workflow operation and dispatch-kit attribution in local perf-v1 records, count shared child/forge attempts at their existing execution boundaries, and exclude locally refused board reads from HTTP counts. Preserve consent, legacy readers, stdout/exits, audit and budget controls; document remaining CPU/request/quota coverage limits and qualify actual entrypoints with planted regressions.
+- Desk supervision now directs agents to wait on existing completion handles instead of
+  repeatedly polling unchanged work, and to start each new item with a fresh child context.
+  Compact checkpoints and file-backed logs reduce repeated context loading while preserving
+  review scope, independent lanes, prior findings and required freshness checks. Ordinary and
+  scrubbed Codex desk launches include this guidance; already-running sessions require an
+  explicit instruction update or a later launch with the updated tools and plugin.
+- Migrate deskboard to generated Cobra help and allowlisted Viper settings, preserving board output, execution checks, aliases, and rate-floor precedence.
+- Propose complete review-queue and preparation contracts, shared desk implementations,
+  workflow cost diagnostics, and consumer-based migration and retirement; map the work to
+  existing query, telemetry, mirror and CLI owners without activating new behavior.
+- Propose reusable desk scorecards, analysis/experiment/follow-up validation, role procedures and read-only Improve integration.
+- Qualify optional-sink preservation with successful production entrypoints, seeded audit/budget/breaker state and skipped-work/erased-history mutation controls; retain the existing argv-leak mutation at its updated source anchor.
+- Refresh verification flow planning against current queue, wake, flip and closer behavior, and author the remaining source and consumer qualification work with explicit release and authority boundaries.
+- Run the M2 flow and legacy CLI compatibility tests in PR CI; demonstrate the pipeline-skip mutation against that exact selected command.
+- Supervisors now react to worker events and due checks, re-arm early timeouts without
+  rereading unchanged state, and keep routine CI watches outside the model. Codex no
+  longer receives a desk-imposed 60-second wait cap. Where harness limits prevent
+  efficient idle waits, the documented fallback is the existing operator-selected
+  outer cadence with a clean handoff; Goals are not treated as event monitors.
+- Transfer prepared release artifacts in separate platform bundles so the publisher can download them concurrently. Disable outer ZIP compression for these bundles to avoid recompressing the packaged archives; preserve all binary contents, version stamps and checksum verification.
+- Use one protected publication job for all nine release images, tag creation and GitHub release assets, so an umbrella release needs one release-environment approval instead of two. Preserve image/version checks, immutable references and the normalized-version publication lock; keep changelog rolling independently retryable.
+- Use the board-writer App client ID for changelog rolling, replacing the deprecated numeric App ID input.
+- `qualgen mine --fix-source` now identifies fixes from an explicit offline issue/PR snapshot, runs B-SZZ and persists defect traces with source provenance and coverage. `--defect-labels` configures the label set.
+- `qualgen report` renders actual defect traces and derived metrics; PR/file advice consumes the current completed defect snapshot. Repeat runs retain history without duplicating identical facts, and stale or unavailable evidence is visible.
+
 ## v1.0.48 — 2026-10-17
 
 ### Changed

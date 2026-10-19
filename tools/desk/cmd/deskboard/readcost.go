@@ -300,22 +300,6 @@ func (c sweepCost) floorError(now time.Time) error {
 		b.Remaining, b.Resource, c.Floor, rateFloorEnv, reset), wait)
 }
 
-// resolveRateFloor applies --rate-floor over DESKBOARD_RATE_FLOOR over the default.
-func resolveRateFloor(flagVal string) (int, error) {
-	src, v := "--rate-floor", flagVal
-	if v == "" {
-		src, v = rateFloorEnv, strings.TrimSpace(os.Getenv(rateFloorEnv))
-	}
-	if v == "" {
-		return defaultRateFloor, nil
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n < 0 {
-		return 0, deskkit.Refused(fmt.Sprintf("deskboard: %s: invalid value %q: must be a non-negative integer (0 disables the floor)", src, v))
-	}
-	return n, nil
-}
-
 // endpointClass names the endpoint family a request path belongs to, for ByClass:
 // "graphql", "repo", "pulls", "pulls.files", "commits", "commits.check-runs", "issues.events", …
 func endpointClass(path string) string {

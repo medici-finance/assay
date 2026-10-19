@@ -74,7 +74,7 @@ type stalledRow struct {
 	// applied to a count, not just a boolean).
 	OpenFindings *int   `json:"openFindings,omitempty"`
 	BehindMain   int    `json:"behindMain"`  // -1 = not assessed (advisory hint only)
-	Disposition  string `json:"disposition"` // shepherd | close-candidate
+	Disposition  string `json:"disposition"` // shepherd | close-candidate | reconcile
 	Note         string `json:"note,omitempty"`
 }
 
@@ -231,6 +231,11 @@ func cmdStalled(hdr Header, minAgeHours int) (*Report, error) {
 // owning brief done). A signal that could not be assessed never produces close-candidate
 // — fabrication risk runs one way here.
 func stallDisposition(repo string, p prBase, behindMain int, briefStatus map[string]string, knownBriefs []string) (string, string) {
+	// Retirement is not proof the draft is disposable. Reconcile its work,
+	// claims and verification debt before applying ordinary stall heuristics.
+	if brief := mapBranchToBrief(p.HeadRefName, knownBriefs); brief != "" && lookupBriefStatus(briefStatus, repo, brief) == "withdrawn" {
+		return "reconcile", fmt.Sprintf("owning brief %s is withdrawn — inspect surviving work and claims before disposition", brief)
+	}
 	if behindMain > behindMainCloseThreshold {
 		return "close-candidate", fmt.Sprintf("behind main by %d commits (>%d) — branch likely diverged past recovery",
 			behindMain, behindMainCloseThreshold)
