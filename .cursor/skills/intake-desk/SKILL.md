@@ -25,7 +25,7 @@ description: >-
 
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
-> Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
+> Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
 The **intake-desk** is the generic front door of the process-desk pipeline — the first of the four
 desks (`intake-desk → worker-desk → pr-review-desk → verify-desk`). Where pr-review-desk watches
@@ -327,7 +327,9 @@ correctness). A **mutating** response does not converge harmlessly: hence §Clos
    reuses the class record, never rediscovers it. A production-down or security symptom stays `todo`;
    the driver's own-login `bleed` reply naming a parked symptom sets it `todo`, `Parked` dropped.
    **Re-park:** a scanner `reactivate` (excluded label removed or reopened) sets a parked row `todo`,
-   body kept, so each pass re-blocks a `todo` row still saying `Parked`. `intended-control` is a
+   body kept, so each pass re-blocks a `todo` row still saying `Parked`; when the excluded label was
+   removed by anything other than a rostered human, the scanner holds the item until the
+   ratifying identity has commented on the issue since the label was applied. `intended-control` is a
    wording fix for its refusal-text owner, never design work.
 2. **`close-candidate` — the brief-write for a no-merge close.** When an issue must close with NO
    merged fix (`FIXED-NOT-CLOSED | WONTFIX | DUPLICATE | STALE`), mark the placeholder frontmatter
@@ -515,9 +517,11 @@ Stated once for every desk; this skill adds only what is its own above.
   precise, *wrong* line numbers. State the SHA a sibling-repo detail was cross-checked against, or
   don't cite it; cannot reach the remote and cannot cross-check → **could-not-check**, never a
   claim badged as re-verified.
-- **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskpost`,
-  `deskreply`, `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script; a `gh`
-  call no verb covers runs as the role App per desk-shell.md §Forge CLI as the role. A shared
+- **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskreply`,
+  `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script; a `gh`
+  call no verb covers runs as the role App per desk-shell.md §Forge CLI as the role. For comments,
+  use `deskfile attach` on issues or `deskreply` on this desk's own PRs; `deskpost comment`
+  is reserved for `pr-review-desk`. A shared
   human/operator login makes authorship ambiguous; a token 404-ing on a repo it should cover means
   the wrong installation, never "App not installed". **Fallback:** the App genuinely not installed on
   a target repo (`desktoken coverage <role> --repo <owner>/<repo>` exits 5; a missing human `gh`

@@ -84,9 +84,9 @@ func runCmd(dir, name string, args ...string) runResult {
 //     binary, GH_TOKEN in the environment for the legacy script);
 //   - the decision gate's tools/decision-issue.sh — a forge write through the CLI:
 //     runCmdEnv with claimAuth.scriptEnv, the SAME resolution in environment shape;
-//   - git, deskwt and deskroster set — no forge-CLI call and no forge write (git talks only to
-//     the origin remote over its own transport; deskwt runs git; `deskroster set` writes the
-//     local roster file): runCmd, inheriting the environment.
+//   - local Git probes, deskwt and deskroster set: runCmd. Resume source
+//     refresh is not a child: CheckoutGitRead binds its role credential and
+//     gitcore carries it in memory through the in-process transport.
 //
 // The before_run lifecycle hook is not a runCmd child: deskkit.RunHook starts operator-authored
 // config with every credential-shaped variable SCRUBBED from its environment by design, so it

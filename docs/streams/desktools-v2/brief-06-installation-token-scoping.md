@@ -16,6 +16,7 @@ issues: [628, 1573, 1203, 655, 676, 677]
 schema: brief-v2
 authored: 2026-09-16 by desktools-v2 authoring session
 sources:
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - "#2111 — Cobra/Viper adoption; CLI compatibility amendment 2026-10-03 (spec §9)"
   - "docs/streams/desktools-v2/spec.md §2 Principle 1 CUSTODY — explicit role credentials, per-repo identity, no ambient fallback"
   - "tools/desk/cmd/cellctl/shims.go — Go-generated POSIX wrappers resolve CELLCTL_GH_AMBIENT before HOME swap; observed 2026-10-01"
@@ -31,13 +32,14 @@ exec-tier-why: >-
   proofs; a same-repo happy path cannot detect a token selected for the wrong repository.
 domain: complicated
 consumers:
+  - "tools/desk/internal/credential/: follow-up desktools-v2/06 (consume the provider if present; preserve complete scope binding)"
   - "tools/desk/internal/deskkit: follow-up desktools-v2/06 (explicit repo-scoped native client token)"
   - "tools/desk/cmd/cellctl: follow-up desktools-v2/06 (Go wrapper generation hands explicit scoped credentials across HOME changes)"
   - "tools/desk/cmd/deskdispatch: follow-up desktools-v2/06 (script children retain explicit custody; existing GitLab refusals remain)"
   - "native Windows cellctl wrappers: out-of-scope (cellctl-windows owns native host wrappers; this brief pins credential selection semantics without claiming POSIX shims run on Windows)"
   - "token minting/authentication: out-of-scope (forge-neutral owns HOW credentials authenticate; this brief owns WHICH repository/role they target)"
   - "earlier repaired shim and dispatch regressions: follow-up desktools-v2/14 (regression floor; closed reports are not this brief's premise)"
-version: 4
+version: 5
 id: 2808921b-f587-499f-abe8-e87b63dddea6
 ---
 
@@ -121,6 +123,23 @@ Keep repo/role and credential-source selection in deskkit and the explicit shim/
 | 6 | `test -n "$D" && git rev-parse -q --verify "$D^1^{commit}" >/dev/null && git rev-parse -q --verify "$D^{commit}" >/dev/null && { n0=; n1=; for r in "$D^1" "$D"; do t=$(mktemp -d) && git archive -o "$t.tar" "$r" && tar -xf "$t.tar" -C "$t" && cp tools/desk/scripts/forge-ban.sh "$t/tools/desk/scripts/forge-ban.sh" && sh "$t/tools/desk/scripts/forge-ban.sh" > "$t.out" 2>&1; n=$(sed -n 's/.*reach-around sites: \([0-9][0-9]*\).*/\1/p' "$t.out"); rm -rf "$t" "$t.tar" "$t.out"; if [ -z "$n" ]; then echo "$r NO-COUNT"; exit 1; fi; echo "$r reach-around sites: $n"; if [ -z "$n0" ]; then n0=$n; else n1=$n; fi; done; if [ "$n1" -lt "$n0" ]; then echo "LOWER $n0 -> $n1"; else echo "NOT-LOWER $n0 -> $n1"; exit 1; fi; }` — run from a main checkout with `D` set to this brief's delivering commit on main | exit 0; prints three lines, `<D>^1 reach-around sites: N0`, `<D> reach-around sites: N1`, then `LOWER N0 -> N1`, with N1 STRICTLY LOWER than N0 (the ambient-credential reach-arounds are gone — the removal check). The command decides the verdict itself: it exits 1 on `NOT-LOWER`, on a tree that prints no count, and on a `D` that is unset or does not resolve to a commit with a parent. Both trees are measured with the SAME current script, and the reference is the count at the delivering commit's own merge parent, not the frozen `desktools-v2/02` line in `docs/streams/desktools-v2/forge-ban-baseline.txt`, so sites other PRs add or remove before or after cannot move the verdict (#1529). Evidence cites `D`, the parent sha, N0 and N1 |
 | 7 | `d=$(mktemp -d) && cd tools/desk && go test -timeout 45s ./cmd/deskdispatch/ -run '^TestGitLabRepoCustody$' -v > "$d/out" 2>&1 && grep -E '^--- PASS: TestGitLabRepoCustody \(' "$d/out"` | exit 0 and anchored PASS — explicit GitLab role PAT is selected per target, absent/wrong-role custody refuses; planned until accepted (desktools-v2/13 GitLab row) |
 | 8 | `d=$(mktemp -d) && cd tools/desk && go test -timeout 45s ./cmd/cellctl/ -run '^TestShimWindowsScope$' -v > "$d/out" 2>&1 && grep -E '^--- PASS: TestShimWindowsScope \(' "$d/out"` | exit 0 and anchored PASS — Go selection seam covers HOME/USERPROFILE and refuses ambient identity; no Windows runtime claim, planned until accepted (OS: Windows) (desktools-v2/13 Windows row) |
+
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 9 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestScopedProviderWarmCacheIsolation$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestScopedProviderWarmCacheIsolation ' "$out")` | exit 0; named PASS; two repository grants under the same role/account remain distinct through Go and child handoff; a role/owner-only key is a failing control |
+
+## Performance reuse amendment — 2026-10-16
+
+The internal provider extraction is owned by desktools-v2/58; concurrency and expiry are
+owned by /59. This brief keeps its existing repository/role selection policy and human gate.
+When composing the provider, pass the full resolved provider/host, App/role, account,
+installation and permitted repository scope, plus custody/configuration revision. A provider
+memo key cannot collapse two grants merely because they share an owner or role. Preserve the
+current narrower platform refusals and explicit shim/script handoff; extraction is no ruling
+to broaden scope or keep an ambient fallback. A caller changing admitted scope must get a
+distinct result even on a warm process and disk cache. The extraction preserves current
+behavior independently; this brief supplies the separately reviewed scoping change.
+
 
 ## Evidence
 <!-- Independent implementation verification only; re-derivation is not execution evidence. -->

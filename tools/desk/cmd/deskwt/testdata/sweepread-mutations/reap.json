@@ -1,0 +1,10 @@
+{
+  "test": "go test ./cmd/deskwt -run '^TestSweepReapReusesAncestry$' -count=1 -v -timeout 30s",
+  "control": {
+    "name": "disable hash-bound answer reuse",
+    "file": "cmd/deskwt/sweepread.go",
+    "old": "if answer, ok := sc.ancestry[query]; ok {",
+    "new": "if answer, ok := sc.ancestry[query]; false && ok {"
+  },
+  "mutations": []
+}

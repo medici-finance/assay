@@ -2,7 +2,7 @@
 brief: assay:assay:performance-collection:08
 title: "Daily report generation and report-pack qualification"
 why: "A scheduled run and a manual invocation must produce the same charts from the same saved snapshot, with missing collection visible."
-wave: 3
+wave: 4
 depends: ["performance-collection/07"]
 unblocks: ["performance-collection/09"]
 effort: M
@@ -12,10 +12,11 @@ gate-why: "Report collection, exposure and recurring effect boundaries need acce
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: bcf69d42-62dd-4b7f-a609-af76d88ee19c
 authored: "2026-10-15 by reporting authoring session"
 sources:
+  - "2026-10-16 wave reconciliation at origin/main 9f9bb35de: performance-collection/02 consumes desktools-v2/61; reporting scope and historical Evidence unchanged"
   - docs/streams/performance-collection/README.md
   - docs/streams/continuing-operations/spec.md
   - docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md

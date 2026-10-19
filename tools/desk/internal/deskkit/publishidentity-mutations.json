@@ -1,7 +1,7 @@
 {
   "test": "go test ./internal/deskkit/ ./cmd/deskpr/ -count=1 -timeout 300s -run 'PubRange|PubClass|PubIdentity|PublishIdentity|DefaultPublishCommits|UpdateCheckAcceptsMixedPR|UpdatePushesMixedPR|UpdateRefusesNewForeign|UpdateLiveHeadOverrulesRef|UpdateNoLiveHeadFailsClosed|CreateJudgesWholeRange|CreateEvidenceOffline|UpdatePR|UpdateDivergedLive|UpdateNoTrackRefWide'",
   "control": {
-    "name": "CONTROL — the gate stops checking authors at all (any identity is published)",
+    "name": "CONTROL \u2014 the gate stops checking authors at all (any identity is published)",
     "file": "internal/deskkit/publishidentity.go",
     "old": "\t\tif !emailMatchesRole(ident, c.AuthorEmail) {",
     "new": "\t\tif false && !emailMatchesRole(ident, c.AuthorEmail) {"
@@ -28,8 +28,8 @@
     {
       "name": "fail-open: an unresolvable tip (first push / not fetched) narrows to an empty range instead of widening",
       "file": "internal/deskkit/publishidentity.go",
-      "old": "commit here (a first push, or a remote head not fetched yet — `git fetch origin` and retry)\"\n\t\treturn rng\n",
-      "new": "commit here (a first push, or a remote head not fetched yet — `git fetch origin` and retry)\"\n\t\trng.Tip = \"HEAD\"\n\t\treturn rng\n"
+      "old": "commit here (a first push, or a remote head not fetched yet \u2014 `git fetch origin` and retry)\"\n\t\treturn rng\n",
+      "new": "commit here (a first push, or a remote head not fetched yet \u2014 `git fetch origin` and retry)\"\n\t\trng.Tip = \"HEAD\"\n\t\treturn rng\n"
     },
     {
       "name": "accept any ref namespace (refs/heads/<branch>, another remote) as the remote tip",
@@ -68,10 +68,10 @@
       "new": "\tif ierr := publishIdentityGate(facts.dir, *base, remoteTrackingTip(facts.branch), facts.head); ierr != nil {"
     },
     {
-      "name": "deskevidence starts offering a remote tip (an unreviewed second instance of the class)",
+      "name": "deskevidence flip starts offering a remote tip (an unreviewed second instance of the class)",
       "file": "cmd/deskevidence/github.go",
-      "old": "RemoteTip: \"\", Role: \"verifier\",",
-      "new": "RemoteTip: \"refs/remotes/origin/\" + base, Role: \"verifier\","
+      "old": "Dir: dir, Base: strings.TrimPrefix(base, \"refs/heads/\"), RemoteTip: \"\", Role: \"verifier\",",
+      "new": "Dir: dir, Base: strings.TrimPrefix(base, \"refs/heads/\"), RemoteTip: \"refs/remotes/origin/\" + base, Role: \"verifier\","
     },
     {
       "name": "update --pr runs the offline whole-range stage on a real run (the #2432 refusal returns)",

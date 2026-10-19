@@ -278,7 +278,7 @@ func cmdPlan(args []string, stdout io.Writer) error {
 		blessAuthority(), len(deskkit.TrustedLogins()))
 
 	// --- the queue ----------------------------------------------------------------
-	claims := loadClaims()
+	claims, claimsErr := loadClaims()
 	fmt.Fprintf(stdout, "\nQUEUE — %-28s %-8s %-16s %-10s %s\n", "ITEM", "AGE", "LANE", "TIER", "CLAIM")
 	if len(report.Inbound) == 0 {
 		fmt.Fprintf(stdout, "  (no events in hand — that is NOT the same as an empty inbound surface)\n")
@@ -322,6 +322,9 @@ func cmdPlan(args []string, stdout io.Writer) error {
 
 	// A pass that could not see the whole surface is could-not-check, not idle. rc=0 here would
 	// be read by anything scripting this tool as "nothing inbound".
+	if claimsErr != nil {
+		return deskkit.Unverifiable("scanloop plan: claims snapshot incomplete — unknown is never free", claimsErr)
+	}
 	if report.Blind() {
 		return deskkit.Unverifiable("scanloop plan: the inbound surface was not fully readable this pass "+
 			"(degraded repos or a suppressed burst) — blind is not idle", nil)
@@ -367,28 +370,28 @@ func renderAge(d time.Duration) string {
 	}
 }
 
-// loadClaims reads the shared claims dir once per plan. A dir that cannot be read yields NO claims
-// and the rows say `unknown` — never `free`, which is the "assume free" direction that produces
-// double dispatch.
-func loadClaims() map[string]deskkit.Claim {
+// loadClaims reads the shared claims dir once per plan. Any incomplete read
+// yields unknown rows and an error; the plan cannot report a successful count or
+// mark an unseen item free while a claim file remains unreadable.
+func loadClaims() (map[string]deskkit.Claim, error) {
 	out := map[string]deskkit.Claim{}
 	dir, err := deskkit.StateDir()
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	claims, err := deskkit.List(deskkit.ClaimConfig{ClaimsDir: filepath.Join(dir, "claims")})
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	for _, c := range claims {
 		out[c.Item] = c
 	}
-	return out
+	return out, nil
 }
 
 func claimState(claims map[string]deskkit.Claim, id string) string {
 	if claims == nil {
-		return "unknown (claims dir unreadable — never read as free)"
+		return "unknown (claims snapshot incomplete — never read as free)"
 	}
 	c, ok := claims[id]
 	if !ok {

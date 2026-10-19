@@ -22,8 +22,8 @@
     {
       "name": "plant missing bootstrap in scrubbed sibling",
       "file": "cmd/cellctl/plan.go",
-      "old": "codexStandingPrompt(role, fmt.Sprintf(\"Invoke the %q skill now.\", \"assay:\"+role))",
-      "new": "fmt.Sprintf(\"Invoke the %q skill now.\", \"assay:\"+role)"
+      "old": "codexStandingPrompt(role, codexSupervisionPrompt(fmt.Sprintf(\"Invoke the %q skill now.\", \"assay:\"+role)))",
+      "new": "codexSupervisionPrompt(fmt.Sprintf(\"Invoke the %q skill now.\", \"assay:\"+role))"
     },
     {
       "name": "enable native continuation inside explicit ticks",

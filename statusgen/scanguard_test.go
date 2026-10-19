@@ -103,7 +103,7 @@ func TestScanIssuesRefusesPrimaryCheckoutRoot(t *testing.T) {
 		scanHomeRepo(): {{Number: 601, Title: "bug", Labels: lbl("bug")}},
 	}
 	for _, dryRun := range []bool{false, true} {
-		if code := runScanIssues(primary, dryRun, fixtureLister(data, ""), nilCommentLister, blessAll); code != 2 {
+		if code := runScanIssues(primary, dryRun, fixtureLister(data, ""), nilCommentLister, blessAll, labelHoldClearAll); code != 2 {
 			t.Fatalf("dryRun=%v: primary-checkout scan exited %d, want 2 (refused)", dryRun, code)
 		}
 		if _, err := os.Stat(filepath.Join(issueLoopDir, "issue-601.md")); !os.IsNotExist(err) {
@@ -128,7 +128,7 @@ func TestScanIssuesLinkedWorktreeRootSucceeds(t *testing.T) {
 	data := map[string][]ghIssue{
 		scanHomeRepo(): {{Number: 602, Title: "bug", Labels: lbl("bug")}},
 	}
-	if code := runScanIssues(worktree, false, fixtureLister(data, ""), nilCommentLister, blessAll); code != 0 {
+	if code := runScanIssues(worktree, false, fixtureLister(data, ""), nilCommentLister, blessAll, labelHoldClearAll); code != 0 {
 		t.Fatalf("worktree scan exited %d, want 0", code)
 	}
 	if _, err := os.Stat(filepath.Join(issueLoopDir, "issue-602.md")); err != nil {

@@ -3,7 +3,7 @@ brief: assay:assay:forge-neutral:45
 title: "Forge service fault simulation and scoped cutover qualification"
 why: "The service crosses caller, executor, provider, database and cache boundaries. A complete disposable journey with lost replies, revocation and reconstruction is needed before routing real desk writes through it or retiring any direct publisher."
 wave: 9
-depends: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "forge-neutral/44"]
+depends: ["forge-neutral/38", "forge-neutral/41", "forge-neutral/43", "forge-neutral/44", "desk-tools/43", "desk-tools/44", "desktools-v2/62"]
 unblocks: []
 effort: L
 gate: human
@@ -13,19 +13,23 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 1
+version: 2
 id: 5306ce94-4e21-44af-82e4-d552eaca0ff5
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
   - freshness-checked 2026-10-14 @ 0cb90058470f9608f76b96e2055e7327d9c5c178
   - R6 proposal inspected at c5e8a3f8da3c715b72efa8d8d6b5e74e659ebd52; main merged into this authoring branch without editing historical Evidence
+  - "docs/desk-workflow-efficiency-spec.md"
+  - "freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d; approved spec and consolidation amendment"
 exec-tier: strong
 exec-tier-why: Cross-component identity, privacy, concurrency and failure semantics require design judgment and negative controls.
 domain: complicated
 consumers:
+  - "tools/desk/testdata/perfworkload/: follow-up forge-neutral/45 (reuse /62 fixture and instrument semantics at served boundary)"
   - "tools/desk/internal/forgeservice/integration/: follow-up forge-neutral/45"
   - "workflow/store/forgejourney_test.go: follow-up forge-neutral/45"
   - "tools/desk/internal/deskkit/citrigger_test.go: follow-up forge-neutral/45"
@@ -38,13 +42,14 @@ consumers:
   - "changelog/forge-service-qualification.md: follow-up forge-neutral/45"
   - "statusgen/evaluation/: out-of-scope (existing domain evaluation meaning preserved)"
   - "plugins/assay/skills/: out-of-scope (no caller wired to an unshipped service)"
+  - "tools/desk/internal/forgeservice/integration/reviewjourney_test.go: follow-up forge-neutral/45"
 ---
 
 # Brief 45 — Forge service fault simulation and scoped cutover qualification
 
 ## Context
 
-files: `tools/desk/internal/forgeservice/integration/` (planned), `workflow/store/forgejourney_test.go` (planned), `tools/desk/internal/deskkit/citrigger_test.go`, `tools/desk/internal/deskkit/forge_surface_test.go`, `ci/staged-workflows/forge-service.yml` (planned), `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `docs/forge-service-cutover.md` (planned), `docs/proposals/non-ci-architecture/20-amendment-manifest.md`, `changelog/forge-service-qualification.md` (planned). Paths not present at the source pin are planned deliverables; existing
+files: `tools/desk/internal/forgeservice/integration/` (planned), `workflow/store/forgejourney_test.go` (planned), `tools/desk/internal/deskkit/citrigger_test.go`, `tools/desk/internal/deskkit/forge_surface_test.go`, `ci/staged-workflows/forge-service.yml` (planned), `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `docs/forge-service-cutover.md` (planned), `docs/proposals/non-ci-architecture/20-amendment-manifest.md`, `changelog/forge-service-qualification.md` (planned), `tools/desk/internal/forgeservice/integration/reviewjourney_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
 files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
@@ -107,6 +112,22 @@ webhook payload decisions are not answered by this section.
 
 6. Publish a bounded report and operator runsheet for shadow reads, one repository assignment, current R3/R4 containment proof, current provider permissions/entitlement and retention decisions, credential revocation, write-profile enablement and rollback. No operator act is inferred from a green fake. Read-only release is independently qualified; write activation fails if an old direct publisher remains. Do not retire unrelated current commands or change merge/ready/human authority.
 
+
+### Approved workflow-efficiency amendment — 17 October 2026
+
+Add actual review queue -> offline plan -> preparation -> watcher/report and worker/intake
+projection journeys, using desk-tools/43 compatible caller and /44 cost/retirement qualification as
+producer evidence. Compare direct and served paths against the same oracle and cost cohort under
+scope/permission/head/schema/event-loss faults. No duplicated full sweep for shadow reporting and no
+silent loss of wake/monitor health. Distinguish source read qualification, installed plugin/tool/pin
+adoption, query-service activation and publisher switch. Existing R3/R4 containment, effect
+recovery, zero old publishers and human activation remain required; early direct-reader delivery
+does not wait for this service cutover.
+
+This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
+obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
+authoring change claims no implementation or operational adoption.
+
 ## Interface contract
 
 Use forge-service-v1 from 39, mirror admission/freshness from 37, event hints/demand from 38,
@@ -130,6 +151,11 @@ boundary and independent expectation, not another implementation of the same che
 | 3 | check:ci +flow +mutation | `(cd workflow && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeServiceReconstruction$' ./store/... > "$r" && grep -F -- '--- PASS: TestForgeServiceReconstruction ' "$r")` | exit 0; named PASS. Delete/restore disposable SQL: old incarnation is denied, unknown submitted effects remain held, authorized reconstruction restores useful scoped state and derived queries. Missing history never becomes zero budget or renewed permission. |
 | 4 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeServiceCutoverInterlock$' ./internal/forgeservice/integration/... > "$r" && grep -F -- '--- PASS: TestForgeServiceCutoverInterlock ' "$r")` | exit 0; named PASS. Disposable inventory proves query/agent processes cannot reach publication credentials. Surviving direct publisher, unavailable R3/R4 evidence, unselected access lease/retention policy or missing provider capability holds write activation; permitted read-only mode remains usable. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/45` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
+| 6 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedReviewJourney$' ./internal/forgeservice/integration/... > "$o" && grep -F -- '--- PASS: TestServedReviewJourney ' "$o")` | exit 0; named PASS. Production supported clients traverse served queue/plan/context and role issue projections; scope loss/stale head/schema mismatch cannot idle or bypass effects, and duplicate enumeration is counted. |
+
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 7 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedPerformanceWorkloadAttribution$' ./internal/forgeservice/integration/... > "$out" && grep -F -- '--- PASS: TestServedPerformanceWorkloadAttribution ' "$out")` | exit 0; named PASS; matched CLI/service bursts retain decisions and authority, share scoped inventory and report versioned coverage without double-counting; stale fast answers and hidden minter children fail |
 
 ## Pre-mortem and detection
 
@@ -140,6 +166,24 @@ reject that variant; record the failing control with the restored production pas
 satisfy a flow row with a route registry, a prose legend or zero selected tests. Test fixtures
 qualify their named local boundary; provider permission inventories, deployment workload and
 operator cutover remain explicit evidence/acceptance obligations.
+
+## Performance reuse amendment — 2026-10-16
+
+Reuse desktools-v2/62's reference workload and /61's instrument meanings in the actual
+served qualification journey. Compare repeated CLI reads with the authorized service/mirror
+using identical scripted repositories and delays. Report cold/warm p50/p90/p95/p99, sample
+counts, CPU, provider calls, bytes, child starts, discovery/parse work, credential lookup/mint
+and coalesced waiter outcomes. State available versus unsupported measurements explicitly;
+inclusive parent/child/phase durations are not additive elapsed savings. The credential and
+startup local lane ships independently; this qualification supplies the later service result.
+
+Prove a 50-identical-read burst performs one scoped scripted source inventory, and that
+permission loss, expiry, provider outage and cache corruption preserve authorization and
+coverage without a client-driven poll storm. Use the actual role executors with the provider
+from /58–59; a query-side universal token or fallback minter process is a failing control.
+Select workload budgets before running the experiment. Keep the current operator activation,
+database recovery and credential-inventory gates; no performance result grants cutover.
+
 
 ## Evidence
 
