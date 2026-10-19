@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"maps"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -93,25 +92,8 @@ func validateOutcomeEvidenceBinding(root string, fg deskkit.Forge, fr deskkit.Fo
 	// The binding must be a real line inside Evidence, not a mention in Context,
 	// a code example, or a previous run's stamp. Historical Evidence is allowed
 	// alongside it, but cannot substitute for this exact admitted run.
-	inEvidence := false
-	fence := ""
-	fenceLine := regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")
-	for _, line := range strings.Split(string(atCommit), "\n") {
-		if match := fenceLine.FindStringSubmatch(line); match != nil {
-			if fence == "" {
-				fence = match[1]
-			} else if match[1][0] == fence[0] && len(match[1]) >= len(fence) && strings.TrimSpace(match[2]) == "" {
-				fence = ""
-			}
-			continue
-		}
-		if fence != "" {
-			continue
-		}
-		if strings.HasPrefix(line, "## ") {
-			inEvidence = strings.TrimSpace(strings.TrimPrefix(line, "## ")) == "Evidence"
-		}
-		if inEvidence && strings.TrimRight(line, " \t\r") == receipt.EvidenceBinding() {
+	for _, line := range deskkit.VerifierEvidenceBindings(atCommit) {
+		if line == receipt.EvidenceBinding() {
 			return nil
 		}
 	}

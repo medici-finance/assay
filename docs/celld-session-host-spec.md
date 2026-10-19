@@ -595,3 +595,13 @@ the approved direction. Authenticated multi-host registration, cluster placement
 automatic recovery expand the currently host-first deployment scope and require their
 own qualification. Update the canonical future-architecture documents and affected
 unfinished briefs together after review; this draft does not amend their authority.
+
+## Execution-environment contract follow-through — 16 October 2026
+
+The [future-state execution amendment](proposals/non-ci-architecture/27-agent-execution-environments.md)
+and [agent-execution stream](streams/agent-execution/README.md) own the newly routed profile,
+preparation and preservation extensions. They retain the Cell API, doc 21 lifecycle and
+R2/R3/R4 authority boundaries described here. S1–S6 still explore vendor/runtime, daemon,
+remote and cluster behavior under their existing authorization; agent-execution/06 only
+compares AX source fixtures offline. It is not an alternative S5/S6 trial. Reuse a qualified
+profile/receipt where applicable; schema support alone does not qualify a harness or host.

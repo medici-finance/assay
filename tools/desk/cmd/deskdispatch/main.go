@@ -62,284 +62,11 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
-
-const usage = `deskdispatch — the per-item dispatch ceremony (engine seam: DISPATCH).
-
-USAGE:
-  deskdispatch <item-key> [--tier strong|any] [--kit worker|worker-objective|review|verifier]
-               [--repo OWNER/NAME] [--root DIR] [--claim-root DIR] [--model SLUG]
-               [--branch NAME] [--brief PATH] [--gate-human] [--pr N] [--rework]
-               [--attest-worker] [--prompt-file FILE] [--quiet] [--dry-run] [--worktree PATH]
-  deskdispatch --stamp-only --repo OWNER/NAME --pr N --model SLUG --tier strong|any
-               [--kit worker|worker-objective|review|verifier] [--attestation N] [--dry-run]
-  deskdispatch --kits
-  deskdispatch --version
-
-<item-key> names the item in the drain planner's own form. A key already carrying "--" is
-a claim key (<repo>--<stream>--<NN>, <repo>--issue-<NN>) and reaches the repo's claim tool
-byte-for-byte. A plan item key (verifyloop plan's <stream>/<NN>) is TRANSLATED for the
-claim calls only — the repo's short label (configured alias, else the repo basename) is
-prefixed and "/" becomes "--" — by a fixed rule, so every desk derives the SAME claim key
-for the same item and the claims collide. The worktree name, branch, brief path, and the
-prompt's item key stay on the ORIGINAL key.
-For review kits with --pr N, the resulting claim key must be <configured-alias>--pr-N
-or <repo-basename>--pr-N, optionally followed by --<lane>. Unknown historical aliases
-and keys for another PR are refused before claim acquisition; accepted keys are unchanged.
-
-STAMP AFTER OPEN. The dispatching worker-desk hands the opened PR and the actual model/tier
-from its real dispatch receipt to the coordinator desk (the-desk), which runs --stamp-only.
-Worker-desk and its child worker are both refused; inherited DESK_SESSION is claim custody,
-not independent stamp authority. Both model and tier are required;
-no model is inferred from existing labels. The original kit selects the same dispatcher
-role as ordinary dispatch. The session role must match it and be roster-bound; the worker
-cannot self-attest. No item key, claim, worktree, roster registration, hook, queue label or
-prompt is involved. This does not launch an agent or renew review-claim authority.
-The worker kits (the default) write the authoring pair, authored-model:<slug> +
-authored-tier:<tier>, and never read, remove or write a dispatched-* label; --kit review
-writes the dispatched-* pair and never touches authored-*. The capability floor reads
-dispatched-* only, so an authoring stamp does not satisfy a review floor. The verifier
-kit retains dispatched-* for validation and stamp-only; normal verifier dispatch stamps
-its issue through the separate verifier-admission path.
-A worker-kit --stamp-only also reads the change's Worker-Attestation: line (or
---attestation N). When one is named, the record must be the closed, dispatcher-stamped
-worker attestation, and the PR's branch, repo, kit and the stated --model/--tier must
-equal what it binds: a mismatch refuses (exit 5), an unreadable record is exit 6, and
-nothing is written. The model is still the coordinator's explicit selection, never taken
-from the record. With no attestation named the path is unchanged.
-
-The shared model vocabulary is open: gpt-6-astra and gpt-6.1-sol round-trip unchanged.
-gpt-6-1-sol is also a valid opaque slug, not an alias for gpt-6.1-sol. Use the identifier
-actually selected by the harness, never a guessed provider/model mapping.
-
-The shared stamp step reads current labels and their standing appliers, repairs partial,
-conflicting or foreign/unattributed stamps using the explicitly selected pair, and leaves
-an identical accepted stamp unchanged. Read failures stop before writes. After a write it
-re-reads labels AND timeline with the applier-aware reader for the kit's pair; only the
-exact accepted pair returns an applied-and-verified receipt. Unverified writes exit 6, never success. An open
-change is required for --stamp-only. Its --dry-run reads and prints the removal/application
-plan without writes or a local audit append; a plan is not a verified stamp.
-
-VERIFIER PRE-WORK. --kit verifier requires --model and a source --brief, and rejects --pr.
-It creates an immutable dispatcher-authored verification-attestation issue bound to the
-exact run, source commit, brief digest, model and tier; stamps and reads it back under
-existing desk custody; then closes the record before emitting a verifier prompt. The
-record is not verification evidence and is excluded from issue intake even while open.
-
-deskdispatch --check-verifier --root HOME --brief PATH
-  Read-only admission: verify the forge record and the detached source before Verify rows.
-deskdispatch --attest-verifier --root HOME [--dry-run]
-  Recover the SAME persisted run under coordinator custody, with no new claim, allocation
-  or worker launch. An uncertain create is recovered by exact run identifier; an absent
-  search result cannot authorize another issue. Failed dispatch releases its claim and
-  retains the worktree for recovery. Reacquire that claim before launching a recovered run.
-  PENDING, failed, mismatched or unreadable stamps never admit verification.
-
-WORKER PRE-WORK (--attest-worker, opt-in). A fresh worker dispatch (no --pr) otherwise
-reports its stamp PENDING until the change opens. With --attest-worker (worker kits only;
-requires --model and either --brief or an issue-<N> item; refused with --pr; needs distinct
-roster-bound desk and worker actors), step 5 creates a dispatcher-authored
-"[worker-attestation] <run>" issue whose immutable body binds a fresh run identifier, the
-claim key, repo, kit, worktree branch and base commit, the brief's repo-relative path and
-digest (or the source issue's body digest) and the selected model/tier; applies
-authored-model:/authored-tier: to it under desk custody; closes it; and reads it back.
-Only then is the prompt emitted, carrying the record's Worker-Attestation: line for the PR
-description. Any failure (create, stamp, close, readback) releases the claim, keeps the
-worktree, emits NO prompt and exits 6; a record left behind stays open, never binds a
-change and, like the verifier's, is excluded from issue intake, boards and sweeps.
---dry-run names the record it would create and writes nothing.
-
-STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
-
-  Before step 1, two brief-side holds refuse with exit 5, naming claim-acquire, with
-  nothing claimed and no worktree made: a --brief whose exec-tier is stricter than
-  --tier (checked on a --dry-run too), and a fresh worker dispatch of a gate: human
-  brief whose decision issue (its decision-issue: field, else the issue carrying its
-  decision-gate marker) is open, carries needs-decision, and has no ruling from the
-  ratifying identity since that label was applied. A decision read that fails, or
-  a brief whose decision issue does not exist yet, does not hold.
-
-  1 claim-acquire     runs the claim tool's acquire <claim-key>. The tool is the pure-Go
-                      deskclaim-ref binary when it is on PATH (installed with desk-tools;
-                      no shebang .sh, no --claim-root, so a green-field or Windows adopter
-                      dispatches), ELSE the legacy tools/dispatch-claim.sh when the resolved
-                      root (--claim-root when given, else --root) carries it. The OK line
-                      names which one ran. The claim itself is a ref in the TARGET repo
-                      (--repo) either way — the flag names where the TOOL lives, never where
-                      the claim lands. The child runs as the DISPATCHING role: this step
-                      mints (or reuses) that role's App token exactly as the model-stamp step
-                      does and hands it over as --token-file <0600 path> (deskclaim-ref) or
-                      GH_TOKEN in the child's environment (the script); a GH_TOKEN already
-                      exported wins and nothing is minted ONLY when it is verified to be the
-                      dispatching role's App (a GitHub viewer read vs the roster binding; on
-                      GitLab, equal to the role's PAT custody) — any other identity is ignored
-                      with a NOTICE and the role token minted, and one whose identity cannot
-                      be read is exit 5/6 with NO claim attempted; a mint failure is exit 6 with NO
-                      claim attempted — the tool is never run on the ambient gh login. Exit 5
-                      there with a READABLE holder = a LIVE holder owns it: this verb prints
-                      the holder and exits 5; it never steals. Exit 5 with no readable holder
-                      is the claim tool refusing the invocation itself and is reported as
-                      that error, never as a collision.
-  2 worktree-create   ` + "`deskwt add`" + ` in the item's OWN repo root, off
-                      refs/remotes/origin/main for fresh/read-only dispatches; worker
-                      resumes use the verified source branch and head described below.
-                      Cross-repo is the default case, not the
-                      exception: an item belongs to a repo, and a worker handed the wrong
-                      one recreates the work where nobody asked for it. The new worktree is
-                      then STAMPED with the DISPATCHED agent's own role commit identity
-                      (worker/reviewer/verifier, per --kit) worktree-scoped, so it never
-                      inherits the dispatching desk's identity and misattributes Evidence
-                      Runner cells; a --kit whose role has no roster identity is refused
-                      pre-claim (exit 5). The OK line prints identity=<slug> <bot-user-id>.
-                      Review kits allocate DETACHED with a fresh per-dispatch directory;
-                      --branch is refused. The canonical claim key stays unchanged.
-                      Prior review worktrees and evidence are preserved; no cleanup is
-                      required to renew the normal trusted dispatch ceremony.
-  3 roster-register   ` + "`deskroster set`" + ` for the work entry when --pr is known; without
-                      it the registration is the AGENT's first act after its PR opens, and
-                      the exact command is emitted into the prompt.
-  4 decision-gate     with --gate-human (or a --brief whose own metadata gates on a
-                      human), runs tools/decision-issue.sh ensure from the resolved root
-                      (--claim-root when given, else --root) so the human has something
-                      concrete to decide. No pure-Go port of it ships, so a resolved root
-                      without it REFUSES pre-claim (exit 6), naming the path tried and
-                      the --claim-root way out. Idempotent by the script's own
-                      marker dedupe. The script runs under the dispatching role's
-                      credential (GH_TOKEN in its environment, from the same resolution
-                      the claim uses), never the ambient login; with none it refuses.
-  5 model-stamp       computes and validates the dispatcher's attestation labels
-                      and applies them when --pr is known: a --kit review dispatch
-                      writes dispatched-model:<slug> + dispatched-tier:<tier> (the
-                      review-session attestation the floor reads); worker kits
-                      write authored-model:<slug> + authored-tier:<tier> and never
-                      touches dispatched-*, so neither stamp overwrites the other.
-                      The stamp attests what the DISPATCHER launched; a self-applied
-                      stamp is worthless by design. Without --pr it is PENDING (STAMP
-                      AFTER OPEN), unless --attest-worker admits the run through its
-                      read-back pre-work record (WORKER PRE-WORK above).
-  6 queue-label       on a --kit review dispatch with --pr known, applies the review-lane
-                      queue label authorization-needed to the change through the resolved
-                      forge (idempotent create+apply under the reviewer role's own
-                      credential — GitHub App token or GitLab PAT), so a GitLab MR carries
-                      the same queue signal a GitHub PR does. Non-fatal: a label the forge
-                      would not accept is a provisioning gap to file, not a failed dispatch.
-                      SKIPPED for a worker/verifier dispatch; DEFERRED when no --pr is known.
-  7 prompt-emit       prints the assembled agent prompt to stdout; with --prompt-file F writes it to the NEW
-                      sibling <F without extension>.emitted.md and prints that path. F itself is never written.
-
-THE PACKET. Between the before_run hook and step 7, a --kit review dispatch with --pr known
-reads the change ONCE and writes one owner-only Markdown file: the change's facts and
-description, the checks at its head, the reviewer identity's earlier verdicts of this lane
-in full, an index of its other reviews, the reviews by other accounts under their own
-heading (never counted as verdicts), the diff, each touched file as it reads after the
-change, and the brief when --brief names one. The head commit and the build time are at the top. Caps are stated
-in the file (64 KiB per file, 192 KiB for the diff, 512 KiB in all, 60 files); anything over
-one is left out WHOLE and listed by name and size, never cut short. Multi-line text from
-the change sits between boundary lines carrying a per-packet random token, and no line of it
-begins with a boundary mark; single-line values from the change (a title, a branch, a check
-or file name) are shown in code spans. The packet's header says both are data. The file
-goes beside the prompt file ("<prompt file without extension>.packet.md"), or, when the prompt is printed, in
-the user cache directory ("assay/packets/<item-key>.packet.md"); the assignment gains ONE
-line, "Packet: <absolute path>". It is not a step and cannot fail the dispatch: when it
-cannot be built, stderr says why and the assignment carries no such line. Not built on
---dry-run. No flag and no configuration.
-
-A WORKER dispatch (--kit worker, --kit worker-objective) gets a packet too, smaller because a
-worker run re-reads it on every later request: 32 KiB an item, 64 KiB for the brief and for
-the diff, 192 KiB in all, 12 named files. With no --pr it holds the run's facts (worktree,
-branch, base commit, the claim taken), the brief or the issue, the board status of each brief
-the brief depends on, the repository's top level, Makefile targets, workflow file names and
-root instruction files, and each file the brief names as it stands in the worktree. With --pr
-it holds the change and its description, whether it conflicts with its base and whether the
-base moved, the checks at its head and the ones the base requires, every review with the
-findings it records, the newest comments, and the diff. It holds no job log and no review
-comment anchored to a file and line — the forge surface reads neither — and says so.
-
---claim-root separates "where the consumer scripts live" from "which repo the worker's
-worktree branches from". The scripts (tools/dispatch-claim.sh, tools/decision-issue.sh)
-were centralized out of the consumer repos, so a cross-repo dispatch points --claim-root
-at the checkout that carries them while --root stays the ITEM's own repo — the worktree
-is always cut from --root. An explicit --claim-root is authoritative: there is no silent
-fall-back to --root.
-
-Before the claim, deskdispatch echoes any ADVISORY write-scope overlap
-between the item's write scopes (derived from --brief's Context 'files:' list) and any item
-holding an in-flight dispatch claim for the same root, as 'WRITE-OVERLAP: <item> ~ <in-flight> on
-<prefix>' lines on stderr. These are COORDINATION HINTS, NOT LOCKS: the dispatch always proceeds,
-the echo has no exit code, and overlap never blocks or delays the claim.
-
-CROSS-REPO (alias registry). An item may name the repo its deliverable lands in by ALIAS: the
-brief's ` + "`deliverable_repo: <alias>`" + ` or ` + "`homed-in: <owner>/<name>`" + ` frontmatter, or an
-` + "`<alias>:<stream>/<NN>`" + ` item-key prefix or the alias segment of the brief's own brief-v2 id (the
-alias the brief is TRACKED under). --brief is resolved ONCE (absolute, else under --root, else
-under --claim-root) and every reader uses that file; a --brief that resolves nowhere is refused.
-Every registry alias key, ` + "`repo:`" + ` value and ` + "`self:`" + ` is grammar-checked before use; a bad one
-is refused (exit 5). The alias resolves
-through the alias registry (graph-repos.yaml, schema graph-repos-v1) of the stream root at
---claim-root (else --root), and nothing else. Before
-anything durable: no registry, or an alias reserved but unpublished there = exit 6; an alias the
-registry does not define = exit 5 naming it; a resolved repo that is not --repo or not --root's own
-origin = HARD FAIL exit 5 naming both repos — no claim, no worktree. The resolved repo is the claim
-repo and the token's repo; a cross-repo claim key carries the TRACKING alias; the prompt tells the
-worker to run ` + "`deskpr create --root <tracking checkout>`" + ` so its Brief: trailer resolves there.
-Under --cross-repo (a brief homed in one repo, its PR opened in --repo) the prompt instead names the
-exact ` + "`Cross-repo-brief: <alias>:<stream>/<NN>`" + ` line and plain ` + "`deskpr create`" + ` (fresh) or
-` + "`deskpr update`" + ` (--pr resume) with no tracking --root.
-
-PHANTOM PRECONDITION. A fresh worker dispatch is reconciled against the deliverable repo's open and
-merged PRs by ` + "`Brief:`" + ` trailer BEFORE admission, the token mint and the claim. An OPEN PR refuses
-(resume it with --pr). A MERGED PR refuses as DELIVERED — unless --rework says the row awaits
-implementer rework, in which case the dispatch becomes a FOLLOW-UP on a new branch
-(feat/<item>-followup-<N>), never a resume of the merged branch.
-
-WORKER RESUME. --pr reads the open change through the resolved forge, including in a
-dry run. Its source branch supplies --branch; an explicit different --branch is refused.
-The source must be confirmed in the target repository, with a readable full head SHA.
-A real dispatch refreshes that origin branch and requires its tip to match the forge head
-before claiming anything, then passes the verified commit as --base and the source
-remote ref as --upstream to deskwt. The allocator checks the pair and sets tracking
-separately from the pinned checkout. Missing, stale or
-unreadable source/head never falls back to main. Review/verifier lanes remain detached.
-
-THE KIND OF A WORKER RUN is derived, never flagged: --pr on a worker kit is a run that works
-an open change; every other worker dispatch implements a brief or an issue. The assignment's
-action half follows the kind (push to the open change, never open a second one / open the
-draft PR), kit text marked for the other kind is not quoted, and the objective kit's own copy
-of the common clauses is not quoted twice. Unmarked kit text reaches both kinds.
-
---kits lists the prompt kits this binary carries and exits 0.
---dry-run runs no step: it prints the plan and the prompt that WOULD be emitted. The prompt
-shows the agent's home worktree as a not-yet-known placeholder, because a real dispatch names
-the path deskwt printed and this verb never predicts one.
---worktree PATH (with --dry-run ONLY) renders the prompt against an operator-STATED home that
-already exists, instead of that placeholder — for previewing a batch whose worktrees are
-already cut. The path is validated first, all three checks fail-closed (exit 5): it resolves
-under a sanctioned worktree prefix, it IS a registered git worktree of the item's own repo,
-and it is not the shared checkout. A verified path also appears on the PLAN banner as
-"worktree=<path> (operator-supplied, verified)" so a transcript shows it was checked, not
-guessed. On a real dispatch --worktree is refused (exit 5): the home is deskwt's to name.
---quiet suppresses the per-step OK lines; failures and the prompt always print.
-
-A successful dispatch only PREPARES the run (claim, worktree, prompt); it never starts the
-agent. It ends with a NOT LAUNCHED line on stderr (also under --quiet) naming the claim, the
-grace window, and the two ways forward: launch the agent and run the claim tool's progress verb,
-or release the claim. A claim left at state=claimed for CLAIMED_TTL_MIN (default 20m) is
-reclaimed by the next dispatcher, and the claim tool's show and list mark it
-PREPARED-NOT-LAUNCHED.
-
-Exit: 0 dispatch prepared · 3 disabled · 5 refused (live claim holder / caller
-precondition) · 6 unverifiable (a claim or gate whose state could not be established).
-
-DIAGNOSTICS: DESK_TRACE=1 (or a global --trace, any position) prints the full cause
-chain, every child process with its command line, exit status and elapsed time, and the
-failing child's stderr in full. Credentials are redacted. With it off, output is
-unchanged. Reach for it when a step reports an exit code and you cannot tell which of
-deskwt, the claim tool or the forge backend produced it. See tools/desk/README.md, "Diagnostics —
-DESK_TRACE".`
 
 // perfVerbs is deskdispatch's registered first-argument set for the opt-in local perf record
 // (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
@@ -347,13 +74,6 @@ DESK_TRACE".`
 var perfVerbs = []string{"--stamp-only", "--check-verifier", "--attest-verifier", "--kits", "--version", "--help", "-h", "help", "-version", "dispatch:worker", "dispatch:worker-objective", "dispatch:review", "dispatch:verifier", "stamp-only:worker", "stamp-only:worker-objective", "stamp-only:review", "stamp-only:verifier"}
 
 func main() {
-	// Explicit roster class: deskdispatch ACTS (it claims, it stamps, it registers), so
-	// ciEligible=false — it reads the config-home file and never the environment.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
 	// Wire the phantom check's PR-list transport LIVE for the shipped binary (represented_live.go).
 	// Assigned here, in main(), not at package init: tests call run()/cmdDispatch directly and keep
 	// the nil default (the check stays inert unless a test wires its own recorded transport), while
@@ -368,49 +88,41 @@ func main() {
 	// ...and the brief-admission decision hold's read (briefadmission.go). Unwired, a
 	// human-gated brief is never held on its decision issue.
 	decisionWaitForgeFn = liveDecisionWaitForge
-	os.Exit(deskkit.PerfRun("deskdispatch", perfVerbs, os.Args[1:], run))
+	args := os.Args[1:]
+	// main owns the declared class, echo and activation discovery. Cobra invokes
+	// these callbacks only for execution, after help/version/kits and parsing.
+	env := dispatchCLI{
+		before: func() error {
+			deskkit.SetToolClass(deskkit.ClassForTool(false))
+			deskkit.EchoEffectiveConfig(os.Stderr)
+			if !deskkit.CheckVerbActivation(os.Stderr) {
+				return deskkit.Unverifiable("deskdispatch activation could not be established", nil)
+			}
+			return nil
+		},
+		handle: func(mode string, o dispatchOpts, override string) error {
+			if err := dispatchGuard(); err != nil {
+				return err
+			}
+			return executeMode(mode, o, override)
+		},
+	}
+	// The one measurement finalizer wraps the whole command, parsing included, so
+	// the timer never restarts after Cobra. Consent is the environment opt-in only;
+	// help/version/kits classify themselves without reading operational config.
+	os.Exit(deskkit.PerfRun("deskdispatch", perfVerbs, args, func(a []string) int {
+		return parseDispatchCLI(a, env, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr})
+	}))
+}
+
+func dispatchGuard() error {
+	if err := deskkit.Guard(); err != nil {
+		return err
+	}
+	deskkit.WarnIfUnpinned(os.Stderr)
+	return nil
 }
 
 func run(args []string) int {
-	// The global diagnostic switch, taken BEFORE any flag parsing or subcommand dispatch so
-	// `--trace` works on every verb spelling and is invisible to every FlagSet below. The
-	// env form (DESK_TRACE=1) needs no help: deskkit reads it on first use, which is what
-	// makes it survive across the desk verbs this one shells out to.
-	args = deskkit.TakeTraceFlag(args)
-
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
-		sha, built := deskkit.Version()
-		fmt.Printf("deskdispatch sourceSHA=%s builtAt=%s releaseTag=%s\n", sha, built, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
-	}
-	if len(args) == 1 && args[0] == "--kits" {
-		for _, k := range kitNames() {
-			fmt.Println(k)
-		}
-		return deskkit.ExitOK
-	}
-	if len(args) == 0 || args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintln(os.Stderr, usage)
-		fmt.Fprintln(os.Stderr, "\nPROMPT KITS (references/, embedded in this binary): "+
-			joinKits())
-		if len(args) == 0 {
-			return deskkit.ExitRefused
-		}
-		return deskkit.ExitOK
-	}
-
-	// The kill-switch check is the FIRST gated action.
-	if err := deskkit.Guard(); err != nil {
-		fmt.Fprintln(os.Stderr, err.Error())
-		return deskkit.ExitCodeOf(err)
-	}
-	deskkit.WarnIfUnpinned(os.Stderr)
-
-	err := cmdDispatch(args)
-	// The shared exit path. With DESK_TRACE off this is byte-identical to the
-	// fmt.Fprintln(os.Stderr, err.Error()) it replaces; with it on, the same first line is
-	// followed by the cause chain, every child process with its exit status and timing, and
-	// the failing child's stderr in full — all scrubbed of credentials.
-	deskkit.ReportError(os.Stderr, err)
-	return deskkit.ExitCodeOf(err)
+	return parseDispatchCLI(args, dispatchCLI{before: dispatchGuard, handle: executeMode}, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr})
 }

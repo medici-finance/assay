@@ -39,40 +39,16 @@ type forgeIssueSource struct {
 	notice   io.Writer // when set, names each repository once, before its first forge contact
 	forges   map[string]deskkit.Forge
 	errs     map[string]error
+	pending  map[string]*pendingChanges
 }
 
 func (s *forgeIssueSource) IssueState(ref deskkit.BlockerRef) (deskkit.BlockerState, string) {
 	repo := ref.Repo()
-	key := repo.Slug()
-	if !deskkit.IsAllowedRepo(key) {
-		return deskkit.BlockerCouldNotCheck, "repository " + key +
-			" is outside the configured repository set — not read"
+	fg, err := s.forge(repo)
+	if err != nil {
+		return deskkit.BlockerCouldNotCheck, oneLine(err)
 	}
-	if s.forges == nil {
-		s.forges, s.errs = map[string]deskkit.Forge{}, map[string]error{}
-	}
-	fg, ok := s.forges[key]
-	if !ok {
-		if err, failed := s.errs[key]; failed {
-			return deskkit.BlockerCouldNotCheck, "no forge read for " + key + ": " + oneLine(err)
-		}
-		if s.notice != nil {
-			fmt.Fprintf(s.notice, "verify-desk plan: reading blocker state from %s as the verifier App\n", key)
-		}
-		f, err := s.forgeFor(repo)
-		if err != nil || f == nil {
-			if err == nil {
-				err = deskkit.Unverifiable("no forge resolved", nil)
-			}
-			s.errs[key] = err
-			return deskkit.BlockerCouldNotCheck, "no forge read for " + key + ": " + oneLine(err)
-		}
-		s.forges[key], fg = f, f
-	}
-	var (
-		iss *deskkit.Issue
-		err error
-	)
+	var iss *deskkit.Issue
 	if ref.Kind == "change" {
 		iss, err = fg.GetIssueTyped(repo, ref.Number, deskkit.TargetChange)
 	} else {
@@ -91,6 +67,37 @@ func (s *forgeIssueSource) IssueState(ref deskkit.BlockerRef) (deskkit.BlockerSt
 		return deskkit.BlockerClosed, ""
 	}
 	return deskkit.BlockerCouldNotCheck, "reading " + ref.Raw + ": unknown state " + iss.State
+}
+
+// forge is the existing allowlisted coordinate and credential boundary, shared
+// by blocker and pending-Evidence reads. Errors remain cached for this pass.
+func (s *forgeIssueSource) forge(repo deskkit.ForgeRepo) (deskkit.Forge, error) {
+	key := repo.Slug()
+	if !deskkit.IsAllowedRepo(key) {
+		return nil, fmt.Errorf("repository %s is outside the configured repository set — not read", key)
+	}
+	if s.forges == nil {
+		s.forges, s.errs = map[string]deskkit.Forge{}, map[string]error{}
+	}
+	fg, ok := s.forges[key]
+	if !ok {
+		if err, failed := s.errs[key]; failed {
+			return nil, fmt.Errorf("no forge read for %s: %w", key, err)
+		}
+		if s.notice != nil {
+			fmt.Fprintf(s.notice, "verify-desk plan: reading verification scheduling state from %s as the verifier App\n", key)
+		}
+		f, err := s.forgeFor(repo)
+		if err != nil || f == nil {
+			if err == nil {
+				err = deskkit.Unverifiable("no forge resolved", nil)
+			}
+			s.errs[key] = err
+			return nil, fmt.Errorf("no forge read for %s: %w", key, err)
+		}
+		s.forges[key], fg = f, f
+	}
+	return fg, nil
 }
 
 func oneLine(err error) string {

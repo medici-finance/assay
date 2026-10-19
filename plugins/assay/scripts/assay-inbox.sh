@@ -651,6 +651,38 @@ def strip: sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "");
 def nonblank: map(select(test("[^[:space:]]")));
 def isheading: test("^[[:space:]]*#{1,6}[[:space:]]");
 def demd: gsub("\\*\\*"; "") | gsub("`"; "");
+# HTML comments are cut but their line breaks are kept, so the text either side of a
+# multi-line comment stays on its own line (deskkit's per-line scan reads it the same way).
+def visiblelines($text):
+  ($text // "") | gsub("\r"; "")
+  | gsub("<!--(?<c>[\\s\\S]*?)-->"; (.c | gsub("[^\n]"; "")))
+  | sub("<!--(?<c>[\\s\\S]*)$"; (.c | gsub("[^\n]"; ""))) | split("\n");
+def sectionin($ls; $re):
+  ($ls | to_entries | map(select(.value | test($re; "i"))) | first) as $h
+  | if $h == null then []
+    else ($ls[($h.key + 1):]) as $rest
+      | ($rest | map(isheading) | index(true)) as $stop
+      | (if $stop == null then $rest else $rest[:$stop] end)
+    end;
+def optionsin($ls):
+  sectionin($ls; "^[[:space:]]*#{1,6}[[:space:]]*Options?\\b") | nonblank | map(strip)
+  | map(select(test("^(?:[-*][[:space:]]*)?(?:\\*\\*)?[A-Da-d1-4][.)][[:space:]]")))
+  | map(capture("^(?:[-*][[:space:]]*)?(?:\\*\\*)?(?<let>[A-Da-d1-4])[.)][[:space:]]*(?<txt>.+)$"))
+  | .[0:4];
+# The standalone marker: `(recommended)` in any case, opening the text or after one space or
+# tab, and ending the text or followed by a space, a tab or one of .,;:!? (a lookahead, so
+# adjacent markers each count). A match also takes a `—`/`–`/`-` separator directly before
+# it when whitespace precedes that separator, so cutting it leaves no dangling dash.
+# ASCII whitespace only: deskkit.decMarkerSpans implements this same grammar.
+def recmark: "(?:[ \\t]+[—–-])?(?:^|[ \\t])\\(recommended\\)(?=$|[ \\t.,;:!?])";
+def markcount:
+  demd | clean | [scan(recmark; "i")] | length;
+def exact_recommendation($opts):
+  ($opts | to_entries | map(. + {markCount: (.value.txt | markcount)})) as $marked
+  | ([$marked[].markCount] | add // 0) as $count
+  | if $count == 1 then ($marked | map(select(.markCount == 1)) | first) else null end;
+def cleanoption:
+  demd | clean | strip | gsub(recmark; ""; "i") | strip;
 
 # The screen's roster input (resolve_roster: the ratifying identity, the trusted authors,
 # the roster App slugs) travels through the ENVIRONMENT ($ENV), not --argjson: this program
@@ -676,13 +708,8 @@ def loginlist: (try fromjson catch [])
 # HTML comments are the marker channel the desk tools write into issue bodies; they are not
 # prose for the driver, so they never become Context.
 | ((($d.body // "") | lines | map(select(test("^[[:space:]]*<!--") | not)))) as $bl
-| def section($re):
-    ($bl | to_entries | map(select(.value | test($re; "i"))) | first) as $h
-    | if $h == null then []
-      else ($bl[($h.key + 1):]) as $rest
-        | ($rest | map(isheading) | index(true)) as $stop
-        | (if $stop == null then $rest else $rest[:$stop] end)
-      end;
+| (visiblelines($d.body)) as $optionLines
+| def section($re): sectionin($bl; $re);
 
   (section("^[[:space:]]*#{1,6}[[:space:]]*(Context|Situation|Ask|Summary|Problem)\\b")) as $csec
 | (if ($csec | nonblank | length) > 0 then $csec else ($bl | map(select(isheading | not))) end
@@ -722,26 +749,22 @@ def loginlist: (try fromjson catch [])
 # line; at most two body lines plus unblocks, the desk note and the gate line.
 | (($ctx + [$blocked] + $unb + $note + [$gate]) | .[0:6]) as $context
 
-| (section("^[[:space:]]*#{1,6}[[:space:]]*Options?\\b")) as $osec
-| ($osec | nonblank | map(strip)
-   | map(select(test("^(?:[-*][[:space:]]*)?(?:\\*\\*)?[A-Da-d1-4][.)][[:space:]]")))
-   | map(capture("^(?:[-*][[:space:]]*)?(?:\\*\\*)?(?<let>[A-Da-d1-4])[.)][[:space:]]*(?<txt>.+)$"))
-   | .[0:4]) as $oraw
-# Detected on the RAW text, before the marker is stripped out of the rendered label.
-| ((($oraw | to_entries | map(select(.value.txt | test("recommend"; "i"))) | first | .key) // 0)) as $recidx
+| (sectionin($optionLines; "^[[:space:]]*#{1,6}[[:space:]]*Options?\\b")) as $osec
+| (optionsin($optionLines)) as $oraw
+# One exact marker controls both display order and command authority; zero or multiple
+# markers leave every option unlabelled and preserve source order.
+| (exact_recommendation($oraw)) as $rec
 | ($oraw | to_entries
-   | sort_by(if .key == $recidx then 0 else 1 end, .key)
-   | map(.value.txt | demd | clean | strip
-         | sub("[[:space:]]*[—-]?[[:space:]]*\\(?[Rr]ecommended\\)?[[:space:]]*$"; "")
-         | sub("^\\(?[Rr]ecommended\\)?[[:space:],:;—-]*"; "")
-         | strip)
-   | map(select(. != ""))
+   | sort_by(if ($rec != null) and (.key == $rec.key) then 0 else 1 end, .key)
+   | map(.key as $sourceIndex | (.value.txt | cleanoption) as $txt
+         | select($txt != "") | {sourceIndex:$sourceIndex, text:$txt})
    | to_entries
-   | map(.key as $i
-         | {letter: (["A", "B", "C", "D"] | .[$i]), text: .value, recommended: ($i == 0)})
+   | map(.key as $i | .value as $opt
+         | {letter: (["A", "B", "C", "D"] | .[$i]), text: $opt.text,
+            recommended: (($rec != null) and ($opt.sourceIndex == $rec.key))})
   ) as $opts
 | (if ($opts | length) > 0 then $opts
-   else [{letter: "A", text: "options not yet stated — desk to fill", recommended: true}]
+   else [{letter: "A", text: "options not yet stated — desk to fill", recommended: false}]
    end) as $options
 | (($opts | length) > 0) as $stated
 
@@ -811,11 +834,11 @@ def loginlist: (try fromjson catch [])
 # An Options section that parses to ONE entry and holds no second list line, or — only when
 # there is NO Options section — a fork-test block with exactly one `option:` line. A stray
 # "Option:" prose line never overrides a parsed Options section.
-| (($bl | map(select(test("^[[:space:]]*#{1,6}[[:space:]]*Options?\\b"; "i"))) | length) > 0) as $hasOptionsHeading
+| (($optionLines | map(select(test("^[[:space:]]*#{1,6}[[:space:]]*Options?\\b"; "i"))) | length) > 0) as $hasOptionsHeading
 | ($osec | nonblank | map(strip)
    | map(select(test("^(?:[-*+][[:space:]]|(?:\\*\\*)?[A-Za-z0-9][.)])"))) | length) as $osecListLines
 | ($hasOptionsHeading and (($opts | length) == 1) and ($osecListLines <= 1)) as $optionsSingle
-| ($bl | nonblank | map(strip | demd | clean) | map(select(test("^option:"; "i"))) | length) as $forkOptionCount
+| ($optionLines | nonblank | map(strip | demd | clean) | map(select(test("^option:"; "i"))) | length) as $forkOptionCount
 | (($hasOptionsHeading | not) and ($forkOptionCount == 1)) as $forkSingle
 | ($bodyTrusted and ($optionsSingle or $forkSingle)) as $isNoFork
 
@@ -859,11 +882,10 @@ def loginlist: (try fromjson catch [])
 #   a. the body author is trusted ($bodyTrusted): anyone can open an issue on a public repo,
 #      so an untrusted body is never evidence (see resolve_roster);
 #   b. there is a recommended letter, and the ruling names it. The letter is the ORIGINAL
-#      letter (the walk re-letters it A) of the one visible option carrying the standalone
-#      "(recommended)" marker, when no other option mentions "recommend" at all and the
-#      visible Options equal the ones the walk shows; with no Options section, it is a
-#      fork-test `default:` naming one of the block's
-#      own `option:` letters. The ruling is the first double-quoted phrase in a "How to
+#      letter (the walk re-letters it A) of the one visible option carrying the exact
+#      standalone "(recommended)" marker; the visible Options equal the ones the walk shows.
+#      With no Options section, the recommendation is a fork-test `default:` naming one of
+#      the block's own `option:` letters. The ruling is the first double-quoted phrase in a "How to
 #      answer" (or "How to reply" / "How to respond") section that names that letter
 #      ("A", "B — drop it", "ratify B"), else the fork-test default when its letter is the
 #      recommended one, verbatim;
@@ -884,50 +906,21 @@ def loginlist: (try fromjson catch [])
     [capture("^(?:[Oo]ption[[:space:]]+)?(?<l>[A-Da-d1-4])(?:$|[.)!:,]|[[:space:]]*[—–-])") | .l | ascii_upcase] | first;
   def phraseletter:
     sub("^(?:[Ii][[:space:]]+)?(?:[Rr]atif(?:y|ied)|[Aa]pproved?)[[:space:]:,]+"; "") | optletter;
-  def sectionin($ls; $re):
-    ($ls | to_entries | map(select(.value | test($re; "i"))) | first) as $h
-    | if $h == null then []
-      else ($ls[($h.key + 1):]) as $rest
-        | ($rest | map(isheading) | index(true)) as $stop
-        | (if $stop == null then $rest else $rest[:$stop] end)
-      end;
-  # The same Options parse as $oraw, over the VISIBLE lines. Gate b requires the two to be
-  # equal, so a parse drift between them fails closed (not derivable), never open.
-  def optionsin($ls):
-    sectionin($ls; "^[[:space:]]*#{1,6}[[:space:]]*Options?\\b") | nonblank | map(strip)
-    | map(select(test("^(?:[-*][[:space:]]*)?(?:\\*\\*)?[A-Da-d1-4][.)][[:space:]]")))
-    | map(capture("^(?:[-*][[:space:]]*)?(?:\\*\\*)?(?<let>[A-Da-d1-4])[.)][[:space:]]*(?<txt>.+)$"))
-    | .[0:4];
-  # The standalone marker only: a trailing "(recommended)" or "— recommended", or a leading
-  # "(Recommended)" / "Recommended:". Never a word that merely contains "recommend"
-  # ("recommendation") and never a negated form ("(not recommended)", "non-recommended").
-  def strictmark:
-    demd | clean | strip
-    | test("(?:^|[[:space:]])\\(recommended\\)$|[[:space:]][—–-][[:space:]]*recommended$|^\\(recommended\\)|^recommended[[:space:]]*[:—–-]"; "i");
   # Visible lines only: HTML comments and Markdown link-reference definitions
   # (`[//]: # "…"`) are not rendered by GitHub.
-  ((($d.body // "") | gsub("\r"; "") | gsub("<!--[\\s\\S]*?-->"; "") | sub("<!--[\\s\\S]*$"; "")
-    | split("\n") | map(select(test("^ {0,3}\\[[^\\]]+\\]:") | not)))) as $vis
+  ($optionLines | map(select(test("^ {0,3}\\[[^\\]]+\\]:") | not))) as $vis
 | ($vis | nonblank | map(strip | demd | clean)) as $visc
 | ($visc | map(select(test("^option:"; "i")) | sub("^option:[[:space:]]*"; ""; "i") | optletter | select(. != null))) as $forkLetters
 | ((($visc | map(select(test("^default:"; "i"))) | .[0]) // "") | sub("^default:[[:space:]]*"; ""; "i") | strip) as $defaultFull
 | ($defaultFull | optletter) as $defaultLetter
 | (($defaultLetter != null) and ($forkLetters | any(. == $defaultLetter))) as $defaultNamesFork
 | optionsin($vis) as $voraw
-# Exactly ONE visible option may mention "recommend" at all, and it must carry the standalone
-# marker. A second mention (even "recommendation") is where the walk's own substring test
-# could pick another option, so the walk and the command could disagree: not derivable.
-| ($voraw | map(select(.txt | test("recommend"; "i")))) as $recMentions
-| (if (($recMentions | length) == 1) and ($recMentions[0].txt | strictmark)
-   then $recMentions[0] else null end) as $recMarked
-# A marked option whose text cleans to empty is dropped from the walk (see $opts), so it is
-# not the option the walk presents as recommended: no letter.
-| (if $voraw != $oraw then null
-   elif ($recMarked != null)
-       and (($recMarked.txt | demd | clean | strip
-             | sub("[[:space:]]*[—-]?[[:space:]]*\\(?[Rr]ecommended\\)?[[:space:]]*$"; "")
-             | sub("^\\(?[Rr]ecommended\\)?[[:space:],:;—-]*"; "") | strip) != "")
-   then ($recMarked.let | ascii_upcase)
+| (exact_recommendation($voraw)) as $visibleRec
+# The command uses the same visible parse and exact-marker helper as the walk. A mismatch or
+# ambiguous/missing marker fails closed rather than composing a command for an invented choice.
+| (if ($voraw != $oraw) or ($visibleRec != $rec) then null
+   elif ($visibleRec != null) and (($visibleRec.value.txt | cleanoption) != "")
+   then ($visibleRec.value.let | ascii_upcase)
    elif (($voraw | length) == 0) and $defaultNamesFork then $defaultLetter
    else null
    end) as $recLetter

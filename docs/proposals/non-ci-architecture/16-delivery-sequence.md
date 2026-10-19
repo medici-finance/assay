@@ -190,3 +190,12 @@ the first workflow cutover. The [ci-tooling stream](../../streams/ci-tooling/REA
 owns this decomposition; it does not wait for the runtime controller. R8 retains the
 desk/operator/service relocation work routed by the layout inventory and must qualify
 module visibility, authority and lifecycle before retiring their old paths.
+
+## Execution-environment delivery — 16 October 2026
+
+[Agent-execution](../../streams/agent-execution/README.md) extends the R3 runner boundary:
+/01 profile contract then /02 preparation receipt can proceed over implemented runner v1;
+/03 follows the existing supervisor/first adapter, /04 follows actual controller/publication,
+and /05 follows their recovery proof and standing clients. The independent /06 AX feasibility
+report neither gates the local path nor activates a remote service. Use its typed dependency
+waves and existing R1–R8 owners; do not duplicate their implementations to accelerate a demo.
