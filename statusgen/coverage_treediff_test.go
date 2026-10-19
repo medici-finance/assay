@@ -245,8 +245,10 @@ func TestTreeDiffItemUnresolvable(t *testing.T) {
 // non-test file in this package may ask git for ancestry; witnessTreeApplies
 // compares trees instead. A future need for ancestry that is NOT a witness
 // judgement must be argued in review and allowlisted here by file, with why.
+// regression: #1915
 func TestNoAncestryWitnessJudge(t *testing.T) {
 	allow := map[string]string{ // file -> why; each entry argued in review
+		"consumerdelivery.go":   "explicit consumer DELIVERY provenance (#1915), not witness applicability: require the caller-named immutable delivery to be landed in this checkout before inspecting its own first-parent diff and delivered routing claims. This does not read or certify execution witnesses; witnessTreeApplies retains content comparison across squash merges",
 		"failfirst_ancestry.go": "fail-first BASE provenance (verify-integrity/03), not witness applicability: the closure gate and the runner ask whether the base a row was shown red on is the merge-base of HEAD and the default branch or an ancestor of it (compared as resolved object ids), because a red on a sibling, branch or stale tree proves nothing about this change. Closures already on main are grandfathered by closedAtBase before the question is asked. Applicability stays witnessTreeApplies' tree comparison",
 	}
 	var files []string

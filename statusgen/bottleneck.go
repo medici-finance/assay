@@ -115,6 +115,9 @@ func computeBottleneck(streams []*Stream, history []HistoryEntry, now time.Time)
 	total := 0
 	for _, s := range streams {
 		for _, b := range s.Briefs {
+			if isWithdrawn(b.Status) {
+				continue // terminal: never pipeline WIP, never a constraint
+			}
 			wipByStage[b.Status]++
 			total++
 		}
@@ -132,6 +135,9 @@ func computeBottleneck(streams []*Stream, history []HistoryEntry, now time.Time)
 	var briefs []briefState
 	for _, s := range streams {
 		for _, b := range s.Briefs {
+			if isWithdrawn(b.Status) {
+				continue
+			}
 			briefs = append(briefs, briefState{status: b.Status, id: s.Name + "/" + b.Num})
 		}
 	}

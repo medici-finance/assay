@@ -334,9 +334,11 @@ func TestCockpitLaunchCarriesNoMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := f.run(t, []string{"PATH=" + bin + ":/usr/bin:/bin", "ASSAY_CELL=example", "ASSAY_CELL_DIR=" + f.cellDir, "ASSAY_CELL_ROLE=the-desk"},
-		"up", "example", "--cockpit", "tmux", "--no-attach") // the-desk window: up must reach tmux
+		"up", "example", "--cockpit", "tmux", "--no-attach", "--lease-wait", "1s") // the-desk window: up must reach tmux
 
-	if r.code != 0 {
+	// The stub opens a window but never starts the role, so up reports the role failed (it never
+	// took its lease) — what this test pins is the launch environment, not the role.
+	if r.code != 1 || !strings.Contains(r.stdout, "failed") {
 		t.Fatalf("up: %+v", r)
 	}
 	if calls, _ := os.ReadFile(out + ".calls"); !strings.Contains(string(calls), "new-session") {

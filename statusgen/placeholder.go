@@ -452,7 +452,7 @@ func checkPlaceholderFiles(streams []*Stream) (problems, notices []string) {
 			if !validGate[ph.Gate] {
 				add("%s: invalid gate %q (want model or human)", path, ph.Gate)
 			}
-			if !validBriefStatus[ph.Status] {
+			if !validPlaceholderStatus[ph.Status] {
 				add("%s: invalid status %q", path, ph.Status)
 			}
 			if ph.Value != "" && !validValue[ph.Value] {
