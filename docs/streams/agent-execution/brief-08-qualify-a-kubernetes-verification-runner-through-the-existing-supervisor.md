@@ -83,7 +83,7 @@ manifest, API success or a published verdict. This brief does not choose a produ
    The submitted Pod spec has a non-negotiable floor: privileged=false,
    allowPrivilegeEscalation=false, runAsNonRoot=true, all Linux capabilities dropped with
    none added, seccomp RuntimeDefault (or a stricter qualified profile), readOnlyRootFilesystem=true,
-   hostNetwork/hostPID/hostIPC=false, no hostPath and no default service-account token.
+   hostNetwork=false, hostPID=false and hostIPC=false, no hostPath and no default service-account token.
    Apply the floor to every regular, init and any permitted ephemeral container; reject
    unrecognized injected container/mount/profile fields. Writable scratch/output uses only
    declared bounded volumes, never a writable root or node mount. Unsupported workloads hold.
