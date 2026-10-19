@@ -280,10 +280,16 @@ The body MUST contain a `## Context` section. It MUST include:
   bounded finite brace alternatives are supported. A declaration ends before
   its em-dash description or a colon after a quoted path; descriptions and
   parenthesized annotations do not declare additional paths. The field ends at
-  the next blank line, column-zero Context field key or section. Indented
-  non-declaration text and files markers outside Context are explicit refusals.
+  the next blank line, known column-zero Context field key or section. A key may
+  carry a parenthesized annotation, such as `facts (date):`. Trailing whitespace
+  and CRLF MUST NOT count as indentation. Unknown keys, loose list/quote/code
+  continuations after the blank, and unsupported markers inside Context MUST
+  refuse rather than drop declarations. Outside Context, field-shaped `files:`
+  declarations refuse; ordinary prose and inline references remain prose.
   Hyphen-minus/en-dash description separators are unsupported. Examples inside fences do not
-  declare paths. Duplicate Context sections/fields are ambiguous and refused.
+  declare paths. A closing fence MUST use the same character and be at least as
+  long as its opener; an unclosed fence refuses. Duplicate Context sections/fields
+  are ambiguous and refused.
   Abbreviations, placeholders, recursive `**` and malformed/escaping paths MUST
   be reported explicitly, never interpreted as absent deliverables. See the
   [declaration and observation contract](../docs/declared-input-scope.md).

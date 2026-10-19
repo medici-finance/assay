@@ -7,8 +7,10 @@ resolver now own the writer, coverage and Source-to-Evidence shape contract.
 ## Declaration grammar
 
 Only an exact, column-zero `files:` inside one unfenced `## Context` declares inputs.
-A files marker outside that section, or with unsupported capitalization/formatting,
-is refused rather than treated as an absent declaration. A field can start
+A field-shaped `files:` marker outside that section is refused. Ordinary prose
+starting with “Files” and inline code references to `files:` remain prose. Inside
+Context, unsupported capitalization or list, quote, backtick and emphasis prefixes
+on a files marker are refused rather than treated as an absent declaration. A field can start
 inline or continue as list items. Bare and backtick-quoted repository paths are
 equivalent. Commas, semicolons, `+` and `and` separate declarations. Optional bold
 action labels, parenthesized annotations and the existing `and tests`/`their tests`
@@ -16,12 +18,21 @@ annotations are prose; name actual test paths when those tests belong to scope.
 An em-dash description, or a colon after a quoted path, ends the declaration part
 of that line. Backticks inside that description, facts, other sections and fenced
 examples do not add files. A blank line, another Context field or section ends the
-field. A list item after that blank is refused as ambiguous until another Context
-field begins; a loose list cannot silently narrow scope. A following field key must be at column zero; a quoted path ending in a
+field. After that blank, list markers (`-`, `*`, `+`, `N.`, `N)` followed by
+whitespace), backtick-led lines, quote-led lines and indented continuations are
+refused as ambiguous until a known Context field begins. A following field key
+must be at column zero; trailing whitespace and CRLF do not add indentation.
+Known boundary keys are `facts`, `layering`, `design-fit`, `single-point-of-failure`,
+`risk-answers`, `layout` and the separate `out-of-repo files` metadata field. They
+may carry a parenthesized annotation before the colon, such as `facts (date):`.
+An unknown key while the declaration is open or awaiting its next field refuses;
+it cannot silently discard later files. A quoted path ending in a
 colon remains a declaration, while indented prose is an explicit unsupported-form
 error. Hyphen-minus and en-dash separators are unsupported; only the documented
 em dash introduces description text. Duplicate Context sections or files fields
-are refused explicitly.
+are refused explicitly. Fences close only with the same character and at least
+the opener's length; an unclosed fence refuses the scope. External metadata is
+not permission to read outside the admitted repository.
 
 Supported path forms:
 
@@ -102,13 +113,16 @@ retains those exact file sets. Their real failed acceptance rows remain owed;
 this parser fix grants no lifecycle promotion and rewrites none of those receipts.
 
 
-At source `6de70c43819e` (485 tracked `docs/streams/**/brief-*.md` files),
-the repaired parser and Git-tree resolver produced 147 supported scopes and 338
-explicit refusals, with no successful empty scopes in this corpus. These are
-first diagnostics per brief, not counts of every bad token. The initial inventory's
-183 supported/299 refused/three empty classification was corrected after review
-exposed partial declarations and files fields outside Context. The in-module
-regression excerpts preserve the five reviewed declaration-position cases.
+Against the 485 tracked `docs/streams/**/brief-*.md` corpus files from
+`770d48ba75d74c4a3057890ee2655c68a3c5e67a`, this repair produces 182 supported
+scopes and 303 explicit refusals, with no successful empty scopes. Every accepted
+scope resolves successfully. Comparing with the parser at `fbba4b315c1e` over the
+same files: 35 scopes recover, no previously supported scope begins refusing, and
+no retained successful declaration list changes. The earlier 147/338 count
+included valid annotated fields and prose incorrectly classified as authoring
+defects; that interpretation is withdrawn. These are first diagnostics per brief,
+not counts of every bad token or historical verification results. The in-module
+regression excerpts retain the five genuine declaration-position refusals.
 
 | Named example | Canonical declarations | Existing implementation files |
 |---|---:|---:|

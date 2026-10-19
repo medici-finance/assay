@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode"
@@ -28,15 +29,16 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 	seen := map[string]bool{}
 	for _, raw := range strings.Split(content, "\n") {
 		line := strings.TrimSpace(raw)
-		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
-			if fence == "" {
-				fence = line[:3]
-			} else if strings.HasPrefix(line, fence) && strings.TrimSpace(strings.TrimLeft(line, string(fence[0]))) == "" {
+		columnZero := raw == strings.TrimLeftFunc(raw, unicode.IsSpace)
+		if fence != "" {
+			if strings.HasPrefix(line, fence) && strings.TrimSpace(strings.TrimLeft(line, string(fence[0]))) == "" {
 				fence = ""
 			}
 			continue
 		}
-		if fence != "" {
+		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
+			length := len(line) - len(strings.TrimLeft(line, string(line[0])))
+			fence = line[:length]
 			continue
 		}
 		if strings.HasPrefix(line, "## ") {
@@ -50,9 +52,11 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 			block, endedByBlank = false, false
 			continue
 		}
-		markerLine := strings.TrimLeft(strings.ToLower(line), "*_")
-		marker := strings.HasPrefix(markerLine, "files:") || strings.HasPrefix(markerLine, "files ") || strings.HasPrefix(markerLine, "files\t") || strings.HasPrefix(markerLine, "files*") || strings.HasPrefix(markerLine, "files_")
-		if marker && (!context || raw != line) {
+		markerLine := scopeMarkerText(line)
+		fieldMarker := scopeFilesFieldPattern.MatchString(markerLine)
+		outsideFieldMarker := scopeOutsideFilesFieldPattern.MatchString(strings.TrimLeft(line, "*_"))
+		marker := outsideFieldMarker || (context && (fieldMarker || scopeBroadFilesMarker(markerLine)))
+		if marker && (!context || !columnZero) {
 			return nil, Refused("refused: files: field must be at column zero in Context")
 		}
 		if !context {
@@ -72,16 +76,20 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 			}
 		} else if !block {
 			if endedByBlank {
-				if raw == line && scopeFieldKey(line) {
+				if columnZero && scopeFieldKey(line) {
 					endedByBlank = false
-				} else if strings.HasPrefix(line, "- ") {
+				} else if columnZero && scopeContextFieldPattern.MatchString(line) {
+					return nil, Refused("refused: unknown Context field after files: declaration")
+				} else if scopeLooseContinuation(raw, line) {
 					return nil, Refused("refused: ambiguous files: list continuation after blank line")
 				}
 			}
 			continue
-		} else if line == "" || (raw == line && scopeFieldKey(line)) {
+		} else if line == "" || (columnZero && scopeFieldKey(line)) {
 			block, endedByBlank = false, line == ""
 			continue
+		} else if columnZero && scopeContextFieldPattern.MatchString(line) {
+			return nil, Refused("refused: unknown Context field inside files: declaration")
 		}
 		if !block {
 			continue
@@ -106,24 +114,87 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 			}
 		}
 	}
+	if fence != "" {
+		return nil, Refused("refused: unclosed Markdown fence; declared scope cannot be established")
+	}
 	if found && len(out) == 0 {
 		return nil, Refused("refused: empty Context files: declaration")
 	}
 	return out, nil
 }
 
-// scopeFieldKey recognizes a field name, never a quoted path or indented prose.
+var (
+	scopeContextFieldPattern      = regexp.MustCompile(`^(out-of-repo files|[a-z0-9-]+)(?: \([^)]*\))?:`)
+	scopeFilesFieldPattern        = regexp.MustCompile("(?i)^files?[*_`]*(?:\\s*\\([^)]*\\))?[*_`]*\\s*:")
+	scopeOutsideFilesFieldPattern = regexp.MustCompile(`(?i)^files[*_]*(?:\s*\([^)]*\))?[*_]*\s*:`)
+)
+
+// Only known Context fields end the declaration. An arbitrary prose key such as
+// "see:" cannot silently discard the rest of the files list.
 func scopeFieldKey(line string) bool {
-	i := strings.IndexByte(line, ':')
-	if i <= 0 {
+	match := scopeContextFieldPattern.FindStringSubmatch(line)
+	if match == nil {
 		return false
 	}
-	for _, c := range line[:i] {
-		if !(c >= 'a' && c <= 'z') && !(c >= '0' && c <= '9') && c != '-' {
-			return false
+	switch match[1] {
+	case "facts", "layering", "design-fit", "single-point-of-failure", "risk-answers", "layout", "out-of-repo files":
+		return true
+	}
+	return false
+}
+
+// Strip formatting only for detecting unsupported field markers. This never
+// converts a formatted marker into an accepted files: declaration.
+func scopeMarkerText(line string) string {
+	for {
+		before := line
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, ">") {
+			line = strings.TrimPrefix(line, ">")
+		} else if n := scopeListPrefix(line); n != 0 {
+			line = line[n:]
+		} else {
+			line = strings.TrimLeft(line, "*_`")
+		}
+		if line == before {
+			return strings.ToLower(line)
 		}
 	}
-	return true
+}
+
+func scopeBroadFilesMarker(line string) bool {
+	if !strings.HasPrefix(line, "files") {
+		return false
+	}
+	tail := strings.TrimPrefix(line, "files")
+	return tail == "" || strings.ContainsAny(tail[:1], ":*_`(") || tail != strings.TrimLeftFunc(tail, unicode.IsSpace)
+}
+
+func scopeListPrefix(line string) int {
+	if line == "" {
+		return 0
+	}
+	i := 0
+	if strings.ContainsRune("-*+", rune(line[0])) {
+		i = 1
+	} else {
+		for i < len(line) && line[i] >= '0' && line[i] <= '9' {
+			i++
+		}
+		if i == 0 || i == len(line) || (line[i] != '.' && line[i] != ')') {
+			return 0
+		}
+		i++
+	}
+	if i == len(line) || line[i:] != strings.TrimLeftFunc(line[i:], unicode.IsSpace) {
+		return i
+	}
+	return 0
+}
+
+func scopeLooseContinuation(raw, line string) bool {
+	return line != "" && (raw != strings.TrimLeftFunc(raw, unicode.IsSpace) ||
+		scopeListPrefix(line) != 0 || strings.HasPrefix(line, "`") || strings.HasPrefix(line, ">"))
 }
 
 func declarationLine(line string) ([]string, error) {
