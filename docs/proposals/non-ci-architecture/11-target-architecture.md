@@ -454,3 +454,20 @@ from native-mode qualification. Runtime evidence is implemented against the curr
 PostgreSQL/role/attempt owners; no replacement store, scheduler or event lifecycle is added.
 Actual adopter trials, data and budgets are outside the public method. This is a new proposal,
 not an enlargement of the earlier revision-bound ratification or a deployed capability.
+
+## Local write policy — amendment, 18 October 2026
+
+The proposed [shared write-policy contract](../../write-policy.md) places deterministic
+write-isolation evaluation in `deskcore/writepolicy`, with writeguard retained as the
+command-hook adapter. Managed workspace owners supply validated allocation context;
+the harness/container still confines actual filesystem access. This adds no generic
+security service and merges no push, credential, process or cleanup authority.
+Delivery: desktools-v2/63, then the writeguard portion of /31 and managed consumer
+integration/qualification. This amendment is proposed, not part of an earlier ratification.
+
+Target-consumer clarification, 18 October 2026: graph-execution/22 directly consumes
+/63 for the local harness boundary and independent sandbox proof. The pending
+medici-finance/assay#3409 proposal may retire /31's parser work after its human
+ruling; that never retires the shared policy or the target consumer. /63 does not
+depend on any parser port. Until an authorized withdrawal lands, /31's existing
+compatibility contract and human gate remain intact.

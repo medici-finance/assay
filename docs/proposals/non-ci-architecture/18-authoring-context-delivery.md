@@ -87,3 +87,14 @@ additive contract/parser/resolver work to statusgen/23 after /20 and product rec
 Statusgen/21 now depends on /23 and cites only the actually shipped extension version.
 Unsupported versions use the explicit manual bootstrap and coverage limits. No installed
 skill cache is edited by this planning change.
+
+## Pickup integration amendment — 18 October 2026
+
+Extend statusgen/20–21's existing path to implementation pickup/resume and material
+scope changes. /20 includes applicable engineering guidelines, planned owners and
+replacements in scoped discovery/recheck. /21 integrates both worker prompt kits,
+the worker skill and dispatch adapter with the same shipped operation/receipt, tests
+zero launch on a material unresolved conflict, and documents supported versions.
+Until available, use the bounded [manual pickup assessment](../../../plugins/assay/references/implementation-pickup.md).
+This is an amendment to unfinished work, not a claim that automation or installed
+skill updates exist. Existing approved work is not held by a competing draft.

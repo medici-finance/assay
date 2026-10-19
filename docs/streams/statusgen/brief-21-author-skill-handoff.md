@@ -5,12 +5,12 @@ why: "The spec and brief authoring skills are where plan changes are actually ma
 wave: 4
 depends: ["statusgen/20", "statusgen/23"]
 unblocks: []
-effort: M
+effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-10-13 by worker-desk (author-brief), non-CI architecture reconciliation
 sources:
   - docs/proposals/non-ci-architecture/18-authoring-context-delivery.md — packages "Canonical skill integration" and "Release and adoption support"
@@ -24,6 +24,7 @@ exec-tier-why: Changes the canonical authoring skills every adopter installs; wo
 domain: complicated
 outcome: none
 consumers:
+  - "plugins/assay/skills/worker-desk/SKILL.md, plugins/assay/references/implementation-pickup.md, tools/desk/cmd/deskdispatch/prompt.go, tools/desk/cmd/deskdispatch/references, tools/desk/cmd/deskdispatch/pickup_test.go: follow-up statusgen/21"
   - "plugins/assay/skills/author-spec/SKILL.md, plugins/assay/skills/author-brief/SKILL.md, docs/context-handoff.md, statusgen/skillhandoff_test.go, .github/workflows/assay-statusgen.yml: follow-up statusgen/21"
   - "installed skill copies in adopter repositories: out-of-scope (publishing source does not update installed skills; adopters update pins and overlays themselves)"
 id: 334a6ed9-4e28-453c-be19-39cd67997ace
@@ -81,6 +82,15 @@ selection revision and checkpoint disposition into amendments. The manual bootst
 unsupported bindings and coverage; it must not pretend the parser already supports them.
 This is an amendment to an unfinished brief, not a change to statusgen/19's merged contract or Evidence.
 
+## Implementation pickup amendment — 18 October 2026
+
+Existing manual pickup instructions are now in the brief spec, author skills and both
+worker prompt kits. This brief replaces their manual-only integration with the same
+shipped context operation and typed receipt, not a second checker. Include worker-desk,
+`tools/desk/cmd/deskdispatch/prompt.go`, both worker kits and planned `pickup_test.go` in
+files/delivery. Effort becomes L for cross-module dispatch integration. No installed
+cache is edited. Preserve scope and active-work acknowledgement on material amendments.
+
 ## Task
 
 1. `author-spec`: when a spec changes planned work, emit a target record and run
@@ -99,6 +109,17 @@ This is an amendment to an unfinished brief, not a change to statusgen/19's merg
 5. Extend `docs/context-handoff.md` (planned) with compatibility, supported-version and neutral migration
    notes; add the workflow path filter and the changelog fragment.
 
+6. At dispatch and implementation pickup/resume, bind the selected architecture and
+   applicable guidelines to /20's recheck result. Emit the receipt/assessment into both
+   worker kits; permit compatible/unrelated changes, require reconciled amendments for
+   material conflicts and report missing mandatory evidence as a scoped hold before
+   launch. Preserve the explicit bounded manual bootstrap for unsupported installs;
+   never silently admit a receipt/schema version the dispatcher cannot validate.
+7. Update worker-desk and the one pickup reference, keeping author/worker wording
+   pointed at the same procedure. Qualify source-bound instructions, actual dispatch
+   behavior and release/pin support; prose alone is not a runtime gate. Extend existing
+   CI cross-module/path coverage to the deskdispatch consumers through the workflow owner.
+
 ## Interface contract
 
 Skills call only `statusgen context discover|recheck|check` and read or write only
@@ -116,6 +137,7 @@ The named tests are deliverables of this brief and do not exist at a435badbd.
 | 3 | check:ci | `cd tools/skillslint && go run . --root ../..` | exit 0; any non-zero exit (a violation or could-not-check) fails the row |
 | 4 | check:ci | `grep -q "manual bootstrap" plugins/assay/skills/author-spec/SKILL.md && grep -q "manual bootstrap" plugins/assay/skills/author-brief/SKILL.md` | exit 0; both skill files name the manual bootstrap path |
 | 5 | check:ci +flow +mutation | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestSkillsProductTargetHandoff$" . > "$check_output" && grep -F -- "--- PASS: TestSkillsProductTargetHandoff " "$check_output")` | exit 0; named PASS; both skill journeys preserve separate product/architecture bindings and original context; missing extension invokes explicit bootstrap; mutation: silently drop outcome revision |
+| 6 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPickupAdmission$' ./cmd/deskdispatch > "$out" && rg -q '^--- PASS: TestPickupAdmission ' "$out")` | exit 0; actual dispatch path admits compatible/unrelated changes, holds material conflict or unavailable mandatory input with zero child launch, carries receipt into both kits, and identifies unsupported-version bootstrap; mutation: omit recheck before launch and require the refused fixture to fail |
 
 ## Pre-mortem
 

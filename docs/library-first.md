@@ -24,6 +24,7 @@ runtime containment. Taxonomy membership describes components and grants no auth
 |---|---|---|
 | Inter-cell message contract (cellmsg-v1) | `comms/contract` (module `github.com/medici-finance/assay/comms`, comms-core/01): `Envelope`, `ParseEnvelope`, `ParseEnvelopeWith`, `Vocabulary`, `Message`, `Address`, `Receipt`, `ErrorCode`, `Mint`, `Verify`, `VerifyEnvelope` | `tools/desk/internal/comms` (the Assay policy adapter: verb and class vocabulary, compiled lane ACL, `Admit`), then `commsgw`, `commsloop`, `deskcomms`, `commsqueue`. Follow-ups comms-core/02 (server) and /03 (client SDK) consume it. Structure only: no role names, no ACL, no credential, no network, no process launch. |
 | Forge facts and completeness | Existing forge adapters; narrow `forgeread` API, forge-neutral/36 | `deskread`, statusgen's reader adapter. No generic query, raw token getter or write API on the consumer interface. |
+| Local write-isolation policy | Proposed `deskcore/writepolicy`, [write-policy contract](write-policy.md), desktools-v2/63 | `writeguard` is a thin hook adapter; managed adapters supply validated allocation observations. Core has no effects or authority; independent guards keep their owners. |
 | Eligibility and evidence coverage | `statusgen/evaluation` (canonical owner since statusgen/15): `EvaluateEligibility`, `EvaluateCoverage` | statusgen commands, workflow bindings, projection producers. Explicit observations in; deterministic verdicts out. No admission, identity, capacity or claim authority. |
 | Stream-view wire schema | Existing `statusgen/streamview` | Producers and authorized readers pin the contract; no policy or serving behavior in this package. |
 | Workflow progression | `workflow` store/controller, graph-execution/19 and /21 | Calls evaluation and loop-admin APIs; process exit is not work acceptance. |
@@ -201,3 +202,19 @@ and exercises both entry points against a local file module proxy that serves bo
 the workspace off, no replace in the consumer and every network proxy pointed at a dead address,
 and a second consumer that expects an API the module does not offer fails to build.
 This is packaging qualification only; it cuts no release and contacts no provider.
+
+## Write-policy extraction — 18 October 2026
+
+[The write-policy contract](write-policy.md) adds a narrowly scoped package to the
+existing `deskcore` module. It does not export `deskkit` or move role/forge authority.
+The command hook remains a supported process integration; compatible Go consumers
+link the evaluator directly. Canonical decisions, observed filesystem context and
+actual sandbox enforcement have different owners. desktools-v2/63 delivers the
+extraction and consumer census; /31 consumes it for writeguard CLI migration.
+
+Target-consumer clarification, 18 October 2026: graph-execution/22 directly consumes
+/63 for the local harness boundary and independent sandbox proof. The pending
+medici-finance/assay#3409 proposal may retire /31's parser work after its human
+ruling; that never retires the shared policy or the target consumer. /63 does not
+depend on any parser port. Until an authorized withdrawal lands, /31's existing
+compatibility contract and human gate remain intact.

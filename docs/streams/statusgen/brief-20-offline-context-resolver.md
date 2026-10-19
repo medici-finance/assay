@@ -10,7 +10,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 3
+version: 4
 authored: 2026-10-13 by worker-desk (author-brief), non-CI architecture reconciliation
 sources:
   - "assay:assay:statusgen:26 — consumer routing for the 2026-10-16 performance amendment"
@@ -96,6 +96,15 @@ Discovery output must identify architecture-only coverage until that extension i
 No product binding means unchecked/unbound, not product alignment. The named new fixture
 below checks that an architecture receipt is not represented as a product-alignment result.
 
+## Implementation pickup amendment — 18 October 2026
+
+Extend the existing snapshot/query/recheck path to include applicable project
+engineering guidelines, selected approved target/transition, semantic owners,
+producer versions and planned replacements. Include newly added guideline/consumer
+sources outside the previous read set. Reuse receipts and non-intersection assessment;
+an unapproved proposal cannot invalidate approved work. No new target registry or
+unrelated graph-service dependency. Missing required source is scoped unknown.
+
 ## Task
 
 1. Resolve: given a target and an explicit snapshot, enumerate owners and consumers from typed
@@ -135,6 +144,7 @@ of doc 15's authoring qualification table.
 | 8 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextDeliveredBriefRoutesFollowOn$" ./contexthandoff/ > "$out" && grep -F -- "--- PASS: TestContextDeliveredBriefRoutesFollowOn " "$out")` | exit 0; named PASS; a new obligation on a delivered brief with populated Evidence routes to an unfinished owner or linked follow-on and leaves the delivered brief unchanged; mutation: patch the delivered brief's Task — the test must fail |
 | 9 | check:ci +flow | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextCLIDiscoverRoundTrip$" . > "$out" && grep -F -- "--- PASS: TestContextCLIDiscoverRoundTrip " "$out")` | exit 0; named PASS; the built `statusgen context discover --snapshot <fixture> --json` output decodes with the statusgen/19 package and `context check` on its own receipt passes |
 | 10 | check:ci +flow +mutation | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestContextArchitectureCoverageNotProductAlignment$" . > "$check_output" && grep -F -- "--- PASS: TestContextArchitectureCoverageNotProductAlignment " "$check_output")` | exit 0; named PASS; architecture discovery through CLI explicitly leaves unsupported product alignment unchecked; mutation: label a receipt covering architecture only as aligned to the product target |
+| 11 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPickupContextRecheck$' . > "$out" && rg -q '^--- PASS: TestPickupContextRecheck ' "$out")` | exit 0; snapshot fixtures distinguish approved owner/guideline changes, new consumer outside old membership, unrelated edit, unavailable required input and draft-only rival; mutation: ignore a new guideline/replacement source and require the corresponding case to fail |
 
 ## Pre-mortem
 

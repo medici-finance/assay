@@ -205,3 +205,19 @@ completed experiment cannot assert adoption or subsequent exposure. The proposed
 implemented by public desk-improvement/01–10; an adopter qualifies its own permitted inputs
 and scope. Missing bindings/labels stay unresolved and cannot silently invalidate unrelated
 approved work or satisfy a mandatory acceptance claim.
+
+## Implementation pickup and applicable guidelines — amendment, 18 October 2026
+
+Apply the same affected-context assessment at initial implementation pickup, resumed
+work, and a material scope/target change, not only during authoring. The selected
+approved target/transition, semantic contracts, engineering guidelines, producer and
+consumer versions, planned replacements and actual implementation are distinct inputs.
+A newer draft alone never invalidates authorized work. Inaccessible required sources
+are scoped unknowns; an unrelated edit can retain prior conclusions with a reason.
+
+[Brief specification §4.1.1](../../../spec/brief-v1.md#411-implementation-pickup-assessment)
+and the [pickup procedure](../../../plugins/assay/references/implementation-pickup.md)
+define the immediate manual path. statusgen/20 owns reusable discovery/recheck;
+statusgen/21 owns author/worker and dispatch integration once that interface ships.
+The same receipt and append-only continue/adapt/hold disposition are reused; no
+parallel checker, target registry or unsupported frontmatter field is introduced.

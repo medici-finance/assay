@@ -381,6 +381,26 @@ rules keep it from becoming a delete-everything bias:
    an obligation and grants no authority: retiring a security or access control is still
    subject to the `risk`/`gate` derivation (§3.1) like any other change.
 
+### 4.1.1 Implementation pickup assessment
+
+For work within §4.1's architecture scope, the executor MUST assess the selected
+approved target/transition, current semantic owners and applicable engineering
+guidelines against the brief and actual producer/consumer implementations before
+implementation effects, on resume and after a material change. Record source
+revisions, coverage gaps and a reasoned continue/adapt/hold disposition in the
+implementation plan or PR, using the existing context receipt where supported.
+The [pickup procedure](../plugins/assay/references/implementation-pickup.md) is the
+single procedural reference. Missing required context holds only the affected scope;
+a newer unapproved proposal or unrelated edit MUST NOT veto authorized work.
+
+A material contract/owner change requires reconciled Task, dependencies, consumers
+and Verify plus existing active-work acknowledgement and approval where applicable.
+Preserve dated sources and completed Evidence. Brief authors MUST cite canonical
+contract/guideline entry points in Read first rather than freeze copied rule text.
+This execution obligation adds no frontmatter key or current lint/runtime gate.
+Automated discovery/recheck and dispatch integration are delivered by statusgen/20–21;
+until supported, use the explicitly bounded manual bootstrap.
+
 ### 4.2 Ground rules
 
 The body MUST contain a `## Ground rules` section. At minimum, it MUST state:

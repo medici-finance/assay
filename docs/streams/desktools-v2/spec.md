@@ -449,3 +449,19 @@ malformed configuration on help, per-platform source semantics, stable non-help 
 independent domain admission and multiple invocations in one process. Negative controls
 must fail on an omitted tool, ignored Viper binding, effectful help, reintroduced custom
 parser or widened configuration source. A staged CI patch is not a live completion gate.
+
+## 10. Shared write-policy extraction — 18 October 2026
+
+[Write policy](../../write-policy.md) is a proposed additive extraction into the
+existing deskcore module. /63 owns the evaluator, writeguard adapter and actual-consumer
+census; /31 depends on /63 for writeguard and keeps CLI/config parsing at the entrypoint.
+Other guards keep their semantic owners. Managed consumers require allocation-bound
+inputs and separate sandbox/packaging qualification. Before pickup apply brief-v1
+§4.1.1 and current engineering guidelines; this amendment does not activate a hook.
+
+Target-consumer clarification, 18 October 2026: graph-execution/22 directly consumes
+/63 for the local harness boundary and independent sandbox proof. The pending
+medici-finance/assay#3409 proposal may retire /31's parser work after its human
+ruling; that never retires the shared policy or the target consumer. /63 does not
+depend on any parser port. Until an authorized withdrawal lands, /31's existing
+compatibility contract and human gate remain intact.

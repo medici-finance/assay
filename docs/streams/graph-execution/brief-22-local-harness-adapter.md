@@ -7,9 +7,10 @@ wave: 7
 depends:
 - graph-execution/20
 - graph-execution/26
+- desktools-v2/63
 unblocks:
 - graph-execution/27
-effort: M
+effort: L
 gate: human
 risk:
   regulatory: 'no'
@@ -27,11 +28,12 @@ exec-tier: strong
 exec-tier-why: Durable state, authority and cross-component failure cases require design judgment.
 domain: complicated
 consumers:
+- 'deskcore/writepolicy and writeguard hook profile: follow-up graph-execution/22'
 - 'standing desk bindings: follow-up graph-execution/27'
 - 'workflow/controller: follow-up graph-execution/21'
 - 'tools/desk/cmd/cellctl: follow-up graph-execution/27 (supplies its resolved Claude launch profile)'
 - 'adopting cohorts: out-of-scope (live qualification and model choice require owner authorization)'
-version: 2
+version: 3
 id: 97c5ef2b-7f1c-4d7b-9484-dcfc042926d1
 ---
 
@@ -60,12 +62,38 @@ risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this st
 - Stop at implemented; independent verification owns verified/done.
 - Preserve one canonical work identity and one claim authority; no credentials in packets or results.
 
+## Shared write-policy amendment — 18 October 2026
+
+Perform brief-v1 §4.1.1 pickup against the approved target, `docs/go-engineering.md`
+and the [write-policy contract](../../write-policy.md). Consume desktools-v2/63's
+shared evaluator/profile in the local adapter; keep hook execution as an adapter
+where the selected host requires it. This survives any separately authorized
+withdrawal of old CLI-parser migration work. Reuse validated workspace/context
+ports; do not duplicate allocation, claim, custody or write-policy meanings.
+
+Include `loopadmin/adapters/localharness/writepolicy_test.go` (planned) and its
+module/dependency wiring in files. At pickup settle the available workspace-port
+version and supported profile; missing required allocation evidence holds that
+profile, not the independent evaluator extraction. Preserve prior source accounts.
+
 ## Task
 
 1. Implement the first adapter for a pinned Claude Code harness profile whose input is a resolved, operator-approved argv/env profile of the shape cellctl's existing Claude launch builder produces (`deskLaunch`, `prepareTickLaunch`); cellctl supplies it in 27, and fixtures supply it here. Do not add a second argv builder. Codex and Cursor stay on cellctl's legacy launch path until each has its own adapter qualification. Record exact executable/version, request/session ID, model actually used, tool restrictions and serialization version. Determine supported invocation/output from the pinned installed client at implementation pickup; commit scrubbed fixture transcripts and the capability manifest before claiming support. No hard-coded commercial price or assumed cancellation guarantee.
 2. Expose the adapter through the shared loop-admin supervisor /26; do not add a caller-specific process launcher. Use an isolated supervised process with an operator-approved argv/profile, sanitized environment and constrained workspace/tool access. Never execute an argv supplied by task text. The controller store and role credentials are outside the child domain. Inherit existing credential custody; do not implement another vault.
 3. Map start/observe/cancel/reconcile to protocol states. When the harness cannot prove an unknown request stopped, retain unknown and require reconciliation/operator resolution. Do not simulate resume by launching a second unknown request. Charge all reported usage to the original attempt/work; missing usage remains unknown.
 4. Run the 20 conformance suite against a process fixture plus captured protocol outputs. Publish an offline qualification report; live model calls and additional adapters require an adopting cohort decision. Record control gaps rather than weakening them. Update docs and changelog.
+
+5. Map the selected profile's validated repository/allocation/generation/session and
+   resolved path observations into /63's evaluator at the local tool/effect boundary.
+   Use typed writes directly where known; preserve pure command classification for
+   hook-shaped requests. Refuse absent/stale/foreign mandatory context; no permissive
+   cwd/prefix inference or legacy fallback. Keep writeguard as a thin command hook
+   for command-hook hosts, never a mandatory subprocess between compatible Go code.
+6. Qualify allowed owned file/Git work and refused protected/foreign writes through
+   the actual adapter. Then bypass the hook and prove the supported sandbox still
+   confines those effects. Preserve existing authorized Git administration effects;
+   no blanket denial of all Git common-directory writes and no broad write-root
+   widening. Unknown confinement support is could-not-check and blocks that profile.
 
 ## Interface contract
 
@@ -79,6 +107,7 @@ Caller/invocation/subject and validated actor capability enter; typed state, evi
 | 2 | check:ci +flow +mutation | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLocalHarnessUnknownCancel$" ./... > "$routing_out" && grep -q -- "--- PASS: TestLocalHarnessUnknownCancel " "$routing_out")` | exit 0; named PASS; lost acknowledgment or unconfirmed cancellation holds instead of relaunching; mutation: treat a cancel request as a confirmed stop — the named test must fail |
 | 3 | check:ci +flow +mutation | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLocalHarnessUntrustedArgvAndSecrets$" ./... > "$routing_out" && grep -q -- "--- PASS: TestLocalHarnessUntrustedArgvAndSecrets " "$routing_out")` | exit 0; named PASS; task-supplied argv and secret leakage are refused at the launcher boundary, which launches only the supplied approved profile argv; mutation: append task-supplied argv to the approved profile argv — the named test must fail |
 | 4 | check:ci +flow +mutation | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLocalHarnessBothCallers$" ./... > "$routing_out" && grep -q -- "--- PASS: TestLocalHarnessBothCallers " "$routing_out")` | exit 0; named PASS; desk and workflow clients use the same adapter and pinned model controls; session continuity cannot cross roles and unsupported resume holds in both modes; mutation: key session continuity by caller only, not by role — the named test must fail |
+| 5 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestLocalWritePolicy$' ./adapters/localharness > "$out" && rg -q '^--- PASS: TestLocalWritePolicy ' "$out")` | exit 0; actual adapter and shared evaluator agree on independently expected owned/protected writes, owned staged commit and foreign-ref/config refusal; missing/stale/foreign bindings launch no effect; supported real sandbox also refuses with the hook bypassed; unavailable support remains could-not-check. Production mutation skipping the evaluator/binding or broadening write roots must fail. |
 
 ## Pre-mortem and dispatch checks
 

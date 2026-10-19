@@ -102,7 +102,7 @@ or removing any human gate (spec §5 states the divergence).
 | 19 | [Durable instance store and production coverage binding](brief-19-durable-instance-store.md) | 6 | L | todo | — | — |
 | 20 | [Shared loop-admin runner protocol and offline conformance kit](brief-20-runner-contract.md) | 0 | M | implemented | — | — |
 | 21 | [Deterministic task controller with durable dispatch and waits](brief-21-controller-host.md) | 7 | M | todo | — | — |
-| 22 | [First pinned local harness adapter and qualification fixtures](brief-22-local-harness-adapter.md) | 7 | M | todo | — | — |
+| 22 | [First pinned local harness adapter and qualification fixtures](brief-22-local-harness-adapter.md) | 7 | L | todo | — | — |
 | 23 | [Immutable candidate workspaces and independent check inputs](brief-23-candidate-workspaces.md) | 7 | M | todo | — | — |
 | 24 | [Versioned author implement review pattern with bounded repair](brief-24-internal-specialist-pattern.md) | 10 | M | todo | — | — |
 | 25 | [Exact-candidate publication and independent review evidence bridge](brief-25-publication-review-bridge.md) | 11 | M | todo | — | — |

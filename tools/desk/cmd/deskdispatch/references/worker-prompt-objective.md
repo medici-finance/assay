@@ -647,3 +647,13 @@ and bounds failed-run diagnostics. No role adds a shell deletion hook. Older unm
 harness owned scratch remains inventory-only until its ownership and evidence are proved.
 See `docs/cellctl-scratch.md` and the shipped desk-shell reference, "Managed task scratch".
 <!-- common-clauses:end -->
+
+## Architecture pickup
+
+Before implementation effects, on resume and after a material scope/target change,
+follow `plugins/assay/references/implementation-pickup.md` in the delivery source.
+Read the current project instructions, selected approved target/transition, semantic
+contracts and engineering guidelines. Record source revisions, coverage and a reasoned
+continue/adapt/hold disposition in your plan or PR. Preserve scope and active-work
+acknowledgment; an unapproved proposal alone never blocks authorized work. Use the
+manual bootstrap when the shared context operation is not shipped or supported.

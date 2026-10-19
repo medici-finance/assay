@@ -6,7 +6,7 @@ why: >-
   in three different ways (stdin hook protocol, manual os.Args, FlagSets). One adapter gives
   them standard help, but every refusal decision and exit code must stay.
 wave: 3
-depends: ["desktools-v2/16"]
+depends: ["desktools-v2/16", "desktools-v2/63"]
 unblocks: ["desktools-v2/17"]
 effort: "L"
 gate: "human"
@@ -14,7 +14,7 @@ risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-da
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 1
+version: 2
 id: "ed1cc5a5-7cb4-4fc7-b15d-be85372b18af"
 authored: "2026-10-04 by desktools-v2/15"
 sources:
@@ -108,6 +108,19 @@ CLI library is not a new authority source. Independent verification owns Evidenc
 lifecycle advancement. Proposed tests and files below are deliverables, not claims that
 they already exist.
 
+## Write-policy amendment — 18 October 2026
+
+Consume desktools-v2/63's shared evaluator and retain the writeguard binary as the
+stdin hook adapter. Perform the current architecture/guideline pickup assessment.
+Cobra/Viper resolve declared options only; no policy is copied back into a command.
+Other guards retain independent owners; they may proceed while the writeguard portion
+waits, but this brief cannot close before /63 and adapter equivalence are delivered.
+The pending retirement proposal medici-finance/assay#3409 is not a ruling or a
+veto. If its withdrawal is authorized, preserve /63 and graph-execution/22's
+consumer obligation; do not revive this parser port to deliver the library.
+Historical source inventory above remains its dated account. Add the production API
+and built-hook parity cases from /63 to the compatibility report and Verify 4/6.
+
 ## Task
 
 1. Build a Cobra command tree for `writeguard`, `deskpushguard`, `desksourceguard`, `deskpathguard`: root, every current verb and sub-verb, hidden internal entrypoints where they exist. Cobra/pflag does the parsing, argument validation and help. Remove the old parser once equivalent coverage exists; never run two parsers.
@@ -131,6 +144,7 @@ they already exist.
 | 8 | check +dereference | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/31 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | exit 0; TestCLIOwnerMigrated PASS; every row this brief owns is migrated, the registry validates and the contract tests pass in each migrated package |
 | 9 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
 | 10 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
+| 11 | check:ci +flow | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestWriteHookParity$' ./cmd/writeguard > "$out" && rg -q '^--- PASS: TestWriteHookParity ' "$out")` | exit 0; /63's real hook/library compatibility suite remains green through CLI adaptation; no second evaluator or changed legacy failure mapping |
 
 ## Pre-mortem
 

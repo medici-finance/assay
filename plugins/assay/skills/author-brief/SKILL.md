@@ -42,6 +42,16 @@ the repo — don't invent a new format.** If a project-level `author-brief` skil
 repo (`.claude/skills/author-brief/SKILL.md`), read it after this skill and apply its specifics —
 paths, docs-regen commands, and local examples layer on top of this methodology.
 
+## Bind implementation pickup to current context
+
+Read the [implementation pickup procedure](../../references/implementation-pickup.md).
+Specs and briefs identify the selected target/transition, semantic contracts and
+applicable project engineering guidelines by canonical pointer. Include their
+pickup/resume assessment in the implementation handoff; record revisions, coverage
+and continue/adapt/hold rather than assume the authoring snapshot is still current.
+Use the explicit manual bootstrap until the shared operation is shipped and supported.
+Do not rewrite completed Evidence or let a draft proposal veto approved work.
+
 ## The most important judgment call: find the REAL head of the critical path
 
 The critical path is the chain that, if it slips, slips everything. The recurring failure is putting
