@@ -2,7 +2,7 @@
 
 How `cellctl` speaks the cell-operation contract, [`cell-op-v1`](../spec/cell-op-v1.md): what a verb adopting it does, how a plan is made and applied, and what the tests check. The contract itself (documents, reasons, exit codes, the apply order and its stated limit) is the spec; the JSON Schema is [`schemas/cell-op-v1.json`](../schemas/cell-op-v1.json). Command-line forms are in [the `cellctl` command reference](cellctl-cli-reference.md).
 
-No verb in the release build has adopted the contract yet. Each verb adopts it in its own brief (a later brief of its own), with its own rows. Until then the mechanics are exercised end to end by a fixture verb that exists only in a test build (below).
+`up` has adopted the contract (`--plan`, an annotated `--apply`, `--json`; see *The `up` verb* below). The other verbs adopt it in their own briefs, with their own rows. Until they do, the mechanics are exercised end to end by a fixture verb that exists only in a test build (below).
 
 ## The three forms
 
@@ -93,20 +93,27 @@ A verb brief does four things in `tools/desk/cmd/cellctl`; the helpers are in `c
 
 1. **Annotate.** Every state-changing invocation registers the cobra annotation `cellop:state-changing`: `markStateChanging(cmd)` when every form except `--plan` changes state (`drain`, `pause`, `resume`, `restart`), `markStateChangingFlag(cmd, "<flag>")` when only the form with that flag does (`up --apply`, `doctor --apply`, `gc --run`, `gc --apply`, `upgrade --apply`). Both append the confirm's stated limit to the verb's help. A flag named `--apply`, `--run`, `--now` or `--foreign` is always annotated, on the flag or on its command.
 2. **Plan.** `--plan` measures and calls `cellopPlan(cmd, cell, verb, actions)`, giving each action the preconditions it depends on as key and value pairs.
-3. **Apply.** `--apply <id>` (and an annotated form without `--plan`, after `cellopNewPlan`) calls `cellopApply(cmd, cell, cellopVerb{Verb, Measure, Run}, id)`. `Measure` re-takes an action's preconditions; `Run` performs it. `cellopApply` is the only place a `cellop.Session` is built, and it refuses an invocation that is not annotated.
+3. **Apply.** `--apply <id>` (and an annotated form without `--plan`, after `cellopNewPlan`) calls `cellopApply(cmd, cell, cellopVerb{Verb, Measure, Run, After}, id)`. `Measure` re-takes an action's preconditions; `Run` performs it. `After`, when set, runs once on the result before it is printed (`up` launches the windows there and adds one entry per role). `cellopApply` is the only place a `cellop.Session` is built, and it refuses an invocation that is not annotated.
 4. **Read forms stay read-only.** Bare `doctor`, bare `gc` and bare `upgrade` print what they would do and write no plan.
 
 The root command's pre-run gate (`gateStateChanging`) refuses an annotated invocation off a terminal or in a desk session before the verb loads anything, and `Session.Apply` checks both again.
 
 When a verb lands, its stand-in in the fixture build (below) steps aside for it, and the flag-walk test then checks the real verb's annotations.
 
+## The `up` verb
+
+`cellctl up <cell>` converges the cell (see [the command reference](cellctl.md#cellctl-desk-up-down)). Its three forms:
+
+- **bare**: starts the roles that are not running, one window at a time, and prints a table with one row per targeted role (`up`, `already-up`, `reconciled+up`, `scheduled`, `failed`). A running role is never relaunched; a stale one is a `failed` row naming `up --plan`. Allowed off a terminal. With `--json` the same result is a `cell-op-result` with one entry per role and nothing else on stdout; a dry run under `--json` lists each role as `already-up`, `stale` or `would-start`, and `--apply` cannot be combined with `--automate`.
+- **`--plan`**: writes ONE plan for the whole cell, one `reconcile-<role>` action per stale role (and `reconcile-comms` for stale comms state). Each action's preconditions are the role's measured disposition and stale class. A cell with nothing stale writes no plan and returns an ok result. Works off a terminal.
+- **`--apply <plan-id>`** (annotated, terminal only): shows the plan, takes the typed confirm, re-measures every action and runs it, then launches the targeted roles. A role that came alive since the plan is refused `plan-stale` (exit 5) naming the role, and nothing is launched. Alive and could-not-check records are never planned.
+
 ## The fixture build
 
 `cellop_fixture.go` is compiled only with `-tags cellopfixture`. It adds:
 
 - `cellctl cellop-fixture <cell> [--plan [--json] | --apply <plan-id>]`, whose one precondition is the content of `<cell>/run/cellop-fixture/state` and whose one effect appends a line to `<cell>/run/cellop-fixture/effects`;
-- a stand-in for each verb of the enumerated list that is not registered yet (`drain`, `pause`, `resume`, `restart`, `doctor`, `gc`, `upgrade`), annotated as step 1 says;
-- `--plan`, `--json` and an annotated `--apply` on `up`.
+- a stand-in for each verb of the enumerated list that is not registered yet (`drain`, `pause`, `resume`, `restart`, `doctor`, `gc`, `upgrade`), annotated as step 1 says.
 
 With `CELLOP_FIXTURE_TRACE` set, every arrival at the apply path appends the command path and the flags given to that file. The release build has none of this: `cellctl cellop-fixture` is an unknown command there.
 

@@ -149,7 +149,7 @@ func boundedPointsFor(want string, now time.Time) (mine []auditPoint, ok bool) {
 				undetermined = true
 				return false
 			}
-			p := auditPoint{ts: ts, result: e.Result, verb: e.Verb, repo: e.Repo, pr: e.PR}
+			p := auditPoint{tool: want, ts: ts, result: e.Result, verb: e.Verb, repo: e.Repo, pr: e.PR}
 			mine = append(mine, p)
 
 			recent := !ts.Before(coolCutoff)
@@ -206,7 +206,7 @@ func pointsFrom(entries []Entry, want, tool string) ([]auditPoint, error) {
 				fmt.Sprintf("audit entry for %q has an unparseable ts %q — run `deskaudit recover` (quarantines the bad line and carries good entries forward; a plain move resets the budget + idempotency)", tool, e.TS),
 				perr)
 		}
-		mine = append(mine, auditPoint{ts: ts, result: e.Result, verb: e.Verb, repo: e.Repo, pr: e.PR})
+		mine = append(mine, auditPoint{tool: want, ts: ts, result: e.Result, verb: e.Verb, repo: e.Repo, pr: e.PR})
 	}
 	return mine, nil
 }

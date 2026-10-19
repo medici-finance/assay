@@ -10,7 +10,7 @@ import (
 // EvaluatorVersion names the evaluator generation. It changes whenever a
 // verdict can change for the same observations; the policy digest below covers
 // the constants that are data rather than code.
-const EvaluatorVersion = "statusgen-evaluation/1"
+const EvaluatorVersion = "statusgen-evaluation/2"
 
 // Identity says which evaluator produced a verdict: the same observations
 // under the same Identity yield the same verdicts, byte for byte.

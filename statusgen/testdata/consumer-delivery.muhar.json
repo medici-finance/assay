@@ -1,0 +1,42 @@
+{
+  "root": "statusgen",
+  "test": "go test -run '^Test(Delivery|ConsumerRange)' -count=1 -timeout 90s .",
+  "control": {
+    "name": "planted routes become green",
+    "file": "consumers.go",
+    "old": "if nD > 0 {",
+    "new": "if false && nD > 0 {"
+  },
+  "mutations": [
+    {
+      "name": "inherited claims suppress delivery evidence",
+      "file": "consumerdelivery.go",
+      "old": "corroborateBrief(snapshot, streams, changed, nil, bf)",
+      "new": "corroborateBrief(snapshot, streams, changed, func() map[string]bool { inherited := map[string]bool{}; for _,entry := range bf.Consumers { inherited[strings.TrimSpace(entry)] = true }; return inherited }(), bf)"
+    },
+    {
+      "name": "delivery accepts a wider history range",
+      "file": "consumerdelivery.go",
+      "old": "if err != nil || parent != base {",
+      "new": "if err != nil || (parent != base && false) {"
+    },
+    {
+      "name": "unchecked-only result becomes success",
+      "file": "consumers.go",
+      "old": "if requireEvidence && (nC == 0 || len(claimless) > 0) {",
+      "new": "if false && requireEvidence && (nC == 0 || len(claimless) > 0) {"
+    },
+    {
+      "name": "new and planted unbounded rows evade lint",
+      "file": "verifyrows.go",
+      "old": "if why := consumerRangeWhy(cmd, toks, expect); why != \"\" {",
+      "new": "if why := consumerRangeWhy(cmd, toks, expect); why != \"\" && false {"
+    },
+    {
+      "name": "CLI ignores explicit delivery",
+      "file": "main.go",
+      "old": "if *consumersDelivery != \"\" {",
+      "new": "if *consumersDelivery != \"\" && false {"
+    }
+  ]
+}

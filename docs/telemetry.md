@@ -125,9 +125,9 @@ Every record carries exactly these fields and no field capable of holding free t
 | `cpuMs` | int, optional | Process user+system CPU; **omitted** where it cannot be measured (Windows, boot steps), so "unmeasured" never reads as zero. |
 | `exit` | int | The verb's exit code. |
 | `result` | string | The exit code mapped onto a fixed word (`ok`, `disabled`, `refused`, `unverifiable`); never the input. |
-| `childProcs` | int | Child processes the invocation started through the shared subprocess runner (`deskkit.Run`). |
-| `childWallMs` | int | The summed wall time of those counted children. |
-| `forgeCalls` | int | HTTP round-trips through the forge client's counting transport (counted, never inspected). |
+| `childProcs` | int | Child process attempts through `deskkit.Run`, `RunProcess` or `OutputProcess`, including failed starts. |
+| `childWallMs` | int | The summed wall time of those counted attempts; overlapping children are not elapsed workflow time. |
+| `forgeCalls` | int | HTTP attempts reaching the forge client's leaf counting transport, including failures, retries and 304 responses; local refusals are excluded. Requests are not GraphQL quota points. |
 | `sourceSHA` | string | The binary's build stamp when it is hex, else `unpinned`. |
 | `install` | string | 32 random hex characters minted once per state directory. Identifies nothing but the install. |
 
@@ -135,8 +135,45 @@ Every record carries exactly these fields and no field capable of holding free t
 they are lower bounds, not totals. A verb that starts its own children or makes its own
 HTTP calls outside them is not counted. The known cases: `deskboot` starts its boot-step
 children through its own runner; `desktoken`'s token mint and `deskpost`'s posts use their
-own direct HTTP client; and the repository-visibility read uses one when no client is
-injected. A `0` from those tools means "not counted", not "none made".
+own direct HTTP client; and other command-specific direct transports remain outside this inventory. A `0` from those tools means "not counted", not "none made".
+
+### Review workflow attribution and coverage
+
+`deskboard` records the parsed operation, preserving canonical aliases (`todo`, `next`
+and `next-up` map to `dispatch`). Output flags are not operations. `issueboard` records
+`board`, `issues` or `intake` from its selected handler, including the default board.
+The deskboard Cobra adapter keeps help/version and parse refusals outside its
+recording callback (no sample); the other adapters retain allowlisted spellings or
+`other` for early rejection. A failed operation still carries its selected operation
+and original exit. No parser is duplicated to obtain attribution.
+
+`deskdispatch` records `dispatch:worker`, `dispatch:worker-objective`, `dispatch:review`
+or `dispatch:verifier`, and the corresponding `stamp-only:<kit>` constants. Kit comes
+from the existing parser (default `worker`), with its existing case/space normalization;
+it never comes from session role or an item key. Unknown kit/arguments remain `other`.
+These are additive values of the existing `verb` string, not new perf-v1 fields. Existing
+`deskperf` readers decode and display them unchanged; legacy rows are not reclassified.
+The current dispatch CLI port must keep these handler calls when it changes adapters.
+
+| Three-tool inventory | Coverage and boundary |
+|---|---|
+| `deskboard` statusgen version, gate-score and next-up launches | `OutputProcess` observes all four source sites without trimming bytes, replacing stderr, changing environment or wrapping the original error. |
+| `deskdispatch` claim, worktree, roster and Git children | Existing `Run` delegates to `RunProcess` once; local argv/trace/redaction and error causes stay with the existing runner. |
+| Shared role minter, verifier Git, run-key/dispatch-ref Git, lifecycle hooks and optional content/risk/advisor callouts | Raw process observers retain each owner's cancellation, process-group cleanup, streams, environment and refusals. All callers of these shared helpers gain counters. |
+| `issueboard` direct children | None in the command package; shared helpers above still apply. |
+| Resolved GitHub REST/GraphQL, GitHub diff, GitLab SDK | Existing counter; the GitHub conditional wrapper counts at its delegated leaf. A request refused locally by the board quota floor costs zero HTTP attempts. A validated 304 still counts one attempt. |
+| Shared account-liveness and visibility reads | Copy the existing client with a counting transport, preserving its redirect/timeout policy and caller-owned client. |
+| External claim scripts, statusgen, token minter and hooks' own descendants/HTTP | Not recursively instrumented by the parent. Their child counts/CPU/requests remain unknown unless independently measured. |
+| Other command-specific runners, preflight/migration/lock-holder inspection, direct mint/post HTTP | Outside these three tools' direct inventory; existing lower-bound semantics remain. This change is not fleet-wide complete coverage. |
+
+`cpuMs` measures only the current process; descendant and inclusive CPU are unavailable
+in perf-v1. Do not add child `cpuMs` to a parent's inclusive measurement. Do not add
+`childWallMs` to `wallMs`, or sum overlapping invocation wall times as elapsed time.
+The record carries neither endpoint/retry/304 breakdown nor GraphQL quota points;
+those distinctions remain unknown in this dataset, even though every delegated attempt
+is counted. The qualification fixtures can observe these distinctions independently.
+Performance-collection/01–02 own richer coverage, correlation and quota events. No new
+collection consent, sender, spool, sink, listener or schema expansion is enabled here.
 
 Never recorded: argv, flag values, repo, PR or issue numbers, branch, path, title, body,
 error text, session tag, environment values, hostname, user name, or tokens. A test plants a
@@ -173,8 +210,8 @@ introduced.
 
 Every operational command under tools/desk/cmd has exactly one optional performance wrapper.
 The inventory test maintains two explicit exceptions: deskperf must not measure its own report
-reads, and muhar is a developer mutation harness. The original seven commands keep their
-registered verb vocabularies; added commands record the fixed `other` verb. User argv, file
+reads, and muhar is a developer mutation harness. The review workflow commands select their closed vocabulary from the actual parsed
+operation; other commands retain their existing registered vocabularies and fallbacks. User argv, file
 paths, subjects, credentials and free-form error messages never enter these records.
 On/off does not change exit codes or stdout/stderr; a failed sink cannot fail an operation.
 Coverage is terminal observations, not a running-process census: killed or still-running

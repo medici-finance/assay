@@ -115,6 +115,15 @@ type BriefFile struct {
 	// wrong TYPE is a parse error; the ref grammar and the conservation check live
 	// in splitflags.go, not here (same split satisfies:/design: use).
 	SplitFrom string
+	// Withdrawal is the OPTIONAL withdrawn-status record (withdrawn.go): the
+	// `withdrawn-date:`, `withdrawn-reason:` and `superseded-by:` keys, which
+	// exist only in schema brief-v3 and are parsed only there (on brief-v1/v2
+	// they are tolerated unknown keys). nil when none is present or the file is
+	// not brief-v3.
+	// A wrong TYPE is a parse error; the pairing with the README `withdrawn`
+	// Status cell and the successor-ref resolution are checked in
+	// checkBriefFiles, where the README row and the tree are in hand.
+	Withdrawal *Withdrawal
 	// Satisfies is the optional brief-v1 `satisfies:` list (registers-v1 §6.5):
 	// the requirements this brief was written against, as REQ-<slug> /
 	// <alias>:REQ-<slug> references. RESERVED, not gating — the refs are parsed
@@ -252,8 +261,12 @@ var (
 	// parseBriefFile (#271) — a tree on a schema this statusgen predates is
 	// refused, not misread — whereas a value outside the family (contract-v1,
 	// placeholder-v1, …) stays exempt.
-	briefSchemaCurrent      = "brief-v1"
-	briefSchemaV2           = "brief-v2"
+	briefSchemaCurrent = "brief-v1"
+	briefSchemaV2      = "brief-v2"
+	// briefSchemaV3 is brief-v2 plus the off-path `withdrawn` status keys
+	// (withdrawn-date / withdrawn-reason / superseded-by, withdrawn.go). Every
+	// brief-v2 rule applies to it unchanged — see isBriefV2Family.
+	briefSchemaV3           = "brief-v3"
 	briefSchemaFamilyPrefix = "brief-v"
 
 	// Required frontmatter keys. `schema` is intentionally absent: its presence
@@ -302,6 +315,7 @@ var (
 	recognizedBriefSchemas = map[string]bool{
 		briefSchemaCurrent: true, // brief-v1
 		briefSchemaV2:      true, // brief-v2 (derived-board)
+		briefSchemaV3:      true, // brief-v3 (brief-v2 + the withdrawn status keys)
 	}
 )
 
@@ -613,13 +627,13 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 	}
 	switch {
 	case recognizedBriefSchemas[s]:
-		// Recognized brief schema (brief-v1 or brief-v2) → validate below.
+		// Recognized brief schema (brief-v1, brief-v2 or brief-v3) → validate below.
 	case strings.HasPrefix(s, briefSchemaFamilyPrefix):
 		// A brief-schema-family version this binary does not understand → the
 		// #271 flag-day trap. Refuse it: the tree is on a brief schema this
 		// statusgen predates, and misreading it green-by-exemption would disable
 		// every typed-dep / gate / attribution / demotion check silently.
-		return nil, false, fmt.Errorf("%s: unrecognized brief schema %q — the tree is %s but this statusgen predates it; it validates only %s. Upgrade statusgen to a build that understands this schema (schema evolution fails closed, #271)", path, s, s, recognizedBriefSchemaList())
+		return nil, false, fmt.Errorf("%s", unknownBriefSchemaMessage(path, s))
 	default:
 		// A different document kind (contract-v1, placeholder-v1, …) → not a
 		// brief this parser validates. Exempt, as before.
@@ -864,6 +878,16 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			addBad("split-from must be a string")
 		}
 	}
+	// withdrawn-date / withdrawn-reason / superseded-by are brief-v3 keys (the
+	// off-path `withdrawn` status, withdrawn.go). They are parsed ONLY on a
+	// brief-v3 file: under brief-v1/brief-v2 they are unknown keys and are
+	// tolerated as written — existing boards already use `superseded-by:` as
+	// free prose, and a statusgen upgrade must not redden them. On brief-v3
+	// only TYPES are checked here; presence rules need the README row and live
+	// in checkBriefFiles.
+	if bf.Schema == briefSchemaV3 {
+		parseWithdrawalKeys(data, bf, addBad)
+	}
 	// parallel-streams is an OPTIONAL but KNOWN key (methodology/43): the shards
 	// of an intra-brief split. Absence is the default and is never flagged —
 	// every brief on file today omits it and dispatches to one worker, which is
@@ -1013,7 +1037,7 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 	// brief-v2 reserved keys (derived-board/03). Parsed only for a v2 file; a v1
 	// file that carries one of these keys is untouched here (an unknown key is not
 	// schema drift under v1 — the same tolerance every other optional key gets).
-	if bf.Schema == briefSchemaV2 {
+	if isBriefV2Family(bf.Schema) {
 		parseBriefV2Keys(data, bf, addBad)
 	}
 	if len(bad) > 0 {
@@ -1572,6 +1596,9 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 		return reg
 	}
 	v2IDOwner := map[string]string{} // uuid -> first brief path that used it
+	// withdrawn status (withdrawn.go): successor refs and depends-on-withdrawn
+	// resolve against every stream of the run, partitioned by root.
+	withdrawRes := newWithdrawalResolver(allStreams)
 	// outcome: dereferences against the requirement register of the brief's OWN
 	// root, read once per root (costoutcome.go).
 	outcomeRegCache := map[string]outcomeRegister{}
@@ -1600,8 +1627,8 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				add("%s: filename must match brief-<NN>[-slug].md", path)
 				continue
 			}
-			if bf.Schema == briefSchemaV2 {
-				// brief-v2: the id is the hierarchical <cell>:<repo>:<stream>:<NN>
+			if isBriefV2Family(bf.Schema) {
+				// brief-v2 / brief-v3: the id is the hierarchical <cell>:<repo>:<stream>:<NN>
 				// form, validated against the registry and the path by the v2
 				// semantic pass — not the v1 exact filename-match.
 				reg := graphReposFor(s.Root)
@@ -1848,10 +1875,18 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// Evidence worms into the Brief row for render-time
 				// VERIFY:PASS / VERIFY:FAIL classification.
 				row.Evidence = bf.Evidence
+				// withdrawn-date/-reason/superseded-by worm into the row for the
+				// STATUS.md Withdrawn section and the depends-on-withdrawn NOTICE.
+				if w := bf.Withdrawal; w != nil {
+					row.WithdrawnDate = w.Date
+					row.WithdrawnReason = w.Reason
+					row.SupersededBy = w.SupersededBy
+				}
 
 				if row.Wave != bf.Wave {
 					add("%s: frontmatter wave %d != README table wave %d", path, bf.Wave, row.Wave)
 				}
+				checkWithdrawalFile(add, notice, path, id, bf, row, s, withdrawRes)
 				// A verified/done brief must carry real Evidence — a content row
 				// beyond the contract comment.
 				if (row.Status == "verified" || row.Status == "done") && !evidenceHasContent(bf.Evidence) {
@@ -2028,6 +2063,7 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 	// 0) until those edges are reconciled two-sided, then returns to PROBLEM.
 	// Follow-up reconciliation is tracked as a separate backlog item (below).
 	notices = append(notices, recip.reciprocityNotices()...)
+	problems = append(problems, withdrawnRowProblems(streams)...)
 	sort.Strings(problems)
 	sort.Strings(notices)
 	return problems, notices

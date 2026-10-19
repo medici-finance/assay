@@ -82,3 +82,28 @@ func TestFetchRoleWithPushURL(t *testing.T) {
 		t.Fatal("fetch did not receive the role credential")
 	}
 }
+
+// regression: #3281
+func TestFetchWithPushInsteadOf(t *testing.T) {
+	for _, linked := range []bool{false, true} {
+		t.Run(map[bool]string{false: "checkout", true: "linked"}[linked], func(t *testing.T) {
+			work := newRepo(t, allowedSlug)
+			wantURL := originURL(t, work)
+			mustGit(t, work, "config", "url."+wantURL+".pushInsteadOf", wantURL)
+			if linked {
+				work = newLinkedWorktree(t, work)
+			}
+			mustGit(t, work, "update-ref", "-d", "refs/remotes/origin/main")
+			withEnv(t, work)
+			if code := run([]string{"fetch"}); code != deskkit.ExitOK {
+				t.Fatalf("fetch exit = %d, want 0", code)
+			}
+			if got := onlyFetch(t); got.URL != wantURL {
+				t.Fatalf("fetch URL = %q, want %q", got.URL, wantURL)
+			}
+			if got := mustGit(t, work, "rev-parse", "refs/remotes/origin/main"); got != mustGit(t, work, "rev-parse", "HEAD") {
+				t.Fatal("fetch did not restore the upstream ref")
+			}
+		})
+	}
+}
