@@ -113,6 +113,15 @@ type BriefObservation struct {
 	DeclaredFiles      []string
 	DeclaredFilesFound bool
 	VerifyRows         []VerifyRow
+	// AcceptanceRevision is an optional immutable original-table revision.
+	// The observer must validate protected delivery/baseline/original provenance
+	// before populating it. It governs only the historical Expect definition
+	// read; the witness keeps its real execution tree and all applicability and
+	// dependency checks. Empty retains the ordinary witness-base definition.
+	AcceptanceRevision string
+	// AcceptanceProblem holds coverage even if a pattern supplies other passing
+	// claims. An invalid protected definition is never an empty, releasable set.
+	AcceptanceProblem string
 	// Witnesses maps a Verify row id to its recorded witnesses.
 	Witnesses map[string][]Witness
 }
@@ -188,6 +197,9 @@ func evaluateOneCoverage(x *evalCtx, b BriefObservation, in CoverageInput) Cover
 	id := b.ID
 	revision := in.Revision
 	var claims []Claim
+	if b.AcceptanceProblem != "" {
+		claims = append(claims, Claim{Claim: "protected acceptance definition", Kind: "command", Result: ResultCouldNotCheck, Reason: b.AcceptanceProblem})
+	}
 
 	// (a) every Verify row is a mandatory claim by construction.
 	var man *DependencyManifest
@@ -196,7 +208,7 @@ func evaluateOneCoverage(x *evalCtx, b BriefObservation, in CoverageInput) Cover
 	}
 	scope := newWitnessScope(b.BriefRel, b.DeclaredFiles, b.DeclaredFilesFound, man)
 	for _, r := range b.VerifyRows {
-		result, reason, claimRev := resolveVerifyClaim(x, scope.forVerifyRow(r), r, b.Witnesses[r.ID], revision)
+		result, reason, claimRev := resolveVerifyClaim(x, scope.forVerifyRow(r), r, b.Witnesses[r.ID], revision, b.AcceptanceRevision)
 		claims = append(claims, Claim{
 			Claim:    fmt.Sprintf("Verify row #%s: %s", r.ID, r.Command),
 			Kind:     "command",

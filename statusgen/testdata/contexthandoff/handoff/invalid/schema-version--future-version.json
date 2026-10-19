@@ -1,5 +1,5 @@
 {
-  "schema": "context-handoff-v2",
+  "schema": "context-handoff-v3",
   "declared_by": "example:demo:widgets:07",
   "target": {
     "state": "approved",

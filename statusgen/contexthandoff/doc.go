@@ -1,4 +1,4 @@
-// Package contexthandoff holds the context-handoff-v1 and amendment-manifest-v1
+// Package contexthandoff holds context-handoff-v1/v2 and amendment-manifest-v1
 // records (spec/context-handoff-v1.md; contract S-context-handoff): the typed
 // handoff a spec author gives a brief author when a change moves the plan, and
 // the manifest that binds each amendment obligation to a patch or a follow-up.

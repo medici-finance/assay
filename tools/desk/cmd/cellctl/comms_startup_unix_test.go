@@ -349,8 +349,9 @@ func TestCommsArgvRoundTrip(t *testing.T) {
 func TestUpTmuxNoDeskdRoleFirst(t *testing.T) {
 	f, _, _, log, env := commsUpFixture(t)
 	f.run(t, env, "set", "example", "CELL_COMMS_CONFIG=")
-	r := f.run(t, env, "up", "example", "--cockpit", "tmux", "--no-attach")
-	if r.code != 0 || strings.Count(r.stderr, "with no deskd") != 1 {
+	// The stub tmux opens the window but never starts the role, so the role's row is failed (exit 1).
+	r := f.run(t, env, "up", "example", "--cockpit", "tmux", "--no-attach", "--lease-wait", "1s")
+	if r.code != 1 || strings.Count(r.stderr, "with no deskd") != 1 {
 		t.Fatalf("up: %+v", r)
 	}
 	b, _ := os.ReadFile(log)
