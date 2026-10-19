@@ -385,6 +385,9 @@ func TestVerbClassification(t *testing.T) {
 		{"talosctl", []string{"services", "-n", "node1", "x"}, false, "services with positional argument after a listed flag's value"},
 		{"talosctl", []string{"services", "--added-upstream", "x"}, false, "services with an unlisted flag then a token: the token may be positional"},
 		{"talosctl", []string{"services", "--", "x"}, false, "services with positional argument after --"},
+		{"talosctl", []string{"services", "-"}, false, "a lone - after services is a positional argument, as the flag parser reads it"},
+		{"talosctl", []string{"services", "-n", "node1", "-"}, false, "a lone - after a listed flag's value is a positional argument"},
+		{"talosctl", []string{"services", "--"}, true, "a trailing -- with nothing after it is not a positional argument"},
 		{"talosctl", []string{"service"}, false, "singular service is not on the allowlist"},
 		{"talosctl", []string{"service", "x"}, false, "singular service with positional argument is not on the allowlist"},
 		{"k9s", nil, false, "k9s is an interactive TUI that can mutate from inside it — it has NO read-only lane"},
@@ -393,6 +396,15 @@ func TestVerbClassification(t *testing.T) {
 	for _, c := range cases {
 		if got := isReadOnly(c.cli, c.args); got != c.readOnly {
 			t.Errorf("isReadOnly(%q, %v) = %v, want %v — %s", c.cli, c.args, got, c.readOnly, c.why)
+		}
+	}
+	// Every bare-form-only entry must also be on the read-only allowlist: an
+	// entry missing there is inert and states a rule the classifier never applies.
+	for cli, verbs := range bareOnlyVerbs {
+		for v := range verbs {
+			if !readOnlyVerbs[cli][v] {
+				t.Errorf("bareOnlyVerbs[%q][%q] is not in readOnlyVerbs[%q]", cli, v, cli)
+			}
 		}
 	}
 }

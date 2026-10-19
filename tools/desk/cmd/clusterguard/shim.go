@@ -196,7 +196,8 @@ func scanVerb(cli string, args []string) verbScan {
 // `--flag=value` is self-contained, as in scanVerb. Any OTHER flag is taken to
 // consume nothing, so the token after it counts as positional: here that is
 // the fail-closed guess, since guessing that the flag consumed it would hide a
-// real argument. Everything after a bare `--` is positional.
+// real argument. Everything after a bare `--` is positional, and so is a lone
+// `-`, which the flag parser reads as an argument, not a flag.
 func hasPositional(cli string, rest []string) bool {
 	vf := valueFlags[cli]
 	for i := 0; i < len(rest); i++ {
@@ -204,7 +205,7 @@ func hasPositional(cli string, rest []string) bool {
 		if a == "--" {
 			return i+1 < len(rest)
 		}
-		if !strings.HasPrefix(a, "-") {
+		if a == "-" || !strings.HasPrefix(a, "-") {
 			return true
 		}
 		if !strings.Contains(a, "=") && vf[a] {

@@ -52,8 +52,14 @@
     {
       "name": "a non-flag token after a bare-form-only verb is not counted as positional",
       "file": "cmd/clusterguard/shim.go",
-      "old": "\t\tif !strings.HasPrefix(a, \"-\") {\n\t\t\treturn true\n\t\t}",
-      "new": "\t\tif !strings.HasPrefix(a, \"-\") {\n\t\t\treturn false\n\t\t}"
+      "old": "\t\tif a == \"-\" || !strings.HasPrefix(a, \"-\") {\n\t\t\treturn true\n\t\t}",
+      "new": "\t\tif a == \"-\" || !strings.HasPrefix(a, \"-\") {\n\t\t\treturn false\n\t\t}"
+    },
+    {
+      "name": "a lone - after a bare-form-only verb is read as a flag, not a positional argument",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\tif a == \"-\" || !strings.HasPrefix(a, \"-\") {",
+      "new": "\t\tif !strings.HasPrefix(a, \"-\") {"
     },
     {
       "name": "an unlisted flag after a bare-form-only verb is guessed to consume the next token (services --added-upstream x passes as read-only)",
