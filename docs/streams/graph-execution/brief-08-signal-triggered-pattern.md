@@ -76,8 +76,8 @@ implement this contract; where the two differ, the stricter rule applies. The cl
   per-window rate, each failing closed to an escalation signal (consumed by auto-triage/04).
 - **Activation is not in this brief.** Running the pattern on a live signal means filing issues and
   opening draft PRs autonomously. That human gate lives in auto-triage/02 and /03 (`gate: human`,
-  `DR-auto-triage`), which carry the dry-run default and the live adapters. No other dispatch brief
-  exists or is assumed.
+  `DR-auto-triage`), which carry the dry-run default and the live adapters. For the gate-red class,
+  no other dispatch brief exists or is assumed; the general desk wiring in `consumers` stays a later brief.
 - Single-point-of-failure note: the ONE control is the `pattern-effect-exceeds-role` lint on the pattern file. Second, independent layer: the pattern's own containment taxonomy is a closed enumeration checked by a separate schema rule (an unknown effect value fails parsing before the role check runs). Third, out-of-band: the roster's role binding at run time refuses an effect the role is not bound to, in a different component (the desk tools) on a different signal.
 
 ## Ground rules
@@ -91,7 +91,7 @@ implement this contract; where the two differ, the stricter rule applies. The cl
 2. Fixture directory with the valid instance and three mutated copies: (a) contain node with an added `guard-config-edit` effect; (b) root-cause node with the replay-fixture evidence marked `mandatory: false`; (c) propose node with a `merge` effect. Tests assert the lint reddens each with the rule name.
 3. One paragraph in `spec/workflow-pattern-v1.md` (planned) on signal-instantiated patterns and the liveness precondition; one paragraph in `docs/dependency-graph-design.md` naming the third pattern.
 4. Changelog fragment.
-5. (added 2026-10-18) Encode the gate-red class per the folded-scope facts: the admission predicate on the `signal` input, the culprit record as the confirm node's required evidence, the closed remedy set on the propose node, the default-carrying judgement decision and the effect limits. Add mutated copies (d) a gate-red input admitting `pull_request`, (e) a propose node whose remedy set adds an edit under `.github/workflows/`, (f) a judgement decision with no recommended default, (g) a withheld-detail gate classed `mechanical`; tests assert the lint reddens each with the rule name.
+5. (added 2026-10-18) Encode the gate-red class per the "Gate-red class" facts: the admission predicate on the `signal` input, the culprit record as the confirm node's required evidence, the closed remedy set on the propose node, the default-carrying judgement decision and the effect limits. Add mutated copies (d) a gate-red input admitting `pull_request`, (e) a propose node whose remedy set adds an edit under `.github/workflows/`, (f) a judgement decision with no recommended default, (g) a withheld-detail gate classed `mechanical`; tests assert the lint reddens each with the rule name.
 
 ## Verify
 | # | Class | Command | Expect |
