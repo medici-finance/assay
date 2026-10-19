@@ -108,6 +108,15 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
                   "--entrypoint", "statusgen", ref, "--version", capture=True).strip()
         if got != version:
             raise ValueError(f"{name} statusgen version {got!r} != {version}")
+    # Probe the built image with the same runtime restrictions as verification.
+    # Source stays in the release contract; no mounts, installs or credentials.
+    run("docker", "run", "--rm", "--pull", "never", "--network", "none",
+        "--platform", "linux/amd64", "--read-only", "--cap-drop", "ALL",
+        "--security-opt", "no-new-privileges", "--user", "1000:1000",
+        "--pids-limit", "64", "--memory", "256m", "--cpus", "1",
+        "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
+        "--entrypoint", "python3", refs["verify-runner"], "-B", "-c",
+        (root / "images/verify-runner/check.py").read_text())
     for name in ("desk-base", *DESKS):
         run("sh", root / "containers/scripts/layer-secret-scan.sh", refs[name])
     if not publish:

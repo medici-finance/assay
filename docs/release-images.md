@@ -24,8 +24,16 @@ roll remains a separate downstream job under its own existing identity.
    Linux statusgen and desk-tools bytes for all images. Build desk-tools first,
    desk-base from that newly built version, and the five desks from that base.
    Build assay-harness with the same binaries and prepared plugin source, and
-   verify-runner from the release statusgen plus its digest-pinned Go base.
-3. Check statusgen's version in all nine images; run the existing layer-secret
+   verify-runner from the release statusgen plus its digest-pinned Go base and
+   the Python packages pinned in `images/verify-runner/Dockerfile`.
+3. Check statusgen's version in all nine images. Execute the release-owned
+   `images/verify-runner/check.py` inside the built runner: import PyYAML and
+   jsonschema, parse YAML, validate a Draft 2020-12 schema, and prove that a
+   valid instance passes and an invalid one raises a validation error. The probe
+   prints Python and distribution versions into the release build log. It uses
+   no pulls, network, mounts or credentials; it runs as user 1000:1000 with a
+   read-only root, all capabilities dropped, no new privileges, default seccomp
+   and bounded memory, CPU, process count and temporary storage. Run the existing layer-secret
    gate on the shared desk base and all five desks. All checks precede the first
    push. A failure stops the same job before any tag or GitHub release write.
 4. Serialize the publication job on the resolved umbrella version before registry
@@ -102,3 +110,23 @@ The changelog-roll job uses the same board-writer App through the token action's
 variable in the protected `board-writer` environment; the existing
 `BOARD_APP_PRIVATE_KEY` secret remains the signing key. The client ID is not the
 numeric App ID.
+
+## Runner Python dependencies
+
+The Dockerfile owns the direct Debian bookworm package pins. Their risk assessment
+is recorded on [issue 3469](https://github.com/medici-finance/assay/issues/3469#issuecomment-6272973965).
+Apt resolves transitive dependencies from the base suite during the approved build;
+`/usr/local/share/verify-runner/packages.txt` records every installed Debian package
+and version in the immutable image, including transitive dependencies and Python.
+The capability check logs Python distribution versions separately. This is a record
+of the built image, not a claim of bit-for-bit package-resolution reproducibility.
+An unavailable direct pin fails the build and requires a reviewed update; runtime
+package installation is never a recovery path. The release manifest remains the
+existing versioned image-reference contract, without a second dependency manifest
+for consumers to reconcile.
+
+The source-side fake-Docker tests run in pull-request CI. They prove the capability
+check precedes all pushes and that either missing library stops publication. The
+real probe rejects the deficient v1.0.50 image. A corrected-image pass still needs
+the approved release build; source tests do not qualify a runner or replace fresh
+released-image pinning and independent qualification.

@@ -97,6 +97,9 @@ class ImagesTest(unittest.TestCase):
         self.script = self.root / 'tools/release/images.py'
         self.script.parent.mkdir(parents=True)
         shutil.copyfile(HERE / 'images.py', self.script)
+        check = self.root / 'images/verify-runner/check.py'
+        check.parent.mkdir(parents=True)
+        check.write_text('# fixture capability check')
         plugin = self.root / 'plugins/assay/.claude-plugin'
         plugin.mkdir(parents=True)
         (plugin / 'plugin.json').write_text('{"version":"1.2.3"}')
@@ -128,6 +131,10 @@ if args[:2] == ['manifest', 'inspect']:
     if mode == 'exists': print('{}'); sys.exit(0)
     print('unauthorized' if mode == 'lookup-fail' else 'manifest unknown', file=sys.stderr)
     sys.exit(1)
+if args[0] == 'run' and 'python3' in args:
+    if mode in ('missing-yaml', 'missing-jsonschema'):
+        print('ModuleNotFoundError: ' + mode, file=sys.stderr); sys.exit(1)
+    print('python capability checked'); sys.exit(0)
 if args[0] == 'run':
     print('v0.0.0' if mode == 'stale' and 'desk-base:' in args[-2] else 'v1.2.3')
 if args[0] == 'push' and mode == 'push-fail': sys.exit(1)
@@ -155,6 +162,36 @@ if args[:2] == ['image', 'inspect']:
     def recorded(self):
         return self.calls.read_text().splitlines() if self.calls.exists() else []
 
+    # regression: #3469
+    def test_python_before_publish(self):
+        result = self.invoke(True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(s) for s in self.recorded() if s.startswith('[')]
+        probes = [c for c in calls if c[0] == 'run' and 'python3' in c]
+        self.assertEqual(len(probes), 1)
+        probe = probes[0]
+        for flag, value in [('--pull', 'never'), ('--network', 'none'),
+                            ('--user', '1000:1000'), ('--cap-drop', 'ALL'),
+                            ('--security-opt', 'no-new-privileges'),
+                            ('--pids-limit', '64'), ('--memory', '256m')]:
+            self.assertEqual(probe[probe.index(flag) + 1], value)
+        self.assertIn('--read-only', probe)
+        self.assertNotIn('--volume', probe)
+        self.assertNotIn('--mount', probe)
+        self.assertNotIn('seccomp=unconfined', probe)
+        self.assertLess(calls.index(probe), next(i for i, c in enumerate(calls) if c[0] == 'push'))
+
+    # regression: #3469
+    def test_missing_python_stops(self):
+        for mode in ('missing-yaml', 'missing-jsonschema'):
+            with self.subTest(mode=mode):
+                self.setUp()
+                result = self.invoke(True, mode)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertIn(mode, result.stderr)
+                self.assertFalse(any('"push"' in s for s in self.recorded()))
+                self.assertFalse((self.out / 'release-images.json').exists())
+
     def test_dry_build_never_pushes_or_writes_pinnable_refs(self):
         result = self.invoke()
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -162,7 +199,7 @@ if args[:2] == ['image', 'inspect']:
         calls = self.recorded()
         self.assertFalse(any('"push"' in s or '"manifest"' in s for s in calls))
         self.assertEqual(sum(s.startswith('scan ') for s in calls), 6)
-        self.assertEqual(sum('"run"' in s for s in calls), 9)
+        self.assertEqual(sum('"run"' in s for s in calls), 10)
         self.assertIn('DESK_TOOLS_IMAGE=ghcr.io/example/assay/desk-tools:v1.2.3', '\n'.join(calls))
         self.assertEqual((self.root / '.release-images/harness/statusgen').read_bytes(),
                          (self.inputs / 'statusgen-linux-amd64').read_bytes())
