@@ -82,13 +82,16 @@ func isVerifyHeading(line string) bool {
 
 // parseVerifyTable reads complete, structurally valid tables. Unlike statusgen's
 // best-effort lint readers, re-derivation cannot silently omit unreadable rows.
-// An absent # column uses ordinal IDs; explicit IDs must be unique and nonempty.
+// Auxiliary tables (neither Command nor Expect in the header) are skipped as
+// whole blocks. Multiple Verify tables merge only with unique IDs across them.
+// An absent # column uses per-table ordinal IDs; explicit IDs must be nonempty.
 func parseVerifyTable(section string) ([]verifyRow, error) {
 	var rows []verifyRow
 	seen := map[string]bool{}
 	var header []string
 	cmdIdx, expIdx, numIdx, classIdx := -1, -1, -1, -1
 	needSeparator := false
+	skipTable := false
 	tableRows := 0
 	for n, raw := range strings.Split(section, "\n") {
 		line := strings.TrimSpace(raw)
@@ -100,16 +103,21 @@ func parseVerifyTable(section string) ([]verifyRow, error) {
 				return fail("table has no data rows or separator")
 			}
 			header = nil
+			skipTable = false
+			continue
+		}
+		if skipTable {
 			continue
 		}
 		cells := splitRowCells(line)
 		if header == nil {
 			cmdIdx, expIdx, numIdx, classIdx = -1, -1, -1, -1
 			columns := map[string]bool{}
+			duplicate := false
 			for j, c := range cells {
 				name := strings.ToLower(c)
 				if columns[name] {
-					return fail("duplicate header column")
+					duplicate = true
 				}
 				columns[name] = true
 				switch name {
@@ -122,6 +130,13 @@ func parseVerifyTable(section string) ([]verifyRow, error) {
 				case "expect":
 					expIdx = j
 				}
+			}
+			if cmdIdx < 0 && expIdx < 0 {
+				skipTable = true
+				continue
+			}
+			if duplicate {
+				return fail("duplicate header column")
 			}
 			if cmdIdx < 0 || expIdx < 0 {
 				return fail("table requires Command and Expect columns")
@@ -293,7 +308,7 @@ func cmdRederive(args []string, out io.Writer) error {
 	baseMD, baseErr := runGitFn(req.root, "show", base+":"+req.brief)
 	if baseErr != nil {
 		// A failed show is not proof that a brief is new: inspect the tree.
-		entry, treeErr := runGitFn(req.root, "ls-tree", "--name-only", base, "--", ":(literal)"+req.brief)
+		entry, treeErr := runGitFn(req.root, "--literal-pathspecs", "ls-tree", "--full-tree", "--name-only", base, "--", req.brief)
 		if treeErr != nil || strings.TrimSpace(entry) != "" {
 			return deskkit.Unverifiable("could-not-check: cannot read brief at base", baseErr)
 		}
