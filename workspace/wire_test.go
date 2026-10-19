@@ -50,6 +50,9 @@ func TestWireUnicode(t *testing.T) {
 		{"replacement", `"/srv/\ufffd"`},
 		{"pair", `"/srv/\ud83d\ude80"`},
 		{"highest-pair", `"/srv/\uDBFF\uDFFF"`},
+		{"lowest-pair", `"/srv/\ud800\udc00"`},
+		{"below-surrogates", `"/srv/\ud7ff"`},
+		{"above-surrogates", `"/srv/\ue000"`},
 		{"escaped-backslash", `"/srv/\\ud800"`},
 	} {
 		t.Run(pair[0], func(t *testing.T) {
@@ -75,13 +78,30 @@ func TestWireUnicode(t *testing.T) {
 			}
 		})
 	}
-	// A high surrogate must be immediately followed by a low-surrogate escape. The
-	// last three each pin one checkWire condition no other value here reaches: a
-	// backslash not starting \u, a low surrogate first, a second escape above 0xdfff.
+	// A high surrogate must be immediately followed by a low-surrogate escape. From
+	// "\\dc00" on, each value pins one checkWire condition no earlier value reaches:
+	// a backslash not starting \u, a low surrogate first, a second escape above
+	// 0xdfff, a high surrogate followed by no backslash at all, and a second escape
+	// just below 0xdc00. The positives above pin the range edges from the other side.
 	for _, value := range []string{`"/x\ud800a"`, `"/x\ud800\ud800"`, `"/x\udc00\ud800"`, `"/x\ud800\\udc00"`, `"/x\ud800\u0041"`,
-		`"/x\ud800\\dc00"`, `"/x\udc00\udc00"`, `"/x\ud800\ue000"`} {
+		`"/x\ud800\\dc00"`, `"/x\udc00\udc00"`, `"/x\ud800\ue000"`, `"/x\ud800xudc00"`, `"/x\ud800\udbff"`} {
 		_, err := DecodeRequest(replaceWire(t, readFixture(t, "request-worker.json"), "root", []byte(value)))
 		wantReason(t, err, ReasonMalformed)
+	}
+}
+
+// regression: #3150
+// The lexer indexes past each backslash on the strength of json.Valid alone, so a
+// truncated escape must refuse as malformed, never panic, in every decoder.
+func TestWireTruncated(t *testing.T) {
+	for _, doc := range []string{`{"schema":"\`, `{"schema":"\u12`, `{"schema":"\ud800\`, `\`} {
+		for _, dec := range []func([]byte) error{
+			func(b []byte) error { _, err := DecodeRequest(b); return err },
+			func(b []byte) error { _, err := DecodeRecord(b); return err },
+			func(b []byte) error { _, err := DecodeResult(b); return err },
+		} {
+			wantReason(t, dec([]byte(doc)), ReasonMalformed)
+		}
 	}
 }
 

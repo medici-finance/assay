@@ -1,5 +1,5 @@
 {
-  "test": "go test . -count=1 -timeout 60s -run '^(TestWorkspaceContractRoundTrip|TestWorkspaceSchemaCoverage|TestWireUnicode|TestWireOtherDecoders|TestPathByteLimit)$'",
+  "test": "go test . -count=1 -timeout 60s -run '^(TestWorkspaceContractRoundTrip|TestWorkspaceSchemaCoverage|TestWireUnicode|TestWireOtherDecoders|TestWireTruncated|TestPathByteLimit)$'",
   "control": {
     "name": "CONTROL \u2014 accept unknown schema: a cell-workspace/v2 (or schema-less) document is read as v1",
     "file": "contract.go",
@@ -144,6 +144,60 @@
       "file": "contract.go",
       "old": "low < 0xdc00 || low > 0xdfff {",
       "new": "low < 0xdc00 {"
+    },
+    {
+      "name": "a high surrogate followed by text that merely contains u is read as a pair",
+      "file": "contract.go",
+      "old": "i+6 >= len(data) || data[i+1] != '\\\\' ||",
+      "new": "i+6 >= len(data) ||"
+    },
+    {
+      "name": "the lexer runs on syntactically invalid JSON and panics on a truncated escape",
+      "file": "contract.go",
+      "old": "!utf8.Valid(data) || !json.Valid(data) {",
+      "new": "!utf8.Valid(data) {"
+    },
+    {
+      "name": "a second high surrogate just below the low range is accepted as a pair's low half",
+      "file": "contract.go",
+      "old": "low < 0xdc00 ||",
+      "new": "low < 0xdbff ||"
+    },
+    {
+      "name": "the lowest low surrogate is refused as the second half of a valid pair",
+      "file": "contract.go",
+      "old": "low < 0xdc00 ||",
+      "new": "low < 0xdc01 ||"
+    },
+    {
+      "name": "the code point just below the surrogate range is treated as a surrogate",
+      "file": "contract.go",
+      "old": "if code < 0xd800 || code > 0xdfff {",
+      "new": "if code < 0xd7ff || code > 0xdfff {"
+    },
+    {
+      "name": "the code point just above the surrogate range is treated as a surrogate",
+      "file": "contract.go",
+      "old": "if code < 0xd800 || code > 0xdfff {",
+      "new": "if code < 0xd800 || code > 0xe000 {"
+    },
+    {
+      "name": "wire bytes that are not valid UTF-8 reach the lossy decoder",
+      "file": "contract.go",
+      "old": "if !utf8.Valid(data) || !json.Valid(data) {",
+      "new": "if !json.Valid(data) {"
+    },
+    {
+      "name": "an escaped backslash is not consumed as a pair, so literal text \\\\ud800 reads as a surrogate",
+      "file": "contract.go",
+      "old": "if data[i+1] != 'u' {\n\t\t\ti++\n\t\t\tcontinue",
+      "new": "if data[i+1] != 'u' {\n\t\t\tcontinue"
+    },
+    {
+      "name": "a high surrogate followed by any \\u escape below the low range is accepted",
+      "file": "contract.go",
+      "old": "err != nil || low < 0xdc00 ||",
+      "new": "err != nil ||"
     }
   ]
 }
