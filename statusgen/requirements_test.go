@@ -3,13 +3,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/medici-finance/assay/statusgen/productintent"
-	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/statusgen/productintent"
+	"gopkg.in/yaml.v3"
 )
 
 // Test names here stay under 42 characters: the repository's pre-push secret scan
@@ -784,4 +784,29 @@ func TestProductSchemaBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("actual conform evaluated %d cases", len(corpus))
+}
+
+// One forward-version file carrying a nested null must not blank the register,
+// and a record-supplied version string cannot forge an extra lint line.
+// regression: F-unsupported-envelope-null
+func TestProductFutureNullReader(t *testing.T) {
+	f := validRequirementFixture()
+	render := func(extension string) string {
+		return strings.Replace(f.render(), "---\n\n", "product-intent: "+extension+"\n---\n\n", 1)
+	}
+	root := t.TempDir()
+	writeFile(t, root, "docs/streams/requirements/product.md", render(`{"schema":"product-intent-v2","mandatory":false,"future":null}`))
+	if p := requirementRegisterProblems(root); len(p) != 0 {
+		t.Fatalf("unsupported nested null blanked the register: %v", p)
+	}
+	notices := requirementRegisterNotices(root)
+	if !containsAll(notices, "unsupported", "never evaluated") || !containsAll(notices, "1 requirement") {
+		t.Fatalf("unsupported envelope not reported: %v", notices)
+	}
+	writeFile(t, root, "docs/streams/requirements/product.md", render(`{"schema":"v2\nPROBLEM: forged","future":1}`))
+	for _, n := range requirementRegisterNotices(root) {
+		if strings.Contains(n, "\n") {
+			t.Fatalf("record-supplied version forged a lint line: %q", n)
+		}
+	}
 }

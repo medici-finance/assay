@@ -114,11 +114,11 @@ type ResolvedTarget struct {
 	Target    Target
 	Direction Direction
 	Approval  string // approved, rejected or unknown
-	State     string // known, unknown or withdrawn; known is a binding, not observed benefit
+	State     string // known, unknown or withdrawn; known is a binding, not observed benefit; a rejection is unknown
 	Observed  []Observation
 }
 type Resolution struct {
-	State     string // unbound, unsupported, known or withdrawn
+	State     string // unbound, unsupported, unknown, known or withdrawn
 	Version   string
 	Mandatory bool
 	Targets   []ResolvedTarget

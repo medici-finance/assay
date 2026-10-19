@@ -67,6 +67,13 @@ func TestProductIntentApprovalAndUnknown(t *testing.T) {
 		"wrong-source":          func(e *Evidence) { e.Decisions[2].Source = "" },
 		"unauthorized":          func(e *Evidence) { e.Authorities = nil },
 		"unavailable-direction": func(e *Evidence) { e.Decisions[0].Available = false },
+		// One decision reference binds exactly one subject: an entry citing the
+		// same reference for another binding is a conflicting vote, not a skip.
+		"shared-reference": func(e *Evidence) {
+			other := e.Decisions[2]
+			other.Subject.Revision = "t2"
+			e.Decisions = append(e.Decisions, other)
+		},
 		"conflict": func(e *Evidence) {
 			other := e.Decisions[2]
 			other.Verdict = "rejected"
@@ -273,6 +280,14 @@ func TestProductIntentSchemaParity(t *testing.T) {
 	t.Logf("actual conform schema and parser agree on %d cases", len(corpus))
 }
 
+// pureImports is the closed allow-list of standard-library packages the pure
+// package may import. Anything else fails closed: io/ioutil, io/fs, os and its
+// subpackages, syscall, unsafe, plugin, runtime/debug, network and third-party.
+var pureImports = map[string]bool{
+	"bytes": true, "encoding/json": true, "fmt": true, "io": true,
+	"reflect": true, "regexp": true, "strings": true, "unicode/utf8": true,
+}
+
 func boundaryImports(source []byte) error {
 	f, err := parser.ParseFile(token.NewFileSet(), "fixture.go", source, parser.ImportsOnly)
 	if err != nil {
@@ -283,7 +298,7 @@ func boundaryImports(source []byte) error {
 		if err != nil {
 			return err
 		}
-		if path == "os" || path == "os/exec" || path == "syscall" || path == "path/filepath" || strings.HasPrefix(path, "net") || strings.Contains(path, ".") {
+		if !pureImports[path] {
 			return &ErrorBoundary{path}
 		}
 	}
@@ -320,9 +335,41 @@ func TestProductBoundary(t *testing.T) {
 	if err := boundaryImports([]byte("package fixture\nimport \"fmt\"")); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"os", "net/http", "os/exec", "path/filepath", "example.invalid/database"} {
+	for _, path := range []string{"os", "net/http", "os/exec", "path/filepath", "example.invalid/database", "io/ioutil", "io/fs", "os/user", "os/signal", "plugin", "unsafe", "runtime/debug", "syscall"} {
 		if boundaryImports([]byte("package fixture\nimport "+strconv.Quote(path))) == nil {
 			t.Fatalf("planted sibling import escaped: %s", path)
 		}
+	}
+}
+
+// regression: F-unsupported-envelope-null
+func TestProductUnsupportedNull(t *testing.T) {
+	for _, data := range []string{
+		`{"schema":"product-intent-v2","mandatory":false,"future":null}`,
+		`{"schema":"product-intent-v2","mandatory":true,"future":{"nested":[null,{"x":null}]}}`,
+	} {
+		d, err := Decode([]byte(data))
+		if err != nil {
+			t.Fatalf("unsupported payload evaluated: %s: %v", data, err)
+		}
+		if got := Resolve(d, Evidence{}, "accepted"); got.State != "unsupported" || d.Record() != nil || string(d.Raw()) != data {
+			t.Fatalf("unsupported envelope not retained: %s: %+v", data, got)
+		}
+	}
+	// Well-formedness still binds every version.
+	for _, data := range []string{
+		`null`,
+		`{"schema":"product-intent-v2","future":{"a":1,"a":2}}`,
+		`{"schema":"product-intent-v2","future":null} {}`,
+		`{"schema":"product-intent-v2","mandatory":null}`,
+		`{"schema":null,"future":null}`,
+	} {
+		if _, err := Decode([]byte(data)); err == nil {
+			t.Fatalf("malformed envelope accepted: %s", data)
+		}
+	}
+	// A supported record still refuses a nested null as such.
+	if _, err := Decode([]byte(`{"schema":"product-intent-v1","observed":null}`)); err == nil || !strings.Contains(err.Error(), "null") {
+		t.Fatalf("supported nested null not refused as null: %v", err)
 	}
 }

@@ -454,8 +454,12 @@ revisions use lower-case `[a-z0-9][a-z0-9._-]*`; revisions are stable tokens, no
 by list position or a mutable filename. Confidence is exactly `low`, `medium`, `high` or
 `unknown`. Text must contain a character other than ASCII space/tab/CR/LF. Unknown
 members, wrong types, nulls, duplicate JSON/YAML keys and trailing JSON are refused in
-supported records. JSON Schema checks shape; the reader additionally checks revision
-uniqueness and direction/observation links. Neither layer resolves external references.
+supported records. Every version, unsupported included, must be well formed: duplicate
+keys, trailing JSON, a null envelope and a non-string `schema` or non-boolean
+`mandatory` are refused. A nested null inside an unsupported payload is retained as
+payload, not refused, because refusing it would evaluate that payload. JSON Schema checks
+shape; the reader additionally checks revision uniqueness and direction/observation
+links. Neither layer resolves external references.
 
 `Decode` accepts JSON bytes; no bytes means the legacy absence. The filesystem adapter
 uses the existing YAML codec and passes only the optional extension to this package.
@@ -468,14 +472,19 @@ reference and qualified `(subject, direction-or-target kind, revision)` binding,
 source, authorized principal and `approved` verdict. Both the direction and target must
 resolve approved. Authorities are supplied separately from records and decisions. Missing,
 unavailable, unauthorized, mismatched or conflicting evidence yields `unknown`; a resolved
-rejection remains `rejected`. The adapter supplying evidence owns source authenticity,
+rejection remains `rejected`. One decision reference binds exactly one subject: every
+supplied entry citing that reference is a vote on the binding being resolved, so an entry
+bound to a different direction or target is a mismatch and the result is `unknown`. A
+direction and a target therefore cite distinct decision references. The adapter supplying evidence owns source authenticity,
 freshness, visibility and authority policy; this pure package does not authenticate a
 forge comment or establish the authority set. No production adapter is activated here.
 The parser never promotes its own claim boolean or base `status: satisfied` into approval.
 
 Resolution states are `unbound` (legacy absence), `unsupported` (retained future envelope),
-`unknown` (unresolved decision/base status), `known` (resolved bindings, not observed
-benefit), or `withdrawn`. Each target retains its own approval verdict, including historical
+`unknown` (no current approved binding: an unresolved decision or base status, or a
+resolved rejection, whose verdict stays in the target's approval), `known` (resolved
+bindings, not observed benefit), or `withdrawn`. The record's state is `unknown` while any
+non-withdrawn target, historical revisions included, lacks an approved binding. Each target retains its own approval verdict, including historical
 verdicts under a tombstone; a withdrawn target's state is always `withdrawn`, never a
 current approved binding. Base REQ withdrawal also withdraws every target. Observed
 references remain evidence pointers even when the decision is unavailable.
@@ -485,6 +494,11 @@ reference lists to remain identical prefixes; new revisions/references append. S
 kind cannot change, revision IDs cannot be reused, and withdrawal cannot resurrect. Owners
 and display names may change while historical bindings stay intact. This API needs an
 explicit prior snapshot: parsing one current file alone cannot prove no history was removed.
+A decision binds a revision token, not the revision's content: an in-place edit of a
+target's condition, measure or window under the same `revision` keeps a previously
+supplied approval unless `CheckHistory` runs against a prior snapshot. No production
+consumer calls `Resolve` yet; a consumer that acts on an `approved` binding must first
+run `CheckHistory` against its base tree, or bind each decision to a content digest.
 Git tombstone enforcement remains the register's existing responsibility; no new writer,
 ledger, polling, network, scheduler or dispatch authority is introduced.
 

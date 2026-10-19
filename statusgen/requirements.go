@@ -39,8 +39,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/medici-finance/assay/statusgen/productintent"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -48,6 +46,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/medici-finance/assay/statusgen/productintent"
 )
 
 // requirementsDirName is the entry directory under docs/streams/ (registers-v1
@@ -398,7 +398,7 @@ func requirementRegisterNotices(root string) []string {
 			if v != productintent.Schema {
 				state = "unsupported; payload retained, never evaluated"
 			}
-			extensionNotices = append(extensionNotices, fmt.Sprintf("docs/streams/%s/%s: product-intent %s: %s", requirementsDirName, e.File, v, state))
+			extensionNotices = append(extensionNotices, fmt.Sprintf("docs/streams/%s/%s: product-intent %q: %s", requirementsDirName, e.File, v, state))
 		}
 	}
 	return append(extensionNotices, fmt.Sprintf(

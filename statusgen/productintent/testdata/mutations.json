@@ -62,5 +62,45 @@
     "after": "func exactFields(value any, typ reflect.Type) error { return nil\n",
     "package": "./productintent",
     "test": "TestProductIntentSchemaParity"
+  },
+  {
+    "name": "refuse-unsupported-null",
+    "path": "productintent/decode.go",
+    "before": "if tok == nil && (top || nestedNull) {",
+    "after": "if tok == nil {",
+    "package": "./productintent",
+    "test": "TestProductUnsupportedNull"
+  },
+  {
+    "name": "allow-supported-null",
+    "path": "productintent/decode.go",
+    "before": "if err := wellFormed(data, true); err != nil {",
+    "after": "if err := wellFormed(data, false); err != nil {",
+    "package": "./productintent",
+    "test": "TestProductUnsupportedNull"
+  },
+  {
+    "name": "reader-refuses-unsupported-null",
+    "path": "productintent/decode.go",
+    "before": "if tok == nil && (top || nestedNull) {",
+    "after": "if tok == nil {",
+    "package": ".",
+    "test": "TestProductFutureNullReader"
+  },
+  {
+    "name": "unquote-notice-version",
+    "path": "requirements.go",
+    "before": "product-intent %q: %s",
+    "after": "product-intent %s: %s",
+    "package": ".",
+    "test": "TestProductFutureNullReader"
+  },
+  {
+    "name": "deny-list-boundary",
+    "path": "productintent/records_test.go",
+    "before": "if !pureImports[path] {",
+    "after": "if path == \"os\" || path == \"os/exec\" || path == \"syscall\" || path == \"path/filepath\" || strings.HasPrefix(path, \"net\") || strings.Contains(path, \".\") {",
+    "package": "./productintent",
+    "test": "TestProductBoundary"
   }
 ]

@@ -29,12 +29,11 @@ func Decode(data []byte) (Document, error) {
 	if !utf8.Valid(data) {
 		return Document{}, fmt.Errorf("product-intent: invalid UTF-8")
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	if err := uniqueKeys(dec); err != nil {
+	// Well-formedness (duplicate keys, trailing data, a null envelope) binds every
+	// version. Nested nulls are refused only once the version is known supported:
+	// refusing them in an unsupported payload would evaluate that payload.
+	if err := wellFormed(data, false); err != nil {
 		return Document{}, err
-	}
-	if _, err := dec.Token(); err != io.EOF {
-		return Document{}, fmt.Errorf("product-intent: trailing JSON")
 	}
 	var header struct {
 		Schema    string `json:"schema"`
@@ -48,6 +47,9 @@ func Decode(data []byte) (Document, error) {
 		return Document{}, fmt.Errorf("product-intent: schema must be a string")
 	}
 	if raw, ok := envelope["mandatory"]; ok {
+		if string(raw) == "null" {
+			return Document{}, fmt.Errorf("product-intent: mandatory must be a boolean")
+		}
 		if err := json.Unmarshal(raw, &header.Mandatory); err != nil {
 			return Document{}, err
 		}
@@ -59,6 +61,9 @@ func Decode(data []byte) (Document, error) {
 	if header.Schema != Schema {
 		return d, nil
 	}
+	if err := wellFormed(data, true); err != nil {
+		return Document{}, err
+	}
 	var tree any
 	if err := json.Unmarshal(data, &tree); err != nil {
 		return Document{}, err
@@ -66,7 +71,7 @@ func Decode(data []byte) (Document, error) {
 	if err := exactFields(tree, reflect.TypeOf(Record{})); err != nil {
 		return Document{}, err
 	}
-	dec = json.NewDecoder(bytes.NewReader(data))
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	var r Record
 	if err := dec.Decode(&r); err != nil {
@@ -79,14 +84,28 @@ func Decode(data []byte) (Document, error) {
 	return d, nil
 }
 
-// uniqueKeys uses the standard codec's tokens to refuse duplicate member names,
-// including in unsupported envelopes. It does not interpret product semantics.
-func uniqueKeys(dec *json.Decoder) error {
+// wellFormed refuses duplicate member names at every depth, trailing JSON and a
+// null envelope, including in unsupported envelopes. With nestedNull false a
+// nested null is retained as payload; supported records pass nestedNull true.
+func wellFormed(data []byte, nestedNull bool) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if err := uniqueKeys(dec, nestedNull, true); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return fmt.Errorf("product-intent: trailing JSON")
+	}
+	return nil
+}
+
+// uniqueKeys uses the standard codec's tokens to refuse duplicate member names.
+// It does not interpret product semantics.
+func uniqueKeys(dec *json.Decoder, nestedNull, top bool) error {
 	tok, err := dec.Token()
 	if err != nil {
 		return err
 	}
-	if tok == nil {
+	if tok == nil && (top || nestedNull) {
 		return fmt.Errorf("product-intent: null is not a record value")
 	}
 	if delim, ok := tok.(json.Delim); ok {
@@ -103,7 +122,7 @@ func uniqueKeys(dec *json.Decoder) error {
 				}
 				seen[s] = true
 			}
-			if err := uniqueKeys(dec); err != nil {
+			if err := uniqueKeys(dec, nestedNull, false); err != nil {
 				return err
 			}
 		}
