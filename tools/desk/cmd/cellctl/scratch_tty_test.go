@@ -47,7 +47,7 @@ func TestScratchTTYFixture(t *testing.T) {
 			panic(value)
 		}
 	}()
-	env := envSet(os.Environ(), "SCRATCH_TTY_FIXTURE", "child")
+	env := fixtureProcessEnv("SCRATCH_TTY_FIXTURE=child")
 	env = envSet(env, "ASSAY_SOURCE_REVISION", "fixture-revision")
 	c.runInteractiveHarness("worker-desk", []string{os.Args[0], "-test.run=^TestScratchTTYFixture$"}, env, dir)
 }
@@ -67,7 +67,7 @@ func TestScratchTerminal(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, script, args...)
-	cmd.Env = append(os.Environ(), "SCRATCH_TTY_FIXTURE=owner", "SCRATCH_TTY_DIR="+dir)
+	cmd.Env = fixtureProcessEnv("SCRATCH_TTY_FIXTURE=owner", "SCRATCH_TTY_DIR="+dir)
 	output, runErr := cmd.CombinedOutput()
 	result, err := os.ReadFile(filepath.Join(dir, "result"))
 	if runErr != nil || err != nil || string(result) != "0" {

@@ -1,0 +1,10 @@
+{
+  "test": "go test ./cmd/deskwt -run '^TestSweepDetachedReviewsShareReachability$' -count=1 -v -timeout 30s",
+  "control": {
+    "name": "rebuild detached reachability per candidate",
+    "file": "cmd/deskwt/deadsession.go",
+    "old": "history, herr := sc.open(sc.historyDir)",
+    "new": "history, herr := sc.open(rt)"
+  },
+  "mutations": []
+}

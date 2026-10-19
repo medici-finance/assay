@@ -415,3 +415,12 @@ These sources motivate choices; they do not certify the proposed implementation:
 - [OMG BPMN 2.0.2](https://www.omg.org/spec/BPMN/2.0.2/About-BPMN)
   provides related process-modeling vocabulary. This proposal does not require a BPMN
   engine or claim BPMN conformance.
+
+## Desk-process assessment profile — proposal of 17 October 2026
+
+[Desk improvement](../desk-improvement/spec.md) is a concrete consumer of this specification's
+enduring subjects, assessments, impact observations and practices. It supplies configurable
+desk scorecards, diagnosis, experiment/follow-up validation and native evidence adapters.
+It does not create a second subject/observation store, queue, identity or adoption authority.
+The public plan owns its bounded implementation; each adopter owns actual cases, permissions,
+budgets and trial decisions. Existing broader continuing-operations scope remains intact.

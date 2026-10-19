@@ -1,0 +1,8 @@
+### Fixed
+- Verification closure preserves original acceptance rows while recording independently re-derived supplemental rows without acceptance-pass credit. Immutable delivery, baseline and original-table provenance must agree across closure readers and lint.
+- Coverage uses the same original acceptance contract and explicit held provenance observations. Evaluator generation 2 identifies the typed original-definition revision without changing witness execution revisions or content applicability.
+- Protected closure, audit, coverage and lint select the latest complete run while retaining prior Evidence; duplicate current markers and unfinished or failed current runs hold. Two-parent deliveries require unchanged main acceptance since divergence. Existing mutation controls remain executable against their current guard anchors.
+- Protected provenance requires the delivery on the observed HEAD first-parent chain before using its mainline baseline; arbitrary reachable history grants no supplemental accounting.
+- Flip and reconciliation retain complete protected Evidence context through the shared run adapter; a newer unmarked PASS cannot replace current provenance. Ordinary records still audit only the selected run.
+- Protected classification and validation share a canonical marker scan; the selected-run audit refuses classification ambiguity before ordinary auditing. Direct consumer isolation tests require the missing-witness audit to run before asserting refusal.
+- The shared audit returns findings/refusal across the full-record and selected-run boundary; it never returns full ordinary history to fill rows. Claim-reader compatibility fixtures seed only their explicitly owned global file, preserving fixture Git isolation.

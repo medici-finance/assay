@@ -239,8 +239,12 @@ func failFirstGateChecks(root string, streams []*Stream) (problems, notices []st
 			if !ok {
 				continue
 			}
-			rows := briefVerifyRows(art.Verify)
-			unplaced := verifyUnplacedRows(art.Verify)
+			plan, refusal := protectedAcceptance(art.Verify, art.Evidence, art.Path)
+			if refusal != "" {
+				continue // protectedClosureProblems reports the same refusal.
+			}
+			rows := briefVerifyRows(plan.Verify)
+			unplaced := verifyUnplacedRows(plan.Verify)
 			if len(rows) == 0 && len(unplaced) == 0 {
 				continue // no Verify table: verifySectionProblems' business
 			}
@@ -258,7 +262,7 @@ func failFirstGateChecks(root string, streams []*Stream) (problems, notices []st
 			for _, u := range unplaced {
 				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — the Verify section holds %s that `statusgen verifyrun` cannot place, so it is never run, witnessed or held to a fail-first record. Give the table a `Command` column (and a Command cell on every row)", id, br.Status, u))
 			}
-			evidence := parseEvidenceRows(art.Evidence)
+			evidence := parseEvidenceRows(plan.Evidence)
 			for _, r := range rows {
 				ff, found, stale := latestFailFirst(evidence[r.ID], r.Command)
 				if !risky[r.ID] {

@@ -193,7 +193,13 @@ func TestDispatchTierArg(t *testing.T) {
 		{[]string{"--tier", "fast"}, "", false},
 		{[]string{"--tier"}, "", false},
 	} {
-		got, err := dispatchTierArg(c.args)
+		r := cliRecord(t)
+		code, _, _ := r.exec(append([]string{"dispatch"}, c.args...)...)
+		got := r.tier
+		var err error
+		if code != 0 {
+			err = deskkit.Refused("CLI refused")
+		}
 		if (err == nil) != c.ok || got != c.want {
 			t.Errorf("dispatchTierArg(%q) = %q, %v", c.args, got, err)
 		}

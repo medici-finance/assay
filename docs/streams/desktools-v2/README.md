@@ -74,7 +74,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 17 | [Enforce complete Cobra and Viper adoption across the tool suite](brief-17-enforce-complete-cobra-and-viper-adoption-across-the-tool-suite.md) | 5 | L | todo | — | — |
 | 18 | [Migrate statusgen to Cobra and Viper](brief-18-migrate-statusgen-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 19 | [Migrate qualgen to Cobra and Viper](brief-19-migrate-qualgen-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
-| 20 | [Migrate deskboard to Cobra and Viper](brief-20-migrate-deskboard-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 20 | [Migrate deskboard to Cobra and Viper](brief-20-migrate-deskboard-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 21 | [Migrate deskdispatch to Cobra and Viper](brief-21-migrate-deskdispatch-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 22 | [Migrate deskwt to Cobra and Viper](brief-22-migrate-deskwt-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 23 | [Migrate deskfleet to Cobra and Viper](brief-23-migrate-deskfleet-to-cobra-and-viper.md) | 3 | M | todo | — | — |
@@ -112,6 +112,11 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 55 | [Port the go-analysis adapter entrypoints](brief-55-port-the-go-analysis-adapter-entrypoints.md) | 3 | M | todo | — | — |
 | 56 | [Migrate deskperf to Cobra and Viper](brief-56-migrate-deskperf-to-cobra-and-viper.md) | 3 | S | todo | — | — |
 | 57 | [Migrate intake-eval to Cobra and Viper](brief-57-migrate-intake-eval-to-cobra-and-viper.md) | 3 | S | todo | — | — |
+| 58 | [Extract the role credential provider and retire internal desktoken callouts](brief-58-extract-the-role-credential-provider-and-retire-internal-desktoken-callouts.md) | 1 | L | todo | — | — |
+| 59 | [Share concurrent credential lookups and bound reuse by credential expiry](brief-59-share-concurrent-credential-lookups-and-bound-reuse-by-credential-expiry.md) | 2 | M | todo | — | — |
+| 60 | [Bound component activation discovery and reuse validated manifest snapshots](brief-60-bound-component-activation-discovery-and-reuse-validated-manifest-snapshots.md) | 1 | M | todo | — | — |
+| 61 | [Version shared performance boundaries and keep legacy reports comparable](brief-61-version-shared-performance-boundaries-and-keep-legacy-reports-comparable.md) | 1 | M | todo | — | — |
+| 62 | [Instrument desk hot paths and qualify credential and startup savings](brief-62-instrument-desk-hot-paths-and-qualify-credential-and-startup-savings.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -233,3 +238,43 @@ all new CLI platform fixtures and checks are owned by /15, /16, their migration 
 and /17. /12 does not consume /15 or block that chain; its existing platform/refusal checks
 and historical Evidence remain unchanged. The dependency waves and critical path above
 therefore need no additional edge for /12.
+
+## Performance delivery priority — 2026-10-16
+
+This authoring amendment prioritizes credential extraction and concurrency, startup discovery
+and trustworthy instrumentation. It grants no credential, deployment or collection authority.
+Existing delivered performance work and its Evidence are preserved. CLI migration, future
+mirror/service work and the local recorder each keep their current semantic owner.
+
+| Priority | Owner | Delivery and current state |
+|---|---|---|
+| 1 | desktools-v2/58 | Internal credential provider; CLI and shared Go resolver share one implementation. New, todo; human acceptance of implemented custody parity. |
+| 2 | desktools-v2/59 | Per-identity in-flight sharing and original-expiry reuse. New, todo; follows 58. |
+| 3 | desktools-v2/60 | Source-validated activation discovery reuse. New, todo; independent local fixtures. |
+| 3 | desktools-v2/61 | Shared perfrec boundary/schema/readers. New, todo; independent, no perfdata/DB prerequisite. |
+| 4 | desktools-v2/62 | Actual desk hotpath attribution and matched before/after workload. New, todo; follows 58, 59, 60 and 61. |
+| 4 | statusgen/26 | Shared-recorder phase attribution and invocation-local parse reuse. New, todo; follows 61; remains credential-free. |
+
+Critical path for the credential outcome: `58 → 59 → 62`. Instrumentation starts independently:
+`61 → 62` and `61 → statusgen/26`. Discovery 60 starts beside them and feeds 62's matched startup workload.
+The smallest unblocking move is 58's internal extraction with synthetic custody/CLI parity;
+it does not wait on Cobra, repo-scope policy changes, a service, a database or the mirror.
+Review its concrete custody evidence under its own human gate. Do not export deskkit or move
+a credential into statusgen to remove a process boundary.
+
+- Wave 1: 58, 60 and 61 — separate owners; coordinate entrypoint integration on current main.
+- Wave 2: 59 and statusgen/26 — consume the provider and shared recorder respectively.
+- Wave 3: 62 — qualify the combined desk path after all four local inputs; no new remote activation dependency.
+
+Freshness: inspected origin/main eba941721 on 2026-10-16. Open-PR and dispatch-claim reads
+were collected at authoring. The reporting plan merged during authoring was reconciled at
+9f9bb35de, preserving its new report owners and deriving their later waves; refresh again at pickup.
+The tree already carries perfrec plus statusgen/perfrecord.go, board review snapshots,
+conditional HTTP/per-PR fact reuse and cheap-clean cache admission. Historical desktop timings
+from installed e70f08e4 are bounded motivation, not a representative week or causal savings.
+The current 45-minute memo and per-call manifest walk remain inspectable concrete first defects.
+
+Consumer routing: /06 keeps repository/role scoping; /20, /21, /33 and /56 keep CLI migration;
+performance-collection/01–02 keep correlated collection/import; forge-neutral/37–45 keep
+shared online ingestion, serving and qualification; statusgen/20 keeps complete offline
+context discovery. Amend those unfinished owners; do not reopen delivered /09 or desk-tools/24–25.

@@ -291,7 +291,7 @@ func stageCounts(s *Stream) map[string]int {
 func nextWave(s *Stream) int {
 	next := 0
 	for _, b := range s.Briefs {
-		if b.Status == "done" || b.Status == "verified" {
+		if b.Status == "done" || b.Status == "verified" || isWithdrawn(b.Status) {
 			continue
 		}
 		if next == 0 || b.Wave < next {
@@ -728,6 +728,9 @@ func renderRoadmap(streams []*Stream, rows []roadmapStreamRow, exceptions []road
 	totalBriefs := 0
 	for _, s := range streams {
 		for _, b := range s.Briefs {
+			if isWithdrawn(b.Status) {
+				continue // terminal, out of the portfolio denominator
+			}
 			totalCounts[b.Status]++
 			totalBriefs++
 		}

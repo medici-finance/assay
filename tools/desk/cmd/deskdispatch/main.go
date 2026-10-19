@@ -71,7 +71,7 @@ import (
 // perfVerbs is deskdispatch's registered first-argument set for the opt-in local perf record
 // (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
 // "other" otherwise, so no argv text can reach the record.
-var perfVerbs = []string{"--stamp-only", "--check-verifier", "--attest-verifier", "--kits", "--version", "--help"}
+var perfVerbs = []string{"--stamp-only", "--check-verifier", "--attest-verifier", "--kits", "--version", "--help", "-h", "help", "-version", "dispatch:worker", "dispatch:worker-objective", "dispatch:review", "dispatch:verifier", "stamp-only:worker", "stamp-only:worker-objective", "stamp-only:review", "stamp-only:verifier"}
 
 func main() {
 	// Wire the phantom check's PR-list transport LIVE for the shipped binary (represented_live.go).

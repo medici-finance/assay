@@ -424,6 +424,7 @@ known_label_match() { # <scanned file> <whole detected match>
   case "$_label_path:$2" in
     /usr/local/bin/deskflip:"sk-"decidedhasPreviousPageGITLAB | \
     /usr/local/bin/deskpr:"sk-"decidedunverifiablecannot | \
+    /usr/local/bin/deskpr:"sk-"decidedunverifiablecheck | \
     /usr/local/bin/deskdigest:"sk-"decidedunclassifiedunverifiable) return 0 ;;
     *) return 1 ;;
   esac

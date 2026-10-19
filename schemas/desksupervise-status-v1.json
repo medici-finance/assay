@@ -105,7 +105,7 @@
               },
               "model": {
                 "description": "The model id the session runs.",
-                "oneOf": [{ "type": "string" }, { "const": "could-not-check" }, { "type": "null" }]
+                "oneOf": [{ "type": "string", "not": { "const": "could-not-check" } }, { "const": "could-not-check" }, { "type": "null" }]
               }
             }
           }

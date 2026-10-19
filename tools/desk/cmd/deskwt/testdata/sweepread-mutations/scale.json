@@ -1,0 +1,10 @@
+{
+  "test": "go test ./cmd/deskwt -run '^TestSweepAdminInventoryScalesAcrossHusksAndAtTipTrees$' -count=1 -v -timeout 30s",
+  "control": {
+    "name": "rebuild admin inventory for every lookup",
+    "file": "cmd/deskwt/sweepread.go",
+    "old": "if sc.admins == nil {",
+    "new": "if true {"
+  },
+  "mutations": []
+}
