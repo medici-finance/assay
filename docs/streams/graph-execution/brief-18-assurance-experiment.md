@@ -90,7 +90,7 @@ observations and fake provider ports. Run with no model assets, API credentials 
 provider available. Actual classifier performance and activation still require /12; absence
 of those measurements is explicitly unqualified, never treated as calibrated.
 
-Extend the declared integration tests/report with `TestVerifierNoModelJourney`: production
+Extend the declared integration tests/report with `TestVerifierNoModelJourney` (planned): production
 controller → store → runner/supervisor → assessor → publication boundary; crash/recover at
 admission, dispatch intent, result persistence, decision and publication receipt; duplicate
 result, lost acknowledgment, stale generation, changed contract, assertion failure, human

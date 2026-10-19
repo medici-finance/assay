@@ -375,3 +375,5 @@ to the existing owners and keeps evidence production separate from authority han
 The dependency amendment removes real-model calibration /12 from the model-disabled /18
 integration prerequisite; calibrated-provider activation still requires /12. Kubernetes is
 the separately gated agent-execution/08 profile, not an interim runner prerequisite.
+
+The historical critical-path sketch retains the former /12 → /18 edge for history; it is superseded by the 19 October verifier migration sequence above.

@@ -88,7 +88,7 @@ before resumption; supersession/cancellation fences work while preserving reconc
 and resource-retirement obligations. Complete requires the authorized publication receipt;
 accepted/publication-pending remains visible. Snapshot consumers must not dispatch.
 
-Add `TestVerifierStagesReplay` in `workflow/controller/` (already declared). This is a
+Add `TestVerifierStagesReplay` (planned) in `workflow/controller/` (already declared). This is a
 checkpoint within /21, not independent activation or a new runtime implementation.
 
 

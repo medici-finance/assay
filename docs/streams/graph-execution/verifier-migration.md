@@ -94,10 +94,20 @@ sequencing change, not a claim that the runtime can skip R1–R8 qualification.
 The /02 check-definition repair merged in PR #3166 on 19 October; fresh independent
 verification remains the head before /09 and /28. Parser repair PR #3429 merged the same day;
 consumer installation/pins and failed-check repairs still need separate evidence. PR #3376
-owns desk-tools/45; do not amend its active implementation here. Existing plan PR #3341
-owns the remaining verification-flow consumer work.
+owns desk-tools/45; do not amend its active implementation here. The remaining verification-flow consumer work belongs to desk-tools/46–52, authored by
+PR #3341 (merged 18 October), not to that closed planning branch.
 
 Record eligible-to-evidence and evidence-to-recorded-completion separately, retries without
 changed inputs, active versus held time, operator interventions, incorrect acceptance and
 rework. A small pilot proves operation, not a defect-rate or speedup claim. No release,
 installation, dispatch reallocation or provider write is performed by this plan.
+
+## Deferred provider activation follow-up
+
+Real provider activation is outside this migration. Before proposing it, the graph-execution
+owner must author a separately human-gated activation brief with a hard dependency on
+[graph-execution/12](brief-12-decision-evaluation.md) and the applicable admission policy.
+That brief must consume exact model/schema/domain/backend calibration and enforce expiry,
+revocation, abstention and shadow-to-active qualification. The dependency edge is not yet
+authored: this is an explicit outstanding follow-up, not a claim of an enforced activation
+gate or authorization to activate. The model-disabled /18 proof remains independent.

@@ -100,7 +100,7 @@ outcome, acceptance disposition, publication receipt state, typed hold and obser
 separately. These are projections of the existing semantic owners, not new authority or a
 second queue classifier. Unsupported mandatory state is could-not-check. Existing /30
 owns complete applicability context; this brief must not approximate it with file hashes.
-Add `TestDomainStageSeparation` to the declared `statusgen/domain/` tests. It must distinguish
+Add `TestDomainStageSeparation` (planned) to the declared `statusgen/domain/` tests. It must distinguish
 execution-success/acceptance-held, accepted/publication-pending and complete/retirement-held.
 
 

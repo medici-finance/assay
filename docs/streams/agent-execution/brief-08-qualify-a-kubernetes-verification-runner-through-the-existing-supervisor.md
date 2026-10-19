@@ -8,10 +8,11 @@ unblocks: []
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
-gate-why: "A Kubernetes runner must preserve the existing attempt, evidence and recovery contract so moving execution off a desk does not create another scheduler or publisher."
+gate-why: "A wrong containment or credential profile can expose cluster authority and leave external execution unresolved; the human gate approves the boundary, and activation needs separate real-profile evidence."
 issues: []
 schema: brief-v2
-version: 1
+outcome: "none"
+version: 2
 authored: 2026-10-19 by statusgen newbrief
 sources:
   - docs/streams/graph-execution/verifier-migration.md
@@ -45,6 +46,15 @@ single-point-of-failure: result-to-attempt binding at the adapter; independent c
 current-generation checks and separately enforcing publisher credentials prevent a stale
 or forged runner result from authorizing publication even when that adapter is bypassed.
 
+layering: Task 1–4 keep runner semantics in the existing supervisor/runner contract and isolate Kubernetes effects in one adapter; Verify 1–8 exercise that seam and its independent credential/containment refusals. Controller acceptance and publication remain separate owners.
+
+design-fit:
+  owner: loopadmin (existing runner/supervisor execution contract; the adapter owns only Kubernetes translation)
+  contract: none — docs/contracts.md has no semantic-owner row for the planned Kubernetes execution adapter; spec/loop-admin-runner-v1.md and graph-execution/26 remain the inherited execution contract
+  retires: []
+  weight: verbs +0, flags +0, refusal classes +6 (profile, image, pod floor, network floor, credential source, stale attempt), rule-text lines +80 budget; implementation records the actual delta
+  why-add: Kubernetes API effects cannot live in the pure runner protocol or the workflow acceptance owner. Extend the existing supervisor with one adapter; retaining only the local adapter was considered but cannot execute the requested Kubernetes profile. No replacement scheduler or publisher is added.
+
 ## Read first
 
 - [Execution environment scope](../../proposals/non-ci-architecture/27-agent-execution-environments.md).
@@ -70,6 +80,27 @@ manifest, API success or a published verdict. This brief does not choose a produ
    capability allowlist; no arbitrary caller-selected service account or command profile.
    Candidate Jobs receive no operator, forge-publisher or default service-account credentials.
    Fail before creation on unsupported required isolation, unavailable profile or stale receipt.
+   The submitted Pod spec has a non-negotiable floor: privileged=false,
+   allowPrivilegeEscalation=false, runAsNonRoot=true, all Linux capabilities dropped with
+   none added, seccomp RuntimeDefault (or a stricter qualified profile), readOnlyRootFilesystem=true,
+   hostNetwork/hostPID/hostIPC=false, no hostPath and no default service-account token.
+   Apply the floor to every regular, init and any permitted ephemeral container; reject
+   unrecognized injected container/mount/profile fields. Writable scratch/output uses only
+   declared bounded volumes, never a writable root or node mount. Unsupported workloads hold.
+   Require a digest-qualified image; a mutable tag or malformed digest refuses before creation.
+   Require a profile-bound default-deny ingress/egress policy reference and an explicit allowlist.
+   The allowlist excludes node/cloud metadata, Kubernetes API, coordination database and forge;
+   candidate network access is off by default. Missing policy, stale qualification or declared
+   unavailable enforcement refuses before creation. An offline spec check is not proof that
+   the cluster enforces the policy; real containment remains the adoption gate below.
+   The supervisor receives only an explicit profile-bound credential reference and target;
+   never load ambient kubeconfig or discover in-cluster credentials as a fallback. No explicit
+   credential, target or opt-in means no API call. Print the non-secret target before first
+   contact. Namespace-scoped permissions allow jobs create/get/list/watch/delete and pods
+   get/list/watch plus pods/log get only; no secrets, pods/exec, RBAC, cluster-wide or wildcard
+   permissions. Credential material stays in the supervisor's execution boundary and never
+   enters Job specs, artifacts or logs. Broader capability requires a separate reviewed profile,
+   not a caller-selected override of this one.
 2. Use /19's existing launch/effect records via the supervisor, with stable Job identity.
    On create timeout reconcile the admitted Job before another create; distinguish definite
    failure from unknown. Consume completion/result only at the current attempt/generation.
@@ -99,16 +130,20 @@ must call the production adapter; expected results are fixed independently of it
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestKubeRunnerContract$" ./adapters/kubernetes/ > "$out" && grep -Fq -- "--- PASS: TestKubeRunnerContract " "$out")` | exit 0; named PASS; production adapter passes v1 conformance; unsupported mandatory profile refuses; mutation: ignore required isolation — test fails |
+| 1 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestKubeRunnerContract$" ./adapters/kubernetes/ > "$out" && grep -Fq -- "--- PASS: TestKubeRunnerContract " "$out")` | exit 0; named PASS; production adapter passes v1 conformance; unsupported mandatory profile and tag-only/malformed image references refuse before any create; mutations: ignore required isolation or accept a mutable image tag — test fails |
 | 2 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestKubeLostCreate$" ./adapters/kubernetes/ > "$out" && grep -Fq -- "--- PASS: TestKubeLostCreate " "$out")` | exit 0; named PASS; lost create acknowledgment reconciles one logical Job; duplicate and stale completion cannot advance; mutation: mint a new Job on timeout — test fails |
 | 3 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestKubeCredentialFence$" ./adapters/kubernetes/ > "$out" && grep -Fq -- "--- PASS: TestKubeCredentialFence " "$out")` | exit 0; named PASS; no publisher/operator or default API credentials in candidate Jobs, including direct adapter invocation; mutation: accept caller service account — test fails |
 | 4 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestKubeCancelRecovery$" ./adapters/kubernetes/ > "$out" && grep -Fq -- "--- PASS: TestKubeCancelRecovery " "$out")` | exit 0; named PASS; crash, cancellation and pending delete preserve reconciliation/evidence/retirement; mutation: treat delete request as completed retirement — test fails |
 | 5 | check:ci +flow +mutation | `(cd workflow && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestKubeControllerSeam$" ./controller/ > "$out" && grep -Fq -- "--- PASS: TestKubeControllerSeam " "$out")` | exit 0; named PASS; production supervisor/controller consumes real adapter observations through the injected API; process success without acceptance remains unaccepted; mutation: advance on Job success — test fails |
+| 6 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestKubePodSecurityFloor$" ./adapters/kubernetes/ > "$out" && grep -Fq -- "--- PASS: TestKubePodSecurityFloor " "$out")` | exit 0; named PASS; inspect every submitted container and volume in the fake API; privileged/escalation/root/host namespace/hostPath/capability-add/writable-root cases refuse; mutation: accept a hostPath or privileged container — test fails |
+| 7 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestKubeNetworkFloor$" ./adapters/kubernetes/ > "$out" && grep -Fq -- "--- PASS: TestKubeNetworkFloor " "$out")` | exit 0; named PASS; missing/default-allow/stale/unavailable network profile or forbidden metadata/API/database/forge destinations refuse before create; mutation: allow a profile with no default-deny reference — test fails |
+| 8 | check:ci +flow +mutation | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestKubeCredentialSource$" ./adapters/kubernetes/ > "$out" && grep -Fq -- "--- PASS: TestKubeCredentialSource " "$out")` | exit 0; named PASS; absent explicit credential/target/opt-in refuses with zero API calls even with ambient kubeconfig/in-cluster settings present; validates narrow profile permissions, prints sanitized target before contact, exposes no credential; mutation: fall back to ambient credentials — test fails |
+| 9 | check:ci | `statusgen --consumers --brief agent-execution/08 --base $(git merge-base origin/main HEAD)` | exit 0; declared consumer sites corroborate against the implementation diff; out-of-scope claims remain reviewer-owned, not a proof of completeness |
 
 ## Pre-mortem
 
 A fake API cannot prove network isolation, scheduler semantics or credential custody in a
-real cluster. Those remain explicit unqualified adoption obligations. The executable rows
+real cluster. The adapter must still prove the submitted spec and refusal floor offline. Real qualification must prove effective pod admission, network enforcement (including metadata/API/database/forge denial), credential/RBAC scope and containment against hostile candidate code. Those remain explicit unqualified adoption obligations. The executable rows
 cover production adapter decisions; independent review assesses containment design and the
 operator owns the real-profile evidence. Keep actual API outcomes distinct from model advice.
 
