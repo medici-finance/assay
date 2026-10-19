@@ -95,7 +95,10 @@ func treeHasBriefV2(root string) bool {
 		}
 		for _, line := range strings.Split(string(raw), "\n") {
 			t := strings.TrimSpace(line)
-			if t == "schema: "+briefSchemaV2 || t == "schema: \""+briefSchemaV2+"\"" {
+			// brief-v3 is brief-v2 plus the withdrawn keys: a v3 tree is a v2 tree
+			// for this boundary.
+			if t == "schema: "+briefSchemaV2 || t == "schema: \""+briefSchemaV2+"\"" ||
+				t == "schema: "+briefSchemaV3 || t == "schema: \""+briefSchemaV3+"\"" {
 				found = true
 				return filepath.SkipAll
 			}

@@ -153,13 +153,21 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | 1 | Board rows the board SHOWS, per root (the span-capped Next-up selection) | `(cd "$root" && deskgit fetch --as worker) && fanoutloop plan --root "$root"` (absolute configured root; desk-shell §Authenticated transport) |
 | 2 | Rows **held back** by the 4-per-stream cap, the span cap, or the drive worker floor | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span, K by the drive worker floor) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one |
 | 3 | Orphan PRs owing a worker action, `CONFLICTING` PRs, red checks | the per-slug PR + disposition reads in [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §The tick sweep, with the disposition read FIRST |
-| 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate) |
+| 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate / reconcile) |
 | 5 | `Awaiting implementer rework` board rows | `fanoutloop plan --root <root>` (desk-supervision/05: read per root from `refs/remotes/origin/main:STATUS.md`, the SAME offline ref read row 1 uses — no separate sweep) |
 | 5b | **Durable repair obligations** — a failed/blocked verification's actionable, still-unresolved obligation (desk-supervision/17) | `fanoutloop plan --root <root>` reads the reconciled obligations across the configured roots' `docs/streams/repair-obligations.jsonl` and surfaces the ASSIGNABLE ones (actionable, unresolved, awaiting-assignment or dead-lease) in the SAME rework lane as row 5. The item's ID is the IMMUTABLE obligation key, so a replacement worker resumes the SAME obligation after a dead lease — never a duplicate |
 | 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues` — fail-closed |
 | 7 | A red default branch on a watched repo | `deskboard health` — three-state (green / RED / COULD-NOT-CHECK) |
 | 8 | Cross-root coverage: a board root that no sweep reaches, or a scanned repo with no board | the BOARD ROOTS ∪ SCAN REPOS symmetric difference printed at boot (§THE REPO SET) |
 | 9 | Queue **suppressors** — expired `refs/heads/dispatch/*` claims and dead branch-claims from merged/closed PRs | `desksupervise status --stops` (the liveness observer's runtime snapshot: per-claim liveness, timers-to-fire, and which stops are armed — the one structured read the sweep uses instead of guessing); the raw `git ls-remote origin 'refs/heads/dispatch/*'` + the claim tool's `list`/`show` verbs (`deskclaim-ref`, installed with desk-tools; a repo that ships its own `tools/dispatch-claim.sh` uses that instead) stay as the fallback — run BOTH, since the tool lists the `refs/dispatch/*` namespace it acquires in while that `ls-remote` pattern lists the `refs/heads/dispatch/*` branch refs the Go claim readers use |
+
+A `reconcile` disposition means the owning brief is withdrawn, not that the PR is
+finished. Route it to `pr-shepherd` for the withdrawn-brief reconciliation step before
+ordinary CI repair. Supply the current brief/withdrawal context, successor links and PR
+head; retain claim ownership checks. Never restore an obsolete plan just to green its
+branch, or auto-close its PR. Before a board amendment retires scope, use
+`statusgen withdrawal-audit` with an open-PR snapshot to discover these cases while the
+PRs are still fresh (the stalled detector deliberately sees only the aged subset).
 
 **Rows 5, 5b and 3 outrank row 1** — resuming started work outranks a fresh brief (mm/10) — and row 2 is
 what tells you whether row 1's zero means drained or throttled.

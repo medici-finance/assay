@@ -295,7 +295,7 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 			return verifyFlipPlan{}, refuseFlip("gate-class: Verify row %s has unknown class %q — the verb cannot tell who decides it", r.ID, r.Class)
 		}
 	}
-	findings, refusal := closureWitnesses(verify, run)
+	findings, refusal := closureRunWitnesses(verify, bf.Evidence, run, path)
 	if refusal != "" {
 		return verifyFlipPlan{}, refuseFlip("%s", refusal)
 	}
@@ -305,7 +305,7 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 	if checkExitCode(findings) != verifyrunExitPass {
 		var bad []string
 		for _, f := range findings {
-			if f.State != statePass {
+			if !closureSatisfied(f) {
 				bad = append(bad, "row "+f.ID+": "+f.State)
 			}
 		}
@@ -419,7 +419,7 @@ type flipPass struct {
 	StampErr error
 	Runner   string
 	SHA      string
-	Run      string
+	Run      string // comment-removed selected text; closureRunWitnesses preserves full-record classification
 	Marks    []int
 	RunStart int
 }
@@ -465,6 +465,17 @@ func flipLatestPass(evidence string) (flipPass, error) {
 	// PASS mean the convention does not hold here: refuse, never guess.
 	if after, _ := flipDateRunnerRows(lines[last.line+1:]); len(after) > 0 {
 		return flipPass{}, refuseFlip("runner mismatch: %d Date/Runner row(s) follow the latest PASS — record each run's rows after the previous verdict and before its own", len(after))
+	}
+	if len(protectedMarkers(normalizedProtectedEvidence(stripped))) > 0 {
+		// A newer unfinished protected record must not borrow this PASS.
+		// Keep this in the shared selector so callers passing p.Run cannot
+		// discard a live tail before closure, audit or coverage sees it.
+		for _, line := range strings.Split(stripCode(stripped), "\n")[last.line+1:] {
+			line = strings.TrimSpace(strikethroughRe.ReplaceAllString(line, ""))
+			if line != "" && !strings.HasPrefix(line, ">") {
+				return flipPass{}, refuseFlip("protected table: live content follows the latest PASS; complete the current run before closing")
+			}
+		}
 	}
 	rows, at := flipDateRunnerRows(lines[start:last.line])
 	if len(rows) == 0 {
