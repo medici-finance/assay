@@ -45,6 +45,64 @@ func TestParseDecisionOptions(t *testing.T) {
 	if ParseDecisionOptions("no options here\nA. not under a heading\n").Stated() {
 		t.Fatal("options outside an Options section were read")
 	}
+	for _, tc := range []struct {
+		name string
+		body string
+		want int
+	}{
+		{"word is not marker", "## Options\nA. We recommend the safe path\nB. Safe path (recommended)\n", 1},
+		{"negated is not marker", "## Options\nA. Stay (not recommended)\nB. Leave (recommended)\n", 1},
+		{"missing marker", "## Options\nA. We recommend A\nB. Keep B\n", -1},
+		{"multiple markers are ambiguous", "## Options\nA. Keep (recommended)\nB. Leave (recommended)\n", -1},
+		{"repeated marker on one option is ambiguous", "## Options\nA. Keep (recommended) and (recommended)\nB. Leave\n", -1},
+		{"markdown-wrapped exact marker", "## Options\nA. Keep **(Recommended)**\nB. Leave\n", 0},
+		{"commented options are invisible", "## Options\n<!-- hide\nB. Hidden (recommended)\n-->\nA. Visible\nC. Other (recommended)\n", 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ParseDecisionOptions(tc.body)
+			if got.Recommended != tc.want {
+				t.Fatalf("recommended index = %d, want %d (options=%+v)", got.Recommended, tc.want, got)
+			}
+		})
+	}
+}
+
+// regression: #2849 — the marker grammar the jq oracle's `recmark` states: trailing
+// punctuation ends a marker, adjacent markers each count, ASCII whitespace only, and the
+// cut takes a dash separator with it. TestParityWalk pins the oracle to the same answers.
+func TestDecisionMarkerGrammar(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		body  string
+		want  int
+		texts []string
+	}{
+		{"bold lead sentence ends in a period",
+			"## Options\nA. **Re-scope it (recommended).** No new work.\nB. Leave it\n",
+			0, []string{"Re-scope it. No new work.", "Leave it"}},
+		{"comma, colon and question mark end a marker",
+			"## Options\nA. Keep (recommended), cheap\nB. Drop (Recommended): risky\n",
+			-1, []string{"Keep, cheap", "Drop: risky"}},
+		{"adjacent markers on one option are two",
+			"## Options\nA. Keep (recommended) (recommended)\nB. Leave\n",
+			-1, []string{"Keep", "Leave"}},
+		{"a no-break space is not a boundary",
+			"## Options\nA. Keep (recommended)\nB. Leave\n",
+			-1, []string{"Keep (recommended)", "Leave"}},
+		{"a letter after the marker is not a boundary",
+			"## Options\nA. Keep (recommended)x\nB. Leave\n",
+			-1, []string{"Keep (recommended)x", "Leave"}},
+		{"the dash separator goes with the marker",
+			"## Options\nA. Keep it\nB. Drop the cron — (recommended)\n",
+			1, []string{"Keep it", "Drop the cron"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ParseDecisionOptions(tc.body)
+			if got.Recommended != tc.want || !reflect.DeepEqual(got.Texts, tc.texts) {
+				t.Fatalf("got recommended %d texts %q, want %d %q", got.Recommended, got.Texts, tc.want, tc.texts)
+			}
+		})
+	}
 }
 
 // regression: medici-finance/assay#2426 (C-2, C-3, SEC-3, SEC-4, SEC-6) — every row below

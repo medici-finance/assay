@@ -90,7 +90,7 @@ Options:
 2. **Hold the extraction** — retain current reads until the implementation supplies adequate
    evidence of equivalent scope and independent enforcement.
 
-Default if no answer: none — rollout remains held.
+Default if no answer: none — blocks until answered.
 
 ## Ground rules
 

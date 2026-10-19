@@ -16,6 +16,7 @@
 #   cases: accepts-four-outcomes rejects-unknown-outcome rejects-unknown-role
 #          rejects-field-order rejects-missing-token rejects-missing-field
 #          rejects-space-in-value rejects-zero-for-unknown
+#          rejects-multiline
 #          rejects-unknown-for-completed rejects-ok-without-act
 #          rejects-refused-with-sweep check-takes-last-line
 #          check-refuses-empty regexp-is-the-applied-one contract-citation
@@ -56,6 +57,30 @@ rejects() {
   ok "$2"
 }
 
+# rejects_unechoed <candidate> <what> — a multi-line candidate must be refused
+# for its line break, and no physical line of the diagnosis may itself be a
+# record the published regexp finds: stderr merged into a transcript is where
+# that regexp is used, so an echoed record there is a smuggled one.
+rejects_unechoed() {
+  local err rc re
+  re=$(bash "$SCRIPT" regexp)
+  err=$(bash "$SCRIPT" validate "$1" 2>&1 >/dev/null); rc=$?
+  if [[ "$rc" -eq 0 ]]; then
+    no "$2" "ACCEPTED a line the contract forbids: $1"
+    return
+  fi
+  # A CR renders as a line break too, so split on it before matching.
+  if grep -Eq "$re" <<<"${err//$'\r'/$'\n'}"; then
+    no "$2" "rejected, but stderr carries a record the published regexp matches: $err"
+    return
+  fi
+  if [[ "$err" != *"line break"* ]]; then
+    no "$2" "rejected, but the reason does not name the line break; got: $err"
+    return
+  fi
+  ok "$2"
+}
+
 # ================================================ the four outcomes accepted ==
 if want accepts-four-outcomes; then
   echo "accepts-four-outcomes — one well-formed line per outcome"
@@ -75,6 +100,39 @@ if want accepts-four-outcomes; then
   # A count may be unknown in any position, not only swept.
   accepts "tick role=the-desk outcome=could-not-check swept=- acted=- filed=- duration=3" \
     "every count may be unknown"
+fi
+
+# regression: #2819, #3271
+if want rejects-multiline; then
+  echo "rejects-multiline — validate checks ONE whole argument, not any matching line"
+  good="tick role=verify-desk outcome=could-not-check swept=- acted=0 filed=0 duration=1"
+  # Plant independent bad records beside a good record in BOTH orders. Neither
+  # shape nor cross-field values may come from a different physical line, and
+  # the refusal must not echo any of those records back onto stderr.
+  for bad in \
+    "tick role=verify-desk outcome=unobserved swept=2 acted=0 filed=0 duration=1" \
+    "tick role=verify-desk outcome=could-not-check swept=0 acted=0 filed=0 duration=1" \
+    "tick role=verify-desk outcome=could-not-check swept=7 acted=0 filed=0 duration=1" \
+    "tick role=nope outcome=noop swept=0 acted=0 filed=0 duration=1" \
+    "tick role=verify-desk outcome=noop swept=- acted=0 filed=0 duration=1" \
+    "tick role=verify-desk outcome=ok swept=2 acted=0 filed=0 duration=1" \
+    "tick role=verify-desk outcome=refused swept=2 acted=0 filed=0 duration=1"; do
+    rejects_unechoed "$bad"$'\n'"$good" "bad record before a valid record: $bad"
+    rejects_unechoed "$good"$'\n'"$bad" "bad record after a valid record: $bad"
+  done
+  rejects_unechoed "$good"$'\n'"$good" "two valid records are still not one line"
+  rejects_unechoed $'\n'"$good" "a leading blank physical line is rejected"
+  rejects_unechoed "$good"$'\n' "a trailing blank physical line is rejected"
+  rejects_unechoed "$good"$'\n\n' "multiple trailing physical lines are rejected"
+  rejects_unechoed "$good"$'\r\n'"$good" "CRLF-separated records are rejected"
+  rejects_unechoed "$good"$'\r'"$good" "CR-separated records are rejected"
+  rejects_unechoed "x"$'\n'"tick role=verify-desk outcome=noop swept=- acted=0 filed=0 duration=1" \
+    "a non-record first line cannot smuggle a blind noop onto stderr"
+  # At size: an echoing refusal of this candidate writes more than one pipe
+  # buffer to stderr, so the check above must hold without an early reader.
+  printf -v filler '%100000s' ''
+  rejects_unechoed "x"$'\n'"tick role=verify-desk outcome=noop swept=- acted=0 filed=0 duration=1"$'\n'"$filler" \
+    "a smuggled blind noop is caught beside 100000 bytes of filler"
 fi
 
 # ======================================================== shape rejections ====

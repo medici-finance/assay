@@ -280,6 +280,8 @@ jobs:
     # needs only read; the App token carries the write.
     permissions:
       contents: read
+      # dead-claim decay reads branch pull-request state over the GraphQL API (#3372)
+      pull-requests: read
     steps:
       # Mint a token for the assay-board-writer App. This App is the sole actor
       # on the protect-main + leak-sweep ruleset bypass lists, so its push to
@@ -313,9 +315,14 @@ jobs:
           go version
           ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
       - name: Regenerate STATUS.md
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           "${RUNNER_TEMP}/statusgen" --root .
       - name: Commit STATUS.md if it changed
+        env:
+          # the retry loop re-runs statusgen against the new head
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name  'assay-board-writer[bot]'

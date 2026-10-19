@@ -545,9 +545,22 @@ conformance limits, each a directory of one or more `<name>/SKILL.md` skills:
   the 1024-character hard limit but sum past the 8000-character bundle budget.
   Must pass (exit 0) with a bundle NOTICE — the budget is advisory.
 
-## Not wired into a workflow
+## CI workflow
 
-No workflow in `.github/workflows/` calls this tool today; it runs as
-`make skillslint`. Wiring the gate is tracked separately
-(`docs/archive/mistake-proofing/brief-04-derived-enforcement-status.md`), and
-widening the check does not change that.
+The `skillslint` job in `.github/workflows/ci.yml` runs this check on pushes and
+pull requests. It installs Go on the `medici-builder-public` runner, which does
+not ship `make`, then invokes the tool from its source directory:
+
+```
+cd tools/skillslint && go run . --root ../..
+```
+
+That is the same check invocation as the `make skillslint` target above. The
+workflow calls the source directly rather than calling `make`; the standalone
+`--skills-dir` command remains the adopter-facing structural and conformance
+check, not the repository's CI invocation. The archived brief
+`docs/archive/mistake-proofing/brief-04-derived-enforcement-status.md` records
+the earlier wiring work and its verification, not the current workflow state.
+
+The job turns CI red when the check fails, but it is not a required status
+check on `main`: a red `skillslint` run does not by itself stop a merge.

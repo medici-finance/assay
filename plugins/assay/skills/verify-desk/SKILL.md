@@ -168,6 +168,21 @@ claim, worktree or worker. Recover the same record, reacquire the original claim
 check admission before launching. If an uncertain create cannot be found, hold recovery;
 never create a new run to evade the missing receipt. Do not change identity to recover it.
 
+## Qualifying a repaired verifier installation
+
+A source test proves the source under test, not the installed runner. When a tool or this
+procedure needs repair, keep this order: implementation PR merged → containing tool/plugin
+release published → consumer pin updated → installed tools, plugin and runner image confirmed
+against that pin → fresh independent qualification with new dispatch/admission → dependent
+brief verification. Record the actual versions and image identity used, not merely the desired
+pin. A pending release, stale installation or unavailable image is a BLOCKED qualification.
+Do not edit installed plugin caches or substitute a locally built binary in an admitted run.
+Historical Evidence and receipts remain immutable; neither a source-only regression test nor
+an old qualification becomes evidence for the new installation. After qualification succeeds,
+re-dispatch dependent briefs from current main with their own new admission and exact rows.
+These steps confer no merge, release, installation or lifecycle authority beyond each role's
+existing grants.
+
 ## The loop
 
 0. **Sweep existing Evidence PRs before fresh verification dispatch.** Across every configured
@@ -246,32 +261,46 @@ plan's decision, do not second-guess it**:
   `verified`/`done` — it is scheduling evidence only; the flip stays the ordinary
   implemented→verified→done path a NON-implementer runs on merged main.
 
-**Writing a receipt: three fields reviewers keep bouncing.** Each of these has blocked Evidence
-PRs one at a time (#882 records the pattern). Get them right before the row lands:
+**Writing a receipt: derive scope, then validate the bindings.** Use the supported writer path
+before the outcome lands:
 
-- **`inputs` declares the deliverables, not just the brief.** Add one `file:<repo-relative-path>`
-  key for every path in the brief's `## Context` `files:` list that exists at the receipt's `sha`,
-  with at least one file under each listed directory, next to the brief itself and `tool`. A
-  receipt that declares only the brief and the tool never wakes when the deliverable is fixed,
-  which is the one change it exists to notice.
+- **Prefer the writer's automatic receipt derivation.** For a non-pass outcome, supply the
+  observed outcome, row counts/results, real `blocker_kind` / `blocker_ref`, run join keys,
+  timestamps and full Evidence commit `sha` to `deskevidence --outcome-record`, without a
+  hand-authored `wake_schema` or `inputs` map. The supported derivation fills the receipt ID,
+  schema, input revisions, tool version and `relevant-input-changed` predicate; it does not
+  invent the blocker or acceptance evidence. A supplied complete receipt (for example, for
+  another supported wake predicate) still passes the supplied-receipt checks; an incomplete supplied
+  `verify-wake-v1` receipt is refused, not completed by guessing.
+- **`inputs` covers the whole declared scope.** The writer derives every selected existing
+  file from the Context declarations at the admitted Source, plus the brief and tool. It also
+  derives `scope:` digests for declared path kinds, literal absence and sorted directory/glob
+  membership. One file per directory is not coverage. Use the shared
+  `docs/declared-input-scope.md` contract; never manually forge a map, drop an unsupported
+  declaration, or copy current target-branch hashes to make a receipt land. An unsupported or
+  unreadable declaration is incomplete evidence, distinct from a successfully observed
+  absent path or empty membership. Derivation refusal leaves the outcome unlanded.
 - **`blocker_ref` is a real issue or PR reference**: `#N`, or `<owner>/<repo>#N` for a sibling
   repo. When no tracking issue exists yet, file the bug first and cite its number. Never write a
   placeholder ("to file") or a sentence in this field; the blocker's description belongs in `note`.
 - **The brief's `file:` revision is the brief AS IT LANDS.** That is the SHA-256 of the brief on
   your Evidence branch after your Evidence rows are appended, not the pre-Evidence copy at the
-  receipt's `sha`. The wake reader hashes the file in the merged tree, which includes your append,
+  admitted Source revision. The outcome's `sha` names the successful Evidence commit; the
+  brief input hashes its landed bytes. The wake reader hashes the file in the merged tree,
+  which includes your append,
   so a hash of the pre-Evidence brief makes the receipt fire the moment it lands. Write the outcome
   row last, after every edit to the brief on that branch. A later merge of main into the branch is
   not such an edit: never re-hash over it. If that merge changed the brief, the receipt fires when it
   lands, which is correct, because the brief changed after the verify run.
 
-Since #882, `deskevidence --outcome-record` REFUSES (exit 5, naming the field) a receipt that
-breaks any of these three rules — writer-side enforcement of what was, until then, a review-time
-catch. The three rules above are unchanged; get them right at write time and the writer's own
-gate never fires.
+`deskevidence --outcome-record` checks completeness, receipt validity and Evidence binding
+before landing derived or supplied receipts. Observation-input re-derivation applies to
+`relevant-input-changed` receipts; it is not a check of every wake predicate. A refusal names the violated field or binding; report it rather than weakening admission
+or shrinking the declared inputs. Automatic derivation is not permission to skip that result.
 
-A `verify-fail` or `blocked` outcome record MUST carry a complete receipt: the writer REFUSES (exit 5)
-one without it, naming the first missing field (`wake_schema`, `receipt_id`, `blocker_kind`,
+After automatic derivation (or when a complete receipt is supplied), a `verify-fail` or
+`blocked` outcome record MUST carry a complete receipt: the writer REFUSES (exit 5) a still
+incomplete record, naming the first missing field (`wake_schema`, `receipt_id`, `blocker_kind`,
 `wake_predicate`, then the predicate's own input). Every record that claims
 `wake_schema: "verify-wake-v1"` also carries the run's join keys: `prs` (the merged changes that
 delivered the brief, as `{repo, number, merge_sha}`; or an explicit `prs: []` with
@@ -325,6 +354,9 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
 - **Evidence is `command → exit code → real observed output`**, one row per Verify item, dated and
   runner-attributed, never a bare ✓ and never a claim. A row that cannot run is recorded EXPLICITLY
   unrun with its reason — never silently skipped, never assumed-pass.
+- **The emitted verifier kit owns command preflight, row coverage and verdict spelling.**
+  Its sections 2 and 5 carry the execution procedure; dispatch it verbatim. This desk checks
+  the returned accounting and routes the outcome as described below.
 - **Run `statusgen verifyrun --brief <path>` — it IS the execution witness, not an optional extra.**
   verifyrun re-executes each Verify row in a fresh subshell at the repo root and writes back the
   command, exit code, an output hash, the date and the runner identity; that witness table is what
@@ -434,6 +466,9 @@ or output. A value copied from the work under test verifies only that the work a
   single-point-of-failure note names: the reviewer's `deskpathguard check` is the one control
   until the paths land in branch protection, and this re-derivation catches an edit the check
   missed because it reads git history, not a label.
+  The desk treats zero re-derived rows, a missing original row, or a filtered run with no
+  required-row coverage as incomplete evidence regardless of exit status; it cannot land a
+  passing verdict on that accounting.
   Before recording closure, follow `docs/protected-paths.md` § "Recording closure after
   re-derivation" for the immutable table marker and explicit uncredited supplemental rows.
 
@@ -459,6 +494,23 @@ status flip**:
   number carries a durable pointer instead of vanishing into a green row. **A flag with no artifact is
   the F-28 failure shape wearing the fix's clothes.**
 - `DERIVED` / `N/A` → record in Evidence and proceed; no issue.
+
+## Classify the observed result before landing
+
+Keep the verdict, Evidence prose, row accounting and outcome record consistent:
+
+| Observed obligations | Verdict and outcome | Next action |
+|---|---|---|
+| An acceptance obligation was actually checked and failed, including an observed non-discriminating risk-bearing row | Strict `**VERIFY: FAIL**`; `verify-fail` | Name the failed obligation and primary output; retain any other unrun rows separately |
+| No obligation failed, but required evidence is unavailable or incomplete | Exact `**VERIFY: BLOCKED**`; `blocked` | Name every uncovered row and the capability, definition or provenance needed to run it |
+| Every required obligation has current admissible evidence and closure gates allow advancement | Strict `**VERIFY: PASS**`; `verified` only after the closure lands | Follow the landing and closure checks below |
+
+For BLOCKED, retain command → could-not-run → reason for each uncovered obligation, file the
+blocker and land the available Evidence without a lifecycle flip. Use the same admitted
+Evidence-first outcome path below with `outcome: blocked` and a complete wake receipt. If the
+Evidence landing itself refuses, retain the diagnostic and file the landing blocker; publish
+no outcome in its place. A nonzero process exit alone does not decide which obligation failed,
+and an exit 0 alone establishes neither row coverage nor qualification.
 
 ## On VERIFY: FAIL — a Change Failure, filed not buried
 
@@ -502,6 +554,10 @@ current target branch rather than the README being refreshed. Evidence-only land
 verified outcome. A PASS awaiting a closure gate is not yet a completed verification; `verify-fail`
 recording is unchanged. Records are immutable — a correction is a NEW record (a fresh `ts`), never an
 edit of one already landed.
+
+Core outcome fields below are schematic, not a complete writer input: add the real blocker
+and run join keys described above for automatic non-pass derivation. Use `blocked` instead of
+`verify-fail` when no acceptance obligation failed.
 
 ```
 {"ts":"<ISO8601Z>","brief":"<stream>/<NN>","outcome":"verify-fail","rows_passed":<n>,"rows_total":<N>,"sha":"<full-evidence-commit-sha>"}

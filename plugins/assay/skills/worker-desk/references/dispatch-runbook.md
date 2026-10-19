@@ -72,6 +72,11 @@ deskboard health                            # is main red? green / RED / COULD-N
 issueboard issues                           # un-briefed trusted issues; EXTERNAL/UNBLESSED quarantined
 ```
 
+Route a stalled `reconcile` row through `pr-shepherd`'s withdrawn-brief reconciliation
+step before CI repair; it is neither ordinary unfinished work nor a closure verdict.
+For a pending board retirement, the offline `statusgen withdrawal-audit` snapshot also
+finds fresh implementation/evidence PRs outside the stalled detector's age window.
+
 `issueboard` replaces the raw `gh issue list` form this runbook used to carry. It resolves the scan
 scope from the same roster key the placeholder scanner reads, applies the trust gate itself, and
 **exits 6 for the WHOLE board** when the scan set is unset/empty or any one repo is unreadable — where

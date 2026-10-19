@@ -94,6 +94,7 @@ webhook payload decisions are not answered by this section.
 
 ## Ground rules
 
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - Isolate changes; never push main, merge, ready-flip, release, dispatch workflows or contact live infrastructure.
 - Use synthetic data, disposable processes/repositories and explicit local database fixtures; no production tokens or data.
 - Preserve role, candidate, unknown-outcome, required audit/budget and canonical acceptance meanings.

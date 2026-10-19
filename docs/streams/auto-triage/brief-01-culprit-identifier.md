@@ -34,6 +34,8 @@ id: 2e97241c-23a2-4269-9e1e-a5eb081680c6
 
 # Brief 01 — culprit identifier
 
+> **Contract note, 2026-10-18.** This brief implements the culprit record, the gate-red admission predicate, the conservative judgement default and the withheld-detail rule that graph-execution/08 now defines for the signal-triggered pattern's gate-red class. Where this brief and graph-execution/08 differ, the stricter rule applies. This brief stays `todo` and keeps its own gate: it is where the executable code and live activation of the auto-triage response are built.
+
 ## Context
 
 single-point-of-failure: this brief IS the head control — the classifier's output is what

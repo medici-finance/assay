@@ -277,18 +277,18 @@ func buildRendered(it item, d issueDetail, k, n int, now time.Time) rendered {
 	// ---- Options ---------------------------------------------------------------------
 	// The parse is deskkit's (lifted there so the human-decision-v1 record reads the SAME
 	// options the walk shows). The walk shows the recommended option
-	// first, re-lettered A–D; with no option marked, the first stated one leads, unchanged.
+	// first, re-lettered A–D. Without exactly one explicit marker, no option is labeled.
 	parsed := deskkit.ParseDecisionOptions(d.Body)
 	letterFor := []string{"A", "B", "C", "D"}
 	var opts []option
 	for i, idx := range parsed.Walk() {
-		opts = append(opts, option{Letter: letterFor[i], Text: parsed.Texts[idx], Recommended: i == 0})
+		opts = append(opts, option{Letter: letterFor[i], Text: parsed.Texts[idx], Recommended: i == 0 && parsed.Recommended >= 0})
 	}
 
 	stated := len(opts) > 0
 	options := opts
 	if !stated {
-		options = []option{{Letter: "A", Text: "options not yet stated — desk to fill", Recommended: true}}
+		options = []option{{Letter: "A", Text: "options not yet stated — desk to fill"}}
 	}
 
 	var reply string

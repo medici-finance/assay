@@ -14,6 +14,7 @@ unblocks:
 - graph-execution/27
 - graph-execution/21
 - performance-collection/09
+- agent-execution/03
 effort: M
 gate: human
 risk:
@@ -71,6 +72,7 @@ risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this st
 
 ## Ground rules
 
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - Work in an isolated branch; no merge, deployment or live infrastructure contact.
 - Offline fixtures/fake providers only in this brief; a concrete adapter does not authorize provider calls.
 - Stop at implemented; independent verification owns verified/done.
@@ -190,6 +192,10 @@ The plausible wrong implementations are the negative cases named in Verify: stal
 ## Review
 
 Gate: human. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
+
+## Execution-environment follow-on routing — 2026-10-16
+
+Reciprocal unblocks only: agent-execution/03. The [execution amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md) adds a follow-on obligation over this brief's existing output. Its Task, Verify, gate, version and historical Evidence are unchanged; this note grants no delivery, reassignment or activation.
 
 ## Proposed measurement consumer — 2026-10-17
 

@@ -221,11 +221,25 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test: "statusgen/verifykitblocked_test.go", module: "statusgen",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"tools/desk/cmd/deskdispatch/references/verifier-prompt.md"},
+			runInvokes: []string{"cd statusgen && go test ./..."},
+			why:        "the unconditional statusgen suite feeds the actual verifier kit marker into the flip reader to prove blocked runs supersede and bound passing runs",
+		},
+		{
 			test: "statusgen/claimbridge_test.go", module: "statusgen",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"statusgen", "tools/desk", "forgeread", "perfrec"},
 			runInvokes: []string{"bash statusgen/test-role-claims.sh"},
 			why:        "the statusgen consumer builds the desk heads child and exercises its custody and shared envelope through the same offline invocation used by PR CI",
+		},
+		{
+			test: "tools/desk/cmd/deskpushguard/hookentrypoints_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"Makefile", "scripts/build-windows.ps1", "tools/desk/hooks/pre-push"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the unconditional build-test floor checks both hook installer entrypoints (the Makefile recipe under /bin/sh, as the runner has no make) and the published anchored hook",
 		},
 		{
 			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",

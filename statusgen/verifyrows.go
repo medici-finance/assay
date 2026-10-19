@@ -1910,16 +1910,17 @@ type rowFinding struct {
 
 // Rule tags. Stable identifiers, one per shape.
 const (
-	ruleERELiteralPipe = "ere-literal-pipe"      // #509 — `\|` inside grep -E
-	ruleGrepZeroCount  = "grep-zero-count"       // #509 — grep -c gated on 0
-	ruleExitSwallowed  = "pipeline-exit-sunk"    // #509 — pipeline sink eats the status
-	ruleRE2LiteralPipe = "rE2-literal-pipe"      // #374 — `\|` inside go test -run/-bench
-	ruleMetavar        = "unsubstituted-metavar" // #509 — the row cannot run
-	ruleGoRunExit      = "gorun-exit"            // #493 — go run flattens the exit code
-	ruleBREAlternation = "bre-alternation"       // #262 — a pipe in a BRE grep pattern
-	ruleShreddedCell   = "shredded-cell"         // #374 — raw `|` cut the Command cell
-	ruleMovingRef      = "moving-ref"            // #639 — diff base on a moving ref
-	rulePortability    = "gnu-only"              // #650 — GNU-only construct
+	ruleERELiteralPipe = "ere-literal-pipe"        // #509 — `\|` inside grep -E
+	ruleGrepZeroCount  = "grep-zero-count"         // #509 — grep -c gated on 0
+	ruleExitSwallowed  = "pipeline-exit-sunk"      // #509 — pipeline sink eats the status
+	ruleRE2LiteralPipe = "rE2-literal-pipe"        // #374 — `\|` inside go test -run/-bench
+	ruleMetavar        = "unsubstituted-metavar"   // #509 — the row cannot run
+	ruleGoRunExit      = "gorun-exit"              // #493 — go run flattens the exit code
+	ruleBREAlternation = "bre-alternation"         // #262 — a pipe in a BRE grep pattern
+	ruleShreddedCell   = "shredded-cell"           // #374 — raw `|` cut the Command cell
+	ruleConsumerRange  = "consumer-delivery-range" // #1915 — missing or post-merge-empty consumer range
+	ruleMovingRef      = "moving-ref"              // #639 — diff base on a moving ref
+	rulePortability    = "gnu-only"                // #650 — GNU-only construct
 	// ruleGoTestRunVacuous — statusgen/14 — a `go test -run` selector with no
 	// `--- PASS` assertion in the same command: a match-nothing selector and a
 	// mismatched selector both exit 0 the same way rule 4's `\|` does.
@@ -2023,6 +2024,9 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 	}
 	toks := tokenizeCommand(cmd)
 	greps := grepCalls(toks)
+	if why := consumerRangeWhy(cmd, toks, expect); why != "" {
+		add(ruleConsumerRange, "%s; post-merge consumer checks must name --brief and pin both --delivery and its first-parent --base. A branch-only check must explicitly say pre-merge and pin its --base. Exit 0 alone does not establish corroboration; preserve exact counts and unchecked obligations", why)
+	}
 
 	for _, g := range greps {
 		// Rule 1: `\|` in an ERE pattern.

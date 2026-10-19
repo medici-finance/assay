@@ -78,7 +78,7 @@ copies are byte-identical.
 | `brief` | string, optional | The brief id from the body's `<!-- needs-decision: <brief> -->` marker. Read only from a marker that is a whole line of its own (surrounding spaces allowed; not inside a sentence or a `>` quote). The id must match `<stream>/<NN>`: a lower-case stream of 1–64 characters (`a-z`, `0-9`, `-`, starting with a letter or digit), `/`, and 1–4 digits. Omitted when there is no such marker, when the id breaks that grammar, or when two markers name different ids. |
 | `options` | list of `{id, text_sha256}` | At most four. `id` is the option's letter **as the anchor ask wrote it** (`A`–`D` or `1`–`4`, uppercased). `text_sha256` is the sha256 hex of its cleaned text, never the text itself (cleaning: below). Empty when the ask stated no options. |
 | `options_source` | `body` \| `relay` | Which ask the options were read from (the **anchor**; see below). |
-| `recommended` | id \| `none` | The id marked "recommended", or `none` when no option carried the mark. |
+| `recommended` | id \| `none` | The id of the one option carrying the recommended marker (grammar: below), or `none` when the stated options carry no marker or more than one between them (two markers on one option count as two). |
 | `picked` | id \| `ambiguous` \| `unparsed` | The offered id the ruling names. See the pick rules below. |
 | `picked_via` | `direct` \| `ratified-relay` | `direct`: the ruling's first line names a letter. `ratified-relay`: the ruling ratifies a relay's `Answer: <letter>`. |
 | `picked_is_recommended` | bool | True only when `picked` is an id equal to `recommended`. |
@@ -98,12 +98,21 @@ It cannot know a dispatch reference, and it does not carry one. `brief` comes fr
 body, so its value is whoever wrote the body's marker; the grammar bounds its shape, not who
 set it.
 
+**The recommended marker.** A marker is the token `(recommended)`, in any letter case, that
+opens the option's text or follows a space or tab, and that ends the text or is followed by
+a space, a tab, or one of `.` `,` `;` `:` `!` `?`. So `(recommended).` closing a bold lead
+sentence counts, and `(not recommended)`, the bare word "recommended", `— recommended` and
+`Recommended:` do not. Only a space or a tab is a boundary; a no-break space is not. Markers
+are counted after `**`, backticks and control characters are removed, and only on lines a
+reader sees: text inside an HTML comment is never an option and never a marker.
+
 **Option text cleaning.** An option's text is the rest of its list line after the letter and
 its `.` or `)`. Then, in order: `**` and backticks are removed; control characters are
-removed; surrounding whitespace is trimmed; a trailing `(recommended)` / `— recommended`
-mark and a leading `(recommended)` mark (either case of `R`) are removed; whitespace is
-trimmed again. `text_sha256` is the sha256 of the UTF-8 bytes of that result. An option
-whose cleaned text is empty is dropped.
+removed; surrounding whitespace is trimmed; every marker is cut, together with the one space
+or tab before it and, when whitespace precedes it, a `—` / `–` / `-` separator directly
+before that space (`Drop it — (recommended).` becomes `Drop it.`); whitespace is trimmed
+again. `text_sha256` is the sha256 of the UTF-8 bytes of that result. An option whose
+cleaned text is empty is dropped, and a marker on a dropped option recommends nothing.
 
 ## The anchor: which ask the options come from
 

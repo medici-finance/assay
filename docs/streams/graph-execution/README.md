@@ -348,6 +348,16 @@ unblocking move is reproducing their actual coverage, not assigning new criterio
 A no-change or guidance-only conclusion is valid. This research neither changes the main
 implementation dependency waves above nor authorizes a production freshness gate.
 
+## Execution-environment follow-ons — 2026-10-16
+
+The [agent-execution stream](../agent-execution/README.md) extends existing owners under
+[architecture amendment 27](../../proposals/non-ci-architecture/27-agent-execution-environments.md).
+Its /01 consumes implemented /20; /03 follows /22 and /26; /04 qualifies /21 and /25 under
+restoration; /05 follows /27. Reciprocal edges are declared in the brief frontmatter.
+Original Task/Verify obligations and Evidence remain unchanged. The new stream owns no
+second controller, claim store, publisher, process runner or lifecycle API. Its AX feasibility
+branch is offline and independent of this stream's existing critical path.
+
 ## Proposed desk-improvement evidence consumers — 2026-10-17
 
 [Public desk-improvement](../desk-improvement/README.md) consumes this stream's native
@@ -357,3 +367,13 @@ consumes /27 standing clients; /10 qualifies native cross-mode source→card→a
 These consumer prerequisites point toward this stream, with no reverse gating cycle. Existing
 source scope and activation remain controlling; supported native measurement is a separate
 qualified capability from offline cards or an implemented schema.
+
+## Verifier migration sequence — 19 October 2026
+
+[Execution-first migration](verifier-migration.md) maps the six visible verifier responsibilities
+to the existing owners and keeps evidence production separate from authority handover.
+The dependency amendment removes real-model calibration /12 from the model-disabled /18
+integration prerequisite; calibrated-provider activation still requires /12. Kubernetes is
+the separately gated agent-execution/08 profile, not an interim runner prerequisite.
+
+The historical critical-path sketch retains the former /12 → /18 edge for history; it is superseded by the 19 October verifier migration sequence above.

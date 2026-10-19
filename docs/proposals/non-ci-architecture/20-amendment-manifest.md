@@ -210,6 +210,30 @@ Existing Task/Verify rows and historical Evidence remain intact; each brief adds
 bumps `version:`. No installed limiter, default, credential, executor activation or hard
 resource limit changes in this documentation PR.
 
+## Portable execution environments — 16 October 2026
+
+Controlling delta: [agent execution environments](27-agent-execution-environments.md).
+The new agent-execution stream, parked until that amendment is approved, authors seven
+bounded extensions of existing owners:
+
+| Gap | Owning brief | Existing prerequisite/consumer | Change made in this authoring PR |
+|---|---|---|---|
+| Qualified harness/model/backend and explicit preservation | agent-execution/01 | implemented graph-execution/20 | New extension obligation; reciprocal edge only on /20, existing Evidence untouched |
+| Prepared-environment receipt and workspace port | agent-execution/02 | /01; existing candidate and retirement owners retained | New pure port; no second Git, resource store or pruner |
+| Local enforcement | agent-execution/03 | /02, graph-execution/22 and /26 | Follow-on to their existing implementation; reciprocal edges, no reassignment |
+| Integrated restore/effect proof | agent-execution/04 | /03, graph-execution/21 and /25 | Production-owner integration tests; no alternative scheduler or effect ledger |
+| Lifecycle projection | agent-execution/05 | /03–04, graph-execution/27 | Existing cellop/cellctl consumers; R7 retains API/cockpit ingress |
+| AX source/fixture qualification | agent-execution/06 | /01–02, independent of managed integration | Offline go/no-go/unknown report; no production adapter or cluster activation |
+| Governed harness refinement | agent-execution/07 | /01–02; existing improvement/promotion owners retained | Offline protocol experiment with independent holdouts, protected controls and complete cost; no live optimizer |
+
+Source: main ec8d77e56627a7c2269f3d143ef6a31f3e41bd02, open-PR inventory refreshed
+16 October. No listed implementation PR targets the new extension/receipt paths. The open
+/20 Evidence PR is preserved. Refresh claims and PRs again at pickup; this bounded observation
+is not an ownership transfer. Existing Task/Verify text, gates, versions and Evidence are
+unchanged; only reciprocal unblocks and dated routing notes are added. /03's concrete profile
+adoption decision ripens after its implementation design. Full live qualification retains
+existing R1–R8 and operator decisions. No existing platform/profile is silently replaced.
+
 ## Desk-process improvement — proposed owner set, 17 October 2026
 
 [Amendment 22](22-desk-improvement.md) extends continuing operations/quality. It does not

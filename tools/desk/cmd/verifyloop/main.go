@@ -105,7 +105,7 @@ func cmdPlan(args []string) error {
 	root := fs.String("root", ".", "repo root to scan for the Awaiting queue")
 	sha := fs.String("sha", "", "merged-main target SHA verifiers run against")
 	runner := fs.String("runner", "", "this session's runner identity (author!=runner guard)")
-	noForge := fs.Bool("no-forge", false, "read no blocker issue: every held receipt's blocker is could-not-check")
+	noForge := fs.Bool("no-forge", false, "read neither blockers nor pending Evidence: unread observations are could-not-check")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("bad flags: " + err.Error())
 	}
@@ -113,6 +113,8 @@ func cmdPlan(args []string) error {
 	v := &VerifyLoop{Root: *root, TargetSHA: *sha, RunnerID: *runner, RootRepo: deskkit.RepoSlugForDir(*root)}
 	if !*noForge {
 		v.Issues = issueSourceFn()
+	} else {
+		v.Issues = offlineScheduling{}
 	}
 
 	// MULTI-ROOT: DESK_ROOTS set and no explicit --root. The plan spans every configured
@@ -262,7 +264,7 @@ func printBuckets(dispatchable int, bucketed map[disposition][]bucketMember) {
 	}
 	fmt.Printf("\nverify-desk plan: %d dispatchable, %d deferred/bucketed (not offline-convertible this run)\n",
 		dispatchable, total)
-	for _, disp := range []disposition{dispCouldNotCheck, dispDeferred, dispWaitReceipt, dispAwaitingHuman, dispStuckFlip, dispAwaitingOnlineLane, dispInRepair} {
+	for _, disp := range []disposition{dispCouldNotCheck, dispDeferred, dispWaitReceipt, dispAwaitingMerge, dispAwaitingHuman, dispStuckFlip, dispAwaitingOnlineLane, dispInRepair} {
 		members := bucketed[disp]
 		if len(members) == 0 {
 			continue
@@ -287,7 +289,7 @@ func printBuckets(dispatchable int, bucketed map[disposition][]bucketMember) {
 	// verify-reset/03: the hold-table summary — held on an open blocker, dispatchable, and held
 	// because an input or the blocker could not be read.
 	fmt.Printf("\nverify-desk plan: wait=%d dispatchable=%d could-not-check=%d\n",
-		len(bucketed[dispWaitReceipt]), dispatchable, len(bucketed[dispCouldNotCheck]))
+		len(bucketed[dispWaitReceipt])+len(bucketed[dispAwaitingMerge]), dispatchable, len(bucketed[dispCouldNotCheck]))
 }
 
 const usage = `verifyloop — verify-desk reference consumer of the drain engine.
@@ -326,8 +328,10 @@ or a newer explicit-recheck receipt wake it; an unreadable input or blocker read
 could-not-check, never "unchanged" or "closed". The blocker is read through the forge as the
 verifier App, only in a repository inside the configured set (one outside it is could-not-check,
 never read), and each repository is named on stderr before its first read. A bare #N resolves
-in the record's repo, else the root's origin repository. --no-forge reads none, so every held
-receipt is could-not-check. The last line is
+in the record's repo, else the root's origin repository. Current-source Evidence in an open,
+trusted verifier PR appears as awaiting-merge #N. Its exact attestation and existing wake
+contract govern freshness; pending Evidence grants no lifecycle authority. --no-forge reads
+neither blockers nor pending Evidence, so the queue is could-not-check. The last line is
 'verify-desk plan: wait=<n> dispatchable=<n> could-not-check=<n>'.
 
 'verdict' is the DETERMINISTIC runner: it runs each brief's check/check:ci Verify rows locally

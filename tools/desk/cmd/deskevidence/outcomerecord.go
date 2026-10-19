@@ -524,23 +524,35 @@ func newGitOutcomeTree(root, sha string) (gitOutcomeTree, error) {
 }
 
 func (g gitOutcomeTree) PathKind(rel string) (string, error) {
-	kind, ok := gitPathKindAt(g.root, g.sha, rel)
-	if !ok {
-		return "", nil // the commit resolves (newGitOutcomeTree), so a miss is an absent path
+	// ls-tree distinguishes a successful absent lookup from a read failure.
+	out, err := outcomeGit(g.root, "ls-tree", "-z", g.sha, "--", ":(literal)"+rel).Output()
+	if err != nil {
+		return "", err
 	}
-	return kind, nil
+	if len(out) == 0 {
+		return "", nil
+	}
+	fields := strings.Fields(strings.SplitN(string(out), "\t", 2)[0])
+	if len(fields) != 3 {
+		return "", fmt.Errorf("unreadable input kind")
+	}
+	return fields[1], nil
 }
 
 func (g gitOutcomeTree) ReadFile(rel string) ([]byte, error) { return gitShowAt(g.root, g.sha, rel) }
 
 func (g gitOutcomeTree) ListFiles(rel string) ([]string, error) {
-	out, err := outcomeGit(g.root, "ls-tree", "-r", "--name-only", g.sha, "--", strings.TrimSuffix(rel, "/")+"/").Output()
+	args := []string{"ls-tree", "-rz", "--name-only", g.sha}
+	if rel != "." {
+		args = append(args, "--", ":(literal)"+strings.TrimSuffix(rel, "/")+"/")
+	}
+	out, err := outcomeGit(g.root, args...).Output()
 	if err != nil {
 		return nil, err
 	}
 	var files []string
-	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if l = strings.TrimSpace(l); l != "" {
+	for _, l := range strings.Split(string(out), "\x00") {
+		if l != "" {
 			files = append(files, l)
 		}
 	}

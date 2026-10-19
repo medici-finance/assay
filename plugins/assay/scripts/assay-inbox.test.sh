@@ -563,8 +563,8 @@ check "$([[ "$html_order" == "1 2 3 " ]] && echo 0 || echo 1)" \
   "the page preserves the queue order (1 2 3)" "got: $html_order"
 check "$(contains "$PAGE" "question 1 of 3" && contains "$PAGE" "question 3 of 3" && echo 0 || echo 1)" \
   "cards carry the same 'question k of n' header as --walk" "page head: $(head -c 200 "$HTML")"
-check "$([[ "$(grep -c '<span class="rec">recommended</span>' "$HTML")" == 3 ]] && echo 0 || echo 1)" \
-  "each card labels exactly one recommended option" "count: $(grep -c '<span class="rec">recommended</span>' "$HTML" || true)"
+check "$([[ "$(grep -c '<span class="rec">recommended</span>' "$HTML" || true)" == 1 ]] && echo 0 || echo 1)" \
+  "only the card with one explicit marker labels a recommended option" "count: $(grep -c '<span class="rec">recommended</span>' "$HTML" || true)"
 
 # ---------------------------------------------------------------- H2 --------
 echo "H2 — the page is SELF-CONTAINED: no scripts, no external assets, issue links only"
@@ -1941,10 +1941,11 @@ check "$(not_derived && echo 0 || echo 1)" \
   "a bidi override in the fork default is not derivable" "stdout was: ${OUT:-<empty>}"
 
 # --------------------------------------------------------------- CMD12 ------
+# regression: #2849 — one exact standalone marker must drive both displayed and derived choices.
 # f-cmd-recommended-1, round 2: the recommended letter comes only from ONE standalone, visible
-# marker. A word that merely contains "recommend", a negated marker, or an Options block GitHub
-# does not render never sets it, and the walk's options must be the visible ones.
-echo "CMD12 — only one standalone, visible recommended marker binds the ruling"
+# `(recommended)` marker. A word containing "recommend" is ordinary option text, and an Options
+# block GitHub does not render never sets the walk's recommendation or derived command.
+echo "CMD12 — one standalone, visible (recommended) marker binds the ruling"
 
 w="$TMPROOT/cmd-rec-word"
 cmd_walk "$w" '## Options
@@ -1956,8 +1957,13 @@ B. keep the current cron (recommended)
 
 Reply "A" or "B".
 '
-check "$(not_derived && echo 0 || echo 1)" \
-  "an option whose text says recommendation is not a second marker: not derivable" "stdout was: ${OUT:-<empty>}"
+check "$(derived "'B'" && echo 0 || echo 1)" \
+  "the word recommendation is not a marker and does not hide B's unique exact marker" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" 'A. keep the current cron' && contains "$OUT" '[recommended]' && echo 0 || echo 1)" \
+  "the walk promotes the exact B marker, not A's recommendation wording" "stdout was: ${OUT:-<empty>}"
+rec_count=$(grep -Fc '[recommended]' <<<"$OUT" || true)
+check "$([[ "$rec_count" -eq 1 ]] && echo 0 || echo 1)" \
+  "one exact marker gives the walk exactly one recommended label" "count: $rec_count"
 w="$TMPROOT/cmd-rec-negated-first"
 cmd_walk "$w" '## Options
 
@@ -1968,8 +1974,10 @@ B. keep the cron (recommended)
 
 Reply "A" or "B".
 '
-check "$(not_derived && echo 0 || echo 1)" \
-  "a (not recommended) option ahead of the marked one: not derivable" "stdout was: ${OUT:-<empty>}"
+check "$(derived "'B'" && echo 0 || echo 1)" \
+  "a (not recommended) option is ignored before B's exact marker" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" 'A. keep the cron' && contains "$OUT" '[recommended]' && echo 0 || echo 1)" \
+  "the walk promotes B and does not label the negated A" "stdout was: ${OUT:-<empty>}"
 w="$TMPROOT/cmd-rec-negated-only"
 cmd_walk "$w" '## Options
 
@@ -1982,6 +1990,8 @@ Reply "A" or "B".
 '
 check "$(not_derived && echo 0 || echo 1)" \
   "a negated marker alone is not a recommendation: not derivable" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" '[recommended]' && echo 1 || echo 0)" \
+  "a negated marker alone does not label any option as recommended" "stdout was: ${OUT:-<empty>}"
 w="$TMPROOT/cmd-rec-hidden-options"
 cmd_walk "$w" '<!--
 ## Options
@@ -1998,8 +2008,10 @@ B. drop (recommended)
 
 Reply "A" or "B".
 '
-check "$(not_derived && echo 0 || echo 1)" \
-  "an Options block inside an HTML comment never sets the letter: not derivable" "stdout was: ${OUT:-<empty>}"
+check "$(derived "'B'" && echo 0 || echo 1)" \
+  "comment-stripped visible Options choose B for the derived command" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" 'A. drop' && contains "$OUT" '[recommended]' && echo 0 || echo 1)" \
+  "the walk uses and labels the visible B option after the commented block" "stdout was: ${OUT:-<empty>}"
 w="$TMPROOT/cmd-rec-linkref"
 cmd_walk "$w" '## Options
 
@@ -2023,8 +2035,112 @@ B. drop the cron — recommended
 
 Reply "A" or "B".
 '
+check "$(not_derived && echo 0 || echo 1)" \
+  "a dash phrase without the exact (recommended) marker does not derive authority" "stdout was: ${OUT:-<empty>}"
+
+# regression: #2849 — zero or multiple exact markers give the walk and command no authority.
+echo "CMD13 — missing or ambiguous exact markers never invent a recommendation"
+
+w="$TMPROOT/cmd-rec-zero"
+cmd_walk "$w" '## Options
+
+A. we recommend waiting for review
+B. hold the cron
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "no exact marker leaves the command not derivable" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" '[recommended]' && echo 1 || echo 0)" \
+  "no exact marker leaves every option unlabelled" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-multiple"
+cmd_walk "$w" '## Options
+
+A. keep this (recommended)
+B. ship this (recommended)
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "multiple exact markers leave the command not derivable" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" '[recommended]' && echo 1 || echo 0)" \
+  "multiple exact markers leave every option unlabelled" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-repeated"
+cmd_walk "$w" '## Options
+
+A. keep this (recommended) and (recommended)
+B. ship this
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "repeated markers on one option are ambiguous, not authority" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" '[recommended]' && echo 1 || echo 0)" \
+  "repeated markers leave every option unlabelled" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-adjacent"
+cmd_walk "$w" '## Options
+
+A. keep this (recommended) (recommended)
+B. ship this
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "adjacent markers on one option are two markers: not derivable" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" '[recommended]' && echo 1 || echo 0)" \
+  "adjacent markers leave every option unlabelled" "stdout was: ${OUT:-<empty>}"
+
+# regression: #2849 — the marker as desks write it, closing a bold lead sentence, still binds.
+echo "CMD14 — a marker followed by punctuation, or after a dash, is the one marker"
+
+w="$TMPROOT/cmd-rec-period"
+cmd_walk "$w" '## Options
+
+A. **keep the cron.** It keeps the noise.
+B. **drop the cron (recommended).** It stops the noise.
+
+## How to answer
+
+Reply "A" or "B".
+'
 check "$(derived "'B'" && echo 0 || echo 1)" \
-  "positive control: a trailing dash marker on one option still binds its letter" "stdout was: ${OUT:-<empty>}"
+  "a marker before a period binds its letter" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" 'A. drop the cron. It stops the noise.   [recommended]' && echo 0 || echo 1)" \
+  "the walk promotes and labels it, the marker cut and the period kept" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-dash-paren"
+cmd_walk "$w" '## Options
+
+A. keep the cron
+B. drop the cron — (recommended)
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(derived "'B'" && echo 0 || echo 1)" \
+  "a dash before the exact marker still binds its letter" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" 'A. drop the cron   [recommended]' && echo 0 || echo 1)" \
+  "the dash separator is cut with the marker" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-glued"
+cmd_walk "$w" '## Options
+
+A. keep the cron
+B. drop the cron (recommended)ly
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a letter right after the marker is not a boundary: not derivable" "stdout was: ${OUT:-<empty>}"
 
 # ------------------------------------------------------------------ done ----
 echo

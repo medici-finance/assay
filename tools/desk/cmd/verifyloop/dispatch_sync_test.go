@@ -390,3 +390,22 @@ func TestDispatchPrompt_NoSharedCheckoutMarker(t *testing.T) {
 		t.Fatalf("rendered prompt trips the shared-checkout backstop: %v", err)
 	}
 }
+
+// regression: #3461
+func TestLoopCarriesAcceptanceClauses(t *testing.T) {
+	prompt := strings.Join(strings.Fields(renderDispatchPrompt(loopengine.Item{}, loopengine.TierLocal)), " ")
+	for _, anchor := range []string{"Preflight the exact acceptance commands", "Account for the original row inventory"} {
+		matched := false
+		for _, clause := range kitPromptClauses(t) {
+			if strings.Contains(clause, anchor) {
+				matched = true
+				if !strings.Contains(prompt, clause) {
+					t.Errorf("rendered loop prompt does not carry the full kit clause %q", anchor)
+				}
+			}
+		}
+		if !matched {
+			t.Fatalf("kit clause %q missing", anchor)
+		}
+	}
+}
