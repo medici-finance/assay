@@ -1,7 +1,14 @@
 // Package perfrec is the one writer of the opt-in, LOCAL-ONLY per-invocation performance
-// record (schema perf-v1). Every tool that records one — the desk tools through their shared
-// kit, statusgen directly — calls this package, so there is exactly one implementation of the
-// schema, the day-file layout, the 7-day retention and the install id.
+// record. Every tool that records one — the desk tools through their shared kit, statusgen
+// directly — calls this package, so there is exactly one implementation of the schemas, the
+// day-file layout, the 7-day retention and the install id.
+//
+// Two schemas share the day files (schema.go): the legacy perf-v1 line New builds, whose
+// wallMs starts wherever its caller started a timer and whose cpuMs is process-lifetime
+// CPU; and perf-v2, built only by a Session (session.go), whose wall and CPU are deltas over
+// ONE declared boundary and whose counters carry explicit measured/unavailable coverage. A
+// reader never mixes the two meanings: Record's JSON codec refuses a line whose fields do not
+// belong to the schema it names.
 //
 // The contract, each clause enforced by a test rather than promised:
 //
@@ -31,9 +38,9 @@ import (
 	"time"
 )
 
-// Schema is the on-disk record version. Adding ANY field bumps it (perf-v2), updates the
-// field table in docs/telemetry.md, and adds a case to the no-identifier test — all three in
-// the same change.
+// Schema is the LEGACY on-disk record version New builds. Its field set and meanings are
+// frozen: a changed boundary or field is a new schema (SchemaV2 is the first), with its own
+// field table in docs/telemetry.md and its own case in the no-identifier tests.
 const Schema = "perf-v1"
 
 // EnvVar is the one opt-in. It is the SAME variable statusgen's network telemetry reads.
@@ -68,8 +75,18 @@ const (
 	exitUnverifiable = 6
 )
 
-// Record is one perf-v1 line. Exactly these fields and no others; cpuMs alone is omitted when
-// unmeasurable, so "not measured" and "used no CPU" stay distinguishable.
+// Record is one line of the perf history, in either schema. Schema decides which fields the
+// line carries and what they mean; the JSON codec (schema.go) writes exactly that schema's
+// field set and refuses a record that carries another schema's fields.
+//
+// perf-v1 (legacy): every field down to Install except the v2-only block. cpuMs alone is
+// omitted when unmeasurable, so "not measured" and "used no CPU" stay distinguishable;
+// wallMs is whatever the caller timed and cpuMs is process-lifetime CPU.
+//
+// perf-v2: the shared fields plus the v2-only block, and none of the three legacy
+// counters (their meanings live on as counters with explicit coverage). wallMs and cpuMs
+// are deltas over Boundary; CPU names the CPU coverage state, and cpuMs is present only when
+// it is CPUMeasured.
 type Record struct {
 	Schema      string `json:"schema"`
 	TS          string `json:"ts"`
@@ -85,6 +102,14 @@ type Record struct {
 	ForgeCalls  int64  `json:"forgeCalls"`
 	SourceSHA   string `json:"sourceSHA"`
 	Install     string `json:"install"`
+
+	// perf-v2 only.
+	Boundary     string            `json:"boundary,omitempty"`
+	CPU          string            `json:"cpu,omitempty"`
+	Phases       []PhaseStat       `json:"phases,omitempty"`
+	PhaseOverlap bool              `json:"phaseOverlap,omitempty"`
+	Counters     map[Counter]int64 `json:"counters,omitempty"`
+	Unavailable  []Counter         `json:"unavailable,omitempty"`
 }
 
 // Enabled reports whether local perf logging is armed: ASSAY_TELEMETRY compared to "1"
@@ -155,8 +180,10 @@ func SourceSHA(stamp string) string {
 	return Unpinned
 }
 
-// New builds a record. tool, verb and role must already be roster values (the caller maps
-// them); the timestamp, result and schema are fixed here. sha is passed through SourceSHA.
+// New builds a LEGACY perf-v1 record (wall as the caller timed it; the caller may set cpuMs
+// to process-lifetime CPU and the three legacy counters). tool, verb and role must already be
+// roster values (the caller maps them); the timestamp, result and schema are fixed here. sha
+// is passed through SourceSHA. New measurements use Begin/Finish (session.go) instead.
 func New(tool, verb, role string, wall time.Duration, exit int, sha string, now time.Time) Record {
 	return Record{
 		Schema:    Schema,

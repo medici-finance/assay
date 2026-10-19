@@ -261,7 +261,7 @@ func TestPerfCommandKit(t *testing.T) {
 				}
 				return
 			}
-			if rec.Verb != tc.want || rec.Tool != tc.tool || rec.Exit != code || rec.Schema != "perf-v1" {
+			if rec.Verb != tc.want || rec.Tool != tc.tool || rec.Exit != code || rec.Schema != "perf-v2" {
 				t.Fatalf("record %+v, want verb=%s exit=%d", rec, tc.want, code)
 			}
 			if bytes.Contains(raw, []byte("private-argument")) || bytes.Contains(raw, []byte(home)) || bytes.Contains(raw, []byte("bad-item")) {

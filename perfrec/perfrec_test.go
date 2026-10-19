@@ -93,11 +93,11 @@ func TestRecordGoldenShape(t *testing.T) {
 	}
 
 	// cpuMs is OMITTED when unmeasured and present (even as 0) when measured.
-	if b, _ := json.Marshal(Record{}); strings.Contains(string(b), "cpuMs") {
+	if b, _ := json.Marshal(Record{Schema: Schema}); strings.Contains(string(b), "cpuMs") {
 		t.Errorf("an unmeasured record carries cpuMs: %s", b)
 	}
 	zero := int64(0)
-	if b, _ := json.Marshal(Record{CPUMs: &zero}); !strings.Contains(string(b), `"cpuMs":0`) {
+	if b, _ := json.Marshal(Record{Schema: Schema, CPUMs: &zero}); !strings.Contains(string(b), `"cpuMs":0`) {
 		t.Errorf("a measured zero lost its cpuMs: %s", b)
 	}
 	if ms, ok := CPUMillis(); runtime.GOOS != "windows" && (!ok || ms < 0) {

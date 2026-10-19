@@ -444,7 +444,8 @@ unaffected and keep their current behaviour until they are moved over.
 
 The audit ledger records WHAT a verb did; it records nothing about how long it took. With
 `ASSAY_TELEMETRY=1` exported (exactly `1` — `true`, `yes` or an empty value are all OFF), the
-desk commands append ONE `perf-v1` line per completed invocation to a local day file.
+desk commands append ONE `perf-v2` line per completed invocation to a local day file
+(boot and launch steps, and `statusgen`, still write the legacy `perf-v1` line).
 All 67 operational commands are wrapped, including deskfile, deskreply, scanloop, issueboard,
 reviewloop, verifyloop and the supervisor. `deskperf` is excluded so reading a report cannot
 change its input; `muhar` is a developer mutation harness with separate execution accounting.
@@ -462,11 +463,17 @@ deskperf boot --role worker-desk --json
 **What is recorded** — and nothing else, enforced by the record's type: the schema tag, a
 second-resolution UTC timestamp, the tool (canonical key, else `other`), the verb (the verb's
 own registered subcommand, else `other`; boot steps as `step:<name>`), the role (`$DESK_LOOP`
-canonical name, else `none`), wall ms, process CPU ms (omitted where unmeasurable, e.g.
-Windows), the exit code and its fixed result word, how many child processes the verb started
-through the shared runner (`deskkit.Run`) and their summed wall ms, how many HTTP
-round-trips went through the forge client's counting transport, the build stamp (hex, else
-`unpinned`), and a random per-install id.
+canonical name, else `none`), the exit code and its fixed result word, the build stamp (hex,
+else `unpinned`), and a random per-install id. A `perf-v2` invocation record adds: the
+measurement `boundary` (`process-init`: wall and CPU both start at a mark taken as the
+shared recorder initialises, so `main`'s configuration and activation checks are inside),
+wall ms and — only when `cpu` is `measured` — process CPU ms over that same interval, the
+CPU state (`measured`, `unsupported`, `failed`, `missing`), the `subprocess`,
+`subprocessMs` and `http` counters (child processes through the shared runner, their summed
+inclusive wall, HTTP round-trips through the forge client's counting transport), the cache
+and coalesced-waiter counters listed as `unavailable` (not observed, never zero), and timed
+phases (none yet). A legacy `perf-v1` record has wall ms, optional CPU ms and the three
+counts as `childProcs` / `childWallMs` / `forgeCalls`. Field tables: `docs/telemetry.md`.
 
 **Newly covered commands use the fixed verb `other` rather than copying arbitrary argv;
 the original seven retain their registered verb lists. Tool-level timing/counts are complete
@@ -505,8 +512,13 @@ code or its output. Per-invocation agent usage (tokens, cost) is the agent runne
 - `deskperf report [--days N] [--tool X] [--role R] [--top N] [--json]` — per tool: count,
   p50 / p90 / max wall ms (nearest-rank), total wall ms, share of total wall, and refusal ratio
   (refused + unwritten + unverifiable over count); then the N slowest invocations (default
-  10) as ts / tool / verb / wall ms. Boot-step records are excluded (they subdivide a
-  `deskboot` run already counted once).
+  10) as ts / tool / verb / wall ms. Boot- and launch-step records are excluded (they
+  subdivide a `deskboot` or `cellctl` run already counted once). Legacy `perf-v1` records
+  render first, exactly as before; `perf-v2` records render as a SEPARATE group (JSON
+  `perfV2`) whose total is labelled summed invocation wall, with boundary and CPU-state
+  counts, the CPU distribution over measured records only, per-counter measured/unavailable
+  coverage (totals over measured records only) and per-phase distributions. The two groups
+  are never summed, and no inclusive child or phase time is added to a wall total.
 - `deskperf boot [--days N] [--role R] [--json]` — `deskboot`'s per-step p50 / p90 / max, in
   boot order, and the summed boot cost per role.
 
