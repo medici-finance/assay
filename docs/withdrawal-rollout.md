@@ -47,7 +47,7 @@ identity and purpose survive; use withdrawal when its remaining plan is no longe
 An older statusgen deliberately refuses brief-v3 and names the needed schema, its
 supported set and the local pin. Upgrade the reader before the authoring change. Do not
 rename v3 records to v2 to hide that incompatibility. The first supporting release is
-filled into `spec/brief-v1.md` at release cut; an unreleased build's version output is
+v1.0.50 (`spec/brief-v1.md` §3.5); an unreleased build's version output is
 capability evidence for that build, not evidence a consumer pin already supports it.
 
 ## Small measurement burden

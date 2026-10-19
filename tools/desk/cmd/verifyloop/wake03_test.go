@@ -197,6 +197,7 @@ func TestWakeRecheckOverridesHold(t *testing.T) {
 
 // Verify row 5: the plan over the checked-in fixture, three blockers open — three WAIT lines
 // each naming its ref, and the summary line.
+// regression: #2939
 func TestPlanWakeFixture(t *testing.T) {
 	old := issueSourceFn
 	t.Cleanup(func() { issueSourceFn = old })
@@ -233,14 +234,14 @@ func TestPlanWakeFixture(t *testing.T) {
 		t.Errorf("summary line missing:\n%s", out)
 	}
 
-	// Row 6's rule below the preflight: --no-forge reads no blocker, so the three held briefs
-	// are could-not-check, never WAIT and never "blocker closed".
+	// --no-forge reads neither blockers nor the pending Evidence population.
+	// Every item is therefore visibly could-not-check, never an inferred absence.
 	out = captureStdout(t, func() { perr = cmdPlan([]string{"--root", "testdata/wake-fixture-repo", "--no-forge"}) })
 	if perr != nil {
 		t.Fatalf("cmdPlan --no-forge: %v", perr)
 	}
 	if strings.Contains(out, "   WAIT ") || strings.Contains(out, "blocker closed") ||
-		!strings.Contains(out, "verify-desk plan: wait=0 dispatchable=1 could-not-check=4\n") {
-		t.Errorf("--no-forge plan is not wait=0 dispatchable=1 could-not-check=4 with no WAIT line:\n%s", out)
+		!strings.Contains(out, "verify-desk plan: wait=0 dispatchable=0 could-not-check=5\n") {
+		t.Errorf("--no-forge plan is not wait=0 dispatchable=0 could-not-check=5 with no WAIT line:\n%s", out)
 	}
 }

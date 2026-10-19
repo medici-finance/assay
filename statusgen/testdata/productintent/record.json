@@ -1,0 +1,94 @@
+{
+  "schema": "product-intent-v1",
+  "subject": {
+    "repository": "example/product",
+    "requirement": "REQ-evidence-visible"
+  },
+  "kind": "capability",
+  "owner": "product-owner",
+  "status": "active",
+  "directions": [
+    {
+      "revision": "d1",
+      "rationale": "Readers can check claims",
+      "owner": "product-owner",
+      "decision": {
+        "repository": "example/product",
+        "kind": "decision",
+        "id": "direction-one",
+        "revision": "v1"
+      }
+    },
+    {
+      "revision": "d2",
+      "rationale": "Extend accessible evidence",
+      "owner": "next-owner",
+      "decision": {
+        "repository": "example/product",
+        "kind": "decision",
+        "id": "direction-two",
+        "revision": "v1"
+      }
+    }
+  ],
+  "targets": [
+    {
+      "revision": "t1",
+      "direction-revision": "d1",
+      "condition": "Evidence visible",
+      "measure": "visible claims",
+      "unit": "percent",
+      "window": "first release",
+      "confidence": "medium",
+      "basis": "synthetic example",
+      "decision": {
+        "repository": "example/product",
+        "kind": "decision",
+        "id": "target-one",
+        "revision": "v1"
+      },
+      "approved": true
+    },
+    {
+      "revision": "t2",
+      "direction-revision": "d2",
+      "condition": "Evidence accessible",
+      "measure": "accessible claims",
+      "unit": "percent",
+      "window": "next release",
+      "confidence": "unknown",
+      "basis": "baseline gap",
+      "decision": {
+        "repository": "example/product",
+        "kind": "decision",
+        "id": "target-two",
+        "revision": "v1"
+      }
+    }
+  ],
+  "observed": [
+    {
+      "target-revision": "t1",
+      "assessment": {
+        "repository": "example/product",
+        "kind": "assessment",
+        "id": "assessment-one",
+        "revision": "v1"
+      },
+      "source": "synthetic-source-one",
+      "attributed-to": "independent-evaluator",
+      "date": "2026-10-13",
+      "window": "first release",
+      "confidence": "low",
+      "limitations": "synthetic evidence; no causal inference"
+    }
+  ],
+  "operational-references": [
+    {
+      "repository": "example/product",
+      "kind": "journey",
+      "id": "read-evidence",
+      "revision": "v1"
+    }
+  ]
+}

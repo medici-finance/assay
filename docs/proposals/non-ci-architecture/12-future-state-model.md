@@ -191,6 +191,22 @@ Preserve historical Evidence and dated source accounts; changing profiles never
 upgrades old self-checks to independent verification. Unavailable mandatory policy/
 qualification input is a scoped hold, not a claim that the lighter contract applies.
 
+## Execution-environment target and transition — 16 October 2026
+
+The [execution amendment](27-agent-execution-environments.md) is a requested target change,
+with explicit delivery obligations in agent-execution/01–07. Keep its profile/receipt schema
+revision separate from architecture-target approval, installed bundle and qualified backend.
+Existing runner-v1 implementation is observed foundation; prepared-environment integration
+and stronger preservation declarations remain planned. The seven new briefs do not turn their
+future test names into evidence of implementation.
+
+Impact/handoff records must find current v1 callers, supervisor/local-adapter and standing-desk
+plans, candidate/retirement owners, cell-operation status and R7 consumers. A transition binds
+new mandatory extensions to supported readers and a qualified profile; a reader that cannot
+understand one holds. Historical v1 Evidence remains evidence of v1, and an environment
+readiness receipt is distinct from acceptance evidence. AX compatibility conclusions are
+observations of a pinned source/fixture, not a deployment or backend selection.
+
 ## Desk-process improvement bindings — proposal of 17 October 2026
 
 [Amendment 22](22-desk-improvement.md) uses the existing enduring operational subject and

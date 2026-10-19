@@ -3,7 +3,7 @@
 **Version:** v1.0-draft
 **Status:** DRAFT — published for review. v1.0-draft is unstable: breaking changes MAY be
 made without a major-version bump; no stability commitment.
-**Describes reference implementation:** `statusgen` v1.0.50
+**Describes reference implementation:** `statusgen` v1.0.51
 
 ## 1. Scope
 
@@ -163,7 +163,7 @@ is a strict superset of the one before it; no field is removed or changed in mea
 |--------|------|---------------------------|------------------------------------------|
 | `brief-v1` | this document's fields (§3.1, §3.2) | `schemas/brief-v1.json` | v0.9.0 (the earliest published release) |
 | `brief-v2` | the hierarchical `brief:` id `<cell>:<repo>:<stream>:<NN>`, `version:`, and the identity/graph keys `id`, `supersedes`, `gates`, `feathers`, `verify` | `schemas/brief-v2.json` | v1.0.0 |
-| `brief-v3` | the withdrawn-status keys `withdrawn-date`, `withdrawn-reason`, `superseded-by` (§3.6) | `schemas/brief-v3.json` | next release <!-- TRACKING: the release cut fills in the tag that first ships brief-v3. --> |
+| `brief-v3` | the withdrawn-status keys `withdrawn-date`, `withdrawn-reason`, `superseded-by` (§3.6) | `schemas/brief-v3.json` | v1.0.50 |
 
 A `statusgen` release declares the versions it reads, and the first release of each, in
 machine-readable form: `statusgen --version --json` prints

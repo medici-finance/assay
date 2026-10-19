@@ -17,7 +17,7 @@ mutations = [
     ("readback", "../../internal/deskkit/stampapply.go", 'if state != ModelStamped || got != expected {', 'if false {', "TestStampReadbackBothPaths|TestStampOnlyFailure|TestStampOnlyAudit"),
     # A second false-success path, planted in the new entry independently of stepStamp.
     ("second-success", "stamponly.go", 'line, e := stepStamp(o, o.repo)', 'line, e := "OK: skipped", error(nil)', "TestStampOnlyRoundTrip|TestStampOnlyRepair|TestStampOnlyGitLab"),
-    ("args", "stamponly.go", 'fs.StringVar(&o.tier, "tier", "",', 'fs.StringVar(&o.tier, "tier", "any",', "TestStampOnlyRejectsArgs"),
+    ("args", "cli.go", 'str("tier", "", "selected execution tier (required)")', 'str("tier", "any", "selected execution tier (required)")', "TestStampOnlyRejectsArgs"),
     ("pending", "dispatch.go", 'coordinator runs deskdispatch --stamp-only', 'coordinator runs obsolete-command', "TestPendingStampCommand"),
     ("verifier-kind", "dispatch.go", 'reviewKit(kit) || verifierKit(kit)', 'reviewKit(kit)', "TestStampKitKinds"),
     # #2760: an authoring stamp written into the review pair, and a reader scoped to both

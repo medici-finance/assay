@@ -75,6 +75,9 @@ const (
 	// evidence only: it never authorizes verified/done or a write. Legacy/incomplete receipts
 	// are NOT bucketed here — they stay eligible for one classification pass.
 	dispWaitReceipt
+	// Pending verifier-authored Evidence is scheduling evidence only. The
+	// queue stays visible until merge or a source/input wake.
+	dispAwaitingMerge
 )
 
 // String is the stable bucket slug used in the plan output and tests.
@@ -98,6 +101,8 @@ func (d disposition) String() string {
 		return "could-not-check"
 	case dispWaitReceipt:
 		return "wait"
+	case dispAwaitingMerge:
+		return "awaiting-merge"
 	default:
 		return "unknown"
 	}
@@ -138,6 +143,8 @@ func (d disposition) whyItWaits() string {
 		return "a verified outcome is in the sidecar and Evidence is filled, but the status flip has not landed — file/point at the stuck flip, never re-run"
 	case dispWaitReceipt:
 		return "a failed/blocked verification whose wake condition is unchanged — re-verifying now reproduces the same non-verdict; the line names the blocker, the next actor, and what will wake it"
+	case dispAwaitingMerge:
+		return "current-source verifier Evidence is in an open PR — merge or a source/input wake owns the next action; no lifecycle verdict is granted"
 	default:
 		return ""
 	}
@@ -193,6 +200,9 @@ func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string
 	}
 	if bu := payloadValue(it, "blocked_until"); bu != "" {
 		return dispDeferred, bu
+	}
+	if ref := payloadValue(it, "awaiting_merge"); ref != "" {
+		return dispAwaitingMerge, "awaiting-merge " + ref
 	}
 	if tier == loopengine.TierHuman || loopengine.GateIsHuman(it.Gate) || it.Risk.Any() {
 		if evidenceOnlyDispatchable(it) {

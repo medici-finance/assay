@@ -75,7 +75,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 18 | [Migrate statusgen to Cobra and Viper](brief-18-migrate-statusgen-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 19 | [Migrate qualgen to Cobra and Viper](brief-19-migrate-qualgen-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 20 | [Migrate deskboard to Cobra and Viper](brief-20-migrate-deskboard-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
-| 21 | [Migrate deskdispatch to Cobra and Viper](brief-21-migrate-deskdispatch-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 21 | [Migrate deskdispatch to Cobra and Viper](brief-21-migrate-deskdispatch-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 22 | [Migrate deskwt to Cobra and Viper](brief-22-migrate-deskwt-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 23 | [Migrate deskfleet to Cobra and Viper](brief-23-migrate-deskfleet-to-cobra-and-viper.md) | 3 | M | todo | — | — |
 | 24 | [Migrate desksupervise to Cobra and Viper](brief-24-migrate-desksupervise-to-cobra-and-viper.md) | 3 | M | todo | — | — |
@@ -115,7 +115,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 58 | [Extract the role credential provider and retire internal desktoken callouts](brief-58-extract-the-role-credential-provider-and-retire-internal-desktoken-callouts.md) | 1 | L | todo | — | — |
 | 59 | [Share concurrent credential lookups and bound reuse by credential expiry](brief-59-share-concurrent-credential-lookups-and-bound-reuse-by-credential-expiry.md) | 2 | M | todo | — | — |
 | 60 | [Bound component activation discovery and reuse validated manifest snapshots](brief-60-bound-component-activation-discovery-and-reuse-validated-manifest-snapshots.md) | 1 | M | todo | — | — |
-| 61 | [Version shared performance boundaries and keep legacy reports comparable](brief-61-version-shared-performance-boundaries-and-keep-legacy-reports-comparable.md) | 1 | M | todo | — | — |
+| 61 | [Version shared performance boundaries and keep legacy reports comparable](brief-61-version-shared-performance-boundaries-and-keep-legacy-reports-comparable.md) | 1 | M | implemented | — | — |
 | 62 | [Instrument desk hot paths and qualify credential and startup savings](brief-62-instrument-desk-hot-paths-and-qualify-credential-and-startup-savings.md) | 3 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 

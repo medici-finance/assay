@@ -246,7 +246,8 @@ scan_rollup_judges() {
     grep -q 'statusCheckRollup' "$f" 2>/dev/null || continue
     grep -qE "[\"'](FAILURE|CANCELLED|TIMED_OUT|STARTUP_FAILURE|ACTION_REQUIRED|ERROR)[\"']" "$f" 2>/dev/null || continue
     echo "CANDIDATE ${f#"$root"/}"
-    if ! grep -v 'def latest_run_per_check(' "$f" | grep -q 'latest_run_per_check('; then
+    # Consume the whole producer under pipefail; a quiet reader can SIGPIPE it.
+    if ! grep -v 'def latest_run_per_check(' "$f" | grep -c 'latest_run_per_check(' >/dev/null; then
       echo "UNREDUCED ${f#"$root"/}"
     fi
   done
@@ -256,8 +257,8 @@ scan_rollup_judges() {
 #     matcher that silently stopped matching would otherwise report clean).
 repo_root="$(cd "$here/../.." && pwd)"
 g1="$(scan_rollup_judges "$repo_root")"
-if printf '%s\n' "$g1" | grep -qxF 'CANDIDATE tools/evidence-automerge/automerge-refusal.sh' \
-   && ! printf '%s\n' "$g1" | grep -q '^UNREDUCED '; then
+if grep -qxF 'CANDIDATE tools/evidence-automerge/automerge-refusal.sh' <<<"$g1" \
+   && ! grep -q '^UNREDUCED ' <<<"$g1"; then
   ok "G1 class guard: real tree clean, real site seen ($(printf '%s\n' "$g1" | grep -c '^CANDIDATE ') candidate(s))"
 else
   bad "G1 class guard on the real tree"
@@ -289,11 +290,37 @@ mut="$WORK/mut"
 mkdir -p "$mut/tools/evidence-automerge"
 sed 's/in latest_run_per_check(rollup)/in rollup/' "$CHECK" > "$mut/tools/evidence-automerge/automerge-refusal.sh"
 g3="$(scan_rollup_judges "$mut")"
-if printf '%s\n' "$g3" | grep -qxF 'UNREDUCED tools/evidence-automerge/automerge-refusal.sh'; then
+if grep -qxF 'UNREDUCED tools/evidence-automerge/automerge-refusal.sh' <<<"$g3"; then
   ok "G3 class guard flags the real site with its reduction call reverted"
 else
   bad "G3 class guard missed the reverted real site"
   printf '%s\n' "$g3" | sed 's/^/       | /'
+fi
+
+# G4: regression #3020 — an early match followed by 8 MiB of output cannot
+# fit in a pipe buffer. A quiet downstream grep exits while grep -v is still
+# writing, so pipefail misclassifies the reduced file. Exercise the actual
+# scanner with a planted second site, plus a definition-only negative control.
+large="$WORK/large"
+mkdir -p "$large/scripts"
+python3 - "$large/scripts" <<'PYFIX'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+header = 'statusCheckRollup = "FAILURE"\ndef latest_run_per_check(entries): pass\n'
+padding = '# padding\n' * (8 * 1024 * 1024 // 10)
+(root / 'large-reduced.py').write_text(header + 'latest_run_per_check(statusCheckRollup)\n' + padding)
+(root / 'large-unreduced.py').write_text(header + padding)
+PYFIX
+g4="$(scan_rollup_judges "$large")"
+want_g4='CANDIDATE scripts/large-reduced.py
+CANDIDATE scripts/large-unreduced.py
+UNREDUCED scripts/large-unreduced.py'
+if [ "$g4" = "$want_g4" ]; then
+  ok "G4 large-input classifier reads to EOF; call accepted and definition-only rejected"
+else
+  bad "G4 large-input classifier (read-to-EOF regression #3020)"
+  printf '%s\n' "$g4" | sed 's/^/       | /'
 fi
 
 echo
