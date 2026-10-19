@@ -23,9 +23,9 @@ import (
 // statusgen release that reads it. Keep it in lockstep with
 // recognizedBriefSchemas (TestBriefSchemaFirstReleaseCoversRecognized).
 var briefSchemaFirstRelease = map[string]string{
-	briefSchemaCurrent: "v0.9.0", // brief-v1: the earliest published release
-	briefSchemaV2:      "v1.0.0", // brief-v2: the derived-board release boundary (versiongate.go)
-	briefSchemaV3:      "",       // brief-v3: the release that first carries this source
+	briefSchemaCurrent: "v0.9.0",  // brief-v1: the earliest published release
+	briefSchemaV2:      "v1.0.0",  // brief-v2: the derived-board release boundary (versiongate.go)
+	briefSchemaV3:      "v1.0.50", // brief-v3: the withdrawn-status release
 }
 
 // isBriefV2Family reports whether a schema carries every brief-v2 rule: brief-v2
