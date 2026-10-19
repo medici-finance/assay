@@ -11,6 +11,7 @@ risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
 gate-why: "Changes verification scheduling/landing behavior relied on by adopters; human review must confirm the preserved provenance and authority boundaries."
 decision-trigger: start
 decision-issue: 3382
+ruling: "https://github.com/medici-finance/assay/issues/3382#issuecomment-6258267531"
 issues: []
 schema: brief-v2
 authored: "2026-10-17 maintainer-directed verify-flow refresh"
