@@ -31,7 +31,7 @@ consumers:
 - 'workflow/controller: follow-up graph-execution/21'
 - 'tools/desk/cmd/cellctl: follow-up graph-execution/27 (supplies its resolved Codex or Claude launch profile)'
 - 'adopting cohorts: out-of-scope (live qualification and model choice require owner authorization)'
-version: 3
+version: 4
 id: 97c5ef2b-7f1c-4d7b-9484-dcfc042926d1
 ---
 
@@ -88,10 +88,11 @@ Codex workspace/tool access. cellctl's current Codex builder emits
 qualified profile: the environment is sanitized by the adapter under Task 2 for every
 profile. At pickup, determine whether the pinned Codex client offers a constrained
 sandbox mode that still permits the role's required operations. If it does, the bounded
-profile uses it. If it does not, the qualification report records `danger-full-access`
-as a named control gap under Task 4, stating the constraints that remain (worktree root,
-sanitized environment, absent role credentials), and the Codex profile stays unqualified
-until the human gate accepts that gap. This amendment decides neither outcome.
+profile uses it. If it does not, the Codex profile's entry in the Task 1 capability
+manifest records `danger-full-access` as a named control gap, stating the constraints
+that remain (worktree root, sanitized environment, absent role credentials); the Task 4
+qualification report cites that manifest entry rather than keeping a second record, and
+the Codex profile stays unqualified until the human gate accepts that gap. This amendment decides neither outcome.
 
 ## Interface contract
 
@@ -107,7 +108,7 @@ Caller/invocation/subject and validated actor capability enter; typed state, evi
 | 4 | check:ci +flow +mutation | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLocalHarnessBothCallers$" ./... > "$routing_out" && grep -q -- "--- PASS: TestLocalHarnessBothCallers " "$routing_out")` | exit 0; named PASS; desk and workflow clients use the same adapter and pinned model controls; session continuity cannot cross roles and unsupported resume holds in both modes; mutation: key session continuity by caller only, not by role — the named test must fail |
 | 5 | check:ci +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLocalHarnessCodexAndClaudeProfiles$' ./... > "$o" && grep -F -- '--- PASS: TestLocalHarnessCodexAndClaudeProfiles ' "$o")` | exit 0; named PASS. The actual adapter consumes both approved builders and frozen protocol fixtures; neither profile can fall back to the other, and unsupported capabilities hold. Mutation: omit the Codex fixture/profile branch while leaving Claude green; the named test fails. |
 | 6 | check:ci +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLocalHarnessCodexBoundedNoGoalLoop$' ./... > "$o" && grep -F -- '--- PASS: TestLocalHarnessCodexBoundedNoGoalLoop ' "$o")` | exit 0; named PASS. Codex fixture argv retain Goals-disabled bounded execution and completion receipts; repeated idle observation starts no process. Mutation: restore automatic Goal continuation for the bounded profile; the named test fails. |
-| 7 | check:ci +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLocalHarnessProfileBoundary$' ./... > "$o" && grep -F -- '--- PASS: TestLocalHarnessProfileBoundary ' "$o")` | exit 0; named PASS. Runs the launcher boundary against the Codex and the Claude fixture profile, each separately: task-supplied argv is refused; a sentinel credential variable planted in the parent environment is absent from the child environment; a Codex profile whose argv carries `--sandbox danger-full-access` with no control gap recorded in the capability manifest is refused qualification. Mutation: pass the inherited parent environment through for the Codex profile only; the named test fails. |
+| 7 | check:ci +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLocalHarnessProfileBoundary$' ./... > "$o" && grep -F -- '--- PASS: TestLocalHarnessProfileBoundary ' "$o")` | exit 0; named PASS. Runs the launcher boundary against the Codex and the Claude fixture profile, each separately: task-supplied argv is refused; a sentinel credential variable planted in the parent environment is absent from the child environment; a Codex profile whose argv carries `--sandbox danger-full-access` with no control gap recorded in the capability manifest is refused qualification. Mutation: pass the inherited parent environment through for the Codex profile only; the named test fails. Second mutation: accept a `danger-full-access` Codex profile with no recorded control gap; the named test fails. |
 
 ## Pre-mortem and dispatch checks
 
