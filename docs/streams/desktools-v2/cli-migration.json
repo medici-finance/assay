@@ -8,6 +8,11 @@
   "exclusion_rules": [
     {
       "class": "test",
+      "pattern": "docs/streams/desktools-go-git/reproduce-05-counts.bash",
+      "reason": "source-only offline verification instrument for issue #3035 and desktools-go-git/05 row 6; runs counters on pinned local Git archives, never installed or released as an operator CLI"
+    },
+    {
+      "class": "test",
       "pattern": "docs/research/criterion-evidence-freshness/replay.py",
       "reason": "source-only offline replay and negative controls for graph-execution/32's frozen synthetic evidence study; explicitly invoked by its brief Verify rows and research README, never installed, packaged or released as an operator CLI"
     },

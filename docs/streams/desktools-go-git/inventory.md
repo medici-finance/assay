@@ -308,11 +308,59 @@ preflight probe was one). Under the widened script main read **163** before this
 never appeared in the count: they called a per-tool `git(` / `run(` wrapper that is not one
 of the four counted seam names.
 
-Brief 05: `sh tools/desk/scripts/count-git-exec.sh` read **179** (49 direct + 130 seam) on the
-main commit the brief's branch last merged (`3c8326f95`) and **172** (49 direct + 123 seam) on
-the branch head that merges it (`d6c91cadc`) — like-for-like, the same main on both sides, so
-the drop of 7 seam call sites is the brief's alone: deskgit's fetch invocation and
-hardened-env helper, deskadvisory's `init`/`fetch`/`checkout` runner, and deskmerge's fetch
-seam call are gone. (Earlier figures for this brief — 165 → 158 — were read on an older main
-and went stale as main grew; re-derive the pair on the merged main parent and the head, never
-carry one forward.)
+Brief 05's delivery comparison is now pinned by
+[`reproduce-05-counts.bash`](reproduce-05-counts.bash), under
+[#3035](https://github.com/medici-finance/assay/issues/3035). Each row below was
+reproduced with **that tree's own** `tools/desk/scripts/count-git-exec.sh`; all six
+copies are byte-identical (SHA-256 prefix `b9ae49bee74f`).
+
+| Role | Revision | Total | Direct | Seam |
+|---|---|---:|---:|---:|
+| Historical branch main | `3c8326f959a367c0b24ad40789bc767aac61c83e` | 179 | 49 | 130 |
+| Historical branch head | `d6c91cadc7ef4cb3923d56ffd705caa5957dbe61` | 172 | 49 | 123 |
+| Delivering squash commit's immediate parent | `44054ca3756857c34eb818601a4ddcb19a7b4da5` (`c93cd7dd8^`) | **199** | **52** | **147** |
+| Delivering squash commit (#2386) | `c93cd7dd8fc99941a588feb6608184330fc08dd3` | **192** | **52** | **140** |
+| Historical non-implementer Verify tree | `bbf8e351624538c2a03159cd5a58116fb97fc293` | 192 | 52 | 140 |
+| Amendment's source main (informational, not the delivery comparison) | `2f56cf2892afb4ce78aab1636344aa400bf3e93c` | 193 | 52 | 141 |
+
+The branch's **179 -> 172** pair remains true for its named revisions. The
+canonical delivery pair is **199 -> 192**, with the same reduction of **seven
+counted seam lines** and no direct-spawn increase. The delivering diff removes
+five matches in `tools/desk/cmd/deskadvisory/advisory.go` (the `runGit` declaration, its
+`execCommand` launch, and the init/fetch/checkout calls), one in
+`tools/desk/cmd/deskgit/deskgit.go` (fetch invocation), and one in
+`tools/desk/cmd/deskmerge/currency.go` (fetch invocation). The counter counts matching source
+lines, including helper declarations; seven matches does not mean seven network
+operations.
+
+### Concurrent growth, explained before the re-pin
+
+There are **265 commits** from `3c8326f95` to `44054ca37`. Normalizing away line
+numbers and whitespace in the counter's matching lines gives this complete
+file-level accounting. Values are added/removed matches, not a claim that each
+match is a distinct runtime operation. All paths are repository-relative.
+
+| File | Direct delta | Seam delta | Counted additions / route |
+|---|---:|---:|---|
+| `tools/desk/cmd/cellctl/reset.go` | +2 | +2 | worktree listing and its git runner; branch enumeration and common-dir resolution; outside brief 05's fetch sites |
+| `tools/desk/internal/deskkit/dispatchrecord.go` | +1 | 0 | worktree-scoped dispatch-ref config read; outside brief 05 |
+| `tools/desk/cmd/cellctl/deskd.go` | 0 | +1 | origin config read; outside brief 05 |
+| `tools/desk/cmd/deskdispatch/packet_worker.go` | 0 | +1 | worker packet HEAD read; outside brief 05 |
+| `tools/desk/cmd/deskwt/branchgc.go` | 0 | +5 | branch enumeration, parent reads, log/patch-id and guarded ref deletion; outside brief 05 |
+| `tools/desk/cmd/deskwt/huskremove.go` | 0 | +2 | worktree lock/unlock; linked-worktree follow-on scope |
+| `tools/desk/cmd/deskwt/lockreclaim.go` | 0 | +1 | worktree lock; linked-worktree follow-on scope |
+| `tools/desk/cmd/deskwt/stalereg.go` | 0 | +4 | ref validation/resolution, worktree lock/prune; outside brief 05 |
+| `tools/desk/internal/deskkit/publishidentity.go` | 0 | +1 | ref resolution added; ancestor check changes its source argument (one old match replaced by one new match) |
+| `tools/desk/cmd/deskwt/branchcollision.go` | 0 | 0 | guarded update-ref gains `--no-deref` (one match replaced by one match) |
+| **Total** | **+3** | **+17** | **+20**, explaining 179 -> 199 before the fetch delivery |
+
+These additions are outside the three migrated fetch sites; this accounting does
+not certify them as migrated or authorize a higher current ratchet. Brief 08
+still owns the final outside-allowlist enforcement; linked-worktree operations
+remain the named follow-on. Later main's net **+1** versus the delivery is a
+`worktree lock` seam in `tools/desk/cmd/deskwt/deskwt.go`; direct matches have net zero change
+(other additions, removals and rewrites cancel). The current advisory count is
+reported separately so future main growth cannot invalidate this brief's pinned
+delivery proof. No live ratchet, counter, CI assertion, lifecycle cell or security-posture gate
+is changed. The historical Verify FAIL is preserved;
+an independent verifier and the human gate still owe their own acts.
