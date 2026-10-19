@@ -1,0 +1,2 @@
+### Fixed
+- The desk regression floor no longer fails when it runs from a shell a `cellctl` shim launched. The floor's `go` runner and the shim-credential suite both clear every inherited `CELLCTL_*` variable, so the operator's `CELLCTL_GH_AMBIENT` can no longer stand in for the credential the suite's own fixture provides. A new floor control and mutation entry keep the runner's scrub in place. The shim's own credential handling is unchanged.
