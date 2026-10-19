@@ -70,23 +70,21 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 ## Next up
 
-> **COULD-NOT-CHECK — dead-claim decay did not run.** branch pull-request state through the GitHub GraphQL API could not be read: no GitHub API token: set GH_TOKEN or GITHUB_TOKEN (in a workflow, the job's token with pull-requests read), or log in with `gh`; the GitHub GraphQL API does not answer unauthenticated reads
-> Open branches whose PR/merge request has already **merged or closed** are still counted as claims, so they keep consuming their stream's dispatch cap. The rows below are a **subset**: briefs held behind those dead claims are missing from this board, not absent from the backlog.
-
 > **ACTIVE DRIVE — the Next-up score below carries an operator-declared steer.** `build-less-brittle` (push, +1500, 2026-10-16→2026-10-30); `desktools-v2` (push, +1500, 2026-10-16→2026-10-30). Each boosted pick shows its score DECOMPOSED as `base + term (drive:<slug>)` — the term is a temporal, attributed steer, ADDITIVE and walled off from every measured metric, never a value claim.
 
 > **DRIVE COVERAGE — drive "desktools-v2" covers 60% of the eligible board (> 40%) — its boost is self-taxed (concave scale-down) so tagging the whole board buys progressively less (anti-Goodhart, methodology-metrics/45)**
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
-_Next-up: 17 of 57 eligible — 40 held back (per-stream caps; span-of-control cap 20 not reached). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 19 of 57 eligible — 38 held back (per-stream caps; span-of-control cap 20 not reached). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
-_Held by per-stream caps: 40 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (33), desk-tools (7). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 38 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (32), desk-tools (6). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | desk-tools | 37 — Review workflow semantic oracle and matched cost baseline [exec:strong] | 1 | 8000 |
 | desktools-v2 | 58 — Extract the role credential provider and retire internal desktoken callouts [exec:strong] | 1 | 6000 + 1005 (drive:desktools-v2) |
+| desktools-v2 | 61 — Version shared performance boundaries and keep legacy reports comparable [exec:strong] | 1 | 5000 + 1005 (drive:desktools-v2) |
 | comms-core | 01 — Extract the comms contract and isolate Assay policy [exec:strong] | 0 | 4530 |
 | desk-containers | 16 — Interim mechanism for the runner-lifecycle `pause` transition — cell-scoped stop flags `STOP.cell.<cell>[.<loop>]`, honoured by the Guard for any session carrying the cell marker [exec:strong] | 7 | 4500 |
 | desk-tools | 45 — Expose the canonical verification queue to its consumers [exec:strong] | 1 | 3000 |
@@ -101,13 +99,14 @@ _Held by per-stream caps: 40 brief(s) across 2 stream(s) — top: desktools-v2. 
 | graph-execution | 32 — Investigate criterion-level evidence freshness [exec:strong] | 0 | 2000 |
 | measured-status | 01 — Derive the deskkit exit-code table — record the convention ExitOK/Disabled/RateLimited/Refused/Unverifiable follow, and pin it with a test | 0 | 2000 |
 | desk-tools | 34 — Pinned golangci-lint across every Go module [exec:strong] | 1 | 1500 |
+| desk-tools | 49 — Deduplicate verifier filings by their canonical work identity [exec:strong] | 1 | 1500 |
 | forge-gitlab | 18 — Rotate the board-push credential in one process — the new value never reaches a shell, a transcript, a log or argv [exec:strong] | 5 | 1010 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 83cd2d8c 2026-10-19T01:10:18Z_
+_last regen: 770d48ba 2026-10-19T01:12:07Z_
 
 **Progress:** 10/13 brief items done.
 
@@ -128,7 +127,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 83cd2d8c 2026-10-19T01:10:18Z_
+_last regen: 770d48ba 2026-10-19T01:12:07Z_
 
 **Progress:** 16/79 brief items done.
 
