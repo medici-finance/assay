@@ -1,0 +1,23 @@
+{
+  "test": "go test . -run '^Test(AcceptanceTransition|TransitionExecution)$' -count=1 -timeout 90s",
+  "control": {
+    "name": "approval payload binding removed",
+    "file": "acceptancetransition.go",
+    "old": "if strings.TrimSpace(out.Body) != payload {",
+    "new": "if false && strings.TrimSpace(out.Body) != payload {"
+  },
+  "mutations": [
+    {
+      "name": "restore immutable-only delivery contract",
+      "file": "protectedclosure.go",
+      "old": "if strings.Contains(evidence, \"Acceptance-Transition:\") {",
+      "new": "if false && strings.Contains(evidence, \"Acceptance-Transition:\") {"
+    },
+    {
+      "name": "omit original commands from host execution",
+      "file": "verifyrun.go",
+      "old": "rows = briefVerifyRows(protectedExecution.Verify)",
+      "new": "rows = briefVerifyRows(verify)"
+    }
+  ]
+}

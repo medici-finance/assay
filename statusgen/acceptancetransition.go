@@ -1,0 +1,274 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+)
+
+// The transport is deliberately unavailable until a command explicitly opts in.
+// Tests inject the existing HTTP client boundary, never an approval boolean.
+var transitionClient func() *ghClient
+var transitionForge bool
+
+func transitionFlags(fs *flag.FlagSet) func() {
+	old := transitionForge
+	fs.BoolVar(&transitionForge, "acceptance-forge", false, "explicitly corroborate acceptance transitions on the forge; otherwise transitions remain held")
+	return func() { transitionForge = old }
+}
+
+func acceptanceTransition(path, verify, full, run, delivery, base, original, baseline, delivered string, audit bool, read func(string) (string, error)) (string, map[string]string, string) {
+	fail := func(s string) (string, map[string]string, string) { return "", nil, "acceptance transition: " + s }
+	markers := protectedMarkersNamed(normalizedProtectedEvidence(run), "Acceptance-Transition:")
+	if len(markers) != 1 || !markers[0].literal {
+		return fail("one literal live Acceptance-Transition marker is required")
+	}
+	marker := markers[0].text
+	fields := strings.Fields(marker)
+	if len(fields) != 3 || !strings.HasPrefix(fields[1], "amendment=") || !strings.HasPrefix(fields[2], "approval=") {
+		return fail("expected Acceptance-Transition: amendment=<full-sha> approval=<ruling-url>")
+	}
+	amendment := strings.TrimPrefix(fields[1], "amendment=")
+	approval := strings.TrimPrefix(fields[2], "approval=")
+	if !isObjectID(amendment) || amendment == delivery {
+		return fail("a separate immutable amendment is required")
+	}
+	dir, file := filepath.Dir(path), filepath.Base(path)
+	ancestors, e := historyGit(dir, "rev-list", "--first-parent", "HEAD", "^"+delivery).Output()
+	if e != nil {
+		return fail("cannot read amendment ancestry")
+	}
+	found := false
+	for _, id := range strings.Fields(string(ancestors)) {
+		found = found || id == amendment
+	}
+	if !found {
+		return fail("amendment is not after delivery on the observed first-parent chain")
+	}
+	parents, e := historyGit(dir, "show", "-s", "--format=%P", "--end-of-options", amendment).Output()
+	pp := strings.Fields(string(parents))
+	if e != nil || (len(pp) != 1 && len(pp) != 2) {
+		return fail("amendment must have one or two parents")
+	}
+	before, e := read(pp[0])
+	if e != nil || strings.TrimSpace(before) != strings.TrimSpace(delivered) {
+		return fail("acceptance changed between delivery and amendment")
+	}
+	if len(pp) == 2 {
+		bases, err := flipMergeBases(dir, pp[0], pp[1])
+		if err != nil || len(bases) != 1 {
+			return fail("amendment has no unique merge base")
+		}
+		divergence, err := read(bases[0])
+		if err != nil || !reflect.DeepEqual(briefVerifyRows(divergence), briefVerifyRows(before)) {
+			return fail("amendment divergence differs from pre-merge main acceptance")
+		}
+	}
+	amended, e := read(amendment)
+	if e != nil || strings.TrimSpace(amended) != strings.TrimSpace(verify) {
+		return fail("current Verify differs from the approved amendment")
+	}
+	oldRows, newRows := briefVerifyRows(delivered), briefVerifyRows(amended)
+	if len(oldRows) != len(newRows) {
+		return fail("row addition, deletion or renumbering is unsupported")
+	}
+	originals := map[string]verifyRow{}
+	for _, r := range briefVerifyRows(baseline) {
+		originals[r.ID] = r
+	}
+	changes := map[string]string{}
+	var ids []string
+	for i, old := range oldRows {
+		next := newRows[i]
+		if old.ID != next.ID {
+			return fail("row order or identity changed")
+		}
+		if reflect.DeepEqual(old, next) {
+			continue
+		}
+		source, owed := originals[old.ID]
+		if !owed {
+			return fail("supplemental rows cannot be amended or promoted")
+		}
+		// Only a command changes. All acceptance assertions, classes, shell and
+		// obligations survive; delivered edits to other rows remain untrusted.
+		if old.RiskText != codeSpanOf(old.Command)+" "+strings.TrimSpace(old.Expect) || next.RiskText != codeSpanOf(next.Command)+" "+strings.TrimSpace(next.Expect) {
+			return fail("changed commands must be single code spans without surrounding prose")
+		}
+		comparable := next
+		comparable.Command = old.Command
+		comparable.RiskText = old.RiskText
+		if next.Command == old.Command || !reflect.DeepEqual(old, comparable) {
+			return fail("only command changes with identical assertions and obligations are supported")
+		}
+		if source.Command != old.Command || source.Expect != old.Expect {
+			return fail("a changed row must still carry its original delivered command and Expect")
+		}
+		changes[old.ID] = next.Command
+		ids = append(ids, old.ID)
+	}
+	if len(ids) == 0 {
+		return fail("no changed original command")
+	}
+	// Bind the existing brief-v2 acceptance version, not an invented counter.
+	versions := map[string]int{}
+	for _, rev := range []string{pp[0], amendment} {
+		raw, err := historyGit(dir, "show", "--end-of-options", rev+":./"+file).Output()
+		if err != nil {
+			return fail("cannot read acceptance version")
+		}
+		bf, ok, err := parseBriefFileBytes(path, raw)
+		if err != nil || !ok || bf.Version < 1 {
+			return fail("transition requires a versioned brief-v2 definition")
+		}
+		versions[rev] = bf.Version
+	}
+	if versions[amendment] != versions[pp[0]]+1 {
+		return fail("amendment must increment the acceptance version exactly once")
+	}
+	current, ok, err := parseBriefFile(path)
+	if err != nil || !ok || current.Version != versions[amendment] {
+		return fail("current acceptance version differs from amendment")
+	}
+	historical, e := flipEvidenceAt(dir, pp[0], file)
+	if e != nil {
+		return fail("cannot read historical Evidence")
+	}
+	deliveredEvidence, err := flipEvidenceAt(dir, delivery, file)
+	if err != nil || !strings.HasPrefix(strings.TrimSpace(historical), strings.TrimSpace(deliveredEvidence)) {
+		return fail("pre-amendment history lost delivered Evidence")
+	}
+	atAmendment, e := flipEvidenceAt(dir, amendment, file)
+	if e != nil || atAmendment != historical {
+		return fail("amendment changed historical Evidence")
+	}
+	if !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(historical)) {
+		return fail("historical Evidence was not preserved")
+	}
+	if audit {
+		p, e := flipLatestPass(full)
+		if e != nil {
+			return fail("a fresh completed independent run is required")
+		}
+		if e = flipProvenance(path, full, p.Marks, p.RunStart); e != nil {
+			return fail(e.Error())
+		}
+		for _, r := range briefVerifyRows(baseline) {
+			var latest string
+			for _, er := range parseEvidenceRows(run)[r.ID] {
+				if isWitnessRow(er.Text) {
+					latest = er.Text
+				}
+			}
+			tree := witnessTreeOf(latest)
+			if !isObjectID(tree) {
+				return fail("fresh witnesses must name full immutable execution revisions")
+			}
+			mb, err := flipMergeBases(dir, amendment, tree)
+			if err != nil || len(mb) != 1 || mb[0] != amendment {
+				return fail("every original row needs a fresh witness at or after amendment")
+			}
+		}
+	}
+
+	// The ruling's body itself binds every immutable coordinate and changed row.
+	// A bot relay or a general APPROVED review cannot satisfy this exact act.
+	rootRaw, e := historyGit(dir, "rev-parse", "--show-toplevel").Output()
+	if e != nil {
+		return fail("cannot resolve repository")
+	}
+	root := strings.TrimSpace(string(rootRaw))
+	canonicalPath, e := filepath.EvalSymlinks(path)
+	if e != nil {
+		return fail("cannot resolve canonical brief path")
+	}
+	rel, e := filepath.Rel(root, canonicalPath)
+	if e != nil || !filepath.IsLocal(rel) {
+		return fail("cannot resolve brief path")
+	}
+	rel = filepath.ToSlash(rel)
+	repo := witnessOriginRepo(root)
+	if repo == "" {
+		return fail("cannot bind approval to the repository origin")
+	}
+	payload := fmt.Sprintf("Approve acceptance-transition v1\nrepo=%s\nbrief=%s\ndelivery=%s\nbase=%s\noriginal=%s\namendment=%s\nrows=%s", repo, rel, delivery, base, original, amendment, strings.Join(ids, ","))
+	if !transitionForge {
+		return fail("could-not-check human authority: --acceptance-forge is required")
+	}
+	fmt.Fprintln(os.Stderr, "acceptance transition: reading approval", approval)
+	client := transitionClient
+	if client == nil {
+		client = rulingForgeClient
+	}
+	rec := decisionRecordStamp{ID: "acceptance-transition", Ruling: approval}
+	out := resolveRulingOn(client(), repo, rec, scanEffectiveConfig().HumanLogins, rulingIssueBinding{what: "acceptance transition for " + rel, rules: func(iss rulingIssue, _ rulingLink) bool {
+		return strings.Contains(iss.Body, "<!-- acceptance-transition: "+rel+" -->")
+	}})
+	if !out.Present || out.Reason != rulingOK {
+		return fail("human approval could not be corroborated: " + out.Detail)
+	}
+	if strings.TrimSpace(out.Body) != payload {
+		return fail("human approval does not name the exact transition payload")
+	}
+	// Rewrite only the command cell in the original table. Unchanged commands,
+	// Expect, row classes and all extra columns retain the original text.
+	lines := strings.Split(baseline, "\n")
+	commandCol := -1
+	rewritten := map[string]bool{}
+	for i, line := range lines {
+		cells := splitRowEscaped(strings.TrimSpace(line))
+		for j := range cells {
+			cells[j] = strings.TrimSpace(cells[j])
+		}
+		if len(cells) < 2 {
+			continue
+		}
+		if cells[0] == "#" {
+			for j, c := range cells {
+				if c == "Command" {
+					commandCol = j
+				}
+			}
+			continue
+		}
+		command, ok := changes[cells[0]]
+		if !ok {
+			continue
+		}
+		if commandCol < 0 || commandCol >= len(cells) {
+			return fail("cannot locate the original command cell")
+		}
+		cells[commandCol] = codeSpanOf(command)
+		rewritten[cells[0]] = true
+		lines[i] = "| " + strings.Join(cells, " | ") + " |"
+	}
+	if len(rewritten) != len(changes) {
+		return fail("initial transitions require an explicit first-column # header and every changed row ID")
+	}
+	effective := strings.Join(lines, "\n")
+	effectiveRows := briefVerifyRows(effective)
+	if len(effectiveRows) != len(originals) {
+		return fail("effective table lost original obligations")
+	}
+	for _, row := range effectiveRows {
+		old, ok := originals[row.ID]
+		if !ok {
+			return fail("effective table added an obligation")
+		}
+		want := old.Command
+		if c, ok := changes[row.ID]; ok {
+			want = c
+		}
+		if row.Command != want || row.Expect != old.Expect || row.Class != old.Class || row.Shell != old.Shell || !reflect.DeepEqual(row.Obligations, old.Obligations) {
+			return fail("effective table changed an unchanged obligation")
+		}
+	}
+	revisions := map[string]string{}
+	for id := range changes {
+		revisions[id] = amendment
+	}
+	return effective, revisions, ""
+}

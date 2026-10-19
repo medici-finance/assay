@@ -119,6 +119,8 @@ type BriefObservation struct {
 	// read; the witness keeps its real execution tree and all applicability and
 	// dependency checks. Empty retains the ordinary witness-base definition.
 	AcceptanceRevision string
+	// AcceptanceRevisions overrides only explicitly approved rows; other rows retain the original definition.
+	AcceptanceRevisions map[string]string
 	// AcceptanceProblem holds coverage even if a pattern supplies other passing
 	// claims. An invalid protected definition is never an empty, releasable set.
 	AcceptanceProblem string
@@ -208,7 +210,15 @@ func evaluateOneCoverage(x *evalCtx, b BriefObservation, in CoverageInput) Cover
 	}
 	scope := newWitnessScope(b.BriefRel, b.DeclaredFiles, b.DeclaredFilesFound, man)
 	for _, r := range b.VerifyRows {
-		result, reason, claimRev := resolveVerifyClaim(x, scope.forVerifyRow(r), r, b.Witnesses[r.ID], revision, b.AcceptanceRevision)
+		definition := b.AcceptanceRevision
+		if amended, ok := b.AcceptanceRevisions[r.ID]; ok {
+			if amended == "" {
+				claims = append(claims, Claim{Claim: fmt.Sprintf("Verify row #%s: %s", r.ID, r.Command), Kind: "command", Result: ResultCouldNotCheck, Reason: "approved acceptance revision is empty"})
+				continue
+			}
+			definition = amended
+		}
+		result, reason, claimRev := resolveVerifyClaim(x, scope.forVerifyRow(r), r, b.Witnesses[r.ID], revision, definition)
 		claims = append(claims, Claim{
 			Claim:    fmt.Sprintf("Verify row #%s: %s", r.ID, r.Command),
 			Kind:     "command",

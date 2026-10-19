@@ -202,8 +202,14 @@ func (w witness) row() string {
 	// reason, so witnessStateRe still lifts the leading state, witnessResultRe
 	// still finds `exit=`, and a row with no sandbox renders byte-identical to
 	// the format before issue #2350.
+	if w.State == stateAuthorAdded {
+		result = fmt.Sprintf("author-added; execution exit=%s", exitCell(w.Exit))
+	}
 	if w.Sandbox != "" {
 		result += " sandbox=" + w.Sandbox
+	}
+	if w.State == stateAuthorAdded {
+		result += "; no acceptance credit"
 	}
 	// A could-not-run row's REASON belongs in Evidence, not only the console: a
 	// reader (or a tool) looking at the recorded table must be able to tell WHY a
@@ -1671,6 +1677,10 @@ Flags:
   --ci              CI context: EXPLICITLY-classed check (env-bound) rows are
                     SKIPPED (runner-executed, not selected here); legacy rows and
                     check:ci rows are unaffected. check:ci rows always run network-off.
+  --acceptance-forge  explicitly permit fresh human-approval reads on the host.
+  --acceptance-record <file>  coordinate-only transition descriptor; host execution
+                    only, same-repository admission, with --acceptance-forge.
+                    Executes the canonical original-plus-approved obligation plan.
   --sandbox <mode>  the network-off sandbox (default unshare). unshare wraps each
                     check:ci row in ` + "`unshare --net --map-root-user`" + `.
                     container-netns is an EXPLICIT opt-in for a runner already
@@ -1750,6 +1760,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	}
 
 	fs := flag.NewFlagSet("verifyrun", flag.ContinueOnError)
+	defer transitionFlags(fs)()
 	fs.SetOutput(stderr)
 	// Silenced deliberately. flag.ContinueOnError calls Usage on BOTH a parse
 	// error and `--help`, and the two want different streams: help is output and
@@ -1758,6 +1769,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// and once from the ErrHelp branch below.
 	fs.Usage = func() {}
 	briefPath := fs.String("brief", "", "brief file whose Verify table to run")
+	transitionRecord := fs.String("acceptance-record", "", "coordinate-only protected transition descriptor; requires --acceptance-forge on the host")
 	checkMode := fs.Bool("check", false, "audit an existing witness table instead of running anything")
 	dryRun := fs.Bool("dry-run", false, "print the witness table without writing it back")
 	rootDir := fs.String("root", "", "repo root the commands run in (its repository's toplevel; a subdirectory is refused)")
@@ -1844,6 +1856,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// execution and does not need to parse the brief here — the inner run reads it
 	// against the bind-mounted /work. The pass-through flags (--check/--dry-run/--ci
 	// and a non-default --timeout) travel into the container.
+	if *transitionRecord != "" && (*inContainer || *checkMode || admittedHome != "" || !transitionForge) {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --acceptance-record requires host execution, --acceptance-forge, and same-repository admission")
+		return verifyrunExitCouldNot
+	}
 	if *inContainer {
 		root := rowRoot()
 		// The container bind-mounts only the row root, and a cross-repository
@@ -1894,7 +1910,40 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitCouldNot
 	}
 
+	var protectedExecution protectedPlan
+	var transitionDescriptor string
+	if *transitionRecord != "" {
+		raw, err := os.ReadFile(*transitionRecord)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return verifyrunExitCouldNot
+		}
+		transitionDescriptor = strings.TrimSpace(string(raw))
+		descriptorLines := strings.Split(transitionDescriptor, "\n")
+		if len(descriptorLines) != 2 || !strings.HasPrefix(descriptorLines[0], "Verification-Table:") || !strings.HasPrefix(descriptorLines[1], "Acceptance-Transition:") {
+			fmt.Fprintln(stderr, "transition descriptor must contain exactly the two provenance markers")
+			return verifyrunExitCouldNot
+		}
+		var why string
+		protectedExecution, why = protectedAcceptanceFor(verify, evidence, transitionDescriptor, path)
+		if why != "" {
+			fmt.Fprintln(stderr, why)
+			return verifyrunExitCouldNot
+		}
+	}
 	rows := briefVerifyRows(verify)
+	if transitionDescriptor != "" {
+		rows = briefVerifyRows(protectedExecution.Verify)
+		added := map[string]bool{}
+		for _, a := range protectedExecution.Added {
+			added[a.ID] = true
+		}
+		for _, r := range briefVerifyRows(verify) {
+			if added[r.ID] {
+				rows = append(rows, r)
+			}
+		}
+	}
 	if len(rows) == 0 {
 		fmt.Fprintf(stderr, "statusgen verifyrun: %s has a `## Verify` section with no runnable rows\n", path)
 		return verifyrunExitCouldNot
@@ -1929,7 +1978,16 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 	}
-	ws := runWitnessesSandboxed(plan, *sandbox, root, rows, runner, runnerSource, treeSHA(root), nowFunc().Format("2006-01-02"), *timeout, *ci)
+	executionTree := treeSHA(root)
+	if transitionDescriptor != "" {
+		full, err := historyGit(root, "rev-parse", "--verify", "HEAD^{commit}").Output()
+		if err != nil || strings.Contains(executionTree, "+") {
+			fmt.Fprintln(stderr, "transition execution requires a clean immutable source")
+			return verifyrunExitCouldNot
+		}
+		executionTree = strings.TrimSpace(string(full))
+	}
+	ws := runWitnessesSandboxed(plan, *sandbox, root, rows, runner, runnerSource, executionTree, nowFunc().Format("2006-01-02"), *timeout, *ci)
 	if ff != nil {
 		for i := range ws {
 			f := ff[ws[i].ID]
@@ -1940,7 +1998,19 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	for i := range ws {
 		ws[i].Repo = target
 	}
+	if transitionDescriptor != "" {
+		for i := range ws {
+			for _, a := range protectedExecution.Added {
+				if ws[i].ID == a.ID {
+					ws[i].State = stateAuthorAdded
+				}
+			}
+		}
+	}
 	table := witnessTable(ws)
+	if transitionDescriptor != "" {
+		table = transitionDescriptor + "\n\n" + table
+	}
 	if attestation != "" {
 		table += "\n" + attestation + "\n"
 	}

@@ -89,6 +89,9 @@ type briefInfo struct {
 // (`brief desk-tools/12 --root .. --json`), so args are scanned by hand rather
 // than handed to flag.Parse, which stops at the first non-flag token.
 func runBriefInfo(args []string, stdout, stderr io.Writer) int {
+	oldTransitionForge := transitionForge
+	defer func() { transitionForge = oldTransitionForge }()
+	transitionForge = false
 	root := "."
 	asText := false
 	checkVerified := false
@@ -109,6 +112,8 @@ func runBriefInfo(args []string, stdout, stderr io.Writer) int {
 			root = a[len("--root="):]
 		case strings.HasPrefix(a, "-root="):
 			root = a[len("-root="):]
+		case a == "--acceptance-forge":
+			transitionForge = true
 		case a == "--check-attribution":
 			checkAttribution = true
 		case a == "--check-verified":

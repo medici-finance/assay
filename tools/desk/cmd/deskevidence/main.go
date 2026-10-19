@@ -48,9 +48,14 @@ const usage = `deskevidence — commit Evidence rows as the verifier App (the ve
 USAGE:
   deskevidence <owner/repo> <branch> --evidence-file <repo-path> [--root <dir>]
                [--brief-path <repo-path>] [--append-only] [--allow-shrink]
-               [--row <NN> [--row <NN> ...]]
+               [--row <NN> [--row <NN> ...]] [--acceptance-forge]
   deskevidence flip --root <worktree> --brief <stream>/<NN> --sha <sha> [--base main] [--dry-run]
   deskevidence --version
+
+--acceptance-forge explicitly permits fresh read-only corroboration of protected
+acceptance transitions by every child statusgen audit, lint and flip. It supplies no
+approval verdict. Without it amended acceptance remains held; ordinary records
+retain their existing behavior. Each approval target is printed before contact.
 
 Commits the content of the local file at --evidence-file (a repo-relative path)
 to the same path on <branch> through a conditional forge write, using the verifier
@@ -121,7 +126,29 @@ func main() {
 	}))
 }
 
+var acceptanceForge bool
+
+func acceptanceArgs(args ...string) []string {
+	if acceptanceForge {
+		return append(args, "--acceptance-forge")
+	}
+	return args
+}
+
 func run(args []string) int {
+	old := acceptanceForge
+	defer func() { acceptanceForge = old }()
+	acceptanceForge = false
+	filtered := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "--acceptance-forge" {
+			acceptanceForge = true
+		} else {
+			filtered = append(filtered, a)
+		}
+	}
+	args = filtered
+
 	// --version / help are pure reads: no kill-switch gate, no audit line.
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()
