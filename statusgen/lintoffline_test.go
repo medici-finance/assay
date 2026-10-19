@@ -17,8 +17,8 @@ import (
 // make no network call (docs/statusgen-lint-reach.md). Removing `gh` from PATH does NOT prove
 // that: a call site that looks `gh` up, fails, and degrades to a could-not-check passes such a
 // test while still being a forge read in every environment that has `gh` — which is exactly
-// how dead-claim decay's `gh api graphql` branch read, and the `git ls-remote --heads origin` claim read in
-// front of it, ran on every plain --lint while the old version of this test stayed green (it
+// how dead-claim decay's branch read (then `gh api graphql`, now an in-process GraphQL request), and
+// the `git ls-remote --heads origin` claim read in front of it, ran on every plain --lint while the old version of this test stayed green (it
 // asserted the failed lookup's NOTICE as its proof). Here every forge or network tool on PATH
 // is PRESENT — a logging shim that records its argv and then fails — so a process that starts
 // and then fails is caught at the start, not excused by the failure:
@@ -156,7 +156,7 @@ func gitSubcommand(args []string) (sub, next string) {
 // lintReachFixture is testdata/goodrepo as a real git repo whose origin is a local bare repo
 // carrying one claim-shaped branch — so the claim read returns a non-empty list and dead-claim
 // decay is genuinely reached whenever claims are read at all. Without the branch, decay
-// short-circuits on an empty list and its `gh api graphql` branch read would never be attempted.
+// short-circuits on an empty list and its GraphQL branch read would never be attempted.
 func lintReachFixture(t *testing.T) string {
 	t.Helper()
 	bareDir := t.TempDir()
@@ -187,16 +187,20 @@ func TestLintOfflineMakesNoNetworkCall(t *testing.T) {
 	root := lintReachFixture(t) // built before any guard: fixture setup is not the run under test
 
 	// The positive control, first: with forge reads opted in, the SAME fixture's claim read and
-	// decay must be RECORDED by the guard — the remote read, and a `gh` that starts and then
-	// fails (the shim exits 1). An instrument that cannot see them proves nothing by silence.
+	// decay must be RECORDED by the guard — the remote read, and the decay's GraphQL request
+	// (refused by the guard's transport). A token and a repository are supplied so the decay
+	// gets as far as the request. An instrument that cannot see them proves nothing by silence.
 	var networkedCode int
 	t.Run("control", func(t *testing.T) {
 		g := installNetGuard(t, true)
+		t.Setenv("GH_TOKEN", "control-token")
+		t.Setenv("GITHUB_REPOSITORY", "acme/widgets")
+		t.Setenv("GITHUB_GRAPHQL_URL", "")
 		forgeReadsOptedIn = true
 		t.Cleanup(func() { forgeReadsOptedIn = false })
 		_ = captureStderr(t, func() { networkedCode = run(root, "lint", nil, nil, "") })
 		joined := strings.Join(g.violations(t), "\n")
-		for _, want := range []string{"ls-remote", "gh api graphql"} {
+		for _, want := range []string{"ls-remote", "POST https://api.github.com/graphql"} {
 			if !strings.Contains(joined, want) {
 				t.Errorf("guard did not record %q with forge reads opted in — it cannot see what this "+
 					"row says is absent; recorded:\n%s", want, joined)
@@ -257,5 +261,40 @@ func TestOfflineLintRequireClaims(t *testing.T) {
 	forgeReadsOptedIn = true
 	if code := run(root, "lint", nil, nil, ""); code != 0 {
 		t.Fatalf("--lint --forge --require-claims with a readable origin exited %d, want 0", code)
+	}
+}
+
+// TestRegenStartsNoForgeProcess is the class guard for #3372: the board regen
+// (`statusgen --root .`, mode "write") runs on a runner that carries git and the
+// statusgen binary and nothing else, so a read on that path that starts `gh` (or
+// any other forge tool) cannot run there — and fails open, so the board quietly
+// loses whatever the read was for. Every forge tool is on PATH as a recording
+// shim; the regen must start none of them. The positive control is in the same
+// run: the decay's GraphQL request must be recorded by the guard's transport, so
+// the claim path was really reached.
+//
+// regression: #3372
+func TestRegenStartsNoForgeProcess(t *testing.T) {
+	root := lintReachFixture(t)
+	g := installNetGuard(t, true)
+	t.Setenv("GH_TOKEN", "regen-token")
+	t.Setenv("GITHUB_REPOSITORY", "acme/widgets")
+	t.Setenv("GITHUB_GRAPHQL_URL", "")
+	stderr := captureStderr(t, func() { _ = run(root, "write", nil, nil, "") })
+	var procs []string
+	for _, line := range g.calls(t) {
+		if f := strings.Fields(line); len(f) > 0 && f[0] != "git" {
+			procs = append(procs, line)
+		}
+	}
+	if len(procs) > 0 {
+		t.Fatalf("the board regen started a forge process the regen runner does not have:\n  %s\nstderr:\n%s",
+			strings.Join(procs, "\n  "), stderr)
+	}
+	g.mu.Lock()
+	reached := strings.Contains(strings.Join(g.http, "\n"), "POST https://api.github.com/graphql")
+	g.mu.Unlock()
+	if !reached {
+		t.Fatalf("control: the regen made no decay GraphQL request, so the claim path was not exercised; stderr:\n%s", stderr)
 	}
 }

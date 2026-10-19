@@ -37,10 +37,10 @@ domain: complicated
 tier: free
 consumers:
   - "tools/desk/cmd/deskboard/board.go: fixed-here (each change-level read in `classifyPR` gains the documented per-row degrade; repo-level reads stay sweep-fatal and say so at the site)"
-  - "tools/desk/cmd/deskboard/*_test.go: fixed-here (a single-unreadable-change regression test asserting the sweep still exits 0 and the other rows still render)"
+  - "tools/desk/cmd/deskboard/classdegrade_test.go: fixed-here (a single-unreadable-change regression test asserting the sweep still exits 0 and the other rows still render)"
   - "tools/desk/cmd/issueboard: out-of-scope (the issue lane's reads are a separate sweep with its own classifier; no issue-lane defect is on file, and widening this brief to a second sweep would make it L)"
   - "docs/streams/forge-gitlab/README.md: fixed-here (the status row)"
-version: 1
+version: 2
 id: 6b50f112-19d1-44fe-9326-54906ce5e1ed
 ---
 
@@ -151,7 +151,7 @@ degradation is disclosed — this brief removes a failure mode, it does not add 
 | 4 | `cd tools/desk && grep -cE -e 'change-level' -e 'repo-level' cmd/deskboard/board.go` | `5` or more — every audited error return carries its labelling at the site | check |
 | 5 | `cd tools/desk && go test ./cmd/deskboard/ -run TestSweepDegradesOneRowNotTheBoard -count=1 -timeout 120s` run against the pre-fix tree (stash the fix, or check out the parent commit) | exit non-zero; the failure names the whole-sweep refusal, proving the test observes the defect it pins | check +mutation |
 | 6 | `cd tools/desk && go test ./cmd/deskboard/ -run TestDegradedRowCarriesItsReason -v -timeout 120s` | exit 0; output contains `PASS` — the RENDERED row text carries the could-not-check reason that produced the degrade, so an operator can see which row degraded and why. This resolves the SPOF note's second-layer claim against the real output rather than counting that a row exists (`TestDegradedRowCarriesItsReason` (planned)) | check +dereference |
-| 7 | `statusgen --root . --consumers` | exit 0 | check |
+| 7 | `d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach 12087009339a && cp docs/streams/forge-gitlab/brief-13-board-reads-degrade-per-row.md "$d/docs/streams/forge-gitlab/brief-13-board-reads-degrade-per-row.md" && statusgen --consumers --root "$d" --brief forge-gitlab/13 --base 77c3db078~1; s=$?; rm -rf "$d"; exit $s` | exit 0; summary `3 corroborated, 0 disproved, 1 unchecked` — every `consumers:` routing claim (as this brief now states it) is judged against this brief's own diff (the authoring merge's parent to the fix merge), pinned in a throwaway clone so later changes on main cannot be read as this brief's. Needs full history | check |
 | 8 | `statusgen --root . --lint` | exit 0; output contains `LINT: PASS` | check |
 
 ### Pre-mortem → detection map
