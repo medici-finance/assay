@@ -335,6 +335,12 @@ func TestUnknownInvocationNameIsUnverifiable(t *testing.T) {
 // TestVerbClassification is the policy table. The allowlist is the fail-closed
 // direction: a verb nobody classified is MUTATING, so a new upstream subcommand
 // is refused rather than waved through.
+//
+// An entry can also be bare-form only: talosctl `services` is read-only when no
+// positional argument follows it, and any positional argument takes the call
+// off the read-only tier.
+//
+// regression: F-bare-form-verb
 func TestVerbClassification(t *testing.T) {
 	cases := []struct {
 		cli      string
@@ -370,12 +376,35 @@ func TestVerbClassification(t *testing.T) {
 		{"talosctl", []string{"reset"}, false, "talosctl reset mutates"},
 		{"talosctl", []string{"upgrade"}, false, "talosctl upgrade mutates"},
 		{"talosctl", []string{"apply-config"}, false, "talosctl apply-config mutates"},
+		{"talosctl", []string{"services"}, true, "bare services is read-only"},
+		{"talosctl", []string{"-n", "node1", "services"}, true, "a listed value flag before bare services is skipped"},
+		{"talosctl", []string{"services", "-n", "node1"}, true, "a listed value flag and its value after services are not a positional argument"},
+		{"talosctl", []string{"services", "--nodes=node1"}, true, "a self-contained flag after services is not a positional argument"},
+		{"talosctl", []string{"services", "x"}, false, "services with positional argument"},
+		{"talosctl", []string{"-n", "node1", "services", "x"}, false, "services with positional argument after a pre-verb flag"},
+		{"talosctl", []string{"services", "-n", "node1", "x"}, false, "services with positional argument after a listed flag's value"},
+		{"talosctl", []string{"services", "--added-upstream", "x"}, false, "services with an unlisted flag then a token: the token may be positional"},
+		{"talosctl", []string{"services", "--", "x"}, false, "services with positional argument after --"},
+		{"talosctl", []string{"services", "-"}, false, "a lone - after services is a positional argument, as the flag parser reads it"},
+		{"talosctl", []string{"services", "-n", "node1", "-"}, false, "a lone - after a listed flag's value is a positional argument"},
+		{"talosctl", []string{"services", "--"}, true, "a trailing -- with nothing after it is not a positional argument"},
+		{"talosctl", []string{"service"}, false, "singular service is not on the allowlist"},
+		{"talosctl", []string{"service", "x"}, false, "singular service with positional argument is not on the allowlist"},
 		{"k9s", nil, false, "k9s is an interactive TUI that can mutate from inside it — it has NO read-only lane"},
 		{"k9s", []string{"--readonly"}, false, "a flag the guard cannot enforce does not make k9s read-only"},
 	}
 	for _, c := range cases {
 		if got := isReadOnly(c.cli, c.args); got != c.readOnly {
 			t.Errorf("isReadOnly(%q, %v) = %v, want %v — %s", c.cli, c.args, got, c.readOnly, c.why)
+		}
+	}
+	// Every bare-form-only entry must also be on the read-only allowlist: an
+	// entry missing there is inert and states a rule the classifier never applies.
+	for cli, verbs := range bareOnlyVerbs {
+		for v := range verbs {
+			if !readOnlyVerbs[cli][v] {
+				t.Errorf("bareOnlyVerbs[%q][%q] is not in readOnlyVerbs[%q]", cli, v, cli)
+			}
 		}
 	}
 }
@@ -476,6 +505,36 @@ func TestROTierUnlistedFlagRefuses(t *testing.T) {
 	for _, want := range []string{`"--insecure-skip-tls-verify"`, "--insecure-skip-tls-verify=<value>"} {
 		if !strings.Contains(got.stderr, want) {
 			t.Errorf("boolean direction: the refusal does not name %s; stderr %q", want, got.stderr)
+		}
+	}
+}
+
+// TestROTierBareFormVerb drives a bare-form-only allowlist entry end to end
+// under the READ-ONLY opt-in: `talosctl services` passes through to the CLI,
+// while `talosctl services x` (a positional argument after the verb) is refused
+// with exit 5, the fixture is not reached, and the refusal says the entry is
+// read-only only in its bare form.
+//
+// regression: F-bare-form-verb
+func TestROTierBareFormVerb(t *testing.T) {
+	h := newHarness(t, "talosctl")
+	h.fixture(t, "talosctl")
+
+	got := h.invoke(t, "talosctl", "1", nil, "services")
+	if got.code != 0 || !strings.Contains(got.stdout, "FAKE-TALOSCTL") {
+		t.Errorf("bare form: exit = %d, stdout %q, stderr %q — want a pass-through", got.code, got.stdout, got.stderr)
+	}
+
+	got = h.invoke(t, "talosctl", "1", nil, "services", "x")
+	if got.code != 5 {
+		t.Errorf("with argument: exit = %d, want 5; stderr %q", got.code, got.stderr)
+	}
+	if strings.Contains(got.stdout, "FAKE-TALOSCTL") {
+		t.Errorf("with argument: the fixture ran under the read-only opt-in; stdout %q", got.stdout)
+	}
+	for _, want := range []string{`"services"`, "bare form", "mutate"} {
+		if !strings.Contains(got.stderr, want) {
+			t.Errorf("with argument: the refusal does not name %s; stderr %q", want, got.stderr)
 		}
 	}
 }
