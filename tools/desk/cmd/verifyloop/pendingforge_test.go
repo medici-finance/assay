@@ -78,7 +78,9 @@ func (f *pendingForge) ListIssueLabelEvents(deskkit.ForgeRepo, int) ([]deskkit.L
 	return f.labels, nil
 }
 
-func pendingSetup(t *testing.T) (*VerifyLoop, *pendingForge, deskkit.VerifierReceipt, string) {
+// pendingSetup builds the fixture; an optional implementer is declared in brief 01's front
+// matter BEFORE the receipt binds the brief, so the binding stays exact.
+func pendingSetup(t *testing.T, implementer ...string) (*VerifyLoop, *pendingForge, deskkit.VerifierReceipt, string) {
 	t.Helper()
 	plantAllowedRoster(t, "example-org/tracker")
 	roster := "ASSAY_BLESS_LOGIN=ada:2001\nASSAY_TRUSTED_LOGINS=ada:2001\nASSAY_TRUSTED_BOT_SLUGS=desk=example-desk:300000004,verifier=example-verifier:300000005,worker=example-worker:300000006\nASSAY_ALLOWED_REPOS=example-org/tracker:ci:private\n"
@@ -87,6 +89,9 @@ func pendingSetup(t *testing.T) (*VerifyLoop, *pendingForge, deskkit.VerifierRec
 	}
 	deskkit.ReloadConfig()
 	brief := strings.Replace(planBrief("model", "no", "no", "no", "no"), "## Verify", "## Context\n\nfiles:\n- `input.go`\n- `planned.go`\n\n## Verify", 1)
+	if len(implementer) > 0 {
+		brief = strings.Replace(brief, "brief: x\n", "brief: x\nimplementer: "+implementer[0]+"\n", 1)
+	}
 	root := planFixtureRoot(t, map[string]string{"01": brief, "02": planBrief("model", "no", "no", "no", "no")})
 	if e := os.WriteFile(filepath.Join(root, "input.go"), []byte("package input\n"), 0600); e != nil {
 		t.Fatal(e)
@@ -177,10 +182,11 @@ func TestPendingForge(t *testing.T) {
 		f.pr.Author = f.change.Author
 	}
 	cases := []struct {
-		name, want string
-		change     func(*testing.T, *VerifyLoop, *pendingForge, deskkit.VerifierReceipt, string)
-		want02     string                          // the untouched brief 02; "" is dispatch
-		check      func(*testing.T, *pendingForge) // extra assertions after both items classify
+		name, want  string
+		change      func(*testing.T, *VerifyLoop, *pendingForge, deskkit.VerifierReceipt, string)
+		want02      string                          // the untouched brief 02; "" is dispatch
+		implementer string                          // brief 01's declared implementer; "" declares none
+		check       func(*testing.T, *pendingForge) // extra assertions after both items classify
 	}{
 		{name: "exact-source", want: "awaiting-merge", change: nil},
 		{name: "unrelated-advance-no-wake", want: "dispatch", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
@@ -252,6 +258,9 @@ func TestPendingForge(t *testing.T) {
 			os.WriteFile(rosterPath, []byte(strings.Replace(string(roster), ",verifier=example-verifier:300000005", "", 1)), 0600)
 			deskkit.ReloadConfig()
 		}},
+		// regression: A1 — the verifier App authored the Evidence AND is brief 01's declared
+		// implementer: no independent verifier, so no hold (could-not-check, never awaiting-merge).
+		{name: "implementer-is-verifier", want: "could-not-check", implementer: "example-verifier[bot]"},
 		{name: "wrong-id", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.pr.Author.ID = 123
 		}},
@@ -342,7 +351,11 @@ func TestPendingForge(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			v, f, r, p := pendingSetup(t)
+			var implementer []string
+			if tc.implementer != "" {
+				implementer = []string{tc.implementer}
+			}
+			v, f, r, p := pendingSetup(t, implementer...)
 			if tc.change != nil {
 				tc.change(t, v, f, r, p)
 			}
