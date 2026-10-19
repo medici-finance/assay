@@ -61,7 +61,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const (
@@ -669,25 +668,14 @@ func (h *Harness) schemataFor(root string, p *schemaPlan) *schemaTree {
 // whose suite -select narrows skips schemata (selectNarrows, selection.go).
 func (h *Harness) runMutation(root string, t *schemaTree, i int) (Result, error) {
 	m := h.Mutations[i]
-	deadline := time.Time{}
-	if h.MutationTimeout > 0 {
-		deadline = time.Now().Add(h.MutationTimeout)
-	}
-	remaining := func() time.Duration {
-		if deadline.IsZero() {
-			return 0
-		}
-		left := time.Until(deadline)
-		if left <= 0 {
-			return time.Nanosecond
-		}
-		return left
-	}
 	if t != nil && t.ids[schemaID(i)] && !h.selectNarrows(root, m) {
+		// The schema run and a classic fallback each get the whole limit: a
+		// fallback on what the schema run left over would count a suite cut
+		// short as a TIMEOUT, so as CAUGHT (runOne).
 		if h.SchemaRun != nil {
-			out := h.SchemaRun(root, t.overlay, schemaID(i), remaining())
+			out := h.SchemaRun(root, t.overlay, schemaID(i), h.MutationTimeout)
 			if out.TimedOut {
-				return Caught, fmt.Errorf("TIMEOUT after %s", h.MutationTimeout)
+				return Caught, suiteTimeout{h.MutationTimeout}
 			}
 			if out.Err == nil && out.Failed {
 				return Caught, nil
@@ -696,7 +684,7 @@ func (h *Harness) runMutation(root string, t *schemaTree, i int) (Result, error)
 			return Caught, nil
 		}
 	}
-	return h.runOneWithLimit(root, m, remaining())
+	return h.runOne(root, m)
 }
 
 func (h *Harness) logf(format string, args ...any) {

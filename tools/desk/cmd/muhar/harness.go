@@ -42,6 +42,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -273,25 +274,14 @@ func resolve(root, path string) string {
 // disk, builds its package, runs the suite, then restores the file. An edit that
 // cannot be proven or a Go package that does not compile returns CouldNotMutate;
 // a test suite never judges a non-compiling mutant.
+//
+// The build and the suite each get the whole per-mutation limit, never a share
+// of one deadline: a suite killed at its limit counts as CAUGHT (it did not
+// terminate), and that verdict is only true when the suite had the whole limit.
+// A suite cut short because the build used up part of its time would otherwise
+// be counted CAUGHT without proving anything.
 func (h *Harness) runOne(root string, m Mutation) (Result, error) {
-	return h.runOneWithLimit(root, m, h.MutationTimeout)
-}
-
-func (h *Harness) runOneWithLimit(root string, m Mutation, timeout time.Duration) (Result, error) {
-	deadline := time.Time{}
-	if timeout > 0 {
-		deadline = time.Now().Add(timeout)
-	}
-	remaining := func() time.Duration {
-		if deadline.IsZero() {
-			return 0
-		}
-		left := time.Until(deadline)
-		if left <= 0 {
-			return time.Nanosecond
-		}
-		return left
-	}
+	limit := h.MutationTimeout
 	path := resolve(root, m.File)
 	orig, err := os.ReadFile(path)
 	if err != nil {
@@ -329,9 +319,9 @@ func (h *Harness) runOneWithLimit(root string, m Mutation, timeout time.Duration
 	}
 
 	if h.Build != nil {
-		built := h.Build(root, m, remaining())
+		built := h.Build(root, m, limit)
 		if built.TimedOut {
-			return CouldNotMutate, fmt.Errorf("mutated package build timed out after %s", h.limitLabel(timeout))
+			return CouldNotMutate, fmt.Errorf("mutated package build timed out after %s", limit)
 		}
 		if built.Err != nil {
 			return CouldNotMutate, fmt.Errorf("mutated package build could not run: %w", built.Err)
@@ -358,7 +348,7 @@ func (h *Harness) runOneWithLimit(root string, m Mutation, timeout time.Duration
 			test = sel.Test
 		}
 		if sel.TestWithTimeout != nil {
-			return h.classifyTest(sel.TestWithTimeout(root, remaining()), timeout)
+			return classifyTest(sel.TestWithTimeout(root, limit), limit)
 		}
 	}
 	if h.RunTest == nil && test != nil {
@@ -367,23 +357,19 @@ func (h *Harness) runOneWithLimit(root string, m Mutation, timeout time.Duration
 		}
 		return NotCaught, nil
 	}
-	return h.classifyTest(h.runTest(root, remaining()), timeout)
+	return classifyTest(h.runTest(root, limit), limit)
 }
 
-// limitLabel is the limit a TIMEOUT line reports: the configured per-mutation
-// limit when preflight set one, so a classic fallback after a schema run
-// reports the same limit as every other mutant rather than the slice of the
-// deadline it had left.
-func (h *Harness) limitLabel(timeout time.Duration) time.Duration {
-	if h.MutationTimeout > 0 {
-		return h.MutationTimeout
-	}
-	return timeout
-}
+// suiteTimeout is the reason a suite run that hit its limit is CAUGHT. It is a
+// type so preflight can tell a positive control caught by a kill from one the
+// suite really caught.
+type suiteTimeout struct{ limit time.Duration }
 
-func (h *Harness) classifyTest(out CommandResult, timeout time.Duration) (Result, error) {
+func (e suiteTimeout) Error() string { return fmt.Sprintf("TIMEOUT after %s", e.limit) }
+
+func classifyTest(out CommandResult, limit time.Duration) (Result, error) {
 	if out.TimedOut {
-		return Caught, fmt.Errorf("TIMEOUT after %s", h.limitLabel(timeout))
+		return Caught, suiteTimeout{limit}
 	}
 	if out.Err != nil {
 		return CouldNotMutate, fmt.Errorf("test command could not run: %w", out.Err)
@@ -445,6 +431,14 @@ func (h *Harness) preflight(root string) Report {
 	// and the whole run is worthless — exactly the #34 failure, made loud.
 	cres, cerr := h.runOne(root, h.Control)
 	rep.ControlResult = cres
+	var killed suiteTimeout
+	if cres == Caught && errors.As(cerr, &killed) {
+		// A timeout is CAUGHT for a mutant, but it cannot validate the harness:
+		// a suite that asserts nothing still times out when it is slow enough.
+		rep.Broken = true
+		rep.BrokenReason = fmt.Sprintf("positive control was caught only by a %s, never by a failing suite — the control must turn the suite red; discard the run", killed)
+		return rep
+	}
 	if cres != Caught {
 		rep.Broken = true
 		switch cres {
