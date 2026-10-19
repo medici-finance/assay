@@ -103,7 +103,9 @@ it also fails when a listed row stops differing, so this table cannot go stale i
   model-policy and `--set` refusals, and the `down` and `up` container refusals are unchanged and
   still live in the domain code. The parser grants nothing: a test calls the handlers with the
   parser bypassed and requires the same refusals.
-- **`up` output.** The per-role command lines `up` prints still re-execute and reproduce the plan.
+- **`up` output.** The per-role command lines `up` prints still re-execute and reproduce the plan. A dry run still prints one line per absent role, byte for byte as before, and
+  now also a disposition line for a role that is already up or stale; `up` itself converges (it
+  no longer prompts to reconcile a stale role: that is `up --plan` then `up --apply`).
 
 ## What differs
 

@@ -602,6 +602,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// cell. Transition-scoped like unrunGateChecks below: only a closure
 	// this branch made is a PROBLEM. See witnessgate.go.
 	wgProblems, wgNotices := witnessGateChecks(root, checkStreams)
+	problems = append(problems, protectedClosureProblems(checkStreams)...)
 	problems = append(problems, wgProblems...)
 	notices = append(notices, wgNotices...)
 	// Missing EXECUTION WITNESS, but only for closures THIS branch makes: a
@@ -1254,6 +1255,14 @@ func main() {
 		fmt.Println(statusgenVersion)
 		exitProcess(0)
 	}
+	// `statusgen --version --json` — the same introspection, machine-readable:
+	// the version plus the brief schemas this build supports and the first
+	// release of each (briefschemaversions.go). The bare form above stays
+	// exactly one line, because pin checks compare it verbatim.
+	if len(os.Args) == 3 && (os.Args[1] == "--version" || os.Args[1] == "version") && os.Args[2] == "--json" {
+		printVersionJSON()
+		exitProcess(0)
+	}
 
 	// `statusgen verifyrun` — positional subcommand (like `init` below) that
 	// EXECUTES a brief's Verify rows and writes an execution witness into its
@@ -1271,6 +1280,9 @@ func main() {
 	// that executes arbitrary commands lifted out of a markdown table has no
 	// business inside it. `--lint` only NOTICEs the ABSENCE of a witness (see
 	// witnessNotices); producing one is always an explicit invocation.
+	if len(os.Args) > 1 && os.Args[1] == "withdrawal-audit" {
+		exitProcess(runWithdrawalAudit(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
 		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
 	}
@@ -1749,10 +1761,10 @@ func main() {
 	// (prior calendar month) — to docs/reports/<cadence>/<window>/. Empty = the
 	// point-in-time --roadmap, unchanged.
 	cadenceMode := flag.String("cadence", "", "with --roadmap: render a closed-window artifact — weekly (prior ISO week) | monthly (prior calendar month) — to docs/reports/<cadence>/<window>/; empty = point-in-time --roadmap")
-	// Corroboration check: self-contained sub-command,
-	// same STATUS.md-free discipline as the verify-gate modes. Network-dependent
-	// by nature — never wired into the offline lint gate.
+	// Consumer corroboration is offline and STATUS.md-free. The separate
+	// human-stamp corroboration mode below is forge-backed.
 	consumersMode := flag.Bool("consumers", false, "corroborate the consumers: routing claims of the briefs this branch touches against its own diff (exit 1 = a claim is DISPROVED, 2 = the diff could not be taken)")
+	consumersDelivery := flag.String("delivery", "", "--consumers: immutable full delivery commit SHA; requires --brief and --base set to its first parent; evaluates delivered claims and tree, never the working tree")
 	consumersBase := flag.String("base", remoteMainRef, "--consumers: base ref for the three-dot diff")
 	consumersBrief := flag.String("brief", "", "--consumers: check only this brief (<stream>/<NN>); default = every brief file in the diff")
 	corroborateMode := flag.Bool("corroborate", false, "check human:<name> stamps against PR reviews/comments for corroboration (requires --pr)")
@@ -1845,6 +1857,10 @@ func main() {
 	changedOnlyFlag := flag.String("changed-only", "", "--lint only: LOCAL pre-push convenience — comma-separated repo-relative paths; scopes the lint to them and prints a loud banner naming what was examined. REFUSES (non-zero, no override) when it detects it is running inside the CI gate (GITHUB_ACTIONS=true) — the CI gate always runs the full unscoped --lint. Mutually exclusive with --changed")
 	scopeFlag := flag.String("scope", "", "restrict per-stream lint to one product (serves:): example-app|example-service|assay|platform; overrides --changed derivation")
 	parseMainFlags()
+	if *consumersDelivery != "" && !*consumersMode {
+		fmt.Fprintln(os.Stderr, "statusgen: --delivery requires --consumers")
+		exitProcess(2)
+	}
 
 	// The roster class is chosen ONCE, from the invoked mode, BEFORE any check can
 	// read the roster — scanEffectiveConfig caches on first use, so a later call
@@ -2179,6 +2195,9 @@ func main() {
 	// sub-command; never reads or writes STATUS.md. Exits 1 when the branch diff
 	// DISPROVES a routing claim, 2 when the diff itself could not be taken.
 	if *consumersMode {
+		if *consumersDelivery != "" {
+			exitProcess(runDeliveryConsumers(*root, *consumersBase, *consumersBrief, *consumersDelivery))
+		}
 		exitProcess(runConsumers(*root, *consumersBase, *consumersBrief))
 	}
 	// Bottleneck report: self-contained diagnostic
