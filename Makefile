@@ -111,7 +111,7 @@ desk-manifest:
 
 ## desk-hook-install: delegate all hook ownership/migration to the built guard.
 ## desk-install builds first. Standalone callers must run desk-build first too;
-## there is no second static-copy installer that can restore an obsolete hook.
+## there is no second static-copy hook writer.
 desk-hook-install:
 	@guard="$(DIST_DIR)/deskpushguard"; \
 	if [ ! -x "$$guard" ]; then \

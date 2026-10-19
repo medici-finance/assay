@@ -232,7 +232,7 @@ func ciCrossModuleRegistry() []ciEntry {
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"Makefile", "scripts/build-windows.ps1", "tools/desk/hooks/pre-push"},
 			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
-			why:        "the unconditional build-test floor checks both hook installer entrypoints and the published portable shim",
+			why:        "the unconditional build-test floor checks both hook installer entrypoints (the Makefile recipe under /bin/sh, as the runner has no make) and the published anchored hook",
 		},
 		{
 			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",

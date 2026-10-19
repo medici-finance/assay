@@ -95,11 +95,11 @@ func TestHookInstallWindows(t *testing.T) {
 	}
 }
 
-// TestHookInstallIdempotentAndForeignRefusal pins the two behaviours the Makefile's
-// existing desk-hook-install target already has, so `hook-install` matches it: a
-// re-run over a hook this installer already wrote is a silent no-op (no error, no
-// rewrite claimed as installed), and a FOREIGN pre-push hook (one not matching the
-// exact current or known legacy content) is refused unless --force is set.
+// TestHookInstallIdempotentAndForeignRefusal pins the installer's idempotence and
+// refusal contract, which both build entrypoints reach by delegation: a re-run over a
+// hook this installer already wrote is a silent no-op (no error, no rewrite claimed
+// as installed), and a FOREIGN pre-push hook (one not matching the exact current or
+// anchored content) is refused unless --force is set.
 func TestHookInstallIdempotentAndForeignRefusal(t *testing.T) {
 	dir := t.TempDir()
 	hooksDir := filepath.Join(dir, ".githooks")

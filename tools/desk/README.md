@@ -3185,10 +3185,14 @@ sudo make desk-install   # HUMAN ONLY
    `BuiltAt` ldflags.
 2. Installs the already-built `dist/` binaries to `/opt/desk-tools/bin/<tool>`,
    root-owned 0755 — agents cannot overwrite them.
-3. Runs `desk-hook-install`: delegates to the built `deskpushguard hook-install` to
-   write the PATH-resolving `.githooks/pre-push` shim (plus `pre-push.cmd` on Windows).
-   It migrates the exact formerly shipped fixed-path hook, skips exact current hooks,
-   and **refuses to clobber** foreign hooks unless invoked with `FORCE=1` (`-Force` in
+3. Runs `desk-hook-install`: delegates to the built `deskpushguard hook-install`. Where
+   no hook exists it writes the PATH-resolving `.githooks/pre-push` shim (plus
+   `pre-push.cmd` on Windows). An exact copy of the shipped anchored hook
+   (`tools/desk/hooks/pre-push`, which runs `/opt/desk-tools/bin/deskpushguard` by
+   absolute path) is **kept** on Unix, so a routine install never trades that anchor for
+   PATH resolution; `FORCE=1` replaces it with the PATH shim. On Windows, where the
+   `/opt` path cannot exist, it is migrated to the current pair. Exact current hooks are
+   skipped, and foreign hooks are **refused** unless invoked with `FORCE=1` (`-Force` in
    PowerShell). Standalone hook installation requires `desk-build` first; an absent
    built guard refuses without changing hooks. No static-copy fallback remains.
 4. Runs `desk-manifest`: writes `tools/desk/MANIFEST.sha256` from the installed binaries.

@@ -49,6 +49,13 @@ func TestHookInstallLegacyMigration(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+					if target != "windows" && !force {
+						// The absolute guard anchor survives a routine Unix install.
+						if len(installed) != 0 || hookContent(t, path) != old {
+							t.Fatalf("anchored hook not kept: installed=%v content=%q", installed, hookContent(t, path))
+						}
+						return
+					}
 					want := 1
 					if target == "windows" {
 						want = 2
@@ -128,6 +135,24 @@ func TestHookInstallForeignAndPartialPair(t *testing.T) {
 }
 
 // regression: #2801
+func TestHookInstallAnchorNotice(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the anchored hook is migrated on Windows")
+	}
+	dir := t.TempDir()
+	hook := filepath.Join(dir, "pre-push")
+	old := hookContent(t, "testdata/legacy-pre-push")
+	hookFile(t, hook, old)
+	var stderr strings.Builder
+	if code := runHookInstall([]string{"--dir", dir}, &stderr); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	if hookContent(t, hook) != old || !strings.Contains(stderr.String(), "pass --force") {
+		t.Fatalf("anchored hook not kept with notice: %s", stderr.String())
+	}
+}
+
+// regression: #2801
 func TestHookInstallGuardInvocation(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX hook execution; Windows pair bytes covered separately")
@@ -135,7 +160,7 @@ func TestHookInstallGuardInvocation(t *testing.T) {
 	dir := t.TempDir()
 	hook := filepath.Join(dir, "pre-push")
 	hookFile(t, hook, hookContent(t, "testdata/legacy-pre-push"))
-	if _, err := writeHooks(dir, "linux", false); err != nil {
+	if _, err := writeHooks(dir, "linux", true); err != nil {
 		t.Fatal(err)
 	}
 	if hookContent(t, hook) != unixShim {
@@ -143,14 +168,14 @@ func TestHookInstallGuardInvocation(t *testing.T) {
 	}
 	guard := filepath.Join(dir, "deskpushguard")
 	hookFile(t, guard, "#!/bin/sh\nprintf 'args=<%s><%s>\\n' \"$1\" \"$2\"\nwhile IFS= read -r line; do printf 'stdin=<%s>\\n' \"$line\"; done\nexit 23\n")
-	cmd := exec.Command("/bin/sh", hook, "origin", "ssh://example.invalid/repo with space")
+	cmd := exec.Command("/bin/sh", hook, "origin", "https://example.invalid/repo with space")
 	cmd.Env = append(os.Environ(), "PATH="+dir)
 	cmd.Stdin = strings.NewReader("refs/heads/topic abc refs/heads/topic def\n")
 	out, err := cmd.CombinedOutput()
 	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 23 {
 		t.Fatalf("guard status not propagated: %v %s", err, out)
 	}
-	if string(out) != "args=<origin><ssh://example.invalid/repo with space>\nstdin=<refs/heads/topic abc refs/heads/topic def>\n" {
+	if string(out) != "args=<origin><https://example.invalid/repo with space>\nstdin=<refs/heads/topic abc refs/heads/topic def>\n" {
 		t.Fatalf("guard argv/stdin changed: %q", out)
 	}
 	if err := os.Remove(guard); err != nil {

@@ -20,6 +20,12 @@
 // installers (`make desk-hook-install`, `scripts/build-windows.ps1`'s
 // `Target-DeskHookInstall`) call this subcommand once the binary has been built,
 // rather than copying the static file, so both convergent install paths agree.
+//
+// The formerly shipped hook (anchoredUnixShim) runs the root-owned guard by its
+// absolute install path, which tools/desk/README.md keeps deliberately off PATH. On a
+// Unix target that hook is recognised as owned and KEPT unless --force is passed, so a
+// routine install never swaps that absolute anchor for PATH resolution. On a Windows
+// target the /opt path cannot exist, so the hook is migrated to the current pair.
 package main
 
 import (
@@ -59,9 +65,10 @@ rem Written by deskpushguard hook-install; resolves deskpushguard.exe from PATH.
 deskpushguard.exe %*
 `
 
-// legacyUnixShim is the exact formerly shipped hook, not a tool-name ownership
-// heuristic. Only line-ending conversion is accepted; local edits remain foreign.
-const legacyUnixShim = `#!/bin/sh
+// anchoredUnixShim is the exact formerly shipped hook (still the published static
+// asset tools/desk/hooks/pre-push), not a tool-name ownership heuristic. Only
+// line-ending conversion is accepted; local edits remain foreign.
+const anchoredUnixShim = `#!/bin/sh
 # Desk push guard — git pre-push hook shim.
 # Committed into .githooks/pre-push (F-13 core.hooksPath); covers all worktrees.
 # ` + "`make desk-install`" + ` refreshes it on each install run.
@@ -78,7 +85,8 @@ exec /opt/desk-tools/bin/deskpushguard "$@"
 //
 // force mirrors the Makefile's `FORCE=1` / PowerShell's `-Force`: without it, an
 // existing hook that this installer did not itself write is left alone and reported
-// as a typed error, never silently clobbered.
+// as a typed error, never silently clobbered. The anchored hook is kept on a Unix
+// target without force (see the file comment).
 func writeHooks(dir, targetOS string, force bool) (installed []string, err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("hook-install: cannot create %s: %w", dir, err)
@@ -96,7 +104,7 @@ func writeHooks(dir, targetOS string, force bool) (installed []string, err error
 	// partner must not leave a newly installed or migrated Unix half behind.
 	var pending []shim
 	for _, sh := range shims {
-		write, err := shimNeedsWrite(sh.path, sh.content, force)
+		write, err := shimNeedsWrite(sh.path, sh.content, targetOS, force)
 		if err != nil {
 			return nil, err
 		}
@@ -146,23 +154,35 @@ func runHookInstall(args []string, stderr io.Writer) int {
 	}
 
 	installed, err := writeHooks(dir, runtime.GOOS, force)
+	for _, p := range installed {
+		fmt.Fprintf(stderr, "deskpushguard hook-install: wrote %s\n", p)
+	}
 	if err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return deskkit.ExitRefused
 	}
+	if keepsAnchoredHook(dir, runtime.GOOS, force) {
+		fmt.Fprintf(stderr, "deskpushguard hook-install: kept %s: it runs the guard by its absolute install path; pass --force to replace it with the PATH-resolving shim\n", filepath.Join(dir, "pre-push"))
+	}
 	if len(installed) == 0 {
 		fmt.Fprintf(stderr, "deskpushguard hook-install: %s already carries the deskpushguard hook(s) (idempotent skip)\n", dir)
-		return deskkit.ExitOK
-	}
-	for _, p := range installed {
-		fmt.Fprintf(stderr, "deskpushguard hook-install: wrote %s\n", p)
 	}
 	return deskkit.ExitOK
 }
 
-// shimNeedsWrite distinguishes exact current content, known legacy content, and
+// keepsAnchoredHook reports whether a non-forced Unix install left the anchored
+// hook in place, so the operator is told the PATH shim was not written.
+func keepsAnchoredHook(dir, targetOS string, force bool) bool {
+	b, err := os.ReadFile(filepath.Join(dir, "pre-push"))
+	return err == nil && !force && targetOS != "windows" &&
+		strings.ReplaceAll(string(b), "\r\n", "\n") == anchoredUnixShim
+}
+
+// shimNeedsWrite distinguishes exact current content, the anchored hook, and
 // foreign hooks. Explicit --force retains its existing foreign-overwrite contract.
-func shimNeedsWrite(path, content string, force bool) (bool, error) {
+// The anchored hook is migrated without force only on Windows, where its absolute
+// path cannot exist; on Unix it is kept so the guard's absolute anchor survives.
+func shimNeedsWrite(path, content, targetOS string, force bool) (bool, error) {
 	existing, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return true, nil
@@ -174,9 +194,12 @@ func shimNeedsWrite(path, content string, force bool) (bool, error) {
 	if normalized == content {
 		return false, nil
 	}
-	if (content == unixShim && normalized == legacyUnixShim) || force {
+	if force {
 		return true, nil
 	}
+	if content == unixShim && normalized == anchoredUnixShim {
+		return targetOS == "windows", nil
+	}
 	firstLine := strings.SplitN(string(existing), "\n", 2)[0]
-	return false, fmt.Errorf("hook-install: refusing to clobber existing non-deskpushguard hook %s (%q) -- pass --force to overwrite", path, firstLine)
+	return false, fmt.Errorf("hook-install: refusing to clobber unrecognised hook %s (%q) -- pass --force to overwrite", path, firstLine)
 }

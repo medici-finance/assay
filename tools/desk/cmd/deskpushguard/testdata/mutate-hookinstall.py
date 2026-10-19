@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline #2801 fail-first controls; restore every planted source change.
 
-Run from any directory with the Go toolchain and make available. No hooks are
+Run from any directory with the Go toolchain available. No hooks are
 installed outside Go test's disposable fixture directories. Mutation execution
 requires an otherwise idle checkout because it temporarily edits source files.
 """
@@ -13,15 +13,18 @@ module = repo / "tools/desk"
 source = module / "cmd/deskpushguard/hookinstall.go"
 windows = repo / "scripts/build-windows.ps1"
 asset = module / "hooks/pre-push"
+makefile = repo / "Makefile"
 # Each unique source anchor must match exactly once: stale mutations fail closed.
 cases = [
-    ("legacy-skip", source, "if normalized == content {", "if normalized == content || normalized == legacyUnixShim {", "TestHookInstallLegacyMigration"),
+    ("legacy-skip", source, "if normalized == content {", "if normalized == content || normalized == anchoredUnixShim {", "TestHookInstallLegacyMigration"),
     ("marker-spoof", source, "if normalized == content {", 'if strings.Contains(normalized, "deskpushguard") {', "TestHookInstallForeignAndPartialPair"),
     ("pair-preflight", source, "pending = append(pending, sh)", "pending = append(pending, sh)\nif err := os.WriteFile(sh.path, []byte(sh.content), sh.mode); err != nil { return nil, err }", "TestHookInstallForeignAndPartialPair"),
+    ("anchor-downgrade", source, 'return targetOS == "windows", nil', "return true, nil", "TestHookInstallLegacyMigration"),
     ("windows-pair", source, 'if targetOS == "windows" {', 'if targetOS == "never" {', "TestHookInstallLegacyMigration"),
     ("guard-status", source, 'exec "$(command -v deskpushguard)" "$@"', '"$(command -v deskpushguard)" "$@" || exit 0', "TestHookInstallGuardInvocation"),
     ("second-windows-writer", windows, "function Target-DeskHookInstall {", "function Target-DeskHookInstall {\n    Copy-Item -Force legacy-hook .githooks/pre-push", "TestHookInstallWindowsEntrypoint"),
-    ("published-fixed-path", asset, 'exec "$(command -v deskpushguard)" "$@"', 'exec /opt/desk-tools/bin/deskpushguard "$@"', "TestHookInstallStaticAsset"),
+    ("published-path-shim", asset, 'exec /opt/desk-tools/bin/deskpushguard "$@"', 'exec "$(command -v deskpushguard)" "$@"', "TestHookInstallStaticAsset"),
+    ("make-missing-guard", makefile, "first\" >&2; \\\n\t\texit 1;", "first\" >&2; \\\n\t\texit 0;", "TestHookInstallMakeEntrypoint"),
 ]
 for name, path, old, new, test in cases:
     original = path.read_bytes()

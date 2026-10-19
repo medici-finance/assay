@@ -1,2 +1,3 @@
 ### Fixed
-- Migrate the exact legacy fixed-path push-guard hook to the portable shim, preserve foreign-hook refusal and explicit force, and route both build installers through the built guard instead of legacy static-copy fallbacks.
+- `deskpushguard hook-install --force` now replaces the formerly shipped fixed-path push hook instead of skipping it, Windows installs migrate that hook to the portable `pre-push` / `pre-push.cmd` pair, and hook ownership is recognised by exact content rather than by the tool name appearing in the file. On Unix a routine install keeps the fixed-path hook, so the guard's absolute install-path anchor is never silently swapped for PATH resolution.
+- Both build installers (`make desk-hook-install`, `build-windows.ps1 desk-hook-install`) now delegate to the built guard and refuse with build-first guidance when it is missing, instead of falling back to a static copy.
