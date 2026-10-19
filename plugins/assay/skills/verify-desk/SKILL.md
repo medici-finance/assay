@@ -466,6 +466,9 @@ or output. A value copied from the work under test verifies only that the work a
   single-point-of-failure note names: the reviewer's `deskpathguard check` is the one control
   until the paths land in branch protection, and this re-derivation catches an edit the check
   missed because it reads git history, not a label.
+  The desk treats zero re-derived rows, a missing original row, or a filtered run with no
+  required-row coverage as incomplete evidence regardless of exit status; it cannot land a
+  passing verdict on that accounting.
   Before recording closure, follow `docs/protected-paths.md` § "Recording closure after
   re-derivation" for the immutable table marker and explicit uncredited supplemental rows.
 
@@ -499,7 +502,7 @@ Keep the verdict, Evidence prose, row accounting and outcome record consistent:
 | Observed obligations | Verdict and outcome | Next action |
 |---|---|---|
 | An acceptance obligation was actually checked and failed, including an observed non-discriminating risk-bearing row | Strict `**VERIFY: FAIL**`; `verify-fail` | Name the failed obligation and primary output; retain any other unrun rows separately |
-| No obligation failed, but required evidence is unavailable or incomplete | Exact `**BLOCKED**`; `blocked` | Name every uncovered row and the capability, definition or provenance needed to run it |
+| No obligation failed, but required evidence is unavailable or incomplete | Exact `**VERIFY: BLOCKED**`; `blocked` | Name every uncovered row and the capability, definition or provenance needed to run it |
 | Every required obligation has current admissible evidence and closure gates allow advancement | Strict `**VERIFY: PASS**`; `verified` only after the closure lands | Follow the landing and closure checks below |
 
 For BLOCKED, retain command → could-not-run → reason for each uncovered obligation, file the

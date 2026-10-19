@@ -57,7 +57,10 @@ refuses.
 - **Preflight the exact acceptance commands before execution.** Read every required row's
   Command, Expect and class against the approved executor envelope: offline/network limits,
   available tools, sandbox, timeout, output location and fail-first side effects. For protected
-  tables use the original acceptance commands and provenance described below. If a command
+  tables use the original acceptance commands and provenance from `deskpathguard rederive
+  --root <home> --brief <path>`. Read `docs/protected-paths.md` section "Recording closure
+  after re-derivation" for the immutable table marker and original-row obligations; if that
+  contract or its required objects are unavailable, report incomplete evidence. If a command
   cannot run as admitted, record the exact command and reason unrun and route the missing
   capability or a reviewed check-definition repair. Never silently add a test filter, replace
   a command, shorten its scope or relax the sandbox to make it runnable. A separately labelled
@@ -76,17 +79,18 @@ refuses.
 - Run EVERY Verify row. Record `command → exit code → key output line` — real observed
   output, never a claim.
 - A row that cannot run (no toolchain, no environment) is recorded as EXPLICITLY unrun,
-  with `could-not-run` and the reason. Include every required row in the totals and record
-  its own result; excluded or unrun rows are not passed rows. Never silently skip a row.
+  with the reason. It is never silently skipped and never assumed to pass.
+  Add `could-not-run` accounting for that row. Include every required row in the totals and
+  record its own result; excluded or unrun rows are not passed rows.
 - The verifier is NOT the item's implementer. A fresh agent, always.
 - Report back the Evidence rows plus one clear line, BOLD exactly as shown:
-  `**VERIFY: PASS**`, `**VERIFY: FAIL**` or `**BLOCKED**`. Any qualifier — a row count, the failure
+  `**VERIFY: PASS**`, `**VERIFY: FAIL**` or `**VERIFY: BLOCKED**`. Any qualifier — a row count, the failure
   detail — goes AFTER the closing asterisks (`**VERIFY: FAIL** — row 3: …`), never inside
   them. Use **VERIFY: FAIL** only for an observed failed acceptance obligation (including
-  a non-discriminating risk-bearing row). Use **BLOCKED** when no obligation failed but
+  a non-discriminating risk-bearing row). Use **VERIFY: BLOCKED** when no obligation failed but
   required evidence is unavailable or incomplete. Use **VERIFY: PASS** only with current
   admissible evidence for every required obligation. Keep the marker, prose and row accounting
-  consistent. **BLOCKED** grants no advancement; the PASS gate reads the bold PASS marker.
+  consistent. **VERIFY: BLOCKED** grants no advancement; the PASS gate reads the bold PASS marker.
 
 ## 3. Evidence format
 
@@ -172,7 +176,7 @@ drain. The failure rate is a metric; do not bury it, and do not stop the loop to
 The filed issue IS the report. A failed verify on already-merged code is exactly what the
 pre-merge review missed; note the class.
 
-On **BLOCKED**, record each uncovered obligation's exact command, could-not-run disposition
+On **VERIFY: BLOCKED**, record each uncovered obligation's exact command, could-not-run disposition
 and reason, then file or attach the blocker with its needed capability, definition or provenance
 and next actor. An unavailable instrument is never an implementation bug merely because it
 could not check. Keep the item at its current lifecycle state and continue the drain after
@@ -181,7 +185,7 @@ its complete wake receipt; a refused Evidence landing is reported, never replace
 
 A mixed table with an actual failed obligation and unavailable rows remains **VERIFY: FAIL**;
 retain the unavailable rows separately. Observed absence can fail an obligation that tests for
-presence; inability to inspect that artifact is **BLOCKED** if no other obligation failed.
+presence; inability to inspect that artifact is **VERIFY: BLOCKED** if no other obligation failed.
 A runner launch failure, unknown baseline or empty re-derivation establishes no acceptance
 result. A zero process exit establishes neither coverage nor installed-runner qualification.
 
