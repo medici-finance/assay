@@ -35,7 +35,7 @@ func TestInteractiveOwnerFixture(t *testing.T) {
 	}
 	c.cadenceLease = l
 	defer l.Close()
-	env := envSet(os.Environ(), "CELL_INTERACTIVE_FIXTURE", "child")
+	env := fixtureProcessEnv("CELL_INTERACTIVE_FIXTURE=child")
 	env = envSet(env, "ASSAY_SOURCE_REVISION", "fixture-revision")
 	c.runInteractiveHarness("worker-desk", []string{os.Args[0], "-test.run=^TestInteractiveOwnerFixture$"}, env, dir)
 }
@@ -43,7 +43,7 @@ func TestInteractiveOwnerFixture(t *testing.T) {
 func TestInteractiveOwnerCrashRefusesCadence(t *testing.T) {
 	dir := t.TempDir()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestInteractiveOwnerFixture$")
-	cmd.Env = append(os.Environ(), "CELL_INTERACTIVE_FIXTURE=owner", "CELL_INTERACTIVE_DIR="+dir)
+	cmd.Env = fixtureProcessEnv("CELL_INTERACTIVE_FIXTURE=owner", "CELL_INTERACTIVE_DIR="+dir)
 	cmd.Stdout, cmd.Stderr = io.Discard, io.Discard
 	cmd.WaitDelay = 200 * time.Millisecond
 	if err := cmd.Start(); err != nil {

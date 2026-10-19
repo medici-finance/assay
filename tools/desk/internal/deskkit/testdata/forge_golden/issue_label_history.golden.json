@@ -1,0 +1,35 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/issues/7/timeline",
+      "query": "per_page=100\u0026page=1"
+    }
+  ],
+  "result": {
+    "Events": [
+      {
+        "Name": "needs-decision",
+        "AppliedBy": "desk[bot]",
+        "Removed": false,
+        "CreatedAt": "2026-10-01T10:00:00Z",
+        "AppliedByID": 4242
+      },
+      {
+        "Name": "needs-decision",
+        "AppliedBy": "desk[bot]",
+        "Removed": true,
+        "CreatedAt": "2026-10-02T10:00:00Z",
+        "AppliedByID": 4242
+      },
+      {
+        "Name": "",
+        "AppliedBy": "",
+        "Removed": true,
+        "CreatedAt": "2026-10-03T10:00:00Z",
+        "AppliedByID": 0
+      }
+    ],
+    "Complete": true
+  }
+}

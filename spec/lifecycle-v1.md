@@ -39,8 +39,32 @@ implying progress. Board reporting that orders the lifecycle (bottleneck, roadma
 trend views) SHOULD render `blocked` as a terminal-for-now bucket alongside the five
 ordered states rather than between any two of them.
 
-A status value that is neither one of the five ordered states nor `blocked` MUST be
-rejected.
+### 2.0a `withdrawn` — off-path retirement
+
+`withdrawn` is a seventh valid status value and, like `blocked`, is NOT a position in the
+ordered sequence. It records that the remaining planned scope will not be executed under this identity:
+a later decision retired it, or moved that scope into another brief. Partial implementation
+and completed historical work remain on record, with their unresolved obligations. It is
+closed to dispatch. Reviving that identity requires an explicit plan amendment that
+re-establishes its scope and acceptance criteria, reconciles its withdrawal metadata and
+successors, and passes the ordinary lifecycle gates. For a human-gated brief, leaving
+withdrawn for implemented, verified or done is a fresh guarded move (§4.5); retirement
+is not completion progress. The brief's frontmatter records the date, the reason and
+the successor (`brief-v1.md` §3.6).
+
+A conforming implementation MUST accept `withdrawn` as a valid status and MUST NOT offer a
+`withdrawn` brief in the Next-up batch (section 5) or any dispatch view. It MUST exclude
+withdrawn briefs from the done-ratio denominator ("briefs done x/y"), from the todo and
+open-brief counts, and from the stalled, bottleneck and blocked views, and SHOULD show
+them in a separate Withdrawn count. A `depends:` edge into a withdrawn brief is never
+satisfied (the linter NOTICEs it, naming the successor). A lower-wave withdrawn brief MUST
+NOT hold the legacy whole-wave rule: it is closed to dispatch, like `done` for that purpose.
+A stream whose every brief is `done` or `withdrawn` is an archive candidate for planned
+work. This does not assert that surviving verification debt, open PRs or active claims
+were settled. Evidence and stamps are retained, and known execution drift remains visible.
+
+A status value that is neither one of the five ordered states, `blocked`, nor `withdrawn`
+MUST be rejected.
 
 ### 2.1 `todo`
 
@@ -297,6 +321,163 @@ and it MUST document the boundary it chose.
 implementation MUST report the gate as `could-not-check` (an unverified dereference),
 never as a clean pass and never as a blanket failure of every citing brief.
 
+### 4.5 Decision-gate hold
+
+A `gate: human` brief carries a decision issue (`brief-v1.md` §3.2, `decision-issue:`)
+on which a human decides BEFORE the irreversible act. The decision-gate hold binds that
+decision at the brief's **status transition**: while the decision issue carries no
+human ruling, the brief MUST NOT move to `implemented`, `verified`, `done` or `withdrawn`.
+
+**Scope.** The hold is judged per change, against the base revision the change merges
+onto. A brief is in scope when it carries `gate: human` at the base OR after the change,
+so a change cannot escape the hold by editing the gate in the same change.
+
+**What a conforming implementation MUST refuse.** For an in-scope brief whose decision
+issue has no human ruling, a change that:
+
+1. leaves the brief's status at `implemented`, `verified`, `done` or `withdrawn` where,
+   at the base, its status ranked lower or the brief was not on the board (a **move**;
+   the guarded-act ranks are `implemented` < `verified` < `done` < `withdrawn`, and
+   every other status ranks below them). On the base side, withdrawn ranks below
+   implemented/verified/done when leaving withdrawal, so re-entry into any of those
+   statuses is a fresh move. An unchanged withdrawn status is not a move. This ranking
+   guards retirement and reactivation; it does not place withdrawal in the progress
+   lifecycle or attest completed work;
+2. changes the brief's `gate` away from `human`, or removes the key (a **relabel**);
+3. leaves no brief after the change that is the same brief as a `gate: human` base brief
+   and still on the board (a **drop**). The README table is the board: a base brief that
+   had a README row and has none after the change is dropped, even when its brief file
+   remains at the stream root, under `done/` or in the archive tree. A brief file alone
+   keeps no brief on the board;
+4. leaves an in-scope board id resolving to more than one record, where the base did not
+   carry exactly the same records (an **ambiguity**). No recorded ruling lifts this refusal:
+   which record is the brief cannot be told, so the change must first give each brief its
+   own board id;
+5. leaves a board record the implementation cannot read the way the board reads it (an
+   **unreadable record**): a stream index, brief file, `done/` folder, stream directory,
+   or the `docs/streams` or `docs/archive` tree itself that is not a plain file or
+   directory in the repository tree (a symbolic link, a submodule or a nested
+   repository), or a board file that cannot be read. This is refused whether or not the
+   entry itself changed, since what it stands for can change behind it. No recorded
+   ruling lifts this refusal. The board is read through directories only, so a symbolic link
+   where a stream directory or a `done/` folder would be, whose target is a file or does not
+   exist, is not a board record and is never refused (it is judged by what it can lead to, not
+   by being a link). A link to a directory, a linked stream index, and a submodule or nested
+   repository are board records the implementation cannot see behind: a change that leaves one,
+   replaces it or removes it cannot be judged, so it has no in-band exit and the refusal says
+   it needs a human decision; only a linked BRIEF file can be repaired in a change, by
+   replacing the link with a plain file (the base then reads it as `gate: human` with no
+   ruling);
+6. leaves a brief standing only as a row in a stream index under `docs/archive` at a status
+   other than `done`, where the base did not carry exactly that record (an **open archive**).
+   Archived work is completed work: moving a stream with an owed decision there takes it off
+   the active board without the brief ever reaching `done`. No recorded ruling lifts this
+   refusal; a brief already archived at the base, unchanged, is not refused.
+
+**One reading rule.** Both sides of a change MUST be read by one rule: the base and the
+change are each listed with what every board path is (plain file, directory, link,
+submodule) before any content is read, and a record either side cannot read as the board
+does is unreadable on both. An unreadable record is never taken as carrying no gate: at
+the base it is judged as `gate: human` with no ruling, and an unreadable base stream
+index, `done/` folder, stream directory or tree that no record after the change stands
+for is refused.
+
+**On the board means what the board's loaders say.** A stream index counts only where the
+generator keeps its stream: an active index that fails to parse and declares itself a register
+(`registers-v1.md` §7), and any archived index that fails to parse, are skipped by the stream
+loaders and are not on the board, so a change that makes an index so, rows untouched, drops
+every `gate: human` brief it listed (item 3). An unparseable active index that is no register
+fails the board's own load; the rows it lists are still read.
+
+A brief that stands as unreadable beside a status move is judged for the move as well: the
+refusal for the record does not stand in for the refusal of the move.
+
+A brief is matched across the base and the change by EITHER its board id
+(`<stream>/<NN>`, any spelling of the number) OR its permanent frontmatter `id:`, and
+either key alone carries the hold. Matching decides SCOPE only; it never lends a ruling, a
+status, or presence. **Identity is one-to-one:** a base brief and a brief after the change
+are the same brief only by the same board id, or by a renumber (the base brief's board id
+is gone after the change, and the changed brief's board id was not on the base board) that
+pairs exactly one base brief with exactly one changed brief. A base brief's recorded
+ruling, its base status, and its survival past the change count only for the same brief.
+A brief that takes another brief's permanent `id:` is therefore in scope, but must carry
+a ruling of its own; a brief removed while its `id:` moves onto a brief already on the
+board is dropped; a row whose board id was not on the base board is a move from "not on
+the board" even when it takes the permanent `id:` of a brief that is still on the board and
+already advanced; and one base brief stands behind at most one brief after the change.
+Because number spellings normalise and the active and archived trees share board ids, a
+board id with more than one README row, more than one brief file, or records in both trees
+resolves to more than one record. Every record read MUST count: such a board id is judged
+from its lowest row status and is `gate: human` if any of its brief files is, never from
+whichever record happens to be read first.
+A row of the same brief already at or past its new status at the base is not a move; a pin bump that
+introduces the hold therefore turns no landed row red, which is this rule's forward-only
+mechanism (section 4.4, "Grandfathering"). It does turn a board red that already holds a
+board record the implementation cannot read (item 5: a link to a directory, a linked stream
+index or brief file, a submodule or nested repository under `docs/streams` or `docs/archive`),
+since item 5 is refused whether or not the entry changed; a board with no such record, including
+one holding a link to a file or to nothing beside its streams, is unaffected.
+
+**What counts as ruled.** The brief records its ruling in its own frontmatter: the
+`decision-issue:` number and a `ruling:` link to the ruling comment on that issue
+(`brief-v1.md` §3.2). A brief with no decision issue is unruled. ANY ruling lifts the
+hold, including one that holds or declines the brief: the check confirms THAT a human
+decided, never what they decided.
+
+**Two layers.** A conforming implementation MUST provide both.
+
+- **Layer one (offline).** Part of the board lint (section 7.3). An in-scope move, relabel
+  or drop is a PROBLEM unless the brief records a `decision-issue:` and a well-formed
+  `ruling:` issue-comment URL pointing at that issue; an ambiguity or an unreadable record is always a PROBLEM. This layer cannot tell who wrote the
+  linked comment, and its refusal MUST say that it checked only for a well-formed link.
+  Where the base revision cannot be resolved or its board cannot be read, this layer
+  MUST fail closed (a PROBLEM) while any `gate: human` brief after the change sits at
+  `implemented` or later, and MAY report a notice otherwise. A relabel or drop judged
+  against an unreadable base is left to layer two.
+- **Layer two (network).** The linked comment is fetched and MUST pass every condition of
+  the design-decision ruling-link check (`registers-v1.md` §7.5): an unedited comment by a
+  login mapped to a human, never a bot, on the brief's recorded decision issue. The issue
+  binding is the brief's own: the decision issue's body carries a decision-gate marker
+  (`<!-- decision-gate: <board id> -->`) naming this brief, and the ruling comment's text
+  names the brief by its board id. A colon-form marker that names a repository names this
+  one by its name or by an alias the alias registry declares for it as committed at the
+  judged base; an alias the change under judgment adds does not count, and an unreadable
+  registry leaves the name alone. Where the comment, the issue or the login map cannot
+  be read, the result is `could-not-check`, which refuses the transition; it is never a
+  pass.
+
+**Where it runs.** Layer two runs on the pull request that carries the transition, and on
+every landing path that bypasses a pull request: an evidence landing or a close-to-done
+transition MUST run the same check on the write it is about to make, and MUST NOT let the
+write through when the check could not run. The hold MUST NOT be applied at a pull
+request's ready-flip: decision latency is a queue's main bottleneck, and blocking the flip
+would wedge every PR behind an unruled decision. An evidence landing's check MUST judge the
+board the write lands on, not a stale copy of it: when the landing is judged from a checkout
+that is not the target branch's tip, the branch's version of every board file it has
+changed since that checkout's commit (other than the one being written) MUST be what is
+judged, and the landing MUST NOT proceed if those files cannot be read or the set cannot
+be determined or shown complete. The set and the files MUST be read at one resolved commit
+of the branch, and the checkout's commit MUST be an ancestor of it. A changed board entry
+the branch holds as anything but a plain file (a symbolic link, served as its target's
+bytes or as nothing, or a submodule) is an unreadable record to the board and MUST NOT be
+judged as a plain file; the landing does not proceed. Bytes a forge serves for such an
+entry are used only when the response shows they are the entry's own blob: an entry whose
+served content is not shown to be that blob (a link served as its target's bytes under
+the link's own path, or a file served without its content) is treated as not a plain
+file. The same holds for the landing's own read of the file it writes: the write is
+judged against, merged into and checked for shrinkage against the branch's copy only
+when that copy is shown to be a plain file's own bytes, and otherwise does not proceed.
+Staging the judged files in the
+checkout MUST NOT write through a symbolic link, and MUST NOT stand a plain file where the
+checkout's commit holds a link or a submodule. The checkout itself is never moved. A PR that delivers a `gate: human` brief
+MAY carry an informational banner naming the decision issue and whether a ruling is
+recorded; the banner blocks nothing.
+
+**What makes it bind.** A pull-request check binds a merge only once the repository's
+branch protection lists it as required. Making the check required is a repository-admin
+act; installing the workflow does not do it, and a conforming installer MUST NOT claim
+otherwise.
+
 ## 5. Next-up semantics
 
 ### 5.1 Generation
@@ -476,6 +657,12 @@ A conforming linter MUST:
 9. Flag any design-decision record (`registers-v1.md` §7) missing its ordered
    `consequence` axis, its `human:<name>` `decided-by` stamp, or its enumerated
    alternatives.
+10. Flag, as the offline layer of the decision-gate hold (section 4.5), any change that
+    moves, relabels or drops a `gate: human` brief whose frontmatter does not record a
+    `decision-issue:` and a well-formed `ruling:` link to that issue, any change that
+    leaves such a brief's board id resolving to more than one record, and any change that
+    leaves an unreadable board record (section 4.5, item 5). The finding MUST say
+    that it checked only for a well-formed link, not who wrote the linked comment.
 
 ## 8. Spec and scoping-doc lifecycle
 

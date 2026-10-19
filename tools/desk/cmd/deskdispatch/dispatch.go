@@ -230,6 +230,7 @@ func cmdDispatch(args []string) error {
 	if err := fs.Parse(args[1:]); err != nil {
 		return deskkit.Refused("deskdispatch: bad flags: " + err.Error())
 	}
+	deskkit.PerfCommand(perfVerbs, perfKitVerb("dispatch", *kit))
 	if err := applyOverride(); err != nil {
 		return err
 	}
@@ -355,6 +356,13 @@ func dispatch(o dispatchOpts) error {
 			stepClaimAcquire, briefIDFromItem(o.item), repo, followUp.pr, branch)
 	}
 
+	// DECISION HOLD — before the claim (briefadmission.go). A fresh worker dispatch of a
+	// human-gated brief whose decision issue is open and unruled is held here, so no claim
+	// cycle or worker slot is spent discovering the open decision after pickup.
+	if err := briefDecisionHold(o, plan, repo); err != nil {
+		return err
+	}
+
 	// Advisory write-scope overlap echo, BEFORE the claim — a coordination hint
 	// the operator sees, then the dispatch PROCEEDS. It never blocks, never gates the claim,
 	// and carries no exit code: a foreseeable merge collision on a shared file is surfaced now
@@ -395,30 +403,11 @@ func dispatch(o dispatchOpts) error {
 		}
 	}
 
-	// ADMISSION (example-stream/18) — the per-class reservation gate, serialized across
-	// dispatchers, BEFORE the durable item claim. It is inert unless ASSAY_REPAIR_ADMISSION=on
-	// (returns a nil release and no error), so the shipped default flow is unchanged. When on, an
-	// ADMIT hands back a lease-release that stays held THROUGH stepClaim so the count->decide->claim
-	// window is atomic across hosts; a HOLD or a could-not-check refuses HERE, before any durable
-	// item state exists — a refused fresh dispatch never wedges the item because no claim was taken.
-	admitRelease, admitErr := enforceAdmission(o, plan, repo, auth)
-	if admitErr != nil {
-		return admitErr
-	}
-
-	if err := stepClaim(o, repo, plan.claimTool, plan.claimToolIsScript, auth, plan.claimKey); err != nil {
-		// The admission lease was taken and no item claim was placed — release it so a corrected
-		// re-run is not serialized behind a dispatcher that never claimed. The recovery order
-		// (reserve -> claim -> release) holds: with no item claim there is no occupancy to leak.
-		if admitRelease != nil {
-			admitRelease()
-		}
+	// ADMISSION (example-stream/18) then the durable item claim, as one sequence: see admitAndClaim.
+	if err := admitAndClaim(o, plan, repo, auth, func() error {
+		return stepClaim(o, repo, plan.claimTool, plan.claimToolIsScript, auth, plan.claimKey)
+	}); err != nil {
 		return err
-	}
-	// The item claim is now the durable occupancy; the count->decide->claim window is closed, so
-	// release the serialization lease (a crash before here would have expired it by TTL anyway).
-	if admitRelease != nil {
-		admitRelease()
 	}
 	o.say("%s OK: %s claimed in %s (claim key %s) via %s, store %s, authenticated by %s",
 		stepClaimAcquire, o.item, repo, plan.claimKey, plan.claimTool, plan.claimStore.Label(), auth.source)
@@ -861,6 +850,10 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 			"step %s: --tier %q is outside the tier vocabulary (%s). The tier is an attestation of what was "+
 				"launched, so an unrecognised value must not be recorded as though it meant something.",
 			stepModelStamp, o.tier, strings.Join(deskkit.DispatchTiers(), "|")))
+	}
+	// The brief's own exec-tier against --tier (briefadmission.go): pure, so here, pre-claim.
+	if err := briefTierRefusal(o); err != nil {
+		return plan, err
 	}
 
 	// BOTH kits must be readable now. The common kit is checked here and not only at

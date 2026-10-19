@@ -1,0 +1,47 @@
+{
+  "test": "go test ./cmd/deskpr/ -run 'DecisionGateBanner|CreateInsertsDecisionGateBanner|CreateNoBannerForModelGate' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL",
+    "file": "cmd/deskpr/deskpr.go",
+    "old": "\tif nb, added := withDecisionGateBanner(body, *root, dir); added {",
+    "new": "\tif nb, added := withDecisionGateBanner(body, *root, dir); false && added {"
+  },
+  "mutations": [
+    {
+      "name": "deskpr create never inserts the banner (a reviewer reading the body is not told the brief is gate: human and unruled)",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\tif nb, added := withDecisionGateBanner(body, *root, dir); added {",
+      "new": "\tif nb, added := withDecisionGateBanner(body, *root, dir); false && added {"
+    },
+    {
+      "name": "banner on every brief (the gate: human test is dropped, so a gate: model PR is told it is held)",
+      "file": "cmd/deskpr/decisiongatebanner.go",
+      "old": "\tif !ok || !info.gateHuman {",
+      "new": "\tif !ok {"
+    },
+    {
+      "name": "banner stacks on a re-run (the marker check is dropped)",
+      "file": "cmd/deskpr/decisiongatebanner.go",
+      "old": "\tif strings.Contains(string(body), decisionGateBannerMarker) {",
+      "new": "\tif false && strings.Contains(string(body), decisionGateBannerMarker) {"
+    },
+    {
+      "name": "banner claims RULING LINKED with no decision issue on record",
+      "file": "cmd/deskpr/decisiongatebanner.go",
+      "old": "\tif info.rulingLinked && info.decisionIssue > 0 {",
+      "new": "\tif true {"
+    },
+    {
+      "name": "an Issue: or Authors: trailer gets the banner (only a Brief: trailer delivers a brief)",
+      "file": "cmd/deskpr/decisiongatebanner.go",
+      "old": "len(trs) == 0 || trs[0].Kind != deskkit.TrailerBrief {",
+      "new": "len(trs) == 0 {"
+    },
+    {
+      "name": "a relative --root is read from the process cwd, not the work dir",
+      "file": "cmd/deskpr/decisiongatebanner.go",
+      "old": "\t\troot = filepath.Join(dir, root)",
+      "new": "\t\troot = filepath.Clean(root)"
+    }
+  ]
+}

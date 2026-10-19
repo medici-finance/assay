@@ -150,6 +150,11 @@ func (f *ciRecordingForge) ListIssueLabelEvents(repo ForgeRepo, number int) ([]L
 	return nil, nil
 }
 
+func (f *ciRecordingForge) IssueLabelHistory(repo ForgeRepo, number int) (*LabelHistory, error) {
+	f.rec("IssueLabelHistory")
+	return nil, nil
+}
+
 func (f *ciRecordingForge) ListComments(repo ForgeRepo, number int) ([]Comment, error) {
 	f.rec("ListComments")
 	return nil, nil

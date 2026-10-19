@@ -20,9 +20,11 @@ description: >-
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> **Every `gh` call carries this role's `GH_TOKEN`, reads included.** When no desk verb covers a forge call, run it only through the recipe in [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role), never a hand-typed shortcut. That recipe takes the role from `$DESK_LOOP`, mints it with `desktoken`, scopes the token to that one command without exporting it, and stops before `gh` unless the mint exited 0 and the token file holds a non-whitespace token. A bare `gh` call runs as the host's stored login, which is usually a human's, so a desk never runs one, not even for a read.
+
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
-> Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
+> Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
 The **intake-desk** is the generic front door of the process-desk pipeline — the first of the four
 desks (`intake-desk → worker-desk → pr-review-desk → verify-desk`). Where pr-review-desk watches
@@ -85,11 +87,12 @@ whose errors compound downstream. `scanloop` EMITS this half for a model tier, n
 ## Boot sequence
 
 `deskboot intake-desk` — loop identity, `deskwt prune`, worktree lock, roster self-declare, the
-five-check `deskroster preflight --role issue-loop`, the issue-loop token mint, and a read-only
-board fetch. Each step prints one line; the first red one stops the boot and names itself. **A red
-preflight is `could-not-run` for the WHOLE pass:** report the ONE summary line and STOP — do not
-claim work, and do not file an issue about the desk's own envelope (each failing check names the
-issue that owns it). Two intake-specific residues after boot:
+five-check `deskroster preflight --role issue-loop`, the issue-loop token mint, a read-only board
+fetch, worktree currency, and first-sweep prerequisites (forge mapping, desk-tools pin). Each step
+prints one line; the first red one stops the boot and names itself. **A red preflight is
+`could-not-run` for the WHOLE pass:** report the ONE summary line and STOP — do not claim work, and
+do not file an issue about the desk's own envelope (each failing check names the issue that owns
+it). Two intake-specific residues after boot:
 
 - **The scan scope comes from the tool; this skill carries no repo list.** `deskroster repos
   --scope scan` prints the front door this desk owns — the same roster value the scanner and
@@ -323,7 +326,9 @@ correctness). A **mutating** response does not converge harmlessly: hence §Clos
    reuses the class record, never rediscovers it. A production-down or security symptom stays `todo`;
    the driver's own-login `bleed` reply naming a parked symptom sets it `todo`, `Parked` dropped.
    **Re-park:** a scanner `reactivate` (excluded label removed or reopened) sets a parked row `todo`,
-   body kept, so each pass re-blocks a `todo` row still saying `Parked`. `intended-control` is a
+   body kept, so each pass re-blocks a `todo` row still saying `Parked`; when the excluded label was
+   removed by anything other than a rostered human, the scanner holds the item until the
+   ratifying identity has commented on the issue since the label was applied. `intended-control` is a
    wording fix for its refusal-text owner, never design work.
 2. **`close-candidate` — the brief-write for a no-merge close.** When an issue must close with NO
    merged fix (`FIXED-NOT-CLOSED | WONTFIX | DUPLICATE | STALE`), mark the placeholder frontmatter
@@ -511,9 +516,11 @@ Stated once for every desk; this skill adds only what is its own above.
   precise, *wrong* line numbers. State the SHA a sibling-repo detail was cross-checked against, or
   don't cite it; cannot reach the remote and cannot cross-check → **could-not-check**, never a
   claim badged as re-verified.
-- **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskpost`,
-  `deskreply`, `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script; a `gh`
-  call no verb covers runs as the role App per desk-shell.md §Forge CLI as the role. A shared
+- **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskreply`,
+  `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script; a `gh`
+  call no verb covers runs as the role App per desk-shell.md §Forge CLI as the role. For comments,
+  use `deskfile attach` on issues or `deskreply` on this desk's own PRs; `deskpost comment`
+  is reserved for `pr-review-desk`. A shared
   human/operator login makes authorship ambiguous; a token 404-ing on a repo it should cover means
   the wrong installation, never "App not installed". **Fallback:** the App genuinely not installed on
   a target repo (`desktoken coverage <role> --repo <owner>/<repo>` exits 5; a missing human `gh`

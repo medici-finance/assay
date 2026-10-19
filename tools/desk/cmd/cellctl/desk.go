@@ -370,9 +370,13 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 		// A sibling launch of this role may hold the lease for a moment; wait a little,
 		// then name the holder and say whether it is current. Only an explicit
 		// --end-stale-lock-holder lets a proven-stale own-cell holder be ended.
-		lease, err := cellcadence.AcquireRole(c.cadenceDir(role), cellcadence.RoleLock{
-			Cell: c.Name, Role: role, Wait: roleLeaseWait, EndStale: o.EndStaleLockHolder,
-			OptIn: "--end-stale-lock-holder", Log: os.Stderr,
+		var lease *cellcadence.Lease
+		err := launchStep("launch-role-lease", func() (aerr error) {
+			lease, aerr = cellcadence.AcquireRole(c.cadenceDir(role), cellcadence.RoleLock{
+				Cell: c.Name, Role: role, Wait: roleLeaseWait, EndStale: o.EndStaleLockHolder,
+				OptIn: "--end-stale-lock-holder", Log: os.Stderr,
+			})
+			return aerr
 		})
 		if err != nil {
 			die("desk: role already owned or cannot lock: %v", err)

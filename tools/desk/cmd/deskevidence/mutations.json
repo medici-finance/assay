@@ -160,14 +160,116 @@
     {
       "name": "the mint moves back below forge resolution and admission (the original #2458 order: admission's forge read meets the custody step's empty-token refusal, and every landing, --dry-run included, refuses)",
       "file": "cmd/deskevidence/deskevidence.go",
-      "old": "\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n",
-      "new": "\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n"
+      "old": "\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\tfg = deskkit.EvidenceLandingForge(fg, fr, target, branch)\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n",
+      "new": "\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\tfg = deskkit.EvidenceLandingForge(fg, fr, target, branch)\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n"
     },
     {
       "name": "mint above the command-line refusals (a call refused on its arguments alone spends a token mint — on GitLab, a credential rotation)",
       "file": "cmd/deskevidence/deskevidence.go",
       "old": "\tac.repo = repoSlug\n",
       "new": "\tac.repo = repoSlug\n\tif merr := mintTokenFn(repoSlug); merr != nil {\n\t\treturn merr\n\t}\n"
+    },
+    {
+      "name": "decision-gate hold not consulted on a landing (the network layer of lifecycle-v1 §4.5 is skipped; a bot-written ruling link lands a status move)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\tif len(gateRefused) > 0 {",
+      "new": "\tif false && len(gateRefused) > 0 {"
+    },
+    {
+      "name": "the branch's board is not consulted (a brief relabelled gate: human on the target branch after dispatch is invisible to the judge and an unruled move of it lands)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "commitContent, boardEdits)",
+      "new": "commitContent, boardEdits[:0])"
+    },
+    {
+      "name": "branch board ignores every changed file (a board change on the target branch since the home's commit is not seen)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "return p != \"\" && p != targetRepoPath && decisionGateBoardRe.MatchString(p) && !decisionGateRegisterRe.MatchString(p)",
+      "new": "return false"
+    },
+    {
+      "name": "branch board reads a compare that cannot be shown complete as complete (a truncated file listing hides a board change)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if cmp == nil || !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {",
+      "new": "if cmp == nil {"
+    },
+    {
+      "name": "branch board lets a compare error through (an unreadable branch is read as an unchanged board)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "cmp, err := fg.CompareRefs(fr, head, tip)\n\tif err != nil {",
+      "new": "cmp, err := fg.CompareRefs(fr, head, tip)\n\tif false && err != nil {"
+    },
+    {
+      "name": "branch board lets an unreadable changed file through (a changed board file the judge never sees)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "fc, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: f.Filename, Ref: tip})\n\t\tif rerr != nil {",
+      "new": "fc, rerr := fg.ReadFile(fr, deskkit.ReadFileInput{File: f.Filename, Ref: tip})\n\t\tif false && rerr != nil {"
+    },
+    {
+      "name": "branch board reads a removed file as present (a brief the branch deleted still stands for the judge)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if f.Status == \"removed\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "branch board not staged in the judge's worktree (the after run reads the home's older board)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "restoreBoard, berr := stageBoardEdits(root, board)",
+      "new": "restoreBoard, berr := stageBoardEdits(root, nil)"
+    },
+    {
+      "name": "branch board not applied to the judge's base (the before run reads the home's older board)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "for _, e := range board {\n\t\tif e.Delete {\n\t\t\tif _, err := git(nil, \"update-index\"",
+      "new": "for _, e := range board[:0] {\n\t\tif e.Delete {\n\t\t\tif _, err := git(nil, \"update-index\""
+    },
+    {
+      "name": "decision-gate could-not-check swallowed (statusgen missing or too old lets a landing through unchecked)",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\tif gerr != nil {\n\t\treturn gerr\n\t}",
+      "new": "\tif false && gerr != nil {\n\t\treturn gerr\n\t}"
+    },
+    {
+      "name": "decision-gate diff reports pre-existing refusals as introduced (every landing on a board with an old fault is refused)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\tif had[l] || seen[l] {",
+      "new": "\t\tif seen[l] {"
+    },
+    {
+      "name": "decision-gate stage never reverted (the check leaves the landing's bytes in the local worktree)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\tif existed {\n\t\t\t_ = os.WriteFile(abs, orig, 0o644)",
+      "new": "\t\tif false {\n\t\t\t_ = os.WriteFile(abs, orig, 0o644)"
+    },
+    {
+      "name": "an old statusgen without --decision-gate read as clean (the flag error is not recognised as could-not-check)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\tif strings.Contains(out, \"flag provided but not defined\") {\n\t\treturn nil, deskkit.Unverifiable(",
+      "new": "\tif strings.Contains(out, \"flag provided but not defined\") {\n\t\treturn nil, nil\n\t\treturn nil, deskkit.Unverifiable("
+    },
+    {
+      "name": "a whole-change (board) refusal diffed like a brief refusal (an unresolvable base cancels out and the landing passes)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\t\tif strings.HasPrefix(l, decisionGateWholeChange) {",
+      "new": "\t\t\tif false && strings.HasPrefix(l, decisionGateWholeChange) {"
+    },
+    {
+      "name": "decision-gate judged against some other revision than the synthetic base built from the content the write replaces (the uncommitted write is no longer exactly what is judged)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\"--decision-gate\", \"--decision-gate-base\", base)",
+      "new": "\"--decision-gate\", \"--decision-gate-base\", \"HEAD~0x\")"
+    },
+    {
+      "name": "decision-gate judged against the worktree's own HEAD, not the content the write replaces (a landing committed locally in place cancels itself and the unruled move lands)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\tbase, err := decisionGateReplacedBaseFn(root, targetRepoPath, replaced, replacedExists, board)\n",
+      "new": "\tbase, err := \"HEAD\", error(nil)\n"
+    },
+    {
+      "name": "decision-gate 'before' run stages the worktree's own bytes instead of the content the write replaces (an uncommitted in-place edit cancels itself and the unruled move lands)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\tif werr := os.WriteFile(abs, replaced, 0o644); werr != nil {",
+      "new": "\t\tif werr := os.WriteFile(abs, orig, 0o644); werr != nil {"
     },
     {
       "name": "skip the register redaction (a non-private register lands a private repository's name and the clear dispatch_ref)",
@@ -218,6 +320,66 @@
       "new": "if terr := error(nil); terr != nil {"
     },
     {
+      "name": "branch board stages a link or submodule as a plain file (the forge serves a link as its target's bytes or as nothing, which the board reads as an unreadable record) — S-2266-7",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\tif fc.Kind != deskkit.FileKindRegular {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "branch board compares and reads at the moving branch name, not the tip resolved once (a push between the compare and a read pairs one tip's listing with another's bytes)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "deskkit.ReadFileInput{File: f.Filename, Ref: tip}",
+      "new": "deskkit.ReadFileInput{File: f.Filename, Ref: branch}"
+    },
+    {
+      "name": "branch board lets an unresolvable branch tip through (the compare runs against no fixed commit)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if err != nil || tipCommit == nil || strings.TrimSpace(tipCommit.SHA) == \"\" {",
+      "new": "if err != nil || tipCommit == nil || strings.TrimSpace(tipCommit.SHA) == \"\" {\n\t\ttipCommit = &deskkit.RepoCommit{SHA: branch}\n\t}\n\tif false {"
+    },
+    {
+      "name": "branch board accepts a home HEAD that is not an ancestor of the tip (the home's own board edits stay in the judge)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if cmp.BehindBy != 0 || (cmp.Status != \"ahead\" && cmp.Status != \"identical\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "branch board deletes a copied file's source (a previous name is gone only on a rename)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if f.Status == \"renamed\" && isBoard(f.PreviousFilename) && !seen[f.PreviousFilename] {",
+      "new": "if isBoard(f.PreviousFilename) && !seen[f.PreviousFilename] {"
+    },
+    {
+      "name": "decision-gate stage writes the target through a link in the landing home (the staged bytes reach whatever the link names) — S-2266-7",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if lerr := refuseLinkedHomePath(root, targetRepoPath); lerr != nil {",
+      "new": "if lerr := refuseLinkedHomePath(root, targetRepoPath); false && lerr != nil {"
+    },
+    {
+      "name": "branch board staged through a link in the landing home (the branch's bytes reach whatever the link names) — S-2266-7",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\tif lerr := refuseLinkedHomePath(root, e.Path); lerr != nil {",
+      "new": "\t\tif lerr := refuseLinkedHomePath(root, e.Path); false && lerr != nil {"
+    },
+    {
+      "name": "decision-gate base replaces a link or submodule in the home's HEAD with a plain blob (the base is not the tree the board reads) — S-2266-7",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if err := headEntriesPlain(git, head, p); err != nil {",
+      "new": "if err := headEntriesPlain(git, head, p); false && err != nil {"
+    },
+    {
+      "name": "decision-gate stage leaves the directories it created for the target behind",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\tdefer removeCreatedDirs(created)",
+      "new": "\tdefer removeCreatedDirs(created[:0])"
+    },
+    {
+      "name": "branch board stage leaves the directories it created behind",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\t\tremoveCreatedDirs(dirs[i])",
+      "new": "\t\t\tremoveCreatedDirs(nil)"
+    },
+    {
       "name": "disarm the on-behalf-of stamp (an App-run Evidence row with no principal lands unstamped)",
       "file": "cmd/deskevidence/principalstamp.go",
       "old": "\treturn strings.HasSuffix(id, \"[bot]\")",
@@ -234,6 +396,102 @@
       "file": "cmd/deskevidence/principalstamp.go",
       "old": "\t\t\tpos -= len(tag)",
       "new": "\t\t\tpos -= 0 * len(tag)"
+    },
+    {
+      "name": "the landing takes a target the forge served without proof as the branch's copy (an over-limit brief or board arrives empty: the merge strips the frontmatter and the judge compares against nothing) — S-2266-8",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "\t\tif kerr := plainFileRead(cur, fr, targetRepoPath, branch, \"the landing's target\", false); kerr != nil {",
+      "new": "\t\tif kerr := plainFileRead(cur, fr, targetRepoPath, branch, \"the landing's target\", false); false && kerr != nil {"
+    },
+    {
+      "name": "the row-scope write-time re-fetch rebases onto a table the forge served without proof — S-2266-8",
+      "file": "cmd/deskevidence/rowscope.go",
+      "old": "\tif kerr := plainFileRead(fresh, fr, targetRepoPath, branch, \"the row-scope write-time re-check\", false); kerr != nil {",
+      "new": "\tif kerr := plainFileRead(fresh, fr, targetRepoPath, branch, \"the row-scope write-time re-check\", false); false && kerr != nil {"
+    },
+    {
+      "name": "a verified outcome's closure matches a link served as its target's bytes — S-2266-8",
+      "file": "cmd/deskevidence/outcome.go",
+      "old": "\t\t\tif kerr := plainFileRead(remote, repo, rel, branch, \"the verified outcome's landed closure\", true); kerr != nil {",
+      "new": "\t\t\tif kerr := plainFileRead(remote, repo, rel, branch, \"the verified outcome's landed closure\", true); false && kerr != nil {"
+    },
+    {
+      "name": "a receipt's brief hash is checked against a brief served without its content (the hash of nothing matches) — S-2266-8",
+      "file": "cmd/deskevidence/receiptvalidate.go",
+      "old": "\tif kerr := plainFileRead(cur, fr, briefPath, branch, \"the receipt's brief revision\", true); kerr != nil {",
+      "new": "\tif kerr := plainFileRead(cur, fr, briefPath, branch, \"the receipt's brief revision\", true); false && kerr != nil {"
+    },
+    {
+      "name": "every read the forge did not type is taken as a plain file, on the main landing lane too — S-2266-8",
+      "file": "cmd/deskevidence/plainread.go",
+      "old": "(untypedOK && fc.Kind == \"\")",
+      "new": "fc.Kind == \"\""
+    },
+    {
+      "name": "the publication snapshot accepts a non-regular destination mode (a symlink's target-path text or an executable is read as the brief's prior content and written over)",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "\t\tif f.Mode != 0100644 || b == nil || b.Typename != \"Blob\"",
+      "new": "\t\tif b == nil || b.Typename != \"Blob\""
+    },
+    {
+      "name": "the publication snapshot accepts a blob GitHub flags as binary (converted bytes become the destination's prior content)",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "b.IsBinary == nil || *b.IsBinary || b.Text == nil",
+      "new": "b.IsBinary == nil || b.Text == nil"
+    },
+    {
+      "name": "the publication snapshot stops comparing the blob's byte size with the returned text (partial or converted text is taken as the whole file)",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "b.ByteSize == nil || *b.ByteSize != len(*b.Text) {",
+      "new": "b.ByteSize == nil {"
+    },
+    {
+      "name": "the publication snapshot stops binding the returned text to the Git blob id (same-length altered bytes are written under the real blob's compare-and-swap)",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "\t\tif fmt.Sprintf(\"%x\", h.Sum(nil)) != b.OID {",
+      "new": "\t\tif false && fmt.Sprintf(\"%x\", h.Sum(nil)) != b.OID {"
+    },
+    {
+      "name": "the publication snapshot hands an attestation with unknown body-edit history to the trust reducer",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "wi.Comments.Nodes == nil || !ti.bodyHistoryKnown {",
+      "new": "wi.Comments.Nodes == nil {"
+    },
+    {
+      "name": "the publication snapshot accepts a comments page whose hasNextPage is null (an incomplete comment history is read as complete)",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "wi.Comments.PageInfo.HasNextPage == nil || wi.Comments.Nodes == nil",
+      "new": "wi.Comments.Nodes == nil"
+    },
+    {
+      "name": "a scoped publication forge writes again in process after a write or a lost acknowledgement (the consumed snapshot is replayed)",
+      "file": "internal/deskkit/evidencelanding.go",
+      "old": "\tif e.attempted {\n\t\treturn nil, Refused(\"evidence publication already attempted",
+      "new": "\tif false {\n\t\treturn nil, Refused(\"evidence publication already attempted"
+    },
+    {
+      "name": "#2794: accept a provider author without resolving the commit receipt",
+      "file": "cmd/deskevidence/github.go",
+      "old": "c, err := fg.GetCommit(fr, string(res.CommitSHA))",
+      "new": "c, err := &deskkit.RepoCommit{SHA: string(res.CommitSHA)}, error(nil)"
+    },
+    {
+      "name": "#2794: publish a file precondition as the direct Evidence receipt",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "string(res.CommitSHA), delta, attr)",
+      "new": "string(res.ContentID), delta, attr)"
+    },
+    {
+      "name": "#2794: call a backend noop a new commit",
+      "file": "cmd/deskevidence/github.go",
+      "old": "if res == nil || res.Changed {",
+      "new": "if true {"
+    },
+    {
+      "name": "#2794: ignore a conflicting commit account when the response author matches",
+      "file": "cmd/deskevidence/github.go",
+      "old": "if strings.TrimSpace(c.AuthorLogin) != \"\" {",
+      "new": "if res.Author == \"\" && strings.TrimSpace(c.AuthorLogin) != \"\" {"
     }
   ]
 }

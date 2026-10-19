@@ -258,11 +258,34 @@ func TestSnapshotFromSweepAtomicWrite(t *testing.T) {
 	}
 }
 
+// regression: #2827
+func TestOneOfExactMatches(t *testing.T) {
+	stringOrSentinel := map[string]interface{}{
+		"oneOf": []interface{}{
+			map[string]interface{}{"type": "string"},
+			map[string]interface{}{"const": "could-not-check"},
+		},
+	}
+	for _, tc := range []struct {
+		name  string
+		value interface{}
+	}{
+		{name: "zero matches", value: 42},
+		{name: "two matches", value: "could-not-check"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if errs := validateAgainstSchema(stringOrSentinel, tc.value, "$"); len(errs) == 0 {
+				t.Fatalf("oneOf accepted %v; want exactly one matching alternative", tc.value)
+			}
+		})
+	}
+}
+
 // --- a minimal, self-contained JSON Schema validator ---
 //
 // The repo vendors no JSON-schema library and the offline envelope forbids adding one, so this
 // validates the SUBSET of draft-2020-12 the desksupervise-status-v1 schema uses: type (string
-// or array of strings), const, enum, required, properties, items, and additionalProperties
+// or array of strings), const, enum, not, oneOf, required, properties, items, and additionalProperties
 // (bool). It is deliberately strict on additionalProperties:false — an emitted field the schema
 // does not name is a violation, which is exactly the drift Verify row 3 exists to catch.
 
@@ -270,25 +293,33 @@ func validateAgainstSchema(schema map[string]interface{}, value interface{}, pat
 	var errs []string
 
 	// oneOf (example-stream/13's resource fields: [measured type, {const: could-not-check},
-	// null]) is checked on its own and returns immediately — a value need only satisfy ONE
+	// null]) is checked on its own and returns immediately — a value must satisfy exactly one
 	// alternative, so the ordinary const/enum/type/properties checks below (which all AND
 	// together) do not apply to the oneOf wrapper schema itself.
 	if oneOf, ok := schema["oneOf"].([]interface{}); ok {
-		matched := false
+		matches := 0
 		var lastErrs []string
 		for _, sub := range oneOf {
 			ss, _ := sub.(map[string]interface{})
 			subErrs := validateAgainstSchema(ss, value, path)
 			if len(subErrs) == 0 {
-				matched = true
-				break
+				matches++
+			} else {
+				lastErrs = subErrs
 			}
-			lastErrs = subErrs
 		}
-		if !matched {
+		if matches == 0 {
 			errs = append(errs, fmt.Sprintf("%s: value %v matched none of the oneOf alternatives (last tried: %v)", path, value, lastErrs))
+		} else if matches > 1 {
+			errs = append(errs, fmt.Sprintf("%s: value %v matched %d oneOf alternatives; want exactly one", path, value, matches))
 		}
 		return errs
+	}
+
+	if not, ok := schema["not"].(map[string]interface{}); ok {
+		if notErrs := validateAgainstSchema(not, value, path); len(notErrs) == 0 {
+			errs = append(errs, fmt.Sprintf("%s: value %v matched a forbidden schema", path, value))
+		}
 	}
 
 	if c, ok := schema["const"]; ok {

@@ -30,7 +30,7 @@ func TestRunTeamNames(t *testing.T) {
 	if code := run([]string{"--org", "example-org", "--tier", "team", "--out", dir}, &errb); code != 0 {
 		t.Fatalf("exit %d, stderr=%s", code, errb.String())
 	}
-	for _, want := range []string{"example-org-read.png", "example-org-act.png"} {
+	for _, want := range []string{"example-org-read.png", "example-org-act.png", "example-org-review.png"} {
 		if _, err := os.Stat(filepath.Join(dir, want)); err != nil {
 			t.Errorf("missing %s", want)
 		}
@@ -65,7 +65,7 @@ func TestRunSizesMultiple(t *testing.T) {
 	if code := run([]string{"--org", "example-org", "--tier", "team", "--out", dir, "--sizes", "200,512"}, &errb); code != 0 {
 		t.Fatalf("exit %d: %s", code, errb.String())
 	}
-	for _, want := range []string{"example-org-read-200.png", "example-org-read-512.png", "example-org-act-200.png", "example-org-act-512.png"} {
+	for _, want := range []string{"example-org-read-200.png", "example-org-read-512.png", "example-org-act-200.png", "example-org-act-512.png", "example-org-review-200.png", "example-org-review-512.png"} {
 		if _, err := os.Stat(filepath.Join(dir, want)); err != nil {
 			t.Errorf("missing %s", want)
 		}

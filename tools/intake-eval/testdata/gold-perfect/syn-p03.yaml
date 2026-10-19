@@ -1,0 +1,15 @@
+# SYNTHETIC test fixture: invented inbound, never a real disposition.
+id: syn-p03
+inbound: "Synthetic inbound syn-p03: a reader reports that the widget counter shows a negative total."
+expected_exit: bug/issue
+methodology_version: "2026-01-01"
+scoring: scored
+provenance:
+  type: synthetic-ruling
+  tier: synthetic-tier
+  ratification: confirmed
+  ref: synthetic/register#syn-p03
+  confirmed_by: synthetic-reviewer
+  date: "2026-01-01"
+  quote: "Synthetic: routed syn-p03 to bug/issue."
+notes: "Synthetic fixture for the scorer's own tests."

@@ -1,0 +1,31 @@
+{
+  "advisory": false,
+  "unmeasured": "fail",
+  "regression_delta": 0.05,
+  "baseline": {
+    "spec/brief": 1.0,
+    "bug/issue": 1.0,
+    "finding": 1.0,
+    "needs-decision": 1.0,
+    "rejected/watching": 1.0
+  },
+  "exits": {
+    "spec/brief": {
+      "precision": 0.85,
+      "f1": 0.8
+    },
+    "bug/issue": {
+      "precision": 0.85,
+      "f1": 0.8
+    },
+    "finding": {
+      "f1": 0.7
+    },
+    "needs-decision": {
+      "f1": 0.7
+    },
+    "rejected/watching": {
+      "f1": 0.7
+    }
+  }
+}

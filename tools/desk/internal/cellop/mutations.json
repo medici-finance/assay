@@ -1,0 +1,89 @@
+{
+  "test": "go test -tags cellopfixture ./internal/cellop ./cmd/cellctl -count=1 -timeout=300s -run '^(TestOutcomeExitCodes|TestPlanDigestIsJCS|TestStoreModesAndStrictDecode|TestApplyRefusesOffTTYAndDeskSession|TestConcurrentApplyRunsOnce|TestApplyReverifies|TestPlanExpiryAndForeignCell|TestMarkerResetBound|TestBatchConsumedFirstAndStops|TestFailureAfterConsume|TestReadConfirm|TestEveryStateChangingInvocationRequiresTTY|TestApplyRefusesDeskSession|TestNoApprovalSurface|TestOneApplyPath|TestConsentTreeChecks|TestPlanApplyRoundTrip)$'",
+  "control": {
+    "name": "skip the typed confirm",
+    "file": "internal/cellop/apply.go",
+    "old": "if err != nil || strings.TrimSpace(typed) != p.ConfirmCode {",
+    "new": "if false && (err != nil || strings.TrimSpace(typed) != p.ConfirmCode) {"
+  },
+  "mutations": [
+    {
+      "name": "consume after the effect",
+      "file": "internal/cellop/apply.go",
+      "old": "\tif err := s.Store.Consume(id, s.now()); errors.Is(err, ErrAlreadyConsumed) {\n\t\treturn refuse(Refused, ReasonAlreadyConsumed, \"plan \"+id+\" was already applied\")\n\t} else if err != nil {\n\t\treturn refuse(CouldNotCheck, ReasonUnmeasured, \"consume: \"+err.Error())\n\t}\n\tif !p.IsBatch() {\n\t\tran, o, reason, detail := s.run(&r, p, 0)\n",
+      "new": "\tif !p.IsBatch() {\n\t\tran, o, reason, detail := s.run(&r, p, 0)\n\t\tif err := s.Store.Consume(id, s.now()); errors.Is(err, ErrAlreadyConsumed) {\n\t\t\treturn refuse(Refused, ReasonAlreadyConsumed, \"plan \"+id+\" was already applied\")\n\t\t}\n"
+    },
+    {
+      "name": "batch not consumed before its first child",
+      "file": "internal/cellop/apply.go",
+      "old": "if err := s.Store.Consume(id, s.now()); errors.Is(err, ErrAlreadyConsumed) {",
+      "new": "if err := func() error { if p.IsBatch() { return nil }; return s.Store.Consume(id, s.now()) }(); errors.Is(err, ErrAlreadyConsumed) {"
+    },
+    {
+      "name": "skip a consumed child and continue",
+      "file": "internal/cellop/apply.go",
+      "old": "return refuse(stopOutcome(ran, Refused), ReasonAlreadyConsumed, \"step \"+c.ID+\" was already consumed; the sequence stops\")",
+      "new": "continue"
+    },
+    {
+      "name": "apply without the re-measure",
+      "file": "internal/cellop/apply.go",
+      "old": "if v != pc.Value {",
+      "new": "if false && v != pc.Value {"
+    },
+    {
+      "name": "accept a foreign cell",
+      "file": "internal/cellop/apply.go",
+      "old": "if !p.HasCell(s.Cell) {",
+      "new": "if false {"
+    },
+    {
+      "name": "plans never expire",
+      "file": "internal/cellop/plan.go",
+      "old": "func (p Plan) Expired(now time.Time) bool { return !now.Before(p.ExpiresAt()) }",
+      "new": "func (p Plan) Expired(now time.Time) bool { return false }"
+    },
+    {
+      "name": "apply off a terminal",
+      "file": "internal/cellop/apply.go",
+      "old": "if !s.Interactive {",
+      "new": "if false {"
+    },
+    {
+      "name": "apply in a desk session",
+      "file": "internal/cellop/apply.go",
+      "old": "if len(s.DeskMarkers) > 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "consume is not exclusive",
+      "file": "internal/cellop/consume.go",
+      "old": "os.O_WRONLY|os.O_CREATE|os.O_EXCL",
+      "new": "os.O_WRONLY|os.O_CREATE|os.O_TRUNC"
+    },
+    {
+      "name": "no pre-run terminal gate",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "gateStateChanging(cmd, args)",
+      "new": "_ = args"
+    },
+    {
+      "name": "exempt the variant flags of non-command verbs",
+      "file": "cmd/cellctl/cellop_fixture.go",
+      "old": "markStateChangingFlag(cmd, v)",
+      "new": "_ = v"
+    },
+    {
+      "name": "plan form counts as state-changing",
+      "file": "cmd/cellctl/cellop_cli.go",
+      "old": "if f := cmd.Flags().Lookup(\"plan\"); f != nil && f.Changed {\n\t\treturn false\n\t}",
+      "new": "if f := cmd.Flags().Lookup(\"plan\"); f != nil && f.Changed && false {\n\t\treturn false\n\t}"
+    },
+    {
+      "name": "an approval flag",
+      "file": "cmd/cellctl/cobra.go",
+      "old": "cellopFixtureCommands(root)",
+      "new": "cellopFixtureCommands(root)\n\troot.PersistentFlags().Bool(\"yes\", false, \"skip the confirm\")"
+    }
+  ]
+}

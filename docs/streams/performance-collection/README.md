@@ -12,7 +12,7 @@ spec: docs/streams/performance-collection/README.md
 
 # Optional performance collection
 
-**Status:** draft — bounded architecture amendment and executable brief set, 13 October 2026.
+**Status:** draft — collection and reporting amendment, updated 15 October 2026.
 Collection can start locally before any database, API or managed cell exists. This stream
 owns delivery of optional collection/storage plumbing; it does not replace the semantic
 owners of work, runner accounting, measurement definitions or continuing outcomes.
@@ -35,6 +35,10 @@ The first local contract/logger can be built against existing runner interfaces 
 fixtures now. Import of actual `perf-v1` files becomes useful as desk-tools/23 ships; it is
 an optional source, not a dependency that holds the local logger or database work hostage.
 No second implementation of desk-tools/23's timing hooks is authorized here.
+
+Refresh, 15 October 2026 at public main d430e8f18: the perf-v1 hooks and deskperf
+reader are now present on main; desk-tools/23 remains implemented pending independent
+verification. The preceding 13 October account is historical. perfdata remains absent.
 
 Read these controlling and proposed sources:
 
@@ -194,7 +198,7 @@ this draft nor its human-gated implementation briefs grants a live endpoint or c
 | graph-execution/06 and /26 | Preserve run-record and operational accounting authority. Optional sinks copy observations; future runtime migration carries those sinks rather than creating another journal. |
 | continuing-operations O02/O04 | Continue to own metric meanings and interpretation. The bounded transport schema is not `measurement-v1`; future adapters consume it with explicit basis/coverage and preserve canonical run references. |
 | Architecture R1/R2/R3/R6/R7 | Brief 01 documents separate storage/consent contracts; 02 wires existing sources and names unavailable future sources; 03–06 qualify storage, serving, transport and migration. No R1–R8 runtime activation dependency for local logging. |
-| qualgen, AssayScore, cockpit | Future consumers use a bounded offline export with version/coverage. Full dashboard/score changes and causal improvement claims are outside this delivery. |
+| qualgen, AssayScore, cockpit | Future consumers use a bounded offline export with version/coverage. The three operating reports below are included; full cockpit/score changes and causal improvement claims remain outside this delivery. |
 
 Source-level gaps motivating this work are visible in `statusgen/flow.go` (historian dwell,
 unimplemented check-run reader), `statusgen/assayscore.go` (decision-latency proxy), and
@@ -208,26 +212,130 @@ adapters and preservation tests; do not use missing quality evidence to justify 
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Local performance event contract, spool and offline report](brief-01-local-performance-event-contract-spool-and-offline-report.md) | 0 | L | todo | — | — |
-| 02 | [Producer adapters for workflow, usage and local performance](brief-02-producer-adapters-for-workflow-usage-and-local-performance.md) | 1 | L | todo | — | — |
+| 02 | [Producer adapters for workflow, usage and local performance](brief-02-producer-adapters-for-workflow-usage-and-local-performance.md) | 2 | L | todo | — | — |
 | 03 | [Separate TimescaleDB performance database and storage adapter](brief-03-separate-timescaledb-performance-database-and-storage-adapter.md) | 1 | L | todo | — | — |
 | 04 | [Authenticated performance ingestion API](brief-04-authenticated-performance-ingestion-api.md) | 2 | L | todo | — | — |
 | 05 | [Explicit resumable upload from the local spool](brief-05-explicit-resumable-upload-from-the-local-spool.md) | 1 | M | todo | — | — |
 | 06 | [Collection replay, retention, recovery and release qualification](brief-06-collection-replay-retention-recovery-and-release-qualification.md) | 3 | M | todo | — | — |
+| 07 | [On-demand three-report bundle and thin skill](brief-07-on-demand-operating-reports.md) | 3 | L | todo | — | — |
+| 08 | [Daily report generation and report-pack qualification](brief-08-daily-report-generation.md) | 4 | M | todo | — | — |
+| 09 | [Bounded performance issue and repair-PR loop](brief-09-bounded-performance-repair-loop.md) | 7 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path and dependency waves
 
-`01 local contract/log → 03 database → 04 collector → 06 complete-path qualification`.
-The parallel `01 → 02 producer adapters → 06` and `01 → 05 uploader → 06` paths also bind.
-The first useful delivery is 01 followed by 02; neither depends on 03, 04 or 05.
-The uploader develops against the contract and fake HTTP transport while the server is built.
+The first useful path is `01 local collection contract + desktools-v2/61 instrument contract → 02 real source adapters →
+07 on-demand reports → 08 daily generation`. Collection is delivered and its coverage
+checked before report integration. No database, hosted API, general journey schema or
+full managed runtime is a prerequisite for local reporting.
 
-- Wave 0: 01 — local contract, spool, preview and offline report.
-- Wave 1: 02 — source adapters; 03 — separate database; 05 — explicit uploader.
-- Wave 2: 04 — authenticated collector over the database adapter.
-- Wave 3: 06 — complete-path, retention, recovery and packaging qualification.
+- Wave 0: 01 — local contract, bounded spool, coverage and offline reader.
+- Wave 1: desktools-v2/61 — shared local instrument contract; 03 — separate database; 05 — explicit uploader.
+- Wave 2: 02 — version-selected source adapters; 04 — authenticated ingestion.
+- Wave 3: 07 — on-demand three-report bundle; 06 — remote-path qualification.
+- Wave 4: 08 — daily generation through the same report entrypoint.
+- Wave 7: 09 — bounded issue/repair proposal loop, held by its typed graph-execution
+  prerequisites (graph-execution/14 and /26 are wave 6, /16 wave 5). Those external
+  prerequisites can dominate delivery time.
 
-The real first constraint is review of this bounded collection/consent contract, not a live
-PostgreSQL deployment, the parked continuing-operations subject program or the full cell runtime.
-Existing local-only desk-tools/23 can ship independently. New schema/local logger implementation
-starts from checked-in fixtures and existing runner interfaces. API/db credentials are not prerequisites.
+The remote path remains `01 → 03 → 04 → 06`, with 02 and 05 also required by 06.
+Remote qualification does not hold local 07/08 hostage. The real local head is qualifying
+source coverage/retention, not deploying PostgreSQL. Existing perf-v1 import can start
+now, but absent historical CPU/call samples cannot be backfilled from delivery activity.
+Stream admission and acceptance remain separate from authoring these todo briefs.
+
+## Three operating reports — requested 15 October 2026
+
+The same versioned snapshot and deterministic calculations serve a command, a thin skill,
+a daily artifact and future API/cockpit consumers. Reporting reads saved facts only: it
+must not mint forge credentials, launch collectors, or contact a provider. Collection is
+an independently runnable bounded operation. A missing/stale source is an explicit gap;
+a failed capture must not replace a previously good artifact with a zero-filled report.
+
+| Report | Required content | Measurement boundary |
+|---|---|---|
+| Completed briefs | Daily unique real briefs first entering done, daily reopen/recompletion counts separately, seven-calendar-day rolling average, historical chart and table, per-repository/stream filters | Existing work/lifecycle completion predicate and stable identity. Initial sightings already done are opening balance, not new completions. Backfill observations carry precision and source revision. |
+| Stream progress | Since-prior-cutoff stage movements, added/removed/renamed scope, completed/open counts, aging, stalled/paused/blocked work and last meaningful movement | Evidence-backed hold reason, owner and blocker reference/as-of; unknown reason is explicit. A versioned stage/priority aging policy nominates stalls; no universal invented timeout. Current metadata is not a historical explanation. |
+| Tool performance | Per day/tool/verb/role/build/platform runs; total, arithmetic Avg and nearest-rank P95 invocation wall, child wall, own-process CPU and forge requests; historical charts/table; per-metric n and coverage | Milliseconds for durations; actual HTTP requests including retries where instrumented. Command count, GraphQL points and requests are distinct. Legacy child/forge counters are lower bounds; own CPU excludes descendants/provider CPU. |
+
+The duplicated requested wall-clock column is resolved as invocation wall and child-process
+wall. Child time can overlap and must not be added to parent time. Cross-tool totals are
+recorded invocation cost, not elapsed brief duration. Show unknown per field, not zero;
+small samples retain n. Tokens/input/output/cache usage and cost appear only where an
+approved workflow-profile source supplies them, with actual model and accounting revision.
+No synthetic tokens-per-brief allocation from shared session totals.
+
+### Retention and reproducibility
+
+Keep the existing perf-v1 seven-day raw policy unchanged. Before expiry, an explicitly
+configured collector persists consented observations or sufficient mergeable distributions
+and coverage into the optional local performance store. Support a 90-day fixture/report
+window; production raw/distribution/aggregate retention and byte caps are configured,
+not a silent extension of consent. Exact retained samples may supply exact nearest-rank
+P95; a sketch must be mergeable, versioned and display its error/method. Counts/sums alone
+cannot reconstruct P95. Never average daily percentiles or unweighted daily means.
+
+Reports bind source cutoffs/frontiers, identity/cohort/metric versions, timezone, instrument
+build/platform, sample counts, missing days, gaps, exclusions and stale inputs. Default UTC
+calendar days; an explicit configured reporting timezone controls all panels consistently
+and records DST boundaries. Rerunning the same snapshot/config produces equivalent JSON
+and charts. A source with no complete observation is unknown, not a zero-work day.
+Daily and on-demand generation can select the same snapshot; late data creates a new
+version/correction with provenance rather than silently changing a published result.
+
+### Ownership and transition
+
+Work semantics remain with existing lifecycle/flow owners, tool distributions with perfdata,
+and interpretation with continuing-operations. The report composes their typed results;
+it does not implement a second acceptance predicate or a second work historian. Existing
+statusgen flow output is a compatibility input; its current active-stage dwell stays a
+labelled proxy. The new performance store never becomes the run/lease/budget authority.
+Future R2/R4 process receipts feed the same adapters; R6 serves admitted source snapshots;
+R7 consumes the same authorized report API/library. Remote credentials stay outside pure
+reducers and the on-demand reader.
+
+A temporary read-only perf-v1 triage reader may rank total tool wall/CPU/calls before 01–08
+ship. It is not fleet coverage or a replacement collector. Retire it only after a released
+local command reproduces its fixture results and documented coverage limits.
+
+## Later bounded issue and repair-PR loop
+
+07/08 produce observations, not effect permission. Brief 09 adds assessment and proposal
+routing through existing intake, worker, review and verification owners; it is a bounded
+performance profile of continuing-operations, not another outcomes store or scheduler.
+
+Compare compatible build/platform/workload/cohort distributions under a versioned policy,
+with minimum coverage, sample sufficiency, persistence/cooldown, and an explicit baseline.
+A high aggregate alone is not a defect. A missing instrument may create a collection-health
+finding; it cannot justify speculative product repair. Save no-change, investigate,
+propose-change or escalate with evidence and uncertainty. A dry-run performs zero writes.
+
+Use stable subject/rule/baseline/episode identity for one finding and its issue/PR linkage.
+Repeated triggers, lost acknowledgments and restart reconcile the same logical effect.
+Refresh authority/evidence at effect time. Bound investigations, tokens/cost, CPU/wall,
+forge calls, concurrency and issues/PRs per occurrence; failed or unknown accounting holds.
+Proposals cannot raise budgets, alter their policy, disable a check, or merge their own PR, and their repair PRs are never admitted to an automated merge lane: the lane-side consumer `deskkit.AdmitAutoLane` (`tools/desk/internal/deskkit/autolane.go`) gains a tripwire that fires on the `performance-repair` label or the `<!-- assay:performance-repair -->` body marker that brief 09's executor writes, or on any `performance-repair` application in the PR's label timeline so a later removal does not clear it. Brief 09 Verify row 3 proves the executor writes both markers and Verify row 6 proves the lane refuses with the executor bypassed. The executor posts as the existing worker App, so authorship is not a third signal.
+The worker creates a candidate/draft PR with a reproducer, correctness floor and comparable
+before/after measurement. Independent verification and human gates remain intact. A merged
+repair is awaiting outcome verification until a comparable after-window demonstrates the
+expected improvement or records inconclusive/adverse disposition and next owner.
+
+Local report generation can use an existing authorized periodic host. Managed assessment
+and effect execution reuse R2 schedules/leases/budgets, R3 supervision and R4 effect intent/
+receipt reconciliation. No new cron daemon, direct forge-writing report command, or database
+trigger launches workers. Shadow assessment, then deduplicated issues, then bounded draft-PR
+proposals are separate rollout modes; activation requires the applicable recorded policy.
+
+## Workflow-efficiency contract amendment — 17 October 2026
+
+The stream stays parked. /01, /02 and /07 receive bounded phase/correlation, producer and tool-panel acceptance from the approved workflow-efficiency spec. There is no new spool, profile activation or DB/API requirement for early local qualification. See the [delivery map](../../desk-workflow-efficiency-change-map.md#authored-delivery-routing). Existing Evidence and activation gates remain unchanged.
+
+## Local instrument reuse — 2026-10-16
+
+Fresh main already supplies perfrec and statusgen's local adapter. Desktools-v2/61 owns
+their compatible boundary/schema evolution; /62 and statusgen/26 own producer phases.
+Brief 01 preserves separate correlated collection semantics. Brief 02 consumes the
+versioned fixture contract from /61 and therefore moves to wave 2; /06 remains wave 3.
+The dependency is one-way: immediate local measurements and credential improvements do
+not wait for this stream, a collector or a database. Import old/new timing bases and
+availability explicitly; do not fabricate comparable zeroes or additive nested time.

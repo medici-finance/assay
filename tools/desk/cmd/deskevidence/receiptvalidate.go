@@ -225,6 +225,9 @@ func validateReceiptBriefHashAsLanded(fg deskkit.Forge, fr deskkit.ForgeRepo, br
 	if rerr != nil {
 		return deskkit.Unverifiable("cannot read "+briefPath+" on "+branch+" to check the receipt's brief revision", rerr)
 	}
+	if kerr := plainFileRead(cur, fr, briefPath, branch, "the receipt's brief revision", true); kerr != nil {
+		return kerr
+	}
 	gotHash := deskkit.Sha256Hex(cur.Content)
 	if !strings.EqualFold(strings.TrimSpace(wantHash), gotHash) {
 		return deskkit.Refused(fmt.Sprintf(

@@ -3557,61 +3557,85 @@ func (g *GitLabForge) MatchingRefs(repo ForgeRepo, refPrefix string) ([]string, 
 // documented shape: the event survives, the label record does not). It is dropped rather than
 // emitted as an unnamed attestation, because a stamp nobody can name attests to nothing.
 func (g *GitLabForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
-	cl, err := g.client()
+	out, complete, err := g.labelEventsWalk(repo, number, false, false)
 	if err != nil {
 		return nil, err
 	}
-	path := fmt.Sprintf("/projects/%s/merge_requests/%d/resource_label_events",
-		g.projectPath(repo), number)
-	var out []LabelEvent
-	for page := 1; page <= gitlabMaxNotePage; page++ {
-		chunk, resp, lerr := cl.ResourceLabelEvents.ListMergeRequestsLabelEvents(repo.Slug(), int64(number),
-			&gitlab.ListLabelEventsOptions{
-				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
-			})
-		if lerr != nil {
-			return nil, g.mapErr(http.MethodGet, path, lerr)
-		}
-		for _, e := range chunk {
-			if e == nil || (e.Action != "add" && e.Action != "remove") || strings.TrimSpace(e.Label.Name) == "" {
-				continue
-			}
-			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username, CreatedAt: gitlabTime(e.CreatedAt), Removed: e.Action == "remove"})
-		}
-		if resp == nil || resp.NextPage == 0 {
-			return out, nil
-		}
+	if !complete {
+		return nil, fmt.Errorf("label timeline exceeded page bound")
 	}
-	return nil, fmt.Errorf("label timeline exceeded page bound")
+	return out, nil
 }
 
 func (g *GitLabForge) ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
-	cl, err := g.client()
+	out, complete, err := g.labelEventsWalk(repo, number, true, false)
 	if err != nil {
 		return nil, err
 	}
-	path := fmt.Sprintf("/projects/%s/issues/%d/resource_label_events",
-		g.projectPath(repo), number)
+	if !complete {
+		return nil, fmt.Errorf("label timeline exceeded page bound")
+	}
+	return out, nil
+}
+
+// IssueLabelHistory (op 64) is the issue's whole label history with the page bound REPORTED
+// (Complete=false) and the events of a DELETED label KEPT: GitLab keeps such an event and stops
+// naming the label, and ListIssueLabelEvents drops it. The unnamed event is returned with an
+// empty Name so a consumer can tell "an event the forge no longer names" from "no event".
+func (g *GitLabForge) IssueLabelHistory(repo ForgeRepo, number int) (*LabelHistory, error) {
+	out, complete, err := g.labelEventsWalk(repo, number, true, true)
+	if err != nil {
+		return nil, err
+	}
+	return &LabelHistory{Events: out, Complete: complete}, nil
+}
+
+// labelEventsWalk reads a merge request's (issue=false) or an issue's (issue=true) resource
+// label events, add and remove only. keepUnnamed keeps an event whose label has been deleted
+// (empty name); the existing reads pass false. The bool is false when the page bound was hit
+// with the forge still advertising a next page.
+func (g *GitLabForge) labelEventsWalk(repo ForgeRepo, number int, issue, keepUnnamed bool) ([]LabelEvent, bool, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, false, err
+	}
+	kind := "merge_requests"
+	if issue {
+		kind = "issues"
+	}
+	path := fmt.Sprintf("/projects/%s/%s/%d/resource_label_events", g.projectPath(repo), kind, number)
 	var out []LabelEvent
 	for page := 1; page <= gitlabMaxNotePage; page++ {
-		chunk, resp, lerr := cl.ResourceLabelEvents.ListIssueLabelEvents(repo.Slug(), int64(number),
-			&gitlab.ListLabelEventsOptions{
-				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
-			})
+		opt := &gitlab.ListLabelEventsOptions{
+			ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
+		}
+		var (
+			chunk []*gitlab.LabelEvent
+			resp  *gitlab.Response
+			lerr  error
+		)
+		if issue {
+			chunk, resp, lerr = cl.ResourceLabelEvents.ListIssueLabelEvents(repo.Slug(), int64(number), opt)
+		} else {
+			chunk, resp, lerr = cl.ResourceLabelEvents.ListMergeRequestsLabelEvents(repo.Slug(), int64(number), opt)
+		}
 		if lerr != nil {
-			return nil, g.mapErr(http.MethodGet, path, lerr)
+			return nil, false, g.mapErr(http.MethodGet, path, lerr)
 		}
 		for _, e := range chunk {
-			if e == nil || (e.Action != "add" && e.Action != "remove") || strings.TrimSpace(e.Label.Name) == "" {
+			if e == nil || (e.Action != "add" && e.Action != "remove") {
 				continue
 			}
-			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username, CreatedAt: gitlabTime(e.CreatedAt), Removed: e.Action == "remove"})
+			if !keepUnnamed && strings.TrimSpace(e.Label.Name) == "" {
+				continue
+			}
+			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.User.Username, AppliedByID: e.User.ID, CreatedAt: gitlabTime(e.CreatedAt), Removed: e.Action == "remove"})
 		}
 		if resp == nil || resp.NextPage == 0 {
-			return out, nil
+			return out, true, nil
 		}
 	}
-	return nil, fmt.Errorf("label timeline exceeded page bound")
+	return out, false, nil
 }
 
 // gitlabNoteIDScheme prefixes the opaque comment id this backend mints. Like
@@ -3993,7 +4017,7 @@ func (g *GitLabForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, 
 	return &FileContent{Content: decoded, SHA: sha, Exists: true}, nil
 }
 
-// WriteFile writes a file's whole content on a branch via the Repository Files API.
+// WriteFile writes a file's whole content with one conditional Commit API action.
 //
 // The DEFAULT-BRANCH WRITABILITY PROBE is the GitLab half of the Evidence-lane design. The
 // GitLab pilot found the default branch takes no direct write for any identity, the owner
@@ -4001,11 +4025,29 @@ func (g *GitLabForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, 
 // nothing is written and no write call is made (the caller lands the change on a side branch
 // instead). The default branch is read from the project rather than guessed.
 //
-// StartBranch is GitLab's inline branch-creation: a write to a branch that does not yet exist,
+// StartBranch is GitLab's inline branch-creation: a commit to a branch that does not yet exist,
 // with StartBranch naming the base, creates the branch AS PART of the write — which is why the
 // Evidence-lane fallback needs no separate CreateRef op. The idempotency read and append-only
 // shrink guard are folded in exactly as the GitHub backend's, so the two behave the same.
 func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileResult, error) {
+	return g.writeEvidenceFile(repo, in, nil, nil, false)
+}
+
+// gitlabWriteProbeRef is the ref a GitLab write's content is based on: the
+// start branch of an inline branch-creation, otherwise the target branch.
+func gitlabWriteProbeRef(in WriteFileInput) string {
+	if in.StartBranch != "" {
+		return in.StartBranch
+	}
+	return in.Branch
+}
+
+// writeEvidenceFile shares the native write implementation with a scoped landing.
+// known binds prior to the validator snapshot; LastCommitID remains enforced by GitLab.
+func (g *GitLabForge) writeEvidenceFile(repo ForgeRepo, in WriteFileInput, project *gitlab.Project, prior *FileContent, known bool) (*WriteFileResult, error) {
+	if in.ExpectedHead != "" {
+		return nil, Unverifiable("verified outcome requires an atomic branch-head write precondition; this GitLab writer supports only file revisions", nil)
+	}
 	cl, err := g.client()
 	if err != nil {
 		return nil, err
@@ -4014,9 +4056,13 @@ func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 	res := &WriteFileResult{}
 
 	projPath := fmt.Sprintf("/projects/%s", proj)
-	p, _, perr := cl.Projects.GetProject(repo.Slug(), nil)
-	if perr != nil {
-		return nil, g.mapErr(http.MethodGet, projPath, perr)
+	p := project
+	if p == nil {
+		var perr error
+		p, _, perr = cl.Projects.GetProject(repo.Slug(), nil)
+		if perr != nil {
+			return nil, g.mapErr(http.MethodGet, projPath, perr)
+		}
 	}
 	if p.DefaultBranch != "" && in.Branch == p.DefaultBranch {
 		res.DefaultBranchNotWritable = true
@@ -4030,20 +4076,22 @@ func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 	// that is the target branch itself; for an inline branch-creation (StartBranch set, Branch
 	// not yet on the forge) it is the START branch — the ref the new branch is cut from and the
 	// only ref the file can already exist on. Probing the not-yet-created target branch 404s for
-	// every file and forces a create (POST); on GitLab a create of a path that already exists on
-	// the start branch is rejected HTTP 400 (issue #1412), so that write must be an update (PUT)
+	// every file and forces a create action; on GitLab a create of a path that already exists on
+	// the start branch is rejected HTTP 400 (issue #1412), so that write must be an update action
 	// with StartBranch carried through to create the side branch inline. The GitHub Contents-API
 	// path is unaffected: it has one create-or-update verb and no create-vs-update split to miss.
-	probeRef := in.Branch
-	if in.StartBranch != "" {
-		probeRef = in.StartBranch
+	// A scoped landing supplies prior only when it was read at this same ref
+	// (gitlabWriteProbeRef is shared with evidenceLandingForge.WriteFile).
+	cur := prior
+	var rerr error
+	if !known {
+		cur, rerr = g.ReadFile(repo, ReadFileInput{File: in.File, Ref: gitlabWriteProbeRef(in)})
 	}
-	cur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: probeRef})
 	if rerr != nil {
 		if !IsForgeNotFound(rerr) {
 			return nil, rerr
 		}
-	} else {
+	} else if cur != nil && cur.Exists {
 		priorSHA, priorContent, exists = cur.SHA, cur.Content, true
 	}
 	// Conditional write (see WriteFileInput.ExpectedSHA): the update below cites priorSHA as
@@ -4057,7 +4105,7 @@ func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 		res.Rows = forgeRowCount(in.Content)
 	}
 	if exists && bytes.Equal(priorContent, in.Content) {
-		res.SHA = priorSHA
+		res.ContentID = ContentID(priorSHA)
 		return res, nil
 	}
 	if in.AppendOnly && !in.AllowShrink && exists && res.Rows < res.PriorRows {
@@ -4067,42 +4115,39 @@ func (g *GitLabForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 			in.File, in.Branch, res.PriorRows, res.Rows))
 	}
 
-	filePath := fmt.Sprintf("/projects/%s/repository/files/%s", proj, url.PathEscape(in.File))
-	encoded := base64.StdEncoding.EncodeToString(in.Content)
+	// A single commit action preserves the file-scoped optimistic lock while returning
+	// the exact created commit. Repository-Files writes return only path/branch; a later
+	// head or file read cannot safely identify our write in the presence of another writer.
+	action := gitlab.FileCreate
 	if exists {
-		opt := &gitlab.UpdateFileOptions{
-			Branch:        gitlab.Ptr(in.Branch),
-			Content:       gitlab.Ptr(encoded),
-			Encoding:      gitlab.Ptr("base64"),
-			CommitMessage: gitlab.Ptr(in.Message),
-		}
-		if priorSHA != "" {
-			opt.LastCommitID = gitlab.Ptr(priorSHA)
-		}
-		if in.StartBranch != "" {
-			opt.StartBranch = gitlab.Ptr(in.StartBranch)
-		}
-		if _, _, uerr := cl.RepositoryFiles.UpdateFile(repo.Slug(), in.File, opt); uerr != nil {
-			return nil, g.mapErr(http.MethodPut, filePath, uerr)
-		}
-	} else {
-		opt := &gitlab.CreateFileOptions{
-			Branch:        gitlab.Ptr(in.Branch),
-			Content:       gitlab.Ptr(encoded),
-			Encoding:      gitlab.Ptr("base64"),
-			CommitMessage: gitlab.Ptr(in.Message),
-		}
-		if in.StartBranch != "" {
-			opt.StartBranch = gitlab.Ptr(in.StartBranch)
-		}
-		if _, _, cerr := cl.RepositoryFiles.CreateFile(repo.Slug(), in.File, opt); cerr != nil {
-			return nil, g.mapErr(http.MethodPost, filePath, cerr)
-		}
+		action = gitlab.FileUpdate
+	}
+	entry := &gitlab.CommitActionOptions{
+		Action: gitlab.Ptr(action), FilePath: gitlab.Ptr(in.File),
+		Content: gitlab.Ptr(base64.StdEncoding.EncodeToString(in.Content)), Encoding: gitlab.Ptr("base64"),
+	}
+	if exists && priorSHA != "" {
+		entry.LastCommitID = gitlab.Ptr(priorSHA)
+	}
+	opt := &gitlab.CreateCommitOptions{
+		Branch: gitlab.Ptr(in.Branch), CommitMessage: gitlab.Ptr(in.Message),
+		Actions: []*gitlab.CommitActionOptions{entry},
+	}
+	if in.StartBranch != "" {
+		opt.StartBranch = gitlab.Ptr(in.StartBranch)
+	}
+	// Leave author and committer overrides unset: the minted role remains the actor.
+	commit, _, cerr := cl.Commits.CreateCommit(repo.Slug(), opt)
+	if cerr != nil {
+		return nil, g.mapErr(http.MethodPost, fmt.Sprintf("/projects/%s/repository/commits", proj), cerr)
 	}
 	res.Changed = true
-	// GitLab's file-write response (FileInfo) carries neither a commit sha nor an author, so
-	// SHA and Author are left empty — the honest could-not-check, never a guessed value. A
-	// caller that needs the new lock id reads it back with ReadFile.
+	if commit != nil {
+		res.CommitSHA = CommitSHA(commit.ID)
+		// GitLab's file precondition is its last commit, unlike GitHub's blob id.
+		res.ContentID = ContentID(commit.ID)
+	}
+	// Author stays empty: GitLab author_name is a display name, not an account login.
 	return res, nil
 }
 
