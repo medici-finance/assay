@@ -272,7 +272,37 @@ brief lifecycle or a universal observation mandate.
 
 The body MUST contain a `## Context` section. It MUST include:
 
-- A `files:` line listing exact paths the implementer touches.
+- A column-zero `files:` field listing repository-relative paths the implementer touches, as
+  bare or backtick-quoted list items or inline comma-separated declarations.
+  The following grammar governs verification input receipts, coverage, admission
+  binding and wake scheduling; other coordination-tag readers are outside this contract.
+  Literal files/directories, segment globs (`*`, `?`, character classes) and
+  bounded finite brace alternatives are supported. A declaration ends before
+  its em-dash description or a colon after a quoted path; descriptions and
+  parenthesized annotations do not declare additional paths. The field ends at
+  the next blank line, known column-zero Context field key or column-zero section
+  heading. An indented `## ` line inside Context MUST refuse, including while a
+  files list is paused after a blank. A field key may carry a parenthesized
+  annotation, such as `facts (date):`. HTML comments within a declaration or its
+  description, and raw HTML blocks or comments while awaiting the next field,
+  MUST refuse ambiguous section containment. Trailing whitespace and CRLF MUST
+  NOT count as indentation. Unknown keys, loose list/quote/code
+  continuations after the blank, and unsupported markers inside Context MUST
+  refuse rather than drop declarations. Outside Context, field-shaped `files:`
+  declarations refuse; ordinary prose and inline references remain prose.
+  Hyphen-minus/en-dash description separators are unsupported. Examples inside fences do not
+  declare paths. A region skipped as fenced MUST NOT contain a section heading
+  or files marker; such examples refuse conservatively. Inside Context, an
+  indented opener or one within/after the files field before its next known field
+  MUST refuse. This bounded grammar does not infer list/HTML container ends.
+  Fence openers/closers MUST have at most three leading ASCII spaces;
+  a backtick opener's info string MUST contain no backtick. Ambiguous fence-shaped
+  Context lines refuse. A closing fence MUST use the same character and be at least as
+  long as its opener; an unclosed fence refuses. Duplicate Context sections/fields
+  are ambiguous and refused.
+  Abbreviations, placeholders, recursive `**` and malformed/escaping paths MUST
+  be reported explicitly, never interpreted as absent deliverables. See the
+  [declaration and observation contract](../docs/declared-input-scope.md).
 - A `facts:` block containing 3-5 project facts as `key: value` pairs (no narrative prose).
 
 If the brief changes a SHARED VALUE (a party, identity, environment variable name,

@@ -38,7 +38,7 @@ Key words MUST, MUST NOT, SHOULD and MAY are used as in RFC 2119.
 
 Every identifier a caller chooses — `request_id`, `attempt_id`, a task or claim reference's `id`, and a role session — is 1–256 visible ASCII characters (U+0021–U+007E): no space, control, or non-ASCII character. The characters JSON and HTML treat specially (`"`, `\`, `<`, `>`, `&`) are allowed, which is why section 4.2 fixes how they are written.
 
-Every path in these documents — the cell root, a record's logical and physical paths, and its Git common and administration directories — is an absolute local path: valid UTF-8 of at most 4096 bytes that starts at a POSIX root (`/` not followed by a second separator) or a drive root (`C:/` or `C:\`). It is never a network root (`//<host>/<share>`, `\\<host>\<share>`, `\\?\`), never contains a `..` segment between either separator, and never contains a control character (U+0000–U+001F or U+007F). The schema carries this rule as one pattern on every path member, the same string the reference implementation checks.
+Every path in these documents — the cell root, a record's logical and physical paths, and its Git common and administration directories — is an absolute local path: valid UTF-8 of at most 4096 bytes that starts at a POSIX root (`/` not followed by a second separator) or a drive root (`C:/` or `C:\`). A second separator immediately after a drive root is refused too (`C://`, `C:/\`, or a repeated backslash). It is never a network root (`//<host>/<share>`, `\\<host>\<share>`, `\\?\`), never contains a `..` segment between either separator, and never contains a control character (U+0000–U+001F or U+007F). The schema carries the lexical rule as one pattern on every path member, the same string the reference implementation checks. The 4096 limit counts the UTF-8 bytes of the decoded path, including its root, not Unicode characters or JSON escape bytes. JSON Schema `maxLength` counts characters, so its 4096-character ceiling is only a necessary bound; it cannot certify the byte limit. The Go validator is authoritative for the 4096-byte limit on every path member. For example, a slash, 2047 `é` characters and one ASCII character occupy 4096 bytes and pass; adding one ASCII character makes 4097 bytes and is refused even though `maxLength` still passes.
 
 ## 4. Requests
 
@@ -48,7 +48,8 @@ A request is a JSON object (`$defs.Request`). Version 1 defines one operation, `
 
 A document is decoded strictly, at every depth:
 
-- the `schema` member is read first; any value other than `cell-workspace/v1`, or no `schema`, is refused as `unknown-schema` before any other rule, so a newer document is never mistaken for a malformed old one;
+- before decoding any string (including a key or the schema), the wire MUST be valid UTF-8 JSON and every UTF-16 surrogate escape MUST be an adjacent high/low pair; malformed UTF-8 and lone surrogates are `malformed`, never replaced with U+FFFD. A valid literal or escaped U+FFFD and a valid surrogate pair remain valid Unicode;
+- after wire integrity, the `schema` member is read first; any value other than `cell-workspace/v1`, or no `schema`, is refused as `unknown-schema` before any semantic rule, so a newer document is never mistaken for a malformed old one;
 - an object MUST NOT repeat a key;
 - a key MUST match a defined field name exactly, including case, and no other key is allowed;
 - an optional field MUST be absent rather than `null` or empty;
