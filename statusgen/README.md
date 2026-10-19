@@ -354,7 +354,10 @@ RELATIVE to `--root`, so the output carries no machine path.
 
 `statusgen brief --root . --check-verified <stream>/<NN>` additionally requires
 `verified` or `done`, a dated Verified stamp, and a passing execution witness for
-every Verify row. It returns exit 1 with no JSON when that closure check fails;
+every applicable original Verify row. Protected-table supplemental rows use the
+immutable snapshot marker and receive no acceptance credit; see
+[recording closure after re-derivation](../docs/protected-paths.md#recording-closure-after-re-derivation).
+It returns exit 1 with no JSON when that closure check fails;
 resolution/usage failures remain exit 2. This check does not grandfather missing
 witnesses and does not replace `statusgen --lint`.
 

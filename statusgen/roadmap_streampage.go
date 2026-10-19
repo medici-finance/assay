@@ -482,7 +482,10 @@ func renderStreamPage(
 	}
 	// x done / y total + stage bar.
 	total := 0
-	for _, c := range row.StageCounts {
+	for st, c := range row.StageCounts {
+		if isWithdrawn(st) {
+			continue // terminal, out of the done-ratio denominator
+		}
 		total += c
 	}
 	doneCount := row.StageCounts["done"] + row.StageCounts["verified"]

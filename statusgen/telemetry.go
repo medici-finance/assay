@@ -75,6 +75,7 @@ var telemetryKnownStatuses = map[string]bool{
 	"verified":    true,
 	"done":        true,
 	"blocked":     true,
+	"withdrawn":   true,
 }
 
 // normalizeStatus collapses a brief/transition status to the fixed vocabulary.
