@@ -33,6 +33,7 @@ activation gates stay separate, and existing human and deployment gates still bi
 | 05 | [Expose preparation, execution, recovery and acceptance separately](brief-05-lifecycle-projection.md) | 13 | M | todo | — | — |
 | 06 | [Investigate AX compatibility through offline contract fixtures](brief-06-ax-offline-compatibility.md) | 3 | M | todo | — | — |
 | 07 | [Evaluate governed harness refinement with isolated offline fixtures](brief-07-harness-refinement-evaluation.md) | 3 | M | todo | — | — |
+| 08 | [Qualify a Kubernetes verification runner through the existing supervisor](brief-08-qualify-a-kubernetes-verification-runner-through-the-existing-supervisor.md) | 12 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 The generator owns the table. All seven briefs are M-sized, strong-tier work. New tests and
@@ -114,3 +115,11 @@ It qualifies immutable bundle identity, independent holdouts, grading-data isola
 whole-experiment accounting through deterministic fixtures. Existing improvement-proposal,
 review and profile-adoption owners retain promotion; no installed guardrail or live attempt
 can be modified by a generated composition. Core /01–05 remain independent of /06–07.
+
+## Kubernetes verifier follow-on — 19 October 2026
+
+[Brief 08](brief-08-qualify-a-kubernetes-verification-runner-through-the-existing-supervisor.md)
+adds one executor profile through the existing supervisor after /03 and graph-execution/21,
+/25 (wave 12). It does not block the interim local evidence pilot. Offline adapter proof
+and later disposable-cluster qualification are distinct. The stream remains parked; neither
+the new brief nor the user's implementation-planning request activates a cluster profile.

@@ -1,0 +1,2 @@
+- Define six visible verifier responsibilities and model-disabled recovery proof in the existing runtime briefs.
+- Separate optional classifier calibration from deterministic integration qualification and scope a parked Kubernetes runner profile.

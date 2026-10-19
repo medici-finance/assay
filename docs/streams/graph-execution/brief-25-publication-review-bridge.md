@@ -13,6 +13,7 @@ depends:
 unblocks:
 - graph-execution/18
 - agent-execution/04
+- "agent-execution/08"
 effort: M
 gate: human
 risk:

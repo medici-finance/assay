@@ -13,6 +13,7 @@ unblocks:
 - graph-execution/05
 - graph-execution/24
 - agent-execution/04
+- "agent-execution/08"
 effort: M
 gate: human
 risk:
@@ -34,7 +35,7 @@ consumers:
 - 'workflow/internalreview: follow-up graph-execution/24'
 - 'statusgen/assuranceexperiment.go: follow-up graph-execution/18'
 - 'operator clients: out-of-scope (consume the published protocol through their own adoption gates)'
-version: 4
+version: 5
 id: 008dd7b9-6421-42bd-b6c6-d3c495837fa8
 ---
 
@@ -71,6 +72,26 @@ progression, process supervision and effect execution remain distinct; a shared 
 library grants no additional role. Preserve the existing independent fence, no-store standing
 mode, process-launch audit and cross-journal recovery tests. No cell taxonomy dependency is added.
 
+## Verifier migration amendment — 2026-10-19
+
+Implement [the migration state/queue contract](verifier-migration.md) through the existing
+/19 transactions and /26 supervisor. Expose each component, current owner, reason, wait age
+and release condition in the existing snapshot/export; queues remain derived views of the
+same records. Deterministic transitions consume versioned recorded facts, including model
+outputs and time observations. No inference on replay and no provider is required in the
+model-disabled profile. Generative judgment and System-1 classification are bounded
+activities selected by policy, never controller agents or publication credentials.
+
+Unknown launch or external effect enters reconciliation, not a fresh dispatch. Assertion
+failure is repair-required, not retry-until-green. A relevant event re-reads current facts
+before resumption; supersession/cancellation fences work while preserving reconciliation
+and resource-retirement obligations. Complete requires the authorized publication receipt;
+accepted/publication-pending remains visible. Snapshot consumers must not dispatch.
+
+Add `TestVerifierStagesReplay` in `workflow/controller/` (already declared). This is a
+checkpoint within /21, not independent activation or a new runtime implementation.
+
+
 ## Task
 
 1. Implement the executable host over 19 storage, 20 runner protocol and existing eligibility/admission/reservation/effect interfaces. Input events trigger reconciliation; periodic reconciliation recovers missed notifications. Reuse the callable admission boundary, never a copied router or a second claim service.
@@ -97,6 +118,7 @@ Additional implementation files: `workflow/controller/loopadmin_test.go` (planne
 | 2 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerCrashUnknownAndPause$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerCrashUnknownAndPause " "$routing_out")` | exit 0; named PASS; crash recovery retains pause/spend and reconciles unknown effects before resuming; mutation: resume after a crash without reconciling unknown effects — the named test must fail |
 | 3 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerStaleAcceptanceAndBypass$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerStaleAcceptanceAndBypass " "$routing_out")` | exit 0; named PASS; head movement or a direct call without a current owner cannot advance; mutation: skip the current-owner check on the direct transition call — the named test must fail |
 | 4 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerUsesSharedLoopAdmin$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerUsesSharedLoopAdmin " "$routing_out")` | exit 0; named PASS; graph node progression uses the common supervisor; a lost cross-journal receipt does not double-launch; a process exit cannot advance an unaccepted node; mutation: advance a node on process exit without acceptance — the named test must fail |
+| 5 | check:ci +flow +mutation | `(cd workflow && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestVerifierStagesReplay$" ./controller/ > "$out" && grep -Fq -- "--- PASS: TestVerifierStagesReplay " "$out")` | exit 0; named PASS; recorded facts replay to identical transitions without inference; unchanged held inputs do not dispatch; accepted/publication-pending is not complete; mutation: advance on process success or infer on replay — the test fails |
 
 ## Pre-mortem and dispatch checks
 

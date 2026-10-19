@@ -367,3 +367,11 @@ consumes /27 standing clients; /10 qualifies native cross-mode source→card→a
 These consumer prerequisites point toward this stream, with no reverse gating cycle. Existing
 source scope and activation remain controlling; supported native measurement is a separate
 qualified capability from offline cards or an implemented schema.
+
+## Verifier migration sequence — 19 October 2026
+
+[Execution-first migration](verifier-migration.md) maps the six visible verifier responsibilities
+to the existing owners and keeps evidence production separate from authority handover.
+The dependency amendment removes real-model calibration /12 from the model-disabled /18
+integration prerequisite; calibrated-provider activation still requires /12. Kubernetes is
+the separately gated agent-execution/08 profile, not an interim runner prerequisite.

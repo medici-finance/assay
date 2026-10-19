@@ -4,7 +4,7 @@ title: "Enforce qualified profiles and workspace readiness in local execution"
 why: "New contracts only help when the real launch path consumes them. The first local adapter must refuse mismatched environments before starting a process, while preserving existing launcher and custody boundaries."
 wave: 8
 depends: ["agent-execution/02", "graph-execution/22", "graph-execution/26"]
-unblocks: ["agent-execution/04", "agent-execution/05"]
+unblocks: ["agent-execution/04", "agent-execution/05", "agent-execution/08"]
 effort: "M"
 gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "yes", "sensitive-data": "no"}

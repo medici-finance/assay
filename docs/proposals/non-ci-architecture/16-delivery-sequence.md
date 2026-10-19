@@ -199,3 +199,11 @@ module visibility, authority and lifecycle before retiring their old paths.
 and /05 follows their recovery proof and standing clients. The independent /06 AX feasibility
 report neither gates the local path nor activates a remote service. Use its typed dependency
 waves and existing R1–R8 owners; do not duplicate their implementations to accelerate a demo.
+
+## Verifier pilot sequencing proposal — 19 October 2026
+
+Consume [the verifier migration amendment](../../streams/graph-execution/verifier-migration.md).
+An adopter may move evidence production through its existing qualified owner before R2–R8,
+and evaluate shared assessment in shadow after R1. This grants neither a second standing
+claim authority nor a publisher. Managed completion retains R1–R8 and repository-wide
+handover. The proposed Kubernetes profile is agent-execution/08; its stream remains parked.
