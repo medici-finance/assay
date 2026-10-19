@@ -356,7 +356,7 @@ func runSemgrep(content []byte, opts UntrustScanOptions) ([]string, error) {
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
-	runErr := cmd.Run()
+	runErr := RunProcess(cmd)
 
 	if ctx.Err() == context.DeadlineExceeded {
 		return nil, errSemgrepUnavailable

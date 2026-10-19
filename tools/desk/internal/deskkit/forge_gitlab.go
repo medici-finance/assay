@@ -4017,7 +4017,7 @@ func (g *GitLabForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, 
 	return &FileContent{Content: decoded, SHA: sha, Exists: true}, nil
 }
 
-// WriteFile writes a file's whole content on a branch via the Repository Files API.
+// WriteFile writes a file's whole content with one conditional Commit API action.
 //
 // The DEFAULT-BRANCH WRITABILITY PROBE is the GitLab half of the Evidence-lane design. The
 // GitLab pilot found the default branch takes no direct write for any identity, the owner
@@ -4025,7 +4025,7 @@ func (g *GitLabForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, 
 // nothing is written and no write call is made (the caller lands the change on a side branch
 // instead). The default branch is read from the project rather than guessed.
 //
-// StartBranch is GitLab's inline branch-creation: a write to a branch that does not yet exist,
+// StartBranch is GitLab's inline branch-creation: a commit to a branch that does not yet exist,
 // with StartBranch naming the base, creates the branch AS PART of the write — which is why the
 // Evidence-lane fallback needs no separate CreateRef op. The idempotency read and append-only
 // shrink guard are folded in exactly as the GitHub backend's, so the two behave the same.
@@ -4045,6 +4045,9 @@ func gitlabWriteProbeRef(in WriteFileInput) string {
 // writeEvidenceFile shares the native write implementation with a scoped landing.
 // known binds prior to the validator snapshot; LastCommitID remains enforced by GitLab.
 func (g *GitLabForge) writeEvidenceFile(repo ForgeRepo, in WriteFileInput, project *gitlab.Project, prior *FileContent, known bool) (*WriteFileResult, error) {
+	if in.ExpectedHead != "" {
+		return nil, Unverifiable("verified outcome requires an atomic branch-head write precondition; this GitLab writer supports only file revisions", nil)
+	}
 	cl, err := g.client()
 	if err != nil {
 		return nil, err
@@ -4073,8 +4076,8 @@ func (g *GitLabForge) writeEvidenceFile(repo ForgeRepo, in WriteFileInput, proje
 	// that is the target branch itself; for an inline branch-creation (StartBranch set, Branch
 	// not yet on the forge) it is the START branch — the ref the new branch is cut from and the
 	// only ref the file can already exist on. Probing the not-yet-created target branch 404s for
-	// every file and forces a create (POST); on GitLab a create of a path that already exists on
-	// the start branch is rejected HTTP 400 (issue #1412), so that write must be an update (PUT)
+	// every file and forces a create action; on GitLab a create of a path that already exists on
+	// the start branch is rejected HTTP 400 (issue #1412), so that write must be an update action
 	// with StartBranch carried through to create the side branch inline. The GitHub Contents-API
 	// path is unaffected: it has one create-or-update verb and no create-vs-update split to miss.
 	// A scoped landing supplies prior only when it was read at this same ref
@@ -4102,7 +4105,7 @@ func (g *GitLabForge) writeEvidenceFile(repo ForgeRepo, in WriteFileInput, proje
 		res.Rows = forgeRowCount(in.Content)
 	}
 	if exists && bytes.Equal(priorContent, in.Content) {
-		res.SHA = priorSHA
+		res.ContentID = ContentID(priorSHA)
 		return res, nil
 	}
 	if in.AppendOnly && !in.AllowShrink && exists && res.Rows < res.PriorRows {
@@ -4112,42 +4115,39 @@ func (g *GitLabForge) writeEvidenceFile(repo ForgeRepo, in WriteFileInput, proje
 			in.File, in.Branch, res.PriorRows, res.Rows))
 	}
 
-	filePath := fmt.Sprintf("/projects/%s/repository/files/%s", proj, url.PathEscape(in.File))
-	encoded := base64.StdEncoding.EncodeToString(in.Content)
+	// A single commit action preserves the file-scoped optimistic lock while returning
+	// the exact created commit. Repository-Files writes return only path/branch; a later
+	// head or file read cannot safely identify our write in the presence of another writer.
+	action := gitlab.FileCreate
 	if exists {
-		opt := &gitlab.UpdateFileOptions{
-			Branch:        gitlab.Ptr(in.Branch),
-			Content:       gitlab.Ptr(encoded),
-			Encoding:      gitlab.Ptr("base64"),
-			CommitMessage: gitlab.Ptr(in.Message),
-		}
-		if priorSHA != "" {
-			opt.LastCommitID = gitlab.Ptr(priorSHA)
-		}
-		if in.StartBranch != "" {
-			opt.StartBranch = gitlab.Ptr(in.StartBranch)
-		}
-		if _, _, uerr := cl.RepositoryFiles.UpdateFile(repo.Slug(), in.File, opt); uerr != nil {
-			return nil, g.mapErr(http.MethodPut, filePath, uerr)
-		}
-	} else {
-		opt := &gitlab.CreateFileOptions{
-			Branch:        gitlab.Ptr(in.Branch),
-			Content:       gitlab.Ptr(encoded),
-			Encoding:      gitlab.Ptr("base64"),
-			CommitMessage: gitlab.Ptr(in.Message),
-		}
-		if in.StartBranch != "" {
-			opt.StartBranch = gitlab.Ptr(in.StartBranch)
-		}
-		if _, _, cerr := cl.RepositoryFiles.CreateFile(repo.Slug(), in.File, opt); cerr != nil {
-			return nil, g.mapErr(http.MethodPost, filePath, cerr)
-		}
+		action = gitlab.FileUpdate
+	}
+	entry := &gitlab.CommitActionOptions{
+		Action: gitlab.Ptr(action), FilePath: gitlab.Ptr(in.File),
+		Content: gitlab.Ptr(base64.StdEncoding.EncodeToString(in.Content)), Encoding: gitlab.Ptr("base64"),
+	}
+	if exists && priorSHA != "" {
+		entry.LastCommitID = gitlab.Ptr(priorSHA)
+	}
+	opt := &gitlab.CreateCommitOptions{
+		Branch: gitlab.Ptr(in.Branch), CommitMessage: gitlab.Ptr(in.Message),
+		Actions: []*gitlab.CommitActionOptions{entry},
+	}
+	if in.StartBranch != "" {
+		opt.StartBranch = gitlab.Ptr(in.StartBranch)
+	}
+	// Leave author and committer overrides unset: the minted role remains the actor.
+	commit, _, cerr := cl.Commits.CreateCommit(repo.Slug(), opt)
+	if cerr != nil {
+		return nil, g.mapErr(http.MethodPost, fmt.Sprintf("/projects/%s/repository/commits", proj), cerr)
 	}
 	res.Changed = true
-	// GitLab's file-write response (FileInfo) carries neither a commit sha nor an author, so
-	// SHA and Author are left empty — the honest could-not-check, never a guessed value. A
-	// caller that needs the new lock id reads it back with ReadFile.
+	if commit != nil {
+		res.CommitSHA = CommitSHA(commit.ID)
+		// GitLab's file precondition is its last commit, unlike GitHub's blob id.
+		res.ContentID = ContentID(commit.ID)
+	}
+	// Author stays empty: GitLab author_name is a display name, not an account login.
 	return res, nil
 }
 

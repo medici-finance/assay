@@ -1,5 +1,3 @@
-//go:build cellopfixture
-
 package main
 
 import (

@@ -1,0 +1,7 @@
+### Added
+- Local perf records gain a second schema, `perf-v2`, which every wrapped desk command now writes. Wall time and CPU are measured over one declared interval: both start at a mark taken while the shared `perfrec` recorder initialises, before `main` runs. Configuration and activation checks are therefore included, and the record states what is excluded. CPU carries an explicit state (`measured`, `unsupported`, `failed`, `missing`), so an unmeasured value never reads as zero. Counters for subprocesses, HTTP, cache lookup/hit/miss/refresh and coalesced waiters each record measured or unavailable coverage. Timed phases come from a bounded, tool-owned roster with an overlap flag.
+- `deskperf report` shows `perf-v2` records as a separate group (JSON `perfV2`): summed invocation wall, boundary and CPU coverage, the CPU distribution over measured records only, per-counter coverage and per-phase distributions. It never adds inclusive child or phase time, step records or the legacy group into a total.
+- `perfrec` documents its recorder API and an adoption checklist for other standalone tools. A synthetic external consumer test checks that, with `GOWORK=off`, the recorder resolves to the in-repo module and its dependency closure stays offline and free of credential and desk-tool packages.
+
+### Changed
+- `perf-v1` is frozen as the legacy schema. Boot and launch steps and `statusgen` still write it, existing history files read exactly as before, and a perf-v1-only history renders the same `deskperf` report as before.

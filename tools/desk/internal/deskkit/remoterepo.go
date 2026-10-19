@@ -102,11 +102,9 @@ func RemoteRepoSlug(raw string) (string, error) {
 	return owner + "/" + repo, nil
 }
 
-// OriginRepoSlug reads dir's `origin` remote URL as the RAW configured value and parses it to
-// "owner/repo". It reads through gitcore.RemoteURL, which returns the value `git config --get
-// remote.origin.url` returns — the RAW config, with NO `insteadOf` expansion — deliberately
-// NOT `git ls-remote --get-url`, which expands `url.<base>.insteadOf` locally and would hand
-// this parser a rewritten string. err is non-nil when dir is not a git worktree, has no
+// OriginRepoSlug reads dir's repository-local `origin` URL through gitcore.RemoteURL
+// and parses it to "owner/repo". Repository-local fetch insteadOf rules apply; push-only
+// rewrites and global/worktree config do not. err is non-nil when dir is not a git worktree, has no
 // origin, or the URL does not parse; callers that must fail closed surface it, and callers
 // that tolerate a miss (deriveRepoSlug) map it to "".
 func OriginRepoSlug(dir string) (string, error) {

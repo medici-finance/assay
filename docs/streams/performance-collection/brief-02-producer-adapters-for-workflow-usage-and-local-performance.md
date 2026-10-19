@@ -2,8 +2,8 @@
 brief: assay:assay:performance-collection:02
 title: "Producer adapters for workflow, usage and local performance"
 why: "A logger with only synthetic input cannot explain desk delays or rework. Bounded adapters should turn existing performance, dispatch, historian and runner observations into locally useful measurements without waiting for the full cell runtime."
-wave: 1
-depends: ["performance-collection/01"]
+wave: 2
+depends: ["performance-collection/01", "desktools-v2/61"]
 unblocks: ["performance-collection/06", "performance-collection/07"]
 effort: L
 gate: human
@@ -12,21 +12,27 @@ gate-why: "Correlated operational measurements and their access/retention bounda
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 id: 20aa552e-a2cf-4e0d-959c-0b47c9091d0a
 authored: 2026-10-13 by performance collection authoring
 sources:
+  - "assay:assay:desktools-v2:62 — consumer routing for the 2026-10-16 performance amendment"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - docs/streams/performance-collection/README.md
   - docs/telemetry.md
   - docs/proposals/non-ci-architecture/11-target-architecture.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/continuing-operations/spec.md
   - freshness-checked 2026-10-13 @ 0cb90058470f9608f76b96e2055e7327d9c5c178
+  - "docs/desk-workflow-efficiency-spec.md"
+  - "freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d; approved spec and consolidation amendment"
 exec-tier: strong
 exec-tier-why: Cross-component privacy, identity, concurrency and loss semantics require design judgment and negative controls.
 domain: complicated
 outcome: none
 consumers:
+  - "perfrec/testdata/: follow-up performance-collection/02 (read both instrument versions; no second writer)"
+  - "statusgen/perfrecord.go: out-of-scope (statusgen/26 owns producer integration; this brief imports selected records)"
   - "perfdata/adapters/: follow-up performance-collection/02"
   - "perfdata/cmd/perfdata/: follow-up performance-collection/02"
   - "perfdata/testdata/sources/: follow-up performance-collection/02"
@@ -44,13 +50,14 @@ consumers:
   - "docs/contracts.md: follow-up performance-collection/02"
   - "docs/streams/graph-execution/brief-26-shared-loop-admin.md: follow-up performance-collection/02"
   - "tools/desk/internal/deskkit/audit.go: out-of-scope (required audit and budget authority unchanged)"
+  - "perfdata/adapters/phasecost_test.go: follow-up performance-collection/02"
 ---
 
 # Brief 02 — Producer adapters for workflow, usage and local performance
 
 ## Context
 
-files: `perfdata/adapters/` (planned), `perfdata/cmd/perfdata/` (planned), `perfdata/testdata/sources/` (planned), `loopadmin/runner/client.go` (existing), `loopadmin/runner/telemetry.go` (planned), `loopadmin/runner/telemetry_test.go` (planned), `loopadmin/go.mod` (existing), `loopadmin/go.sum` (planned), `tools/desk/internal/deskkit/dispatchrecord.go` (existing), `tools/desk/internal/deskkit/perfexport.go` (planned), `tools/desk/internal/deskkit/perfexport_test.go` (planned), `tools/desk/go.mod` (existing), `tools/desk/go.sum` (existing), `docs/performance-collection.md` (planned), `docs/contracts.md` (existing), `docs/streams/graph-execution/brief-26-shared-loop-admin.md` (existing), `changelog/performance-collection-02.md` (planned)
+files: `perfdata/adapters/` (planned), `perfdata/cmd/perfdata/` (planned), `perfdata/testdata/sources/` (planned), `loopadmin/runner/client.go` (existing), `loopadmin/runner/telemetry.go` (planned), `loopadmin/runner/telemetry_test.go` (planned), `loopadmin/go.mod` (existing), `loopadmin/go.sum` (planned), `tools/desk/internal/deskkit/dispatchrecord.go` (existing), `tools/desk/internal/deskkit/perfexport.go` (planned), `tools/desk/internal/deskkit/perfexport_test.go` (planned), `tools/desk/go.mod` (existing), `tools/desk/go.sum` (existing), `docs/performance-collection.md` (planned), `docs/contracts.md` (existing), `docs/streams/graph-execution/brief-26-shared-loop-admin.md` (existing), `changelog/performance-collection-02.md` (planned), `perfdata/adapters/phasecost_test.go` (planned)
 
 facts (source pin in frontmatter; planned paths/tests are deliverables, not implemented claims):
 - DispatchRecordSchema in tools/desk/internal/deskkit/dispatchrecord.go is dispatch-record-v1. dispatch_ref already distinguishes attempts; its raw value and repo/item fields are private local data, never an upload-safe ID.
@@ -112,6 +119,24 @@ Default if no answer: none — acceptance remains pending. The decision is prese
 
 8. Supply saved inputs for all three reports: qualified completion/stage transitions and current stream snapshots, explicit hold-reason/owner/source references, and perf-v1 invocation/cpu/child/forge samples. Preserve first-sighting opening balances, duplicate/reopen identity and known observation precision. Import does not guess stall causes, descendant CPU, bypassed HTTP calls or tokens. Export a coverage manifest for sources/versions/epochs and explicit unknown historical intervals. Add TestOperatingReportSourceCoverage for duplicated imports, opening balances, unknown hold reasons and unsupported counters; no forge polling is added here.
 
+
+### Approved workflow-efficiency amendment — 17 October 2026
+
+Use the /01 selected phase/coverage fields at existing runner, dispatch-record and deskkit optional
+observer seams. Carry source/tool/adapter versions, bounded command/kit/caller/phase labels and
+parent-child correlation only through the permitted alias profile. Capture actual
+attempts/retries/304 and provider-reported points where instrumented; subprocess bypasses and
+inclusive CPU limitations remain explicit unknown coverage. Deduplicate repeated usage snapshots and
+parent summaries. Existing perf-v1 import cannot invent missing phases/points; correct legacy
+attribution belongs to desk-tools/38, whose absence must not prevent fixture imports. Keep recording
+outside audit/budget/admission locks with bounded loss and sink failure behavior. No new launcher,
+spool, sampler or live collector. Additional integrations beyond these seams require focused follow-
+ons rather than expanding this L.
+
+This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
+obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
+authoring change claims no implementation or operational adoption.
+
 ## Interface contract
 
 Inputs and outputs use performance-event-v1 and performance-batch-v1 from 01, with
@@ -136,6 +161,8 @@ below, exercising production code rather than an independently reimplemented che
 | 4 | check:ci +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestObserverAuthority$' ./runner/... > "$o" && grep -F -- '--- PASS: TestObserverAuthority ' "$o")` | exit 0; named PASS. Runner sink failures and callbacks cannot alter fencing, cancellation, limits or acceptance; callbacks cannot block under the client lock. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/02` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
 | 6 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v -run '^TestOperatingReportSourceCoverage$' ./... > "$o" && grep -F -- '--- PASS: TestOperatingReportSourceCoverage ' "$o")` | exit 0; named test runs and passes, including the negative cases in Task 8. |
+| 7 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPhaseProducerFlow$' ./... > "$o" && grep -F -- '--- PASS: TestPhaseProducerFlow ' "$o")` | exit 0; named PASS. Real adapter fixtures reconstruct nested work without double count; old perf-v1 yields unknown fields. Consent-off, drop/slow sink and missing children preserve domain results and expose coverage. |
+| 8 | check:ci +flow +mutation | `(cd perfdata && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerformanceInstrumentVersionImport$' ./adapters/... > "$out" && grep -F -- '--- PASS: TestPerformanceInstrumentVersionImport ' "$out")` | exit 0; named PASS; legacy and successor desk/statusgen fixtures preserve boundary, nullable coverage and stable import identity; mixed-version naive totals and absent-to-zero plants fail |
 
 ## Pre-mortem and detection
 
@@ -143,6 +170,22 @@ Drop the candidate binding, add cumulative samples, or allow sink errors to repl
 row must traverse actual public producer/reader or served interfaces. Scope/retention
 adequacy and deployment workload selection are review judgments; their measured evidence
 is required before activation, not invented from component-test success.
+
+## Performance reuse amendment — 2026-10-16
+
+Import both the existing perf-v1 and the deliberately versioned successor from
+desktools-v2/61 through read-only adapters. Preserve their instrument versions, timing
+boundaries, measurement availability and phase/child inclusion. Keep samples separated or
+explicitly normalize only where supported; never infer zero from an old absent counter.
+Actual board/dispatch/token records from /62 and statusgen/26 are consumer fixtures; they
+do not require an active service or add producer hooks here. Retain legacy import behavior
+when newer producers are unavailable. Do not add raw command text, repository identifiers,
+credential metadata or local paths to exported payloads. Follow the existing profile,
+pseudonymization, retention and remote-consent contract.
+
+The dependency on /61 is for the concrete versioned adapter fixtures; the hotpath local
+logging and credential work do not wait on this importer, perfdata or its database.
+
 
 ## Evidence
 
