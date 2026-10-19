@@ -128,6 +128,11 @@ if want rejects-multiline; then
   rejects_unechoed "$good"$'\r'"$good" "CR-separated records are rejected"
   rejects_unechoed "x"$'\n'"tick role=verify-desk outcome=noop swept=- acted=0 filed=0 duration=1" \
     "a non-record first line cannot smuggle a blind noop onto stderr"
+  # At size: an echoing refusal of this candidate writes more than one pipe
+  # buffer to stderr, so the check above must hold without an early reader.
+  printf -v filler '%100000s' ''
+  rejects_unechoed "x"$'\n'"tick role=verify-desk outcome=noop swept=- acted=0 filed=0 duration=1"$'\n'"$filler" \
+    "a smuggled blind noop is caught beside 100000 bytes of filler"
 fi
 
 # ======================================================== shape rejections ====
