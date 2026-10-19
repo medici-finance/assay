@@ -19,7 +19,7 @@ func TestScopeAcceptedFieldBoundaries(t *testing.T) {
 		"## Context\nfiles: tools/a.go\n\nout-of-repo files: handled by a separate actor\n  external scope is not read here\n\nfacts:\n- value\n",
 		"## Context\nfiles: tools/a.go   \n\nfacts:\n- value\n",
 		"## Context\r\nfiles: tools/a.go\r\n\r\nfacts (date):\r\n- value\r\n",
-		"## Context\nfacts:\n````text\n```\nfiles: tools/comment.go\n````\nfiles: tools/a.go\n",
+		"## Context\nfacts:\n````text\n```\ntools/comment.go\n````\nfiles: tools/a.go\n",
 	} {
 		t.Run(content, func(t *testing.T) {
 			paths, err := BriefDeclaredFiles(content)
@@ -111,8 +111,9 @@ func TestScopeAnnotatedReceiptFlow(t *testing.T) {
 
 // regression: #2798 / sec-3429-1. Malformed fences are not evidence of no inputs.
 func TestScopeFenceIntegrity(t *testing.T) {
-	for _, content := range []string{
+	cases := []string{
 		"## Context\nfacts:\n```text\nfiles: tools/a.go\n",
+		"## Context\nfiles: tools/a.go\nfacts:\n```text\nexample\n",
 		"## Context\nfacts:\n````text\n```\nfiles: tools/a.go\n",
 		"## Context\nfiles: tools/a.go\n````text\n```\n- tools/b.go\n",
 		"## Context\nfiles: tools/a.go\n~~~text\n```\n- tools/b.go\n",
@@ -121,7 +122,19 @@ func TestScopeFenceIntegrity(t *testing.T) {
 		"## Context\nfiles:\n- tools/a.go\n```` ```go ```` snippets live in:\n- tools/b.go\n\n## Task\n````text\nz\n````\n",
 		"## Context\nfacts:\n\t```\nfiles: tools/a.go\n\n## Task\n```text\nz\n```\n",
 		"## Context\nfacts:\n```text\n    ```\nfiles: tools/a.go\n",
-	} {
+	}
+	cases = append(cases, scopeContainerFenceCases()...)
+	cases = append(cases,
+		"## Context\nfacts:\n````text\n```\nfiles: tools/comment.go\n````\nfiles: tools/a.go\n",
+		"## Context\nfacts:\n   ```text\nfiles: tools/not-declared.go\n    ```\nfiles: tools/not-declared-either.go\n   ```\nfiles: tools/a.go\n",
+		"## Context\nfacts:\n~~~example `code`\nfiles: tools/not-declared.go\n~~~\nfiles: tools/a.go\n",
+		"## Context\nfiles: tools/a.go\nfacts:\n- item\n  ```\n  example\n  ```\n",
+		"## Context\nfiles: tools/a.go\n```text\nexample\n```\nfacts: x\n",
+		"## Context\nfiles: tools/a.go\n\n```text\nexample\n```\nfacts: x\n",
+		"# T\n```text\n## Example\n```\n## Context\nfiles: tools/a.go\n",
+		"## Task\n```text\nfiles: tools/example.go\n```\n",
+	)
+	for _, content := range cases {
 		if paths, err := BriefDeclaredFiles(content); ExitCodeOf(err) != ExitRefused {
 			t.Errorf("unclosed fence silently hides declarations: %v %v", paths, err)
 		}
@@ -134,8 +147,8 @@ func TestScopeFenceOpeners(t *testing.T) {
 	for _, content := range []string{
 		"```` ```go ```` snippets are examples.\n\n## Context\nfiles: tools/a.go\n",
 		"    ```\n\n## Context\nfiles: tools/a.go\n",
-		"## Context\nfacts:\n   ```text\nfiles: tools/not-declared.go\n    ```\nfiles: tools/not-declared-either.go\n   ```\nfiles: tools/a.go\n",
-		"## Context\nfacts:\n~~~example `code`\nfiles: tools/not-declared.go\n~~~\nfiles: tools/a.go\n",
+		"   ```text\ntools/not-declared.go\n    ```\ntools/not-declared-either.go\n   ```\n## Context\nfiles: tools/a.go\n",
+		"## Context\nfacts:\n~~~example `code`\ntools/not-declared.go\n~~~\nfiles: tools/a.go\n",
 	} {
 		paths, err := BriefDeclaredFiles(content)
 		if err != nil || strings.Join(paths, ",") != "tools/a.go" {
@@ -192,5 +205,47 @@ func TestScopeMalformedFenceHistoricalHold(t *testing.T) {
 	}
 	if got := receipt.EvaluateWake(reader, time.Now()); got.State != WakeCouldNotCheck {
 		t.Fatalf("malformed historical scope silently held work: %+v", got)
+	}
+}
+
+// The six security probes and three correctness indentation probes cannot yield a partial
+// successful scope. They remain byte-for-byte probes of the reported grammar.
+func scopeContainerFenceCases() []string {
+	return []string{
+		"## Context\nfacts:\n- item\n  ```\n  example\nfiles: tools/a.go\n\n## Task\n```text\nz\n```\n",
+		"## Context\nfiles:\n- tools/a.go\n  ```\n  example\n- tools/b.go\n\n## Task\n```text\nz\n```\n",
+		"## Context\nfiles:\n- tools/a.go\n  ```\n  ex\n- tools/b.go\nfacts: x\n```text\nz\n```\n",
+		"## Context\nfacts:\n<!--\n```\n-->\nfiles: tools/a.go\n\n## Task\n```text\nz\n```\n",
+		"# T\n1. step\n   ```sh\n   run\n2. next\n\n## Context\nfiles: tools/a.go\n\n## Task\n```text\nz\n```\n",
+		"# T\n<!--\n```\n-->\n\n## Context\nfiles: tools/a.go\n\n## Task\n```text\nz\n```\n",
+		"# T\n- step:\n    ```sh\n    run\n  ```\n\n## Context\nfiles:\n- `tools/a.go`\n- `tools/b.go`\n\n## Task\n```go\nz\n```\n",
+		"# T\n- step:\n  ```sh\n  run\n    ```\n\n## Context\nfiles:\n- `tools/a.go`\n- `tools/b.go`\n\n## Task\n```go\nz\n```\n",
+		"# T\n- step:\n  ```sh\n  run\n\t```\n\n## Context\nfiles:\n- `tools/a.go`\n- `tools/b.go`\n\n## Task\n```go\nz\n```\n",
+	}
+}
+
+// regression: #2798 / sec-3429-1 round4 / R3429-F4. The real writer must refuse all
+// container cases rather than publishing successful empty or partial receipts.
+func TestScopeContainerFenceReceiptRefuses(t *testing.T) {
+	for _, brief := range scopeContainerFenceCases() {
+		tree := wakeTestTree()
+		tree.files[wakeTestBriefPath] = brief
+		input := wakeTestInput()
+		input.LandedBrief = []byte(brief)
+		if raw, err := BuildOutcomeRecord(wakeTestRecord("blocked", BlockerUnknown, "#1"), input, tree); ExitCodeOf(err) != ExitRefused || len(raw) != 0 {
+			t.Errorf("container fence published partial receipt: %s %v", raw, err)
+		}
+	}
+}
+
+// regression: #2798 / R3429-F4. Symmetric examples that leave both declaration
+// lines visible keep their complete scope; asymmetric skipping must refuse above.
+func TestScopeBalancedNestedExamples(t *testing.T) {
+	for _, indent := range []string{"  ", "    "} {
+		brief := "# T\n- step:\n" + indent + "```sh\n" + indent + "run\n" + indent + "```\n\n## Context\nfiles:\n- `tools/a.go`\n- `tools/b.go`\n\n## Task\n```go\nz\n```\n"
+		paths, err := BriefDeclaredFiles(brief)
+		if err != nil || strings.Join(paths, ",") != "tools/a.go,tools/b.go" {
+			t.Fatalf("balanced example changed visible declarations: %v %v", paths, err)
+		}
 	}
 }

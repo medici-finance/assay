@@ -38,10 +38,22 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 		if fence != "" {
 			if fenceAtColumn && strings.HasPrefix(line, fence) && strings.TrimSpace(strings.TrimLeft(line, string(fence[0]))) == "" {
 				fence = ""
+			} else if strings.HasPrefix(line, "## ") {
+				return nil, Refused("refused: section heading inside fenced region; block containment is ambiguous")
+			} else if scopeFilesFieldPattern.MatchString(scopeMarkerText(line)) || scopeBroadFilesMarker(scopeMarkerText(line)) {
+				return nil, Refused("refused: files marker inside fenced region; block containment is ambiguous")
 			}
 			continue
 		}
 		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
+			// Nested/list/HTML container boundaries are outside this field grammar.
+			// Refuse ambiguous Context fences instead of guessing their extent.
+			if context && !columnZero {
+				return nil, Refused("refused: indented Context fence may belong to a container")
+			}
+			if context && (block || endedByBlank) {
+				return nil, Refused("refused: fence inside or following files: declaration")
+			}
 			length := len(line) - len(strings.TrimLeft(line, string(line[0])))
 			if !fenceAtColumn || (line[0] == '`' && strings.ContainsRune(line[length:], '`')) {
 				if context {

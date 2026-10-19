@@ -21,9 +21,13 @@ entries=[
  ("unclosed-fence", 'if fence != "" {\n\t\treturn nil, Refused("refused: unclosed Markdown fence; declared scope cannot be established")', 'if false {\n\t\treturn nil, Refused("refused: unclosed Markdown fence; declared scope cannot be established")', '^TestScopeFenceIntegrity$'),
  ("fence-width", 'fence = line[:length]', 'fence = line[:length-length+3]', '^TestScope(AcceptedFieldBoundaries|FenceIntegrity)$'),
  ("unknown-field", '"layout", "out-of-repo files":', '"layout", "out-of-repo files", "see":', '^TestScopeLooseMarkdownContinuationsRefuse$'),
- ("fence-opener-indent", 'if !fenceAtColumn || (line[0]', 'if false || (line[0]', '^TestScope(FenceIntegrity|MalformedFenceReceiptRefuses)$'),
+ ("fence-opener-indent", 'if !fenceAtColumn || (line[0]', 'if false || (line[0]', '^TestScope(FenceIntegrity|FenceOpeners|MalformedFenceReceiptRefuses)$'),
  ("fence-opener-info", "(line[0] == '`' && strings.ContainsRune(line[length:], '`'))", 'false', '^TestScope(FenceIntegrity|MalformedFenceReceiptRefuses|InlineSpanBeforeContext)$'),
  ("fence-closer-indent", 'if fenceAtColumn && strings.HasPrefix(line, fence)', 'if strings.HasPrefix(line, fence)', '^TestScope(FenceIntegrity|FenceOpeners)$'),
+ ("fence-context-indent", 'if context && !columnZero {', 'if false {', '^TestScopeFenceIntegrity$'),
+ ("fence-declaration", 'if context && (block || endedByBlank) {', 'if false {', '^TestScopeFenceIntegrity$'),
+ ("fence-hidden-heading", 'else if strings.HasPrefix(line, "## ") {', 'else if false {', '^TestScopeFenceIntegrity$'),
+ ("fence-hidden-marker", 'else if scopeFilesFieldPattern.MatchString(scopeMarkerText(line)) || scopeBroadFilesMarker(scopeMarkerText(line)) {', 'else if false {', '^TestScopeFenceIntegrity$'),
 ]
 selected=set(sys.argv[1:])
 known={entry[0] for entry in entries}

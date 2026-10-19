@@ -20,7 +20,9 @@ action labels, parenthesized annotations and the existing `and tests`/`their tes
 annotations are prose; name actual test paths when those tests belong to scope.
 An em-dash description, or a colon after a quoted path, ends the declaration part
 of that line. Backticks inside that description, facts, other sections and fenced
-examples do not add files. A blank line, another Context field or section ends the
+examples do not add files. Structural headings or files markers inside a region
+the parser would skip as fenced refuse conservatively, even in a genuine code
+example; the parser does not infer list or HTML container boundaries. A blank line, another Context field or section ends the
 field. After that blank, list markers (`-`, `*`, `+`, `N.`, `N)` followed by
 whitespace), backtick-led lines, quote-led lines and indented continuations are
 refused as ambiguous until a known Context field begins. A following field key
@@ -35,8 +37,12 @@ error. Hyphen-minus and en-dash separators are unsupported; only the documented
 em dash introduces description text. Duplicate Context sections or files fields
 are refused explicitly. Fence openers and closers allow at most three leading
 ASCII spaces. A backtick opener's info string cannot contain a backtick. Inside
-Context, a fence-shaped line with unsupported indentation or such an info string
-refuses explicitly; outside Context it remains prose. Fences close only with the
+Context, every indented fence opener and every fence opener within a files
+field or while awaiting its next field after a blank refuses. A fence-shaped
+line with an invalid backtick info string also refuses there; outside Context,
+invalid openers remain prose. These containment refusals deliberately narrow
+the supported Markdown subset instead of approximating list/HTML block ends.
+Fences close only with the
 same character and at least the opener's length; an unclosed fence refuses the scope. External metadata is
 not permission to read outside the admitted repository.
 

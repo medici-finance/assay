@@ -198,6 +198,11 @@ func TestScopeDeclarationPositions(t *testing.T) {
 	}
 	tree := wakeTestTree()
 	tree.files[wakeTestBriefPath] = "## Context\n```text\nfiles:\n- `tools/not-declared.go`\n```\n\nfiles:\n- tools/a.go\n"
+	if raw, err := BuildOutcomeRecord(wakeTestRecord("blocked", BlockerUnknown, "#1"), wakeTestInput(), tree); ExitCodeOf(err) != ExitRefused || len(raw) != 0 {
+		t.Fatalf("ambiguous fenced declaration published: %s %v", raw, err)
+	}
+	// A non-structural example remains supported and contributes no file inputs.
+	tree.files[wakeTestBriefPath] = "## Context\n```text\n- tools/not-declared.go\n```\n\nfiles:\n- tools/a.go\n"
 	raw, err := BuildOutcomeRecord(wakeTestRecord("blocked", BlockerUnknown, "#1"), wakeTestInput(), tree)
 	if err != nil {
 		t.Fatal(err)
@@ -252,6 +257,10 @@ func TestScopeContinuationPositions(t *testing.T) {
 		t.Fatalf("colon declaration lost: %v %v", paths, err)
 	}
 	paths, err = BriefDeclaredFiles("## Task\n```text\nfiles: tools/example.go\n```\n")
+	if ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("ambiguous fenced field accepted: %v %v", paths, err)
+	}
+	paths, err = BriefDeclaredFiles("## Task\n```text\ntools/example.go\n```\n")
 	if err != nil || len(paths) != 0 {
 		t.Fatalf("fenced example became declaration: %v %v", paths, err)
 	}
