@@ -18,9 +18,9 @@ land, the per-desk images and launch surfaces.
 | `verify-desk/Dockerfile` | Thin per-desk image for `verify-desk`. |
 | `the-desk/Dockerfile` | Thin per-desk image for the coordinator `the-desk`. |
 | `entrypoint.sh` | Shared interactive boot baked into all five desk images: fail-closed credential preflight, then desk identity + skill pointer, then the interactive session. |
-| `scripts/layer-secret-scan.sh` | Fails a built image that carries key-shaped material in any layer/config/history. |
-| `scripts/layer-secret-scan.test.sh` | Mutation proof for the scan: fixture images with baked fake keys must go red, a clean one green. |
-| `scripts/layer-secret-scan.mutate.sh` | Negative controls: runs the test against mutated copies of the scan (a merged-view scan, and each fail-closed step reverted) and requires each fixture to fail against its own mutant and no other assertion to break. |
+| `scripts/layer-secret-scan.sh` | Compatibility entry point for the pinned OSS packaging scan (`--prepare` explicitly downloads the scanner). |
+| `scripts/layer-secret-scan.test.sh` | Archive contracts and real Gitleaks tests with generated keys and synthetic provider tokens. |
+| `scripts/layer-secret-scan.mutate.sh` | Proves that traversal, digest and verdict regressions fail their tests. |
 | `secrets.md` | Runtime credential-injection contract (normative). |
 | `README.md` | This map. |
 
@@ -291,11 +291,11 @@ credentials are not. All credentials arrive at **runtime** via mounted secrets
 and runtime environment variables.
 
 The runtime credential-injection contract, and the automated image-layer scan
-that fails the build if key-shaped material appears in any layer, are defined in
+that fails the build on non-baselined Gitleaks findings, are defined in
 [`secrets.md`](secrets.md) and implemented by
 [`scripts/layer-secret-scan.sh`](scripts/layer-secret-scan.sh). The publish
-workflow runs that scan against the base **and all five desk images** and fails
-the publish on any hit, so the rule is enforced mechanically on every build —
-not just by review. The per-desk layers add no `COPY`/`ADD` of key material and
+producer runs that scan against the base **and all five desk images** before
+publication. Source CI scans the repository; packaging scans text and metadata
+with normal OSS binary handling. See [the comparison and coverage boundary](secret-scanner-comparison.md). The per-desk layers add no `COPY`/`ADD` of key material and
 no credential `ENV` default; the credential preflight in `entrypoint.sh` reads
 the runtime mount/env only.
