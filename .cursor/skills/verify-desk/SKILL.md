@@ -271,7 +271,7 @@ before the outcome lands:
   hand-authored `wake_schema` or `inputs` map. The supported derivation fills the receipt ID,
   schema, input revisions, tool version and `relevant-input-changed` predicate; it does not
   invent the blocker or acceptance evidence. A supplied complete receipt (for example, for
-  another supported wake predicate) still passes the same validation; an incomplete supplied
+  another supported wake predicate) still passes the supplied-receipt checks; an incomplete supplied
   `verify-wake-v1` receipt is refused, not completed by guessing.
 - **`inputs` covers the whole declared scope.** The writer derives every selected existing
   file from the Context declarations at the admitted Source, plus the brief and tool. It also
@@ -294,12 +294,14 @@ before the outcome lands:
   not such an edit: never re-hash over it. If that merge changed the brief, the receipt fires when it
   lands, which is correct, because the brief changed after the verify run.
 
-`deskevidence --outcome-record` validates derived and supplied receipts before landing.
-A refusal names the violated field or binding; report it rather than weakening admission
+`deskevidence --outcome-record` checks completeness, receipt validity and Evidence binding
+before landing derived or supplied receipts. Observation-input re-derivation applies to
+`relevant-input-changed` receipts; it is not a check of every wake predicate. A refusal names the violated field or binding; report it rather than weakening admission
 or shrinking the declared inputs. Automatic derivation is not permission to skip that result.
 
-A `verify-fail` or `blocked` outcome record MUST carry a complete receipt: the writer REFUSES (exit 5)
-one without it, naming the first missing field (`wake_schema`, `receipt_id`, `blocker_kind`,
+After automatic derivation (or when a complete receipt is supplied), a `verify-fail` or
+`blocked` outcome record MUST carry a complete receipt: the writer REFUSES (exit 5) a still
+incomplete record, naming the first missing field (`wake_schema`, `receipt_id`, `blocker_kind`,
 `wake_predicate`, then the predicate's own input). Every record that claims
 `wake_schema: "verify-wake-v1"` also carries the run's join keys: `prs` (the merged changes that
 delivered the brief, as `{repo, number, merge_sha}`; or an explicit `prs: []` with
@@ -353,19 +355,9 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
 - **Evidence is `command → exit code → real observed output`**, one row per Verify item, dated and
   runner-attributed, never a bare ✓ and never a claim. A row that cannot run is recorded EXPLICITLY
   unrun with its reason — never silently skipped, never assumed-pass.
-- **Preflight the exact acceptance commands before execution.** Read every required row's
-  Command, Expect and class against the approved executor envelope: offline/network limits,
-  available tools, sandbox, timeout, output location and fail-first side effects. For protected
-  tables use the original acceptance commands and provenance described below. If a command
-  cannot run as admitted, record the exact command and reason unrun and route the missing
-  capability or a reviewed check-definition repair. Never silently add a test filter, replace
-  a command, shorten its scope or relax the sandbox to make it runnable. A separately labelled
-  supplemental probe (including a tighter test selector) can diagnose a blocker but discharges
-  no original row. A definition repair requires fresh dispatch/admission after it lands.
-  For a protected table, a reviewed amendment alone does not supersede the original baseline:
-  closure still requires the delivered table and original obligations. Retain their provenance
-  and hold when no supported acceptance-transition path exists. Never invent a CLI override,
-  relabel a supplemental probe as acceptance, or repoint delivery to bypass that obligation.
+- **The emitted verifier kit owns command preflight, row coverage and verdict spelling.**
+  Its sections 2 and 5 carry the execution procedure; dispatch it verbatim. This desk checks
+  the returned accounting and routes the outcome as described below.
 - **Run `statusgen verifyrun --brief <path>` — it IS the execution witness, not an optional extra.**
   verifyrun re-executes each Verify row in a fresh subshell at the repo root and writes back the
   command, exit code, an output hash, the date and the runner identity; that witness table is what
@@ -475,11 +467,6 @@ or output. A value copied from the work under test verifies only that the work a
   single-point-of-failure note names: the reviewer's `deskpathguard check` is the one control
   until the paths land in branch protection, and this re-derivation catches an edit the check
   missed because it reads git history, not a label.
-  Check the re-derived row inventory against the immutable original table, not just the
-  command's exit status. Zero rows, a missing original row, or a filtered execution with no
-  required-row coverage is incomplete evidence even on exit 0. Preserve every original row ID,
-  Command, Expect, class and fail-first obligation; author-added and supplemental rows cannot
-  fill a missing original row. Do not edit the admitted table to run a convenient substitute.
   Before recording closure, follow `docs/protected-paths.md` § "Recording closure after
   re-derivation" for the immutable table marker and explicit uncredited supplemental rows.
 
@@ -513,16 +500,8 @@ Keep the verdict, Evidence prose, row accounting and outcome record consistent:
 | Observed obligations | Verdict and outcome | Next action |
 |---|---|---|
 | An acceptance obligation was actually checked and failed, including an observed non-discriminating risk-bearing row | Strict `**VERIFY: FAIL**`; `verify-fail` | Name the failed obligation and primary output; retain any other unrun rows separately |
-| No obligation failed, but required evidence is unavailable or incomplete | `BLOCKED`; `blocked` | Name every uncovered row and the capability, definition or provenance needed to run it |
+| No obligation failed, but required evidence is unavailable or incomplete | Exact `**BLOCKED**`; `blocked` | Name every uncovered row and the capability, definition or provenance needed to run it |
 | Every required obligation has current admissible evidence and closure gates allow advancement | Strict `**VERIFY: PASS**`; `verified` only after the closure lands | Follow the landing and closure checks below |
-
-Missing execution evidence is not an observed failure of the implementation. A runner launch
-failure, unknown baseline, empty re-derivation, or zero required rows selected must never be
-headed `VERIFY: FAIL` while its prose says that nothing failed. Conversely, an actual failed
-row is not erased by another row being unavailable. A row explicitly testing the presence or
-well-formedness of a required artifact can fail on observed absence; that differs from an
-instrument unable to inspect the artifact at all. Passing rows with a closure gate still open
-remain Evidence-only, without a `verified` outcome or status promotion.
 
 For BLOCKED, retain command → could-not-run → reason for each uncovered obligation, file the
 blocker and land the available Evidence without a lifecycle flip. Use the same admitted

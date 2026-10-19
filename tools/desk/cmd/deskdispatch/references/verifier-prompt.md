@@ -54,16 +54,39 @@ refuses.
 
 - The prompt carries the item path, its Verify table (the exact commands), and the merged
   main SHA to run against.
+- **Preflight the exact acceptance commands before execution.** Read every required row's
+  Command, Expect and class against the approved executor envelope: offline/network limits,
+  available tools, sandbox, timeout, output location and fail-first side effects. For protected
+  tables use the original acceptance commands and provenance described below. If a command
+  cannot run as admitted, record the exact command and reason unrun and route the missing
+  capability or a reviewed check-definition repair. Never silently add a test filter, replace
+  a command, shorten its scope or relax the sandbox to make it runnable. A separately labelled
+  supplemental probe (including a tighter test selector) can diagnose a blocker but discharges
+  no original row. A definition repair requires fresh dispatch/admission after it lands.
+  For a protected table, a reviewed amendment alone does not supersede the original baseline:
+  closure still requires the delivered table and original obligations. Retain their provenance
+  and hold when no supported acceptance-transition path exists. Never invent a CLI override,
+  relabel a supplemental probe as acceptance, or repoint delivery to bypass that obligation.
+- **Account for the original row inventory.** For a protected table, re-derive its immutable
+  original acceptance table before execution and retain its provenance. Zero rows, a missing
+  original row, or a filtered run with no required-row coverage is incomplete even on exit 0.
+  Preserve every original row ID, Command, Expect, class and fail-first obligation. Author-added
+  and supplemental rows receive no original acceptance credit. Retain the immutable
+  `Verification-Table` marker required by the protected-table closure contract.
 - Run EVERY Verify row. Record `command → exit code → key output line` — real observed
   output, never a claim.
 - A row that cannot run (no toolchain, no environment) is recorded as EXPLICITLY unrun,
-  with the reason. It is never silently skipped and never assumed to pass.
+  with `could-not-run` and the reason. Include every required row in the totals and record
+  its own result; excluded or unrun rows are not passed rows. Never silently skip a row.
 - The verifier is NOT the item's implementer. A fresh agent, always.
 - Report back the Evidence rows plus one clear line, BOLD exactly as shown:
-  `**VERIFY: PASS**` or `**VERIFY: FAIL**`. Any qualifier — a row count, the failure
+  `**VERIFY: PASS**`, `**VERIFY: FAIL**` or `**BLOCKED**`. Any qualifier — a row count, the failure
   detail — goes AFTER the closing asterisks (`**VERIFY: FAIL** — row 3: …`), never inside
-  them. The gate that advances an item reads only the bold marker; an unbolded verdict is
-  invisible to it, so a real PASS written plain never moves the item.
+  them. Use **VERIFY: FAIL** only for an observed failed acceptance obligation (including
+  a non-discriminating risk-bearing row). Use **BLOCKED** when no obligation failed but
+  required evidence is unavailable or incomplete. Use **VERIFY: PASS** only with current
+  admissible evidence for every required obligation. Keep the marker, prose and row accounting
+  consistent. **BLOCKED** grants no advancement; the PASS gate reads the bold PASS marker.
 
 ## 3. Evidence format
 
@@ -141,13 +164,26 @@ like a risk-bearing value in an Evidence cell, so that PASS then survived a re-v
 human touches. Enumerate-then-rank surfaces the constant mechanically, which removes the
 selection guess.
 
-## 5. A FAIL is a result, not an interruption
+## 5. Route failed and blocked results separately
 
 On `**VERIFY: FAIL**` the item does NOT advance. File the failure as a bug issue immediately —
 no permission needed — with the failing command and its real output, then CONTINUE the
 drain. The failure rate is a metric; do not bury it, and do not stop the loop to report it.
 The filed issue IS the report. A failed verify on already-merged code is exactly what the
 pre-merge review missed; note the class.
+
+On **BLOCKED**, record each uncovered obligation's exact command, could-not-run disposition
+and reason, then file or attach the blocker with its needed capability, definition or provenance
+and next actor. An unavailable instrument is never an implementation bug merely because it
+could not check. Keep the item at its current lifecycle state and continue the drain after
+recording the blocker. The desk lands available Evidence first, then a `blocked` outcome with
+its complete wake receipt; a refused Evidence landing is reported, never replaced by an outcome.
+
+A mixed table with an actual failed obligation and unavailable rows remains **VERIFY: FAIL**;
+retain the unavailable rows separately. Observed absence can fail an obligation that tests for
+presence; inability to inspect that artifact is **BLOCKED** if no other obligation failed.
+A runner launch failure, unknown baseline or empty re-derivation establishes no acceptance
+result. A zero process exit establishes neither coverage nor installed-runner qualification.
 
 ## 6. What a verifier may and may not flip
 
