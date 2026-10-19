@@ -14,13 +14,14 @@ package main
 // Verify row. Failure emits no JSON. This scoped check does not replace --lint.
 //
 // It is READ-ONLY: it never writes STATUS.md or any generated file, touches no
-// network, and shells out to nothing. The whole verb is "print what statusgen
-// already parsed for one key".
+// network; optional closure checks may read local Git history. Attribution opt-in
+// requires --check-verified and checks the canonical accepted-actor policy for
+// this closure without the corpus lint grandfathering policy.
 //
 // Exit contract:
 //   - 0  every key resolved and any requested closure checks passed.
 //   - 1  --check-verified found an invalid closure.
-//   - 2  at least one key was unresolvable (bad grammar, zero matching files, or
+//   - 2  attribution could not be established, or at least one key was unresolvable (bad grammar, zero matching files, or
 //        more than one — the numeric-prefix collision a hand-rolled glob could not
 //        detect), OR a usage error. On any failure NO JSON body is printed, so a
 //        consumer never reads a partial array as complete; every key's outcome is
@@ -91,6 +92,7 @@ func runBriefInfo(args []string, stdout, stderr io.Writer) int {
 	root := "."
 	asText := false
 	checkVerified := false
+	checkAttribution := false
 	var keys []string
 
 	for i := 0; i < len(args); i++ {
@@ -107,6 +109,8 @@ func runBriefInfo(args []string, stdout, stderr io.Writer) int {
 			root = a[len("--root="):]
 		case strings.HasPrefix(a, "-root="):
 			root = a[len("-root="):]
+		case a == "--check-attribution":
+			checkAttribution = true
 		case a == "--check-verified":
 			checkVerified = true
 		case a == "--json" || a == "-json":
@@ -114,7 +118,7 @@ func runBriefInfo(args []string, stdout, stderr io.Writer) int {
 		case a == "--text" || a == "-text":
 			asText = true
 		case a == "-h" || a == "--help":
-			fmt.Fprintln(stderr, "usage: statusgen brief [--root DIR] [--json|--text] [--check-verified] <stream>/<NN> [<stream>/<NN> ...]")
+			fmt.Fprintln(stderr, "usage: statusgen brief [--root DIR] [--json|--text] [--check-verified [--check-attribution]] <stream>/<NN> [<stream>/<NN> ...]")
 			return briefInfoExitResolve
 		case strings.HasPrefix(a, "-"):
 			fmt.Fprintf(stderr, "brief: unknown flag %q\n", a)
@@ -122,6 +126,11 @@ func runBriefInfo(args []string, stdout, stderr io.Writer) int {
 		default:
 			keys = append(keys, a)
 		}
+	}
+
+	if checkAttribution && !checkVerified {
+		fmt.Fprintln(stderr, "brief: --check-attribution requires --check-verified")
+		return briefInfoExitResolve
 	}
 
 	if len(keys) == 0 {
@@ -144,6 +153,16 @@ func runBriefInfo(args []string, stdout, stderr io.Writer) int {
 			if err := checkBriefInfoVerified(root, info); err != nil {
 				if failureCode == briefInfoExitOK {
 					failureCode = briefInfoExitInvalid
+				}
+				fmt.Fprintf(stderr, "brief: %s: %v\n", key, err)
+				continue
+			}
+		}
+		if checkAttribution {
+			code, err := checkBriefInfoAttribution(root, info)
+			if err != nil {
+				if failureCode != briefInfoExitResolve {
+					failureCode = code
 				}
 				fmt.Fprintf(stderr, "brief: %s: %v\n", key, err)
 				continue
@@ -385,7 +404,7 @@ func checkBriefInfoVerified(root string, info *briefInfo) error {
 	// This verb does not run the lint, so it refuses the #1939 case itself: a
 	// closure is never authorized over a section the parser and the rendered
 	// page may read differently.
-	findings, refusal := closureWitnesses(verify, evidence)
+	findings, refusal := closureWitnesses(verify, evidence, filepath.Join(root, filepath.FromSlash(info.File)))
 	if refusal != "" {
 		return fmt.Errorf("verified outcome requires well-formed Verify and Evidence sections: %s", refusal)
 	}
@@ -405,7 +424,7 @@ func checkBriefInfoVerified(root string, info *briefInfo) error {
 	}
 	var failures []string
 	for _, finding := range findings {
-		if finding.State != statePass {
+		if !closureSatisfied(finding) {
 			failures = append(failures, fmt.Sprintf("row %s: %s — %s", finding.ID, finding.State, finding.Detail))
 		}
 	}
@@ -413,4 +432,39 @@ func checkBriefInfoVerified(root string, info *briefInfo) error {
 		return fmt.Errorf("verified outcome requires passing execution witnesses: %s", strings.Join(failures, "; "))
 	}
 	return nil
+}
+
+// checkBriefInfoAttribution is the strict selected-closure adapter over the same
+// roster policy and blame judge as corpus lint. Lint's historical notices remain
+// unchanged; a new publication requires a current accepted actor verdict.
+func checkBriefInfoAttribution(root string, info *briefInfo) (int, error) {
+	if info.Schema != "brief-v1" {
+		return briefInfoExitResolve, fmt.Errorf("cannot check attribution without brief-v1 schema")
+	}
+	policy := evidenceActorPolicyFromRoster()
+	if policy.Unavailable != "" {
+		return briefInfoExitResolve, fmt.Errorf("cannot check attribution: %s", policy.Unavailable)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(info.File)))
+	if err != nil {
+		return briefInfoExitResolve, fmt.Errorf("cannot read attribution source: %w", err)
+	}
+	start, end, ok := evidenceLineRange(string(raw))
+	if !ok {
+		return briefInfoExitResolve, fmt.Errorf("cannot locate Evidence attribution range")
+	}
+	rows := evidenceActorJudge(policy, isShallowRepository(root), []evidenceActorRow{{ID: info.Key}}, func(int) ([]blameAuthor, bool, error) {
+		return blameEvidenceAuthors(root, info.File, start, end)
+	})
+	row := rows[0]
+	if row.Err != nil {
+		return briefInfoExitResolve, fmt.Errorf("cannot check attribution: %w", row.Err)
+	}
+	if row.GraftHidden {
+		return briefInfoExitResolve, fmt.Errorf("cannot check attribution: %s", row.Reason)
+	}
+	if row.Verdict != actorVerifier && row.Verdict != actorHuman {
+		return briefInfoExitInvalid, fmt.Errorf("Evidence attribution rejected: %s", row.Reason)
+	}
+	return briefInfoExitOK, nil
 }

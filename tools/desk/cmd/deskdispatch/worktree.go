@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // mainlineRef is the start point of a FRESH dispatch, spelled in full. The full spelling is
@@ -34,16 +35,35 @@ const mainlineRef = "refs/remotes/origin/main"
 // Return the verified commit, so a concurrent fetch cannot move the allocation base.
 func worktreeBase(o dispatchOpts, branch, head string) (string, error) {
 	ref := "refs/remotes/origin/" + branch
-	fetched := runCmd(o.root, "git", "fetch", "--quiet", "origin",
-		"+refs/heads/"+branch+":"+ref)
-	if fetched.err != nil {
-		return "", fetched.run.Fail(deskkit.ExitUnverifiable, "cannot refresh resume source branch %s; nothing was claimed", branch)
+	if err := refreshResume(o, branch); err != nil {
+		return "", deskkit.Unverifiable("cannot refresh resume source branch; nothing was claimed", err)
 	}
+
 	r := runCmd(o.root, "git", "rev-parse", "--verify", "--quiet", ref+"^{commit}")
 	if r.err != nil || strings.TrimSpace(r.stdout) != head {
 		return "", deskkit.Unverifiable("resume source branch does not resolve to the forge head; nothing was claimed — refresh and retry", r.err)
 	}
 	return head, nil
+}
+
+// refreshResume is the network seam; source/head proof remains in worktreeBase.
+var refreshResume = liveRefreshResume
+
+func liveRefreshResume(o dispatchOpts, branch string) error {
+	role, _, err := deskkit.SessionTokenRole("deskdispatch resume")
+	if err != nil {
+		return err
+	}
+	endpoint, err := deskkit.CheckoutGitRead(o.root, o.repo, role)
+	if err != nil {
+		return err
+	}
+	repo, err := gitcore.Open(o.root)
+	if err != nil {
+		return err
+	}
+	ref := "refs/remotes/origin/" + branch
+	return repo.Fetch(gitcore.FetchOpts{URL: endpoint.URL, Auth: endpoint.Auth, RefSpecs: []string{"+refs/heads/" + branch + ":" + ref}})
 }
 
 // worktreeTmpBase is the parent of the sanctioned `tracker-*` worktree prefix. It is a

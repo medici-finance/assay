@@ -10,7 +10,7 @@ import (
 // forgeKind classifies the hosting forge behind a tracking root's `origin`
 // remote. statusgen's data model is forge-agnostic, but two surfaces are not:
 // the CI half `init` scaffolds, and the dead-claim decay pass, whose change-state
-// read is `gh api graphql` over the branches on GitHub and the REST v4 merge-request listing on GitLab.
+// read is a GraphQL query over the branches on GitHub and the REST v4 merge-request listing on GitLab.
 // Both must know which forge they are on so they can scaffold the matching CI
 // file and route the read to the client that forge actually answers (#349, #1111).
 type forgeKind int

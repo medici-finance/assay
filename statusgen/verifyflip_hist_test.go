@@ -29,11 +29,23 @@ func vfGitAt(t *testing.T, root, mail, date string, args ...string) {
 // vfRev resolves rev in root.
 func vfRev(t *testing.T, root, rev string) string {
 	t.Helper()
-	out, err := exec.Command("git", "-C", root, "rev-parse", rev).Output()
+	out, err := vfGitCommand(root, "rev-parse", rev).Output()
 	if err != nil {
 		t.Fatalf("rev-parse %s: %v", rev, err)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func vfGitCommand(root string, args ...string) *exec.Cmd {
+	cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+	cmd.Env = fixtureGitEnv(os.Environ())
+	return cmd
+}
+
+func vfGitCommandEnv(root string, env []string, args ...string) *exec.Cmd {
+	cmd := vfGitCommand(root, args...)
+	cmd.Env = append(cmd.Env, env...)
+	return cmd
 }
 
 // TestVflipEveryMergeBase (criss-cross): two branches from the PASS, one
@@ -85,7 +97,7 @@ func TestVflipEveryMergeBase(t *testing.T) {
 			runGitEnv(t, root, nil, "checkout", "-q", "main")
 			runGitEnv(t, root, nil, "merge", "-q", "--ff-only", "a")
 
-			if out, err := exec.Command("git", "-C", root, "merge-base", "--all", "HEAD^1", "HEAD^2").Output(); err != nil || len(strings.Fields(string(out))) != 2 {
+			if out, err := vfGitCommand(root, "merge-base", "--all", "HEAD^1", "HEAD^2").Output(); err != nil || len(strings.Fields(string(out))) != 2 {
 				t.Fatalf("positive control: the final merge's parents must have two merge bases; got %q (err %v)", out, err)
 			}
 			vfExpect(t, root, readme, c.code, c.want)
@@ -144,11 +156,11 @@ func TestParseRawAuthor(t *testing.T) {
 // returns its id. No ref moves.
 func vfRewriteHead(t *testing.T, root string, edit func(string) string) string {
 	t.Helper()
-	raw, err := exec.Command("git", "-C", root, "cat-file", "commit", "HEAD").Output()
+	raw, err := vfGitCommand(root, "cat-file", "commit", "HEAD").Output()
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("git", "-C", root, "hash-object", "-t", "commit", "-w", "--stdin")
+	cmd := vfGitCommand(root, "hash-object", "-t", "commit", "-w", "--stdin")
 	cmd.Stdin = strings.NewReader(edit(string(raw)))
 	out, err := cmd.Output()
 	if err != nil {
@@ -167,13 +179,14 @@ func TestVflipAmbiguousAuthor(t *testing.T) {
 		return strings.Replace(s, "<"+vfMailVerifier+">", "< "+vfMailVerifier+">", 1)
 	})
 	runGitEnv(t, root, nil, "update-ref", "refs/heads/main", id)
-	out, err := exec.Command("git", "-C", root, "log", "-1", "--format=%ae", "HEAD").Output()
+	out, err := vfGitCommand(root, "log", "-1", "--format=%ae", "HEAD").Output()
 	if err != nil || string(out) != " "+vfMailVerifier+"\n" {
 		t.Fatalf("positive control: git log reads %q (err %v), want the address with its leading space", out, err)
 	}
 	vfExpect(t, root, readme, verifyflipExitCouldNotCheck, "ambiguous")
 }
 
+// regression: #2715
 // TestVflipReplaceObject: another App wrote the PASS, then a local
 // refs/replace/ entry substitutes a copy of that commit naming the verifier.
 // The provenance reads the object store's own commit.
@@ -188,7 +201,7 @@ func TestVflipReplaceObject(t *testing.T) {
 		return strings.ReplaceAll(strings.ReplaceAll(s, vfMailWorker, vfMailVerifier), wname, vname)
 	})
 	runGitEnv(t, root, nil, "replace", head, id)
-	if out, _ := exec.Command("git", "-C", root, "cat-file", "commit", head).Output(); !strings.Contains(string(out), vfMailVerifier) {
+	if out, _ := vfGitCommand(root, "cat-file", "commit", head).Output(); !strings.Contains(string(out), vfMailVerifier) {
 		t.Fatalf("positive control: the replacement must be in effect for a plain read; got\n%s", out)
 	}
 	if a, err := rawCommitAuthor(root, head); err != nil || a.Email != vfMailWorker {
@@ -232,7 +245,7 @@ func TestVflipIgnoreRevsConfig(t *testing.T) {
 		t.Fatal("edited row not found")
 	}
 	L := strconv.Itoa(line) + "," + strconv.Itoa(line)
-	out, err := exec.Command("git", "-C", root, "blame", "--line-porcelain", "-L", L, "--", vfBriefRel).Output()
+	out, err := vfGitCommandEnv(root, []string{"GIT_CONFIG_GLOBAL=" + cfg}, "blame", "--line-porcelain", "-L", L, "--", vfBriefRel).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,8 +364,8 @@ func TestHistoryGitGrafts(t *testing.T) {
 	root := t.TempDir()
 	git := func(args ...string) string {
 		t.Helper()
-		out, err := exec.Command("git", append([]string{"-C", root, "-c", "user.name=v",
-			"-c", "user.email=v@example.com", "-c", "commit.gpgsign=false"}, args...)...).Output()
+		gitArgs := append([]string{"-c", "user.name=v", "-c", "user.email=v@example.com", "-c", "commit.gpgsign=false"}, args...)
+		out, err := vfGitCommand(root, gitArgs...).Output()
 		if err != nil {
 			t.Fatalf("git %v: %v", args, err)
 		}
@@ -398,7 +411,7 @@ func TestVflipLintAmbiguousHeader(t *testing.T) {
 	}
 	vfGit(t, root, vfMailWorker, "add", "-A")
 	vfGit(t, root, vfMailWorker, "-c", "i18n.commitEncoding=ISO-8859-1", "commit", "-q", "-m", "flip")
-	if out, err := exec.Command("git", "-C", root, "cat-file", "commit", "HEAD").Output(); err != nil || !strings.Contains(string(out), "\nencoding ISO-8859-1\n") {
+	if out, err := vfGitCommand(root, "cat-file", "commit", "HEAD").Output(); err != nil || !strings.Contains(string(out), "\nencoding ISO-8859-1\n") {
 		t.Fatalf("positive control: the flip commit must carry a non-UTF-8 encoding header (err %v)\n%s", err, out)
 	}
 	if _, err := rawCommitAuthor(root, vfRev(t, root, "HEAD")); err == nil {

@@ -190,3 +190,18 @@ can preserve unaffected conclusions through the current non-intersection assessm
 Preserve historical Evidence and dated source accounts; changing profiles never
 upgrades old self-checks to independent verification. Unavailable mandatory policy/
 qualification input is a scoped hold, not a claim that the lighter contract applies.
+
+## Desk-process improvement bindings — proposal of 17 October 2026
+
+[Amendment 22](22-desk-improvement.md) uses the existing enduring operational subject and
+assessment/impact lineage for a desk process. Bind a scorecard to its subject/profile,
+definition/reducer revision, work cohort, input source/cutoff, mode and measurement coverage.
+Bind diagnosis, experiment, independent result, decision and follow-up to those same revisions.
+These are assessment relationships, not a second architecture/work/status register.
+
+Observed source support, published release, enrolled mode, approved target and demonstrated
+benefit remain separate observations. A source schema cannot assert native capture, and a
+completed experiment cannot assert adoption or subsequent exposure. The proposed delta is
+implemented by public desk-improvement/01–10; an adopter qualifies its own permitted inputs
+and scope. Missing bindings/labels stay unresolved and cannot silently invalidate unrelated
+approved work or satisfy a mandatory acceptance claim.

@@ -10,19 +10,25 @@
       "query": "ref=main"
     },
     {
-      "method": "PUT",
-      "path": "/api/v4/projects/medici-finance%2Fassay/repository/files/EVIDENCE%2Emd",
+      "method": "POST",
+      "path": "/api/v4/projects/medici-finance%2Fassay/repository/commits",
       "body": {
         "branch": "evidence/row",
-        "start_branch": "main",
-        "encoding": "base64",
-        "content": "cm93IG9uZQpyb3cgdHdvCg==",
         "commit_message": "Evidence: verification row",
-        "last_commit_id": "commit-1"
+        "start_branch": "main",
+        "actions": [
+          {
+            "action": "update",
+            "file_path": "EVIDENCE.md",
+            "content": "cm93IG9uZQpyb3cgdHdvCg==",
+            "encoding": "base64",
+            "last_commit_id": "commit-1"
+          }
+        ]
       }
     }
   ],
   "result": null,
-  "err": "could-not-check: PUT /projects/medici-finance%2Fassay/repository/files/EVIDENCE.md — HTTP 400: forge API PUT /projects/medici-finance%2Fassay/repository/files/EVIDENCE.md returned HTTP 400: {message: 400 Bad Request}",
+  "err": "could-not-check: POST /projects/medici-finance%2Fassay/repository/commits — HTTP 400: forge API POST /projects/medici-finance%2Fassay/repository/commits returned HTTP 400: {message: file changed}",
   "not_found": false
 }

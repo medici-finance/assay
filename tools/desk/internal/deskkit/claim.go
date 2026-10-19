@@ -446,12 +446,25 @@ func ReleaseMatching(cfg ClaimConfig, want Claim) (bool, error) {
 	return true, nil
 }
 
-// List reads every claim file in cfg.ClaimsDir through the tolerant reader, so a display
-// consumer (deskroster, deskclaim list) sees every claim regardless of which writer wrote
-// it. A MISSING directory is empty history (nil, nil). Unlike Acquire's lock — which fails
-// closed — List is a best-effort DISPLAY read: an individual unreadable or malformed file
-// is skipped, because a single bad file must not blank the whole roster. A directory that
-// cannot be read at all is Unverifiable.
+// ClaimListError identifies the files List could not read or parse. The returned
+// claims remain usable individually, but are not a complete occupancy snapshot.
+// Skipped contains basenames in directory order; Err preserves each read/parse cause.
+type ClaimListError struct {
+	Skipped []string
+	Err     error
+}
+
+func (e *ClaimListError) Error() string {
+	return fmt.Sprintf("%d claim file(s) could-not-check: %v", len(e.Skipped), e.Err)
+}
+
+func (e *ClaimListError) Unwrap() error { return e.Err }
+
+// List reads every claim through the tolerant reader. A missing directory is a
+// known empty (nil, nil). Individual failures return the readable claims plus an
+// Unverifiable error wrapping ClaimListError; they never silently reduce a count.
+// A directory-wide failure returns no claims and an Unverifiable error. List
+// never repairs, deletes or rewrites any file.
 func List(cfg ClaimConfig) ([]Claim, error) {
 	if cfg.ClaimsDir == "" {
 		return nil, Unverifiable("claim: List needs a ClaimsDir", nil)
@@ -464,19 +477,28 @@ func List(cfg ClaimConfig) ([]Claim, error) {
 		return nil, Unverifiable("claim: cannot read claims dir", err)
 	}
 	var out []Claim
+	var skipped []string
+	var failures []error
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".claim") {
 			continue
 		}
 		data, rerr := os.ReadFile(filepath.Join(cfg.ClaimsDir, e.Name()))
 		if rerr != nil {
-			continue // best-effort display read — skip an unreadable file
+			skipped = append(skipped, e.Name())
+			failures = append(failures, fmt.Errorf("%s: cannot read claim: %w", e.Name(), rerr))
+			continue
 		}
 		var c Claim
-		if json.Unmarshal(data, &c) != nil {
-			continue // skip a malformed file
+		if err := json.Unmarshal(data, &c); err != nil {
+			skipped = append(skipped, e.Name())
+			failures = append(failures, fmt.Errorf("%s: cannot parse claim: %w", e.Name(), err))
+			continue
 		}
 		out = append(out, c)
+	}
+	if len(skipped) > 0 {
+		return out, Unverifiable("claim: listing incomplete", &ClaimListError{Skipped: skipped, Err: errors.Join(failures...)})
 	}
 	return out, nil
 }

@@ -750,8 +750,8 @@ func gitlabColdCustodyProbe(role string) (string, error) {
 	return path, nil
 }
 
-// deriveRepoSlug reads the landing remote's URL as the RAW configured value (go-git's
-// RemoteURL, matching `git config --get remote.<name>.url` — no `insteadOf` expansion) and
+// deriveRepoSlug reads the landing remote's repository-local URL through gitcore.RemoteURL
+// (fetch insteadOf rules applied, push-only rewrites excluded) and
 // extracts owner/name through the single shared parser (ParseRemoteRepo). That parser
 // handles every remote shape a desk checkout uses, including an ssh HOST ALIAS and the
 // rewritten/hybrid forms an `insteadOf` config bakes onto it (issue 1470) — the alias form
@@ -1079,7 +1079,7 @@ func writeTransportProbe(l Landing, role, repo string) (ProbeVerdict, string, er
 	return listReachability(ep.Opts)
 }
 
-// landingRemoteURL is the landing remote's RAW configured URL, or "" when it cannot be
+// landingRemoteURL is the landing remote's repository-local fetch-rewritten URL, or "" when it cannot be
 // read. It is consulted only as the forge-kind hint ForgeGitEndpointForCheckout takes.
 func landingRemoteURL(l Landing) string {
 	repo, err := gitcore.Open(orDot(l.Dir))

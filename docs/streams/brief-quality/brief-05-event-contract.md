@@ -17,7 +17,7 @@ consumers:
 issues: []
 schema: "brief-v2"
 id: "84fefd89-9fb1-4b8a-90e0-cf6f1a3f7a56"
-version: 1
+version: 2
 authored: "2026-09-26 by the authoring session recorded in commit 6a7d90b97"
 sources: ["docs/streams/brief-quality/spec.md", "freshness-checked 2026-09-26 @ 7aa3835d7"]
 exec-tier: "strong"
@@ -76,3 +76,11 @@ No independent implementation evidence yet.
 ## Review
 
 Gate: model. Reviewer confirms the spec contract and the declared limitations. No hand-authored verified/done claim.
+
+## Proposed measurement consumer — 2026-10-17
+
+desk-improvement/05 consumes this brief for compatible binding to existing event identities; no second event lifecycle.
+This is a forward consumer-routing amendment only: the new consumer waits on this owner,
+not the reverse. Original Task/Verify and completed Evidence are unchanged. Reconcile any
+active implementation claim before adding capture hooks. Native emission qualification is
+delivered by the named follow-up; this source contract alone does not claim it exists.

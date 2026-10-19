@@ -1,0 +1,29 @@
+{
+  "test": "go test ./internal/deskkit -run '^TestSnapshotMissingFile$' -count=1 -timeout=60s",
+  "control": {
+    "name": "CONTROL: restore blanket rejection of a typed missing destination",
+    "file": "internal/deskkit/evidencelanding_github.go",
+    "old": "if len(env.Errors) != 1 || env.Errors[0].Type != \"NOT_FOUND\" {",
+    "new": "if true {"
+  },
+  "mutations": [
+    {
+      "name": "accept mixed or unknown errors as destination absence",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "if len(env.Errors) != 1 || env.Errors[0].Type != \"NOT_FOUND\" {",
+      "new": "if false && (len(env.Errors) != 1 || env.Errors[0].Type != \"NOT_FOUND\") {"
+    },
+    {
+      "name": "accept NOT_FOUND for another field or malformed path",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "if len(p) != 4 || p[0] != \"repository\" || p[1] != \"ref\" || p[2] != \"target\" || p[3] != \"file\" {",
+      "new": "if false && (len(p) != 4 || p[0] != \"repository\" || p[1] != \"ref\" || p[2] != \"target\" || p[3] != \"file\") {"
+    },
+    {
+      "name": "accept missing-file error with a complete existing blob",
+      "file": "internal/deskkit/evidencelanding_github.go",
+      "old": "if len(env.Errors) > 0 && string(rawFile) != \"null\" {",
+      "new": "if false && (len(env.Errors) > 0 && string(rawFile) != \"null\") {"
+    }
+  ]
+}

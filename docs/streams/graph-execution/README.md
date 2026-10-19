@@ -347,3 +347,13 @@ unblocking move is reproducing their actual coverage, not assigning new criterio
 
 A no-change or guidance-only conclusion is valid. This research neither changes the main
 implementation dependency waves above nor authorizes a production freshness gate.
+
+## Proposed desk-improvement evidence consumers — 2026-10-17
+
+[Public desk-improvement](../desk-improvement/README.md) consumes this stream's native
+records instead of introducing another execution journal. Its /05 binds /06 run records;
+/06 captures the /26 supervisor and /22 adapter; /07 extends /21 controller evidence; /08
+consumes /27 standing clients; /10 qualifies native cross-mode source→card→assessment flow.
+These consumer prerequisites point toward this stream, with no reverse gating cycle. Existing
+source scope and activation remain controlling; supported native measurement is a separate
+qualified capability from offline cards or an implemented schema.

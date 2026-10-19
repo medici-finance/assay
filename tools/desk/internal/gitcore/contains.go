@@ -115,6 +115,35 @@ type reachIndex struct {
 // RefsContaining, which retries with the cut-off disabled.
 var errReachViolation = errors.New("gitcore: commit-graph generation numbers are not monotonic")
 
+// IsAncestorCached answers IsAncestor using the same immutable commit-node index as
+// RefsContaining. Callers inspecting many heads should reuse one Repo for their common
+// object store. Revisions are resolved on EVERY call; only commit data is retained.
+// Unlike RefsContaining's ref-tip inventory, both endpoints must be readable commits:
+// an invalid descendant is uncertainty, never a negative ancestry answer.
+func (r *Repo) IsAncestorCached(ancestor, descendant string) (bool, error) {
+	a, err := r.Resolve(ancestor)
+	if err != nil {
+		return false, err
+	}
+	d, err := r.Resolve(descendant)
+	if err != nil {
+		return false, err
+	}
+	for _, h := range []plumbing.Hash{a, d} {
+		if _, err := r.repo.CommitObject(h); err != nil {
+			return false, fmt.Errorf("gitcore: commit %s: %w", h, err)
+		}
+	}
+	if a == d {
+		return true, nil
+	}
+	ri := r.reach()
+	ri.mu.Lock()
+	defer ri.mu.Unlock()
+	refs, err := ri.refsContaining(a, map[string]plumbing.Hash{"tip": d})
+	return len(refs) != 0, err
+}
+
 // reach returns the Repo's shared reachability index, opening the commit-graph (if any)
 // on first use. Never fails: a missing or unreadable commit-graph just leaves graph nil.
 func (r *Repo) reach() *reachIndex {

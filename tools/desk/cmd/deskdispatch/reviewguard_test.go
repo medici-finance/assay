@@ -210,8 +210,7 @@ func guardSafeCommand(args []ast.Expr, i int) bool {
 func guardSafeGit(args []ast.Expr, i int) bool {
 	// Git is not inherently a read boundary: fetch can select an executable,
 	// remote can fetch, and config can install an executable for a later call.
-	// Permit only the existing non-executing shapes. The sole existing fetch
-	// is inventoried below with its fixed remote and refspec expression.
+	// Permit only existing non-executing shapes. Network reads use gitcore.
 	switch guardLiteral(args, i) {
 	case "rev-parse":
 		return true
@@ -241,7 +240,6 @@ func guardRelay(identity, call string) bool {
 	for _, allowed := range map[string][]string{
 		"exec.go::runCmd":           {`runCmdEnv(dir, nil, name, args...)`},
 		"exec.go::runCmdEnv":        {`deskkit.Run(call)`},
-		"worktree.go::worktreeBase": {`runCmd(o.root, "git", "fetch", "--quiet", "origin", "+refs/heads/"+branch+":"+ref)`},
 		"worktree.go::gitOut":       {`runCmd(dir, "git", args...)`},
 		"dispatch.go::stepClaim":    {`runCmdEnv(o.root, auth.env, script, append(args, auth.args...)...)`, `runCmdEnv(o.root, auth.env, script, append([]string{"show", claimKey, "--repo", repo}, auth.args...)...)`},
 		"dispatch.go::releaseClaim": {`runCmdEnv(o.root, auth.env, script, append([]string{"release", claimKey, "--repo", repo}, auth.args...)...)`},

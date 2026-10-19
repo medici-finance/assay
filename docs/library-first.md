@@ -182,7 +182,9 @@ codes and JSON envelopes are unchanged. graph-execution/19 consumes this package
 extracting a second evaluator.
 
 **Provenance.** `evaluation.CurrentIdentity()` reports the evaluator version
-(`statusgen-evaluation/1`) and a policy digest over the rule constants the verdicts depend on. The same
+(`statusgen-evaluation/2`) and a policy digest over the rule constants the verdicts depend on. Generation 2
+adds explicit original acceptance-definition revisions and held provenance observations for protected
+Verify tables; witness execution revisions and content applicability retain their existing meaning. The same
 input yields the same verdicts under the same identity, and a change to a policy constant changes the digest, and a change to rule
 behavior bumps the version, so a recorded verdict can be tied to what produced it.
 
