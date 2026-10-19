@@ -75,8 +75,11 @@ func TestWireUnicode(t *testing.T) {
 			}
 		})
 	}
-	// A high surrogate must be immediately followed by a low-surrogate escape.
-	for _, value := range []string{`"/x\ud800a"`, `"/x\ud800\ud800"`, `"/x\udc00\ud800"`, `"/x\ud800\\udc00"`, `"/x\ud800\u0041"`} {
+	// A high surrogate must be immediately followed by a low-surrogate escape. The
+	// last three each pin one checkWire condition no other value here reaches: a
+	// backslash not starting \u, a low surrogate first, a second escape above 0xdfff.
+	for _, value := range []string{`"/x\ud800a"`, `"/x\ud800\ud800"`, `"/x\udc00\ud800"`, `"/x\ud800\\udc00"`, `"/x\ud800\u0041"`,
+		`"/x\ud800\\dc00"`, `"/x\udc00\udc00"`, `"/x\ud800\ue000"`} {
 		_, err := DecodeRequest(replaceWire(t, readFixture(t, "request-worker.json"), "root", []byte(value)))
 		wantReason(t, err, ReasonMalformed)
 	}

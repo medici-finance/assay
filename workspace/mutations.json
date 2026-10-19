@@ -126,6 +126,24 @@
       "file": "contract.go",
       "old": "len(p) > 4096",
       "new": "utf8.RuneCountInString(p) > 4096"
+    },
+    {
+      "name": "a high surrogate followed by a backslash that starts no \\u escape is accepted",
+      "file": "contract.go",
+      "old": " || data[i+1] != '\\\\' || data[i+2] != 'u' {",
+      "new": " || data[i+1] != '\\\\' {"
+    },
+    {
+      "name": "a low surrogate in first position is accepted as the start of a pair",
+      "file": "contract.go",
+      "old": "if code > 0xdbff || i+6",
+      "new": "if i+6"
+    },
+    {
+      "name": "a high surrogate followed by an escape above the low-surrogate range is accepted",
+      "file": "contract.go",
+      "old": "low < 0xdc00 || low > 0xdfff {",
+      "new": "low < 0xdc00 {"
     }
   ]
 }
