@@ -59,6 +59,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 23 | [Product target binding and context drift assessment](brief-23-product-target-binding-and-context-drift-assessment.md) | 3 | M | todo | — | — |
 | 24 | [Portfolio allocation and capacity accounting](brief-24-portfolio-allocation-and-capacity-accounting.md) | 2 | M | todo | — | — |
 | 25 | [Read-only portfolio and drift projections](brief-25-read-only-portfolio-and-drift-projections.md) | 4 | M | todo | — | — |
+| 26 | [Extend statusgen phase measurements through the shared performance recorder](brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -118,3 +119,12 @@ adoption notes. Until 20 ships and is pinned, the bounded manual bootstrap packe
 documented path. Owner rows for every package: the
 [amendment manifest](../../proposals/non-ci-architecture/20-amendment-manifest.md).
 Existing completed history is unchanged.
+
+## Performance reuse — 2026-10-16
+
+Statusgen/26 extends the already-shared perfrec recorder after desktools-v2/61 (wave 2).
+It measures discovery, parsing, evaluation, rendering and the existing deskread child;
+invocation-local snapshot reuse must match fresh evaluation. It has no dependency on
+the online mirror, perfdata storage or a database and acquires no credential. Context
+resolver /20 retains independent membership enumeration and exact receipt semantics.
+The desktools-v2 README holds the cross-stream performance priority and critical path.

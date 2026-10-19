@@ -225,7 +225,11 @@ func pushedState(sc *sweepCtx, rt string, inactiveNamedOwner bool) (bool, string
 		if herr != nil {
 			return false, "", deskkit.Unverifiable("cannot resolve detached HEAD", herr)
 		}
-		refs, rerr := repo.RefsContaining(head.String(), "refs/remotes/")
+		history, herr := sc.open(sc.historyDir)
+		if herr != nil {
+			return false, "", herr
+		}
+		refs, rerr := sweepRefsContaining(history, head.String())
 		if rerr != nil {
 			return false, "", deskkit.Unverifiable("cannot prove detached HEAD on a remote-tracking ref", rerr)
 		}
@@ -236,7 +240,7 @@ func pushedState(sc *sweepCtx, rt string, inactiveNamedOwner bool) (bool, string
 	}
 	upstream, uerr := repo.UpstreamRef()
 	if uerr == nil {
-		anc, aerr := repo.IsAncestor("HEAD", upstream)
+		anc, aerr := sc.isAncestor(rt, "HEAD", upstream)
 		if aerr != nil {
 			return false, "", deskkit.Unverifiable("cannot compare HEAD with its upstream "+upstream, aerr)
 		}
@@ -245,7 +249,7 @@ func pushedState(sc *sweepCtx, rt string, inactiveNamedOwner bool) (bool, string
 		}
 	}
 
-	onMain, merr := repo.IsAncestor("HEAD", "refs/remotes/origin/main")
+	onMain, merr := sc.isAncestor(rt, "HEAD", "refs/remotes/origin/main")
 	if merr != nil {
 		return false, "", deskkit.Unverifiable("cannot compare HEAD with refs/remotes/origin/main", merr)
 	}

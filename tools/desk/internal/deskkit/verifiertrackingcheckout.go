@@ -56,7 +56,7 @@ func checkoutVerifierTracking(root, revision string) error {
 	cmd := exec.Command("git", append([]string{"--no-replace-objects", "-C", root}, args...)...)
 	cmd.Env = verifierEnv()
 	cmd.Stdin = strings.NewReader(strings.Join(paths, "\x00") + "\x00")
-	raw, err := cmd.Output()
+	raw, err := OutputProcess(cmd)
 	if err != nil {
 		return Unverifiable("cannot inspect immutable tracking attributes before checkout (Git 2.41 or later required)", err)
 	}

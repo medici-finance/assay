@@ -70,7 +70,7 @@ func TestWriteFileOpBothBackends(t *testing.T) {
 					"content": glB64("row one\n"), "encoding": "base64",
 					"ref": "feat/x", "blob_id": "blob-gl", "last_commit_id": "commit-gl",
 				}}
-				s.updateFileResp = map[string]any{"file_path": "EVIDENCE.md", "branch": "feat/x"}
+				s.updateCommitResp = map[string]any{"id": "landed-commit"}
 			},
 			run: func(f Forge) (any, error) {
 				return f.WriteFile(forgeTestRepo, WriteFileInput{
@@ -195,7 +195,7 @@ func TestWriteFileOpBothBackends(t *testing.T) {
 					"content": glB64("row one\n"), "encoding": "base64",
 					"ref": "feat/x", "blob_id": "blob-gl", "last_commit_id": "commit-gl",
 				}}
-				s.updateFileResp = map[string]any{"file_path": "README.md", "branch": "feat/x"}
+				s.updateCommitResp = map[string]any{"id": "landed-commit"}
 			},
 			run: func(f Forge) (any, error) {
 				// Each backend's own content id for the fixture above.

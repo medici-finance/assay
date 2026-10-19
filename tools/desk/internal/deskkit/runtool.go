@@ -94,7 +94,7 @@ func Run(c ToolCall) ToolRun {
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
 	began := time.Now()
-	err := cmd.Run()
+	err := RunProcess(cmd)
 	r := ToolRun{
 		Name:     c.Name,
 		Args:     append([]string(nil), c.Args...),
@@ -106,9 +106,23 @@ func Run(c ToolCall) ToolRun {
 		Err:      err,
 	}
 	traceRecord(r)
-	// perf.go: one child and its wall time, for the opt-in local perf record.
-	perfCountChild(r.Elapsed)
 	return r
+}
+
+// RunProcess observes a child without changing os/exec stream, environment,
+// cancellation or error semantics. Callers needing raw streams use this instead
+// of Run; Run itself delegates here, so each attempt is counted exactly once.
+func RunProcess(cmd *exec.Cmd) error {
+	began := time.Now()
+	defer func() { perfCountChild(time.Since(began)) }()
+	return cmd.Run()
+}
+
+// OutputProcess preserves Output's bytes and *exec.ExitError (including Stderr).
+func OutputProcess(cmd *exec.Cmd) ([]byte, error) {
+	began := time.Now()
+	defer func() { perfCountChild(time.Since(began)) }()
+	return cmd.Output()
 }
 
 // ExitStatusOf recovers a child process's exit status so a wrapped tool's own deskkit exit

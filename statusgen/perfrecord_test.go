@@ -127,7 +127,7 @@ func TestPerfOffWritesNothing(t *testing.T) {
 // in the desk tools' schema, for success, a usage error, and a real mode; exit code and
 // output are unchanged by recording.
 //
-// regression: #3101
+// regression: #3101, #3327
 func TestPerfOnWritesOneRecord(t *testing.T) {
 	bin := buildPerfBinary(t)
 	root := t.TempDir()
@@ -149,18 +149,32 @@ func TestPerfOnWritesOneRecord(t *testing.T) {
 		exit     int
 		result   string
 		sameAsOn bool
+		roster   bool
 	}{
-		{"version", []string{"--version"}, "version", 0, "ok", true},
-		{"mode flag", []string{"--alarms", "--root", root}, "alarms", 0, "ok", true},
-		{"lint mode", []string{"--lint", "--root", root}, "lint", 0, "ok", true},
-		{"usage error", []string{"--no-such-flag"}, "regen", 2, "unverifiable", true},
-		{"unknown subcommand", []string{"frobnicate"}, "other", 2, "unverifiable", true},
+		{"version", []string{"--version"}, "version", 0, "ok", true, false},
+		{"mode flag", []string{"--alarms", "--root", root}, "alarms", 0, "ok", true, false},
+		{"lint mode", []string{"--lint", "--root", root}, "lint", 0, "ok", true, true},
+		{"lint unconfigured", []string{"--lint", "--root", root}, "lint", 5, "refused", true, false},
+		{"usage error", []string{"--no-such-flag"}, "regen", 2, "unverifiable", true, false},
+		{"unknown subcommand", []string{"frobnicate"}, "other", 2, "unverifiable", true, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			home := t.TempDir()
+			if c.roster {
+				dir := filepath.Join(home, ".config", "assay")
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "roster.env"), []byte(fixtureRoster+darFixtureExtra()), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
 			off := runPerfBinary(t, bin, home, false, "", c.args...)
 			if recs := perfRecords(t, home); len(recs) != 0 {
 				t.Fatalf("switch unset wrote %d records", len(recs))
+			}
+			if c.name == "lint unconfigured" && !strings.Contains(off.out, "LINT: REFUSED configuration") {
+				t.Errorf("unconfigured lint did not report the configuration refusal: %s", off.out)
 			}
 			on := runPerfBinary(t, bin, home, true, "1", c.args...)
 			recs := perfRecords(t, home)

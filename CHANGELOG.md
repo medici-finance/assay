@@ -23,6 +23,68 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.49 — 2026-10-18
+
+### Added
+- Scanner label-removal hold: before `statusgen --scan-issues` or `--transcribe-scan` creates a placeholder, or reactivates a retired one, for an open issue that no longer carries an excluded label (`verify-gate`, `live-verify`, `needs-decision`, `review-request`, `needs-human`), it reads the issue's label history. If the label was removed by anything other than a rostered human, the issue stays held until the ratifying identity has commented since the label was applied; an unreadable, partial or incomplete history holds as could-not-check. Both scanners report the hold (a NOTICE, or a `label-removal-hold` clause skip) and exit as before.
+- The issue board shows an un-briefed issue whose label history holds an excluded-label or unnamed event as `AWAIT`, not `CREATE-PLACEHOLDER`, with the reason in brackets; an unreadable history fails the board as could-not-check (exit 6).
+- `deskread label-events` kind and a new forge read op, `IssueLabelHistory`, returning an issue's whole label history (events whose label the forge no longer names are kept, with a completeness flag); `deskkit.LabelEvent` now carries the actor's numeric id.
+
+### Fixed
+- Add coverage proving hand-said replay retains a brief's last state after its row is deleted from a later pre-generation snapshot.
+- Bind existing-change source refresh and cross-root board claim reads to the dispatching session's role credential, with complete-read checks and no ambient Git fallback in desk mode.
+- CLI fixture repositories explicitly disable detached Git maintenance before snapshot and cleanup checks, preserving whole-tree dry-reset immutability assertions.
+- Cellctl and evidence automerge tests now report a clear prerequisite when Bash 4 or newer is unavailable.
+- Conditional Evidence publication judges its immutable admitted source independently of an older destination branch. A read-only remote PR preflight confirms already-published history without weakening new-commit identity checks.
+- Dry-reset fixture failures now show normalized before/after snapshots for diagnosis.
+- Evidence and outcome landing receipts now distinguish file preconditions from exact commit identifiers on GitHub and GitLab, and check the landed commit before attributing it to the verifier.
+- Evidence publication recognizes a typed missing-destination GraphQL response while retaining complete attestation and conditional-write checks.
+- Fetch audit records no longer spend the push write budget, and budget refusals no longer charge themselves as uncertain writes. Existing write caps and circuit breakers remain unchanged.
+- Include cockpit calls, supervisor output and the checkpoint in failed comms startup fixture diagnostics for all three cockpits.
+- Keep push-only URL rewrites out of repository-local fetch URL resolution, including the claim reader, while preserving fetch rewrite rules and destination gates.
+- Let the comms supervisor wait through transient ownership-probe collisions using the existing bounded role-lease acquisition, while retaining refusal of a persistent owner.
+- Local claim listings now report unreadable or malformed files instead of silently under-counting claims; displays preserve readable rows, plans fail closed, and recovery leaves unreadable claims untouched.
+- Make heartbeat guard boundary tests independent of host scheduling by freezing time at 24 hours and advancing the test clock by one nanosecond for the stale case.
+- Preserve the regression coverage from #3345 for push-only URL rewrites, including local fetches from linked worktrees, while retaining the shared fetch adapter and legacy first-URL compatibility from #3313.
+- Repair the objective-kit comparison's verification commands and historical consumer routing; withdraw unsupported wedge counts and adoption claims when observer evidence is absent.
+- Retain reader compatibility while sharing URL normalization.
+- Run the role-bound claim transport regressions explicitly in PR CI through the shared offline mutation/test invocation.
+- Statusgen's full PR and release test suites prepare cross-module child dependencies, preserve Go caches across fixture isolation, and distinguish configured lint telemetry from configuration refusal.
+- The desksupervise status schema now accepts its unknown-model sentinel exactly once, and its validator rejects overlapping `oneOf` alternatives.
+- `assay-inbox --flow` keeps rendering could-not-check results when a failed reader emits no diagnostic beyond its configuration banner.
+- `deskwt prune` reuses mainline ancestry and shared-store reachability data across dead-session candidates, and inventories worktree admin pointers once per sweep. Mutable refs and selected admin pointers are checked again when read; ambiguous or unreadable registrations remain held.
+- `statusgen --lint` now exits 5 with a REFUSED verdict when configuration loading refuses, instead of reporting PASS while trust-dependent checks could not run.
+
+### Changed
+- Add an offline review-workflow oracle and reproducible cost cohorts across board, plan, dispatch and issue reads. Literal command-output checks and production-rendering mutations preserve visible rows and round text. Reports keep own CPU, overlapping wall intervals, HTTP attempts and unknown quota/descendant coverage separate; no shipped command or budget changes.
+- Add explicit native evidence work for loop-admin, workflow and standing desk modes, preserving existing record and coordination owners.
+- Approve the workflow-efficiency design and author eight focused desk-tool follow-ons. Fold phase measurement and future serving acceptance into their existing owners; preserve completed Evidence and distinguish supervision guidance, compatible caller adoption and control retirement.
+- Correct review-workflow operation and dispatch-kit attribution in local perf-v1 records, count shared child/forge attempts at their existing execution boundaries, and exclude locally refused board reads from HTTP counts. Preserve consent, legacy readers, stdout/exits, audit and budget controls; document remaining CPU/request/quota coverage limits and qualify actual entrypoints with planted regressions.
+- Desk supervision now directs agents to wait on existing completion handles instead of
+  repeatedly polling unchanged work, and to start each new item with a fresh child context.
+  Compact checkpoints and file-backed logs reduce repeated context loading while preserving
+  review scope, independent lanes, prior findings and required freshness checks. Ordinary and
+  scrubbed Codex desk launches include this guidance; already-running sessions require an
+  explicit instruction update or a later launch with the updated tools and plugin.
+- Migrate deskboard to generated Cobra help and allowlisted Viper settings, preserving board output, execution checks, aliases, and rate-floor precedence.
+- Propose complete review-queue and preparation contracts, shared desk implementations,
+  workflow cost diagnostics, and consumer-based migration and retirement; map the work to
+  existing query, telemetry, mirror and CLI owners without activating new behavior.
+- Propose reusable desk scorecards, analysis/experiment/follow-up validation, role procedures and read-only Improve integration.
+- Qualify optional-sink preservation with successful production entrypoints, seeded audit/budget/breaker state and skipped-work/erased-history mutation controls; retain the existing argv-leak mutation at its updated source anchor.
+- Refresh verification flow planning against current queue, wake, flip and closer behavior, and author the remaining source and consumer qualification work with explicit release and authority boundaries.
+- Run the M2 flow and legacy CLI compatibility tests in PR CI; demonstrate the pipeline-skip mutation against that exact selected command.
+- Supervisors now react to worker events and due checks, re-arm early timeouts without
+  rereading unchanged state, and keep routine CI watches outside the model. Codex no
+  longer receives a desk-imposed 60-second wait cap. Where harness limits prevent
+  efficient idle waits, the documented fallback is the existing operator-selected
+  outer cadence with a clean handoff; Goals are not treated as event monitors.
+- Transfer prepared release artifacts in separate platform bundles so the publisher can download them concurrently. Disable outer ZIP compression for these bundles to avoid recompressing the packaged archives; preserve all binary contents, version stamps and checksum verification.
+- Use one protected publication job for all nine release images, tag creation and GitHub release assets, so an umbrella release needs one release-environment approval instead of two. Preserve image/version checks, immutable references and the normalized-version publication lock; keep changelog rolling independently retryable.
+- Use the board-writer App client ID for changelog rolling, replacing the deprecated numeric App ID input.
+- `qualgen mine --fix-source` now identifies fixes from an explicit offline issue/PR snapshot, runs B-SZZ and persists defect traces with source provenance and coverage. `--defect-labels` configures the label set.
+- `qualgen report` renders actual defect traces and derived metrics; PR/file advice consumes the current completed defect snapshot. Repeat runs retain history without duplicating identical facts, and stale or unavailable evidence is visible.
+
 ## v1.0.48 — 2026-10-17
 
 ### Changed

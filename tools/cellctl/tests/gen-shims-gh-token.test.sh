@@ -43,7 +43,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # (the bash oracle, the default, or the Go port) — desk-containers/10.
 CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-shim-gh.XXXXXX")" && pwd -P)"
-trap 'rm -rf "$T"' EXIT
+trap 'suite_status=$?; if declare -F private_deskwt_finish >/dev/null; then private_deskwt_finish || suite_status=1; fi; rm -rf "$T"; exit "$suite_status"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
 
@@ -159,7 +159,11 @@ chmod +x "$T/bin/claude"
 # shellcheck source=SCRIPTDIR/private-path.sh
 source "$HERE/private-path.sh"
 private_path "$T/bin"
+private_deskwt "$T/bin"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
+# regression: #2738 — normal-path isolation and real-launch positive control.
+private_deskwt_check "$CELLCTL" "$REPO"
+
 
 # ---------------------------------------------------------------- boot the cell (real HOME, real gh on PATH)
 "$CELLCTL" new example-cell --kind house --repo "$REPO" --roots "$ROOTS" >/dev/null
@@ -207,6 +211,7 @@ rm -f "$MARKER"
 PATH="/usr/bin:/bin" "$CELL/shim/deskboard" >/dev/null 2>&1
 assert "no-gh case still isolates HOME (no crash)" 'grep -qxF "VERB_HOME=$CELL/home" "$MARKER"'
 assert "no-gh case: verb's own gh call fails exactly as pre-fix (not a NEW failure mode — no gh on PATH at all, same as before this fix)" 'grep -qx "GH_CALL_RC=127" "$MARKER"'
+
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "gen-shims-gh-token.test.sh: OK"; else echo "gen-shims-gh-token.test.sh: $fails FAILED"; exit 1; fi

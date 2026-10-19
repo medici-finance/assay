@@ -84,8 +84,10 @@ retiring the live placeholders the listing omitted (#1032).
 
 Exit codes: 0 ok · 3 disabled · 5 refused (bad arguments) · 6 unverifiable.`
 
+var perfVerbs = []string{"board", "issues", "intake", "version", "--version", "help", "--help", "-h"}
+
 func main() {
-	os.Exit(deskkit.PerfRun("issueboard", nil, os.Args[1:], func([]string) int {
+	os.Exit(deskkit.PerfRun("issueboard", perfVerbs, os.Args[1:], func([]string) int {
 		return execute(os.Args[1:], os.Stdout, os.Stderr, startup)
 	}))
 }
@@ -171,6 +173,7 @@ func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) i
 		set := cli.Declare(root, bindings()...)
 		lane := func(sub string) func(*cobra.Command, []string) error {
 			return func(*cobra.Command, []string) error {
+				deskkit.PerfCommand(perfVerbs, sub)
 				return codeErr(runLane(sub, set, stdout, stderr, pre))
 			}
 		}
@@ -192,6 +195,7 @@ func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) i
 		}
 		root.AddCommand(&cobra.Command{Use: "version", Short: "print the version", Hidden: true, Args: cobra.NoArgs,
 			RunE: func(*cobra.Command, []string) error {
+				deskkit.PerfCommand(perfVerbs, "version")
 				fmt.Fprintln(stdout, versionLine())
 				return nil
 			}})

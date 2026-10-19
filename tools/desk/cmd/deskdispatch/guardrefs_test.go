@@ -85,11 +85,12 @@ func TestAllocationGitCommandSelection(t *testing.T) {
 	}
 }
 
+// regression: #3327
 func TestAllocationFetchRelay(t *testing.T) {
 	call := `runCmd(o.root, "git", "fetch", "--quiet", "origin", "+refs/heads/"+branch+":"+ref)`
 	direct := `package main; func worktreeBase(o dispatchOpts, branch string) { ref := "refs/remotes/origin/"+branch; ` + call + ` }`
-	if bad := allocationViolations(t, "worktree.go", []byte(direct)); len(bad) != 0 {
-		t.Fatalf("existing fetch refused: %v", bad)
+	if bad := allocationViolations(t, "worktree.go", []byte(direct)); len(bad) == 0 {
+		t.Fatal("raw network fetch admitted")
 	}
 	for name, src := range map[string]string{
 		"wrong-site":     `package main; func other(o dispatchOpts, branch string) { ref := "refs/remotes/origin/"+branch; ` + call + ` }`,
@@ -119,5 +120,13 @@ func TestAllocationHealthyGitShapes(t *testing.T) {
  }`)
 	if bad := allocationViolations(t, "other.go", src); len(bad) != 0 {
 		t.Fatalf("healthy shapes rejected: %v", bad)
+	}
+}
+
+// regression: #3327
+func TestRawReadSecondPlant(t *testing.T) {
+	src := []byte(`package main; func secondReader(o dispatchOpts){runCmd(o.root,"git","ls-remote","--heads","origin")}`)
+	if bad := allocationViolations(t, "second_reader.go", src); len(bad) == 0 {
+		t.Fatal("second_reader.go: raw network Git admitted")
 	}
 }

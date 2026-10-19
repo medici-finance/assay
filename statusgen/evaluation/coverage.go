@@ -336,7 +336,7 @@ const RuleJoinMissingFlow = "coverage-join-missing-integration-check"
 // for) anchor the offline git-history reads classifyRevision and
 // verifyRowAtRevision use; either may be empty (a bare testdata copy), which
 // those functions treat as "nothing to corroborate", never a match.
-func resolveVerifyClaim(x *evalCtx, scope witnessScope, r VerifyRow, witnesses []Witness, targetRevision string) (result, reason, revision string) {
+func resolveVerifyClaim(x *evalCtx, scope witnessScope, r VerifyRow, witnesses []Witness, targetRevision, acceptanceRevision string) (result, reason, revision string) {
 	if len(witnesses) == 0 {
 		return ResultMissing, "no execution witness in Evidence — run `statusgen verifyrun --brief <path>`", ""
 	}
@@ -383,11 +383,24 @@ func resolveVerifyClaim(x *evalCtx, scope witnessScope, r VerifyRow, witnesses [
 		// that cannot be read there — no history, the brief or the row id absent
 		// at that commit — is could-not-check, never a pass (round-2 F3(b)).
 		base := witnessBaseRevision(wrev)
-		histExpect, ok := x.verifyExpectAt(base, scope.briefRel, r.ID)
+		definition := base
+		if acceptanceRevision != "" {
+			if (len(acceptanceRevision) != 40 && len(acceptanceRevision) != 64) || strings.Trim(acceptanceRevision, "0123456789abcdef") != "" {
+				return ResultCouldNotCheck, "the original acceptance definition is not a full immutable object id", wrev
+			}
+			definition = acceptanceRevision
+		}
+		histExpect, ok := x.verifyExpectAt(definition, scope.briefRel, r.ID)
 		if !ok {
+			if acceptanceRevision != "" {
+				return ResultCouldNotCheck, fmt.Sprintf("the original acceptance definition for row #%s could not be read at revision %s", r.ID, definition), wrev
+			}
 			return ResultCouldNotCheck, fmt.Sprintf("the Verify row #%s could not be read as it stood at the witness's revision %s (no git history, or the brief or that row did not exist there) — a pass is never credited without confirming the witness answered the question the row asks today; commit the row, then re-run the check", r.ID, displayRevision(base)), wrev
 		}
 		if NormalizeCommandText(histExpect) != NormalizeCommandText(r.Expect) {
+			if acceptanceRevision != "" {
+				return ResultError, fmt.Sprintf("the selected original Expect differs from the acceptance definition at revision %s", definition), wrev
+			}
 			return ResultError, "the row's Expect text changed after the witness ran — its acceptance definition changed, so the recorded result proves nothing about the row as it stands today", wrev
 		}
 		// The work-input dependencies (WI-2): a changed policy, build or

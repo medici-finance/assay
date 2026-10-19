@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -29,13 +31,15 @@ func commitFixtureRepo(t *testing.T, dir, content string) {
 	if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	template := gitquiet.TemplateDir(t)
 	for _, args := range [][]string{
 		{"init", "-q", dir},
 		{"-C", dir, "add", "f.txt"},
 		{"-C", dir, "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "commit", "-q", "-m", "fixture"},
 	} {
 		g := exec.Command("git", args...)
-		g.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null"}
+		g.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=/dev/null",
+			"GIT_TEMPLATE_DIR=" + template}
 		if out, err := g.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}

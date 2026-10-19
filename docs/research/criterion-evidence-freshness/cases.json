@@ -1,0 +1,21 @@
+{
+  "study": "criterion-evidence-freshness-v1",
+  "source_commit": "2f56cf2892afb4ce78aab1636344aa400bf3e93c",
+  "oracle_basis": "Independent semantic judgments fixed before running the comparison. These are obligations for current acceptance, not predictions of statusgen output. All fixtures are synthetic. The original implementation returns 1; the original check accepts values >= 1 and a positive inherited limit. Historical execution remains valid for that original question.",
+  "cases": [
+    {"id": "unchanged", "change": "none", "expected": "neither", "rationale": "The governed behavior, acceptance, check and inputs are identical; historical execution still answers this question."},
+    {"id": "tighten", "change": "tighten", "expected": "both", "rationale": "Require value >= 2 instead of >= 1. The old passing check does not establish this stronger condition; review and an adequate new execution are owed."},
+    {"id": "add", "change": "add", "expected": "both", "rationale": "Add an upper bound of 0. Existing value 1 violates it; the old check never tested it."},
+    {"id": "wording", "change": "wording", "expected": "neither", "rationale": "Replace 'at least one' with '>= 1', stipulated equivalent in this numeric fixture. This classification is a human judgment, not a hash inference."},
+    {"id": "reorder", "change": "reorder", "expected": "neither", "rationale": "Reorder the same conjunction of two independent conditions without changing either condition."},
+    {"id": "split-duplicates", "change": "split", "expected": "review", "rationale": "Split a conjunction and duplicate one text. Establish obligation identity and multiplicity by review; stipulated behavior is unchanged, so no new execution is required once that equivalence is established."},
+    {"id": "retire", "change": "retire", "expected": "review", "rationale": "Retire one criterion explicitly while retaining history. Review the permitted retirement and remaining coverage; it creates no stronger behavior to execute."},
+    {"id": "inherited", "change": "inherited", "expected": "both", "rationale": "An inherited positive-limit constraint becomes a zero-limit constraint while the brief and check name stay unchanged. Reconcile the changed governing rule and execute an adequate check."},
+    {"id": "command", "change": "command", "expected": "both", "rationale": "The Verify command gains a second assertion. Review its meaning and run the new command; an old command witness cannot answer it."},
+    {"id": "expect", "change": "expect", "expected": "both", "rationale": "Require an additional output token from the same command. The original witness did not establish that output condition."},
+    {"id": "weaken-test", "change": "weaken", "expected": "both", "rationale": "Keep the check function name but replace its assertions with an unconditional pass. Review must detect the lost coverage, and an adequate restored/revised check must execute."},
+    {"id": "unrelated", "change": "unrelated", "expected": "neither", "rationale": "Change an unrelated notes file that the check and governed behavior do not read. This fixture stipulates independence; conservative tools may intentionally over-invalidate."},
+    {"id": "unavailable", "change": "unavailable", "expected": "unknown", "rationale": "The governing requirement file is unavailable at the current revision. Never infer current acceptance or treat absence as proof; retrieve its governing content or retain unknown."},
+    {"id": "declared-tighten", "change": "tighten", "declare_requirement": true, "expected": "both", "rationale": "Same stronger criterion as tighten, with the existing files declaration explicitly naming its governing requirement. This control tests an existing extension point, not a new criterion identity."}
+  ]
+}
