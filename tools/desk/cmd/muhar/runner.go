@@ -60,25 +60,31 @@ func (r *processRegistry) killAll() {
 }
 
 func runShell(root, command string, env []string, timeout time.Duration) CommandResult {
-	return runBounded(root, "sh", []string{"-c", command}, env, timeout) //nolint:gosec // operator-supplied spec command
+	return runBounded(root, env, timeout, func(ctx context.Context) *exec.Cmd {
+		return exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // operator-supplied spec command
+	})
 }
 
 func runGoArgs(root string, args []string, env []string, timeout time.Duration) CommandResult {
-	return runBounded(root, "go", args, env, timeout)
+	return runBounded(root, env, timeout, func(ctx context.Context) *exec.Cmd {
+		return exec.CommandContext(ctx, "go", args...)
+	})
 }
 
 // runBounded runs one command in its own process group, killed as a group at
 // the deadline, and classifies the exit: TimedOut for the deadline or a go
 // test binary's own timeout panic, Failed for any other non-zero exit, Err
 // when the command could not run at all.
-func runBounded(root, name string, args []string, env []string, timeout time.Duration) CommandResult {
+// The caller builds the command so its argv[0] stays a literal at the exec
+// site, where the repo's exec-site checker can resolve it.
+func runBounded(root string, env []string, timeout time.Duration, build func(context.Context) *exec.Cmd) CommandResult {
 	ctx := context.Background()
 	cancel := func() {}
 	if timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 	}
 	defer cancel()
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := build(ctx)
 	setProcessGroup(cmd)
 	if root != "" {
 		cmd.Dir = root

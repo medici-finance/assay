@@ -97,11 +97,14 @@ func TestMutantTimeoutIsReported(t *testing.T) {
 	writeFixture(t, filepath.Join(pkg, "p.go"), "package pkg\nfunc Control() int { return 1 }\nfunc Mutant() int { return 2 }\n")
 	spec := map[string]any{
 		"root":      root,
-		"test":      "if grep -q 'return 0' pkg/p.go; then exit 1; fi; if grep -q 'return 3' pkg/p.go; then sleep 2; fi",
+		"test":      "if grep -q 'return 0' pkg/p.go; then exit 1; fi; if grep -q 'return 3' pkg/p.go; then sleep 5; fi",
 		"build":     "true",
 		"control":   Mutation{Name: "positive-control", File: "pkg/p.go", Old: "return 1", New: "return 0"},
 		"mutations": []Mutation{{Name: "slow-mutant", File: "pkg/p.go", Old: "return 2", New: "return 3"}},
-		"timeout":   map[string]any{"multiplier": 0.01, "floor": "20ms", "baseline": "30s"},
+		// The limit covers the build as well as the suite, so the floor must
+		// leave room for a loaded host to run the build; the slow suite still
+		// overruns it by seconds.
+		"timeout": map[string]any{"multiplier": 0.01, "floor": "1500ms", "baseline": "30s"},
 	}
 	body, err := json.Marshal(spec)
 	if err != nil {
