@@ -102,12 +102,12 @@ or removing any human gate (spec §5 states the divergence).
 | 19 | [Durable instance store and production coverage binding](brief-19-durable-instance-store.md) | 6 | L | todo | — | — |
 | 20 | [Shared loop-admin runner protocol and offline conformance kit](brief-20-runner-contract.md) | 0 | M | implemented | — | — |
 | 21 | [Deterministic task controller with durable dispatch and waits](brief-21-controller-host.md) | 7 | M | todo | — | — |
-| 22 | [First pinned local harness adapter and qualification fixtures](brief-22-local-harness-adapter.md) | 7 | M | todo | — | — |
+| 22 | [Shared local harness adapter with Codex and Claude qualification](brief-22-local-harness-adapter.md) | 7 | L | todo | — | — |
 | 23 | [Immutable candidate workspaces and independent check inputs](brief-23-candidate-workspaces.md) | 7 | M | todo | — | — |
 | 24 | [Versioned author implement review pattern with bounded repair](brief-24-internal-specialist-pattern.md) | 10 | M | todo | — | — |
 | 25 | [Exact-candidate publication and independent review evidence bridge](brief-25-publication-review-bridge.md) | 11 | M | todo | — | — |
 | 26 | [Shared loop-admin launch supervision for desks and workflows](brief-26-shared-loop-admin.md) | 6 | L | todo | — | — |
-| 27 | [Standing desk clients for the shared loop-admin](brief-27-standing-desk-loop-admin.md) | 8 | M | todo | — | — |
+| 27 | [Standing desk clients for the shared loop-admin](brief-27-standing-desk-loop-admin.md) | 8 | L | todo | — | — |
 | 28 | [Verifier domain contracts with qualified identities and candidate-bound acceptance](brief-28-verifier-domain-contracts.md) | 2 | M | todo | — | — |
 | 29 | [Old and new regression floor for the verifier domain contracts](brief-29-verifier-regression-floor.md) | 3 | M | todo | — | — |
 | 30 | [Derived evaluation context and bounded validity](brief-30-derived-evaluation-context-and-bounded-validity.md) | 3 | M | todo | — | — |
@@ -123,6 +123,16 @@ dispatch/coalescing to 14, cumulative accounting to 16, and connected replay/mea
 been recalculated by the 2026-10-02 routing below, and the authoring table is current. 02 and 07's implemented delivery
 records are retained; their consumers own compatible extensions. The first runnable proof
 uses offline fixtures; real provider savings need a separately authorized adopting pilot.
+
+## Standing-desk token priority — 2026-10-18
+
+The [single delivery path](task-workflow-program.md#standing-desk-efficiency-delivery--2026-10-18)
+reconciles desk drain policy, process supervision, Codex/Claude qualification and skill-loop
+retirement. Its dependency waves and current blockers supersede abbreviated execution
+chains below for the standing-desk milestone. Existing brief identities, completed Evidence,
+PostgreSQL routing and safety gates remain authoritative. /22 is now L for two qualified
+profiles; /27 is L for deterministic five-role integration and measured retirement.
+No parallel drain engine, model timer or telemetry store is commissioned.
 
 ## Critical path
 
@@ -229,7 +239,7 @@ The current execution path supersedes the historical critical-path prose above f
 
 The offline host does not wait for live adoption. The verified public experiment/record/flow
 and assurance contracts remain prerequisites for an adopter's live trial as declared there.
-The shared execution path starts at 20 without graph prerequisites, then 26, then 22, then 27.
+The runner contract /20 has no graph prerequisite, but the execution delivery does: /26 also requires /28–29 and /16, and /16 requires /04 and /09. Follow the standing-desk priority path above rather than treating /20 as the sole remaining blocker.
 The workflow branch starts at 09 and 04 with pure admission 13 alongside them. Model invocation
 alone does not supply recovery or ownership. 22 is qualified without graph storage (it needs 20 and 26, not 19); no production
 provider calls, automatic fallback or live authority changes are commissioned by these briefs.

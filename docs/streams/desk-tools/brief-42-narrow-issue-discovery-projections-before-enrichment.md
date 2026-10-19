@@ -4,7 +4,7 @@ title: Narrow issue discovery projections before enrichment
 why: "Worker discovery pays broad issue enrichment cost while worker-ready, intake and inbox populations require different coverage and decisions."
 wave: 3
 depends: ["desk-tools/38"]
-unblocks: ["desk-tools/44"]
+unblocks: ["desk-tools/44", "graph-execution/27"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -24,6 +24,7 @@ domain: complicated
 gate-why: Review/issue observations can expose scoped operational facts; implemented coverage and authority boundaries require the existing human acceptance.
 decision-trigger: spec
 consumers:
+  - "tools/desk/internal/deskclient/: follow-up graph-execution/27"
   - "plugins/assay/skills/worker-desk/SKILL.md: follow-up desk-tools/42"
   - "plugins/assay/skills/intake-desk/SKILL.md: follow-up desk-tools/42"
   - "plugins/assay/scripts/assay-inbox.sh: follow-up desk-tools/42"
@@ -120,3 +121,11 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 Retain the derived frontmatter gate. Approval of the source spec is recorded; this brief
 adds implementation acceptance rather than reopening that decision. Existing adopter
 writer/custody/equivalence and collection consent gates remain separate.
+
+## Standing-desk consumer routing — 2026-10-18
+
+graph-execution/27 consumes this brief's planned pure policy/projection API from a
+tools/desk-local binding. It does not import cmd/main across modules, duplicate the
+classifier, change this brief's acceptance or add a process supervisor here. Preserve
+the current oracle, authority boundary and planned library home. This is a forward
+consumer, not a dependency on future workflow/controller delivery.
