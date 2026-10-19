@@ -45,6 +45,12 @@ controls["runnerenv"] = (
     "^TestFloorRunnerGitIsolation$",
     "./internal/regression",
 )
+controls["cellenv"] = (
+    "tools/desk/internal/regression/floor-go.sh",
+    '\n      CELLCTL_*) unset "$var" ;;',
+    "^TestFloorRunnerCellEnv$",
+    "./internal/regression",
+)
 controls["execenv"] = (
     "tools/desk/internal/regression/gitenv_test.go",
     "func execEnvFaults(name string, src []byte) (int, []string) {",
@@ -56,9 +62,10 @@ replacements = {
     "gitenv": "func FixtureEnv(extra ...string) []string {\nreturn append(os.Environ(), extra...)",
     "execenv": "func execEnvFaults(name string, src []byte) (int, []string) {\nreturn 0, nil",
     "runnerenv": "\nexec ",
+    "cellenv": "",
 }
 if mode not in controls:
-    raise SystemExit("usage: mutate_guard.py manifest|ci|directories|deadline|gitenv|execenv|runnerenv")
+    raise SystemExit("usage: mutate_guard.py manifest|ci|directories|deadline|gitenv|execenv|runnerenv|cellenv")
 # A run killed between the mutation and its restore leaves a backup beside the target;
 # restore every such backup first, so a guard never stays disabled in the tree.
 for other, *_ in controls.values():
