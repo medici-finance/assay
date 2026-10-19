@@ -19,9 +19,10 @@ package deskkit
 //
 //   - OFF BY DEFAULT. PerfEnabled is ASSAY_TELEMETRY == "1" exactly. Off, PerfRun calls the
 //     verb and returns, and nothing is created: no directory, no day file, no install id.
-//   - NO FREE TEXT. PerfRecord has six string fields and each is a constant, a compiled-in
-//     roster member, a build stamp or random hex. tool, verb, role and result each pass
-//     through a mapper whose return is one of its own constants, never any part of its input.
+//   - NO FREE TEXT. Every PerfRecord string field is a constant, a compiled-in roster member,
+//     a build stamp or random hex. tool, verb, role and result each pass through a mapper
+//     whose return is one of its own constants, never any part of its input (and perfrec's
+//     Label gate behind it for perf-v2).
 //   - LOCAL ONLY. Nothing here opens a socket; there is no sender and no endpoint. The forge
 //     round-trip COUNTER lives beside the transport seam (forgetransport.go) so this file
 //     needs no network import at all.
@@ -40,8 +41,13 @@ import (
 	"github.com/medici-finance/assay/perfrec"
 )
 
-// PerfSchema is the on-disk record version (perfrec's).
+// PerfSchema is the LEGACY record version (perfrec's perf-v1): boot and launch steps are still
+// written in it, and every older day file holds it.
 const PerfSchema = perfrec.Schema
+
+// PerfSchemaV2 is the record version PerfRun writes (perfrec's perf-v2): wall and CPU over the
+// process-init boundary, counters with explicit coverage.
+const PerfSchemaV2 = perfrec.SchemaV2
 
 // perfEnvVar is the one opt-in. It is the SAME variable statusgen/telemetry.go reads.
 const perfEnvVar = perfrec.EnvVar
@@ -57,7 +63,8 @@ const (
 	perfUnpinned = perfrec.Unpinned
 )
 
-// PerfRecord is one perf-v1 line — perfrec's record type, so reader and writer cannot drift.
+// PerfRecord is one perf-history line in either schema — perfrec's record type, so reader and
+// writer cannot drift. Its Schema decides what WallMs and CPUMs mean; readers group by it.
 type PerfRecord = perfrec.Record
 
 // PerfEnabled reports whether local perf logging is armed: ASSAY_TELEMETRY compared to "1"
@@ -68,12 +75,15 @@ func PerfEnabled() bool { return perfrec.Enabled() }
 // is cheaper than the branch that would skip it) and reset at PerfRun entry; with the switch
 // off they are never read and never leave memory.
 var (
-	perfChildProcs  atomic.Int64
-	perfChildWallNs atomic.Int64
-	perfForgeCalls  atomic.Int64
+	perfChildProcs   atomic.Int64
+	perfChildWallNs  atomic.Int64
+	perfForgeCalls   atomic.Int64
+	perfActive       atomic.Bool
+	perfSelectedVerb atomic.Pointer[string]
 )
 
-// perfCountChild records one child started through deskkit.Run and its wall time.
+// perfCountChild records one attempt through the shared process observers and
+// its wall time, including an attempt that could not start.
 func perfCountChild(d time.Duration) {
 	perfChildProcs.Add(1)
 	perfChildWallNs.Add(int64(d))
@@ -100,33 +110,66 @@ var perfNow = time.Now
 // perfWriter is the shared writer, on this package's clock hook.
 var perfWriter = &perfrec.Writer{Now: func() time.Time { return perfNow() }}
 
+// perfEntry is the measurement start PerfRun uses: perfrec's process-init mark, taken before
+// this package or any main initialises, so a verb's configuration echo and activation checks
+// are inside the measurement. A test hook.
+var perfEntry = perfrec.ProcessEntry
+
+// perfProbe is the clock and CPU source: the real monotonic clock and getrusage, with the
+// record's ts on this package's clock hook.
+func perfProbe() perfrec.Probe {
+	p := perfrec.SystemProbe()
+	p.Stamp = func() time.Time { return perfNow() }
+	return p
+}
+
 // PerfRun is the ONE wrapper a verb's main() puts around its run function:
 //
 //	os.Exit(deskkit.PerfRun("<tool>", verbs, os.Args[1:], run))
 //
 // It must wrap run rather than defer inside it, because os.Exit runs no deferred function.
-// Off, it calls run and returns. Armed, it times run, builds the record (verb resolved by
-// matching args[0] against verbs — the verb's own registered subcommand set — and "other"
-// for anything else), appends it best-effort, and returns run's exit code UNCHANGED.
+// Off, it calls run and returns. Armed, it writes one perf-v2 record: wall and CPU both from
+// the process-init mark (perfEntry) to the end of run, so the time main spent before PerfRun
+// is included and the two deltas share one boundary; the child-process and forge counters as
+// MEASURED (lower-bound) subprocess, subprocessMs and http counters; every cache and
+// coalesced-waiter counter UNAVAILABLE (no seam here observes them). The verb is resolved by
+// matching args[0] against verbs — the verb's own registered subcommand set — or a
+// PerfCommand selection, and "other" for anything else. The record is appended best-effort
+// after the measurement ends, and run's exit code is returned UNCHANGED.
 func PerfRun(tool string, verbs []string, args []string, run func([]string) int) int {
 	if !PerfEnabled() {
 		return run(args)
 	}
 	perfResetCounters()
-	began := time.Now()
+	perfSelectedVerb.Store(nil)
+	perfActive.Store(true)
+	defer perfActive.Store(false)
+	sess := perfrec.Begin(perfProbe(), perfEntry(), nil)
 	code := run(args)
-	wall := time.Since(began)
-
-	rec := newPerfRecord(tool, perfVerb(verbs, args), wall, code)
 	children, childWall, forge := PerfCounters()
-	rec.ChildProcs = children
-	rec.ChildWallMs = childWall.Milliseconds()
-	rec.ForgeCalls = forge
-	if ms, ok := perfrec.CPUMillis(); ok {
-		rec.CPUMs = &ms
+	sess.Add(perfrec.CounterSubprocess, children)
+	sess.Add(perfrec.CounterSubprocessMs, childWall.Milliseconds())
+	sess.Add(perfrec.CounterHTTP, forge)
+
+	verb := perfVerb(verbs, args)
+	if selected := perfSelectedVerb.Load(); selected != nil {
+		verb = *selected
 	}
+	sha, _ := Version()
+	rec := sess.Finish(perfTool(tool), verb, perfRole(os.Getenv("DESK_LOOP")), code, sha)
 	perfAppend(rec)
 	return code
+}
+
+// PerfCommand selects an attribution from a command's compiled vocabulary after its
+// real parser resolves the operation. It changes no execution or consent behavior.
+// Unknown values become "other"; raw argv and kit values never enter a record.
+func PerfCommand(roster []string, selected string) {
+	if !perfActive.Load() {
+		return
+	}
+	verb := perfVerb(roster, []string{selected})
+	perfSelectedVerb.Store(&verb)
 }
 
 // perfBootSteps is the compiled roster of boot-step names PerfStep accepts — deskboot's own
@@ -163,9 +206,11 @@ var perfLaunchSteps = []string{
 // PerfLaunchSteps returns a copy of the launch-step roster, in launch order.
 func PerfLaunchSteps() []string { return append([]string(nil), perfLaunchSteps...) }
 
-// PerfStep writes one step record (a boot step or a launch step): verb "step:<name>", wallMs the step's duration,
-// exit the step's exit code. Child and forge counts are not attributed per step (they stay
-// 0) and cpuMs is omitted — a process-wide CPU reading is not a per-step measurement.
+// PerfStep writes one step record (a boot step or a launch step) in the LEGACY perf-v1 schema,
+// unchanged: verb "step:<name>", wallMs the step's duration, exit the step's exit code. Child
+// and forge counts are not attributed per step (they stay 0) and cpuMs is omitted — a
+// process-wide CPU reading is not a per-step measurement. A step subdivides an invocation
+// that has its own record, so readers keep steps out of invocation totals.
 func PerfStep(tool, step string, d time.Duration, exit int) {
 	if !PerfEnabled() {
 		return
@@ -186,7 +231,7 @@ func perfStepVerb(step string) string {
 	return perfStepPfx + perfOther
 }
 
-// newPerfRecord builds a record through the four mappers. verb must already be a roster
+// newPerfRecord builds a perf-v1 (step) record through the four mappers. verb must already be a roster
 // value (perfVerb / the step roster); every other string field is mapped here.
 func newPerfRecord(tool, verb string, wall time.Duration, exit int) PerfRecord {
 	sha, _ := Version()

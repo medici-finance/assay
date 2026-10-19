@@ -49,16 +49,17 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 13 | [Cadenced roadmap artifacts — `--cadence weekly\|monthly` window computation reusing the roadmap renderer, a `theme:` render rule, config-driven priority order and brand](brief-13-cadenced-roadmap-artifacts.md) | 1 | M | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-04 assay-reviewer-app[bot] (approved PR #409 @ 3b022c17ea158700be8cfab679d1719c75afb7a4) |
 | 14 | [`--lint`: flag a Verify row whose `go test -run` selector can pass on "no tests to run" (vacuous-selector rule)](brief-14-vacuous-gotest-run-lint.md) | 1 | M | done | 2026-09-30 assay-verifier-app[bot] @ 43420f7ecd74 (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1659 @ f0355f1b57794105b59a1408522a44c7de59eb93) |
 | 15 | [Extract canonical eligibility and coverage evaluation API](brief-15-extract-canonical-eligibility-and-coverage-evaluation-api.md) | 1 | L | implemented | — | — |
-| 16 | [Hold an issue out of dispatch when a non-human removed its excluded label: both scanners hold the placeholder, the issue board holds the un-briefed row](brief-16-label-removal-hold.md) | 1 | L | todo | — | — |
+| 16 | [Hold an issue out of dispatch when a non-human removed its excluded label: both scanners hold the placeholder, the issue board holds the un-briefed row](brief-16-label-removal-hold.md) | 1 | L | implemented | — | — |
 | 17 | [`--scan-issues`: a `risk:high` label derives `gate: human` on the issue's placeholder (`risk:med` does not)](brief-17-risk-high-label-gate.md) | 1 | S | implemented | — | — |
 | 18 | [`--scan-issues`: print a notice when an open issue derives `gate: human` and its placeholder reads `gate: model` (detect only, no write)](brief-18-gate-mismatch-notice.md) | 2 | S | todo | — | — |
 | 19 | [Context handoff contracts and synthetic fixtures](brief-19-context-handoff-contracts.md) | 1 | M | implemented | — | — |
 | 20 | [Offline future-state resolver with receipt and amendment validation](brief-20-offline-context-resolver.md) | 2 | L | todo | — | — |
 | 21 | [Author skills consume the shared context handoff](brief-21-author-skill-handoff.md) | 4 | M | todo | — | — |
-| 22 | [Product target records and compatible requirement parsing](brief-22-product-target-records-and-compatible-requirement-parsing.md) | 1 | M | todo | — | — |
+| 22 | [Product target records and compatible requirement parsing](brief-22-product-target-records-and-compatible-requirement-parsing.md) | 1 | M | implemented | — | — |
 | 23 | [Product target binding and context drift assessment](brief-23-product-target-binding-and-context-drift-assessment.md) | 3 | M | todo | — | — |
 | 24 | [Portfolio allocation and capacity accounting](brief-24-portfolio-allocation-and-capacity-accounting.md) | 2 | M | todo | — | — |
 | 25 | [Read-only portfolio and drift projections](brief-25-read-only-portfolio-and-drift-projections.md) | 4 | M | todo | — | — |
+| 26 | [Extend statusgen phase measurements through the shared performance recorder](brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -118,3 +119,12 @@ adoption notes. Until 20 ships and is pinned, the bounded manual bootstrap packe
 documented path. Owner rows for every package: the
 [amendment manifest](../../proposals/non-ci-architecture/20-amendment-manifest.md).
 Existing completed history is unchanged.
+
+## Performance reuse — 2026-10-16
+
+Statusgen/26 extends the already-shared perfrec recorder after desktools-v2/61 (wave 2).
+It measures discovery, parsing, evaluation, rendering and the existing deskread child;
+invocation-local snapshot reuse must match fresh evaluation. It has no dependency on
+the online mirror, perfdata storage or a database and acquires no credential. Context
+resolver /20 retains independent membership enumeration and exact receipt semantics.
+The desktools-v2 README holds the cross-stream performance priority and critical path.

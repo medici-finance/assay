@@ -502,6 +502,7 @@ type ghTimelineWire struct {
 	} `json:"label"`
 	Actor struct {
 		Login string `json:"login"`
+		ID    int64  `json:"id"`
 	} `json:"actor"`
 }
 
@@ -1543,29 +1544,53 @@ func (g *GitHubForge) IssueReactions(repo ForgeRepo, number int) ([]Reaction, er
 // UNATTESTED. A read FAILURE propagates — the caller refuses could-not-check rather than
 // treating an unreadable timeline as an empty one.
 func (g *GitHubForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
+	out, complete, err := g.labelTimeline(repo, number)
+	if err != nil {
+		return nil, err
+	}
+	if !complete {
+		return nil, fmt.Errorf("label timeline exceeded page bound")
+	}
+	return out, nil
+}
+
+func (g *GitHubForge) ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
+	return g.ListLabelEvents(repo, number)
+}
+
+// IssueLabelHistory (op 64) is the issue's whole label history with the page bound REPORTED
+// rather than returned as an error: Complete=false when the walk spent every page and the forge
+// was still paginating. Every labeled/unlabeled event is kept, named or not.
+func (g *GitHubForge) IssueLabelHistory(repo ForgeRepo, number int) (*LabelHistory, error) {
+	out, complete, err := g.labelTimeline(repo, number)
+	if err != nil {
+		return nil, err
+	}
+	return &LabelHistory{Events: out, Complete: complete}, nil
+}
+
+// labelTimeline walks the timeline and returns its labeled/unlabeled events, and whether the
+// walk reached the end (a short page) before the page bound.
+func (g *GitHubForge) labelTimeline(repo ForgeRepo, number int) ([]LabelEvent, bool, error) {
 	var out []LabelEvent
 	for page := 1; page <= forgeMaxFilePages; page++ {
 		var chunk []ghTimelineWire
 		path := fmt.Sprintf("/repos/%s/%s/issues/%d/timeline?per_page=%d&page=%d",
 			repo.Owner, repo.Name, number, forgeFilePerPage, page)
 		if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		for _, e := range chunk {
 			if e.Event != "labeled" && e.Event != "unlabeled" {
 				continue
 			}
-			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login, CreatedAt: e.CreatedAt, Removed: e.Event == "unlabeled"})
+			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login, AppliedByID: e.Actor.ID, CreatedAt: e.CreatedAt, Removed: e.Event == "unlabeled"})
 		}
 		if len(chunk) < forgeFilePerPage {
-			return out, nil
+			return out, true, nil
 		}
 	}
-	return nil, fmt.Errorf("label timeline exceeded page bound")
-}
-
-func (g *GitHubForge) ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
-	return g.ListLabelEvents(repo, number)
+	return out, false, nil
 }
 
 // ghCommentsQuery reads a change's comments with the two properties REST does not carry: the
@@ -2841,7 +2866,7 @@ func (g *GitHubForge) writeEvidenceFileFromSnapshot(repo ForgeRepo, in WriteFile
 
 	// Idempotency: byte-identical content already on the branch is a noop, no write.
 	if exists && bytes.Equal(priorContent, in.Content) {
-		res.SHA = priorSHA
+		res.ContentID = ContentID(priorSHA)
 		return res, nil
 	}
 
@@ -2853,6 +2878,9 @@ func (g *GitHubForge) writeEvidenceFileFromSnapshot(repo ForgeRepo, in WriteFile
 			in.File, in.Branch, res.PriorRows, res.Rows))
 	}
 
+	if in.ExpectedHead != "" {
+		return g.writePinnedEvidence(repo, in, res)
+	}
 	body := map[string]any{
 		"message": in.Message,
 		"content": base64.StdEncoding.EncodeToString(in.Content),
@@ -2867,7 +2895,8 @@ func (g *GitHubForge) writeEvidenceFileFromSnapshot(repo ForgeRepo, in WriteFile
 		return nil, err
 	}
 	res.Changed = true
-	res.SHA = w.Content.SHA
+	res.ContentID = ContentID(w.Content.SHA)
+	res.CommitSHA = CommitSHA(w.Commit.SHA)
 	res.Author = w.Commit.Author.Name
 	return res, nil
 }

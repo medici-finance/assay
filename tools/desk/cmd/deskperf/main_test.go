@@ -218,12 +218,15 @@ func TestWrappedVerbToDeskperfEndToEnd(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &rep); err != nil {
 		t.Fatalf("report --json unparseable: %v\n%s", err, out)
 	}
-	if rep.Summary.Records != 1 || len(rep.Summary.Tools) != 1 || len(rep.Summary.Slowest) != 1 {
-		t.Fatalf("deskperf did not read back exactly the one wrapped record: %+v", rep.Summary)
+	// PerfRun writes perf-v2: it reads back in the perf-v2 group, and the legacy group is empty.
+	v2 := rep.PerfV2
+	if rep.Summary.Records != 0 || v2 == nil || v2.Records != 1 || len(v2.Tools) != 1 || len(v2.Slowest) != 1 {
+		t.Fatalf("deskperf did not read back exactly the one wrapped record as perf-v2: legacy %+v perf-v2 %+v", rep.Summary, v2)
 	}
-	st, sl := rep.Summary.Tools[0], rep.Summary.Slowest[0]
-	if st.Tool != "deskpr" || st.Refusals != 1 || st.RefusalRatio != 1 || sl.Verb != "update" || sl.WallMs < 15 {
-		t.Fatalf("the record read back is not the one written: tool %+v slowest %+v", st, sl)
+	st, sl := v2.Tools[0], v2.Slowest[0]
+	if st.Tool != "deskpr" || st.Refusals != 1 || st.RefusalRatio != 1 || sl.Verb != "update" || sl.WallMs < 15 ||
+		v2.Boundaries["process-init"] != 1 {
+		t.Fatalf("the record read back is not the one written: tool %+v slowest %+v boundaries %v", st, sl, v2.Boundaries)
 	}
 
 	got, err := os.ReadFile(audit)

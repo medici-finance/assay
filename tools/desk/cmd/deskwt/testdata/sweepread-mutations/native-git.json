@@ -1,0 +1,10 @@
+{
+  "test": "go test ./internal/gitcore -run '^TestCachedAncestryMatchesGit$' -count=1 -v -timeout 30s",
+  "control": {
+    "name": "invert cached ancestry against native Git",
+    "file": "internal/gitcore/contains.go",
+    "old": "return len(refs) != 0, err",
+    "new": "return len(refs) == 0, err"
+  },
+  "mutations": []
+}

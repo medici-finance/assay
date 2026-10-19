@@ -437,6 +437,7 @@ result mapping, and error classification (404 → `IsForgeNotFound`; 403 → `Fo
 control the brief names, independent of the per-tool tests.
 
 | 61 | `ListIssueLabelEvents(repo, number)` | read typed issue stamp provenance for pre-work verifier admission | `GET /issues/{n}/timeline`, bounded, ordered label applications and removals | `GET /projects/:id/issues/:iid/resource_label_events`, bounded add/remove history with user; never the MR endpoint | implemented |
+| 64 | `IssueLabelHistory(repo, number)` | ONE issue's whole label history for the label-removal hold: every label application and removal with its actor's login and numeric id, INCLUDING an event whose label the forge no longer names (kept, with an empty name); `Complete=false` when a pagination bound was hit, never an error and never a short history. Consumers: the `label-events` kind of `deskread` (the statusgen scanner's hold) and the issue board's read | `GET /repos/{o}/{r}/issues/{n}/timeline?per_page=100`, paginated (40 pages); `labeled`/`unlabeled` entries only, actor login and id; page bound reached with a next page → `Complete=false` | `GET /projects/:id/issues/:iid/resource_label_events?per_page=100`, paginated (25 pages); an event whose label was deleted is kept with an empty name; page bound → `Complete=false`; never the MR endpoint | implemented |
 
 The pre-work verifier reader consumes this issue-specific operation with the existing
 `ApplyLabels(TargetIssue)` writer and model-stamp reader. Hitting a pagination bound is

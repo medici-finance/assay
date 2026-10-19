@@ -196,8 +196,9 @@ func renderReport(store *Store, baselines BaselineSet) (string, error) {
 	writeBusFactorAlarms(&b, ownership)
 
 	// --- Sections populated by later waves — could-not-measure until then. ---
-	b.WriteString("## Defect-inducing rate (M2)\n\n")
-	b.WriteString("not measured — populated by quality/06–07 (defect-fix identification + SZZ trace). Never rendered as 0.\n\n")
+	if err := writeM2Section(&b, store); err != nil {
+		return "", err
+	}
 	writeRefixSection(&b, refixes)
 	b.WriteString("## Per-stage ledger (M3)\n\n")
 	b.WriteString("not measured — populated by quality/10 (stage attribution). Never rendered as 0.\n\n")

@@ -76,6 +76,7 @@ USAGE:
   deskgit fetch --branch <B>      # origin's <B> -> local branch <B> (not main/master in any case)
   deskgit fetch --as <role>       # any fetch mode above, authenticated from <role>'s token file
   deskgit push --as <role>        # push the CURRENT branch to origin, authenticated (not main/master)
+  deskgit heads --repo owner/name # complete origin heads as this session’s bound role (JSON)
   deskgit --version
 
 deskgit is safe by construction: each mode builds a FIXED refspec from a validated value —
@@ -141,6 +142,8 @@ func run(args []string) int {
 	sub, rest := args[0], args[1:]
 	var err error
 	switch sub {
+	case "heads":
+		err = cmdHeads(rest)
 	case "fetch":
 		err = cmdFetch(rest)
 	case "push":
