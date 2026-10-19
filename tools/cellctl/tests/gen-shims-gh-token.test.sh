@@ -54,6 +54,15 @@ unset CELL CELL_DIR CELL_HOME CELL_CONFIG CELL_KIND CELL_FORGE CELL_REPO CELL_RO
   GITLAB_API_BASE GITLAB_GROUP GITLAB_TOKEN_STORE DESKD_GITLAB_TOKEN_FILE \
   DESK_MODEL_DEFAULT DESK_MODEL_the_desk DESK_MODEL_worker_desk DESK_MODEL_OVERRIDE \
   DESK_ROOTS DESK_LOOP DESK_SESSION GH_TOKEN GH_ENTERPRISE_TOKEN 2>/dev/null || true
+# assay#1631: a cellctl shim exports CELLCTL_GH_AMBIENT (the operator's ambient credential) to
+# the shell that runs this suite, and the shim under test takes an inherited one as already
+# resolved, so the fixture `gh` below would never be asked. Clear every inherited CELLCTL_*
+# name, not a list of known ones. CELLCTL (the implementation under test) was read above and
+# has no underscore, so it is kept; the suite sets its own CELLCTL_* values after this point.
+while IFS= read -r v; do
+  case "$v" in CELLCTL_*) unset "$v" ;; esac
+done < <(compgen -e)
+unset v
 
 # ---------------------------------------------------------------- fixtures
 # The "REAL" (operator) HOME the live session keeps — the fixture `gh`'s ambient lookup only

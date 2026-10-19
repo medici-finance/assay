@@ -55,6 +55,7 @@ facts:
 - It is a composition of lifecycle transitions through `drain` and `up` and adds no state or mechanism of its own; the interim mechanism belongs to desk-containers/18. Output is a desk-containers/15 result with one `roles[]` entry per role, carrying both phases. A `--now` restart is applied only by interactive confirm; off a TTY it is plan-only.
 
 ## Ground rules
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - NEVER git push / trigger workflows. Stop at `implemented`.
 - Compose `drain` and `up`; do not re-implement either.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.

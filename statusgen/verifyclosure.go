@@ -84,6 +84,7 @@ Flags:
 // the "verifyclosure" token main() already stripped.
 func runVerifyclosure(args []string, stdout, stderr *os.File) int {
 	fs := flag.NewFlagSet("verifyclosure", flag.ContinueOnError)
+	defer transitionFlags(fs)()
 	fs.SetOutput(stderr)
 	fs.Usage = func() {}
 	briefKey := fs.String("brief", "", "brief key <stream>/<NN> to evaluate")

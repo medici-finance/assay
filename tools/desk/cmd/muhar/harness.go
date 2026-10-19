@@ -20,8 +20,9 @@
 //     bytes actually landed. No proof, no result — the state becomes CouldNotMutate,
 //     never NotCaught.
 //  2. There are THREE result states, never two: Caught (checked-failed) /
-//     NotCaught (checked-clean) / CouldNotMutate (could-not-check). "Could not
-//     mutate" never collapses into "not caught".
+//     NotCaught (checked-clean) / CouldNotMutate (could-not-check), including
+//     a Go mutation that does not compile. "Could not mutate" never collapses
+//     into "not caught".
 //  3. A POSITIVE CONTROL — a mutation the suite MUST catch (a structural
 //     invariant, an always-asserted equality) — runs every time. If the control
 //     is not Caught, the harness is broken and the ENTIRE run is discarded, not
@@ -41,13 +42,76 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
+
+// CommandResult keeps a timeout distinct from an ordinary suite failure.
+type CommandResult struct {
+	Failed   bool
+	TimedOut bool
+	Err      error
+}
+
+// TimeoutSpec derives a mutant's command limit from the measured baseline.
+type TimeoutSpec struct {
+	Multiplier float64 `json:"multiplier,omitempty"`
+	Floor      string  `json:"floor,omitempty"`
+	Baseline   string  `json:"baseline,omitempty"`
+}
+
+type timeoutPolicy struct {
+	multiplier float64
+	floor      time.Duration
+	baseline   time.Duration
+}
+
+func (s TimeoutSpec) policy() (timeoutPolicy, error) {
+	p := timeoutPolicy{multiplier: s.Multiplier, floor: 20 * time.Second, baseline: 30 * time.Minute}
+	if p.multiplier == 0 {
+		p.multiplier = 5
+	}
+	if s.Floor != "" {
+		d, err := time.ParseDuration(s.Floor)
+		if err != nil || d <= 0 {
+			return timeoutPolicy{}, fmt.Errorf("timeout.floor must be a positive duration")
+		}
+		p.floor = d
+	}
+	if s.Baseline != "" {
+		d, err := time.ParseDuration(s.Baseline)
+		if err != nil || d <= 0 {
+			return timeoutPolicy{}, fmt.Errorf("timeout.baseline must be a positive duration")
+		}
+		p.baseline = d
+	}
+	if p.multiplier <= 0 || math.IsNaN(p.multiplier) || math.IsInf(p.multiplier, 0) {
+		return timeoutPolicy{}, fmt.Errorf("timeout.multiplier must be a finite positive number")
+	}
+	return p, nil
+}
+
+func (p timeoutPolicy) mutantLimit(baseline time.Duration) time.Duration {
+	if baseline <= 0 {
+		return p.floor
+	}
+	n := float64(baseline) * p.multiplier
+	if n > float64(math.MaxInt64) {
+		return time.Duration(math.MaxInt64)
+	}
+	d := time.Duration(n)
+	if d < p.floor {
+		return p.floor
+	}
+	return d
+}
 
 // Result is the outcome of planting one mutation and running the suite.
 // Three states, never two (#34): a mutation that could not be planted is its
@@ -61,9 +125,8 @@ const (
 	// NotCaught: the suite stayed green with the mutation PROVEN in place —
 	// the guard has no discriminating test. A REAL finding. "checked-clean."
 	NotCaught
-	// CouldNotMutate: the edit did not land (no-op edit, target text absent,
-	// on-disk bytes did not change). "could-not-check." This is the #34 state
-	// that must never masquerade as NotCaught.
+	// CouldNotMutate: the edit did not land or the mutated package cannot be
+	// built. "could-not-check." This must never masquerade as NotCaught.
 	CouldNotMutate
 )
 
@@ -126,10 +189,14 @@ func applyEdit(content string, m Mutation) (string, error) {
 // mutation was caught); it is a func so the core logic is exercisable without
 // spawning a real process.
 type Harness struct {
-	Root      string                 // directory relative File paths resolve against
-	Test      func(root string) bool // true == suite FAILED (mutation caught) against the tree at root
-	Control   Mutation               // a mutation the suite MUST catch; guards against a broken harness
-	Mutations []Mutation             // the guards under test
+	Root            string                 // directory relative File paths resolve against
+	Test            func(root string) bool // true == suite FAILED (mutation caught) against the tree at root
+	RunTest         func(root string, timeout time.Duration) CommandResult
+	Build           func(root string, m Mutation, timeout time.Duration) CommandResult
+	Timeout         TimeoutSpec
+	MutationTimeout time.Duration
+	Control         Mutation   // a mutation the suite MUST catch; guards against a broken harness
+	Mutations       []Mutation // the guards under test
 
 	// Jobs is how many mutations to have in flight at once. <= 1 runs the
 	// sweep sequentially, in place, against Root — the original behaviour.
@@ -157,6 +224,7 @@ type Harness struct {
 	// with every compiler error reported, returning the output and whether the
 	// build was clean; schemata uses it to drop mutants that do not compile.
 	SchemaBuild func(root, overlay string, dirs []string) (out string, clean bool)
+	SchemaRun   func(root, overlay, selector string, timeout time.Duration) CommandResult
 	// Log receives progress notes (never verdicts); nil discards them.
 	Log io.Writer
 }
@@ -175,12 +243,21 @@ type Report struct {
 	Results []MutationResult
 }
 
-// MutationResult pairs a mutation with its three-state outcome and any error
-// explaining a CouldNotMutate.
+// MutationResult pairs a mutation with its three-state outcome and any detail.
 type MutationResult struct {
 	Mutation Mutation
 	Result   Result
 	Err      error
+}
+
+func (h *Harness) runTest(root string, timeout time.Duration) CommandResult {
+	if h.RunTest != nil {
+		return h.RunTest(root, timeout)
+	}
+	if h.Test == nil {
+		return CommandResult{Err: fmt.Errorf("test runner is not configured")}
+	}
+	return CommandResult{Failed: h.Test(root)}
 }
 
 // resolve locates m.File inside the tree rooted at root. An absolute path is
@@ -194,10 +271,17 @@ func resolve(root, path string) string {
 }
 
 // runOne plants a single mutation in the tree at root, PROVES it landed on
-// disk, runs the suite there, then restores the file. A mutation that cannot be
-// proven on disk returns CouldNotMutate with an explanatory error — it never
-// runs the suite, so it can never be mistaken for NotCaught.
+// disk, builds its package, runs the suite, then restores the file. An edit that
+// cannot be proven or a Go package that does not compile returns CouldNotMutate;
+// a test suite never judges a non-compiling mutant.
+//
+// The build and the suite each get the whole per-mutation limit, never a share
+// of one deadline: a suite killed at its limit counts as CAUGHT (it did not
+// terminate), and that verdict is only true when the suite had the whole limit.
+// A suite cut short because the build used up part of its time would otherwise
+// be counted CAUGHT without proving anything.
 func (h *Harness) runOne(root string, m Mutation) (Result, error) {
+	limit := h.MutationTimeout
 	path := resolve(root, m.File)
 	orig, err := os.ReadFile(path)
 	if err != nil {
@@ -234,6 +318,18 @@ func (h *Harness) runOne(root string, m Mutation) (Result, error) {
 		return CouldNotMutate, fmt.Errorf("mutation %q: post-write verify failed — file is byte-identical to the original", m.Name)
 	}
 
+	if h.Build != nil {
+		built := h.Build(root, m, limit)
+		if built.TimedOut {
+			return CouldNotMutate, fmt.Errorf("mutated package build timed out after %s", limit)
+		}
+		if built.Err != nil {
+			return CouldNotMutate, fmt.Errorf("mutated package build could not run: %w", built.Err)
+		}
+		if built.Failed {
+			return CouldNotMutate, fmt.Errorf("mutated package does not compile")
+		}
+	}
 	test := h.Test
 	if h.Selector != nil {
 		// Decided only AFTER the edit is proven on disk, so a selection can
@@ -251,8 +347,34 @@ func (h *Harness) runOne(root string, m Mutation) (Result, error) {
 		if sel.Test != nil {
 			test = sel.Test
 		}
+		if sel.TestWithTimeout != nil {
+			return classifyTest(sel.TestWithTimeout(root, limit), limit)
+		}
 	}
-	if test(root) {
+	if h.RunTest == nil && test != nil {
+		if test(root) {
+			return Caught, nil
+		}
+		return NotCaught, nil
+	}
+	return classifyTest(h.runTest(root, limit), limit)
+}
+
+// suiteTimeout is the reason a suite run that hit its limit is CAUGHT. It is a
+// type so preflight can tell a positive control caught by a kill from one the
+// suite really caught.
+type suiteTimeout struct{ limit time.Duration }
+
+func (e suiteTimeout) Error() string { return fmt.Sprintf("TIMEOUT after %s", e.limit) }
+
+func classifyTest(out CommandResult, limit time.Duration) (Result, error) {
+	if out.TimedOut {
+		return Caught, suiteTimeout{limit}
+	}
+	if out.Err != nil {
+		return CouldNotMutate, fmt.Errorf("test command could not run: %w", out.Err)
+	}
+	if out.Failed {
 		return Caught, nil
 	}
 	return NotCaught, nil
@@ -264,14 +386,33 @@ func (h *Harness) runOne(root string, m Mutation) (Result, error) {
 // header the caller fills the per-mutation results into.
 func (h *Harness) preflight(root string) Report {
 	var rep Report
+	policy, err := h.Timeout.policy()
+	if err != nil {
+		rep.Broken = true
+		rep.BrokenReason = err.Error()
+		return rep
+	}
 
 	// (4) Baseline: pristine source must be green. A suite that is already red
 	// makes every later "caught" meaningless.
-	if h.Test(root) {
+	start := time.Now()
+	base := h.runTest(root, policy.baseline)
+	if base.TimedOut {
+		rep.Broken = true
+		rep.BrokenReason = fmt.Sprintf("baseline timed out after %s — discard the run", policy.baseline)
+		return rep
+	}
+	if base.Err != nil {
+		rep.Broken = true
+		rep.BrokenReason = fmt.Sprintf("baseline could not run (%v) — discard the run", base.Err)
+		return rep
+	}
+	if base.Failed {
 		rep.Broken = true
 		rep.BrokenReason = "baseline suite is RED on pristine source — cannot distinguish a caught mutation from a pre-existing failure; discard the run"
 		return rep
 	}
+	h.MutationTimeout = policy.mutantLimit(time.Since(start))
 	rep.BaselineGreen = true
 
 	// Selection's coverage pass needs the green pristine tree the baseline
@@ -290,11 +431,19 @@ func (h *Harness) preflight(root string) Report {
 	// and the whole run is worthless — exactly the #34 failure, made loud.
 	cres, cerr := h.runOne(root, h.Control)
 	rep.ControlResult = cres
+	var killed suiteTimeout
+	if cres == Caught && errors.As(cerr, &killed) {
+		// A timeout is CAUGHT for a mutant, but it cannot validate the harness:
+		// a suite that asserts nothing still times out when it is slow enough.
+		rep.Broken = true
+		rep.BrokenReason = fmt.Sprintf("positive control was caught only by a %s, never by a failing suite — the control must turn the suite red; discard the run", killed)
+		return rep
+	}
 	if cres != Caught {
 		rep.Broken = true
 		switch cres {
 		case CouldNotMutate:
-			rep.BrokenReason = fmt.Sprintf("positive control could not be planted (%v) — the harness is not mutating; discard the run", cerr)
+			rep.BrokenReason = fmt.Sprintf("positive control could not be validated (%v) — discard the run", cerr)
 		default:
 			rep.BrokenReason = "positive control was NOT CAUGHT — a mutation the suite must catch stayed green, so the harness is broken (not mutating, or the suite cannot see the source); discard the run"
 		}

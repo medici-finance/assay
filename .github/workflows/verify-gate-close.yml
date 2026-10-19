@@ -252,7 +252,7 @@ jobs:
             git fetch --no-tags origin main
             git reset --hard FETCH_HEAD
 
-            if ! out=$("${RUNNER_TEMP}/statusgen" --root . --close-verify "$brief" 2>&1); then
+            if ! out=$("${RUNNER_TEMP}/statusgen" --root . --close-verify "$brief" --acceptance-forge 2>&1); then
               printf '%s\n' "$out"
               # Idempotency (already done): the brief is ALREADY `done`, so this
               # close is a benign replay of an earlier successful sign-off (the
@@ -316,7 +316,7 @@ jobs:
             # still RUNS whole-board for observability; a pre-existing, unrelated
             # problem in some other brief must NOT discard an already-computed,
             # legitimate human sign-off flip.
-            if ! lint_out=$("${RUNNER_TEMP}/statusgen" --root . --lint 2>&1); then
+            if ! lint_out=$("${RUNNER_TEMP}/statusgen" --root . --lint --acceptance-forge 2>&1); then
               printf '%s\n' "$lint_out"
               if printf '%s' "$lint_out" | grep -qF "$readme"; then
                 echo "::error::this flip's file ($readme) fails lint — refusing to commit"

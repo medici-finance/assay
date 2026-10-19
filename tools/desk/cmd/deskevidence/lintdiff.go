@@ -139,7 +139,7 @@ func statusgenLintAt(root string) ([]string, error) {
 	if _, err := exec.LookPath("statusgen"); err != nil {
 		return nil, deskkit.Unverifiable("statusgen is not on PATH — cannot check this landing for introduced PROBLEMs", err)
 	}
-	cmd := exec.Command("statusgen", "--root", root, "--lint")
+	cmd := exec.Command("statusgen", acceptanceArgs("--root", root, "--lint")...)
 	cmd.Dir = os.TempDir()
 	out, cerr := cmd.CombinedOutput()
 	exitedNonZero := false

@@ -13,10 +13,12 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 2
+version: 4
 id: 5306ce94-4e21-44af-82e4-d552eaca0ff5
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "assay:assay:desktools-v2:65 — reusable own-provider observation seam"
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
@@ -155,7 +157,7 @@ boundary and independent expectation, not another implementation of the same che
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 7 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedPerformanceWorkloadAttribution$' ./internal/forgeservice/integration/... > "$out" && grep -F -- '--- PASS: TestServedPerformanceWorkloadAttribution ' "$out")` | exit 0; named PASS; matched CLI/service bursts retain decisions and authority, share scoped inventory and report versioned coverage without double-counting; stale fast answers and hidden minter children fail |
+| 7 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestServedPerformanceWorkloadAttribution$' ./internal/forgeservice/integration/... > "$out" && grep -F -- '--- PASS: TestServedPerformanceWorkloadAttribution ' "$out")` | exit 0; named PASS; matched CLI/service bursts retain decisions and authority, share scoped inventory and report versioned coverage without double-counting; stale fast answers and hidden minter children fail; same-scope coalesced waiters must not receive another caller's diagnostic link or work label in responses or metrics |
 
 ## Pre-mortem and detection
 
@@ -184,6 +186,28 @@ from /58–59; a query-side universal token or fallback minter process is a fail
 Select workload budgets before running the experiment. Keep the current operator activation,
 database recovery and credential-inventory gates; no performance result grants cutover.
 
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+For this brief's existing performance observations, reuse the [perf-v3 contract](../../performance-attribution-spec.md) and /63–65's
+shared typed context and request-cost seam when those adapters are available. Each process
+records its own attempts, timing and observed GraphQL points with units/basis/coverage;
+client-to-service and service-to-provider work are distinct. Carry admitted parent invocation
+links when known, preserve missing context and never turn it into operational authority.
+No extra provider request or expanded business query for monitoring; qualified bounded cost
+metadata may join the same request. No copied descendant call total,
+and no v2-only replacement instrument. Keep this brief's scope/Verify/Evidence and independent
+service delivery; record unsupported boundaries until producer integration. /45's existing
+matched service qualification must include own-request and parent/child no-double-count cases.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Apply docs/performance-attribution-spec.md, including its query/cache boundary contract.
+
+Extend the existing named served workload Verify row with 50 same-scope queries, one three-page coalesced walk, subsequent warm hit, forced passthrough with retry, denied request, background poll and missing server diagnostics. Assert exact client logical count/transport attempts, handler count, three actual page sends and shared points charged once; no double process CPU or client+handler elapsed totals. Test propagation disabled at either profile/protocol boundary and concurrent work isolation through real client/server/executor/report seams. Give same-scope coalesced waiters distinct diagnostic links and work labels; assert responses and metrics expose none of another caller's context, with a planted context-copy defect rejected by the fixture.
+
+Extend TestServedPerformanceWorkloadAttribution and the existing corresponding Verify flow with these negative cases; require its exact PASS line.
+No service activation or extra dependency on a live collector is introduced.
 
 ## Evidence
 

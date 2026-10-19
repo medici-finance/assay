@@ -12,10 +12,11 @@ gate-why: "Correlated operational measurements and their access/retention bounda
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: 6d9c9936-0866-403d-945f-1a06329cf352
 authored: 2026-10-13 by performance collection authoring
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - docs/streams/performance-collection/README.md
   - docs/telemetry.md
   - docs/proposals/non-ci-architecture/11-target-architecture.md
@@ -126,6 +127,16 @@ Drop the upload flag check, advance checkpoint before ACK, or generate new IDs o
 row must traverse actual public producer/reader or served interfaces. Scope/retention
 adequacy and deployment workload selection are review judgments; their measured evidence
 is required before activation, not invented from component-test success.
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+Apply the [perf-v3 contract](../../performance-attribution-spec.md). Existing Tasks/Verify/Evidence and consent/retention controls remain owed.
+
+Send only profile-selected aliased collection events, never original perf-v3 day files or
+raw local work locators. Preserve invocation/event identity, causal links and nullable timing/
+GraphQL coverage across resume, lost ACK and consent withdrawal. Extend the existing preview/
+replay/opt-out Verify flow with mixed source versions and verify zero sockets in dry-run,
+no raw work/native-harness references in bytes, and byte-stable identity on retransmission.
 
 ## Evidence
 

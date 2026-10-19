@@ -238,11 +238,36 @@ func ciCrossModuleRegistry() []ciEntry {
 			why:        "verifyloop plans the shared fixture tree under the canonical queue rows statusgen printed for it, so a statusgen-only change to the classification or the fixture is checked against its consumer on every PR",
 		},
 		{
+			test: "statusgen/acceptanceci_test.go", module: "statusgen",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads: []string{
+				".github/workflows/assay-statusgen.yml", ".github/workflows/verify-gate-close.yml",
+				"ci/staged-workflows/assay-statusgen.yml", "ci/staged-workflows/verify-gate-close.yml",
+				"tools/ci-load/activation/assay-statusgen.yml",
+			},
+			runInvokes: []string{"cd statusgen && go test ./..."},
+			why:        "the unconditional statusgen suite checks acceptance flags, mapped humans and read credentials across every authoritative workflow source and retry",
+		},
+		{
+			test: "statusgen/verifykitblocked_test.go", module: "statusgen",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"tools/desk/cmd/deskdispatch/references/verifier-prompt.md"},
+			runInvokes: []string{"cd statusgen && go test ./..."},
+			why:        "the unconditional statusgen suite feeds the actual verifier kit marker into the flip reader to prove blocked runs supersede and bound passing runs",
+		},
+		{
 			test: "statusgen/claimbridge_test.go", module: "statusgen",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"statusgen", "tools/desk", "forgeread", "perfrec"},
 			runInvokes: []string{"bash statusgen/test-role-claims.sh"},
 			why:        "the statusgen consumer builds the desk heads child and exercises its custody and shared envelope through the same offline invocation used by PR CI",
+		},
+		{
+			test: "tools/desk/cmd/deskpushguard/hookentrypoints_test.go", module: "tools/desk",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"Makefile", "scripts/build-windows.ps1", "tools/desk/hooks/pre-push"},
+			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			why:        "the unconditional build-test floor checks both hook installer entrypoints (the Makefile recipe under /bin/sh, as the runner has no make) and the published anchored hook",
 		},
 		{
 			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",

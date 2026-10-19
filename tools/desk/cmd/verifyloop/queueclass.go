@@ -81,6 +81,9 @@ const (
 	// the verify runner, a continuation owned by another party (CI auto-flip, implementer
 	// rework), a human action, or in a paused/parked stream. It can only ever DEMOTE.
 	dispBaseHeld
+	// Pending verifier-authored Evidence is scheduling evidence only. The
+	// queue stays visible until merge or a source/input wake.
+	dispAwaitingMerge
 )
 
 // String is the stable bucket slug used in the plan output and tests.
@@ -106,6 +109,8 @@ func (d disposition) String() string {
 		return "wait"
 	case dispBaseHeld:
 		return "queue-held"
+	case dispAwaitingMerge:
+		return "awaiting-merge"
 	default:
 		return "unknown"
 	}
@@ -148,6 +153,8 @@ func (d disposition) whyItWaits() string {
 		return "a failed/blocked verification whose wake condition is unchanged — re-verifying now reproduces the same non-verdict; the line names the blocker, the next actor, and what will wake it"
 	case dispBaseHeld:
 		return "the canonical verification queue classes it as something other than judge-dispatch work (runner, continuation, human action, paused or parked) — the line names the class, owner and next act"
+	case dispAwaitingMerge:
+		return "current-source verifier Evidence is in an open PR — merge or a source/input wake owns the next action; no lifecycle verdict is granted"
 	default:
 		return ""
 	}
@@ -203,6 +210,9 @@ func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string
 	}
 	if bu := payloadValue(it, "blocked_until"); bu != "" {
 		return dispDeferred, bu
+	}
+	if ref := payloadValue(it, "awaiting_merge"); ref != "" {
+		return dispAwaitingMerge, "awaiting-merge " + ref
 	}
 	if tier == loopengine.TierHuman || loopengine.GateIsHuman(it.Gate) || it.Risk.Any() {
 		if evidenceOnlyDispatchable(it) {

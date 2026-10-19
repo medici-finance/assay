@@ -156,3 +156,109 @@ records retain full history, ordinary records audit only their selected run, and
 a selected string that would newly classify as protected refuses as ambiguous.
 Ordinary canonical auditing can normalize selected text internally; no assumption
 that comment removal is idempotent grants an exemption or older-row credit.
+
+### Explicit human-approved acceptance transitions
+
+The immutable-delivery rule above remains the default. A versioned brief may opt
+into one later, separately landed command correction. This is a new human act,
+not an authority inferred from merging a source edit, incrementing `version:`, a
+label, a local record, an APPROVED review, or a bot relaying a person's words.
+
+The bounded first implementation supports changing commands of existing original
+rows while retaining their exact Expect, class, shell, order and obligations.
+Each changed command must occupy exactly one unambiguous code span, with
+byte-identical surrounding context in the original, delivered and amended
+Command cells. The delivered row must match the entire original row definition.
+Tables must have explicit row IDs under a first-column `#` header. Original rows cannot
+be added, dropped or renumbered. Supplemental rows cannot change or gain credit.
+An unchanged row still owes its original command and Expect even if the delivering
+worker edited it. Coverage records acceptance sources per row: original revision
+for unchanged obligations, approved amendment for the corrected ones.
+
+The amendment must be on the observed HEAD's first-parent chain after delivery.
+A squash amendment has one parent. A two-parent amendment needs a unique merge
+base whose acceptance table equals pre-merge main. Intermediate acceptance edits,
+ambiguous bases and octopus merges refuse. The amendment increments the existing
+brief-v2 `version:` by exactly one; the current version and Verify section must
+still match it. Historical Evidence must survive unchanged through amendment and
+remain a prefix of the current record. No earlier result receives new credit.
+
+A human recognized by the existing external human-login roster posts an unedited
+comment on a same-repository decision issue. That issue contains
+`<!-- acceptance-transition: docs/streams/example/brief-01-example.md -->`.
+The comment contains exactly the following payload, with actual full Git IDs and
+all changed row IDs in table order:
+
+```text
+Approve acceptance-transition v1
+repo=example-org/example-repo
+brief=docs/streams/example/brief-01-example.md
+delivery=<sha>
+base=<sha>
+original=<sha>
+amendment=<sha>
+rows=2,3
+```
+
+The existing ruling resolver reads the comment and its parent issue directly.
+It verifies repository, issue membership, unedited timestamps and the mapped
+non-bot author. The transition owner additionally requires that exact payload, normalizing only
+CRLF line endings to LF before comparison. Approval reads are bound to github.com;
+other origin hosts refuse before contact, even when owner/repository names match.
+GitHub HTTPS, SCP-style SSH and SSH URL origins remain supported.
+Missing, edited, stale, bot-authored, cross-brief or unverifiable approval refuses.
+The human approves a specific immutable amendment, not arbitrary future changes.
+
+A coordinate-only descriptor contains these two literal lines:
+
+```text
+Verification-Table: delivery=<sha> base=<sha> original=<sha>
+Acceptance-Transition: amendment=<sha> approval=https://github.com/example-org/example-repo/issues/42#issuecomment-123
+```
+
+The independent verifier can execute it with:
+
+```sh
+statusgen verifyrun --root . --brief docs/streams/example/brief-01-example.md \
+  --acceptance-record transition.txt --acceptance-forge
+```
+
+Keep the descriptor outside the clean execution checkout. The host checks admission
+and the immutable approved plan before executing. It runs every original obligation
+(including unchanged original commands) plus supplemental rows, emits actual output
+hashes and full immutable execution revisions, and labels supplementals without
+acceptance credit. The verifier still inspects primary output and appends the strict
+final verdict. Execution alone never creates an independent closure verdict.
+Every original row needs a fresh witness at or after amendment; the shared audit
+requires committed independent provenance and preserves source/admission checks.
+For example, `sh check.sh` may become `sh check.sh --no-pull` with identical Expect.
+This does not authorize pulling images or network access during execution.
+
+`--acceptance-forge` permits read-only approval lookups; it grants no approval.
+The target is printed before first contact. It is available on the main statusgen
+lint/coverage/status paths and `brief`, `verifyrun --check`, `verifyclosure`,
+`verifyflip`, and `reconcile`. Use the same flag on `deskevidence` (including
+`flip`): its production child audits, outcome check and lint receive it explicitly
+in argv. No environment variable enables these reads. Without opt-in, transitioned
+records remain held while unamended records retain their existing offline behavior.
+Each authoritative evaluation corroborates the ruling afresh; there is no local
+approval cache or supplied approval boolean.
+
+Before promoting a transitioned brief, the adopting repository must upgrade its
+pinned binary and explicitly enable `--acceptance-forge` on **every authoritative
+CI invocation** that will read that record: lint, coverage/status regeneration,
+model auto-flip, reconciliation and their retry commands. Supply the existing
+`GH_TOKEN`/`GITHUB_TOKEN` read credential and external mapped-human configuration
+through that workflow's established credential boundary; do not expose privileged
+credentials to untrusted branch code. The repository's workflow approval is the
+opt-in. A desk command's flag does not change later CI jobs. An old pinned binary
+cannot receive this flag, and a default offline CI invocation will hold the record
+or fail lint. Verify the upgraded workflow can corroborate the exact ruling before
+committing a final transition verdict. This source change does not activate any
+repository's workflows or provide any actual amendment approval.
+
+Transition execution inside `--in-container` or with cross-repository admission is
+unsupported and refuses. The fenced runner gains no network access. Chained
+transitions, row retirement, changed assertions/classes and table-layout migrations
+also remain unsupported. Human closure gates, independent review and release/pin
+requirements remain separate; this mechanism performs none of those actions.

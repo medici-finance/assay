@@ -12,10 +12,11 @@ gate-why: "Correlated operational measurements and their access/retention bounda
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: bedf2fbf-a7a1-4032-8a16-d8bebdd1e7bc
 authored: 2026-10-13 by performance collection authoring
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - docs/streams/performance-collection/README.md
   - docs/telemetry.md
   - docs/proposals/non-ci-architecture/11-target-architecture.md
@@ -138,6 +139,17 @@ Trust the body source instead of authenticated scope, ACK before commit, or remo
 row must traverse actual public producer/reader or served interfaces. Scope/retention
 adequacy and deployment workload selection are review judgments; their measured evidence
 is required before activation, not invented from component-test success.
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+Apply the [perf-v3 contract](../../performance-attribution-spec.md). Existing Tasks/Verify/Evidence and consent/retention controls remain owed.
+
+Ingestion accepts only the selected collection schema/profile after aliasing; raw local
+perf-v3 files and raw work locators are not upload payloads. Authenticate source/epoch, retain
+immutable invocation/event identity, parent references, request units/coverage and conflict
+semantics. Extend the real HTTP duplicate/conflict/profile Verify flow with aliased v3 records,
+forbidden raw locator injection and absent cost. Unknown point observations must survive the
+served boundary without becoming zero. Existing auth/resource bounds remain unchanged.
 
 ## Evidence
 

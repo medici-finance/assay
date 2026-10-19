@@ -12,6 +12,8 @@ depends:
 - graph-execution/31
 unblocks:
 - graph-execution/18
+- agent-execution/04
+- "agent-execution/08"
 effort: M
 gate: human
 risk:
@@ -106,3 +108,7 @@ The plausible wrong implementations are the negative cases named in Verify: stal
 ## Review
 
 Gate: human. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
+
+## Execution-environment follow-on routing — 2026-10-16
+
+Reciprocal unblocks only: agent-execution/04. The [execution amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md) adds a follow-on obligation over this brief's existing output. Its Task, Verify, gate, version and historical Evidence are unchanged; this note grants no delivery, reassignment or activation.

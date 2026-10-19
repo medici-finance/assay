@@ -14,10 +14,11 @@ import (
 const stateAuthorAdded = "author-added"
 
 type protectedPlan struct {
-	Verify   string
-	Evidence string // only the selected current run; earlier records remain on disk
-	Added    []checkFinding
-	Original string // authenticated immutable acceptance-definition revision
+	Verify    string
+	Evidence  string // only the selected current run; earlier records remain on disk
+	Added     []checkFinding
+	Original  string            // authenticated immutable acceptance-definition revision
+	Revisions map[string]string // approved per-row amendments; omitted rows retain Original
 }
 
 func closureSatisfied(f checkFinding) bool {
@@ -42,10 +43,14 @@ type protectedMarker struct {
 // protectedMarkers is the single scan for both classification and validation.
 // Its typed input distinguishes raw Evidence from the already-normalized run.
 func protectedMarkers(text normalizedProtectedEvidence) []protectedMarker {
+	return protectedMarkersNamed(text, "Verification-Table:")
+}
+
+func protectedMarkersNamed(text normalizedProtectedEvidence, prefix string) []protectedMarker {
 	rawLines := strings.Split(string(text), "\n")
 	var markers []protectedMarker
 	for i, line := range strings.Split(stripCode(string(text)), "\n") {
-		if strings.HasPrefix(line, "Verification-Table:") {
+		if strings.HasPrefix(line, prefix) {
 			markers = append(markers, protectedMarker{strings.TrimSpace(line), line == rawLines[i]})
 		}
 	}
@@ -53,7 +58,8 @@ func protectedMarkers(text normalizedProtectedEvidence) []protectedMarker {
 }
 
 func hasProtectedTableMarker(evidence string) bool {
-	return len(protectedMarkers(normalizeProtectedEvidence(evidence))) > 0
+	text := normalizeProtectedEvidence(evidence)
+	return len(protectedMarkers(text)) > 0 || len(protectedMarkersNamed(text, "Acceptance-Transition:")) > 0
 }
 
 // closureRunWitnesses owns the full-record/selected-run boundary. Protected
@@ -75,15 +81,27 @@ func closureRunWitnesses(verify, full, normalizedRun string, paths ...string) ([
 // supplemental dispositions. Without a live marker, the ordinary table is owed
 // in full. A quoted example, hash or author-added label grants no exemption.
 func protectedAcceptance(verify, evidence string, paths ...string) (protectedPlan, string) {
+	return protectedAcceptanceFor(verify, evidence, "", paths...)
+}
+
+// proposal is a coordinate-only execution request, never an approval or witness.
+func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) (protectedPlan, string) {
+	fullEvidence := evidence
+	if proposal != "" {
+		evidence = proposal
+	}
 	text := normalizeProtectedEvidence(evidence)
 	markers := protectedMarkers(text)
 	if len(markers) == 0 {
+		if proposal != "" || len(protectedMarkersNamed(text, "Acceptance-Transition:")) > 0 {
+			return protectedPlan{}, "protected table: acceptance transition requires immutable delivery provenance"
+		}
 		return protectedPlan{Verify: verify, Evidence: evidence}, ""
 	}
 	// Selected-run callers preserve record classification through closureRunWitnesses.
 	// Select its strict current run here; earlier markers establish protected
 	// context but cannot supply missing current provenance or witnesses.
-	if len(flipVerdictTokens(strings.Split(string(text), "\n"))) > 0 {
+	if proposal == "" && len(flipVerdictTokens(strings.Split(string(text), "\n"))) > 0 {
 		p, err := flipLatestPass(evidence)
 		if err != nil {
 			return protectedPlan{}, "protected table: " + err.Error()
@@ -213,6 +231,15 @@ func protectedAcceptance(verify, evidence string, paths ...string) (protectedPla
 	if !reflect.DeepEqual(briefVerifyRows(old), briefVerifyRows(baseline)) {
 		return refuse("original table differs from pre-delivery baseline; independent re-derivation is required")
 	}
+	var revisions map[string]string
+	if strings.Contains(evidence, "Acceptance-Transition:") {
+		var why string
+		baseline, revisions, why = acceptanceTransition(paths[0], verify, fullEvidence, evidence, delivery, base, original, baseline, delivered, proposal == "", read)
+		if why != "" {
+			return refuse(why)
+		}
+		delivered = verify
+	}
 	if strings.TrimSpace(verify) != strings.TrimSpace(delivered) {
 		return refuse("current Verify section differs from immutable delivery")
 	}
@@ -264,12 +291,12 @@ func protectedAcceptance(verify, evidence string, paths ...string) (protectedPla
 			}
 		}
 		cells := witnessCells(latest)
-		if len(cells) == 0 || normalizeCommandText(witnessCommandOf(latest)) != normalizeCommandText(row.Command) || witnessStateOf(latest) != "" || !strings.HasPrefix(strings.TrimSpace(cells[witnessCellResult]), "author-added;") || !strings.HasSuffix(strings.TrimSpace(cells[witnessCellResult]), "no acceptance credit") {
+		if proposal == "" && (len(cells) == 0 || normalizeCommandText(witnessCommandOf(latest)) != normalizeCommandText(row.Command) || witnessStateOf(latest) != "" || !strings.HasPrefix(strings.TrimSpace(cells[witnessCellResult]), "author-added;") || !strings.HasSuffix(strings.TrimSpace(cells[witnessCellResult]), "no acceptance credit")) {
 			return refuse("row " + row.ID + " requires its latest matching witness to say author-added; no acceptance credit")
 		}
 		added = append(added, checkFinding{row.ID, stateAuthorAdded, "supplemental row; no acceptance credit (immutable original table preserved)"})
 	}
-	return protectedPlan{Verify: baseline, Evidence: evidence, Added: added, Original: original}, ""
+	return protectedPlan{Verify: baseline, Evidence: evidence, Added: added, Original: original, Revisions: revisions}, ""
 }
 
 // The lint shares exactly the same original-row audit as the closure verbs.
@@ -282,7 +309,7 @@ func protectedClosureProblems(streams []*Stream) []string {
 				continue
 			}
 			art, ok := loadBriefArtifacts(s, b.Num)
-			if !ok || !strings.Contains(art.Evidence, "Verification-Table:") {
+			if !ok || (!strings.Contains(art.Evidence, "Verification-Table:") && !strings.Contains(art.Evidence, "Acceptance-Transition:")) {
 				continue
 			}
 			findings, refusal := closureWitnesses(art.Verify, art.Evidence, art.Path)

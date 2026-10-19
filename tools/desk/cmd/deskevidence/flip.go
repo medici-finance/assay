@@ -34,7 +34,7 @@ import (
 const flipUsage = `deskevidence flip — commit one gate: model brief's implemented → verified flip as the verifier App, on a branch.
 
 USAGE:
-  deskevidence flip --root <worktree> --brief <stream>/<NN> --sha <sha> [--base main] [--dry-run]
+  deskevidence flip --root <worktree> --brief <stream>/<NN> --sha <sha> [--base main] [--dry-run] [--acceptance-forge]
 
 Runs ` + "`statusgen verifyflip`" + ` (the stamp is derived from the recorded strict
 **VERIFY: PASS**; refused on a verdict/sha/runner mismatch, gate: human, any risk: yes,
@@ -227,7 +227,7 @@ func statusgenVerifyFlip(root, brief, sha, runner string, dryRun bool) (rel, sta
 	if dryRun {
 		args = append(args, "--dry-run")
 	}
-	cmd := exec.Command("statusgen", args...)
+	cmd := exec.Command("statusgen", acceptanceArgs(args...)...)
 	cmd.Dir = os.TempDir()
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb

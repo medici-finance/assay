@@ -21,7 +21,7 @@ why: >-
   so the ambient machinery and the probe both disappear: a caller mints a repo-scoped
   token and can send it nowhere but that op's URL, and reachability is proved by an
   authenticated List rather than a dry-run push.
-version: 2
+version: 3
 id: 4defb16c-2840-4103-880e-11693f41dc91
 ---
 
@@ -90,7 +90,7 @@ facts:
 | 3 | `cd tools/desk && go test ./cmd/deskpr/ -run ForcePushRejected` | exit 0; a force-requiring push is REJECTED, not silently forced (type-level no-force holds) |
 | 4 | `grep -cE -e 'dry-run' -e 'GIT_TERMINAL_PROMPT' tools/desk/internal/deskkit/preflight.go` | exit 1 (grep exits 1 when nothing matches); output is `0` (the ambient-credential probe is gone). Command and Expect re-written 2026-10-03 (#1862): the path is named from the repository root with no `cd`, because a failed `cd` exits 1, the status this Expect requires; a missing file now exits 2 and fails the row. |
 | 5 | `cd tools/desk && go test ./internal/deskkit/ -run PreflightReachability` | exit 0; the neighbour row — a preflight CALLER still gets a correct reachable/unreachable verdict via List |
-| 6 | `sh tools/desk/scripts/count-git-exec.sh` | prints `git-exec sites: <N>`; N below the count recorded before this brief |
+| 6 | `s=$PWD/tools/desk/scripts/count-git-exec.sh; d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && for c in cc0ef547~1 cc0ef547; do git -C "$d" checkout -q -f --detach $c && cp "$s" "$d/tools/desk/scripts/" && (cd "$d" && sh tools/desk/scripts/count-git-exec.sh); done; rm -rf "$d"` | prints `git-exec sites: 166` then `git-exec sites: 165` — N falls by one across cc0ef547, the squash that delivered this brief in #2298. The count is taken in a throwaway shared clone on the delivering commit's parent and on the commit itself, with the current counting script copied into each tree, so the baseline is reproducible on any later main and later growth elsewhere under `tools/desk` cannot move it |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->

@@ -15,10 +15,11 @@ risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-da
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 2
+version: 3
 id: "0c579884-688c-46f0-90ae-5960c789df38"
 authored: "2026-10-14 by desk-tools/23 (routing the entrypoint that PR added)"
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - "https://github.com/medici-finance/assay/issues/2111"
   - "docs/streams/desktools-v2/spec.md §9"
@@ -116,6 +117,17 @@ existing explicit consent; help must not read operational configuration to class
 Retain the one measurement finalizer when moving to Cobra. Do not reset the timer after
 parsing, add a second writer or reintroduce a minter callout in an adapter.
 
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+The [perf-v3 contract](../../performance-attribution-spec.md) defines future shared performance flags/envs and selected profiles.
+/63 owns schema/resolution; /64 owns common adapter/launcher integration and inventory;
+/65 owns forge observations. Preserve this brief's existing migration/qualification scope,
+help/version, exit and parser rules. Do not implement a competing v2-only collector or copy
+work identity into old schemas. Adopt /64's common binding when present; otherwise record
+the explicit integration gap for /64, retaining prior behavior until that owner lands.
+Final suite conformance /17 must exercise the common precedence/profile fixtures and show
+that attribution cannot change operational identity or fail a valid operation.
 
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->

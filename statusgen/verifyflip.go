@@ -142,6 +142,7 @@ var (
 // runVerifyflip is the `statusgen verifyflip` entry point.
 func runVerifyflip(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("verifyflip", flag.ContinueOnError)
+	defer transitionFlags(fs)()
 	fs.SetOutput(stderr)
 	fs.Usage = func() {}
 	briefKey := fs.String("brief", "", "")

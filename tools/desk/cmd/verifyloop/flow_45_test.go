@@ -105,7 +105,7 @@ func TestFlowQueue(t *testing.T) {
 	// unreadable) is held. deskboard's verify depth counts the same set.
 	t.Run("one fixture same classes", func(t *testing.T) {
 		serveBase(t, map[string][]baseRow{root: golden})
-		doc, _ := planJSON(t, "--root", root, "--no-forge", "--base-queue")
+		doc, _ := planJSON(t, "--root", root, "--base-queue")
 
 		wantDispatch := []string{}
 		byBrief := map[string]baseRow{}
@@ -153,7 +153,7 @@ func TestFlowQueue(t *testing.T) {
 			lie[i] = r
 		}
 		serveBase(t, map[string][]baseRow{root: lie})
-		doc, _ := planJSON(t, "--root", root, "--no-forge", "--base-queue")
+		doc, _ := planJSON(t, "--root", root, "--base-queue")
 		for _, it := range doc.Items {
 			if (it.ID == "flowq/01" || it.ID == "flowq/10") && (it.Kind == kindDispatch || it.Authority == authFlip) {
 				t.Errorf("%s (human gate / irreversible risk) became model dispatch with a lying base", it.ID)
@@ -195,12 +195,12 @@ func TestFlowQueue(t *testing.T) {
 	// Text and JSON are two renderings of ONE plan value.
 	t.Run("text and json are one plan", func(t *testing.T) {
 		serveBase(t, map[string][]baseRow{root: golden})
-		doc, out := planJSON(t, "--root", root, "--no-forge", "--base-queue")
+		doc, out := planJSON(t, "--root", root, "--base-queue")
 		if strings.Contains(out, "verify-desk plan:") || strings.Contains(out, "=== DISPATCH") {
 			t.Fatalf("--json stdout carries text-mode lines:\n%s", out)
 		}
 		var perr error
-		text := captureStdout(t, func() { perr = cmdPlan([]string{"--root", root, "--no-forge", "--base-queue"}) })
+		text := captureStdout(t, func() { perr = cmdPlan([]string{"--root", root, "--base-queue"}) })
 		if perr != nil {
 			t.Fatalf("cmdPlan: %v", perr)
 		}
@@ -259,7 +259,7 @@ func TestFlowQueue(t *testing.T) {
 		})
 
 		var err error
-		out := captureStdout(t, func() { err = cmdPlan([]string{"--base-queue", "--no-forge", "--json"}) })
+		out := captureStdout(t, func() { err = cmdPlan([]string{"--base-queue", "--json"}) })
 		var doc planDoc
 		if jerr := json.Unmarshal([]byte(out), &doc); jerr != nil {
 			t.Fatalf("not JSON: %v\n%s", jerr, out)

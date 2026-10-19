@@ -2,8 +2,8 @@
 brief: assay:assay:desktools-v2:62
 title: "Instrument desk hot paths and qualify credential and startup savings"
 why: "Aggregate timings cannot distinguish storage admission, repeated forge reads, credential lookup and worktree work. Typed phase and outcome measurements on real command flows make the prioritized optimizations reviewable and prevent a reduced subprocess count from hiding the same work elsewhere."
-wave: 3
-depends: ["desktools-v2/58", "desktools-v2/59", "desktools-v2/61", "desktools-v2/60"]
+wave: 4
+depends: ["desktools-v2/58", "desktools-v2/59", "desktools-v2/60", "desktools-v2/63", "desktools-v2/64", "desktools-v2/65"]
 unblocks: ["forge-neutral/45"]
 effort: M
 gate: model
@@ -11,11 +11,14 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
 outcome: none
-version: 1
+version: 2
 id: cd878998-fb23-4088-9204-0d66f539b24d
 authored: 2026-10-16 by performance brief authoring
 sources:
+  - "assay:assay:desktools-v2:65 — provider timer/cost seam; integrate the /58 credential provider after it exists"
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - docs/streams/desktools-v2/README.md — Performance delivery priority, 2026-10-16
+  - "assay:assay:desktools-v2:61 — preserved implemented boundary/schema baseline"
   - docs/library-first.md
   - docs/streams/desk-tools/brief-25-token-memo-and-cache-before-install-id.md
   - docs/proposals/non-ci-architecture/22-forge-service-and-source-queries.md
@@ -94,13 +97,13 @@ owns Evidence. All new paths and named tests below are implementation deliverabl
 
 ## Interface contract
 
-Use the measurement API from 61 on real command dispatch. Phases and modes come from validated
+Use the perf-v3 API/profile contract from /63, propagation from /64 and request observation from /65 on real command dispatch. Phases and modes come from validated
 typed command/kit outcomes and fixed rosters, never raw argv. Invocation wall/CPU include config
 and activation; scoped phases expose setup, storage/cache admission, review-scope reads, claim,
 fetch/worktree, stamp/queue-label and output preparation where applicable. Count actual requests
 including credential HTTP and actual child starts through every retained seam; declare omitted
 paths unavailable. Counter ownership prevents transport wrappers and phases counting one effect
-twice. No free-text identity or remote telemetry is added.
+twice. Qualified workflow attribution is selected only through the explicit v3 profile; no arbitrary free-text identity or remote telemetry is added.
 
 ## Task
 
@@ -119,7 +122,7 @@ break planted, not a duplicate checker.
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 1 | check:ci +flow +mutation +dereference | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestHotpathModeAndSetupCoverage$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestHotpathModeAndSetupCoverage ' "$out")` | exit 0; named PASS; actual compiled command cases include setup, classify root-first flags correctly and preserve every exit; planted late timer/argv substring labels fail |
-| 2 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCredentialAndChildCounterCoverage$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestCredentialAndChildCounterCoverage ' "$out")` | exit 0; named PASS; fake real mint, cached hit, shared waiter, retained child and direct HTTP each have exact counts or explicit unavailable coverage; bypassed/double counters fail |
+| 2 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCredentialAndChildCounterCoverage$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestCredentialAndChildCounterCoverage ' "$out")` | exit 0; named PASS; fake real mint, cached hit, shared waiter, retained child and direct HTTP each have exact counts or explicit unavailable coverage; bypassed/double counters fail; planted Authorization headers, token-bearing authentication responses and secret URL values must not appear in measurement records or report output |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestDeskPerformanceWorkloadFlow$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestDeskPerformanceWorkloadFlow ' "$out")` | exit 0; named PASS; production fixture operations produce records deskperf can read; legacy/direct/concurrent controls prove request and child reductions without changing decisions, and include failed paths |
 | 4 | check +dereference | `statusgen --root . --consumers --brief desktools-v2/62` | exit 0; actual implementation diff corroborates declared routing; out-of-scope sufficiency remains review, and no unavailable check is recorded as a pass. |
 
@@ -131,6 +134,21 @@ break planted, not a duplicate checker.
 
 Scope sufficiency and workload representativeness remain review judgments; publish the
 measured environment and limitations. No fixture success is a live permission or fleet speed claim.
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+Adopt the [perf-v3 contract](../../performance-attribution-spec.md) on the existing three-command workload; do not add another schema or
+transport meter. /63–65 own disclosure/CLI/provider changes and their human gates; this brief
+only consumes their validated API. Existing no-risk derivation does not authorize widening
+that API. Require session/agent/invocation and parent links, local qualified brief plus issue,
+deskRole distinct from assigned role, and explicit shared/missing attribution. Children record
+their own requests; parent counters remain own-process. Timing and actual/estimated/unknown
+GraphQL points preserve units and sample coverage. No new profile defaults or provider calls.
+
+Extend TestDeskPerformanceWorkloadFlow (Verify row 3) with two work subjects, a launched review
+agent, an instrumented child and an uninstrumented child. Read actual v3 records through the
+production reader, prove no inherited child ID/stale work/double-counted provider call, and
+keep mixed v1/v2 grouping. Existing Tasks/Verify/Evidence and matched reference remain owed.
 
 ## Evidence
 

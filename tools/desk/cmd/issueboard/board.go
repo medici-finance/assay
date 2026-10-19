@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/issueflow"
 	"github.com/medici-finance/assay/tools/desk/internal/topology"
 )
 
@@ -704,6 +705,9 @@ type externalRow struct {
 // (`to:<role>`) — the `issueboard issues --to <role>` desk-inbox view. Empty shows every
 // issue, with `to:*` items rendered ADDRESSED→<role> in their own priority band.
 func computeIssueBoard(root string, now time.Time, slaDays int, toFilter string) ([]issueBoardRow, []externalRow, error) {
+	return computeProjection(root, now, slaDays, toFilter, issueflow.Full)
+}
+func computeProjection(root string, now time.Time, slaDays int, toFilter string, projection issueflow.Projection) ([]issueBoardRow, []externalRow, error) {
 	// Fail closed on an EMPTY scan scope BEFORE any read (#777). ownedRepos() is
 	// ScanRepos(): unset ASSAY_SCAN_REPOS yields zero repos, the loop below then runs
 	// zero iterations, makes no gh call, and the empty result renders as "(no open
@@ -738,6 +742,27 @@ func computeIssueBoard(root string, now time.Time, slaDays int, toFilter string)
 			key := repo + "#" + strconv.Itoa(iss.Number)
 			seen[key] = true // even quarantined issues are OPEN — never mistake one for closed
 
+			names := labelNames(iss.Labels)
+			ph, hasPh := byKey[key]
+			decisionOwed := hasDecisionLabel(names)
+			addrRole, addrState := deskkit.AddressedToOf(names)
+			addressed := addrState == deskkit.RaisedByStamped
+			helpWanted := false
+			for _, n := range names {
+				if strings.EqualFold(strings.TrimSpace(n), "help wanted") {
+					helpWanted = true
+				}
+			}
+			// Select before trust/comment/history reads. seen remains global above:
+			// excluding a row must never make its open placeholder look closed.
+			if projection != issueflow.Full && !issueflow.Select(projection, issueflow.Candidate{
+				HasPlaceholder: hasPh, Excluded: hasExcludedLabel(names),
+				DecisionOwed: decisionOwed, Addressed: addressed, Role: addrRole,
+				HelpWanted: helpWanted,
+			}, toFilter) {
+				continue
+			}
+
 			// Trust gate: untrusted author → the ONE bounded trust-events read; no
 			// CURRENT blessing (bless-then-edit aware) → quarantine (visible,
 			// not actionable).
@@ -756,13 +781,8 @@ func computeIssueBoard(root string, now time.Time, slaDays int, toFilter string)
 				}
 			}
 
-			names := labelNames(iss.Labels)
-			decisionOwed := hasDecisionLabel(names)
-
 			// Desk-inbox addressee (`to:<role>`), ONE valid role only (a conflicting pair
 			// is malformed and falls through to ordinary classification, never a guess).
-			addrRole, addrState := deskkit.AddressedToOf(names)
-			addressed := addrState == deskkit.RaisedByStamped
 
 			// The --to view shows ONLY that role's inbox: an issue addressed to a different
 			// role (or to nobody) is not part of it and is dropped before any extra read.
@@ -802,7 +822,6 @@ func computeIssueBoard(root string, now time.Time, slaDays int, toFilter string)
 				}
 			}
 
-			ph, hasPh := byKey[key]
 			action := classifyIssue(issueClassifyInput{
 				open:               true,
 				hasPlaceholder:     hasPh,
@@ -853,7 +872,13 @@ func computeIssueBoard(root string, now time.Time, slaDays int, toFilter string)
 			if toFilter != "" {
 				continue
 			}
+			if projection == issueflow.Inbox {
+				continue
+			}
 			if ph.Status == "done" {
+				if projection == issueflow.WorkReady {
+					continue
+				}
 				// Already retired: NONE whatever the issue's state — no read is spent on it,
 				// so a forge that cannot answer for it cannot fail the sweep.
 				rows = append(rows, issueBoardRow{Repo: repo, Number: ph.Issue, Title: "(placeholder already retired)", Action: actNone})
@@ -868,6 +893,9 @@ func computeIssueBoard(root string, now time.Time, slaDays int, toFilter string)
 					"could-not-check: the open-issue listing for %s is partial — %s#%d reads open but was absent "+
 						"from it; refusing to classify the sweep (a truncated listing would retire live placeholders "+
 						"and hide un-briefed work) — re-run once the forge answers in full", repo, repo, ph.Issue), nil)
+			}
+			if projection == issueflow.WorkReady {
+				continue
 			}
 			action := classifyIssue(issueClassifyInput{open: false, hasPlaceholder: true})
 			if title == "" {
@@ -1094,4 +1122,21 @@ func blessAuthorityName() string {
 		return l
 	}
 	return "the (UNCONFIGURED) blessing authority"
+}
+
+// cmdProjection shares full-board collection and classification. Successful
+// enumeration is fresh for this run only; degraded histories keep row markers.
+func cmdProjection(root string, now time.Time, slaDays int, to string, p issueflow.Projection) (*Report, error) {
+	rows, external, err := computeProjection(root, now, slaDays, to, p)
+	if err != nil {
+		return nil, err
+	}
+	return &Report{detail: "projection=" + string(p) + "; " + summarizeIssues(rows, external), render: func(w io.Writer) {
+		fmt.Fprintf(w, "PROJECTION %s — scope=owned scan repos; cutoff=%s; enumeration=complete; freshness=this invocation; histories=see row markers\n", p, now.Format(time.RFC3339))
+		if p == issueflow.WorkReady {
+			fmt.Fprintln(w, "Coverage: unrepresented work candidates only; empty says nothing about intake or inbox idle.")
+		}
+		renderIssueLane(w, rows)
+		renderExternalLane(w, external)
+	}}, nil
 }

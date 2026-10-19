@@ -81,6 +81,7 @@ design-fit:
 
 ## Ground rules
 
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - Isolated branch; draft PR only. No merge or release.
 - Neutral synthetic fixtures (two example repositories, withheld consumers). Do not hard-code the
   expected answer list into production discovery; tests withhold expected identities from the

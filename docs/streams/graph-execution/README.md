@@ -89,7 +89,7 @@ or removing any human gate (spec §5 states the divergence).
 | 06 | [Run records and the replay/learning loop](brief-06-run-records-and-replay.md) | 9 | L | todo | — | — |
 | 07 | [Flow instruments — service/wait split, CI-slot saturation, gate catch/override](brief-07-flow-instruments.md) | 1 | M | implemented | — | — |
 | 08 | [Signal-triggered pattern — incident and regression](brief-08-signal-triggered-pattern.md) | 1 | M | todo | — | — |
-| 09 | [Versioned workflow instances and shared identity](brief-09-instance-contract.md) | 1 | M | implemented | — | — |
+| 09 | [Versioned workflow instances and shared identity](brief-09-instance-contract.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 10 | [Typed advice and separate deterministic policy records](brief-10-decision-contract.md) | 0 | M | done | 2026-09-30 assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1499 @ f4c4e5222b775331f2d255daf981984b029023b3) |
 | 11 | [Optional pinned Laya provider with explicit CPU and GPU profiles](brief-11-laya-local-provider.md) | 1 | M | todo | — | — |
 | 12 | [Reproducible decision evaluation and calibration manifests](brief-12-decision-evaluation.md) | 2 | M | todo | — | — |
@@ -348,6 +348,16 @@ unblocking move is reproducing their actual coverage, not assigning new criterio
 A no-change or guidance-only conclusion is valid. This research neither changes the main
 implementation dependency waves above nor authorizes a production freshness gate.
 
+## Execution-environment follow-ons — 2026-10-16
+
+The [agent-execution stream](../agent-execution/README.md) extends existing owners under
+[architecture amendment 27](../../proposals/non-ci-architecture/27-agent-execution-environments.md).
+Its /01 consumes implemented /20; /03 follows /22 and /26; /04 qualifies /21 and /25 under
+restoration; /05 follows /27. Reciprocal edges are declared in the brief frontmatter.
+Original Task/Verify obligations and Evidence remain unchanged. The new stream owns no
+second controller, claim store, publisher, process runner or lifecycle API. Its AX feasibility
+branch is offline and independent of this stream's existing critical path.
+
 ## Proposed desk-improvement evidence consumers — 2026-10-17
 
 [Public desk-improvement](../desk-improvement/README.md) consumes this stream's native
@@ -357,3 +367,13 @@ consumes /27 standing clients; /10 qualifies native cross-mode source→card→a
 These consumer prerequisites point toward this stream, with no reverse gating cycle. Existing
 source scope and activation remain controlling; supported native measurement is a separate
 qualified capability from offline cards or an implemented schema.
+
+## Verifier migration sequence — 19 October 2026
+
+[Execution-first migration](verifier-migration.md) maps the six visible verifier responsibilities
+to the existing owners and keeps evidence production separate from authority handover.
+The dependency amendment removes real-model calibration /12 from the model-disabled /18
+integration prerequisite; calibrated-provider activation still requires /12. Kubernetes is
+the separately gated agent-execution/08 profile, not an interim runner prerequisite.
+
+The historical critical-path sketch retains the former /12 → /18 edge for history; it is superseded by the 19 October verifier migration sequence above.

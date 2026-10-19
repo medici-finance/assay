@@ -26,7 +26,8 @@ named by `RecordName(content)`; before that, one appended line in the shared
 retired — see desk-supervision/24's Task step 8). Either shape's content is exactly the legacy row
 (`ts`, `brief`, `outcome`, `sha`) plus these additive keys, so:
 
-- an older reader that knows only those four keeps working, ignoring the additive fields;
+- an older reader ignores unknown additive JSON fields, but cannot resolve new `scope:` input
+  keys; those receipts report could-not-check rather than unchanged;
 - a legacy record (no `wake_schema`) parses as an **incomplete** receipt and stays visibly
   unclassified — never a fabricated hold;
 - the receipt is REQUIRED on every new `verify-fail` / `blocked` record (the writer refuses one
@@ -63,8 +64,25 @@ retired — see desk-supervision/24's Task step 8). Either shape's content is ex
 
 Input revisions cover the **Verify definition**, the **relevant deliverable/dependency
 revisions**, and the **applicable tool version**. Keys are opaque to the evaluator; the
-already-authorized reader interprets them (the offline reader understands `tool` and
-`file:<repo-relative-path>`).
+already-authorized reader interprets them. The offline reader understands `tool`,
+`file:<repo-relative-path>`, and `scope:<canonical-declaration>`. Each scope digest
+records the admitted declaration's path kinds and sorted membership, including a
+literal planned path's absence. Directory/glob member additions or removals and
+planned-file creation can therefore wake work without a pre-existing content key.
+File keys still hash the original admitted observation Source; the brief's key
+still hashes landed Evidence, and the supplied tool-version contract is retained.
+
+The [declaration contract](../../declared-input-scope.md) is shared by derivation,
+all-file coverage, Source-to-Evidence shape checks and the root reader. A new
+declaration, kind or membership between Source and Evidence requires fresh admission
+and observation. No target-branch repair replaces the original observed bytes.
+Historical receipts stay immutable. If today's declarations need scope keys a
+historical receipt lacks, the root reader reports could-not-check and requires a
+fresh admission/observation; it cannot assert an unchanged hold. An independently
+observed input change still fires even when another scope could not be checked.
+Older readers encountering the new scope keys report could-not-check on unknown
+keys. Custom readers must opt into the optional scope-completeness interface to
+provide this authoring-aware check; opaque reader semantics otherwise stay intact.
 
 ### Blocker kinds (closed set) → next actor
 
@@ -167,7 +185,9 @@ Invariants the tests pin (`tools/desk/cmd/verifyloop/wake_test.go`, `tools/desk/
 - **Legacy rows** (pre-v1) stay valid and are read exactly as before; they classify as
   `unclassified` (one pass), which reproduces today's behaviour — the first complete receipt a
   run produces begins the wake scheduling.
-- **Rollback** is the previous released binary/skill pin: the additive fields are ignored by the
-  older reader, and receipts are never erased to make a rollback look clean.
+- **Rollback** is the previous released binary/skill pin. Older readers ignore unknown
+  additive JSON fields, but receipts containing `scope:` input keys report could-not-check
+  because the older reader cannot resolve those keys. Receipts are never erased or
+  relabelled to make a rollback look clean.
 - **Explicit recheck** is the operator's escape hatch: an `explicit-recheck-with-reason` receipt
   wakes the work regardless of the other predicates, with the reason recorded.

@@ -70,7 +70,7 @@ Two shapes run every tick: the **board-wide instruments**, once for the whole sc
 deskboard dispatch                          # the work to START + the HELD-BACK decomposition
 deskboard stalled --min-age-hours 48        # stalled drafts + shepherd list (--json for the machine shape)
 deskboard health                            # is main red? green / RED / COULD-NOT-CHECK
-issueboard issues                           # un-briefed trusted issues; EXTERNAL/UNBLESSED quarantined
+issueboard issues --projection work-ready                           # un-briefed trusted issues; EXTERNAL/UNBLESSED quarantined
 ```
 
 Route a stalled `reconcile` row through `pr-shepherd`'s withdrawn-brief reconciliation

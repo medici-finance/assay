@@ -60,6 +60,9 @@ jobs:
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
 
+      - name: Test release image contract
+        run: python3 -B -m unittest discover -s tools/release -p images_test.py -v
+
       # Run before the all-module sweep: statusgen alone does not depend on the
       # desk child compiled by its offline bridge test. Match the release gate.
       - name: Test and vet statusgen

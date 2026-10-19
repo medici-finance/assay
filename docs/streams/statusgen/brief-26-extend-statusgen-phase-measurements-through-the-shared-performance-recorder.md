@@ -2,8 +2,8 @@
 brief: assay:assay:statusgen:26
 title: "Extend statusgen phase measurements through the shared performance recorder"
 why: "Statusgen already shares the local recorder but aggregate duration cannot explain discovery, parsing, evaluation, rendering or deskread overhead. Reusing the improved contract makes its costs comparable and identifies safe parse reuse without importing credential or desk internals."
-wave: 2
-depends: ["desktools-v2/61"]
+wave: 4
+depends: ["desktools-v2/63", "desktools-v2/64"]
 unblocks: []
 effort: M
 gate: model
@@ -11,10 +11,11 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
 outcome: none
-version: 1
+version: 2
 id: 34374f41-67cd-492a-9bb3-5d3353cf0559
 authored: 2026-10-16 by performance brief authoring
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "assay:assay:desktools-v2:62 — matched desk workload; this brief supplies the statusgen consumer using the same recorder"
   - docs/streams/desktools-v2/README.md — Performance delivery priority, 2026-10-16
   - docs/library-first.md
@@ -86,7 +87,7 @@ owns Evidence. All new paths and named tests below are implementation deliverabl
 
 ## Interface contract
 
-Use perfrec from 61 directly, with statusgen-owned fixed mode/phase rosters and the same
+Use perf-v3 from /63 and the shared context contract from /64 directly, with statusgen-owned fixed mode/phase rosters and the same
 wall/CPU baseline semantics. Observe source discovery, read/parse, evaluation, rendering and
 existing deskread child time. Online work remains behind the existing verb with no credentials
 in statusgen. Input reuse is limited to an invocation-local explicit snapshot and versioned
@@ -95,7 +96,7 @@ If a required source is unavailable, preserve the existing incomplete/held resul
 
 ## Task
 
-1. Adopt the new shared recorder API and schema at the current exitProcess boundary, preserving all exits, opt-out behavior and legacy mode mapping. Account for package-init versus Go-entrypoint timing explicitly; do not change historical perf-v1 semantics.
+1. Adopt the perf-v3 shared recorder API and explicitly selected profile at the current exitProcess boundary, preserving all exits, opt-out behavior and legacy mode mapping. Account for package-init versus Go-entrypoint timing explicitly; do not change historical perf-v1 semantics.
 2. Add phases through existing owners for discovery/load, parse, eligibility/coverage evaluation and rendering. Observe actual deskread child starts/elapsed time without opening a forge client in statusgen; the child owns provider/credential counters. Do not sum child and parent inclusive time as elapsed savings.
 3. Inventory repeated reads/parses within one invocation in lint, regen, gate-scores and next-up. Reuse the same validated source snapshot/results where those owners already support it; keep the parser/evaluation implementations canonical. A changed membership or file revision between declared snapshots must trigger fresh input, never a stale empty result. Report no-op reuse when the reference workload shows none.
 4. Add credential-free synthetic small/large stream workloads for all four offline modes plus a fake deskread process. Record cold/warm p50/p95, CPU, file reads/parses and child counts with sample and source revisions. Compare output/exit/coverage byte-for-byte against the fresh reference evaluator; numerical targets require a declared workload.
@@ -122,6 +123,21 @@ break planted, not a duplicate checker.
 
 Scope sufficiency and workload representativeness remain review judgments; publish the
 measured environment and limitations. No fixture success is a live permission or fleet speed claim.
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+Consume the [perf-v3 contract](../../performance-attribution-spec.md) directly from perfrec; do not import desk internals or authenticated
+adapters. Bind the shared --perf-* / explicit env sources through statusgen's real parser;
+keep help/version offline, prior opt-in/schema defaults and no-profile behavior. Current
+phase/snapshot work stays in scope. A statusgen invocation has fresh identity, receives
+work/session/agent/desk and assigned role through the selected workflow profile, and supplies
+its invocation as the deskread child's parent. The child reports its own forge attempts,
+timing and points; missing child instrumentation is a coverage gap, never parent zero-cost.
+
+Extend TestSharedPhaseRecorderFlow (row 1) with two qualified work references, override/clear,
+child causal links and mixed v1/v2/v3 records. Extend TestPerformanceKeepsCredentialBoundary
+(row 3) to prove inherited workflow fields cannot appear in tool profile and malformed optional
+context cannot change normal output/exit. Old privacy defaults remain binding outside v3.
 
 ## Evidence
 

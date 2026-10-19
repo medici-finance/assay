@@ -5,6 +5,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -51,6 +52,7 @@ func ghEvents(s *ghStampServer) []deskkit.LabelEvent {
 	return out
 }
 
+// regression: #2111
 func TestStampOnlyRejectsArgs(t *testing.T) {
 	for _, args := range [][]string{
 		{"--stamp-only"},
@@ -67,8 +69,12 @@ func TestStampOnlyRejectsArgs(t *testing.T) {
 			s.install(t)
 			t.Setenv("DESK_LOOP", "the-desk")
 			gh := installGHStamp(t)
-			if rc := run(args); rc != deskkit.ExitRefused {
-				t.Fatalf("rc=%d, want 5", rc)
+			want := deskkit.ExitRefused
+			if slices.Contains(args, "--branch") || args[len(args)-1] == "extra" {
+				want = 2
+			}
+			if rc := run(args); rc != want {
+				t.Fatalf("rc=%d, want %d", rc, want)
 			}
 			if len(s.calls)+len(gh.requests)+len(gh.minted) != 0 {
 				t.Fatal("invalid arguments reached external work")
