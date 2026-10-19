@@ -22,8 +22,8 @@
     {
       "name": "a row already advanced at the base is judged again (pin bump reddens landed rows)",
       "file": "decisiongatehold.go",
-      "old": "if gateStatusRank(low.Status) < hr {",
-      "new": "if gateStatusRank(low.Status) <= hr {"
+      "old": "if gateBaseStatusRank(low.Status, h.Status) < hr {",
+      "new": "if gateBaseStatusRank(low.Status, h.Status) <= hr {"
     },
     {
       "name": "gate read after the change only (relabel in the same change as the move sheds the hold)",

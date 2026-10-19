@@ -1,0 +1,10 @@
+{
+  "test": "go test ./cmd/deskwt -run '^TestSweepAdminInventoryRefreshesBetweenSweeps$' -count=1 -v -timeout 30s",
+  "control": {
+    "name": "retain an obsolete inventory error across sweeps",
+    "file": "cmd/deskwt/sweepread.go",
+    "old": "func loadWorktreeAdminIndex(commonDir string) *worktreeAdminIndex {\n\tindex := &worktreeAdminIndex{paths: map[string]string{}, ambiguous: map[string]bool{}}",
+    "new": "var retainedSweepIndex *worktreeAdminIndex\n\nfunc loadWorktreeAdminIndex(commonDir string) *worktreeAdminIndex {\n\tif retainedSweepIndex != nil { return retainedSweepIndex }\n\tindex := &worktreeAdminIndex{paths: map[string]string{}, ambiguous: map[string]bool{}}\n\tdefer func() { retainedSweepIndex = index }()"
+  },
+  "mutations": []
+}

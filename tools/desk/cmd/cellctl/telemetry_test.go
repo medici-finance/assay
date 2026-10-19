@@ -129,7 +129,7 @@ func telemetryRows(t *testing.T, home string) int {
 			if err := json.Unmarshal([]byte(line), &r); err != nil {
 				t.Fatal(err)
 			}
-			if r.Schema != "perf-v1" || r.Tool != "deskboard" {
+			if r.Schema != "perf-v2" || r.Tool != "deskboard" {
 				t.Fatalf("bad record: %s", line)
 			}
 			count++

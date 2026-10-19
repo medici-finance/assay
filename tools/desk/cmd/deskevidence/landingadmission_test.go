@@ -43,9 +43,10 @@ type attestationAPI struct {
 	timeline           []map[string]any
 	unexpected         []string
 
-	files map[string]string // branch content, by repo path
-	puts  []contentsPut     // every Contents-API write, in order
-	calls []apiCall         // every request, in order
+	commits map[string]bool   // only ids returned by successful writes, never blobs
+	files   map[string]string // branch content, by repo path
+	puts    []contentsPut     // every Contents-API write, in order
+	calls   []apiCall         // every request, in order
 }
 
 // contentsPut is one Contents-API write the offline API accepted.
@@ -102,6 +103,10 @@ func (a *attestationAPI) serveContents(w http.ResponseWriter, r *http.Request, f
 		if a.commit != nil {
 			sha = a.commit(file, string(decoded))
 		}
+		if a.commits == nil {
+			a.commits = map[string]bool{}
+		}
+		a.commits[sha] = true
 		if a.loseCommitAck {
 			w.WriteHeader(http.StatusBadGateway)
 			return
@@ -133,6 +138,14 @@ func (a *attestationAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 	a.calls = append(a.calls, apiCall{Method: r.Method, Path: p, Authorization: r.Header.Get("Authorization")})
 	switch {
+	case r.Method == http.MethodGet && strings.Contains(p, "/commits/"):
+		sha := p[strings.LastIndex(p, "/")+1:]
+		if !a.commits[sha] {
+			w.WriteHeader(422)
+			return
+		}
+		a.calls[len(a.calls)-1].Operation = "receipt"
+		enc(map[string]any{"sha": sha, "author": map[string]any{"login": "assay-verifier-app[bot]"}})
 	case strings.Contains(p, contentsPrefix):
 		a.serveContents(w, r, p[strings.Index(p, contentsPrefix)+len(contentsPrefix):])
 	case r.Method == http.MethodPost && strings.HasSuffix(p, "/repos/example-org/tracker/issues"):

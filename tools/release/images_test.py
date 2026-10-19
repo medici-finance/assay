@@ -1,5 +1,6 @@
 """Offline release-producer tests; fake Docker, real artifact bytes and manifests."""
 import copy
+import fnmatch
 import importlib.util
 import io
 import json
@@ -221,6 +222,49 @@ if args[:2] == ['image', 'inspect']:
                          (root / 'ci/staged-workflows/release.yml').read_bytes())
         self.assertFalse((root / '.github/workflows/docker-publish.yml').exists())
         self.assertFalse((root / 'ci/staged-workflows/docker-publish.yml').exists())
+
+    def test_platform_artifacts_reconstruct_the_complete_release(self):
+        root = HERE.parents[1]
+        platforms = ['darwin-arm64', 'darwin-amd64', 'linux-amd64',
+                     'windows-amd64', 'windows-arm64']
+        common = ['cursor-bundle.tar.gz', 'checksums.txt',
+                  'tool-validation-v1.2.3.json', 'tool-validation-v1.2.3.md',
+                  'image-bugs-gc-linux-amd64', 'prepared-source.tar.gz',
+                  'build-inputs.sha256', 'release-highlights.md']
+        for path in ['.github/workflows/release.yml', 'ci/staged-workflows/release.yml']:
+            jobs = workflow_jobs((root / path).read_text())
+            uploads = re.findall(
+                r'(?ms)^      - name: Upload prepared release artifacts[^\n]*\n'
+                r'(.*?)(?=^      - |\Z)', jobs['artifacts'])
+            self.assertEqual(len(uploads), 6)
+            for with_bundle in [False, True]:
+                with self.subTest(path=path, with_bundle=with_bundle):
+                    expected = {'release-build-common': common +
+                                (['release-source.bundle'] if with_bundle else [])}
+                    for platform in platforms:
+                        suffix = '.exe' if platform.startswith('windows-') else ''
+                        expected['release-build-' + platform] = [
+                            'statusgen-' + platform + suffix,
+                            'qualgen-' + platform + suffix,
+                            'desk-tools-' + platform + '.tar.gz']
+                    files = [name for names in expected.values() for name in names]
+                    selected = []
+                    for upload in uploads:
+                        name = re.search(r'^          name: (.+)$', upload, re.M).group(1)
+                        self.assertIn(name, expected)
+                        self.assertIn('compression-level: 0', upload)
+                        self.assertIn('if-no-files-found: error', upload)
+                        patterns = re.findall(r'^            (.+)$', upload, re.M)
+                        matched = [f for f in files if any(fnmatch.fnmatchcase(f, p) for p in patterns)]
+                        self.assertCountEqual(matched, expected[name])
+                        self.assertFalse(any(fnmatch.fnmatchcase('go-cache.tar', p) for p in patterns))
+                        selected.extend(matched)
+                    self.assertCountEqual(selected, files)
+            release = jobs['release']
+            self.assertIn('pattern: release-build-*', release)
+            self.assertIn('merge-multiple: true', release)
+            self.assertIn('sha256sum -c build-inputs.sha256', release)
+            self.assertIn('sha256sum -c checksums.txt', release)
 
     def test_approval_and_publication_order_regressions_are_rejected(self):
         root = HERE.parents[1]

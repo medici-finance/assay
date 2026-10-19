@@ -1,0 +1,72 @@
+[
+  {
+    "name": "skip-trace-pipeline",
+    "path": "mine.go",
+    "before": "if cfg.FixSource != nil {\n\t\tif err := appendM2",
+    "after": "if false && cfg.FixSource != nil {\n\t\tif err := appendM2",
+    "test": "TestM2CLIFlow"
+  },
+  {
+    "name": "invent-missing-rate",
+    "path": "m2source.go",
+    "before": "if err := store.Append(KindMetric, metrics[i]); err != nil {",
+    "after": "if metrics[i].Metric == MetricDefectInducingRate { metrics[i].Value = Measured(0.0) }\n if err := store.Append(KindMetric, metrics[i]); err != nil {",
+    "test": "TestM2MissingEvidence"
+  },
+  {
+    "name": "ignore-custom-labels",
+    "path": "m2source.go",
+    "before": "labelSet[strings.ToLower(strings.TrimSpace(label))] = true",
+    "after": "labelSet[strings.ToLower(strings.TrimSpace(label))+\"-ignored\"] = true",
+    "test": "TestM2CustomLabelsAndCorrection"
+  },
+  {
+    "name": "accept-stale-source",
+    "path": "m2source.go",
+    "before": "if s.HeadSHA != tip {",
+    "after": "if false && s.HeadSHA != tip {",
+    "test": "TestM2StaleSourceAndSnapshot"
+  },
+  {
+    "name": "accept-unknown-source-version",
+    "path": "m2source.go",
+    "before": "if source.SchemaVersion != fixSourceSchema {",
+    "after": "if false && source.SchemaVersion != fixSourceSchema {",
+    "test": "TestM2SourceValidation"
+  },
+  {
+    "name": "hide-library-corpus",
+    "path": "m2report.go",
+    "before": "if run == nil && len(current) == 0 {",
+    "after": "if run == nil {",
+    "test": "TestM2LibraryArtifactsReport"
+  },
+  {
+    "name": "admit-unfinished-trace",
+    "path": "m2report.go",
+    "before": "if run.TraceHashes[trace.FixCommit] != digest {",
+    "after": "if false && run.TraceHashes[trace.FixCommit] != digest {",
+    "test": "TestM2UnfinishedPassIgnored"
+  },
+  {
+    "name": "admit-incomplete-first-pass",
+    "path": "m2report.go",
+    "before": "if started {",
+    "after": "if false && started {",
+    "test": "TestM2FirstPassIncomplete"
+  },
+  {
+    "name": "count-second-branch-fix",
+    "path": "m2source.go",
+    "before": "if c.NumParents() == 0 {",
+    "after": "if c.NumParents() > 1 { branch, err := c.Parent(1); if err != nil { return nil, err }; commits = append(commits, branch) }\n if c.NumParents() == 0 {",
+    "test": "TestM2MergeFixCountedOnce"
+  },
+  {
+    "name": "drift-cli-label-default",
+    "path": "cli.go",
+    "before": "flag: \"defect-labels\", def: \"bug,defect,incident\"",
+    "after": "flag: \"defect-labels\", def: \"other\"",
+    "test": "TestCLILegacyForms"
+  }
+]

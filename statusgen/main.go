@@ -602,6 +602,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// cell. Transition-scoped like unrunGateChecks below: only a closure
 	// this branch made is a PROBLEM. See witnessgate.go.
 	wgProblems, wgNotices := witnessGateChecks(root, checkStreams)
+	problems = append(problems, protectedClosureProblems(checkStreams)...)
 	problems = append(problems, wgProblems...)
 	notices = append(notices, wgNotices...)
 	// Missing EXECUTION WITNESS, but only for closures THIS branch makes: a
@@ -1254,6 +1255,14 @@ func main() {
 		fmt.Println(statusgenVersion)
 		exitProcess(0)
 	}
+	// `statusgen --version --json` — the same introspection, machine-readable:
+	// the version plus the brief schemas this build supports and the first
+	// release of each (briefschemaversions.go). The bare form above stays
+	// exactly one line, because pin checks compare it verbatim.
+	if len(os.Args) == 3 && (os.Args[1] == "--version" || os.Args[1] == "version") && os.Args[2] == "--json" {
+		printVersionJSON()
+		exitProcess(0)
+	}
 
 	// `statusgen verifyrun` — positional subcommand (like `init` below) that
 	// EXECUTES a brief's Verify rows and writes an execution witness into its
@@ -1271,6 +1280,9 @@ func main() {
 	// that executes arbitrary commands lifted out of a markdown table has no
 	// business inside it. `--lint` only NOTICEs the ABSENCE of a witness (see
 	// witnessNotices); producing one is always an explicit invocation.
+	if len(os.Args) > 1 && os.Args[1] == "withdrawal-audit" {
+		exitProcess(runWithdrawalAudit(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
 		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
 	}
@@ -1683,6 +1695,7 @@ func main() {
 	span := flag.Int("span", defaultSpanOfControl, "Next-up span-of-control cap: max items shown (default 20 — agent-worked queue, not the human EEMUA-191 7±2)")
 	overflowT := flag.Int("overflow-threshold", -1, "eligible-brief count above which Next-up flags overflow; <0 = same as --span")
 	mainHealthFlag := flag.String("main-health", "", "the INJECTED main-health input for the drives critical tier's main-red arm: `green`, or `red:<owner/repo#N>[,...]` naming the issue(s) tracking the red main. statusgen never reads live CI; omit the flag and the arm reports could-not-check (named on the board while a drive is active), never a silent green")
+	roleClaimsFlag := flag.Bool("role-claims", false, "read claims through deskgit as the bound desk role; never fall back to ambient Git")
 	requireClaimsFlag := flag.Bool("require-claims", false, "fail (exit 1, nothing written) instead of emitting a degraded board when the origin claim read fails")
 	// FINDINGS alarm-KPI knobs (ISA-18.2). Standalone
 	// block so sibling statusgen flag PRs merge trivially.
@@ -1748,10 +1761,10 @@ func main() {
 	// (prior calendar month) — to docs/reports/<cadence>/<window>/. Empty = the
 	// point-in-time --roadmap, unchanged.
 	cadenceMode := flag.String("cadence", "", "with --roadmap: render a closed-window artifact — weekly (prior ISO week) | monthly (prior calendar month) — to docs/reports/<cadence>/<window>/; empty = point-in-time --roadmap")
-	// Corroboration check: self-contained sub-command,
-	// same STATUS.md-free discipline as the verify-gate modes. Network-dependent
-	// by nature — never wired into the offline lint gate.
+	// Consumer corroboration is offline and STATUS.md-free. The separate
+	// human-stamp corroboration mode below is forge-backed.
 	consumersMode := flag.Bool("consumers", false, "corroborate the consumers: routing claims of the briefs this branch touches against its own diff (exit 1 = a claim is DISPROVED, 2 = the diff could not be taken)")
+	consumersDelivery := flag.String("delivery", "", "--consumers: immutable full delivery commit SHA; requires --brief and --base set to its first parent; evaluates delivered claims and tree, never the working tree")
 	consumersBase := flag.String("base", remoteMainRef, "--consumers: base ref for the three-dot diff")
 	consumersBrief := flag.String("brief", "", "--consumers: check only this brief (<stream>/<NN>); default = every brief file in the diff")
 	corroborateMode := flag.Bool("corroborate", false, "check human:<name> stamps against PR reviews/comments for corroboration (requires --pr)")
@@ -1844,6 +1857,10 @@ func main() {
 	changedOnlyFlag := flag.String("changed-only", "", "--lint only: LOCAL pre-push convenience — comma-separated repo-relative paths; scopes the lint to them and prints a loud banner naming what was examined. REFUSES (non-zero, no override) when it detects it is running inside the CI gate (GITHUB_ACTIONS=true) — the CI gate always runs the full unscoped --lint. Mutually exclusive with --changed")
 	scopeFlag := flag.String("scope", "", "restrict per-stream lint to one product (serves:): example-app|example-service|assay|platform; overrides --changed derivation")
 	parseMainFlags()
+	if *consumersDelivery != "" && !*consumersMode {
+		fmt.Fprintln(os.Stderr, "statusgen: --delivery requires --consumers")
+		exitProcess(2)
+	}
 
 	// The roster class is chosen ONCE, from the invoked mode, BEFORE any check can
 	// read the roster — scanEffectiveConfig caches on first use, so a later call
@@ -1862,6 +1879,14 @@ func main() {
 	// a PR that never touched it. Whoever reads that CI log needs the roster in the
 	// same log.
 	scanEchoEffectiveConfig(os.Stderr)
+	// A refused process configuration cannot enter any --lint evaluator. Keep
+	// this ahead of ordinary, multi-root and differential dispatch: none may
+	// turn an unavailable trust axis into PASS (or demote it as a base defect).
+	if *lintMode && len(scanEffectiveConfig().Problems) > 0 {
+		fmt.Fprintln(os.Stderr, "statusgen: configuration REFUSED; trust-dependent checks could-not-check")
+		fmt.Fprintln(os.Stdout, "LINT: REFUSED configuration; trust-dependent checks could-not-check")
+		exitProcess(5)
+	}
 
 	resolvedRoots, rootErr := resolveRoots(roots)
 	if rootErr != nil {
@@ -1969,6 +1994,7 @@ func main() {
 	// the board must still render, wearing its degradation. A caller that
 	// dispatches from the board sets this and gets exit 1 instead.
 	requireClaims = *requireClaimsFlag
+	roleClaimReads = *roleClaimsFlag
 	// The main-red arm's injected input (drives phase 3). A malformed value is a
 	// usage refusal — never a silent fallback to could-not-check or to green.
 	if mh, err := parseMainHealth(*mainHealthFlag); err != nil {
@@ -2051,14 +2077,14 @@ func main() {
 		// the un-block comment read and the trust-gate bless read (defaultScanCommentLister,
 		// defaultScanBlessChecker, #1255). A `gh` read left on this path 401s on every rostered
 		// repo under scanloop's replaced HOME.
-		exitProcess(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker))
+		exitProcess(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker, defaultScanLabelHoldChecker))
 	}
 	// Same-repo scan transcriber (scan-lane/01, R-7): self-contained,
 	// STATUS.md-free. The workflow's "run" step. INERT until the R-7 sign-off
 	// resolves; --dry-run is the no-write "--check" surface.
 	if *transcribeScanMode {
 		exitProcess(runTranscribeScan(*root, *scanDryRun,
-			ghIssueLister, issueCommentLister, ghAuthorResolver, ghIssueBlessChecker, ghCommentResolver))
+			ghIssueLister, issueCommentLister, ghAuthorResolver, ghIssueBlessChecker, defaultScanLabelHoldChecker, ghCommentResolver))
 	}
 	// Cross-repo scan-delta transcriber (the house-private brief, R-7 clause 4):
 	// self-contained, STATUS.md-free. INERT until the SAME R-7 sign-off
@@ -2169,6 +2195,9 @@ func main() {
 	// sub-command; never reads or writes STATUS.md. Exits 1 when the branch diff
 	// DISPROVES a routing claim, 2 when the diff itself could not be taken.
 	if *consumersMode {
+		if *consumersDelivery != "" {
+			exitProcess(runDeliveryConsumers(*root, *consumersBase, *consumersBrief, *consumersDelivery))
+		}
 		exitProcess(runConsumers(*root, *consumersBase, *consumersBrief))
 	}
 	// Bottleneck report: self-contained diagnostic

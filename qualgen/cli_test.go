@@ -356,10 +356,10 @@ func TestCLILegacyForms(t *testing.T) {
 		{[]string{"report", "--out", ".", "--write"}, map[string]string{ciWriterEnv: "ci"},
 			reportOptions{Out: ".", Write: true, Writer: "ci"}},
 		{[]string{"mine", "--repo", "..", "--out", "/tmp/q"}, nil,
-			mineOptions{Repo: "..", Out: "/tmp/q", BlockMin: DefaultBlockMin, ChurnWindowDays: DefaultChurnWindowDays}},
+			mineOptions{Repo: "..", Out: "/tmp/q", BlockMin: DefaultBlockMin, ChurnWindowDays: DefaultChurnWindowDays, DefectLabels: "bug,defect,incident"}},
 		{[]string{"mine", "--repo", ".", "--in-repo", "--block-min", "5", "--churn-window-days", "30",
 			"--identity-map", "m.json", "--instruction-globs", "a/*.md,b.md"}, nil,
-			mineOptions{Repo: ".", InRepo: true, BlockMin: 5, ChurnWindowDays: 30, IdentityMap: "m.json", InstructionGlobs: "a/*.md,b.md"}},
+			mineOptions{Repo: ".", InRepo: true, BlockMin: 5, ChurnWindowDays: 30, IdentityMap: "m.json", InstructionGlobs: "a/*.md,b.md", DefectLabels: "bug,defect,incident"}},
 		{[]string{"pr", "1", "--out", "/tmp/x"}, nil, prOptions{PR: "1", Out: "/tmp/x", Repo: "."}},
 		{[]string{"pr", "105", "--out", "o", "--repo", "d"}, nil, prOptions{PR: "105", Out: "o", Repo: "d"}},
 		{[]string{"pr", "7", "--out", "o", "--head", "h", "--base", "b"}, nil,
@@ -379,7 +379,7 @@ func TestCLILegacyForms(t *testing.T) {
 			checkOptions{Paths: []string{"-a.go", "--repo", "x"}, Out: "o", Repo: "."}},
 		{[]string{"pr", "--out", "-o", "9"}, nil, prOptions{PR: "9", Out: "-o", Repo: "."}},
 		{[]string{"mine", "-out", "-repo", "-block-min", "0x10"}, nil,
-			mineOptions{Repo: ".", Out: "-repo", BlockMin: 16, ChurnWindowDays: DefaultChurnWindowDays}},
+			mineOptions{Repo: ".", Out: "-repo", BlockMin: 16, ChurnWindowDays: DefaultChurnWindowDays, DefectLabels: "bug,defect,incident"}},
 	}
 	for _, c := range consumer {
 		rc, _, errs, rec := runFake(c.args, c.env)
