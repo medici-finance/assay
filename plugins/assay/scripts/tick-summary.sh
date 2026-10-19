@@ -92,6 +92,13 @@ validate_line() {
     *"$(printf '\t')"*) die "the line contains a tab; fields are single-space separated"; return 1 ;;
   esac
 
+  # Refuse a line break before any branch that echoes the candidate: echoing a
+  # multi-line candidate would put its later records on stderr unprefixed, where
+  # the published regexp finds them. Same order and reason as the Go port.
+  case "$line" in
+    *$'\n'* | *$'\r'*) die "the line contains a line break; the summary is ONE line"; return 1 ;;
+  esac
+
   # Match the whole argument. A line-oriented grep can accept one record while
   # field() reads another, bypassing the closed sets and cross-field rules.
   if ! [[ "$line" =~ $GRAMMAR ]]; then
