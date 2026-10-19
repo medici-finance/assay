@@ -45,7 +45,7 @@ This program reuses that path; it does not add a second one beside it:
 
 - **Process supervision is moved, not duplicated (/26).** `cellprocess` moves into the loopadmin module as its one process runner, and cellctl's cadence path calls it there through a `require` plus relative `replace` of the loopadmin module in `tools/desk/go.mod`, the pattern `tools/loopresolve/go.mod` already uses for `cellconfig`. The process-launch audit that scans `tools/desk` today must also scan the moved runner. Dropping it from the scan would weaken a control.
 - **The per-role cadence lease is reused (/27).** `cellcadence` stays cellctl's host-desk clock. An enrolled role holds the same per-role lease while loop-admin supervises it, so the legacy and shared launchers cannot both own one role. An unfinished checkpoint maps to a held unknown stop, not a relaunch.
-- **Harness argv is wrapped (/22).** The shared adapter takes cellctl's resolved, operator-approved argv/env profiles and adds no second argv builder. /22 qualifies bounded Codex first and Claude through the same implementation; each profile stays legacy until independently qualified and enrolled. Cursor remains legacy until separately qualified.
+- **Harness argv is wrapped (/22).** The shared adapter takes cellctl's resolved, operator-approved argv/env profiles and adds no second argv builder. /22 qualifies bounded Codex first and Claude through the same implementation; each profile stays legacy until independently qualified (its own argv/environment/credential boundary included) and enrolled. Cursor remains legacy until separately qualified.
 - **The legacy launcher (/27)** is cellctl's `deskLaunch` → `runInteractiveHarness`/`runCadencedHarness` path. A role binding moves off it only through the drain/reconcile/fence rule above. Non-enrolled roles keep it unchanged.
 - `tools/desk/internal/loopengine` stays the in-session queue engine of a standing desk, not a process launcher. /27 binds it as a caller.
 
@@ -72,7 +72,7 @@ milestone or authorize activation.
 | /20 | Runner contract and conformance kit | Implemented delivery and historical Evidence stay intact; refresh its Linux witness through the existing local-container path, not another protocol. |
 | /28–29, /04, /16 | Verification contracts/regression floor, unknown-effect recovery and ownership/budget fencing | Retain dependency and human gates. Idle efficiency does not justify weakening these controls. |
 | /26 | One process runner, PostgreSQL process journal, deterministic observation/waits and launch brakes | Move/reuse cellprocess; no model heartbeat, alternate local store, all-role credential broker or second scheduler authority. Preserve the startup preparation/telemetry amendments. |
-| /22 | Shared local-harness adapter; independently qualified Codex and Claude profiles | Codex is first in the bounded-invocation qualification; reuse cellctl's existing argv/env builders. Cursor remains legacy until separately qualified. No provider-specific copy of the supervisor. |
+| /22 | Shared local-harness adapter; independently qualified Codex and Claude profiles | Codex is first in the bounded-invocation qualification; reuse cellctl's existing argv/env builders, with each profile proving the launcher boundary (argv refusal, sanitized environment, workspace/tool access or a recorded control gap) on its own. Cursor remains legacy until separately qualified. No provider-specific copy of the supervisor. |
 | desk-tools/39 and /42 | Importable review policy and role-specific issue projections | Existing extraction owners; /27 consumes them from tools/desk-local bindings, never imports cmd/main or duplicates classifiers. |
 | /27 | Deterministic standing-desk clients, bounded jobs and one-owner transfer | Existing queues/claims remain work owners. Remove model-managed mechanical loops only when the replacement behavior is proven. No workflow store/controller required. |
 | desk-supervision/34 | Usage compatibility for non-enrolled workers | /27 preserves the existing skip for enrolled workers; do not count one invocation in two stores. |
@@ -123,7 +123,7 @@ role policy; an unchanged repeated error cannot create an endless model loop.
 The same fixture must attribute supervisor versus child calls and uncached/cached input,
 output and reported reasoning to invocation, role, lane, exact subject and profile.
 Missing telemetry stays unknown. Compare matched completed-item cohorts using the
-existing /37–44 qualification machinery; report review/verification coverage, rework
+existing desk-tools/37–44 qualification machinery; report review/verification coverage, rework
 and completed outcomes as well as cost. There is no invented percentage saving target.
 Zero idle launches is a deterministic criterion; useful-work efficiency requires the
 independent matched comparison. No cost claim may omit children or count lost coverage
@@ -131,7 +131,7 @@ as a saving.
 
 Remove duplicate calls before duplicate code. /27 owns removal of the adopted mechanical
 skill loop at the same transfer boundary; independent review/verification judgments,
-prior findings, source reads, acceptance tests and human authority remain. Legacy paths
+prior findings, source reads, acceptance tests, STOP/guard-refusal/trust-gate rules and human authority remain. Legacy paths
 stay for non-enrolled profiles until the last supported consumer is qualified and fenced.
 Legacy skill-simplification work owns only remaining prose/kit cleanup and its own
 historical close-out; it must not author another launch supervisor. Broad workflow/store,

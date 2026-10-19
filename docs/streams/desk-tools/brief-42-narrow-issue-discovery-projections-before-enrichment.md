@@ -124,7 +124,7 @@ writer/custody/equivalence and collection consent gates remain separate.
 
 ## Standing-desk consumer routing — 2026-10-18
 
-graph-execution/27 consumes this brief's existing pure policy/projection API from a
+graph-execution/27 consumes this brief's planned pure policy/projection API from a
 tools/desk-local binding. It does not import cmd/main across modules, duplicate the
 classifier, change this brief's acceptance or add a process supervisor here. Preserve
 the current oracle, authority boundary and planned library home. This is a forward
