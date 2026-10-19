@@ -438,7 +438,7 @@ facts — the design:
 | 14 | check:ci | `cd tools/desk && go test -timeout 300s ./internal/deskkit/... ./cmd/deskperf/... ./cmd/deskboot/... ./cmd/deskpr/... -count=1` | exit 0 — every existing test of the touched packages, unchanged |
 | 15 | check:ci | `cd tools/desk && gofmt -l internal/deskkit/perf.go internal/deskkit/perfread.go internal/deskkit/perfcpu_unix.go internal/deskkit/perfcpu_windows.go internal/deskkit/runtool.go internal/deskkit/audittoolkey.go cmd/deskperf cmd/deskboot > /tmp/dt23-fmt.out; test ! -s /tmp/dt23-fmt.out` | exit 0 |
 | 16 | check:ci | `cd statusgen && go run . --root .. --lint; echo $?` | 0 |
-| 17 | check:ci +dereference | `cd statusgen && go run . --root .. --consumers --brief assay:assay:desk-tools:23; echo $?` | 0 — the routing claims in `consumers:` are RESOLVED against this branch's own diff, not counted: every entry marked `fixed-here` is touched by the diff and every `out-of-scope` one is not. Exit 2 is COULD-NOT-CHECK (no diff to take — a fully merged tree), which is reported AS ITSELF and never as a pass |
+| 17 | check:ci +dereference | `o=$(statusgen --root . --consumers --brief desk-tools/23 --delivery b2050d8c735a9f1b290e8fb65a3cd67e483ad97b --base 86575b055da66c8340dd8b6ea4431738244f146e); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 1 corroborated, 0 disproved, 4 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | exit 0; exact `summary: 1 corroborated, 0 disproved, 4 unchecked, 0 brief(s) claiming nothing`. Claims are read from the immutable delivered snapshot and compared only with its first-parent diff. The 4 UNCHECKED entries remain individual review obligations; this row does not discharge their truth. |
 
 Pre-mortem → detection map:
 

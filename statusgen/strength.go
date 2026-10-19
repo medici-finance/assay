@@ -32,11 +32,12 @@ const (
 	ruleTableNoFiles = "table-touches-no-files"
 )
 
-// promotedRowRules are the ten unfailable-row rules (R1–R10). A finding under
+// promotedRowRules are the unfailable-row rules (R1–R10) plus the consumer
+// delivery-range prerequisite (#1915). A finding under
 // one of them on a brief THIS branch closes — verified/done in the README, and
 // not already verified/done at the merge-base — is a PROBLEM; everywhere else
 // it stays the NOTICE it always was. R11–R13 are strength heuristics and stay
-// NOTICEs on every brief (verify-integrity/03 promotes the ten, not the new
+// NOTICEs on every brief (verify-integrity/03 promotes R1–R10, not the new
 // three).
 var promotedRowRules = map[string]bool{
 	ruleERELiteralPipe: true, // R1
@@ -48,6 +49,7 @@ var promotedRowRules = map[string]bool{
 	ruleBREAlternation: true, // R7
 	ruleShreddedCell:   true, // R8
 	ruleMovingRef:      true, // R9
+	ruleConsumerRange:  true, // #1915
 	rulePortability:    true, // R10
 }
 

@@ -115,7 +115,7 @@ facts:
 | 7 | `grep -c -i -e 'stoplist' -e 'threshold' -e 'flip condition' -e 'addyosmani/agent-skills' tools/skillslint/README.md; ls tools/skillslint/testdata/routing/mini/*.yaml \| wc -l` | first command prints >= 4 (README covers method, stoplist, thresholds, flip condition and prior-art credit by URL); second prints the `mini/` fixture count, one skill short of the full set (the missing-fixture-file path from Task 4 is exercised) |
 | 8 | `curl -fsSL -o /tmp/hp18-run-evals.js https://raw.githubusercontent.com/addyosmani/agent-skills/bcab6a1b8503100e8618c3b4e32cc78de43de769/scripts/run-evals.js && grep -c -e 'COLLISION_WARN = 0.5' -e 'COLLISION_ERROR = 0.75' -e "indexOf('--min-rank1')" /tmp/hp18-run-evals.js` | exit 0; prints `3` (the cited prior-art thresholds resolve at the pinned SHA) |
 | 9 | `find tools/skillslint -name '*.js'` | no output (nothing vendored from the prior art) |
-| 10 | `statusgen --consumers --brief harness-portability/18 --root . --base "$(git merge-base origin/main HEAD)"` | exit 0; no routing claim disproved |
+| 10 | `statusgen --consumers --root . --brief harness-portability/18 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | pre-merge only; exit 0; branch routing dispositions are checked against the pinned fork. Inherited and out-of-scope routes remain unchecked obligations. At implementation replace this provisional command with the actual full delivery and first-parent pins, plus exact summary counts, before post-merge verification (see [delivery contract](../../consumer-delivery-checks.md)). |
 | 11 | `statusgen --lint --root .` (built from this repo's `statusgen/`) | exit 0; no PROBLEM line naming this brief |
 
 Pre-mortem → detection map:
