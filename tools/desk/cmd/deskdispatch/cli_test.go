@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -192,15 +193,24 @@ func cliRunHelp(t *testing.T, bin, home, dir string, args []string, consent stri
 		t.Fatalf("consented help %v: %d perf records, want exactly one", args, len(records))
 	}
 	var rec struct {
-		Schema, Tool, Verb     string
-		Exit                   int
-		ChildProcs, ForgeCalls int64
+		Schema, Tool, Verb string
+		Exit               int
+		Counters           map[string]int64
+		Unavailable        []string
 	}
 	if err := json.Unmarshal([]byte(records[0]), &rec); err != nil {
 		t.Fatal(err)
 	}
-	if rec.Schema != "perf-v1" || rec.Tool != "deskdispatch" || rec.Verb != want || rec.Exit != 0 || rec.ChildProcs != 0 || rec.ForgeCalls != 0 {
-		t.Errorf("consented help %v record = %+v, want verb %q with zero children and forge calls", args, rec, want)
+	if rec.Schema != "perf-v2" || rec.Tool != "deskdispatch" || rec.Verb != want || rec.Exit != 0 {
+		t.Errorf("consented help %v record = %+v, want perf-v2 verb %q exit 0", args, rec, want)
+	}
+	// perf-v2 carries the child-process and forge-call counts in counters. A key that is
+	// absent or listed unavailable was not measured, so it must fail rather than read as 0.
+	for _, key := range []string{"subprocess", "http"} {
+		n, ok := rec.Counters[key]
+		if !ok || n != 0 || slices.Contains(rec.Unavailable, key) {
+			t.Errorf("consented help %v counter %q = %d present=%v unavailable=%v, want measured zero", args, key, n, ok, rec.Unavailable)
+		}
 	}
 }
 
