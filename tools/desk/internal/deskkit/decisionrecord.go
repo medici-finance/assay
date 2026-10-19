@@ -92,7 +92,7 @@ var (
 	decHeadingLineRe    = regexp.MustCompile(`^[ \t]*#{1,6}[ \t]`)
 	decOptionLineRe     = regexp.MustCompile(`^(?:[-*][ \t]*)?(?:\*\*)?[A-Da-d1-4][.)][ \t]`)
 	decOptionCaptureRe  = regexp.MustCompile(`^(?:[-*][ \t]*)?(?:\*\*)?([A-Da-d1-4])[.)][ \t]*(.+)$`)
-	decExactRecRe       = regexp.MustCompile(`(?i)(?:^|[ \t])\(recommended\)(?:[ \t]|$)`)
+	decRecTokenRe       = regexp.MustCompile(`(?i)\(recommended\)`)
 )
 
 // DecisionOptions is one ask's parsed Options section, in SOURCE order (the order and the
@@ -125,7 +125,8 @@ func (o DecisionOptions) Walk() []int {
 // ParseDecisionOptions parses the Options section of an ask (an issue body or a relay
 // comment): the lines between the first `# Options` heading (any level) and the next
 // heading, the first four lettered list lines, and a recommendation only when exactly one
-// option contains the standalone `(recommended)` marker. HTML comments are invisible.
+// standalone `(recommended)` marker (decMarkerSpans) appears across those options, every
+// marker cut from the text. HTML comments are invisible.
 func ParseDecisionOptions(body string) DecisionOptions {
 	var bl []string
 	inComment := false
@@ -176,10 +177,9 @@ func ParseDecisionOptions(body string) DecisionOptions {
 	}
 	rec, marks := -1, 0
 	for i, o := range raw {
-		matches := decExactRecRe.FindAllStringIndex(decDemd(decClean(decStrip(o.txt))), -1)
-		if len(matches) > 0 {
+		if n := len(decMarkerSpans(decStrip(decClean(decDemd(o.txt))))); n > 0 {
 			rec = i
-			marks += len(matches)
+			marks += n
 		}
 	}
 	if marks != 1 {
@@ -188,8 +188,7 @@ func ParseDecisionOptions(body string) DecisionOptions {
 	out := DecisionOptions{Recommended: -1}
 	for i, o := range raw {
 		v := decStrip(decClean(decDemd(o.txt)))
-		v = decExactRecRe.ReplaceAllString(v, " ")
-		v = decStrip(v)
+		v = decStrip(decCutMarkers(v))
 		if v == "" {
 			continue // dropped, as the oracle drops it; a dropped mark is no mark
 		}
@@ -200,6 +199,54 @@ func ParseDecisionOptions(body string) DecisionOptions {
 		out.Texts = append(out.Texts, v)
 	}
 	return out
+}
+
+// decMarkerSpans is the oracle's `recmark` grammar (assay-inbox.sh): the byte span of every
+// standalone `(recommended)` token (any case) in s. The token must open the text or follow
+// one space or tab, and must end the text or be followed by a space, a tab or one of
+// `.,;:!?`. That following character is never part of the span, so adjacent markers each
+// count. The span takes the one space or tab before the token, plus a `—`/`–`/`-`
+// separator directly before that when whitespace precedes the separator, so cutting it
+// leaves "Keep — (recommended)." as "Keep.". The whitespace is ASCII on both sides: a
+// non-breaking space is not a boundary.
+func decMarkerSpans(s string) [][2]int {
+	var spans [][2]int
+	for _, m := range decRecTokenRe.FindAllStringIndex(s, -1) {
+		start, end := m[0], m[1]
+		if end < len(s) && !strings.ContainsRune(" \t.,;:!?", rune(s[end])) {
+			continue
+		}
+		if start > 0 {
+			if c := s[start-1]; c != ' ' && c != '\t' {
+				continue
+			}
+			start--
+			for _, dash := range []string{"—", "–", "-"} {
+				if !strings.HasSuffix(s[:start], dash) {
+					continue
+				}
+				ws := strings.TrimRight(s[:start-len(dash)], " \t")
+				if len(ws) < start-len(dash) {
+					start = len(ws)
+				}
+				break
+			}
+		}
+		spans = append(spans, [2]int{start, end})
+	}
+	return spans
+}
+
+// decCutMarkers removes every span decMarkerSpans finds — the oracle's `cleanoption` gsub.
+func decCutMarkers(s string) string {
+	var b strings.Builder
+	last := 0
+	for _, sp := range decMarkerSpans(s) {
+		b.WriteString(s[last:sp[0]])
+		last = sp[1]
+	}
+	b.WriteString(s[last:])
+	return b.String()
 }
 
 // The oracle's string defs, private copies of cmd/deskinbox's (that package is a command).

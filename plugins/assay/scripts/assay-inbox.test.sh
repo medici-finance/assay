@@ -2083,6 +2083,64 @@ check "$(not_derived && echo 0 || echo 1)" \
   "repeated markers on one option are ambiguous, not authority" "stdout was: ${OUT:-<empty>}"
 check "$(contains "$OUT" '[recommended]' && echo 1 || echo 0)" \
   "repeated markers leave every option unlabelled" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-adjacent"
+cmd_walk "$w" '## Options
+
+A. keep this (recommended) (recommended)
+B. ship this
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "adjacent markers on one option are two markers: not derivable" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" '[recommended]' && echo 1 || echo 0)" \
+  "adjacent markers leave every option unlabelled" "stdout was: ${OUT:-<empty>}"
+
+# regression: #2849 — the marker as desks write it, closing a bold lead sentence, still binds.
+echo "CMD14 — a marker followed by punctuation, or after a dash, is the one marker"
+
+w="$TMPROOT/cmd-rec-period"
+cmd_walk "$w" '## Options
+
+A. **keep the cron.** It keeps the noise.
+B. **drop the cron (recommended).** It stops the noise.
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(derived "'B'" && echo 0 || echo 1)" \
+  "a marker before a period binds its letter" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" 'A. drop the cron. It stops the noise.   [recommended]' && echo 0 || echo 1)" \
+  "the walk promotes and labels it, the marker cut and the period kept" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-dash-paren"
+cmd_walk "$w" '## Options
+
+A. keep the cron
+B. drop the cron — (recommended)
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(derived "'B'" && echo 0 || echo 1)" \
+  "a dash before the exact marker still binds its letter" "stdout was: ${OUT:-<empty>}"
+check "$(contains "$OUT" 'A. drop the cron   [recommended]' && echo 0 || echo 1)" \
+  "the dash separator is cut with the marker" "stdout was: ${OUT:-<empty>}"
+w="$TMPROOT/cmd-rec-glued"
+cmd_walk "$w" '## Options
+
+A. keep the cron
+B. drop the cron (recommended)ly
+
+## How to answer
+
+Reply "A" or "B".
+'
+check "$(not_derived && echo 0 || echo 1)" \
+  "a letter right after the marker is not a boundary: not derivable" "stdout was: ${OUT:-<empty>}"
 
 # ------------------------------------------------------------------ done ----
 echo

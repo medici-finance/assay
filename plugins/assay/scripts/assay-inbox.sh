@@ -651,9 +651,12 @@ def strip: sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "");
 def nonblank: map(select(test("[^[:space:]]")));
 def isheading: test("^[[:space:]]*#{1,6}[[:space:]]");
 def demd: gsub("\\*\\*"; "") | gsub("`"; "");
+# HTML comments are cut but their line breaks are kept, so the text either side of a
+# multi-line comment stays on its own line (deskkit's per-line scan reads it the same way).
 def visiblelines($text):
-  ($text // "") | gsub("\r"; "") | gsub("<!--[\\s\\S]*?-->"; "")
-  | sub("<!--[\\s\\S]*$"; "") | split("\n");
+  ($text // "") | gsub("\r"; "")
+  | gsub("<!--(?<c>[\\s\\S]*?)-->"; (.c | gsub("[^\n]"; "")))
+  | sub("<!--(?<c>[\\s\\S]*)$"; (.c | gsub("[^\n]"; ""))) | split("\n");
 def sectionin($ls; $re):
   ($ls | to_entries | map(select(.value | test($re; "i"))) | first) as $h
   | if $h == null then []
@@ -666,14 +669,20 @@ def optionsin($ls):
   | map(select(test("^(?:[-*][[:space:]]*)?(?:\\*\\*)?[A-Da-d1-4][.)][[:space:]]")))
   | map(capture("^(?:[-*][[:space:]]*)?(?:\\*\\*)?(?<let>[A-Da-d1-4])[.)][[:space:]]*(?<txt>.+)$"))
   | .[0:4];
+# The standalone marker: `(recommended)` in any case, opening the text or after one space or
+# tab, and ending the text or followed by a space, a tab or one of .,;:!? (a lookahead, so
+# adjacent markers each count). A match also takes a `—`/`–`/`-` separator directly before
+# it when whitespace precedes that separator, so cutting it leaves no dangling dash.
+# ASCII whitespace only: deskkit.decMarkerSpans implements this same grammar.
+def recmark: "(?:[ \\t]+[—–-])?(?:^|[ \\t])\\(recommended\\)(?=$|[ \\t.,;:!?])";
 def markcount:
-  demd | clean | [scan("(?:^|[[:space:]])\\(recommended\\)(?=$|[[:space:]])"; "i")] | length;
+  demd | clean | [scan(recmark; "i")] | length;
 def exact_recommendation($opts):
   ($opts | to_entries | map(. + {markCount: (.value.txt | markcount)})) as $marked
   | ([$marked[].markCount] | add // 0) as $count
   | if $count == 1 then ($marked | map(select(.markCount == 1)) | first) else null end;
 def cleanoption:
-  demd | clean | strip | gsub("(^|[[:space:]])\\(recommended\\)([[:space:]]|$)"; " "; "i") | strip;
+  demd | clean | strip | gsub(recmark; ""; "i") | strip;
 
 # The screen's roster input (resolve_roster: the ratifying identity, the trusted authors,
 # the roster App slugs) travels through the ENVIRONMENT ($ENV), not --argjson: this program

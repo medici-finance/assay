@@ -349,6 +349,48 @@ func TestParityWalk(t *testing.T) {
 			k:    0, n: 1,
 		},
 		{
+			// regression: #2849 — the marker grammar both parsers share (jq `recmark`,
+			// deskkit.decMarkerSpans): punctuation ends a marker, the dash goes with it.
+			name: "marker before punctuation and a dash separator",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 20, Title: "Punctuated marker",
+				URL: "https://example.invalid/issues/20", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "## Options\nA. **Keep the cron.**\nB. **Re-scope it (recommended).** No new work.\nC. Drop it — not now\n",
+			k:    0, n: 1,
+		},
+		{
+			name: "adjacent markers on one option are ambiguous",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 21, Title: "Adjacent markers",
+				URL: "https://example.invalid/issues/21", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "## Options\nA. Keep (recommended) (recommended)\nB. Leave\n",
+			k:    0, n: 1,
+		},
+		{
+			name: "no-break space and trailing letter are not boundaries",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 22, Title: "Not boundaries",
+				URL: "https://example.invalid/issues/22", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "## Options\nA. Keep (recommended) now\nB. Leave (recommended)x\nC. Drop — (Recommended)\n",
+			k:    0, n: 1,
+		},
+		{
+			name: "text either side of a multi-line comment stays on its own line",
+			it: jqItem{
+				Repo: "example-org/example-repo", Number: 23, Title: "Comment join",
+				URL: "https://example.invalid/issues/23", CreatedAt: createdAt,
+				Labels: []jqLabel{{Name: "needs-decision"}},
+			},
+			body: "## Options\nA. keep <!-- x\ny --> B. still a line\nC. other (recommended)\n",
+			k:    0, n: 1,
+		},
+		{
 			// The parse now lives in deskkit: a marked option whose text
 			// cleans to empty is dropped (and so is its mark), a fifth list line is never read,
 			// and numeric ids are re-lettered A–D like letters.

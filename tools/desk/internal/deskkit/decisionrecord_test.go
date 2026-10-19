@@ -67,6 +67,44 @@ func TestParseDecisionOptions(t *testing.T) {
 	}
 }
 
+// regression: #2849 — the marker grammar the jq oracle's `recmark` states: trailing
+// punctuation ends a marker, adjacent markers each count, ASCII whitespace only, and the
+// cut takes a dash separator with it. TestParityWalk pins the oracle to the same answers.
+func TestDecisionMarkerGrammar(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		body  string
+		want  int
+		texts []string
+	}{
+		{"bold lead sentence ends in a period",
+			"## Options\nA. **Re-scope it (recommended).** No new work.\nB. Leave it\n",
+			0, []string{"Re-scope it. No new work.", "Leave it"}},
+		{"comma, colon and question mark end a marker",
+			"## Options\nA. Keep (recommended), cheap\nB. Drop (Recommended): risky\n",
+			-1, []string{"Keep, cheap", "Drop: risky"}},
+		{"adjacent markers on one option are two",
+			"## Options\nA. Keep (recommended) (recommended)\nB. Leave\n",
+			-1, []string{"Keep", "Leave"}},
+		{"a no-break space is not a boundary",
+			"## Options\nA. Keep (recommended)\nB. Leave\n",
+			-1, []string{"Keep (recommended)", "Leave"}},
+		{"a letter after the marker is not a boundary",
+			"## Options\nA. Keep (recommended)x\nB. Leave\n",
+			-1, []string{"Keep (recommended)x", "Leave"}},
+		{"the dash separator goes with the marker",
+			"## Options\nA. Keep it\nB. Drop the cron — (recommended)\n",
+			1, []string{"Keep it", "Drop the cron"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ParseDecisionOptions(tc.body)
+			if got.Recommended != tc.want || !reflect.DeepEqual(got.Texts, tc.texts) {
+				t.Fatalf("got recommended %d texts %q, want %d %q", got.Recommended, got.Texts, tc.want, tc.texts)
+			}
+		})
+	}
+}
+
 // regression: medici-finance/assay#2426 (C-2, C-3, SEC-3, SEC-4, SEC-6) — every row below
 // that a person would read as anything but ONE definite option must not record one.
 func TestParseRulingPick(t *testing.T) {
