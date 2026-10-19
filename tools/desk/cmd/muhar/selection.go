@@ -103,7 +103,8 @@ type Selection struct {
 	// CAUGHT without a suite run. Never Caught — skipping cannot produce red.
 	Skip bool
 	// Test is the narrowed suite. nil means run the spec's full command.
-	Test func(root string) bool
+	Test            func(root string) bool
+	TestWithTimeout func(root string, timeout time.Duration) CommandResult
 }
 
 // Selector narrows each mutant's suite. Prepare runs once on the pristine tree,
@@ -278,7 +279,8 @@ type coverSelector struct {
 	env    []string
 	log    io.Writer
 	// goTest runs `go test <args>` in root and reports whether it FAILED.
-	goTest func(root string, args []string) bool
+	goTest    func(root string, args []string) bool
+	timedTest func(root string, args []string, timeout time.Duration) CommandResult
 
 	muts []Mutation // the control, then every mutation
 
@@ -292,8 +294,11 @@ type coverSelector struct {
 	proven map[string]bool
 }
 
-func newCoverSelector(s spec, cmd goTestCmd, jobs int, env []string, log io.Writer, goTest func(string, []string) bool) *coverSelector {
+func newCoverSelector(s spec, cmd goTestCmd, jobs int, env []string, log io.Writer, goTest func(string, []string) bool, timed ...func(string, []string, time.Duration) CommandResult) *coverSelector {
 	cs := &coverSelector{cmd: cmd, jobs: jobs, env: env, log: log, goTest: goTest}
+	if len(timed) > 0 {
+		cs.timedTest = timed[0]
+	}
 	if s.Select != nil {
 		cs.always = s.Select.Always
 	}
@@ -839,7 +844,46 @@ func (cs *coverSelector) For(m Mutation, orig []byte) Selection {
 	fmt.Fprintf(cs.log, "muhar: select %q: %d of %d tests (%d covering, %d always-run)\n",
 		m.Name, d.picked, len(cs.tests), d.covering, d.picked-d.covering)
 	args := d.args
+	if cs.timedTest != nil {
+		return Selection{TestWithTimeout: func(root string, timeout time.Duration) CommandResult {
+			return cs.timedTest(root, withTimeout(args, timeout), timeout)
+		}}
+	}
 	return Selection{Test: func(root string) bool { return cs.goTest(root, args) }}
+}
+
+func withTimeout(args []string, timeout time.Duration) []string {
+	if timeout <= 0 {
+		return args
+	}
+	out := make([]string, 0, len(args)+1)
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-timeout" || args[i] == "--timeout" {
+			i++
+			continue
+		}
+		if strings.HasPrefix(args[i], "-timeout=") || strings.HasPrefix(args[i], "--timeout=") {
+			continue
+		}
+		out = append(out, args[i])
+	}
+	// Insert before -run and package patterns, where go test still parses flags.
+	at := len(out)
+	start := 0
+	if len(out) > 0 && out[0] == "test" {
+		start = 1
+	}
+	for i := start; i < len(out); i++ {
+		arg := out[i]
+		if arg == "-run" || strings.HasPrefix(arg, "-run=") || !strings.HasPrefix(arg, "-") {
+			at = i
+			break
+		}
+	}
+	out = append(out, "")
+	copy(out[at+1:], out[at:])
+	out[at] = "-timeout=" + timeout.String()
+	return out
 }
 
 // narrowedArgs builds the subset command: the spec's flags verbatim, -run

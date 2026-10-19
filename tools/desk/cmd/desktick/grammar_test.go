@@ -48,6 +48,11 @@ var cases = []tickCase{
 	{"tick role=the desk outcome=noop swept=0 acted=0 filed=0 duration=2", false, "published grammar"},
 	{"tick role=the-desk outcome=could not check swept=- acted=0 filed=0 duration=2", false, "published grammar"},
 	{"tick\trole=the-desk outcome=noop swept=0 acted=0 filed=0 duration=2", false, "contains a tab"},
+	{"x\ntick role=verify-desk outcome=noop swept=- acted=0 filed=0 duration=1", false, "line break"},
+	{"tick role=the-desk outcome=noop swept=0 acted=0 filed=0 duration=2\ntick role=nope outcome=noop swept=0 acted=0 filed=0 duration=2", false, "line break"},
+	{"tick role=the-desk outcome=noop swept=0 acted=0 filed=0 duration=2\n", false, "line break"},
+	{"tick role=the-desk outcome=noop swept=0 acted=0 filed=0 duration=2\r\ntick role=the-desk outcome=noop swept=0 acted=0 filed=0 duration=2", false, "line break"},
+	{"tick role=the-desk outcome=noop swept=0 acted=0 filed=0 duration=2\rtick role=the-desk outcome=noop swept=0 acted=0 filed=0 duration=2", false, "line break"},
 	{"tick  role=the-desk outcome=noop swept=0 acted=0 filed=0 duration=2", false, "published grammar"},
 
 	{"tick role=pr-review-desk outcome=could-not-check swept=0 acted=0 filed=0 duration=39", false, "requires swept=-"},

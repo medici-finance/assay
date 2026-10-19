@@ -30,7 +30,7 @@
       "name": "drop the SRI length check (any payload behind an integrity key passes)",
       "file": "internal/deskkit/structured.go",
       "old": "if want, ok := sriPayloadLen[alg]; ok && len(payload) == want {",
-      "new": "if _, ok := sriPayloadLen[alg]; ok {"
+      "new": "if _, ok := sriPayloadLen[alg]; ok && payload != \"\" {"
     },
     {
       "name": "drop the sops DOCUMENT signature (a pasted envelope alone is sanctioned)",
@@ -468,7 +468,7 @@
       "name": "body-edit class: drop the forge edit-time-after-the-CR comparison (a body last edited before the CR clears on a slipped CR digest — reddens TestBodyEdit_NearMiss_UneditedBody_SlippedCRDigest/forge's_last_edit_is_before_the_CR)",
       "file": "internal/deskkit/bodyeditcr.go",
       "old": "\tif !editedAt.After(crAt) {",
-      "new": "\tif false {"
+      "new": "\tif editedAt.IsZero() {"
     },
     {
       "name": "body-edit class: accept a forge edit at the CR's own instant (reddens TestBodyEdit_NearMiss_UneditedBody_SlippedCRDigest/forge's_last_edit_is_at_the_CR's_own_instant)",

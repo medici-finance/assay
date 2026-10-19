@@ -680,12 +680,11 @@
         "plugins/assay/skills/pr-review-desk/SKILL.md",
         "tools/desk/internal/regression/MANIFEST.md"
       ],
-      "parser": "Go flag: FlagSet",
+      "parser": "Cobra via internal/cli; declared Viper bindings",
       "complexity": "complex",
       "basis": "4627 LOC, ~5 verbs, ~15 flags at 3ad1ad83c871",
       "owner": "desktools-v2/21",
-      "state": "exempt",
-      "reason": "parser port withdrawn 2026-10-18 (desktools-v2/21): dispatch admission moves to graph-execution/14 on the isolated runner (graph-execution/22, /26); keeps its current parser until retired, and desktools-v2/17 re-routes it to a bounded owner if its domain survives"
+      "state": "migrated"
     },
     {
       "executable": "deskdisposition",

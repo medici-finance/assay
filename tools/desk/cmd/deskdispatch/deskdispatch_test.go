@@ -1108,14 +1108,19 @@ func TestClaimRefusalWithNoHolderIsNotReportedAsACollision(t *testing.T) {
 
 // A key that would be read as a flag, or that carries a parent-directory segment, is
 // refused before it reaches any child process.
+// regression: #2111
 func TestHostileItemKeysRefused(t *testing.T) {
 	for _, key := range []string{"--force", "../escape", "a b", ""} {
 		s := &stub{}
 		_, root := s.install(t)
 		plantScripts(t, root)
 		rc := run([]string{key, "--root", root})
-		if rc != deskkit.ExitRefused {
-			t.Errorf("key %q rc = %d, want %d (refused)", key, rc, deskkit.ExitRefused)
+		want := deskkit.ExitRefused
+		if key == "--force" {
+			want = 2
+		} // CLI syntax, before domain admission.
+		if rc != want {
+			t.Errorf("key %q rc = %d, want %d (refused)", key, rc, want)
 		}
 		if len(s.calls) != 0 {
 			t.Errorf("key %q reached a child process: %v", key, s.calls)
@@ -1218,6 +1223,7 @@ func TestDryRunEmitsThePromptForEveryTier(t *testing.T) {
 	}
 }
 
+// regression: #2111
 func TestStepListIsTheDocumentedContract(t *testing.T) {
 	want := []string{"claim-acquire", "worktree-create", "roster-register", "decision-gate",
 		"model-stamp", "queue-label", "prompt-emit"}
@@ -1228,14 +1234,15 @@ func TestStepListIsTheDocumentedContract(t *testing.T) {
 		if dispatchSteps[i] != want[i] {
 			t.Errorf("dispatchSteps[%d] = %q, want %q", i, dispatchSteps[i], want[i])
 		}
-		if !strings.Contains(usage, want[i]) {
+		if !strings.Contains(dispatchHelp(), want[i]) {
 			t.Errorf("step %q is not documented in --help", want[i])
 		}
 	}
 }
 
+// regression: #2111
 func TestHelpNamesTheEngineSeam(t *testing.T) {
-	if !strings.Contains(usage, "engine seam: DISPATCH") {
+	if !strings.Contains(dispatchHelp(), "engine seam: DISPATCH") {
 		t.Error("deskdispatch --help does not name its engine seam")
 	}
 }

@@ -75,7 +75,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 18 | [Migrate statusgen to Cobra and Viper](brief-18-migrate-statusgen-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 19 | [Migrate qualgen to Cobra and Viper](brief-19-migrate-qualgen-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 20 | [Migrate deskboard to Cobra and Viper](brief-20-migrate-deskboard-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
-| 21 | [Migrate deskdispatch to Cobra and Viper](brief-21-migrate-deskdispatch-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
+| 21 | [Migrate deskdispatch to Cobra and Viper](brief-21-migrate-deskdispatch-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 22 | [Migrate deskwt to Cobra and Viper](brief-22-migrate-deskwt-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 23 | [Migrate deskfleet to Cobra and Viper](brief-23-migrate-deskfleet-to-cobra-and-viper.md) | 3 | M | todo | — | — |
 | 24 | [Migrate desksupervise to Cobra and Viper](brief-24-migrate-desksupervise-to-cobra-and-viper.md) | 3 | M | withdrawn | — | — |
@@ -238,8 +238,10 @@ cases and role-bound effects, and the command matrix is not ported as a mileston
 "What happens to today's tools"); no parser migration is a prerequisite, and obsolete
 parser work is dropped once its consumers are identified
 ([migration](../../proposals/non-ci-architecture/13-migration-and-decisions.md)). The
-per-verb ports /21, /24, /26–/28, /31–/34 and /36–/41, /43 are therefore `withdrawn`;
-each names its successor in front matter. Their entrypoints stay on their current parsers,
+per-verb ports /24, /26–/28, /31–/34 and /36–/41, /43 are therefore `withdrawn`;
+each names its successor in front matter. /21 (deskdispatch) is not withdrawn: its port
+merged before this amendment, so it stays an implemented child of /17. The withdrawn ports'
+entrypoints stay on their current parsers,
 routed `exempt` in the registry until retired. Withdrawing /31 and /32 withdraws the
 parser port only: the guard controls themselves stay and re-home to executor checks.
 Cobra/Viper becomes a **requirement for new tools** instead

@@ -1,0 +1,2 @@
+### Fixed
+- The post-merge consumer checks on desk-supervision/24 and desk-tools/26 now use `statusgen --consumers --delivery`, pinned to each brief's delivering commit and its first parent, so they reproduce on any later main. desktools-go-git/06's git-exec count is pinned the same way, desk-supervision/13 names the files its delivery actually touched, and desk-supervision/24's sibling-PR check fails closed when `SIBLING_PR` is unset.
