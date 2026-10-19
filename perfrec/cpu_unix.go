@@ -16,3 +16,6 @@ func CPUMillis() (int64, bool) {
 	sys := int64(ru.Stime.Sec)*1000 + int64(ru.Stime.Usec)/1000
 	return user + sys, true
 }
+
+// cpuSampler is SystemProbe's CPU source on this build.
+var cpuSampler = CPUMillis
