@@ -154,6 +154,38 @@ func TestScanDestLineHunks(t *testing.T) {
 	}
 }
 
+// regression: #3283
+// TestScanBriefIDAdmitted: with the added-lines surface line-aligned to the destination, the
+// pre-flight applies the brief-frontmatter id exemption (#2022) the write seam applies, so a
+// landing that changes a brief's frontmatter id is admitted. A planted session id elsewhere
+// in the same landing is still refused. The UUIDs are assembled at run time so no line of
+// this file is itself one.
+func TestScanBriefIDAdmitted(t *testing.T) {
+	uuid := func(head, tail string) string { return head + "-" + "7b4d" + "-" + "4e21" + "-" + "9a8c" + "-" + tail }
+	brief := func(id, body string) string {
+		return "---\nbrief: example:example:demo:01\ntitle: \"a demo brief\"\nschema: brief-v2\n" +
+			"id: " + id + "\n---\n\n# Demo\n\n" + body + "\n"
+	}
+	const target = "docs/streams/demo/brief-01-demo.md"
+	const pub = "example-org/proposals" // public in the fixture roster: the session-id arm applies
+	prior := brief(uuid("1a2b3c4d", "000000000001"), "Plain prose.")
+	next := brief(uuid("3f2a9c1e", "5d6e7f801234"), "Plain prose.")
+	added := addedLines([]byte(prior), []byte(next))
+	if err := evidenceOutboundCheck(pub, target, added, []byte(next)); err != nil {
+		t.Fatalf("frontmatter id change refused at pre-flight; the write seam admits it: %v", err)
+	}
+	sess := uuid("c0ffee42", "a1b2c3d4e5f6")
+	planted := brief(uuid("3f2a9c1e", "5d6e7f801234"), "Session "+sess+" ran this.")
+	added = addedLines([]byte(prior), []byte(planted))
+	err := evidenceOutboundCheck(pub, target, added, []byte(planted))
+	if err == nil || !deskkit.IsRefused(err) || !strings.Contains(err.Error(), "session-id") {
+		t.Fatalf("want a session-id refusal for the planted body id, got %v", err)
+	}
+	if want := target + ":10"; !strings.Contains(err.Error(), want) {
+		t.Fatalf("refusal does not name the planted id's destination line %s: %v", want, err)
+	}
+}
+
 // TestPreexistingRunIsNoticedNotRefused: the other origin. When the brief already carries a
 // secret-shaped run and the landing's own bytes are clean, the landing goes through and the
 // tool SAYS on stderr where the pre-existing run lives (`pre-existing in <brief-path>:<line>`),
