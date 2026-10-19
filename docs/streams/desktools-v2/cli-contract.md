@@ -155,8 +155,10 @@ foundation (desktools-v2/15: `tools/desk/internal/cli` in the desk module; Cobra
 command-local Viper under §1–§2 in a standalone module). It enters the registry as a
 `pending` or `migrated` row with the §4 owner tests, never as `exempt`. Tools scheduled for
 retirement are exempt.
+This rule has no ruling of its own: it applies the ratification below and the request in medici-finance/assay#2111.
 
-**Why.** The ratified target architecture
+**Why.** Ratification of the target architecture at revision 23f655f5d: https://github.com/medici-finance/assay/issues/2500#issuecomment-6137853872
+The target architecture
 ([11](../../proposals/non-ci-architecture/11-target-architecture.md), "What happens to
 today's tools") turns desk-tools verbs into thin adapters over typed use cases and
 role-bound effects and does not port the whole command matrix; the

@@ -232,7 +232,8 @@ fixtures use local git repositories, local HTTP servers and fake CLI executables
 
 CLI critical path: `15 → 16 → 45 → 29 → 17` (tied with `15 → 16 → 30 → 54 → 17`, which
 carries two human gates and so paces in practice); /16 is the next head once /15 lands. Library selection is settled by #2111; implementation risk gates remain.
-**Scope amendment — 2026-10-18 (ratified target architecture).** The target retires or
+**Scope amendment — 2026-10-18.** Ratification of the target architecture at revision 23f655f5d: https://github.com/medici-finance/assay/issues/2500#issuecomment-6137853872
+The target retires or
 re-homes the domains of many desk verbs: desk-tools verbs become thin adapters to typed use
 cases and role-bound effects, and the command matrix is not ported as a milestone
 ([target architecture](../../proposals/non-ci-architecture/11-target-architecture.md),
@@ -240,12 +241,13 @@ cases and role-bound effects, and the command matrix is not ported as a mileston
 parser work is dropped once its consumers are identified
 ([migration](../../proposals/non-ci-architecture/13-migration-and-decisions.md)). The
 per-verb ports /24, /26–/28, /31–/34 and /36–/41, /43 are therefore `withdrawn`;
+the human-gated withdrawals (/26–/28, /31–/34, /36–/39) are ruled at https://github.com/medici-finance/assay/issues/3420#issuecomment-6257901942;
 each names its successor in front matter. /21 (deskdispatch) is not withdrawn: its port
 merged before this amendment, so it stays an implemented child of /17. The withdrawn ports'
 entrypoints stay on their current parsers,
 routed `exempt` in the registry until retired. Withdrawing /31 and /32 withdraws the
 parser port only: the guard controls themselves stay and re-home to executor checks.
-Cobra/Viper becomes a **requirement for new tools** instead
+Cobra/Viper becomes a **requirement for new tools** instead (no ruling of its own: it applies the ratification above and the request in medici-finance/assay#2111)
 ([cli-contract.md §7](cli-contract.md#7-new-tools-and-retiring-tools--2026-10-18)), and /17
 enforces it on every surviving CLI and every new `main` package. /54 (including GitLab token
 renewal) is unchanged, pending medici-finance/assay#2987.
