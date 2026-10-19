@@ -34,7 +34,7 @@ consumers:
 - 'workflow/internalreview: follow-up graph-execution/24'
 - 'statusgen/assuranceexperiment.go: follow-up graph-execution/18'
 - 'operator clients: out-of-scope (consume the published protocol through their own adoption gates)'
-version: 3
+version: 4
 id: 008dd7b9-6421-42bd-b6c6-d3c495837fa8
 ---
 
@@ -113,3 +113,11 @@ Gate: human. Confirm scope, exact-subject evidence, independent failure controls
 ## Execution-environment follow-on routing — 2026-10-16
 
 Reciprocal unblocks only: agent-execution/04. The [execution amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md) adds a follow-on obligation over this brief's existing output. Its Task, Verify, gate, version and historical Evidence are unchanged; this note grants no delivery, reassignment or activation.
+
+## Proposed measurement consumer — 2026-10-17
+
+desk-improvement/07 consumes this brief for native controller decision/wait/attempt/outcome evidence after this controller exists.
+This is a forward consumer-routing amendment only: the new consumer waits on this owner,
+not the reverse. Original Task/Verify and completed Evidence are unchanged. Reconcile any
+active implementation claim before adding capture hooks. Native emission qualification is
+delivered by the named follow-up; this source contract alone does not claim it exists.

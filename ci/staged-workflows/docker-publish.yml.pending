@@ -1,1 +1,0 @@
-Replaced by a reusable, release-owned producer for all nine images; promote together with release.yml. No consumer dispatch or legacy component-tag trigger.

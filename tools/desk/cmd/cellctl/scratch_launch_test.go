@@ -72,7 +72,7 @@ func TestScratchLaunchRoles(t *testing.T) {
 				os.MkdirAll(c.cadenceDir(role), 0700)
 				wt := t.TempDir()
 				evidence := filepath.Join(t.TempDir(), "result")
-				env := append(os.Environ(), "CELL_SCRATCH_FIXTURE=1", "ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP="+role, "SCRATCH_EVIDENCE="+evidence)
+				env := fixtureProcessEnv("CELL_SCRATCH_FIXTURE=1", "ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP="+role, "SCRATCH_EVIDENCE="+evidence)
 				for n := 0; n < 3; n++ {
 					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 					result := c.executeCadencePass(ctx, role, harness, []string{os.Args[0], "--fixture-prompt"}, env, wt)
@@ -102,7 +102,7 @@ func TestScratchLaunchFailure(t *testing.T) {
 		t.Run(fmt.Sprint(noAck), func(t *testing.T) {
 			c := &Cell{Name: "fixture", Dir: t.TempDir(), Config: t.TempDir()}
 			wt := t.TempDir()
-			env := append(os.Environ(), "CELL_SCRATCH_FIXTURE=1", "ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP=worker-desk", "SCRATCH_EVIDENCE="+filepath.Join(t.TempDir(), "result"))
+			env := fixtureProcessEnv("CELL_SCRATCH_FIXTURE=1", "ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP=worker-desk", "SCRATCH_EVIDENCE="+filepath.Join(t.TempDir(), "result"))
 			if noAck {
 				env = append(env, "SCRATCH_NO_ACK=1")
 			} else {
@@ -161,7 +161,7 @@ func TestScratchCodexPropagation(t *testing.T) {
 
 func TestScratchLaunchBudget(t *testing.T) {
 	c := &Cell{Name: "fixture", Dir: t.TempDir(), Env: &Env{vals: map[string]string{"CELL_SCRATCH_MAX_BYTES": "0"}}}
-	env := append(os.Environ(), "CELL_SCRATCH_FIXTURE=1", "ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP=worker-desk", "SCRATCH_FAIL=1", "SCRATCH_EVIDENCE="+filepath.Join(t.TempDir(), "result"))
+	env := fixtureProcessEnv("CELL_SCRATCH_FIXTURE=1", "ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP=worker-desk", "SCRATCH_FAIL=1", "SCRATCH_EVIDENCE="+filepath.Join(t.TempDir(), "result"))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	result := c.executeCadencePass(ctx, "worker-desk", "claude", []string{os.Args[0], "fixture"}, env, t.TempDir())
@@ -180,7 +180,7 @@ func TestScratchLaunchBudget(t *testing.T) {
 }
 func TestScratchLaunchCancel(t *testing.T) {
 	c := &Cell{Name: "fixture", Dir: t.TempDir()}
-	env := append(os.Environ(), "CELL_SCRATCH_FIXTURE=1", "ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP=worker-desk", "SCRATCH_HANG=1", "SCRATCH_EVIDENCE="+filepath.Join(t.TempDir(), "result"))
+	env := fixtureProcessEnv("CELL_SCRATCH_FIXTURE=1", "ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP=worker-desk", "SCRATCH_HANG=1", "SCRATCH_EVIDENCE="+filepath.Join(t.TempDir(), "result"))
 	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
 	defer cancel()
 	result := c.executeCadencePass(ctx, "worker-desk", "claude", []string{os.Args[0], "fixture"}, env, t.TempDir())

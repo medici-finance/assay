@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -12,10 +14,9 @@ import (
 // `printf %q` produces and requires bashQuote to agree, byte for byte. The [plan] argv line is
 // built with %q in the oracle and diffed character by character by the parity harness, so a
 // quoting difference is a divergence.
+// regression: #2777
 func TestBashQuoteMatchesBash(t *testing.T) {
-	if _, err := exec.LookPath("bash"); err != nil {
-		t.Skip("no bash on PATH")
-	}
+	bash := requireBash4(t)
 	cases := []string{
 		"", "claude", "--model", "/assay:the-desk",
 		`Invoke the "assay:the-desk" skill now.`,
@@ -26,7 +27,7 @@ func TestBashQuoteMatchesBash(t *testing.T) {
 	for _, in := range cases {
 		// The script text is a CONSTANT and the case travels as $1 — argv, never interpolated
 		// into the script — so no input here can become shell syntax.
-		out, err := exec.Command("bash", "-c", `printf '%q' "$1"`, "bash", in).Output()
+		out, err := exec.Command(bash, "-c", `printf '%q' "$1"`, "bash", in).Output()
 		if err != nil {
 			t.Fatalf("bash printf %%q failed for %q: %v", in, err)
 		}
@@ -34,6 +35,29 @@ func TestBashQuoteMatchesBash(t *testing.T) {
 			t.Errorf("bashQuote(%q) = %q, bash says %q", in, got, want)
 		}
 	}
+}
+
+var bashVersionRE = regexp.MustCompile(`version ([0-9]+)\.([0-9]+)`)
+
+func requireBash4(t *testing.T) string {
+	t.Helper()
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skip("prerequisite: Bash 4 or newer is required for printf q-format parity; bash was not found on PATH")
+	}
+	out, err := exec.Command(bash, "--version").Output()
+	if err != nil {
+		t.Skipf("prerequisite: Bash 4 or newer is required for printf %%q parity; could not read bash version: %v", err)
+	}
+	match := bashVersionRE.FindSubmatch(out)
+	if len(match) != 3 {
+		t.Skip("prerequisite: Bash 4 or newer is required for printf q-format parity; could not parse bash --version")
+	}
+	major, err := strconv.Atoi(string(match[1]))
+	if err != nil || major < 4 {
+		t.Skipf("prerequisite: Bash 4 or newer is required for printf %%q parity; found Bash %s.%s", match[1], match[2])
+	}
+	return bash
 }
 
 func TestPrintPlanGrammar(t *testing.T) {

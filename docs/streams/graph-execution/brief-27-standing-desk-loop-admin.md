@@ -35,7 +35,7 @@ consumers:
 - 'workflow/controller: out-of-scope (separate caller delivered by graph-execution/21)'
 - 'plugins/assay/skills/worker-desk/SKILL.md desk-supervision/34 usage-record step: follow-up graph-execution/27 (this brief; for an enrolled worker role the step is skipped because the /26 journal records that run''s usage; flips to fixed-here when the implementation edits the path)'
 - 'tools/desk/cmd/deskusage/ record path (desk-supervision/34''s verb; the enrolled-worker skip): follow-up graph-execution/27 (this brief; `deskusage record` writes nothing for an enrolled worker role, Verify row 5; flips to fixed-here when the implementation edits the path)'
-version: 3
+version: 4
 id: af7e88a8-b411-40f9-b205-6b93f04ebed8
 ---
 
@@ -109,3 +109,11 @@ Gate: human. Confirm scope, exact-subject evidence, independent failure controls
 ## Execution-environment follow-on routing — 2026-10-16
 
 Reciprocal unblocks only: agent-execution/05. The [execution amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md) adds a follow-on obligation over this brief's existing output. Its Task, Verify, gate, version and historical Evidence are unchanged; this note grants no delivery, reassignment or activation.
+
+## Proposed measurement consumer — 2026-10-17
+
+desk-improvement/08 consumes this brief for explicit per-item subject and semantic receipts after this standing client exists.
+This is a forward consumer-routing amendment only: the new consumer waits on this owner,
+not the reverse. Original Task/Verify and completed Evidence are unchanged. Reconcile any
+active implementation claim before adding capture hooks. Native emission qualification is
+delivered by the named follow-up; this source contract alone does not claim it exists.

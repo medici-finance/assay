@@ -41,6 +41,10 @@ type repoFixture struct {
 	// getErr makes GetIssue FAIL for that issue number (a rate limit, a 5xx, a timeout) —
 	// the state could not be positively read.
 	getErr map[int]error
+	// history is the label history IssueLabelHistory serves per issue number (the label-removal hold); an
+	// issue not seeded reads as a COMPLETE EMPTY history. historyErr makes that read fail.
+	history    map[int]*deskkit.LabelHistory
+	historyErr map[int]error
 }
 
 type fakeForge struct {
@@ -112,6 +116,21 @@ func (f *fakeForge) IssueContentEvents(_ deskkit.ForgeRepo, n int) (*deskkit.Tru
 		}
 	}
 	return nil, deskkit.Unverifiable(fmt.Sprintf("no events fixture for %s#%d", f.repo, n), nil)
+}
+
+// IssueLabelHistory is the label-history read behind the board's AWAIT-for-history superset
+// test (the label-removal hold, op 64). An unseeded issue reads as a complete empty history.
+func (f *fakeForge) IssueLabelHistory(_ deskkit.ForgeRepo, n int) (*deskkit.LabelHistory, error) {
+	*f.calls = append(*f.calls, forgeCall{op: "IssueLabelHistory", repo: f.repo, num: n})
+	if f.data != nil {
+		if err, ok := f.data.historyErr[n]; ok {
+			return nil, err
+		}
+		if h, ok := f.data.history[n]; ok {
+			return h, nil
+		}
+	}
+	return &deskkit.LabelHistory{Complete: true}, nil
 }
 
 // installForge plants the fixture roster + isolates HOME (the roster is still read for the
@@ -211,7 +230,7 @@ func TestReadsOnly(t *testing.T) {
 	if len(*calls) == 0 {
 		t.Fatal("no forge ops recorded — the read-only proof enumerates nothing")
 	}
-	readOps := map[string]bool{"ListOpenIssues": true, "GetIssue": true, "IssueTrustEvents": true, "IssueContentEvents": true}
+	readOps := map[string]bool{"ListOpenIssues": true, "GetIssue": true, "IssueTrustEvents": true, "IssueContentEvents": true, "IssueLabelHistory": true}
 	sawList, sawGet := false, false
 	for _, c := range *calls {
 		if !readOps[c.op] {

@@ -24,8 +24,9 @@ flowchart TB
     API[Cell API: authenticated queries and scoped requests]
     APP[Controller: work, planning, admission, verification, observation]
     CORE[Pure domain contracts and evaluators]
+    QUALITY[Quality: scorecards, diagnosis, experiments and follow-up]
     DB[(PostgreSQL coordination and query projections)]
-    CTX[Derived work, architecture, portfolio and drift views]
+    CTX[Derived work, architecture, portfolio, drift and desk quality views]
     RUN[Disposable role and verification runners]
     EFFECT[Separate role-bound effect executors]
     BLOBS[(Git-retained evidence and execution artifacts)]
@@ -33,6 +34,9 @@ flowchart TB
     APP --> CORE
     APP --> DB
     DB --> CTX
+    DB --> QUALITY
+    BLOBS --> QUALITY
+    QUALITY --> CTX
     CTX --> API
     APP -->|versioned invocation| RUN
     RUN -->|attributed observations| BLOBS
@@ -457,3 +461,18 @@ and CI entry points while retaining these domain owners. CI produces attributed
 check observations through shared libraries; acceptance stays with the existing
 evaluator. Its independent delivery lane is specified in
 [ci-tooling](../../streams/ci-tooling/spec.md).
+
+## Desk-process improvement — proposal of 17 October 2026
+
+[Amendment 22](22-desk-improvement.md) makes the existing continuing-operations/quality
+domain responsible for a complete measured improvement cycle, including desk processes.
+The diagram's quality box is a logical capability, not a new service or adoption authority.
+Native runtime producers supply subject-bound facts; the same pure scorecards feed diagnosis,
+experiments, independent assessment and follow-up. The coordinator profile owns cycle
+completion, while existing human adoption and independent acceptance remain controlling.
+
+[The public plan](../../streams/desk-improvement/README.md) separates offline availability
+from native-mode qualification. Runtime evidence is implemented against the current
+PostgreSQL/role/attempt owners; no replacement store, scheduler or event lifecycle is added.
+Actual adopter trials, data and budgets are outside the public method. This is a new proposal,
+not an enlargement of the earlier revision-bound ratification or a deployed capability.

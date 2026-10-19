@@ -232,3 +232,27 @@ is not an ownership transfer. Existing Task/Verify text, gates, versions and Evi
 unchanged; only reciprocal unblocks and dated routing notes are added. /03's concrete profile
 adoption decision ripens after its implementation design. Full live qualification retains
 existing R1–R8 and operator decisions. No existing platform/profile is silently replaced.
+
+## Desk-process improvement — proposed owner set, 17 October 2026
+
+[Amendment 22](22-desk-improvement.md) extends continuing operations/quality. It does not
+replace R1–R8 or their activation sequence. Source state: public main 2f56cf289; current
+open claims/PRs were not enumerated in this offline audit and must be reconciled at pickup.
+
+| Work | Owner briefs | Source owners / treatment |
+|---|---|---|
+| Definition and pure calculation | desk-improvement/01–02 | Extend qualgen assessment/projection, semantic-owner index; no new miner |
+| Diagnosis/experiment/follow-up validation and role procedure | desk-improvement/03–04 | Continuing-operations lineage; shared skill reference; concrete procedure activation remains reviewed |
+| Native source bindings | desk-improvement/05 | Consume graph-execution/06 + brief-quality/05, compatible associations only |
+| Runtime evidence | desk-improvement/06–08 | After graph-execution/26 + /22, /21, /27 respectively; /08 also consumes brief-quality/07; foundations receive consumer notes, no reverse dependency |
+| Read-only proposal context | desk-improvement/09 | Existing Improve human/cadence and internal-module boundary |
+| End-to-end native qualification | desk-improvement/10 | Actual producer→mapping→cards→assessment→view, recovery and unknown/private cases |
+
+The new stream is parked and proposal-scoped. Every new brief is M/strong and carries
+executable discriminating checks. Existing completed Evidence/approval is preserved.
+Offline assistance can precede native emission, while measured native-mode benefit requires
+its real producer closure. Public implementation has no private adopter dependency.
+
+Semantic prerequisites: desk-improvement/01 consumes continuing-operations/01 (after
+statusgen/22); /03 consumes continuing-operations/02. These are explicit build gates,
+so generic source contracts are implemented once, before their assessment consumers.

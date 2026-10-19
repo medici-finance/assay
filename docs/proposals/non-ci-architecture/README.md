@@ -41,6 +41,8 @@ Verification is the first end-to-end test.
 | [Tool families and CI integration](25-ci-tooling.md) | Desk/service/CI placement, shared mechanisms and the migration stream |
 | [Product intent and portfolio](26-product-intent-and-portfolio.md) | Product-target, capacity and observation contracts; concrete briefs, active-work boundaries and remaining admission |
 | [Agent execution environments](27-agent-execution-environments.md) | Qualified harness/model/backend profiles, workspace readiness receipts, recovery and lifecycle visibility; seven implementation briefs |
+
+| [Desk workflow efficiency](../../desk-workflow-efficiency-spec.md) | Draft: complete review observations, shared collection/evaluation, diagnostic measurement and caller retirement; [existing-work reconciliation](../../desk-workflow-efficiency-change-map.md) |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Future direction and mechanisms to qualify

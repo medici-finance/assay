@@ -48,7 +48,7 @@ consumers:
 - 'operator lifecycle and cockpit: out-of-scope (adopter qualification)'
 - 'loopadmin/journal PostgreSQL schema and migrations: follow-up graph-execution/26 (this brief; flips to fixed-here when the implementation edits the path)'
 - 'spec/operator-incarnation-v1.md (read before each launch): follow-up graph-execution/16'
-version: 6
+version: 7
 id: bcbee0b0-8f12-4e7a-b028-0637b2bab0c3
 ---
 
@@ -195,3 +195,11 @@ Gate: human. Confirm scope, exact-subject evidence, independent failure controls
 ## Execution-environment follow-on routing — 2026-10-16
 
 Reciprocal unblocks only: agent-execution/03. The [execution amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md) adds a follow-on obligation over this brief's existing output. Its Task, Verify, gate, version and historical Evidence are unchanged; this note grants no delivery, reassignment or activation.
+
+## Proposed measurement consumer — 2026-10-17
+
+desk-improvement/06 consumes this brief for native lifecycle/usage export after this supervisor exists; existing PostgreSQL journal/custody/recovery remains authoritative.
+This is a forward consumer-routing amendment only: the new consumer waits on this owner,
+not the reverse. Original Task/Verify and completed Evidence are unchanged. Reconcile any
+active implementation claim before adding capture hooks. Native emission qualification is
+delivered by the named follow-up; this source contract alone does not claim it exists.

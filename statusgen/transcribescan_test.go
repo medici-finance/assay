@@ -200,7 +200,7 @@ func TestTranscribeScanInertEvaluatesNoClause(t *testing.T) {
 	})
 
 	out := captureRun(t, func() int {
-		return runTranscribeScan(root, false, list, nilCommentLister, authors, blessAll, func(string) (authorIdentity, string, error) {
+		return runTranscribeScan(root, false, list, nilCommentLister, authors, blessAll, labelHoldClearAll, func(string) (authorIdentity, string, error) {
 			return authorIdentity{}, "", errFixture
 		})
 	})
@@ -237,7 +237,7 @@ func TestTranscribeScanTrustedAuthorCreateByteIdentical(t *testing.T) {
 
 	// dry-run (--check): report only, no writes.
 	out := captureRun(t, func() int {
-		return runTranscribeScan(root, true, list, nilCommentLister, authors, blessNone, blessAuthorityResolver)
+		return runTranscribeScan(root, true, list, nilCommentLister, authors, blessNone, labelHoldClearAll, blessAuthorityResolver)
 	})
 	if out.code != 0 {
 		t.Fatalf("armed --check must exit 0, got %d:\n%s", out.code, out.log)
@@ -259,7 +259,7 @@ func TestTranscribeScanTrustedAuthorCreateByteIdentical(t *testing.T) {
 		t.Fatal(err)
 	}
 	attachPlaceholders(streams)
-	delta, err := planTranscribeScan(root, streams, "example-org/tracker", list, nilCommentLister, authors, blessNone)
+	delta, err := planTranscribeScan(root, streams, "example-org/tracker", list, nilCommentLister, authors, blessNone, labelHoldClearAll)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestTranscribeScanUntrustedAuthorRefused(t *testing.T) {
 
 	out := captureRun(t, func() int {
 		// blessNone: no blessing rescues the untrusted authors.
-		return runTranscribeScan(root, true, list, nilCommentLister, authors, blessNone, blessAuthorityResolver)
+		return runTranscribeScan(root, true, list, nilCommentLister, authors, blessNone, labelHoldClearAll, blessAuthorityResolver)
 	})
 	if out.code != 0 {
 		t.Fatalf("run should complete (exit 0) with per-issue skips, got %d", out.code)
@@ -320,7 +320,7 @@ func TestTranscribeScanRosterUnreadableRefused(t *testing.T) {
 	authors := fixtureAuthorResolver(nil)
 
 	out := captureRun(t, func() int {
-		return runTranscribeScan(root, true, list, nilCommentLister, authors, blessAll, blessAuthorityResolver)
+		return runTranscribeScan(root, true, list, nilCommentLister, authors, blessAll, labelHoldClearAll, blessAuthorityResolver)
 	})
 	if out.code != 2 {
 		t.Fatalf("an unconfigured roster must REFUSE the run (exit 2), got %d:\n%s", out.code, out.log)
@@ -346,7 +346,7 @@ func TestTranscribeScanFloodTripwireRefused(t *testing.T) {
 	authors := fixtureAuthorResolver(authorData)
 
 	out := captureRun(t, func() int {
-		return runTranscribeScan(root, true, list, nilCommentLister, authors, blessNone, blessAuthorityResolver)
+		return runTranscribeScan(root, true, list, nilCommentLister, authors, blessNone, labelHoldClearAll, blessAuthorityResolver)
 	})
 	if out.code != 3 {
 		t.Fatalf("26 CREATEs must trip the flood tripwire (exit 3), got %d:\n%s", out.code, out.log)
@@ -357,7 +357,7 @@ func TestTranscribeScanFloodTripwireRefused(t *testing.T) {
 	// Exactly 25 would NOT trip.
 	list25 := fixtureLister(map[string][]ghIssue{"example-org/tracker": issues[:25]}, "")
 	out25 := captureRun(t, func() int {
-		return runTranscribeScan(root, true, list25, nilCommentLister, authors, blessNone, blessAuthorityResolver)
+		return runTranscribeScan(root, true, list25, nilCommentLister, authors, blessNone, labelHoldClearAll, blessAuthorityResolver)
 	})
 	if out25.code != 0 {
 		t.Errorf("exactly 25 CREATEs must NOT trip the tripwire, got %d", out25.code)

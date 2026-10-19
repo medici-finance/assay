@@ -357,3 +357,13 @@ restoration; /05 follows /27. Reciprocal edges are declared in the brief frontma
 Original Task/Verify obligations and Evidence remain unchanged. The new stream owns no
 second controller, claim store, publisher, process runner or lifecycle API. Its AX feasibility
 branch is offline and independent of this stream's existing critical path.
+
+## Proposed desk-improvement evidence consumers — 2026-10-17
+
+[Public desk-improvement](../desk-improvement/README.md) consumes this stream's native
+records instead of introducing another execution journal. Its /05 binds /06 run records;
+/06 captures the /26 supervisor and /22 adapter; /07 extends /21 controller evidence; /08
+consumes /27 standing clients; /10 qualifies native cross-mode source→card→assessment flow.
+These consumer prerequisites point toward this stream, with no reverse gating cycle. Existing
+source scope and activation remain controlling; supported native measurement is a separate
+qualified capability from offline cards or an implemented schema.

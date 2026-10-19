@@ -243,6 +243,7 @@ func TestHeartbeatAndCancel(t *testing.T) {
 	}
 }
 
+// regression: #3194
 func TestBudgetAndGuard(t *testing.T) {
 	for _, mode := range []string{"budget", "guard"} {
 		t.Run(mode, func(t *testing.T) {
@@ -251,26 +252,29 @@ func TestBudgetAndGuard(t *testing.T) {
 			cfg := testConfig()
 			cfg.Interval = time.Hour
 			cfg.Budget = 20 * time.Millisecond
-			var running atomic.Bool
 			if mode == "guard" {
 				cfg.Guard = func() error {
-					if running.Load() {
+					s, err := Read(dir)
+					if err == nil && s.Sequence == 1 && !s.Running {
 						return errStop
 					}
 					return nil
 				}
 			}
-			ctx, cancel := context.WithCancel(context.Background())
+			// Bound a missing guard without racing cancellation against its result.
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			done := make(chan error, 1)
 			go func() {
-				done <- l.Run(ctx, cfg, func(ctx context.Context) Result { running.Store(true); <-ctx.Done(); return Result{Err: ctx.Err()} })
+				done <- l.Run(ctx, cfg, func(ctx context.Context) Result { <-ctx.Done(); return Result{Err: ctx.Err()} })
 			}()
 			s := waitState(t, dir, func(s State) bool { return s.Sequence == 1 && !s.Running })
 			if s.Outcome != "could-not-check" {
 				t.Fatalf("failed pass healthy %#v", s)
 			}
-			cancel()
+			if mode == "budget" {
+				cancel()
+			}
 			err := <-done
 			if mode == "guard" && !errors.Is(err, errStop) {
 				t.Fatal(err)

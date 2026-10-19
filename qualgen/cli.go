@@ -191,6 +191,8 @@ func newMineCmd(env cliEnv) *cobra.Command {
 		setting{key: "churn-window-days", kind: kindInt, flag: "churn-window-days", def: DefaultChurnWindowDays, usage: "churn window in days: a line revised/deleted within this of landing is churned (M1 §4.2)"},
 		setting{key: "identity-map", kind: kindString, flag: "identity-map", def: "", usage: "path to a JSON author-identity class map (unmapped authors fall into an explicit 'unclassified' class)"},
 		setting{key: "instruction-globs", kind: kindString, flag: "instruction-globs", def: "", usage: "comma-separated instruction-doc globs for the brittleness pass (spec §4.6); empty leaves reference-validity could-not-measure, never a silent zero"},
+		setting{key: "fix-source", kind: kindString, flag: "fix-source", def: "", usage: "offline issue/PR snapshot enabling defect identification and B-SZZ tracing (see qualgen/README.md)"},
+		setting{key: "defect-labels", kind: kindString, flag: "defect-labels", def: "bug,defect,incident", usage: "comma-separated defect labels used with --fix-source"},
 	)
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		v, err := resolveFor(cmd, env, "mine", s)
@@ -205,6 +207,8 @@ func newMineCmd(env cliEnv) *cobra.Command {
 			ChurnWindowDays:  v.integer("churn-window-days"),
 			IdentityMap:      v.str("identity-map"),
 			InstructionGlobs: v.str("instruction-globs"),
+			FixSource:        v.str("fix-source"),
+			DefectLabels:     v.str("defect-labels"),
 		}, cmd.OutOrStdout(), cmd.ErrOrStderr()))
 	}
 	return cmd

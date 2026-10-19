@@ -416,7 +416,7 @@ func countDispatched(path, claimKey string) (int, error) {
 // worktree's config, or "" when there is none (not a worktree, the extension is off, the key is
 // absent). Like the run key, it is read from the worktree the verb runs in, never from a flag.
 func WorktreeDispatchRef() string {
-	out, err := exec.Command("git", "config", "--worktree", "assay.dispatchRef").Output()
+	out, err := OutputProcess(exec.Command("git", "config", "--worktree", "assay.dispatchRef"))
 	if err != nil {
 		return ""
 	}

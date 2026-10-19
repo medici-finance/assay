@@ -87,7 +87,7 @@ func VerifierReadEnv() []string { return verifierEnv() }
 func verifierGitBytes(root string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", append([]string{"--no-replace-objects", "-C", root}, args...)...)
 	cmd.Env = verifierEnv()
-	return cmd.Output()
+	return OutputProcess(cmd)
 }
 func verifierGit(root string, args ...string) (string, error) {
 	out, err := verifierGitBytes(root, args...)

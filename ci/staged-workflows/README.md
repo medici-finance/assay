@@ -121,6 +121,15 @@ reviewable artifact, not a run.
   guard cannot build a base that already has the module. **This part is promoted** into the
   live `.github/workflows/assay-statusgen.yml` in the same pull request that adds `perfrec/`
   (#3113); the rest of the staged copy (#2910) stays pending.
+- `assay-statusgen.yml` — full-history regen part (#3364): the staged copy's `regen` job checks
+  out with `fetch-depth: 0`, as the `lint` job already does. The regen runs the same history-reading
+  checks as `--lint` (the consumed-changelog-fragment exemption, the Evidence staleness read), and
+  on a shallow clone those are could-not-check by design, so a release that consumes a fragment a
+  brief names turns the default-branch regen red while the PR lint passes. **Live**: the same
+  one-line `fetch-depth: 0` landed on its own in the live `regen` job's checkout `with:` (#3385),
+  and this copy's line is now byte-identical to it; the rest of the staged copy (#2910) stays
+  pending. `TestBoardRegenFullHistory` in `statusgen` pins the line on the live file, this copy
+  and the `tools/ci-load/activation/` copy.
 - `gremlins-daily.yml` — the daily Gremlins mutation sweep (#2647) over the desk tools'
   muhar-spec packages (`tools/gremlins/run.sh`). **Discovery, never a gate**: surviving
   mutants go to the job summary and the uploaded JSON artifact as leads, and survivors in
@@ -195,19 +204,12 @@ reviewable artifact, not a run.
   git commit -m "ci: activate release-on-merge.yml"
   git push
   ```
-- `release.yml` — a STAGED TWIN of the live `.github/workflows/release.yml`, carrying the
-  release image ownership change described below and the pending release-by-merge
-  addition to the `resolve` job's tag-push path (iso-9001/07): it resolves the
-  authorizer from the merged release PR's `merged_by.login` and REFUSES to build a release for
-  any `v*` tag whose commit is not a merged release PR (title `release: vX.Y.Z` + `RELEASE:
-  vX.Y.Z`). Like `evidence-automerge.yml` above, no App may push a
-  `.github/workflows/*` change, so this is the reviewable edit surface; a maintainer re-promotes
-  using the paired promotion commands in "Release image ownership" below. Do not
-  promote this twin without its reusable `docker-publish.yml` counterpart.
-  **Landing-mechanism caveat** applies exactly as for `windows-ci-leg.yml` below (see
-  `docs/streams/decisions/DR-workflow-app-landing.md` and desk-supervision/11-12): if the
-  workflow-App PR path has landed, prefer it over a verbatim hand-copy. Re-base this twin on the
-  live file at promotion time (three-way) to preserve intervening changes.
+- `release.yml` — an identical twin of the live `.github/workflows/release.yml`.
+  One approved `release` job owns image pushes, tag creation and GitHub release
+  publication on the dedicated Docker-capable release runner. The former
+  `docker-publish.yml` workflow and its pending companion are retired. Changes
+  to the twin and live workflow must land together through the maintainer lane.
+  The separate `release-on-merge.yml` above remains inactive.
 - `assay-statusgen.yml` — the live board workflow plus the hourly `reconcile` job
   (derived-board/04), landed as generated output per the ruling on assay#2688
   (desk-tools/36): a `schedule:` trigger guarded to this repository (a fork's schedule
@@ -333,26 +335,20 @@ pending reason and an unknown mode each fail the guard.
 The existing unconditional `ci.yml`
 build-test job runs this guard on every PR and main push.
 
-## Release image ownership (pending promotion)
+## Release image ownership and one approval
 
-The `release.yml` twin is re-cut from current live, preserving the pending
-release-by-merge authorizer while retaining live spec/version gates. It now
-builds all binary artifacts first, hands the exact prepared source and Linux
-binaries to the reusable `docker-publish.yml`, then publishes the immutable
-GitHub release only after all nine images and their references are complete.
-Both publishing jobs retain the `release` Environment approval.
+The live `release.yml` and its identical staged twin build binary artifacts
+first, then use one protected `release` job to build/check/push all nine images
+and publish the immutable GitHub release. The job holds `contents: write` and
+`packages: write` behind one `release` Environment approval. It serializes on
+the normalized umbrella version before registry absence checks; image and
+reference validation finish before the tag or GitHub release is written.
 
-Promote these TWO files in the SAME maintainer commit, after review:
+The old reusable `docker-publish.yml` is retired, so it cannot create a second
+approval or an independent image-publication route. Consumers never dispatch an
+image build. `release-on-merge.yml` remains pending and is not activated here.
+An already-published immutable release cannot acquire metadata later; use a
+complete later release and never move or reuse a published version.
 
-```sh
-cp ci/staged-workflows/release.yml .github/workflows/release.yml
-cp ci/staged-workflows/docker-publish.yml .github/workflows/docker-publish.yml
-git add .github/workflows/release.yml .github/workflows/docker-publish.yml
-git commit -m "ci: make umbrella releases own container publication"
-```
-
-The reusable workflow has only `workflow_call`; the old component-tag trigger
-and separate manual publication are retired. Consumers never dispatch it.
-An already-published immutable release cannot acquire the new metadata later;
-validate this producer with a dry run and then cut a new release through the
-normal approved release path. Do not move or reuse a published version.
+When changing this twin, update `.github/workflows/release.yml` in the same
+reviewed maintainer commit. The drift guard requires them to remain identical.
