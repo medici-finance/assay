@@ -122,5 +122,57 @@ parsing, add a second writer or reintroduce a minter callout in an adapter.
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdispatch -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ e4d474af8bca (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdispatch -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ e4d474af8bca (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdispatch -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ e4d474af8bca (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-21.json` | pass exit=0 | sha256:001ed55ed082 | 2026-10-19 | assay-verifier-app[bot] @ e4d474af8bca (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskdispatch/...` | pass exit=0 | sha256:3fa5dbd99069 | 2026-10-19 | assay-verifier-app[bot] @ e4d474af8bca (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskdispatch` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ e4d474af8bca (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/21 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:aeec296da65a | 2026-10-19 | assay-verifier-app[bot] @ e4d474af8bca (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | fail exit=1 | sha256:6d336dab41fa | 2026-10-19 | assay-verifier-app[bot] @ e4d474af8bca (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:25545118df71 | 2026-10-19 | assay-verifier-app[bot] @ e4d474af8bca (on-behalf-of human:ian) (forge-identity) |
+| 10 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCLIHelpDoesNotDiscoverManifests$' ./cmd/deskdispatch/ > "$out" && grep -F -- '--- PASS: TestCLIHelpDoesNotDiscoverManifests ' "$out")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ e4d474af8bca (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#3453 run=28f22f72e30a7ef1523d6d5d9dbb467d019f5951573f50bc87f54a8113678d03 source=e4d474af8bca036b11291259cf6130d98abe5feb brief=docs/streams/desktools-v2/brief-21-migrate-deskdispatch-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+### Verifier pass — 2026-10-19 (merged main e4d474af8bca)
+
+Verification-Attestation: medici-finance/assay#3453 run=28f22f72e30a7ef1523d6d5d9dbb467d019f5951573f50bc87f54a8113678d03 source=e4d474af8bca036b11291259cf6130d98abe5feb brief=docs/streams/desktools-v2/brief-21-migrate-deskdispatch-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+The execution witness above was run once with writes and twice more as dry runs; each run gave the same per-row results. The by-hand observations below are separate from the witness.
+
+| # | Command | Expected | Observed | Date / runner |
+|---|---|---|---|---|
+| 1 | Verify row 1 command as written | exit 0, one top-level PASS | witness: pass exit=0 in all 3 witness runs; by hand: exit 0, `--- PASS: TestCLIHelpOffline` once, 126 subtests PASS, 0 FAIL | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 2 | Verify row 2 command as written | exit 0, one top-level PASS | witness: pass exit=0 in all 3 witness runs; by hand: exit 0, `--- PASS: TestCLIConfigFlow` once, 31 subtests PASS, 0 FAIL | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3 | Verify row 3 command as written | exit 0, one top-level PASS | witness: pass exit=0 in all 3 witness runs; by hand on a quiescent tree: exit 0, `--- PASS: TestCLILegacyForms` once | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 4 | Verify row 4 command as written | exit 0, `Totals: N caught, 0 NOT CAUGHT, 0 could-not-mutate.` with N equal to the spec's mutation count | witness: pass exit=0 in all 3 witness runs; by hand: exit 0, last line `Totals: 10 caught, 0 NOT CAUGHT, 0 could-not-mutate.`; the spec has 10 mutations plus 1 control | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 5 | Verify row 5 command as written | exit 0 | witness: pass exit=0 in all 3 witness runs | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 6 | Verify row 6 command as written | exit 0 | witness: pass exit=0 in all 3 witness runs | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 7 | Verify row 7 command as written | exit 0, named PASS | witness: pass exit=0 in all 3 witness runs, `--- PASS: TestCLIOwnerMigrated` printed | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 8 | Verify row 8 command as written | exit 0, every floor seed passes | witness: FAIL exit=1 in all 3 witness runs. Output captured in a diagnostic dry run: one seed fails, `--- FAIL: TestReg1145ShimCredential`; its cellctl fixture suite gen-shims-gh-token.test.sh reports `2 FAILED` (the two ambient-token assertions). Cause: the house cell's statusgen shim exports CELLCTL_GH_AMBIENT into the witness environment, and that fixture inherits it. By hand, with that variable absent: exit 0, `seed passes=26`, 5 of 5 runs. With a dummy CELLCTL_GH_AMBIENT set: that seed fails with the same 2 FAIL lines. The delivering change (66dbced7188e) touches neither the fixture nor the floor. | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 9 | Verify row 9 command as written | exit 0 | witness: pass exit=0 in all 3 witness runs | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 10 | row 10 command as written, run by hand under darwin sandbox-exec with a deny-network profile | exit 0, named PASS | witness: could-not-run (the unshare sandbox is Linux-only; this host is darwin). By hand, network-off: exit 0, `--- PASS: TestCLIHelpDoesNotDiscoverManifests (4.83s)`. A network probe in the same profile failed to connect (curl exit 7), which confirms the sandbox. This by-hand row is distinct from the witness; the CI lane owns the network-off rerun. | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+
+Review-note checks: no Go standard-library flag import remains in any file of the deskdispatch package (grep exit 1). Domain handlers now receive typed options from one Cobra tree. Syntax errors moved from exit 5 to exit 2, as the shared CLI contract states (cli-contract.md line 23, "Unknown input"); the dispatch CLI matrix records the move (dispatch-cli-matrix.md lines 59-60). The bare no-argument refusal stays at exit 5.
+
+Risk-bearing values: the brief's frontmatter has risk metadata, all four fields "no", and the gate is model. Enumerated anyway over the delivering diff (66dbced7188e^1..66dbced7188e) for the deskdispatch package and the mutation spec:
+- ExitUsage = 2 @ tools/desk/internal/cli/cli.go:18. It now applies to deskdispatch syntax errors, which the old parser refused with 5 (old dispatch.go:231). Reversible.
+- tier default = "any" @ tools/desk/cmd/deskdispatch/cli.go:70. Unchanged from old dispatch.go:196.
+- kit default = "worker" @ cli.go:70 and :67. Unchanged from old dispatch.go:197 and stamponly.go:22.
+- root default = "." @ cli.go:71. Unchanged from old dispatch.go:199.
+- pr and attestation defaults = 0 @ cli.go:57. Unchanged.
+- Positional caps = MaximumNArgs(1) and NoArgs @ cli.go:98 and :100.
+- GoFlagCompat = true @ cli.go:199.
+- Mutation-suite timeout = 120s @ desktools-v2-21.json:2. This is a test knob.
+All of these are reversible by an edit and a redeploy.
+
+RISK-VALUE: DERIVED — ExitUsage = 2 @ tools/desk/internal/cli/cli.go:18 — the shared CLI contract fixes exit 2 for unknown input before any handler runs (cli-contract.md:23), and the dispatch matrix records the move from 5 to 2 for syntax errors only. Domain refusals keep 5 and unverifiable states keep 6, so callers keyed on 5 or 6 for custody outcomes see no change.
+RISK-VALUE: DERIVED — tier default = "any" @ tools/desk/cmd/deskdispatch/cli.go:70 — byte-identical to the pre-migration default (old dispatch.go:196); the brief requires an unchanged worktree, branch and claim per invocation, and this default is part of that.
+
+**VERIFY: FAIL** — row 8 only, and an environment fault rather than a deliverable defect: TestReg1145ShimCredential fails because CELLCTL_GH_AMBIENT reaches it from the house statusgen shim. With that variable absent the floor passes 26 of 26 seeds. Every other row passes in the witness except row 10, which could not run on this host and passes by hand network-off. Recommend blocked on the fixture's hermeticity, not implementer rework.
+
+
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.
