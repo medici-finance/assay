@@ -322,7 +322,21 @@ func TestPendingForge(t *testing.T) {
 			commitIn(t, v.Root, "unrelated")
 			gitT(t, v.Root, "update-ref", "refs/remotes/origin/main", "HEAD")
 		}},
+		// A declared input that exists but cannot be read leaves unchangedness unknown.
 		{name: "unreadable-input", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+			if os.Geteuid() == 0 {
+				t.Skip("root reads every file; the unreadable fixture cannot be built")
+			}
+			pendingRecord(t, v, f, r, p, nil)
+			in := filepath.Join(v.Root, "input.go")
+			if e := os.Chmod(in, 0o000); e != nil {
+				t.Fatal(e)
+			}
+			t.Cleanup(func() { os.Chmod(in, 0o600) })
+		}},
+		// A removed declared input is an observed scope change: the held failure
+		// wakes, so pending Evidence establishes no hold.
+		{name: "removed-input", want: "dispatch", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			pendingRecord(t, v, f, r, p, nil)
 			os.Remove(filepath.Join(v.Root, "input.go"))
 		}},
