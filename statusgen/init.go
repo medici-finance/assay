@@ -554,7 +554,14 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
+      # Full history here too, not only in lint: the regen runs the same checks,
+      # and the ones that read git history (a changelog fragment a release has
+      # consumed, Evidence staleness) are could-not-check on a shallow checkout.
+      # A consumed fragment a brief names then stays a PROBLEM and the regen
+      # fails on the default branch while the PR lint passed.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Install pinned statusgen (channel E — sha256-verified release binary)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -888,6 +895,12 @@ statusgen-regen:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_MESSAGE =~ /\[skip-status-regen\]/'
       when: never
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"'
+  # Full history, as in statusgen-lint: the regen runs the same checks, and the
+  # ones that read git history (a changelog fragment a release has consumed,
+  # Evidence staleness) are could-not-check on a shallow clone, so a consumed
+  # fragment a brief names would fail this job.
+  variables:
+    GIT_DEPTH: "0"
   script:
     - *statusgen-install
     - |

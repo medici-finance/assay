@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -98,6 +99,7 @@ func TestGuardKillSwitch(t *testing.T) {
 // HEARTBEAT (fresh/stale/absent), and DESK_LOOP unset. Table-driven:
 // each flag form alone; both; heartbeat fresh/stale/absent; DESK_LOOP unset
 // (per-loop flags ignored, STOP still honored).
+// regression: #2776
 func TestGuardStopFlags(t *testing.T) {
 	t.Run("STOP flag → armed (exit 3)", func(t *testing.T) {
 		dir := setup(t)
@@ -205,22 +207,32 @@ func TestGuardStopFlags(t *testing.T) {
 		}
 	})
 
+	// Freeze time across fixture creation and Guard's filesystem reads. A real
+	// clock makes even an exact-boundary fixture stale before Guard observes it;
+	// leaving a one-second margin only hides that race on an unloaded host.
 	t.Run("HEARTBEAT exactly at boundary → not stale", func(t *testing.T) {
-		dir := setup(t)
-		writeStaleHeartbeat(t, dir, HeartbeatStaleDuration-time.Second)
-		err := Guard()
-		if err != nil {
-			t.Fatalf("Guard() = %v, want nil — HEARTBEAT just inside window is still fresh", err)
-		}
+		synctest.Test(t, func(t *testing.T) {
+			dir := setup(t)
+			writeStaleHeartbeat(t, dir, 24*time.Hour)
+			err := Guard()
+			if err != nil {
+				t.Fatalf("Guard() = %v, want nil — HEARTBEAT exactly at 24h is still fresh", err)
+			}
+		})
 	})
 
 	t.Run("HEARTBEAT exactly at boundary + 1ns → stale", func(t *testing.T) {
-		dir := setup(t)
-		writeStaleHeartbeat(t, dir, HeartbeatStaleDuration+time.Nanosecond)
-		err := Guard()
-		if !IsDisabled(err) {
-			t.Fatalf("Guard() = %v, want Disabled — HEARTBEAT just over boundary is stale", err)
-		}
+		synctest.Test(t, func(t *testing.T) {
+			dir := setup(t)
+			writeStaleHeartbeat(t, dir, 24*time.Hour)
+			// Advance the fake clock, rather than setting a fractional mtime:
+			// filesystem timestamp precision must not decide the 1ns case.
+			time.Sleep(time.Nanosecond)
+			err := Guard()
+			if !IsDisabled(err) {
+				t.Fatalf("Guard() = %v, want Disabled — HEARTBEAT just over boundary is stale", err)
+			}
+		})
 	})
 
 	t.Run("unreadable STOP → Unverifiable", func(t *testing.T) {

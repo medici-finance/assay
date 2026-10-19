@@ -583,7 +583,7 @@ var obClass = map[string]string{
 	"RepoHardeningRead": "read", "ReadMergeHold": "read", "RunStatus": "read",
 	"PushTransportHint": "read",
 	"ListIssues":        "read", "IssueStateEvents": "read", "ListChangeCommits": "read",
-	"RepoDefaultBranch": "read",
+	"RepoDefaultBranch": "read", "IssueLabelHistory": "read",
 }
 
 // nilBackend is a Forge whose every WRITE panics (a nil embedded interface): a text method

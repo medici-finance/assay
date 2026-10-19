@@ -13,6 +13,19 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// regression: #2781
+func TestFixturePolicyControl(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Chmod(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	policy := cellcache.Policy{Root: root, Domain: strings.Repeat("a", 64), Budget: 4096}
+	got, err := cellcache.FromEnv(policy.Env())
+	if err != nil || got == nil || *got != policy {
+		t.Fatalf("synthetic policy must be accepted before testing fixture isolation: %v, %v", got, err)
+	}
+}
+
 func TestCacheLaunchEnvironment(t *testing.T) {
 	c := codexEnvironmentCell(t)
 	if err := os.MkdirAll(c.Dir, 0700); err != nil {

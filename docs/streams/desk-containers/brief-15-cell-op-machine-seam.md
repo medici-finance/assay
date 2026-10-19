@@ -131,7 +131,7 @@ Default if no answer: none — blocks until answered.
 | 10 | check +flow | `go -C tools/desk test -tags cellopfixture ./cmd/cellctl/ -run 'TestPlanApplyRoundTrip' -count=1 -v` | `--- PASS` — through the binary built with the fixture verb, on a pseudo-terminal: `--plan --json`, then `--apply` typing the confirm code, then a second apply refused `already-consumed` |
 | 11 | check | `go -C tools/desk run ./cmd/cellctl/ cellop-fixture 2>&1 \| grep -c 'unknown command "cellop-fixture"'` | 1 — a default build compiles and reports the fixture verb as unknown (a compile failure prints no such line and fails this row) |
 | 12 | check | `statusgen --root . --lint` | exit 0 |
-| 12a | check | `statusgen --root . --consumers --brief desk-containers/15` | exit 0 — the `consumers:` routing holds against the branch diff |
+| 12a | check | `o=$(statusgen --root . --consumers --brief desk-containers/15 --delivery 6cb553e1a1778c9de1ca22370388fd3a05112718 --base 92d3d10f1f3a614755f7acdbc42db05cf79728f9); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 3 corroborated, 0 disproved, 3 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | exit 0; exact `summary: 3 corroborated, 0 disproved, 3 unchecked, 0 brief(s) claiming nothing`. Claims are read from the immutable delivered snapshot and compared only with its first-parent diff. The 3 UNCHECKED entries remain individual review obligations; this row does not discharge their truth. |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
