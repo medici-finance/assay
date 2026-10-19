@@ -71,7 +71,18 @@ func TestRederiveMalformed(t *testing.T) {
 // fixtureRederive exercises the real merge-base and git-show path offline.
 func fixtureRederive(t *testing.T, base, head string) (string, error) {
 	t.Helper()
+	return fixtureRederivePath(t, base, head, "brief.md", false)
+}
+
+func fixtureRederivePath(t *testing.T, base, head, brief string, nested bool) (string, error) {
+	t.Helper()
 	root := t.TempDir()
+	if nested {
+		brief = "sub/" + brief
+		if err := os.MkdirAll(filepath.Join(root, "sub"), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
 	git := func(args ...string) {
 		t.Helper()
 		cmd := exec.Command("git", append([]string{"-C", root, "-c", "core.hooksPath=" + filepath.Join(root, "no-hooks"), "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "commit.gpgsign=false"}, args...)...)
@@ -87,20 +98,24 @@ func fixtureRederive(t *testing.T, base, head string) (string, error) {
 	}
 	git("init", "--quiet")
 	if base != "absent-fixture" {
-		if err := os.WriteFile(filepath.Join(root, "brief.md"), []byte(base), 0600); err != nil {
+		if err := os.WriteFile(filepath.Join(root, brief), []byte(base), 0600); err != nil {
 			t.Fatal(err)
 		}
-		git("add", "brief.md")
+		git("add", brief)
 	}
 	git("commit", "--quiet", "--allow-empty", "-m", "base")
 	git("branch", "base")
-	if err := os.WriteFile(filepath.Join(root, "brief.md"), []byte(head), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, brief), []byte(head), 0600); err != nil {
 		t.Fatal(err)
 	}
-	git("add", "brief.md")
+	git("add", brief)
 	git("commit", "--quiet", "--allow-empty", "-m", "candidate")
 	var out bytes.Buffer
-	err := cmdRederive([]string{"--root", root, "--brief", "brief.md", "--main", "base"}, &out)
+	if nested {
+		root = filepath.Join(root, "sub")
+		brief = strings.TrimPrefix(brief, "sub/")
+	}
+	err := cmdRederive([]string{"--root", root, "--brief", brief, "--main", "base"}, &out)
 	return out.String(), err
 }
 
@@ -123,6 +138,9 @@ func TestRederiveReadFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	runGitFn = func(_ string, args ...string) (string, error) {
+		if args[0] == "rev-parse" {
+			return "", nil
+		}
 		if args[0] == "merge-base" {
 			return "base", nil
 		}

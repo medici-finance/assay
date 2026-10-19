@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
-const detectionMap = "\nPre-mortem → detection map:\n\n| Failure mode of the work | Caught by |\n|---|---|\n| Missing original assertion | row 1 |\n| Command | Expect |\n"
+const detectionMap = "\nPre-mortem → detection map:\n\n| Failure mode of the work | Caught by |\n|---|---|\n| Missing original assertion | row 1 |\n"
 
 // regression: #3460
 func TestRederiveAuxTables(t *testing.T) {
@@ -79,5 +80,80 @@ func TestBaseProbeFullTree(t *testing.T) {
 	out, err := fixtureRederive(t, baseTableMD, headTableMD)
 	if err == nil || out != "" {
 		t.Fatalf("existing base from nested cwd became absent: %q %v", out, err)
+	}
+}
+
+// regression: #3460
+func TestRederiveMovedOriginal(t *testing.T) {
+	aux := "\n| Failure mode | Caught by |\n|---|---|\n| # | Command | Expect |\n| 1 | true | pass |\n"
+	head := strings.Replace(headTableMD, "| 1 | check | true | pass |\n", "", 1)
+	head = strings.Replace(head, "\n## Evidence", aux+"\n## Evidence", 1)
+	out, err := fixtureRederive(t, baseTableMD, head)
+	if err == nil || out != "" {
+		t.Fatalf("edited original row hidden by auxiliary header: %q %v", out, err)
+	}
+}
+
+// regression: #3460
+func TestAuxHeaderAmbiguity(t *testing.T) {
+	for _, cell := range []string{"Command", "Expect", " cOmMaNd ", " eXpEcT "} {
+		for _, side := range []string{"base", "head"} {
+			t.Run(cell+side, func(t *testing.T) {
+				bad := strings.Replace(baseTableMD, "\n## Evidence", detectionMap+"| text | "+cell+" |\n\n## Evidence", 1)
+				base, head := baseTableMD, headTableMD
+				if side == "base" {
+					base = bad
+				} else {
+					head = bad
+				}
+				out, err := fixtureRederive(t, base, head)
+				if err == nil || out != "" {
+					t.Fatalf("ambiguous auxiliary content accepted: %q %v", out, err)
+				}
+			})
+		}
+	}
+}
+
+// regression: #3460
+func TestRederiveNestedRoot(t *testing.T) {
+	out, err := fixtureRederivePath(t, baseTableMD, headTableMD, "brief.md", true)
+	if err == nil || out != "" {
+		t.Fatalf("nested root compared different files: %q %v", out, err)
+	}
+}
+
+// regression: #3460
+func TestBaseLiteralPattern(t *testing.T) {
+	old := runGitFn
+	t.Cleanup(func() { runGitFn = old })
+	t.Setenv("GIT_GLOB_PATHSPECS", "1")
+	runGitFn = func(root string, args ...string) (string, error) {
+		if args[0] == "show" {
+			return "", fmt.Errorf("simulated blob read failure")
+		}
+		return runGit(root, args...)
+	}
+	out, err := fixtureRederivePath(t, baseTableMD, headTableMD, "brief[1].md", false)
+	if err == nil || out != "" {
+		t.Fatalf("literal filename became absent: %q %v", out, err)
+	}
+	if runtime.GOOS == "windows" {
+		return
+	} // A colon is not a Windows filename character.
+	t.Setenv("GIT_GLOB_PATHSPECS", "0")
+	out, err = fixtureRederivePath(t, "absent-fixture", headTableMD, ":(exclude)brief.md", false)
+	if err != nil || !strings.Contains(out, "3 row(s), 3 author-added") {
+		t.Fatalf("literal new filename not proven absent: %q %v", out, err)
+	}
+}
+
+// Auxiliary column labels carry no Verify semantics and may repeat.
+func TestAuxDuplicateLabels(t *testing.T) {
+	aux := strings.Replace(detectionMap, "Failure mode of the work | Caught by", "Note | Note", 1)
+	md := strings.Replace(baseTableMD, "\n## Evidence", aux+"\n## Evidence", 1)
+	rows, err := RederiveTable(md, md)
+	if err != nil || len(rows) != 2 {
+		t.Fatalf("duplicate auxiliary labels: %v %+v", err, rows)
 	}
 }

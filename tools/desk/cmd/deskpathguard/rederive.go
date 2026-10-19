@@ -83,7 +83,9 @@ func isVerifyHeading(line string) bool {
 // parseVerifyTable reads complete, structurally valid tables. Unlike statusgen's
 // best-effort lint readers, re-derivation cannot silently omit unreadable rows.
 // Auxiliary tables (neither Command nor Expect in the header) are skipped as
-// whole blocks. Multiple Verify tables merge only with unique IDs across them.
+// whole blocks only if no later cell names Command or Expect: the executor can
+// adopt such a later row as its header, so ambiguity must fail closed. Multiple
+// Verify tables merge only with unique IDs across them.
 // An absent # column uses per-table ordinal IDs; explicit IDs must be nonempty.
 func parseVerifyTable(section string) ([]verifyRow, error) {
 	var rows []verifyRow
@@ -106,10 +108,15 @@ func parseVerifyTable(section string) ([]verifyRow, error) {
 			skipTable = false
 			continue
 		}
+		cells := splitRowCells(line)
 		if skipTable {
+			for _, cell := range cells {
+				if strings.EqualFold(cell, "Command") || strings.EqualFold(cell, "Expect") {
+					return fail("auxiliary table contains a possible Verify header")
+				}
+			}
 			continue
 		}
-		cells := splitRowCells(line)
 		if header == nil {
 			cmdIdx, expIdx, numIdx, classIdx = -1, -1, -1, -1
 			columns := map[string]bool{}
@@ -297,6 +304,10 @@ func cmdRederive(args []string, out io.Writer) error {
 		return err
 	}
 
+	prefix, err := runGitFn(req.root, "rev-parse", "--show-prefix")
+	if err != nil || strings.TrimSpace(prefix) != "" {
+		return deskkit.Unverifiable("could-not-check: --root must be the Git checkout root", err)
+	}
 	mb, err := runGitFn(req.root, "merge-base", "HEAD", req.mainRef)
 	if err != nil || strings.TrimSpace(mb) == "" {
 		return deskkit.Unverifiable(fmt.Sprintf(
