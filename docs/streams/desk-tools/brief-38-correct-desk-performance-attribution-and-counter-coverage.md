@@ -298,6 +298,47 @@ Limits: synthetic providers establish semantics, not production speed, quota poi
 
 **VERIFY: FAIL** — original table 2/3 passed; row 3 executed and returned could-not-check (exit 2), so its expected exit 0 was not met. The implementation remains at implemented pending the tracked check-definition/environment disposition.
 
+### Independent re-verification — 2026-10-19
+
+Observed source: 54c3342f89eddf7d815341c929afb690bb4f60a5 (merged main at dispatch). Actual delivery: merged PR #3332, eded7ba6e4461a3afac436ff7196987d83268bb3, first parent da7a4be21e61acf2f8a2c09749f8cec7d60468f1. Fresh dispatcher admission passed before any row ran and again after every row (same run, source, brief and home binding). The earlier rows and the withdrawal above stay as recorded; this block does not rely on them.
+
+The Verify table governing this run is the one at the observed source. Row 3 there is the immutable-delivery form introduced by c24f792beac4fc6b4c437b69d75095d21ffb968c (the check-definition fix for medici-finance/assay#1915): it passes --delivery eded7ba6e446 and --base da7a4be21e61 and requires the exact summary line. Rows 1 and 2 are unchanged from the earlier table.
+
+Execution witness (statusgen verifyrun v1.0.50, non-dry, darwin host): exit 2. Every row is a check:ci row, and this host has no unshare network sandbox, so the witness recorded each row as could-not-run. That is the runner-capability limit tracked in medici-finance/assay#1800, not an observed implementation failure.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCommandKit$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCommandKit ' "$o")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 54c3342f89ed (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCoverageFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCoverageFlow ' "$o")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 54c3342f89ed (on-behalf-of human:ian) (forge-identity) |
+| 3 | `o=$(statusgen --root . --consumers --brief desk-tools/38 --delivery eded7ba6e4461a3afac436ff7196987d83268bb3 --base da7a4be21e61acf2f8a2c09749f8cec7d60468f1); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 8 corroborated, 0 disproved, 7 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 54c3342f89ed (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#3480 run=2e311905ade855227185ffac996dad683b25d79e9d33a39d1773fd751b384f71 source=54c3342f89eddf7d815341c929afb690bb4f60a5 brief=docs/streams/desk-tools/brief-38-correct-desk-performance-attribution-and-counter-coverage.md model=claude-opus-5-5 tier=strong
+
+By-hand execution, separate from the witness. Each row's command ran byte-for-byte from the repository root at the observed source, under macOS sandbox-exec with a profile that denies every outbound IP connection except loopback (a probe to an external host was refused, exit 7), with GOPROXY=off and the scratch directory outside the source tree. Go 1.27.2 darwin/arm64; statusgen v1.0.50.
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | Verify row 1 command, as written | exit 0; named PASS | exit 0; `--- PASS: TestPerfCommandKit (11.33s)`; row output sha256:e076ab398ab9 | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 2 | Verify row 2 command, as written | exit 0; named PASS | exit 0; `--- PASS: TestPerfCoverageFlow (26.69s)`; row output sha256:2a3141390084 | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3 | Verify row 3 command, as written | exit 0; exact summary 8 corroborated, 0 disproved, 7 unchecked, 0 brief(s) claiming nothing | exit 0; `summary: 8 corroborated, 0 disproved, 7 unchecked, 0 brief(s) claiming nothing` over base da7a4be21e61..eded7ba6e446 (immutable delivered snapshot); stdout sha256:06431386e68c | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+
+Supplemental diagnostic (same sandbox, verbose, both tests selected together): exit 0, 28 PASS lines and no FAIL or SKIP. Row 1's subtests cover the real deskboard, issueboard and deskdispatch entrypoints for help, version, alias, error and private-argument forms, plus the production kit-assignment mutation. Row 2's subtests cover ordinary deskboard, issueboard and deskdispatch work, plus the skipped-work, erased-budget-history and counted-local-refusal production mutations.
+
+Row 3's 7 UNCHECKED entries are review obligations, and the Expect cell says the row does not discharge them. Independent check: the delivery's first-parent diff (38 paths) touches no path under deskperf, deskread, deskwt, deskroster, verifyloop, the enumerated command class, or perfrec, so each out-of-scope declaration matches an unchanged tree. The stated reasons hold at the source: verbs reach the reader as strings and need no enum change, and the shared process/transport helpers change only what they observe.
+
+Risk-value: risk metadata is present and all-no, and the item is not irreversible. The delivery touches deskkit and deskboard paths that topology classifies as risk paths, so the enumeration below was done. It covers the non-test Go lines added in the delivery diff. No timeout, budget, breaker threshold, retry count, credential or authority value is introduced or changed. The only literals are compiled attribution labels (the perfVerbs rosters in deskboard main.go:45, deskdispatch main.go:74 and issueboard main.go:87, and the eight perfKitVerb labels), the "other" fallback, and the PerfRun active-selector booleans. All of them are reversible measurement values.
+
+RISK-VALUE: DERIVED — perfKitVerb fallback = "other" @ tools/desk/cmd/deskdispatch/kits.go:127 — Task 1 requires unknown kits to stay explicit and keep raw argv out of the record; a fixed compiled fallback carries no caller text, and "other" is the existing perf-v1 fallback that perfVerb already uses.
+RISK-VALUE: DERIVED — perfKitVerb review label = "dispatch:review" @ tools/desk/cmd/deskdispatch/kits.go:111 — the parsed kit's normalized value selects a compiled label, and the same label is in the perfVerbs roster at deskdispatch main.go:74, so PerfCommand's roster match passes it through. A kit outside the four accepted kits gets "other". The label grants no role authority.
+RISK-VALUE: DERIVED — perfActive start = true @ tools/desk/internal/deskkit/perf.go:145, finish = false (deferred) @ tools/desk/internal/deskkit/perf.go:146 — PerfCommand may select an attribution only while a consented PerfRun is executing (perf.go:168 returns early otherwise). The deferred reset closes that window on every return path, so a later caller cannot inherit the selection.
+
+Board checks: statusgen --root . --lint in the home reported LINT: PASS with no PROBLEM lines. After the run, git fetch origin moved main to 840e269e0700; git log 54c3342f89ed..origin/main on the brief path is empty, so the brief did not change during the run.
+
+Landing note: this block lands on the Evidence branch after a two-parent merge of main `2bc6c4229fb90952d63382597d39fdb2ab13311a` into it. The Verify section on the branch is byte-identical to the one at the observed source.
+
+**VERIFY: BLOCKED**: no acceptance obligation failed. All 3 rows exit 0 by hand at 54c3342f89ed under a darwin deny-network sandbox, and row 3 shows the exact summary on the immutable-delivery definition. Closure is blocked because the mandatory Linux network-off verifyrun witness could not run any row on this host (environment, medici-finance/assay#1800). A verified closure needs a witness for every row, so this run changes no lifecycle cell, README row or stamp.
+
+Outcome record: `blocked`, environment, medici-finance/assay#1800. It supersedes the newest earlier receipt for this brief, `38-20261018T033804Z-d754182b67fc`. The withdrawal above retracts that receipt's claims. All earlier receipts stay unchanged as history.
+
 ## Review
 
 Retain the derived frontmatter gate. Approval of the source spec is recorded; this brief
