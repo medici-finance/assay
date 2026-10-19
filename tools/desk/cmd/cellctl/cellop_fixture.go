@@ -29,7 +29,6 @@ import (
 //     landed (drain, pause, resume, restart, doctor, gc, upgrade), annotated exactly as the
 //     contract says. A real verb, once registered, replaces its stand-in, and the flag-walk test
 //     then checks the real verb's annotations instead;
-//   - --plan, --json and an annotated --apply on the real `up`, until brief 17 lands its own.
 //
 // The fixture's one precondition is the content of <cell>/run/cellop-fixture/state ("absent" when
 // there is none); its one effect appends a line to <cell>/run/cellop-fixture/effects. With
@@ -63,20 +62,6 @@ func cellopFixtureCommands(root *cobra.Command) {
 			continue // the real verb replaces its stand-in
 		}
 		root.AddCommand(cellopFixtureCmd(s.verb, "fixture stand-in for "+s.verb+" (cellopfixture build only)", s.command, s.variants))
-	}
-	if up := verbNamed(root, "up"); up != nil && up.Flags().Lookup("apply") == nil {
-		declare(up, bBool("plan", "write a reconcile plan and change nothing else (fixture)"),
-			bBool("json", "print the plan or result as cell-op-v1 JSON (fixture)"),
-			bStr("apply", "apply a stored reconcile plan on this terminal (fixture)"))
-		markStateChangingFlag(up, "apply")
-		real := up.RunE
-		h := cellopFixtureRun("up", nil)
-		up.RunE = func(cmd *cobra.Command, args []string) error {
-			if cmd.Flags().Changed("plan") || cmd.Flags().Changed("apply") {
-				return h(cmd, args)
-			}
-			return real(cmd, args)
-		}
 	}
 }
 

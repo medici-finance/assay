@@ -2,6 +2,7 @@ package main
 
 import (
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -48,5 +49,43 @@ func TestConsumedFragmentIndexShallowCloneIsCouldNotCheck(t *testing.T) {
 	}
 	if exempt {
 		t.Errorf("shallow clone: got exempt=true, want false alongside checked=false")
+	}
+}
+
+// regression: #3364
+//
+// TestShallowFragmentNoteNamesShallow: on a shallow clone the fragment PROBLEM
+// still fires (three-state: never rounded up to a pass), and its note names the
+// SHALLOW clone and the checkout-depth remedy, so a red regen is not read as an
+// authoring defect in the brief. A tree with no git repo at all keeps the
+// "history was unreadable" note and never claims to be shallow.
+func TestShallowFragmentNoteNamesShallow(t *testing.T) {
+	full, _ := writeConsumedFragmentFixture(t, true)
+	shallow := t.TempDir() + "/shallow"
+	if out, err := exec.Command("git", "clone", "--depth", "1", "file://"+full, shallow).CombinedOutput(); err != nil {
+		t.Fatalf("git clone --depth 1: %v\n%s", err, out)
+	}
+	problems := linkProblems(shallow, []string{shallow + "/docs/streams/rel/brief-15-release.md"})
+	if len(problems) != 4 {
+		t.Fatalf("got %d problems, want 4 — a shallow clone exempts nothing: %v", len(problems), problems)
+	}
+	var noted int
+	for _, p := range problems {
+		if strings.Contains(p, "SHALLOW clone") {
+			noted++
+			if !strings.Contains(p, "could-not-check") || !strings.Contains(p, "fetch-depth: 0") {
+				t.Errorf("shallow note must say could-not-check and name the remedy: %v", p)
+			}
+		}
+	}
+	if noted != 2 {
+		t.Errorf("want the shallow note on exactly the 2 fragment-shaped paths, got %d: %v", noted, problems)
+	}
+
+	root, brief := writeConsumedFragmentFixture(t, false)
+	for _, p := range linkProblems(root, []string{brief}) {
+		if strings.Contains(p, "SHALLOW") {
+			t.Errorf("a tree with no git repo is not a shallow clone: %v", p)
+		}
 	}
 }

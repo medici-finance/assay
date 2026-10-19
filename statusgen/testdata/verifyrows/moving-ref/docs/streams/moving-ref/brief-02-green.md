@@ -21,9 +21,9 @@ it is the fix rather than the defect. All rows MUST stay silent.
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
 |---|---------|--------|
-| 1 | `statusgen --root . --consumers --base $(git merge-base origin/main HEAD)` | exit 0 |
-| 2 | `statusgen --root . --consumers --base c7cd7ef` | exit 0 |
-| 3 | `statusgen --root . --consumers --base "$BASE_SHA"` | exit 0 |
+| 1 | `statusgen --root . --consumers --base $(git merge-base origin/main HEAD)` | pre-merge only; exit 0 |
+| 2 | `statusgen --root . --consumers --base c7cd7ef` | pre-merge only; exit 0 |
+| 3 | `statusgen --root . --consumers --base "$BASE_SHA"` | pre-merge only; exit 0 |
 | 4 | `git diff --stat HEAD` | no output |
 
 ## Review
