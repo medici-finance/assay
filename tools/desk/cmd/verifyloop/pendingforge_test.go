@@ -22,6 +22,10 @@ type pendingForge struct {
 	labels                                      []deskkit.LabelEvent
 	edited, incomplete, readFail, missing, move bool
 	lists                                       int
+	// extra are further open changes, listed BEFORE change; any per-change read of one fails, and prReads
+	// counts per-change reads so a test can prove which changes were never read.
+	extra   []deskkit.ChangeRef
+	prReads map[int]int
 }
 
 func (f *pendingForge) RepoDefaultBranch(deskkit.ForgeRepo) (string, error) { return "main", nil }
@@ -31,16 +35,26 @@ func (f *pendingForge) ListChanges(deskkit.ForgeRepo, deskkit.ChangeStates) (*de
 	if f.readFail {
 		return nil, errors.New("offline list")
 	}
-	return &deskkit.ChangeList{Changes: []deskkit.ChangeRef{f.change}, Incomplete: f.incomplete}, nil
+	return &deskkit.ChangeList{Changes: append(append([]deskkit.ChangeRef{}, f.extra...), f.change), Incomplete: f.incomplete}, nil
 }
-func (f *pendingForge) GetPullRequest(deskkit.ForgeRepo, int) (*deskkit.PullRequest, error) {
+func (f *pendingForge) GetPullRequest(_ deskkit.ForgeRepo, n int) (*deskkit.PullRequest, error) {
+	if f.prReads == nil {
+		f.prReads = map[int]int{}
+	}
+	f.prReads[n]++
+	if n != f.pr.Number {
+		return nil, errors.New("offline unreadable change")
+	}
 	p := *f.pr
 	if f.move {
 		p.HeadSHA = strings.Repeat("d", 40)
 	}
 	return &p, nil
 }
-func (f *pendingForge) ListChangedFiles(deskkit.ForgeRepo, int) ([]deskkit.ChangedFile, error) {
+func (f *pendingForge) ListChangedFiles(_ deskkit.ForgeRepo, n int) ([]deskkit.ChangedFile, error) {
+	if n != f.pr.Number {
+		return nil, errors.New("offline unreadable change files")
+	}
 	return f.files, nil
 }
 func (f *pendingForge) ReadFile(_ deskkit.ForgeRepo, in deskkit.ReadFileInput) (*deskkit.FileContent, error) {
@@ -67,7 +81,7 @@ func (f *pendingForge) ListIssueLabelEvents(deskkit.ForgeRepo, int) ([]deskkit.L
 func pendingSetup(t *testing.T) (*VerifyLoop, *pendingForge, deskkit.VerifierReceipt, string) {
 	t.Helper()
 	plantAllowedRoster(t, "example-org/tracker")
-	roster := "ASSAY_BLESS_LOGIN=ada:2001\nASSAY_TRUSTED_LOGINS=ada:2001\nASSAY_TRUSTED_BOT_SLUGS=desk=example-desk:300000004,verifier=example-verifier:300000005\nASSAY_ALLOWED_REPOS=example-org/tracker:ci:private\n"
+	roster := "ASSAY_BLESS_LOGIN=ada:2001\nASSAY_TRUSTED_LOGINS=ada:2001\nASSAY_TRUSTED_BOT_SLUGS=desk=example-desk:300000004,verifier=example-verifier:300000005,worker=example-worker:300000006\nASSAY_ALLOWED_REPOS=example-org/tracker:ci:private\n"
 	if e := os.WriteFile(filepath.Join(os.Getenv("HOME"), ".config", "assay", "roster.env"), []byte(roster), 0600); e != nil {
 		t.Fatal(e)
 	}
@@ -91,7 +105,7 @@ func pendingSetup(t *testing.T) (*VerifyLoop, *pendingForge, deskkit.VerifierRec
 		events = append(events, deskkit.LabelEvent{Name: label, AppliedBy: "example-desk[bot]"})
 	}
 	head := strings.Repeat("c", 40)
-	f := &pendingForge{pr: &deskkit.PullRequest{Number: 51, State: "open", BaseRef: "main", CrossRepo: deskkit.CrossRepoSame, HeadSHA: head, ChangedFiles: 1, Author: deskkit.Account{Login: "example-verifier[bot]", ID: 300000005}}, change: deskkit.ChangeRef{Number: 51, HeadSHA: head, CrossRepo: deskkit.CrossRepoSame, HeadRepo: "example-org/tracker"}, files: []deskkit.ChangedFile{{Filename: path, Status: "modified"}}, blobs: map[string][]byte{head + ":" + path: evidence}, issue: &deskkit.Issue{Number: 41, Title: deskkit.VerifierAttestationTitle + receipt.Binding.Run, Body: "Dispatcher-owned pre-work attestation. This record contains NO verification result.\n\n" + string(raw) + "\n", State: "closed", Author: deskkit.Account{Login: "example-desk[bot]"}, Labels: labels}, labels: events}
+	f := &pendingForge{pr: &deskkit.PullRequest{Number: 51, State: "open", BaseRef: "main", CrossRepo: deskkit.CrossRepoSame, HeadSHA: head, ChangedFiles: 1, Author: deskkit.Account{Login: "example-verifier[bot]", ID: 300000005}}, change: deskkit.ChangeRef{Number: 51, Author: deskkit.Account{Login: "example-verifier[bot]", ID: 300000005}, HeadSHA: head, CrossRepo: deskkit.CrossRepoSame, HeadRepo: "example-org/tracker"}, files: []deskkit.ChangedFile{{Filename: path, Status: "modified"}}, blobs: map[string][]byte{head + ":" + path: evidence}, issue: &deskkit.Issue{Number: 41, Title: deskkit.VerifierAttestationTitle + receipt.Binding.Run, Body: "Dispatcher-owned pre-work attestation. This record contains NO verification result.\n\n" + string(raw) + "\n", State: "closed", Author: deskkit.Account{Login: "example-desk[bot]"}, Labels: labels}, labels: events}
 	v := &VerifyLoop{Root: root, RootRepo: "example-org/tracker", Issues: &forgeIssueSource{forgeFor: func(deskkit.ForgeRepo) (deskkit.Forge, error) { return f, nil }}, Now: fixedClock("2026-10-16T12:00:00Z")}
 	return v, f, receipt, path
 }
@@ -157,19 +171,26 @@ func pendingCross(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.Verifi
 
 // regression: #2939
 func TestPendingForge(t *testing.T) {
+	// author sets one account as the change's author on both the list and the change read.
+	author := func(f *pendingForge, login string, id int64) {
+		f.change.Author = deskkit.Account{Login: login, ID: id}
+		f.pr.Author = f.change.Author
+	}
 	cases := []struct {
 		name, want string
 		change     func(*testing.T, *VerifyLoop, *pendingForge, deskkit.VerifierReceipt, string)
+		want02     string                          // the untouched brief 02; "" is dispatch
+		check      func(*testing.T, *pendingForge) // extra assertions after both items classify
 	}{
-		{"exact-source", "awaiting-merge", nil},
-		{"unrelated-advance-no-wake", "dispatch", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "exact-source", want: "awaiting-merge", change: nil},
+		{name: "unrelated-advance-no-wake", want: "dispatch", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			commitIn(t, v.Root, "unrelated")
 		}},
-		{"unrelated-advance-with-wake", "awaiting-merge", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "unrelated-advance-with-wake", want: "awaiting-merge", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			pendingRecord(t, v, f, r, p, nil)
 			commitIn(t, v.Root, "unrelated")
 		}},
-		{"input-changes", "dispatch", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "input-changes", want: "dispatch", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			pendingRecord(t, v, f, r, p, nil)
 			if e := os.WriteFile(filepath.Join(v.Root, "input.go"), []byte("package changed\n"), 0600); e != nil {
 				t.Fatal(e)
@@ -177,102 +198,145 @@ func TestPendingForge(t *testing.T) {
 			gitT(t, v.Root, "add", "input.go")
 			gitT(t, v.Root, "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "changed source input")
 		}},
-		{"new-declared-path-wakes", "dispatch", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "new-declared-path-wakes", want: "dispatch", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			pendingRecord(t, v, f, r, p, nil)
 			commitIn(t, v.Root, "planned.go")
 		}},
-		{"plan-changes", "dispatch", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "plan-changes", want: "dispatch", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			b, _ := os.ReadFile(filepath.Join(v.Root, p))
 			os.WriteFile(filepath.Join(v.Root, p), []byte(strings.Replace(string(b), "go test ./...", "go test ./pkg", 1)), 0600)
 		}},
-		{"untrusted-author", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
-			f.pr.Author.Login = "ada"
+		// A non-verifier change cannot carry admitted Evidence: it establishes no hold and
+		// no uncertainty, and is never read past the list (F1/S1 on the PR that added this).
+		{name: "untrusted-author", want: "dispatch", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+			author(f, "ada", 2001)
 		}},
-		{"wrong-id", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		// regression: S3 — a different rostered App (login and id both pinned) is not the verifier.
+		{name: "other-app-author", want: "dispatch", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+			author(f, "example-worker[bot]", 300000006)
+		}},
+		{name: "fork-author", want: "dispatch", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+			author(f, "mallory", 9)
+			f.change.HeadRepo, f.change.CrossRepo = "example-org/fork", deskkit.CrossRepoFork
+		}, check: func(t *testing.T, f *pendingForge) {
+			if f.prReads[51] != 0 {
+				t.Fatalf("non-verifier change read %d times past the list", f.prReads[51])
+			}
+		}},
+		// The list names the verifier but the change read names another pinned App: the
+		// change read's login check is load-bearing, not only the list filter.
+		{name: "list-get-author-mismatch", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+			f.pr.Author = deskkit.Account{Login: "example-worker[bot]", ID: 300000006}
+		}},
+		// regression: S2 — an unreadable non-verifier change touches no item and is never read.
+		{name: "unrelated-unreadable-change", want: "awaiting-merge", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+			f.extra = []deskkit.ChangeRef{{Number: 52, Author: deskkit.Account{Login: "mallory", ID: 9}, CrossRepo: deskkit.CrossRepoFork, HeadRepo: "example-org/fork"}}
+		}, check: func(t *testing.T, f *pendingForge) {
+			if f.prReads[52] != 0 {
+				t.Fatalf("unrelated non-verifier change read %d times", f.prReads[52])
+			}
+		}},
+		// An unreadable verifier-authored change may touch any brief: items it could affect
+		// are could-not-check, a hold proven by another change stands, and the failure is
+		// read once per pass, not once per item.
+		{name: "verifier-unreadable-change", want: "awaiting-merge", want02: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+			f.extra = []deskkit.ChangeRef{{Number: 53, Author: deskkit.Account{Login: "example-verifier[bot]", ID: 300000005}, CrossRepo: deskkit.CrossRepoSame, HeadRepo: "example-org/tracker"}}
+		}, check: func(t *testing.T, f *pendingForge) {
+			if f.prReads[53] != 1 {
+				t.Fatalf("failed change read %d times in one pass, want 1", f.prReads[53])
+			}
+		}},
+		{name: "verifier-unbound", want: "could-not-check", want02: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+			rosterPath := filepath.Join(os.Getenv("HOME"), ".config", "assay", "roster.env")
+			roster, _ := os.ReadFile(rosterPath)
+			os.WriteFile(rosterPath, []byte(strings.Replace(string(roster), ",verifier=example-verifier:300000005", "", 1)), 0600)
+			deskkit.ReloadConfig()
+		}},
+		{name: "wrong-id", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.pr.Author.ID = 123
 		}},
-		{"missing-id", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "missing-id", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.pr.Author.ID = 0
 		}},
-		{"edited-attestation", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "edited-attestation", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.edited = true
 		}},
-		{"wrong-stamp-actor", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "wrong-stamp-actor", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			for i := range f.labels {
 				f.labels[i].AppliedBy = "ada"
 			}
 		}},
-		{"missing-file", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "missing-file", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.missing = true
 		}},
-		{"unreadable-list", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "unreadable-list", want: "could-not-check", want02: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.readFail = true
 		}},
-		{"partial-list", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "partial-list", want: "could-not-check", want02: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.incomplete = true
 			f.files = nil
 			f.pr.ChangedFiles = 0
 		}},
-		{"fork-head", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "fork-head", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.change.HeadRepo = "example-org/fork"
 		}},
-		{"unrelated-base", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "unrelated-base", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.pr.BaseRef = "feature"
 		}},
-		{"dirty-source-no-receipt", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "dirty-source-no-receipt", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			os.WriteFile(filepath.Join(v.Root, "input.go"), []byte("package changed\n"), 0600)
 		}},
-		{"moved-head", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) { f.move = true }},
-		{"narrowed-inputs", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "moved-head", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) { f.move = true }},
+		{name: "narrowed-inputs", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			pendingRecord(t, v, f, r, p, func(w *deskkit.WakeReceipt) { delete(w.Inputs, "file:input.go") })
 		}},
-		{"recheck-wakes", "dispatch", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "recheck-wakes", want: "dispatch", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			pendingRecord(t, v, f, r, p, func(w *deskkit.WakeReceipt) {
 				w.WakePredicate = deskkit.WakeExplicitRecheck
 				w.RecheckReason = "operator request"
 			})
 		}},
-		{"newer-landed-recheck", "dispatch", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "newer-landed-recheck", want: "dispatch", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			pendingRecord(t, v, f, r, p, nil)
 			writeReceipts(t, v.Root, recheckReceipt("2026-10-16T11:00:00Z", "new operator recheck"))
 		}},
-		{"cross-provenance-missing", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "cross-provenance-missing", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			r.Binding.Version = 2
 			r.Binding.SourceRepo = "example-org/unconfigured"
 			raw, _ := json.MarshalIndent(r.Binding, "", "  ")
 			f.issue.Body = "Dispatcher-owned pre-work attestation. This record contains NO verification result.\n\n" + string(raw) + "\n"
 			f.blobs[f.pr.HeadSHA+":"+p] = []byte(strings.Replace(string(f.blobs[f.pr.HeadSHA+":"+p]), deskkit.VerifierEvidenceBindings(f.blobs[f.pr.HeadSHA+":"+p])[0], r.EvidenceBinding(), 1))
 		}},
-		{"cross-current", "awaiting-merge", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "cross-current", want: "awaiting-merge", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			pendingCross(t, v, f, r, p)
 		}},
-		{"cross-source-wake", "dispatch", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "cross-source-wake", want: "dispatch", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			r, source := pendingCross(t, v, f, r, p)
 			pendingRecord(t, v, f, r, p, nil)
 			commitIn(t, source, "new-source")
 			gitT(t, source, "update-ref", "refs/remotes/origin/main", "HEAD")
 		}},
-		{"cross-tracking-advance", "awaiting-merge", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "cross-tracking-advance", want: "awaiting-merge", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			r, _ = pendingCross(t, v, f, r, p)
 			pendingRecord(t, v, f, r, p, nil)
 			commitIn(t, v.Root, "unrelated")
 			gitT(t, v.Root, "update-ref", "refs/remotes/origin/main", "HEAD")
 		}},
-		{"unreadable-input", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "unreadable-input", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			pendingRecord(t, v, f, r, p, nil)
 			os.Remove(filepath.Join(v.Root, "input.go"))
 		}},
-		{"forged-run", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "forged-run", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.blobs[f.pr.HeadSHA+":"+p] = []byte(strings.Replace(string(f.blobs[f.pr.HeadSHA+":"+p]), r.Binding.Run, strings.Repeat("f", 64), 1))
 		}},
-		{"fenced-binding", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "fenced-binding", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.blobs[f.pr.HeadSHA+":"+p] = []byte(strings.Replace(string(f.blobs[f.pr.HeadSHA+":"+p]), r.EvidenceBinding(), "```\n"+r.EvidenceBinding()+"\n```", 1))
 		}},
-		{"binding-only", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "binding-only", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			b := string(f.blobs[f.pr.HeadSHA+":"+p])
 			f.blobs[f.pr.HeadSHA+":"+p] = []byte(strings.Split(b, "\n\n| 1")[0])
 		}},
-		{"no-forge", "could-not-check", func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
+		{name: "no-forge", want: "could-not-check", want02: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			v.Issues = offlineScheduling{}
 		}},
 	}
@@ -290,8 +354,11 @@ func TestPendingForge(t *testing.T) {
 				tier, _ := v.TierPolicy(it)
 				d, why := classifyItem(it, tier)
 				want := tc.want
-				if strings.HasSuffix(it.ID, "/02") && tc.name != "unreadable-list" && tc.name != "partial-list" && tc.name != "no-forge" {
-					want = "dispatch"
+				if strings.HasSuffix(it.ID, "/02") {
+					want = tc.want02
+					if want == "" {
+						want = "dispatch"
+					}
 				}
 				if d.String() != want {
 					t.Fatalf("%s = %s (%s), want %s", it.ID, d, why, want)
@@ -304,6 +371,9 @@ func TestPendingForge(t *testing.T) {
 			}
 			if f.lists > 1 {
 				t.Fatalf("list read %d times", f.lists)
+			}
+			if tc.check != nil {
+				tc.check(t, f)
 			}
 		})
 	}

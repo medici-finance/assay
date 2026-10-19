@@ -27,8 +27,16 @@ type pendingChanges struct {
 	list  *deskkit.ChangeList
 	err   error
 	base  string
-	files map[int][]deskkit.ChangedFile
-	prs   map[int]*deskkit.PullRequest
+	reads map[int]*pendingRead
+}
+
+// pendingRead is one verifier-authored change's pull-request and complete file read,
+// cached for the pass INCLUDING its failure, so an unreadable change costs one read per
+// pass rather than one per queued item.
+type pendingRead struct {
+	pr    *deskkit.PullRequest
+	files []deskkit.ChangedFile
+	err   error
 }
 
 func (s *forgeIssueSource) PendingEvidence(root, slug string, it loopengine.Item, now time.Time, inputs deskkit.WakeInputs) (string, error) {
@@ -49,7 +57,7 @@ func (s *forgeIssueSource) PendingEvidence(root, slug string, it loopengine.Item
 	}
 	cache := s.pending[slug]
 	if cache == nil {
-		cache = &pendingChanges{files: map[int][]deskkit.ChangedFile{}, prs: map[int]*deskkit.PullRequest{}}
+		cache = &pendingChanges{reads: map[int]*pendingRead{}}
 		cache.base, cache.err = f.RepoDefaultBranch(repo)
 		if cache.err == nil && cache.base == "" {
 			cache.err = fmt.Errorf("default branch is unreadable")
@@ -65,26 +73,33 @@ func (s *forgeIssueSource) PendingEvidence(root, slug string, it loopengine.Item
 	if cache.list == nil {
 		return "", fmt.Errorf("empty open-change read")
 	}
+	verifier, bound := deskkit.RoleAppLogin("verifier")
+	if !bound {
+		return "", fmt.Errorf("verifier role login is unbound; pending Evidence authorship is unknown")
+	}
 	var uncertain error
 	for _, change := range cache.list.Changes {
-		files, seen := cache.files[change.Number]
-		if !seen {
-			pr, e := f.GetPullRequest(repo, change.Number)
-			if e != nil || pr == nil {
-				if e == nil {
-					e = fmt.Errorf("empty change read")
-				}
-				return "", e
-			}
-			files, e = f.ListChangedFiles(repo, change.Number)
-			if e != nil {
-				return "", e
-			}
-			if len(files) != pr.ChangedFiles {
-				return "", fmt.Errorf("incomplete changed-file read for #%d", change.Number)
-			}
-			cache.files[change.Number], cache.prs[change.Number] = files, pr
+		// Only the pinned verifier App can author admitted Evidence: the Evidence writer
+		// requires that identity. A change by anyone else (a worker, the desk, a human, a
+		// fork or deleted account) carries no hold and no uncertainty, and is filtered on
+		// the list read's author BEFORE any per-change read, so no such change can withhold
+		// a brief from dispatch or make another item's read fail.
+		if !deskkit.SameActor(change.Author.Login, verifier) {
+			continue
 		}
+		ref := fmt.Sprintf("#%d", change.Number)
+		read := cache.reads[change.Number]
+		if read == nil {
+			read = &pendingRead{}
+			read.pr, read.files, read.err = deskkit.CompleteChangedFilesOf(f, repo, change.Number)
+			cache.reads[change.Number] = read
+		}
+		if read.err != nil {
+			// A verifier-authored change whose files cannot be listed may touch any brief.
+			uncertain = fmt.Errorf("%s changed-file read: %w", ref, read.err)
+			continue
+		}
+		files, pr := read.files, read.pr
 		touches := false
 		for _, file := range files {
 			if file.Filename == it.BriefPath && file.Status != "removed" {
@@ -94,10 +109,9 @@ func (s *forgeIssueSource) PendingEvidence(root, slug string, it loopengine.Item
 		if !touches {
 			continue
 		}
-		ref := fmt.Sprintf("#%d", change.Number)
-		pr := cache.prs[change.Number]
-		login, bound := deskkit.RoleAppLogin("verifier")
-		if !bound || pr.Author.ID == 0 || !deskkit.SameActor(pr.Author.Login, login) || !deskkit.TrustedAuthorID(pr.Author.Login, pr.Author.ID) || (it.Implementer != "" && deskkit.SameActor(it.Implementer, pr.Author.Login)) {
+		// The list read named the verifier; the change read must confirm that identity by
+		// login AND roster-pinned id, and the author must be independent of the implementer.
+		if pr.Author.ID == 0 || !deskkit.SameActor(pr.Author.Login, verifier) || !deskkit.TrustedAuthorID(pr.Author.Login, pr.Author.ID) || (it.Implementer != "" && deskkit.SameActor(it.Implementer, pr.Author.Login)) {
 			uncertain = fmt.Errorf("%s has no independent trusted verifier author", ref)
 			continue
 		}

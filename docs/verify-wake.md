@@ -84,11 +84,26 @@ listed as `awaiting-merge #N` only when the change has a pinned, independent ver
 a same-repository immutable head, a complete changed-file read, and real Evidence carrying
 the exact closed, never-edited, dispatcher-stamped pre-work attestation. Fenced examples,
 unrelated briefs, unbound actors and incomplete cross-repository associations establish no hold.
-Missing files, unreadable populations and unverifiable provenance are could-not-check.
+
+Only the verifier App can author admitted Evidence, so the join filters on the author the
+open-change list reports BEFORE any per-change read. A change by any other account (a
+worker, the desk, a human, a fork or deleted account) establishes neither a hold nor
+could-not-check and is never read further: no such change can withhold a brief from
+dispatch, and an unreadable or oversized one cannot fail the read for another item. A
+verifier-authored change is then re-read; its file list must be complete, and its author
+must match the verifier login and roster-pinned id. Its read, failure included, is made
+once per pass. A verifier-authored change whose files cannot be listed may touch any brief,
+so it leaves every item it could affect could-not-check unless another change proves a hold.
+Missing files, unreadable populations, an unbound verifier login and unverifiable
+provenance of a verifier-authored change are could-not-check.
 `--no-forge` cannot establish absence of pending Evidence, so its queue is could-not-check.
 
 Without a failed/blocked wake receipt, pending Evidence holds only at its exact attested
-source (both sources for a cross-repository run). With a receipt, the existing writer
+source (both sources for a cross-repository run). This is a deliberate choice for pass
+outcomes and receipt-less Evidence: neither carries a re-derivable input map, so no
+existing evaluator can tell an unrelated `main` commit from a relevant one, and a pending
+pass is re-listed once `main` moves rather than held on a guess. Holding passes across
+unrelated advancement needs a pass-side wake receipt first; it is out of scope here. With a receipt, the existing writer
 re-derives the original observation's input map; narrowed or substituted maps are rejected.
 The existing hold evaluator then decides inputs, blocker, deadline, action, explicit recheck
 and partial-row wakes. Only the brief's landed Evidence hash is substituted after both
