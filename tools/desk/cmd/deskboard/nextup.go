@@ -153,7 +153,7 @@ func resolveStatusgen() (string, error) {
 // no --version flag, which is information rather than an error: report it as
 // "unknown" so the skew is visible without blocking the board.
 func statusgenVersionOf(bin string) string {
-	out, err := exec.Command(bin, "--version").Output()
+	out, err := deskkit.OutputProcess(exec.Command(bin, "--version"))
 	if err != nil {
 		return "unknown"
 	}
@@ -170,7 +170,7 @@ func gateScoresForRoot(bin, absRoot, repo string) ([]gateScoreRow, error) {
 	cmd := exec.Command(bin, "--gate-scores", "--root", absRoot)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	out, err := deskkit.OutputProcess(cmd)
 	if err != nil {
 		detail := strings.TrimSpace(stderr.String())
 		if detail != "" {

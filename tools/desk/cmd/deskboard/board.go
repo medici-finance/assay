@@ -2025,7 +2025,7 @@ var execGateScores = func() ([]byte, error) {
 		return nil, fmt.Errorf("statusgen --gate-scores: %v", err)
 	}
 	cmd := exec.Command(bin, "--gate-scores", "--root", root)
-	out, err := cmd.Output()
+	out, err := deskkit.OutputProcess(cmd)
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
 			return nil, fmt.Errorf("statusgen --gate-scores: %s",

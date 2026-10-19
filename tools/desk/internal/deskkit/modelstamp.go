@@ -438,6 +438,12 @@ type LabelEvent struct {
 	// which must compare a resolution label's ADD time against the last review to tell a
 	// post-review resolution from an old one (freeze rule: added with that consumer).
 	CreatedAt string
+	// AppliedByID is the numeric account id of the actor who performed the event, 0 when the
+	// forge reported none (a deleted account, a system event). A login alone cannot be pinned to
+	// an identity, so a consumer that must tell a declared human from an automated account
+	// (statusgen's label-removal hold) compares login AND this id. Additive: no
+	// existing reader looks at it.
+	AppliedByID int64
 }
 
 // StampTimeline is the applier-aware reader's whole input: the labels CURRENTLY on the PR,

@@ -66,7 +66,8 @@ var releaseOnMergeGuards = []struct{ want, problem string }{
 // string alone would not prove the addition.
 var releaseTwinGuards = []struct{ want, problem string }{
 	{"commits/${SHA}/pulls", "the staged release.yml tag-push path no longer resolves the merged PR from the tag's commit"},
-	{`TAG_WANT="$tag" python3`, "the staged release.yml tag-push path no longer runs the marker/authorizer resolution helper"},
+	{`TAG_WANT="$tag" python3 "$helper" select "$prs"`, "the staged release.yml tag-push path no longer selects the marked merged release PR"},
+	{`TAG_WANT="$tag" python3 "$helper" detail "$detail" "$number"`, "the staged release.yml tag-push path no longer validates the selected PR detail before reading its authorizer"},
 	{`emit authorizer "$login (merged release PR #$number)"`, "the staged release.yml tag-push path no longer emits the authorizer from the merged PR's merged_by.login — the release-authorizer brief's tag-push gap is reopened"},
 	{"is not a merged release PR (title", "the staged release.yml tag-push path no longer refuses a v* tag whose commit is not a merged release PR — a stray or hand-cut tag would build a release"},
 }

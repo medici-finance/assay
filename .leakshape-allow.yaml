@@ -1,0 +1,711 @@
+# .leakshape-allow.yaml — reviewed exceptions for the registry-independent SHAPE stage of the
+# disclosure sweep (tools/desk/internal/deskkit/leakshape.go; issue #3159).
+#
+# Each entry permits the exact values it lists, of ONE shape, in ONE file:
+#
+#   path    exact repo-relative file (no directories, no globs)
+#   shape   home-path | noreply-id-email | ssh-host-alias | tilde-root
+#   sha256  the SHA-256 (64 lower-case hex digits) of each exact matched string this file
+#           may carry (required, non-empty)
+#   reason  why the value is a documented example, not a disclosure (required)
+#
+# Values are named by digest, never in the clear, so this file carries no shape itself and is
+# swept like every other file. A failing gate prints each hit as path:line [shape]
+# sha256:<digest> — the digest an entry needs. To check an entry against the file it names:
+#   printf '%s' '<matched text>' | shasum -a 256
+#
+# A value an entry does not list still fails — in that file or in any other — so a real
+# identity cannot ride in beside an example. An entry whose path or value no longer matches
+# is STALE and fails TestS2ShapeRepoGate: delete it in the same change that removes the
+# example. Adding an entry is a review decision; prefer a reserved example name (an
+# .example / .invalid / .test host, a synthetic id) over a new exception.
+#
+# Shared reasons are YAML anchors (&name) reused by alias (*name).
+allow:
+  - path: .github/workflows/assay-qualgen.yml
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+    reason: &ci-mail "this repo's own CI committer identity (its public board-writer App bot, or the forge's published actions bot), pinned in workflow config so CI commits are attributed; not a personal identity"
+  - path: .github/workflows/assay-statusgen.yml
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+    reason: *ci-mail
+  - path: .github/workflows/release.yml
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+      - e7cd911927c7d1acf6281b69d385990d8fadcd26871048bbcdbff2e88da7f607
+    reason: *ci-mail
+  - path: .github/workflows/verify-gate-close.yml
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+    reason: *ci-mail
+  - path: CHANGELOG.md
+    shape: ssh-host-alias
+    sha256:
+      - 2d4b0f22da4fd9466d5473b0eb71c32d1d2dcd7e7131d76c758f387c12069e4f
+      - ecffa9f324bea6b761e02baa8aa51a86a27cc57e77c380a6d670a461520a6d4e
+      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
+    reason: &doc-ssh "placeholder remote spelling in documentation of the remote-URL forms the code parses (scp-like and ssh:// forms, host aliases)"
+  - path: Dockerfile
+    shape: home-path
+    sha256:
+      - fe0d1e407b55ba2360d6e7ac5e46fd96e43c68745513791534319949cd34c860
+    reason: &ctr-home "the container user's home inside the image, not a host account"
+  - path: ci/staged-workflows/assay-qualgen.yml
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+    reason: *ci-mail
+  - path: ci/staged-workflows/assay-statusgen.yml
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+    reason: *ci-mail
+  - path: ci/staged-workflows/release.yml
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+      - e7cd911927c7d1acf6281b69d385990d8fadcd26871048bbcdbff2e88da7f607
+    reason: *ci-mail
+  - path: ci/staged-workflows/verify-gate-close.yml
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+    reason: *ci-mail
+  - path: containers/base/Dockerfile
+    shape: home-path
+    sha256:
+      - fe0d1e407b55ba2360d6e7ac5e46fd96e43c68745513791534319949cd34c860
+    reason: *ctr-home
+  - path: docs/runsheets/reconcile-lane-hunk.diff
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+    reason: *ci-mail
+  - path: docs/streams/derived-board/brief-08-witness-ledger.md
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+    reason: *ci-mail
+  - path: docs/streams/derived-board/brief-09-incremental-reconcile.md
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+    reason: *ci-mail
+  - path: docs/streams/desktools-v2/brief-10-one-outbound-write-check.md
+    shape: noreply-id-email
+    sha256:
+      - de68d7bc19602fe8033d11b1a779790f806cdf0658b64ec4e4f6f6243da6dad9
+    reason: &doc-mail "placeholder noreply address in a design brief; the id and login are examples"
+  - path: docs/streams/windows-port/brief-06-manifest-driven-bootstrap.md
+    shape: home-path
+    sha256:
+      - 2ff4d2b040deca50e7a6a58916dcadcc0bfdcd67ea91a843fc25b525d213ceb5
+    reason: &win-home "the hosted Windows runner's default account directory, cited as the environment the brief targets"
+  - path: images/assay-harness/Dockerfile
+    shape: home-path
+    sha256:
+      - 80ec036536d3cf4309c71efd5b01f88a50e7ff06ef5e91faf82f65083b8aae2f
+    reason: *ctr-home
+  - path: loopadmin/runner/conformance/contract.go
+    shape: ssh-host-alias
+    sha256:
+      - 515739b8024f7ce0daa57dcad0937f1fef15a6d397d362a339992b3c35159da4
+    reason: &fx-ssh "placeholder SSH remote in a test fixture that exercises remote-URL parsing; the host is a reserved example name, a loopback or IPv6 literal, or a deliberate alias"
+  - path: loopadmin/runner/request_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 15f5604ab344a67657e100c225d4e499b4717f57f3b5f7a6c35c48b75103cc0a
+      - 515739b8024f7ce0daa57dcad0937f1fef15a6d397d362a339992b3c35159da4
+    reason: *fx-ssh
+  - path: plugins/assay/commands/inbox.md
+    shape: tilde-root
+    sha256:
+      - deb86dd1e750845f508b858169e6d609fac21b99a867e636aa9b3c1de04ae894
+      - f598304eae385aef42aad1f80913e03df2f31bf9668e03e4598f94600918ef89
+    reason: &doc-tilde "documented example path under the reader's own home in usage text; names no account"
+  - path: qualgen/ownership_test.go
+    shape: noreply-id-email
+    sha256:
+      - a3268bab448034b9fb0a38398f59767b43aa3f42ae143e066a77619a28a68d0c
+    reason: &fx-mail "synthetic numeric-id noreply address in a test fixture that exercises commit-identity handling; the ids are placeholders"
+  - path: statusgen/actingidentity_test.go
+    shape: noreply-id-email
+    sha256:
+      - f0bd4a46eb253ca14463110be949bf6edc92b74cc787d40a563385b744f5f64c
+    reason: *fx-mail
+  - path: statusgen/claimdecay_github_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 1e57fc9009c343a9e9d079a8b3dd62a998a1100917f12b23e23f99c4c474a849
+      - d8b71b9778124d50d53ef9edb52e852f1a447288f3d0e494d005d5d14e0b8896
+    reason: *fx-ssh
+  - path: statusgen/claimdecay_gitlab.go
+    shape: ssh-host-alias
+    sha256:
+      - ecffa9f324bea6b761e02baa8aa51a86a27cc57e77c380a6d670a461520a6d4e
+      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
+    reason: *doc-ssh
+  - path: statusgen/claimdecay_gitlab_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 4f17fe6273e7a0419912aab800d929e01956132c08f2cf98c82a71f3d2055aee
+      - 57020b936a9fe035afd6e8ca9be7cbb55f7eb0aabb1b3cbf0029e205c0df0d86
+    reason: *fx-ssh
+  - path: statusgen/contexthandoff/boundary_test.go
+    shape: tilde-root
+    sha256:
+      - 18f327fba75840c897eec48706c18c93bc3b1c2605e52ad9f8634583ac2c12bd
+    reason: &fx-tilde "placeholder home-relative path in a test fixture that exercises path expansion or refusal"
+  - path: statusgen/contexthandoff/boundary_test.go
+    shape: home-path
+    sha256:
+      - 36025795eaedf314fe4a2f9c2fecf5a82246148055f080419dea954049f9df3f
+    reason: &fx-tilde-account "placeholder tilde-account path (an example or deliberately nonexistent account) in a test fixture that exercises home-path refusal or expansion; no real account"
+  - path: statusgen/evaluation/rowinputs_test.go
+    shape: tilde-root
+    sha256:
+      - a46d2df688f0b3d3719d1d8288b8fb3a856e05b18c600ad6386a1c9713d39ecb
+    reason: *fx-tilde
+  - path: statusgen/evidenceactor_gitlab1477_test.go
+    shape: noreply-id-email
+    sha256:
+      - 9509163a39267b924ee7c6d60d4fbfde5a8594b69d810a448aeabbe761e0ed30
+    reason: *fx-mail
+  - path: statusgen/evidenceactor_test.go
+    shape: noreply-id-email
+    sha256:
+      - 19dfcab3721f6e9d0aa5abae5706d9815da73771be9e67725fd88114a7e91d8b
+      - 1b92e88a04e3b438955227ad57e229b11245940fef6561fee11b3250671ab81c
+      - 83d62362fba1c52cb55f620bfd1f6ea464b20c8e46c7552bd8bd97397658024f
+      - 9509163a39267b924ee7c6d60d4fbfde5a8594b69d810a448aeabbe761e0ed30
+      - f0bd4a46eb253ca14463110be949bf6edc92b74cc787d40a563385b744f5f64c
+    reason: *fx-mail
+  - path: statusgen/forge.go
+    shape: ssh-host-alias
+    sha256:
+      - ecffa9f324bea6b761e02baa8aa51a86a27cc57e77c380a6d670a461520a6d4e
+      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
+    reason: *doc-ssh
+  - path: statusgen/forge_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 4f17fe6273e7a0419912aab800d929e01956132c08f2cf98c82a71f3d2055aee
+      - 57020b936a9fe035afd6e8ca9be7cbb55f7eb0aabb1b3cbf0029e205c0df0d86
+    reason: *fx-ssh
+  - path: statusgen/forgeneutral07_test.go
+    shape: noreply-id-email
+    sha256:
+      - 83d62362fba1c52cb55f620bfd1f6ea464b20c8e46c7552bd8bd97397658024f
+      - f0bd4a46eb253ca14463110be949bf6edc92b74cc787d40a563385b744f5f64c
+    reason: *fx-mail
+  - path: statusgen/forgeneutral07_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 243c59b25ecbaf1c3512545e8958107647e2d1da76dc24334eefdcea5430d4d0
+    reason: *fx-ssh
+  - path: statusgen/reconcilefold_test.go
+    shape: noreply-id-email
+    sha256:
+      - 83d62362fba1c52cb55f620bfd1f6ea464b20c8e46c7552bd8bd97397658024f
+      - 9509163a39267b924ee7c6d60d4fbfde5a8594b69d810a448aeabbe761e0ed30
+    reason: *fx-mail
+  - path: statusgen/rosteracl_test.go
+    shape: home-path
+    sha256:
+      - 745ab30a5c45b053456a803f626987f7e19b5a6c3a3402d4e4f87eb91e7b5dba
+    reason: &fx-home "placeholder home directory in a test fixture that exercises path handling; no real account"
+  - path: statusgen/testdata/contexthandoff/manifest/invalid/bad-value--delivery-home.json
+    shape: tilde-root
+    sha256:
+      - 35969771c67a0aa490b7fd985e9911eb9d1d0951902ec6cd3b724740a1a7337e
+    reason: *fx-tilde
+  - path: statusgen/testdata/contexthandoff/manifest/invalid/bad-value--delivery-named-home.json
+    shape: home-path
+    sha256:
+      - 36025795eaedf314fe4a2f9c2fecf5a82246148055f080419dea954049f9df3f
+    reason: *fx-tilde-account
+  - path: statusgen/verifyflip_test.go
+    shape: noreply-id-email
+    sha256:
+      - 19dfcab3721f6e9d0aa5abae5706d9815da73771be9e67725fd88114a7e91d8b
+      - 83d62362fba1c52cb55f620bfd1f6ea464b20c8e46c7552bd8bd97397658024f
+      - 9509163a39267b924ee7c6d60d4fbfde5a8594b69d810a448aeabbe761e0ed30
+    reason: *fx-mail
+  - path: statusgen/verifyincontainer_test.go
+    shape: home-path
+    sha256:
+      - 1f19107742728ff867bbfbb138fdea3b7ab8ef4c487fa519ebc811980ff7b27d
+    reason: *fx-home
+  - path: statusgen/verifyrun.go
+    shape: ssh-host-alias
+    sha256:
+      - 5d488afdbb0ec4818ebc69aeedd5abfb3dde7dc322b6a63f6798a45f61808a76
+    reason: *doc-ssh
+  - path: statusgen/verifyrun_test.go
+    shape: noreply-id-email
+    sha256:
+      - 19057e3d6eff916cabc8f3cc1797780b4e0dc088843e7d8b1f486dc772aa255d
+    reason: *fx-mail
+  - path: tools/changelog/release-roll-retry.yml.patch
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+    reason: *ci-mail
+  - path: tools/changelog/release.yml.patch
+    shape: noreply-id-email
+    sha256:
+      - e7cd911927c7d1acf6281b69d385990d8fadcd26871048bbcdbff2e88da7f607
+    reason: *ci-mail
+  - path: tools/changelog/release.yml.proposed
+    shape: noreply-id-email
+    sha256:
+      - e7cd911927c7d1acf6281b69d385990d8fadcd26871048bbcdbff2e88da7f607
+    reason: *ci-mail
+  - path: tools/ci-load/activation/assay-qualgen.yml
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+    reason: *ci-mail
+  - path: tools/ci-load/activation/assay-statusgen.yml
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+    reason: *ci-mail
+  - path: tools/desk/README.md
+    shape: ssh-host-alias
+    sha256:
+      - 28c03ea0175bd8042596e299cd4c99dd3114e3fe0b1d0f644cdcb3e6cc6cad31
+      - ecffa9f324bea6b761e02baa8aa51a86a27cc57e77c380a6d670a461520a6d4e
+      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
+    reason: *doc-ssh
+  - path: tools/desk/cmd/cellctl/cellenvpath_test.go
+    shape: home-path
+    sha256:
+      - cc5e76dccb37993b04ccbe4830ca711e096f770486cd2a3a838bf4944356157b
+    reason: *fx-home
+  - path: tools/desk/cmd/cellctl/cellenvpath_test.go
+    shape: tilde-root
+    sha256:
+      - 231187800c9b76248a75d7f4f4e0acc13ba0201225a639df22517f9e028edd85
+    reason: *fx-tilde
+  - path: tools/desk/cmd/cellctl/cobra.go
+    shape: tilde-root
+    sha256:
+      - c49151c9a14b50177baa2c4d67e9b3e560029efe803abe8e01130ebd1c5b662b
+    reason: *doc-tilde
+  - path: tools/desk/cmd/deskadvisory/advisory_test.go
+    shape: home-path
+    sha256:
+      - c0bd14e65ed265f29481b401480575c070af818a040f4baabca6cfa37b83f657
+    reason: *fx-home
+  - path: tools/desk/cmd/deskboot/deskboot_test.go
+    shape: home-path
+    sha256:
+      - 9a5c216cbf03125df19327489ca09091665387ff887756a49fb3f74cf4d4d9d6
+    reason: *fx-home
+  - path: tools/desk/cmd/deskclaim-ref/deskclaimref_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 5079c0845b8eaab1d4e9a81b1a14a680a4b690ec5c4dceaaf09f995d110ffebc
+      - 57020b936a9fe035afd6e8ca9be7cbb55f7eb0aabb1b3cbf0029e205c0df0d86
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskclaim-ref/gogit.go
+    shape: ssh-host-alias
+    sha256:
+      - 2d4b0f22da4fd9466d5473b0eb71c32d1d2dcd7e7131d76c758f387c12069e4f
+      - 5079c0845b8eaab1d4e9a81b1a14a680a4b690ec5c4dceaaf09f995d110ffebc
+      - 5d488afdbb0ec4818ebc69aeedd5abfb3dde7dc322b6a63f6798a45f61808a76
+    reason: *doc-ssh
+  - path: tools/desk/cmd/deskdispatch/originparsehint_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 1f92946d05735645f974b2a4b6787d3fb0317dc60cd55826f276475f65f353fc
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskdispatch/stampworktreeidentity_test.go
+    shape: noreply-id-email
+    sha256:
+      - 67843e78674a7bd74a0fe467bc40e6154606512df7f5f260f274d0d4687d2394
+      - 9509163a39267b924ee7c6d60d4fbfde5a8594b69d810a448aeabbe761e0ed30
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskevidence/publishidentity_test.go
+    shape: noreply-id-email
+    sha256:
+      - 9509163a39267b924ee7c6d60d4fbfde5a8594b69d810a448aeabbe761e0ed30
+      - b18dacb13fd4af364f594cf5b7da1425f31c48a93180a3eb1baef1a5d516b753
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskevidence/verifiercrossrepo_test.go
+    shape: noreply-id-email
+    sha256:
+      - 9509163a39267b924ee7c6d60d4fbfde5a8594b69d810a448aeabbe761e0ed30
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskfile/blockerevidence_test.go
+    shape: home-path
+    sha256:
+      - 9a5c216cbf03125df19327489ca09091665387ff887756a49fb3f74cf4d4d9d6
+    reason: *fx-home
+  - path: tools/desk/cmd/deskgit/asrole_forge_test.go
+    shape: ssh-host-alias
+    sha256:
+      - d8b71b9778124d50d53ef9edb52e852f1a447288f3d0e494d005d5d14e0b8896
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskgit/deskgit.go
+    shape: ssh-host-alias
+    sha256:
+      - 28c03ea0175bd8042596e299cd4c99dd3114e3fe0b1d0f644cdcb3e6cc6cad31
+    reason: *doc-ssh
+  - path: tools/desk/cmd/deskgit/deskgit_test.go
+    shape: home-path
+    sha256:
+      - c0bd14e65ed265f29481b401480575c070af818a040f4baabca6cfa37b83f657
+    reason: *fx-home
+  - path: tools/desk/cmd/deskgit/deskgit_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 21bc6116845d297cc8286c69a0ac31e752464c871aa9a9b892c8ecdba6b6f53b
+      - 28c03ea0175bd8042596e299cd4c99dd3114e3fe0b1d0f644cdcb3e6cc6cad31
+      - 525bef0134692a072bd7513c5aee91eff0b6f49be1093cf7fb70718d805173ea
+      - 81b4cb8645043049dccc810216ad4f839b0b3a0adaf274949edab241b60b14f5
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskpr/deskpr_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 26bb3f88e2e30ad7da987e34a7ed3dc76e34af9362eab3c82ada8278426765ce
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskpr/main.go
+    shape: ssh-host-alias
+    sha256:
+      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
+    reason: *doc-ssh
+  - path: tools/desk/cmd/deskpr/publishidentity_test.go
+    shape: noreply-id-email
+    sha256:
+      - 83d62362fba1c52cb55f620bfd1f6ea464b20c8e46c7552bd8bd97397658024f
+      - b18dacb13fd4af364f594cf5b7da1425f31c48a93180a3eb1baef1a5d516b753
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskpr/publishrange_test.go
+    shape: noreply-id-email
+    sha256:
+      - 9509163a39267b924ee7c6d60d4fbfde5a8594b69d810a448aeabbe761e0ed30
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskpr/push_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 22cbf77d473e854d44edb1e82d8c1e8700e5a58cb0d6a06a04d81b11d177125f
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskpr/pushdest_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 9a12c90749d3d43aa8ab3110ab6c954374d7458a47778f955f1cb67b7777c9af
+      - f0ef68b6131d20322e1b3ed92f03dcb52cc9ff64eeba5407ca15c27a52ab68cc
+      - 5ac107dca3e1c3ae8ed7c8ea057691ac9a65b566d8182f42eb9da4a0488b6281
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskpr/pushtransport_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 22cbf77d473e854d44edb1e82d8c1e8700e5a58cb0d6a06a04d81b11d177125f
+      - 243c59b25ecbaf1c3512545e8958107647e2d1da76dc24334eefdcea5430d4d0
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskreconcile/reconcile.go
+    shape: ssh-host-alias
+    sha256:
+      - ecffa9f324bea6b761e02baa8aa51a86a27cc57e77c380a6d670a461520a6d4e
+      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
+    reason: *doc-ssh
+  - path: tools/desk/cmd/deskreply/deskreply_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 26bb3f88e2e30ad7da987e34a7ed3dc76e34af9362eab3c82ada8278426765ce
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskroster/preflight_test.go
+    shape: noreply-id-email
+    sha256:
+      - 9509163a39267b924ee7c6d60d4fbfde5a8594b69d810a448aeabbe761e0ed30
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskwt/deskwt_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 26bb3f88e2e30ad7da987e34a7ed3dc76e34af9362eab3c82ada8278426765ce
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskwt/main.go
+    shape: ssh-host-alias
+    sha256:
+      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
+    reason: *doc-ssh
+  - path: tools/desk/cmd/deskwt/pushtransport_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 22cbf77d473e854d44edb1e82d8c1e8700e5a58cb0d6a06a04d81b11d177125f
+      - 243c59b25ecbaf1c3512545e8958107647e2d1da76dc24334eefdcea5430d4d0
+    reason: *fx-ssh
+  - path: tools/desk/cmd/deskwt/rolefetch_isolation_test.go
+    shape: tilde-root
+    sha256:
+      - efe9f7b3155daad56c7a378f9db4ed88fc29bc06760ca967f5a8458067be8724
+    reason: *fx-tilde
+  - path: tools/desk/cmd/deskwt/rolefetch_isolation_test.go
+    shape: home-path
+    sha256:
+      - f4dbc01a9e5ec598cfcf38d40ecb78d535b79c6e60c84010827083c6588b457c
+    reason: *fx-tilde-account
+  - path: tools/desk/cmd/deskwt/rolefetch_test.go
+    shape: tilde-root
+    sha256:
+      - 3a20b98ddfc42e1386ada782ee276ced9336826e07587fe24dadaf8f7820dc96
+      - 56fd8b9a2d4f8bcd23c742697baa65031254928ba009d7bd96833ddaa37da754
+      - f23edb16316ac95611b681f54f3c2e5e78819490a445be3c347cfb23ef11d6f2
+    reason: *fx-tilde
+  - path: tools/desk/cmd/deskwt/roleinit_test.go
+    shape: noreply-id-email
+    sha256:
+      - 67843e78674a7bd74a0fe467bc40e6154606512df7f5f260f274d0d4687d2394
+      - 83d62362fba1c52cb55f620bfd1f6ea464b20c8e46c7552bd8bd97397658024f
+      - 9509163a39267b924ee7c6d60d4fbfde5a8594b69d810a448aeabbe761e0ed30
+      - 9aa8f95bb871c921fb9d647c7fb0ea82309a4dd6d35d1b4311c6e18048d56f0f
+      - b18dacb13fd4af364f594cf5b7da1425f31c48a93180a3eb1baef1a5d516b753
+      - d87374694d07c4db70b605d57dc6004382489983cc3ec0c804dfc50443d99586
+    reason: *fx-mail
+  - path: tools/desk/cmd/deskwt/roletransport_test.go
+    shape: ssh-host-alias
+    sha256:
+      - b5026be1d873707b835816c7358692d22313e983de429b636777ff66a2b3a159
+    reason: *fx-ssh
+  - path: tools/desk/cmd/fanoutloop/fanoutloop_test.go
+    shape: home-path
+    sha256:
+      - 25cfd52d3808fa02d1a8e91f5bb286d85745e536ecde96e3d6fdd52de7f70a89
+    reason: *fx-home
+  - path: tools/desk/cmd/scanloop/plan.go
+    shape: ssh-host-alias
+    sha256:
+      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
+    reason: *doc-ssh
+  - path: tools/desk/cmd/verifyloop/verifyloop_test.go
+    shape: home-path
+    sha256:
+      - 25cfd52d3808fa02d1a8e91f5bb286d85745e536ecde96e3d6fdd52de7f70a89
+    reason: *fx-home
+  - path: tools/desk/cmd/writeguard/guard_test.go
+    shape: home-path
+    sha256:
+      - 25cfd52d3808fa02d1a8e91f5bb286d85745e536ecde96e3d6fdd52de7f70a89
+      - 9184eaabe8929d35e63f95e0cb60944331ef19732ba4293d90f84589e5345bcd
+    reason: *fx-home
+  - path: tools/desk/internal/clicontract/fixtures.go
+    shape: home-path
+    sha256:
+      - cc5e76dccb37993b04ccbe4830ca711e096f770486cd2a3a838bf4944356157b
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/basepins_test.go
+    shape: ssh-host-alias
+    sha256:
+      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/bodycheck.go
+    shape: home-path
+    sha256:
+      - cf05319ae9007aa768d38ac7e01d420e8bbc4035c720fdcdf3d347a24621d459
+    reason: &doc-home "placeholder operator path in documentation of a path guard"
+  - path: tools/desk/internal/deskkit/bodycheck_test.go
+    shape: home-path
+    sha256:
+      - b98d692c4574a80e508cf6fa38e6f27ae5348e616448edaa7fe675e363669fd2
+      - cf05319ae9007aa768d38ac7e01d420e8bbc4035c720fdcdf3d347a24621d459
+      - e1bf92542b2275127566d031e2441dfaa89a48641ef19626d5302470e53cad7d
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/custodyacl_test.go
+    shape: home-path
+    sha256:
+      - 745ab30a5c45b053456a803f626987f7e19b5a6c3a3402d4e4f87eb91e7b5dba
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/evidencelanding_gitlab_test.go
+    shape: home-path
+    sha256:
+      - facea5961a1ba3cea6a11c25d92f0a735b1bc78b9d7f63038806837ffcb3ac9f
+    reason: &api-users "a forge REST API path (the users endpoint and a placeholder login or id) in a test of the API client; a URL path, not a home directory"
+  - path: tools/desk/internal/deskkit/forge_brief33_test.go
+    shape: home-path
+    sha256:
+      - 3c6d514baf6eb8eef850d6b548b6945a577d235c798bcf717edf5f66369dfa19
+      - 22d089f39846baea91a3a268071b780f08ab59abecf0448f8828123718f5ee0c
+    reason: *api-users
+  - path: tools/desk/internal/deskkit/forge_github_getaccount_test.go
+    shape: home-path
+    sha256:
+      - 80600fd0fd6cbb97765b9d5a967ca668080f74e4c66f0099a3df0319396a822a
+    reason: *api-users
+  - path: tools/desk/internal/deskkit/forge_github_golden_test.go
+    shape: noreply-id-email
+    sha256:
+      - e79375df01acc4f707c7adfce0a850f96e4f6e14bbe139bf30cb89481aeda027
+    reason: *fx-mail
+  - path: tools/desk/internal/deskkit/forgegit_test.go
+    shape: ssh-host-alias
+    sha256:
+      - e29b3e8c98ad405dc45e2397a215aa72212acf78eda178f8005f1dd7359d1036
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/forgeresolve_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 24dd6a2e17b5352bc8fb6177f555392f934dc2b5c179a44ea607234cd5782666
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/platform_outbound_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 3b3d7325bd64ad8a08adb2ae80e8308d93d57c33126dfd905ce8d2bc98ec0b54
+      - 8795346ffe51ca792b9a29eb444f3034909d682e2a201a5cf671f0809a684d62
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/preflight_test.go
+    shape: home-path
+    sha256:
+      - d265910e6df4d28147b85900700fef264ba167d82435a16a023bd68725a7c3ed
+      - fe0d1e407b55ba2360d6e7ac5e46fd96e43c68745513791534319949cd34c860
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/preflight_test.go
+    shape: noreply-id-email
+    sha256:
+      - d87374694d07c4db70b605d57dc6004382489983cc3ec0c804dfc50443d99586
+    reason: *fx-mail
+  - path: tools/desk/internal/deskkit/preflight_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 26bb3f88e2e30ad7da987e34a7ed3dc76e34af9362eab3c82ada8278426765ce
+      - 093f2c622cefdfcd5c665f67a97cdbbf051d65ef497d3d2c93a345c8600136df
+      - 5ac107dca3e1c3ae8ed7c8ea057691ac9a65b566d8182f42eb9da4a0488b6281
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/preflightalarm_test.go
+    shape: home-path
+    sha256:
+      - 9a5c216cbf03125df19327489ca09091665387ff887756a49fb3f74cf4d4d9d6
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/publishidentity_test.go
+    shape: noreply-id-email
+    sha256:
+      - 83d62362fba1c52cb55f620bfd1f6ea464b20c8e46c7552bd8bd97397658024f
+      - 9509163a39267b924ee7c6d60d4fbfde5a8594b69d810a448aeabbe761e0ed30
+      - b18dacb13fd4af364f594cf5b7da1425f31c48a93180a3eb1baef1a5d516b753
+    reason: *fx-mail
+  - path: tools/desk/internal/deskkit/pushtransport-mutations.json
+    shape: ssh-host-alias
+    sha256:
+      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/pushtransport.go
+    shape: ssh-host-alias
+    sha256:
+      - ecffa9f324bea6b761e02baa8aa51a86a27cc57e77c380a6d670a461520a6d4e
+      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
+    reason: *doc-ssh
+  - path: tools/desk/internal/deskkit/pushtransport_rewrite_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 5c53a994142ab61fea9fa0217872c00d22882ce496be674f0f7ccd9276c848f3
+      - 5f5f8dc813b3126d2868a94a64578ae4419d294826254a0326094f92a76fb571
+      - 9d8be436ca97fa58bac6be89d5a75307b3f14fea6097b641cc1ee150d7fd630a
+      - b4b84de39994aa2e1ea3d1382d2ff237b3a96b9781ba042d54cc0793b35dab6e
+      - c2695de4a87d7f4470ee32f01c25b264876f4da96e3241dd50f51184381ec8fd
+      - d4480d5e14a8db4fa1cb0b6282360778d2a64bf030881d04b71149eba35e995e
+      - d81d25039354b93c830801c5656fdc9f3f5b4ffb5ee92430a4ec3e22f56b9daf
+      - f550bbcd356a18cb9f3588676cd30aabf3b5b8509de1f17a9e6ef6a63be2cdce
+      - f90f0354556c620e78f0ee0e8d3a6e08b1a519f57a43fc1c631c1a12fb901ac0
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/pushtransport_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 1d1fa42fe6094bc89bfcb25e9ee66af1177f7409fa2035914684b11e84d65354
+      - 21bc6116845d297cc8286c69a0ac31e752464c871aa9a9b892c8ecdba6b6f53b
+      - c2695de4a87d7f4470ee32f01c25b264876f4da96e3241dd50f51184381ec8fd
+      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
+      - f90f0354556c620e78f0ee0e8d3a6e08b1a519f57a43fc1c631c1a12fb901ac0
+      - 282e9f82b58ceb63ee49df76e74dbe751782a3f6f8aee8ae94c55fbf906e1549
+      - a379a6f6eeafb9a55e378c118034e2751e682fab9f2d30ab13d2125586ce1947
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/remoterepo.go
+    shape: ssh-host-alias
+    sha256:
+      - e2a1f1138ef4be25e5b5db881d665b2ea2c4117dc689d5e6c3b18649346a7ca1
+      - ecffa9f324bea6b761e02baa8aa51a86a27cc57e77c380a6d670a461520a6d4e
+      - f80ee0e0d7bf5846a8f8dcdcfd54e2644ac15a9d4e9816a6776396c1f70ddcff
+    reason: *doc-ssh
+  - path: tools/desk/internal/deskkit/remoterepo_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 26bb3f88e2e30ad7da987e34a7ed3dc76e34af9362eab3c82ada8278426765ce
+      - 3de5de33636038a7d8cb32f77a54be6cb642fbc921121e7d60db93a45c5b81bc
+      - 5ac107dca3e1c3ae8ed7c8ea057691ac9a65b566d8182f42eb9da4a0488b6281
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/riskpathratified_test.go
+    shape: home-path
+    sha256:
+      - 7911230b04118b2539931d4a10b03988fa2535b1944cbc7fd3f510fd1d39816e
+    reason: &fx-tilde-op "a tilde used as a would-be removal operator in a parser-refusal probe; names no account"
+  - path: tools/desk/internal/deskkit/rolecredential_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 57020b936a9fe035afd6e8ca9be7cbb55f7eb0aabb1b3cbf0029e205c0df0d86
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/roleworktreeidentity_test.go
+    shape: noreply-id-email
+    sha256:
+      - 83d62362fba1c52cb55f620bfd1f6ea464b20c8e46c7552bd8bd97397658024f
+      - 9509163a39267b924ee7c6d60d4fbfde5a8594b69d810a448aeabbe761e0ed30
+      - d87374694d07c4db70b605d57dc6004382489983cc3ec0c804dfc50443d99586
+    reason: *fx-mail
+  - path: tools/desk/internal/deskkit/rosteracl_test.go
+    shape: home-path
+    sha256:
+      - 745ab30a5c45b053456a803f626987f7e19b5a6c3a3402d4e4f87eb91e7b5dba
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/selfcontain_test.go
+    shape: home-path
+    sha256:
+      - abe744150956c746d3bb8efc1744373abeecdfb1106fe39675b42a7762fd8971
+      - cf05319ae9007aa768d38ac7e01d420e8bbc4035c720fdcdf3d347a24621d459
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/structured_test.go
+    shape: home-path
+    sha256:
+      - b98d692c4574a80e508cf6fa38e6f27ae5348e616448edaa7fe675e363669fd2
+      - cf05319ae9007aa768d38ac7e01d420e8bbc4035c720fdcdf3d347a24621d459
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/testdata/corpus/neg-file-line-findings.txt
+    shape: home-path
+    sha256:
+      - cf05319ae9007aa768d38ac7e01d420e8bbc4035c720fdcdf3d347a24621d459
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/testdata/corpus/pos-opaque-token-material.txt
+    shape: home-path
+    sha256:
+      - cf05319ae9007aa768d38ac7e01d420e8bbc4035c720fdcdf3d347a24621d459
+    reason: *fx-home
+  - path: tools/desk/internal/deskkit/tokenidentity_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 4da42567dad5ba77467af4c405f1d85b553168a0d9e897c019cf0c54756e8a2b
+    reason: *fx-ssh
+  - path: tools/desk/internal/deskkit/workpad_test.go
+    shape: home-path
+    sha256:
+      - 088fbb65e0972b24d1d8c10bac24cfa5f2d1f15854a6d7fdfd0826d048d6b531
+      - cf05319ae9007aa768d38ac7e01d420e8bbc4035c720fdcdf3d347a24621d459
+    reason: *fx-home
+  - path: tools/desk/internal/fleetharness/fleetharness_test.go
+    shape: noreply-id-email
+    sha256:
+      - 83d62362fba1c52cb55f620bfd1f6ea464b20c8e46c7552bd8bd97397658024f
+    reason: *fx-mail
+  - path: tools/release/release.yml.patch
+    shape: noreply-id-email
+    sha256:
+      - e7cd911927c7d1acf6281b69d385990d8fadcd26871048bbcdbff2e88da7f607
+    reason: *ci-mail
+  - path: tools/release/release.yml.proposed
+    shape: noreply-id-email
+    sha256:
+      - 43c1a2f3f3b553e2dc1da93dc864a0ee45e9958087ff09a2397cc12a6af154a6
+      - e7cd911927c7d1acf6281b69d385990d8fadcd26871048bbcdbff2e88da7f607
+    reason: *ci-mail

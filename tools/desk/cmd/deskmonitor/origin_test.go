@@ -51,6 +51,9 @@ func TestOriginParity(t *testing.T) {
 			t.Run(kind+"/"+tc.name, func(t *testing.T) {
 				plantRoster(t, []string{"o/r", "123/r"})
 				stubSessionIdentity(t, "worker", "x-test-token", nil)
+				// The bash oracle mints its read token as the role its loop names; CI
+				// runners have no DESK_LOOP, so the test supplies the worker's own.
+				t.Setenv("DESK_LOOP", "worker-desk")
 				fake := newForgeFake(t)
 				gh := newGHStub(t)
 				cycle := fixtureCycle{Reads: map[string]fixtureRead{"o/r": {}, "123/r": {}}}

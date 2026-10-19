@@ -1,0 +1,47 @@
+{
+  "test": "go test ./cmd/deskevidence ./internal/deskkit -run 'Landed|PinnedEvidence' -count=1 -timeout=90s",
+  "control": {
+    "name": "frozen attribution history",
+    "file": "cmd/deskevidence/outcome.go",
+    "old": "problems, err := statusgenLintFn(landedRoot)",
+    "new": "problems, err := statusgenLintFn(root)"
+  },
+  "mutations": [
+    {
+      "name": "second caller direct record drops parent",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "writeInput.ExpectedHead = landedHead",
+      "new": "writeInput.ExpectedHead = \"\""
+    },
+    {
+      "name": "immutable caller drops parent",
+      "file": "cmd/deskevidence/outcomerecord.go",
+      "old": "writeInput.ExpectedHead = landedHead",
+      "new": "writeInput.ExpectedHead = \"\""
+    },
+    {
+      "name": "remote baseline dropped",
+      "file": "internal/gitcore/checkout.go",
+      "old": "r.repo.Storer.SetReference(baseline)",
+      "new": "r.repo.Storer.RemoveReference(baseline.Name())"
+    },
+    {
+      "name": "whole parent condition dropped",
+      "file": "internal/deskkit/evidencepinned.go",
+      "old": "\"expectedHeadOid\": in.ExpectedHead,",
+      "new": "\"expectedHeadOid\": \"\","
+    },
+    {
+      "name": "provider fallback replaces atomic write",
+      "file": "internal/deskkit/forge_github.go",
+      "old": "if in.ExpectedHead != \"\" {",
+      "new": "if false && in.ExpectedHead != \"\" {"
+    },
+    {
+      "name": "strict selected closure attribution omitted",
+      "file": "cmd/deskevidence/outcome.go",
+      "old": "\"--check-attribution\", ",
+      "new": ""
+    }
+  ]
+}

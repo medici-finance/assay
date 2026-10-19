@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -156,7 +155,7 @@ func targetSHA(repoPath string) string {
 
 // runSweepLane is the testable core: it runs the three legs against an already
 // resolved config, verifier, and command runner, and returns the assembled
-// SweepRun. runSweep is the CLI wrapper that parses flags and wires the
+// SweepRun. sweepMain is the CLI entry point that takes the parsed options and wires the
 // production runner. Splitting them keeps the whole lane offline-testable
 // without the CLI or a live toolchain.
 func runSweepLane(repoPath string, store *Store, cfg SweepConfig, av verifier.AgentVerifier, runner commandRunner, reverifyAll bool, now time.Time) (*SweepRun, error) {
@@ -258,27 +257,24 @@ func runSweepLane(repoPath string, store *Store, cfg SweepConfig, av verifier.Ag
 	return run, nil
 }
 
-// runSweep is the `sweep` mode entry point.
-func runSweep(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("sweep", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	repo := fs.String("repo", "", "path to the target git repository to sweep (read-only) (required)")
-	out := fs.String("out", "", "tracking root the sweep artifacts land under (required)")
-	configPath := fs.String("config", "", "sweep config: per-category tool set + verifier selection")
-	reverifyAll := fs.Bool("reverify-all", false, "re-verify every current suspect, not just new fingerprints")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if *repo == "" {
+// sweepOptions are the `sweep` verb's parsed settings (cli.go declares them).
+type sweepOptions struct {
+	Repo, Out, Config string
+	ReverifyAll       bool
+}
+
+// sweepMain is the `sweep` mode entry point.
+func sweepMain(o sweepOptions, stdout, stderr io.Writer) int {
+	if o.Repo == "" {
 		fmt.Fprintln(stderr, "qualgen sweep: --repo <dir> is required (the target repo to sweep)")
 		return 2
 	}
-	if *out == "" {
+	if o.Out == "" {
 		fmt.Fprintln(stderr, "qualgen sweep: --out <dir> is required (the tracking root artifacts land under)")
 		return 2
 	}
 
-	cfg, err := loadSweepConfig(*configPath)
+	cfg, err := loadSweepConfig(o.Config)
 	if err != nil {
 		fmt.Fprintln(stderr, "qualgen sweep:", err)
 		return 1
@@ -289,8 +285,8 @@ func runSweep(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	store := NewStore(*out)
-	run, err := runSweepLane(*repo, store, cfg, av, execRunner, *reverifyAll, time.Now())
+	store := NewStore(o.Out)
+	run, err := runSweepLane(o.Repo, store, cfg, av, execRunner, o.ReverifyAll, time.Now())
 	if err != nil {
 		fmt.Fprintln(stderr, "qualgen sweep:", err)
 		return 1

@@ -53,9 +53,20 @@ var readOnlyVerbs = map[string]map[string]bool{
 
 // valueFlags are the global flags that CONSUME the next argument. Without them
 // the verb scan would read a flag's value as the verb — `kubectl -n prod get`
-// would classify on "prod". Unknown flag values still fail closed (an
-// unclassified token is mutating), so this table only removes false refusals;
-// it can never create a false pass.
+// would classify on "prod".
+//
+// The table is deliberately NOT complete, and its completeness is not what keeps
+// the read-only tier safe. A flag before the subcommand that is neither listed
+// here nor written `--flag=value` has an arity the guard does not know: it may
+// consume the next argument (`kubectl --username get delete pod x` runs
+// `delete`), so scanVerb treats the whole call as unclassifiable, which is the
+// mutating side. A MISSING entry therefore costs a false refusal — the operator
+// writes `--flag=value` instead — never a false pass.
+//
+// The one way this table CAN cause a false pass is an entry that does not really
+// take a value: the scan would skip the real verb as that flag's "value" and
+// classify on the token after it. Add a flag here only when the CLI's own help
+// shows it consumes an argument.
 var valueFlags = map[string]map[string]bool{
 	"kubectl": set("-n", "--namespace", "--context", "--cluster", "--kubeconfig",
 		"--user", "--server", "-s", "--as", "--as-group", "--token",
@@ -130,17 +141,29 @@ func parseTier(v string, present bool) optInTier {
 
 // --- verb classification --------------------------------------------------------
 
-// verbOf returns the subcommand of an invocation: the first argument that is
+// verbScan is what the guard could establish about an invocation's subcommand.
+type verbScan struct {
+	verb string // the subcommand; "" when none could be established
+	// unlisted is the first flag before the subcommand whose arity the guard
+	// does not know (not in valueFlags, no "="). When it is set, verb is "":
+	// the token after such a flag may be its value, so no later token can be
+	// trusted as the verb.
+	unlisted string
+}
+
+// scanVerb finds the subcommand of an invocation: the first argument that is
 // neither a flag nor a flag's value. `--flag=value` is self-contained and
-// skipped; `--flag value` consumes its value only when the flag is in the
-// CLI's valueFlags table. Everything after a bare `--` is an argument to the
-// command, never the verb.
-func verbOf(cli string, args []string) (string, bool) {
+// skipped; `--flag value` consumes its value when the flag is in the CLI's
+// valueFlags table. Any OTHER flag before the subcommand stops the scan with
+// no verb — it might consume the next argument, and guessing that it does not
+// is exactly how `--username get delete` passed as a `get`. Everything after a
+// bare `--` is an argument to the command, never the verb.
+func scanVerb(cli string, args []string) verbScan {
 	vf := valueFlags[cli]
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--" {
-			return "", false
+			return verbScan{}
 		}
 		if strings.HasPrefix(a, "-") {
 			if strings.Contains(a, "=") {
@@ -148,27 +171,29 @@ func verbOf(cli string, args []string) (string, bool) {
 			}
 			if vf[a] {
 				i++ // skip the value this flag consumes
+				continue
 			}
-			continue
+			return verbScan{unlisted: a} // unknown arity: unclassifiable
 		}
-		return a, true
+		return verbScan{verb: a}
 	}
-	return "", false
+	return verbScan{}
 }
 
 // isReadOnly reports whether this invocation is on the CLI's read-only
-// allowlist. No verb at all is NOT read-only: a bare invocation is
-// unclassifiable, and unclassifiable is the mutating side of the line.
+// allowlist. No verb at all is NOT read-only: a bare invocation, or one whose
+// verb sits behind a flag the guard cannot classify, is unclassifiable, and
+// unclassifiable is the mutating side of the line.
 func isReadOnly(cli string, args []string) bool {
 	allowed, known := readOnlyVerbs[cli]
 	if !known || len(allowed) == 0 {
 		return false
 	}
-	verb, ok := verbOf(cli, args)
-	if !ok {
+	s := scanVerb(cli, args)
+	if s.verb == "" {
 		return false
 	}
-	return allowed[verb]
+	return allowed[s.verb]
 }
 
 // --- the verdict ------------------------------------------------------------------
@@ -184,9 +209,9 @@ type verdict struct {
 // decide applies the policy. Every path that is not an explicit allow is a
 // refusal with a stated reason — there is no default-allow branch.
 func decide(cli string, args []string, t optInTier) verdict {
-	verb, _ := verbOf(cli, args)
+	scan := scanVerb(cli, args)
 	ro := isReadOnly(cli, args)
-	v := verdict{verb: verb, readOnly: ro}
+	v := verdict{verb: scan.verb, readOnly: ro}
 
 	switch t {
 	case tierMutate:
@@ -203,11 +228,21 @@ func decide(cli string, args []string, t optInTier) verdict {
 			return v
 		}
 		v.code = deskkit.ExitRefused
+		if scan.unlisted != "" && len(readOnlyVerbs[cli]) > 0 {
+			v.reason = fmt.Sprintf(
+				"%s is exported at the read-only level, and the flag %q comes before the subcommand "+
+					"but is not one whose arity this guard knows: it may consume the next argument, so "+
+					"the subcommand cannot be established and the call is treated as mutating. Write it "+
+					"as %s=<value> (or move it after the subcommand) to have the call classified; an "+
+					"operator who means to mutate the cluster exports %s=mutate deliberately.",
+				allowClusterEnv, scan.unlisted, scan.unlisted, allowClusterEnv)
+			return v
+		}
 		v.reason = fmt.Sprintf(
 			"%s is exported at the read-only level, and %q is not on %s's read-only allowlist "+
 				"(a verb the guard does not classify is treated as mutating). "+
 				"An operator who means to mutate the cluster exports %s=mutate deliberately.",
-			allowClusterEnv, displayVerb(verb), cli, allowClusterEnv)
+			allowClusterEnv, displayVerb(scan.verb), cli, allowClusterEnv)
 		return v
 
 	case tierInvalid:

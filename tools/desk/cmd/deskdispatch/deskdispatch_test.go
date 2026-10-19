@@ -110,6 +110,12 @@ func isolateClaimTool(t *testing.T, home string) {
 	lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
 	t.Cleanup(func() { lookPath = oldLook })
 
+	oldRefresh := refreshResume
+	refreshResume = func(o dispatchOpts, branch string) error {
+		r := runCmd(o.root, "fixture-fetch", "--quiet", branch)
+		return r.err
+	}
+	t.Cleanup(func() { refreshResume = oldRefresh })
 	oldResume := readResumeChange
 	readResumeChange = func(o dispatchOpts, _ string) (deskkit.PullRequest, error) {
 		branch := o.branch
@@ -563,7 +569,8 @@ func TestBriefMetadataGateHumanFiresTheDecisionGate(t *testing.T) {
 		reply{match: "decision-issue.sh ensure", stdout: "created: decision issue #7"})
 
 	promptFile := filepath.Join(t.TempDir(), "p.md")
-	rc := run([]string{"item-1", "--root", root, "--brief", "brief.md", "--prompt-file", promptFile})
+	// --tier strong: the fixture brief is `exec-tier: strong`, which a --tier any dispatch refuses.
+	rc := run([]string{"item-1", "--root", root, "--brief", "brief.md", "--tier", "strong", "--prompt-file", promptFile})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("rc = %d, want 0", rc)
 	}

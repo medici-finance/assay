@@ -198,6 +198,12 @@
       "file": "cmd/desktoken/desktoken.go",
       "old": "\t\tif installIDFromCache && errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {",
       "new": "\t\tif errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {"
+    },
+    {
+      "name": "publish the token cache in place instead of by temp-file rename (a concurrent reader can see an empty or partial token and fall back to the ambient login)",
+      "file": "cmd/desktoken/desktoken.go",
+      "old": "\tif beforeTokenCacheRename != nil {\n\t\tbeforeTokenCacheRename()\n\t}\n\tif err := os.Rename(tmpName, path); err != nil {\n\t\treturn fmt.Errorf(\"rename temp over %s: %w\", path, err)\n\t}",
+      "new": "\tif err := os.WriteFile(path, []byte(token), 0o600); err != nil {\n\t\treturn fmt.Errorf(\"write in place %s: %w\", path, err)\n\t}\n\tif beforeTokenCacheRename != nil {\n\t\tbeforeTokenCacheRename()\n\t}"
     }
   ]
 }

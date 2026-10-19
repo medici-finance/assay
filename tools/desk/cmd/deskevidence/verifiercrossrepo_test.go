@@ -117,6 +117,15 @@ func TestCrossRepoEvidenceOutcome(t *testing.T) {
 		return nil
 	}
 	t.Cleanup(func() { evidenceWriteBudget = oldBudget })
+	// This test pins cross-repository outcome binding, not the decision-gate
+	// hold; the hold has its own suites (decisiongate_test.go), so the fake
+	// forge here does not serve the compare/tip reads it needs.
+	oldDecisionGate := decisionGateDiffFn
+	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit) ([]string, error) { return nil, nil }
+	t.Cleanup(func() { decisionGateDiffFn = oldDecisionGate })
+	oldBranchBoard := decisionGateBranchBoardFn
+	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
+	t.Cleanup(func() { decisionGateBranchBoardFn = oldBranchBoard })
 	oldLint := lintDiffFn
 	lintDiffFn = func(root, path string, content []byte) ([]string, error) {
 		if root != br {

@@ -1242,7 +1242,11 @@ func briefVerifyRows(verifySection string) []verifyRow {
 		}
 		row := verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell(), Obligations: r.obligations(), RiskText: strings.TrimSpace(r.Command) + " " + strings.TrimSpace(r.Expect)}
 		if first, why := proseLedCommandWhy(r.Command); why != "" {
-			row.ProseLed = "first span " + strings.ReplaceAll(first, "|", "\\|") + " is " + why
+			what := "first span "
+			if why == shellCommentMarkedWhy {
+				what = "marked command "
+			}
+			row.ProseLed = what + strings.ReplaceAll(first, "|", "\\|") + " is " + why
 		}
 		rows = append(rows, row)
 	})
@@ -1331,7 +1335,8 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 		// command is a mention, and running it measures nothing — it exits 127
 		// (could-not-run anyway) or, for a word like `gh`, exits 0 and would record
 		// a pass for a check that never ran. Recorded could-not-run with the lint's
-		// rule tag, so the Evidence says why; a `cmd:` marker clears it.
+		// rule tag, so the Evidence says why; a `cmd:` marker naming a real command
+		// clears it, a marked comment does not (#2684).
 		if r.ProseLed != "" {
 			out = append(out, witness{
 				ID: r.ID, Command: r.Command, State: stateCouldNotRun, Exit: -1,
@@ -1392,7 +1397,7 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 // proseLedNote is the could-not-run note for a prose-led row: the lint's
 // stable rule tag first (greppable in Evidence), then the reason and the fix.
 func proseLedNote(reason string) string {
-	return ruleProseLedCommand + ": not executed; the " + reason + ", not a command. Mark the command with a cmd: code span"
+	return ruleProseLedCommand + ": not executed; the " + reason + ", not a command. " + proseLedRemedy(reason)
 }
 
 // witnessTable renders a full Evidence table for a run.
@@ -1479,7 +1484,7 @@ func appendWitnessTable(path, table string) error {
 // checkFinding is one Verify row's audit result.
 type checkFinding struct {
 	ID     string
-	State  string // pass | fail | could-not-run  (the AUDIT's verdict, not the witness's)
+	State  string // pass | fail | could-not-run | author-added (authenticated disposition)
 	Detail string
 }
 
@@ -1543,6 +1548,8 @@ func checkExitCode(findings []checkFinding) int {
 	code := verifyrunExitPass
 	for _, f := range findings {
 		switch f.State {
+		case stateAuthorAdded:
+			continue // no acceptance credit; provenance was established by the audit
 		case stateCouldNotRun:
 			return verifyrunExitCouldNot
 		case stateFail:
@@ -1982,7 +1989,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 func runVerifyrunCheck(path, verify, evidence string, stdout *os.File) int {
 	// The audit does not run the lint, so it refuses an unterminated `<!--`
 	// itself (#1939) rather than report rows the rendered page may hide.
-	findings, refusal := closureWitnesses(verify, evidence)
+	findings, refusal := closureWitnesses(verify, evidence, path)
 	if refusal != "" {
 		fmt.Fprintf(stdout, "%s: refused — %s\n", path, refusal)
 		return verifyrunExitCouldNot
@@ -1996,8 +2003,8 @@ func runVerifyrunCheck(path, verify, evidence string, stdout *os.File) int {
 		counts[f.State]++
 		fmt.Fprintf(stdout, "row %s: %s — %s\n", f.ID, f.State, f.Detail)
 	}
-	fmt.Fprintf(stdout, "%s: %d pass, %d fail, %d could-not-run/missing (of %d Verify rows)\n",
-		path, counts[statePass], counts[stateFail], counts[stateCouldNotRun], len(findings))
+	fmt.Fprintf(stdout, "%s: %d pass, %d fail, %d could-not-run/missing (of %d Verify rows); %d author-added with no acceptance credit\n",
+		path, counts[statePass], counts[stateFail], counts[stateCouldNotRun], len(findings), counts[stateAuthorAdded])
 	return checkExitCode(findings)
 }
 

@@ -496,12 +496,12 @@ func TestSingleRootOnlySubcommandIsWiredToExit2(t *testing.T) {
 		t.Fatal("could not find the single-root-only map's close (`}); name != \"\"`) after its call site — has the shape of the refusal changed?")
 	}
 	after := idx + closeIdx
-	// It only needs to be large enough to reach the os.Exit(2) that follows
+	// It only needs to be large enough to reach the exitProcess(2) that follows
 	// the map's close; the assertion's intent is that the refusal exists and
 	// exits 2 right after the map, not that it sits within any exact byte
 	// count of the call site.
 	window := src[after:min(after+700, len(src))]
-	if !strings.Contains(window, "os.Exit(2)") && !strings.Contains(window, "return 2") {
+	if !strings.Contains(window, "exitProcess(2)") && !strings.Contains(window, "return 2") {
 		t.Errorf("the singleRootOnlySubcommand refusal does not exit 2:\n%s", window)
 	}
 	// And it must be reached only for genuine multi-root runs.

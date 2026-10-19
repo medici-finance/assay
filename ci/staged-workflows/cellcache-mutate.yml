@@ -1,0 +1,95 @@
+name: cellcache-mutate
+# The cell Go-cache mutation gate (tools/desk/internal/cellcache/mutate.py), run
+# on every change that can alter what it measures. Nothing else runs it: the
+# gate was a hand-run script, and a script nobody runs cannot fail (#3148).
+#
+# THREE-STATE: each mutation ends CAUGHT, MISSED or COULD-NOT-MUTATE, and the
+# job is red on any MISSED and on any COULD-NOT-MUTATE (a mutant that does not
+# compile, a path that escapes the module, an anchor that no longer matches, a
+# suite timeout). Exit 2 means the harness itself is broken (red baseline, or
+# the spec's control mutation not caught) and carries no verdict. The gate
+# plants every mutation in a temporary copy; the checkout is never written.
+#
+# The suite takes ~10 minutes end to end, so the spec is split across three
+# legs (`--shard i/3`); the baseline and the control run in every leg. The
+# gate's own states are proven on every ordinary PR by the TestMutateGate*
+# tests in tools/desk/internal/cellcache (ci.yml's build-test job).
+#
+# WHERE THIS RUNS - the self-hosted `medici-builder-public` runner; Go is
+# hand-installed from go.dev/dl, verified against GO_SHA256 before unpacking
+# (the pin truth-suite.yml and release.yml carry for the same GO_VERSION; bump
+# all together). The gate needs python3: a runner without it reports
+# could-not-check and reddens, never a quiet pass.
+#
+# ── STAGED, PENDING HUMAN PROMOTION ──
+# No bot or App in this repo holds workflow-push permission, so this file is
+# STAGED here and a maintainer PROMOTES it to .github/workflows/cellcache-mutate.yml
+# to activate it. Until promoted it runs nowhere. See ci/staged-workflows/README.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/desk/internal/cellcache/**"
+      - "tools/desk/internal/cellprocess/**"
+      - "tools/desk/cmd/cellctl/**"
+      - "tools/desk/cmd/deskdispatch/**"
+      - "tools/desk/cmd/deskwt/**"
+      - ".github/workflows/cellcache-mutate.yml"
+  pull_request:
+    paths:
+      - "tools/desk/internal/cellcache/**"
+      - "tools/desk/internal/cellprocess/**"
+      - "tools/desk/cmd/cellctl/**"
+      - "tools/desk/cmd/deskdispatch/**"
+      - "tools/desk/cmd/deskwt/**"
+      - ".github/workflows/cellcache-mutate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cellcache-mutate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.27.2"
+  GOWORK: "off"
+
+jobs:
+  mutate:
+    runs-on: medici-builder-public
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ["0/3", "1/3", "2/3"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Go
+        env:
+          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: Cache mutation gate (every mutant must be caught by a behaviour test)
+        working-directory: tools/desk
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          go version
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "::error::could-not-check: python3 is not on this runner, so the cache mutation gate could not run"
+            exit 1
+          fi
+          python3 internal/cellcache/mutate.py --shard "$SHARD"

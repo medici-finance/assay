@@ -39,7 +39,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # (the bash oracle, the default, or the Go port) — desk-containers/10.
 CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-provider.XXXXXX")" && pwd -P)"
-trap 'rm -rf "$T"' EXIT
+trap 'suite_status=$?; if declare -F private_deskwt_finish >/dev/null; then private_deskwt_finish || suite_status=1; fi; rm -rf "$T"; exit "$suite_status"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
 
@@ -90,8 +90,14 @@ esac
 EOF
 chmod +x "$T/bin/claude"
 printf '#!/usr/bin/env bash\nexit 1\n' > "$T/bin/tmux"; chmod +x "$T/bin/tmux"
-export PATH="$T/bin:$PATH"
+# shellcheck source=SCRIPTDIR/private-path.sh
+source "$HERE/private-path.sh"
+private_path "$T/bin"
+private_deskwt "$T/bin"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
+# regression: #2738 — normal-path isolation and real-launch positive control.
+private_deskwt_check "$CELLCTL" "$REPO"
+
 "$CELLCTL" new example-cell --kind house --repo "$REPO" --roots "$ROOTS" >/dev/null
 CELL="$CELLS_ROOT/example-cell"
 
@@ -319,6 +325,7 @@ assert "cellctl set --provider glm persists CELL_PROVIDER=glm" '[[ $rc -eq 0 ]] 
 out="$(DRY_RUN=1 "$CELLCTL" up example-cell --cockpit tmux --provider kimi 2>&1)" && rc=0 || rc=$?
 assert "up --provider kimi threads onto every role window" "[[ \$rc -eq 0 ]] && grep -q \"worker-desk: .*desk 'example-cell' 'worker-desk' --provider 'kimi'\" <<<\"\$out\""
 sed -i.bak '/^CELL_PROVIDER=glm$/d' "$CELL/cell.env"; rm -f "$CELL/cell.env.bak"
+
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "provider.test.sh: OK"; else echo "provider.test.sh: $fails FAILED"; exit 1; fi

@@ -34,6 +34,10 @@ id: 7ca03faf-2880-425a-b676-a907c164da2b
 
 ## Context
 
+Workflow handoff (2026-10-17): image publication now belongs to the approved
+release job and `tools/release/images.py`. The Verify table below follows that
+entry point; earlier Evidence retains the workflow paths used by those runs.
+
 files:
 - `containers/intake-desk/Dockerfile`, `containers/worker-desk/Dockerfile`,
   `containers/pr-review-desk/Dockerfile`, `containers/verify-desk/Dockerfile`,
@@ -41,8 +45,9 @@ files:
 - `containers/entrypoint.sh` (new) — shared interactive boot: verifies the brief-02
   credential mounts/env are present (fail-closed with a precise message), prints the
   desk's identity + skill pointer, and lands in the interactive session.
-- `.github/workflows/docker-publish.yml` — extend with the base + five-desk build
-  matrix (base first, desks FROM it, shared tags `vX.Y.Z` / `sha-<short>` / `latest`).
+- `.github/workflows/release.yml` — the approved publisher builds/checks/pushes
+  the base and five desks through `tools/release/images.py`, then publishes
+  the umbrella tag and release assets.
 - `docs/docker.md` — document the five image names + tags.
 
 facts:
@@ -60,7 +65,7 @@ facts:
 - The publish workflow must not require secrets at build time beyond registry login —
   a build that needs a desk credential is a design error.
 - Workflow-file pushes to this repo may be restricted for bot identities; if the push
-  of `.github/workflows/docker-publish.yml` is rejected, deliver the workflow change in
+  of `.github/workflows/release.yml` is rejected, deliver the workflow change in
   the PR as-is and flag the rejection in the PR body for a human to carry — do not
   route around the restriction.
 
@@ -76,23 +81,23 @@ facts:
 1. Write the five per-desk Dockerfiles + the shared `entrypoint.sh` (fail-closed
    credential preflight per `containers/secrets.md` (planned), then interactive boot surfacing
    the desk's skill by name).
-2. Extend `docker-publish.yml`: build+push `desk-base`, then the five desk images FROM
-   the just-built base, all stamped with the same version/sha tags; keep the existing
-   `dry_run` discipline; run `containers/scripts/layer-secret-scan.sh` (planned) against ALL six
-   images in the workflow and fail the publish on any hit.
+2. Keep image production inside the approved release job: build `desk-base`, then
+   the five desk images FROM that exact version; preserve `dry_run` and run
+   `containers/scripts/layer-secret-scan.sh` against all six before any push.
+   A failed image check stops tag and GitHub release publication too.
 3. Update `docs/docker.md` with the image table (names, tags, what's inside, one-line
    run example per desk).
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `for d in intake-desk worker-desk pr-review-desk verify-desk the-desk; do docker build -t assay/$d:dev containers/$d \|\| exit 1; done` | exit 0 — all five build (against a locally built `desk-base:dev`) |
-| 2 | `for d in intake-desk worker-desk pr-review-desk verify-desk the-desk; do docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' assay/$d:dev \| grep -q "ASSAY_DESK=$d" \|\| exit 1; done` | exit 0 — each image carries its own desk name |
-| 3 | `for d in intake-desk worker-desk pr-review-desk verify-desk the-desk; do sh containers/scripts/layer-secret-scan.sh assay/$d:dev \|\| exit 1; done` | exit 0 — every desk image scans clean of key material |
-| 4 | `docker run --rm assay/worker-desk:dev` (no mounts, no env-file) | exit non-zero; output names the missing PEM mount and env — fail-closed preflight fires (negative-path row) |
-| 5 | `grep -c 'layer-secret-scan' .github/workflows/docker-publish.yml` | exit 0; count ≥ 1 — the publish path runs the scan |
-| 6 | `grep -iE -e '^copy' -e '^add' containers/*/Dockerfile \| grep -ci -e pem -e token -e secret -e credential -e key; test $? -eq 1` | exit 0 — no desk Dockerfile COPY/ADD line names key material |
-| 7 | `statusgen --consumers --brief desk-containers/03 --root .` | exit 0; the three follow-up entries (04/05/06) listed for the reviewer to weigh |
+| # | Command | Expect | Class |
+|---|---------|--------|-------|
+| 1 | `for d in intake-desk worker-desk pr-review-desk verify-desk the-desk; do docker build -t assay/$d:dev containers/$d \|\| exit 1; done` | exit 0 — all five build (against a locally built `desk-base:dev`) | check |
+| 2 | `for d in intake-desk worker-desk pr-review-desk verify-desk the-desk; do docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' assay/$d:dev \| grep -q "ASSAY_DESK=$d" \|\| exit 1; done` | exit 0 — each image carries its own desk name | check |
+| 3 | `for d in intake-desk worker-desk pr-review-desk verify-desk the-desk; do sh containers/scripts/layer-secret-scan.sh assay/$d:dev \|\| exit 1; done` | exit 0 — every desk image scans clean of key material | check |
+| 4 | `docker run --rm assay/worker-desk:dev` (no mounts, no env-file) | exit non-zero; output names the missing PEM mount and env — fail-closed preflight fires (negative-path row) | check |
+| 5 | `python3 -B -m unittest discover -s tools/release -p images_test.py -v` | exit 0 — the approved publish path invokes the image builder, with all nine version checks and six layer scans before any push; planted approval/order/dry-run defects are rejected | check +mutation |
+| 6 | `grep -iE -e '^copy' -e '^add' containers/*/Dockerfile \| grep -ci -e pem -e token -e secret -e credential -e key; test $? -eq 1` | exit 0 — no desk Dockerfile COPY/ADD line names key material | check |
+| 7 | `statusgen --consumers --brief desk-containers/03 --root .` | exit 0; the three follow-up entries (04/05/06) listed for the reviewer to weigh | check |
 
 ## Definition of Done
 - Verify rows green, recorded in Evidence by a non-implementer.

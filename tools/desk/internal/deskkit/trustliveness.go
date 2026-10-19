@@ -115,7 +115,7 @@ func (f *HTTPAccountFetcher) GetAccount(login string) (*Account, error) {
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
-	resp, err := f.client().Do(req)
+	resp, err := countingClient(f.client()).Do(req)
 	if err != nil {
 		return nil, err
 	}

@@ -40,17 +40,20 @@ fires within one observer interval instead of relying on a worker to remember it
 
 > Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
 
+> **Every `gh` call carries this role's `GH_TOKEN`, reads included.** When no desk verb covers a forge call, run it only through the recipe in [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role), never a hand-typed shortcut. That recipe takes the role from `$DESK_LOOP`, mints it with `desktoken`, scopes the token to that one command without exporting it, and stops before `gh` unless the mint exited 0 and the token file holds a non-whitespace token. A bare `gh` call runs as the host's stored login, which is usually a human's, so a desk never runs one, not even for a read.
+
 > Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
 
 
 > The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
-> Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
+> Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
 ## Boot
 
 `deskboot worker-desk` — loop identity, `deskwt prune`, worktree lock, roster register, roster
-preflight, worker-App token mint, read-only board fetch. The first red step stops the boot and names
+preflight, worker-App token mint, read-only board fetch, worktree currency, first-sweep prerequisites
+(roster forge mapping, desk-tools pin). The first red step stops the boot and names
 itself; it refuses to boot in the shared checkout. Two residues it does not carry: `export
 KUBECONFIG=/dev/null` (the environment half of the offline envelope; every dispatched agent
 gets the same rule from the common-clauses kit) and inline `-c` commit identity per commit
@@ -150,13 +153,21 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | 1 | Board rows the board SHOWS, per root (the span-capped Next-up selection) | `(cd "$root" && deskgit fetch --as worker) && fanoutloop plan --root "$root"` (absolute configured root; desk-shell §Authenticated transport) |
 | 2 | Rows **held back** by the 4-per-stream cap, the span cap, or the drive worker floor | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span, K by the drive worker floor) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one |
 | 3 | Orphan PRs owing a worker action, `CONFLICTING` PRs, red checks | the per-slug PR + disposition reads in [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §The tick sweep, with the disposition read FIRST |
-| 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate) |
+| 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate / reconcile) |
 | 5 | `Awaiting implementer rework` board rows | `fanoutloop plan --root <root>` (desk-supervision/05: read per root from `refs/remotes/origin/main:STATUS.md`, the SAME offline ref read row 1 uses — no separate sweep) |
 | 5b | **Durable repair obligations** — a failed/blocked verification's actionable, still-unresolved obligation (desk-supervision/17) | `fanoutloop plan --root <root>` reads the reconciled obligations across the configured roots' `docs/streams/repair-obligations.jsonl` and surfaces the ASSIGNABLE ones (actionable, unresolved, awaiting-assignment or dead-lease) in the SAME rework lane as row 5. The item's ID is the IMMUTABLE obligation key, so a replacement worker resumes the SAME obligation after a dead lease — never a duplicate |
 | 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues` — fail-closed |
 | 7 | A red default branch on a watched repo | `deskboard health` — three-state (green / RED / COULD-NOT-CHECK) |
 | 8 | Cross-root coverage: a board root that no sweep reaches, or a scanned repo with no board | the BOARD ROOTS ∪ SCAN REPOS symmetric difference printed at boot (§THE REPO SET) |
 | 9 | Queue **suppressors** — expired `refs/heads/dispatch/*` claims and dead branch-claims from merged/closed PRs | `desksupervise status --stops` (the liveness observer's runtime snapshot: per-claim liveness, timers-to-fire, and which stops are armed — the one structured read the sweep uses instead of guessing); the raw `git ls-remote origin 'refs/heads/dispatch/*'` + the claim tool's `list`/`show` verbs (`deskclaim-ref`, installed with desk-tools; a repo that ships its own `tools/dispatch-claim.sh` uses that instead) stay as the fallback — run BOTH, since the tool lists the `refs/dispatch/*` namespace it acquires in while that `ls-remote` pattern lists the `refs/heads/dispatch/*` branch refs the Go claim readers use |
+
+A `reconcile` disposition means the owning brief is withdrawn, not that the PR is
+finished. Route it to `pr-shepherd` for the withdrawn-brief reconciliation step before
+ordinary CI repair. Supply the current brief/withdrawal context, successor links and PR
+head; retain claim ownership checks. Never restore an obsolete plan just to green its
+branch, or auto-close its PR. Before a board amendment retires scope, use
+`statusgen withdrawal-audit` with an open-PR snapshot to discover these cases while the
+PRs are still fresh (the stalled detector deliberately sees only the aged subset).
 
 **Rows 5, 5b and 3 outrank row 1** — resuming started work outranks a fresh brief (mm/10) — and row 2 is
 what tells you whether row 1's zero means drained or throttled.
@@ -213,8 +224,13 @@ This is enforced in two INDEPENDENT layers that fail on different signals in dif
 neither is the single point of failure: the skill clause here, AND — should a desk skip the clause —
 `deskfile new`, which **REFUSES (exit 5)** any filing labelled `needs-decision`, `help wanted` or
 `question` whose body has no `### Evidence` heading followed by a fenced block, naming the missing
-section. `human-only` is not in that set (it is an ACT, not a claim); `attach` observations are not
-claims and are unaffected; and the refusal takes the same audited `--force-new --reason` every deskfile
+section. `human-only` is not in that set (it is an ACT, not a claim). A `BLOCKED-ON-HUMAN` report is
+still a blocker claim, so it carries BOTH the `### Evidence` section above AND the act itself, as the
+runnable **Act block** `ask-decision` §"Act — the shape of the fifth part" defines. `deskfile new`
+refuses (exit 5) a filing with no ` ```sh ` or ` ```url ` fence when it is labelled `human-only` or its
+body's first non-blank line opens with `BLOCKED-ON-HUMAN`; a marker in the title or after an opening
+paragraph is not caught, and there the Act block rests on this clause alone. `attach`
+observations are not claims and are unaffected; and the refusal takes the same audited `--force-new --reason` every deskfile
 refusal does, for a blocker whose evidence genuinely cannot be produced.
 
 ## THE REPO SET — derived once, consumed by every sweep
@@ -304,6 +320,8 @@ or one unreadable repo, is exit 6 COULD-NOT-CHECK for the WHOLE board, never a s
    copy, security, prod-deploy, irreversible actions). Anything needing scoping, splitting, a decision
    or a risk call is **intake's job**. When in doubt, leave it to intake AND LEAVE A TRACE (a `question`
    on the issue naming the fork) — intake's strong tier picks the default a reversible fork proceeds on.
+
+An issue the board shows as `AWAIT` for its label history is not un-briefed work, whatever its current labels.
 
 **Priority is LOWEST of the dispatch sources** (WIP-draining work → board rows → un-briefed issues),
 but the ordering is a tie-break, not a hold: an empty slot with a qualifying issue and nothing above
@@ -674,7 +692,8 @@ shows the helper itself refused (its status 5), that brief is a refusal — repa
 toward the repeat filing. In either case, never hand-run the decision-issue helper around the
 refusal (a hand-run once landed a duplicate decision issue). Record the issue in
 the dispatch and the PR body's BLOCKED-ON-HUMAN line; where the Task has an explicit human co-execution
-step the prompt says prepare everything, STOP at the documented stop-point, report BLOCKED-ON-HUMAN.
+step the prompt says prepare everything, STOP at the documented stop-point, report BLOCKED-ON-HUMAN —
+the report carrying the step the human runs as an Act block (`ask-decision` §"Act — the shape of the fifth part").
 
 **Security-gate removal is gate:human BEFORE the commit, not only at approval**: such a diff
 erases the red-check signal that makes the decision visible downstream, so "a worker behind a draft PR

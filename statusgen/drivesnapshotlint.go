@@ -103,7 +103,10 @@ func driveRegionLint(root string, section func(slug string) (string, int)) (prob
 				slug))
 			continue
 		}
-		content, readErr := os.ReadFile(planPath)
+		// readStaged: the reconcile lint hold stages a re-rendered region
+		// here alongside the README move that changes it (#2694); with nothing
+		// staged it is os.ReadFile.
+		content, readErr := readStaged(planPath)
 		if readErr != nil {
 			notices = append(notices, fmt.Sprintf("drive-region-drift: docs/roadmap/drives/%s unreadable (%v) — could-not-check", e.Name(), readErr))
 			continue
@@ -123,12 +126,19 @@ func driveRegionLint(root string, section func(slug string) (string, int)) (prob
 			continue
 		}
 		if driveRegionVerdict(fresh, string(content), slug) == 1 {
-			problems = append(problems, fmt.Sprintf(
-				"drive-region-drift: docs/roadmap/drives/%s — the drive-snapshot region differs from a fresh `statusgen --drive-snapshot %s` render. Never hand-edit inside the fences; re-splice the region",
-				e.Name(), slug))
+			problems = append(problems, driveRegionDriftProblem(e.Name(), slug))
 		}
 	}
 	return problems, notices
+}
+
+// driveRegionDriftProblem is the drift PROBLEM for the plan file name (under
+// docs/roadmap/drives) whose region for slug differs from a fresh render. The
+// reconcile hold matches it exactly to find the regions a row move changes.
+func driveRegionDriftProblem(name, slug string) string {
+	return fmt.Sprintf(
+		"drive-region-drift: docs/roadmap/drives/%s — the drive-snapshot region differs from a fresh `statusgen --drive-snapshot %s` render. Never hand-edit inside the fences; re-splice the region",
+		name, slug)
 }
 
 // drivePlanEscapeProblem reports a fail-closed PROBLEM string when the plan-file

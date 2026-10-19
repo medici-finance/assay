@@ -179,7 +179,17 @@ verdict block naming the target, the proposer and the confirmer.
   `superseded?` label is the queue-legibility index for the *review* desk; the sweep never needs
   it.
 
-## 5. The brief level — the open question, three options, one recommendation
+## 5. The brief level — three options and the earlier recommendation
+
+**Subsequent proposal:** [PR #3407](https://github.com/medici-finance/assay/pull/3407)
+implements option (ii) as versioned `withdrawn`, while retaining option (iii) for work
+whose identity and purpose survive a scope adjustment. The distinction is whether the
+remaining plan is still wanted under this identity. Re-baselining a retired brief into
+unrelated successor scope hides that distinction; deleting it loses history. Withdrawal
+therefore preserves the tombstone and successor links, never redirects dependencies,
+and does not cancel active work or discharge verification debt. This is a proposed
+contract change behind the PR's review/merge gate, not a new human ratification claimed
+by this document. The original recommendation below remains the earlier design record.
 
 The question: a PR can be superseded. Can a **brief**?
 

@@ -112,6 +112,7 @@ or removing any human gate (spec §5 states the divergence).
 | 29 | [Old and new regression floor for the verifier domain contracts](brief-29-verifier-regression-floor.md) | 3 | M | todo | — | — |
 | 30 | [Derived evaluation context and bounded validity](brief-30-derived-evaluation-context-and-bounded-validity.md) | 3 | M | todo | — | — |
 | 31 | [Accountable principal and assurance provenance](brief-31-accountable-principal-and-assurance-provenance.md) | 3 | M | todo | — | — |
+| 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
@@ -332,3 +333,27 @@ unblocking move remains independent /02 verification; a cache daemon or new SCM 
 unblock it. Missing `workflow/` and `statusgen/domain/` at inspected main 9a8df91dc are
 planned deliverables, not a reason to claim the tests already pass. /31's trust-profile
 activation requires its human decision; no automatic waiver or stronger assurance is added.
+
+## Criterion evidence freshness investigation — 2026-10-16
+
+[Brief 32](brief-32-investigate-criterion-level-evidence-freshness.md) is an independent
+Wave 0 research item: trace the existing requirement-to-witness path and test acceptance
+edits against actual controls before proposing another mapping or identity mechanism.
+Its critical path is source inventory → fixed cases → offline replay → decision report;
+there is no implementation dependency on the proposed domain work in 28–31. Fresh main
+`d0580c5e5` was inspected on 2026-10-16: criteria are strings in the requirement register,
+while Command/Expect and dependency applicability already have baseline guards. The first
+unblocking move is reproducing their actual coverage, not assigning new criterion IDs.
+
+A no-change or guidance-only conclusion is valid. This research neither changes the main
+implementation dependency waves above nor authorizes a production freshness gate.
+
+## Proposed desk-improvement evidence consumers — 2026-10-17
+
+[Public desk-improvement](../desk-improvement/README.md) consumes this stream's native
+records instead of introducing another execution journal. Its /05 binds /06 run records;
+/06 captures the /26 supervisor and /22 adapter; /07 extends /21 controller evidence; /08
+consumes /27 standing clients; /10 qualifies native cross-mode source→card→assessment flow.
+These consumer prerequisites point toward this stream, with no reverse gating cycle. Existing
+source scope and activation remain controlling; supported native measurement is a separate
+qualified capability from offline cards or an implemented schema.

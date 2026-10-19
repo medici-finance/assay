@@ -10,6 +10,7 @@ import (
 )
 
 // regression: #138
+// Includes the release-owned image producer/consumer contract.
 func TestReleaseGoCache(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("release workflow executes on Linux; fixtures run in build-test")
@@ -20,7 +21,7 @@ func TestReleaseGoCache(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "python3", "-B", "-m", "unittest", "discover", "-s", "tools/release", "-p", "go_cache_test.py", "-v")
+	cmd := exec.CommandContext(ctx, "python3", "-B", "-m", "unittest", "discover", "-s", "tools/release", "-p", "*_test.py", "-v")
 	cmd.Dir = root
 	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null", "PYTHONDONTWRITEBYTECODE=1")
 	cmd.WaitDelay = time.Second

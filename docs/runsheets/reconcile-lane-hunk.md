@@ -37,6 +37,12 @@ names).
   `declared-changes.json` `identical` classification holds), and the hermetic
   suite `statusgen/reconcilejob_test.go` — are unchanged from that base to this
   branch's head and to current main, so the patch applies cleanly at the tip.
+- **After the decision-gate hold lands.** The hold's change (#2266)
+  stages its own edit to `ci/staged-workflows/assay-statusgen.yml` and classes that
+  file `pending` (not `identical`) in `declared-changes.json`. The diff above still
+  applies cleanly on top of it (`git apply --check` exits 0 on the merge of both, in
+  either order) and the edit it makes to the staged twin is unchanged; only the
+  `identical` classification stops holding for that one file.
 - **Receipts:** the assembly record's validation (baseline green at the base;
   fail-first red of the re-pointed suite against the unconverted workflow, quoted
   there; the converted suite green with 37/37 mutant entries shown red; a

@@ -1,0 +1,452 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/cell-workspace-v1.json",
+  "title": "cell-workspace-v1 documents",
+  "description": "Machine-readable contract for the cell workspace documents of spec/cell-workspaces-v1.md: a Request, a Record and a Result, each self-identified by schema cell-workspace/v1. The schema is DESCRIPTIVE of shape: required fields, field types, patterns and closed value sets. It does NOT encode the cross-field rules the workspace module enforces (task-or-session by kind, detached subjects for review/verify/check, lease on active, git identity past allocating, repo_key derived from repo, payload digest equality on replay, the transition table, an outcome's reason matching its kind); where the two disagree the schema is the LOOSER on purpose. Keys match exactly, case included; a decoder refuses a repeated key, a null or empty optional field and trailing data.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Request"
+    },
+    {
+      "$ref": "#/$defs/Record"
+    },
+    {
+      "$ref": "#/$defs/Result"
+    }
+  ],
+  "$defs": {
+    "Operation": {
+      "description": "Version 1 defines allocation only. Later lifecycle operations join this set under the same envelope; a reader refuses an operation it does not know with unsupported-capability.",
+      "enum": [
+        "allocate"
+      ]
+    },
+    "Kind": {
+      "description": "What the workspace is for. Path and branch are attributes, never identity.",
+      "enum": [
+        "desk",
+        "worker",
+        "review",
+        "verify",
+        "scan",
+        "check"
+      ]
+    },
+    "State": {
+      "description": "Lifecycle state. Refusal, conflict and unknown evidence are outcomes, never states.",
+      "enum": [
+        "allocating",
+        "ready",
+        "active",
+        "retained",
+        "retiring",
+        "retired"
+      ]
+    },
+    "Mode": {
+      "enum": [
+        "branch",
+        "detached"
+      ]
+    },
+    "Provenance": {
+      "enum": [
+        "managed",
+        "legacy"
+      ]
+    },
+    "RefOwner": {
+      "enum": [
+        "task",
+        "claim",
+        "process",
+        "scratch",
+        "evidence",
+        "retention"
+      ]
+    },
+    "OutcomeKind": {
+      "enum": [
+        "ok",
+        "refused",
+        "conflict",
+        "unknown"
+      ]
+    },
+    "Reason": {
+      "description": "refused: unknown-schema, malformed, invalid, unsupported-capability, payload-mismatch, identity-mismatch, illegal-transition. conflict: stale-generation, foreign-state. unknown: busy, evidence-unavailable.",
+      "enum": [
+        "busy",
+        "evidence-unavailable",
+        "foreign-state",
+        "identity-mismatch",
+        "illegal-transition",
+        "invalid",
+        "malformed",
+        "payload-mismatch",
+        "stale-generation",
+        "unknown-schema",
+        "unsupported-capability"
+      ]
+    },
+    "CellRef": {
+      "description": "The admitted cell: its durable UUID and the root it is admitted at.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "uuid",
+        "root"
+      ],
+      "properties": {
+        "uuid": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "root": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.?))*)?$"
+        }
+      }
+    },
+    "RepoRef": {
+      "description": "Canonical repository identity: forge instance and repository path. Never a URL, user or credential.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "forge",
+        "repository"
+      ],
+      "properties": {
+        "forge": {
+          "type": "string",
+          "pattern": "^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?$"
+        },
+        "repository": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)+$"
+        }
+      }
+    },
+    "SessionRef": {
+      "description": "The role session the request runs under.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "session"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+          "maxLength": 63
+        },
+        "session": {
+          "type": "string",
+          "pattern": "^[!-~]{1,256}$"
+        },
+        "harness": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+        }
+      }
+    },
+    "Ref": {
+      "description": "A reference into an existing owner; the workspace record is never a second store for it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "id"
+      ],
+      "properties": {
+        "owner": {
+          "$ref": "#/$defs/RefOwner"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[!-~]{1,256}$"
+        }
+      }
+    },
+    "Subject": {
+      "description": "The exact commit the checkout holds, pinned before any checkout exists. review, verify and check workspaces are detached; branch mode names its branch.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit",
+        "mode"
+      ],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+        },
+        "mode": {
+          "$ref": "#/$defs/Mode"
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "Path": {
+      "description": "Platform-native logical path and the resolved physical path the effect boundary verified. Every path in these documents (here, cell.root and the Git directories) is an absolute local path: a POSIX root or a drive root, never a network root, a .. segment or a control character (spec section 3).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "logical",
+        "physical"
+      ],
+      "properties": {
+        "logical": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.?))*)?$"
+        },
+        "physical": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.?))*)?$"
+        }
+      }
+    },
+    "GitIdentity": {
+      "description": "Git administration identity verified at effect time.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "common_dir",
+        "admin_dir"
+      ],
+      "properties": {
+        "common_dir": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.?))*)?$"
+        },
+        "admin_dir": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^(/|[A-Za-z]:[\\\\/])(((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.)([\\\\/]((\\.?[^\u0000-\u001f\u007f/\\\\.]|\\.\\.[^\u0000-\u001f\u007f/\\\\])[^\u0000-\u001f\u007f/\\\\]*|\\.?))*)?$"
+        }
+      }
+    },
+    "Outcome": {
+      "description": "Typed answer. An ok outcome carries no reason; every other outcome carries the reason its kind is defined by.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/OutcomeKind"
+        },
+        "reason": {
+          "$ref": "#/$defs/Reason"
+        },
+        "field": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "Request": {
+      "description": "One operation request. (cell, repository, kind, task-or-session, attempt_id, request_id) is the idempotency key; the payload digest binds the rest. A desk request names its session and no task; every other kind names its task or claim.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "request_id",
+        "operation",
+        "cell",
+        "repo",
+        "kind",
+        "attempt_id",
+        "subject"
+      ],
+      "properties": {
+        "schema": {
+          "const": "cell-workspace/v1"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^[!-~]{1,256}$"
+        },
+        "operation": {
+          "$ref": "#/$defs/Operation"
+        },
+        "cell": {
+          "$ref": "#/$defs/CellRef"
+        },
+        "repo": {
+          "$ref": "#/$defs/RepoRef"
+        },
+        "kind": {
+          "$ref": "#/$defs/Kind"
+        },
+        "session": {
+          "$ref": "#/$defs/SessionRef"
+        },
+        "task": {
+          "$ref": "#/$defs/Ref"
+        },
+        "attempt_id": {
+          "type": "string",
+          "pattern": "^[!-~]{1,256}$"
+        },
+        "subject": {
+          "$ref": "#/$defs/Subject"
+        },
+        "require": {
+          "description": "Capabilities the serving implementation must declare; an undeclared one is refused, never downgraded.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*(/v[0-9]+)?$"
+          }
+        }
+      }
+    },
+    "Record": {
+      "description": "The durable state of one workspace. generation increases by one on every transition and is the compare-and-set token; a record past allocating carries its verified git identity; an active record carries a process lease; a retained record names its reason; a legacy record is never allocating or ready.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "allocation_id",
+        "request_id",
+        "payload_digest",
+        "cell",
+        "repo",
+        "repo_key",
+        "kind",
+        "attempt_id",
+        "subject",
+        "path",
+        "state",
+        "generation",
+        "provenance",
+        "created_at",
+        "transitioned_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "cell-workspace/v1"
+        },
+        "allocation_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^[!-~]{1,256}$"
+        },
+        "payload_digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "cell": {
+          "$ref": "#/$defs/CellRef"
+        },
+        "repo": {
+          "$ref": "#/$defs/RepoRef"
+        },
+        "repo_key": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]{1,32}-[0-9a-f]{16}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/Kind"
+        },
+        "session": {
+          "$ref": "#/$defs/SessionRef"
+        },
+        "task": {
+          "$ref": "#/$defs/Ref"
+        },
+        "attempt_id": {
+          "type": "string",
+          "pattern": "^[!-~]{1,256}$"
+        },
+        "subject": {
+          "$ref": "#/$defs/Subject"
+        },
+        "path": {
+          "$ref": "#/$defs/Path"
+        },
+        "git": {
+          "$ref": "#/$defs/GitIdentity"
+        },
+        "state": {
+          "$ref": "#/$defs/State"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "lease": {
+          "$ref": "#/$defs/Ref"
+        },
+        "refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/Ref"
+          }
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "transitioned_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "Result": {
+      "description": "The answer to a request. Only an ok result carries a record, so no failure hands a caller a path.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "request_id",
+        "outcome"
+      ],
+      "properties": {
+        "schema": {
+          "const": "cell-workspace/v1"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^[!-~]{1,256}$"
+        },
+        "outcome": {
+          "$ref": "#/$defs/Outcome"
+        },
+        "record": {
+          "$ref": "#/$defs/Record"
+        }
+      }
+    }
+  }
+}

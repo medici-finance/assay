@@ -10,6 +10,7 @@ unblocks:
 - graph-execution/16
 - graph-execution/19
 - graph-execution/28
+- performance-collection/09
 effort: M
 gate: model
 risk:

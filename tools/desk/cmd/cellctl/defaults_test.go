@@ -252,7 +252,7 @@ func TestCellDefaultsRefusesPerCellKeys(t *testing.T) {
 		// The launching shell's own.
 		"PATH", "TERM", "LANG",
 		// Carriers cellctl sets for itself or a child.
-		"CELL_KIND_OVERRIDE_INTERNAL", "ASSAY_SCRATCH_ID", "DESK_SESSION", "CELLCTL_PARITY_MUTATE",
+		"CELL_KIND_OVERRIDE_INTERNAL", "ASSAY_SCRATCH_ID", "DESK_SESSION", "CELLCTL_PARITY_MUTATE", "CELLOP_FIXTURE_TRACE",
 		"CELLCTL_OPERATOR_CONFIG_HOME",
 	}
 	for _, k := range named {

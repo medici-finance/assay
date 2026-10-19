@@ -1,6 +1,8 @@
 package loopengine
 
 import (
+	"errors"
+
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -90,8 +92,12 @@ func Recover(cfg Config, loop Loop) {
 
 	claims, cerr := deskkit.List(toClaimConfig(cfg))
 	if cerr != nil {
-		cfg.logf("recover: claims dir unreadable — conservative fallback (NO reclassification): %v", cerr)
-		return
+		var partial *deskkit.ClaimListError
+		if !errors.As(cerr, &partial) {
+			cfg.logf("recover: claims dir unreadable — conservative fallback (NO reclassification): %v", cerr)
+			return
+		}
+		cfg.logf("recover: claims listing incomplete — unreadable claims left untouched: %v", cerr)
 	}
 
 	var released, reclaimed int
