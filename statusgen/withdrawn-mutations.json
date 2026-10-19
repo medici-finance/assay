@@ -66,6 +66,42 @@
       "file": "withdrawn.go",
       "old": "if h.Digest() != c.Digest {",
       "new": "if false {"
+    },
+    {
+      "name": "human-gated-reactivation",
+      "file": "decisiongatehold.go",
+      "old": "if isWithdrawn(strings.ToLower(strings.TrimSpace(s))) && !isWithdrawn(strings.ToLower(strings.TrimSpace(head))) {",
+      "new": "if false {"
+    },
+    {
+      "name": "unknown-fold-scope",
+      "file": "readmetable.go",
+      "old": "(!isWithdrawn(a) || c.MergedPR == \"\")",
+      "new": "(c.MergedPR == \"\")"
+    },
+    {
+      "name": "provenance-approval",
+      "file": "withdrawn.go",
+      "old": "if err := h.RequireApproved(); err != nil {",
+      "new": "if err := h.RequireApproved(); false {"
+    },
+    {
+      "name": "provenance-action",
+      "file": "withdrawn.go",
+      "old": "(obligation.Action != \"retire\" && obligation.Action != \"replace\" && obligation.Action != \"split\")",
+      "new": "false"
+    },
+    {
+      "name": "retained-history-notice",
+      "file": "withdrawn.go",
+      "old": "} else if row.Verified != \"\" || row.Reviewed != \"\" || evidenceHasContent(bf.Evidence) || bf.Gate == \"human\" {",
+      "new": "} else if false {"
+    },
+    {
+      "name": "in-progress-history",
+      "file": "withdrawn.go",
+      "old": "impact.Lifecycle == \"in-progress\" || ",
+      "new": ""
     }
   ]
 }

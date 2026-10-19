@@ -614,22 +614,45 @@ thing the boot reads — so it is reported as a notice and the boot continues.
 **The whole cockpit:**
 
 ```bash
-cellctl up <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca] \
+cellctl up <cell> [--role <name>]... [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca] \
+                  [--lease-wait <duration>] [--plan | --apply <plan-id>] [--json] \
                   [--automate '<cron>'] [--model <m>] [--provider <name>] [--harness <claude|codex>] \
                   [CLAUDE_CONFIG_DIR]
 ```
 
-One window per role in `ROLES`, plus a `deskd` window (watching `/healthz` if it is already up,
-otherwise standing it — see *How far the attended affirmation carries* above), in whichever
-**cockpit** resolves for this run — see *Cockpits* below. A cell with no deskd (a house cell
-without `DESKD=1`) has no `deskd` window and no placeholder in its place: `up` opens only the role
-windows (plus the comms window when comms is configured), the comms window or else the first role
-window creates the tmux session, and the one-line "no deskd" note is printed once on `up`'s stderr.
-When there is nothing at all to open (no deskd, no comms, and no role after `--no-the-desk`), `up`
-says so on stderr, creates no session, and exits 0. On the default tmux cockpit that is a
-session named `<cell>-cell`, and `up` attaches unless you pass `--no-attach`; re-attach later with
-`tmux attach -t <cell>-cell`. Windows start two seconds apart in every cockpit, so they do not all
-arrive at the fetch lock together.
+`up` **converges** the cell: it brings every targeted role to running and leaves a running role
+alone, so it is safe to run again on a half-up cell. Targets are the roles in `ROLES` (plus
+`the-desk` unless `--no-the-desk`), or exactly the roles named by `--role <name>` (repeatable;
+`--no-the-desk` and `--with-the-desk` stay as aliases). Each target is classified from its cadence
+lease (`run/cadence/<role>/owner.lock`):
+
+| Disposition | Meaning | What `up` does |
+|---|---|---|
+| up | the lease is held by a live process | row `already-up`; never relaunched, its window never touched |
+| stale | a running checkpoint with no live holder | row `failed`, naming `up --plan`; plain `up` never reconciles it |
+| absent | no lease holder, no checkpoint | its window is opened |
+
+Windows are opened **one at a time**: role N+1 opens only after role N has taken its lease and
+passed the scratch sweep, or has failed. `--lease-wait` (default 2m) bounds how long `up` waits
+for one role; a window that never takes its lease is a `failed` row. On an existing cockpit
+session `up` adds only the missing windows. A cell with a `deskd` window or a configured comms
+window starts those first, as before.
+
+It ends with one table, one row per targeted role: `up`, `already-up`, `reconciled+up`, `scheduled` or `failed`
+(with the first line of the error, verbatim). `scheduled` is a cadenced role that took its lease and is
+resting until its next pass is due (its last pass was under one interval ago): it has no role child yet,
+and the detail names the next due time. The exit code is 0 when every role is `up`, `already-up`,
+`reconciled+up` or `scheduled`, otherwise 1. `--json` prints the `cell-op-result` document
+([the machine seam](cellctl-machine-seam.md)) with one entry per role and nothing else on stdout.
+
+**Stale roles.** A hand-closed window leaves a checkpoint behind; `up` does not clear it for you.
+`cellctl up <cell> --plan` writes ONE plan that clears every stale role among the targeted roles (`--role` limits them; otherwise the cell's `ROLES`) and stale comms state (it works off a
+terminal and changes nothing else; with nothing stale it writes no plan). `cellctl up <cell>
+--apply <plan-id>` works on a terminal only: it shows the plan, takes the typed confirm,
+re-measures each role, clears the stale state and then launches the targets, reporting the cleared
+roles as `reconciled+up`. A role that came alive between plan and apply is refused `plan-stale`
+(exit 5), naming the role, and nothing is launched. Stale comms state is refused the same way,
+with the reconcile inventory and a pointer to `up --plan`.
 
 `--model <m>` applies the per-run override (see *Pinned models* below) to **every** role window this
 run opens, the-desk included — there is no per-role `--model-<role>` form, since that case is
@@ -639,12 +662,11 @@ actually boots resolves the same override the plan named. `--provider <name>` th
 role window the same way, for the same reason — see *Providers* below.
 
 `cellctl up <cell> --dry-run` (or `DRY_RUN=1 cellctl up <cell>`) prints the resolved cockpit and
-the per-role commands and launches nothing. On a house cell, `up` first runs a **reconcile
-preflight**. Stale role and comms checkpoints left by hand-closed or crashed windows, and
-orphaned processes carrying the cell's marker, are inventoried by pid and start time. On a
-terminal you are asked once before they are cleared. Otherwise the refusal prints the whole
-inventory and the exact recovery commands. A dry run prints the inventory and plan and changes
-nothing. `cellctl desk <cell> <role>` runs the same preflight for its one role. See
+each role's disposition (an absent role shows the command its window would run) and launches
+nothing. On a house cell, stale comms checkpoints and orphaned processes carrying the cell's
+marker are inventoried by pid and start time; `up` refuses them with the whole inventory and the
+exact recovery commands (`up --plan`, then `up --apply`). A dry run prints the inventory and plan
+and changes nothing. `cellctl desk <cell> <role>` runs the same preflight for its one role. See
 [Reconcile preflight](cellctl-cadence.md#reconcile-preflight). `--harness <h>` overrides `CELL_HARNESS` for **every** role window this run opens (the-desk
 included — there is no per-role `--harness-<role>` form) by threading `--harness <h>` onto each
 role's own `cellctl desk <cell> <role>` invocation; `[dry-run] harness=<h> — applied to every role

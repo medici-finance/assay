@@ -82,7 +82,7 @@ func briefFrontierState(streams []*Stream, s *Stream, b Brief, claimed map[strin
 	id := s.Name + "/" + b.Num
 	switch b.Status {
 	case "done", "verified", statusWithdrawn:
-		// withdrawn is terminal: never offered, never a blocker.
+		// withdrawn is closed to dispatch: never offered, never a wave blocker.
 		return fsDone
 	case "implemented":
 		return fsBlockedReview

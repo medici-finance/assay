@@ -376,7 +376,7 @@ func (r *reader) patch(v any, path string) *Patch {
 	return p
 }
 
-// DecodeHandoff strictly decodes, expands and validates a context-handoff-v1
+// DecodeHandoff strictly decodes, expands and validates a context-handoff-v1/v2
 // record. The returned record carries every brief reference in the canonical
 // four-segment form.
 //

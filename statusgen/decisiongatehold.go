@@ -249,6 +249,16 @@ func gateStatusRank(s string) int {
 	return 0
 }
 
+// gateBaseStatusRank prevents a retirement from donating completion progress.
+// Leaving withdrawn for a guarded status is a fresh move; staying withdrawn
+// is not. The head-side rank still guards entering withdrawal.
+func gateBaseStatusRank(s, head string) int {
+	if isWithdrawn(strings.ToLower(strings.TrimSpace(s))) && !isWithdrawn(strings.ToLower(strings.TrimSpace(head))) {
+		return 0
+	}
+	return gateStatusRank(s)
+}
+
 // buildGateSnapshot reads a board from a list of repo-relative entries. read
 // returns a plain file's bytes. Both sides of a change come through here, so
 // one rule decides what a record says: a board file that is not a plain file,
@@ -1090,11 +1100,11 @@ func judgeDecisionGate(base, head gateSnapshot) []gateFault {
 			} else {
 				low := f.RulingBase[0]
 				for _, b := range f.RulingBase[1:] {
-					if gateStatusRank(b.Status) < gateStatusRank(low.Status) {
+					if gateBaseStatusRank(b.Status, h.Status) < gateBaseStatusRank(low.Status, h.Status) {
 						low = b
 					}
 				}
-				if gateStatusRank(low.Status) < hr {
+				if gateBaseStatusRank(low.Status, h.Status) < hr {
 					f.Move = true
 					f.From = low.Status
 					if f.From == "" {

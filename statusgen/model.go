@@ -231,7 +231,7 @@ type Brief struct {
 	// WithdrawnDate, WithdrawnReason and SupersededBy are the brief-v3
 	// `withdrawn-date:` / `withdrawn-reason:` / `superseded-by:` frontmatter keys,
 	// wired from BriefFile by checkBriefFiles (withdrawn.go). They describe a
-	// brief whose README Status cell is the terminal `withdrawn` token: the date
+	// brief whose README Status cell is the off-path `withdrawn` token: the date
 	// it was withdrawn, why, and the successor brief id(s) the work moved to
 	// (`<stream>/<NN>` in this repo, or a global `<cell>:<alias>:<stream>:<NN>`
 	// id; empty = won't-fix, no successor). Display and lint inputs only —

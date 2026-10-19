@@ -19,6 +19,42 @@ func TestWithdrawalExecutionDriftRemainsVisible(t *testing.T) {
 		}
 	}
 }
+func TestWithdrawalUnknownFoldDoesNotInventUnrelatedDrift(t *testing.T) {
+	for _, status := range []string{"implemented", "verified", "done", "todo", "blocked"} {
+		s := mkStream("alpha", "active", "P1", Brief{Num: "01", Status: status})
+		for _, cell := range []string{"unknown", ""} {
+			got := assertedVsDerivedNotices(s, []BriefCell{{ID: "alpha/01", Cell: cell, Reason: "could-not-check", MergedPR: "PR #7 (merged abc1234)"}})
+			if len(got) != 0 {
+				t.Errorf("%s: unknown fold became drift: %v", status, got)
+			}
+		}
+	}
+}
+
+func TestWithdrawalRetainedHistoryNotice(t *testing.T) {
+	for _, kind := range []string{"verified", "reviewed", "evidence", "human gate"} {
+		t.Run(kind, func(t *testing.T) {
+			s := mkStream("alpha", "active", "P1", Brief{Num: "01", Status: "withdrawn"})
+			bf := &BriefFile{Schema: briefSchemaV3, Brief: "tc:tr:alpha:01", Withdrawal: &Withdrawal{HasDate: true, Date: "2026-10-18", HasReason: true, Reason: "retired"}}
+			switch kind {
+			case "verified":
+				s.Briefs[0].Verified = "retained verification"
+			case "reviewed":
+				s.Briefs[0].Reviewed = "retained review"
+			case "evidence":
+				bf.Evidence = "A partial implementation run."
+			case "human gate":
+				bf.Gate = "human"
+			}
+			var notices []string
+			checkWithdrawalKeys(func(string, ...any) {}, func(f string, a ...any) { notices = append(notices, fmt.Sprintf(f, a...)) }, "brief-01", "alpha/01", bf, &s.Briefs[0], s, newWithdrawalResolver([]*Stream{s}))
+			if !hasProblem(notices, "retains execution/review obligations") {
+				t.Fatalf("retirement lost history notice: %v", notices)
+			}
+		})
+	}
+}
+
 func TestWithdrawalSuccessorCyclesAndUnknownCoverage(t *testing.T) {
 	fm := func(n, refs string) string {
 		return withdrawnFM(n, 0, "", "withdrawn-date: 2026-10-18\nwithdrawn-reason: replanned\nsuperseded-by: ["+refs+"]\n")
@@ -102,6 +138,11 @@ func TestWithdrawalContextProvenance(t *testing.T) {
 		edit               func(*BriefFile)
 	}{
 		{name: "valid shared provenance"},
+		{name: "proposed target", change: "proposed", want: "not approved"},
+		{name: "wrong approval revision", change: "revision", want: "approval is for revision"},
+		{name: "amend is not retirement", change: "amend", want: "no retire/replace/split"},
+		{name: "missing subject impact", change: "impact", want: "has no impact record"},
+		{name: "in-progress history required", change: "in-progress", want: "preserved-history"},
 		{name: "digest drift", want: "digest does not match", edit: func(b *BriefFile) { b.Withdrawal.Context.Digest = "sha256:" + strings.Repeat("0", 64) }},
 		{name: "successor drift", want: "successors do not match", edit: func(b *BriefFile) { b.Withdrawal.SupersededBy = []string{"alpha/02"} }},
 		{name: "history required", want: "preserved-history", edit: func(b *BriefFile) { b.Evidence = "A partial implementation run." }},
@@ -111,14 +152,31 @@ func TestWithdrawalContextProvenance(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			raw := []byte(record)
+			switch tc.change {
+			case "proposed":
+				raw = []byte(strings.NewReplacer(`"state":"approved"`, `"state":"proposed"`, `"approval":{"revision":"abcdef1","reference":"https://example.invalid/approval"}`, `"approval":null`, `"proposal_approved":true`, `"proposal_approved":false`, `"next_act":"publish"`, `"next_act":"approve"`).Replace(string(raw)))
+			case "revision":
+				raw = []byte(strings.Replace(string(raw), `"revision":"abcdef1","approval"`, `"revision":"abcdef2","approval"`, 1))
+			case "amend":
+				raw = []byte(strings.NewReplacer(`"action":"retire"`, `"action":"amend"`, `"disposition":"retire"`, `"disposition":"amend"`).Replace(string(raw)))
+			case "impact":
+				raw = []byte(strings.Replace(string(raw), `"subject":"tc:tr:alpha:01"`, `"subject":"tc:tr:alpha:02"`, 1))
+			case "in-progress":
+				raw = []byte(strings.Replace(string(raw), `"lifecycle":"todo"`, `"lifecycle":"in-progress"`, 1))
+			}
 			if tc.change == "subject" {
 				raw = []byte(strings.ReplaceAll(string(raw), "tc:tr:alpha:01", "tc:tr:alpha:02"))
 			}
 			if tc.change == "claim" {
 				raw = []byte(strings.Replace(string(raw), `"active_work":[]`, `"active_work":[{"subject":"tc:tr:alpha:01","claim":"claim:alpha-01","brief_revision":"abcdef1","observed_at":"2026-10-18T00:00:00Z","owner":"worker","checkpoint":"partial work retained","treatment":"cancel","acknowledged":false}]`, 1))
 			}
-			h, err := contexthandoff.DecodeHandoff(raw)
-			if err != nil {
+			// Digest construction is separate from strict decoding: invalid cross-record
+			// inputs must reach the real file reader and be refused there.
+			var h contexthandoff.Handoff
+			if err := json.Unmarshal(raw, &h); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := contexthandoff.DecodeHandoff(raw); err != nil && tc.change != "revision" && tc.change != "impact" {
 				t.Fatal(err)
 			}
 			streams, _, _ := withdrawnTree(t, []wdRow{{num: "01", status: "withdrawn", file: withdrawnFM("01", 0, "", "withdrawn-date: 2026-10-18\nwithdrawn-reason: retired\nsuperseded-by: []\n")}})
@@ -218,5 +276,56 @@ func TestWithdrawalRecordedHumanRulingStillWorks(t *testing.T) {
 	}
 	if code, out := dhGate(t, root); code != 0 {
 		t.Fatalf("recorded ruling refused: %s", out)
+	}
+}
+
+func TestWithdrawalSuccessorWhitespaceCannotHideCycles(t *testing.T) {
+	fm := func(n, refs string) string {
+		return withdrawnFM(n, 0, "", "withdrawn-date: 2026-10-18\nwithdrawn-reason: replanned\nsuperseded-by: ["+refs+"]\n")
+	}
+	_, p, _ := withdrawnTree(t, []wdRow{{num: "01", status: "withdrawn", file: fm("01", "' alpha/02 '")}, {num: "02", status: "withdrawn", file: fm("02", "' tc:tr:alpha:01 '")}})
+	if !hasProblem(p, "superseded-by", "cycle") {
+		t.Fatalf("whitespace hid a configured cycle: %v", p)
+	}
+}
+
+func TestWithdrawalArchivedExportDoesNotBorrowParentPin(t *testing.T) {
+	parent := t.TempDir()
+	mustWrite(t, filepath.Join(parent, ".assay-versions"), "statusgen v99.0.0 sha\n")
+	path := filepath.Join(parent, "export", "docs", "archive", "alpha", "done", "brief-01-x.md")
+	mustWrite(t, path, "brief")
+	if got := pinnedStatusgenFor(path); got != "" {
+		t.Fatalf("archived export borrowed the parent's pin: %s", got)
+	}
+}
+
+func TestWithdrawalHumanGateExitNotBypassed(t *testing.T) {
+	dhSeams(t, nil)
+	for _, status := range []string{"implemented", "verified", "done"} {
+		t.Run(status, func(t *testing.T) {
+			base := unruledBase()
+			base[dhReadmePath] = dhReadme(dhRow("18", "withdrawn"))
+			root := dhFixture(t, base)
+			dhWrite(t, root, map[string]string{dhReadmePath: dhReadme(dhRow("18", status))})
+			if p := dhLayerOne(t, root); !hasProblem(p, "moves it to "+status, "no recorded ruling") {
+				t.Fatalf("withdrawal exit bypassed human hold: %v", p)
+			}
+			if code, out := dhGate(t, root); code == 0 {
+				t.Fatalf("withdrawal exit bypassed corroborated hold: %s", out)
+			}
+		})
+	}
+}
+
+func TestWithdrawalUnchangedHumanGateDoesNotCreateMove(t *testing.T) {
+	dhSeams(t, nil)
+	base := unruledBase()
+	base[dhReadmePath] = dhReadme(dhRow("18", "withdrawn"))
+	root := dhFixture(t, base)
+	if p := dhLayerOne(t, root); len(p) != 0 {
+		t.Fatalf("unchanged retirement created a move: %v", p)
+	}
+	if code, out := dhGate(t, root); code != 0 {
+		t.Fatalf("unchanged retirement failed hold: %s", out)
 	}
 }

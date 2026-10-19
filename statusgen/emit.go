@@ -297,7 +297,7 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 			if !s.LastTouch.IsZero() {
 				touched = s.LastTouch.Format("2006-01-02")
 			}
-			// Withdrawn briefs are terminal and out of the denominator; their own
+			// Withdrawn briefs are retired and out of the denominator; their own
 			// count rides in Notes, ONLY when one exists (byte-identical otherwise).
 			if wc := withdrawnCount(s); wc > 0 {
 				if note != "" {
@@ -694,7 +694,7 @@ func emit(streams []*Stream, findings []Finding, nu NextUp, ages map[string]stri
 		}
 	}
 
-	// Withdrawn briefs (terminal): retired or merged into a successor. Rendered
+	// Withdrawn briefs (off-path): retired or merged into a successor. Rendered
 	// ONLY when one exists, so a board with none is byte-identical.
 	withdrawnTotal := 0
 	for _, s := range streams {

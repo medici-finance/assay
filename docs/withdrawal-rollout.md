@@ -69,6 +69,13 @@ Build the existing mutation harness from `tools/desk` with
 ```
 
 The pristine test baseline must pass and the human-gate positive control must fail.
-Each of the ten listed mutations must be caught, with zero `NOT CAUGHT` and zero
+Each listed mutation must be caught, with zero `NOT CAUGHT` and zero
 `could-not-mutate`. A broken harness run carries no evidence. This uses the existing
 harness and committed regression tests; it is a release check, not a new adopter process.
+
+
+The suite also covers reactivation of human-gated withdrawn work, unknown folds on
+unrelated lifecycle states, unapproved context, non-retirement actions and retained
+history signals. Approval revision mismatches and amendments without a subject impact
+are rejected by strict decoding before the consumer's defensive checks; deleting only
+a redundant downstream guard is therefore not a behavioral mutation of those inputs.
