@@ -231,6 +231,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 50 | [Bind verifier environment evidence to the run admission](brief-50-bind-verifier-environment-evidence-to-the-run-admission.md) | 1 | M | todo | — | — |
 | 51 | [Drive the verifier skill from the current queue and landing contract](brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md) | 4 | M | todo | — | — |
 | 52 | [Link decision and verification cards without conflating their authority](brief-52-link-decision-and-verification-cards-without-conflating-their-authority.md) | 1 | M | todo | — | — |
+| 53 | [Rename pr-review-desk to review-desk without breaking live windows or adopters](brief-53-rename-pr-review-desk-to-review-desk.md) | 1 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -418,3 +419,14 @@ Old dispatch and stranded-card counts are historical measurements, not current
 acceptance evidence. Tests must demonstrate named PASS output so a zero-test match
 cannot satisfy a Verify row. Authoring supplies these contracts; implementers and
 independent verifiers supply their execution evidence later.
+
+## Review-desk rename — 2026-10-18
+
+Brief 53 renames the `pr-review-desk` role to `review-desk`, the same way the two earlier
+role renames went: register the successor first, and keep the old name as an accepted alias
+forever. The alias covers stop flags, `DESK_LOOP`, cellctl role arguments, the comms lane
+list, spec role sets, worktrees and claims. The issue label values (`to:reviewer`,
+`raised-by:reviewer`) do not change. Readers additionally accept the loop spellings. For at
+least one release, a thin deprecated `pr-review-desk` skill redirects to `review-desk`, and a
+skillslint gate fails on any new bare use of the old name. The matching change to the
+maintainers' house layer is a separate brief there.
