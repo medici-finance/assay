@@ -8,10 +8,10 @@
     ".cursor/references/desk-shell.md": "f996335375694a88a5d4dc3229236c8bb023a519ee6d4fc26838745121d368c0",
     ".cursor/references/standing-note.md": "2f2868fdd8f122903e30e1b720a0efb7940165946e379adad2e6378a4d4e58c0",
     ".cursor/references/tick-contract.md": "65e6ac141091a31120f5eefd126891409ed1a92c376d6ef3f99fd8ea52e86ee7",
-    ".cursor/rules/assay.mdc": "23c05086ce8326097697f8ce6a983a3c3dbf3e0f2f38903673a4e5f067c9ce8c",
+    ".cursor/rules/assay.mdc": "af877a9af6a077206938760ef958eb4d18624f915cca6b0cf2f287231f6ba017",
     ".cursor/skills/adopt/SKILL.md": "8a2fda684f224efd2a35c1ccfbe5d842d2f91d168d342f70d5b027b16adfd3f8",
     ".cursor/skills/ask-decision/SKILL.md": "bbf7721dc0147706b1c05657f93c5860302c14f8ddc0c41b3b3efbad5a2fddfb",
-    ".cursor/skills/author-brief/SKILL.md": "b9ede81c5f1d8de2bddc4db15050858ac81102df21a35744d1f341b6ba09edbd",
+    ".cursor/skills/author-brief/SKILL.md": "0fd6c7c00b7264d91c3edc0f1de05f428252c1820c10028798af688242369692",
     ".cursor/skills/author-spec/SKILL.md": "78f76deb91b7416b05a53ea4d07ab6193d240f00e791e8ff2ae5b59fbe088c6b",
     ".cursor/skills/author-spec/references/quality-requirements.md": "b89b1d814fa8737f73273c964cf94a772321e4006161a8e0422f54c1acb2901b",
     ".cursor/skills/author-spec/references/review-prompts.md": "3b75799a47769ad8d469880aaf97b5b69c9e3bfc0ce400e36052b598873a06a6",
@@ -27,16 +27,16 @@
     ".cursor/skills/pr-review-desk/references/out-of-scope-filing.md": "d850da0002a43a5ecca1a6c6fab054c8d70731ca6b341209ddb9268ed3e7d2bc",
     ".cursor/skills/pr-review-desk/references/re-anchor.md": "bfb090008d8e5c0e26fe1d4961b355222d366b5439f668109a3c97be5abc82f3",
     ".cursor/skills/pr-review-desk/references/verdict-format.md": "6c262266546311abab9e8ba25972bc8bf01eb63cf9d75673510ac6d3a1d7677a",
-    ".cursor/skills/pr-shepherd/SKILL.md": "0b7778c3ac60b9eaca33a373aa4b21f274a3e6d28a6307f4f56060ad2f166c66",
+    ".cursor/skills/pr-shepherd/SKILL.md": "7b74cde36a194c3b8b3114de522d35229f25472a3f2ad6d0e01a8a0cf477327c",
     ".cursor/skills/session-coach/SKILL.md": "a0827c8ab4a8fcfbc79e2456d95f3f6581b371b748d318da148d36a33452b975",
     ".cursor/skills/session-coach/example.md": "4853dad1eda099d81bdc8e612cab0a8b309af99bcb7d6d64bdfde534bcfa08b3",
     ".cursor/skills/system-demo/SKILL.md": "e13915b75b8843dcbbe183091c883b7dc17fd7267c59408d9a068b6cc0dd1dca",
     ".cursor/skills/system-demo/references/storyboard.md": "9d55dd566e084c1a48eaecb09b6370e2745cd3d7268fdb08494187a80eeff531",
     ".cursor/skills/the-desk/SKILL.md": "de7d5b8fef01f0e724a2da02bb4a56ce66337141fe30a06be38823ed725768cb",
     ".cursor/skills/upgrade-assay/SKILL.md": "50b924bd9561444210f6c6bc141fffe14de90583b346e2fd7b58553dec80c2ac",
-    ".cursor/skills/verify-desk/SKILL.md": "548af341fa5d29fa945b85040fcbed4b838336b8b3a1b6ce1e53353b0f49e457",
-    ".cursor/skills/worker-desk/SKILL.md": "937aff52274f7d5e750d41860bbf29d2b47d0ca2f56049bcc542ed16abd23d66",
-    ".cursor/skills/worker-desk/references/dispatch-runbook.md": "9845b6c5277c9676be4e3d33f4e83501317fe1eb0cbd379e599e3deddad03ca3"
+    ".cursor/skills/verify-desk/SKILL.md": "7cebac3a3b41d489755896c39bba9071c1814168cb6fbf7e2e678b6a37f3f2b0",
+    ".cursor/skills/worker-desk/SKILL.md": "b3624f98414421a9fc7df1bc03eb2c480b0feed9fc4e56b806b93b90f8bf72f7",
+    ".cursor/skills/worker-desk/references/dispatch-runbook.md": "94a8c1d6002f937d406b1d15969ccf81f14c005eb4938bdd7dfe18ac42fd5927"
   },
-  "bindingsSha256": "48bc5a7366dd69b0a333ea99a76f5cfd99cb81fe418593c6854b505a73434f1c"
+  "bindingsSha256": "79629b41831a90c32a20f8fb1d5ed346d1112c06a532b75f5854e2f9addaafca"
 }
