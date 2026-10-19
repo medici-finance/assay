@@ -1,2 +1,0 @@
-### Fixed
-- `deskwt prune`'s cell-cache pressure pass no longer takes the cache lock or walks the whole cache when it is fresh, clean and well inside its thresholds: it uses the new lock-free `cellcache.AdmitRecorded` pre-check (the discovered-root form of `cellcache.Admit`) and falls through to the unchanged locked check for anything it cannot prove. A guard test fails if any code outside the cache package calls the walking `CheckRecorded`.

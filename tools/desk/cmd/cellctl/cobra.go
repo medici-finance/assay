@@ -455,6 +455,9 @@ func buildRoot() *cobra.Command {
 		Usage: "absolute path of the cell registry to use for this run (overrides CELLS_ROOT)"})
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		maintenanceCommand = cmd.Name()
+		// A state-changing invocation (annotated cellop:state-changing) is refused off a
+		// terminal and in a desk session before anything else runs (cellop_cli.go).
+		gateStateChanging(cmd, args)
 		if cmd.Annotations[noEcho] == "1" {
 			return nil
 		}
@@ -478,6 +481,8 @@ func buildRoot() *cobra.Command {
 		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(),
 	)
+	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
+	cellopFixtureCommands(root)
 	return root
 }
 
@@ -689,20 +694,31 @@ func deskCmd() *cobra.Command {
 func upCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "up <cell> [CLAUDE_CONFIG_DIR]",
-		Short: "open one window per role in the resolved cockpit",
-		Long: "One window per role in the resolved COCKPIT: a tmux session \"<cell>-cell\", a labelled herdr tab per role,\n" +
-			"or an orca terminal per role (deskd + the-desk + the loop roles; a house cell opens no deskd window unless\n" +
-			"DESKD=1). --cockpit overrides cell.env CELL_COCKPIT for this run.\n\n" +
+		Short: "converge the cell: open a window for every role that is not already up",
+		Long: "Converge the cell onto \"every targeted role is running\". Each role is classified first:\n" +
+			"  up      its cadence lease is held by a live process: reported already-up, never relaunched, its window\n" +
+			"          never touched;\n" +
+			"  stale   a running checkpoint with no live holder (a crashed session): plain up never reconciles it, the\n" +
+			"          role is reported failed and the exact recovery is named (up --plan, then up --apply);\n" +
+			"  absent  launched, in the resolved COCKPIT: a tmux session \"<cell>-cell\" (an existing session gets only\n" +
+			"          the missing windows), a labelled herdr tab per role, or an orca terminal per role.\n" +
+			"A house cell opens no deskd window unless DESKD=1. --cockpit overrides cell.env CELL_COCKPIT for this run.\n" +
+			"--role <name> (repeatable) limits the run to those roles; --no-the-desk and --with-the-desk stay as aliases.\n\n" +
+			"Launches are serialized: role N+1 opens only after role N holds its lease and has passed the scratch\n" +
+			"sweep (or has failed); --lease-wait bounds that wait per role. The run ends with one row per targeted role\n" +
+			"(up, already-up, reconciled+up, scheduled, failed with the first error line) and exits 0 when no row failed, else 1.\n\n" +
+			"--plan writes ONE cell-op plan clearing every stale role among the targeted roles (--role limits them; else the\n" +
+			"cell's ROLES) and stale comms state, and changes nothing else; --apply\n" +
+			"<plan-id>, on a terminal only, shows it, takes the typed confirm, re-measures and runs it, then launches\n" +
+			"the targeted roles. A role that came alive between plan and apply is refused as plan-stale, by name.\n" +
+			"--json prints the cell-op-v1 document (one entry per role) and nothing else on stdout.\n\n" +
 			"--model, --harness, --kind and --provider override the pin for EVERY role window this run opens (per run,\n" +
 			"not persisted, the same precedence as `cellctl desk`). --set persists every override given, with one cell.env\n" +
 			"backup first. --automate '<cron>' is an ORCA-only shape: one scheduled automation per role, fronted by an\n" +
-			"exit-code precheck, instead of a live terminal. --dry-run (or DRY_RUN=1) prints the reconcile inventory,\n" +
-			"the resolved cockpit and the per-role commands and changes and launches nothing.\n\n" +
-			"On a house cell, up first runs a reconcile preflight: stale cadence/comms checkpoints and orphaned\n" +
-			"processes carrying the cell marker are inventoried by pid and start time; on a terminal it asks once\n" +
-			"before clearing them, and otherwise refuses with the inventory and the exact recovery commands.\n\n" +
+			"exit-code precheck, instead of a live terminal. --dry-run (or DRY_RUN=1) prints each role's disposition,\n" +
+			"the resolved cockpit and the per-role commands and launches nothing.\n\n" +
 			"On a container or scrubbed cell up hands the single desk the same typed options; the host-cockpit flags\n" +
-			"(--no-the-desk, --with-the-desk, --no-attach, --automate) are refused there.",
+			"(--role, --plan, --apply, --json, --no-the-desk, --with-the-desk, --no-attach, --automate) are refused there.",
 		Annotations: map[string]string{leadingArgsKey: "1"},
 		Args:        cobra.ArbitraryArgs,
 	}
@@ -711,9 +727,15 @@ func upCmd() *cobra.Command {
 		bBool("with-the-desk", "open the the-desk window (the default; accepted for compatibility)"),
 		bBool("no-attach", "do not attach to the session after opening it"),
 		bStr("automate", "orca only: schedule one automation per role (a 5-field cron string or a preset)"),
-		bBool("dry-run", "print the reconcile inventory and plan, the cockpit and the per-role commands; change and launch nothing (as DRY_RUN=1)"),
+		bBool("dry-run", "print each role's disposition, the cockpit and the per-role commands; change and launch nothing (as DRY_RUN=1)"),
+		cli.Binding{Key: "role", Kind: cli.StringArray, Flag: "role", Usage: "converge only this role; repeatable"},
+		bBool("plan", "write one plan that reconciles every stale targeted role (and stale comms state) and change nothing else"),
+		bBool("json", "print the result as cell-op-v1 JSON, one entry per role, and nothing else on stdout"),
+		bStr("apply", "apply a stored reconcile plan on this terminal, then launch the targeted roles"),
+		cli.Binding{Key: "lease-wait", Kind: cli.Duration, Flag: "lease-wait", Default: upDefaultLeaseWait, Usage: "how long to wait for each launched role to take its lease and pass the scratch sweep"},
 	)
 	set := declare(cmd, bs...)
+	markStateChangingFlag(cmd, "apply")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
 		c := loadCellWithKind(cell, kindScan(cmd, verbWords))
@@ -723,7 +745,18 @@ func upCmd() *cobra.Command {
 		}
 		launchNeeds(v)
 		needValue(v, "automate", "--automate needs a trigger (a 5-field cron string or a preset)")
-		cmdUp(c, v, lastBare(args[1:]))
+		if v.Bool("plan") && cmd.Flags().Changed("apply") {
+			die("up: --plan and --apply are exclusive")
+		}
+		if v.Bool("plan") {
+			upPlan(cmd, c, c.upTargets(v.Strings("role"), v.Bool("no-the-desk")))
+			return nil
+		}
+		ctl := upControl{cmd: cmd, json: v.Bool("json")}
+		if cmd.Flags().Changed("apply") {
+			ctl.applyID = cmd.Flags().Lookup("apply").Value.String()
+		}
+		cmdUp(c, v, lastBare(args[1:]), ctl)
 		return nil
 	}
 	return cmd

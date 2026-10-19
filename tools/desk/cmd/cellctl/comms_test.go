@@ -211,7 +211,7 @@ func TestCommsServiceFailureCancelsPeer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	start := time.Now()
-	result := runCommsPair(ctx, [][]string{{exe, "-test.run=^TestCommsServiceHelper$", "--", "wait"}, {exe, "-test.run=^TestCommsServiceHelper$", "--", "fail"}}, append(os.Environ(), "CELL_COMMS_TEST_HELPER=1"))
+	result := runCommsPair(ctx, [][]string{{exe, "-test.run=^TestCommsServiceHelper$", "--", "wait"}, {exe, "-test.run=^TestCommsServiceHelper$", "--", "fail"}}, fixtureProcessEnv("CELL_COMMS_TEST_HELPER=1"))
 	if result.ExitCode != 7 || result.Err == nil || result.Uncertain || time.Since(start) > 4*time.Second {
 		t.Fatalf("failed service did not cleanly stop its peer: %+v", result)
 	}

@@ -15,8 +15,7 @@
     "reason": "New release-by-merge detector; pending maintainer activation (README Contents)."
   },
   "release.yml": {
-    "mode": "pending",
-    "reason": "Intentional release-by-merge tag authorizer proposal (README Contents)."
+    "mode": "identical"
   },
   "windows-ci-leg.yml": {
     "mode": "identical"
@@ -28,14 +27,11 @@
     "mode": "pending",
     "reason": "Classified board push (#2910): credential preflight and per-class push failures in the QUALITY.md regen; pending maintainer promotion (README Contents)."
   },
-  "verify-gate-close.yml": {
-    "mode": "identical"
-  },
   "forge-surface-control.yml": {
     "mode": "identical"
   },
   "assay-statusgen.yml": {
     "mode": "pending",
-    "reason": "Classified board push (#2910): credential preflight and per-class push failures in regen and model-autoflip, plus the lint job step running their tests; pending maintainer promotion (README Contents)."
+    "reason": "Classified board push (#2910): credential preflight and per-class push failures in regen and model-autoflip, plus the lint job step running their tests; pending maintainer promotion (README Contents). Its full-history regen checkout line (fetch-depth: 0, #3364) is already live (#3385), and the staged line is byte-identical to it."
   }
 }

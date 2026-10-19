@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/verifycmd/ -count=1 -timeout 120s -run 'TestMarkedSharedVectors|TestLiftUnmarkedIsLegacy'",
+  "test": "go test ./internal/verifycmd/ -count=1 -timeout 120s -run 'TestMarkedSharedVectors|TestLiftUnmarkedIsLegacy|TestCommentOnlySharedVectors|TestCommentCellSharedVectors|TestCommandColumnLiftsViaLift'",
   "control": {
     "name": "CONTROL — Marked never honours a marker (the pre-#1805 legacy lift)",
     "file": "internal/verifycmd/verifycmd.go",
@@ -78,6 +78,30 @@
       "file": "internal/verifycmd/verifycmd.go",
       "old": "\t\tif !found {\n\t\t\tfirst, found = c, true\n\t\t}",
       "new": "\t\treturn c, true"
+    },
+    {
+      "name": "#2684: CommentOnly never matches (a lone heading span lifts as a passing command)",
+      "file": "internal/verifycmd/verifycmd.go",
+      "old": "\treturn strings.HasPrefix(strings.TrimSpace(cmd), \"#\")",
+      "new": "\treturn false"
+    },
+    {
+      "name": "#2684 review S1: CommentLed judges only the executed lift (a comment first span followed by prose runs as the : no-op)",
+      "file": "internal/verifycmd/verifycmd.go",
+      "old": "\tif CommentOnly(firstSpan(cell)) || CommentOnly(stripInlineCode(cell)) {",
+      "new": "\tif CommentOnly(stripInlineCode(cell)) {"
+    },
+    {
+      "name": "#2684 review F2: a cmd:-marked comment is exempt (the executors run what statusgen refuses)",
+      "file": "internal/verifycmd/verifycmd.go",
+      "old": "\t\tif CommentOnly(c) {\n\t\t\treturn MarkedCommentWhy",
+      "new": "\t\tif false {\n\t\t\treturn MarkedCommentWhy"
+    },
+    {
+      "name": "#2684 review S1: the firstSpan port closes an N-tick fence on a single backtick (it drifts from statusgen's lift)",
+      "file": "internal/verifycmd/verifycmd.go",
+      "old": "\tfence := strings.Repeat(\"`\", backtickRun(s, start))",
+      "new": "\tfence := \"`\""
     }
   ]
 }

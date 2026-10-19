@@ -14,29 +14,41 @@ import (
 // whose block counts ONE option — otherwise well-formed (default/caught-by/ruled-check all
 // present and valid). Neutral, public-repo-safe: no house names, no private issue numbers
 // (ground rules).
+//
+// It also carries a valid `### Evidence` section (neutralEvidence, which holds no one-way
+// term). Without one, the separate blocker-evidence gate refuses the same filing with the
+// same exit code, so a test on this fixture could stay red with the fork-test gate removed
+// and prove nothing about it. With it, the fork-test gate is the only gate left to refuse.
 const portOpeningQuestionBody = `Should the metrics endpoint open a new port for the sidecar, or share the existing one?
 
-` + onlyOneWorkableOptionBlock
+` + neutralEvidence + "\n" + onlyOneWorkableOptionBlock
 
 // TestNeedsDecisionOneWorkableOptionRefused — Verify row 2. A needs-decision filing whose
 // fork-test block counts one workable option refuses (exit 5), files nothing, and names all
 // three --no-fork re-routes.
 //
-// FAIL-FIRST: with the fork-test gate call in cmdNew short-circuited (`if false && ...`, the
-// state of this tree before the gate was wired), this test's assertions on the --no-fork
-// re-route names went red — the pre-existing blocker-evidence gate is the only thing that
-// still fires (exit 5, but for the wrong reason and with none of the re-routes named), quoted
-// verbatim from that run:
+// The fixture carries a valid `### Evidence` section, and the refusal is asserted NOT to be
+// the blocker-evidence gate's, so the only gate that can turn this row green is the
+// fork-test gate. Every assertion is non-fatal, so a red run reports all of them at once.
 //
-//	forkgate_test.go:54: refusal does not name the --no-fork re-route "brief-contradicts-artifact": ...
-//	    refused: a filing labelled "needs-decision" is a blocker claim and must carry a `### Evidence` section ...
-//	forkgate_test.go:54: refusal does not name the --no-fork re-route "wrong-repo": ...
-//	forkgate_test.go:54: refusal does not name the --no-fork re-route "tool-false-positive": ...
-//	--- FAIL: TestNeedsDecisionOneWorkableOptionRefused (0.12s)
+// FAIL-FIRST: with the fork-test gate call in cmdNew short-circuited (`if false && ...`):
 //
-// Confirming that the fork-test gate itself, not the pre-existing evidence gate, is what
-// makes this row pass.
+//   - on the earlier fixture (no `### Evidence` section) the blocker-evidence gate still
+//     refused with exit 5, so the exit-code assertion stayed GREEN and only the re-route
+//     names went red, with the evidence gate's message as the refusal:
+//
+//     refusal does not name the --no-fork re-route "brief-contradicts-artifact": ...
+//     refused: a filing labelled "needs-decision" is a blocker claim and must carry a `### Evidence` section ...
+//
+//   - on this fixture nothing refuses, the item is filed, and the row goes red on the
+//     fork-test gate's own absence: rc 0, an issue filed, a create attempted, and none of
+//     the three --no-fork re-routes named.
+//
+// regression: #3153
 func TestNeedsDecisionOneWorkableOptionRefused(t *testing.T) {
+	if !bodyHasEvidenceBlock(portOpeningQuestionBody) {
+		t.Fatal("fixture: portOpeningQuestionBody must carry a valid `### Evidence` section")
+	}
 	calls := withEnv(t)
 	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
 	t.Setenv("FAKEGH_LABELS", labelsJSON(t, needsDecisionLabel))
@@ -46,13 +58,16 @@ func TestNeedsDecisionOneWorkableOptionRefused(t *testing.T) {
 		"--title", "open a new port for the sidecar metrics endpoint", "--body-file", body,
 		"--label", needsDecisionLabel})
 	if rc != deskkit.ExitRefused {
-		t.Fatalf("one-workable-option filing rc = %d, want %d (exit 5); out=%s", rc, deskkit.ExitRefused, out)
+		t.Errorf("one-workable-option filing rc = %d, want %d (exit 5); out=%s", rc, deskkit.ExitRefused, out)
 	}
 	if curForge.filed != nil {
-		t.Fatal("an issue was filed despite fewer than two workable options")
+		t.Error("an issue was filed despite fewer than two workable options")
 	}
 	if createArgv(*calls) != nil {
-		t.Fatalf("a create was attempted despite fewer than two workable options: %v", ghCalls(*calls))
+		t.Errorf("a create was attempted despite fewer than two workable options: %v", ghCalls(*calls))
+	}
+	if strings.Contains(out, "blocker claim") {
+		t.Errorf("refused by the blocker-evidence gate, not the fork-test gate: %s", out)
 	}
 	for _, want := range []string{noForkBriefContradicts, noForkWrongRepo, noForkToolFalsePositive} {
 		if !strings.Contains(out, want) {
@@ -291,5 +306,109 @@ func TestForkTestForceNewBypassesTheGate(t *testing.T) {
 	}
 	if curForge.filed == nil {
 		t.Fatal("the force-new filing was not filed")
+	}
+}
+
+// --- --no-fork brief-contradicts-artifact: the composed addressee and title prefix -------
+
+// amendBody carries what --no-fork brief-contradicts-artifact requires of a body — a
+// brief-id-shaped token and, backtick-quoted, the artifact path it contradicts — and no
+// one-way term, so the re-route's own mapping is the only thing these tests exercise.
+const amendBody = "example-stream/07 says the setup guide has three steps; `docs/guide/setup.md` has four.\n"
+
+// runAmend files amendBody with --no-fork brief-contradicts-artifact under title, plus any
+// extra arguments, against a repo carrying both addressee labels.
+func runAmend(t *testing.T, title string, extra ...string) (int, string, *[][]string) {
+	t.Helper()
+	calls := withEnv(t)
+	t.Setenv("FAKEGH_SEARCH_HITS", "[]")
+	t.Setenv("FAKEGH_LABELS", labelsJSON(t, "to:desk", "to:worker"))
+	body := bodyFileWith(t, amendBody)
+	args := append([]string{"new", "-R", allowedRepo, "--title", title, "--body-file", body,
+		"--no-fork", noForkBriefContradicts}, extra...)
+	rc, out := runCapture(args)
+	return rc, out, calls
+}
+
+// TestNoForkAmendAddressesDesk — --no-fork brief-contradicts-artifact addresses the filing
+// to the desk (`to:desk`) whether or not the caller passes --to, and a matching --to (any
+// case) is accepted rather than refused.
+//
+// FAIL-FIRST: with the value's mapping removed from cmdNew (no addressee composed), the
+// no-to case files with no `to:desk` label and goes red. The two --to cases pin that a
+// matching --to is accepted; they supply the addressee themselves, so they stay green.
+//
+// regression: #3153
+func TestNoForkAmendAddressesDesk(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		extra []string
+	}{
+		{"no-to", nil},
+		{"to-desk", []string{"--to", "desk"}},
+		{"to-Desk", []string{"--to", "Desk"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rc, out, _ := runAmend(t, "the setup guide step count", tc.extra...)
+			if rc != deskkit.ExitOK {
+				t.Fatalf("rc = %d, want 0; out=%s", rc, out)
+			}
+			if curForge.filed == nil {
+				t.Fatal("the amend-brief filing was not filed")
+			}
+			if !hasLabel(curForge.appliedLabel, "to:desk") {
+				t.Errorf("applied labels %v do not carry to:desk", curForge.appliedLabel)
+			}
+			if hasLabel(curForge.appliedLabel, "to:worker") {
+				t.Errorf("applied labels %v carry to:worker, want only to:desk", curForge.appliedLabel)
+			}
+		})
+	}
+}
+
+// TestNoForkAmendRefusesOtherTo — an explicit --to naming any role but the desk conflicts
+// with the addressee the re-route composes: refused (exit 5) before anything is written,
+// and the refusal names the addressee it requires.
+//
+// FAIL-FIRST: with the value's mapping removed from cmdNew, --to worker files the item
+// addressed to the worker (rc 0) and this test goes red.
+//
+// regression: #3153
+func TestNoForkAmendRefusesOtherTo(t *testing.T) {
+	rc, out, calls := runAmend(t, "the setup guide step count", "--to", "worker")
+	if rc != deskkit.ExitRefused {
+		t.Fatalf("rc = %d, want %d; out=%s", rc, deskkit.ExitRefused, out)
+	}
+	if curForge.filed != nil || createArgv(*calls) != nil {
+		t.Fatalf("a conflicting --to was filed anyway: %v", ghCalls(*calls))
+	}
+	if !strings.Contains(out, "--to desk") {
+		t.Errorf("refusal does not name the required addressee --to desk: %s", out)
+	}
+}
+
+// TestNoForkAmendPrefixesTitle — the `amend brief:` title prefix is composed by the tool,
+// not trusted to free text: a title without it is filed WITH it (the tool prepends it; it
+// does not refuse), and a title that already carries it, in any case, is not prefixed twice.
+//
+// FAIL-FIRST: with the value's mapping removed from cmdNew, the unprefixed title is filed
+// as given and the first case goes red.
+//
+// regression: #3153
+func TestNoForkAmendPrefixesTitle(t *testing.T) {
+	for _, tc := range []struct{ title, want string }{
+		{"the setup guide step count", "amend brief: the setup guide step count"},
+		{"Amend brief: the setup guide step count", "Amend brief: the setup guide step count"},
+	} {
+		rc, out, _ := runAmend(t, tc.title)
+		if rc != deskkit.ExitOK {
+			t.Fatalf("title %q: rc = %d, want 0; out=%s", tc.title, rc, out)
+		}
+		if curForge.filed == nil {
+			t.Fatalf("title %q: not filed", tc.title)
+		}
+		if got := curForge.filed.Title; got != tc.want {
+			t.Errorf("title %q filed as %q, want %q", tc.title, got, tc.want)
+		}
 	}
 }

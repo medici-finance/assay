@@ -1,0 +1,10 @@
+{
+  "test": "go test ./internal/gitcore -run '^TestCachedAncestryDecodesSharedHistoryOnce$' -count=1 -v -timeout 30s",
+  "control": {
+    "name": "discard shared decoded history between queries",
+    "file": "internal/gitcore/contains.go",
+    "old": "refs, err := ri.refsContaining(a, map[string]plumbing.Hash{\"tip\": d})",
+    "new": "ri.nodes = map[plumbing.Hash]*reachNode{}\n\trefs, err := ri.refsContaining(a, map[string]plumbing.Hash{\"tip\": d})"
+  },
+  "mutations": []
+}

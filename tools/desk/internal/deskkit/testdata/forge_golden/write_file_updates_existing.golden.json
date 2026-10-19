@@ -12,13 +12,14 @@
         "branch": "feat/x",
         "content": "cm93IG9uZQpyb3cgdHdvCg==",
         "message": "Evidence: verification row",
-        "sha": "blob-1"
+        "sha": "04e65df65794ea688c6af5eed3abb4fe7fb72dde"
       }
     }
   ],
   "result": {
     "Changed": true,
-    "SHA": "blob-2",
+    "ContentID": "blob-2",
+    "CommitSHA": "c0ffee",
     "Author": "assay-verifier-app[bot]",
     "DefaultBranchNotWritable": false,
     "Rows": 0,

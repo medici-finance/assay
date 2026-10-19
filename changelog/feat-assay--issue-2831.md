@@ -1,2 +1,0 @@
-### Fixed
-- `deskclaim-ref list` no longer reports one unreadable claim ref as a total failure. It still lists every readable claim, names each unreadable ref on stderr as could-not-check with its own cause, and exits 7 (partial) instead of 6, so a sweep can tell a partial view from full success and from total blindness. It exits 6 only when no ref could be read. The tool still never deletes or repairs a bad ref; that stays a maintainer act.

@@ -1,0 +1,1 @@
+- Add a reproducible offline study of criterion edits, existing evidence freshness controls, and the limits of authored requirement satisfaction claims.

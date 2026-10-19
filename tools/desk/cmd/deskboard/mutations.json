@@ -2,28 +2,28 @@
   "test": "go test ./cmd/deskboard/... -count=1",
   "control": {
     "name": "CONTROL — make the per-platform pin fallback unreachable (the defect, restated as a mutation)",
-    "file": "cmd/deskboard/main.go",
-    "old": "\tfor _, name := range []string{deskToolsArtifact, deskToolsPlatformArtifact()} {",
-    "new": "\tfor _, name := range []string{deskToolsArtifact} {"
+    "file": "internal/deskkit/desktoolspin.go",
+    "old": "\tfor _, name := range []string{DeskToolsArtifact, DeskToolsPlatformArtifact(platform)} {",
+    "new": "\tfor _, name := range []string{DeskToolsArtifact} {"
   },
   "mutations": [
     {
       "name": "let the per-platform line WIN over a bare line that is present (an existing consumer's verdict changes under it)",
-      "file": "cmd/deskboard/main.go",
-      "old": "\tfor _, name := range []string{deskToolsArtifact, deskToolsPlatformArtifact()} {",
-      "new": "\tfor _, name := range []string{deskToolsPlatformArtifact(), deskToolsArtifact} {"
+      "file": "internal/deskkit/desktoolspin.go",
+      "old": "\tfor _, name := range []string{DeskToolsArtifact, DeskToolsPlatformArtifact(platform)} {",
+      "new": "\tfor _, name := range []string{DeskToolsPlatformArtifact(platform), DeskToolsArtifact} {"
     },
     {
       "name": "ask for the artifact PREFIX instead of the exact per-platform name (collapses the two pin lines into one match)",
-      "file": "cmd/deskboard/main.go",
-      "old": "\treturn deskToolsArtifact + \"-\" + deskPlatform",
-      "new": "\treturn deskToolsArtifact + \"-\""
+      "file": "internal/deskkit/desktoolspin.go",
+      "old": "\treturn DeskToolsArtifact + \"-\" + platform",
+      "new": "\treturn DeskToolsArtifact + \"-\""
     },
     {
       "name": "build the per-platform name even with no platform token (asks for `desk-tools-`, matching any line that starts that way)",
-      "file": "cmd/deskboard/main.go",
-      "old": "\tif strings.TrimSpace(deskPlatform) == \"\" {\n\t\treturn \"\"\n\t}",
-      "new": "\tif false {\n\t\treturn \"\"\n\t}"
+      "file": "internal/deskkit/desktoolspin.go",
+      "old": "\tif strings.TrimSpace(platform) == \"\" {\n\t\treturn \"\"\n\t}",
+      "new": "\tif strings.TrimSpace(platform) == \"\" && false {\n\t\treturn \"\"\n\t}"
     },
     {
       "name": "drop the prs sweep's fail-closed propagation (one repo's hard error becomes a partial board that reads clean)",

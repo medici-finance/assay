@@ -28,7 +28,7 @@ domain: complicated
 value: med
 consumers:
   - "qualgen/riskscore/learned.go (Train under-corpus gate, len(examples) < cfg.MinCorpus): fixed-here"
-version: 2
+version: 1
 id: 81c2396f-a641-49ce-ae17-9683f990dfa2
 ---
 
@@ -88,7 +88,7 @@ facts:
 | 2 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusGovernsLearnedSwitch$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusGovernsLearnedSwitch'` | exit 0 (a corpus one below the derived floor stays heuristic-only/could-not-learn and one at the floor trains — the value actually governs the switch end to end) | check +flow |
 | 3 | `cd qualgen && go build ./riskscore/` | exit 0 | check |
 | 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | exit 0 (a written derivation exists next to the value) | check |
-| 5 | `d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach a11ac4167 && statusgen --consumers --root "$d" --brief assay:assay:measured-status:02 --base 5b5d12e42~1; s=$?; rm -rf "$d"; exit $s` | exit 0; `summary: 1 corroborated, 0 disproved, 0 unchecked`; output does not contain "DISPROVED" (the fixed-here consumer routing is corroborated, not contradicted) — judged against the delivering commit a11ac4167 (#2054), based on the parent of the commit that added this brief (5b5d12e42, #1225), in a throwaway clone, so merged main does not degrade it to could-not-check. Re-baselined 2026-10-16 (was: the live tree) | check |
+| 5 | `o=$(statusgen --root . --consumers --brief measured-status/02 --delivery a11ac41674c09aadb2a940bc7d1edbcd5e4c1402 --base a7b4bed48f3075336958b812617964306274f188); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 1 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | exit 0; exact `summary: 1 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing`. Claims are read from the immutable delivered snapshot and compared only with its first-parent diff. | check |
 
 ## Evidence
 Option taken (implementer record, 2026-10-02): **Task 1 — derive the floor.**

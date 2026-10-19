@@ -1,2 +1,0 @@
-### Fixed
-- The `pr-review-desk` skill and the adopter runbook (`docs/adopting-assay.md`) no longer say a per-item human `+1` or thumbs-up reaction clears a public-repo write. That check was retired when the public-repo write gate became repository-scoped: an explicit `:public` allowed-repos entry that agrees with the live visibility. The `deskpr` trailer parser's comments and the GitLab and GitHub reaction-read comments no longer attribute that check to the write gate.

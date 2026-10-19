@@ -171,3 +171,12 @@ color, and screen-reader relationships between metrics and evidence gaps.
 
 No client implementation is delivered by this planning PR. A missing cockpit does not
 block the manual adoption milestone in the public stream.
+
+## Portfolio/drift consumer amendment — 13 October 2026
+
+Consume the versioned statusgen/25 view rather than recomputing policy in the UI. Product
+condition, architecture conformance, binding mismatch, allocation divergence and observation
+due state are separate dimensions with source/policy revision, window, coverage and owner.
+Show desired 5% versus observed 2% as divergence, not a changed target or catch-up instruction.
+A done change can still have an unresolved exposure trigger or due observation. R7 owns the
+public serving/authorization boundary; missing producers remain unavailable until qualified.

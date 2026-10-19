@@ -3,7 +3,10 @@ package deskkit
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -499,6 +502,7 @@ type ghTimelineWire struct {
 	} `json:"label"`
 	Actor struct {
 		Login string `json:"login"`
+		ID    int64  `json:"id"`
 	} `json:"actor"`
 }
 
@@ -1540,29 +1544,53 @@ func (g *GitHubForge) IssueReactions(repo ForgeRepo, number int) ([]Reaction, er
 // UNATTESTED. A read FAILURE propagates — the caller refuses could-not-check rather than
 // treating an unreadable timeline as an empty one.
 func (g *GitHubForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
+	out, complete, err := g.labelTimeline(repo, number)
+	if err != nil {
+		return nil, err
+	}
+	if !complete {
+		return nil, fmt.Errorf("label timeline exceeded page bound")
+	}
+	return out, nil
+}
+
+func (g *GitHubForge) ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
+	return g.ListLabelEvents(repo, number)
+}
+
+// IssueLabelHistory (op 64) is the issue's whole label history with the page bound REPORTED
+// rather than returned as an error: Complete=false when the walk spent every page and the forge
+// was still paginating. Every labeled/unlabeled event is kept, named or not.
+func (g *GitHubForge) IssueLabelHistory(repo ForgeRepo, number int) (*LabelHistory, error) {
+	out, complete, err := g.labelTimeline(repo, number)
+	if err != nil {
+		return nil, err
+	}
+	return &LabelHistory{Events: out, Complete: complete}, nil
+}
+
+// labelTimeline walks the timeline and returns its labeled/unlabeled events, and whether the
+// walk reached the end (a short page) before the page bound.
+func (g *GitHubForge) labelTimeline(repo ForgeRepo, number int) ([]LabelEvent, bool, error) {
 	var out []LabelEvent
 	for page := 1; page <= forgeMaxFilePages; page++ {
 		var chunk []ghTimelineWire
 		path := fmt.Sprintf("/repos/%s/%s/issues/%d/timeline?per_page=%d&page=%d",
 			repo.Owner, repo.Name, number, forgeFilePerPage, page)
 		if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		for _, e := range chunk {
 			if e.Event != "labeled" && e.Event != "unlabeled" {
 				continue
 			}
-			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login, CreatedAt: e.CreatedAt, Removed: e.Event == "unlabeled"})
+			out = append(out, LabelEvent{Name: e.Label.Name, AppliedBy: e.Actor.Login, AppliedByID: e.Actor.ID, CreatedAt: e.CreatedAt, Removed: e.Event == "unlabeled"})
 		}
 		if len(chunk) < forgeFilePerPage {
-			return out, nil
+			return out, true, nil
 		}
 	}
-	return nil, fmt.Errorf("label timeline exceeded page bound")
-}
-
-func (g *GitHubForge) ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
-	return g.ListLabelEvents(repo, number)
+	return out, false, nil
 }
 
 // ghCommentsQuery reads a change's comments with the two properties REST does not carry: the
@@ -2664,6 +2692,71 @@ type ghContentsWire struct {
 	SHA      string `json:"sha"`
 	Content  string `json:"content"`
 	Encoding string `json:"encoding"`
+	// Type and Path say what the response describes. A symbolic link whose target is a
+	// file in the repository is served as that target (type "file", the target's path);
+	// any other link is served as itself (type "symlink", no content), a submodule as
+	// type "submodule". Read by ghContentsKind.
+	Type string `json:"type"`
+	Path string `json:"path"`
+}
+
+// ghContentsKind maps one Contents-API read of file onto FileContent.Kind. content is the
+// decoded body the caller will hand on.
+//
+// The endpoint is not a record of the entry's own bytes, so a regular file is reported only
+// when the response PROVES the bytes are the entry's blob: type "file", base64-encoded, and
+// the git blob hash of the decoded content equal to the served `sha`. Two real responses
+// fail that proof and are FileKindUnproven rather than regular: a symbolic link to a file
+// (served as the target's bytes under the requested path, with the link's own blob sha) and
+// a file the endpoint serves without its content (a large file arrives with encoding
+// "none" and an empty body, which would read as an empty regular file). A link served
+// under a different path than the one requested is still FileKindSymlink. "" when the
+// response names no type.
+func ghContentsKind(w ghContentsWire, file string, content []byte) string {
+	switch w.Type {
+	case "":
+		return ""
+	case "file":
+		if w.Path == "" {
+			return ""
+		}
+		if strings.Trim(w.Path, "/") != strings.Trim(file, "/") {
+			return FileKindSymlink
+		}
+		if w.Encoding != "base64" || !gitBlobMatches(w.SHA, content) {
+			return FileKindUnproven
+		}
+		return FileKindRegular
+	case "symlink":
+		return FileKindSymlink
+	case "submodule":
+		return FileKindSubmodule
+	default:
+		return w.Type
+	}
+}
+
+// gitBlobMatches reports whether content hashes, as a git blob, to the object id sha: the
+// object id of a blob is the hash of "blob <len>\x00" followed by its bytes (SHA-1, or
+// SHA-256 in a repository of that object format, told apart by the id's length).
+func gitBlobMatches(sha string, content []byte) bool {
+	var sum []byte
+	hdr := fmt.Sprintf("blob %d\x00", len(content))
+	switch len(sha) {
+	case 40:
+		h := sha1.New()
+		h.Write([]byte(hdr))
+		h.Write(content)
+		sum = h.Sum(nil)
+	case 64:
+		h := sha256.New()
+		h.Write([]byte(hdr))
+		h.Write(content)
+		sum = h.Sum(nil)
+	default:
+		return false
+	}
+	return strings.EqualFold(hex.EncodeToString(sum), sha)
 }
 
 // ghContentsCommitWire is the Contents-API write response: the new blob sha under `content`
@@ -2710,7 +2803,7 @@ func (g *GitHubForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, 
 	if derr != nil {
 		return nil, Unverifiable("cannot decode base64 content for "+in.File, derr)
 	}
-	return &FileContent{Content: decoded, SHA: w.SHA, Exists: true}, nil
+	return &FileContent{Content: decoded, SHA: w.SHA, Exists: true, Kind: ghContentsKind(w, in.File, decoded)}, nil
 }
 
 // WriteFile writes a file's whole content on a branch via the Contents API, as the minted
@@ -2719,18 +2812,43 @@ func (g *GitHubForge) ReadFile(repo ForgeRepo, in ReadFileInput) (*FileContent, 
 // and ignores StartBranch: on GitHub the Evidence row lands on the target branch directly. The
 // idempotency read and the append-only shrink guard are folded in per WriteFileInput.
 func (g *GitHubForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileResult, error) {
-	res := &WriteFileResult{}
-	var priorSHA string
-	var priorContent []byte
-	exists := false
 	cur, rerr := g.ReadFile(repo, ReadFileInput{File: in.File, Ref: in.Branch})
 	if rerr != nil {
 		if !IsForgeNotFound(rerr) {
 			return nil, rerr
 		}
 		// Absent on the branch → this is a create.
+	} else if cur == nil || !cur.Exists {
+		cur = nil
 	} else {
-		priorSHA, priorContent, exists = cur.SHA, cur.Content, true
+		// The idempotency and shrink checks below compare against this read, so it must be
+		// the entry's own bytes: a file served with its content left out (over the Contents
+		// API's size limit) reads as empty, and a link as its target's bytes or as nothing.
+		// Writing over such an entry is could-not-check, never a write judged against an
+		// empty or foreign base (S-2266-8).
+		if cur.Kind != FileKindRegular {
+			held := cur.Kind
+			if held == "" {
+				held = "an entry the read did not type"
+			}
+			return nil, Unverifiable(fmt.Sprintf(
+				"refusing to write %s on %s: the branch holds it as %s, not a plain file whose served bytes are shown to be its own blob, so the write cannot be checked against it",
+				in.File, in.Branch, held), nil)
+		}
+	}
+	return g.writeEvidenceFileFromSnapshot(repo, in, cur)
+}
+
+// writeEvidenceFileFromSnapshot shares all native write checks and the Contents
+// request with a publication snapshot. The server compares the supplied blob SHA;
+// a create omits SHA, which GitHub refuses if the path has appeared meanwhile.
+func (g *GitHubForge) writeEvidenceFileFromSnapshot(repo ForgeRepo, in WriteFileInput, prior *FileContent) (*WriteFileResult, error) {
+	res := &WriteFileResult{}
+	var priorSHA string
+	var priorContent []byte
+	exists := prior != nil && prior.Exists
+	if exists {
+		priorSHA, priorContent = prior.SHA, prior.Content
 	}
 
 	// Conditional write (see WriteFileInput.ExpectedSHA): refuse when the file is no longer the
@@ -2748,7 +2866,7 @@ func (g *GitHubForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 
 	// Idempotency: byte-identical content already on the branch is a noop, no write.
 	if exists && bytes.Equal(priorContent, in.Content) {
-		res.SHA = priorSHA
+		res.ContentID = ContentID(priorSHA)
 		return res, nil
 	}
 
@@ -2760,6 +2878,9 @@ func (g *GitHubForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 			in.File, in.Branch, res.PriorRows, res.Rows))
 	}
 
+	if in.ExpectedHead != "" {
+		return g.writePinnedEvidence(repo, in, res)
+	}
 	body := map[string]any{
 		"message": in.Message,
 		"content": base64.StdEncoding.EncodeToString(in.Content),
@@ -2774,7 +2895,8 @@ func (g *GitHubForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFileRe
 		return nil, err
 	}
 	res.Changed = true
-	res.SHA = w.Content.SHA
+	res.ContentID = ContentID(w.Content.SHA)
+	res.CommitSHA = CommitSHA(w.Commit.SHA)
 	res.Author = w.Commit.Author.Name
 	return res, nil
 }

@@ -12,7 +12,7 @@ gate-why: "Correlated operational measurements and their access/retention bounda
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: 27aaa5a2-0575-4067-8be6-40d929e2dff9
 authored: 2026-10-13 by performance collection authoring
 sources:
@@ -138,6 +138,7 @@ synthetic cell database and actual restricted roles on that instance.
 | 3 | check +flow +mutation | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestHistoryWindow$' ./integration/... > "$o" && grep -F -- '--- PASS: TestHistoryWindow ' "$o")` | exit 0; named PASS. Simulated 90-day retention, corrections and restore retain valid aggregates and explicit gaps; old replay never resurrects discarded data. |
 | 4 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLocalPackageOnly$' ./integration/... > "$o" && grep -F -- '--- PASS: TestLocalPackageOnly ' "$o")` | exit 0; named PASS. Clean external consumer/local command runs with no database, server, cell or network dependency at runtime; unsupported versions refuse explicitly. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/06` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
+| 6 | check +flow | `(cd perfdata && test -n "$ASSAY_TEST_PERF_DSN" && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestRemoteReportDistributionParity$' ./integration/... > "$o" && grep -F -- '--- PASS: TestRemoteReportDistributionParity ' "$o")` | exit 0; local and remote export distributions/coverage agree after duplicate delivery and restore; gaps remain visible. |
 
 ## Pre-mortem and detection
 
@@ -156,3 +157,11 @@ Gate: human. Review actual disclosure/identity boundaries, loss visibility and s
 flow evidence. Required operational records must still function with optional collection
 disabled. Human acceptance changes no live destination, credential, collection switch or
 retention policy.
+
+## Operating report qualification amendment — 15 October 2026
+
+Include the retained distribution/coverage contract from 01/02 in remote replay/restore
+fixtures: source→upload→DB→bounded export must reproduce local counts/sums/Avg/P95 and source
+cutoffs without averaging percentiles or multiplying cumulative token snapshots. Preserve
+partial-source and expired-window gaps. Local report 07 and daily generation 08 qualify
+independently and do not wait for this remote-path brief. Implement TestRemoteReportDistributionParity under perfdata/integration before calling the remote reporting profile qualified. Existing Evidence remains unchanged.

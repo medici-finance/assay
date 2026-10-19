@@ -632,3 +632,44 @@ func TestVetoNeedleIesPlural(t *testing.T) {
 		t.Errorf("NoticeLaneVerdict(%q) admitted (%s), want refused — an -ies plural of a shape-only needle must still veto", subject, why)
 	}
 }
+
+// TestVerdictOneWayOutranks — the one-way check at the top of NoticeLaneVerdict reads the
+// title, the body and the labels, and outranks the declared subject: a filing whose subject
+// carries a positive, content-bearing reversible signal (it admits on its own, checked first)
+// is still refused when the one-way check fires on any one of the three, and why names the
+// one-way hit. One case per input, each with the other two clean.
+//
+// FAIL-FIRST: with the OneWay call removed from NoticeLaneVerdict, all three cases admit on
+// the subject's reversible signal and this test goes red.
+//
+// regression: #3153
+func TestVerdictOneWayOutranks(t *testing.T) {
+	const subject = "fix the docs wording of the --sla-days help text"
+	const clean = "fix the docs wording"
+	if admit, why := NoticeLaneVerdict(clean, "", subject, nil); !admit {
+		t.Fatalf("fixture: subject %q refused on its own (%s), want admitted", subject, why)
+	}
+	cases := []struct {
+		name, title, body string
+		labels            []string
+	}{
+		{"title", "Merge this PR today or wait?", "", nil},
+		{"body", clean, "This change is irreversible.", nil},
+		{"labels", clean, "", []string{"needs-decision", "human-only"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			hit, ok := OneWay(c.title, c.body, c.labels)
+			if !ok {
+				t.Fatalf("fixture: OneWay(%q, %q, %v) found no one-way signal", c.title, c.body, c.labels)
+			}
+			admit, why := NoticeLaneVerdict(c.title, c.body, subject, c.labels)
+			if admit {
+				t.Errorf("admitted (%s) despite the one-way hit %s in the %s", why, hit, c.name)
+			}
+			if want := "one-way: " + hit.String(); why != want {
+				t.Errorf("why = %q, want %q", why, want)
+			}
+		})
+	}
+}

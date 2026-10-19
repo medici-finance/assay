@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -459,6 +460,14 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		hp, hn := humanStampProblems(root, streams)
 		problems = append(problems, hp...)
 		notices = append(notices, hn...)
+		// Decision-gate hold, layer one (lifecycle-v1 §4.5): a gate: human brief
+		// moved to implemented/verified/done, relabelled, or dropped against the
+		// merge-base needs a well-formed ruling: link to a comment on its recorded
+		// decision issue. Offline; who wrote the comment is layer two's to check
+		// (--decision-gate, and the same lane in --corroborate / --close-verify).
+		dgp, dgn := decisionGateHoldProblems(root)
+		problems = append(problems, dgp...)
+		notices = append(notices, dgn...)
 		// Stale-issue alarm (methodology-metrics/28): a NOTICE + board line when
 		// an open issue has been sitting past the threshold, mirroring the intake-
 		// debt alarm applied to issues. OPT-IN: it reads through the run's
@@ -593,6 +602,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// cell. Transition-scoped like unrunGateChecks below: only a closure
 	// this branch made is a PROBLEM. See witnessgate.go.
 	wgProblems, wgNotices := witnessGateChecks(root, checkStreams)
+	problems = append(problems, protectedClosureProblems(checkStreams)...)
 	problems = append(problems, wgProblems...)
 	notices = append(notices, wgNotices...)
 	// Missing EXECUTION WITNESS, but only for closures THIS branch makes: a
@@ -1243,7 +1253,15 @@ func main() {
 	// pin invoke it alone, which is the form the pin-check contract needs.
 	if len(os.Args) == 2 && (os.Args[1] == "--version" || os.Args[1] == "version") {
 		fmt.Println(statusgenVersion)
-		os.Exit(0)
+		exitProcess(0)
+	}
+	// `statusgen --version --json` — the same introspection, machine-readable:
+	// the version plus the brief schemas this build supports and the first
+	// release of each (briefschemaversions.go). The bare form above stays
+	// exactly one line, because pin checks compare it verbatim.
+	if len(os.Args) == 3 && (os.Args[1] == "--version" || os.Args[1] == "version") && os.Args[2] == "--json" {
+		printVersionJSON()
+		exitProcess(0)
 	}
 
 	// `statusgen verifyrun` — positional subcommand (like `init` below) that
@@ -1262,8 +1280,11 @@ func main() {
 	// that executes arbitrary commands lifted out of a markdown table has no
 	// business inside it. `--lint` only NOTICEs the ABSENCE of a witness (see
 	// witnessNotices); producing one is always an explicit invocation.
+	if len(os.Args) > 1 && os.Args[1] == "withdrawal-audit" {
+		exitProcess(runWithdrawalAudit(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
-		os.Exit(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen verifyclosure` — the READ-ONLY board question "does this tree
@@ -1278,14 +1299,14 @@ func main() {
 	// caller that must decide BEFORE a write whether recording `outcome:verified`
 	// in the verify-outcomes sidecar is warranted (deskevidence's sidecar gate).
 	if len(os.Args) > 1 && os.Args[1] == "verifyclosure" {
-		os.Exit(runVerifyclosure(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runVerifyclosure(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen verifyflip` — the sanctioned implemented → verified README flip
 	// for a gate: model brief, its Verified stamp derived from the recorded strict
 	// PASS (verifyflip.go, #2074). Own flag namespace, so intercepted here.
 	if len(os.Args) > 1 && os.Args[1] == "verifyflip" {
-		os.Exit(runVerifyflip(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runVerifyflip(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen mergecheck` — the MERGE-TIME RE-CHECK (desk-hardening/05, #54).
@@ -1303,7 +1324,7 @@ func main() {
 	// (briefRuleNumberNotices), which is explicitly labelled as unable to see a
 	// cross-branch collision.
 	if len(os.Args) > 1 && os.Args[1] == "mergecheck" {
-		os.Exit(runMergecheck(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runMergecheck(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen shardcheck` — positional subcommand (like `verifyrun` above)
@@ -1316,7 +1337,7 @@ func main() {
 	// question, so it has no business inside --lint. --lint validates only the
 	// declaration's shape; this validates the plan against the files.
 	if len(os.Args) > 1 && os.Args[1] == "shardcheck" {
-		os.Exit(runShardcheck(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runShardcheck(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen phantoms` — positional subcommand (like `mergecheck` above,
@@ -1329,7 +1350,7 @@ func main() {
 	// parsing for verifyrun's reason: it owns --root/--class/--sibling-root
 	// with its own meanings and reads no STATUS.md, exactly like --eligibility.
 	if len(os.Args) > 1 && os.Args[1] == "phantoms" {
-		os.Exit(runPhantoms(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runPhantoms(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen enforcement-status` — the emitter half of mistake-proofing/04.
@@ -1341,7 +1362,7 @@ func main() {
 	// copy in the authoring guidance (enforcementstatus.go's header explains why
 	// the source is a declared registry rather than a scraped lint run).
 	if len(os.Args) > 1 && os.Args[1] == "enforcement-status" {
-		os.Exit(runEnforcementStatus(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runEnforcementStatus(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen backfill` — the ONE-OFF status-historian replayer
@@ -1357,7 +1378,7 @@ func main() {
 	// never wired into CI — the live single-writer path (recordHistory) is the
 	// only scheduled writer of the historian.
 	if len(os.Args) > 1 && os.Args[1] == "backfill" {
-		os.Exit(runBackfill(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runBackfill(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen reconcile` — derive each brief's PR-sourced lifecycle cell from
@@ -1367,7 +1388,7 @@ func main() {
 	// network (ghfetch.go), and only READ-ONLY endpoints; `--offline` makes it
 	// tree-only, the arm --lint uses (every PR-derived cell unknown).
 	if len(os.Args) > 1 && os.Args[1] == "reconcile" {
-		os.Exit(runReconcile(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runReconcile(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen outcomes split` — the desk-supervision/24 migration: writes one record file
@@ -1377,7 +1398,7 @@ func main() {
 	// --root/--check namespace and is a WRITE-capable subcommand (without --check), so like
 	// verifyrun it is never part of --lint.
 	if len(os.Args) > 1 && os.Args[1] == "outcomes" {
-		os.Exit(runOutcomes(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runOutcomes(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen regen --readmes` — positional subcommand (derived-board/04) that
@@ -1386,7 +1407,7 @@ func main() {
 	// board-vs-witness drift NOTICEs. STATUS.md stays the default (flags-only)
 	// regen's job; this verb only touches stream READMEs.
 	if len(os.Args) > 1 && os.Args[1] == "regen" {
-		os.Exit(runRegen(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runRegen(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen conform` — positional subcommand (like `verifyrun` above) that
@@ -1399,7 +1420,7 @@ func main() {
 	// --lint (schema contract, not methodology rules) and reports its own
 	// three-state exit, so it is a subcommand rather than a --lint leg.
 	if len(os.Args) > 1 && os.Args[1] == "conform" {
-		os.Exit(runConform(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runConform(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen patterns --lint [--root DIR]` — validate every
@@ -1412,14 +1433,14 @@ func main() {
 	// (pattern files, not briefs) from the board `--lint`, so it is a subcommand
 	// rather than a `--lint` leg — same shape as `conform`.
 	if len(os.Args) > 1 && os.Args[1] == "patterns" {
-		os.Exit(runPatterns(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runPatterns(os.Args[2:], os.Stdout, os.Stderr))
 	}
 	// `statusgen instance validate --file PATH ...` (graph-execution/09) —
 	// validates one workflow-instance-v1 document against its schema, its pattern
 	// and the work item's acceptance version (instance.go). A distinct artifact
 	// class with its own flags, so a subcommand, like `patterns`.
 	if len(os.Args) > 1 && os.Args[1] == "instance" {
-		os.Exit(runInstance(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runInstance(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen runtime-resource --lint --adapters FILE [--as-of RFC3339]
@@ -1430,7 +1451,7 @@ func main() {
 	// never contacts an adapter. A distinct artifact class, so a subcommand,
 	// same shape as `patterns`.
 	if len(os.Args) > 1 && os.Args[1] == "runtime-resource" {
-		os.Exit(runRuntimeResource(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runRuntimeResource(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen migrate brief-v1-to-v2 [--dry-run] [--root DIR]` — the brief-v1 →
@@ -1440,7 +1461,7 @@ func main() {
 	// that has no business inside the offline, side-effect-free --lint. It is the
 	// executable half of a deskmigrate `statusgen-regen` op.
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
-		os.Exit(runMigrate(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runMigrate(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter
@@ -1450,23 +1471,28 @@ func main() {
 	// offline — a lookup verb that prints what --lint already parses, never a board
 	// write — so it is a subcommand rather than a --lint leg.
 	if len(os.Args) > 1 && os.Args[1] == "brief" {
-		os.Exit(runBriefInfo(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runBriefInfo(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// `statusgen init` — positional subcommand (like `git init`) that scaffolds the
 	// streams structure into a repo. Intercepted before flag parsing so first-run
 	// users get the natural `statusgen init` UX; `--root DIR` targets DIR.
 	if len(os.Args) > 1 && os.Args[1] == "init" {
-		fs := flag.NewFlagSet("init", flag.ExitOnError)
+		fs := flag.NewFlagSet("init", flag.ContinueOnError)
 		var initRoots rootFlags
 		fs.Var(&initRoots, "root", "repository root to scaffold")
 		dryRun := fs.Bool("dry-run", false, "print what would be scaffolded (paths + bodies) without writing anything")
 		forgeFlag := fs.String("forge", "", "which forge's CI half to scaffold: github | gitlab (default: auto-detect from the origin remote; an unrecognised host writes no CI half rather than defaulting to github)")
-		fs.Parse(os.Args[2:])
+		if perr := fs.Parse(os.Args[2:]); perr != nil {
+			if errors.Is(perr, flag.ErrHelp) {
+				exitProcess(0)
+			}
+			exitProcess(2)
+		}
 		forge, err := parseForgeFlag(*forgeFlag)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "statusgen:", err)
-			os.Exit(2)
+			exitProcess(2)
 		}
 		// The target may be given as --root DIR or as a single trailing positional
 		// (`statusgen init [--dry-run] DIR`); the positional is the natural
@@ -1474,7 +1500,7 @@ func main() {
 		if pos := fs.Args(); len(pos) > 0 {
 			if len(initRoots) > 0 || len(pos) > 1 {
 				fmt.Fprintf(os.Stderr, "statusgen: init takes exactly one target — a single --root or a single positional DIR, not both/several\n")
-				os.Exit(2)
+				exitProcess(2)
 			}
 			initRoots = rootFlags{pos[0]}
 		}
@@ -1483,20 +1509,20 @@ func main() {
 		resolved, err := resolveRoots(initRoots)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "statusgen:", err)
-			os.Exit(2)
+			exitProcess(2)
 		}
 		if len(resolved) > 1 {
 			fmt.Fprintf(os.Stderr, "statusgen: init accepts exactly one --root; got %d — scaffold one repo at a time\n", len(resolved))
-			os.Exit(2)
+			exitProcess(2)
 		}
 		// An explicit --forge wins; otherwise detect from the target's origin
 		// remote (runInit does the detection). --dry-run previews either way.
 		if forge != forgeUnknown {
 			// An explicit --forge is always a resolved forge, so the CI half is
 			// written unconditionally (remotePresent=true; host unused).
-			os.Exit(runInitForge(resolved[0], forge, true, "", *dryRun))
+			exitProcess(runInitForge(resolved[0], forge, true, "", *dryRun))
 		}
-		os.Exit(runInit(resolved[0], *dryRun))
+		exitProcess(runInit(resolved[0], *dryRun))
 	}
 
 	// `statusgen newbrief` — the brief-authoring FRONT DOOR (mistake-proofing/05,
@@ -1509,7 +1535,7 @@ func main() {
 	// for verifyrun's reason: it owns its own --stream/--depends/--risk namespace,
 	// and it must NOT be reachable by fallthrough to the default write mode.
 	if len(os.Args) > 1 && os.Args[1] == "newbrief" {
-		os.Exit(runNewBrief(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+		exitProcess(runNewBrief(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
 
 	// `statusgen lint --check <name>` and `statusgen verify-gate-close --ref <ref>` — the fleet
@@ -1518,10 +1544,10 @@ func main() {
 	// never be reachable by fallthrough to the default regenerate. The whole-corpus gate stays
 	// `statusgen --lint`; `lint --check` runs only the named checks.
 	if len(os.Args) > 1 && os.Args[1] == "lint" {
-		os.Exit(runLintNamed(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runLintNamed(os.Args[2:], os.Stdout, os.Stderr))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "verify-gate-close" {
-		os.Exit(runVerifyGateClose(os.Args[2:], os.Stdout, os.Stderr))
+		exitProcess(runVerifyGateClose(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// UNKNOWN POSITIONAL SUBCOMMAND — fail closed (#1075).
@@ -1546,7 +1572,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
 			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, verifyflip, mergecheck, shardcheck, conform, brief, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
-			os.Exit(2)
+			exitProcess(2)
 		}
 	}
 
@@ -1669,6 +1695,7 @@ func main() {
 	span := flag.Int("span", defaultSpanOfControl, "Next-up span-of-control cap: max items shown (default 20 — agent-worked queue, not the human EEMUA-191 7±2)")
 	overflowT := flag.Int("overflow-threshold", -1, "eligible-brief count above which Next-up flags overflow; <0 = same as --span")
 	mainHealthFlag := flag.String("main-health", "", "the INJECTED main-health input for the drives critical tier's main-red arm: `green`, or `red:<owner/repo#N>[,...]` naming the issue(s) tracking the red main. statusgen never reads live CI; omit the flag and the arm reports could-not-check (named on the board while a drive is active), never a silent green")
+	roleClaimsFlag := flag.Bool("role-claims", false, "read claims through deskgit as the bound desk role; never fall back to ambient Git")
 	requireClaimsFlag := flag.Bool("require-claims", false, "fail (exit 1, nothing written) instead of emitting a degraded board when the origin claim read fails")
 	// FINDINGS alarm-KPI knobs (ISA-18.2). Standalone
 	// block so sibling statusgen flag PRs merge trivially.
@@ -1734,14 +1761,16 @@ func main() {
 	// (prior calendar month) — to docs/reports/<cadence>/<window>/. Empty = the
 	// point-in-time --roadmap, unchanged.
 	cadenceMode := flag.String("cadence", "", "with --roadmap: render a closed-window artifact — weekly (prior ISO week) | monthly (prior calendar month) — to docs/reports/<cadence>/<window>/; empty = point-in-time --roadmap")
-	// Corroboration check: self-contained sub-command,
-	// same STATUS.md-free discipline as the verify-gate modes. Network-dependent
-	// by nature — never wired into the offline lint gate.
+	// Consumer corroboration is offline and STATUS.md-free. The separate
+	// human-stamp corroboration mode below is forge-backed.
 	consumersMode := flag.Bool("consumers", false, "corroborate the consumers: routing claims of the briefs this branch touches against its own diff (exit 1 = a claim is DISPROVED, 2 = the diff could not be taken)")
+	consumersDelivery := flag.String("delivery", "", "--consumers: immutable full delivery commit SHA; requires --brief and --base set to its first parent; evaluates delivered claims and tree, never the working tree")
 	consumersBase := flag.String("base", remoteMainRef, "--consumers: base ref for the three-dot diff")
 	consumersBrief := flag.String("brief", "", "--consumers: check only this brief (<stream>/<NN>); default = every brief file in the diff")
 	corroborateMode := flag.Bool("corroborate", false, "check human:<name> stamps against PR reviews/comments for corroboration (requires --pr)")
-	corroboratePRs := flag.String("pr", "", "comma-separated PR numbers (required with --corroborate)")
+	corroboratePRs := flag.String("pr", "", "comma-separated PR numbers (required with --corroborate; with --decision-gate, the PRs to judge)")
+	decisionGateMode := flag.Bool("decision-gate", false, "the decision-gate hold, both layers (lifecycle-v1 §4.5): refuse a gate: human brief moved to implemented/verified/done, relabelled, or dropped without a human ruling on its decision issue. Needs --pr <N> or --decision-gate-base <rev>")
+	decisionGateBase := flag.String("decision-gate-base", "", "with --decision-gate: judge the working tree against this local revision (e.g. HEAD, for an uncommitted landing) instead of a PR's merge-base")
 	// Daily factory-floor bottleneck report: per-stage
 	// WIP + dwell, constraint location, shift detection, prescribed ToC action.
 	// Self-contained diagnostic sub-command — never reads or writes STATUS.md.
@@ -1827,7 +1856,11 @@ func main() {
 	changedFile := flag.String("changed", "", "file of changed repo-relative paths (one per line); path-scopes the DAR check and auto-derives --scope")
 	changedOnlyFlag := flag.String("changed-only", "", "--lint only: LOCAL pre-push convenience — comma-separated repo-relative paths; scopes the lint to them and prints a loud banner naming what was examined. REFUSES (non-zero, no override) when it detects it is running inside the CI gate (GITHUB_ACTIONS=true) — the CI gate always runs the full unscoped --lint. Mutually exclusive with --changed")
 	scopeFlag := flag.String("scope", "", "restrict per-stream lint to one product (serves:): example-app|example-service|assay|platform; overrides --changed derivation")
-	flag.Parse()
+	parseMainFlags()
+	if *consumersDelivery != "" && !*consumersMode {
+		fmt.Fprintln(os.Stderr, "statusgen: --delivery requires --consumers")
+		exitProcess(2)
+	}
 
 	// The roster class is chosen ONCE, from the invoked mode, BEFORE any check can
 	// read the roster — scanEffectiveConfig caches on first use, so a later call
@@ -1846,11 +1879,19 @@ func main() {
 	// a PR that never touched it. Whoever reads that CI log needs the roster in the
 	// same log.
 	scanEchoEffectiveConfig(os.Stderr)
+	// A refused process configuration cannot enter any --lint evaluator. Keep
+	// this ahead of ordinary, multi-root and differential dispatch: none may
+	// turn an unavailable trust axis into PASS (or demote it as a base defect).
+	if *lintMode && len(scanEffectiveConfig().Problems) > 0 {
+		fmt.Fprintln(os.Stderr, "statusgen: configuration REFUSED; trust-dependent checks could-not-check")
+		fmt.Fprintln(os.Stdout, "LINT: REFUSED configuration; trust-dependent checks could-not-check")
+		exitProcess(5)
+	}
 
 	resolvedRoots, rootErr := resolveRoots(roots)
 	if rootErr != nil {
 		fmt.Fprintln(os.Stderr, "statusgen:", rootErr)
-		os.Exit(2)
+		exitProcess(2)
 	}
 	// `root` is the SINGLE-root view, used by every self-contained sub-command
 	// below. Those sub-commands are one-repo diagnostics (a DORA window, a
@@ -1873,6 +1914,7 @@ func main() {
 			"--transcribe-scan-delta": *transcribeScanDeltaMode,
 			"--transcribe-verdict":    *transcribeVerdictMode,
 			"--close-verify":          *closeVerifyID != "",
+			"--decision-gate":         *decisionGateMode,
 			"--auto-flip-model":       *autoFlipModelMode,
 			"--alarms":                *alarmsMode,
 			"--verif-backlog":         *verifBacklogMode,
@@ -1919,7 +1961,7 @@ func main() {
 			fmt.Fprintf(os.Stderr,
 				"statusgen: %s accepts exactly one --root; got %d. Run it once per root — no sub-command narrows to the first root.\n",
 				name, len(resolvedRoots))
-			os.Exit(2)
+			exitProcess(2)
 		}
 	}
 
@@ -1952,11 +1994,12 @@ func main() {
 	// the board must still render, wearing its degradation. A caller that
 	// dispatches from the board sets this and gets exit 1 instead.
 	requireClaims = *requireClaimsFlag
+	roleClaimReads = *roleClaimsFlag
 	// The main-red arm's injected input (drives phase 3). A malformed value is a
 	// usage refusal — never a silent fallback to could-not-check or to green.
 	if mh, err := parseMainHealth(*mainHealthFlag); err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen:", err)
-		os.Exit(2)
+		exitProcess(2)
 	} else {
 		activeMainHealth = mh
 	}
@@ -1972,27 +2015,27 @@ func main() {
 	for _, spec := range budgetSpecs {
 		if _, _, err := parseBudgetSpec(spec); err != nil {
 			fmt.Fprintln(os.Stderr, "statusgen:", err)
-			os.Exit(2)
+			exitProcess(2)
 		}
 	}
 
 	// verify-gate modes are self-contained sub-commands: they do not read or
 	// write STATUS.md and never run the full source-check suite.
 	if *verifyIssuesMode {
-		os.Exit(runVerifyIssues(*root, *existingMarkers))
+		exitProcess(runVerifyIssues(*root, *existingMarkers))
 	}
 
 	// Decision issues: self-contained, same STATUS.md-free
 	// discipline as verify-issues. Emits JSON for gate:human briefs at
 	// implemented/verified lacking an open needs-decision issue.
 	if *decisionIssuesMode {
-		os.Exit(runDecisionIssues(*root, *decisionMarkers))
+		exitProcess(runDecisionIssues(*root, *decisionMarkers))
 	}
 	// Authoring-owed issues (spec-routing/01): self-contained, STATUS.md-free,
 	// offline. Emits one JSON issue payload per approved spec/scoping document
 	// whose path no brief's sources: dereferences (spec/lifecycle-v1.md §8.5).
 	if *owedIssuesMode {
-		os.Exit(runOwedIssues(*root, *owedMarkers))
+		exitProcess(runOwedIssues(*root, *owedMarkers))
 	}
 	// Drive lifecycle issues (methodology-metrics phase 2): self-contained, same
 	// STATUS.md-free discipline as decision-issues. Emits the active-drive tracking
@@ -2000,7 +2043,7 @@ func main() {
 	// malformed/expired manifest is fail-neutral (NOTICE + empty array), never an
 	// error — a drive can no more fail this command than it can freeze the board.
 	if *driveIssuesMode {
-		os.Exit(runDriveIssues(*root, *driveMarkers))
+		exitProcess(runDriveIssues(*root, *driveMarkers))
 	}
 	// Board-freeze watchdog (methodology-metrics phase 4): self-contained,
 	// STATUS.md-free, offline. It performs NO board build — the whole point is
@@ -2009,7 +2052,7 @@ func main() {
 	// without aborting any board write, so it can never itself become the freeze
 	// it detects.
 	if *watchdogMode {
-		os.Exit(runWatchdog(*root))
+		exitProcess(runWatchdog(*root))
 	}
 	// Drive snapshot: self-contained, STATUS.md-free,
 	// offline. Prints the `## Drive: <slug>` section, or (with --check + a trailing
@@ -2017,13 +2060,13 @@ func main() {
 	// switch below so the boolean --check reads as this sub-command's modifier when
 	// --drive-snapshot is set.
 	if *driveSnapshotSlug != "" {
-		os.Exit(runDriveSnapshot(*root, *driveSnapshotSlug, *checkMode, flag.Args(), nowFunc()))
+		exitProcess(runDriveSnapshot(*root, *driveSnapshotSlug, *checkMode, flag.Args(), nowFunc()))
 	}
 	// Sign-off digest: the roll-up over the per-brief cards. Self-contained,
 	// STATUS.md-free, offline. Non-zero exit means could-not-check — never an
 	// empty digest standing in for an all-clear.
 	if *signoffDigestMode {
-		os.Exit(runSignoffDigest(*root, *doraJSON))
+		exitProcess(runSignoffDigest(*root, *doraJSON))
 	}
 	// Issue scanner: self-contained, same STATUS.md-free discipline
 	// as the verify-gate modes. READ-only against GitHub — it lists issues and
@@ -2034,42 +2077,42 @@ func main() {
 		// the un-block comment read and the trust-gate bless read (defaultScanCommentLister,
 		// defaultScanBlessChecker, #1255). A `gh` read left on this path 401s on every rostered
 		// repo under scanloop's replaced HOME.
-		os.Exit(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker))
+		exitProcess(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker, defaultScanLabelHoldChecker))
 	}
 	// Same-repo scan transcriber (scan-lane/01, R-7): self-contained,
 	// STATUS.md-free. The workflow's "run" step. INERT until the R-7 sign-off
 	// resolves; --dry-run is the no-write "--check" surface.
 	if *transcribeScanMode {
-		os.Exit(runTranscribeScan(*root, *scanDryRun,
-			ghIssueLister, issueCommentLister, ghAuthorResolver, ghIssueBlessChecker, ghCommentResolver))
+		exitProcess(runTranscribeScan(*root, *scanDryRun,
+			ghIssueLister, issueCommentLister, ghAuthorResolver, ghIssueBlessChecker, defaultScanLabelHoldChecker, ghCommentResolver))
 	}
 	// Cross-repo scan-delta transcriber (the house-private brief, R-7 clause 4):
 	// self-contained, STATUS.md-free. INERT until the SAME R-7 sign-off
 	// resolves as --transcribe-scan; --dry-run is the no-write "--check" surface.
 	if *transcribeScanDeltaMode {
-		os.Exit(runTranscribeScanDelta(*root, *scanDryRun, *scanDeltaPubkey,
+		exitProcess(runTranscribeScanDelta(*root, *scanDryRun, *scanDeltaPubkey,
 			ghIssueLister, ghVerdictIssueResolver, ghAuthorResolver, ghCommentResolver))
 	}
 	// Verify verdict transcriber (verdict-lane/03, R-6): self-contained,
 	// STATUS.md-free. The workflow's "run" step. INERT until the R-6 sign-off
 	// resolves; --dry-run is the no-write "--check" surface.
 	if *transcribeVerdictMode {
-		os.Exit(runTranscribeVerdict(*root, *scanDryRun, *verdictPubkey,
+		exitProcess(runTranscribeVerdict(*root, *scanDryRun, *verdictPubkey,
 			ghIssueLister, ghVerdictIssueResolver, hermeticCheckCIRunner,
 			ghVerdictMainHealth(*root), ghCommentResolver))
 	}
 	if *closeVerifyID != "" {
-		os.Exit(runCloseVerify(*root, *closeVerifyID))
+		exitProcess(runCloseVerify(*root, *closeVerifyID))
 	}
 	// Model-path auto-flip: same self-contained, STATUS.md-free discipline as
 	// the verify-gate modes. Reads gh (reviews) and git (history); writes only
 	// stream README rows, and only for gate:model briefs whose merge PR carries
 	// a live App approval at the merged head.
 	if *autoFlipModelMode {
-		os.Exit(runAutoFlipModel(*root, *scanDryRun, *checkMode))
+		exitProcess(runAutoFlipModel(*root, *scanDryRun, *checkMode))
 	}
 	if *alarmsMode {
-		os.Exit(runAlarms(*root))
+		exitProcess(runAlarms(*root))
 	}
 	// Awaiting-verification backlog curve — self-contained sub-command, same
 	// STATUS.md-free discipline as the verify-gate modes above. This is the
@@ -2088,36 +2131,36 @@ func main() {
 		if *weekly {
 			period = "weekly"
 		}
-		os.Exit(runVerifBacklog(*root, *historyPath, *since, period))
+		exitProcess(runVerifBacklog(*root, *historyPath, *since, period))
 	}
 	// --dora is the v0.14.0 back-compat alias (daily-harvest/v0.1.0 still calls
 	// `statusgen -dora`): it emits the grouped-DORA core retained in roadmapdora.go.
 	// Self-contained diagnostic sub-command — never reads or writes STATUS.md.
 	if *doraMode {
-		os.Exit(runDora(*root, *since, strings.ToLower(strings.TrimSpace(*doraBy)), *doraJSON))
+		exitProcess(runDora(*root, *since, strings.ToLower(strings.TrimSpace(*doraBy)), *doraJSON))
 	}
 	// DORA-timing query: the read side of the .dora-timing.jsonl substrate the
 	// recorder writes under --record. Self-contained, offline, STATUS.md-free —
 	// same discipline as --dora/--trend.
 	if *doraTimingMode {
-		os.Exit(runDoraTiming(*root, *since, *doraTimingUntil, *doraJSON))
+		exitProcess(runDoraTiming(*root, *since, *doraTimingUntil, *doraJSON))
 	}
 	// The internal full-DORA publish feed (dorajson.go). Always JSON — it exists to
 	// be machine-read by the publish producer — so it does not consult --json.
 	if *doraJSONMode {
-		os.Exit(runDoraJSON(*root, *since, *doraTimingUntil, *doraJSONLimit))
+		exitProcess(runDoraJSON(*root, *since, *doraTimingUntil, *doraJSONLimit))
 	}
 	// Autonomy / token / gate-share emitter (mm/41) — self-contained
 	// diagnostic sub-command. Reuses the shared --since window and --json flag.
 	if *autonomyMode {
-		os.Exit(runAutonomy(*root, *since, *doraJSON))
+		exitProcess(runAutonomy(*root, *since, *doraJSON))
 	}
 	// Adoption-ladder POSITION indicator (mm/42) — self-contained diagnostic
 	// sub-command built on the same behavioral axes as --autonomy. Ships
 	// publicly: a missing private opmetrics day-file degrades to an explicit
 	// 'unmeasured range', never an error and never a silent zero.
 	if *ladderMode {
-		os.Exit(runLadder(*root, *since, *doraJSON))
+		exitProcess(runLadder(*root, *since, *doraJSON))
 	}
 	// Issue metrics emitter — self-contained sub-command, same
 	// STATUS.md-free discipline as the modes above. --self-improvement (mm/03)
@@ -2125,9 +2168,9 @@ func main() {
 	// --json/--series modify it.
 	if *issuesMode {
 		if *selfImprovementMode {
-			os.Exit(runSelfImprovement(*root, *doraJSON, *doraSeries, *staleIssueDays, *teamLogins))
+			exitProcess(runSelfImprovement(*root, *doraJSON, *doraSeries, *staleIssueDays, *teamLogins))
 		}
-		os.Exit(runIssues(*root, *doraJSON, *doraSeries, *staleIssueDays, *teamLogins))
+		exitProcess(runIssues(*root, *doraJSON, *doraSeries, *staleIssueDays, *teamLogins))
 	}
 	// Cynefin-domain view: self-contained diagnostic sub-command — domain
 	// distribution, drift, and the Disorder list. Same STATUS.md-free discipline
@@ -2140,31 +2183,37 @@ func main() {
 		if *weekly {
 			period = "weekly"
 		}
-		os.Exit(runCynefin(*root, period, *doraJSON))
+		exitProcess(runCynefin(*root, period, *doraJSON))
+	}
+	if *decisionGateMode {
+		exitProcess(runDecisionGate(*root, *corroboratePRs, *decisionGateBase))
 	}
 	if *corroborateMode {
-		os.Exit(runCorroborate(*corroboratePRs))
+		exitProcess(runCorroborate(*corroboratePRs))
 	}
 	// consumers corroboration — self-contained
 	// sub-command; never reads or writes STATUS.md. Exits 1 when the branch diff
 	// DISPROVES a routing claim, 2 when the diff itself could not be taken.
 	if *consumersMode {
-		os.Exit(runConsumers(*root, *consumersBase, *consumersBrief))
+		if *consumersDelivery != "" {
+			exitProcess(runDeliveryConsumers(*root, *consumersBase, *consumersBrief, *consumersDelivery))
+		}
+		exitProcess(runConsumers(*root, *consumersBase, *consumersBrief))
 	}
 	// Bottleneck report: self-contained diagnostic
 	// sub-command — per-stage WIP + dwell, constraint location, shift detection,
 	// prescribed ToC action. Same STATUS.md-free discipline as --dora/--trend.
 	if *bottleneckMode {
-		os.Exit(runBottleneck(*root, *doraJSON))
+		exitProcess(runBottleneck(*root, *doraJSON))
 	}
 	// Intake front-door debt emitter (agentic-metrics/02): self-contained,
 	// offline, STATUS.md-free — same discipline as --bottleneck --json.
 	if *intakeDebtMode {
-		os.Exit(runIntakeDebt(*root, *doraJSON))
+		exitProcess(runIntakeDebt(*root, *doraJSON))
 	}
 	// Intake exit records (desk-supervision/33): self-contained, offline, STATUS.md-free.
 	if *intakeExitsMode {
-		os.Exit(runIntakeExits(*root, *doraJSON))
+		exitProcess(runIntakeExits(*root, *doraJSON))
 	}
 	// Brief-flow metrics (statusgen/07). All seven are self-contained,
 	// STATUS.md-free sub-commands, same discipline as --dora-timing/--bottleneck;
@@ -2173,7 +2222,7 @@ func main() {
 	// error when gh or the target repo is unavailable (briefflowreview.go,
 	// briefdecision.go).
 	if *throughputMode {
-		os.Exit(runThroughput(*root, *since, *doraTimingUntil, *doraJSON))
+		exitProcess(runThroughput(*root, *since, *doraTimingUntil, *doraJSON))
 	}
 	if *leadtimeMode {
 		// --by-size is accepted but not yet branched on: by-size is the only
@@ -2181,92 +2230,92 @@ func main() {
 		// an explicit `--leadtime --by-size` invocation is forward-compatible
 		// with a future aggregate-only mode rather than erroring.
 		_ = *leadtimeBySize
-		os.Exit(runLeadTimeBySize(*root, *since, *doraTimingUntil, *doraJSON))
+		exitProcess(runLeadTimeBySize(*root, *since, *doraTimingUntil, *doraJSON))
 	}
 	if *flowEfficiencyMode {
-		os.Exit(runFlowEfficiency(*root, *since, *doraTimingUntil, *doraJSON))
+		exitProcess(runFlowEfficiency(*root, *since, *doraTimingUntil, *doraJSON))
 	}
 	if *flowMode {
-		os.Exit(runFlow(*root, *forgeMode, *doraJSON, *since, *doraTimingUntil, *ciHoursPerDay))
+		exitProcess(runFlow(*root, *forgeMode, *doraJSON, *since, *doraTimingUntil, *ciHoursPerDay))
 	}
 	if *firstPassYieldMode {
-		os.Exit(runFirstPassYield(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}))
+		exitProcess(runFirstPassYield(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}))
 	}
 	if *reviewReworkMode {
-		os.Exit(runReviewRework(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}))
+		exitProcess(runReviewRework(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}))
 	}
 	if *decisionLatencyMode {
-		os.Exit(runDecisionLatency(*root, *since, *doraTimingUntil, *doraJSON, ghDecisionQueueSource{}))
+		exitProcess(runDecisionLatency(*root, *since, *doraTimingUntil, *doraJSON, ghDecisionQueueSource{}))
 	}
 	if *netFlowMode {
-		os.Exit(runNetFlow(*root, *since, *doraTimingUntil, *doraJSON))
+		exitProcess(runNetFlow(*root, *since, *doraTimingUntil, *doraJSON))
 	}
 	if *assayScoreMode {
-		os.Exit(runAssayScore(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}, ghDecisionQueueSource{}))
+		exitProcess(runAssayScore(*root, *since, *doraTimingUntil, *doraJSON, ghBFPRSource{}, ghDecisionQueueSource{}))
 	}
 	// Roadmap deck overview + per-stream pages — RETAINED (Ian ruling #1213).
 	// DevLake feeds INTO these internal pages; roadmapdora.go computes the DORA
 	// tiles they render today.
 	if *roadmapMode {
-		os.Exit(runRoadmap(*root, *cadenceMode))
+		exitProcess(runRoadmap(*root, *cadenceMode))
 	}
 	// --cadence acts only under --roadmap; passing it alone is a usage error
 	// rather than a silent no-op that runs a whole-board regen.
 	if *cadenceMode != "" {
 		fmt.Fprintln(os.Stderr, "statusgen: --cadence requires --roadmap")
-		os.Exit(2)
+		exitProcess(2)
 	}
 	// Launch readiness rollup (assay-launch/04): self-contained diagnostic sub-command,
 	// same STATUS.md-free discipline as --dora/--trend/--roadmap.
 	if *launchMode {
-		os.Exit(runLaunch(*root, *launchTarget))
+		exitProcess(runLaunch(*root, *launchTarget))
 	}
 	// Requirement traceability rollup (sdlc/02): self-contained, read-only,
 	// STATUS.md-free, offline. Emits the per-release ask→work→evidence rollup the
 	// audit-pack brief (sdlc/08) feeds into --export-evidence.
 	if *requirementsRollupMode {
-		os.Exit(runRequirementsRollup(*root, *since, *doraJSON))
+		exitProcess(runRequirementsRollup(*root, *since, *doraJSON))
 	}
 	// Derived graph export (landscape-followups/06): self-contained, read-only,
 	// STATUS.md-free — same discipline as --gate-scores / --next-up. Emits the
 	// typed graph the tool already parses, in DOT or JSONL; never reads or
 	// writes STATUS.md or a generated register view.
 	if *graphMode != "" {
-		os.Exit(runGraph(*root, *graphMode))
+		exitProcess(runGraph(*root, *graphMode))
 	}
 	// Gate-score emitter: self-contained JSON output for
 	// deskboard consumption. Same STATUS.md-free discipline as --dora/--trend.
 	if *gateScoresMode {
-		os.Exit(runGateScores(*root))
+		exitProcess(runGateScores(*root))
 	}
 	// Next-up (DISPATCH queue) emitter: self-contained JSON output for deskboard
 	// consumption. Same STATUS.md-free discipline as --gate-scores; the span/overflow
 	// and require-claims knobs are already wired above.
 	if *nextUpMode {
-		os.Exit(runNextUp(*root))
+		exitProcess(runNextUp(*root))
 	}
 	// Eligibility evaluator emitter (graph-execution/01): self-contained,
 	// STATUS.md-free, same discipline as --next-up / --gate-scores. Offline by
 	// construction — it never reads --forge.
 	if *eligibilityMode {
-		os.Exit(runEligibility(*root, *doraJSON))
+		exitProcess(runEligibility(*root, *doraJSON))
 	}
 	// Coverage-rule emitter (graph-execution/03): self-contained, STATUS.md-free,
 	// same discipline as --eligibility. Offline by construction — the revision
 	// comparison reads the local tree's own HEAD, never a live PR/merge lookup.
 	if *coverageMode {
-		os.Exit(runCoverage(*root, *doraJSON))
+		exitProcess(runCoverage(*root, *doraJSON))
 	}
 	// Cluster-pending queue (verdict-lane/07): self-contained JSON worklist for
 	// the pod verify runner — the briefs code-verified but cluster-pending. Same
 	// STATUS.md-free, read-only discipline as --gate-scores / --next-up.
 	if *clusterPendingQueueMode {
-		os.Exit(runClusterPendingQueue(*root))
+		exitProcess(runClusterPendingQueue(*root))
 	}
 	// Gate-effectiveness telemetry: self-contained,
 	// STATUS.md-free, same discipline as --dora/--trend/--bottleneck above.
 	if *gateTelemetryMode {
-		os.Exit(runGateTelemetry(*root))
+		exitProcess(runGateTelemetry(*root))
 	}
 	// Opt-in telemetry dry-run (gtm/08): self-contained, STATUS.md-free preview
 	// of the anonymized payload. Requires the full double opt-in even to PREVIEW,
@@ -2277,10 +2326,10 @@ func main() {
 			fmt.Fprintf(os.Stderr,
 				"telemetry: not armed — pass --telemetry AND set %s=1 to preview the payload. Nothing collected.\n",
 				telemetryEnvVar)
-			os.Exit(0)
+			exitProcess(0)
 		}
 		runTelemetry(*root, true)
-		os.Exit(0)
+		exitProcess(0)
 	}
 	// Evidence-bundle export (gtm/05): self-contained sub-command, same
 	// STATUS.md-free discipline as --dora/--trend. Single-root only.
@@ -2290,7 +2339,7 @@ func main() {
 		args := flag.Args()
 		if len(args) < 2 {
 			fmt.Fprintln(os.Stderr, "statusgen: --export-evidence requires two positional arguments: <from> <to> (YYYY-MM-DD)")
-			os.Exit(2)
+			exitProcess(2)
 		}
 		from, to := args[0], args[1]
 		output := ""
@@ -2309,18 +2358,18 @@ func main() {
 		}
 		if output == "" {
 			fmt.Fprintln(os.Stderr, "statusgen: --export-evidence requires -o <output>")
-			os.Exit(2)
+			exitProcess(2)
 		}
 		var generated time.Time
 		if generatedArg != "" {
 			g, err := time.Parse(time.RFC3339, generatedArg)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "statusgen: -generated must be RFC3339 (e.g. 2026-08-03T00:00:00Z), got %q\n", generatedArg)
-				os.Exit(2)
+				exitProcess(2)
 			}
 			generated = g
 		}
-		os.Exit(runEvidenceExport(*root, from, to, output, generated))
+		exitProcess(runEvidenceExport(*root, from, to, output, generated))
 	}
 	// Release-keyed audit-pack export (sdlc/08). Unlike --export-evidence, this
 	// mode takes no positional argument, so -release/-o/-generated are ordinary
@@ -2328,43 +2377,43 @@ func main() {
 	if *exportAuditPackMode {
 		if strings.TrimSpace(*auditPackRelease) == "" {
 			fmt.Fprintln(os.Stderr, "statusgen: --export-audit-pack requires -release <tag>")
-			os.Exit(2)
+			exitProcess(2)
 		}
 		if strings.TrimSpace(*auditPackOutput) == "" {
 			fmt.Fprintln(os.Stderr, "statusgen: --export-audit-pack requires -o <output>")
-			os.Exit(2)
+			exitProcess(2)
 		}
 		var generated time.Time
 		if strings.TrimSpace(*auditPackGenerated) != "" {
 			g, err := time.Parse(time.RFC3339, *auditPackGenerated)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "statusgen: -generated must be RFC3339 (e.g. 2026-08-03T00:00:00Z), got %q\n", *auditPackGenerated)
-				os.Exit(2)
+				exitProcess(2)
 			}
 			generated = g
 		}
-		os.Exit(runAuditPackExport(*root, *auditPackRelease, *auditPackOutput, generated))
+		exitProcess(runAuditPackExport(*root, *auditPackRelease, *auditPackOutput, generated))
 	}
 	if *registerLinksFlag {
 		n, err := backfillRegisterRefs(*root)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "register-links:", err)
-			os.Exit(1)
+			exitProcess(1)
 		}
 		fmt.Printf("register-links: %d bare references linked across brief files\n", n)
-		return
+		exitProcess(0)
 	}
 	// Lint-audit (statusgen/01) — read-only advisory sub-command: sample daily commits
 	// over 30 days, tally per-rule firing counts, flag COLD rules. Never retires a
 	// rule itself and never gates CI.
 	if *lintAuditMode {
-		os.Exit(runLintAudit(*root))
+		exitProcess(runLintAudit(*root))
 	}
 	// Instrument-audit (the liveness balancing loop) — read-only advisory sub-command: classify
 	// every declared statusgen flag WIRED/COLD/DARK by consumer grep, --json optional.
 	// Never retires a flag itself; --lint NOTICEs DARK flags.
 	if *instrumentAuditMode {
-		os.Exit(runInstrumentAudit(*root, splitInstrumentRoots(*instrumentRootsFlag), *doraJSON))
+		exitProcess(runInstrumentAudit(*root, splitInstrumentRoots(*instrumentRootsFlag), *doraJSON))
 	}
 
 	// Wire the run's forge reader. The default (set at forgeReaderForRun's
@@ -2394,14 +2443,14 @@ func main() {
 	// unknown value is a usage error, not a silent no-op.
 	if *scopeFlag != "" && !validServes[*scopeFlag] {
 		fmt.Fprintf(os.Stderr, "statusgen: --scope %q is not a known product (example-app|example-service|assay|platform)\n", *scopeFlag)
-		os.Exit(2)
+		exitProcess(2)
 	}
 	var changedPaths []string
 	if *changedFile != "" {
 		raw, err := os.ReadFile(*changedFile)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "statusgen: --changed:", err)
-			os.Exit(2)
+			exitProcess(2)
 		}
 		for _, line := range strings.Split(string(raw), "\n") {
 			if p := strings.TrimSpace(line); p != "" {
@@ -2417,10 +2466,10 @@ func main() {
 		switch {
 		case r.Refusal != "":
 			fmt.Fprintln(os.Stderr, r.Refusal)
-			os.Exit(1)
+			exitProcess(1)
 		case r.UsageErr != "":
 			fmt.Fprintln(os.Stderr, "statusgen:", r.UsageErr)
-			os.Exit(2)
+			exitProcess(2)
 		default:
 			fmt.Fprintln(os.Stderr, r.Banner)
 			changedPaths = append(changedPaths, r.Paths...)
@@ -2433,9 +2482,9 @@ func main() {
 	if *diffBaseFlag != "" {
 		if mode != "lint" {
 			fmt.Fprintln(os.Stderr, "statusgen: --diff-base is only valid with --lint")
-			os.Exit(2)
+			exitProcess(2)
 		}
-		os.Exit(runDiffLintRoots(resolvedRoots, *diffBaseFlag, budgetSpecs, *changedFile, *scopeFlag))
+		exitProcess(runDiffLintRoots(resolvedRoots, *diffBaseFlag, budgetSpecs, *changedFile, *scopeFlag))
 	}
 	// Brief-reading version gate (derived-board/06 §6): a STAMPED statusgen below
 	// v1.0.0 refuses to read a brief-v2 tree (exit 6), pointing at
@@ -2443,7 +2492,7 @@ func main() {
 	// latest, so running from source is never gated. This is the SEPARATE, release-
 	// boundary control alongside parseBriefFile's #271 fail-closed trap.
 	if gate := refuseIfTreeTooNew(resolvedRoots, statusgenVersion, os.Stderr); gate != 0 {
-		os.Exit(gate)
+		exitProcess(gate)
 	}
 	code := runRoots(resolvedRoots, mode, budgetSpecs, changedPaths, *scopeFlag)
 	// Opt-in telemetry (gtm/08): only after an ordinary lint/write run, and only
@@ -2462,7 +2511,7 @@ func main() {
 			"telemetry: --telemetry given but %s is not \"1\" — telemetry stays OFF (both are required).\n",
 			telemetryEnvVar)
 	}
-	os.Exit(code)
+	exitProcess(code)
 }
 
 // singleRootOnlySubcommand returns the flag name of the first ENABLED sub-command

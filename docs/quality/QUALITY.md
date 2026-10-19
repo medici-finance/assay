@@ -800,7 +800,7 @@ Churn volume: 759345 new line(s), 15854 churned line(s) within the 14-day window
 
 ## Defect-inducing rate (M2)
 
-not measured — populated by quality/06–07 (defect-fix identification + SZZ trace). Never rendered as 0.
+not measured — no defect trace corpus; run mine with --fix-source. Never rendered as 0.
 
 ## Re-fix rate (regression-suite effectiveness)
 

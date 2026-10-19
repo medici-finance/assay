@@ -39,6 +39,8 @@ on:
       # statusgen resolves the forgeread module through a sibling `replace`, so a change
       # there changes what the lint binary is built from.
       - "forgeread/**"
+      # Likewise the perfrec module (the shared perf-v1 writer, #3101).
+      - "perfrec/**"
       - ".github/workflows/assay-statusgen.yml"
       # The reconcile job's run: texts below are what statusgen's job tests
       # execute, so a change to this file's staged copy runs those tests too.
@@ -58,6 +60,8 @@ on:
       # statusgen resolves the forgeread module through a sibling `replace`, so a change
       # there changes what the lint binary is built from.
       - "forgeread/**"
+      # Likewise the perfrec module (the shared perf-v1 writer, #3101).
+      - "perfrec/**"
       - ".github/workflows/assay-statusgen.yml"
   # Hourly board reconcile (derived-board/04). Scheduled workflows run only from
   # the default branch, so the reconcile job always executes main's copy of this
@@ -219,9 +223,10 @@ jobs:
           parent="$(git rev-parse --verify 'HEAD^1^{commit}')"
           rm -rf "${RUNNER_TEMP}/base"
           mkdir -p "${RUNNER_TEMP}/base"
-          # statusgen's go.mod replaces forgeread with the sibling ../forgeread, so the base
-          # tree needs that directory beside it. A base that predates the module has none.
-          git archive "$parent" statusgen $(git ls-tree -d --name-only "$parent" forgeread) | tar -x -C "${RUNNER_TEMP}/base"
+          # statusgen's go.mod replaces forgeread and perfrec with the siblings ../forgeread and
+          # ../perfrec, so the base tree needs those directories beside it. A base that predates
+          # a module has none.
+          git archive "$parent" statusgen $(git ls-tree -d --name-only "$parent" forgeread perfrec) | tar -x -C "${RUNNER_TEMP}/base"
           ( cd "${RUNNER_TEMP}/base/statusgen" && go build -o "${RUNNER_TEMP}/statusgen-base" . )
       # Always the pinned tarball, never a gh already on PATH: the guard's review
       # and comment reads go through it.
@@ -275,6 +280,8 @@ jobs:
     # needs only read; the App token carries the write.
     permissions:
       contents: read
+      # dead-claim decay reads branch pull-request state over the GraphQL API (#3372)
+      pull-requests: read
     steps:
       # Mint a token for the assay-board-writer App. This App is the sole actor
       # on the protect-main + leak-sweep ruleset bypass lists, so its push to
@@ -292,6 +299,7 @@ jobs:
           # Persist the App token as the push credential (checkout default), so
           # the STATUS.md `git push` below authenticates as assay-board-writer[bot].
           token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0 # consumedFragmentIndex needs changelog/ history; a shallow regen reads a consumed fragment as a false PROBLEM (#3364)
       - name: Install Go
         run: |
           set -euo pipefail
@@ -307,9 +315,14 @@ jobs:
           go version
           ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
       - name: Regenerate STATUS.md
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           "${RUNNER_TEMP}/statusgen" --root .
       - name: Commit STATUS.md if it changed
+        env:
+          # the retry loop re-runs statusgen against the new head
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name  'assay-board-writer[bot]'
@@ -675,6 +688,10 @@ jobs:
         env:
           # The READ token: statusgen reconcile resolves it from GITHUB_TOKEN.
           GITHUB_TOKEN: ${{ github.token }}
+          # The fold's provenance read resolves verifier identities from the roster (#3082).
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+          ASSAY_HOME_REPO: ${{ vars.ASSAY_HOME_REPO || github.repository }}
         run: |
           set -euo pipefail
           statusgen="${RUNNER_TEMP}/statusgen"

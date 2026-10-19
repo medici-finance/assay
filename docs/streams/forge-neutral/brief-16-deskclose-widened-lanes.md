@@ -804,6 +804,130 @@ VERIFY: BLOCKED — 16 of 17 rows pass by hand (rows 1-16); row 17 exits 2 as au
 
 Attached to #1927: https://github.com/medici-finance/assay/issues/1927#issuecomment-6038228849
 
+### Non-implementer verifier re-run — VERIFY: BLOCKED — 2026-10-16 claude-opus-5-5-verifier
+
+Verification-Attestation: medici-finance/assay#3138 run=ade5a525ef01eb003a42dbaa90d660cb8812aaf05b09d13f4aa517f01fbc2444 source=1948dc0873705930b202f0e747047df844010d1a brief=docs/streams/forge-neutral/brief-16-deskclose-widened-lanes.md model=claude-opus-5-5 tier=any
+
+Context: gate: model; risk: regulatory no, customer no, irreversible no, sensitive-data no. Verified against merged main 1948dc0873705930b202f0e747047df844010d1a, in a detached temporary worktree. The runner is not the implementer. Delivering change: 5f906464a (#1172). Hand runs used the darwin-arm64 host (go1.27.2, git 2.56.0, statusgen v1.0.45), offline: GOPROXY=off, GOFLAGS=-mod=readonly, KUBECONFIG=/dev/null, no credential variables, no forge calls by any row. Expected outcomes were written down from the brief's Task and Verify sections before any test body or earlier verdict was read.
+
+Why this re-run: since the 2026-10-07 run (dde4fbeaead9), the deskclose package changed, including the lanes source (#2457, write-boundary self-proof seams), and so did the deskkit forge seam on both backends. The workflow's only change was its Go version pin (one line, #2944), and its guard lines did not change. The brief's Verify table is unchanged: row 16 still opens with prose, and row 17 is still the merged-main consumers check.
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---------|--------|-----------------------------------|---------------|
+| 1 | Verify row 1 (build plus the full desk-tools suite) | exit 0 | exit 0; 112 packages ok, 0 FAIL; deskclose ok 7.7s, internal/deskkit ok 308.6s. Host load average about 17-28 on 16 CPUs | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 2 | Verify row 2 (deskclose package, count=1) | exit 0; existing modes green alongside the two new ones | exit 0; ok tools/desk/cmd/deskclose 2.88s | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 3 | Verify row 3 (TestSelfWithdrawSucceedsOnOwnDraft) | exit 0; exactly one comment then one close, on that item only | exit 0; PASS with 5 subtests (abandoned; superseded --by; superseded --by typed change; already closed is an idempotent no-op; dry-run writes nothing). The test asserts the writes are exactly [comment, close] on the draft, that no other item is touched, and that the disposition record is never read | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 4 | Verify row 4 (TestSelfWithdrawRefusesNonAuthor) | refused, zero writes | exit 0; PASS, with the subtest "id matches, login does not" | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 5 | Verify row 5 (TestSelfWithdrawRefusesNonDraft) | refused, zero writes | exit 0; PASS | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 6 | Verify row 6 (TestSelfWithdrawRefusesDecisionLabelled) | refused by refuseDecisionItem before the authorship check | exit 0; PASS | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 7 | Verify row 7 (TestSelfWithdrawIDPinRejectsLoginOnlyMatch) | login-only match refused, and an unpinned id refused | exit 0; PASS with 2 subtests (login matches, id does not; roster pins no id for the role) | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 8 | Verify row 8 (TestSelfWithdrawIgnoresUnsignedRuling) | succeeds with R-1 unsigned | exit 0; PASS | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 9 | Verify row 9 (TestVerifyGateRefireSucceedsAsVerifier) | reopen, then comment, then close, on the same item, with the reason stated | exit 0; PASS with 2 subtests (already open is an idempotent no-op; dry-run writes nothing). The test asserts exactly [reopen, comment, close] in that order on the card, no state reason on the re-close, and the reason appearing at least twice in the comment | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 10 | Verify row 10 (TestVerifyGateRefireRefusesNonVerifier) | refused or could-not-check per role, zero writes | exit 0; PASS with 4 subtests (worker; reviewer; desk (neither); unresolved) | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 11 | Verify row 11 (TestVerifyGateRefireRefusesUnlabelledItem) | refused naming the label, zero writes | exit 0; PASS with 4 subtests (a closed pull request is not a card; a stated change kind is refused pre-flight; a decision-labelled card is refused; --reason is mandatory) | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 12 | Verify row 12 (TestVerifyGateRefireIgnoresUnsignedRuling) | succeeds with R-1 unsigned | exit 0; PASS | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 13 | Verify row 13 (grep count of sender.type plus gh issue reopen in the verify-gate-close workflow) | at least 2 | exit 0; count 4. The only change to the workflow since the implementation is the GO_VERSION pin (1.25.0 to 1.27.2); the sender.type read (line 98) and both reopen calls (lines 133 and 299) are intact | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 14 | Verify row 14 (ReopenIssue on both backends, plus the GitHub golden, GitLab golden and GitLab coverage tests) | exit 0 on every chained command | exit 0; TestReopenIssueOpBothBackends github and gitlab subtests PASS; 4 ok lines, none reporting no tests | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 15 | Verify row 15 (grep counts of both mode names in the deskclose main and the forge-gitlab inventory) | each total at least 1 | exit 0; self-withdraw total 2 (main 2, inventory 0); verify-gate-refire total 5 (main 2, inventory 3) | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 16 | Verify row 16 (mutation of the id half of the authorship pin). Done in a throwaway clone at 1948dc087, outside the admitted worktree: lanes line 239 changed to "if false && pr.Author.ID != self.id {", then the TestSelfWithdraw tests run with -v; restored with git checkout and run again | mutant exit 1; restored exit 0 | Mutant: exit 1. Only TestSelfWithdrawIDPinRejectsLoginOnlyMatch fails, in subtest "login matches, id does not", with "want exit 5, got 0"; 18 other PASS lines. Restored: 0-byte diff, exit 0. PASS | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 17 | Verify row 17 (statusgen consumers check for forge-neutral/16) | exit 0 | As authored on merged main: exit 2, "COULD-NOT-CHECK: assay:assay:forge-neutral:16 is not in the diff against 1948dc087…". Re-scoped in a throwaway clone to authoring commit d97abb672 (#996) with base d97abb672^: exit 0, "4 corroborated, 0 disproved, 1 unchecked" (the unchecked entry is the out-of-scope workflow). The row fails as authored (#1281 class); the substance holds | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+
+Rows passing by hand: 16 of 17 (rows 1-16). Row 17 is could-not-check as authored.
+
+Execution witness: statusgen v1.0.45 verifyrun was run with --dry-run on this darwin host and exited 2. Its table was not written back, so this block keeps only the hand runs. Rows 13 and 15 pass in it. Rows 1-12, 14 and 17 are check:ci rows, and they could not run because this host has no unshare network sandbox. Row 16 could not run because its Command cell is prose-led (the first code span is pr.Author.ID).
+
+#### Findings
+
+- **No defect in the shipped lanes.** The deskclose changes since dde4fbeaead9 (#2457 among them) leave every lane test green. The id half of the pin is still a live control (row 16). ReopenIssue is still pinned on both backends' wire.
+- **The blocker is still the check definition.** Row 16 opens with prose, so verifyrun cannot execute it. Row 17 cannot corroborate on merged main, because the authoring PR (#996) and the implementation (#1172) never share one diff. Both rows need re-authoring before any witness can pass. #1281 is open. #1927's body no longer lists this brief, although the 2026-10-07 run attached its result there.
+- **Doc drift (cosmetic, carried over).** The brief text says inventory "row 38". The ReopenIssue op sits on a later row on main.
+
+#### Risk-bearing values (enumerate, rank, derive)
+
+Enumerated over the lanes and verbs sources in the deskclose package, the deskkit trust, roletoken and forgeidentity sources, and the verify-gate-close workflow, at 1948dc087:
+- ident.ID == 0 refusal @ lanes.go:160
+- pr.Author.ID != self.id @ lanes.go:239
+- roleVerifier = "verifier" @ lanes.go:48
+- VerifyGateLabel = "verify-gate" @ trust.go:298
+- the "verify-desk": "verifier" binding @ roletoken.go:45
+- the workflow label condition 'verify-gate' @ verify-gate-close.yml:58
+- modeSelfWithdraw = "self-withdraw" and modeVerifyGateRefire = "verify-gate-refire" @ lanes.go:41-42
+- becauseSuperseded = "superseded" and becauseAbandoned = "abandoned" @ lanes.go:52-53
+- reasonNotPlanned = "not_planned" @ verbs.go:41
+
+Ranked by blast radius:
+1. The authorship id pin (lanes.go:160 and 239). If it is wrong, an App can close a draft it did not open.
+2. The verifier role literal.
+3. The verify-gate label.
+4. The mode names, the --because values and the close reason. These are reversible names and dispositions, and need no derivation.
+
+RISK-VALUE: DERIVED — ident.ID == 0 refusal @ lanes.go:160 (+ pr.Author.ID != self.id @ lanes.go:239) — 0 is the roster's "unpinned" sentinel (forgeidentity.go:51, "0 when unpinned"). Refusing 0 means a login-only match can never pass. Row 7 covers both the mismatch and the unpinned case, and row 16 shows the comparison is load-bearing.
+RISK-VALUE: DERIVED — roleVerifier = "verifier" @ lanes.go:48 — equals the verify-desk loop's role binding at roletoken.go:45, which is the role a verify-desk session mints. Row 10 refuses every other role, and an unresolved one.
+RISK-VALUE: DERIVED — VerifyGateLabel = "verify-gate" @ trust.go:298 — equals the label the independent server-side guard keys on (verify-gate-close.yml:58). The lane's scope and the guard's scope are therefore the same set of issues. Row 11 refuses unlabelled items.
+
+VERIFY: BLOCKED — 16 of 17 rows pass by hand (rows 1-16). Row 17 is could-not-check as authored on merged main (#1281 class). Row 16 is prose-led, so the witness cannot execute it. Both are check-definition gaps and need re-authoring. No implementation defect was found.
+
+### Non-implementer verifier re-run — VERIFY: BLOCKED — 2026-10-16 (second run) claude-opus-5-5-verifier
+
+Verification-Attestation: medici-finance/assay#3193 run=8307081374b74f92a4fff1f9866c6e332c7a86ad9e7a5ff59a4d5685384a7793 source=74c4a5082a5fda52478770a57fc98786c1b57245 brief=docs/streams/forge-neutral/brief-16-deskclose-widened-lanes.md model=claude-opus-5-5 tier=any
+
+Context: gate: model; risk: regulatory no, customer no, irreversible no, sensitive-data no. Verified against merged main 74c4a5082a5fda52478770a57fc98786c1b57245, in a detached temporary worktree. The runner is not the implementer. Delivering change: 5f906464a (#1172), a single-parent commit on 2024206eb that touched no workflow path. Hand runs used the darwin-arm64 host (go1.27.2, git 2.56.0, statusgen v1.0.45), offline: KUBECONFIG=/dev/null, a throwaway HOME and TMPDIR, no credential variables, no forge calls by any row. Expected outcomes were written down from the brief's Task and Verify sections before any test body or earlier verdict was read.
+
+Why this re-run: since the earlier 2026-10-16 run (source 1948dc087), the deskkit forge seam changed on both backends (a new file-kind field on file reads, unrelated to ReopenIssue). The deskclose package, the verify-gate-close workflow and the forge-gitlab inventory did not change. The brief's Verify table is unchanged.
+
+| # | Command | Expect | Observed (exit + key output line) | Date / runner |
+|---|---------|--------|-----------------------------------|---------------|
+| 1 | Verify row 1 (build plus the full desk-tools suite) | exit 0 | exit 0; 113 packages ok (3 served from the build cache: internal/cli, internal/deskfilestub, internal/gitversion), 0 FAIL; deskclose ok 1.3s, internal/deskkit ok 282.9s | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 2 | Verify row 2 (deskclose package, count=1) | exit 0; existing modes green alongside the two new ones | exit 0; ok tools/desk/cmd/deskclose 0.56s | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 3 | Verify row 3 (TestSelfWithdrawSucceedsOnOwnDraft) | exit 0; exactly one comment then one close, on that item only | exit 0; PASS with 5 subtests (abandoned; superseded --by; superseded --by typed change; already closed is an idempotent no-op; dry-run writes nothing) | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 4 | Verify row 4 (TestSelfWithdrawRefusesNonAuthor) | refused, zero writes | exit 0; PASS, with the subtest "id matches, login does not" | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 5 | Verify row 5 (TestSelfWithdrawRefusesNonDraft) | refused, zero writes | exit 0; PASS | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 6 | Verify row 6 (TestSelfWithdrawRefusesDecisionLabelled) | refused by refuseDecisionItem before the authorship check | exit 0; PASS | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 7 | Verify row 7 (TestSelfWithdrawIDPinRejectsLoginOnlyMatch) | login-only match refused, and an unpinned id refused | exit 0; PASS with 2 subtests (login matches, id does not; roster pins no id for the role) | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 8 | Verify row 8 (TestSelfWithdrawIgnoresUnsignedRuling) | succeeds with R-1 unsigned | exit 0; PASS | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 9 | Verify row 9 (TestVerifyGateRefireSucceedsAsVerifier) | reopen, then comment, then close, on the same item, with the reason stated | exit 0; PASS with 2 subtests (already open is an idempotent no-op; dry-run writes nothing) | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 10 | Verify row 10 (TestVerifyGateRefireRefusesNonVerifier) | refused or could-not-check per role, zero writes | exit 0; PASS with 4 subtests (worker; reviewer; desk (neither); unresolved) | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 11 | Verify row 11 (TestVerifyGateRefireRefusesUnlabelledItem) | refused naming the label, zero writes | exit 0; PASS with 4 subtests (a closed pull request is not a card; a stated change kind is refused pre-flight; a decision-labelled card is refused; --reason is mandatory) | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 12 | Verify row 12 (TestVerifyGateRefireIgnoresUnsignedRuling) | succeeds with R-1 unsigned | exit 0; PASS | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 13 | Verify row 13 (grep count of sender.type plus gh issue reopen in the verify-gate-close workflow) | at least 2 | exit 0; count 4. The sender.type read (line 98) and both reopen calls (lines 133 and 299) are intact, and the workflow has no diff since source 1948dc087 | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 14 | Verify row 14 (ReopenIssue on both backends, plus the GitHub golden, GitLab golden and GitLab coverage tests) | exit 0 on every chained command | exit 0; TestReopenIssueOpBothBackends github and gitlab subtests PASS; 4 ok lines, none reporting no tests. A separate -v run shows "golden-pinned operation reopen_issue OK" on both backends | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 15 | Verify row 15 (grep counts of both mode names in the deskclose main and the forge-gitlab inventory) | each total at least 1 | exit 0; self-withdraw total 2 (main 2, inventory 0); verify-gate-refire total 5 (main 2, inventory 3) | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 16 | Verify row 16 (mutation of the id half of the authorship pin). Done in a throwaway copy of the tree at 74c4a5082, outside the admitted worktree: lanes line 239 changed to "if false && pr.Author.ID != self.id {", then the TestSelfWithdraw tests run; restored and run again | mutant exit 1; restored exit 0 | Unmutated copy: exit 0. Mutant: exit 1; only TestSelfWithdrawIDPinRejectsLoginOnlyMatch fails, in subtest "login matches, id does not", with "want exit 5, got 0". Restored: byte-identical to the source file, exit 0. PASS | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+| 17 | Verify row 17 (statusgen consumers check for forge-neutral/16) | exit 0 | As authored on merged main: exit 2, "COULD-NOT-CHECK: assay:assay:forge-neutral:16 is not in the diff against 74c4a5082…". Re-scoped in a throwaway clone to authoring commit d97abb672 (#996) with base d97abb672^: exit 0, "4 corroborated, 0 disproved, 1 unchecked" (the unchecked entry is the out-of-scope workflow). The row is could-not-check as authored (#1281 class); the substance holds | 2026-10-16 assay-verifier-app[bot] (claude-opus-5-5 verifier) |
+
+Rows passing by hand: 16 of 17 (rows 1-16). Row 17 is could-not-check as authored.
+
+#### Findings
+
+- **No defect in the shipped lanes.** Every lane test is green at 74c4a5082. The id half of the pin is still a live control (row 16). ReopenIssue is still pinned on both backends' wire.
+- **The blocker is still the check definition.** Row 17 cannot corroborate on merged main, because the authoring PR (#996) and the implementation (#1172) never share one diff; #1281 is open. Row 16 opens with prose, so a verifyrun witness cannot execute it. Both rows need re-authoring before this item can pass as written.
+- **Doc drift (cosmetic, carried over).** The brief text says inventory "row 38". The ReopenIssue op is row 46 on main.
+
+#### Risk-bearing values (enumerate, rank, derive)
+
+Enumerated over the lanes and verbs sources in the deskclose package, the deskkit trust, roletoken and forgeidentity sources, and the verify-gate-close workflow, at 74c4a5082:
+- ident.ID == 0 refusal @ lanes.go:160
+- pr.Author.ID != self.id @ lanes.go:239
+- roleVerifier = "verifier" @ lanes.go:48
+- VerifyGateLabel = "verify-gate" @ trust.go:298
+- the "verify-desk": "verifier" binding @ roletoken.go:45
+- the workflow label condition 'verify-gate' @ verify-gate-close.yml:58
+- modeSelfWithdraw = "self-withdraw" and modeVerifyGateRefire = "verify-gate-refire" @ lanes.go:41-42
+- becauseSuperseded = "superseded" and becauseAbandoned = "abandoned" @ lanes.go:52-53
+- reasonNotPlanned = "not_planned" @ verbs.go:41
+
+Ranked by blast radius:
+1. The authorship id pin (lanes.go:160 and 239). If it is wrong, an App can close a draft it did not open.
+2. The verifier role literal.
+3. The verify-gate label.
+4. The mode names, the --because values and the close reason. These are reversible names and dispositions, and need no derivation.
+
+RISK-VALUE: DERIVED — ident.ID == 0 refusal @ lanes.go:160 (+ pr.Author.ID != self.id @ lanes.go:239) — 0 is the roster's "unpinned" sentinel (forgeidentity.go:51, "0 when unpinned"). Refusing 0 means a login-only match can never pass. Row 7 covers both the mismatch and the unpinned case, and row 16 shows the comparison is load-bearing.
+RISK-VALUE: DERIVED — roleVerifier = "verifier" @ lanes.go:48 — equals the verify-desk loop's role binding at roletoken.go:45, which is the role a verify-desk session mints. Row 10 refuses every other role, and an unresolved one.
+RISK-VALUE: DERIVED — VerifyGateLabel = "verify-gate" @ trust.go:298 — equals the label the independent server-side guard keys on (verify-gate-close.yml:58). The lane's scope and the guard's scope are therefore the same set of issues. Row 11 refuses unlabelled items.
+
+VERIFY: BLOCKED — 16 of 17 rows pass by hand (rows 1-16). Row 17 is could-not-check as authored on merged main (#1281 class). Row 16 is prose-led, so a witness cannot execute it. Both are check-definition gaps and need re-authoring. No implementation defect was found.
+
 ## Review
 Gate: **model** (from frontmatter — all four risk answers `no`; see gate-why for the reasoning that
 each widened lane stays inside the identity/authority model `forge-neutral/13` already put a human
