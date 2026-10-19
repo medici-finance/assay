@@ -173,6 +173,54 @@ RISK-VALUE: DERIVED — tier default = "any" @ tools/desk/cmd/deskdispatch/cli.g
 
 **VERIFY: FAIL** — row 8 only, and an environment fault rather than a deliverable defect: TestReg1145ShimCredential fails because CELLCTL_GH_AMBIENT reaches it from the house statusgen shim. With that variable absent the floor passes 26 of 26 seeds. Every other row passes in the witness except row 10, which could not run on this host and passes by hand network-off. Recommend blocked on the fixture's hermeticity, not implementer rework.
 
+### Verifier pass — 2026-10-19 (merged main 8bc28e8edf84, re-verify after medici-finance/assay#3463)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdispatch -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 8bc28e8edf84 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdispatch -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 8bc28e8edf84 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskdispatch -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 8bc28e8edf84 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-21.json` | pass exit=0 | sha256:198793304723 | 2026-10-19 | assay-verifier-app[bot] @ 8bc28e8edf84 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskdispatch/...` | pass exit=0 | sha256:0d3017d85629 | 2026-10-19 | assay-verifier-app[bot] @ 8bc28e8edf84 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskdispatch` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 8bc28e8edf84 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/21 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:8f1f6a0cbe16 | 2026-10-19 | assay-verifier-app[bot] @ 8bc28e8edf84 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:08978cb002c1 | 2026-10-19 | assay-verifier-app[bot] @ 8bc28e8edf84 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:026ad47edd53 | 2026-10-19 | assay-verifier-app[bot] @ 8bc28e8edf84 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCLIHelpDoesNotDiscoverManifests$' ./cmd/deskdispatch/ > "$out" && grep -F -- '--- PASS: TestCLIHelpDoesNotDiscoverManifests ' "$out")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 8bc28e8edf84 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#3472 run=cca706615c2cc460cd4348515185b31d29b279bd9804beb0312f280397cf8a7f source=8bc28e8edf8406a285833033dfee8725fa4ccb76 brief=docs/streams/desktools-v2/brief-21-migrate-deskdispatch-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+The execution witness above was run once with writes, under the house statusgen shim, which exports CELLCTL_GH_AMBIENT into the witness environment. Rows 1 to 9 passed in it and row 10 could not run on this host. The by-hand observations below are separate from the witness. The source includes 53d036291 (medici-finance/assay#3463), which clears inherited CELLCTL_* variables before the floor rows run.
+
+| # | Command | Expected | Observed | Date / runner |
+|---|---|---|---|---|
+| 1 | Verify row 1 command as written | exit 0, one top-level PASS | witness: pass exit=0; by hand: exit 0, `--- PASS: TestCLIHelpOffline` once, 126 subtests PASS, 0 FAIL | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 2 | Verify row 2 command as written | exit 0, one top-level PASS | witness: pass exit=0; by hand: exit 0, `--- PASS: TestCLIConfigFlow` once, 31 subtests PASS, 0 FAIL | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3 | Verify row 3 command as written | exit 0, one top-level PASS | witness: pass exit=0; by hand: exit 0, `--- PASS: TestCLILegacyForms` once, 856 subtests PASS, 0 FAIL | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 4 | Verify row 4 command as written | exit 0, `Totals: N caught, 0 NOT CAUGHT, 0 could-not-mutate.` with N equal to the spec's mutation count | witness: pass exit=0; by hand: exit 0, last line `Totals: 10 caught, 0 NOT CAUGHT, 0 could-not-mutate.`; the spec has 10 mutations plus 1 control | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 5 | Verify row 5 command as written | exit 0 | witness: pass exit=0 | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 6 | Verify row 6 command as written | exit 0 | witness: pass exit=0 | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 7 | Verify row 7 command as written | exit 0, named PASS | witness: pass exit=0, `--- PASS: TestCLIOwnerMigrated` printed | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 8 | Verify row 8 command as written | exit 0, every floor seed passes | witness: pass exit=0, with CELLCTL_GH_AMBIENT present in the witness environment from the house shim (the condition that failed the 2026-10-19 pass at e4d474af8bca). By hand with no CELLCTL_* names in the environment: exit 0, `seed passes=26`, `--- PASS: TestReg1145ShimCredential`. By hand with a dummy CELLCTL_GH_AMBIENT set: exit 0, `seed passes=26`, `--- PASS: TestReg1145ShimCredential`. The earlier failure no longer reproduces. | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 9 | Verify row 9 command as written | exit 0 | witness: pass exit=0. A supplementary pinned consumers check (brief named, delivery 66dbced7188e, base its first parent 418592cb5b78) exited 2 with `COULD-NOT-CHECK: brief must resolve uniquely in the delivered snapshot`; it is outside the row and is neither a pass nor a fail | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 10 | Verify row 10's go test, run by hand under darwin sandbox-exec with a deny-network profile, its output written to a scratch file | exit 0, named PASS | witness: could-not-run (the unshare sandbox is Linux-only; this host is darwin). By hand, network-off: test exit 0, `--- PASS: TestCLIHelpDoesNotDiscoverManifests (19.94s)`, grep exit 0. A curl probe in the same profile failed to connect (exit 7), which confirms the sandbox. The row's own mktemp-and-trap wrapper was not used by hand, because a local safety check refused its removal step inside a sandboxed shell script. This by-hand row is distinct from the witness; the CI lane owns the network-off rerun. | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+
+Review-note checks: no Go standard-library flag import remains in any file of the deskdispatch package (grep exit 1). The dispatch CLI matrix records that syntax errors move from exit 5 to exit 2 and domain refusals stay at 5 (dispatch-cli-matrix.md lines 59-62; cli-contract.md line 23).
+
+Risk-bearing values: frontmatter risk metadata is present with all four fields "no", and the gate is model. Enumerated over the delivering diff (66dbced7188e^1..66dbced7188e) for the deskdispatch package and the mutation spec:
+- ExitUsage = 2 @ tools/desk/internal/cli/cli.go:18. It now applies to deskdispatch syntax errors, which the old parser refused with 5. Reversible.
+- tier default = "any" @ tools/desk/cmd/deskdispatch/cli.go:70. Same as the old dispatch.go:196.
+- kit default = "worker" @ tools/desk/cmd/deskdispatch/cli.go:70 and :67. Same as the old dispatch.go:197.
+- root default = "." @ tools/desk/cmd/deskdispatch/cli.go:71. Same as the old dispatch.go:199.
+- pr and attestation defaults = 0 @ tools/desk/cmd/deskdispatch/cli.go:57. Same as the old dispatch.go:207.
+- Positional caps = MaximumNArgs(1) and NoArgs @ tools/desk/cmd/deskdispatch/cli.go:98 and :100.
+- GoFlagCompat = true @ tools/desk/cmd/deskdispatch/cli.go:199.
+- Mutation-suite timeout = 120s @ desktools-v2-21.json:2. This is a test knob.
+Each of these can be reversed with an edit and a redeploy.
+
+RISK-VALUE: DERIVED — ExitUsage = 2 @ tools/desk/internal/cli/cli.go:18 — the shared CLI contract fixes exit 2 for unknown input before any handler runs (cli-contract.md:23). The dispatch matrix limits the move from 5 to 2 to syntax errors. Domain refusals keep 5 and unavailable reads keep 6, so callers keyed on 5 or 6 for custody outcomes see no change.
+RISK-VALUE: DERIVED — tier default = "any" @ tools/desk/cmd/deskdispatch/cli.go:70 — identical to the pre-migration default (old dispatch.go:196). The brief requires the same worktree, branch and claim per invocation, and this default is part of that.
+
+**VERIFY: PASS** — rows 1-9 pass in the witness, and row 8 now passes with CELLCTL_GH_AMBIENT inherited. Row 10 is check:ci: it could not run in the witness on darwin and passes by hand network-off. Its network-off rerun belongs to the CI lane.
 
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.
