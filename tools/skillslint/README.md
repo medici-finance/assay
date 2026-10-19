@@ -558,5 +558,9 @@ cd tools/skillslint && go run . --root ../..
 That is the same check invocation as the `make skillslint` target above. The
 workflow calls the source directly rather than calling `make`; the standalone
 `--skills-dir` command remains the adopter-facing structural and conformance
-check, not the repository's CI invocation. The archived brief records the
-earlier wiring work and its verification, not the current workflow state.
+check, not the repository's CI invocation. The archived brief
+`docs/archive/mistake-proofing/brief-04-derived-enforcement-status.md` records
+the earlier wiring work and its verification, not the current workflow state.
+
+The job turns CI red when the check fails, but it is not a required status
+check on `main`: a red `skillslint` run does not by itself stop a merge.
