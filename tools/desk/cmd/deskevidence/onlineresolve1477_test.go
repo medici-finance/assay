@@ -112,7 +112,7 @@ func TestOnlineAttributionUnresolvedStaysCouldNotCheck(t *testing.T) {
 }
 
 // TestOnlineAttributionNoShaStaysCouldNotCheck — with no sha to resolve (e.g. the head sha could
-// not be fetched), the online read is not even attempted and the verdict stays could-not-check.
+// not be obtained), the online read is not even attempted and the verdict stays could-not-check.
 func TestOnlineAttributionNoShaStaysCouldNotCheck(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	plantGitLabVerifierRoster(t, os.Getenv("HOME"))
@@ -129,8 +129,8 @@ func TestOnlineAttributionNoShaStaysCouldNotCheck(t *testing.T) {
 }
 
 // TestGitLabDraftLandingResolvesAuthorOnline is the end-to-end plumbing: on the GitLab
-// draft-landing path (default branch closed, side-branch write reports no author) the run reads
-// the draft change's head sha and resolves the committing account online, so the audit records
+// draft-landing path (default branch closed, side-branch write reports no author) the run uses
+// the write's exact commit receipt to resolve the committing account online, so the audit records
 // the attribution as PROVEN rather than could-not-check.
 func TestGitLabDraftLandingResolvesAuthorOnline(t *testing.T) {
 	f, _ := setupFake(t)
@@ -140,7 +140,7 @@ func TestGitLabDraftLandingResolvesAuthorOnline(t *testing.T) {
 
 	f.defaultBranch = "main"                     // the closed default routes to the draft lane
 	f.emptyAuthor = true                         // GitLab's write reports no author
-	f.prHeadSHA = "head-sha-1"                   // the draft change's head sha
+	f.prHeadSHA = "different-draft-head"         // must not substitute for the write receipt
 	f.commitAuthorLogin = "example-verifier-bot" // the forge resolves it to the verifier username
 
 	evidencePath := "docs/streams/x/brief.md"

@@ -100,8 +100,24 @@ facts:
 | 1 | check | `grep -c -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md` | `2` — both work-list rows are still present |
 | 2 | check +dereference | `grep -e '^. S2 . ' -e '^. S4 . ' docs/streams/forge-neutral/reviewer-write-boundary.md > /tmp/fn20-rows.txt && ! grep -v -e 'of [0-9][0-9]* succeeded' -e 'determined' -e 'COULD-NOT-CHECK' /tmp/fn20-rows.txt` | exit 0 and no line printed — each row quotes a probe count or a determination result, or says COULD-NOT-CHECK |
 | 3 | gate:model +dereference | Re-run the local-disk control of Task 3 from the recorded command text | exactly one of N succeeded; a different count is checked-failed on this brief |
-| 4 | check | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the reviewer write inventory |
-| 5 | check | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the claim reader inventory or is the claim tool itself |
+| 4 | check | `cd tools/desk && grep -rln -e 'ForgeFor(.*"reviewer")' -e 'ReviewDispatcherRole' -e 'forgeForReviewer' -e 'stampRoleForKit' -e 'SessionTokenRole' -e 'TokenRoleForLoop' -e 'mintedRole' -e 'RequireRole(' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the reviewer write inventory |
+| 5 | check | `cd tools/desk && grep -rln -e 'ClaimRefsPrefix' -e 'ClaimRefPath' -e 'refs/dispatch' -e 'DispatchClaimActiveRefsPrefix' -e 'ReadReviewClaims' -e 'ReviewClaimFamil' --include='*.go' cmd internal \| grep -v _test.go \| sort` | every file listed appears in the claim reader inventory or is the claim tool itself |
+
+**Rows 4 and 5 widened (2026-10-18, #1606).** Both greps gained patterns; neither Expect
+changed, and every pattern the rows searched before is still searched. The old patterns had gone
+blind to sites they exist to catch. Row 5 did not search the `DispatchClaimActiveRefsPrefix`
+constant (`refs/dispatch/`) that code now uses to name the namespace claims are acquired in. It
+therefore missed `releaseReviewClaim` in `tools/desk/cmd/deskpost/finish.go`, which deletes the review claim ref
+as the reviewer, and `tools/desk/cmd/desksupervise/live.go` and `tools/desk/cmd/desksupervise/actions.go`,
+which list and release claims. It
+also missed the review-claim family readers (`ReadReviewClaims`). Row 4 did not search deskpost's
+`forgeForReviewer` wrapper, so it missed that same release, or deskdispatch's `stampRoleForKit`,
+which resolves the reviewer for the review kit. Row 4 also did not search the minted-role
+spellings (`SessionTokenRole`, `TokenRoleForLoop`, `mintedRole`, `RequireRole(`), although Task 1
+covers every verb that can act as the reviewer and most do so through the session's role. It
+therefore missed the two verbs that push branches as the reviewer, `tools/desk/cmd/deskgit/deskgit.go`
+and `tools/desk/cmd/deskpr/push.go` (finding medici-finance/assay#3419). The spec's §3.1a/§3.1b were
+re-read at `a724e99d` and `8d368648` against the widened lists.
 
 ## Pre-mortem → detection map
 | Failure mode of the work | Caught by |

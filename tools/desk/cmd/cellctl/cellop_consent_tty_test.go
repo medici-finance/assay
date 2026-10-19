@@ -126,6 +126,10 @@ func TestEveryStateChangingInvocationRequiresTTY(t *testing.T) {
 		}
 		for _, c := range planners {
 			w := newCellopWorld(t)
+			if c.Name() == "up" {
+				// up plans only what is stale: give the cell one stale role to plan.
+				writeStale(t, &Cell{Name: "example", Dir: w.cellDir, Kind: "house"}, "worker-desk", deadPID(t), "", 0, "")
+			}
 			args := append(strings.Fields(strings.TrimPrefix(c.CommandPath(), "cellctl ")), "example", "--plan", "--json")
 			r := runCellctl(t, w, ttyNone, w.env("DRY_RUN=1"), nil, args...)
 			if r.code != 0 {

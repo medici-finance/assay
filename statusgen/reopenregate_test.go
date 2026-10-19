@@ -72,7 +72,7 @@ func TestReopenArchiveRegates(t *testing.T) {
 	data := map[string][]ghIssue{
 		scanHomeRepo(): {{Number: 661, Title: "reopened bug", Labels: lbl("bug", "risk:high")}},
 	}
-	if code := runScanIssues(root, false, fixtureLister(data, ""), nilCommentLister, blessAll); code != 0 {
+	if code := runScanIssues(root, false, fixtureLister(data, ""), nilCommentLister, blessAll, labelHoldClearAll); code != 0 {
 		t.Fatalf("scan exited %d, want 0", code)
 	}
 	if _, err := os.Stat(archived); !os.IsNotExist(err) {
@@ -95,7 +95,7 @@ func TestReopenInPlaceRegates(t *testing.T) {
 	data := map[string][]ghIssue{
 		scanHomeRepo(): {{Number: 662, Title: "reopened bug", Labels: lbl("bug", "security")}},
 	}
-	if code := runScanIssues(root, false, fixtureLister(data, ""), nilCommentLister, blessAll); code != 0 {
+	if code := runScanIssues(root, false, fixtureLister(data, ""), nilCommentLister, blessAll, labelHoldClearAll); code != 0 {
 		t.Fatalf("scan exited %d, want 0", code)
 	}
 	assertRegated(t, path, "human", []string{"bug", "security"})
@@ -119,7 +119,7 @@ func TestReopenKeepsHumanGate(t *testing.T) {
 	data := map[string][]ghIssue{
 		scanHomeRepo(): {{Number: 663, Title: "reopened", Labels: nil}},
 	}
-	if code := runScanIssues(root, false, fixtureLister(data, ""), nilCommentLister, blessAll); code != 0 {
+	if code := runScanIssues(root, false, fixtureLister(data, ""), nilCommentLister, blessAll, labelHoldClearAll); code != 0 {
 		t.Fatalf("scan exited %d, want 0", code)
 	}
 	if _, err := os.Stat(archived); !os.IsNotExist(err) {
@@ -174,7 +174,7 @@ func TestReopenKeepsHumanGateAnyYAMLForm(t *testing.T) {
 			data := map[string][]ghIssue{
 				scanHomeRepo(): {{Number: n, Title: "reopened", Labels: lbl("bug")}},
 			}
-			if code := runScanIssues(root, false, fixtureLister(data, ""), nilCommentLister, blessAll); code != 0 {
+			if code := runScanIssues(root, false, fixtureLister(data, ""), nilCommentLister, blessAll, labelHoldClearAll); code != 0 {
 				t.Fatalf("scan exited %d, want 0", code)
 			}
 			if _, err := os.Stat(archived); !os.IsNotExist(err) {
@@ -207,7 +207,7 @@ func TestReopenTranscribeRegates(t *testing.T) {
 	}, "")
 	out := captureRun(t, func() int {
 		return runTranscribeScan(root, false, list, nilCommentLister,
-			fixtureAuthorResolver(nil), blessNone, blessAuthorityResolver)
+			fixtureAuthorResolver(nil), blessNone, labelHoldClearAll, blessAuthorityResolver)
 	})
 	if out.code != 0 {
 		t.Fatalf("transcribe-scan exited %d, want 0:\n%s\n%s", out.code, out.log, out.err)
@@ -284,7 +284,7 @@ func TestReopenDryRunPrintsWrittenGate(t *testing.T) {
 				scanHomeRepo(): {{Number: 691, Title: "reopened", Labels: lbl("bug")}},
 			}
 			out := captureStdout(t, func() {
-				if code := runScanIssues(root, true, fixtureLister(data, ""), nilCommentLister, blessAll); code != 0 {
+				if code := runScanIssues(root, true, fixtureLister(data, ""), nilCommentLister, blessAll, labelHoldClearAll); code != 0 {
 					t.Errorf("dry run exited %d, want 0", code)
 				}
 			})

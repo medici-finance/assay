@@ -27,7 +27,7 @@ const usage = `deskpr — push a feature branch and open (or update) its pull re
 
 USAGE:
   deskpr create --title T (--body-file F | --body-min B) [--base main] [--decided F]
-      [--root DIR] [--explain] [--force-scan-override REASON] [--check]
+      [--root DIR] [--explain] [--force-scan-override REASON] [--check | --check-remote]
   deskpr update [--pr N | --branch B]
       [--root DIR] [--explain] [--force-scan-override REASON] [--check]
   deskpr edit --body-file F [--title T] [--pr N] [--decided F]
@@ -76,6 +76,13 @@ need the existing PR's body/number); each names what it skipped.
 A live create confirms the destination branch through its credentialed push endpoint,
 checks only commits beyond its confirmed tip, and pins that tip during the plain push.
 create --check cannot confirm it: it judges the whole range and reports that limit.
+For already-published Evidence, use create --check-remote as the read-only preflight:
+it explicitly contacts the session App's forge and push destination, reuses the live
+source/destination proof, and stops before write budget, push or PR creation. It does
+not weaken --check or exempt provider-authored commits. --check and --check-remote
+are mutually exclusive. Success is an observation, not a reusable authorization:
+a later create repeats every gate and requires the remote tip unchanged during push.
+An existing open PR remains create's ordinary no-op (no commits would be pushed).
 
 deskpr create is draft-only by construction: it can only open a DRAFT PR on a
 non-default branch. deskpr update pushes a follow-up to an EXISTING open PR on the

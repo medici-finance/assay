@@ -95,3 +95,34 @@ func readKit(name, path string) (string, error) {
 	}
 	return text, nil
 }
+
+// perfKitVerb shares the actual kit parser's normalization, then returns a
+// compiled constant. Neither an item key nor an unknown kit can be recorded.
+func perfKitVerb(operation, raw string) string {
+	kit := strings.ToLower(strings.TrimSpace(raw))
+	switch operation {
+	case "dispatch":
+		switch kit {
+		case "worker":
+			return "dispatch:worker"
+		case "worker-objective":
+			return "dispatch:worker-objective"
+		case "review":
+			return "dispatch:review"
+		case "verifier":
+			return "dispatch:verifier"
+		}
+	case "stamp-only":
+		switch kit {
+		case "worker":
+			return "stamp-only:worker"
+		case "worker-objective":
+			return "stamp-only:worker-objective"
+		case "review":
+			return "stamp-only:review"
+		case "verifier":
+			return "stamp-only:verifier"
+		}
+	}
+	return "other"
+}

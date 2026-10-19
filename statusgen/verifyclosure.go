@@ -149,7 +149,7 @@ func runVerifyclosure(args []string, stdout, stderr *os.File) int {
 	}
 	// This verb does not run the lint, so it refuses an unterminated `<!--`
 	// itself (#1939): a line-start one hides the witness table on the page.
-	findings, refusal := closureWitnesses(art.Verify, art.Evidence)
+	findings, refusal := closureWitnesses(art.Verify, art.Evidence, art.Path)
 	if refusal != "" {
 		fmt.Fprintf(stdout, "%s: NOT accepted — %s\n", key, refusal)
 		return verifyclosureExitNotAccepted
@@ -162,7 +162,7 @@ func runVerifyclosure(args []string, stdout, stderr *os.File) int {
 	if code := checkExitCode(findings); code != verifyrunExitPass {
 		var missing []string
 		for _, f := range findings {
-			if f.State != statePass {
+			if !closureSatisfied(f) {
 				missing = append(missing, fmt.Sprintf("row %s: %s", f.ID, f.State))
 			}
 		}
@@ -171,8 +171,16 @@ func runVerifyclosure(args []string, stdout, stderr *os.File) int {
 		return verifyclosureExitNotAccepted
 	}
 
-	fmt.Fprintf(stdout, "%s: accepted — Status %q, Verified cell stamped, and all %d Verify row(s) carry a passing execution witness\n",
-		key, br.Status, len(findings))
+	passed, supplemental := 0, 0
+	for _, f := range findings {
+		if f.State == statePass {
+			passed++
+		} else if f.State == stateAuthorAdded {
+			supplemental++
+		}
+	}
+	fmt.Fprintf(stdout, "%s: accepted — Status %q, Verified cell stamped, %d passing acceptance row(s), %d author-added row(s) with no acceptance credit\n",
+		key, br.Status, passed, supplemental)
 	return verifyclosureExitAccepted
 }
 

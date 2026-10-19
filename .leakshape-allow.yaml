@@ -138,6 +138,12 @@ allow:
     sha256:
       - f0bd4a46eb253ca14463110be949bf6edc92b74cc787d40a563385b744f5f64c
     reason: *fx-mail
+  - path: statusgen/claimdecay_github_test.go
+    shape: ssh-host-alias
+    sha256:
+      - 1e57fc9009c343a9e9d079a8b3dd62a998a1100917f12b23e23f99c4c474a849
+      - d8b71b9778124d50d53ef9edb52e852f1a447288f3d0e494d005d5d14e0b8896
+    reason: *fx-ssh
   - path: statusgen/claimdecay_gitlab.go
     shape: ssh-host-alias
     sha256:

@@ -11,13 +11,15 @@
       "Name": "dispatched-model:gpt-6.1-sol",
       "AppliedBy": "desk-bot",
       "Removed": false,
-      "CreatedAt": ""
+      "CreatedAt": "",
+      "AppliedByID": 42
     },
     {
       "Name": "dispatched-model:gpt-6.1-sol",
       "AppliedBy": "desk-bot",
       "Removed": true,
-      "CreatedAt": ""
+      "CreatedAt": "",
+      "AppliedByID": 42
     }
   ]
 }

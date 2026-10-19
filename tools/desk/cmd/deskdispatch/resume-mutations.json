@@ -40,8 +40,8 @@
     {
       "name": "failed refresh trusts stale ref",
       "file": "cmd/deskdispatch/worktree.go",
-      "old": "if fetched.err != nil {",
-      "new": "if false && fetched.err != nil {"
+      "old": "if err := refreshResume(o, branch); err != nil {",
+      "new": "if err := refreshResume(o, branch); false && err != nil {"
     },
     {
       "name": "wrong or missing remote tip proceeds",

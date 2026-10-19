@@ -13,7 +13,7 @@ func TestVerifiedOutcomeGateBeforeWrite(t *testing.T) {
 	for _, dry := range []bool{false, true} {
 		t.Run(map[bool]string{false: "write", true: "dry-run"}[dry], func(t *testing.T) {
 			f, _ := setupFake(t)
-			outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error {
+			outcomeGuardFn = func(string, string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error {
 				return deskkit.Refused("closure still implemented")
 			}
 			file := "docs/streams/verify-outcomes.jsonl"
@@ -33,32 +33,19 @@ func TestVerifiedOutcomeGateBeforeWrite(t *testing.T) {
 // Run with a freshly built statusgen on PATH, exercising the real JSON and exit
 // contract rather than accepting a stub shaped to this caller's assumptions.
 func TestVerifiedOutcomeRealStatusgen(t *testing.T) {
-	bin := os.Getenv("ASSAY_TEST_STATUSGEN_DIR")
-	if bin == "" {
-		t.Skip("set ASSAY_TEST_STATUSGEN_DIR to freshly built statusgen directory")
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	root := t.TempDir()
-	dir := filepath.Join(root, "docs", "streams", "sample")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		t.Fatal(err)
-	}
-	board := "---\nstream: sample\nstatus: active\n---\n\n| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n|---|---|---|---|---|---|---|\n| 01 | [check](brief-01-check.md) | 1 | S | verified | 2026-09-22 verifier | — |\n"
-	brief := "# Check\n\n## Verify\n| # | Command | Expect |\n|---|---|---|\n| 1 | `true` | exit 0 |\n\n## Evidence\n| # | Command | Result | Output | Date | Runner |\n|---|---|---|---|---|---|\n| 1 | `true` | pass exit=0 | sha256:abcdef | 2026-09-22 | verifier |\n"
-	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(board), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "brief-01-check.md"), []byte(brief), 0644); err != nil {
-		t.Fatal(err)
-	}
-	file, err := checkVerifiedClosure(root, "sample/01")
-	if err != nil || file != "docs/streams/sample/brief-01-check.md" {
+	setupFake(t)
+	landedStatusgenOnPath(t)
+	root, _, head, files := landedFixture(t, false)
+	flGit(t, root, "checkout", "-q", "-f", "--detach", head)
+	file, err := checkVerifiedClosure(root, "vf/01")
+	if err != nil || file != "docs/streams/vf/brief-01-check.md" {
 		t.Fatalf("file=%q error=%v", file, err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(strings.Replace(board, "| verified |", "| implemented |", 1)), 0644); err != nil {
+	board := "docs/streams/vf/README.md"
+	if err := os.WriteFile(filepath.Join(root, board), []byte(strings.Replace(files[board], "| verified |", "| implemented |", 1)), 0644); err != nil {
 		t.Fatal(err)
 	}
-	_, err = checkVerifiedClosure(root, "sample/01")
+	_, err = checkVerifiedClosure(root, "vf/01")
 	var de *deskkit.DeskError
 	if !asDeskError(err, &de) || de.Code != deskkit.ExitRefused {
 		t.Fatalf("expected refused closure, got %v", err)
@@ -119,7 +106,7 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 				}
 				return nil, nil
 			}
-			err := guardVerifiedOutcomes(root, "docs/streams/verify-outcomes-2026-09.jsonl", []byte(tc.before), []byte(tc.after), f, deskkit.ForgeRepo{}, "main")
+			err := guardVerifiedOutcomes(root, root, "docs/streams/verify-outcomes-2026-09.jsonl", []byte(tc.before), []byte(tc.after), f, deskkit.ForgeRepo{}, "main")
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("error=%v wantErr=%v", err, tc.wantErr)
 			}
@@ -127,5 +114,21 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 				t.Fatalf("error=%v, want could-not-check for a closure the branch holds as %q", err, tc.kind)
 			}
 		})
+	}
+}
+
+// regression: #3343 — older statusgen must not silently degrade publication.
+func TestVerifiedOutcomeAttributionCapability(t *testing.T) {
+	fakeStatusgenOnPath(t, `for arg do
+if [ "$arg" = "--check-attribution" ]; then
+    echo 'brief: unknown flag --check-attribution' >&2
+    exit 2
+fi
+done
+echo '{"key":"vf/01","file":"docs/streams/vf/brief-01-check.md"}'`)
+	_, err := checkVerifiedClosure(t.TempDir(), "vf/01")
+	var de *deskkit.DeskError
+	if !asDeskError(err, &de) || de.Code != deskkit.ExitUnverifiable {
+		t.Fatalf("old capability did not fail closed: %v", err)
 	}
 }

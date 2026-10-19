@@ -1,0 +1,53 @@
+{
+  "test": "KUBECONFIG=/dev/null go test -count=1 -timeout 90s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLITierDomainBoundary)$' ./cmd/deskboard/",
+  "control": {
+    "name": "CONTROL: refusal exit changes",
+    "file": "cmd/deskboard/main.go",
+    "old": "UsageExit: deskkit.ExitRefused",
+    "new": "UsageExit: deskkit.ExitUnverifiable"
+  },
+  "mutations": [
+    {
+      "name": "help reads configuration before parse",
+      "file": "cmd/deskboard/main.go",
+      "old": "root := cli.NewRoot(\"deskboard\", \"read-only cross-repo board\")",
+      "new": "root := cli.NewRoot(\"deskboard\", \"read-only cross-repo board\")\n\t\tif pre != nil { pre(stderr) }"
+    },
+    {
+      "name": "undeclared environment source binds table",
+      "file": "cmd/deskboard/main.go",
+      "old": "Key: \"table\", Kind: cli.Bool, Flag: \"table\", Persistent: true, Default: false",
+      "new": "Key: \"table\", Kind: cli.Bool, Flag: \"table\", Persistent: true, Default: false, Env: []string{\"DESKBOARD_TABLE\"}"
+    },
+    {
+      "name": "global output flag stops working after the verb",
+      "file": "cmd/deskboard/main.go",
+      "old": "Key: \"out\", Kind: cli.String, Flag: \"out\", Persistent: true",
+      "new": "Key: \"out\", Kind: cli.String, Flag: \"out\", Persistent: false"
+    },
+    {
+      "name": "explicit empty flag falls through to environment",
+      "file": "cmd/deskboard/main.go",
+      "old": "if !v.IsSet(\"rate-floor\") {",
+      "new": "if v.String(\"rate-floor\") == \"\" {"
+    },
+    {
+      "name": "legacy throughput alias disappears",
+      "file": "cmd/deskboard/main.go",
+      "old": "v, _ := c.Flags().GetBool(\"throughput\")",
+      "new": "v := false"
+    },
+    {
+      "name": "version prints Cobra banner",
+      "file": "cmd/deskboard/main.go",
+      "old": "VersionTemplate: \"{{.Version}}\\n\"",
+      "new": "VersionTemplate: \"{{.Name}} version {{.Version}}\\n\""
+    },
+    {
+      "name": "tier admission moved into CLI only",
+      "file": "cmd/deskboard/main.go",
+      "old": "if tier != \"\" {",
+      "new": "if false && tier != \"\" {"
+    }
+  ]
+}

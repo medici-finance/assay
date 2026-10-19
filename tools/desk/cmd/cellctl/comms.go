@@ -222,7 +222,7 @@ func cmdComms(cell string, args []string) {
 		fmt.Println("[comms] recovery recorded; run the service to start it")
 		return
 	}
-	lease, err := cellcadence.Acquire(c.commsDir())
+	lease, err := c.acquireCommsLease()
 	if err != nil {
 		die("comms ownership: %v", err)
 	}
@@ -368,4 +368,13 @@ func (c *Cell) recoverComms(cfg *deskCommsConfig) error {
 		return fmt.Errorf("comms recovery: %w", err)
 	}
 	return nil
+}
+
+// acquireCommsLease uses launch semantics: a status probe may briefly hold the
+// same exclusive lease while startup is being polled. Never recover or signal a
+// holder here; a lasting owner still refuses and no service runs without the lease.
+func (c *Cell) acquireCommsLease() (*cellcadence.Lease, error) {
+	return cellcadence.AcquireRole(c.commsDir(), cellcadence.RoleLock{
+		Cell: c.Name, Role: "comms", Wait: roleLeaseWait, Log: os.Stderr,
+	})
 }

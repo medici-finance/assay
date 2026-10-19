@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
@@ -159,5 +160,66 @@ func TestCommsSurfaceRoundTrip(t *testing.T) {
 		if err != nil || got == nil || *got != *surface {
 			t.Fatalf("surface round trip: %+v %v", got, err)
 		}
+	}
+}
+
+// regression: #2790
+func TestCommsLeaseContention(t *testing.T) {
+	for _, release := range []bool{true, false} {
+		t.Run(map[bool]string{true: "transient-probe", false: "persistent-owner"}[release], func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				c := &Cell{Name: "example", Dir: custodytest.PrivateTempDir(t)}
+				probe, err := cellcadence.Acquire(c.commsDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { probe.Close() })
+				type result struct {
+					lease *cellcadence.Lease
+					err   error
+				}
+				done := make(chan result, 1)
+				go func() {
+					lease, err := c.acquireCommsLease()
+					done <- result{lease, err}
+				}()
+				// The launch has reached its retry timer while the probe still
+				// owns the lease; no host scheduling delay decides this collision.
+				synctest.Wait()
+				select {
+				case r := <-done:
+					if r.lease != nil {
+						r.lease.Close()
+					}
+					t.Fatalf("launch did not wait for the ownership probe: %v", r.err)
+				default:
+				}
+				if release {
+					if err := probe.Close(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				r := <-done
+				if release {
+					if r.err != nil {
+						t.Fatalf("released probe still prevents startup: %v", r.err)
+					}
+					if r.lease == nil {
+						t.Fatal("launch returned no lease")
+					}
+					r.lease.Close()
+				} else {
+					if !errors.Is(r.err, cellcadence.ErrBusy) || r.lease != nil {
+						t.Fatalf("persistent owner was not refused: lease=%v err=%v", r.lease, r.err)
+					}
+					if other, err := cellcadence.Acquire(c.commsDir()); !errors.Is(err, cellcadence.ErrBusy) {
+						if other != nil {
+							other.Close()
+						}
+						t.Fatalf("persistent owner's lease changed: %v", err)
+					}
+				}
+			})
+		})
 	}
 }

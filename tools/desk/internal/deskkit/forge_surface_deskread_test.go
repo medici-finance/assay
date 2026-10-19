@@ -56,6 +56,8 @@ func TestForgeSurfaceUnchangedByDeskread(t *testing.T) {
 		"SetMergeHold", "WriteFile",
 		// Ops 55-58, added under the freeze rule by forge-neutral brief 33 with deskread kinds as consumers.
 		"ListIssues", "IssueStateEvents", "ListChangeCommits", "RepoDefaultBranch",
+		// Op 64, added under the freeze rule by the label-removal hold brief with deskread's `label-events` kind as its consumer.
+		"IssueLabelHistory",
 	}
 	sort.Strings(want)
 
