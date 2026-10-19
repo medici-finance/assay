@@ -8,12 +8,8 @@ why: >-
   bug and ROUTES it with a recommended default, so a human gets a named next-step instead
   of a bare stack trace, without the automation ever guessing a fix or a withheld token.
 wave: 2
-depends: []
-unblocks: []
-withdrawn-date: "2026-10-18"
-superseded-by: ["graph-execution/08"]
-withdrawn-reason: "The judgement-responder obligations (every route carries a recommended default, the withheld-detail path, sanitized text, ceilings failing closed) are folded into graph-execution/08's judgement decision exit; the live adapter and its autonomous-action gate belong to the later dispatch brief that 08 names."
-decision-issue: 3420
+depends: ["auto-triage/01"]
+unblocks: ["auto-triage/04"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -28,7 +24,7 @@ gate-why: >-
   message that leaked the detail would be the exact harm leak-sweep exists to prevent.
 design: DR-auto-triage
 issues: [612, 536]
-schema: "brief-v3"
+schema: brief-v2
 authored: 2026-09-16 by the-desk auto-triage authoring session
 sources:
   - "docs/streams/auto-triage/spec.md — §2 step 4 (judgement → file + route with default); §5 leak-sweep is opaque and always routes; §6 non-goals"
@@ -49,7 +45,7 @@ id: 2b1b6409-6509-4d8e-a91d-9d0fc08f40a2
 
 # Brief 03 — judgement responder
 
-> **Withdrawn 2026-10-18 — superseded by `graph-execution/08` (merged into it).** The judgement-responder obligations (every route carries a recommended default, the withheld-detail path, sanitized text, ceilings failing closed) are folded into graph-execution/08's judgement decision exit; the live adapter and its autonomous-action gate belong to the later dispatch brief that 08 names. Not executable.
+> **Contract note, 2026-10-18.** This brief is the live judgement exit of the gate-red class that graph-execution/08 now defines; every route still carries a recommended default. Where this brief and graph-execution/08 differ, the stricter rule applies. This brief stays `todo` and keeps its own gate: it is where the executable code and live activation of the auto-triage response are built.
 
 ## Context
 

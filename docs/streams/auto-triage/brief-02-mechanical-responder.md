@@ -8,12 +8,8 @@ why: >-
   recurring mechanical toil is discharged without a person — while the human still merges
   every fix and no gate is ever weakened to make the red pass.
 wave: 2
-depends: []
-unblocks: []
-withdrawn-date: "2026-10-18"
-superseded-by: ["graph-execution/08"]
-withdrawn-reason: "The mechanical-responder obligations (closed remedy set, no gate-configuration edits, canonicalized paths, dedupe, ceilings failing closed to escalation, sanitized text) are folded into graph-execution/08's propose exit; the live adapter and its autonomous-action gate belong to the later dispatch brief that 08 names."
-decision-issue: 3420
+depends: ["auto-triage/01"]
+unblocks: ["auto-triage/04"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -30,7 +26,7 @@ gate-why: >-
   by a human at zero cost to `main`, but arming autonomous authoring still needs the record.
 design: DR-auto-triage
 issues: [611, 1119]
-schema: "brief-v3"
+schema: brief-v2
 authored: 2026-09-16 by the-desk auto-triage authoring session
 sources:
   - "docs/streams/auto-triage/spec.md — §2 step 3 (mechanical → file + open fixing draft PR); §6 non-goals"
@@ -51,7 +47,7 @@ id: 739df04b-fc17-473d-8697-32ecdc7a3c36
 
 # Brief 02 — mechanical responder
 
-> **Withdrawn 2026-10-18 — superseded by `graph-execution/08` (merged into it).** The mechanical-responder obligations (closed remedy set, no gate-configuration edits, canonicalized paths, dedupe, ceilings failing closed to escalation, sanitized text) are folded into graph-execution/08's propose exit; the live adapter and its autonomous-action gate belong to the later dispatch brief that 08 names. Not executable.
+> **Contract note, 2026-10-18.** This brief is the live mechanical exit of the gate-red class that graph-execution/08 now defines; this brief's canonicalized path allow-list is stricter than 08's pattern-level deny-list and stays this brief's control. Where this brief and graph-execution/08 differ, the stricter rule applies. This brief stays `todo` and keeps its own gate: it is where the executable code and live activation of the auto-triage response are built.
 
 ## Context
 
