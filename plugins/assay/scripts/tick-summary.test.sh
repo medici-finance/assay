@@ -69,7 +69,8 @@ rejects_unechoed() {
     no "$2" "ACCEPTED a line the contract forbids: $1"
     return
   fi
-  if printf '%s\n' "$err" | tr '\r' '\n' | grep -Eq "$re"; then
+  # A CR renders as a line break too, so split on it before matching.
+  if grep -Eq "$re" <<<"${err//$'\r'/$'\n'}"; then
     no "$2" "rejected, but stderr carries a record the published regexp matches: $err"
     return
   fi
