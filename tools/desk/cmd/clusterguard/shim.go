@@ -51,6 +51,16 @@ var readOnlyVerbs = map[string]map[string]bool{
 	"k9s": {},
 }
 
+// bareOnlyVerbs are allowlisted verbs that are read-only only in their BARE
+// form. The subcommand also accepts positional arguments, and the allowlist
+// entry vouches for the bare listing, not for what an argument selects — so a
+// positional argument after the verb takes the call off the read-only tier,
+// exactly as an unclassified verb is. Every entry here must also be in
+// readOnlyVerbs.
+var bareOnlyVerbs = map[string]map[string]bool{
+	"talosctl": set("services"),
+}
+
 // valueFlags are the global flags that CONSUME the next argument. Without them
 // the verb scan would read a flag's value as the verb — `kubectl -n prod get`
 // would classify on "prod".
@@ -144,6 +154,7 @@ func parseTier(v string, present bool) optInTier {
 // verbScan is what the guard could establish about an invocation's subcommand.
 type verbScan struct {
 	verb string // the subcommand; "" when none could be established
+	at   int    // the index of verb in args; meaningful only when verb != ""
 	// unlisted is the first flag before the subcommand whose arity the guard
 	// does not know (not in valueFlags, no "="). When it is set, verb is "":
 	// the token after such a flag may be its value, so no later token can be
@@ -175,25 +186,52 @@ func scanVerb(cli string, args []string) verbScan {
 			}
 			return verbScan{unlisted: a} // unknown arity: unclassifiable
 		}
-		return verbScan{verb: a}
+		return verbScan{verb: a, at: i}
 	}
 	return verbScan{}
+}
+
+// hasPositional reports whether rest — the arguments after the verb — holds a
+// positional (non-flag) argument. A listed value flag consumes its value and
+// `--flag=value` is self-contained, as in scanVerb. Any OTHER flag is taken to
+// consume nothing, so the token after it counts as positional: here that is
+// the fail-closed guess, since guessing that the flag consumed it would hide a
+// real argument. Everything after a bare `--` is positional.
+func hasPositional(cli string, rest []string) bool {
+	vf := valueFlags[cli]
+	for i := 0; i < len(rest); i++ {
+		a := rest[i]
+		if a == "--" {
+			return i+1 < len(rest)
+		}
+		if !strings.HasPrefix(a, "-") {
+			return true
+		}
+		if !strings.Contains(a, "=") && vf[a] {
+			i++ // skip the listed flag's value
+		}
+	}
+	return false
 }
 
 // isReadOnly reports whether this invocation is on the CLI's read-only
 // allowlist. No verb at all is NOT read-only: a bare invocation, or one whose
 // verb sits behind a flag the guard cannot classify, is unclassifiable, and
-// unclassifiable is the mutating side of the line.
+// unclassifiable is the mutating side of the line. A bareOnlyVerbs entry is
+// read-only only when no positional argument follows it.
 func isReadOnly(cli string, args []string) bool {
 	allowed, known := readOnlyVerbs[cli]
 	if !known || len(allowed) == 0 {
 		return false
 	}
 	s := scanVerb(cli, args)
-	if s.verb == "" {
+	if s.verb == "" || !allowed[s.verb] {
 		return false
 	}
-	return allowed[s.verb]
+	if bareOnlyVerbs[cli][s.verb] && hasPositional(cli, args[s.at+1:]) {
+		return false
+	}
+	return true
 }
 
 // --- the verdict ------------------------------------------------------------------
@@ -236,6 +274,14 @@ func decide(cli string, args []string, t optInTier) verdict {
 					"as %s=<value> (or move it after the subcommand) to have the call classified; an "+
 					"operator who means to mutate the cluster exports %s=mutate deliberately.",
 				allowClusterEnv, scan.unlisted, scan.unlisted, allowClusterEnv)
+			return v
+		}
+		if bareOnlyVerbs[cli][scan.verb] {
+			v.reason = fmt.Sprintf(
+				"%s is exported at the read-only level, and %q is on %s's read-only allowlist only in "+
+					"its bare form: a positional argument after it is not classified, so the call is "+
+					"treated as mutating. An operator who means to mutate the cluster exports %s=mutate deliberately.",
+				allowClusterEnv, scan.verb, cli, allowClusterEnv)
 			return v
 		}
 		v.reason = fmt.Sprintf(
