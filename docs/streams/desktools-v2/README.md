@@ -108,7 +108,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 51 | [Migrate metrics-harvest and the plugin hook scripts](brief-51-migrate-metrics-harvest-and-the-plugin-hook-scripts.md) | 3 | M | todo | — | — |
 | 52 | [Port the changelog and release check scripts](brief-52-port-the-changelog-and-release-check-scripts.md) | 3 | M | todo | — | — |
 | 53 | [Port the CI and regression floor scripts](brief-53-port-the-ci-and-regression-floor-scripts.md) | 3 | M | todo | — | — |
-| 54 | [Port the security control scripts](brief-54-port-the-security-control-scripts.md) | 3 | M | todo | — | — |
+| 54 | [Port the security control scripts](brief-54-port-the-security-control-scripts.md) | 4 | M | todo | — | — |
 | 55 | [Port the go-analysis adapter entrypoints](brief-55-port-the-go-analysis-adapter-entrypoints.md) | 3 | M | todo | — | — |
 | 56 | [Migrate deskperf to Cobra and Viper](brief-56-migrate-deskperf-to-cobra-and-viper.md) | 3 | S | todo | — | — |
 | 57 | [Migrate intake-eval to Cobra and Viper](brief-57-migrate-intake-eval-to-cobra-and-viper.md) | 3 | S | todo | — | — |
@@ -220,8 +220,8 @@ fixtures use local git repositories, local HTTP servers and fake CLI executables
   transport, install, merge authority, writers, loops, comms, metrics, readers, release,
   admin, standalone modules, lints, plugin scripts, changelog and CI scripts, the go-analysis adapter, deskperf, intake-eval). Human-gated
   children: /25–/28, /30–/37, /42, /54 — each carries credentials, refusals or authority.
-- **Wave 4 — /29:** /29 ports the assay-inbox launcher onto deskinbox after /45 migrates
-  it. (/54 moved to wave 3 on 2026-10-18 when GitLab token renewal left it; see below.)
+- **Wave 4 — /29, /54:** /29 ports the assay-inbox launcher onto deskinbox after /45 migrates
+  it; /54 adds token renewal to the GitLab command /30 creates.
 - **Routing:** [cli-migration.json](cli-migration.json) maps every discovered entrypoint to its
   owning brief or to a classified exclusion; [cli-contract.md](cli-contract.md) is the shared
   command and configuration contract. TestCLIInventory fails on any unrouted, orphaned or
@@ -230,7 +230,8 @@ fixtures use local git repositories, local HTTP servers and fake CLI executables
   executed binary/configuration tests, generated reference help and a proven PR CI gate. It
   does not perform an omnibus port.
 
-CLI critical path: `15 → 16 → 45 → 29 → 17`; /16 is the next head once /15 lands. Library selection is settled by #2111; implementation risk gates remain.
+CLI critical path: `15 → 16 → 45 → 29 → 17` (tied with `15 → 16 → 30 → 54 → 17`, which
+carries two human gates and so paces in practice); /16 is the next head once /15 lands. Library selection is settled by #2111; implementation risk gates remain.
 **Scope amendment — 2026-10-18 (ratified target architecture).** The target retires or
 re-homes the domains of many desk verbs: desk-tools verbs become thin adapters to typed use
 cases and role-bound effects, and the command matrix is not ported as a milestone
@@ -246,8 +247,8 @@ routed `exempt` in the registry until retired. Withdrawing /31 and /32 withdraws
 parser port only: the guard controls themselves stay and re-home to executor checks.
 Cobra/Viper becomes a **requirement for new tools** instead
 ([cli-contract.md §7](cli-contract.md#7-new-tools-and-retiring-tools--2026-10-18)), and /17
-enforces it on every surviving CLI and every new `main` package. GitLab token renewal
-left /54: windows-port/17 retires that script in favour of `deskfleet renew`.
+enforces it on every surviving CLI and every new `main` package. /54 (including GitLab token
+renewal) is unchanged, pending medici-finance/assay#2987.
 
 The old forge path proceeds alongside this track. /06, /08 and /11 retain their original
 deliverables under the configuration/CLI contract. /12 carries compatibility guidance only:

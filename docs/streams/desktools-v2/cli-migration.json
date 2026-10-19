@@ -2421,9 +2421,8 @@
       "parser": "bash manual flag loop",
       "complexity": "simple",
       "basis": "714 lines at 3ad1ad83c871",
-      "owner": "windows-port/17",
-      "state": "exempt",
-      "reason": "parser port withdrawn 2026-10-18 from desktools-v2/54: windows-port/17 retires this script in favour of deskfleet renew; if that retirement is not adopted, desktools-v2/17 re-routes it to a bounded owner"
+      "owner": "desktools-v2/54",
+      "state": "pending"
     },
     {
       "executable": "run.py",

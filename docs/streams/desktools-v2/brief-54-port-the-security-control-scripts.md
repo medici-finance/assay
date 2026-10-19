@@ -2,11 +2,12 @@
 brief: "assay:assay:desktools-v2:54"
 title: "Port the security control scripts"
 why: >-
-  Four security-control scripts (the forge-ban counter, the automerge refusal decision, the
-  image layer secret scan and the container entrypoint) each carry their own parser. Moving them behind Go commands keeps each control's decision while removing the
+  Five security-control scripts (the forge-ban counter, the automerge refusal decision, the
+  image layer secret scan, the container entrypoint and GitLab token renewal) each carry their
+  own parser. Moving them behind Go commands keeps each control's decision while removing the
   shell parsers.
-wave: 3
-depends: ["desktools-v2/16"]
+wave: 4
+depends: ["desktools-v2/16", "desktools-v2/30"]
 unblocks: ["desktools-v2/17"]
 effort: "M"
 gate: "human"
@@ -33,8 +34,10 @@ consumers:
   - "tools/evidence-automerge/automerge-refusal.sh: follow-up desktools-v2/54 (command tree, declared configuration, contract tests)"
   - "containers/scripts/layer-secret-scan.sh: follow-up desktools-v2/54 (command tree, declared configuration, contract tests)"
   - "containers/entrypoint.sh: follow-up desktools-v2/54 (command tree, declared configuration, contract tests)"
+  - "tools/renew-fleet-gitlab-tokens.sh: follow-up desktools-v2/54 (command tree, declared configuration, contract tests)"
   - "tools/desk/cmd/deskcontrols: follow-up desktools-v2/54 (new Go entrypoint and its registry row)"
   - "tools/desk/cmd/deskentry: follow-up desktools-v2/54 (new Go entrypoint and its registry row)"
+  - "tools/desk/cmd/deskgitlab: follow-up desktools-v2/54 (new Go entrypoint and its registry row)"
   - ".github/workflows/forge-surface-control.yml: follow-up desktools-v2/54 (legacy invocation forms kept; quoted help reconciled)"
   - ".github/workflows/evidence-automerge.yml: follow-up desktools-v2/54 (legacy invocation forms kept; quoted help reconciled)"
   - "ci/staged-workflows/evidence-automerge.yml: follow-up desktools-v2/54 (legacy invocation forms kept; quoted help reconciled)"
@@ -43,12 +46,13 @@ consumers:
   - "docs/iso9001-mapping.md: follow-up desktools-v2/54 (legacy invocation forms kept; quoted help reconciled)"
   - "docs/docker.md: follow-up desktools-v2/54 (legacy invocation forms kept; quoted help reconciled)"
   - "docs/quality/QUALITY.md: follow-up desktools-v2/54 (legacy invocation forms kept; quoted help reconciled)"
+  - "docs/adopting-assay-gitlab.md: follow-up desktools-v2/54 (legacy invocation forms kept; quoted help reconciled)"
   - "docs/adopting-assay.md: follow-up desktools-v2/54 (legacy invocation forms kept; quoted help reconciled)"
   - "plugins/assay/skills/install/SKILL.md: follow-up desktools-v2/54 (legacy invocation forms kept; quoted help reconciled)"
   - "docs/streams/desktools-v2/cli-migration.json: follow-up desktools-v2/54 (owned rows flip to migrated)"
 gate-why: >-
   These scripts are security controls: a secret scan, a seam-ban counter, an automerge
-  refusal and a credential preflight. Human sign-off confirms each decision,
+  refusal, a credential preflight and token rotation. Human sign-off confirms each decision,
   exit code and fail-closed default survives the port.
 decision-trigger: "spec"
 ---
@@ -62,13 +66,14 @@ files:
 - `tools/evidence-automerge/automerge-refusal.sh` — `automerge-refusal.sh`; module bash; parser: no arguments (wrapper); 165 lines at 3ad1ad83c871; release: repo tooling; run by evidence-automerge.yml. Target: `tools/desk/cmd/deskcontrols`.
 - `containers/scripts/layer-secret-scan.sh` — `layer-secret-scan.sh`; module bash; parser: bash manual flag loop; 256 lines at 3ad1ad83c871; release: repo tooling; run by docker-publish.yml. Target: `tools/desk/cmd/deskcontrols`.
 - `containers/entrypoint.sh` — `entrypoint.sh`; module bash; parser: bash positional arguments; 133 lines at 3ad1ad83c871; release: repo tooling; run by docker-publish.yml. Target: `tools/desk/cmd/deskentry`.
-- `tools/desk/cmd/deskcontrols/cli_test.go` (planned), `tools/desk/cmd/deskentry/cli_test.go` (planned) — TestCLIHelpOffline, TestCLIConfigFlow, TestCLILegacyForms, TestCLIAdmissionBoundary.
+- `tools/renew-fleet-gitlab-tokens.sh` — `renew-fleet-gitlab-tokens.sh`; module bash; parser: bash manual flag loop; 714 lines at 3ad1ad83c871; release: repo tooling; operator-invoked. Target: `tools/desk/cmd/deskgitlab`.
+- `tools/desk/cmd/deskcontrols/cli_test.go` (planned), `tools/desk/cmd/deskentry/cli_test.go` (planned), `tools/desk/cmd/deskgitlab/cli_test.go` (planned) — TestCLIHelpOffline, TestCLIConfigFlow, TestCLILegacyForms, TestCLIAdmissionBoundary.
 - `tools/desk/internal/clicontract/testdata/mutations/desktools-v2-54.json` (planned) — muhar mutation spec for the owned commands.
 - `docs/streams/desktools-v2/cli-migration.json` — owned rows flip to migrated.
 - `changelog/cli-security.md` (planned).
 
 facts:
-- **Rescoped 2026-10-18.** GitLab token renewal left this brief: windows-port/17 retires `tools/renew-fleet-gitlab-tokens.sh` in favour of the `deskfleet renew` verb, so a Cobra/Viper port of the script's parser is not executed. Its registry row is `exempt`, owned by windows-port/17. The dependency on desktools-v2/30 existed only for that verb and is removed.
+- Token renewal joins the `tools/desk/cmd/deskgitlab` command from desktools-v2/30, so this brief depends on /30.
 - forge-ban, automerge-refusal and layer-secret-scan move to `tools/desk/cmd/deskcontrols`; the container entrypoint moves to `tools/desk/cmd/deskentry`.
 - Contract: `docs/streams/desktools-v2/cli-contract.md` (from /15). Desk-module commands build on `tools/desk/internal/cli`; standalone modules use Cobra and Viper directly. Legacy consumers named in the registry are the files that mention each entrypoint most at 3ad1ad83c871 (up to six per row); re-enumerate every caller at pickup.
 - A migrated script row names its Go entrypoint in `migrated_to`, and the script itself must name that entrypoint (it delegates); a new Go entrypoint gets its own registry row, owned by this brief, state migrated.
@@ -105,7 +110,7 @@ they already exist.
 
 ## Task
 
-1. Port each script's behaviour into its Go target (`tools/desk/scripts/forge-ban.sh` → `tools/desk/cmd/deskcontrols`; `tools/evidence-automerge/automerge-refusal.sh` → `tools/desk/cmd/deskcontrols`; `containers/scripts/layer-secret-scan.sh` → `tools/desk/cmd/deskcontrols`; `containers/entrypoint.sh` → `tools/desk/cmd/deskentry`). Reduce the script to a transparent adapter that execs the target with equivalent arguments, or retire it in the same change that removes every consumer. Add a registry row for any new Go entrypoint.
+1. Port each script's behaviour into its Go target (`tools/desk/scripts/forge-ban.sh` → `tools/desk/cmd/deskcontrols`; `tools/evidence-automerge/automerge-refusal.sh` → `tools/desk/cmd/deskcontrols`; `containers/scripts/layer-secret-scan.sh` → `tools/desk/cmd/deskcontrols`; `containers/entrypoint.sh` → `tools/desk/cmd/deskentry`; `tools/renew-fleet-gitlab-tokens.sh` → `tools/desk/cmd/deskgitlab`). Reduce the script to a transparent adapter that execs the target with equivalent arguments, or retire it in the same change that removes every consumer. Add a registry row for any new Go entrypoint.
 2. Root and nested `-h`, `--help`, `help <verb>` and version exit 0 before any config, roster, credential or network read, lock, worktree or child process, even with absent or malformed configuration. Required-argument checks apply to execution, not to help. Disable Cobra's completion command unless deliberately added with tests and docs.
 3. Write the golden precedence matrix BEFORE porting: for every setting, flag, environment, config file and default, with explicit-empty versus unset. Bind only declared keys through a fresh Viper instance per invocation; no AutomaticEnv, config search, remote config, global Viper or credential values on argv. A tool without configuration binds only its declared flags and defaults.
 4. Inventory every legacy form the consumers use and keep it: `--f=v`, `--f v`, single-dash Go-flag spellings where callers use them, `--` termination, repeated flags, dash-leading values and global-flag placement. Unknown flags and bad values fail before any effect, with the exit code the contract states. Paths behave natively on Windows and POSIX.
@@ -115,14 +120,14 @@ they already exist.
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check +dereference | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskcontrols ./cmd/deskentry -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 2` | exit 0; TestCLIHelpOffline PASS in every migrated package; root and nested help and version under absent and malformed config with zero effects and zero config reads |
-| 2 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskcontrols ./cmd/deskentry -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 2` | exit 0; TestCLIConfigFlow PASS in every package; each precedence-matrix row and explicit-empty versus unset case reaches the typed handler with the expected value |
-| 3 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskcontrols ./cmd/deskentry -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 2` | exit 0; TestCLILegacyForms PASS in every package; every consumer's legacy form, Windows and POSIX path cases and unknown-flag exits behave as documented |
-| 4 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskcontrols ./cmd/deskentry -run '^TestCLIAdmissionBoundary$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIAdmissionBoundary " "$f")" -eq 2` | exit 0; TestCLIAdmissionBoundary PASS in every package; refused inputs stay refused through Cobra and with the adapter bypassed |
+| 1 | check +dereference | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskcontrols ./cmd/deskentry ./cmd/deskgitlab -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 3` | exit 0; TestCLIHelpOffline PASS in every migrated package; root and nested help and version under absent and malformed config with zero effects and zero config reads |
+| 2 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskcontrols ./cmd/deskentry ./cmd/deskgitlab -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 3` | exit 0; TestCLIConfigFlow PASS in every package; each precedence-matrix row and explicit-empty versus unset case reaches the typed handler with the expected value |
+| 3 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskcontrols ./cmd/deskentry ./cmd/deskgitlab -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 3` | exit 0; TestCLILegacyForms PASS in every package; every consumer's legacy form, Windows and POSIX path cases and unknown-flag exits behave as documented |
+| 4 | check +flow | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskcontrols ./cmd/deskentry ./cmd/deskgitlab -run '^TestCLIAdmissionBoundary$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIAdmissionBoundary " "$f")" -eq 3` | exit 0; TestCLIAdmissionBoundary PASS in every package; refused inputs stay refused through Cobra and with the adapter bypassed |
 | 5 | check +mutation | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-54.json` | exit 0 and the last line reads `Totals: N caught, 0 NOT CAUGHT, 0 could-not-mutate.` with N equal to the spec's mutation count; the harness proves the baseline green and its positive control caught, then for each owned command plants: help running after a config read, an undeclared config key binding, one legacy flag form dropped, and a refusal moved out of the domain check into the adapter; each reddens the owner tests |
-| 6 | check | `cd tools/desk && go test -count=1 ./cmd/deskcontrols/... ./cmd/deskentry/...` | exit 0; every pre-existing test in the owned packages still passes |
-| 7 | check +flow | `bash tools/evidence-automerge/automerge-refusal_test.sh && bash containers/scripts/layer-secret-scan.test.sh` | exit 0; the scripts' existing offline suites pass against the adapters |
-| 8 | check | `cd tools/desk && GOOS=windows go vet ./cmd/deskcontrols ./cmd/deskentry` | exit 0; the owned packages compile for Windows (native Windows behaviour runs on the CI lane, not here) |
+| 6 | check | `cd tools/desk && go test -count=1 ./cmd/deskcontrols/... ./cmd/deskentry/... ./cmd/deskgitlab/...` | exit 0; every pre-existing test in the owned packages still passes |
+| 7 | check +flow | `bash tools/evidence-automerge/automerge-refusal_test.sh && bash containers/scripts/layer-secret-scan.test.sh && bash tools/renew-fleet-gitlab-tokens_test.sh` | exit 0; the scripts' existing offline suites pass against the adapters |
+| 8 | check | `cd tools/desk && GOOS=windows go vet ./cmd/deskcontrols ./cmd/deskentry ./cmd/deskgitlab` | exit 0; the owned packages compile for Windows (native Windows behaviour runs on the CI lane, not here) |
 | 9 | check +dereference | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/54 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | exit 0; TestCLIOwnerMigrated PASS; every row this brief owns is migrated, the registry validates and the contract tests pass in each migrated package |
 | 10 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
 | 11 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
