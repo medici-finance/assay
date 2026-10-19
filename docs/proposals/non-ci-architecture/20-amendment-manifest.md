@@ -213,7 +213,8 @@ resource limit changes in this documentation PR.
 ## Portable execution environments — 16 October 2026
 
 Controlling delta: [agent execution environments](27-agent-execution-environments.md).
-The new agent-execution stream authors seven bounded extensions of existing owners:
+The new agent-execution stream, parked until that amendment is approved, authors seven
+bounded extensions of existing owners:
 
 | Gap | Owning brief | Existing prerequisite/consumer | Change made in this authoring PR |
 |---|---|---|---|

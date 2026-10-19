@@ -16,7 +16,7 @@ exec-tier: "strong"
 exec-tier-why: "Cross-component protocol, recovery and authority boundaries require design judgment."
 domain: "complicated"
 outcome: "none"
-consumers: ["loopadmin/supervisor: fixed-here", "tools/desk/internal/cellop: fixed-here", "tools/desk/cmd/cellctl: fixed-here", "R7 Cell API and cockpit: out-of-scope (consume this snapshot under their existing ingress and mounted-route qualification; no alternate endpoint here)"]
+consumers: ["loopadmin/supervisor: follow-up agent-execution/05 (this brief; flips to fixed-here when the implementation edits the path)", "tools/desk/internal/cellop: follow-up agent-execution/05 (this brief; flips to fixed-here when the implementation edits the path)", "tools/desk/cmd/cellctl: follow-up agent-execution/05 (this brief; flips to fixed-here when the implementation edits the path)", "R7 Cell API and cockpit: out-of-scope (consume this snapshot under their existing ingress and mounted-route qualification; no alternate endpoint here)"]
 version: 1
 id: "a4787a6a-d6e4-452b-ae9f-b275a91a97d4"
 ---

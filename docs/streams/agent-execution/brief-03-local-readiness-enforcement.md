@@ -16,7 +16,7 @@ exec-tier: "strong"
 exec-tier-why: "Cross-component protocol, recovery and authority boundaries require design judgment."
 domain: "complicated"
 outcome: "none"
-consumers: ["loopadmin/supervisor: fixed-here", "loopadmin/adapters/localharness: fixed-here", "workflow/executionqualification: follow-up agent-execution/04", "tools/desk/internal/cellop: follow-up agent-execution/05", "tools/desk/cmd/cellctl: out-of-scope (resolved argv and enrollment remain graph-execution/27; no new builder)"]
+consumers: ["loopadmin/supervisor: follow-up agent-execution/03 (this brief; flips to fixed-here when the implementation edits the path)", "loopadmin/adapters/localharness: follow-up agent-execution/03 (this brief; flips to fixed-here when the implementation edits the path)", "workflow/executionqualification: follow-up agent-execution/04", "tools/desk/internal/cellop: follow-up agent-execution/05", "tools/desk/cmd/cellctl: out-of-scope (resolved argv and enrollment remain graph-execution/27; no new builder)"]
 version: 1
 id: "1740cfc2-3d30-4c26-b8b2-a4a369e3df7a"
 gate-why: "Extends the actual process-launch gate beside inference credentials; the operator confirms the resolved profile, effective mount/environment restrictions and independent custody boundary before adoption."

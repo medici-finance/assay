@@ -2,7 +2,7 @@
 stream: agent-execution
 repo: medici-finance/assay
 serves: assay
-status: active
+status: parked
 priority: P2
 track: platform
 issues: [2500]
@@ -15,8 +15,11 @@ spec: docs/proposals/non-ci-architecture/27-agent-execution-environments.md
 Deliver portable, qualified execution through the existing runner, workspace, coordination
 and effect owners. The [future-state amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md)
 is the controlling specification. These are authored implementation obligations; every
-brief begins todo and no runtime is activated. Stream admission here covers offline
-contract/fixture development; existing human and deployment gates still bind consumers.
+brief begins todo and no runtime is activated. The stream is parked: its controlling
+amendment is a requested proposal, not an approved spec, so admission to dispatch is
+pending. Activation needs that amendment's own approval provenance recorded on its spec;
+the earlier revision-bound architecture decision does not supply it. Later adoption and
+activation gates stay separate, and existing human and deployment gates still bind consumers.
 
 ## Briefs
 

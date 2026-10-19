@@ -16,7 +16,7 @@ exec-tier: "strong"
 exec-tier-why: "Cross-component protocol, recovery and authority boundaries require design judgment."
 domain: "complicated"
 outcome: "none"
-consumers: ["loopadmin/runner: fixed-here", "loopadmin/workspace: follow-up agent-execution/02", "loopadmin/supervisor: follow-up agent-execution/03", "tools/desk/internal/cellop: follow-up agent-execution/05", "loopadmin/adapters/axcompat: follow-up agent-execution/06"]
+consumers: ["loopadmin/runner: follow-up agent-execution/01 (this brief; flips to fixed-here when the implementation edits the path)", "loopadmin/workspace: follow-up agent-execution/02", "loopadmin/supervisor: follow-up agent-execution/03", "tools/desk/internal/cellop: follow-up agent-execution/05", "loopadmin/adapters/axcompat: follow-up agent-execution/06"]
 version: 1
 id: "b402ec83-8a07-4551-b382-5dc017a45315"
 ---

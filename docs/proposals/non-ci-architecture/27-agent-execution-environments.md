@@ -1,7 +1,8 @@
 # Portable agent execution environments
 
 **Status: requested future-state amendment, 16 October 2026; routed to the
-[agent-execution stream](../../streams/agent-execution/README.md).** This extends the
+[agent-execution stream](../../streams/agent-execution/README.md), which stays parked until
+this amendment is approved.** This extends the
 existing R2/R3/R4/R7 owners. It specifies implementation work, not deployment,
 credential migration, a remote backend selection or an expansion of the earlier
 revision-bound architecture approval. Existing decisions and historical Evidence stay intact.

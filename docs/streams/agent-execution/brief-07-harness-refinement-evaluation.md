@@ -16,7 +16,7 @@ exec-tier: "strong"
 exec-tier-why: "Experimental validity, protected authority boundaries and cross-task evidence require design judgment."
 domain: "complex"
 outcome: "none"
-consumers: ["loopadmin/experiments/harnessrefinement: fixed-here", "docs/reports/agent-execution/harness-refinement.md: fixed-here", "performance-collection/09 proposal loop: out-of-scope (retains proposal scheduling, approved effects and promotion; this investigation only supplies experimental evidence)", "installed skills and runtime profiles: out-of-scope (no live edit or promotion in this brief)"]
+consumers: ["loopadmin/experiments/harnessrefinement: follow-up agent-execution/07 (this brief; flips to fixed-here when the implementation edits the path)", "docs/reports/agent-execution/harness-refinement.md: follow-up agent-execution/07 (this brief; flips to fixed-here when the implementation edits the path)", "performance-collection/09 proposal loop: out-of-scope (retains proposal scheduling, approved effects and promotion; this investigation only supplies experimental evidence)", "installed skills and runtime profiles: out-of-scope (no live edit or promotion in this brief)"]
 version: 1
 id: "a39c5fdb-370a-4459-a7a7-59b083eb7585"
 ---

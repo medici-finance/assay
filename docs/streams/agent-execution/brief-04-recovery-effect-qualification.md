@@ -16,7 +16,7 @@ exec-tier: "strong"
 exec-tier-why: "Cross-component protocol, recovery and authority boundaries require design judgment."
 domain: "complicated"
 outcome: "none"
-consumers: ["workflow/executionqualification: fixed-here", "workflow/controller: out-of-scope (implementation remains graph-execution/21; exercised through its public interface)", "workflow/publication: out-of-scope (implementation remains graph-execution/25; exercised through its public interface)", "loopadmin/supervisor: out-of-scope (implementation remains graph-execution/26; exercised through its public interface)", "tools/desk/internal/cellop: follow-up agent-execution/05"]
+consumers: ["workflow/executionqualification: follow-up agent-execution/04 (this brief; flips to fixed-here when the implementation edits the path)", "workflow/controller: out-of-scope (implementation remains graph-execution/21; exercised through its public interface)", "workflow/publication: out-of-scope (implementation remains graph-execution/25; exercised through its public interface)", "loopadmin/supervisor: out-of-scope (implementation remains graph-execution/26; exercised through its public interface)", "tools/desk/internal/cellop: follow-up agent-execution/05"]
 version: 1
 id: "6edf4528-9b57-4291-82ac-098d25c57c1a"
 ---

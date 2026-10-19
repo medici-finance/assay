@@ -16,7 +16,7 @@ exec-tier: "strong"
 exec-tier-why: "Cross-component protocol, recovery and authority boundaries require design judgment."
 domain: "complicated"
 outcome: "none"
-consumers: ["loopadmin/adapters/axcompat: fixed-here", "docs/reports/agent-execution/ax-compatibility.md: fixed-here", "production AX adapter: out-of-scope (requires separately authored implementation and authorized qualification after this report)", "celld S5 and S6 experiments: out-of-scope (existing remote/cluster questions and authorization remain separate)"]
+consumers: ["loopadmin/adapters/axcompat: follow-up agent-execution/06 (this brief; flips to fixed-here when the implementation edits the path)", "docs/reports/agent-execution/ax-compatibility.md: follow-up agent-execution/06 (this brief; flips to fixed-here when the implementation edits the path)", "production AX adapter: out-of-scope (requires separately authored implementation and authorized qualification after this report)", "celld S5 and S6 experiments: out-of-scope (existing remote/cluster questions and authorization remain separate)"]
 version: 1
 id: "acdc950e-3762-4ab4-ac30-fab52bfc86d7"
 ---
