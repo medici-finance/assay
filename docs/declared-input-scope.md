@@ -22,8 +22,16 @@ An em-dash description, or a colon after a quoted path, ends the declaration par
 of that line. Backticks inside that description, facts, other sections and fenced
 examples do not add files. Structural headings or files markers inside a region
 the parser would skip as fenced refuse conservatively, even in a genuine code
-example; the parser does not infer list or HTML container boundaries. A blank line, another Context field or section ends the
-field. After that blank, list markers (`-`, `*`, `+`, `N.`, `N)` followed by
+example; the parser does not infer list or HTML container boundaries. This includes
+shell `## build` comments, YAML `files:` keys and Go `files := list()` lines
+inside code examples; those structural-looking examples also refuse. A blank line, another Context field or section ends the
+field. A section boundary ending Context MUST be at column zero; an indented
+`## `-shaped line inside Context refuses, including while a files list is paused
+after a blank. It cannot silently discard later list items.
+HTML comments within a declaration (including its description) and raw HTML
+blocks or comments while awaiting the next field also refuse: a hidden heading
+cannot be trusted to end Context. Known metadata fields still end the scope.
+After the blank, list markers (`-`, `*`, `+`, `N.`, `N)` followed by
 whitespace), backtick-led lines, quote-led lines and indented continuations are
 refused as ambiguous until a known Context field begins. A following field key
 must be at column zero; trailing whitespace and CRLF do not add indentation.

@@ -64,7 +64,15 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 			fence = line[:length]
 			continue
 		}
+		if context && (block || endedByBlank || strings.HasPrefix(line, "files:")) &&
+			(strings.Contains(line, "<!--") || (endedByBlank && strings.HasPrefix(line, "<"))) &&
+			!(columnZero && scopeFieldKey(line)) {
+			return nil, Refused("refused: HTML may hide a section boundary in declared files scope")
+		}
 		if strings.HasPrefix(line, "## ") {
+			if context && !columnZero {
+				return nil, Refused("refused: indented section heading in Context cannot end declared scope")
+			}
 			context = line == "## Context"
 			if context {
 				if seenContext {

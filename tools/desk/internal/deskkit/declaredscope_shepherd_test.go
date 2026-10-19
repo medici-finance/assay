@@ -249,3 +249,60 @@ func TestScopeBalancedNestedExamples(t *testing.T) {
 		}
 	}
 }
+
+// regression: #2798 / sec-3429-1. Indented headings inside a files list are
+// item content, never an authority to discard subsequent declared inputs.
+func TestScopeIndentedSectionRefuses(t *testing.T) {
+	for _, brief := range []string{
+		"## Context\nfiles:\n- tools/a.go\n    ## note\n- tools/b.go\n",
+		"## Context\nfiles:\n- tools/a.go\n  ## note\n- tools/b.go\n",
+		"## Context\nfiles:\n- tools/a.go\n\t## note\n- tools/b.go\n",
+		"## Context\nfiles:\n- `tools/a.go`\n   ## note\n- `tools/b.go`\n\nfacts: x\n",
+		"## Context\nfiles:\n- tools/a.go\n  ## Task\n- tools/b.go\n\n## Task\nz\n",
+		"## Context\nfiles:\n- `tools/a.go`\n\n  ## note\n- `tools/b.go`\n\n## Task\nz\n",
+
+		"## Context\nfiles:\n- `tools/a.go`\n  ## Note\n- `tools/b.go`\n\n## Task\nz\n",
+		"## Context\nfiles:\n- `tools/a.go`\n   ## Note\n- `tools/b.go`\n\n## Task\nz\n",
+		"## Context\nfiles:\n- `tools/a.go`\n    ## Note\n- `tools/b.go`\n\n## Task\nz\n",
+		"## Context\nfiles:\n- `tools/a.go`\n\t## Note\n- `tools/b.go`\n\n## Task\nz\n",
+		"## Context\nfiles:\n- `tools/a.go`\n\n  ## Note\n\n- `tools/b.go`\n\n## Task\nz\n",
+		"## Context\nfiles:\n- `tools/a.go`\n\n    ## Note\n\n- `tools/b.go`\n\n## Task\nz\n",
+		"## Context\nfiles:\n- `tools/a.go`\n- `tools/b.go`\n  ## Task\n- `tools/c.go`\n\n## Task\nz\n",
+	} {
+		if paths, err := BriefDeclaredFiles(brief); ExitCodeOf(err) != ExitRefused {
+			t.Errorf("indented heading truncated declaration: %v %v", paths, err)
+		}
+		tree := wakeTestTree()
+		tree.files[wakeTestBriefPath] = brief
+		tree.files["tools/b.go"] = "second deliverable"
+		tree.files["tools/c.go"] = "third deliverable"
+		input := wakeTestInput()
+		input.LandedBrief = []byte(brief)
+		if raw, err := BuildOutcomeRecord(wakeTestRecord("blocked", BlockerUnknown, "#1"), input, tree); ExitCodeOf(err) != ExitRefused || len(raw) != 0 {
+			t.Errorf("indented heading published partial receipt: %s %v", raw, err)
+		}
+	}
+}
+
+// regression: #2798 / sec-3429-1. A comment or HTML block cannot hide a
+// column-zero heading that would otherwise terminate an unfinished files scope.
+func TestScopeHTMLSectionBoundaryRefuses(t *testing.T) {
+	for _, brief := range []string{
+		"## Context\nfiles: tools/a.go\n\n<!--\n## Task\n-->\n- tools/b.go\n",
+		"## Context\nfiles: tools/a.go — <!--\n## Task\n-->\n- tools/b.go\n",
+		"## Context\nfiles: tools/a.go\n\nparagraph <!--\n## Task\n-->\n- tools/b.go\n",
+		"## Context\nfiles: tools/a.go\n\n<div>\n## Task\n</div>\n\n- tools/b.go\n",
+	} {
+		if paths, err := BriefDeclaredFiles(brief); ExitCodeOf(err) != ExitRefused {
+			t.Errorf("HTML hid section boundary: %v %v", paths, err)
+		}
+		tree := wakeTestTree()
+		tree.files[wakeTestBriefPath] = brief
+		tree.files["tools/b.go"] = "second deliverable"
+		input := wakeTestInput()
+		input.LandedBrief = []byte(brief)
+		if raw, err := BuildOutcomeRecord(wakeTestRecord("blocked", BlockerUnknown, "#1"), input, tree); ExitCodeOf(err) != ExitRefused || len(raw) != 0 {
+			t.Errorf("HTML published partial receipt: %s %v", raw, err)
+		}
+	}
+}
