@@ -285,7 +285,9 @@ before the outcome lands:
   placeholder ("to file") or a sentence in this field; the blocker's description belongs in `note`.
 - **The brief's `file:` revision is the brief AS IT LANDS.** That is the SHA-256 of the brief on
   your Evidence branch after your Evidence rows are appended, not the pre-Evidence copy at the
-  receipt's `sha`. The wake reader hashes the file in the merged tree, which includes your append,
+  admitted Source revision. The outcome's `sha` names the successful Evidence commit; the
+  brief input hashes its landed bytes. The wake reader hashes the file in the merged tree,
+  which includes your append,
   so a hash of the pre-Evidence brief makes the receipt fire the moment it lands. Write the outcome
   row last, after every edit to the brief on that branch. A later merge of main into the branch is
   not such an edit: never re-hash over it. If that merge changed the brief, the receipt fires when it
