@@ -351,6 +351,38 @@ Landing note: this block lands on the Evidence branch after a two-parent merge o
 
 Outcome record: `blocked`, environment, medici-finance/assay#1800. It supersedes the newest earlier receipt for this brief, `38-20261018T033804Z-d754182b67fc`. The withdrawal above retracts that receipt's claims. All earlier receipts stay unchanged as history.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCommandKit$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCommandKit ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e675fede3a96 | 2026-10-19 | assay-verifier-app[bot] @ 5d048bb82886 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCoverageFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCoverageFlow ' "$o")` | pass exit=0 sandbox=container-netns | sha256:c37241186c0c | 2026-10-19 | assay-verifier-app[bot] @ 5d048bb82886 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `statusgen --root . --consumers --brief desk-tools/38` | fail exit=2 sandbox=container-netns | sha256:96ce9f09039c | 2026-10-19 | assay-verifier-app[bot] @ 5d048bb82886 (on-behalf-of human:ian) (forge-identity) |
+
+### Independent re-verification — 2026-10-19 (container witness)
+
+Observed source: 5d048bb82886e0e53293521653efe65b2cf29bfc (merged main at dispatch). Actual delivery: merged PR #3332, eded7ba6e4461a3afac436ff7196987d83268bb3, first parent da7a4be21e61acf2f8a2c09749f8cec7d60468f1. The witness table directly above is the execution witness: statusgen verifyrun, non-dry, sandbox=container-netns, in a local docker container (image assay-verify:go1.27, id sha256:955fd6c46c93, built FROM golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e, git 2.47) started with `--network none` and the engine's default seccomp profile; statusgen and the desk tools were built inside the container from the observed source. The run uses the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). Fresh dispatcher admission passed before the witness and again after it (same run, source, brief and home binding).
+
+Verification-Attestation: medici-finance/assay#3549 run=fdbf0076df3c9ff2c5fffaf41d93e23bd42f9531866ea870273d8f5e5a14e536 source=5d048bb82886e0e53293521653efe65b2cf29bfc brief=docs/streams/desk-tools/brief-38-correct-desk-performance-attribution-and-counter-coverage.md model=claude-opus-5-5 tier=strong
+
+The prior verdict was **BLOCKED** on 2026-10-19 at 54c3342f89ed (no Linux network-off witness on the darwin host, medici-finance/assay#1800). Since then medici-finance/assay#3508 (merged 2026-10-19 22:17Z) restored row 3 to its pre-amendment text. The Verify section at the observed source is now byte-identical to the one at the delivery commit eded7ba6e446, so the delivered table governs; rows 1 and 2 are unchanged.
+
+By-hand execution, separate from the witness: each row's command ran byte-for-byte from the repository root at the observed source on the darwin host (Go 1.27.2 darwin/arm64, GOPROXY=off, published statusgen v1.0.51, scratch outside the source tree).
+
+| # | Command | Expected | Observed | Date / Runner |
+|---|---------|----------|----------|---------------|
+| 1 | Verify row 1 command, as written | exit 0; named PASS | exit 0; `--- PASS: TestPerfCommandKit (11.81s)`; row output sha256:e37911121463 | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 2 | Verify row 2 command, as written | exit 0; named PASS | exit 0; `--- PASS: TestPerfCoverageFlow (18.13s)`; row output sha256:51587566167d | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3 | Verify row 3 command, as written | exit 0; consumer routing corroborated against the actual diff | exit 2; `statusgen: --consumers: COULD-NOT-CHECK: assay:assay:desk-tools:38 is not in the diff against 5d048bb82886…, so this run carries no evidence about its claims — no entry was corroborated and none was disproved.` | 2026-10-19 assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+
+Row 3 classification: stale row (check definition), not a deliverable defect and not environment-only. The witness and the by-hand run agree (exit 2 in both, network off and on), and the tool's own output says it is a could-not-check: run on merged main without a base, the consumer check diffs against the current head, where the merged brief is absent, so it can never corroborate a merged brief. That is the open check-definition defect medici-finance/assay#1915. The restored row is the delivered contract, so this run does not re-author it. Diagnostic, outside the Verify table: the same check against the immutable delivery (adding `--delivery eded7ba6e4461a3afac436ff7196987d83268bb3 --base da7a4be21e61acf2f8a2c09749f8cec7d60468f1`) exits 0 with `summary: 8 corroborated, 0 disproved, 7 unchecked, 0 brief(s) claiming nothing`. The 7 unchecked entries are the out-of-scope judgments that the Expect cell leaves to review; the 2026-10-19 block above records why each holds. That diagnostic is substance only and earns no acceptance credit for the row as written.
+
+Risk-value: risk metadata is present and all-no, and the item is not irreversible. The delivery is unchanged since the earlier enumeration, and the literals it cites sit at the same lines at the observed source.
+
+RISK-VALUE: DERIVED — perfKitVerb fallback = "other" @ tools/desk/cmd/deskdispatch/kits.go:127 — Task 1 requires unknown kits to stay explicit without raw argv; a fixed compiled fallback carries no caller text and matches the existing perf-v1 fallback.
+RISK-VALUE: DERIVED — perfKitVerb review label = "dispatch:review" @ tools/desk/cmd/deskdispatch/kits.go:111 — a compiled label selected by the parsed kit; any kit outside the four accepted ones gets "other", and the label grants no role authority.
+RISK-VALUE: DERIVED — perfActive start = true @ tools/desk/internal/deskkit/perf.go:145, finish = false (deferred) @ tools/desk/internal/deskkit/perf.go:146 — attribution may be selected only while a consented PerfRun is executing (perf.go:168 returns early otherwise); the deferred reset closes that window on every return path.
+
+**VERIFY: BLOCKED** — rows 1 and 2 pass in the network-off container witness and by hand; row 3 as delivered returns could-not-check (exit 2) on merged main, the check-definition defect medici-finance/assay#1915, so no row was observed to fail and none can close the brief until that defect is resolved.
+
 ## Review
 
 Retain the derived frontmatter gate. Approval of the source spec is recorded; this brief
