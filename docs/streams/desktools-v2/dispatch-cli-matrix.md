@@ -50,6 +50,12 @@ literal default; explicit flags (including empty) win over every undeclared inpu
 
 `--kits` lists embedded kits; `--version` preserves its existing single-line metadata.
 All modes accept conventional help before required execution arguments and before reads.
+Generated help prints to stdout with exit 0. Help, version and `--kits` run no config echo,
+activation discovery, credential lookup or child process. The one opt-in performance
+finalizer wraps the whole command, parsing included. Under `ASSAY_TELEMETRY=1` it writes
+one local record classified from the registered first argument, or from the resolved kit
+for dispatch and `--stamp-only` execution. An explicit `--trace=false` turns off an
+inherited `DESK_TRACE`.
 The old root no-argument refusal remains exit 5. Syntax errors (unknown flags, missing or
 malformed values, extra positionals) adopt the shared contract's exit 2; domain refusals
 remain 5, unavailable reads 6 and disabled guards 3. Existing machine results and
@@ -356,4 +362,5 @@ The stamp runner's required-tier default plant now targets the Cobra declaration
 `cli.go`, preserving the same mutation and required-input assertion after the Go FlagSet
 was removed. The other 62 anchors remain unchanged. The stamp runner executes each
 selected Go test with its existing 60-second bound; the CLI owner's muhar spec separately
-covers eager config/telemetry effects, source widening, legacy flags and generated help.
+covers eager config or activation discovery, source widening, legacy flags, generated help
+and the performance finalizer staying outside parsing.

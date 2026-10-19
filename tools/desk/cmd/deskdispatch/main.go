@@ -89,8 +89,8 @@ func main() {
 	// human-gated brief is never held on its decision issue.
 	decisionWaitForgeFn = liveDecisionWaitForge
 	args := os.Args[1:]
-	// main owns the declared class, echo and one performance wrapper. Cobra
-	// invokes these callbacks only for execution, after help/version and parsing.
+	// main owns the declared class, echo and activation discovery. Cobra invokes
+	// these callbacks only for execution, after help/version/kits and parsing.
 	env := dispatchCLI{
 		before: func() error {
 			deskkit.SetToolClass(deskkit.ClassForTool(false))
@@ -101,17 +101,18 @@ func main() {
 			return nil
 		},
 		handle: func(mode string, o dispatchOpts, override string) error {
-			var result error
-			deskkit.PerfRun("deskdispatch", perfVerbs, args, func([]string) int {
-				if result = dispatchGuard(); result == nil {
-					result = executeMode(mode, o, override)
-				}
-				return deskkit.ExitCodeOf(result)
-			})
-			return result
+			if err := dispatchGuard(); err != nil {
+				return err
+			}
+			return executeMode(mode, o, override)
 		},
 	}
-	os.Exit(parseDispatchCLI(args, env, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}))
+	// The one measurement finalizer wraps the whole command, parsing included, so
+	// the timer never restarts after Cobra. Consent is the environment opt-in only;
+	// help/version/kits classify themselves without reading operational config.
+	os.Exit(deskkit.PerfRun("deskdispatch", perfVerbs, args, func(a []string) int {
+		return parseDispatchCLI(a, env, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr})
+	}))
 }
 
 func dispatchGuard() error {

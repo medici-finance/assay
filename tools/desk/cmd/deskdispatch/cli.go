@@ -122,6 +122,14 @@ func newDispatchCLI(mode string, env dispatchCLI) *cobra.Command {
 		if mode == "" && len(args) == 0 {
 			return deskkit.Refused("deskdispatch requires an <item-key>")
 		}
+		// Kit-qualified attribution from the resolved binding; a no-op unless the
+		// outer perf wrapper is armed. Raw kit or item text never reaches a record.
+		switch mode {
+		case "":
+			deskkit.PerfCommand(perfVerbs, perfKitVerb("dispatch", v.String("kit")))
+		case "--stamp-only":
+			deskkit.PerfCommand(perfVerbs, perfKitVerb("stamp-only", v.String("kit")))
+		}
 		if v.Source("trace") == cli.Flag {
 			deskkit.SetTrace(v.Bool("trace"))
 		}

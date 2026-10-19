@@ -1,5 +1,5 @@
 {
-  "test": "go test -timeout 120s -count=1 ./cmd/deskdispatch -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestHostileItemKeysRefused|TestStampOnlyRejectsArgs|TestStepListIsTheDocumentedContract|TestHelpNamesTheEngineSeam)$'",
+  "test": "go test -timeout 120s -count=1 ./cmd/deskdispatch -run '^(TestCLIHelpOffline|TestCLIHelpDoesNotDiscoverManifests|TestCLIConfigFlow|TestCLILegacyForms|TestHostileItemKeysRefused|TestStampOnlyRejectsArgs|TestStepListIsTheDocumentedContract|TestHelpNamesTheEngineSeam)$'",
   "control": {
     "name": "CONTROL: usage exit is wrong",
     "file": "cmd/deskdispatch/cli.go",
@@ -32,10 +32,16 @@
       "new": "\"undocumented\""
     },
     {
-      "name": "main eagerly records telemetry for help and version",
+      "name": "activation discovery runs before help",
       "file": "cmd/deskdispatch/main.go",
-      "old": "os.Exit(parseDispatchCLI(args, env, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}))",
-      "new": "os.Exit(deskkit.PerfRun(\"deskdispatch\", perfVerbs, args, func([]string) int { return parseDispatchCLI(args, env, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}) }))"
+      "old": "os.Exit(deskkit.PerfRun(\"deskdispatch\", perfVerbs, args, func(a []string) int {",
+      "new": "deskkit.CheckVerbActivation(os.Stderr)\n\tos.Exit(deskkit.PerfRun(\"deskdispatch\", perfVerbs, args, func(a []string) int {"
+    },
+    {
+      "name": "measurement finalizer no longer wraps parsing",
+      "file": "cmd/deskdispatch/main.go",
+      "old": "os.Exit(deskkit.PerfRun(\"deskdispatch\", perfVerbs, args, func(a []string) int {",
+      "new": "os.Exit(func(run func([]string) int) int { return run(args) }(func(a []string) int {"
     }
   ]
 }
