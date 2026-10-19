@@ -170,10 +170,14 @@ if args[:2] == ['image', 'inspect']:
         probes = [c for c in calls if c[0] == 'run' and 'python3' in c]
         self.assertEqual(len(probes), 1)
         probe = probes[0]
+        self.assertEqual(probe[-3:], ['-B', '-c',
+                         (self.root / 'images/verify-runner/check.py').read_text()])
         for flag, value in [('--pull', 'never'), ('--network', 'none'),
                             ('--user', '1000:1000'), ('--cap-drop', 'ALL'),
                             ('--security-opt', 'no-new-privileges'),
-                            ('--pids-limit', '64'), ('--memory', '256m')]:
+                            ('--pids-limit', '64'), ('--memory', '256m'),
+                            ('--cpus', '1'),
+                            ('--tmpfs', '/tmp:rw,noexec,nosuid,size=16m')]:
             self.assertEqual(probe[probe.index(flag) + 1], value)
         self.assertIn('--read-only', probe)
         self.assertNotIn('--volume', probe)

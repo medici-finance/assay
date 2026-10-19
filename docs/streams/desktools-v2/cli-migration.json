@@ -42,6 +42,11 @@
       "reason": "internal release image producer imported by fixed workflow Python calls; no shebang, main guard, argument parser or independent operator entrypoint (#3204)"
     },
     {
+      "class": "test",
+      "pattern": "images/verify-runner/check.py",
+      "reason": "release-owned in-image Python capability probe invoked only by tools/release/images.py before publication; never installed or exposed as an operator CLI (#3469)"
+    },
+    {
       "class": "library",
       "pattern": "tools/release/images_contract.py",
       "reason": "pure image reference validation library imported by release workflow and offline fixtures; no standalone CLI or network calls (#3204)"

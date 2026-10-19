@@ -126,7 +126,9 @@ existing versioned image-reference contract, without a second dependency manifes
 for consumers to reconcile.
 
 The source-side fake-Docker tests run in pull-request CI. They prove the capability
-check precedes all pushes and that either missing library stops publication. The
-real probe rejects the deficient v1.0.50 image. A corrected-image pass still needs
-the approved release build; source tests do not qualify a runner or replace fresh
+check uses the release-owned source payload, keeps its declared resource bounds,
+precedes all pushes, and stops publication on a simulated import-error exit. The
+two error modes cover the same producer path; they do not independently execute
+either library. The real probe rejects the deficient v1.0.50 image. A corrected-image
+pass still needs the approved release build; source tests do not qualify a runner or replace fresh
 released-image pinning and independent qualification.

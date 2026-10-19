@@ -108,7 +108,7 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
                   "--entrypoint", "statusgen", ref, "--version", capture=True).strip()
         if got != version:
             raise ValueError(f"{name} statusgen version {got!r} != {version}")
-    # Probe the built image with the same runtime restrictions as verification.
+    # Probe the built image with its own non-root, read-only, no-network fence.
     # Source stays in the release contract; no mounts, installs or credentials.
     run("docker", "run", "--rm", "--pull", "never", "--network", "none",
         "--platform", "linux/amd64", "--read-only", "--cap-drop", "ALL",
