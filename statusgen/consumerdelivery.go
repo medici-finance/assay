@@ -163,3 +163,77 @@ func consumerRangeWhy(cmd string, toks []shellTok, expect string) string {
 	}
 	return ""
 }
+
+// deriveConsumerDelivery names the immutable delivery commit of a merged brief
+// when the caller supplied neither --base nor --delivery. The only source is the
+// brief's COMMITTED Evidence: a literal `Verification-Table:` marker whose
+// coordinates deliveryCoordinates (the protected-table closure's own reader)
+// authenticates against the first-parent chain of HEAD. The CLI, the
+// environment and the working tree never contribute a coordinate, and the
+// pinned base is computed here as the delivery's first parent, never taken from
+// the marker. An empty delivery comes back with the reason; there is no
+// partial answer and no fallback range.
+func deriveConsumerDelivery(root, rel string) (delivery, base, why string) {
+	rel = filepath.ToSlash(rel)
+	if rel == "" || strings.HasPrefix(rel, "../") || filepath.IsAbs(rel) {
+		return "", "", "the brief is not inside the repository root"
+	}
+	blob, err := historyGit(root, "show", "--end-of-options", "HEAD:"+rel).Output()
+	if err != nil {
+		return "", "", "the brief is not committed at HEAD, so no committed Evidence can name its delivery"
+	}
+	_, evidence := briefSectionsOf(string(blob))
+	markers := protectedMarkers(normalizeProtectedEvidence(evidence))
+	if len(markers) == 0 {
+		return "", "", "the committed Evidence has no Verification-Table marker naming the delivery"
+	}
+	type triple struct{ delivery, base, original string }
+	var chosen *triple
+	for _, m := range markers {
+		if !m.literal {
+			return "", "", "Verification-Table must be literal live text, without code spans"
+		}
+		fields := strings.Fields(m.text)
+		if len(fields) != 4 || !strings.HasPrefix(fields[1], "delivery=") || !strings.HasPrefix(fields[2], "base=") || !strings.HasPrefix(fields[3], "original=") {
+			return "", "", "expected Verification-Table: delivery=<full-sha> base=<full-sha> original=<full-sha>"
+		}
+		t := triple{strings.TrimPrefix(fields[1], "delivery="), strings.TrimPrefix(fields[2], "base="), strings.TrimPrefix(fields[3], "original=")}
+		if !consumerCommit.MatchString(t.delivery) || !consumerCommit.MatchString(t.base) || !consumerCommit.MatchString(t.original) {
+			return "", "", "the Verification-Table marker needs full 40-hex commit ids"
+		}
+		if chosen != nil && *chosen != t {
+			return "", "", "the committed Evidence names more than one delivery; this instrument does not choose between them"
+		}
+		chosen = &t
+	}
+	parents, cwhy := deliveryCoordinates(root, chosen.delivery, chosen.base, chosen.original)
+	if cwhy != "" {
+		return "", "", cwhy
+	}
+	// A merge delivery records the divergence baseline as its marker base; the
+	// consumer range is always the delivery against its first parent.
+	if len(parents) == 0 || !consumerCommit.MatchString(parents[0]) {
+		return "", "", "the delivery's first parent is not a full immutable commit id"
+	}
+	return chosen.delivery, parents[0], ""
+}
+
+// runDerivedConsumers is the --consumers --brief path with no --base and no
+// --delivery, reached only where the branch diff carries no evidence about the
+// named brief (merged main, or no diff at all). It pins the run to the brief's
+// recorded delivery and its first parent, or reports COULD-NOT-CHECK.
+func runDerivedConsumers(root string, streams []*Stream, briefFilter string) (code int, why string) {
+	briefs := selectConsumerBriefs(root, streams, map[string]bool{}, briefFilter)
+	if len(briefs) != 1 {
+		return 2, "the brief must resolve to exactly one file"
+	}
+	rel, err := filepath.Rel(root, briefs[0].Path)
+	if err != nil {
+		return 2, "the brief path is outside the repository root"
+	}
+	delivery, base, why := deriveConsumerDelivery(root, rel)
+	if why != "" {
+		return 2, why
+	}
+	return runDeliveryConsumers(root, base, briefFilter, delivery), ""
+}

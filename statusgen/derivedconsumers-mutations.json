@@ -1,0 +1,59 @@
+{
+  "test": "go test . -run '^Test(Derived|ExplicitBase)' -count=1 -timeout 280s",
+  "control": {
+    "name": "CONTROL: derivation switched off for a bare --consumers --brief",
+    "file": "consumers.go",
+    "old": "return consumersRun(root, remoteMainRef, briefFilter, briefFilter != \"\")",
+    "new": "return consumersRun(root, remoteMainRef, briefFilter, false)"
+  },
+  "mutations": [
+    {
+      "name": "unpinned fallback: a brief the diff does not carry is judged against the unpinned diff when its delivery cannot be derived",
+      "file": "consumers.go",
+      "old": "\t\t\t\treturn deriveOrRefuse(root, streams, briefFilter, base, bf.Brief+\" is not in the diff\")",
+      "new": "\t\t\t\tif c, w := runDerivedConsumers(root, streams, briefFilter); w == \"\" {\n\t\t\t\t\treturn c\n\t\t\t\t}\n\t\t\t\tcontinue"
+    },
+    {
+      "name": "unpinned fallback: a diff that cannot be taken reports clean when its delivery cannot be derived",
+      "file": "consumers.go",
+      "old": "\t\t\treturn deriveOrRefuse(root, streams, briefFilter, base, fmt.Sprintf(\"%v (base %q)\", err, base))",
+      "new": "\t\t\tif c, w := runDerivedConsumers(root, streams, briefFilter); w == \"\" {\n\t\t\t\treturn c\n\t\t\t}\n\t\t\treturn 0"
+    },
+    {
+      "name": "wrong-parent pin: the recorded original, not the delivery's first parent, becomes the base",
+      "file": "consumerdelivery.go",
+      "old": "return chosen.delivery, parents[0], \"\"",
+      "new": "return chosen.delivery, chosen.original, \"\""
+    },
+    {
+      "name": "wrong-parent pin: the delivery's last parent becomes the base",
+      "file": "consumerdelivery.go",
+      "old": "return chosen.delivery, parents[0], \"\"",
+      "new": "return chosen.delivery, parents[len(parents)-1], \"\""
+    },
+    {
+      "name": "recorded coordinates are not authenticated against the first-parent chain",
+      "file": "consumerdelivery.go",
+      "old": "\tif cwhy != \"\" {\n\t\treturn \"\", \"\", cwhy\n\t}",
+      "new": "\tif false && cwhy != \"\" {\n\t\treturn \"\", \"\", cwhy\n\t}"
+    },
+    {
+      "name": "the working-tree brief, not the committed blob, names the delivery",
+      "file": "consumerdelivery.go",
+      "old": "blob, err := historyGit(root, \"show\", \"--end-of-options\", \"HEAD:\"+rel).Output()",
+      "new": "blob, err := os.ReadFile(filepath.Join(root, rel))"
+    },
+    {
+      "name": "conflicting deliveries are resolved to the first marker instead of refused",
+      "file": "consumerdelivery.go",
+      "old": "if chosen != nil && *chosen != t {",
+      "new": "if false && chosen != nil && *chosen != t {"
+    },
+    {
+      "name": "an explicit --base is overridden by derivation",
+      "file": "main.go",
+      "old": "if !baseGiven && *consumersBrief != \"\" {",
+      "new": "if *consumersBrief != \"\" {"
+    }
+  ]
+}

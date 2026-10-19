@@ -134,54 +134,9 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 	// Reuse the qualified source-provenance primitive. This authenticates the
 	// delivery and baseline snapshots, not whether a witness applies to code:
 	// that remains the independent content comparison in witnessTreeApplies.
-	head, err := historyGit(dir, "rev-parse", "--verify", "HEAD^{commit}").Output()
-	if err != nil || !isObjectID(strings.TrimSpace(string(head))) {
-		return refuse("cannot resolve HEAD as an immutable commit")
-	}
-	bases, err := flipMergeBases(dir, delivery, strings.TrimSpace(string(head)))
-	if err != nil || len(bases) != 1 || bases[0] != delivery {
-		return refuse("delivery is absent or not an ancestor of HEAD")
-	}
-	out, err := historyGit(dir, "show", "-s", "--format=%P", "--end-of-options", delivery).Output()
-	if err != nil {
-		return refuse("cannot read delivery parents")
-	}
-	parents := strings.Fields(string(out))
-	var expected string
-	switch len(parents) {
-	case 1:
-		expected = parents[0] // squash: the exact pre-delivery main snapshot
-	case 2:
-		bases, err := flipMergeBases(dir, parents[0], parents[1])
-		if err != nil || len(bases) != 1 {
-			return refuse("delivery has no unique merge base")
-		}
-		expected = bases[0]
-	default:
-		return refuse("delivery must have one parent (squash) or two parents (merge)")
-	}
-	// An arbitrary ancestor can belong to a merged side branch. Only a
-	// delivery on the observed HEAD's first-parent chain gives parents[0]
-	// the mainline role used by the baseline checks below. Excluding that
-	// parent bounds the walk without treating side-branch reachability as
-	// delivery proof. historyGit retains replace/graft isolation.
-	if !isObjectID(parents[0]) {
-		return refuse("delivery first parent is not an immutable object id")
-	}
-	mainline, err := historyGit(dir, "rev-list", "--first-parent", "--end-of-options", strings.TrimSpace(string(head)), "^"+parents[0]).Output()
-	if err != nil {
-		return refuse("cannot read the immutable first-parent delivery history")
-	}
-	onMainline := false
-	for _, id := range strings.Fields(string(mainline)) {
-		onMainline = onMainline || id == delivery
-	}
-	if !onMainline {
-		return refuse("delivery is not on the observed HEAD's first-parent chain; record the actual mainline delivery and re-derive its baseline")
-	}
-	bases, err = flipMergeBases(dir, original, base)
-	if base != expected || err != nil || len(bases) != 1 || bases[0] != original {
-		return refuse("base is not the exact delivery baseline, or original is not its ancestor")
+	parents, why := deliveryCoordinates(dir, delivery, base, original)
+	if why != "" {
+		return refuse(why)
 	}
 	read := func(rev string) (string, error) {
 		b, err := historyGit(dir, "show", "--end-of-options", rev+":./"+file).Output()
@@ -297,6 +252,64 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 		added = append(added, checkFinding{row.ID, stateAuthorAdded, "supplemental row; no acceptance credit (immutable original table preserved)"})
 	}
 	return protectedPlan{Verify: baseline, Evidence: evidence, Added: added, Original: original, Revisions: revisions}, ""
+}
+
+// deliveryCoordinates authenticates a recorded delivery/base/original triple
+// against the git graph reachable from HEAD in dir and returns the delivery's
+// parents. It is the one reader of those coordinates: the protected-table
+// closure and the consumer-delivery derivation (consumerdelivery.go) both call
+// it, so neither can accept a range the other refuses. why is empty on success.
+func deliveryCoordinates(dir, delivery, base, original string) (parents []string, why string) {
+	head, err := historyGit(dir, "rev-parse", "--verify", "HEAD^{commit}").Output()
+	if err != nil || !isObjectID(strings.TrimSpace(string(head))) {
+		return nil, "cannot resolve HEAD as an immutable commit"
+	}
+	bases, err := flipMergeBases(dir, delivery, strings.TrimSpace(string(head)))
+	if err != nil || len(bases) != 1 || bases[0] != delivery {
+		return nil, "delivery is absent or not an ancestor of HEAD"
+	}
+	out, err := historyGit(dir, "show", "-s", "--format=%P", "--end-of-options", delivery).Output()
+	if err != nil {
+		return nil, "cannot read delivery parents"
+	}
+	parents = strings.Fields(string(out))
+	var expected string
+	switch len(parents) {
+	case 1:
+		expected = parents[0] // squash: the exact pre-delivery main snapshot
+	case 2:
+		bases, err := flipMergeBases(dir, parents[0], parents[1])
+		if err != nil || len(bases) != 1 {
+			return nil, "delivery has no unique merge base"
+		}
+		expected = bases[0]
+	default:
+		return nil, "delivery must have one parent (squash) or two parents (merge)"
+	}
+	// An arbitrary ancestor can belong to a merged side branch. Only a
+	// delivery on the observed HEAD's first-parent chain gives parents[0]
+	// the mainline role used by the baseline checks below. Excluding that
+	// parent bounds the walk without treating side-branch reachability as
+	// delivery proof. historyGit retains replace/graft isolation.
+	if !isObjectID(parents[0]) {
+		return nil, "delivery first parent is not an immutable object id"
+	}
+	mainline, err := historyGit(dir, "rev-list", "--first-parent", "--end-of-options", strings.TrimSpace(string(head)), "^"+parents[0]).Output()
+	if err != nil {
+		return nil, "cannot read the immutable first-parent delivery history"
+	}
+	onMainline := false
+	for _, id := range strings.Fields(string(mainline)) {
+		onMainline = onMainline || id == delivery
+	}
+	if !onMainline {
+		return nil, "delivery is not on the observed HEAD's first-parent chain; record the actual mainline delivery and re-derive its baseline"
+	}
+	bases, err = flipMergeBases(dir, original, base)
+	if base != expected || err != nil || len(bases) != 1 || bases[0] != original {
+		return nil, "base is not the exact delivery baseline, or original is not its ancestor"
+	}
+	return parents, ""
 }
 
 // The lint shares exactly the same original-row audit as the closure verbs.

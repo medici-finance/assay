@@ -528,6 +528,21 @@ func followUpReferencesBack(streams []*Stream, target, referrer, referrerPath st
 //	2 — the instrument could not run at all (no git, unresolvable base). NOT 0:
 //	    "could not check" must never be reported as "checked clean".
 func runConsumers(root, base, briefFilter string) int {
+	return consumersRun(root, base, briefFilter, false)
+}
+
+// runConsumersDerived is runConsumers for a named --brief with neither --base nor
+// --delivery on the command line. Where the branch diff has no evidence about the
+// brief (merged main: HEAD == base), it pins the run to the brief's recorded
+// delivery instead of exiting COULD-NOT-CHECK; it never reads the unpinned diff
+// in place of that pin. See deriveConsumerDelivery.
+func runConsumersDerived(root, briefFilter string) int {
+	return consumersRun(root, remoteMainRef, briefFilter, briefFilter != "")
+}
+
+// consumersRun is the shared body. derive is true only when the caller gave no
+// explicit range; an explicit --base always takes the branch-diff path unchanged.
+func consumersRun(root, base, briefFilter string, derive bool) int {
 	streams, _, err := loadStreams(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen: --consumers:", err)
@@ -556,6 +571,9 @@ func runConsumers(root, base, briefFilter string) int {
 	}
 	changed, err := changedPathsSince(root, base)
 	if err != nil {
+		if derive {
+			return deriveOrRefuse(root, streams, briefFilter, base, fmt.Sprintf("%v (base %q)", err, base))
+		}
 		fmt.Fprintf(os.Stderr, "statusgen: --consumers: COULD-NOT-CHECK: %v (base %q) — no diff, so no routing claim was corroborated\n", err, base)
 		return 2
 	}
@@ -586,6 +604,9 @@ func runConsumers(root, base, briefFilter string) int {
 			if err != nil || changedSet[filepath.ToSlash(rel)] {
 				continue
 			}
+			if derive {
+				return deriveOrRefuse(root, streams, briefFilter, base, bf.Brief+" is not in the diff")
+			}
 			fmt.Fprintf(os.Stderr, "statusgen: --consumers: COULD-NOT-CHECK: %s is not in the diff against %s, so this run carries no evidence about its claims — no entry was corroborated and none was disproved.\n", bf.Brief, base)
 			fmt.Fprintf(os.Stderr, "  To corroborate a MERGED brief, re-run against the diff that made the claims: check out the branch head and pass its own merge-base.\n")
 			fmt.Fprintf(os.Stderr, "  For a merge commit M:  git checkout M^2 && statusgen --consumers --brief %s --base $(git merge-base M^1 M^2)\n", bf.Brief)
@@ -609,6 +630,19 @@ func runConsumers(root, base, briefFilter string) int {
 	}
 
 	return emitConsumers(base, len(briefs), verdicts, claimless, false)
+}
+
+// deriveOrRefuse is the only path off the branch diff. It either runs the pinned
+// delivery check or reports why it could not; it has no third outcome, so an
+// unresolvable delivery can never turn into an unpinned run.
+func deriveOrRefuse(root string, streams []*Stream, briefFilter, base, missed string) int {
+	code, why := runDerivedConsumers(root, streams, briefFilter)
+	if why == "" {
+		return code
+	}
+	fmt.Fprintf(os.Stderr, "statusgen: --consumers: COULD-NOT-CHECK: %s against %s, and the brief's delivery could not be derived: %s. No routing claim was corroborated and none was disproved.\n", missed, base, why)
+	fmt.Fprintf(os.Stderr, "  Pass the delivery explicitly: statusgen --consumers --brief %s --delivery <full-sha> --base <its first parent>\n", briefFilter)
+	return 2
 }
 
 func emitConsumers(base string, briefCount int, verdicts []consumerVerdict, claimless []string, requireEvidence bool) int {

@@ -12,8 +12,36 @@ requires complete local history and delivery ancestry, reads the delivered tree 
 and evaluates inherited claims against that delivery's own diff. It runs no old binary,
 executes no snapshot code and opens no network connection. Missing history, an ambiguous
 brief, a noncommit/moving delivery spelling, an invalid parent range, links/submodules or
-archive-omitted blobs are could-not-check (exit 2). It does not choose a historical commit
-for the author: identifying the actual delivery remains an independently reviewed claim.
+archive-omitted blobs are could-not-check (exit 2). With both pins on the command line it
+does not choose a historical commit for the author: identifying the actual delivery remains
+an independently reviewed claim.
+
+## A bare `--consumers --brief <id>` on merged main
+
+With a named `--brief` and neither `--base` nor `--delivery`, a brief the branch diff does
+not carry (merged main, where HEAD equals the base ref, or no base ref at all) used to be
+could-not-check forever, because no diff can corroborate a claim made by a merged change.
+It now derives the pin instead, from one source only: the literal
+`Verification-Table: delivery=<sha> base=<sha> original=<sha>` marker in the brief's
+**committed** Evidence at HEAD. The recorded triple is authenticated by the same reader the
+protected-table closure uses (the delivery is an ancestor of HEAD on its first-parent chain,
+and the recorded base is its exact baseline). The pinned base is then computed as the
+delivery's own first parent, never copied from the marker, and the run is the delivery mode
+above (immutable snapshot, exact summary counts, same exit codes).
+
+It is could-not-check (exit 2), never an unpinned diff and never a verdict, when the brief is
+not committed at HEAD, has no marker, a code-span or malformed marker, short ids, more than
+one distinct delivery, a delivery that is not on HEAD's first-parent chain, or a base that
+is not its baseline. No command-line value, environment variable or working-tree edit can
+supply the delivery: a dirty marker is not read. An explicit `--base` is untouched and keeps
+the branch-diff meaning above, and a branch whose diff does carry the brief is checked
+against that diff exactly as before. Without `--brief` nothing is derived.
+
+Limit: the marker is verifier-authored committed text, authenticated against the git graph
+but not against the brief's declared files, so a reviewer still owns the claim that the
+named commit is the real delivery. Evidence that has not yet recorded a marker gets
+could-not-check. The `consumer-delivery-range` lint below is unchanged and still asks for
+explicit pins in authored rows.
 
 Every re-authored row asserts its exact summary, including unchecked count. Exit 0 means
 no disproved claim; a delivery with no corroborated claim returns 2. Unchecked exclusions
@@ -26,8 +54,8 @@ the actual delivery and parent pins before requesting post-merge verification. D
 invent a SHA, silently choose the oldest/latest matching history entry, widen the base to
 make the tree pass, or rewrite historical Evidence. Separate authoring and implementation
 commits are supported by delivery mode; inherited entries are evaluated only on that
-explicit historical path. This addresses the mechanism described in #1281, without claiming
-to close that issue's separate stale consumer declarations.
+explicit historical path. The derived path above addresses the merged-main failure described
+in #1281, without claiming to close that issue's separate stale consumer declarations.
 
 The shared Verify-row lint reports `consumer-delivery-range` for a missing explicit base,
 a delivery without a brief, and a base-only check without a preceding parsed historical

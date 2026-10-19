@@ -1766,7 +1766,7 @@ func main() {
 	// human-stamp corroboration mode below is forge-backed.
 	consumersMode := flag.Bool("consumers", false, "corroborate the consumers: routing claims of the briefs this branch touches against its own diff (exit 1 = a claim is DISPROVED, 2 = the diff could not be taken)")
 	consumersDelivery := flag.String("delivery", "", "--consumers: immutable full delivery commit SHA; requires --brief and --base set to its first parent; evaluates delivered claims and tree, never the working tree")
-	consumersBase := flag.String("base", remoteMainRef, "--consumers: base ref for the three-dot diff")
+	consumersBase := flag.String("base", remoteMainRef, "--consumers: base ref for the three-dot diff; with --brief and no --base/--delivery, a brief the diff does not carry is pinned to the delivery its committed Verification-Table marker records (first parent as base), else COULD-NOT-CHECK")
 	consumersBrief := flag.String("brief", "", "--consumers: check only this brief (<stream>/<NN>); default = every brief file in the diff")
 	corroborateMode := flag.Bool("corroborate", false, "check human:<name> stamps against PR reviews/comments for corroboration (requires --pr)")
 	corroboratePRs := flag.String("pr", "", "comma-separated PR numbers (required with --corroborate; with --decision-gate, the PRs to judge)")
@@ -2198,6 +2198,11 @@ func main() {
 	if *consumersMode {
 		if *consumersDelivery != "" {
 			exitProcess(runDeliveryConsumers(*root, *consumersBase, *consumersBrief, *consumersDelivery))
+		}
+		baseGiven := false
+		flag.Visit(func(f *flag.Flag) { baseGiven = baseGiven || f.Name == "base" })
+		if !baseGiven && *consumersBrief != "" {
+			exitProcess(runConsumersDerived(*root, *consumersBrief))
 		}
 		exitProcess(runConsumers(*root, *consumersBase, *consumersBrief))
 	}

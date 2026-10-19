@@ -1266,14 +1266,21 @@ func briefSections(path string) (verify, evidence string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	content := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	verify, evidence = briefSectionsOf(string(raw))
+	return verify, evidence, nil
+}
+
+// briefSectionsOf is briefSections over brief text already in hand, so a
+// committed blob and a working-tree file are split by one reader.
+func briefSectionsOf(raw string) (verify, evidence string) {
+	content := strings.ReplaceAll(raw, "\r\n", "\n")
 	body := content
 	if first, _, _ := strings.Cut(content, "\n"); strings.TrimSpace(first) == "---" {
 		if _, b, ferr := splitFrontmatter(content); ferr == nil {
 			body = b
 		}
 	}
-	return extractSectionByPrefix(body, "Verify"), extractEvidence(body), nil
+	return extractSectionByPrefix(body, "Verify"), extractEvidence(body)
 }
 
 // runWitnesses executes every Verify row and returns its witness.
