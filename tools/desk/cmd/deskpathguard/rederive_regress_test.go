@@ -158,3 +158,20 @@ func TestRederiveColumnOrder(t *testing.T) {
 		t.Fatalf("column/ordinal provenance: %s", out)
 	}
 }
+
+// regression: #3460
+func TestRederiveExistingReadGap(t *testing.T) {
+	old := runGitFn
+	t.Cleanup(func() { runGitFn = old })
+	runGitFn = func(root string, args ...string) (string, error) {
+		if args[0] == "show" {
+			return "", fmt.Errorf("simulated blob read failure")
+		}
+		return runGit(root, args...)
+	}
+	// The merge-base and ls-tree are real: this path EXISTS in the base tree.
+	out, err := fixtureRederive(t, baseTableMD, headTableMD)
+	if err == nil || out != "" {
+		t.Fatalf("existing unreadable brief became author-added: err=%v out=%q", err, out)
+	}
+}
