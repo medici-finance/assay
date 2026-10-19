@@ -109,6 +109,7 @@ unset ASSAY_BLESS_LOGIN ASSAY_TRUSTED_LOGINS ASSAY_TRUSTED_BOT_SLUGS ASSAY_HUMAN
 # Reply shape's command line names the driver's login from DRIVER_LOGIN; a developer's own
 # value must not leak into the output the cases compare.
 unset DRIVER_LOGIN
+export ASSAY_INBOX_READER=legacy # baseline arm must not discover a developer-installed producer
 
 echo "assay-inbox regression suite (bash $BASH_VERSION)"
 
@@ -2141,6 +2142,41 @@ Reply "A" or "B".
 '
 check "$(not_derived && echo 0 || echo 1)" \
   "a letter right after the marker is not a boundary: not derivable" "stdout was: ${OUT:-<empty>}"
+
+# regression: class issue-projection — the actual shell caller chooses before discovery.
+echo "Projection — compatible typed discovery retains the shell rendering and partial exit"
+w="$TMPROOT/projection"
+make_gh "$w" 0 "$(issue_json 1)" ""
+ASSAY_INBOX_READER=legacy run_case "$w" --no-screen example-org/tracker
+legacy_out="$OUT"
+cat > "$w/deskinbox" <<'PRODUCER'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$0.argv"
+if [[ "$1" == --version ]]; then echo "deskinbox issue-discovery-v1"; exit 0; fi
+if [[ "$1" != discovery || "$2" != example-org/tracker ]]; then exit 5; fi
+printf '%s' '[{"repo":"example-org/tracker","number":100,"title":"issue 0","labels":[{"name":"needs-decision"}],"createdAt":"2026-01-01T00:00:00Z","url":"https://github.com/o/r/issues/100"}]'
+exit "${FIXTURE_DISCOVERY_EXIT:-0}"
+PRODUCER
+chmod +x "$w/deskinbox"
+: > "$w/argv.log"
+ASSAY_INBOX_READER=typed ASSAY_DESKINBOX="$w/deskinbox" run_case "$w" --no-screen example-org/tracker
+check "$([[ "$RC" -eq 0 && "$OUT" == "$legacy_out" && ! -s "$w/argv.log" ]] && echo 0 || echo 1)" \
+  "typed discovery replaces all four label reads without changing rendering" "exit=$RC stdout=$OUT stderr=$ERR"
+FIXTURE_DISCOVERY_EXIT=2 ASSAY_INBOX_READER=typed ASSAY_DESKINBOX="$w/deskinbox" run_case "$w" --no-screen example-org/tracker
+check "$([[ "$RC" -eq 2 && "$OUT" == *"issue 0"* && ! -s "$w/argv.log" ]] && echo 0 || echo 1)" \
+  "partial typed observation stays partial with no broad-read fallback" "exit=$RC stderr=$ERR"
+cat > "$w/older" <<'PRODUCER'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$0.argv"
+echo "deskinbox old-producer"
+PRODUCER
+chmod +x "$w/older"
+ASSAY_INBOX_READER=typed ASSAY_DESKINBOX="$w/older" run_case "$w" --no-screen example-org/tracker
+check "$([[ "$RC" -eq 1 && "$(cat "$w/older.argv")" == --version && ! -s "$w/argv.log" ]] && echo 0 || echo 1)" \
+  "incompatible producer refuses before discovery" "exit=$RC stderr=$ERR"
+ASSAY_INBOX_READER=legacy ASSAY_DESKINBOX="$w/older" run_case "$w" --no-screen example-org/tracker
+check "$([[ "$RC" -eq 0 && "$OUT" == "$legacy_out" && -s "$w/argv.log" ]] && echo 0 || echo 1)" \
+  "explicit rollback restores the legacy caller" "exit=$RC stderr=$ERR"
 
 # ------------------------------------------------------------------ done ----
 echo

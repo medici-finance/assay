@@ -27,13 +27,13 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/43 | 2026-10-19 |  |
 | [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/32 | 2026-10-19 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-10-19 |  |
-| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-10-16 |  |
+| [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-10-19 |  |
 | [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-19 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-10-19 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/35 | 2026-10-19 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 9/18 | 2026-10-19 |  |
 
-### Stuck auto-flips (23)
+### Stuck auto-flips (24)
 
 _gate:model briefs at `verified` that the model auto-flip has not moved to `done`. See docs/board-stuck-autoflips.md._
 
@@ -56,6 +56,7 @@ _gate:model briefs at `verified` that the model auto-flip has not moved to `done
 | [desktools-v2/61](docs/streams/desktools-v2/README.md) | Version shared performance boundaries and keep legacy reports comparable | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [graph-execution/09](docs/streams/graph-execution/README.md) | Versioned workflow instances and shared identity | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [harness-portability/06](docs/streams/harness-portability/README.md) | Codex packaging — generated manifest, coverage rule, install path | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
+| [iso-9001/03](docs/streams/iso-9001/README.md) | A finding closes on a fired control — the corrective-action effectiveness record | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [quality/19](docs/streams/quality/README.md) | qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [statusgen/15](docs/streams/statusgen/README.md) | Extract canonical eligibility and coverage evaluation API | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [statusgen/17](docs/streams/statusgen/README.md) | `--scan-issues`: a `risk:high` label derives `gate: human` on the issue's placeholder (`risk:med` does not) | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
@@ -86,7 +87,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
-_Next-up: 20 of 52 eligible — 32 held back (17 by per-stream caps, 15 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 20 of 54 eligible — 34 held back (17 by per-stream caps, 17 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
 _Held by per-stream caps: 17 brief(s) across 1 stream(s) — top: desktools-v2. By stream: desktools-v2 (17). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
@@ -100,7 +101,7 @@ _Held by per-stream caps: 17 brief(s) across 1 stream(s) — top: desktools-v2. 
 | desk-containers | 16 — Interim mechanism for the runner-lifecycle `pause` transition — cell-scoped stop flags `STOP.cell.<cell>[.<loop>]`, honoured by the Guard for any session carrying the cell marker [exec:strong] | 7 | 4500 |
 | desk-tools | 45 — Expose the canonical verification queue to its consumers [exec:strong] | 1 | 3000 |
 | statusgen | 28 — Separate frozen historical notices from actionable lint findings [exec:strong] | 1 | 3000 |
-| iso-9001 | 08 — Versioned source obligations and project applicability [exec:strong] | 0 | 2530 |
+| iso-9001 | 08 — Versioned source obligations and project applicability [exec:strong] | 0 | 2500 |
 | statusgen | 20 — Offline future-state resolver with receipt and amendment validation [exec:strong] | 2 | 2500 |
 | statusgen | 27 — Reject newly introduced actionable lint notices on changed briefs [exec:strong] | 1 | 2500 |
 | build-less-brittle | 12 — The refactor oracle: what a redesign is coded against — intent, failure modes, triaged characterization tests, invariants, and an acceptance rule [exec:strong] | 5 | 3500 + 1500 (drive:build-less-brittle) |
@@ -117,7 +118,7 @@ _Held by per-stream caps: 17 brief(s) across 1 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 3d29dd92 2026-10-19T22:40:39Z_
+_last regen: f83457dc 2026-10-19T23:37:28Z_
 
 **Progress:** 11/13 brief items done.
 
@@ -138,7 +139,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 3d29dd92 2026-10-19T22:40:39Z_
+_last regen: f83457dc 2026-10-19T23:37:28Z_
 
 **Progress:** 33/82 brief items done.
 
@@ -289,7 +290,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | build-less-brittle | 11 [exec:strong] | verified | 4000 | 2 | — | operator | environment blocker, cite medici-finance/assay#1800 | 2026-10-19 assay-verifier-app[bot] @ ecb8c74a4ae8 (claude-opus-5-5) | — |
 | desk-tools | 38 [exec:strong] | implemented | 4000 | 6 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | statusgen | 22 [exec:strong] | verified | 4000 | 6 | — | operator | environment blocker, cite medici-finance/assay#1800 | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
-| iso-9001 | 03 [exec:strong] | implemented | 3030 | 4 | — | operator | environment blocker, cite medici-finance/assay#2175 | — | — |
+| iso-9001 | 03 [exec:strong] | verified | 3000 | 4 | — | operator | environment blocker, cite medici-finance/assay#2175 | 2026-10-19 assay-verifier-app[bot] @ 810a5edf064b (claude-opus-5-5) | — |
 | statusgen | 19 [exec:strong] | verified | 3000 | 4 | — | operator | environment blocker, cite #1800 | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | desk-containers | 08 [exec:strong] | implemented | 2500 | 3 | — | operator | environment blocker, cite #1800 | — | — |
 | desk-containers | 09 [exec:strong] | implemented | 2500 | 3 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
@@ -606,7 +607,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 39 Extract shared review observation and pure planning contracts — todo (wave 2)
 - 40 Deliver one review queue observation and offline planning bridge — todo (wave 3)
 - 41 Share exact-source review preparation context — todo (wave 3)
-- 42 Narrow issue discovery projections before enrichment — todo (wave 3)
+- 42 Narrow issue discovery projections before enrichment — in-progress (wave 3)
 - 43 Migrate review callers with qualified versions and rollback — todo (wave 4)
 - 44 Qualify complete workflow cost and last-consumer retirement — todo (wave 5)
 - 45 Expose the canonical verification queue to its consumers — todo (wave 1)
@@ -783,7 +784,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 ### iso-9001 (7 open)
 
-- 03 A finding closes on a fired control — the corrective-action effectiveness record — implemented (wave 1)
+- 03 A finding closes on a fired control — the corrective-action effectiveness record — verified (wave 1)
 - 06 The auditor one-pager — what Assay is and is not — todo (wave 2)
 - 07 Release by merge — the human merge is the cut and the authorizer — blocked (wave 2)
 - 08 Versioned source obligations and project applicability — todo (wave 0)

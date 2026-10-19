@@ -33,6 +33,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/issueflow"
 )
 
 // helpLong is the root help's prose. The usage lines and flags are generated from the command
@@ -147,7 +148,7 @@ func codeErr(code int) error {
 // versionLine is what --version and the legacy `version` word print.
 func versionLine() string {
 	s, b := deskkit.Version()
-	return fmt.Sprintf("issueboard sourceSHA=%s builtAt=%s releaseTag=%s", s, b, deskkit.ReleaseTagOrDev())
+	return fmt.Sprintf("issueboard sourceSHA=%s builtAt=%s releaseTag=%s issue-projection-v1", s, b, deskkit.ReleaseTagOrDev())
 }
 
 // bindings are every setting issueboard declares: flags and defaults only, all persistent so
@@ -159,6 +160,8 @@ func bindings() []cli.Binding {
 			Usage: "repo root `path` to read docs/streams/{issue-loop,intake} from"},
 		{Key: "sla-days", Kind: cli.String, Flag: "sla-days", Persistent: true, Default: strconv.Itoa(escalateSLADays),
 			Usage: "decision-owed silence threshold of `N` days before ESCALATE"},
+		{Key: "projection", Kind: cli.String, Flag: "projection", Persistent: true, Default: "full",
+			Usage: "issues population: full, work-ready, intake, inbox (inbox requires --to)"},
 		{Key: "to", Kind: cli.String, Flag: "to", Persistent: true,
 			Usage: "(issues lane only) restrict to the desk-inbox items addressed to `role` (to:<role>)"},
 	}
@@ -227,7 +230,13 @@ func runLane(sub string, set *cli.Set, stdout, stderr io.Writer, pre func(io.Wri
 		fmt.Fprintln(stderr, "refused: --sla-days must be a non-negative integer, got "+strconv.Quote(raw))
 		return deskkit.ExitRefused
 	}
+	projection := issueflow.Projection(v.String("projection"))
 	toFilter := v.String("to")
+	if !issueflow.Valid(projection) || (projection != issueflow.Full && sub != "issues") ||
+		(projection == issueflow.Inbox && toFilter == "") || (projection == issueflow.WorkReady && toFilter != "") {
+		fmt.Fprintln(stderr, "refused: --projection requires issues and a supported population; inbox requires --to; work-ready excludes --to")
+		return deskkit.ExitRefused
+	}
 	// --to is the desk-inbox filter and is meaningful only on the `issues` lane. Passing
 	// it to another subcommand is a caller error with a fix in hand, refused rather than
 	// silently ignored (a filter that quietly does nothing reads as an empty inbox).
@@ -247,7 +256,12 @@ func runLane(sub string, set *cli.Set, stdout, stderr io.Writer, pre func(io.Wri
 	}
 
 	now := time.Now().UTC()
-	rep, err := dispatchFn(sub, v.String("root"), now, slaDays, toFilter)
+	var rep *Report
+	if projection == issueflow.Full {
+		rep, err = dispatchFn(sub, v.String("root"), now, slaDays, toFilter)
+	} else {
+		rep, err = cmdProjection(v.String("root"), now, slaDays, toFilter, projection)
+	}
 	if err != nil {
 		logRun(sub, resultFor(err), err.Error())
 		fmt.Fprintln(stderr, err)
