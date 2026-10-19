@@ -18,9 +18,11 @@ import (
 // autonomyGHFixture fakes gh for autonomyGates. list is the `pr list` output
 // (or "failure"); rollup is the commit body every batched `api graphql` node
 // carries — e.g. `"statusCheckRollup":{...}`, "" for a missing field — or one of
-// "failure", "slow", "raw:<verbatim output>". AUTONOMY_DELAY (seconds) is the
-// per-call latency of the real forge. The `pr view` arm models gh's single-PR
-// rollup read, the path the batched reader replaced (it must never be called).
+// "failure", "slow", "raw:<verbatim output>", "rawfail:<output, then exit 1>".
+// AUTONOMY_PAGE is the verbatim answer to a follow-up context-page read (or
+// "failure"). AUTONOMY_DELAY (seconds) is the per-call latency of the real
+// forge. The `pr view` arm models gh's single-PR rollup read, the path the
+// batched reader replaced (it must never be called).
 func autonomyGHFixture(t *testing.T, list, rollup string) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -32,11 +34,15 @@ case "$*" in
   *"pr list"*statusCheckRollup*) exit 42 ;;
   *"pr list"*) [ "$AUTONOMY_LIST" = failure ] && exit 45; printf '%s' "$AUTONOMY_LIST" ;;
   *"pr view"*) printf '%s' '{"statusCheckRollup":[{"name":"go-test"}]}' ;;
+  *"api graphql"*'after:$after'*)
+    [ "$AUTONOMY_PAGE" = failure ] && exit 46
+    printf '%s' "$AUTONOMY_PAGE" ;;
   *"api graphql"*)
     case "$AUTONOMY_ROLLUP" in
       failure) exit 44 ;;
       slow) exec sleep 5 ;;
       raw:*) printf '%s' "${AUTONOMY_ROLLUP#raw:}"; exit 0 ;;
+      rawfail:*) printf '%s' "${AUTONOMY_ROLLUP#rawfail:}"; exit 1 ;;
     esac
     sep=''
     printf '{"data":{"repository":{'
@@ -56,10 +62,20 @@ esac
 	t.Setenv("AUTONOMY_LIST", list)
 	t.Setenv("AUTONOMY_ROLLUP", rollup)
 	t.Setenv("AUTONOMY_DELAY", "")
+	t.Setenv("AUTONOMY_PAGE", "")
 	return dir, log
 }
 
-const goTestLintRollup = `"statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"go-test"},{"__typename":"StatusContext","context":"lint"}]}}`
+const goTestLintRollup = `"statusCheckRollup":{"contexts":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"__typename":"CheckRun","name":"go-test"},{"__typename":"StatusContext","context":"lint"}]}}`
+
+// gatePage is a follow-up context-page answer for one PR's head commit.
+func gatePage(pageInfo, nodes string) string {
+	return `{"data":{"repository":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"contexts":{"pageInfo":` +
+		pageInfo + `,"nodes":` + nodes + `}}}}]}}}}}`
+}
+
+// overflowRollup is a first page that holds no gate name and says more follow.
+const overflowRollup = `"statusCheckRollup":{"contexts":{"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[{"__typename":"CheckRun","name":"changelog"}]}}`
 
 func gateCalls(t *testing.T, log string) []string {
 	t.Helper()
@@ -72,7 +88,8 @@ func gateCalls(t *testing.T, log string) []string {
 
 func TestAutonomyGatesWindowedRollups(t *testing.T) {
 	root, log := autonomyGHFixture(t,
-		`[{"number":11,"mergedAt":"2026-07-03T12:00:00Z"},{"number":12,"mergedAt":"2026-06-30T23:59:59Z"}]`,
+		`[{"number":11,"mergedAt":"2026-07-03T12:00:00Z"},{"number":12,"mergedAt":"2026-06-30T23:59:59Z"},`+
+			`{"number":13,"mergedAt":"2026-07-15T00:00:01Z"},{"number":11,"mergedAt":"2026-07-03T12:00:00Z"}]`,
 		goTestLintRollup)
 	since, until := autonomyWindow(t)
 	prs, ok, cause := autonomyGates(root, since, until)
@@ -84,6 +101,16 @@ func TestAutonomyGatesWindowedRollups(t *testing.T) {
 		!strings.Contains(lines[1], "api graphql") || !strings.Contains(lines[1], "pr11: pullRequest(number:11)") ||
 		strings.Contains(lines[1], "pullRequest(number:12)") || !strings.Contains(lines[1], "-F owner={owner} -F name={repo}") {
 		t.Fatalf("unexpected queries: %s", strings.Join(lines, "\n"))
+	}
+	// Both window bounds hold, a listed-twice PR is asked for once, and the
+	// query selects both context kinds plus the overflow signal.
+	if strings.Contains(lines[1], "pullRequest(number:13)") || strings.Count(lines[1], "pullRequest(number:11)") != 1 {
+		t.Fatalf("rollup read outside the window or repeated: %s", lines[1])
+	}
+	for _, sel := range []string{"...on CheckRun{name}", "...on StatusContext{context}", "pageInfo{hasNextPage endCursor}"} {
+		if !strings.Contains(lines[1], sel) {
+			t.Fatalf("rollup query does not select %q: %s", sel, lines[1])
+		}
 	}
 	for _, line := range lines {
 		if !strings.HasPrefix(line, root+"|") {
@@ -99,6 +126,8 @@ func TestAutonomyGatesIncompleteReadIsUnmeasured(t *testing.T) {
 		{"rollup-json", one, `raw:truncated`, gateCauseMalformed},
 		{"missing-rollup", one, ``, gateCauseMalformed},
 		{"missing-contexts", one, `"statusCheckRollup":{}`, gateCauseMalformed},
+		{"missing-page-info", one, `"statusCheckRollup":{"contexts":{"nodes":[{"__typename":"CheckRun","name":"go-test"}]}}`, gateCauseMalformed},
+		{"next-page-without-cursor", one, `"statusCheckRollup":{"contexts":{"pageInfo":{"hasNextPage":true,"endCursor":null},"nodes":[]}}`, gateCauseMalformed},
 		{"missing-pr-node", one, `raw:{"data":{"repository":{}}}`, gateCauseMalformed},
 		{"null-data", one, `raw:{"data":null}`, gateCauseMalformed},
 		{"null-list", `null`, goTestLintRollup, gateCauseMalformed},
@@ -106,6 +135,8 @@ func TestAutonomyGatesIncompleteReadIsUnmeasured(t *testing.T) {
 		{"list-failure", `failure`, goTestLintRollup, gateCauseGHFailed},
 		{"rollup-failure", one, `failure`, gateCauseGHFailed},
 		{"graphql-errors", one, `raw:{"errors":[{"message":"timeout"}]}`, gateCauseGHFailed},
+		{"graphql-errors-exit", one, `rawfail:{"errors":[{"message":"timeout"}]}`, gateCauseGHFailed},
+		{"partial-data-errors", one, `raw:{"data":{"repository":{"pr11":null}},"errors":[{"message":"timeout"}]}`, gateCauseGHFailed},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, _ := autonomyGHFixture(t, tc.list, tc.rollup)
@@ -175,6 +206,65 @@ func TestGateReadFitsDeadline(t *testing.T) {
 	prs, ok, cause := autonomyGates(root, since, until)
 	if !ok || cause != "" || len(prs) != len(rows) {
 		t.Fatalf("read under per-call latency = %d PR(s), ok=%v, cause=%q; want all %d inside the deadline", len(prs), ok, cause, len(rows))
+	}
+}
+
+// regression: #2086
+// A head commit with more than one page of contexts is read to the end (or to
+// its first gate name), never counted from its first page alone.
+func TestGateRollupOverflowIsPaged(t *testing.T) {
+	root, log := autonomyGHFixture(t, `[{"number":11,"mergedAt":"2026-07-03T12:00:00Z"}]`, overflowRollup)
+	t.Setenv("AUTONOMY_PAGE", gatePage(`{"hasNextPage":false,"endCursor":"c2"}`, `[{"__typename":"CheckRun","name":"go-test"}]`))
+	since, until := autonomyWindow(t)
+	prs, ok, cause := autonomyGates(root, since, until)
+	if !ok || cause != "" || len(prs) != 1 || !hasDeterministicGate(prs[0].CheckNames) {
+		t.Fatalf("overflowing rollup = %+v, ok=%v, cause=%q; want PR 11 gated by its second-page check", prs, ok, cause)
+	}
+	lines := gateCalls(t, log)
+	if len(lines) != 3 || !strings.Contains(lines[2], "after:$after") ||
+		!strings.Contains(lines[2], "-F num=11") || !strings.Contains(lines[2], "-f after=c1") {
+		t.Fatalf("want one follow-up page read for PR 11 after cursor c1: %s", strings.Join(lines, "\n"))
+	}
+}
+
+// A first page that already names a gate settles the PR: no further page read.
+func TestGateRollupOverflowStopsAtGate(t *testing.T) {
+	first := `"statusCheckRollup":{"contexts":{"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[{"__typename":"CheckRun","name":"go-test"}]}}`
+	root, log := autonomyGHFixture(t, `[{"number":11,"mergedAt":"2026-07-03T12:00:00Z"}]`, first)
+	t.Setenv("AUTONOMY_PAGE", "failure")
+	since, until := autonomyWindow(t)
+	prs, ok, cause := autonomyGates(root, since, until)
+	if !ok || cause != "" || len(prs) != 1 || !hasDeterministicGate(prs[0].CheckNames) {
+		t.Fatalf("gated first page = %+v, ok=%v, cause=%q; want PR 11 gated", prs, ok, cause)
+	}
+	if lines := gateCalls(t, log); len(lines) != 2 {
+		t.Fatalf("paged a PR already settled by its first page: %s", strings.Join(lines, "\n"))
+	}
+}
+
+// An overflowing rollup whose later pages cannot be read is could-not-check
+// with a named cause, never a measured share built from the first page.
+func TestGateRollupOverflowIncompleteIsUnmeasured(t *testing.T) {
+	nonGate := `[{"__typename":"CheckRun","name":"changelog"}]`
+	for _, tc := range []struct{ name, page, cause string }{
+		{"page-failure", "failure", gateCauseGHFailed},
+		{"page-errors", `{"errors":[{"message":"timeout"}]}`, gateCauseGHFailed},
+		{"page-json", `truncated`, gateCauseMalformed},
+		{"page-null-data", `{"data":null}`, gateCauseMalformed},
+		{"page-missing-pr", `{"data":{"repository":{"pullRequest":null}}}`, gateCauseMalformed},
+		{"page-null-rollup", `{"data":{"repository":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":null}}]}}}}}`, gateCauseMalformed},
+		{"page-missing-page-info", `{"data":{"repository":{"pullRequest":{"commits":{"nodes":[{"commit":{"statusCheckRollup":{"contexts":{"nodes":[]}}}}]}}}}}`, gateCauseMalformed},
+		{"page-repeats-cursor", gatePage(`{"hasNextPage":true,"endCursor":"c1"}`, nonGate), gateCauseMalformed},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, _ := autonomyGHFixture(t, `[{"number":11,"mergedAt":"2026-07-03T12:00:00Z"}]`, overflowRollup)
+			t.Setenv("AUTONOMY_PAGE", tc.page)
+			since, until := autonomyWindow(t)
+			prs, ok, cause := autonomyGates(root, since, until)
+			if ok || len(prs) != 0 || cause != tc.cause {
+				t.Fatalf("incomplete overflow read = %+v, ok=%v, cause=%q; want cause %q", prs, ok, cause, tc.cause)
+			}
+		})
 	}
 }
 
@@ -333,7 +423,7 @@ func TestAutonomyGatesEmptyWindow(t *testing.T) {
 // gated share), not an unreadable one. GraphQL answers a head commit with no
 // checks at all as an explicit null rollup; an empty context list is the same.
 func TestAutonomyGatesEmptyRollup(t *testing.T) {
-	for _, rollup := range []string{`"statusCheckRollup":null`, `"statusCheckRollup":{"contexts":{"nodes":[]}}`} {
+	for _, rollup := range []string{`"statusCheckRollup":null`, `"statusCheckRollup":{"contexts":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}`} {
 		root, _ := autonomyGHFixture(t, `[{"number":11,"mergedAt":"2026-07-03T12:00:00Z"}]`, rollup)
 		since, until := autonomyWindow(t)
 		prs, ok, cause := autonomyGates(root, since, until)

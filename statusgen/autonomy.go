@@ -103,7 +103,7 @@ func gateUnmeasured(cause string, since, until time.Time) (reason, detail string
 	case gateCauseGHFailed:
 		return cause, "a gh command failed before the deadline (offline / unauthenticated / API error)"
 	case gateCauseMalformed:
-		return cause, "gh output did not have the expected shape (invalid JSON, a null listing, a missing PR, head commit or statusCheckRollup field, or a non-positive PR number)"
+		return cause, "gh output did not have the expected shape (invalid JSON, a null listing, a missing PR, head commit or statusCheckRollup field, a context page without its cursor, or a non-positive PR number)"
 	}
 	return "gh-unreadable", "gh merged-PR status-check rollups could not be read completely (the reader named no cause)"
 }
@@ -533,29 +533,55 @@ func gateSearch(since, until time.Time) string {
 	return fmt.Sprintf("merged:%s..%s", lo.Format(time.RFC3339), hi.Format(time.RFC3339))
 }
 
+// gateContexts is the context selection of every rollup read: the check names
+// plus the overflow signal, so a head commit with more contexts than one page
+// is paged rather than counted from its first page.
+const gateContexts = "pageInfo{hasNextPage endCursor} nodes{__typename ...on CheckRun{name} ...on StatusContext{context}}"
+
 // gateRollupQuery is the batched rollup read: one aliased pullRequest field per
-// PR number (pr<N>), each asking only for the check names of the head commit's
-// rollup — the same head commit and first-100 contexts `gh pr view --json
-// statusCheckRollup` reads, without its per-check detail fields.
+// PR number (pr<N>), each asking only for the check names on the first page of
+// the head commit's rollup contexts.
 func gateRollupQuery(numbers []int) string {
 	var b strings.Builder
 	b.WriteString("query($owner:String!,$name:String!){repository(owner:$owner,name:$name){")
 	for _, n := range numbers {
-		fmt.Fprintf(&b, "pr%d: pullRequest(number:%d){commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{name} ...on StatusContext{context}}}}}}}} ", n, n)
+		fmt.Fprintf(&b, "pr%d: pullRequest(number:%d){commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100){%s}}}}}} ", n, n, gateContexts)
 	}
 	b.WriteString("}}")
 	return b.String()
 }
 
-// gateRollupNames reads one head commit's statusCheckRollup value. A missing
-// field (or a rollup without its contexts) is unreadable; an explicit null is
-// GraphQL's answer for a commit with no checks at all — a PR with zero checks.
-func gateRollupNames(raw json.RawMessage) ([]string, bool) {
+// gateRollupPageQuery reads one further page of one PR's head-commit contexts,
+// for the rare head whose first page overflowed without naming a gate.
+const gateRollupPageQuery = "query($owner:String!,$name:String!,$num:Int!,$after:String!){repository(owner:$owner,name:$name){" +
+	"pullRequest(number:$num){commits(last:1){nodes{commit{statusCheckRollup{contexts(first:100,after:$after){" + gateContexts + "}}}}}}}}"
+
+// gatePRNode is one pullRequest field of a rollup read.
+type gatePRNode struct {
+	Commits struct {
+		Nodes []struct {
+			Commit struct {
+				StatusCheckRollup json.RawMessage `json:"statusCheckRollup"`
+			} `json:"commit"`
+		} `json:"nodes"`
+	} `json:"commits"`
+}
+
+// gateRollupNames reads one page of a head commit's statusCheckRollup value and
+// returns its check names and, when more pages follow, the cursor to read them
+// after. A missing field, a rollup without its contexts or pageInfo, or a
+// "more follow" without a cursor is unreadable; an explicit null is GraphQL's
+// answer for a commit with no checks at all — a PR with zero checks.
+func gateRollupNames(raw json.RawMessage) (names []string, next string, ok bool) {
 	if len(raw) == 0 {
-		return nil, false
+		return nil, "", false
 	}
 	var rollup *struct {
 		Contexts *struct {
+			PageInfo *struct {
+				HasNextPage bool   `json:"hasNextPage"`
+				EndCursor   string `json:"endCursor"`
+			} `json:"pageInfo"`
 			Nodes []struct {
 				Name    string `json:"name"`
 				Context string `json:"context"`
@@ -563,15 +589,20 @@ func gateRollupNames(raw json.RawMessage) ([]string, bool) {
 		} `json:"contexts"`
 	}
 	if err := json.Unmarshal(raw, &rollup); err != nil {
-		return nil, false
+		return nil, "", false
 	}
 	if rollup == nil {
-		return nil, true
+		return nil, "", true
 	}
-	if rollup.Contexts == nil {
-		return nil, false
+	if rollup.Contexts == nil || rollup.Contexts.PageInfo == nil {
+		return nil, "", false
 	}
-	var names []string
+	if pi := rollup.Contexts.PageInfo; pi.HasNextPage {
+		if pi.EndCursor == "" {
+			return nil, "", false
+		}
+		next = pi.EndCursor
+	}
 	for _, c := range rollup.Contexts.Nodes {
 		if c.Name != "" {
 			names = append(names, c.Name)
@@ -580,7 +611,7 @@ func gateRollupNames(raw json.RawMessage) ([]string, bool) {
 			names = append(names, c.Context)
 		}
 	}
-	return names, true
+	return names, next, true
 }
 
 // autonomyGates lists merged PRs (in window) with their status-check rollup
@@ -645,15 +676,7 @@ var autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR,
 		}
 		var resp struct {
 			Data *struct {
-				Repository map[string]*struct {
-					Commits struct {
-						Nodes []struct {
-							Commit struct {
-								StatusCheckRollup json.RawMessage `json:"statusCheckRollup"`
-							} `json:"commit"`
-						} `json:"nodes"`
-					} `json:"commits"`
-				} `json:"repository"`
+				Repository map[string]*gatePRNode `json:"repository"`
 			} `json:"data"`
 			Errors []json.RawMessage `json:"errors"`
 		}
@@ -672,9 +695,49 @@ var autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR,
 			if pr == nil || len(pr.Commits.Nodes) != 1 {
 				return nil, false, gateCauseMalformed
 			}
-			names, ok := gateRollupNames(pr.Commits.Nodes[0].Commit.StatusCheckRollup)
+			names, next, ok := gateRollupNames(pr.Commits.Nodes[0].Commit.StatusCheckRollup)
 			if !ok {
 				return nil, false, gateCauseMalformed
+			}
+			// An overflowing head is read on, page by page, until a gate name
+			// settles it or its contexts end — never counted from page one.
+			for next != "" && !hasDeterministicGate(names) {
+				out, err := run("api", "graphql", "-f", "query="+gateRollupPageQuery,
+					"-F", "owner={owner}", "-F", "name={repo}", "-F", "num="+strconv.Itoa(n), "-f", "after="+next)
+				if err != nil {
+					if ctx.Err() != nil {
+						return nil, false, gateCauseDeadline
+					}
+					return nil, false, gateCauseGHFailed
+				}
+				var page struct {
+					Data *struct {
+						Repository *struct {
+							PullRequest *gatePRNode `json:"pullRequest"`
+						} `json:"repository"`
+					} `json:"data"`
+					Errors []json.RawMessage `json:"errors"`
+				}
+				if err := json.Unmarshal(out, &page); err != nil {
+					return nil, false, gateCauseMalformed
+				}
+				if len(page.Errors) > 0 {
+					return nil, false, gateCauseGHFailed
+				}
+				if page.Data == nil || page.Data.Repository == nil || page.Data.Repository.PullRequest == nil ||
+					len(page.Data.Repository.PullRequest.Commits.Nodes) != 1 {
+					return nil, false, gateCauseMalformed
+				}
+				raw := page.Data.Repository.PullRequest.Commits.Nodes[0].Commit.StatusCheckRollup
+				if string(raw) == "null" {
+					// The head had contexts on page one; a null now is not "no checks".
+					return nil, false, gateCauseMalformed
+				}
+				more, cursor, ok := gateRollupNames(raw)
+				if !ok || cursor == next {
+					return nil, false, gateCauseMalformed
+				}
+				names, next = append(names, more...), cursor
 			}
 			out2 = append(out2, autonomyGatePR{Number: n, CheckNames: names})
 		}
