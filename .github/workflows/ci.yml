@@ -60,6 +60,15 @@ jobs:
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
 
+      # Run before the all-module sweep: statusgen alone does not depend on the
+      # desk child compiled by its offline bridge test. Match the release gate.
+      - name: Test and vet statusgen
+        run: |
+          set -euo pipefail
+          go version
+          bash statusgen/prepare-test-deps.test.sh
+          cd statusgen && go test ./... && go vet ./...
+
       - name: Build and vet every module
         run: |
           set -euo pipefail
@@ -97,6 +106,10 @@ jobs:
             # behind, and un-wired they let both land green.
             extra=true
             case "$dir" in
+              # M2 mine/trace/report flow and the changed legacy CLI contract
+              # must execute on PRs; build/vet and rendering existing artifacts
+              # do not reach the trace append path (review F-m2-ci).
+              */qualgen|qualgen) extra="GOWORK=off go test -count=1 -timeout=60s -run '^(TestM2.*|TestCLILegacyForms)$' ." ;;
               */tools/desk|tools/desk) extra="go test ./..." ;;
               */tools/harnessgen|tools/harnessgen) extra="go test ./..." ;;
               */tools/harnesslint|tools/harnesslint) extra="go test ./..." ;;
@@ -115,6 +128,11 @@ jobs:
             echo "::endgroup::"
           done < <(git ls-files '*go.mod')
           exit "$fail"
+
+      # The preceding build/vet sweep warms both modules' dependency caches.
+      # Tests run offline and cover the real cross-module child transport.
+      - name: Role-bound claim transport regressions
+        run: bash statusgen/test-role-claims.sh
 
   # The plugin SHELL suites. `assay-inbox.sh` / `inbound-monitor.sh` carry their
   # own regression suites (`*.test.sh`) but the build-test job above runs Go

@@ -75,7 +75,10 @@ func (g *GitHubForge) evidenceSnapshot(repo ForgeRepo, number int, file, branch 
 				}
 			}
 		}
-		Errors []struct{ Message string }
+		Errors []struct {
+			Type string
+			Path []any
+		}
 	}
 	in := map[string]any{"query": githubEvidenceSnapshotQuery, "variables": map[string]any{
 		"owner": repo.Owner, "name": repo.Name, "number": number,
@@ -88,8 +91,17 @@ func (g *GitHubForge) evidenceSnapshot(repo ForgeRepo, number int, file, branch 
 		return nil, Unverifiable("cannot read evidence publication snapshot: "+reason, nil)
 	}
 	if len(env.Errors) > 0 {
-		// Do not print forge-origin text that may contain response content.
-		return bad("GraphQL returned errors")
+		// Commit.file reports an absent entry as null plus NOT_FOUND. Only
+		// that field's negative lookup may accompany an otherwise complete
+		// snapshot; arbitrary or mixed errors still make it unreadable.
+		// Never decode or print the forge's free-form error message.
+		if len(env.Errors) != 1 || env.Errors[0].Type != "NOT_FOUND" {
+			return bad("GraphQL returned errors")
+		}
+		p := env.Errors[0].Path
+		if len(p) != 4 || p[0] != "repository" || p[1] != "ref" || p[2] != "target" || p[3] != "file" {
+			return bad("GraphQL NOT_FOUND outside destination file")
+		}
 	}
 	r := env.Data.Repository
 	if r == nil || r.Ref == nil || r.Ref.Target == nil || r.Ref.Target.Typename != "Commit" || len(r.Ref.Target.OID) != 40 {
@@ -143,6 +155,9 @@ func (g *GitHubForge) evidenceSnapshot(repo ForgeRepo, number int, file, branch 
 	rawFile := r.Ref.Target.File
 	if len(rawFile) == 0 {
 		return bad("missing destination lookup")
+	}
+	if len(env.Errors) > 0 && string(rawFile) != "null" {
+		return bad("GraphQL NOT_FOUND without an absent destination")
 	}
 	if string(rawFile) != "null" {
 		var f struct {

@@ -134,30 +134,3 @@ func applyBriefAdmission(rep *dispatchReport, tier string) {
 	}
 	rep.Rows = kept
 }
-
-// dispatchTierArg reads `--tier T` from the dispatch verb's arguments. Absent is "" (no
-// tier filter); a value outside the tier vocabulary is refused, never guessed.
-func dispatchTierArg(rest []string) (string, error) {
-	tier := ""
-	for i := 0; i < len(rest); i++ {
-		a := rest[i]
-		v, isEq := strings.CutPrefix(a, "--tier=")
-		if a != "--tier" && !isEq {
-			continue
-		}
-		if !isEq {
-			i++
-			if i >= len(rest) {
-				return "", deskkit.Refused("deskboard dispatch: --tier requires a value (" + strings.Join(deskkit.DispatchTiers(), "|") + ")")
-			}
-			v = rest[i]
-		}
-		t, ok := deskkit.CanonicalDispatchTier(v)
-		if !ok {
-			return "", deskkit.Refused(fmt.Sprintf("deskboard dispatch: --tier %q is outside the tier vocabulary (%s)",
-				v, strings.Join(deskkit.DispatchTiers(), "|")))
-		}
-		tier = t
-	}
-	return tier, nil
-}

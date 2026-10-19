@@ -36,7 +36,11 @@ usage:
   deskperf report [--days N] [--tool X] [--role R] [--top N] [--json]
       per tool: count, p50 / p90 / max wall ms, total wall ms, share of total wall,
       refusal ratio (refused + unwritten + unverifiable over count); then the top-N
-      slowest invocations (default 10) as ts / tool / verb / wallMs
+      slowest invocations (default 10) as ts / tool / verb / wallMs. Legacy
+      records (the original schema) and perf-v2 records are reported as SEPARATE
+      groups, never summed: the perf-v2 group adds its boundary and CPU coverage,
+      the measured-CPU distribution, per-counter measured/unavailable coverage and
+      per-phase distributions
   deskperf boot [--days N] [--role R] [--json]
       deskboot's per-step p50 / p90 / max and the summed boot cost, per role
   deskperf --version      print the build stamp

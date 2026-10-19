@@ -98,6 +98,9 @@ func remoteBranchTimeout() time.Duration {
 // claimed" and never as "everything is claimed."
 // A package-level var so tests can substitute a fake lister without a network call.
 var listRemoteBranches = func(root string) (branches []string, err error) {
+	if roleClaimReads || os.Getenv("DESK_LOOP") != "" {
+		return roleRemoteBranches(root)
+	}
 	timeout := remoteBranchTimeout()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()

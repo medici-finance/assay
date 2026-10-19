@@ -130,7 +130,7 @@ func TestNewDeskCommandsAppendPerformance(t *testing.T) {
 		if err := json.Unmarshal([]byte(line), &r); err != nil {
 			t.Fatal(err)
 		}
-		if r.Schema != PerfSchema {
+		if r.Schema != PerfSchemaV2 {
 			t.Fatal("wrong schema")
 		}
 		counts[r.Tool]++

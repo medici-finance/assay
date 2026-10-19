@@ -583,6 +583,23 @@ func TestForgeGithubGolden(t *testing.T) {
 			run: func(f *GitHubForge) (any, error) { return f.ListLabelEvents(forgeTestRepo, 7) },
 		},
 		{
+			// Op 64: the issue's whole label history, every labeled/unlabeled event with the actor's
+			// login AND numeric id, an event whose label is unnamed kept (empty name), an actor-less
+			// event carried with id 0.
+			name: "issue_label_history",
+			setup: func(s *goldenServer) {
+				s.timeline = []map[string]any{
+					{"event": "labeled", "created_at": "2026-10-01T10:00:00Z", "label": map[string]any{"name": "needs-decision"},
+						"actor": map[string]any{"login": "desk[bot]", "id": 4242}},
+					{"event": "commented", "actor": map[string]any{"login": "someone", "id": 7}},
+					{"event": "unlabeled", "created_at": "2026-10-02T10:00:00Z", "label": map[string]any{"name": "needs-decision"},
+						"actor": map[string]any{"login": "desk[bot]", "id": 4242}},
+					{"event": "unlabeled", "created_at": "2026-10-03T10:00:00Z"},
+				}
+			},
+			run: func(f *GitHubForge) (any, error) { return f.IssueLabelHistory(forgeTestRepo, 7) },
+		},
+		{
 			// The comment read is GraphQL because REST carries no `isMinimized`, and a
 			// minimised comment must never be picked up for an edit. The author nodes are
 			// shaped as GitHub's GraphQL API really renders them: a Bot actor's `login` is the

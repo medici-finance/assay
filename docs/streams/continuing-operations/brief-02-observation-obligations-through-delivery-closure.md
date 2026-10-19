@@ -24,6 +24,7 @@ consumers:
   - "spec/change-impact-v1.md, schemas/change-impact-v1.json, statusgen/operations: follow-up continuing-operations/02"
   - "statusgen/portfolio read projection: follow-up statusgen/25"
   - "recurring observation scheduler and exposure collector: out-of-scope (deferred outlines O04/O06/O11; no live integration in this slice)"
+version: 2
 ---
 
 # Brief 02 — Observation obligations through delivery closure
@@ -92,3 +93,9 @@ named PASS fails the row; do not substitute a skipped or zero-test run.
 Gate: model; all risk answers no because this slice processes synthetic/explicit offline
 snapshots and makes no live policy, publication or deployment change. Review semantic
 compatibility and the real consumer flow; later live integration derives its own risk gate.
+
+## Proposed desk assessment consumer — 2026-10-17
+
+desk-improvement/03 declares its build-dependency gate on continuing-operations/02. It reuses operational identity/observation
+lineage rather than defining a duplicate. This is a consumer note, not a reverse prerequisite;
+original Task/Verify/Evidence and activation conditions remain unchanged.

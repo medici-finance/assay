@@ -3,7 +3,7 @@ brief: assay:assay:forge-neutral:40
 title: "Authenticated forge serving and role executor custody"
 why: "A shared cache increases the number of callers that can reach private forge data and write paths. Caller authentication, source admission and a separate role executor must be enforced at actual served boundaries so a cached answer or agent-supplied role cannot become authority."
 wave: 6
-depends: ["forge-neutral/39", "graph-execution/16"]
+depends: ["forge-neutral/39", "graph-execution/16", "desktools-v2/58", "desktools-v2/59"]
 unblocks: ["forge-neutral/41", "forge-neutral/42"]
 effort: L
 gate: human
@@ -13,19 +13,23 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 1
+version: 2
 id: 2b089f0c-6ce5-4e2f-a5bf-d62842845b29
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
   - freshness-checked 2026-10-14 @ 0cb90058470f9608f76b96e2055e7327d9c5c178
   - R6 proposal inspected at c5e8a3f8da3c715b72efa8d8d6b5e74e659ebd52; main merged into this authoring branch without editing historical Evidence
+  - "docs/desk-workflow-efficiency-spec.md"
+  - "freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d; approved spec and consolidation amendment"
 exec-tier: strong
 exec-tier-why: Cross-component identity, privacy, concurrency and failure semantics require design judgment and negative controls.
 domain: complicated
 consumers:
+  - "tools/desk/internal/credential/: follow-up forge-neutral/40 (consume /58\u201359 inside the role executor; no second minter/cache)"
   - "tools/desk/internal/forgeservice/auth/: follow-up forge-neutral/40"
   - "tools/desk/internal/forgeservice/server/: follow-up forge-neutral/40"
   - "tools/desk/internal/forgeexecutor/: follow-up forge-neutral/40"
@@ -40,13 +44,14 @@ consumers:
   - "changelog/forge-service-auth.md: follow-up forge-neutral/40"
   - "statusgen/evaluation/: out-of-scope (existing domain evaluation meaning preserved)"
   - "plugins/assay/skills/: out-of-scope (no caller wired to an unshipped service)"
+  - "tools/desk/internal/forgeservice/auth/reviewcustody_test.go: follow-up forge-neutral/40"
 ---
 
 # Brief 40 — Authenticated forge serving and role executor custody
 
 ## Context
 
-files: `tools/desk/internal/forgeservice/auth/` (planned), `tools/desk/internal/forgeservice/server/` (planned), `tools/desk/internal/forgeexecutor/` (planned), `tools/desk/cmd/forgeserve/` (planned), `tools/desk/cmd/forge-executor/` (planned), `tools/desk/internal/deskkit/forgeresolve.go`, `tools/desk/internal/deskkit/outboundforge.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `changelog/forge-service-auth.md` (planned). Paths not present at the source pin are planned deliverables; existing
+files: `tools/desk/internal/forgeservice/auth/` (planned), `tools/desk/internal/forgeservice/server/` (planned), `tools/desk/internal/forgeexecutor/` (planned), `tools/desk/cmd/forgeserve/` (planned), `tools/desk/cmd/forge-executor/` (planned), `tools/desk/internal/deskkit/forgeresolve.go`, `tools/desk/internal/deskkit/outboundforge.go`, `tools/desk/go.mod`, `tools/desk/go.sum`, `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `changelog/forge-service-auth.md` (planned), `tools/desk/internal/forgeservice/auth/reviewcustody_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
 files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
@@ -109,6 +114,20 @@ webhook payload decisions are not answered by this section.
 
 6. Use operator-selected entitlement leases/access epochs and injected clocks; test invalidation, expiry, revocation and authority rollback. No instantaneous recall of returned bytes or already-submitted requests is promised. R7 will bind remote OIDC/workload authentication to the same policy ports; do not ship an exposed remote login or new identity provider here.
 
+
+### Approved workflow-efficiency amendment — 17 October 2026
+
+Serve the shared queue/context/issue contracts under current caller admission including counts,
+errors and pagination; one cached result cannot answer a different admitted scope or newer cutoff.
+Query results remain advisory. Mutable permission/claim/head and effect preconditions remain
+rechecked at their consequential boundaries. Do not transfer publisher credentials or role authority
+into query composition, and do not assume a source-qualified read bridge qualifies executor
+activation. Reuse existing custody and the selected boundary; no second broker or service.
+
+This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
+obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
+authoring change claims no implementation or operational adoption.
+
 ## Interface contract
 
 Use forge-service-v1 from 39, mirror admission/freshness from 37, event hints/demand from 38,
@@ -132,6 +151,11 @@ boundary and independent expectation, not another implementation of the same che
 | 3 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestForgeCredentialContainment$' ./internal/forgeservice/... > "$r" && grep -F -- '--- PASS: TestForgeCredentialContainment ' "$r")` | exit 0; named PASS. Real disposable process boundary hides executor custody from the client/query process, preserves represented/executing identities, and contains no credentials in results/logs/snapshots. A fake credential inventory alone is not a process-isolation pass. |
 | 4 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestAccessEpochAndRevocation$' ./internal/forgeservice/... > "$r" && grep -F -- '--- PASS: TestAccessEpochAndRevocation ' "$r")` | exit 0; named PASS. Warm cache -> revoke/increment access epoch or expire entitlement lease -> next in-bound query/operation refuses within the configured contract; old SQL generation after rollback cannot reactivate a grant. New permitted epoch remains a positive control. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/40` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
+| 6 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewServingCustody$' ./internal/forgeservice/... > "$o" && grep -F -- '--- PASS: TestReviewServingCustody ' "$o")` | exit 0; named PASS. Permitted review-context/queue path succeeds while changed admission/expiry refuses even for reused bytes/counts; saved context cannot authorize a role write or bypass the executor recheck. |
+
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 7 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestExecutorProviderReuseAndRoleSeparation$' ./internal/forgeservice/... > "$out" && grep -F -- '--- PASS: TestExecutorProviderReuseAndRoleSeparation ' "$out")` | exit 0; named PASS; served repeated requests use the real internal provider with zero minter children, expire correctly and refuse cross-role/executor access; token broker or exec-per-request plants fail |
 
 ## Pre-mortem and detection
 
@@ -142,6 +166,21 @@ reject that variant; record the failing control with the restored production pas
 satisfy a flow row with a route registry, a prose legend or zero selected tests. Test fixtures
 qualify their named local boundary; provider permission inventories, deployment workload and
 operator cutover remain explicit evidence/acceptance obligations.
+
+## Performance reuse amendment — 2026-10-16
+
+Consume the canonical internal credential provider from desktools-v2/58 and its keyed
+in-flight/expiry handling from /59 inside each already-isolated role executor. Those are
+typed prerequisites, not a reason to pool role keys in the query process. A long-lived
+executor must not exec desktoken per operation or start another credential cache. Carry its
+explicit resolved custody scope and refresh/configuration generation; recheck operation
+authority independently before each effect. Credential reuse is an efficiency aid, never
+proof an executor capability remains authorized. The read service and clients receive no
+publisher token and cannot request arbitrary roles or token values.
+
+Retain the exact separate process/revocation boundary of this brief. Extracting code inside
+one role environment does not remove that boundary or amend statusgen's online read contract.
+
 
 ## Evidence
 

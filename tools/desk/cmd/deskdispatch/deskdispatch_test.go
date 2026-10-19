@@ -110,6 +110,12 @@ func isolateClaimTool(t *testing.T, home string) {
 	lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
 	t.Cleanup(func() { lookPath = oldLook })
 
+	oldRefresh := refreshResume
+	refreshResume = func(o dispatchOpts, branch string) error {
+		r := runCmd(o.root, "fixture-fetch", "--quiet", branch)
+		return r.err
+	}
+	t.Cleanup(func() { refreshResume = oldRefresh })
 	oldResume := readResumeChange
 	readResumeChange = func(o dispatchOpts, _ string) (deskkit.PullRequest, error) {
 		branch := o.branch

@@ -667,6 +667,47 @@ RISK-VALUE: NAMED, NOT DERIVED — runtime effect of the windows lock values on 
 
 **VERIFY: FAIL** — row 14a fails as written (stale x/sys anchor, #2297); row 7 passes by hand but its execution witness is red under the admitted-row git environment (#2715); the other 14 rows pass by hand and in the witness. Neither red is a defect in this brief's deliverable.
 
+### Non-implementer verifier run — 2026-10-18 claude-opus-5-5 verifier at a724e99dcd89 (15/16 by hand; row 14a stale x/sys anchor, unchanged since the 2026-10-15 run)
+
+Fresh non-implementer pass on darwin/arm64 (go1.27.2, git 2.56.0), detached at merged main a724e99dcd89, admitted by the verifier pre-work check (rc 0). Every row's command was extracted mechanically from the Verify table (first code span of the Command cell, escaped pipes restored) and run with bash from the repository root. Rows 3 and 4 wrote their .exe files to the fixed temp names the row gives, outside the worktree. Since the 2026-10-15 run at bbf8e3516245, the only commits touching the brief or the split files are an Evidence batch and two unrelated changes; the split files' locking, owner and kill lines are unchanged.
+
+Verification-Attestation: medici-finance/assay#3412 run=369fee537ac81d67dee10c4089bfd56d1b998483f0522aed38b9c67c0acfd088 source=a724e99dcd89a00f22de274f92ef0ca54fa918da brief=docs/streams/windows-port/brief-00-unix-windows-build-tag-split.md model=claude-opus-5-5 tier=any
+
+| # | Command | Expect | Observed | Date / runner |
+|---|---------|--------|----------|---------------|
+| 1 | Verify row 1 command as written (planned-pair existence loop) | OK | exit 0; prints OK | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 2 | Verify row 2 command as written (go list IgnoredGoFiles, windows amd64 + arm64, CGO_ENABLED=1) | OK n, exit 0 | exit 0; prints OK 48 | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 3 | Verify row 3 command as written (statusgen windows amd64 + arm64 build, then file) | exit 0, PE32 / MS Windows | exit 0; PE32+ executable (console) x86-64, for MS Windows; PE32+ executable (console) Aarch64, for MS Windows | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 4 | Verify row 4 command as written (deskpost windows amd64 + arm64 build, then file) | exit 0, PE32 / MS Windows | exit 0; PE32+ executable (console) x86-64, for MS Windows; PE32+ executable (console) Aarch64, for MS Windows | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 5 | Verify row 5 command as written (windows amd64 build of the whole desk module) | 0, exit 0 | exit 0; prints 0 | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 6 | Verify row 6 command as written (windows amd64 go vet, both modules) | sg=0 dt=0, exit 0 | exit 0; sg=0, dt=0 | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 7 | Verify row 7 command as written (host suites under a temporary HOME, pass-line count) | sg=0 dt=0 pass-lines=2, exit 0 | exit 0; sg=0, dt=0, pass-lines=2 | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 8 | Verify row 8 command as written (syscall grep, then go list per file, both arches) | OK n, exit 0 | exit 0; prints OK 27 | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 9 | Verify row 9 command as written (positive-control count) | at least 4 | exit 0; prints 22 | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 10 | Verify row 10 command as written (ACL wiring greps, then the roster ACL evaluator test in both modules) | wired=OK sg-test=OK dt-test=OK | exit 0; wired=OK, sg-test=OK, dt-test=OK | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 11 | Verify row 11 command as written (process-group caveat grep) | 0, exit 0 | exit 0; prints 0 | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 12 | Verify row 12 command as written (busy sentinel grep in the windows lock) | 0, exit 0 | exit 0; prints 0 | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 13 | Verify row 13 command as written (pinned range, prune.go untouched) | exit 0 | exit 0; no output; the pinned range names 20 files | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 14 | Verify row 14 command as written (pinned range, desk go.sum and statusgen module untouched) | exit 0 | exit 0; no output | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 14a | Verify row 14a command as written (count of the v0.46.0 x/sys line in the desk go.mod) | 1, exit 0 | exit 1; prints 0 — the desk go.mod reads golang.org/x/sys v0.47.0 (moved by 715796ed2, after and outside this brief's implementing range; row 14 still shows the implementing diff did not bump it) | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+| 15 | Verify row 15 command as written (consumers routing against the pinned range) | exit 0 | exit 0; no output | 2026-10-18 assay-verifier-app[bot] @ a724e99dcd89 (claude-opus-5-5) |
+
+- **Row 14a** is still the stale anchor recorded on medici-finance/assay#2297 (open): the row pins the x/sys version the implementing change found, and a later change moved it to v0.47.0 on purpose. The Verify row needs a re-baseline (for example, pinning the version against the implementing range as rows 13 and 14 do). The deliverable is not at fault.
+- **Row 7** is green this run with no extra git environment. No execution witness was produced in this pass, so the witness-only red recorded on 2026-10-15 (medici-finance/assay#2715) was not re-observed either way.
+- **What this host does not observe.** Nothing built for windows is executed here. Rows 3 to 6 cross-compile and vet; row 10 runs the platform-neutral ACL evaluator test and greps the windows variants; rows 11 and 12 grep source. The windows lock, the windows owner/ACL read and the windows process-group behaviour are not observed at runtime on this darwin host. A run on a Windows host is the missing observation.
+
+RISK-VALUE scope: all four risk answers are no and the item is not irreversible; the enumeration was done because the implementing diff touches tools/desk/internal/deskkit. It covered the added non-comment lines of the Go files and the desk go.mod in the pinned implementing range (merge-base of the #373 merge's parents to its second parent, 20 files). Line numbers were re-read at a724e99dcd89.
+
+RISK-VALUE: DERIVED — windows lock range (reserved, bytesLow, bytesHigh) = 0, 1, 0 @ tools/desk/internal/deskkit/filelock_windows.go:29, unlock 0, 1, 0 @ tools/desk/internal/deskkit/filelock_windows.go:43 — an advisory lock needs one agreed byte range that every locker uses; reserved must be 0 under the x/sys signature, and lock and unlock name the identical one-byte range at offset 0, so a second locker is refused and nothing leaks.
+RISK-VALUE: DERIVED — windows lock flags = LOCKFILE_EXCLUSIVE_LOCK with LOCKFILE_FAIL_IMMEDIATELY @ tools/desk/internal/deskkit/filelock_windows.go:28 — the windows analogue of LOCK_EX with LOCK_NB @ tools/desk/internal/deskkit/filelock_unix.go:26; the callers' 50 ms retry loop needs a non-blocking exclusive try.
+RISK-VALUE: DERIVED — busy binding = ERROR_LOCK_VIOLATION mapped to ErrLockBusy @ tools/desk/internal/deskkit/filelock_windows.go:34 (EWOULDBLOCK @ tools/desk/internal/deskkit/filelock_unix.go:30) — the documented contention error of a fail-immediately lock; any other error is returned as is and nil only on success, so the lock fails closed.
+RISK-VALUE: DERIVED — owner binding = int(st.Uid) != os.Getuid() @ statusgen/rosterowner_unix.go:40 (deskkit copy @ tools/desk/internal/deskkit/rosterowner_unix.go:39) — the file must be owned by the account running the tool, the same rule ssh applies to its own config; a verbatim move of the pre-split check.
+RISK-VALUE: DERIVED — process-group kill = Setpgid: true @ statusgen/procgroup_unix.go:21 with Kill(-pid, SIGKILL) @ statusgen/procgroup_unix.go:23 — a negative pid signals the whole group the child leads, which reaches orphaned remote helpers; a verbatim move.
+RISK-VALUE: DERIVED — world SID = "S-1-1-0" @ statusgen/rosterowner_windows.go:62 (deskkit copy @ tools/desk/internal/deskkit/rosterowner_windows.go:81) — the Windows well-known Everyone SID, so a nil DACL is modelled as world-writable and refused.
+RISK-VALUE: NAMED, NOT DERIVED — runtime effect of the windows lock values on a Windows host @ tools/desk/internal/deskkit/filelock_windows.go:28 — derived above from the API contract and the source only; no Verify row executes the windows lock and this darwin host cannot, so a contended-lock run on Windows is the missing observation.
+
+**VERIFY: FAIL** — row 14a fails as written (stale x/sys anchor, medici-finance/assay#2297); the other 15 rows pass by hand. The red is in the check, not in this brief's deliverable.
+
 ## Review
 Gate: **model** (from frontmatter). All four risk answers are `no` — this is a compile-target
 split of existing logic in git-revertible source; it publishes nothing, touches no workflow, and

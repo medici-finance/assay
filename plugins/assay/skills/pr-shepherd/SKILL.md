@@ -177,6 +177,29 @@ model instruction, never that ruling — and once recorded, executing it is rout
 cites the ruling. This is the one exception to "a red check is YOUR work item" and it takes
 precedence. Every other finding on the PR stays yours to work meanwhile.
 
+## Withdrawn-brief reconciliation — before ordinary CI repair
+
+For every entry path, read the owning brief's current lifecycle before restoring old
+schema/status values or repairing CI. If it is withdrawn (or `deskboard stalled` reports
+`reconcile`), first read its date/reason, successors and any revision-bound
+`withdrawal-context`. Re-read the PR head and current claim; an active owner is not
+cancelled by a changed board row.
+
+Record the implementation/evidence checkpoint and surviving obligations. Identify the
+active claim's owner from the current claim record; if there is no active claim, use
+the PR's recorded author as the work owner. Choose an explicit treatment with that
+owner: retain useful work under the current plan, retarget
+or re-scope the PR through an approved amendment, finish independent verification of
+what actually landed, or propose disposition through the existing independent
+confirmation gates. Preserve the original brief/tombstone, Evidence, stamps and receipts;
+old acceptance evidence does not verify a newly scoped successor. Do not repair a stale
+PR by reviving its retired plan, redirecting dependencies automatically, weakening a
+gate, or treating withdrawal alone as permission to close it. If ownership cannot be
+established, or a scope/authority choice exceeds the current approval, file or attach a
+`needs-decision` stating the affected PR/brief, checkpoint, treatment needed and
+recommended default; the driver decides. Keep the PR and claim intact pending that
+ruling. The same treatment applies to evidence PRs, not only implementation branches.
+
 ## 4. Reviewer findings — fix, or dispute with evidence; all of them
 
 Read every review by the reviewer App (`gh pr view <N> --json reviews`, plus the line comments
@@ -254,7 +277,10 @@ discarded; it must never be the explanation for a verdict you cannot show.
 
 ## 6. Watch loop
 
-While the PR is open, poll it — or arm a `capability:durable-monitor` on it:
+Use [desk-common §Supervision and context](../../references/desk-common.md#supervision-and-context)
+for watch ownership, bounded waits and same-item continuation. While the PR is open, poll it
+at a bounded interval (the supervising desk's cadence where defined), honoring backoff — or
+arm a `capability:durable-monitor` on it:
 
 ```bash
 gh pr view <N> --json state,mergeable,reviews,statusCheckRollup

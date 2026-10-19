@@ -22,6 +22,8 @@ type mineOptions struct {
 	ChurnWindowDays  int
 	IdentityMap      string
 	InstructionGlobs string
+	FixSource        string
+	DefectLabels     string
 }
 
 // mineMain is the `mine` mode: walk the target repo with go-git and extract its
@@ -42,6 +44,18 @@ func mineMain(o mineOptions, stdout, stderr io.Writer) int {
 	cfg.ChurnWindowDays = o.ChurnWindowDays
 	cfg.Identity = idMap
 	cfg.Instruction = InstructionBrittleConfig{Globs: splitGlobs(o.InstructionGlobs)}
+	if o.FixSource != "" {
+		cfg.FixSource, err = loadFixSource(o.FixSource)
+		if err != nil {
+			fmt.Fprintln(stderr, "qualgen mine:", err)
+			return 2
+		}
+		cfg.DefectLabels = splitGlobs(o.DefectLabels)
+		if len(cfg.DefectLabels) == 0 {
+			fmt.Fprintln(stderr, "qualgen mine: --defect-labels must name at least one label")
+			return 2
+		}
+	}
 
 	trackingRoot := o.Out
 	if trackingRoot == "" {
@@ -91,6 +105,12 @@ func mineWithConfig(repoPath, trackingRoot string, stdout io.Writer, cfg M1Confi
 		return fmt.Errorf("resolve HEAD: %w", err)
 	}
 	tip := head.Hash().String()
+	// Refuse a wrong-target or stale source before creating output artifacts.
+	if cfg.FixSource != nil {
+		if err := cfg.FixSource.validateRepo(r, tip); err != nil {
+			return err
+		}
+	}
 
 	store := NewStore(trackingRoot)
 	prior, err := store.ReadHeader()
@@ -203,6 +223,11 @@ func mineWithConfig(repoPath, trackingRoot string, stdout io.Writer, cfg M1Confi
 		return fmt.Errorf("compute M1 instruction-brittleness metrics: %w", err)
 	}
 
+	if cfg.FixSource != nil {
+		if err := appendM2(store, r, cfg.FixSource, cfg.DefectLabels, runAt); err != nil {
+			return fmt.Errorf("compute M2 defect traces: %w", err)
+		}
+	}
 	fmt.Fprintf(stdout, "qualgen mine: %d new commit(s) extracted; tip %s; %d commit(s) in table\n",
 		len(collected), shortSHA(tip), commitCount)
 	return nil

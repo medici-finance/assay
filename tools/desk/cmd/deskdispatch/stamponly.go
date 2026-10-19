@@ -32,6 +32,7 @@ func cmdStampOnly(args []string) (err error) {
 	if e := fs.Parse(args); e != nil {
 		return deskkit.Refused("stamp-only: " + e.Error())
 	}
+	deskkit.PerfCommand(perfVerbs, perfKitVerb("stamp-only", o.kit))
 	if fs.NArg() != 0 {
 		return deskkit.Refused("stamp-only accepts flags only, no item key")
 	}
