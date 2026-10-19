@@ -74,7 +74,7 @@ func cmdPlan(args []string, stdout io.Writer) error {
 	}
 
 	fmt.Fprintf(stdout, "\nROWS (every row, including the waiting states — a row is never dropped for having no verb):\n")
-	board.RenderRows(stdout)
+	renderRows(board, stdout)
 
 	counts := board.CountByDisposition()
 	fmt.Fprintf(stdout, "\ndispositions: %d DISPATCH · %d FLIP-VERB · %d SURFACE · %d WAIT · %d NO-OP\n",

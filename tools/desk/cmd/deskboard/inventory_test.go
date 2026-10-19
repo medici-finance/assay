@@ -56,7 +56,7 @@ import (
 func actionConstsFromSource(t *testing.T) map[string]string {
 	t.Helper()
 	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "board.go", nil, 0)
+	f, err := parser.ParseFile(fset, "../../internal/reviewflow/classify.go", nil, 0)
 	if err != nil {
 		t.Fatalf("parsing board.go: %v", err)
 	}
@@ -67,7 +67,7 @@ func actionConstsFromSource(t *testing.T) map[string]string {
 			return true
 		}
 		name := vs.Names[0].Name
-		if !strings.HasPrefix(name, "act") {
+		if !strings.HasPrefix(name, "Act") {
 			return true
 		}
 		lit, ok := vs.Values[0].(*ast.BasicLit)
@@ -613,15 +613,15 @@ func TestReduceReviews_AbsentShasAreNeverAtHead(t *testing.T) {
 // more. Unreachability is only worth asserting about an arm that still fails loud, so the
 // arm's identity is pinned at the source level, where a swapped return is visible.
 func TestClassify_GuardArmIsStillTheGuardArm(t *testing.T) {
-	src, err := os.ReadFile("board.go")
+	src, err := os.ReadFile("../../internal/reviewflow/classify.go")
 	if err != nil {
 		t.Fatalf("reading board.go: %v", err)
 	}
 	body := string(src)
-	const arm = "\tcase in.approvedAtHead:\n"
+	const arm = "\tcase in.ApprovedAtHead:\n"
 	i := strings.Index(body, arm)
 	if i < 0 {
-		t.Fatal("the `case in.approvedAtHead:` guard arm is GONE from classify — #400 R2's fail-loud " +
+		t.Fatal("the `case in.ApprovedAtHead:` guard arm is GONE from classify — #400 R2's fail-loud " +
 			"backstop is what makes the unreachability claim meaningful; removing it makes a later " +
 			"routing change silent again")
 	}
@@ -634,16 +634,16 @@ func TestClassify_GuardArmIsStillTheGuardArm(t *testing.T) {
 		t.Fatal("could not find the end of the guard arm in classify")
 	}
 	armSrc := rest[:end]
-	if !strings.Contains(armSrc, "guardArmMarker") {
+	if !strings.Contains(armSrc, "GuardArmMarker") {
 		t.Errorf("the guard arm no longer returns guardArmMarker — the tripwire that asserts it is "+
 			"unreachable keys on that constant, so an arm that says anything else is a tripwire that "+
 			"deleted itself (N6). Arm source:\n%s", armSrc)
 	}
-	if !strings.Contains(armSrc, "actCheck") {
+	if !strings.Contains(armSrc, "ActCheck") {
 		t.Errorf("the guard arm must return actCheck — a reachable-but-unexplained row is an "+
 			"instruction to inspect, never a verdict. Arm source:\n%s", armSrc)
 	}
-	for _, forbidden := range []string{"actFlip", "actMergeNow", "CI green"} {
+	for _, forbidden := range []string{"ActFlip", "ActMergeNow", "CI green"} {
 		if strings.Contains(armSrc, forbidden) {
 			t.Errorf("the guard arm mentions %q — it exists to say the board has NO verdict for the row; "+
 				"a friendly verdict here is the #400 R2 defect restored. Arm source:\n%s", forbidden, armSrc)
@@ -652,7 +652,7 @@ func TestClassify_GuardArmIsStillTheGuardArm(t *testing.T) {
 	// And the phrase is the guard arm's alone: written out a second time anywhere in the
 	// package, the inventory's "nothing reached the guard arm" check could fire on an
 	// innocent row, or (worse) be satisfied by a note the guard arm no longer emits.
-	srcs, err := filepath.Glob("*.go")
+	srcs, err := filepath.Glob("../../internal/reviewflow/*.go")
 	if err != nil {
 		t.Fatalf("globbing package sources: %v", err)
 	}
@@ -665,7 +665,7 @@ func TestClassify_GuardArmIsStillTheGuardArm(t *testing.T) {
 			t.Fatalf("reading %s: %v", f, err)
 		}
 		want := 0
-		if f == "board.go" {
+		if f == "../../internal/reviewflow/classify.go" {
 			want = 1 // the const declaration; the arm references the identifier
 		}
 		if n := strings.Count(string(b), guardArmMarker); n != want {

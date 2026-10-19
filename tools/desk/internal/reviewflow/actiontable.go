@@ -1,9 +1,7 @@
-package main
+package reviewflow
 
 import (
 	"sort"
-
-	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // Disposition is what the reactor does with one board row. It is deliberately NOT a
@@ -62,7 +60,7 @@ func (d Disposition) Actionable() bool { return d == DispositionDispatch }
 
 // rule is one row of the action table: what to do, and the one-line reason, so the
 // reactor's output states WHY a row got no verb rather than merely omitting it.
-type rule struct {
+type Rule struct {
 	Disposition Disposition
 	// Verb names the proposed operation (review dispatch or ready write), "" when none. It is part of
 	// the coalescing key, so a row with no verb cannot collapse into one that has one.
@@ -86,7 +84,7 @@ type rule struct {
 // rules as everyone else. The retired #177 HUMAN-OWNED key mapped a trusted human's own
 // PR to NO-OP; an old board still emitting it now reads as an unknown action, which
 // LookupAction fails CLOSED (exit 6), never as a silent skip.
-var actionTable = map[string]rule{
+var actionTable = map[string]Rule{
 	// ---- the two dispatching states ----
 	"NEEDS-REVIEW": {DispositionDispatch, "review", "no reviewer verdict at head — fill a reviewer slot at the risk-keyed tier"},
 	"RE-REVIEW":    {DispositionDispatch, "review", "head advanced past the last review and the PR's own files changed — delta re-review; resume the original reviewer where its session survives"},
@@ -149,10 +147,10 @@ var actionTable = map[string]rule{
 // treating an unrecognised action as "nothing to do", is precisely how a board surface
 // disappears silently: deskboard has grown well past the 9 actions the skill names, and
 // each addition would otherwise have been an invisible narrowing of what the reactor watches.
-func LookupAction(action string) (rule, error) {
+func LookupAction(action string) (Rule, error) {
 	r, ok := actionTable[action]
 	if !ok {
-		return rule{}, deskkit.Unverifiable(
+		return Rule{}, invalid(
 			"reviewloop: deskboard emitted ACTION "+action+" which this reactor's action table does not know — "+
 				"COULD-NOT-CHECK for that row (add it to actionTable; never treat an unknown action as no-op)", nil)
 	}

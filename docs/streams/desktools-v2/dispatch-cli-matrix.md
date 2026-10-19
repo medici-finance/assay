@@ -296,7 +296,7 @@ package suite and regression floor exercise real domain consumers and rollback.
 - `tools/desk/cmd/fanoutloop/repair.go`
 - `tools/desk/cmd/fanoutloop/represented.go`
 - `tools/desk/cmd/fanoutloop/represented_live.go`
-- `tools/desk/cmd/reviewloop/coalesce.go`
+- `tools/desk/internal/reviewflow/coalesce.go`
 - `tools/desk/cmd/reviewloop/surfaces.go`
 - `tools/desk/cmd/scanloop/monitor.go`
 - `tools/desk/cmd/verifyloop/dispatch.go`

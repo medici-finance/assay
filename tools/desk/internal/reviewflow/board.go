@@ -1,14 +1,11 @@
-package main
+package reviewflow
 
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // HeadUnresolved is the sentinel head SHA for a board row whose head could not be read.
@@ -112,7 +109,7 @@ type Row struct {
 	Head        string // HeadUnresolved when `prs` carried no matching row
 	RiskClassed bool
 	Score       int
-	Rule        rule
+	Rule        Rule
 }
 
 // ID is the stable per-PR identity used in output and in coalescing keys.
@@ -129,29 +126,29 @@ func (r Row) ID() string { return fmt.Sprintf("%s#%d", r.Repo, r.Number) }
 // all-clear from an outage. Here an empty payload cannot become a Board at all.
 func ReadBoard(actionsJSON, prsJSON []byte) (*Board, error) {
 	if len(strings.TrimSpace(string(actionsJSON))) == 0 {
-		return nil, deskkit.Unverifiable(
+		return nil, invalid(
 			"reviewloop: `deskboard actions` produced no output — BLIND, not idle "+
 				"(a rate-limited or refused sweep is empty for the same reason a quiet board is)", nil)
 	}
 	var ar ActionsReport
 	if err := json.Unmarshal(actionsJSON, &ar); err != nil {
-		return nil, deskkit.Unverifiable("reviewloop: cannot decode `deskboard actions` JSON — BLIND, not idle", err)
+		return nil, invalid("reviewloop: cannot decode `deskboard actions` JSON — BLIND, not idle", err)
 	}
 	if strings.TrimSpace(ar.AsOf) == "" {
-		return nil, deskkit.Unverifiable(
+		return nil, invalid(
 			"reviewloop: `deskboard actions` payload carries no asOf timestamp — the sweep's own liveness "+
 				"heartbeat is missing, so its freshness cannot be checked; BLIND, not idle", nil)
 	}
 	asOf, err := time.Parse(time.RFC3339, ar.AsOf)
 	if err != nil {
-		return nil, deskkit.Unverifiable("reviewloop: cannot parse the board's asOf timestamp "+ar.AsOf, err)
+		return nil, invalid("reviewloop: cannot parse the board's asOf timestamp "+ar.AsOf, err)
 	}
 
 	heads := map[string]string{}
 	if len(strings.TrimSpace(string(prsJSON))) > 0 {
 		var pr PRsReport
 		if err := json.Unmarshal(prsJSON, &pr); err != nil {
-			return nil, deskkit.Unverifiable("reviewloop: cannot decode `deskboard prs` JSON — the head-SHA half of the join is BLIND", err)
+			return nil, invalid("reviewloop: cannot decode `deskboard prs` JSON — the head-SHA half of the join is BLIND", err)
 		}
 		for _, p := range pr.Rows {
 			if strings.TrimSpace(p.HeadSHA) != "" {
@@ -220,17 +217,6 @@ func (b *Board) UnresolvedHeads() []string {
 		}
 	}
 	return out
-}
-
-// RenderRows writes one line per board row — including every WAIT and NO-OP row. The
-// waiting states are printed on purpose: a row that vanishes from the reactor's output
-// because there was nothing to do about it is indistinguishable, downstream, from a row
-// that was never on the board.
-func (b *Board) RenderRows(w io.Writer) {
-	for _, r := range b.Rows {
-		fmt.Fprintf(w, "%-10s %-24s %-9s head=%-12s score=%-4d %s\n",
-			r.ID(), r.Action, r.Rule.Disposition, short(r.Head), r.Score, r.Rule.Why)
-	}
 }
 
 func short(sha string) string {

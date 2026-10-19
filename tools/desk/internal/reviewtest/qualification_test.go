@@ -296,7 +296,7 @@ func TestWorkflowOracle(t *testing.T) {
 	// Mutate the production rendering path, leaving every internal observation
 	// intact. These overlays never edit the checkout and must fail the same oracle.
 	for _, mutation := range []struct{ tool, path, old, new, fixture, diagnostic string }{
-		{"reviewloop", "cmd/reviewloop/plan.go", "board.RenderRows(stdout)", `fmt.Fprintln(stdout, "rows omitted")`, "planner-mixed", "command output rows"},
+		{"reviewloop", "cmd/reviewloop/plan.go", "renderRows(board, stdout)", `fmt.Fprintln(stdout, "rows omitted")`, "planner-mixed", "command output rows"},
 		{"deskdispatch", "cmd/deskdispatch/reviewround.go", "Scope: DELTA (clause 19)", "Scope: OMITTED (clause 19)", "dispatch-delta", "command output missing"},
 	} {
 		t.Run("production-"+mutation.tool, func(t *testing.T) {
