@@ -116,9 +116,81 @@ func TestScopeFenceIntegrity(t *testing.T) {
 		"## Context\nfacts:\n````text\n```\nfiles: tools/a.go\n",
 		"## Context\nfiles: tools/a.go\n````text\n```\n- tools/b.go\n",
 		"## Context\nfiles: tools/a.go\n~~~text\n```\n- tools/b.go\n",
+		"## Context\n```text``` blocks are examples only.\nfiles: tools/a.go\n\n## Task\n```text\nz\n```\n",
+		"## Context\nfacts:\n    ```\nfiles: tools/a.go\n\n## Task\n```text\nz\n```\n",
+		"## Context\nfiles:\n- tools/a.go\n```` ```go ```` snippets live in:\n- tools/b.go\n\n## Task\n````text\nz\n````\n",
+		"## Context\nfacts:\n\t```\nfiles: tools/a.go\n\n## Task\n```text\nz\n```\n",
+		"## Context\nfacts:\n```text\n    ```\nfiles: tools/a.go\n",
 	} {
 		if paths, err := BriefDeclaredFiles(content); ExitCodeOf(err) != ExitRefused {
 			t.Errorf("unclosed fence silently hides declarations: %v %v", paths, err)
 		}
+	}
+}
+
+// regression: #2798 / sec-3429-1. Inline spans outside Context are prose;
+// valid fence indentation and info strings must keep their Markdown meaning.
+func TestScopeFenceOpeners(t *testing.T) {
+	for _, content := range []string{
+		"```` ```go ```` snippets are examples.\n\n## Context\nfiles: tools/a.go\n",
+		"    ```\n\n## Context\nfiles: tools/a.go\n",
+		"## Context\nfacts:\n   ```text\nfiles: tools/not-declared.go\n    ```\nfiles: tools/not-declared-either.go\n   ```\nfiles: tools/a.go\n",
+		"## Context\nfacts:\n~~~example `code`\nfiles: tools/not-declared.go\n~~~\nfiles: tools/a.go\n",
+	} {
+		paths, err := BriefDeclaredFiles(content)
+		if err != nil || strings.Join(paths, ",") != "tools/a.go" {
+			t.Errorf("fence opener changed declared scope: %v %v", paths, err)
+		}
+	}
+}
+
+// regression: #2798 / R3429-F4. A paragraph before Context cannot open a
+// false fence that a later real code block closes over both declared inputs.
+func TestScopeInlineSpanBeforeContext(t *testing.T) {
+	brief := "# T\n```verdict-payload``` blocks are described below.\n\n## Context\nfiles:\n- `tools/a.go`\n- `tools/b.go`\n\n## Task\n```go\nz\n```\n"
+	paths, err := BriefDeclaredFiles(brief)
+	if err != nil || strings.Join(paths, ",") != "tools/a.go,tools/b.go" {
+		t.Fatalf("line-leading inline span hid Context: %v %v", paths, err)
+	}
+}
+
+// regression: #2798 / sec-3429-1. The real writer must refuse the malformed
+// opener instead of publishing a receipt with its deliverable omitted.
+func TestScopeMalformedFenceReceiptRefuses(t *testing.T) {
+	for _, marker := range []string{"```text``` examples only.", "    ```", "\t```"} {
+		brief := "## Context\nfacts:\n" + marker + "\nfiles: tools/a.go\n\n## Task\n```text\nz\n```\n"
+		tree := wakeTestTree()
+		tree.files[wakeTestBriefPath] = brief
+		input := wakeTestInput()
+		input.LandedBrief = []byte(brief)
+		if raw, err := BuildOutcomeRecord(wakeTestRecord("blocked", BlockerUnknown, "#1"), input, tree); ExitCodeOf(err) != ExitRefused || len(raw) != 0 {
+			t.Errorf("malformed fence published incomplete receipt: %q: %s %v", marker, raw, err)
+		}
+	}
+}
+
+// regression: #2798 / sec-3429-1. A synthetic receipt with the old omitted
+// scope must become could-not-check, without rewriting its observed inputs.
+func TestScopeMalformedFenceHistoricalHold(t *testing.T) {
+	brief := "## Context\n```text``` examples only.\nfiles: tools/a.go\n\n## Task\n```text\nz\n```\n"
+	root := t.TempDir()
+	full := filepath.Join(root, wakeTestBriefPath)
+	if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte(brief), 0644); err != nil {
+		t.Fatal(err)
+	}
+	receipt := WakeReceipt{
+		Brief: "demo/01", Schema: SchemaWakeV1, ID: "synthetic-incomplete-scope",
+		BlockerKind: BlockerUnknown, WakePredicate: WakeRelevantInputChanged,
+		Inputs: map[string]string{"file:" + wakeTestBriefPath: Sha256Hex([]byte(brief)), "tool": "v9.9.9"},
+	}
+	reader := NewRootRevisionReader(root, "v9.9.9")
+	if state, why := Unchanged(receipt, reader); state != InputsCouldNotCheck {
+		t.Fatalf("malformed historical scope established unchangedness: %v %s", state, why)
+	}
+	if got := receipt.EvaluateWake(reader, time.Now()); got.State != WakeCouldNotCheck {
+		t.Fatalf("malformed historical scope silently held work: %+v", got)
 	}
 }

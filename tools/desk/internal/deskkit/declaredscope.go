@@ -30,14 +30,25 @@ func BriefDeclaredFiles(content string) ([]string, error) {
 	for _, raw := range strings.Split(content, "\n") {
 		line := strings.TrimSpace(raw)
 		columnZero := raw == strings.TrimLeftFunc(raw, unicode.IsSpace)
+		// Markdown fences allow at most three leading ASCII spaces. A tab,
+		// four-space indent or inline code span must not hide a visible field.
+		fenceLine := strings.TrimLeft(raw, " ")
+		fenceAtColumn := len(raw)-len(fenceLine) <= 3 &&
+			(strings.HasPrefix(fenceLine, "```") || strings.HasPrefix(fenceLine, "~~~"))
 		if fence != "" {
-			if strings.HasPrefix(line, fence) && strings.TrimSpace(strings.TrimLeft(line, string(fence[0]))) == "" {
+			if fenceAtColumn && strings.HasPrefix(line, fence) && strings.TrimSpace(strings.TrimLeft(line, string(fence[0]))) == "" {
 				fence = ""
 			}
 			continue
 		}
 		if strings.HasPrefix(line, "```") || strings.HasPrefix(line, "~~~") {
 			length := len(line) - len(strings.TrimLeft(line, string(line[0])))
+			if !fenceAtColumn || (line[0] == '`' && strings.ContainsRune(line[length:], '`')) {
+				if context {
+					return nil, Refused("refused: ambiguous Markdown fence in Context; declared scope cannot be established")
+				}
+				continue
+			}
 			fence = line[:length]
 			continue
 		}

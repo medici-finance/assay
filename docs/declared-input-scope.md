@@ -8,7 +8,10 @@ resolver now own the writer, coverage and Source-to-Evidence shape contract.
 
 Only an exact, column-zero `files:` inside one unfenced `## Context` declares inputs.
 A field-shaped `files:` marker outside that section is refused. Ordinary prose
-starting with “Files” and inline code references to `files:` remain prose. Inside
+starting with “Files” and inline code references to `files:` remain prose outside
+Context. Inside Context, wrapped prose starting with “files” or an inline
+`file:line` reference still refuses conservatively as an unsupported marker;
+these existing refusals are retained rather than guessing declaration intent. Inside
 Context, unsupported capitalization or list, quote, backtick and emphasis prefixes
 on a files marker are refused rather than treated as an absent declaration. A field can start
 inline or continue as list items. Bare and backtick-quoted repository paths are
@@ -30,8 +33,11 @@ it cannot silently discard later files. A quoted path ending in a
 colon remains a declaration, while indented prose is an explicit unsupported-form
 error. Hyphen-minus and en-dash separators are unsupported; only the documented
 em dash introduces description text. Duplicate Context sections or files fields
-are refused explicitly. Fences close only with the same character and at least
-the opener's length; an unclosed fence refuses the scope. External metadata is
+are refused explicitly. Fence openers and closers allow at most three leading
+ASCII spaces. A backtick opener's info string cannot contain a backtick. Inside
+Context, a fence-shaped line with unsupported indentation or such an info string
+refuses explicitly; outside Context it remains prose. Fences close only with the
+same character and at least the opener's length; an unclosed fence refuses the scope. External metadata is
 not permission to read outside the admitted repository.
 
 Supported path forms:
@@ -114,10 +120,10 @@ this parser fix grants no lifecycle promotion and rewrites none of those receipt
 
 
 Against the 485 tracked `docs/streams/**/brief-*.md` corpus files from
-`770d48ba75d74c4a3057890ee2655c68a3c5e67a`, this repair produces 182 supported
-scopes and 303 explicit refusals, with no successful empty scopes. Every accepted
+`9019807975730ac678760b0be3ac6a626dceac7a`, this repair produces 183 supported
+scopes and 302 explicit refusals, with no successful empty scopes. Every accepted
 scope resolves successfully. Comparing with the parser at `fbba4b315c1e` over the
-same files: 35 scopes recover, no previously supported scope begins refusing, and
+same files: 36 scopes recover, no previously supported scope begins refusing, and
 no retained successful declaration list changes. The earlier 147/338 count
 included valid annotated fields and prose incorrectly classified as authoring
 defects; that interpretation is withdrawn. These are first diagnostics per brief,

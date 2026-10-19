@@ -287,7 +287,9 @@ The body MUST contain a `## Context` section. It MUST include:
   refuse rather than drop declarations. Outside Context, field-shaped `files:`
   declarations refuse; ordinary prose and inline references remain prose.
   Hyphen-minus/en-dash description separators are unsupported. Examples inside fences do not
-  declare paths. A closing fence MUST use the same character and be at least as
+  declare paths. Fence openers/closers MUST have at most three leading ASCII spaces;
+  a backtick opener's info string MUST contain no backtick. Ambiguous fence-shaped
+  Context lines refuse. A closing fence MUST use the same character and be at least as
   long as its opener; an unclosed fence refuses. Duplicate Context sections/fields
   are ambiguous and refused.
   Abbreviations, placeholders, recursive `**` and malformed/escaping paths MUST
