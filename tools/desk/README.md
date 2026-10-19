@@ -1597,6 +1597,13 @@ the gate consume the same distinction is the natural follow-up, not this PR.
 
 ## deskboard stalled — the stalled-draft detector
 
+A PR whose owning brief is `withdrawn` receives advisory disposition `reconcile`,
+before the behind-main close-candidate heuristic. Inspect surviving code, evidence
+and current claims before retargeting it or proposing closure through the ordinary
+independent confirmation gates. Retirement alone is neither completed work nor a
+stopped worker. Use `statusgen withdrawal-audit` against a candidate board to find
+these overlaps before rollout, including PRs that are fresh and thus not stalled.
+
 The review loop assumes a persistent worker: the reviewer requests changes, the worker
 fixes and replies. Sessions die, so sometimes nobody replies — and nothing noticed. The
 measurement that motivated this verb: **all 80 open PRs across at+tracker were drafts, 74 of
@@ -1674,7 +1681,8 @@ absent, so "we enumerated everything" is a positive statement.
 
 **Disposition is advisory.** `shepherd` is the default; `close-candidate` requires
 positive evidence — the branch is more than 200 commits behind main, or its owning brief
-is `done`/`superseded`. A signal that could not be read never produces a
+is `done`/`superseded`. A withdrawn owner takes precedence and reports `reconcile`,
+including when the behind-main threshold is exceeded. A signal that could not be read never produces a
 `close-candidate` (an unreadable compare reports `behindMain: -1`, not `0`). PR ownership
 is invisible: the desk or the human decides whether to adopt, and no loop auto-adopts.
 

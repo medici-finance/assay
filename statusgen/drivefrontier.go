@@ -81,7 +81,8 @@ type DriveStatus struct {
 func briefFrontierState(streams []*Stream, s *Stream, b Brief, claimed map[string]bool, elig map[string]Eligibility) string {
 	id := s.Name + "/" + b.Num
 	switch b.Status {
-	case "done", "verified":
+	case "done", "verified", statusWithdrawn:
+		// withdrawn is closed to dispatch: never offered, never a wave blocker.
 		return fsDone
 	case "implemented":
 		return fsBlockedReview
@@ -101,7 +102,7 @@ func briefFrontierState(streams []*Stream, s *Stream, b Brief, claimed map[strin
 		}
 		return fsReady
 	}
-	if b.Schema == "brief-v1" || b.Schema == "brief-v2" {
+	if b.Schema == "brief-v1" || isBriefV2Family(b.Schema) {
 		if ev, ok := elig[s.Name+"/"+b.Num]; ok {
 			if ev.Verdict == VerdictHeld {
 				return fsBlockedItem
@@ -120,7 +121,7 @@ func briefFrontierState(streams []*Stream, s *Stream, b Brief, claimed map[strin
 	}
 	// legacy (Schema == "", no frontmatter): whole-wave gating in the same stream.
 	for _, o := range s.Briefs {
-		if o.Wave < b.Wave && o.Status != "done" && o.Status != "verified" {
+		if o.Wave < b.Wave && o.Status != "done" && o.Status != "verified" && !isWithdrawn(o.Status) {
 			return fsBlockedItem
 		}
 	}
