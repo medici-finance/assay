@@ -282,11 +282,15 @@ func main() {
 		os.Exit(1)
 	}
 	defer func() { _ = os.RemoveAll(gocache) }()
-	// An interrupt mid-run must not strand the cache either.
+	// An interrupt mid-run must not strand the cache either. Every suite and
+	// build runs in its own process group, which a terminal Ctrl-C does not
+	// reach, so kill those groups first: an interrupted run leaves no suite
+	// running behind it.
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sig
+		liveGroups.killAll()
 		_ = os.RemoveAll(gocache)
 		selectTemps.removeAll() // -select's coverage binaries, if a pass is running
 		os.Exit(130)

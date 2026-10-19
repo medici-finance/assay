@@ -31,12 +31,59 @@ func TestTimeoutPolicyUsesMeasuredBaseline(t *testing.T) {
 
 // regression: #2639
 func TestBadBuildIsNotCaught(t *testing.T) {
-	runCompileFixture(t, false)
+	runCompileFixture(t, false, "go test ./pkg -count=1")
 }
 
 // regression: #2639
 func TestSchemataFallbackCompile(t *testing.T) {
-	runCompileFixture(t, true)
+	runCompileFixture(t, true, "go test ./pkg -count=1")
+}
+
+// An environment prefix on the suite command must stay an assignment in the
+// derived build command; quoted whole, sh runs it as a command and every
+// mutant, the control included, fails to "build".
+// regression: #2639
+func TestBuildKeepsEnvPrefix(t *testing.T) {
+	runCompileFixture(t, false, "GOWORK=off go test ./pkg -count=1")
+}
+
+// A value flag given with a space must keep its value, not swallow the
+// mutant's package.
+// regression: #2639
+func TestBuildKeepsSpacedFlagValue(t *testing.T) {
+	runCompileFixture(t, false, "go test -covermode atomic ./pkg -count=1")
+}
+
+// regression: #2639
+func TestGoBuildFromTestFlags(t *testing.T) {
+	dn := shellQuote(os.DevNull)
+	for _, tc := range []struct {
+		test, want string
+	}{
+		{"GOWORK=off go test ./... -count=1", "GOWORK='off' 'go' 'test' '-vet=off' '-c' '-o' " + dn + " './pkg'"},
+		{"A=1 B='x y' go test ./...", "A='1' B='x y' 'go' 'test' '-vet=off' '-c' '-o' " + dn + " './pkg'"},
+		{"go test -covermode atomic ./... -count 1", "'go' 'test' '-vet=off' '-c' '-o' " + dn + " '-covermode' 'atomic' './pkg'"},
+		{"go test -bench X -benchtime=2s ./...", "'go' 'test' '-vet=off' '-c' '-o' " + dn + " './pkg'"},
+		{"go test -o out -tags=t1 -race ./... -run X", "'go' 'test' '-vet=off' '-c' '-o' " + dn + " '-tags=t1' '-race' './pkg'"},
+		{"go test --tags t1 ./...", "'go' 'test' '-vet=off' '-c' '-o' " + dn + " '-tags' 't1' './pkg'"},
+	} {
+		got, ok := goBuildFromTest(tc.test, "./pkg")
+		if !ok || got != tc.want {
+			t.Errorf("goBuildFromTest(%q) = %q, %v; want %q", tc.test, got, ok, tc.want)
+		}
+	}
+	// A command it cannot model exactly falls back to the mutated package alone.
+	for _, test := range []string{
+		"go test -fakevalue v ./...",
+		"go test -C sub ./...",
+		"1BAD=x go test ./...",
+		"go vet ./...",
+		"go test ./... | tee log",
+	} {
+		if got, ok := goBuildFromTest(test, "./pkg"); ok {
+			t.Errorf("goBuildFromTest(%q) = %q; want the mutated-package fallback", test, got)
+		}
+	}
 }
 
 // regression: #2639
@@ -74,7 +121,7 @@ func TestMutantTimeoutIsReported(t *testing.T) {
 	}
 }
 
-func runCompileFixture(t *testing.T, schemata bool) {
+func runCompileFixture(t *testing.T, schemata bool, test string) {
 	t.Helper()
 	root := t.TempDir()
 	pkg := filepath.Join(root, "pkg")
@@ -95,7 +142,7 @@ func runCompileFixture(t *testing.T, schemata bool) {
 	writeFixture(t, filepath.Join(pkg, "p_test.go"), "package pkg\nimport \"testing\"\nfunc TestValue(t *testing.T) { if Value() != 1 { t.Fatal(\"value\") } }\n")
 	spec := map[string]any{
 		"root":      root,
-		"test":      "go test ./pkg -count=1",
+		"test":      test,
 		"control":   Mutation{Name: "positive-control", File: "pkg/p.go", Old: "return 1", New: "return 2"},
 		"mutations": mutations,
 		"schemata":  schemata,

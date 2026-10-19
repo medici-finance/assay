@@ -331,7 +331,7 @@ func (h *Harness) runOneWithLimit(root string, m Mutation, timeout time.Duration
 	if h.Build != nil {
 		built := h.Build(root, m, remaining())
 		if built.TimedOut {
-			return CouldNotMutate, fmt.Errorf("mutated package build timed out after %s", h.MutationTimeout)
+			return CouldNotMutate, fmt.Errorf("mutated package build timed out after %s", h.limitLabel(timeout))
 		}
 		if built.Err != nil {
 			return CouldNotMutate, fmt.Errorf("mutated package build could not run: %w", built.Err)
@@ -370,9 +370,20 @@ func (h *Harness) runOneWithLimit(root string, m Mutation, timeout time.Duration
 	return h.classifyTest(h.runTest(root, remaining()), timeout)
 }
 
+// limitLabel is the limit a TIMEOUT line reports: the configured per-mutation
+// limit when preflight set one, so a classic fallback after a schema run
+// reports the same limit as every other mutant rather than the slice of the
+// deadline it had left.
+func (h *Harness) limitLabel(timeout time.Duration) time.Duration {
+	if h.MutationTimeout > 0 {
+		return h.MutationTimeout
+	}
+	return timeout
+}
+
 func (h *Harness) classifyTest(out CommandResult, timeout time.Duration) (Result, error) {
 	if out.TimedOut {
-		return Caught, fmt.Errorf("TIMEOUT after %s", timeout)
+		return Caught, fmt.Errorf("TIMEOUT after %s", h.limitLabel(timeout))
 	}
 	if out.Err != nil {
 		return CouldNotMutate, fmt.Errorf("test command could not run: %w", out.Err)

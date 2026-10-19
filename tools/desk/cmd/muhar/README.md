@@ -326,8 +326,8 @@ The spec is one JSON object. Fields not listed here are ignored.
 | Field | Required | Meaning |
 |---|---|---|
 | `test` | yes | The suite command, run with `sh -c`. After the mutant builds, a non-zero test exit means `CAUGHT`; a timeout is also `CAUGHT` and is marked on that mutant's line. It may use pipes and `&&`. |
-| `build` | no | Optional build command, run before each Go mutant's tests. If omitted, a `.go` mutation is checked with `go test -vet=off -c` for its package, carrying simple build flags and environment assignments from `test`. It compiles without executing tests or package initializers. Complex test commands use the mutated package alone; set `build` when it needs extra tags or a broader build. A build failure is `COULD_NOT_MUTATE`, and the suite is not run. Non-Go mutations have no automatic build step. |
-| `timeout` | no | Object with `multiplier` (default `5`), `floor` (default `20s`) and optional `baseline` limit (default `30m`). The pristine suite must finish within `baseline`; each mutation's build plus test run shares `max(floor, measured baseline × multiplier)`. A timed-out test is flagged `TIMEOUT` on its `CAUGHT` line; a build timeout is `COULD_NOT_MUTATE`. |
+| `build` | no | Optional build command. When set, it runs before the suite for every mutation, whatever the file. If omitted, a `.go` mutation is checked with `go test -vet=off -c` for its package, carrying the leading `NAME=value` environment assignments and the build flags (`-tags`, `-race`, `-gcflags` and the like) from `test`; test-run flags such as `-run`, `-count` and `-timeout` are dropped. It compiles without executing tests or package initializers. A `test` that is not a plain `go test` command, or that carries a flag `muhar` does not know (or `-C`), uses the mutated package alone, with no flags; set `build` when that needs extra tags or a broader build. A build failure is `COULD_NOT_MUTATE`, and the suite is not run. Non-Go mutations have no automatic build step. |
+| `timeout` | no | Object with `multiplier` (default `5`), `floor` (default `20s`) and optional `baseline` limit (default `30m`). The pristine suite must finish within `baseline`; each mutation's build plus test run shares `max(floor, measured baseline × multiplier)`. With `schemata`, a mutant's schema run and any classic fallback (build plus test) share that one limit. A timed-out test is flagged `TIMEOUT` on its `CAUGHT` line; a build timeout is `COULD_NOT_MUTATE`. |
 | `control` | yes | A mutation object (below) the suite **must** catch. `control.name` and `control.old` must be non-empty, or `muhar` exits 1 before running anything. |
 | `mutations` | no | An array of mutation objects, run in order. An empty or missing array is allowed: the run checks the baseline and the control, then reports `Totals: 0 caught, …`. |
 | `root` | no | The directory that relative `file` paths resolve against and that the test command runs in. If it is empty, both use the directory `muhar` was started in. A relative `root` is resolved from that directory too, not from the spec file's location. |
@@ -518,8 +518,9 @@ from `tools/desk` with no `root`, so their `file` paths are relative to
 
 ### Interrupting a run
 
-When `muhar` receives SIGINT or SIGTERM, it deletes its temporary build cache
-and exits `130` straight away. With `-j 1`, a mutation that is in place at that
+When `muhar` receives SIGINT or SIGTERM, it kills every suite and build command
+it has running (on Unix each runs in its own process group, so the whole group
+goes, children included; on Windows only the top process is killed), deletes its temporary build cache and exits `130`. With `-j 1`, a mutation that is in place at that
 moment is **not** restored: the mutant stays in your working tree. After
 interrupting a sequential run, check `git status` (or `git diff`) and restore
 the file. The same applies to a run with one mutation or none, whatever `-j`

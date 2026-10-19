@@ -115,10 +115,10 @@ func fxMutations() ([]Mutation, []Result) {
 		{"\treturn\n}", "\tn = 0\n\treturn\n}", Caught},
 		{"m[k]++", "m[k]--", Caught},
 		{"m[k]++", "m[k] = 0", Caught},
-		{"n * 2", "n * 3", Caught},                                 // only the source-reading test sees it
-		{"Limit = 10", "Limit = 11", Caught},                       // not in a function: classic
-		{"\treturn strings", "\tx := 1\n\treturn strings", Caught}, // does not compile
-		{"range s {", "range s + \"\" {", NotCaught},               // an equivalent mutant
+		{"n * 2", "n * 3", Caught},                                         // only the source-reading test sees it
+		{"Limit = 10", "Limit = 11", Caught},                               // not in a function: classic
+		{"\treturn strings", "\tx := 1\n\treturn strings", CouldNotMutate}, // does not compile
+		{"range s {", "range s + \"\" {", NotCaught},                       // an equivalent mutant
 	}
 	var ms []Mutation
 	var want []Result
@@ -174,12 +174,8 @@ func TestSchemataOneBuildPerWorker(t *testing.T) {
 				line = l
 			}
 		}
-		wantResult := want[i]
-		if m.Name == "mo" {
-			wantResult = CouldNotMutate
-		}
-		if !strings.Contains(line, wantResult.String()+" ") {
-			t.Errorf("mutation %s (%q -> %q): got line %q, want %s", m.Name, m.Old, m.New, line, wantResult)
+		if !strings.Contains(line, want[i].String()+" ") {
+			t.Errorf("mutation %s (%q -> %q): got line %q, want %s", m.Name, m.Old, m.New, line, want[i])
 		}
 	}
 	if !strings.Contains(out, "Totals: 14 caught, 1 NOT CAUGHT, 1 could-not-mutate.") {
