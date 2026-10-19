@@ -52,8 +52,8 @@
     {
       "name": "uncertain evidence: a row unreadable at the witness's revision is credited",
       "file": "evaluation/coverage.go",
-      "old": "\t\tif !ok {\n\t\t\treturn ResultCouldNotCheck, fmt.Sprintf(\"the Verify row #%s could not be read",
-      "new": "\t\tif !ok && false {\n\t\t\treturn ResultCouldNotCheck, fmt.Sprintf(\"the Verify row #%s could not be read"
+      "old": "\t\thistExpect, ok := x.verifyExpectAt(definition, scope.briefRel, r.ID)\n\t\tif !ok {",
+      "new": "\t\thistExpect, ok := x.verifyExpectAt(definition, scope.briefRel, r.ID)\n\t\tif !ok && false {"
     },
     {
       "name": "boundary: the library imports a process-starting package",

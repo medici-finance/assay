@@ -1,0 +1,1 @@
+- Clarify that the runner-contract verification can use local Docker Linux containers with network disabled; retain historical evidence and require a fresh independent witness.

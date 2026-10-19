@@ -137,6 +137,11 @@ nothing measured.
    | `DISPROVED` | the diff contradicts the claim: a path the site names is absent from the diff, the target brief does not exist, `out-of-scope` names a file this same diff edits, or the entry states no routing at all | **exit 1 — the gate** |
    | `UNCHECKED` | the evidence is not visible here: an out-of-repo path, a component named in prose, `out-of-scope` whose truth is a judgement no diff settles, or an entry **inherited unchanged from the merge-base** (some earlier branch made that claim) | printed and counted, never a pass |
 
+   For post-merge verification, pin the delivery and its first parent with the explicit
+   [delivery-check contract](consumer-delivery-checks.md); the branch default is not a
+   historical verification range. Assert exact corroborated/unchecked counts and retain
+   the unchecked review obligations.
+
    Site grammar, as the gate reads it:
    - a **directory** site (`statusgen/`) is touched when anything under it is — and because
      that makes a trailing slash the cheapest way to widen a claim, a corroborated directory

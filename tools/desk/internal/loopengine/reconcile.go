@@ -32,7 +32,9 @@ import (
 // fails, keep workers running" rule, which is also this house's three-state-instrument rule.
 
 // Status is one brief row's lifecycle token as it stands on origin/main
-// (todo / in-progress / implemented / verified / done / blocked).
+// (todo / in-progress / implemented / verified / done / blocked / withdrawn). withdrawn is the
+// terminal retired-or-merged status: like done it is never active, so a run on it is
+// ineligible-terminal.
 type Status string
 
 // activeStatuses are the ONLY two statuses under which a dispatched run is still eligible: a
