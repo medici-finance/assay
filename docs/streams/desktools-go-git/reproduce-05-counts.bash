@@ -6,6 +6,7 @@ root=$(git rev-parse --show-toplevel)
 parent=44054ca3756857c34eb818601a4ddcb19a7b4da5
 delivered=c93cd7dd8fc99941a588feb6608184330fc08dd3
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/fetch-count-proof.XXXXXX")
+trap 'rm -rf -- "$scratch"' EXIT
 pattern='^git-exec sites: ([0-9]+) \(direct spawns: ([0-9]+), seam call sites: ([0-9]+)\)$'
 
 count_tree() {
