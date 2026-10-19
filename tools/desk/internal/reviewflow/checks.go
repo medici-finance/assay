@@ -6,12 +6,11 @@ import "strings"
 type CheckFact struct{ Status, Conclusion, State string }
 
 func CountChecks(checks []CheckFact) (pass, pending, fail, unknown int) {
-	// Reduce to the latest run per check NAME first — branch protection's own rule, from
-	// the SAME shared reducer deskflip's gate uses — so a superseded run (an older
-	// CANCELLED, a stale QUEUED left by a push+pull_request double-trigger) does not count
-	// against a PR whose current run for that name is not it. Without this the board would
-	// render a double-triggered PR CI-fail while deskflip flips it ready — the divergence
-	// #282/#289 set out to end.
+	// The caller has ALREADY reduced the rollup to the latest run per check NAME (the
+	// shared deskkit.LatestRunPerName that deskflip's gate also uses — branch protection's
+	// own rule), so a superseded run does not reach this count. CountChecks itself does no
+	// reduction: handed an unreduced rollup it would count every run, and a double-triggered
+	// PR would render CI-fail while deskflip flips it ready — the #282/#289 divergence.
 	for _, c := range checks {
 		switch {
 		case c.Status != "": // CheckRun node

@@ -50,7 +50,7 @@ import (
 // ---------------------------------------------------------------------------
 
 // actionConstsFromSource returns every ACTION verb string the classifier defines, read
-// from board.go's `act*` const block. Parsed rather than hand-listed for the reason the
+// from reviewflow/classify.go's `Act*` const block. Parsed rather than hand-listed for the reason the
 // whole cluster exists: a hand-kept second copy of a list drifts, and the drift is
 // invisible — a new action would simply never be asserted about.
 func actionConstsFromSource(t *testing.T) map[string]string {
@@ -58,7 +58,7 @@ func actionConstsFromSource(t *testing.T) map[string]string {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "../../internal/reviewflow/classify.go", nil, 0)
 	if err != nil {
-		t.Fatalf("parsing board.go: %v", err)
+		t.Fatalf("parsing classify.go: %v", err)
 	}
 	out := map[string]string{}
 	ast.Inspect(f, func(n ast.Node) bool {
@@ -82,7 +82,7 @@ func actionConstsFromSource(t *testing.T) map[string]string {
 		return true
 	})
 	if len(out) == 0 {
-		t.Fatal("no act* constants found in board.go — the inventory would assert nothing " +
+		t.Fatal("no Act* constants found in reviewflow/classify.go — the inventory would assert nothing " +
 			"(this is the vacuous-pass the test exists to prevent)")
 	}
 	return out
@@ -615,7 +615,7 @@ func TestReduceReviews_AbsentShasAreNeverAtHead(t *testing.T) {
 func TestClassify_GuardArmIsStillTheGuardArm(t *testing.T) {
 	src, err := os.ReadFile("../../internal/reviewflow/classify.go")
 	if err != nil {
-		t.Fatalf("reading board.go: %v", err)
+		t.Fatalf("reading classify.go: %v", err)
 	}
 	body := string(src)
 	const arm = "\tcase in.ApprovedAtHead:\n"
@@ -652,9 +652,20 @@ func TestClassify_GuardArmIsStillTheGuardArm(t *testing.T) {
 	// And the phrase is the guard arm's alone: written out a second time anywhere in the
 	// package, the inventory's "nothing reached the guard arm" check could fire on an
 	// innocent row, or (worse) be satisfied by a note the guard arm no longer emits.
-	srcs, err := filepath.Glob("../../internal/reviewflow/*.go")
-	if err != nil {
-		t.Fatalf("globbing package sources: %v", err)
+	// The scan covers BOTH homes: the command package (where the classifier used to live and
+	// where a copied phrase would still feed the inventory's notes) and the extracted
+	// reviewflow package, which owns the single const declaration.
+	const owner = "../../internal/reviewflow/classify.go"
+	var srcs []string
+	for _, pattern := range []string{"*.go", "../../internal/reviewflow/*.go"} {
+		m, err := filepath.Glob(pattern)
+		if err != nil {
+			t.Fatalf("globbing package sources %s: %v", pattern, err)
+		}
+		if len(m) == 0 {
+			t.Fatalf("glob %s matched no files — the scan would pass vacuously", pattern)
+		}
+		srcs = append(srcs, m...)
 	}
 	for _, f := range srcs {
 		if strings.HasSuffix(f, "_test.go") {
@@ -665,7 +676,7 @@ func TestClassify_GuardArmIsStillTheGuardArm(t *testing.T) {
 			t.Fatalf("reading %s: %v", f, err)
 		}
 		want := 0
-		if f == "../../internal/reviewflow/classify.go" {
+		if f == owner {
 			want = 1 // the const declaration; the arm references the identifier
 		}
 		if n := strings.Count(string(b), guardArmMarker); n != want {
@@ -820,7 +831,7 @@ func TestClassify_ActionInventory(t *testing.T) {
 	}
 	for action, desc := range produced {
 		if !known[action] {
-			t.Errorf("classify produced ACTION %q, which is not one of board.go's act* constants (from %s)", action, desc)
+			t.Errorf("classify produced ACTION %q, which is not one of reviewflow/classify.go's Act* constants (from %s)", action, desc)
 		}
 	}
 

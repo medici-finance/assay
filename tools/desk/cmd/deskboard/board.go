@@ -60,7 +60,7 @@ func reviewerBotDisplay() string { return deskkit.RoleAppLoginOrEmpty("reviewer"
 
 // securityPassMarker is the literal line an App security-review verdict must carry for
 // a risk-classed PR to be flip-eligible (#216). A line-exact match.
-const securityPassMarker = "Security-Review: pass"
+const securityPassMarker = reviewflow.SecurityPassMarker
 
 // securityFailMarker is the retraction twin of securityPassMarker. Without parsing it
 // the board could not see a pass being withdrawn at the same head (#216).
@@ -872,7 +872,7 @@ func unreadableSHAFields(reviewedSHA, head string) string {
 func reduceReviews(reviews []review, head string) reviewState {
 	facts := make([]reviewflow.ReviewFact, 0, len(reviews))
 	for _, r := range reviews {
-		facts = append(facts, reviewflow.ReviewFact{Author: r.User.Login, State: r.State, CommitID: r.CommitID, SubmittedAt: r.SubmittedAt, Reviewer: isReviewerBot(r.User.Login), ExternalPrereq: deskkit.ExternalPrereqOnlyDeclared(r.Body), Security: reviewflow.SecurityVerdict(classifySecurityBody(r.Body))})
+		facts = append(facts, reviewflow.ReviewFact{Author: r.User.Login, State: r.State, CommitID: r.CommitID, SubmittedAt: r.SubmittedAt, Reviewer: isReviewerBot(r.User.Login), ExternalPrereq: deskkit.ExternalPrereqOnlyDeclared(r.Body), Security: classifySecurityBody(r.Body)})
 	}
 	st := reviewflow.ReduceReviews(facts, head)
 	return reviewState{
@@ -909,13 +909,15 @@ func hasSecurityFailLine(body string) bool {
 	return deskkit.HasSecurityReviewFail(body)
 }
 
-// secVerdict is one review body's security-review verdict.
-type secVerdict int
+// secVerdict is one review body's security-review verdict. The enum has ONE owner,
+// reviewflow.SecurityVerdict: these are aliases, so no integer cast (and no matching
+// declaration order) stands between the board's reading and the reducer's input.
+type secVerdict = reviewflow.SecurityVerdict
 
 const (
-	secNone secVerdict = iota // the body carries no Security-Review line
-	secPass
-	secFail
+	secNone = reviewflow.SecurityNone // the body carries no Security-Review line
+	secPass = reviewflow.SecurityPass
+	secFail = reviewflow.SecurityFail
 )
 
 // classifySecurityBody reduces one review body to its security verdict. A body carrying
@@ -951,11 +953,6 @@ func anyRiskPath(repo string, files map[string]bool) bool {
 	sort.Strings(paths)
 	return deskkit.RiskPathTriggered(repo, paths)
 }
-
-// secReviewReason renders the risk-class reason for the SECURITY-REVIEW-REQUIRED row. A
-// risk-classed row always carries a reason (the union that fired sets one), but this defends
-// against an empty string so the row never reads "risk-classed ()"; the fallback is the
-// historical generic phrase.
 
 // Action verbs. MERGE-NOW ranks above all — an approved-at-head CI-green PR
 // whose approval is perishable when main outruns the merge. SECURITY-REVIEW-REQUIRED
@@ -1178,8 +1175,6 @@ func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string
 		nonCommitResolutionNote: in.NonCommitResolutionNote,
 	}
 }
-
-// plural picks a suffix for count-carrying notes.
 
 // ---------------------------------------------------------------------------
 // reports

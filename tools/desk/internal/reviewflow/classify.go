@@ -236,7 +236,7 @@ func Classify(in ClassifyInput, reviewer string) (action, note string) {
 		// A risk-classed PR without a security-review pass at head must stay
 		// SEC-REVIEW-REQUIRED regardless of the CI-zero reason.
 		if in.RiskClassed && !in.SecurityPass {
-			return ActSecReview, "risk-classed (" + secReviewReason(in.RiskReason) + ") and no '" + "Security-Review: pass" +
+			return ActSecReview, "risk-classed (" + secReviewReason(in.RiskReason) + ") and no '" + SecurityPassMarker +
 				"' from " + reviewer + " at head — security review required before FLIP or merge"
 		}
 		switch in.ZeroCI {
@@ -272,7 +272,7 @@ func Classify(in ClassifyInput, reviewer string) (action, note string) {
 			ciPhrase = "no PR CI configured for this repo and nothing ran (not a green verdict)"
 		}
 		if in.RiskClassed && !in.SecurityPass {
-			return ActSecReview, "risk-classed (" + secReviewReason(in.RiskReason) + ") and no '" + "Security-Review: pass" +
+			return ActSecReview, "risk-classed (" + secReviewReason(in.RiskReason) + ") and no '" + SecurityPassMarker +
 				"' from " + reviewer + " at head — security review required before FLIP or merge"
 		}
 		// #1652: on a CI-less repo with a probed no-checks zero the green is

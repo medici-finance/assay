@@ -219,7 +219,10 @@ func (b *Board) UnresolvedHeads() []string {
 	return out
 }
 
-func short(sha string) string {
+// Short abbreviates a head SHA for display (12 characters); the HeadUnresolved marker is
+// passed through whole. It is the one owner for the board, the coalescing key and the
+// reviewloop renderers.
+func Short(sha string) string {
 	if sha == HeadUnresolved {
 		return sha
 	}

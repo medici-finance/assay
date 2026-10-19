@@ -10,6 +10,11 @@ type ReviewFact struct {
 }
 type SecurityVerdict int
 
+// SecurityPassMarker is the literal line an App security-review verdict must carry for a
+// risk-classed PR to be flip-eligible (#216). It has one owner: the classifier's
+// SECURITY-REVIEW-REQUIRED notes and the commands that read the marker both reference it.
+const SecurityPassMarker = "Security-Review: pass"
+
 const (
 	SecurityNone SecurityVerdict = iota
 	SecurityPass
@@ -26,19 +31,19 @@ type ReviewState struct {
 	LastSHA      string
 	SecurityPass bool
 	ApprovedAt   time.Time
-	// lastReviewAt is the submitted time of the EFFECTIVE standing verdict at head
+	// LastReviewAt is the submitted time of the EFFECTIVE standing verdict at head
 	// (approved or blocking) — the baseline detectNonCommitResolution compares label /
 	// body-edit timestamps against, so only a change that landed AFTER the last review
 	// counts. Zero when there is no verdict at head or its timestamp was unparseable.
 	LastReviewAt time.Time
-	// suspectNoOp (#37) is true when the effective verdict AT HEAD reads as
+	// SuspectNoOp (#37) is true when the effective verdict AT HEAD reads as
 	// blocking specifically because an APPROVED review was SUPPRESSED: it immediately
 	// followed a CHANGES_REQUESTED at the SAME commit, with no push in between. See the
 	// reduction loop below for the mechanism and deskpost/ready.go's latestAppVerdict for
 	// the KEEP IN SYNC twin that gates the actual mutating flip.
 	SuspectNoOp bool
-	// externalPrereqDeclared (brief 21) is true when the standing
-	// CHANGES_REQUESTED that made the row suspectNoOp DECLARES itself external-prereq-only
+	// ExternalPrereqDeclared (brief 21) is true when the standing
+	// CHANGES_REQUESTED that made the row SuspectNoOp DECLARES itself external-prereq-only
 	// (deskkit.ExternalPrereqOnlyDeclared). Such a same-head APPROVE is NOT a suspected
 	// forgery — it is a reviewer clearing a rejection whose only blockers were external
 	// prerequisites — so the board must not fold it into SUSPECT-APPROVAL. The board is
@@ -46,8 +51,8 @@ type ReviewState struct {
 	// surfaces the row as EXTERNAL-PREREQ-REVIEW and leaves the authoritative grant to the
 	// ready gate (deskpost/ready.go), so the two surfaces agree on what the row IS.
 	ExternalPrereqDeclared bool
-	// bodyEditReverified is true when a row reduceReviews marked suspectNoOp was LIFTED by
-	// applyBodyEditReverification: every standing CR at head declared the documented body-edit
+	// BodyEditReverified is true when a row ReduceReviews marked SuspectNoOp was LIFTED by
+	// the deskboard command's applyBodyEditReverification: every standing CR at head declared the documented body-edit
 	// re-verification class and a later correctness APPROVE documents and verifies it against
 	// the live PR body (deskkit.EvaluateBodyEditReverification — the SAME decision deskflip's
 	// reviewer-approved gate runs). The row then reads approved at head and flows through the
@@ -122,7 +127,7 @@ func ReduceReviews(reviews []ReviewFact, head string) ReviewState {
 	var commitBlocked bool
 	var effState, effCommit, effSubmittedAt string
 	var suspect bool
-	var blockingExternal bool // the standing CR's body, for the external-prereq classifier
+	var blockingExternal bool // the standing CR declared itself external-prereq-only
 	for _, r := range decisive {
 		if r.CommitID != lastCommit {
 			lastCommit = r.CommitID
