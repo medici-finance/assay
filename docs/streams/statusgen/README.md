@@ -55,7 +55,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 19 | [Context handoff contracts and synthetic fixtures](brief-19-context-handoff-contracts.md) | 1 | M | implemented | — | — |
 | 20 | [Offline future-state resolver with receipt and amendment validation](brief-20-offline-context-resolver.md) | 2 | L | todo | — | — |
 | 21 | [Author skills consume the shared context handoff](brief-21-author-skill-handoff.md) | 4 | M | todo | — | — |
-| 22 | [Product target records and compatible requirement parsing](brief-22-product-target-records-and-compatible-requirement-parsing.md) | 1 | M | todo | — | — |
+| 22 | [Product target records and compatible requirement parsing](brief-22-product-target-records-and-compatible-requirement-parsing.md) | 1 | M | implemented | — | — |
 | 23 | [Product target binding and context drift assessment](brief-23-product-target-binding-and-context-drift-assessment.md) | 3 | M | todo | — | — |
 | 24 | [Portfolio allocation and capacity accounting](brief-24-portfolio-allocation-and-capacity-accounting.md) | 2 | M | todo | — | — |
 | 25 | [Read-only portfolio and drift projections](brief-25-read-only-portfolio-and-drift-projections.md) | 4 | M | todo | — | — |
