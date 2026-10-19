@@ -584,6 +584,7 @@ func collect(t *testing.T, section string) []string {
 // TestUnfailableRowRules is the end-to-end table over whole Verify rows: each
 // case is a realistic row, and the false-positive half is the point — a rule that
 // fires on a sound row is as corrosive as the defect it hunts.
+// regression: #1915
 func TestUnfailableRowRules(t *testing.T) {
 	tests := []struct {
 		name string
@@ -715,7 +716,7 @@ func TestUnfailableRowRules(t *testing.T) {
 			// consecutive runs because main advanced underneath it.
 			name: "moving-ref: --base on a moving ref (#639)",
 			row:  "| 4 | `statusgen --root . --consumers --base origin/main` | exit 0 |",
-			want: []string{"moving-ref row 4"},
+			want: []string{"consumer-delivery-range row 4", "moving-ref row 4"},
 		},
 		{
 			name: "moving-ref: a git range endpoint moves too",
@@ -803,7 +804,7 @@ func TestUnfailableRowRules(t *testing.T) {
 		},
 		{
 			name: "go run expecting exit 0 is unaffected by the flattening",
-			row:  "| 6 | `go run . --root .. --consumers --brief gt/03` | exit 0 |",
+			row:  "| 6 | `go run . --root .. --consumers --brief gt/03 --base c7cd7ef` | pre-merge only; exit 0 |",
 			want: nil,
 		},
 		{
@@ -812,8 +813,8 @@ func TestUnfailableRowRules(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "the #639 fix: a computed merge-base is a pure function of the PR",
-			row:  "| 4 | `statusgen --consumers --base $(git merge-base origin/main HEAD)` | exit 0 |",
+			name: "the #639 fix: a pre-merge base is a pure function of the PR",
+			row:  "| 4 | `statusgen --consumers --base $(git merge-base origin/main HEAD)` | pre-merge only; exit 0 |",
 			want: nil,
 		},
 		{
@@ -990,7 +991,7 @@ func TestRuleTagsAreUnique(t *testing.T) {
 	tags := []string{
 		ruleERELiteralPipe, ruleGrepZeroCount, ruleExitSwallowed, ruleRE2LiteralPipe,
 		ruleMetavar, ruleGoRunExit, ruleBREAlternation, ruleShreddedCell,
-		ruleMovingRef, rulePortability, ruleGoTestRunVacuous, ruleGrepPipeZeroCount,
+		ruleMovingRef, ruleConsumerRange, rulePortability, ruleGoTestRunVacuous, ruleGrepPipeZeroCount,
 	}
 	seen := map[string]bool{}
 	for _, tag := range tags {

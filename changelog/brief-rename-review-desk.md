@@ -1,0 +1,2 @@
+### Changed
+- Planned the rename of the `pr-review-desk` role to `review-desk` (desk-tools brief 53). The design keeps `pr-review-desk` as a permanent alias for stop flags, `DESK_LOOP`, cellctl role arguments, the comms lane list, spec role sets, worktrees and claims, adds a deprecated redirect skill for at least one release, and adds a lint against new uses of the old name. The `to:reviewer` label is unchanged. This entry records the plan only. Nothing is implemented yet.
