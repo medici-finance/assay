@@ -272,7 +272,7 @@ func TestPerformanceSchemaAndPrivacyCompatibility(t *testing.T) {
 		"v2 line, both lists":       strings.Replace(string(v2[0]), `"unavailable":["cacheLookup",`, `"unavailable":["http","cacheLookup",`, 1),
 		"v2 line, cpuMs unmeasured": strings.Replace(string(v2[1]), `"cpu":"unsupported"`, `"cpu":"unsupported","cpuMs":0`, 1),
 		"v2 line, unknown boundary": strings.Replace(string(v2[0]), `"process-init"`, `"main"`, 1),
-		"v2 line, free-text phase":  strings.Replace(string(v2[0]), `"fetch"`, `"/home/x/repo"`, 1),
+		"v2 line, free-text phase":  strings.Replace(string(v2[0]), `"fetch"`, `"/srv/x/repo"`, 1),
 		"v1 tag on a v2 line":       strings.Replace(string(v2[0]), `"perf-v2"`, `"perf-v1"`, 1),
 		"v2 tag on a v1 line":       strings.Replace(string(fixtureLines(t, "perf-v1.jsonl")[0]), `"perf-v1"`, `"perf-v2"`, 1),
 	} {
@@ -282,7 +282,7 @@ func TestPerformanceSchemaAndPrivacyCompatibility(t *testing.T) {
 	}
 
 	// Hostile labels never serialize: tool, verb, role, phases and counters.
-	hostile := []string{"/Users/example/private", "example-org/tracker", "ghp_" + strings.Repeat("a", 36), "PR 77",
+	hostile := []string{"/srv/example/private", "example-org/tracker", "ghp_" + strings.Repeat("a", 36), "PR 77",
 		"--token=abc", "feat/branch", "Bad Label", "x" + strings.Repeat("y", 70)}
 	f := newFakeProbe()
 	p := f.probe()
