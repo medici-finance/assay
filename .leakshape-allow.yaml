@@ -22,6 +22,13 @@
 #
 # Shared reasons are YAML anchors (&name) reused by alias (*name).
 allow:
+  - path: statusgen/acceptancetransition_test.go
+    shape: ssh-host-alias
+    sha256:
+      - a5a91287253726d45904dba4de7f0712728649f0c4600c8604e6755c614b2195
+      - 8bb8193ef61273471dcd570f54b18ae183af5d6c54a5ca60a9e1c1bd1cd3c670
+      - 0510d7a5588eb1556f0d30efa130a1fc8f06d236f9305d9fd79ebdf48e4f6a7a
+    reason: "reserved .example hosts in acceptance-transition refusal tests for a self-hosted forge SCP remote and a foreign SSH URL with a port; exact synthetic fixture values, no real host or identity"
   - path: .github/workflows/assay-qualgen.yml
     shape: noreply-id-email
     sha256:
