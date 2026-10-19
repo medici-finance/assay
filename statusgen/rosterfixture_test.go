@@ -24,6 +24,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/medici-finance/assay/gitquiet"
 )
 
 // fixtureRoster is the config-home file contents. 0600, in a directory this
@@ -132,7 +134,7 @@ func TestMain(m *testing.M) {
 	// the hold is off for them; decisiongatehold_test.go restores the real check
 	// (closeVerifyDecisionGate) for every test that exercises it.
 	closeVerifyDecisionGateFn = func(string, string, []byte) error { return nil }
-	code := m.Run()
+	code := gitquiet.Run(m)
 	cleanup()
 	os.Exit(code)
 }
