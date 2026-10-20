@@ -45,7 +45,7 @@ consumers:
 - "tools/desk/internal/cellscratch/: follow-up graph-execution/26"
 - "tools/desk/internal/cellcache/: follow-up graph-execution/26"
 - "perfrec/: follow-up graph-execution/26"
-- "perfdata/adapters/: follow-up performance-collection/02 (optional existing phase consumer)"
+- "perfdata/adapters/: follow-up performance-collection/02 (optional planned phase consumer)"
 - 'workflow/controller: follow-up graph-execution/21'
 - 'loopadmin/adapters: follow-up graph-execution/22 (consumes the supervisor and the moved process runner)'
 - 'tools/desk/internal/loopengine: follow-up graph-execution/27'
@@ -200,7 +200,11 @@ Baseline: #3353 records a v1.0.48 dry-run scratch sweep of 173.16 s, 79 retained
 101737458866 logical bytes, with partial=false and no reclamation. On 2026-10-18 the installed
 binary reports v1.0.49 and build source 3cb57291e; its recorded scratch, cache, up and telemetry
 source paths are unchanged from v1.0.48 and inspected main 56615f9ab. This is source comparison,
-not a v1.0.49 timing result. Refresh the installed build and source at implementation pickup.
+not a v1.0.49 timing result. That comparison holds for the 2026-10-18 inspection only. Main has
+since gained desk-containers/17's lease-serialized `up` converge (medici-finance/assay#3377) and
+perf-v2 boundary versioning (medici-finance/assay#3431). Preparation extends that existing `up`
+owner and its lease serialization and adds no second launch serializer. Refresh the installed
+build and source, and re-baseline timing, at implementation pickup.
 
 1. Add one idempotent cell-preparation operation to the existing launch owner. `up` completes
    bounded shared preparation before starting selected roles; direct `desk`, cadence/restart
@@ -235,15 +239,17 @@ not a v1.0.49 timing result. Refresh the installed build and source at implement
    stores: one and five roles; cold/warm preparation; fixed roles with 1x/10x retained history;
    simultaneous up/direct starts; cadence restart; maintenance held mid-scan; clean/interrupted
    down; changed profile/generation; corrupt accounting; and stop/authority refusals. Gate on
-   zero recursive historical scratch/cache walks in admission, one successful shared preparation
-   per compatible cell generation, one live owner per role and unchanged protected-data hashes.
+   zero recursive historical scratch/cache walks in admission and on finish/`down`, one
+   successful shared preparation per compatible cell generation, one live owner per role and
+   unchanged protected-data hashes.
    Keep wall/CPU/lock-wait distributions with sample counts and build/workload identifiers.
    No absolute end-to-end latency SLO is ratified by this amendment: report measured values and
    the remaining budget decision; deterministic work/authority bounds are mandatory acceptance.
    Update the existing cellctl/cadence documentation and carry these tests through relocation.
 
-Failure detection: repeated walks or a long scan lock fail row 10; receipt bypasses and unsafe
-recovery fail row 11; absent parent phases or changed consent/failure semantics fail row 12.
+Failure detection: repeated walks, a finish-side sweep or a long scan lock fail row 10;
+receipt bypasses and unsafe recovery fail row 11; absent parent phases or changed
+consent/failure semantics fail row 12.
 All new rows are implementation deliverables and must demonstrate the named negative control.
 
 ## Verify
@@ -259,7 +265,7 @@ All new rows are implementation deliverables and must demonstrate the named nega
 | 7 | check:ci +flow +mutation | `(cd loopadmin && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestJournalIncarnationPaused$" ./... > "$routing_out" && grep -q -- "--- PASS: TestJournalIncarnationPaused " "$routing_out")` | exit 0; named PASS; a journal restored from backup under a mismatched or missing operator incarnation starts paused and launches no child until rotation and confirmed group stop; mutation: resume launches when an activation record is present but its incarnation mismatches — the named test must fail |
 | 8 | check:ci +mutation | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestNoEmbeddedJournalEngine$" ./... > "$routing_out" && grep -q -- "--- PASS: TestNoEmbeddedJournalEngine " "$routing_out")` | exit 0; named PASS; no loopadmin package imports a SQLite or other embedded database driver or the `workflow` module; mutation: add an embedded-driver import under `loopadmin/journal` — the named test must fail |
 | 9 | check:ci +flow +mutation | `(cd loopadmin && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestLoopAdminLaunchBudgetBrake$" ./... > "$routing_out" && grep -q -- "--- PASS: TestLoopAdminLaunchBudgetBrake " "$routing_out")` | exit 0; named PASS against a real disposable PostgreSQL journal; with the child-launch usage unreadable the launch is refused and no child starts; repeated supervisor restarts within one window cannot launch beyond the configured budget or regain consumed allowance; a seeded pacing estimate alone does not refuse an authorized launch; mutation: treat an unavailable child-launch count as under budget — the named test must fail |
-| 10 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellPrepBounded$' ./... > "$o" && grep -F -- '--- PASS: TestCellPrepBounded ' "$o")` | exit 0; named PASS. Production up/direct/cadence fixtures satisfy Task 5 at 1x/10x history and with maintenance held mid-scan; zero recursive admission walks and one compatible shared preparation. Mutation: restore Sweep in beginScratch or full cache walk at enrollment; test fails. |
+| 10 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellPrepBounded$' ./... > "$o" && grep -F -- '--- PASS: TestCellPrepBounded ' "$o")` | exit 0; named PASS. Production up/direct/cadence fixtures satisfy item 5 of §Cell preparation and startup acceptance at 1x/10x history and with maintenance held mid-scan; zero recursive walks in admission and on finish/`down`, and one compatible shared preparation. Mutation: restore Sweep in beginScratch, restore Sweep in `scratchLaunch.finish`, or a full cache walk at enrollment; each fails the test. |
 | 11 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellPrepFences$' ./... > "$o" && grep -F -- '--- PASS: TestCellPrepFences ' "$o")` | exit 0; named PASS. Concurrent starts, stale preparation, changed profiles, missing accounting and interrupted down preserve per-role leases, stop/authority gates and protected hashes. Mutation: accept a stale preparation receipt as a current role lease or reclaim unacknowledged work; test fails. |
 | 12 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellLaunchTelemetry$' ./... > "$o" && grep -F -- '--- PASS: TestCellLaunchTelemetry ' "$o")` | exit 0; named PASS. Config-only opt-in records preparation through confirmed child start; missing/unknown child starts remain incomplete, shared work counted once, no-opt-in writes nothing and slow/failed sink changes no launch result. Mutation: gate parent recording only on ambient environment or omit final enrollment; test fails. |
 | 13 | check:ci +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLoopAdminWaitDoesNotInvokeModel$' ./... > "$o" && grep -F -- '--- PASS: TestLoopAdminWaitDoesNotInvokeModel ' "$o")` | exit 0; named PASS. Production supervisor timers, unchanged observations and repeated receipts do not call adapter Start; one admitted invocation starts once and completion is delivered without a model waiter. Mutation: start a model on each observe timeout; the named test fails. |

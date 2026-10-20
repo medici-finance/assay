@@ -46,7 +46,7 @@ consumers:
 
 ## Context
 
-files: `perfdata/report/` (planned), `perfdata/cmd/perfdata/` (planned), `perfdata/testdata/operating-reports/` (planned), `plugins/assay/skills/operating-report/SKILL.md` (planned), `docs/performance-collection.md` (planned), `docs/contracts.md`, `changelog/operating-reports.md` (planned), `perfdata/report/phasecost_test.go` (planned) Additional startup scope: `perfdata/report/cellstart_test.go` (planned).
+files: `perfdata/report/` (planned), `perfdata/cmd/perfdata/` (planned), `perfdata/testdata/operating-reports/` (planned), `plugins/assay/skills/operating-report/SKILL.md` (planned), `docs/performance-collection.md` (planned), `docs/contracts.md`, `changelog/operating-reports.md` (planned), `perfdata/report/phasecost_test.go` (planned); additional startup scope: `perfdata/report/cellstart_test.go` (planned).
 
 facts:
 - This is authored todo scope, not deployed capability. Collection briefs 01/02 produce the bounded source contract; no database or remote endpoint is needed by local reports.
