@@ -57,7 +57,7 @@ Restore tooling must make this operator procedure unavoidable for both deletion 
 
 Recovered pending work must not replay provider writes blindly. Compare against current external objects and accepted evidence, deduplicate where possible, and hold only the unresolved consequential action. A verification may run again even while its publication awaits reconciliation. Missing cost/history data remains an incomplete measurement, not a reset to a claimed zero.
 
-Budget counters, idempotency markers and audit-backed authority need a distinct recovery policy. Preserve them transactionally during ordinary restart; after unrecoverable loss, unknown usage cannot silently become a fresh allowance. Reconstruct from retained evidence where possible, otherwise use conservative bounds or an explicitly authorized reset while affected effects remain held. Canonical required audit records need a retained home; disposable diagnostics may be lost. Permission to repeat verification does not authorize duplicate publication, notification or an unrecorded budget reset.
+Idempotency markers and audit-backed authority need a distinct recovery policy. Preserve them transactionally during ordinary restart; after unrecoverable loss, reconstruct from retained evidence where possible and hold affected effects whose authority or prior outcome cannot be established. Canonical required audit records need a retained home; disposable diagnostics may be lost. Permission to repeat verification does not authorize duplicate publication or notification. Operation counts follow the [brake and pacing contract](11-target-architecture.md#pacing-counts-are-best-effort-brakes-fail-closed). After unrecoverable loss, unknown usage cannot silently become a fresh allowance. A brake count (write ceilings, daily and new-issue caps, the circuit breaker, child-launch, ingress and retry budgets) holds its governed operation, or applies a declared conservative fallback, until its usage is reconstructed from retained evidence or an explicitly authorized reset is recorded. A pacing count keeps one shared estimate, never a per-process one. An effect-class count (one whose admissions leave a durable admission record: an effect intent or a journaled launch) is always re-derived before each admission from the window's recorded intents and receipts; a cached pacing row is only an optimisation and never the source. A read-class count is seeded from its last retained count in one shared row. Only when neither survives may it reset once per window and operator incarnation, recorded; a further unseeded reset treats the window as exhausted. Within that bound, pacing work continues without an exact usage rebuild or an operator reset act. An effect-class count's residual undercount is at most one extra window's cap + C. A read-class count (provider read-refresh, poll cadence, reconstruction) has no numeric bound: it is best effort and unbounded on counter loss. Missing counts are not reported as measured zero. This exception cannot clear an unresolved effect, restore a lost approval or grant publication authority.
 
 The first slice needs a **delete-the-whole-database recovery test** proving canonical work/evidence reconstruction, declared transient loss, safe repeated work and controlled publication. It need not restore every intermediate row. Backups make recovery faster and more complete; Git/forge reconstruction is the fallback, not the expected response to every restart. Measure rebuild time and API cost, and rate-limit the reconstruction so it does not cause a provider storm.
 
@@ -180,3 +180,26 @@ Standalone Inspect/Assist has canonical local records/observations, without in-f
 leases, authority grants or another coordination database. Offline output remains
 usable without PostgreSQL; it cannot publish governed evidence. Notification batching
 coalesces presentation only, preserving distinct pending decisions and their subjects.
+
+## Message transport ownership (proposed; pending approval)
+
+Proposal against the ratified revision `23f655f5d`; not baseline text until approved and reconciled in the amendment manifest.
+
+The [communications target](24-communications.md#storage-boundary-and-broker-decision)
+assigns durable message transport to a selected broker. PostgreSQL owns the application
+transaction and its outbox/inbox deduplication bridge, not a competing mailbox engine.
+Broker acceptance, recipient acknowledgment and completed business effect are distinct.
+Messages that exist only in the broker cannot be reconstructed from Git/forge; the
+selected profile must qualify its own persistence, replication, backup and loss policy.
+The current file backend remains a transition implementation until explicit migration.
+
+## Performance identity and cost storage — requested amendment, 19 October 2026
+
+The [perf-v3 contract](../../performance-attribution-spec.md) keeps identifiable qualified
+work linkage in the explicitly selected local workflow record, using the existing perfrec
+history and retention. The future performance-collection adapter maps these references to
+source/epoch aliases before its separate spool, database, preview or upload; raw work locators
+and native harness IDs never cross that boundary. Preserve immutable invocation identity,
+causal links, units, nullable point/timing coverage and mergeable distributions through
+retention/replay. This adds no operational database table, cross-database foreign key,
+mandatory dual write or performance dependency to the forge service/cell.

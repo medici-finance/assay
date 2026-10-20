@@ -201,9 +201,21 @@ func Validate(fsys fs.FS, reg *Registry) []string {
 				add("shipped entrypoint %s is an excluded row; a shipped launcher is not a %s", e.Path, e.Class)
 			}
 			continue
+		case StateExempt:
+			if strings.TrimSpace(e.Reason) == "" {
+				add("exempt row %s needs a reason naming its retirement path", e.Path)
+			}
+			if e.Owner == "" {
+				add("row %s has no owner", e.Path)
+				continue
+			}
+			if b, err := LoadBrief(fsys, e.Owner); err != nil || b == nil {
+				add("orphan owner %s: no brief file carries it (exempt row %s)", e.Owner, e.Path)
+			}
+			continue
 		case StatePending, StateMigrated, StateRetired:
 		default:
-			add("row %s has state %q; want pending, migrated, retired or excluded", e.Path, e.State)
+			add("row %s has state %q; want pending, migrated, retired, excluded or exempt", e.Path, e.State)
 		}
 		if e.Owner == "" {
 			add("row %s has no owner", e.Path)

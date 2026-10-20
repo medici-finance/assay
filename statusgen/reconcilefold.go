@@ -59,15 +59,16 @@ import (
 // tree and shared by the tree and forge gatherers below.
 type reconcileFoldData struct {
 	ident    BriefIdent
-	path     string     // the brief file
-	stream   *Stream    // the stream it belongs to
-	key      string     // the canonical "<stream>/<NN>" key (coverage, closeVerify)
-	parsed   bool       // the brief file parsed
-	verify   string     // the brief's ## Verify section
-	evidence string     // the brief's ## Evidence section
-	files    briefFiles // the brief's files: declaration (briefFilesOf)
-	issues   []int      // the frontmatter issues: list
-	reviewed string     // the README row's Reviewed cell
+	path     string          // the brief file
+	stream   *Stream         // the stream it belongs to
+	key      string          // the canonical "<stream>/<NN>" key (coverage, closeVerify)
+	parsed   bool            // the brief file parsed
+	verify   string          // the brief's ## Verify section
+	evidence string          // the brief's ## Evidence section
+	files    briefFiles      // the brief's files: declaration (briefFilesOf)
+	issues   []int           // the frontmatter issues: list
+	reviewed string          // the README row's Reviewed cell
+	delivery []DeliveryClaim // the frontmatter delivery: claims (briefdelivery.go)
 }
 
 // loadReconcileFoldData enumerates every brief under boardRoot exactly as
@@ -97,6 +98,7 @@ func loadReconcileFoldData(boardRoot string) ([]reconcileFoldData, []*Stream, er
 				d.evidence = bf.Evidence
 				d.files = briefFilesOf(bf)
 				d.issues = bf.Issues
+				d.delivery = bf.Delivery
 			} else {
 				derived, _, okName := expectedBriefID(path)
 				if !okName {
@@ -172,9 +174,9 @@ func foldVerified(d reconcileFoldData, coverage map[string]Coverage) (w WitnessI
 		closeVerifyFailRefusal(d.ident.ID, "implemented", d.evidence) != nil {
 		return WitnessInfo{}, false, ""
 	}
-	// closureWitnesses, never checkWitnesses directly (the htmlcomment.go class
-	// guard): an unterminated `<!--` opener refuses the audit.
-	findings, refusal := closureWitnesses(d.verify, p.Run)
+	// The shared selected-run audit retains classification and reaches the
+	// canonical closureWitnesses owner; checkWitnesses is never called here.
+	findings, refusal := closureRunWitnesses(d.verify, d.evidence, p.Run, d.path)
 	if refusal != "" || len(findings) == 0 || checkExitCode(findings) != verifyrunExitPass {
 		return WitnessInfo{}, false, ""
 	}

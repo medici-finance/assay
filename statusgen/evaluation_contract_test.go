@@ -874,26 +874,29 @@ func TestEvaluationExternalConsumer(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// The in-repository sibling module the manifest requires, served at the
-	// version the manifest names, as a release of it would be.
-	const siblingPath = "github.com/medici-finance/assay/forgeread"
+	// The in-repository sibling modules the manifest requires (forgeread, and
+	// perfrec — the shared perf-v1 writer, #3101), served at the version the
+	// manifest names, as a release of each would be.
 	const siblingVersion = "v0.0.0-00010101000000-000000000000"
-	siblingDir := filepath.Join(proxy, filepath.FromSlash(siblingPath), "@v")
-	if err := os.MkdirAll(siblingDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	siblingMod, err := os.ReadFile(filepath.Join("..", "forgeread", "go.mod"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for name, content := range map[string][]byte{
-		"list":                   []byte(siblingVersion + "\n"),
-		siblingVersion + ".info": []byte(`{"Version":"` + siblingVersion + `","Time":"2026-10-11T00:00:00Z"}`),
-		siblingVersion + ".mod":  siblingMod,
-		siblingVersion + ".zip":  moduleZip(t, filepath.Join("..", "forgeread"), siblingPath, siblingVersion),
-	} {
-		if err := os.WriteFile(filepath.Join(siblingDir, name), content, 0o644); err != nil {
+	for _, sibling := range []string{"forgeread", "perfrec"} {
+		siblingPath := "github.com/medici-finance/assay/" + sibling
+		siblingDir := filepath.Join(proxy, filepath.FromSlash(siblingPath), "@v")
+		if err := os.MkdirAll(siblingDir, 0o755); err != nil {
 			t.Fatal(err)
+		}
+		siblingMod, err := os.ReadFile(filepath.Join("..", sibling, "go.mod"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for name, content := range map[string][]byte{
+			"list":                   []byte(siblingVersion + "\n"),
+			siblingVersion + ".info": []byte(`{"Version":"` + siblingVersion + `","Time":"2026-10-11T00:00:00Z"}`),
+			siblingVersion + ".mod":  siblingMod,
+			siblingVersion + ".zip":  moduleZip(t, filepath.Join("..", sibling), siblingPath, siblingVersion),
+		} {
+			if err := os.WriteFile(filepath.Join(siblingDir, name), content, 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	// The evaluation package imports only the standard library. Serve the

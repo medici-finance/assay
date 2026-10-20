@@ -80,6 +80,20 @@ func gitRoot(t *testing.T, aheadName, aheadEmail string) string {
 
 func useRealPublishIdentityGate(t *testing.T) {
 	t.Helper()
+	admission := verifierEvidenceAdmissionFn
+	verifierEvidenceAdmissionFn = func(root, repo, target string, fg deskkit.Forge) (deskkit.VerifierReceipt, error) {
+		r, err := admission(root, repo, target, fg)
+		if err == nil {
+			c := exec.Command("git", "-C", root, "rev-parse", "HEAD")
+			b, e := c.Output()
+			if e != nil {
+				t.Fatal(e)
+			}
+			r.Binding.Source = strings.TrimSpace(string(b))
+		}
+		return r, err
+	}
+	t.Cleanup(func() { verifierEvidenceAdmissionFn = admission })
 	stub := publishIdentityGateFn
 	publishIdentityGateFn = productionPublishIdentityGateFn
 	t.Cleanup(func() { publishIdentityGateFn = stub })

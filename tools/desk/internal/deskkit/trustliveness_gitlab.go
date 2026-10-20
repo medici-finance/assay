@@ -112,7 +112,7 @@ func (f *HTTPGitLabAccountFetcher) GetAccount(login string) (*Account, error) {
 	req.Header.Set("PRIVATE-TOKEN", f.Token)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := f.client().Do(req)
+	resp, err := countingClient(f.client()).Do(req)
 	if err != nil {
 		return nil, err
 	}

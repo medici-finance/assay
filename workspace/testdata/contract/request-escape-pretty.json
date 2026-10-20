@@ -1,0 +1,27 @@
+{
+  "schema": "cell-workspace\/v1",
+  "request_id": "req\u003c\u0026\u003e1",
+  "operation": "allocate",
+  "cell": {
+    "uuid": "00000000-7b4d-4e8a-9c21-5d6e7f8a9b0c",
+    "root": "/srv\/cells\/caf\u00E9\u003c\u0026\u003e\u2028"
+  },
+  "repo": {
+    "forge": "github.com",
+    "repository": "example-org\/widgets"
+  },
+  "kind": "worker",
+  "session": {
+    "role": "worker-desk",
+    "session": "s\u003c1\u003e\u0026\u0022q\u0022"
+  },
+  "task": {
+    "owner": "task",
+    "id": "a\u005cb\u003cc\u003e\u0026d"
+  },
+  "attempt_id": "att\u0026\u003c\u003e",
+  "subject": {
+    "commit": "0123456789abcdef0123456789abcdef01234567",
+    "mode": "detached"
+  }
+}

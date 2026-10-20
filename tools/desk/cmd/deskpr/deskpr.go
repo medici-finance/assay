@@ -142,6 +142,7 @@ func cmdCreate(args []string) (err error) {
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	decided := fs.String("decided", "", "path to a file declaring desk-taken decisions (decision:/alternative:/cost: triples, one item per numbered line) — writes the `## Desk-decided` block into the body and applies the desk-decided label; a PR that only transcribes recorded rulings passes none of this")
 	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the Brief:/Authors:/Issue: trailer, the secret scan, the public-repo self-containment scan, the push-transport gate, the publish-identity gate) and stop BEFORE minting a token or opening any connection — exit 0 only when every local gate passed; a category this cannot decide offline is reported, by name, as not checked")
+	checkRemote := fs.Bool("check-remote", false, "read-only preflight using the session App and confirmed push destination; no push, PR creation or write budget")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
 		// A help screen is not a refusal and writes no audit row — the finalizer
@@ -150,6 +151,9 @@ func cmdCreate(args []string) (err error) {
 			return deskkit.ErrHelpRequested
 		}
 		return deskkit.Refused("refused: bad flags: " + perr.Error())
+	}
+	if *check && *checkRemote {
+		return deskkit.Refused("refused: --check and --check-remote are mutually exclusive")
 	}
 	defer func() { explainScanRefusal(*explain, err) }()
 	if fs.NArg() != 0 {
@@ -201,6 +205,15 @@ func cmdCreate(args []string) (err error) {
 	trailerIssue, terr := requireTrailer(body, *root, dir)
 	if terr != nil {
 		return terr
+	}
+	// Decision-gate banner (lifecycle-v1 §4.5): a PR delivering a gate: human brief
+	// carries a fixed banner naming its decision issue and whether it is ruled. Inserted
+	// when missing; it informs and never refuses. Its text is fixed apart from the
+	// trailer's own brief id and an issue number, and the public-repo self-containment
+	// scan below reads the body WITH it.
+	if nb, added := withDecisionGateBanner(body, *root, dir); added {
+		body = nb
+		fmt.Fprintln(deskprStderr, "deskpr: added the gate: human decision banner to the PR body (lifecycle-v1 §4.5; informs, blocks nothing)")
 	}
 	facts, perr := preflight(dir, *base)
 	if perr != nil {
@@ -301,6 +314,9 @@ func cmdCreate(args []string) (err error) {
 	// Mint the session-role App installation token and resolve the forge that serves this
 	// repo under that App's custody. Every change read and write below goes through the
 	// resolved backend; there is no ambient-identity fallback (the retired --as-app path).
+	if *checkRemote {
+		fmt.Fprintf(deskprStderr, "check-remote: reading %s branch %s through the session App and push destination; no outward write\n", facts.repo, facts.branch)
+	}
 	if merr := mintWorkerToken(facts.repo); merr != nil {
 		return deskkit.Unverifiable("cannot mint the App token", merr)
 	}
@@ -319,12 +335,6 @@ func cmdCreate(args []string) (err error) {
 		ac.detail = "open PR already exists " + existing.URL
 		fmt.Printf("noop: open PR already exists for %s: %s\n", facts.branch, existing.URL)
 		return nil
-	}
-
-	// New PRs have a repository-wide creation counter independent of updates and
-	// body edits. The aggregate write budget and failure breakers still apply.
-	if werr := deskkit.AllowPRCreate(facts.repo); werr != nil {
-		return werr
 	}
 
 	// Public-repo gate: refuse an outward write unless the repo is authorized.
@@ -354,6 +364,18 @@ func cmdCreate(args []string) (err error) {
 	if prepErr != nil {
 		return prepErr
 	}
+	if *checkRemote {
+		ac.successResult = deskkit.ResultDryRun
+		ac.detail = "check-remote: confirmed destination and immutable source; no write"
+		fmt.Println("check-remote: ok — local gates and credentialed destination/source proof passed; nothing pushed, no PR created, no write budget spent. A later create rechecks all state; this is not a reusable authorization.")
+		return nil
+	}
+	// New PRs have a repository-wide creation counter independent of updates and
+	// body edits. The aggregate write budget and failure breakers still apply.
+	if werr := deskkit.AllowPRCreate(facts.repo); werr != nil {
+		return werr
+	}
+
 	if pushErr := pushFn(spec); pushErr != nil {
 		return pushErr
 	}
@@ -660,8 +682,8 @@ func cmdUpdate(args []string) (err error) {
 	if berr != nil {
 		return deskkit.Unverifiable("cannot read PR body for trailer check", berr)
 	}
-	// update ignores the trailer's issue number: the gate below is asked about the
-	// PR being updated (pr.Number), which is the reactions surface for an update.
+	// update ignores the trailer's issue number: the public-repo gate below is
+	// repository-scoped and takes no number.
 	if _, terr := requireTrailer([]byte(full.Body), *root, dir); terr != nil {
 		return terr
 	}
@@ -1269,7 +1291,9 @@ func parseRepo(raw string) (string, error) {
 // requireTrailer enforces the example-stream/02 link grammar on a PR body: exactly one
 // `Brief: <stream>/<NN>` that resolves to a brief file under --root (the PR DELIVERS that
 // brief), `Authors: <stream>/<NN>[, …]` whose every entry resolves the same way (the PR only
-// AUTHORS those briefs — #1339), or `Issue: #<N>` for issue-only work. Absence, duplicates,
+// AUTHORS those briefs — #1339), `Cross-repo-brief: <alias>:<stream>/<NN>` for a brief homed in
+// another repo (checked against --root's alias registry, never resolved to a file here —
+// medici-finance/assay#2748), or `Issue: #<N>` for issue-only work. Absence, duplicates,
 // mixed kinds and non-resolving briefs are all constraint refusals (exit 5). There is deliberately no bypass flag — a worker-typeable
 // bypass makes the edge asserted again.
 //
@@ -1284,10 +1308,10 @@ func parseRepo(raw string) (string, error) {
 //
 // On success it also returns the trailer's issue number: the parsed `#<N>` for an
 // `Issue:` trailer, or 0 for a `Brief:` trailer (a brief resolves to a file, not an
-// issue, so it has no reactions surface) — and 0 for the exempt scan carrier likewise.
-// The create path feeds this to the public-repo gate so a non-blessed public repo gains
-// the per-issue-+1 path (a +1 on the named tracking issue admits the create) instead of
-// the structural no-number hard-fail (#1707).
+// issue) — and 0 for the exempt scan carrier likewise. The create path uses it only as the
+// self-containment scan's number hint (SelfContainOpts.NumberHint). It is NOT an input to
+// the public-repo write gate: deskkit.PublicRepoGate is repository-scoped (an explicit
+// `:public` allowed-repos entry agreeing with the live visibility) and takes no number.
 func requireTrailer(body []byte, root, dir string) (int, error) {
 	// Head-anchored, not a whole-body substring: the emitter writes ScanBodyMarker as
 	// the FIRST line (deskkit.ScanPRBody), so the exemption matches it only at the body
@@ -1304,6 +1328,7 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 		return 0, deskkit.SchemaRefusal("deskpr", "--check", "refused: PR body carries no trailer — add exactly one line "+
 			"`Brief: <stream>/<NN>` naming the brief this PR delivers (e.g. `Brief: example-stream/02`), "+
 			"`Authors: <stream>/<NN>[, …]` naming the brief(s) a briefs-authoring PR writes, "+
+			"`Cross-repo-brief: <alias>:<stream>/<NN>` naming a brief homed in another repo, "+
 			"or `Issue: #<N>` for issue-only work")
 	}
 	if trs[0].Kind == deskkit.TrailerIssue {
@@ -1334,6 +1359,9 @@ func requireTrailer(body []byte, root, dir string) (int, error) {
 			}
 		}
 		return 0, nil
+	}
+	if trs[0].Kind == deskkit.TrailerCrossRepoBrief {
+		return 0, requireCrossRepoBrief(trs[0].Value, root)
 	}
 	stream, nn, ok := splitBriefTrailer(trs[0].Value)
 	if !ok {

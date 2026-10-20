@@ -134,7 +134,22 @@ type stub struct {
 	// rather than assume nothing is required.
 	requiredChecksErr bool
 	reqCheckReads     int
+
+	// headCommittedAt is the committer date GET /commits/{sha} serves for the head — the
+	// date an APPROVED's submitted_at must not predate (#3093: GitHub re-anchors an old
+	// review's commit_id to a later head). "" serves defaultHeadCommittedAt, which predates
+	// every fixture review, so a case that is not about re-anchoring is unaffected by it.
+	// commitErr makes that read answer 500 — the could-not-check case, which must fail
+	// closed (the approval is not at head).
+	headCommittedAt string
+	commitErr       bool
+	commitReads     int
 }
+
+// defaultHeadCommittedAt predates every SubmittedAt the fixtures carry (they start at
+// 2026-01-01), so the stale-approval filter never fires on a case that does not set
+// headCommittedAt itself.
+const defaultHeadCommittedAt = "2025-12-31T00:00:00Z"
 
 const stubToken = "stub-installation-token"
 
@@ -268,6 +283,22 @@ func (s *stub) handle(t *testing.T) http.HandlerFunc {
 
 		case strings.HasSuffix(path, "/check-runs"):
 			enc(s.servedCheckRuns())
+
+		case r.Method == http.MethodGet && strings.Contains(path, "/commits/"):
+			// GET /commits/{sha} — the head commit's committer date (#3093). Ordered after
+			// the /status and /check-runs suffix cases, which also live under /commits/.
+			s.commitReads++
+			if s.commitErr {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			date := s.headCommittedAt
+			if date == "" {
+				date = defaultHeadCommittedAt
+			}
+			sha := path[strings.LastIndex(path, "/")+1:]
+			enc(map[string]any{"sha": sha, "commit": map[string]any{
+				"committer": map[string]any{"date": date}}})
 
 		case r.Method == http.MethodGet && strings.Contains(path, "/pulls/"):
 			if s.failPR {

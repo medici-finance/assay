@@ -544,11 +544,25 @@ func pointsFor(tool string, now time.Time) ([]auditPoint, error) {
 
 // auditPoint is one of `tool`'s audit lines reduced to what the meters need.
 type auditPoint struct {
+	tool   string // canonical key, retained for operation-specific charging
 	ts     time.Time
 	result string
 	verb   string
 	repo   string
 	pr     *int
+}
+
+// chargesPointBudget separates audit visibility from outward-write charging.
+// deskgit fetch and heads are read-only even when their outcome is unverifiable. Recognizing
+// those existing audit rows here fixes both ledger readers without rewriting
+// history or removing progress/refusal events from the circuit breakers.
+// Missing/unknown verbs, tools and results retain the fail-closed default.
+func chargesPointBudget(e auditPoint) bool {
+	if e.tool == "deskgit" && (e.verb == "fetch" || e.verb == "heads") &&
+		(e.result == ResultOK || e.result == ResultUnverifiable) {
+		return false
+	}
+	return chargesBudget(e.result)
 }
 
 // chargedInWindow counts `tool`'s charged writes inside the rolling window that match
@@ -566,7 +580,7 @@ func chargedInWindow(now time.Time, mine []auditPoint, limit int, scope func(aud
 	cutoff := now.Add(-rateWindow)
 	var charged []time.Time
 	for _, e := range mine {
-		if e.ts.Before(cutoff) || !chargesBudget(e.result) {
+		if e.ts.Before(cutoff) || !chargesPointBudget(e) {
 			continue
 		}
 		if !scope(e) {

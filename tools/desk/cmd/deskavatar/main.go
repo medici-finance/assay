@@ -8,6 +8,8 @@
 // (a Go release can change a PNG's deflate stream, never its pixels — #1952).
 package main
 
+import "github.com/medici-finance/assay/tools/desk/internal/deskkit"
+
 import (
 	"errors"
 	"flag"
@@ -23,7 +25,9 @@ import (
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stderr))
+	os.Exit(deskkit.PerfRun("deskavatar", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:], os.Stderr)
+	}))
 }
 
 func run(args []string, stderr io.Writer) int {
@@ -31,7 +35,7 @@ func run(args []string, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	var (
 		org      = fs.String("org", "", "org login the avatars are hued from (required)")
-		tier     = fs.String("tier", "team", "avatar set: team (read+act) or family (role suite)")
+		tier     = fs.String("tier", "team", "avatar set: team (read+act+review) or family (role suite)")
 		out      = fs.String("out", "", "output directory (required)")
 		sizesCSV = fs.String("sizes", "512", "comma-separated PNG sizes in px")
 		avatarPN = fs.String("avatar", "", "optional org avatar PNG used as the identity field")

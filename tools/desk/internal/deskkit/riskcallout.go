@@ -168,7 +168,7 @@ func runRiskCallout(path, stdin string) (string, error) {
 	// and Wait blocks for as long as that grandchild lives.
 	cmd.WaitDelay = riskCalloutWaitDelay
 
-	runErr := cmd.Run()
+	runErr := RunProcess(cmd)
 	stdout := strings.TrimSpace(out.String())
 
 	if ctx.Err() == context.DeadlineExceeded {

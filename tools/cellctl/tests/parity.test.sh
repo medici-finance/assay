@@ -14,7 +14,7 @@
 #
 # Matrix: kinds {k8s, house, container, scrubbed} × harness {claude, codex} × cockpit
 # {tmux, herdr, orca} × verbs {check, desk, up, down, set, ls, smoke, status}, plus `new` per kind
-# × forge {github, gitlab}, plus one nested-name `new` (`team/fresh`) per kind in NESTED_KINDS.
+# × forge {github, gitlab}, plus one nested-name `new` (`team/fresh`) per kind in NESTED_KINDS (empty since desk-containers/16).
 # `new` has no dry run — parity there is the byte-diff of the tree each implementation scaffolds
 # into its own CELLS_ROOT, mode bits included.
 #
@@ -486,12 +486,13 @@ HARNESSES="claude codex"
 COCKPITS="tmux herdr orca"
 VERBS="check desk up down set ls smoke status"
 FORGES="github gitlab"
-# k8s is left out of the nested `new` cells: both implementations refuse `team/fresh` at the same
-# step with the same tree (its `cells-<cell>.yaml` copy cannot take a `/`), but with different
-# refusal text and exit codes (the oracle's raw `cp` error and exit 1, the port's die and exit 3).
-# That divergence predates the house-scaffold change these cells were added for, and is tracked
-# as its own follow-up rather than reddening this matrix.
-NESTED_KINDS="house container scrubbed"
+# No nested-name `new` cells (desk-containers/16): the port narrowed the cell-name rule to ONE
+# directory spelled [a-z0-9-] (the rule the cell-scoped stop flags name a cell by), so it now
+# REFUSES `team/fresh` for every kind where the frozen oracle still scaffolds it — an intended
+# divergence the oracle, which this brief forbids editing, cannot follow. The port's refusal is
+# held by its own tests (cmd/cellctl cellname_test.go). The list is kept, empty, so the matrix
+# count below stays derived from it.
+NESTED_KINDS=""
 # The count the matrix DECLARES, computed from the same lists the loops walk — never a literal,
 # which would drift the moment an axis grows.
 n_kinds=$(set -- $KINDS; echo $#); n_harn=$(set -- $HARNESSES; echo $#)
@@ -524,8 +525,8 @@ for kind in $KINDS; do
     new_case "$kind" "$forge"
   done
 done
-# One nested-name `new` per kind in NESTED_KINDS (forge-independent: the parents are made before
-# any forge branch). A kind that refuses a nested name must refuse it identically on both sides.
+# One nested-name `new` per kind in NESTED_KINDS (empty: the port refuses a nested name, the
+# frozen oracle does not — see NESTED_KINDS above).
 for kind in $NESTED_KINDS; do
   new_case "$kind" github team/fresh
 done

@@ -63,8 +63,10 @@ nothing. A bare invocation (neither --dry-run nor --yes) refuses.
 Exit codes: 0 ok · 5 refused · 6 could-not-check (deskkit contract).`
 
 func main() {
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("deskdisable", nil, os.Args[1:], func([]string) int {
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		return run(os.Args[1:], os.Stdout, os.Stderr)
+	}))
 }
 
 func run(args []string, stdout, stderr io.Writer) int {

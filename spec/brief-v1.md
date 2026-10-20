@@ -3,7 +3,7 @@
 **Version:** v1.0-draft
 **Status:** DRAFT — published for review. v1.0-draft is unstable: breaking changes MAY be
 made without a major-version bump; no stability commitment.
-**Describes reference implementation:** `statusgen` v1.0.43
+**Describes reference implementation:** `statusgen` v1.0.52
 
 ## 1. Scope
 
@@ -63,7 +63,8 @@ validated against the value set given.
 | `value` | string | OPTIONAL | Coarse worth signal — one of `low`, `med`, `high`. Absent is equivalent to `med`. Feeds the Next-up score (`lifecycle-v1.md` §5.2). An out-of-set value MUST be flagged. |
 | `exec-tier` | string | OPTIONAL | One of `any` or `strong`. `strong` asserts the brief MUST NOT be dispatched to a cheap-tier implementer regardless of `effort` (section 6). The value is DERIVED, not chosen: `strong` when any of four questions is answered yes — (a) Does the Task require design decisions the facts do not fully pre-specify? (b) Does correctness depend on cross-component or cross-artifact reasoning? (c) Is it code where a subtle implementation error survives the brief's own tests (auth, funds, concurrency, safety plumbing)? (d) Is this a design brief raised by an error-class trigger (a recurring defect class, rather than one symptom, has accrued enough counted instances or merged fixes to be owed a design)? — and `any` otherwise. An out-of-set value MUST be flagged. |
 | `exec-tier-why` | string | CONDITIONAL | One-line rationale. REQUIRED when `exec-tier` is `strong`; a `strong` brief without it MUST be flagged. |
-| `decision-issue` | integer | OPTIONAL | Tracker issue that carries the human sign-off for a `gate: human` brief. A conforming linter SHOULD emit a non-fatal notice when a `gate: human` brief is in flight (`in-progress`, `implemented`, or `verified`) without one, and MUST NOT hard-error on its absence. |
+| `decision-issue` | integer | OPTIONAL | Tracker issue that carries the human sign-off for a `gate: human` brief. A conforming linter SHOULD emit a non-fatal notice when a `gate: human` brief is in flight (`in-progress`, `implemented`, or `verified`) without one, and MUST NOT hard-error on its absence as such. A change that MOVES, relabels or drops a `gate: human` brief is a different matter: without a decision issue and a recorded ruling that change is refused by the decision-gate hold (`lifecycle-v1.md` §4.5). |
+| `ruling` | string | OPTIONAL | Link to the comment on `decision-issue` that records the human ruling, as an issue-comment URL `https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<ID>`. A wrong TYPE is a parse error. The link's grammar, and what it must resolve to (an unedited comment by a human login on the brief's own decision issue, naming the brief by its board id), are the decision-gate hold's (`lifecycle-v1.md` §4.5); absence is never flagged on its own. |
 | `domain` | string | OPTIONAL | Cynefin classification of the work — one of `clear`, `complicated`, `complex`, or `chaotic`. Absent is equivalent to `complicated` (the safe Ordered default) at read time. An out-of-set value MUST be flagged. |
 | `blocked-by` | string | OPTIONAL | Environment-blocked marker; the only defined value is `env` (the brief is blocked on infrastructure or environment). Absent means the brief is not blocked. An out-of-set value MUST be flagged. |
 | `homed-in` | string | OPTIONAL | The `<owner>/<repo>` the brief's deliverable was re-homed to (a de-housing) — exactly one `/`, both sides non-empty, no whitespace. Absent means a normal in-repo brief. A malformed shape MUST be flagged; the value MUST NOT be checked against a repo allowlist (the shape is all a linter can validate locally). |
@@ -153,13 +154,155 @@ This is a conservation check, not an authorization one: it never licenses loweri
 and a genuinely clean split whose risky work all went to a sibling conserves by keeping the
 child's flags UP, not down.
 
+### 3.5 Schema versions
+
+A brief's `schema:` value names the frontmatter contract it is validated against. Each version
+is a strict superset of the one before it; no field is removed or changed in meaning.
+
+| Schema | Adds | Machine-readable contract | First `statusgen` release that reads it |
+|--------|------|---------------------------|------------------------------------------|
+| `brief-v1` | this document's fields (§3.1, §3.2) | `schemas/brief-v1.json` | v0.9.0 (the earliest published release) |
+| `brief-v2` | the hierarchical `brief:` id `<cell>:<repo>:<stream>:<NN>`, `version:`, and the identity/graph keys `id`, `supersedes`, `gates`, `feathers`, `verify` | `schemas/brief-v2.json` | v1.0.0 |
+| `brief-v3` | the withdrawn-status keys `withdrawn-date`, `withdrawn-reason`, `superseded-by` (§3.6) | `schemas/brief-v3.json` | v1.0.50 |
+
+A `statusgen` release declares the versions it reads, and the first release of each, in
+machine-readable form: `statusgen --version --json` prints
+`{"version": …, "briefSchemas": […], "briefSchemaFirstRelease": {…}}`. The bare
+`statusgen --version` stays a single line holding the tag, because pin checks compare it
+verbatim.
+
+Schema evolution fails closed. A file with no `schema:` key at all is a legacy brief and is
+exempt (§3.1). A `schema:` value in the brief family (`brief-v<N>`) that the binary does not
+recognize MUST NOT fall into that exemption. A conforming linter MUST refuse it loudly,
+naming the schema the file needs, the versions the binary supports, where the first
+supporting release is listed (this table), and the `statusgen` the repository pins in
+`.assay-versions`. A `schema:` value outside the brief family (`contract-v1`,
+`placeholder-v1`, …) names a different document kind and stays out of this parser's scope.
+
+### 3.6 Withdrawn briefs (`brief-v3`)
+
+A brief that a later decision retires, or that is merged into another brief, is
+**withdrawn** (`lifecycle-v1.md` §2.0a). It is not deleted: the file stays, for history and
+links. A withdrawn brief MUST be `schema: brief-v3` and MUST carry:
+
+| Field | Type | Requirement | Description |
+|-------|------|-------------|-------------|
+| `withdrawn-date` | string | REQUIRED when withdrawn | `YYYY-MM-DD` date of the withdrawal. |
+| `withdrawn-reason` | string | REQUIRED when withdrawn, non-empty | One sentence: why, citing the decision, and what (if anything) survives where. |
+| `superseded-by` | array[string] | OPTIONAL | The successor brief(s): `<stream>/<NN>` for this repository, or the global brief id `<cell>:<repo-alias>:<stream>:<NN>` (the brief-v2 `brief:` form) for another one. `[]` means won't-fix: no successor. For a duplicate merged into another brief it names the survivor. |
+
+The stream README row carries the bare Status token `withdrawn`; its link text keeps the
+brief's original title. Unexecuted work leaves Verified and Reviewed as `—`; any existing stamps, Evidence, receipts and review decisions MUST be preserved. The body keeps a
+banner directly under the H1:
+
+```
+> **Withdrawn YYYY-MM-DD — superseded by <successor>.** <reason>. Not executable.
+```
+
+The withdrawal keys (including optional `withdrawal-context`, below) belong to `brief-v3` only. On a `brief-v1` or `brief-v2` file they are
+unknown keys and MUST be tolerated as written — not parsed, not flagged — because boards
+that predate brief-v3 already carry `superseded-by:` as free prose, and a linter upgrade
+MUST NOT turn a previously valid board red. The one rule that crosses versions is the
+status itself: a conforming linter MUST flag a `withdrawn` row whose brief is not
+`brief-v3`, or that has no typed brief file at all.
+
+On a `brief-v3` file a conforming linter MUST flag, as hard problems:
+
+- a withdrawn brief without `withdrawn-date` (or with one that is not a `YYYY-MM-DD`
+  calendar date) or without a non-empty `withdrawn-reason`;
+- a `superseded-by` that is not a list of strings;
+- any withdrawal key on a brief whose status is not `withdrawn`;
+- a same-repository `superseded-by` entry that does not resolve to an existing brief, an
+  entry naming the brief itself, and an entry in neither ref form.
+
+A global `superseded-by` id is syntax-checked, and resolved only when the root it names is
+configured in the run (by that root's registry `self:` key, or by the `<cell>:<alias>`
+prefix of its own brief-v2 ids); an unconfigured root raises a could-not-check NOTICE (syntax checked only). A successor cycle among configured roots is a hard problem. A chain may pass through another withdrawn brief but must terminate; a terminal chain or empty successor list does not prove that any surviving obligation was delivered. A brief whose
+`depends:` names a withdrawn brief MUST get a NOTICE naming the successor, so the edge is
+re-pointed: a withdrawn brief never satisfies a dependency.
+
+#### Revision-bound withdrawal context
+
+A brief-v3 withdrawal MAY point at one shared amendment record:
+
+```yaml
+withdrawal-context:
+  path: docs/changes/example/handoff.json
+  digest: "sha256:<64 lower-case hex characters>"
+```
+
+`path` MUST be a clean repository-relative regular file within the repository (including
+symlink resolution), at most 4 MiB. The object is closed: `path` and `digest` are required,
+and no other key is allowed. `digest` is the canonical decoded handoff digest, not a raw
+file checksum. Lint strictly decodes context-handoff-v1 or
+[context-handoff-v2](context-handoff-v2.md), checks the digest, requires approval of the
+record's exact target revision, and finds this brief's retire/replace/split obligation.
+Its normalized `replaced_by` list MUST match `superseded-by`. Observed active work on the
+brief MUST have an acknowledged treatment, including cancellation/reconciliation. An
+executed impact (including in-progress work) or a brief carrying Evidence MUST have a preserved-history entry.
+
+One handoff can cover many briefs. This pointer does not duplicate the target, approval,
+claim, history or metric payload into every brief. A valid record is internally consistent;
+it is not proof of discovery completeness, a stopped worker, or a delivered successor.
+Current claims and PR heads must be re-read at the amendment boundary. The existing
+handoff/manifest contract continues to own patch and follow-up binding.
+
+For rollout, missing `withdrawal-context` is advisory on human-gated or historically
+executed work, rather than a new failure on existing branches. Supplied contexts MUST
+validate. Withdrawal MUST NOT clear Evidence, Verified/Reviewed stamps or merged-work
+debt. The witness comparator MUST still surface known execution (including a merged PR
+whose current fold is unknown); only an unstarted `todo` witness needs no drift NOTICE.
+Use `statusgen withdrawal-audit` and the [rollout runbook](../docs/withdrawal-rollout.md)
+to reconcile open implementation and evidence PRs. A missing context never suppresses
+those checks, and a supplied context never grants merge, closure or verification authority.
+
+### Product-target binding planning (13 October 2026)
+
+The [future architecture amendment](../docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md)
+routes optional `outcome-revision` and versioned context bindings to statusgen/23.
+This note does not add a supported field to the frontmatter contract: parser, schemas,
+version negotiation and all consuming readers must land together. Keep `outcome` and
+`satisfies` grammar unchanged; missing legacy bindings remain explicitly unbound.
+Observation syntax belongs to the continuing-operations impact extension, not a second
+brief lifecycle or a universal observation mandate.
+
 ## 4. Body structure
 
 ### 4.1 Context section
 
 The body MUST contain a `## Context` section. It MUST include:
 
-- A `files:` line listing exact paths the implementer touches.
+- A column-zero `files:` field listing repository-relative paths the implementer touches, as
+  bare or backtick-quoted list items or inline comma-separated declarations.
+  The following grammar governs verification input receipts, coverage, admission
+  binding and wake scheduling; other coordination-tag readers are outside this contract.
+  Literal files/directories, segment globs (`*`, `?`, character classes) and
+  bounded finite brace alternatives are supported. A declaration ends before
+  its em-dash description or a colon after a quoted path; descriptions and
+  parenthesized annotations do not declare additional paths. The field ends at
+  the next blank line, known column-zero Context field key or column-zero section
+  heading. An indented `## ` line inside Context MUST refuse, including while a
+  files list is paused after a blank. A field key may carry a parenthesized
+  annotation, such as `facts (date):`. HTML comments within a declaration or its
+  description, and raw HTML blocks or comments while awaiting the next field,
+  MUST refuse ambiguous section containment. Trailing whitespace and CRLF MUST
+  NOT count as indentation. Unknown keys, loose list/quote/code
+  continuations after the blank, and unsupported markers inside Context MUST
+  refuse rather than drop declarations. Outside Context, field-shaped `files:`
+  declarations refuse; ordinary prose and inline references remain prose.
+  Hyphen-minus/en-dash description separators are unsupported. Examples inside fences do not
+  declare paths. A region skipped as fenced MUST NOT contain a section heading
+  or files marker; such examples refuse conservatively. Inside Context, an
+  indented opener or one within/after the files field before its next known field
+  MUST refuse. This bounded grammar does not infer list/HTML container ends.
+  Fence openers/closers MUST have at most three leading ASCII spaces;
+  a backtick opener's info string MUST contain no backtick. Ambiguous fence-shaped
+  Context lines refuse. A closing fence MUST use the same character and be at least as
+  long as its opener; an unclosed fence refuses. Duplicate Context sections/fields
+  are ambiguous and refused.
+  Abbreviations, placeholders, recursive `**` and malformed/escaping paths MUST
+  be reported explicitly, never interpreted as absent deliverables. See the
+  [declaration and observation contract](../docs/declared-input-scope.md).
 - A `facts:` block containing 3-5 project facts as `key: value` pairs (no narrative prose).
 
 If the brief changes a SHARED VALUE (a party, identity, environment variable name,

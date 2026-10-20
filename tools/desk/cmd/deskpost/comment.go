@@ -8,7 +8,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// runComment posts a plain comment AS THE REVIEWER APP on EITHER a pull request or an
+// runComment admits reviewer-role callers and posts AS THE REVIEWER APP on a PR or an
 // issue (#296) — the number is resolved to its object kind by resolveTarget,
 // never assumed. Comments get the size cap and the outbound-write check only, on both
 // kinds — no verdict schema.
@@ -45,6 +45,20 @@ func runComment(owner, name string, num int, wantHead string, forcedKind *deskki
 	// repo + num are the budget scope, known from argv with no network call — so the gate
 	// runs upstream of the POST below rather than after it (writeflow.go, runOutward).
 	return runOutward(args, opts, repo, num, func(entries []deskkit.Entry, opts postOpts) writeResult {
+		// This backend has reviewer custody on both forges. Resolve the caller at the
+		// shared entry point before minting credentials or reading a target: ordinary
+		// comments must never silently borrow another role's identity (#2202).
+		role, loop, rerr := deskkit.SessionTokenRole("deskpost comment")
+		if rerr != nil {
+			return withDigest(fromReadErr(preVerb, repo, num, "", rerr), dig)
+		}
+		if role != "reviewer" {
+			return withDigest(refused(preVerb, repo, num, "", fmt.Sprintf(
+				"deskpost comment uses reviewer credentials, but loop %q acts as %q; refusing to post as another role. "+
+					"For issue comments use deskfile attach -R %s --to %d --kind issue --body-file F; "+
+					"for your own PR use deskreply %s %d --body-file F. Keep your own DESK_LOOP identity.",
+				loop, role, repo, num, repo, num)), dig)
+		}
 		if !deskkit.IsAllowedRepo(repo) {
 			return refused(preVerb, repo, num, "", "repo "+repo+" is not in the fixed desk repo set")
 		}

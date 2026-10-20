@@ -34,7 +34,7 @@ func admittedFixture(t *testing.T, admit bool) (string, string) {
 	}
 	if admit {
 		bin := t.TempDir()
-		receipt := `{"Issue":7,"Binding":{"Run":"r","Repo":"example-org/one","Source":"s","Brief":"brief.md","Model":"m","Tier":"strong"}}`
+		receipt := `{"Issue":7,"Binding":{"Version":1,"Run":"r","Repo":"example-org/one","Source":"s","Brief":"brief.md","Model":"m","Tier":"strong"}}`
 		if err := os.WriteFile(filepath.Join(bin, "deskdispatch"), []byte("#!/bin/sh\necho '"+receipt+"'\n"), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -84,6 +84,7 @@ func TestAdmittedRowsStripGitEnv(t *testing.T) {
 	}
 }
 
+// regression: #2715
 // TestAdmittedRowsPinGrep: grep's pattern settings in the home's config cannot
 // change what an admitted row's git grep matches. The unadmitted control
 // proves the setting changes the match there.
@@ -93,6 +94,11 @@ func TestAdmittedRowsPinGrep(t *testing.T) {
 		t.Run(map[bool]string{true: "admitted", false: "control"}[admit], func(t *testing.T) {
 			root, _ := admittedFixture(t, admit)
 			runGit(t, root, "config", "grep.patternType", "fixed")
+			if !admit {
+				// The control is meant to show the fixture's local config. An
+				// admitted row's inherited numbered config would mask that plant.
+				t.Setenv("GIT_CONFIG_COUNT", "0")
+			}
 			code := verifyrunRow(t, root, row)
 			if admit && code != verifyrunExitPass {
 				t.Fatalf("admitted row's git grep followed the home's grep.patternType (exit %d)", code)

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -15,50 +14,61 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/storer"
 )
 
-// runMine is the `mine` mode: walk the target repo with go-git and extract its
+// mineOptions are the `mine` verb's parsed settings (cli.go declares them).
+type mineOptions struct {
+	Repo, Out        string
+	InRepo           bool
+	BlockMin         int
+	ChurnWindowDays  int
+	IdentityMap      string
+	InstructionGlobs string
+	FixSource        string
+	DefectLabels     string
+}
+
+// mineMain is the `mine` mode: walk the target repo with go-git and extract its
 // history into the append-only artifact tables under the tracking root.
 //
 // Full history by default; a repeat run reads the prior mine.json and extracts
 // ONLY the commits that postdate the recorded tip, appending — never rewriting —
 // and advancing the tip/horizon (extend-never-replace, spec §3.1). Every mode is
 // READ-ONLY against the target repo; the only writes land under --out.
-func runMine(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("mine", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	repo := fs.String("repo", ".", "path to the git repository to mine (read-only)")
-	out := fs.String("out", "", "tracking root for artifacts (required unless --in-repo)")
-	inRepo := fs.Bool("in-repo", false, "opt in to writing artifacts into the mined repo itself")
-	blockMin := fs.Int("block-min", DefaultBlockMin, "minimum identical-line run to count as a moved/copied block (M1 §4.1)")
-	churnDays := fs.Int("churn-window-days", DefaultChurnWindowDays, "churn window in days: a line revised/deleted within this of landing is churned (M1 §4.2)")
-	identityMap := fs.String("identity-map", "", "path to a JSON author-identity class map (unmapped authors fall into an explicit 'unclassified' class)")
-	instructionGlobs := fs.String("instruction-globs", "", "comma-separated instruction-doc globs for the brittleness pass (spec §4.6); empty leaves reference-validity could-not-measure, never a silent zero")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-
-	idMap, err := LoadIdentityMap(*identityMap)
+func mineMain(o mineOptions, stdout, stderr io.Writer) int {
+	idMap, err := LoadIdentityMap(o.IdentityMap)
 	if err != nil {
 		fmt.Fprintln(stderr, "qualgen mine:", err)
 		return 2
 	}
 	cfg := DefaultM1Config()
-	cfg.BlockMin = *blockMin
-	cfg.ChurnWindowDays = *churnDays
+	cfg.BlockMin = o.BlockMin
+	cfg.ChurnWindowDays = o.ChurnWindowDays
 	cfg.Identity = idMap
-	cfg.Instruction = InstructionBrittleConfig{Globs: splitGlobs(*instructionGlobs)}
+	cfg.Instruction = InstructionBrittleConfig{Globs: splitGlobs(o.InstructionGlobs)}
+	if o.FixSource != "" {
+		cfg.FixSource, err = loadFixSource(o.FixSource)
+		if err != nil {
+			fmt.Fprintln(stderr, "qualgen mine:", err)
+			return 2
+		}
+		cfg.DefectLabels = splitGlobs(o.DefectLabels)
+		if len(cfg.DefectLabels) == 0 {
+			fmt.Fprintln(stderr, "qualgen mine: --defect-labels must name at least one label")
+			return 2
+		}
+	}
 
-	trackingRoot := *out
+	trackingRoot := o.Out
 	if trackingRoot == "" {
-		if *inRepo {
+		if o.InRepo {
 			// Explicit opt-in: default the tracking root to the mined repo.
-			trackingRoot = *repo
+			trackingRoot = o.Repo
 		} else {
 			fmt.Fprintln(stderr, "qualgen mine: --out <dir> is required (or pass --in-repo to write into the mined repo)")
 			return 2
 		}
 	}
 
-	if err := mineWithConfig(*repo, trackingRoot, stdout, cfg); err != nil {
+	if err := mineWithConfig(o.Repo, trackingRoot, stdout, cfg); err != nil {
 		fmt.Fprintln(stderr, "qualgen mine:", err)
 		return 1
 	}
@@ -95,6 +105,12 @@ func mineWithConfig(repoPath, trackingRoot string, stdout io.Writer, cfg M1Confi
 		return fmt.Errorf("resolve HEAD: %w", err)
 	}
 	tip := head.Hash().String()
+	// Refuse a wrong-target or stale source before creating output artifacts.
+	if cfg.FixSource != nil {
+		if err := cfg.FixSource.validateRepo(r, tip); err != nil {
+			return err
+		}
+	}
 
 	store := NewStore(trackingRoot)
 	prior, err := store.ReadHeader()
@@ -207,6 +223,11 @@ func mineWithConfig(repoPath, trackingRoot string, stdout io.Writer, cfg M1Confi
 		return fmt.Errorf("compute M1 instruction-brittleness metrics: %w", err)
 	}
 
+	if cfg.FixSource != nil {
+		if err := appendM2(store, r, cfg.FixSource, cfg.DefectLabels, runAt); err != nil {
+			return fmt.Errorf("compute M2 defect traces: %w", err)
+		}
+	}
 	fmt.Fprintf(stdout, "qualgen mine: %d new commit(s) extracted; tip %s; %d commit(s) in table\n",
 		len(collected), shortSHA(tip), commitCount)
 	return nil

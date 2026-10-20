@@ -32,7 +32,7 @@ is_shell_impl(){ head -c2 "$CELLCTL" 2>/dev/null | grep -q '#!'; }
 # Resolved with pwd -P: a TMPDIR with a trailing slash or a symlinked temp root would otherwise
 # make the paths cellctl prints (it normalises) differ from the ones the test compares against.
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-house.XXXXXX")" && pwd -P)"
-trap 'rm -rf "$T"' EXIT
+trap 'suite_status=$?; if declare -F private_deskwt_finish >/dev/null; then private_deskwt_finish || suite_status=1; fi; rm -rf "$T"; exit "$suite_status"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
 sha(){ if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
@@ -91,8 +91,13 @@ esac
 } > "$CELLCTL_TEST_OUT"
 EOF
 chmod +x "$T/bin/claude"
-export PATH="$T/bin:$PATH"
+# shellcheck source=SCRIPTDIR/private-path.sh
+source "$HERE/private-path.sh"
+private_path "$T/bin"
+private_deskwt "$T/bin"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
+# regression: #2738 — normal-path isolation and real-launch positive control.
+private_deskwt_check "$CELLCTL" "$REPO"
 CONFIG_SHA_BEFORE="$(sha "$REPO/.git/config")"
 
 # ---------------------------------------------------------------- new
@@ -176,14 +181,14 @@ d="$T/dwt-\$2"; git worktree add -q "\$d" -b "deskwt/\$2" FETCH_HEAD; echo "some
 EOF
 chmod +x "$T/bin/deskwt"
 export CELLCTL_TEST_OUT="$T/launch-verify.env"
-"$CELLCTL" desk example-cell verify-desk >/dev/null 2>&1
+CELLCTL_DESKWT=1 "$CELLCTL" desk example-cell verify-desk >/dev/null 2>&1
 assert "deskwt role-init preferred when it supports the role (cell path links to its tree)" '[[ -L "$CELL/worktrees/verify-desk" && "$(readlink "$CELL/worktrees/verify-desk")" == "$T/dwt-verify-desk" ]]'
 assert "session cwd = the deskwt-created tree" 'grep -qxF "PWD=$(real "$T/dwt-verify-desk")" "$CELLCTL_TEST_OUT"'
 assert "deskwt-created tree is locked too" 'git -C "$REPO" worktree list --porcelain | grep -A3 -F "worktree $(real "$T/dwt-verify-desk")" | grep -q "^locked"'
 # ... and one that REFUSES the probe (exit 5, today's installed behaviour) is not used.
 printf '#!/usr/bin/env bash\nexit 5\n' > "$T/bin/deskwt"
 export CELLCTL_TEST_OUT="$T/launch-intake.env"
-"$CELLCTL" desk example-cell intake-desk >/dev/null 2>&1
+CELLCTL_DESKWT=1 "$CELLCTL" desk example-cell intake-desk >/dev/null 2>&1
 assert "deskwt that refuses the probe → cellctl's own worktree path" '[[ ! -L "$CELL/worktrees/intake-desk" && -e "$CELL/worktrees/intake-desk/.git" ]]'
 # ... and CELLCTL_DESKWT=0 forces the own path even when deskwt would support the role.
 cat > "$T/bin/deskwt" <<EOF

@@ -401,3 +401,36 @@ func TestInitWorkflowPassesNonSecretRosterVariables(t *testing.T) {
 		t.Errorf("workflow carries %d roster-presence step(s), want 2 (lint + regen) (#1110)", n)
 	}
 }
+
+// TestInitWorkflowScaffoldsDecisionGate: the scaffolded GitHub workflow carries the
+// decision-gate hold's network layer (lifecycle-v1 §4.5) as its own pull-request job
+// with the issue read it needs, says that an admin must make it required, and fails
+// closed on a pinned statusgen too old to have the flag. The GitLab scaffold says the
+// network layer is not there.
+func TestInitWorkflowScaffoldsDecisionGate(t *testing.T) {
+	job := section(initWorkflow, "  decision-gate:", "  __none__:")
+	if job == "" {
+		t.Fatal("initWorkflow scaffolds no decision-gate job")
+	}
+	for _, want := range []string{
+		"if: github.event_name == 'pull_request'",
+		"issues: read",
+		"pull-requests: read",
+		"fetch-depth: 0",
+		"statusgen --root . --decision-gate --pr \"$PR_NUMBER\"",
+		"grep -q -- '-decision-gate'",
+		"exit 1",
+	} {
+		if !strings.Contains(job, want) {
+			t.Errorf("decision-gate job missing %q", want)
+		}
+	}
+	for _, want := range []string{"REQUIRED status check", "Merging this workflow does not do that", "never runs at a PR's ready-flip"} {
+		if !strings.Contains(initWorkflow, want) {
+			t.Errorf("initWorkflow does not say %q", want)
+		}
+	}
+	if !strings.Contains(initGitlabCI, "is not scaffolded here") || !strings.Contains(initGitlabCI, "well-formed-link check alone") {
+		t.Error("initGitlabCI does not say the decision-gate network layer is absent on GitLab")
+	}
+}

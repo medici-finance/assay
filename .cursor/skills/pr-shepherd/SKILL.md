@@ -32,11 +32,13 @@ Before touching the branch, verify no other session or worker owns it:
   `state=claimed` past ~20 minutes or `state=dispatched` past ~120 minutes is a DEAD claim,
   not an owner. **The claim tool is `deskclaim-ref`** — installed with desk-tools, verbs
   `acquire` / `progress` / `release` / `steal` / `show` / `list`, deskkit exit codes **0** ok ·
-  **5** refused (a live holder owns it) · **6** unverifiable. A repo may ship its own
+  **5** refused (a live holder owns it) · **6** unverifiable; `list` alone adds **7** partial
+  (some refs unreadable and named on stderr — incomplete, never idle). A repo may ship its own
   `tools/dispatch-claim.sh`; `deskdispatch` prefers `deskclaim-ref` when it is on PATH and falls
   back to that script when the resolved root carries it, and the two speak the same wire
   protocol, so either one's `show` answers this question. Hand either tool your own role's token
-  (`--token-file "$(desktoken worker)"` for the binary, `GH_TOKEN` exported for the script) —
+  (`--token-file "$(desktoken worker)"` for the binary, `GH_TOKEN` set on the script's own
+  command, never exported — desk-shell.md §Forge CLI as the role) —
   neither reads anything but the credential it is given.
   Run BOTH reads: the tool acquires and lists in the `refs/dispatch/*` namespace, while the
   `ls-remote` pattern above lists the `refs/heads/dispatch/*` branch refs the Go claim readers
@@ -64,7 +66,9 @@ rehearse with `--dry-run` before the real upsert.
 
 Work in your **own worktree** (`capability:isolate-workspace`), never the shared checkout:
 
-> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+
+> **Every `gh` call carries this role's `GH_TOKEN`, reads included.** When no desk verb covers a forge call, run it only through the recipe in [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role), never a hand-typed shortcut. That recipe takes the role from `$DESK_LOOP`, mints it with `desktoken`, scopes the token to that one command without exporting it, and stops before `gh` unless the mint exited 0 and the token file holds a non-whitespace token. A bare `gh` call runs as the host's stored login, which is usually a human's, so a desk never runs one, not even for a read.
 
 ```bash
 git fetch origin <branch>:<branch>            # branch may not exist locally yet
@@ -174,6 +178,29 @@ model instruction, never that ruling — and once recorded, executing it is rout
 cites the ruling. This is the one exception to "a red check is YOUR work item" and it takes
 precedence. Every other finding on the PR stays yours to work meanwhile.
 
+## Withdrawn-brief reconciliation — before ordinary CI repair
+
+For every entry path, read the owning brief's current lifecycle before restoring old
+schema/status values or repairing CI. If it is withdrawn (or `deskboard stalled` reports
+`reconcile`), first read its date/reason, successors and any revision-bound
+`withdrawal-context`. Re-read the PR head and current claim; an active owner is not
+cancelled by a changed board row.
+
+Record the implementation/evidence checkpoint and surviving obligations. Identify the
+active claim's owner from the current claim record; if there is no active claim, use
+the PR's recorded author as the work owner. Choose an explicit treatment with that
+owner: retain useful work under the current plan, retarget
+or re-scope the PR through an approved amendment, finish independent verification of
+what actually landed, or propose disposition through the existing independent
+confirmation gates. Preserve the original brief/tombstone, Evidence, stamps and receipts;
+old acceptance evidence does not verify a newly scoped successor. Do not repair a stale
+PR by reviving its retired plan, redirecting dependencies automatically, weakening a
+gate, or treating withdrawal alone as permission to close it. If ownership cannot be
+established, or a scope/authority choice exceeds the current approval, file or attach a
+`needs-decision` stating the affected PR/brief, checkpoint, treatment needed and
+recommended default; the driver decides. Keep the PR and claim intact pending that
+ruling. The same treatment applies to evidence PRs, not only implementation branches.
+
 ## 4. Reviewer findings — fix, or dispute with evidence; all of them
 
 Read every review by the reviewer App (`gh pr view <N> --json reviews`, plus the line comments
@@ -251,7 +278,10 @@ discarded; it must never be the explanation for a verdict you cannot show.
 
 ## 6. Watch loop
 
-While the PR is open, poll it — or arm a `capability:durable-monitor` on it:
+Use [desk-common §Supervision and context](../../references/desk-common.md#supervision-and-context)
+for watch ownership, bounded waits and same-item continuation. While the PR is open, poll it
+at a bounded interval (the supervising desk's cadence where defined), honoring backoff — or
+arm a `capability:durable-monitor` on it:
 
 ```bash
 gh pr view <N> --json state,mergeable,reviews,statusCheckRollup

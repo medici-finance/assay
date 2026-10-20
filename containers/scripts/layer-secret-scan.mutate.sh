@@ -170,6 +170,53 @@ mutated "$WORK/merged.sh" "$?"
     "trap 'rm -rf \"\$WORK\"' HUP INT TERM"
 }
 
+# regression: #3203 — prove exact-pair precision and continued scanning.
+# These mutations only run the offline label fixtures. The original Docker
+# baseline and all layer/fail-closed mutants still run below.
+# The single quotes deliberately preserve exact source lines, including the
+# literal trailing backslash used by the case alternatives.
+# shellcheck disable=SC1003,SC2016
+{
+# Revert to the previous exact case rather than leave a blank after a shell
+# line continuation; this removes only recognition of the new packing.
+swap label-remove \
+  '    /usr/local/bin/deskpr:"sk-"decidedunverifiablecheck | \' \
+  '    /usr/local/bin/deskpr:"sk-"decidedunverifiablecannot | \'
+swap label-prefix \
+  '    /usr/local/bin/deskpr:"sk-"decidedunverifiablecheck | \' \
+  '    /usr/local/bin/deskpr:"sk-"decided* | \'
+swap label-path \
+  '    /usr/local/bin/deskpr:"sk-"decidedunverifiablecheck | \' \
+  '    /usr/local/bin/deskpr:* | \'
+swap label-anywhere \
+  '    /usr/local/bin/deskpr:"sk-"decidedunverifiablecheck | \' \
+  '    *:"sk-"decidedunverifiablecheck | \'
+swap label-surface \
+  '  _label_path="$(image_path "$1")" || return 1' \
+  '  _label_path="$(image_path "$1")" || _label_path=/usr/local/bin/deskpr'
+swap label-first \
+  '    known_label_match "$hf" "$sample" && continue' \
+  '    known_label_match "$hf" "$sample" && break'
+}
+
+label_mutant() { # <mutant> <assertion that must catch it>
+  LAYER_SECRET_SCAN="$WORK/$1.sh" sh "$HERE/layer-secret-scan.labels.test.sh" \
+    > "$WORK/out.$1" 2>&1
+  _rc=$?
+  if [ "$_rc" -ne 1 ] || ! grep -qF "FAIL labels: $2 (" "$WORK/out.$1"; then
+    echo "FAIL: $1 mutant — required label assertion did not catch it (exit $_rc)" >&2
+    cat "$WORK/out.$1" >&2
+    exit 1
+  fi
+  echo "killed: $1 mutant fails: $2"
+}
+label_mutant label-remove 'pr-new exact path/string pair'
+label_mutant label-prefix 'pr-new extended sequence'
+label_mutant label-path 'pr-new generic key after label'
+label_mutant label-anywhere 'pr-new unrelated path'
+label_mutant label-surface 'pr-new build history'
+label_mutant label-first 'pr-new generic key after label'
+
 # --- 1. baseline: the real scan passes every assertion -------------------------
 sh "$TEST" > "$WORK/out.real" 2>&1
 RC_REAL=$?

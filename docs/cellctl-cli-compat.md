@@ -103,7 +103,9 @@ it also fails when a listed row stops differing, so this table cannot go stale i
   model-policy and `--set` refusals, and the `down` and `up` container refusals are unchanged and
   still live in the domain code. The parser grants nothing: a test calls the handlers with the
   parser bypassed and requires the same refusals.
-- **`up` output.** The per-role command lines `up` prints still re-execute and reproduce the plan.
+- **`up` output.** The per-role command lines `up` prints still re-execute and reproduce the plan. A dry run still prints one line per absent role, byte for byte as before, and
+  now also a disposition line for a role that is already up or stale; `up` itself converges (it
+  no longer prompts to reconcile a stale role: that is `up --plan` then `up --apply`).
 
 ## What differs
 
@@ -222,7 +224,9 @@ test requires every other byte of those recorded diagnostics to stay identical.
 (`cache example clean`) keep their exit codes and stderr. Their JSON report adds
 the policy's compiler-cache trim age (`build_max_age_seconds`, 86400 by
 default) and the age trim's counts (`trimmed_build_entries`,
-`trimmed_build_bytes`). See [managed Go caches](cellctl-go-cache.md). The parity
+`trimmed_build_bytes`); a pass that trimmed also carries its `low_water_trim`
+outcome. The low-water mark and trim safety floor are serialized only when set
+away from their defaults. See [managed Go caches](cellctl-go-cache.md). The parity
 test requires every other byte of those reports to stay identical.
 
 `reset` and `comms init` are additional commands. The contained `comms-reader`

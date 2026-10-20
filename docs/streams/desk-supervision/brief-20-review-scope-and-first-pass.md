@@ -108,7 +108,9 @@ Named tests below are planned. The verifier must see each named PASS; exit zero 
 
 Prompt assertions alone do not prove reviewer behavior. The planned case corpus must include a first-pass review packet and a follow-up packet for each test scenario; an independent reviewer scores all three scope outcomes against the contract and records model/version, packet hashes and disagreements in Evidence. A literal-text test alone cannot satisfy this row.
 
-| 4 | check:manual +flow | `cat docs/streams/desk-supervision/review-scope-cases.md` | independent reviewer records that the synthetic packets satisfy all three scope outcomes above; any disagreement prevents acceptance |
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 4 | gate:model +flow | `cat docs/streams/desk-supervision/review-scope-cases.md` | independent reviewer records that the synthetic packets satisfy all three scope outcomes above; any disagreement prevents acceptance |
 
 ## Evidence
 

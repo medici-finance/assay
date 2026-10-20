@@ -149,6 +149,10 @@ func (r *readOnlyForge) ListLabelEvents(repo ForgeRepo, number int) ([]LabelEven
 	return r.inner.ListLabelEvents(repo, number)
 }
 
+func (r *readOnlyForge) IssueLabelHistory(repo ForgeRepo, number int) (*LabelHistory, error) {
+	return r.inner.IssueLabelHistory(repo, number)
+}
+
 func (r *readOnlyForge) ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error) {
 	return r.inner.ListIssueLabelEvents(repo, number)
 }

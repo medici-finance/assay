@@ -14,6 +14,7 @@ unblocks:
 - graph-execution/18
 - graph-execution/21
 - graph-execution/25
+- performance-collection/09
 effort: M
 gate: human
 risk:

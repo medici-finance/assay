@@ -120,7 +120,16 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		if err != nil {
 			return fromReadErr("ready", repo, pr, head, err)
 		}
-		state, vhead, found, noOpApproval := latestAppVerdict(reviews)
+		// #3093: the forge can re-anchor an older review's commit_id onto a newer head. Every
+		// GRANT this verb reads (gate (b)'s APPROVED, the external-prerequisite exemption's
+		// citing APPROVEs, gate (e)'s security pass) is decided on grantReviews — the same
+		// list with each grant at head that was submitted BEFORE the head commit's committer
+		// date removed. Blocks are never removed. An unreadable head date refuses here.
+		grantReviews, err := withoutStaleGrants(client, reviews, head, stderr)
+		if err != nil {
+			return fromReadErr("ready", repo, pr, head, err)
+		}
+		state, vhead, found, noOpApproval := latestAppVerdict(grantReviews)
 		if !found {
 			return refused("ready", repo, pr, head,
 				"no APPROVED/CHANGES_REQUESTED CORRECTNESS verdict from "+reviewerBotDisplay()+
@@ -142,7 +151,7 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 			// securityFail is passed in so the exemption and gate (e0) cannot disagree about
 			// the same retraction. A declared-but-unverified claim refuses WITH its reason;
 			// an undeclared CR keeps the ordinary refusal verbatim.
-			out := clearedByExternalPrereq(reviews, head, securityVerdictStanding(reviews, head) == secFail)
+			out := clearedByExternalPrereq(grantReviews, head, securityVerdictStanding(grantReviews, head) == secFail)
 			if out.declared && out.decision.Cleared {
 				fmt.Fprintln(stderr, "deskpost: external-prerequisite exemption cleared the standing "+
 					"CHANGES_REQUESTED at "+short(head)+" — "+out.decision.Reason)
@@ -219,7 +228,7 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		// reduction. Open-PR heads have relied on exactly that accident; splitting the
 		// lanes without this check would have converted them from blocked to flippable on
 		// any non-risk-classed path.
-		secv := securityVerdictStanding(reviews, head)
+		secv := securityVerdictStanding(grantReviews, head)
 		if secv == secFail {
 			return refused("ready", repo, pr, head,
 				"an App review carries a standing 'Security-Review: fail' — the security verdict is "+
@@ -365,7 +374,11 @@ func ciReadErr(what, head string, err error) error {
 // KEEP IN SYNC with deskboard/board.go's reduceReviews, which mirrors this same reduction
 // for the advisory board (the board must never report FLIP/MERGE-NOW on a no-op approval
 // either — that is exactly what would have hidden the live-evidence forgeries from a human
-// reading the board instead of the raw review timeline by hand). NOT AN EXACT MIRROR: this
+// reading the board instead of the raw review timeline by hand). Both reductions also skip a
+// STALE grant — an APPROVED at head submitted before the head commit's committer date, which
+// the forge re-anchored from an older head (#3093): in both tools the CALLER removes it
+// before the reduction runs (withoutStaleGrants here, its twin in deskboard's
+// classifyPRFrom). NOT AN EXACT MIRROR: this
 // reduction is lane-filtered (correctness only, see classifyLane below) and the board's is
 // not, so the board can raise SUSPECT-APPROVAL on a cross-lane sequence this gate treats as
 // an ordinary block. The divergence flags on an advisory surface rather than granting on a
@@ -436,9 +449,15 @@ func latestAppVerdict(reviews []reviewInfo) (state, head string, found, noOpAppr
 		// genuinely-different commits read as the SAME one, which suppresses the approval
 		// and REFUSES the flip. That is the fail-closed direction. The error that would
 		// fail this gate OPEN is the opposite one (commit_id differing when no push
-		// happened), and no observation of it exists. So: not proof the field is sound —
-		// its error direction remains could-not-check — but the residual is a gate that
-		// over-refuses, never one that over-grants.
+		// happened) — and #3093 OBSERVED it: an APPROVED submitted while A was the head,
+		// later reported at a merge commit B, read here as "a new verdict after a genuine
+		// push" and cleared a standing CHANGES_REQUESTED at A. commit_id alone therefore
+		// cannot carry this reduction. The independent second signal is time, applied by
+		// the caller BEFORE this reduction runs: withoutStaleGrants removes every grant at
+		// head whose submitted_at predates the head commit's committer date (fail closed
+		// when that date cannot be read), so a re-anchored APPROVED never reaches this loop
+		// as a grant. The residual is the committer date itself, which is client-set — see
+		// deskkit/reanchor.go.
 		if r.CommitID != lastCommit {
 			lastCommit = r.CommitID
 			commitBlocked = false

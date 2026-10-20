@@ -242,7 +242,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 36 | [Importable fact reader SDK and first shared read](brief-36-importable-fact-reader-sdk-and-first-shared-read.md) | 1 | L | implemented | — | — |
 | 37 | [Scoped forge mirror with persisted freshness, coverage and polling repair](brief-37-scoped-forge-mirror-with-persisted-freshness-coverage-and-polling-repair.md) | 7 | L | todo | — | — |
 | 38 | [Forge event adapter, feedback observations and durable reevaluation demand](brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md) | 8 | L | todo | — | — |
-| 39 | [Typed forge service contract and scoped client SDK](brief-39-typed-forge-service-contract-and-scoped-client-sdk.md) | 1 | M | todo | — | — |
+| 39 | [Typed forge service contract and scoped client SDK](brief-39-typed-forge-service-contract-and-scoped-client-sdk.md) | 3 | M | todo | — | — |
 | 40 | [Authenticated forge serving and role executor custody](brief-40-authenticated-forge-serving-and-role-executor-custody.md) | 6 | L | todo | — | — |
 | 41 | [Write-through forge receipts and read-after-write projection](brief-41-write-through-forge-receipts-and-read-after-write-projection.md) | 8 | L | todo | — | — |
 | 42 | [SHA-bound source queries and immutable result caching](brief-42-sha-bound-source-queries-and-immutable-result-caching.md) | 7 | L | todo | — | — |
@@ -663,3 +663,27 @@ and its CI registry declares the whole stream-root input without publishing a wi
 stream name. Disclosure/secret guards retain their rules and negative controls. These
 command-path corrections supersede the earlier unchanged-Verify statement for these two
 rows only; existing human decisions and historical Evidence remain intact.
+
+## Workflow-efficiency contract amendment — 17 October 2026
+
+The approved workflow-efficiency spec adds review/issue consumer acceptance to /37–45. /39 maps the qualified desk-tools/39 contract through a legal public API; /45 requires desk-tools/43–44 caller/cost qualification. Direct-reader /38–44 in desk-tools do not depend on this service path. See the [delivery map](../../desk-workflow-efficiency-change-map.md#authored-delivery-routing). Existing Evidence and activation gates remain unchanged.
+
+## Performance reuse — 2026-10-16
+
+The immediate local lane remains desktools-v2/58–62 plus statusgen/26. This stream keeps
+the shared online ownership: /37 refresh coalescing and coverage, /38 event hints, /40
+isolated role executors, /43 incremental recomputation, /44 Git reuse trial and /45
+served qualification. /40 now explicitly consumes /58–59's internal provider; /45 consumes
+/62's matched workload. Their existing later waves and activation gates remain. No
+local credential/startup fix is made dependent on the service or PostgreSQL.
+
+## Query/cache performance observations — 19 October 2026
+
+The [perf-v3 boundary contract](../../performance-attribution-spec.md#querycache-service-and-passthrough-boundaries)
+uses /37–45's existing service owners. /39 defines typed client diagnostic context, /37–38
+refresh/poll/event origins, /40–41 service/executor/passthrough, /42–43 query/cache outcomes
+and /45 the served 50-query/three-page/coalescing/report flow. Client, handler and provider
+measurements stay separately named; shared upstream cost is observed once and missing
+instrumentation is a gap. These remain planned todo packages at inspected main 2e02111ed,
+not claims of deployment. Reuse /63–65's local contract/adapters without creating a new
+measurement service or making local v3 depend on the future forge service.

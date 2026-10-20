@@ -238,6 +238,10 @@
     "decision-issue": {
       "description": "Optional GitHub issue number tracking a human decision on this brief.",
       "type": "integer"
+    },
+    "ruling": {
+      "description": "Optional link to the comment on decision-issue that records the human ruling, as an issue-comment URL (https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<ID>). Only the type is a shape rule; the link's grammar and what it must resolve to are the gate:human transition check's (lifecycle-v1 section 4.5).",
+      "type": "string"
     }
   }
 }

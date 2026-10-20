@@ -12,10 +12,12 @@ gate-why: "sensitive-data is yes because the mirror copies private pull request,
 issues: []
 outcome: none
 schema: brief-v2
-version: 2
+version: 5
 id: 06dc3c03-bfb0-49cf-b171-8f7d192b7aea
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - docs/proposals/non-ci-architecture/20-amendment-manifest.md — R6 owner row and the "R2–R8 amendment scope" R6 paragraph
   - docs/proposals/non-ci-architecture/16-delivery-sequence.md — package R6 (pagination, lost/reordered events, permission loss and partial scans preserve uncertainty; a client outage cannot cause a poll storm)
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md — "Reuse and expand the existing forge-mirror work" (pipeline, one ingestion owner per scope, overlap windows, stale-not-deleted, centralised refresh)
@@ -26,6 +28,8 @@ sources:
   - docs/streams/forge-neutral/brief-33-forge-reads-for-statusgen-s-remaining-sites.md — the all-state issue and change reads the inventory pass reuses
   - docs/streams/desktools-v2/brief-09-access-pattern-queries.md — `ReviewQueueSnapshot`, the tuned one-query change and review snapshot this brief reuses
   - freshness-checked 2026-10-13 @ 4696d598e (origin/main)
+  - "docs/desk-workflow-efficiency-spec.md"
+  - "freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d; approved spec and consolidation amendment"
 exec-tier: strong
 exec-tier-why: "Question (c), silent failure toward a pass: an unfinished scan that advances a watermark, an absence read as deletion, or a refused read cached as an empty list all pass a happy-path test and hand every consumer a confident wrong answer."
 domain: complicated
@@ -41,13 +45,14 @@ consumers:
   - "statusgen/: out-of-scope (forge-neutral/18 owns statusgen's forge reads; this brief adds no statusgen link and no deskread kind)"
   - "comments, check and status observations, event delivery and reevaluation demand: follow-up forge-neutral/38"
   - "tools/forge-import-check/: fixed-here (source-only verification helper relocation; not a runtime mirror implementation)"
+  - "forgeread/mirror/reviewcoverage_test.go: follow-up forge-neutral/37"
 ---
 
 # Brief 37 — Scoped forge mirror with persisted freshness, coverage and polling repair
 
 ## Context
 
-files: `tools/forge-import-check/check_env_imports.go` (source-only helper), `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures), `forgeread/mirror/` (new), `forgeread/mirror/mirrortest/` (new), `forgeread/adapters/access.go`,
+files: `tools/forge-import-check/check_env_imports.go` (source-only helper), `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures), `forgeread/mirror/` (new), `forgeread/mirror/mirrortest/` (new), `forgeread/adapters/access.go`, `forgeread/mirror/reviewcoverage_test.go` (planned)
 `forgeread/adapters/github/`, `forgeread/adapters/gitlab/`, `forgeread/README.md`,
 `tools/desk/internal/deskkit/forge.go`, `tools/desk/internal/deskkit/forge_github.go`,
 `tools/desk/internal/deskkit/forge_gitlab.go`, `tools/desk/internal/deskkit/sharedread.go`,
@@ -252,6 +257,22 @@ Default if no answer: none. The mirror stays unactivated and the brief stays hel
    inventory: a partial mirror coverage assesses as could-not-check, never pass. Update
    `forgeread/README.md` and add the changelog fragment.
 
+
+### Approved workflow-efficiency amendment — 17 October 2026
+
+Include complete review and role-specific issue consumers in mirror scope/coverage fixtures:
+requested versus admitted population, per-input observation times/versions, head/body/review/check
+applicability and comment/page completeness. Bulk readers must reuse admitted refreshes and
+distinguish partial/stale/permission outcomes from complete-empty; no queue-specific second mirror
+or policy booleans. This is the existing R6 ingestion/custody owner. Early direct
+queue/prepare/issue bridges in desk-tools/39–42 remain independent of this mirror and PostgreSQL.
+Consumer-contract conformance is selected through serving /39 and final /45, not a new dependency
+that blocks the mirror kernel.
+
+This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
+obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
+authoring change claims no implementation or operational adoption.
+
 ## Verify
 
 Named tests are implementation deliverables and fail at authoring (they do not exist yet). Each one
@@ -279,6 +300,11 @@ provider transports only.
 | 17 | check +mutation | `test -f forgeread/go.mod && { grep -n -w -e require -e replace forgeread/go.mod \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: `forgeread` keeps no module dependency, so no subpackage can import `statusgen/domain` or a `workflow` package, and no forgeread-to-statusgen require cycle can form. The graph-execution/28 mapping stays in `workflow`. Passes at authoring as an invariant guard. **Mutation**: a planted `require github.com/medici-finance/assay/statusgen v0.0.0` line counts `1` |
 | 18 | check:ci +mutation | `GOWORK=off GOPROXY=off GOTOOLCHAIN=local go run tools/forge-import-check/check_env_imports.go forgeread/mirror` | exit 0 and output `0`: the shared source-only checker parses every non-test Go file below the target and decodes each import path with `strconv.Unquote`. No decoded `os` or `syscall` import is allowed, including raw, escaped, plain, aliased and dot imports. Build-constrained files are scanned regardless of the current platform; `*_test.go` files remain excluded. Missing/empty targets, parse/decode/walk errors and symbolic links fail closed with no clean count. It fails at authoring because the target package is absent. The companion `check_env_imports_test.go` compiles synthetic raw/escaped imports offline without calling their environment-read functions, then runs both rows' exact commands; ordinary aliases, build-tagged files, excluded tests and clean imports remain controls. **Mutation**: use the former literal matcher or stop decoding import literals; compiler-valid raw/escaped `os` and `syscall` plants evade rejection and the fixture test fails. **Mutation**: plant any of those imports in shipped `mirror` source; the row reports a nonzero count and exit status |
 | 19 | check:ci +mutation | `(cd workflow && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestMirrorCoverageFactMapping$" ./store/... > "$result" && grep -F -- "--- PASS: TestMirrorCoverageFactMapping " "$result")` | exit 0; named PASS. Every mirror coverage state maps to exactly one graph-execution/28 fact-completeness value, and only `complete` inside the freshness window maps to present: `never-read`, `partial`, each `unavailable` reason class and a stale `complete` never do. The mapping lives in `workflow/store/`, not in `forgeread`. **Mutation**: map `partial` to present, and the test fails |
+| 20 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorReviewCoverage$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorReviewCoverage ' "$o")` | exit 0; named PASS. Admitted review/issue populations preserve exact head and partial/denied/page coverage; removing a required input cannot return complete-empty or leak another admission. |
+
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 21 | check:ci +flow +mutation | `(cd forgeread && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRefreshBurstScopeAndCallBudget$' ./mirror/... > "$out" && grep -F -- '--- PASS: TestRefreshBurstScopeAndCallBudget ' "$out")` | exit 0; named PASS; 50 equivalent requests share one paginated inventory, two admissions remain isolated and outage retries stay within the explicit fixture budget; global authorization sharing or per-client scan fallback fails |
 
 ## Pre-mortem
 
@@ -296,6 +322,44 @@ dependency on statusgen and a module cycle forms (row 17). A mirror file reads c
 secret through a direct `os` or `syscall` import under a name the ambient-token rule does not know (row 18; cgo is outside that check). Partial
 coverage maps to a present fact (row 19). Retention of private content after access loss remains the
 human decision above; row 16 pins whichever option is chosen.
+
+## Performance reuse amendment — 2026-10-16
+
+Keep the mirror as the single online refresh/coalescing owner; do not start another
+poller or ingest cache from a desk command. Extend the existing refresh tests with a
+50-caller same-admission burst and two simultaneously different admissions. Exactly one
+scripted paginated inventory should serve equivalent concurrent refresh demand; different
+provider/host/repository/permission or admission/access epochs cannot share authorization.
+Requests on permission loss, stale data or provider failure retain coverage/backoff rather
+than triggering one full scan per caller. Count provider calls, coalesced waiters, bytes and
+cache outcomes at the trusted composition boundary; no credential or recorder dependency
+is imported into forgeread's offline root. The 50-caller case is synthetic request-count
+acceptance, not a production latency threshold. Existing /09 review snapshots and conditional
+board reads are baseline features, not newly credited savings.
+
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+For this brief's existing performance observations, reuse the [perf-v3 contract](../../performance-attribution-spec.md) and /63–65's
+shared typed context and request-cost seam when those adapters are available. Each process
+records its own attempts, timing and observed GraphQL points with units/basis/coverage;
+client-to-service and service-to-provider work are distinct. Carry admitted parent invocation
+links when known, preserve missing context and never turn it into operational authority.
+No extra provider request or expanded business query for monitoring; qualified bounded cost
+metadata may join the same request. No copied descendant call total,
+and no v2-only replacement instrument. Keep this brief's scope/Verify/Evidence and independent
+service delivery; record unsupported boundaries until producer integration. /45's existing
+matched service qualification must include own-request and parent/child no-double-count cases.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Apply docs/performance-attribution-spec.md, including its query/cache boundary contract.
+
+Mirror refresh, pagination, background polling and repair retain their own bounded origin and shared refresh identity. A coalesced source walk counts each actual page/retry once and is not multiplied by waiter count. Missing upstream instrumentation is unknown; zero is measured only under full seam coverage.
+
+Extend this brief's existing production-flow Verify cases with these boundary/false-count
+negative fixtures; all existing Tasks, exact selectors and Evidence remain obligations.
+No service activation or extra dependency on a live collector is introduced.
 
 ## Evidence
 

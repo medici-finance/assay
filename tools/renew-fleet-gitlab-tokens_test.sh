@@ -18,8 +18,9 @@
 # instance-admin mode goes RED on T13/T17 (#1630 item 3):
 #   RENEW_IMPL=/path/to/prototype.sh ./tools/renew-fleet-gitlab-tokens_test.sh   # RED
 #   ./tools/renew-fleet-gitlab-tokens_test.sh                                    # green
-# T12 (single-source role table) goes RED against a provisioner that carries
-# its own inline copy of the table:
+# T12 (single-source role table) goes RED against a shell script that carries
+# its own inline copy of the table, or a provisioner that no longer delegates
+# to deskgitlab:
 #   git show <pre-change>:tools/create-fleet-gitlab.sh > tools/create-fleet-gitlab.sh   # RED
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -464,8 +465,11 @@ else
 fi
 
 # =============================================================================
-# T12 — single source: the role table lives ONLY in fleet-gitlab-roles.sh,
-#       and both scripts source that file.
+# T12 — single source: the role table lives ONLY in fleet-gitlab-roles.sh;
+#       the renewal sources it, and the provisioner (create-fleet-gitlab.sh,
+#       now an adapter onto tools/desk/cmd/deskgitlab, desktools-v2/30)
+#       carries no copy — deskgitlab's tables_parity_test.go holds its Go
+#       table to this file's rows.
 # =============================================================================
 rows=$(grep -lE '^(reviewer|worker|verifier|desk|issue-loop|intake-loop|board-writer):(developer|reporter):[0-9]+:' "$here"/*.sh 2>/dev/null | sed 's|.*/||' | tr '\n' ' ')
 if [ "$rows" = "fleet-gitlab-roles.sh " ]; then
@@ -473,11 +477,16 @@ if [ "$rows" = "fleet-gitlab-roles.sh " ]; then
 else
   bad "T12 role-table rows appear only in tools/fleet-gitlab-roles.sh (found in: ${rows:-nothing})"
 fi
-srcok=1
-for f in create-fleet-gitlab.sh renew-fleet-gitlab-tokens.sh; do
-  grep -qE '^\. "\$FLEET_ROLES_FILE"' "$here/$f" && grep -q 'fleet-gitlab-roles.sh"' "$here/$f" || srcok=0
-done
-if [ "$srcok" = "1" ]; then ok "T12 both fleet scripts source the shared table"; else bad "T12 both fleet scripts source the shared table"; fi
+if grep -qE '^\. "\$FLEET_ROLES_FILE"' "$here/renew-fleet-gitlab-tokens.sh" && grep -q 'fleet-gitlab-roles.sh"' "$here/renew-fleet-gitlab-tokens.sh"; then
+  ok "T12 the renewal sources the shared table"
+else
+  bad "T12 the renewal sources the shared table"
+fi
+if grep -q 'exec deskgitlab create' "$here/create-fleet-gitlab.sh"; then
+  ok "T12 the provisioner delegates to deskgitlab (its table is parity-tested against the shared file)"
+else
+  bad "T12 the provisioner delegates to deskgitlab"
+fi
 
 # =============================================================================
 # T13 — argument preflight: usage errors exit 2 before glab is ever run.

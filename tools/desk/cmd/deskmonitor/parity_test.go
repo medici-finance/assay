@@ -128,13 +128,15 @@ func runParity(t *testing.T, script string, fx fixture) (oracle, verb []cycleRes
 	baseEnv := func(stateDir string) []string {
 		var env []string
 		for _, e := range os.Environ() {
-			if strings.HasPrefix(e, "PATH=") || strings.HasPrefix(e, stateEnv+"=") {
+			if strings.HasPrefix(e, "PATH=") || strings.HasPrefix(e, "DESK_LOOP=") || strings.HasPrefix(e, stateEnv+"=") {
 				continue
 			}
 			env = append(env, e)
 		}
 		return append(env,
 			"PATH="+gh.binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+			// The oracle's read identity is a minted role token; the loop names the role.
+			"DESK_LOOP=worker-desk",
 			stateEnv+"="+stateDir,
 			"PARITY_CYCLE_DIR="+gh.cycleDir,
 			"PARITY_READ_LOG="+gh.logPath,

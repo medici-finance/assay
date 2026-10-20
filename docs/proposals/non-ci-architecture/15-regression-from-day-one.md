@@ -45,7 +45,7 @@ CLI parser or path-layout tests can retire with an explicitly retired command. T
 | Forge reports an old approval against a new merge head | The independently bound reviewed candidate wins; unknown or mismatched review provenance holds every relevant lane. |
 | Test selector matches nothing or invokes the old oracle | No acceptance PASS; record actual tested implementation and selected cases, and require the failing behavioral control. |
 | A read route is mounted outside middleware | Actual served unauthenticated request is refused; the test must fail if the bypass is enabled, regardless of a correct route table. |
-| Audit/SQL budget history is lost | Unknown usage is not zero and does not refill authority; conservative hold/bound or an explicitly authorized reset, with retained evidence. |
+| Audit/SQL budget history is lost | Unknown usage is not zero and does not refill authority. A brake count holds or applies its declared conservative fallback; a pacing count seeds from retained counts and receipts within the [declared bound](11-target-architecture.md#pacing-counts-are-best-effort-brakes-fail-closed). Cases: §Operation-count qualification below. |
 | Two cells are assigned the same external repository | Operator admission rejects overlapping mutating assignment before capabilities issue; disjoint assignments and authorized upstream reads still work. |
 | Repository verifier cutover with an old direct publisher | Previously valid legacy capability/credential is refused at the real effect boundary; a shared credential is restricted or its affected scope stays paused. Queue suppression alone must fail the test. |
 | Database deletion or backup rollback with a surviving old capability | Fresh authority incarnation/key plus complete execution-group teardown; old capability cannot admit effects even when its SQL generation reappears. Already-submitted effects are reconciled separately. |
@@ -61,7 +61,7 @@ CLI parser or path-layout tests can retire with an explicitly retired command. T
 | A graph query crosses target versions or inaccessible cells | No mixed-version answer or hidden-data leakage through paths, counts or explanations. |
 | Local Docker state moves to CNPG | Compatible schema/extension set, validated recovery point, paused handover and no admission before reconciliation. |
 
-These are additional tests to author with implementation. They are not claimed to run in this documentation task, and existing CI-only test plumbing is outside the architectural refactor scope except where needed to ensure the selected suite actually runs.
+These are additional tests to author with implementation. They are not claimed to run in this documentation task, and runtime regression plumbing remains in this lane. The separately scoped [CI extension](25-ci-tooling.md) owns CI library/action qualification and tool migration; it preserves this regression floor.
 
 ## Continuous-work and resource qualification
 
@@ -137,6 +137,22 @@ capability evidence. A schema-valid preset or a higher score is not a passing ru
 case. Measure first useful outcome and independent repeat use, including support and
 repair effort. Read-only release acceptance is independent of managed writer activation.
 
+## Product, portfolio and observation qualification — 13 October 2026
+
+The [product-intent and portfolio amendment](26-product-intent-and-portfolio.md) routes these cases to executable Verify rows. Tests remain
+future deliverables; this document records no pass.
+
+| Case | Required result | Owning brief |
+|---|---|---|
+| Legacy REQ plus two product-target revisions | Old record valid/unbound; immutable history and decision evidence preserved; schema/parser agree | statusgen/22 |
+| Product target changes, architecture does not; unapproved rival appears | Separate bindings; rival cannot invalidate work; authorized continue/adapt/stop retains original context | statusgen/23 |
+| Missing binding, hidden source or undeclared secondary dependency | Explicit coverage gap; no false alignment or hidden count | statusgen/23, statusgen/25 |
+| Duplicate usage, retry, unknown cost/time, zero denominator | Stable invocation dedupe, distinct retries, separate human units, known subtotals and undefined shares | statusgen/24 |
+| Target 5%, consumption 2%, dependency blocked | Divergence visible; target unchanged; no filler or dispatch effect | statusgen/24, statusgen/25 |
+| Two REQs reference a renamed/retired journey | One qualified operational definition and preserved lineage | continuing-operations/01 |
+| Done before exposure; repeated manual-to-practice transfer | One still-unresolved obligation, one deadline, original impact/history; stale transfer refused | continuing-operations/02 |
+| CLI / shared view / future cockpit contract | Same versioned result and provenance; missing producer unavailable; no renderer policy or effect | statusgen/25 |
+
 ## Write-through and source-cache qualification — 14 October 2026
 
 Carry the [forge-service amendment](22-forge-service-and-source-queries.md) into the same
@@ -154,3 +170,48 @@ membership, time, policy and permission changes. Burst/outage tests assert the c
 upstream request budget, while shared-Git experiments report native-Git/go-git latency, CPU,
 bytes, retention and alternate-store recovery. No fixture result certifies live provider
 permissions, a deployed identity provider or CNPG failover.
+
+## Communications regression extension (proposed; pending approval)
+
+Proposal against the ratified revision `23f655f5d`; not baseline text until approved and reconciled in the amendment manifest.
+
+Preserve the commsgw bypass/identity/mailbox suites, commsloop policy/native-dispatch
+suites, deskcomms command/peer-custody suites and cellctl comms manifest/lifecycle
+suites through the [communications extraction](24-communications.md). The initial
+proof is behavior parity plus a real external SDK consumer, not distributed delivery.
+The specification's acceptance cases govern later two-cell outages, filter crashes,
+retries, quota/expiry, authority bypass, SQL-outbox handoff and state migration.
+
+## Operation-count qualification — 15 October 2026
+
+These cases qualify the
+[brake and pacing contract](11-target-architecture.md#pacing-counts-are-best-effort-brakes-fail-closed).
+Each brake case bypasses the pacing path, so a correct pacing limiter cannot mask a
+fail-open brake. C is the number of concurrently admitting processes.
+
+| Scenario | Required assertion |
+|---|---|
+| A brake count is unavailable, unreadable or unverifiable | Per-target and per-repository write ceilings, daily and new-issue caps, the circuit breaker, the child-launch budget, per-caller ingress rate limits and retry budgets each hold, or apply their declared conservative fallback, and admit no effect. Treating the unavailable count as under budget must fail the test. |
+| Concurrent pacing-count checks use the same estimate | Overshoot is at most one admission per concurrently admitting process; configured pacing still operates with no global lock across network work and no exact budget-slot reservation. |
+| A pacing count's shared counter is lost mid-window | An effect-class estimate is re-derived from the window's recorded effect intents and receipts before each admission; a read-class estimate is seeded from the last retained count; neither starts at zero. Coverage is reported unavailable rather than measured zero; counter failure alone neither holds publication nor requires an operator reset. |
+| Repeated restart or per-process fallback within one window | For an effect-class pacing count, run at least two processes from a seed well below the cap (at most half of it), with K restarts. They do not multiply the configured cap: the estimate is re-derived from the window's intents and receipts before each admission, so every process's admissions are counted. With intents committed but every pacing-row update skipped, admissions still stay within cap + C, because the re-derive ignores the row. Within one operator incarnation, total admissions stay within cap + C, or 2 × (cap + C) after the single recorded unseeded reset. A second unseeded reset, or an unreadable or absent reset record, treats the window as exhausted. Starting any fallback estimate at zero, keeping a per-process estimate that ignores other processes' admissions, or admitting against the cached pacing row instead of the re-derived estimate must fail the test. Read-class pacing counts are outside this bound by contract; they must still seed from the last retained count, never zero. |
+| Idempotency, approval or unknown-effect history is lost | Reconstruct from retained evidence or hold the affected effect. The pacing tolerance cannot authorize duplicate publication, clear an unknown outcome or recreate approval. |
+
+## Portable execution qualification — 16 October 2026
+
+[Agent-execution/01–07](../../streams/agent-execution/README.md) extend the existing runner
+and whole-system regression owners. Their Verify tables require production-boundary named
+PASS checks and executable negative mutations. Preserve the original runner conformance
+suite; run the new profile/receipt cases for both desk and workflow modes. The integrated
+recovery fixture uses the real controller/publication/supervisor with its own disposable
+PostgreSQL and a fake provider; a fake workflow is insufficient. Count provider contacts to
+prove lost replies cannot create a second logical effect, and bypass the upper controller
+to prove a stale restored owner is denied at the executor.
+
+Status qualification covers alive environment plus failed child, unknown cancellation,
+missing acceptance coverage, denied cross-cell reads and read-only reconnect. AX source/fixture
+checks do not qualify Substrate or a live backend. Existing R3/R4 deployment, celld remote
+experiments and R7 mounted-route tests remain separately required. Source fixtures and tests
+are implementation deliverables; this authoring amendment claims no new runtime test passed.
+
+Harness² protocol qualification adds independent held-out outcomes, a harmful composition, protected-control edits, grading-data isolation and complete experiment cost. Deterministic fixture success proves neither model-backed gains nor live optimizer safety; independent review and a separately authorized trial remain necessary.

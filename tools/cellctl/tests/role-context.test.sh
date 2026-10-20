@@ -81,8 +81,9 @@ for a in "$@"; do printf '%s\n' "$a"; done > "${CELLCTL_TEST_OUT:-/dev/null}"
 EOF
 chmod +x "$T/bin/claude"
 # `check` needs a cockpit on PATH; a stub keeps that row independent of the machine.
-printf '#!/usr/bin/env bash\nexit 0\n' > "$T/bin/tmux"; chmod +x "$T/bin/tmux"
-export PATH="$T/bin:$PATH"
+# shellcheck source=SCRIPTDIR/private-path.sh
+source "$HERE/private-path.sh"
+private_path "$T/bin"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
 # The launches below are REAL (not dry runs). cellctl prefers an installed `deskwt role-init` for
 # the role worktree, and `deskwt` is found on PATH, not in DESK_TOOLS_BIN — so on a machine that

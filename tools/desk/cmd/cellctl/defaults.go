@@ -87,8 +87,8 @@ func cellDefaultsPath(e *Env) string {
 }
 
 // cellDefaultsFor is the same file, reached from a cell.env's own path — which is all `set`'s
-// readers are handed. A cell.env that lives under the cells root, at any depth (a cell may be
-// named `team/demo`), resolves to the root's one file, exactly as loadCell does. A cell.env
+// readers are handed. A cell.env that lives under the cells root, at any depth, resolves to
+// the root's one file, exactly as loadCell does. A cell.env
 // anywhere else is not one `set` can reach — it finds its cell.env through cellDir, which refuses
 // a name that is not under the cells root — so that case arises only for a caller that hands
 // these readers a file directly, and it resolves to the file beside that file's own cell

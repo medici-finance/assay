@@ -2,28 +2,28 @@
   "test": "go test ./cmd/deskboard/... -count=1",
   "control": {
     "name": "CONTROL — make the per-platform pin fallback unreachable (the defect, restated as a mutation)",
-    "file": "cmd/deskboard/main.go",
-    "old": "\tfor _, name := range []string{deskToolsArtifact, deskToolsPlatformArtifact()} {",
-    "new": "\tfor _, name := range []string{deskToolsArtifact} {"
+    "file": "internal/deskkit/desktoolspin.go",
+    "old": "\tfor _, name := range []string{DeskToolsArtifact, DeskToolsPlatformArtifact(platform)} {",
+    "new": "\tfor _, name := range []string{DeskToolsArtifact} {"
   },
   "mutations": [
     {
       "name": "let the per-platform line WIN over a bare line that is present (an existing consumer's verdict changes under it)",
-      "file": "cmd/deskboard/main.go",
-      "old": "\tfor _, name := range []string{deskToolsArtifact, deskToolsPlatformArtifact()} {",
-      "new": "\tfor _, name := range []string{deskToolsPlatformArtifact(), deskToolsArtifact} {"
+      "file": "internal/deskkit/desktoolspin.go",
+      "old": "\tfor _, name := range []string{DeskToolsArtifact, DeskToolsPlatformArtifact(platform)} {",
+      "new": "\tfor _, name := range []string{DeskToolsPlatformArtifact(platform), DeskToolsArtifact} {"
     },
     {
       "name": "ask for the artifact PREFIX instead of the exact per-platform name (collapses the two pin lines into one match)",
-      "file": "cmd/deskboard/main.go",
-      "old": "\treturn deskToolsArtifact + \"-\" + deskPlatform",
-      "new": "\treturn deskToolsArtifact + \"-\""
+      "file": "internal/deskkit/desktoolspin.go",
+      "old": "\treturn DeskToolsArtifact + \"-\" + platform",
+      "new": "\treturn DeskToolsArtifact + \"-\""
     },
     {
       "name": "build the per-platform name even with no platform token (asks for `desk-tools-`, matching any line that starts that way)",
-      "file": "cmd/deskboard/main.go",
-      "old": "\tif strings.TrimSpace(deskPlatform) == \"\" {\n\t\treturn \"\"\n\t}",
-      "new": "\tif false {\n\t\treturn \"\"\n\t}"
+      "file": "internal/deskkit/desktoolspin.go",
+      "old": "\tif strings.TrimSpace(platform) == \"\" {\n\t\treturn \"\"\n\t}",
+      "new": "\tif strings.TrimSpace(platform) == \"\" && false {\n\t\treturn \"\"\n\t}"
     },
     {
       "name": "drop the prs sweep's fail-closed propagation (one repo's hard error becomes a partial board that reads clean)",
@@ -88,8 +88,8 @@
     {
       "name": "body-edit class (board): wire a synthetic edit time into the sweep instead of the PR's lastEditedAt (reddens TestBodyEdit_BoardActionsEndToEnd/documented,_but_the_forge_records_no_edit_after_the_CR)",
       "file": "cmd/deskboard/board.go",
-      "old": "applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body, p.LastEditedAt)",
-      "new": "applyBodyEditReverification(rs, reviews, p.HeadRefOid, p.Body, \"9999-01-01T00:00:00Z\")"
+      "old": "applyBodyEditReverification(rs, grantReviews, p.HeadRefOid, p.Body, p.LastEditedAt)",
+      "new": "applyBodyEditReverification(rs, grantReviews, p.HeadRefOid, p.Body, \"9999-01-01T00:00:00Z\")"
     },
     {
       "name": "drive worker floor — the cross-root merge stops re-applying driveWorkerCap against the SUMMED in-flight drive work (each root's own headroom stacks past the shared pool)",
@@ -202,8 +202,8 @@
     {
       "name": "dt27 row 6 — let the verify depth resolve its own roots again (a second resolution, pin walk and version probe per throughput run)",
       "file": "cmd/deskboard/throughput.go",
-      "old": "\t} else if nv, err := awaitingFromRoots(hdr, \"awaiting\", rs); err != nil {\n",
-      "new": "\t} else if rs2, rerr2 := resolveRootsOnce(); rerr2 != nil {\n\t\tverifyStage.Blind = appendBlind(verifyStage.Blind, \"depth: \"+rerr2.Error())\n\t} else if nv, err := awaitingFromRoots(hdr, \"awaiting\", rs2); err != nil {\n"
+      "old": "\t} else if nv, err := awaitingQueue(hdr, \"awaiting\", rs, true); err != nil {\n",
+      "new": "\t} else if rs2, rerr2 := resolveRootsOnce(); rerr2 != nil {\n\t\tverifyStage.Blind = appendBlind(verifyStage.Blind, \"depth: \"+rerr2.Error())\n\t} else if nv, err := awaitingQueue(hdr, \"awaiting\", rs2, true); err != nil {\n"
     },
     {
       "name": "dt27 row 7 — count a blind stage as READ (stagesRead overstates coverage on every partial-failure path)",
@@ -222,6 +222,18 @@
       "file": "cmd/deskboard/sweep.go",
       "old": "\tfor i := range errs {\n\t\tif errs[i] != nil {\n\t\t\treturn nil, errs[i]\n\t\t}\n\t}\n",
       "new": "\tfor i := len(errs) - 1; i >= 0; i-- {\n\t\tif errs[i] != nil {\n\t\t\treturn nil, errs[i]\n\t\t}\n\t}\n"
+    },
+    {
+      "name": "#3093 M13: a COMMENTED Security-Review: pass at head is not a grant to the stale-grant filter, so a re-anchored one survives it",
+      "file": "cmd/deskboard/reanchor.go",
+      "old": "\treturn r.State == \"APPROVED\" || sec == secPass\n",
+      "new": "\treturn r.State == \"APPROVED\"\n"
+    },
+    {
+      "name": "#3093 X-Bbody: the body-edit re-verification reads the UNFILTERED reviews — a re-anchored documented APPROVE lifts the row",
+      "file": "cmd/deskboard/board.go",
+      "old": "rs = applyBodyEditReverification(rs, grantReviews, p.HeadRefOid,",
+      "new": "rs = applyBodyEditReverification(rs, reviews, p.HeadRefOid,"
     }
   ]
 }

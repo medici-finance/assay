@@ -193,8 +193,9 @@ func TestRealRun_NothingToFlipIsANoOp(t *testing.T) {
 }
 
 func TestRun_RefusesForeignChange(t *testing.T) {
-	// A reconcile writes ONLY stream README Status cells. Anything else in the diff is not
-	// reconcile output and must never be committed under the reconcile message.
+	// This verb's reconcile (never --regenerate) writes ONLY stream README Status
+	// cells. Anything else in the diff is not reconcile output and must never be
+	// committed under the reconcile message.
 	root, wt := absWT(t)
 	rec := &recordingExec{replies: map[string]string{
 		"git ls-remote":       "",

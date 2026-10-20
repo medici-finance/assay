@@ -79,7 +79,7 @@ count_carrying() {
 printf 'stamp-plugin-version.test.sh\n'
 
 # ------------------------------------------------------------------- LIVE
-live_version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$REPO/plugins/assay/.claude-plugin/plugin.json" | head -1)
+live_version=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$REPO/plugins/assay/.claude-plugin/plugin.json" | sed -n 1p)
 if [[ "$live_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   ok "LIVE plugin.json declares a MAJOR.MINOR.PATCH version ($live_version)"
 else
@@ -158,7 +158,7 @@ out=$(bash "$SCRIPT" check v9.9.9 --root "$r" 2>&1); rc=$?
 if [[ "$rc" -eq 1 ]]; then ok "C1 check on an unstamped tree fails (rc=1)"; else no "C1 check on an unstamped tree fails" "rc=$rc"; fi
 missing=""
 while IFS= read -r f; do
-  printf '%s' "$out" | grep -q -F "FAIL $f" || missing="$missing $f"
+  grep -q -F "FAIL $f" <<<"$out" || missing="$missing $f"
 done <<< "$PATHS"
 if [[ -z "$missing" ]]; then ok "C1 every stale file is named"; else no "C1 every stale file is named" "not named:$missing"; fi
 
@@ -207,7 +207,7 @@ if command -v git >/dev/null 2>&1; then
   expect 1 "G1 plugins/assay changed + manifest unchanged is REFUSED (push-path shape)" gate --tag v1.0.1 --prev v1.0.0 --root "$g"
   expect 0 "G2 the dispatch shape (--have = the version the tree will carry) passes" gate --tag v1.0.1 --prev v1.0.0 --have 1.0.1 --root "$g"
   out=$(bash "$SCRIPT" gate --tag v1.0.1 --prev '' --root "$g" 2>&1); rc=$?
-  if [[ "$rc" -eq 1 ]] && printf '%s' "$out" | grep -q 'no previous umbrella tag'; then
+  if [[ "$rc" -eq 1 ]] && grep -q 'no previous umbrella tag' <<<"$out"; then
     ok "G3 no previous tag: the diff check is skipped and said so; tag/manifest inequality still refuses"
   else
     no "G3 no previous tag" "rc=$rc; output: $(printf '%s' "$out" | tr '\n' '|')"

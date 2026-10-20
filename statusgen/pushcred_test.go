@@ -78,6 +78,14 @@ exit 1
 // genStub stands in for statusgen and qualgen: every call is logged, and each
 // regeneration writes a fresh board so a retry always has something to commit.
 const genStub = `#!/usr/bin/env bash
+if [ "$(basename "$0")" = statusgen ]; then
+  case " $* " in
+    *" --acceptance-forge "*)
+      [ "${GH_TOKEN:-}" = READ-TOKEN-SENTINEL ] && [ "${ASSAY_HUMAN_LOGIN_MAP:-}" = alex:ada ] || {
+        echo "acceptance caller lacks read token or human map" >&2; exit 98;
+      } ;;
+  esac
+fi
 echo "$(basename "$0") $*" >>"$STUB_LOG/gen-calls"
 n=$(wc -l <"$STUB_LOG/gen-calls" | tr -d ' ')
 case " $* " in
@@ -155,7 +163,17 @@ func newPushRig(t *testing.T) *pushRig {
 	gitCfg := filepath.Join(r.dir, "gitconfig")
 	// The GitLab regen pushes to its https remote; the runner's git resolves
 	// it to the rig's origin.
-	cfg := "[url \"file://" + r.origin + "\"]\n\tinsteadOf = https://gitlab.test/g/p.git\n"
+	//
+	// No automatic housekeeping (#3390). commit, fetch and the receiving end of
+	// a push each start `git maintenance run --auto --detach`; the detached
+	// child takes a lock under .git/objects and can still be writing there when
+	// t.TempDir's cleanup removes the rig, which fails the subtest with
+	// "directory not empty". Every git the rig runs reads this file (r.env), so
+	// switching it off here stops the fork for the rig and every step script.
+	// TestPushcredNoAutoMaintenance pins it.
+	cfg := "[url \"file://" + r.origin + "\"]\n\tinsteadOf = https://gitlab.test/g/p.git\n" +
+		"[maintenance]\n\tauto = false\n\tautoDetach = false\n" +
+		"[gc]\n\tauto = 0\n\tautoDetach = false\n"
 	if err := os.WriteFile(gitCfg, []byte(cfg), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -288,10 +306,14 @@ func (bt boardTarget) run(t *testing.T) string {
 	}
 	for _, st := range parseWorkflow(t, raw, bt.file).Jobs[bt.job].Steps {
 		if st.Name == bt.step {
-			if len(st.Env) > 0 && bt.job != "model-autoflip" {
-				t.Fatalf("%s: step %q grew an env: map the rig does not resolve", bt.name(), bt.step)
+			// Resolve the actual step env with the same read/write sentinels as
+			// the reconcile rig. Unknown expressions still fail closed.
+			var prefix string
+			for _, kv := range stepEnv(t, st, nil) {
+				k, v, _ := strings.Cut(kv, "=")
+				prefix += "export " + k + "='" + strings.ReplaceAll(v, "'", "'\\''") + "'\n"
 			}
-			return st.Run
+			return prefix + st.Run
 		}
 	}
 	t.Fatalf("%s: no step named %q", bt.name(), bt.step)
@@ -356,6 +378,39 @@ func TestBoardPushAuthFailsOnce(t *testing.T) {
 				assertNoRace(t, bt.name(), out)
 				assertNoSecret(t, bt.name(), out)
 			})
+		}
+	}
+}
+
+// TestPushcredNoAutoMaintenance: no git the push rig runs may start automatic
+// maintenance, which detaches and can outlive the subtest, racing t.TempDir's
+// cleanup. The step path is traced end to end: a commit, a fetch, and a real
+// push (whose receive-pack runs in the rig's origin).
+//
+// regression: #3390
+func TestPushcredNoAutoMaintenance(t *testing.T) {
+	r := newPushRig(t)
+	trace := filepath.Join(r.dir, "git-trace")
+	script := "git commit -q --allow-empty -m probe\n" +
+		"git fetch -q origin main\n" +
+		"git push -q origin HEAD:main\n"
+	code, out := r.run(script, "SHIM_PUSH=ok", "GIT_TRACE="+trace)
+	if code != 0 {
+		t.Fatalf("the traced git steps failed:\n%s", out)
+	}
+	b, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatalf("no git trace was written: %v", err)
+	}
+	got := string(b)
+	for _, want := range []string{"built-in: git commit", "built-in: git fetch", "receive-pack"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("positive control: the trace lacks %q, so it proves nothing:\n%s", want, got)
+		}
+	}
+	for _, l := range strings.Split(got, "\n") {
+		if strings.Contains(l, "maintenance run") || strings.Contains(l, "gc --auto") {
+			t.Errorf("a rig git started automatic housekeeping: %s", strings.TrimSpace(l))
 		}
 	}
 }

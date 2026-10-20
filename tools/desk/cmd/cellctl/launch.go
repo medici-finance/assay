@@ -38,7 +38,7 @@ func (c *Cell) repairAdmissionValue() string {
 func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider string, prov Provider, deskRoots string, persist bool, persistKVs []string, policyRes *PolicyResolution, cockpit cockpitResolution) {
 	// Refuse storage-heavy boot work before fetch/worktree creation as well as
 	// atomically rechecking at child enrollment in the process supervisor.
-	if err := c.cacheAdmission(); err != nil {
+	if err := launchStep("launch-storage-admission", c.cacheAdmission); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		exitWith(6)
 	}
@@ -52,32 +52,37 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 		// A non-zero exit here is not always a real failure: `claude plugin enable` also exits 1
 		// when the plugin is already enabled, printing `… is already enabled` — so the NOTICE
 		// fires only when the captured output does NOT match that shape.
-		cmd := exec.Command("claude", "plugin", "enable", "assay@assay")
-		cmd.Env = append(os.Environ(), "CLAUDE_CONFIG_DIR="+cfg)
-		out, err := cmd.CombinedOutput()
-		if err != nil && !strings.Contains(string(out), "already enabled") {
-			fmt.Fprintf(os.Stderr, "NOTICE: could not enable assay@assay in %s — inside the session: /plugin install assay@assay\n", cfg)
-		}
+		launchStepV("launch-plugin-enable", func() {
+			cmd := exec.Command("claude", "plugin", "enable", "assay@assay")
+			cmd.Env = append(os.Environ(), "CLAUDE_CONFIG_DIR="+cfg)
+			out, err := cmd.CombinedOutput()
+			if err != nil && !strings.Contains(string(out), "already enabled") {
+				fmt.Fprintf(os.Stderr, "NOTICE: could not enable assay@assay in %s — inside the session: /plugin install assay@assay\n", cfg)
+			}
+		})
 	}
 
-	sha := c.fetchMainUnderLock(role)
+	var sha string
+	launchStepV("launch-fetch-main", func() { sha = c.fetchMainUnderLock(role) })
 	_ = os.MkdirAll(filepath.Join(c.Dir, "worktrees"), 0o755)
-	if _, err := os.Stat(filepath.Join(wt, ".git")); err == nil {
-		// An existing tree is MERGED up to the fetched main, or the boot stops — never left
-		// behind with a notice (#1157).
-		c.mergeRoleWorktree(wt, sha)
-	} else if dwt, ok := c.worktreeViaDeskwt(role, session); ok {
-		_ = os.Remove(wt)
-		if lerr := os.Symlink(dwt, wt); lerr != nil {
-			die("desk: could not link %s -> %s: %v", wt, dwt, lerr)
+	launchStepV("launch-worktree", func() {
+		if _, err := os.Stat(filepath.Join(wt, ".git")); err == nil {
+			// An existing tree is MERGED up to the fetched main, or the boot stops — never left
+			// behind with a notice (#1157).
+			c.mergeRoleWorktree(wt, sha)
+		} else if dwt, ok := c.worktreeViaDeskwt(role, session); ok {
+			_ = os.Remove(wt)
+			if lerr := os.Symlink(dwt, wt); lerr != nil {
+				die("desk: could not link %s -> %s: %v", wt, dwt, lerr)
+			}
+			fmt.Printf("[worktree] created by deskwt role-init: %s (linked from %s)\n", dwt, wt)
+		} else {
+			branch := fmt.Sprintf("%s-cell/%s-%s", c.Name, role, time.Now().Format("20060102-150405"))
+			if err := c.git(c.Repo, "worktree", "add", wt, "-b", branch, sha); err != nil {
+				die("desk: could not create worktree %s: %v", wt, err)
+			}
 		}
-		fmt.Printf("[worktree] created by deskwt role-init: %s (linked from %s)\n", dwt, wt)
-	} else {
-		branch := fmt.Sprintf("%s-cell/%s-%s", c.Name, role, time.Now().Format("20060102-150405"))
-		if err := c.git(c.Repo, "worktree", "add", wt, "-b", branch, sha); err != nil {
-			die("desk: could not create worktree %s: %v", wt, err)
-		}
-	}
+	})
 	// A live role window's tree is LOCKED, so a worktree prune never takes it from under the
 	// session. Re-locking an already-locked tree is a no-op here, not a failure.
 	_ = c.git(c.Repo, "worktree", "lock", "--reason", "cellctl "+c.Name+"/"+role+" live session", wt)
@@ -118,7 +123,7 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	fmt.Printf("[launch] %s/%s kind=%s model=%s effort=%s provider=%s harness=%s session=%s config=%s cwd=%s desk_roots=%s (desk verbs → HOME=%s)\n",
 		c.Name, role, c.Kind, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, session, cfg, wt, orDefault(deskRoots, "unset"), c.Home)
 
-	env := c.cacheEnv(os.Environ())
+	env := c.telemetryEnv(c.cacheEnv(os.Environ()))
 	if harness != "codex" {
 		env = envSet(env, "PATH", filepath.Join(c.Dir, "shim")+string(filepath.ListSeparator)+c.Env.Get("PATH"))
 	}

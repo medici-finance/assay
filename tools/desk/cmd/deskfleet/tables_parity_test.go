@@ -10,12 +10,14 @@ import (
 	"testing"
 )
 
-// The bash provisioner stays the Unix path, so its tables and this verb's must not drift.
-// These tests read the tables out of the shell sources in this tree — not out of a copy in
-// this file — so an edit to either side that the other does not repeat fails here.
+// The Unix provisioning path (tools/create-fleet-gitlab.sh, now an adapter onto cmd/deskgitlab)
+// and this verb must not drift. These tests read the tables out of the sources in this tree —
+// the shell role table and the deskgitlab label table — not out of a copy in this file, so an
+// edit to either side that the other does not repeat fails here.
 //
-// The role table may live in tools/create-fleet-gitlab.sh (today) or in the shared
-// tools/fleet-gitlab-roles.sh the script sources once that file lands. Every source that
+// The role table lives in the shared tools/fleet-gitlab-roles.sh (the renewal script sources
+// it). tools/create-fleet-gitlab.sh is now an adapter onto cmd/deskgitlab and carries no
+// table; it stays in the list so a table re-added there is still checked. Every source that
 // carries a literal table is checked; at least one must.
 //
 // A copy of this module outside the repository (the mutation harness's per-worker copy) has
@@ -93,24 +95,58 @@ func TestRoleTableMatchesBash(t *testing.T) {
 	}
 }
 
+// The script's LABEL_TABLE moved, row for row, into the Go provisioner the script now execs
+// (cmd/deskgitlab, desktools-v2/30), so that port's table is the one these labels must match.
+// It is read as SOURCE, not imported (two main packages), and the mirror test in deskgitlab
+// reads this package's table the same way.
 func TestLabelTableMatchesBash(t *testing.T) {
-	requireBashSources(t)
-	src, ok := readTool(t, "create-fleet-gitlab.sh")
-	if !ok {
-		t.Fatal("tools/create-fleet-gitlab.sh is missing — the label parity check has nothing to compare")
+	b, err := os.ReadFile(filepath.Join("..", "deskgitlab", "tables.go"))
+	if err != nil {
+		t.Fatalf("reading cmd/deskgitlab/tables.go (the provisioner's label table): %v", err)
 	}
-	rows, ok := bashTable(t, src, "LABEL_TABLE")
-	if !ok {
-		t.Fatal("no LABEL_TABLE literal in tools/create-fleet-gitlab.sh")
-	}
+	rows := goLabelRows(t, string(b))
 	var ours []string
 	for _, l := range fleetLabels {
 		ours = append(ours, l.Name+"|"+l.Color+"|"+l.Description)
 	}
 	if strings.Join(rows, "\n") != strings.Join(ours, "\n") {
-		t.Errorf("tables.go fleetLabels drifted from LABEL_TABLE:\n%s\nwant:\n%s",
+		t.Errorf("tables.go fleetLabels drifted from cmd/deskgitlab's fleetLabels:\n%s\nwant:\n%s",
 			strings.Join(ours, "\n"), strings.Join(rows, "\n"))
 	}
+}
+
+// goLabelRows returns the rows of the `var fleetLabels = []fleetLabel{…}` literal in a Go
+// source file, as name|color|description.
+func goLabelRows(t *testing.T, src string) []string {
+	t.Helper()
+	block := regexp.MustCompile(`(?s)var fleetLabels = \[\]fleetLabel\{\n(.*?)\n\}`).FindStringSubmatch(src)
+	if block == nil {
+		t.Fatal("no fleetLabels literal found")
+	}
+	row := regexp.MustCompile(`^\s*\{("(?:[^"\\]|\\.)*"), ("(?:[^"\\]|\\.)*"), ("(?:[^"\\]|\\.)*")\},$`)
+	var rows []string
+	for _, ln := range strings.Split(block[1], "\n") {
+		if strings.TrimSpace(ln) == "" || strings.HasPrefix(strings.TrimSpace(ln), "//") {
+			continue
+		}
+		m := row.FindStringSubmatch(ln)
+		if m == nil {
+			t.Fatalf("unparsed fleetLabels row: %q", ln)
+		}
+		var f [3]string
+		for i := range f {
+			v, err := strconv.Unquote(m[i+1])
+			if err != nil {
+				t.Fatalf("row %q: %v", ln, err)
+			}
+			f[i] = v
+		}
+		rows = append(rows, f[0]+"|"+f[1]+"|"+f[2])
+	}
+	if len(rows) == 0 {
+		t.Fatal("the fleetLabels literal has no rows")
+	}
+	return rows
 }
 
 // The default PAT lifetime is spec §5's expiry backstop; the two paths must agree on it.

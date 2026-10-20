@@ -22,7 +22,7 @@ import (
 //     outputs block and written through the single-line-refusing emit helper,
 //     with the dispatch path carrying the SAME $ACTOR the tag message already
 //     interpolates (one source for one fact, never a second derivation) and
-//     the tag-push path an explicit not-recorded value, never blank.
+//     the tag-push path resolving the recorded merger through the PR detail API.
 //  2. the create-release step CONSUMES that output through env:
 //     (RELEASE_AUTHORIZER), and the python3 notes helper reads it from the
 //     environment — the same shape RELEASE_TAG and DESK_IMAGE_REF already
@@ -36,9 +36,8 @@ import (
 // records an authorization that happens in the gated `release` environment,
 // where a named human approves the run. If the body line and the environment
 // approval ever disagree, the environment is the authority. The tag-push path
-// records no authorizer BY DESIGN — the tag already exists when the workflow
-// starts, so there is no dispatch actor, and the pushing token's identity
-// must never be printed as though it were one. The line records who
+// resolves the selected merged release PR through its detail endpoint; never
+// substitute the pushing token's identity for its recorded merger. The line records who
 // authorized the cut, never who or what built the artifact; the pipeline
 // carries no signature or provenance attestation, and nothing here may be
 // read as claiming one.
@@ -54,8 +53,8 @@ func releaseAuthorizerCouplingProblems(wf string) []string {
 			problem: `the dispatch path does not emit the dispatch actor as the authorizer — the SAME $ACTOR the tag message already carries; a second, independently derived copy of that fact is the defect this repo's derive-or-diff convention exists to prevent`,
 		},
 		{
-			want:    `emit authorizer "not recorded`,
-			problem: `the tag-push path does not emit an explicit not-recorded authorizer — a blank where an authorizer belongs reads as "nobody", a stronger claim than the truth`,
+			want:    `emit authorizer "$login (merged release PR #$number)"`,
+			problem: `the tag-push path does not emit the recorded merged-release-PR authorizer`,
 		},
 		{
 			want:    "RELEASE_AUTHORIZER: ${{ needs.resolve.outputs.authorizer }}",
@@ -134,7 +133,7 @@ func TestReleaseAuthorizerStampMissingIsCaught(t *testing.T) {
 	for _, guarded := range []string{
 		"authorizer: ${{ steps.tag.outputs.authorizer }}",
 		`emit authorizer "$ACTOR`,
-		`emit authorizer "not recorded`,
+		`emit authorizer "$login (merged release PR #$number)"`,
 		"RELEASE_AUTHORIZER: ${{ needs.resolve.outputs.authorizer }}",
 		`os.environ["RELEASE_AUTHORIZER"]`,
 		"authorized-by: ",

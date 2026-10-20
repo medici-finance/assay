@@ -412,6 +412,24 @@ mask() {
   printf '%.4s…(%s chars, redacted)' "$_m" "${#_m}"
 }
 
+# Go packs unrelated string literals together. These three exact matches start
+# inside the public "desk-decided" label and continue into neighboring literals;
+# they are not credentials. Match BOTH the image path and the entire detected
+# string. Never exempt the binary itself: another match in the same file must
+# still fail, as must these strings in image config/history or another path.
+# Split the prefix in the source so the exception table is not itself a
+# key-shaped literal when this script is copied into an image.
+known_label_match() { # <scanned file> <whole detected match>
+  _label_path="$(image_path "$1")" || return 1
+  case "$_label_path:$2" in
+    /usr/local/bin/deskflip:"sk-"decidedhasPreviousPageGITLAB | \
+    /usr/local/bin/deskpr:"sk-"decidedunverifiablecannot | \
+    /usr/local/bin/deskpr:"sk-"decidedunverifiablecheck | \
+    /usr/local/bin/deskdigest:"sk-"decidedunclassifiedunverifiable) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 label() {
   # Human-readable surface name for a hit path. A layer file names its path in
   # the image AND the layer blob that carries it, since one path may now be
@@ -439,7 +457,19 @@ while IFS= read -r hf; do
   case "$seen" in *"$NL$hf$NL"*) continue ;; esac
   seen="$seen$hf$NL"
   allow_path "$hf" && continue
-  sample="$(grep -aoE "$PAT" "$hf" 2>/dev/null | head -1)"
+  # Read every match before deciding the file is clean. Suppressing only the
+  # first label match would conceal a real key later in the same binary.
+  rc=0
+  grep -aoE "$PAT" "$hf" > "$WORK/matches" 2>"$WORK/grep-err" || rc=$?
+  [ "$rc" -le 1 ] || \
+    cannot_scan "grep could not read matching file: $(head -3 "$WORK/grep-err")"
+  bad_match=false
+  while IFS= read -r sample; do
+    known_label_match "$hf" "$sample" && continue
+    bad_match=true
+    break
+  done < "$WORK/matches"
+  [ "$bad_match" = true ] || continue
   [ "$nhits" -eq 0 ] && echo "FAIL: key-shaped material detected in image '$IMG'" >&2
   nhits=$((nhits + 1))
   printf '  hit: %s (%s)\n' "$(label "$hf")" "$(mask "$sample")" >&2

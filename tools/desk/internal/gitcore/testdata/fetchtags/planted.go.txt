@@ -1,0 +1,22 @@
+package planted
+
+// A PLANTED instance of the defect class fetchtags_guard_test.go catches: go-git fetch options
+// that follow tags. The guard MUST flag lines 13 and 17 and pass line 21.
+
+import (
+	gogit "github.com/go-git/go-git/v5"
+)
+
+var specs = []string{"+refs/heads/*:refs/remotes/origin/*"}
+
+func plantedDefault(r *gogit.Remote) error {
+	return r.Fetch(&gogit.FetchOptions{RefSpecs: nil})
+}
+
+func plantedAllTags(r *gogit.Remote) error {
+	return r.Fetch(&gogit.FetchOptions{Tags: gogit.AllTags})
+}
+
+func clean(r *gogit.Remote) error {
+	return r.Fetch(&gogit.FetchOptions{Tags: gogit.NoTags})
+}

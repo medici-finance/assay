@@ -8,6 +8,8 @@
 // resume`, `status` and `avatar` are later briefs (03, 04, 06).
 package main
 
+import "github.com/medici-finance/assay/tools/desk/internal/deskkit"
+
 import (
 	"flag"
 	"fmt"
@@ -21,7 +23,9 @@ import (
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("deskapps", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:], os.Stdout, os.Stderr)
+	}))
 }
 
 const usage = `usage: deskapps init --tier team|family [--org <login>] [--owner org|me] [--prefix <name>] [--port 41873] [--no-browser] [--dry-run]

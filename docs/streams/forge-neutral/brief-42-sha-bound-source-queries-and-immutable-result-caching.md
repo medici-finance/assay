@@ -13,15 +13,18 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 1
+version: 4
 id: 702efe9f-7a6c-4079-95cd-0ef3c82f9e69
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
   - freshness-checked 2026-10-14 @ 0cb90058470f9608f76b96e2055e7327d9c5c178
   - R6 proposal inspected at c5e8a3f8da3c715b72efa8d8d6b5e74e659ebd52; main merged into this authoring branch without editing historical Evidence
+  - "docs/desk-workflow-efficiency-spec.md"
+  - "freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d; approved spec and consolidation amendment"
 exec-tier: strong
 exec-tier-why: Cross-component identity, privacy, concurrency and failure semantics require design judgment and negative controls.
 domain: complicated
@@ -37,13 +40,14 @@ consumers:
   - "changelog/forge-source-query.md: follow-up forge-neutral/42"
   - "statusgen/evaluation/: out-of-scope (existing domain evaluation meaning preserved)"
   - "plugins/assay/skills/: out-of-scope (no caller wired to an unshipped service)"
+  - "tools/desk/internal/forgesource/reviewcontext_test.go: follow-up forge-neutral/42"
 ---
 
 # Brief 42 — SHA-bound source queries and immutable result caching
 
 ## Context
 
-files: `forgeread/source/` (planned), `forgeread/testdata/source/` (planned), `tools/desk/internal/forgesource/` (planned), `tools/desk/internal/forgeservice/server/` (planned), `tools/desk/internal/gitcore/`, `tools/desk/cmd/deskread/`, `docs/forge-service.md` (planned), `docs/library-first.md`, `changelog/forge-source-query.md` (planned). Paths not present at the source pin are planned deliverables; existing
+files: `forgeread/source/` (planned), `forgeread/testdata/source/` (planned), `tools/desk/internal/forgesource/` (planned), `tools/desk/internal/forgeservice/server/` (planned), `tools/desk/internal/gitcore/`, `tools/desk/cmd/deskread/`, `docs/forge-service.md` (planned), `docs/library-first.md`, `changelog/forge-source-query.md` (planned), `tools/desk/internal/forgesource/reviewcontext_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
 files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
@@ -106,6 +110,21 @@ webhook payload decisions are not answered by this section.
 
 6. Benchmark cold/warm queries and bytes/object opens against current native/go-git reads on frozen disposable repos. Large outputs and expensive ancestry are bounded/refused visibly. Missing cache can use one admitted bounded source read, not an unbounded checkout or caller-specific poll storm.
 
+
+### Approved workflow-efficiency amendment — 17 October 2026
+
+Expose source context suitable for one review round and packet: keys include qualified
+repo/instance, exact head, path, options and representation/derivation version; diff keys include
+both immutable endpoints. Resolve branch/PR-head separately as fresh mutable observations. Worktree
+allocation at a different HEAD cannot substitute content; base branch name is not immutable. Current
+access/membership is checked before reuse. Keep existing shallow/unsupported/size coverage and exact
+Git source owner. Local gitcore reuse in desk-tools/41 does not claim this full service/cache brief
+delivered.
+
+This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
+obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
+authoring change claims no implementation or operational adoption.
+
 ## Interface contract
 
 Use forge-service-v1 from 39, mirror admission/freshness from 37, event hints/demand from 38,
@@ -129,6 +148,7 @@ boundary and independent expectation, not another implementation of the same che
 | 3 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestPrivateSourceCacheRefusal$' ./internal/forgesource/... > "$r" && grep -F -- '--- PASS: TestPrivateSourceCacheRefusal ' "$r")` | exit 0; named PASS. Warm private canary under reader A; denied/revoked reader B and another repository/host using the same SHA get no content/existence/counts. Bypassing the upper route still fails source admission/membership. |
 | 4 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestSourceQueryBoundsAndParity$' ./internal/forgesource/... > "$r" && grep -F -- '--- PASS: TestSourceQueryBoundsAndParity ' "$r")` | exit 0; named PASS. Native Git and go-git answer the same declared complete fixtures, multiple merge bases and alternate-store cases; missing objects, excessive bytes/cost and unsupported history fail visibly. Record cold/warm measurements without claiming a fleet latency target. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/42` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
+| 6 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewSourceContext$' ./internal/forgesource/... > "$o" && grep -F -- '--- PASS: TestReviewSourceContext ' "$o")` | exit 0; named PASS. Round and packet use assigned exact-source bytes including when allocated HEAD differs; base/head/options/access changes invalidate applicable results and planted wrong content fails. |
 
 ## Pre-mortem and detection
 
@@ -139,6 +159,29 @@ reject that variant; record the failing control with the restored production pas
 satisfy a flow row with a route registry, a prose legend or zero selected tests. Test fixtures
 qualify their named local boundary; provider permission inventories, deployment workload and
 operator cutover remain explicit evidence/acceptance obligations.
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+For this brief's existing performance observations, reuse the [perf-v3 contract](../../performance-attribution-spec.md) and /63–65's
+shared typed context and request-cost seam when those adapters are available. Each process
+records its own attempts, timing and observed GraphQL points with units/basis/coverage;
+client-to-service and service-to-provider work are distinct. Carry admitted parent invocation
+links when known, preserve missing context and never turn it into operational authority.
+No extra provider request or expanded business query for monitoring; qualified bounded cost
+metadata may join the same request. No copied descendant call total,
+and no v2-only replacement instrument. Keep this brief's scope/Verify/Evidence and independent
+service delivery; record unsupported boundaries until producer integration. /45's existing
+matched service qualification must include own-request and parent/child no-double-count cases.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Apply docs/performance-attribution-spec.md, including its query/cache boundary contract.
+
+Typed source-query/local object/cache work records fixed operation, handler latency, cache source and directly measured local work without pretending it is a GitHub/GitLab request. A miss/refresh records actual upstream sends only if they occur. Cache keys, paths and raw query text are excluded from diagnostics; missing source coverage remains unknown.
+
+Extend this brief's existing production-flow Verify cases with these boundary/false-count
+negative fixtures; all existing Tasks, exact selectors and Evidence remain obligations.
+No service activation or extra dependency on a live collector is introduced.
 
 ## Evidence
 

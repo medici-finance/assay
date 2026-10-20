@@ -391,6 +391,7 @@ var liftPrimitiveAllowList = map[string]map[string]string{
 	},
 	"renderedCodeSpans": {
 		"markedCommands":             "the honoured-marker scan verifyCommand consults",
+		"transitionContext":          "judges unique visible span and unchanged context; the executable Command remains verifyCommand output",
 		"markerOverridesCommandSpan": "the lint's check that a marker replaces a command-shaped first span",
 	},
 }

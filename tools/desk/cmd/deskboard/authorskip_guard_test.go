@@ -66,6 +66,8 @@ var authorshipAllow = map[string]struct {
 	"deskboard/stalled.go:sweepStalledPR:.Author":                   {2, "the stalled report's last-actor read — no dispatch decision"},
 	"deskboard/stalled.go:sweepStalledPR:deskkit.SameActor":         {1, "same — whether the head push was the author's"},
 
+	"reviewflow/reviews.go:ReduceReviews:.Author": {3, "review verdict authors partition security conclusions; no change-author fact enters classification"},
+
 	// ---- the reactor ----
 	"reviewloop/findingcontinuity.go:ReadRecords:deskkit.ActorRole": {1, "types a finding record's reviewer ROLE — not a PR author"},
 }
@@ -127,7 +129,7 @@ func unlistedAuthorshipSites(found map[string]int) []string {
 // reviewed one; no classification arm may skip a trust-gate-admitted PR on who wrote it.
 func TestAuthorSkipClassGuard(t *testing.T) {
 	found := map[string]int{}
-	for _, dir := range []string{".", "../reviewloop"} {
+	for _, dir := range []string{".", "../reviewloop", "../../internal/reviewflow"} {
 		pkg := filepath.Base(dir)
 		if dir == "." {
 			pkg = "deskboard"

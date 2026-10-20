@@ -496,6 +496,14 @@ var bareWordRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 //   - the first span has whitespace in it → never flagged (a multi-word span is
 //     read as a command line; judging it is the other rules' job).
 //
+// ONE arm runs ahead of those exemptions, the marker's included, because it needs
+// no heuristic: a lifted command whose first non-blank character is `#` is a shell
+// comment (#2684 — an inline `## Coverage` heading in a procedure). It is flagged
+// whatever surrounds it, including as the cell's only span and as the command a
+// `cmd:` marker names: a marker names the command to run, and a comment runs
+// nothing, so a marked comment is refused exactly as the tools/desk executors
+// (verifyloop, deskrebaseline) refuse it (#2684 review F2).
+//
 // Otherwise a single-token first span is flagged when it is: a dotted extension
 // or dotfile (`.exe`); a file with a source/doc/data extension (`repovis.go`); a
 // relative path or `owner/repo` / `stream/NN` reference (`windows-port/00`); a
@@ -506,8 +514,20 @@ var bareWordRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 // the command is flagged too: it is a mention of the marker, not a marker, so
 // verifyrun would run the text `cmd:` itself.
 func proseLedCommandWhy(cell string) (span, why string) {
-	if len(markedCommands(cell)) > 0 {
-		return "", ""
+	// A command that is nothing but a shell comment is never a command, however
+	// many spans or words surround it (#2684): the shell ignores it, exits 0 with
+	// no output, and a witness would record a pass for a check that never ran. It
+	// is judged on what the lift returns — the marked command, else the first
+	// span, else the whole cell — and BEFORE the marker, one-span and whitespace
+	// exemptions below, because each of those assumes a command line.
+	if m := markedCommands(cell); len(m) > 0 {
+		if shellCommentOnly(m[0]) {
+			return m[0], shellCommentMarkedWhy
+		}
+		return "", "" // a marked real command: the author named it
+	}
+	if lifted := verifyCommand(cell); shellCommentOnly(lifted) {
+		return lifted, shellCommentWhy
 	}
 	spans := codeSpans(cell)
 	if len(spans) == 0 {
@@ -524,6 +544,36 @@ func proseLedCommandWhy(cell string) (span, why string) {
 		return first, w
 	}
 	return "", ""
+}
+
+// shellCommentWhy is the reason text proseLedCommandWhy gives a comment-led
+// span; the NOTICE and the could-not-run note read "...is <shellCommentWhy>, not a command".
+// shellCommentMarkedWhy is the same reason for a `cmd:`-marked command.
+const (
+	shellCommentDetail    = "(a command starting `#` is ignored by the shell: it exits 0 with no output and measures nothing)"
+	shellCommentWhy       = "a shell comment " + shellCommentDetail
+	shellCommentMarkedWhy = "a `cmd:`-marked shell comment " + shellCommentDetail
+)
+
+// proseLedRemedy is the fix a prose-led NOTICE, could-not-run note or check:ci
+// refusal names for its reason: a comment-led cell needs the real command marked
+// (or stays a manual procedure); a marked comment needs the comment REPLACED, since
+// the row is already marked; any other mention needs the marker.
+func proseLedRemedy(why string) string {
+	switch {
+	case strings.HasSuffix(why, shellCommentMarkedWhy):
+		return "Replace the cmd:-marked comment with the command that performs the check"
+	case strings.HasSuffix(why, shellCommentWhy):
+		return "Mark the real command with a cmd: code span where one exists; otherwise keep the row a manual procedure with its evidence, never a command that merely exits 0"
+	}
+	return "Mark the command with a cmd: code span"
+}
+
+// shellCommentOnly reports whether a lifted command is a shell comment: its first
+// non-blank character is `#`. A `#` later in the command is untouched — a trailing
+// ` # comment`, a quoted `'#'` or `a#b` all leave a real command.
+func shellCommentOnly(cmd string) bool {
+	return strings.HasPrefix(strings.TrimSpace(cmd), "#")
 }
 
 // proseLedShape is proseLedCommandWhy's shape test on a single-token first span.
@@ -1579,7 +1629,7 @@ func namedSelector(pat string) (name string, ok bool) {
 // anchored to the empty string, so it matches no test name (every Go test name
 // is non-empty) and `go test` runs zero tests by design. This is deliberately
 // the exact literal string, not "empty after stripping one `^`/`$`": an
-// UNANCHORED empty pattern (`-run ''`) has the opposite meaning in Go — an
+// UNANCHORED empty pattern (`-run ”`) has the opposite meaning in Go — an
 // empty regexp matches every name as a substring, so it runs everything.
 func selectsNoTests(pat string) bool {
 	return pat == "^$"
@@ -1781,8 +1831,14 @@ func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK
 			}
 			postBase := closed && okName && baseOK && !grandfathered[briefID]
 			scoped := closed && !postBase // a pre-existing closed record
+			verify := bf.Verify
+			if closed {
+				if plan, refusal := protectedAcceptance(bf.Verify, bf.Evidence, path); refusal == "" {
+					verify = plan.Verify
+				}
+			}
 			var cmds []string
-			verifyRowTable(bf.Verify, func(r verifyRowCells) {
+			verifyRowTable(verify, func(r verifyRowCells) {
 				where := "a Verify row"
 				if r.Num != "" {
 					where = "Verify row " + r.Num
@@ -1854,16 +1910,17 @@ type rowFinding struct {
 
 // Rule tags. Stable identifiers, one per shape.
 const (
-	ruleERELiteralPipe = "ere-literal-pipe"      // #509 — `\|` inside grep -E
-	ruleGrepZeroCount  = "grep-zero-count"       // #509 — grep -c gated on 0
-	ruleExitSwallowed  = "pipeline-exit-sunk"    // #509 — pipeline sink eats the status
-	ruleRE2LiteralPipe = "rE2-literal-pipe"      // #374 — `\|` inside go test -run/-bench
-	ruleMetavar        = "unsubstituted-metavar" // #509 — the row cannot run
-	ruleGoRunExit      = "gorun-exit"            // #493 — go run flattens the exit code
-	ruleBREAlternation = "bre-alternation"       // #262 — a pipe in a BRE grep pattern
-	ruleShreddedCell   = "shredded-cell"         // #374 — raw `|` cut the Command cell
-	ruleMovingRef      = "moving-ref"            // #639 — diff base on a moving ref
-	rulePortability    = "gnu-only"              // #650 — GNU-only construct
+	ruleERELiteralPipe = "ere-literal-pipe"        // #509 — `\|` inside grep -E
+	ruleGrepZeroCount  = "grep-zero-count"         // #509 — grep -c gated on 0
+	ruleExitSwallowed  = "pipeline-exit-sunk"      // #509 — pipeline sink eats the status
+	ruleRE2LiteralPipe = "rE2-literal-pipe"        // #374 — `\|` inside go test -run/-bench
+	ruleMetavar        = "unsubstituted-metavar"   // #509 — the row cannot run
+	ruleGoRunExit      = "gorun-exit"              // #493 — go run flattens the exit code
+	ruleBREAlternation = "bre-alternation"         // #262 — a pipe in a BRE grep pattern
+	ruleShreddedCell   = "shredded-cell"           // #374 — raw `|` cut the Command cell
+	ruleConsumerRange  = "consumer-delivery-range" // #1915 — missing or post-merge-empty consumer range
+	ruleMovingRef      = "moving-ref"              // #639 — diff base on a moving ref
+	rulePortability    = "gnu-only"                // #650 — GNU-only construct
 	// ruleGoTestRunVacuous — statusgen/14 — a `go test -run` selector with no
 	// `--- PASS` assertion in the same command: a match-nothing selector and a
 	// mismatched selector both exit 0 the same way rule 4's `\|` does.
@@ -1892,7 +1949,7 @@ const (
 )
 
 // isVacuousCommand reports a marked command that exits 0 without looking at
-// anything: one of vacuousCommands once a trailing `;` or `# comment` is
+// anything (a marked shell comment is prose-led-command instead, #2684): one of vacuousCommands once a trailing `;` or `# comment` is
 // dropped, or a lone echo / printf with no shell operator (#1808 review A6). It
 // is a NOTICE heuristic, so it errs quiet: anything carrying a quote, pipe,
 // redirect, `&`, `;` mid-command or substitution is left alone.
@@ -1941,7 +1998,11 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 	// Judged on the CELL, before the lift, because the defect is in which span
 	// gets lifted — every rule below judges whatever the lift returned.
 	if first, why := proseLedCommandWhy(cmdCell); why != "" {
-		add(ruleProseLedCommand, "is a prose cell whose FIRST code span `%s` is %s, not a command — `statusgen verifyrun` executes the first code span of a Command cell, so verifyrun records the row could-not-run without executing `%s`, and the check this row describes is never witnessed. Mark the real command with the explicit marker: write it as a code span starting `cmd:` (e.g. `cmd: cd tools/desk && go test ./pkg/ -count=1`), which verifyrun prefers over the first span — or make the Command cell exactly one code span and move the prose to Expect. A row that names no command at all (a cold read, a human judgment) cannot be fixed with the marker; it stays could-not-run until it is re-authored with a command", first, why, first)
+		if why == shellCommentWhy || why == shellCommentMarkedWhy {
+			add(ruleProseLedCommand, "lifts `%s` as its command, which is %s, not a command — `statusgen verifyrun`, the check:ci lane, `verifyloop` and `deskrebaseline` all record the row could-not-run without executing it, so the check this row describes is never witnessed. %s", first, why, proseLedRemedy(why))
+		} else {
+			add(ruleProseLedCommand, "is a prose cell whose FIRST code span `%s` is %s, not a command — `statusgen verifyrun` executes the first code span of a Command cell, so verifyrun records the row could-not-run without executing `%s`, and the check this row describes is never witnessed. Mark the real command with the explicit marker: write it as a code span starting `cmd:` (e.g. `cmd: cd tools/desk && go test ./pkg/ -count=1`), which verifyrun prefers over the first span — or make the Command cell exactly one code span and move the prose to Expect. A row that names no command at all (a cold read, a human judgment) cannot be fixed with the marker; it stays could-not-run until it is re-authored with a command", first, why, first)
+		}
 	}
 	m := markedCommands(cmdCell)
 	if len(m) > 1 {
@@ -1963,6 +2024,9 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 	}
 	toks := tokenizeCommand(cmd)
 	greps := grepCalls(toks)
+	if why := consumerRangeWhy(cmd, toks, expect); why != "" {
+		add(ruleConsumerRange, "%s; post-merge consumer checks must name --brief and pin both --delivery and its first-parent --base. A branch-only check must explicitly say pre-merge and pin its --base. Exit 0 alone does not establish corroboration; preserve exact counts and unchecked obligations", why)
+	}
 
 	for _, g := range greps {
 		// Rule 1: `\|` in an ERE pattern.

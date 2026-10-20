@@ -49,6 +49,7 @@ facts:
 - Pane text can carry secrets a desk echoed. `logs` prints what is already on the operator's screen and stores nothing.
 
 ## Ground rules
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - NEVER git push / trigger workflows. Stop at `implemented`.
 - Read-only: never send keys or input to a pane.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.

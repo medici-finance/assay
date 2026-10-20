@@ -61,6 +61,7 @@ facts:
 - **Bare `upgrade` is read-only, on a TTY or off one:** it prints what it would do (versions, assets, roles, other cells), writes no plan and installs nothing. The plan comes only from `upgrade --plan`, which persists it under the cell's `run/plans/` (desk-containers/15) and prints its id. It applies **only** through `upgrade --apply <plan-id>`: on a TTY the operator types the plan's confirm code (a convenience confirm, not an authorization control). Off a TTY, `upgrade --apply` is refused `not-interactive` (desk-containers/15 row 8). `--dry-run` is an alias for the bare form.
 
 ## Ground rules
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - NEVER git push / trigger workflows / tag releases. Stop at `implemented`.
 - Never install an unpinned or unverified asset.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.

@@ -10,11 +10,17 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
 const VerifierAttestationTitle = "[verification-attestation] "
 const verifierRecordName = "assay-verifier-attestation.json"
+
+// VerifierAttestationRecord is the file name of a verifier home's local admission
+// record, kept in the home's worktree admin dir. deskwt prune reads it, by this one
+// name, to hold an admitted home until its Evidence can land.
+const VerifierAttestationRecord = verifierRecordName
 
 // VerifierBinding identifies one selected runner against one immutable source.
 // This is dispatch provenance, NEVER a Verify result or evidence of execution.
@@ -22,6 +28,7 @@ const verifierRecordName = "assay-verifier-attestation.json"
 // admission renders attested blobs from the commit and this record only.
 type VerifierBinding struct {
 	Version                                                                              int
+	SourceRepo, TrackingSource, TrackingHomeSHA256, TrackingCheckout                     string `json:",omitempty"`
 	Run, Repo, Source, Brief, BriefSHA256, PlanSHA256, HomeSHA256, Model, Tier, Checkout string
 }
 
@@ -39,11 +46,20 @@ type VerifierReceipt struct {
 	Binding VerifierBinding
 	Issue   int
 	URL     string
+	// BriefRoot is local-only routing returned after admission, never part of the issue body.
+	BriefRoot string `json:",omitempty"`
+	// SourceHome is the admitted deliverable home a version-2 run's Verify rows
+	// execute in, returned after admission and local-only like BriefRoot. The
+	// executor runs its rows there and refuses any other row root: BriefRoot is
+	// the tracking tree, so a root derived from the brief's location would run
+	// the rows against a tree the attestation does not name.
+	SourceHome string `json:",omitempty"`
 }
 type verifierLocal struct {
 	VerifierReceipt
-	Home      string
-	Attempted bool
+	Home         string
+	TrackingHome string `json:",omitempty"`
+	Attempted    bool
 }
 
 func verifierDigest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
@@ -64,10 +80,15 @@ func verifierEnv() []string {
 	}
 	return append(env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=")
 }
+
+// VerifierReadEnv gives outcome readers the same Git environment as admission.
+// A caller cannot redirect a tracking-history read after its source check.
+func VerifierReadEnv() []string { return verifierEnv() }
+
 func verifierGitBytes(root string, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", append([]string{"--no-replace-objects", "-C", root}, args...)...)
 	cmd.Env = verifierEnv()
-	return cmd.Output()
+	return OutputProcess(cmd)
 }
 func verifierGit(root string, args ...string) (string, error) {
 	out, err := verifierGitBytes(root, args...)
@@ -115,7 +136,7 @@ func verifierLoad(root string) (verifierLocal, error) {
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return r, Refused("no pre-work verifier attestation in this worktree; dispatch a verifier before executing Verify rows")
+		return r, Unverifiable("missing original pre-work verifier record: run nonce, repository/source, brief/plan, home and model provenance are unavailable; cannot recover or execute this run", err)
 	}
 	if err = json.Unmarshal(b, &r); err != nil {
 		return r, Unverifiable("unreadable verifier attestation", err)
@@ -140,6 +161,9 @@ func withoutEvidence(b []byte) []byte {
 	return []byte(strings.TrimSpace(strings.Join(out, "\n")))
 }
 func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase) error {
+	if r.Binding.Version == 2 {
+		return verifierCrossRepoCheck(root, brief, r, phase)
+	}
 	given, home, err := verifierHome(root)
 	if err != nil {
 		return err
@@ -239,6 +263,9 @@ func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase
 
 // PrepareVerifierAttestation persists the nonce BEFORE the first forge write.
 func PrepareVerifierAttestation(root, repo, brief, model, tier string) error {
+	if filepath.IsAbs(brief) && !verifierContains(root, brief) {
+		return prepareVerifierCrossRepo(root, repo, brief, model, tier)
+	}
 	desk, _ := RoleAppLogin(DispatcherRole)
 	if !verifierAuthority(desk) {
 		return Refused("pre-work attestation requires distinct configured desk and verifier actors")
@@ -305,27 +332,9 @@ func verifierBody(b VerifierBinding) string {
 	data, _ := json.MarshalIndent(b, "", "  ")
 	return "Dispatcher-owned pre-work attestation. This record contains NO verification result.\n\n" + string(data) + "\n"
 }
-func verifierAuthority(login string) bool {
-	desk, ok := RoleAppLogin(DispatcherRole)
-	verifier, bound := RoleAppLogin("verifier")
-	return ok && bound && !SameActor(desk, verifier) && SameActor(login, desk)
-}
+func verifierAuthority(login string) bool { return attestationAuthority("verifier")(login) }
 func verifierIssue(f Forge, repo ForgeRepo, r verifierLocal) (*Issue, error) {
-	issue, err := f.GetIssueTyped(repo, r.Issue, TargetIssue)
-	if err != nil {
-		return nil, Unverifiable("cannot read verifier attestation target", err)
-	}
-	if issue == nil || issue.IsPullRequest || !verifierAuthority(issue.Author.Login) || issue.Title != VerifierAttestationTitle+r.Binding.Run || issue.Body != verifierBody(r.Binding) {
-		return nil, Refused("verifier target is not the exact dispatcher-authored run record")
-	}
-	trust, err := f.IssueTrustEvents(repo, r.Issue)
-	if err != nil {
-		return nil, Unverifiable("cannot establish immutable verifier record", err)
-	}
-	if trust == nil || !trust.BodyHistoryKnown || !trust.Complete || !trust.BodyEdited.IsZero() {
-		return nil, Refused("verifier record edited or its history is incomplete")
-	}
-	return issue, nil
+	return attestationRecord(f, repo, r.Issue, VerifierAttestationTitle+r.Binding.Run, verifierBody(r.Binding), verifierAuthority, "verifier")
 }
 func verifierRepo(slug string) (ForgeRepo, error) {
 	owner, name, ok := strings.Cut(slug, "/")
@@ -440,6 +449,9 @@ func checkVerifierAttestation(root, brief string, f Forge, phase verifierPhase) 
 	if state != ModelStamped || stamp.Model != r.Binding.Model || stamp.Tier != r.Binding.Tier {
 		return r.VerifierReceipt, Refused("missing or mismatched dispatcher stamp; no Verify rows admitted")
 	}
+	if r.Binding.Version == 2 {
+		r.BriefRoot, r.SourceHome = r.TrackingHome, r.Home
+	}
 	return r.VerifierReceipt, nil
 }
 func CheckVerifierAttestation(root, brief string) (VerifierReceipt, error) {
@@ -473,10 +485,82 @@ func RecoverVerifierAttestation(root string) (VerifierReceipt, error) {
 	return IssueVerifierAttestation(root, f)
 }
 func (r VerifierReceipt) EvidenceBinding() string {
+	if r.Binding.Version == 2 {
+		return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source-repo=%s source=%s tracking-source=%s brief=%s model=%s tier=%s", r.Binding.Repo, r.Issue, r.Binding.Run, r.Binding.SourceRepo, r.Binding.Source, r.Binding.TrackingSource, r.Binding.Brief, r.Binding.Model, r.Binding.Tier)
+	}
 	return fmt.Sprintf("Verification-Attestation: %s#%d run=%s source=%s brief=%s model=%s tier=%s", r.Binding.Repo, r.Issue, r.Binding.Run, r.Binding.Source, r.Binding.Brief, r.Binding.Model, r.Binding.Tier)
 }
 func IsVerifierAttestation(title, author string) bool {
 	return strings.HasPrefix(title, VerifierAttestationTitle) && verifierAuthority(author)
+}
+
+// ReadVerifierAttestation admits an existing remote record without requiring the
+// original local verifier home. Scheduling readers use the same immutable record
+// and dispatcher stamp gates as execution and Evidence admission; this is never
+// authority to execute rows, land Evidence, or advance lifecycle.
+func ReadVerifierAttestation(f Forge, repo ForgeRepo, n int) (VerifierReceipt, error) {
+	r := VerifierReceipt{Issue: n}
+	if n <= 0 {
+		return r, Refused("verifier attestation number must be positive")
+	}
+	issue, err := f.GetIssueTyped(repo, n, TargetIssue)
+	if err != nil {
+		return r, Unverifiable("cannot read verifier attestation", err)
+	}
+	if issue == nil {
+		return r, Refused("missing verifier attestation")
+	}
+	_, raw, ok := strings.Cut(issue.Body, "\n\n")
+	if !ok {
+		return r, Refused("verifier attestation body is not a binding")
+	}
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&r.Binding); err != nil {
+		return r, Refused("verifier attestation body is not a binding")
+	}
+	b := r.Binding
+	if (b.Version != 1 && b.Version != 2) || b.Repo != repo.Slug() || !workerHex64.MatchString(b.Run) ||
+		len(b.Source) != 40 || !workerHexCommit.MatchString(b.Source) || !workerHex64.MatchString(b.HomeSHA256) || !workerHex64.MatchString(b.BriefSHA256) || !workerHex64.MatchString(b.PlanSHA256) {
+		return r, Refused("invalid verifier attestation binding")
+	}
+	if err := r.CheckEvidenceTarget(b.Brief); err != nil {
+		return r, err
+	}
+	if b.Version == 1 && (b.SourceRepo != "" || b.TrackingSource != "" || b.TrackingHomeSHA256 != "" || b.TrackingCheckout != "") {
+		return r, Refused("same-repository verifier has cross-repository fields")
+	}
+	if b.Version == 2 && (!IsAllowedRepo(b.SourceRepo) || strings.EqualFold(b.SourceRepo, b.Repo) || len(b.TrackingSource) != 40 || !workerHexCommit.MatchString(b.TrackingSource) || !workerHex64.MatchString(b.TrackingHomeSHA256)) {
+		return r, Refused("invalid cross-repository verifier binding")
+	}
+	if b.Version == 2 {
+		if _, err := parseVerifierCheckout(b.TrackingCheckout); err != nil {
+			return r, err
+		}
+	}
+	if _, err := ModelStampLabels(b.Model, b.Tier); err != nil {
+		return r, err
+	}
+	if _, err := parseVerifierCheckout(b.Checkout); err != nil {
+		return r, err
+	}
+	issue, err = attestationRecord(f, repo, n, VerifierAttestationTitle+b.Run, verifierBody(b), verifierAuthority, "verifier")
+	if err != nil {
+		return r, err
+	}
+	if issue.State != "closed" {
+		return r, Refused("verifier pre-work attestation has not completed")
+	}
+	tl, err := StampTimelineFor(f, repo, n, TargetIssue)
+	if err != nil {
+		return r, err
+	}
+	stamp, state := AttestedModelStampOf(tl, verifierAuthority)
+	if state != ModelStamped || stamp.Model != b.Model || stamp.Tier != b.Tier {
+		return r, Refused("missing or mismatched dispatcher verifier stamp")
+	}
+	r.URL = issue.URL
+	return r, nil
 }
 
 // CheckVerifierEvidence reuses pre-work admission at landing time, after the
@@ -578,6 +662,62 @@ func (r VerifierReceipt) CheckEvidenceContent(target string, content []byte, row
 		}
 	}
 	return nil
+}
+
+// CheckObservedBrief binds a scheduling reader's immutable source bytes to the
+// exact original brief and plan admitted before this verifier run.
+func (r VerifierReceipt) CheckObservedBrief(content []byte) error {
+	if verifierDigest(content) != r.Binding.BriefSHA256 || verifierDigest(withoutEvidence(content)) != r.Binding.PlanSHA256 {
+		return Refused("attested source brief digest mismatch")
+	}
+	return nil
+}
+
+// CheckVerifierSourceTree establishes unchanged source bytes for a scheduling
+// hold that has no wake receipt. It reuses admission's tree/checkout checks;
+// HEAD identity alone says nothing about modified, ignored or untracked bytes.
+func CheckVerifierSourceTree(root, source string) error {
+	checkout, err := readVerifierCheckout(root)
+	if err != nil {
+		return err
+	}
+	if err := verifierNoReplacements(root); err != nil {
+		return err
+	}
+	if err := verifierNoLocalAttributes(root); err != nil {
+		return err
+	}
+	return verifierSourceClosure(root, source, checkout, nil)
+}
+
+// VerifierEvidenceBindings returns real binding lines inside Evidence. Fenced
+// examples and mentions elsewhere never establish an Evidence run. Shared by
+// outcome admission and queue scheduling so the two read the same contract.
+func VerifierEvidenceBindings(content []byte) []string {
+	var lines []string
+	inEvidence, fence := false, ""
+	fenceLine := regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")
+	for _, line := range strings.Split(string(content), "\n") {
+		if match := fenceLine.FindStringSubmatch(line); match != nil {
+			if fence == "" {
+				fence = match[1]
+			} else if match[1][0] == fence[0] && len(match[1]) >= len(fence) && strings.TrimSpace(match[2]) == "" {
+				fence = ""
+			}
+			continue
+		}
+		if fence != "" {
+			continue
+		}
+		if strings.HasPrefix(line, "## ") {
+			inEvidence = strings.TrimSpace(strings.TrimPrefix(line, "## ")) == "Evidence"
+		}
+		line = strings.TrimRight(line, " \t\r")
+		if inEvidence && strings.HasPrefix(line, "Verification-Attestation: ") {
+			lines = append(lines, line)
+		}
+	}
+	return lines
 }
 
 // PlanVerifierAttestation validates the existing local binding without forge access.

@@ -626,7 +626,7 @@ func cmdMerge(o *opts) error {
 	o.say("%s OK: %d (line %d)", condScore, v.score.Score, cfg.EjectLine)
 
 	// --- reviewer-approved ---
-	if err := checkReviewerApproved(f); err != nil {
+	if err := checkReviewerApproved(f, headCommittedAt(fg, fr, f.head)); err != nil {
 		return err
 	}
 	o.say("%s OK: the reviewer App APPROVED at %s", condReviewerApproved, short(f.head))
@@ -841,10 +841,38 @@ func checkPriorEjection(o *opts, f *facts) error {
 	return nil
 }
 
+// headCommittedAt returns a reader for the head commit's committer date. An unreadable commit,
+// or one reporting no parseable date, is an ERROR — could-not-check — never a zero date.
+func headCommittedAt(fg laneForge, fr deskkit.ForgeRepo, head string) func() (time.Time, error) {
+	return func() (time.Time, error) {
+		c, err := fg.GetCommit(fr, head)
+		switch {
+		case err != nil:
+			return time.Time{}, err
+		case c == nil:
+			return time.Time{}, errors.New("the forge returned no commit")
+		}
+		at := deskkit.ParseCommitDate(c.CommittedDate)
+		if at.IsZero() {
+			return time.Time{}, fmt.Errorf("the head commit reports no readable committer date (%q)", c.CommittedDate)
+		}
+		return at, nil
+	}
+}
+
 // checkReviewerApproved is the merge step's own re-read of the correctness verdict: the
 // reviewer App's LATEST decisive correctness review must be APPROVED at the current head.
 // A security-marker review is not a correctness verdict and is skipped.
-func checkReviewerApproved(f *facts) error {
+//
+// "At the current head" is commit_id == head AND submitted at or after the head commit's
+// committer date (#3093): the forge can RE-ANCHOR an older APPROVED onto a newer head — a
+// ready PR that takes a keep-current merge keeps its approval at the merge commit without any
+// re-review, and nothing on that path re-runs `deskpost ready`. An APPROVED submitted before
+// the head commit existed verified nothing there. When the head date cannot be read, the
+// approval cannot be shown to postdate the head: could-not-check, never a merge. (Reviews are
+// in submission order, so an earlier APPROVED at head would predate the head too: refusing on
+// the latest is the same answer as filtering every stale grant first.)
+func checkReviewerApproved(f *facts, headAt func() (time.Time, error)) error {
 	if f.reviewsErr != nil {
 		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — the reviews could not be read",
 			condReviewerApproved), f.reviewsErr)
@@ -874,6 +902,19 @@ func checkReviewerApproved(f *facts) error {
 	case strings.TrimSpace(last.CommitID) != f.head:
 		return deskkit.Refused(fmt.Sprintf("refused: %s — the reviewer App's APPROVED is at %s, not the current "+
 			"head %s: a later commit landed after it", condReviewerApproved, short(last.CommitID), short(f.head)))
+	}
+	at, err := headAt()
+	if err != nil {
+		return deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s — the reviewer App's APPROVED is reported at "+
+			"head %s, but the head commit's committer date could not be read (%v) — whether it was submitted AFTER "+
+			"the head commit existed cannot be established, and a forge can re-anchor an older review onto a newer "+
+			"head (#3093)", condReviewerApproved, short(f.head), err), err)
+	}
+	if deskkit.ReviewPredatesHead(last.SubmittedAt, at) {
+		return deskkit.Refused(fmt.Sprintf("refused: %s — the reviewer App's APPROVED reported at head %s was "+
+			"submitted %s, BEFORE the head commit's committer date %s: the forge re-anchored it from an older head "+
+			"and it verifies nothing at this one (#3093)", condReviewerApproved, short(f.head), last.SubmittedAt,
+			at.UTC().Format(time.RFC3339)))
 	}
 	return nil
 }
