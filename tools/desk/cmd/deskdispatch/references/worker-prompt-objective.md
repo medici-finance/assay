@@ -651,7 +651,9 @@ See `docs/cellctl-scratch.md` and the shipped desk-shell reference, "Managed tas
 ## Architecture pickup
 
 Before implementation effects, on resume and after a material scope/target change,
-follow `plugins/assay/references/implementation-pickup.md` in the delivery source.
+follow `references/implementation-pickup.md` of the installed Assay plugin (in the Assay
+source tree: `plugins/assay/references/implementation-pickup.md`). If neither is
+available, this section is the whole procedure; do not skip it.
 Read the current project instructions, selected approved target/transition, semantic
 contracts and engineering guidelines. Record source revisions, coverage and a reasoned
 continue/adapt/hold disposition in your plan or PR. Preserve scope and active-work

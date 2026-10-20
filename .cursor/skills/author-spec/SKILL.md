@@ -15,6 +15,16 @@ Specify outcomes, boundaries and consequential decisions; leave execution schedu
 adopter. Read applicable project guidance for preferred techniques and actual constraints;
 an absent local profile is valid. Do not turn a preference into a binding constraint.
 
+## Bind implementation pickup to current context
+
+Read the [implementation pickup procedure](../../references/implementation-pickup.md).
+Specs and briefs identify the selected target/transition, semantic contracts and
+applicable project engineering guidelines by canonical pointer. Include their
+pickup/resume assessment in the implementation handoff; record revisions, coverage
+and continue/adapt/hold rather than assume the authoring snapshot is still current.
+Use the explicit manual bootstrap until the shared operation is shipped and supported.
+Do not rewrite completed Evidence or let a draft proposal veto approved work.
+
 ## Start from the controlling source
 
 Find the existing spec, relevant decisions, affected consumers and current implementation.

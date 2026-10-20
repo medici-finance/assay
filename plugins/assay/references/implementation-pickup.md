@@ -1,5 +1,7 @@
 # Implementation pickup: current architecture and guidelines
 
+<!-- assay:harnesslint non-matrix-reference — harness-neutral implementation-pickup procedure read by the author and worker skills and dispatch kits, not a per-harness capability binding; it names no harness capability and carries no per-skill degradation cells -->
+
 Use before the first implementation effect, on resume, and after a material scope or
 approved-target change. This is an affected-context assessment, not permission to
 redesign the system or expand the brief. Preserve the original brief/source history.
