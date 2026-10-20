@@ -70,6 +70,8 @@ COPY comms/ ./comms/
 # The perfrec module (the shared perf-v1 writer) is the same kind of stdlib-only sibling:
 # statusgen resolves it through `replace ../perfrec`, tools/desk through `replace ../../perfrec`.
 COPY perfrec/ ./perfrec/
+# Test-support replacement module required when loading either module graph.
+COPY gitquiet/ ./gitquiet/
 COPY statusgen/go.mod statusgen/go.sum ./statusgen/
 COPY tools/desk/go.mod ./tools/desk/
 RUN cd statusgen && go mod download

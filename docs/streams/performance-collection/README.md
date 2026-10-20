@@ -368,3 +368,16 @@ the [v3 contract](../../performance-attribution-spec.md#querycache-service-and-p
 Shared upstream work is counted once, and missing server data is not a cache hit or zero
 provider cost. /01–02 and /06–08 carry the same synthetic layered journey through local import,
 retention/replay and on-demand/daily reports; no source-specific replacement collector.
+
+## Proposed review-profile consumer — 15 October 2026
+
+[Review profiles](../review-profiles/spec.md) add bounded assessment/cost consumers;
+they do not change the collection or consent contract above. Adapter brief 02 must
+preserve profile/run/attempt references, model/prompt/router/workload versions, observed
+CPU versus unavailable CPU, token categories, forge/GH calls, packet/benchmark overhead,
+failed/retry work and source coverage. No raw prompt, source packet or finding payload
+is added to the optional transport. Workflow correlation still needs explicit consent.
+Required CI benchmark evidence and budget accounting remain canonical elsewhere and
+continue with collection off. Local imported-output calibration does not wait for this
+collector. Continuing-operations owns interpretations; review-profiles owns assessment
+validation, not metric formulas or an independent run ledger.

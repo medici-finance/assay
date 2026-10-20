@@ -1,24 +1,12 @@
 {
   "test": "go test ./internal/gitquiet/ ./internal/regression/ ./cmd/deskclaim-ref/ -count=1 -timeout 300s -run '^Test(NewReposForkNoMaintenance|TemplateConfigParses|TemplateDirExplicit|GitPackagesInstallQuiet|GuardControl|ShellFixtureReposQuiet|Reg727WorktreeOrigin|GitDirFixtureIsolation)$'",
   "control": {
-    "name": "CONTROL — the template carries no settings: every fixture repository forks automatic maintenance again (the #1608 race)",
+    "name": "CONTROL — the desk adapter never installs the shared template",
     "file": "internal/gitquiet/gitquiet.go",
-    "old": "\t{\"maintenance.auto\", \"false\"},\n\t{\"gc.auto\", \"0\"},\n",
-    "new": ""
+    "old": "return shared.Run(m)",
+    "new": "return m.Run()"
   },
   "mutations": [
-    {
-      "name": "the template is written but GIT_TEMPLATE_DIR is never pointed at it — git init/clone fall back to the default template",
-      "file": "internal/gitquiet/gitquiet.go",
-      "old": "os.Setenv(\"GIT_TEMPLATE_DIR\", dir)",
-      "new": "os.Setenv(\"GITQUIET_UNUSED\", dir)"
-    },
-    {
-      "name": "the template config is rendered empty — repositories get no settings",
-      "file": "internal/gitquiet/gitquiet.go",
-      "old": "\treturn b.String()\n",
-      "new": "\treturn \"\"\n"
-    },
     {
       "name": "guard: a TestMain that never installs the template is accepted",
       "file": "internal/gitquiet/gitquiet_test.go",
@@ -54,12 +42,6 @@
       "file": "internal/gitquiet/gitquiet_test.go",
       "old": "\treturn hasTests && launches\n",
       "new": "\treturn launches\n"
-    },
-    {
-      "name": "TemplateDir returns an empty directory — a fixture passing it explicitly gets no settings",
-      "file": "internal/gitquiet/gitquiet.go",
-      "old": "\tif err := writeTemplate(dir); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treturn dir\n",
-      "new": "\treturn dir\n"
     },
     {
       "name": "the regression floor's shell fixtures lose their explicit template — FixtureEnv's GIT_* drop leaves their repositories forking maintenance",

@@ -125,7 +125,7 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 14 | [Budget-driven recycle — retire a healthy worker before it degrades](brief-14-budget-driven-recycle.md) | 3 | M | todo | — | — |
 | 15 | [Local supervisor host + multi-cell vitals aggregation](brief-15-local-supervisor-host-and-aggregation.md) | 4 | M | todo | — | — |
 | 16 | [Verification wake conditions — stop repeating unchanged blocked checks](brief-16-verification-wake-conditions.md) | 0 | M | done | 2026-09-30 assay-verifier-app[bot] @ 35496323b8fc (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1396 @ e78d34ef8482d8daa0423f231fda1a06f6e3b959) |
-| 17 | [Verification failures create durable worker repair obligations](brief-17-verification-repair-obligations.md) | 1 | M | implemented | — | — |
+| 17 | [Verification failures create durable worker repair obligations](brief-17-verification-repair-obligations.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 2f44050f8a70 (claude-opus-5-5) | — |
 | 18 | [Enforce repair reservations at worker dispatch](brief-18-repair-admission.md) | 2 | M | implemented | — | — |
 | 19 | [Persist review findings and apply the existing round cap across sessions](brief-19-review-finding-continuity.md) | 0 | M | verified | 2026-10-04 assay-verifier-app[bot] @ 70deba75a577 (claude-opus-5-5) | — |
 | 20 | [Review scope and first-pass completeness](brief-20-review-scope-and-first-pass.md) | 0 | M | implemented | — | — |
@@ -135,7 +135,7 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 24 | [One file per verify outcome — retire the shared appended outcomes log](brief-24-per-file-verify-outcomes.md) | 0 | L | implemented | — | — |
 | 25 | [Carry a correctness approval across a merge of main that leaves the PR's diff byte-identical](brief-25-approval-carry-across-no-diff-merge.md) | 1 | L | todo | — | — |
 | 26 | [Land one verify tick's Evidence-only outcomes in one Evidence PR](brief-26-batched-evidence-landing-per-tick.md) | 1 | L | todo | — | — |
-| 27 | [Verify-outcome records carry join keys — delivering PRs, verifier tier and timing, per-row results — and every failure a blocker kind](brief-27-verify-outcome-join-keys.md) | 0 | L | implemented | — | — |
+| 27 | [Verify-outcome records carry join keys — delivering PRs, verifier tier and timing, per-row results — and every failure a blocker kind](brief-27-verify-outcome-join-keys.md) | 0 | L | verified | 2026-10-19 assay-verifier-app[bot] @ 8eb028b49bc5 (claude-opus-5-5) | — |
 | 28 | [Dispatch record — one line per dispatch joining brief, PR, session and model tier](brief-28-dispatch-record.md) | 0 | M | implemented | — | — |
 | 29 | [Decide journal as structured records, with observed outcomes joined later](brief-29-structured-decide-journal.md) | 1 | M | todo | — | — |
 | 30 | [Review round record — per-round timing, reviewer tier and finding transitions](brief-30-review-round-record.md) | 1 | M | todo | — | — |
