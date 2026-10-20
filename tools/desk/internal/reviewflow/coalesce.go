@@ -1,4 +1,4 @@
-package main
+package reviewflow
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ type Key struct {
 	Verb string
 }
 
-func (k Key) String() string { return fmt.Sprintf("%s#%d@%s:%s", k.Repo, k.PR, short(k.Head), k.Verb) }
+func (k Key) String() string { return fmt.Sprintf("%s#%d@%s:%s", k.Repo, k.PR, Short(k.Head), k.Verb) }
 
 // PlannedVerb is one coalesced outward action.
 type PlannedVerb struct {

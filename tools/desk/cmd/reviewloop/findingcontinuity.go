@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/reviewflow"
 )
 
 // findingcontinuity.go — the reactor's CONSUMER of the persistent review-finding record.
@@ -154,7 +155,7 @@ func CompactRecord(l *deskkit.FindingLedger) string {
 // ledger the same way the idle gate applies it to the board.
 func RenderFindings(w io.Writer, rep *FindingRecordsReport, l *deskkit.FindingLedger) {
 	fmt.Fprintf(w, "\nREVIEW-FINDING CONTINUITY (%s#%d, current head %s) — derived from durable forge records, survives agent replacement:\n",
-		rep.Repo, rep.PR, short(firstNonEmptyHead(rep.CurrentHead)))
+		rep.Repo, rep.PR, reviewflow.Short(firstNonEmptyHead(rep.CurrentHead)))
 
 	open := l.OpenBlocking()
 	fmt.Fprintf(w, "  outstanding blocking findings: %d\n", len(open))

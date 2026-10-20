@@ -27,6 +27,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
+	"github.com/medici-finance/assay/tools/desk/internal/reviewflow"
 )
 
 // The desk posts reviews under this GitHub App login. Only its
@@ -57,12 +58,10 @@ func isReviewerBot(login string) bool {
 // reviewerBotDisplay is for MESSAGE TEXT only — never a comparison.
 func reviewerBotDisplay() string { return deskkit.RoleAppLoginOrEmpty("reviewer") }
 
-// securityPassMarker is the literal line an App security-review verdict must carry for
-// a risk-classed PR to be flip-eligible (#216). A line-exact match.
-const securityPassMarker = "Security-Review: pass"
-
-// securityFailMarker is the retraction twin of securityPassMarker. Without parsing it
-// the board could not see a pass being withdrawn at the same head (#216).
+// securityFailMarker is the retraction twin of reviewflow.SecurityPassMarker, the literal
+// line an App security-review verdict must carry for a risk-classed PR to be flip-eligible
+// (#216; a line-exact match). Without parsing it the board could not see a pass being
+// withdrawn at the same head (#216).
 const securityFailMarker = "Security-Review: fail"
 
 // verifyGateLabel selects the awaiting-verification issues for the queue view. It is
@@ -723,60 +722,11 @@ func prBlessed(repo string, num int) (bool, error) {
 // "CI hasn't finished" and never clears; folding it into `pass` would be a fail-open on
 // the flip gate. It is reported, and it blocks the green verdict.
 func ciState(p prBase) (pass, pending, fail, unknown int) {
-	// Reduce to the latest run per check NAME first — branch protection's own rule, from
-	// the SAME shared reducer deskflip's gate uses — so a superseded run (an older
-	// CANCELLED, a stale QUEUED left by a push+pull_request double-trigger) does not count
-	// against a PR whose current run for that name is not it. Without this the board would
-	// render a double-triggered PR CI-fail while deskflip flips it ready — the divergence
-	// #282/#289 set out to end.
+	var facts []reviewflow.CheckFact
 	for _, c := range deskkit.LatestRunPerName(p.StatusCheckRollup, check.groupKey, check.recencyKey) {
-		switch {
-		case c.Status != "": // CheckRun node
-			switch {
-			case c.Status != "COMPLETED":
-				pending++
-			case c.Conclusion == "SUCCESS":
-				pass++
-			case c.Conclusion == "SKIPPED" || c.Conclusion == "NEUTRAL":
-				// ignore path-filtered / neutral
-			case c.Conclusion == "":
-				// #400 N8: COMPLETED with no conclusion at all. This used to fall into
-				// `default` and be counted a FAILURE — fail-closed, but the row then said
-				// "a check FAILED" about a conclusion nobody could read, which is the same
-				// absence-as-verdict shape as R2/R3 with the sign flipped. It is an
-				// UNREADABLE entry, and CI-UNKNOWN is what this board calls that; it
-				// preempts every approve+green path exactly as a fail does, so nothing
-				// gets looser, and the row now names what actually happened.
-				unknown++
-			default: // FAILURE, CANCELLED, TIMED_OUT, ACTION_REQUIRED, STARTUP_FAILURE
-				fail++
-			}
-		case c.State != "": // StatusContext node (legacy commit status)
-			switch strings.ToUpper(c.State) {
-			case "SUCCESS":
-				pass++
-			// #400 T1: `EXPECTED` is NOT a pass. GitHub's StatusState documents it as
-			// "Status is expected" — a required legacy status context that has been
-			// DECLARED and has not reported yet — as against `SUCCESS`, "Status is
-			// successful". Counting it as a pass was this PR's own R2/Q2 defect on the
-			// legacy-status axis: one `EXPECTED` context, approved at head, non-draft,
-			// CLEAN, rendered `pass=1 ciGreen=true action=MERGE-NOW note="…CI green…"`
-			// off a check that had reported nothing. It is a check still owed, which is
-			// exactly what `pending` means here — and pending, unlike pass, cannot reach
-			// MERGE-NOW or a "CI green" note.
-			case "PENDING", "EXPECTED":
-				pending++
-			case "FAILURE", "ERROR":
-				fail++
-			default:
-				unknown++
-			}
-		default:
-			// Neither shape decoded: a rollup entry we cannot read at all.
-			unknown++
-		}
+		facts = append(facts, reviewflow.CheckFact{Status: c.Status, Conclusion: c.Conclusion, State: c.State})
 	}
-	return
+	return reviewflow.CountChecks(facts)
 }
 
 // reviewState reduces the App's reviews at a given head. Mirrors v1's deskReviewState
@@ -918,123 +868,24 @@ func unreadableSHAFields(reviewedSHA, head string) string {
 }
 
 func reduceReviews(reviews []review, head string) reviewState {
-	var st reviewState
-	var decisive []review
-	lastSec := map[string]secVerdict{}
-	var secAuthors []string
+	facts := make([]reviewflow.ReviewFact, 0, len(reviews))
 	for _, r := range reviews {
-		if !isReviewerBot(r.User.Login) {
-			continue
-		}
-		// Security marker: reviews arrive in ascending submitted order, so the LAST
-		// security verdict at head governs, per author (#216). A pass
-		// retracted by a later fail at the same head is NOT green.
-		if sameHead(r.CommitID, head) {
-			if v := classifySecurityBody(r.Body); v != secNone {
-				if _, seen := lastSec[r.User.Login]; !seen {
-					secAuthors = append(secAuthors, r.User.Login)
-				}
-				lastSec[r.User.Login] = v
-			}
-		}
-		if r.State == "APPROVED" || r.State == "CHANGES_REQUESTED" {
-			decisive = append(decisive, r)
-		}
+		facts = append(facts, reviewflow.ReviewFact{Author: r.User.Login, State: r.State, CommitID: r.CommitID, SubmittedAt: r.SubmittedAt, Reviewer: isReviewerBot(r.User.Login), ExternalPrereq: deskkit.ExternalPrereqOnlyDeclared(r.Body), Security: classifySecurityBody(r.Body)})
 	}
-	st.securityPass = len(secAuthors) > 0
-	for _, a := range secAuthors {
-		if lastSec[a] != secPass {
-			st.securityPass = false
-		}
+	st := reviewflow.ReduceReviews(facts, head)
+	return reviewState{
+		bodyEditReverified:     st.BodyEditReverified,
+		ever:                   st.Ever,
+		atHead:                 st.AtHead,
+		blocking:               st.Blocking,
+		approved:               st.Approved,
+		lastSHA:                st.LastSHA,
+		securityPass:           st.SecurityPass,
+		approvedAt:             st.ApprovedAt,
+		lastReviewAt:           st.LastReviewAt,
+		suspectNoOp:            st.SuspectNoOp,
+		externalPrereqDeclared: st.ExternalPrereqDeclared,
 	}
-	if len(decisive) == 0 {
-		return st
-	}
-	st.ever = true
-
-	// #37 ("Reviewer-App gate is forgeable — approve→flip→merge in 14s"): reduce the
-	// decisive sequence the same way deskpost's latestAppVerdict does, rather than just
-	// taking the chronologically-last review. "Un-forgeable because a PR author cannot
-	// approve its own PR" (methodology/brief-17) only defends the AUTHOR account — GitHub's
-	// self-approval block has no opinion on a third-party App re-posting a verdict, and any
-	// session that can mint the reviewer App's token can post an APPROVED over a standing
-	// CHANGES_REQUESTED at an unchanged head. LIVE EVIDENCE: decks#17 and decks#11
-	// (2026-07-14) both flipped to APPROVED at an unchanged head, no intervening commit,
-	// while a blocking review stood — the board would have reported both as FLIP-eligible.
-	// "An approval at an unchanged head cannot be a re-verification." Once a commit carries
-	// a CHANGES_REQUESTED, only a NEW commit_id (a genuine push) produces a verdict this
-	// reduction accepts as APPROVED; a same-commit APPROVED — including a retried one —
-	// keeps reading as the standing CHANGES_REQUESTED, and is flagged suspectNoOp so the
-	// board can say so LOUDLY instead of folding it into an ordinary blocking row.
-	// KEEP IN SYNC with deskpost/ready.go's latestAppVerdict — with ONE DELIBERATE
-	// DIVERGENCE, stated here so the sync claim stays honest (review NOTICE on the #37 PR):
-	// latestAppVerdict filters its stream to the CORRECTNESS lane (classifyLane), whereas
-	// `decisive` above admits any reviewer-bot APPROVED/CHANGES_REQUESTED, security lane
-	// included. So a security pass posted at a head that already carries a standing
-	// correctness CHANGES_REQUESTED reads as SUSPECT-APPROVAL on the board while the
-	// mutating gate reads it as an ordinary blocked row. That divergence errs toward
-	// FLAGGING on an advisory surface a human reads, never toward granting a flip, so it is
-	// the safe direction — but it IS a divergence, not an exact mirror. Any change that
-	// makes the board's reduction the basis of a mutating decision must close it first.
-	// NOT a divergence (#3093): both reductions decide on reviews with STALE grants removed
-	// — an APPROVED or security pass at head submitted before the head commit's committer
-	// date, which the forge re-anchored from an older head. Without that, the new commit_id
-	// below reads as a genuine push and a re-anchored APPROVED clears a standing CR. The
-	// board's caller (classifyPRFrom) applies withoutStaleGrants; ready's applies its twin.
-	var lastCommit string
-	var commitBlocked bool
-	var effState, effCommit, effSubmittedAt string
-	var suspect bool
-	var blockingCRBody string // the standing CR's body, for the external-prereq classifier
-	for _, r := range decisive {
-		if r.CommitID != lastCommit {
-			lastCommit = r.CommitID
-			commitBlocked = false
-			blockingCRBody = ""
-		}
-		switch r.State {
-		case "CHANGES_REQUESTED":
-			commitBlocked = true
-			effState, effCommit, effSubmittedAt, suspect = r.State, r.CommitID, r.SubmittedAt, false
-			blockingCRBody = r.Body
-		case "APPROVED":
-			if commitBlocked {
-				// No push since the standing CHANGES_REQUESTED at this exact commit —
-				// suppress the approval; commitBlocked stays true so a retried forgery
-				// at the same commit is refused too.
-				effState, effCommit, suspect = "CHANGES_REQUESTED", r.CommitID, true
-				continue
-			}
-			effState, effCommit, effSubmittedAt, suspect = r.State, r.CommitID, r.SubmittedAt, false
-			blockingCRBody = ""
-		}
-	}
-
-	st.lastSHA = effCommit
-	// #400 Q3: "at head" is a comparison of two shas, and it is only a statement about
-	// the world when BOTH were actually read. A raw `==` made two ABSENCES compare
-	// equal: an unread `headRefOid` plus a review carrying no `commit_id` used to
-	// produce atHead=true, approved=true, and — with a green rollup — MERGE-NOW, the most
-	// consequential verdict this board emits, off two fields nobody could read. Either
-	// side empty is could-not-check, and could-not-check is NOT at head — the row falls
-	// back to RE-REVIEW/MERGE-CURR, which is the fail-closed direction. sameHead applies
-	// that guard on top of the #37 reduction's effCommit.
-	st.atHead = sameHead(effCommit, head)
-	if st.atHead {
-		st.blocking = effState == "CHANGES_REQUESTED"
-		st.approved = effState == "APPROVED"
-		st.suspectNoOp = suspect
-		// A suspected no-op flip whose standing CR declared itself external-prereq-only is a
-		// declared re-review, not a forgery — surface it distinctly (see the field doc).
-		st.externalPrereqDeclared = suspect && deskkit.ExternalPrereqOnlyDeclared(blockingCRBody)
-		if t, err := time.Parse(time.RFC3339, effSubmittedAt); err == nil {
-			st.lastReviewAt = t
-			if st.approved {
-				st.approvedAt = t
-			}
-		}
-	}
-	return st
 }
 
 // hasSecurityPassLine reports whether body carries the Security-Review: pass marker.
@@ -1056,13 +907,15 @@ func hasSecurityFailLine(body string) bool {
 	return deskkit.HasSecurityReviewFail(body)
 }
 
-// secVerdict is one review body's security-review verdict.
-type secVerdict int
+// secVerdict is one review body's security-review verdict. The enum has ONE owner,
+// reviewflow.SecurityVerdict: these are aliases, so no integer cast (and no matching
+// declaration order) stands between the board's reading and the reducer's input.
+type secVerdict = reviewflow.SecurityVerdict
 
 const (
-	secNone secVerdict = iota // the body carries no Security-Review line
-	secPass
-	secFail
+	secNone = reviewflow.SecurityNone // the body carries no Security-Review line
+	secPass = reviewflow.SecurityPass
+	secFail = reviewflow.SecurityFail
 )
 
 // classifySecurityBody reduces one review body to its security verdict. A body carrying
@@ -1099,17 +952,6 @@ func anyRiskPath(repo string, files map[string]bool) bool {
 	return deskkit.RiskPathTriggered(repo, paths)
 }
 
-// secReviewReason renders the risk-class reason for the SECURITY-REVIEW-REQUIRED row. A
-// risk-classed row always carries a reason (the union that fired sets one), but this defends
-// against an empty string so the row never reads "risk-classed ()"; the fallback is the
-// historical generic phrase.
-func secReviewReason(reason string) string {
-	if strings.TrimSpace(reason) == "" {
-		return "touches a security path"
-	}
-	return reason
-}
-
 // Action verbs. MERGE-NOW ranks above all — an approved-at-head CI-green PR
 // whose approval is perishable when main outruns the merge. SECURITY-REVIEW-REQUIRED
 // (#216) sits between BLOCKED and CI-RED: it blocks a would-be FLIP for a risk-classed
@@ -1117,71 +959,28 @@ func secReviewReason(reason string) string {
 // rollup is empty but a workflow at head would have fired on the diff — the PR is
 // UNVALIDATED, which is a work item (retrigger/investigate CI), never a flip signal.
 const (
-	actMergeNow = "MERGE-NOW"
-	// actHumanGate (#241) is terminal for a PR carrying a machine-readable human-gate
-	// declaration: it replaces MERGE-NOW/FLIP so the board can never print "merge now"
-	// for work whose merge is reserved to a human, and it is excluded from the
-	// MERGE-NOW count and decay banner.
-	actHumanGate = "HUMAN-GATE"
-	// actSuspectApproval (#37) ranks above BLOCKED: a no-op APPROVED posted over a
-	// standing CHANGES_REQUESTED at an unchanged head (no intervening push) is a
-	// forgery-shaped verdict, not a routine "needs work" row — surface it LOUDLY rather
-	// than fold it into an ordinary BLOCKED read.
-	actSuspectApproval = "SUSPECT-APPROVAL"
-	// actExternalPrereqReview (brief 21) is the SUSPECT-APPROVAL row's benign
-	// twin: an APPROVED over a standing CHANGES_REQUESTED at an unchanged head where the CR
-	// DECLARED itself external-prereq-only. It is not a forgery signal — it is a reviewer
-	// clearing a rejection whose only blockers were external prerequisites — so it is
-	// surfaced for the ready gate to verify, never folded into SUSPECT-APPROVAL and never a
-	// FLIP on the advisory board (the board does not perform the independent verification).
-	actExternalPrereqReview = "EXTERNAL-PREREQ-REVIEW"
-	actBlocked              = "BLOCKED"
-	actSecReview            = "SECURITY-REVIEW-REQUIRED"
-	// actCIUnknown (#268) is the CI three-state's fourth outcome: the rollup carried
-	// entries this board cannot interpret, so the CI verdict is not established. It
-	// blocks the approve+green path rather than defaulting either way.
-	actCIUnknown = "CI-UNKNOWN"
-	// actCIUnverified (#400 R2) is the OTHER way the CI verdict fails to exist: not an
-	// entry we could not read, but NO entry at all on a repo that runs PR CI (an empty
-	// or absent `statusCheckRollup`, or one carrying only SKIPPED/NEUTRAL). ciUnknown
-	// counts what was unreadable; this counts what was never there. Both mean "green was
-	// not established", and neither may reach a FLIP/MERGE-NOW note that says "CI green".
-	actCIUnverified = "CI-UNVERIFIED"
-	actCIRed        = "CI-RED"
-	// actCINeverRan (#1652) is the rollup being empty for a DIFFERENT reason than
-	// actCIUnverified: a workflow that WOULD fire on this diff never ran at head at
-	// all (dispatch failure, not "no CI configured"), so the PR is UNVALIDATED rather
-	// than CI-green-or-red.
-	actCINeverRan = "CI-NEVER-RAN"
-	actWaitCI     = "WAIT-CI"
-	actConflict   = "CONFLICT"
-	// actMergeStateUnknown (#400 R3) is the mergeability four-state's third arm:
-	// GitHub returned `UNKNOWN` (mergeability still computing) or nothing at all. The
-	// board must not convert that silence into MERGE-NOW.
-	actMergeStateUnknown = "MERGE-STATE-UNKNOWN"
-	// actMergeBehind (#54) is the mergeability four-state's fourth arm: mergeStateStatus
-	// read BEHIND — a MEASURED "main has moved since this head was last synced", not an
-	// unmeasured unknown. The review that approved this head verified it against a `main`
-	// that is no longer the merge target. MERGE-NOW must not fire off a stale-base review;
-	// this is the retro finding #54 exists to close.
-	actMergeBehind = "MERGE-BEHIND"
-	actFlip        = "FLIP"
-	actReReview    = "RE-REVIEW"
-	actNeedsReview = "NEEDS-REVIEW"
-	actMergeCurr   = "MERGE-CURR"
-	actReady       = "READY"
-	actCheck       = "CHECK"
+	actMergeNow             = reviewflow.ActMergeNow
+	actHumanGate            = reviewflow.ActHumanGate
+	actSuspectApproval      = reviewflow.ActSuspectApproval
+	actExternalPrereqReview = reviewflow.ActExternalPrereqReview
+	actBlocked              = reviewflow.ActBlocked
+	actSecReview            = reviewflow.ActSecReview
+	actCIUnknown            = reviewflow.ActCIUnknown
+	actCIUnverified         = reviewflow.ActCIUnverified
+	actCIRed                = reviewflow.ActCIRed
+	actCINeverRan           = reviewflow.ActCINeverRan
+	actWaitCI               = reviewflow.ActWaitCI
+	actConflict             = reviewflow.ActConflict
+	actMergeStateUnknown    = reviewflow.ActMergeStateUnknown
+	actMergeBehind          = reviewflow.ActMergeBehind
+	actFlip                 = reviewflow.ActFlip
+	actReReview             = reviewflow.ActReReview
+	actNeedsReview          = reviewflow.ActNeedsReview
+	actMergeCurr            = reviewflow.ActMergeCurr
+	actReady                = reviewflow.ActReady
+	actCheck                = reviewflow.ActCheck
+	guardArmMarker          = reviewflow.GuardArmMarker
 )
-
-// guardArmMarker is the distinct phrase the fail-loud guard arm (#400 R2) puts in its
-// note, and nothing else in this package may say. It is a named constant rather than an
-// inline string because of N6: the tripwire proving that arm is UNREACHABLE keyed on a
-// substring of the note the arm itself returns, so a mutation that replaced the return
-// with the old `FLIP` + "CI green" note deleted the tripwire along with the arm and the
-// whole suite stayed green — a guard that removes itself when it is defeated. Keyed on
-// this constant, and with TestClassify_GuardArmIsStillTheGuardArm asserting the arm still
-// returns it, the same mutation is now visible.
-const guardArmMarker = "NO CI/merge arm of the classifier claimed this row"
 
 // ---------------------------------------------------------------------------
 // mergeStateStatus, read as four states (#400 R3, #54)
@@ -1205,35 +1004,16 @@ const guardArmMarker = "NO CI/merge arm of the classifier claimed this row"
 // against review-time `main` gets read as still-current at merge-time, because nothing
 // re-asks the question against the tree the PR would actually land in. An APPROVED verdict
 // on a BEHIND head verified only the diff against a `main` that no longer exists.
-type mergeVerdict int
+type mergeVerdict = reviewflow.MergeVerdict
 
 const (
-	mergeVerdictOK      mergeVerdict = iota // a recognised state that permits a merge
-	mergeVerdictBlocked                     // DIRTY / BLOCKED — definitely not mergeable
-	mergeVerdictUnknown                     // could-not-check: UNKNOWN, absent, or unrecognised
-	// mergeVerdictBehind (#54) — BEHIND: the base has moved since the head was last synced.
-	// The review's "correctness" was established against a `main` that is now stale.
-	mergeVerdictBehind
+	mergeVerdictOK      = reviewflow.MergeVerdictOK
+	mergeVerdictBlocked = reviewflow.MergeVerdictBlocked
+	mergeVerdictUnknown = reviewflow.MergeVerdictUnknown
+	mergeVerdictBehind  = reviewflow.MergeVerdictBehind
 )
 
-// readMergeState maps the raw `mergeStateStatus` string to its verdict. The recognised
-// mergeable set is GitHub's own enum minus the two blocking values and BEHIND: CLEAN,
-// HAS_HOOKS, UNSTABLE (only non-required checks are failing), and DRAFT (the board flips
-// drafts, so draft-ness is not a merge-state objection here). BEHIND (base moved on) is its
-// own verdict (#54) — a merge is still mechanically possible, but the review that approved
-// this head did not verify it against the base it would actually merge into.
-func readMergeState(s string) mergeVerdict {
-	switch strings.ToUpper(strings.TrimSpace(s)) {
-	case "CLEAN", "HAS_HOOKS", "UNSTABLE", "DRAFT":
-		return mergeVerdictOK
-	case "BEHIND":
-		return mergeVerdictBehind
-	case "DIRTY", "BLOCKED":
-		return mergeVerdictBlocked
-	default:
-		return mergeVerdictUnknown
-	}
-}
+var readMergeState = reviewflow.ReadMergeState
 
 // classifyInput carries everything the pure classifier needs. ownFilesChanged is only
 // consulted when !atHead (MERGE-CURR vs RE-REVIEW): true = PR's own files changed since
@@ -1312,220 +1092,8 @@ type classifyInput struct {
 // classify reproduces deskboard v1's ACTION semantics exactly, with the single #216
 // addition, the MERGE-NOW class, and the #1652 zero-CI split: same inputs → same
 // ACTION as v1 whenever ciGreen, riskClassed are false and zeroCI is empty.
-func classify(in classifyInput) (action, note string) {
-	switch {
-	case !in.ever:
-		// #2028: authorship is NOT a reason to skip review. The trust gate in
-		// classifyPRFrom (deskkit.TrustedAuthor, then a current blessing) is the ONE
-		// authorship filter: an unblessed author never reaches classify (quarantined in
-		// EXTERNAL / UNBLESSED), and every author it admits — a trusted human, a trusted
-		// shared login, a role App, a blessed outsider — is dispatched alike. The retired
-		// #177 HUMAN-OWNED arm skipped a trusted human's own PR here; a reintroduction of
-		// that shape is held by TestAuthorSkipClassGuard.
-		return actNeedsReview, "no bot APPROVED/CHANGES_REQUESTED at head — dispatch a reviewer"
-	case !in.atHead:
-		if !in.ownFilesChanged {
-			return actMergeCurr, "keep-current merge; PR's own files unchanged since last review — no re-review"
-		}
-		return actReReview, "head advanced past last review (PR's own files changed) — delta re-review"
-	// #37: an APPROVED that immediately follows the App's own CHANGES_REQUESTED at the
-	// SAME head, with no push in between, is not a re-verification — surface it as a
-	// suspected forgery/no-op-flip attempt, distinct from an ordinary blocking review, so
-	// a human reading the board sees the attempt rather than a routine BLOCKED row. Never
-	// FLIP-eligible either way, but which of the two it is matters for the response (chase
-	// down who minted the App token vs. wait on the worker).
-	// brief 21: the declared external-prerequisite re-review. It has the SAME
-	// shape as a suspected no-op flip — an APPROVED over a standing CHANGES_REQUESTED at an
-	// unchanged head — but the CR declared itself external-prereq-only, so it is a reviewer
-	// clearing a rejection whose only blockers were external prerequisites, not a forgery.
-	// Checked BEFORE the suspectNoOp arm so a declared row never reads as SUSPECT-APPROVAL.
-	// It is SURFACED, never FLIP-eligible: the board does not perform the independent
-	// prerequisite verification — the ready gate does, at the ready boundary — so the board
-	// only says "this is a declared external-prereq re-review; the ready gate will verify".
-	case in.blocking && in.suspectNoOp && in.externalPrereqDeclared:
-		return actExternalPrereqReview, reviewerBotDisplay() + " cleared a standing CHANGES_REQUESTED at the " +
-			"unchanged head that DECLARED itself external-prereq-only — a declared external-prerequisite " +
-			"re-review, not a no-op forgery. The ready gate independently verifies every prerequisite from " +
-			"fresh evidence before any flip; surfaced here, never auto-flipped (brief 21)"
-	case in.blocking && in.suspectNoOp:
-		return actSuspectApproval, reviewerBotDisplay() + " posted APPROVED at head immediately after its " +
-			"own CHANGES_REQUESTED at the SAME head, with no intervening push — that cannot be a " +
-			"re-verification (#37); treating as a suspected forged/no-op flip attempt, never FLIP-eligible, " +
-			"until a new commit lands"
-	// Non-commit-resolution re-review: a standing CHANGES_REQUESTED at head normally stays
-	// BLOCKED (worker-owns) until a NEW commit moves the head and re-triggers review. But a
-	// worker can resolve a finding WITHOUT a commit — adding a resolution label (e.g.
-	// `*:skip`) or editing the body — which leaves the head unchanged, so the head-sha
-	// re-review trigger never fires and the row sits BLOCKED forever. When such a
-	// finding-relevant non-commit change landed after the last review, re-flag RE-REVIEW so
-	// the row re-enters the dispatch gate and a reviewer re-examines it. This never WEAKENS
-	// the blocking signal: with no such change (the common case) the row stays BLOCKED
-	// exactly as before, and a suspected forged no-op flip is handled by the arm above,
-	// never here.
-	case in.blocking && in.nonCommitResolution:
-		note := in.nonCommitResolutionNote
-		if note == "" {
-			note = "standing CHANGES_REQUESTED at head, but a finding-relevant non-commit change " +
-				"(resolution label or body edit) landed after the last review"
-		}
-		return actReReview, note + " — re-flag for re-review (the head-sha trigger cannot see " +
-			"a non-commit fix); the reviewer must verify the check state at head, since a label/body " +
-			"edit does not re-run CI"
-	case in.blocking:
-		return actBlocked, reviewerBotDisplay() + " requested changes at head — worker must act"
-	// A DEFINITE failure outranks an indefinite unknown. When the rollup carries both,
-	// reporting CI-UNKNOWN alone hid a red behind "inspect the checks" — and a red check
-	// is a work item with a known next step, while an unknown is an instruction to go
-	// look. Both are stated: the action names the red, the note carries the unmeasured
-	// count so the unknown is not quietly absorbed into a state that was measured.
-	case in.fail > 0 && in.ciUnknown > 0:
-		return actCIRed, fmt.Sprintf("a check FAILED (%d) — that is a definite work item; %d rollup "+
-			"entr%s ALSO could not be interpreted, so the REST of CI is not established either",
-			in.fail, in.ciUnknown, plural(in.ciUnknown, "y", "ies"))
-	// #268: an uninterpretable check rollup means the CI verdict was NOT established.
-	// It has to preempt every approve+green path below, which would otherwise treat
-	// "no failures and no pendings" as green and reach FLIP.
-	case in.ciUnknown > 0:
-		return actCIUnknown, fmt.Sprintf("%d check-rollup entr%s could not be interpreted — "+
-			"CI state is NOT established (not green, not merely pending); inspect the checks before any flip",
-			in.ciUnknown, plural(in.ciUnknown, "y", "ies"))
-	// #400 R2: approved at head, nothing failed, nothing pending, nothing unreadable —
-	// and STILL not green. On a CI-required repo that means NOT ONE check reported a
-	// verdict at this head: an empty/absent rollup, or one carrying only SKIPPED/NEUTRAL
-	// entries. Without this arm the flow fell through to the late `case in.approvedAtHead:`
-	// arm, which returns FLIP with a note that ASSERTS "CI green" and never consults
-	// ciGreen — the tool printing a conclusion about checks it never saw.
-	//
-	// deskpost's ready gate refuses the identical state (cmd/deskpost/ready.go, `case
-	// ciEmpty` on a CIRequired repo → unverifiable, exit 6). One tool exiting 6 while the
-	// other recommends the flip is a live divergence on the CI axis, so the two now agree.
-	//
-	// The zero-CI disambiguation folds in here rather than beside it: `ciGreen` false with fail==0 && pending==0
-	// (and ciUnknown==0, excluded above) is ALWAYS the same zero-rollup shape the zero-CI probe
-	// exists to explain, so its three states drive the SPECIFIC reason instead of one flat
-	// "unverified" — never-ran (a real dispatch failure) is a different work item than a
-	// rollup the board could not probe, which is different again from a probed, CONFIRMED
-	// no-checks zero that a CI-required repo's policy still refuses to call green. An empty
-	// `zeroCI` (never probed — e.g. no caller-side probe was run) keeps the original R2
-	// blanket note as the fallback.
-	case in.approvedAtHead && !in.ciGreen && in.fail == 0 && in.pending == 0:
-		// A risk-classed PR without a security-review pass at head must stay
-		// SEC-REVIEW-REQUIRED regardless of the CI-zero reason.
-		if in.riskClassed && !in.securityPass {
-			return actSecReview, "risk-classed (" + secReviewReason(in.riskReason) + ") and no '" + securityPassMarker +
-				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP or merge"
-		}
-		switch in.zeroCI {
-		case zeroCINeverRan:
-			return actCINeverRan, "workflow(s) exist that would fire on this diff but NO check ran at head — " +
-				"the PR is UNVALIDATED (0 checks is absence of evidence, not green); retrigger/investigate CI " +
-				"before any flip"
-		case zeroCIUnverified:
-			return actCheck, "check rollup is empty and the board could NOT verify why — could-not-check is " +
-				"not green; do not flip on an unverified zero"
-		case zeroCINoChecks:
-			return actCheck, "approved at head and verified NO workflow fires on this diff, but repo CI policy " +
-				"treats an empty rollup as unverifiable at the deskpost gate — human call, not a routine flip"
-		}
-		return actCIUnverified, reviewerBotDisplay() + " APPROVED at head, but NO check reported a verdict there — " +
-			"the rollup was empty/absent (or carried only skipped/neutral entries) on a repo that runs PR CI, " +
-			"so CI green is NOT established; deskpost `ready` refuses this same state (exit 6). Confirm the " +
-			"checks actually ran before any flip"
-	// approved at head + CI green → MERGE-NOW (ranks above READY/FLIP).
-	// A risk-classed row without a security pass at head stays blocked
-	// (SECURITY-REVIEW-REQUIRED), draft OR ready (#2158): a ready PR that took a new head
-	// and a correctness re-approval there, but no fresh security pass, must not read
-	// MERGE-NOW. securityPass is head-bound by reduceReviews (sameHead), so a pass
-	// recorded at an older head never satisfies this check.
-	case in.approvedAtHead && in.ciGreen && !in.mergeConflict:
-		// #400 N9: "CI green" is a VERDICT, and on a repo the policy marks as running no
-		// PR CI (deskkit.CIRequired false) with nothing in the rollup, no check ran to
-		// return one. ciGreen is VACUOUSLY true there — a policy statement, not a result.
-		// The action is policy-backed and unchanged; the board simply stops asserting a
-		// result nobody produced, which is this PR's own thesis applied to its wording.
-		ciPhrase := "CI green"
-		if in.pass == 0 {
-			ciPhrase = "no PR CI configured for this repo and nothing ran (not a green verdict)"
-		}
-		if in.riskClassed && !in.securityPass {
-			return actSecReview, "risk-classed (" + secReviewReason(in.riskReason) + ") and no '" + securityPassMarker +
-				"' from " + reviewerBotDisplay() + " at head — security review required before FLIP or merge"
-		}
-		// #1652: on a CI-less repo with a probed no-checks zero the green is
-		// vacuous — say so, so "CI green" never silently includes it.
-		checkedZero := ""
-		if in.zeroCI == zeroCINoChecks {
-			checkedZero = " (CI is a CHECKED zero: verified no workflow fires on this diff, #1652)"
-		}
-		// #241: a declared human gate never resolves to MERGE-NOW. Security still
-		// ranks above it — a risk-classed PR needs its verdict either way.
-		if in.humanGate {
-			return actHumanGate, humanGateNote(in.draft, in.humanGateReason, ciPhrase+checkedZero)
-		}
-		// #400 R3: mergeability was never established. MERGE-NOW is a recommendation to
-		// merge, and it must rest on a READ merge state, not on the absence of a
-		// conflict signal. Flipping a draft ready is still safe here (it does not depend
-		// on mergeability), so the note says which half survives.
-		if in.mergeStateUnknown {
-			if in.draft {
-				return actFlip, reviewerBotDisplay() + " APPROVED at head, " + ciPhrase + checkedZero + ", draft — the ready-flip is safe " +
-					"(it does not depend on mergeability). MERGE-NOW is WITHHELD: mergeStateStatus came back " +
-					mergeStateDisplay(in.mergeStateRaw) + ", so mergeability was NOT established — re-read " +
-					"the PR before merging"
-			}
-			return actMergeStateUnknown, reviewerBotDisplay() + " APPROVED at head and " + ciPhrase + checkedZero + ", but mergeStateStatus " +
-				"came back " + mergeStateDisplay(in.mergeStateRaw) + " — GitHub had not finished computing " +
-				"mergeability, or the field could not be read. MERGE-NOW is NOT established; re-read the PR " +
-				"before merging"
-		}
-		// #54: mergeStateStatus read BEHIND — a MEASURED "main has moved since this head
-		// was last synced", not an unmeasured unknown. The App's APPROVED verdict verified
-		// the diff against the `main` this head was based on; it never re-asked the
-		// question against CURRENT main. Flipping a draft ready is still safe (it does not
-		// depend on mergeability, same as the mergeStateUnknown arm above) — but MERGE-NOW
-		// is withheld, because that recommendation would be trusting a review that never
-		// saw the tree it would actually land in.
-		if in.mergeBehind {
-			if in.draft {
-				return actFlip, reviewerBotDisplay() + " APPROVED at head, " + ciPhrase + checkedZero + ", draft — the ready-flip is safe " +
-					"(it does not depend on mergeability). MERGE-NOW is WITHHELD: mergeStateStatus is " +
-					mergeStateDisplay(in.mergeStateRaw) + " — main has moved since this head was last synced, so " +
-					"the review did not verify against the CURRENT base (#54). Sync with main and get a fresh " +
-					"review before merging"
-			}
-			return actMergeBehind, reviewerBotDisplay() + " APPROVED at head and " + ciPhrase + checkedZero + ", but mergeStateStatus is " +
-				mergeStateDisplay(in.mergeStateRaw) + " — main has moved since this head was last synced. The " +
-				"review verified this diff against a base that is no longer current (#54). MERGE-NOW is NOT " +
-				"established; sync with main and get a fresh review before merging"
-		}
-		if !in.draft {
-			return actMergeNow, reviewerBotDisplay() + " APPROVED at head, " + ciPhrase + ", ready — merge now" + checkedZero
-		}
-		return actMergeNow, reviewerBotDisplay() + " APPROVED at head, " + ciPhrase + ", draft — desk flips, then merge now" + checkedZero
-	case !in.draft:
-		return actReady, "already ready — awaiting human/merge"
-	case in.fail > 0:
-		return actCIRed, "bot APPROVED but a check failed/cancelled"
-	case in.pending > 0:
-		return actWaitCI, "bot APPROVED, CI still pending"
-	case in.mergeConflict:
-		return actConflict, "mergeStateStatus is DIRTY/BLOCKED — PR cannot be merged; flip is unsafe"
-	// #400 R2: this arm used to be `case in.approvedAtHead:` returning FLIP with a note
-	// that ASSERTED "CI green" while never consulting ciGreen — every FLIP the live board
-	// has ever printed came out of here, and every one of them was a row whose CI was
-	// never established (the MERGE-NOW arm above already takes the genuinely green case).
-	// With CI-UNVERIFIED above and MERGE-NOW/FLIP below it, approvedAtHead is now fully
-	// resolved before reaching here. It is kept as a FAIL-LOUD guard rather than deleted:
-	// if a later arm change ever routes an approved row down here, the board must say it
-	// has no verdict instead of inventing the friendliest one.
-	// TestClassify_ActionInventory pins that no reachable input reaches this arm.
-	case in.approvedAtHead:
-		return actCheck, reviewerBotDisplay() + " APPROVED at head, but " + guardArmMarker +
-			" — deskboard cannot state a verdict for it. This is a deskboard bug, not a PR state: " +
-			"inspect, and do not read it as a flip"
-	default:
-		return actCheck, "bot review at head is neither APPROVED nor CHANGES_REQUESTED — inspect"
-	}
+func classify(in classifyInput) (string, string) {
+	return reviewflow.Classify(in.flow(), reviewerBotDisplay())
 }
 
 // The action-priority table that used to live here is GONE. It stopped ordering
@@ -1544,12 +1112,7 @@ func classify(in classifyInput) (action, note string) {
 
 // mergeStateDisplay renders a raw mergeStateStatus for a could-not-check note. An empty
 // field is named as ABSENT rather than printed as `""`, which reads like a value.
-func mergeStateDisplay(raw string) string {
-	if strings.TrimSpace(raw) == "" {
-		return "ABSENT (no mergeStateStatus in the payload)"
-	}
-	return strconv.Quote(raw)
-}
+var mergeStateDisplay = reviewflow.MergeStateDisplay
 
 // buildClassifyInput assembles every classifier input that can be derived from ONE PR
 // payload plus its reviews, with no further network read. The three inputs it does not
@@ -1565,62 +1128,50 @@ func mergeStateDisplay(raw string) string {
 // nothing could see it. TestClassify_ActionInventory drives the real payload shapes
 // through THIS function, not through a hand-built classifyInput.
 func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string) classifyInput {
-	pass, pending, fail, unknownChecks := ciState(p)
-
-	// CI is green when no checks are failing or pending, AND either
-	// at least one check passed, or CI is not required for this repo
-	// (vacuously green — there are no checks to fail).
-	// #268: an uninterpretable rollup entry can never count toward green.
-	// #400 R2: a false here (nothing failed, nothing pending, and nothing passed
-	// either, on a repo that runs CI) is what stops the board asserting green over
-	// an empty rollup — classify's CI-UNVERIFIED arm reads ciGreen directly.
-	// #1652 tightens the vacuous (`!ciRequired`) half for a ZERO rollup the probe
-	// actually READ something negative about: checks-never-ran and unverified are
-	// never green on any repo, whether or not that repo requires CI, because absence
-	// of evidence is not evidence. A zero the caller never probed (zeroCI=="", the
-	// same value an ordinary non-zero rollup carries) is NOT treated as negative
-	// evidence — the pre-#1652 vacuous-green rule for a CI-less repo still applies,
-	// same as a probed, CONFIRMED no-checks zero.
-	ciGreen := unknownChecks == 0 && pass > 0 && pending == 0 && fail == 0
-	if unknownChecks == 0 && pass == 0 && pending == 0 && fail == 0 {
-		switch zeroCI {
-		case zeroCINeverRan, zeroCIUnverified:
-			ciGreen = false
-		default: // zeroCINoChecks, or "" (never probed)
-			ciGreen = !ciRequired
-		}
+	var checks []reviewflow.CheckFact
+	for _, c := range deskkit.LatestRunPerName(p.StatusCheckRollup, check.groupKey, check.recencyKey) {
+		checks = append(checks, reviewflow.CheckFact{Status: c.Status, Conclusion: c.Conclusion, State: c.State})
 	}
-
-	// #241: the human-gate declaration is read from the PR itself.
-	humanGate, hgReason := humanGateDeclared(p.Title, p.Body, p.labelNames())
-
-	mv := readMergeState(p.MergeStateStatus)
-
+	in := reviewflow.BuildClassifyInput(reviewflow.ChangeFact{Title: p.Title, Body: p.Body, MergeStateStatus: p.MergeStateStatus, IsDraft: p.IsDraft, Labels: p.labelNames(), Checks: checks}, reviewflow.ReviewState{
+		BodyEditReverified:     rs.bodyEditReverified,
+		Ever:                   rs.ever,
+		AtHead:                 rs.atHead,
+		Blocking:               rs.blocking,
+		Approved:               rs.approved,
+		LastSHA:                rs.lastSHA,
+		SecurityPass:           rs.securityPass,
+		ApprovedAt:             rs.approvedAt,
+		LastReviewAt:           rs.lastReviewAt,
+		SuspectNoOp:            rs.suspectNoOp,
+		ExternalPrereqDeclared: rs.externalPrereqDeclared,
+	}, ciRequired, zeroCI)
 	return classifyInput{
-		ever: rs.ever, atHead: rs.atHead, blocking: rs.blocking,
-		approvedAtHead: rs.approved, draft: p.IsDraft,
-		pass: pass, pending: pending, fail: fail,
-		securityPass:           rs.securityPass,
-		ciGreen:                ciGreen,
-		ciUnknown:              unknownChecks,
-		humanGate:              humanGate,
-		humanGateReason:        hgReason,
-		mergeConflict:          mv == mergeVerdictBlocked,
-		mergeStateUnknown:      mv == mergeVerdictUnknown,
-		mergeBehind:            mv == mergeVerdictBehind,
-		mergeStateRaw:          p.MergeStateStatus,
-		zeroCI:                 zeroCI,
-		suspectNoOp:            rs.suspectNoOp,
-		externalPrereqDeclared: rs.externalPrereqDeclared,
+		ever:                    in.Ever,
+		atHead:                  in.AtHead,
+		blocking:                in.Blocking,
+		approvedAtHead:          in.ApprovedAtHead,
+		draft:                   in.Draft,
+		pass:                    in.Pass,
+		pending:                 in.Pending,
+		fail:                    in.Fail,
+		ownFilesChanged:         in.OwnFilesChanged,
+		riskClassed:             in.RiskClassed,
+		riskReason:              in.RiskReason,
+		securityPass:            in.SecurityPass,
+		ciGreen:                 in.CiGreen,
+		mergeConflict:           in.MergeConflict,
+		mergeStateUnknown:       in.MergeStateUnknown,
+		mergeBehind:             in.MergeBehind,
+		mergeStateRaw:           in.MergeStateRaw,
+		ciUnknown:               in.CiUnknown,
+		humanGate:               in.HumanGate,
+		humanGateReason:         in.HumanGateReason,
+		zeroCI:                  in.ZeroCI,
+		suspectNoOp:             in.SuspectNoOp,
+		externalPrereqDeclared:  in.ExternalPrereqDeclared,
+		nonCommitResolution:     in.NonCommitResolution,
+		nonCommitResolutionNote: in.NonCommitResolutionNote,
 	}
-}
-
-// plural picks a suffix for count-carrying notes.
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return one
-	}
-	return many
 }
 
 // ---------------------------------------------------------------------------
@@ -3472,4 +3023,34 @@ func blessAuthorityName() string {
 		return l
 	}
 	return "the (UNCONFIGURED) blessing authority"
+}
+
+func (in classifyInput) flow() reviewflow.ClassifyInput {
+	return reviewflow.ClassifyInput{
+		Ever:                    in.ever,
+		AtHead:                  in.atHead,
+		Blocking:                in.blocking,
+		ApprovedAtHead:          in.approvedAtHead,
+		Draft:                   in.draft,
+		Pass:                    in.pass,
+		Pending:                 in.pending,
+		Fail:                    in.fail,
+		OwnFilesChanged:         in.ownFilesChanged,
+		RiskClassed:             in.riskClassed,
+		RiskReason:              in.riskReason,
+		SecurityPass:            in.securityPass,
+		CiGreen:                 in.ciGreen,
+		MergeConflict:           in.mergeConflict,
+		MergeStateUnknown:       in.mergeStateUnknown,
+		MergeBehind:             in.mergeBehind,
+		MergeStateRaw:           in.mergeStateRaw,
+		CiUnknown:               in.ciUnknown,
+		HumanGate:               in.humanGate,
+		HumanGateReason:         in.humanGateReason,
+		ZeroCI:                  in.zeroCI,
+		SuspectNoOp:             in.suspectNoOp,
+		ExternalPrereqDeclared:  in.externalPrereqDeclared,
+		NonCommitResolution:     in.nonCommitResolution,
+		NonCommitResolutionNote: in.nonCommitResolutionNote,
+	}
 }
