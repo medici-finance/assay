@@ -88,7 +88,7 @@ func TestDispatchAcceptsDeskwtWindowsWorktreeHome(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("dispatch with deskwt's Windows worktree home rc = %d, want 0 — the #757 refusal", rc)
 	}
-	body, err := os.ReadFile(promptFile)
+	body, err := os.ReadFile(emittedPathFor(promptFile))
 	if err != nil {
 		t.Fatalf("prompt file: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestNonAbsoluteHomeReleasesTheOrphanedClaim(t *testing.T) {
 			"behind a phantom HELD claim, the queue suppressor the worker-desk runbook warns about")
 	}
 	// No agent may be launched on a home this verb refused to state.
-	if _, err := os.Stat(promptFile); err == nil {
+	if _, err := os.Stat(emittedPathFor(promptFile)); err == nil {
 		t.Error("a prompt was emitted despite the rejected home")
 	}
 }

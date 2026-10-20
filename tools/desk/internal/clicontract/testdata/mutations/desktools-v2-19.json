@@ -1,0 +1,59 @@
+{
+  "test": "cd ../../qualgen && HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 300s -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms)$' .",
+  "control": {
+    "name": "CONTROL — qualgen: a parse failure exits with the wrong code (usage exit 2 becomes 1)",
+    "file": "../../qualgen/cli.go",
+    "old": "\treturn exitUsage\n}\n\nfunc newRootCmd",
+    "new": "\treturn 1\n}\n\nfunc newRootCmd"
+  },
+  "mutations": [
+    {
+      "name": "qualgen: help runs after a config read (the CI-writer variable is read before the command line is parsed)",
+      "file": "../../qualgen/cli.go",
+      "old": "\terr := root.Execute()",
+      "new": "\tenv.lookupEnv(ciWriterEnv)\n\terr := root.Execute()"
+    },
+    {
+      "name": "qualgen: help runs after a config read (a root pre-run hook, which the help verb inherits, reads the environment)",
+      "file": "../../qualgen/cli.go",
+      "old": "\t// Declared before Cobra would add its own, so there is no -v shorthand.",
+      "new": "\troot.PersistentPreRunE = func(*cobra.Command, []string) error { env.lookupEnv(ciWriterEnv); return nil }\n\t// Declared before Cobra would add its own, so there is no -v shorthand."
+    },
+    {
+      "name": "qualgen: an undeclared config key binding (mine --repo also read from an environment variable)",
+      "file": "../../qualgen/cli.go",
+      "old": "setting{key: \"repo\", kind: kindString, flag: \"repo\", def: \".\", usage: \"path to the git repository to mine (read-only)\"}",
+      "new": "setting{key: \"repo\", kind: kindString, flag: \"repo\", env: \"QUALGEN_REPO\", def: \".\", usage: \"path to the git repository to mine (read-only)\"}"
+    },
+    {
+      "name": "qualgen: an undeclared config key binding (the resolver reads every environment name, not only declared ones)",
+      "file": "../../qualgen/cli.go",
+      "old": "\t\tif d.env != \"\" {\n\t\t\tif val, ok := lookupEnv(d.env); ok {",
+      "new": "\t\tif _, ok := lookupEnv(\"QUALGEN_\" + strings.ToUpper(strings.ReplaceAll(d.key, \"-\", \"_\"))); ok || d.env != \"\" {\n\t\t\tif val, ok := lookupEnv(d.env); ok && d.env != \"\" {"
+    },
+    {
+      "name": "qualgen: one legacy flag form dropped (the Go flag package's single-dash spellings -out x, -help, -version)",
+      "file": "../../qualgen/cli.go",
+      "old": "root.SetArgs(normalizeGoFlags(root, args))",
+      "new": "root.SetArgs(args)"
+    },
+    {
+      "name": "qualgen: one legacy flag form dropped (pr no longer takes its PR number positional)",
+      "file": "../../qualgen/cli.go",
+      "old": "Args:  cobra.MaximumNArgs(1),",
+      "new": "Args:  cobra.NoArgs,"
+    },
+    {
+      "name": "qualgen: one legacy form dropped (--version prints Cobra's banner instead of the bare release tag)",
+      "file": "../../qualgen/cli.go",
+      "old": "\troot.SetVersionTemplate(\"{{.Version}}\\n\")",
+      "new": ""
+    },
+    {
+      "name": "qualgen: completion entrypoint reopened (__complete answers instead of refusing)",
+      "file": "../../qualgen/cli.go",
+      "old": "\trefuseCompletionRequests(root)\n\treturn root",
+      "new": "\treturn root"
+    }
+  ]
+}

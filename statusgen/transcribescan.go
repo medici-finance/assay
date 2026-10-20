@@ -294,9 +294,30 @@ type transcribeDelta struct {
 // A per-issue trust failure or unreadable author is a clauseSkip, never a
 // default-board.
 func planTranscribeScan(root string, streams []*Stream, homeRepo string,
-	list issueLister, comments commentLister, resolveAuthor authorResolver, bless issueBlessChecker) (transcribeDelta, error) {
+	list issueLister, comments commentLister, resolveAuthor authorResolver, bless issueBlessChecker, hold labelHoldChecker) (transcribeDelta, error) {
 
 	var d transcribeDelta
+
+	// The label-removal hold (labelremovalhold.go) runs on all three admission paths. A hold
+	// is a clauseSkip naming the hold clause; the issue is not created or reactivated.
+	holdMemo := newLabelHoldMemo(hold)
+	held := func(issue int, action string) bool {
+		isHeld, clause, detail := holdMemo.gate(homeRepo, issue)
+		if !isHeld {
+			return false
+		}
+		for _, sk := range d.Skips {
+			if sk.Issue == issue && sk.Clause == clause {
+				return true
+			}
+		}
+		d.Skips = append(d.Skips, clauseSkip{
+			Issue:  issue,
+			Clause: clause,
+			Reason: fmt.Sprintf("NOT %s — %s", action, detail),
+		})
+		return true
+	}
 
 	issues, err := list(homeRepo)
 	if err != nil {
@@ -318,8 +339,10 @@ func planTranscribeScan(root string, streams []*Stream, homeRepo string,
 
 	openSet := map[int]bool{}
 	openExcluded := map[int]bool{}
+	openIssue := map[int]ghIssue{} // live state for reactivatePlan
 	for _, iss := range issues {
 		openSet[iss.Number] = true
+		openIssue[iss.Number] = iss
 		labels := labelNames(iss.Labels)
 		excluded := hasExcludedLabel(labels)
 		openExcluded[iss.Number] = excluded
@@ -367,6 +390,9 @@ func planTranscribeScan(root string, streams []*Stream, homeRepo string,
 		path := filepath.Join(dir, placeholderFileName(homeRepo, iss.Number))
 		if _, serr := os.Stat(path); serr == nil {
 			continue // a file already occupies the target path — never overwrite
+		}
+		if held(iss.Number, "created") {
+			continue
 		}
 		gate := derivePlaceholderGate(labels, iss.Title)
 		rel, rerr := filepath.Rel(root, path)
@@ -420,8 +446,10 @@ func planTranscribeScan(root string, streams []*Stream, homeRepo string,
 				continue
 			}
 			if ph.Status == "done" {
-				d.CloseOuts = append(d.CloseOuts, closeOutPlan{
-					Repo: homeRepo, Issue: ph.Issue, Path: ph.Path, Rel: rel, Action: "reactivate"})
+				if held(ph.Issue, "reactivated") {
+					continue
+				}
+				d.CloseOuts = append(d.CloseOuts, reactivatePlan(homeRepo, openIssue[ph.Issue], ph.Path, rel, ""))
 			}
 		}
 	}
@@ -435,13 +463,15 @@ func planTranscribeScan(root string, streams []*Stream, homeRepo string,
 			if !openSet[ph.Issue] || openExcluded[ph.Issue] {
 				continue
 			}
+			if held(ph.Issue, "reactivated") {
+				continue
+			}
 			rel, rerr := filepath.Rel(root, path)
 			if rerr != nil {
 				rel = path
 			}
-			d.CloseOuts = append(d.CloseOuts, closeOutPlan{
-				Repo: homeRepo, Issue: ph.Issue, Path: path,
-				Rel: filepath.ToSlash(rel), Action: "reactivate", Dest: unarchivedPath(path)})
+			d.CloseOuts = append(d.CloseOuts, reactivatePlan(homeRepo, openIssue[ph.Issue], path,
+				filepath.ToSlash(rel), unarchivedPath(path)))
 		}
 	}
 
@@ -484,7 +514,7 @@ func planTranscribeScan(root string, streams []*Stream, homeRepo string,
 // direct-author authorization over the full rostered set is implemented here.
 func runTranscribeScan(root string, dryRun bool,
 	list issueLister, comments commentLister, resolveAuthor authorResolver,
-	bless issueBlessChecker, resolveSignoff commentResolver) int {
+	bless issueBlessChecker, hold labelHoldChecker, resolveSignoff commentResolver) int {
 
 	// P1: unset roster is CLOSED — identical posture to --scan-issues. This lane
 	// WRITES durable work items from issues arbitrary external users can author, and
@@ -527,7 +557,7 @@ func runTranscribeScan(root string, dryRun bool,
 	}
 	attachPlaceholders(streams)
 
-	delta, err := planTranscribeScan(root, streams, homeRepo, list, comments, resolveAuthor, bless)
+	delta, err := planTranscribeScan(root, streams, homeRepo, list, comments, resolveAuthor, bless, hold)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen --transcribe-scan:", err)
 		return 1
@@ -556,8 +586,8 @@ func runTranscribeScan(root string, dryRun bool,
 		fmt.Printf("transcribe-scan: CREATE %s  (%s#%d, gate:%s)\n", p.Rel, p.Repo, p.Issue, p.Gate)
 	}
 	for _, c := range delta.CloseOuts {
-		fmt.Printf("transcribe-scan: %s %s  (%s#%d, %s)\n",
-			strings.ToUpper(c.Action), c.Rel, c.Repo, c.Issue, closeOutReason(c.Action))
+		fmt.Printf("transcribe-scan: %s %s  (%s#%d, %s%s)\n",
+			strings.ToUpper(c.Action), c.Rel, c.Repo, c.Issue, closeOutReason(c.Action), closeOutGateNote(c))
 	}
 	for _, u := range delta.Unblocks {
 		fmt.Printf("transcribe-scan: AWAIT-FLIP %s  (%s#%d, block cleared)\n", u.Path, u.Repo, u.Issue)

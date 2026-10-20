@@ -233,6 +233,19 @@ type deskreadItemEnvelope struct {
 			CreatedAt   string `json:"createdAt"`
 			Body        string `json:"body"`
 		} `json:"comments"`
+		// LabelEvents is the `label-events` kind. Complete is a pointer on purpose: an item that
+		// carries no completeness field at all is not a history this build can trust, and
+		// decoding it as false-or-true would be a guess either way.
+		LabelEvents *struct {
+			Complete *bool `json:"complete"`
+			Events   []struct {
+				Label      string `json:"label"`
+				Removed    bool   `json:"removed"`
+				CreatedAt  string `json:"createdAt"`
+				ActorLogin string `json:"actorLogin"`
+				ActorID    int64  `json:"actorId"`
+			} `json:"events"`
+		} `json:"labelEvents"`
 	} `json:"items"`
 	Partial []struct {
 		Repo   string `json:"repo"`
@@ -350,6 +363,50 @@ func (d deskreadReader) IssueComments(repo string, number int) ([]issueComment, 
 			CreatedAt: c.CreatedAt,
 			Body:      c.Body,
 		})
+	}
+	return out, nil
+}
+
+// labelEvent is one label application or removal on an issue, as the forge served it. Label is
+// empty for an event whose label the forge no longer names; Login is empty and ID 0 where the
+// forge reported no actor; At is the forge's own timestamp text, parsed only where the hold rule
+// has to compare it. Nothing here says who the actor is.
+type labelEvent struct {
+	Label   string
+	Removed bool
+	At      string
+	Login   string
+	ID      int64
+}
+
+// labelHistoryRead is one issue's whole label history, oldest first, and whether the forge
+// served all of it. Complete=false means a page bound was hit: the events are a prefix.
+type labelHistoryRead struct {
+	Events   []labelEvent
+	Complete bool
+}
+
+// IssueLabelHistory is the `label-events` kind: deskkit.Forge.IssueLabelHistory for one issue.
+// A history this build cannot trust is an ERROR, never a short or empty answer: the verb
+// listing the issue in `partial`, answering no item, an item with no completeness field, a
+// non-zero exit, and a verb that rejects the kind all land in readItem's error or the checks
+// below. An item marked incomplete is NOT an error — it decodes as incomplete and the hold rule
+// holds the issue as could-not-check.
+func (d deskreadReader) IssueLabelHistory(repo string, number int) (labelHistoryRead, error) {
+	env, i, err := d.readItem("label-events", repo, number)
+	if err != nil {
+		return labelHistoryRead{}, err
+	}
+	le := env.Items[i].LabelEvents
+	if le == nil {
+		return labelHistoryRead{}, fmt.Errorf("%s label-events --issue %s#%d: could-not-check: the item carries no label history", d.bin, repo, number)
+	}
+	if le.Complete == nil {
+		return labelHistoryRead{}, fmt.Errorf("%s label-events --issue %s#%d: could-not-check: the label history carries no completeness field", d.bin, repo, number)
+	}
+	out := labelHistoryRead{Complete: *le.Complete, Events: make([]labelEvent, 0, len(le.Events))}
+	for _, e := range le.Events {
+		out.Events = append(out.Events, labelEvent{Label: e.Label, Removed: e.Removed, At: e.CreatedAt, Login: e.ActorLogin, ID: e.ActorID})
 	}
 	return out, nil
 }

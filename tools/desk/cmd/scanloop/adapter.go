@@ -46,8 +46,10 @@ type ScanLoop struct {
 	Monitor func() (*MonitorReport, error)
 	// Probe is the trust gate's reader. nil leaves every item COULD-NOT-CHECK (fail closed).
 	Probe TrustProbe
-	// OpenPR reports this session's currently-open scan PR. nil means none is known, which the
-	// coalesce policy reads as "cut a fresh one" — the bounded direction.
+	// OpenPR reports the scan target's open scan PR by this App — from any session, not only this
+	// one (discover.go). nil means none is open, which the coalesce policy reads as "cut a fresh
+	// one". An error means the answer could not be read, and the scan dispatch is refused rather
+	// than cutting a possible duplicate. It is consulted only for the scan-carrier lane.
 	OpenPR func() (*OpenScanPR, error)
 	// Exec is the lanes' process seam. nil = run for real.
 	Exec Exec
@@ -169,6 +171,26 @@ func (s *ScanLoop) Parked() []string {
 		out = append(out, id)
 	}
 	sort.Strings(out)
+	return out
+}
+
+// Warnings returns every lane warning this pass recorded, as "<dispatch item>: <warning>", sorted
+// by item. A warning is a failure AFTER an outward write landed (a cleanup that could not put
+// local state back): it does not undo the exit, and the pass report prints it on its own line.
+func (s *ScanLoop) Warnings() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ids := make([]string, 0, len(s.outcomes))
+	for id := range s.outcomes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	var out []string
+	for _, id := range ids {
+		for _, w := range s.outcomes[id].Warnings {
+			out = append(out, id+": "+w)
+		}
+	}
 	return out
 }
 
@@ -440,11 +462,16 @@ func (s *ScanLoop) reachableTiers() []loopengine.Tier {
 // inline (its result is the lane's own outcome); a judgment lane EMITS and waits for the structured
 // routing decision a model tier feeds back.
 func (s *ScanLoop) Dispatch(it loopengine.Item, tier loopengine.Tier) (loopengine.Handle, error) {
-	open, err := s.openPR()
-	if err != nil {
-		return nil, err
-	}
 	lane := SelectLane(it, tier, s.Exec, s.Write)
+	// Only the scan carrier coalesces, so only it reads the open scan PR: a judgment item is
+	// emitted whether or not that read can be taken, and is never refused for it.
+	var open *OpenScanPR
+	if lane.Name() == LaneScanCarrierPR {
+		var err error
+		if open, err = s.openPR(); err != nil {
+			return nil, err
+		}
+	}
 	req := LaneRequest{
 		Item:     it,
 		Tier:     tier,

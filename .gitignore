@@ -1,4 +1,5 @@
 # Go build artifacts
+/.release-images/
 /statusgen/statusgen
 /tools/freshness/freshness
 /tools/pairedversions/pairedversions

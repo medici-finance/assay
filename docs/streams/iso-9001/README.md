@@ -69,15 +69,15 @@ chain. Related, adjacent, cite both, never conflate them.
 |---|-------|------|--------|--------|----------|----------|
 | 01 | [Emit the tool-validation evidence pack as a release asset](brief-01-tool-validation-evidence-pack.md) | 0 | S | done | 2026-09-27 assay-verifier-app[bot] @ b227b40768db (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #566 @ e277316c439096c894dccc5895cafa9c8c1b1119) |
 | 02 | [Align three shipped disclosures with the code they describe](brief-02-disclosure-honesty-fixes.md) | 0 | S | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #318 @ 6ab8de53a40c1a4f71fa6c0a0ddccb4b27a000c8) |
-| 03 | [A finding closes on a fired control — the corrective-action effectiveness record](brief-03-corrective-action-effectiveness.md) | 1 | M | implemented | — | — |
+| 03 | [A finding closes on a fired control — the corrective-action effectiveness record](brief-03-corrective-action-effectiveness.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 810a5edf064b (claude-opus-5-5) | — |
 | 04 | [Record the authorizing human in the release itself](brief-04-release-authorizer-traceability.md) | 1 | S | done | 2026-09-27 assay-verifier-app[bot] @ 9585b4b6cc2e (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1364 @ 974cc294c29acdc580c4bff0d5a393ca813362ac) |
 | 05 | [Records control and retention, stated once](brief-05-records-control-and-retention.md) | 1 | S | done | 2026-09-04 opus-4.8[1m]-verifier | 2026-09-05 assay-reviewer-app[bot] (approved PR #400 @ 90c19fd7a273835d01247292ad91f217a4ff9fe1) |
 | 06 | [The auditor one-pager — what Assay is and is not](brief-06-auditor-one-pager.md) | 2 | S | todo | — | — |
 | 07 | [Release by merge — the human merge is the cut and the authorizer](brief-07-release-by-merge.md) | 2 | M | blocked | — | — |
 | 08 | [Versioned source obligations and project applicability](brief-08-source-applicability.md) | 0 | M | todo | — | — |
-| 09 | [Prepare project assurance reviews from canonical evidence](brief-09-project-review-packet.md) | 8 | M | todo | — | — |
-| 10 | [Reassess affected project reviews after source changes](brief-10-source-change-impact.md) | 9 | M | todo | — | — |
-| 11 | [Qualify project assurance preparation on an offline corpus](brief-11-assurance-review-qualification.md) | 10 | M | todo | — | — |
+| 09 | [Prepare project assurance reviews from canonical evidence](brief-09-project-review-packet.md) | 11 | M | todo | — | — |
+| 10 | [Reassess affected project reviews after source changes](brief-10-source-change-impact.md) | 12 | M | todo | — | — |
+| 11 | [Qualify project assurance preparation on an offline corpus](brief-11-assurance-review-qualification.md) | 13 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -131,10 +131,15 @@ extension section below):
 
 ```
 Wave 0: [08]
-Wave 8: [09] ← {08, iso-9001/03, iso-9001/04, graph-execution/02, graph-execution/03, graph-execution/15 (wave 7)}
-Wave 9: [10] ← 09
-Wave 10: [11] ← 10
+Wave 11: [09] ← {08, iso-9001/03, iso-9001/04, graph-execution/02, graph-execution/03, graph-execution/15 (wave 10)}
+Wave 12: [10] ← 09
+Wave 13: [11] ← 10
 ```
+
+Waves recalculated 2026-10-13: the non-CI R2 amendment made graph-execution/04, /16, /19 and
+/26 depend on graph-execution/28 and /29, which moved graph-execution/15 from wave 7 to 10. <!-- graph: encoded graph-execution/04→graph-execution/28 -->
+Only the wave numbers changed; 09–11 keep their dependencies and scope. The "waves 0, 8, 9, 10"
+prose below records the original authoring.
 
 ## Shared conventions (inherited by every brief)
 

@@ -23,7 +23,7 @@ import (
 // cache-run, container-run) are covered by the legacy-forms and boundary tests.
 var visibleVerbs = []string{
 	"ls", "version", "new", "set", "show", "check", "deskd", "desk", "up", "down",
-	"reset", "smoke", "status", "cadence", "scratch", "cache", "comms", "defaults", "providers",
+	"reset", "models", "smoke", "status", "cadence", "scratch", "cache", "comms", "defaults", "providers",
 }
 
 // snapshotTree is a stable fingerprint of every path under dir: name, mode, size and mtime.
@@ -80,6 +80,9 @@ func execIn(t *testing.T, bin string, env []string, args ...string) cliRun {
 // to the tree (as `defaults` was, by a merge of main) cannot skip TestCLIHelpOffline's offline-help
 // and no-echo checks.
 func TestVisibleVerbsCoverTheTree(t *testing.T) {
+	if cellopFixtureBuild {
+		t.Skip("pins the release command tree; the cellopfixture build adds the fixture verb and its stand-ins")
+	}
 	listed := map[string]bool{}
 	for _, v := range visibleVerbs {
 		listed[v] = true

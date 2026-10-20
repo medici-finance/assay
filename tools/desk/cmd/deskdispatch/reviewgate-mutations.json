@@ -129,37 +129,37 @@
     },
     {
       "name": "ruling: a comment before the label is a ruling",
-      "file": "cmd/deskdispatch/reviewgate.go",
+      "file": "internal/deskkit/briefadmission.go",
       "old": "if isRatifier(ev.Author, ev.AuthorID) && ev.CreatedAt.After(applied) {",
       "new": "if isRatifier(ev.Author, ev.AuthorID) {"
     },
     {
       "name": "ruling: anyone's comment is a ruling",
-      "file": "cmd/deskdispatch/reviewgate.go",
+      "file": "internal/deskkit/briefadmission.go",
       "old": "if isRatifier(ev.Author, ev.AuthorID) && ev.CreatedAt.After(applied) {",
       "new": "if ev.CreatedAt.After(applied) {"
     },
     {
       "name": "ruling: an incomplete history is read as no ruling",
-      "file": "cmd/deskdispatch/reviewgate.go",
-      "old": "if !trust.Complete {\n\t\treturn rulingUnknown\n\t}",
-      "new": "if false {\n\t\treturn rulingUnknown\n\t}"
+      "file": "internal/deskkit/briefadmission.go",
+      "old": "if !trust.Complete {\n\t\treturn RulingUnknown\n\t}",
+      "new": "if false {\n\t\treturn RulingUnknown\n\t}"
     },
     {
       "name": "ruling: an undatable label is read as no ruling",
-      "file": "cmd/deskdispatch/reviewgate.go",
-      "old": "if err != nil {\n\t\t\t\treturn rulingUnknown\n\t\t\t}\n\t\t\tapplied = t",
-      "new": "if err != nil {\n\t\t\t\treturn rulingMissing\n\t\t\t}\n\t\t\tapplied = t"
+      "file": "internal/deskkit/briefadmission.go",
+      "old": "if err != nil {\n\t\t\t\treturn RulingUnknown\n\t\t\t}\n\t\t\tapplied = t",
+      "new": "if err != nil {\n\t\t\t\treturn RulingMissing\n\t\t\t}\n\t\t\tapplied = t"
     },
     {
       "name": "ruling: the label's first application is the one dated",
-      "file": "cmd/deskdispatch/reviewgate.go",
+      "file": "internal/deskkit/briefadmission.go",
       "old": "\t\t\tapplied = t\n",
       "new": "\t\t\tif applied.IsZero() {\n\t\t\t\tapplied = t\n\t\t\t}\n"
     },
     {
       "name": "ruling: a removed label still stands",
-      "file": "cmd/deskdispatch/reviewgate.go",
+      "file": "internal/deskkit/briefadmission.go",
       "old": "standing = !e.Removed",
       "new": "standing = true"
     },

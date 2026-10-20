@@ -7,12 +7,17 @@ why: >-
   today.
 wave: 3
 depends: ["desktools-v2/16"]
-unblocks: ["desktools-v2/17"]
+unblocks: []
+withdrawn-date: "2026-10-18"
+superseded-by: ["graph-execution/04", "graph-execution/25"]
+withdrawn-reason: "The ratified target (docs/proposals/non-ci-architecture/11-target-architecture.md §\"What happens to today's tools\": thin adapters, do not port the entire command matrix; 13-migration-and-decisions.md: no parser migration is a prerequisite) retires or re-homes this domain: merge authority becomes a role-bound effect with stable effect identity (R4: graph-execution/04, /25). The owned entrypoints keep their current parser, routed exempt in cli-migration.json, until retired."
+decision-issue: 3420
+ruling: "https://github.com/medici-finance/assay/issues/3420#issuecomment-6257901942"
 effort: "L"
 gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "yes"}
 issues: [2111]
-schema: "brief-v2"
+schema: "brief-v3"
 outcome: none
 version: 1
 id: "9f397ca3-1113-4caa-904a-4ca7368328b2"
@@ -46,6 +51,8 @@ decision-trigger: "spec"
 ---
 
 # Brief 36 — Migrate the merge authority verbs to Cobra and Viper
+
+> **Withdrawn 2026-10-18 — superseded by `graph-execution/04`, `graph-execution/25`.** The ratified target (docs/proposals/non-ci-architecture/11-target-architecture.md §"What happens to today's tools": thin adapters, do not port the entire command matrix; 13-migration-and-decisions.md: no parser migration is a prerequisite) retires or re-homes this domain: merge authority becomes a role-bound effect with stable effect identity (R4: graph-execution/04, /25). The owned entrypoints keep their current parser, routed exempt in cli-migration.json, until retired. The Cobra/Viper requirement now binds new tools instead (`docs/streams/desktools-v2/cli-contract.md` §7). Not executable.
 
 ## Context
 

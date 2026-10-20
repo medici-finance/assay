@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"path/filepath"
 	"sync"
 )
 
@@ -21,10 +22,22 @@ type verifierRuns struct {
 // production default always issues/reads the shared dispatcher-owned record.
 func (v *VerifyLoop) attestRun(it loopengine.Item, home, model string) (deskkit.VerifierReceipt, error) {
 	if v.Attest != nil {
-		return v.Attest(it, home, model)
+		receipt, err := v.Attest(it, home, model)
+		return queuedVerifierReceipt(it, receipt, err)
 	}
 	if model != "" {
-		repo := it.Payload["repo"]
+		if err := checkQueuedAssociation(it); err != nil {
+			return deskkit.VerifierReceipt{}, err
+		}
+	}
+	brief := it.BriefPath
+	sourceRepo := it.Payload["repo"]
+	if it.Payload["source_repo"] != "" {
+		sourceRepo = it.Payload["source_repo"]
+		brief = filepath.Join(it.Payload["root"], it.BriefPath)
+	}
+	if model != "" {
+		repo := sourceRepo
 		if repo == "" {
 			var err error
 			repo, err = deskkit.OriginRepoSlug(home)
@@ -39,7 +52,7 @@ func (v *VerifyLoop) attestRun(it loopengine.Item, home, model string) (deskkit.
 		if tier == "" {
 			tier = "any"
 		}
-		if err := deskkit.PrepareVerifierAttestation(home, repo, it.BriefPath, model, tier); err != nil {
+		if err := deskkit.PrepareVerifierAttestation(home, repo, brief, model, tier); err != nil {
 			return deskkit.VerifierReceipt{}, err
 		}
 		receipt, err := deskkit.RecoverVerifierAttestation(home)
@@ -48,8 +61,20 @@ func (v *VerifyLoop) attestRun(it loopengine.Item, home, model string) (deskkit.
 		}
 	}
 	receipt, err := deskkit.CheckVerifierAttestation(home, it.BriefPath)
+	return queuedVerifierReceipt(it, receipt, err)
+}
+
+func queuedVerifierReceipt(it loopengine.Item, receipt deskkit.VerifierReceipt, err error) (deskkit.VerifierReceipt, error) {
 	if err == nil && (receipt.Binding.Source != it.TargetSHA || receipt.Binding.Brief != it.BriefPath) {
 		err = fmt.Errorf("verifier admission differs from queued source or brief")
+	}
+	if err == nil && receipt.Binding.Version == 2 {
+		b := receipt.Binding
+		if b.Repo != it.Payload["repo"] || b.SourceRepo != it.Payload["source_repo"] || b.TrackingSource != it.Payload["tracking_sha"] {
+			err = fmt.Errorf("verifier admission differs from queued tracking/source association")
+		}
+	} else if err == nil && it.Payload["source_repo"] != "" {
+		err = fmt.Errorf("cross-repository queue item has no cross-repository attestation")
 	}
 	return receipt, err
 }

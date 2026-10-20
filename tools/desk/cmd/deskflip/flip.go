@@ -275,6 +275,11 @@ func flip(o flipOpts) error {
 	// once per flip, and both calls decide on the same set of runs. Built unconditionally: it
 	// costs nothing until a check-runs read actually happens inside it.
 	runsAtHead := checkRunsAtHeadReader(o, rollupAtHead, head)
+	// The head commit's committer date, read at most once and only when a grant at head
+	// exists: a forge can re-anchor an older review onto a newer head (#3093), so an APPROVED
+	// or security pass "at head" grants only when it was submitted at or after the head commit
+	// existed. See withoutStaleGrants.
+	headAt := headCommittedAtReader(fg, fr, head)
 	// The body-edit exemption's "edited after the CR" clause is a FORGE fact — the PR body's
 	// own last-edited time — read only when a standing CR has declared that class, and read
 	// fresh on each call so the post-TOCTOU re-check sees an edit made in between.
@@ -294,13 +299,20 @@ func flip(o flipOpts) error {
 			"condition %s: PR #%d's merge-hold could not be read: %v", condReviewerApproved, o.pr, holdErr), holdErr)
 	}
 
-	var reviews []reviewInfo
+	// reviews is every review as read; grantReviews is the same list with the STALE grants at
+	// head removed (#3093) — the set the two GRANTING conditions (reviewer-approved,
+	// security-verdict) decide on. desk-decided reads the unfiltered list: it refuses on
+	// findings, and a finding on a stale review is still a finding.
+	var reviews, grantReviews []reviewInfo
 	if hold.State == deskkit.MergeHoldNotApplicable {
 		reviews, err = readReviews(o, fg, fr)
 		if err != nil {
 			return err
 		}
-		if err := checkReviewerApproved(reviewerLogin, reviews, head, liveBodyRead{Body: pr.Body, EditedAt: bodyEditedAt}, o.pr, runsAtHead); err != nil {
+		if grantReviews, err = withoutStaleGrants(reviews, reviewerLogin, head, condReviewerApproved, headAt); err != nil {
+			return err
+		}
+		if err := checkReviewerApproved(reviewerLogin, grantReviews, head, liveBodyRead{Body: pr.Body, EditedAt: bodyEditedAt}, o.pr, runsAtHead); err != nil {
 			return err
 		}
 		o.say("%s OK: %s APPROVED at %s", condReviewerApproved, reviewerLogin, short(head))
@@ -315,6 +327,9 @@ func flip(o flipOpts) error {
 		// unrelated to, and unchanged by, this brief's reviewer-approved condition.
 		reviews, err = readReviews(o, fg, fr)
 		if err != nil {
+			return err
+		}
+		if grantReviews, err = withoutStaleGrants(reviews, reviewerLogin, head, condSecurityVerdict, headAt); err != nil {
 			return err
 		}
 	}
@@ -425,7 +440,7 @@ func flip(o flipOpts) error {
 	if err != nil {
 		return err
 	}
-	if err := checkSecurityVerdict(o, repo, pr, files, reviews, reviewerLogin, head); err != nil {
+	if err := checkSecurityVerdict(o, repo, pr, files, grantReviews, reviewerLogin, head); err != nil {
 		return err
 	}
 	o.say("%s OK: %d changed file(s) read", condSecurityVerdict, len(files))
@@ -459,11 +474,19 @@ func flip(o flipOpts) error {
 	if err != nil {
 		return err
 	}
+	grantCond := condReviewerApproved
+	if hold.State != deskkit.MergeHoldNotApplicable {
+		grantCond = condSecurityVerdict // the hold, not a review, is reviewer-approved's grant there
+	}
+	grantReviews2, err := withoutStaleGrants(reviews2, reviewerLogin, head, grantCond, headAt)
+	if err != nil {
+		return err
+	}
 	if hold.State == deskkit.MergeHoldNotApplicable {
 		// body2 is the body as re-read here, not the first read's: the body-edit exemption
 		// binds the reviewer's documented re-read to the LIVE body, and a body edited between
 		// the two reads is exactly the change that re-read must see.
-		if err := checkReviewerApproved(reviewerLogin, reviews2, head, liveBodyRead{Body: body2, EditedAt: bodyEditedAt}, o.pr, runsAtHead); err != nil {
+		if err := checkReviewerApproved(reviewerLogin, grantReviews2, head, liveBodyRead{Body: body2, EditedAt: bodyEditedAt}, o.pr, runsAtHead); err != nil {
 			return err
 		}
 	} else {
@@ -476,7 +499,7 @@ func flip(o flipOpts) error {
 			return err
 		}
 	}
-	if err := checkSecurityVerdict(o, repo, pr, files, reviews2, reviewerLogin, head); err != nil {
+	if err := checkSecurityVerdict(o, repo, pr, files, grantReviews2, reviewerLogin, head); err != nil {
 		return err
 	}
 	// desk-decided re-runs against the SAME re-read (review finding F2 on attention-budget/19's
@@ -761,6 +784,13 @@ func readLabelEvents(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo) ([]desk
 //  3. STALE and NONE are reported as DIFFERENT refusals. "There is a verdict, just not at
 //     this code" and "nobody has reviewed this" call for different actions, and collapsing
 //     them sends the operator after the wrong one.
+//  4. A RE-ANCHORED grant is not at head (#3093). The forge can report an older review's
+//     commit_id at a newer head; an APPROVED whose submitted_at predates the head commit's
+//     committer date verified nothing there. cmdFlip hands this function reviews with those
+//     stale grants already removed (withoutStaleGrants — CRs are never removed), so such an
+//     APPROVED neither satisfies the reduction nor clears a CR at an earlier commit as if
+//     it were a fresh verdict after a genuine push, nor is it a citing APPROVE for either
+//     exemption below.
 //
 // RULE 2 HAS EXACTLY TWO EXEMPTIONS, and both live in this function rather than in a caller
 // so the grant and the refusal cannot drift apart: the CHECK-ONLY CR (see

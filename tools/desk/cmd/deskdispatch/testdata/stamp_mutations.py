@@ -17,8 +17,15 @@ mutations = [
     ("readback", "../../internal/deskkit/stampapply.go", 'if state != ModelStamped || got != expected {', 'if false {', "TestStampReadbackBothPaths|TestStampOnlyFailure|TestStampOnlyAudit"),
     # A second false-success path, planted in the new entry independently of stepStamp.
     ("second-success", "stamponly.go", 'line, e := stepStamp(o, o.repo)', 'line, e := "OK: skipped", error(nil)', "TestStampOnlyRoundTrip|TestStampOnlyRepair|TestStampOnlyGitLab"),
-    ("args", "stamponly.go", 'fs.StringVar(&o.tier, "tier", "",', 'fs.StringVar(&o.tier, "tier", "any",', "TestStampOnlyRejectsArgs"),
+    ("args", "cli.go", 'str("tier", "", "selected execution tier (required)")', 'str("tier", "any", "selected execution tier (required)")', "TestStampOnlyRejectsArgs"),
     ("pending", "dispatch.go", 'coordinator runs deskdispatch --stamp-only', 'coordinator runs obsolete-command', "TestPendingStampCommand"),
+    ("verifier-kind", "dispatch.go", 'reviewKit(kit) || verifierKit(kit)', 'reviewKit(kit)', "TestStampKitKinds"),
+    # #2760: an authoring stamp written into the review pair, and a reader scoped to both
+    # pairs at once. Either one lets a late stamp replace the other lane's attestation.
+    ("shared-namespace", "dispatch.go", 'return deskkit.StampAuthored\n}', 'return deskkit.StampDispatch\n}', "TestWorkerStampKeepsReviewPair|TestDispatchStampKeepsReview|TestBothStampsCoexist"),
+    ("unscoped-reader", "../../internal/deskkit/modelstamp.go", 'return strings.HasPrefix(name, k.ModelPrefix()) || strings.HasPrefix(name, k.TierPrefix())', 'return strings.Contains(name, "-model:") || strings.Contains(name, "-tier:")', "TestWorkerStampKeepsReviewPair|TestBothStampsCoexist"),
+    ("stamp-authority", "dispatch.go", 'stampKind.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)', 'stampKind.ReStampRemovals(tl, labels, deskkit.IsDispatcherLogin)', "TestFloorConsumersInjectStampAuthorityLogin"),
+    ("floor-authored", "../../internal/deskkit/modelstamp.go", 'return StampDispatch.AttestedStampOf(tl, isDispatcher)', 'return StampAuthored.AttestedStampOf(tl, isDispatcher)', "TestAuthoredOnlyFloor"),
     # Plant an otherwise-successful child process in the bounded path. The recorder
     # must reject it even though the resulting stamp is completely correct.
     ("extra-child", "stamponly.go", 'line, e := stepStamp(o, o.repo)', 'runCmd(".", "deskwt", "add", "unwanted")\n\tline, e := stepStamp(o, o.repo)', "TestStampOnlyRoundTrip|TestStampOnlyReview"),
@@ -30,7 +37,8 @@ for name, filename, before, after, tests in mutations:
         raise SystemExit(f"{name}: mutation anchor absent/ambiguous")
     try:
         path.write_text(original.replace(before, after))
-        p = subprocess.run(["go", "test", "./cmd/deskdispatch", "-run", f"^({tests})$", "-count=1", "-timeout", "60s"], cwd=module, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        target = "." if name == "stamp-authority" else "./internal/deskkit" if name == "floor-authored" else "./cmd/deskdispatch"
+        p = subprocess.run(["go", "test", target, "-run", f"^({tests})$", "-count=1", "-timeout", "60s"], cwd=module, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if p.returncode == 0 or "--- FAIL:" not in p.stdout or "build failed" in p.stdout:
             raise SystemExit(f"{name}: did not observe an assertion failure\n{p.stdout}")
         failures = [line.strip() for line in p.stdout.splitlines() if "--- FAIL:" in line]

@@ -18,7 +18,7 @@
 // One comment from the blessing authority admits it. Comment authors are fetched only for untrusted-author
 // issues, keeping API growth bounded.
 //
-// Exit codes (deskkit contract): 0 ok · 3 disabled · 5 refused (bad subcommand) ·
+// Exit codes (deskkit contract): 0 ok · 3 disabled · 5 refused (bad subcommand, flag or value) ·
 // 6 unverifiable (a read failed / a local file could not be parsed).
 package main
 
@@ -29,40 +29,34 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/spf13/cobra"
+
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/issueflow"
 )
 
-var usage = `issueboard — read-only issue + intake board (desk-tools, issue #703)
+// helpLong is the root help's prose. The usage lines and flags are generated from the command
+// tree (desktools-v2/45); this is what the tree cannot say on its own.
+const helpLong = `issueboard — read-only issue + intake board (desk-tools, issue #703).
 
-usage:
-  issueboard              full board: issue lane + intake lane (default)
-  issueboard board        same as no subcommand
-  issueboard issues       issue lane only (one ACTION per open issue)
-  issueboard issues --to <role>
-                          desk-inbox view: only issues ADDRESSED to <role> (to:<role>)
-  issueboard intake       intake lane only (untriaged entries, age-flagged)
-  issueboard --version    source SHA / build time
-
-flags:
-  --root <path>      repo root to read docs/streams/{issue-loop,intake} from (default ".")
-  --sla-days <N>     decision-owed silence threshold before ESCALATE (default 6, the
-                      market-scan "silent 6d" figure — desk-console-design.md §13.3)
-  --to <role>        (issues lane only) restrict to the desk-inbox items addressed to
-                      <role>. Without it, an issue carrying a to:<role> label renders
-                      ADDRESSED→<role> in its own priority band and is EXCLUDED from the
-                      un-briefed (CREATE-PLACEHOLDER) work — it is the addressee's item,
-                      not free work.
+With no subcommand it renders the full board: the issue lane (one ACTION per open issue)
+and the intake lane (untriaged entries, age-flagged).
 
 desk inbox: an open issue labelled to:<role> (deskfile new --to <role>) is a durable
 message TO a desk. It leads its addressee's sweep and is held out of un-briefed work. A
 to:<role> item aged past --sla-days with NO comment from that role's App classifies
 ESCALATE — an unread inbox becomes visible without the addressee's cooperation (a second,
 independent layer over the addressee's own sweep). The human-response clock is unchanged.
+Without --to, an issue carrying a to:<role> label renders ADDRESSED→<role> in its own
+priority band and is EXCLUDED from the un-briefed (CREATE-PLACEHOLDER) work — it is the
+addressee's item, not free work.
 
 escalation: an open issue carrying a needs-decision or
 question label ages against --sla-days, counted from the last HUMAN response (a bot
 comment never resets the clock). Under the SLA it classifies AWAIT; past it, ESCALATE
-— sorted to the top of the issue lane, age rendered in the row.
+— sorted to the top of the issue lane, age rendered in the row. The default (6) is the
+market-scan "silent 6d" figure — desk-console-design.md §13.3.
 
 owned repos (the intake SCAN scope): the issue lane READS the owned-repo set
 resolved at runtime from the ASSAY_SCAN_REPOS roster key (deskkit.ScanRepos) — the
@@ -88,88 +82,161 @@ only once a direct per-issue read positively says closed. A read that fails is
 COULD-NOT-CHECK (exit 6, issue named), and an absent issue that reads OPEN proves the
 listing came back partial — the whole sweep is then refused (exit 6) rather than
 retiring the live placeholders the listing omitted (#1032).
-`
+
+Exit codes: 0 ok · 3 disabled · 5 refused (bad arguments) · 6 unverifiable.`
+
+var perfVerbs = []string{"board", "issues", "intake", "version", "--version", "help", "--help", "-h"}
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident
-	// (correctness review finding: SetToolClass had no caller anywhere
-	// in the tree, so every tool was ClassWrite only because nothing ever set it).
-	// This tool ACTS on the roster, so ciEligible=false: config-home file only, never
-	// the environment, in CI as well as locally.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// Every run echoes the EFFECTIVE trust/authority
-	// configuration to stderr before it does anything. The roster, the allowed-repo
-	// set and the risk-path additions live in repository settings or a config-home
-	// file, not in a diff — so the RUN is the only place a change to them becomes
-	// visible, and a NARROWING has to be as visible as a widening. Logins and paths
-	// only; never a token or a credential path.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(deskkit.PerfRun("issueboard", perfVerbs, os.Args[1:], func([]string) int {
+		return execute(os.Args[1:], os.Stdout, os.Stderr, startup)
+	}))
 }
 
+// startup is what every real run does first, after its command line parsed and its values
+// passed their checks, and never for help or version (desktools-v2/45: help reads nothing).
+//
+// The roster class is an EXPLICIT declaration, never the zero value by accident
+// (correctness review finding: SetToolClass had no caller anywhere
+// in the tree, so every tool was ClassWrite only because nothing ever set it).
+// This tool ACTS on the roster, so ciEligible=false: config-home file only, never
+// the environment, in CI as well as locally.
+// Every run echoes the EFFECTIVE trust/authority
+// configuration to stderr before it does anything. The roster, the allowed-repo
+// set and the risk-path additions live in repository settings or a config-home
+// file, not in a diff — so the RUN is the only place a change to them becomes
+// visible, and a NARROWING has to be as visible as a widening. Logins and paths
+// only; never a token or a credential path.
+func startup(stderr io.Writer) int {
+	deskkit.SetToolClass(deskkit.ClassForTool(false))
+	deskkit.EchoEffectiveConfig(stderr)
+	if !deskkit.CheckVerbActivation(stderr) {
+		return deskkit.ExitUnverifiable
+	}
+	return deskkit.ExitOK
+}
+
+// run is execute without the process startup: the in-package tests' entry, as before.
 func run(args []string, stdout, stderr io.Writer) int {
-	// --version short-circuits before Guard (pure introspection, no side effects).
-	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
-		s, b := deskkit.Version()
-		fmt.Fprintf(stdout, "issueboard sourceSHA=%s builtAt=%s releaseTag=%s\n", s, b, deskkit.ReleaseTagOrDev())
-		return deskkit.ExitOK
-	}
+	return execute(args, stdout, stderr, nil)
+}
 
-	// Kill switch FIRST, before any read.
-	if err := deskkit.Guard(); err != nil {
-		fmt.Fprintln(stderr, err)
-		return deskkit.ExitCodeOf(err)
-	}
+// guard is the kill switch, a variable so the contract tests can count it.
+var guard = deskkit.Guard
 
-	root := "."
-	slaDays := escalateSLADays
-	toFilter := ""
-	var pos []string
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		switch {
-		case a == "--to":
-			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "refused: --to needs a role")
-				return deskkit.ExitRefused
+// dispatchFn is the typed handler the command tree calls; the contract tests replace it to
+// observe the values that reach it.
+var dispatchFn = dispatch
+
+// onResolve, when set, sees every invocation's resolved settings (the contract tests' window on
+// which source won).
+var onResolve func(*cli.Values)
+
+// exitErr is a handler's exit code carried as an error, so cli.Run keeps it.
+type exitErr int
+
+func (e exitErr) Error() string { return "exit " + strconv.Itoa(int(e)) }
+func (e exitErr) ExitCode() int { return int(e) }
+
+func codeErr(code int) error {
+	if code == deskkit.ExitOK {
+		return nil
+	}
+	return exitErr(code)
+}
+
+// versionLine is what --version and the legacy `version` word print.
+func versionLine() string {
+	s, b := deskkit.Version()
+	return fmt.Sprintf("issueboard sourceSHA=%s builtAt=%s releaseTag=%s issue-projection-v1", s, b, deskkit.ReleaseTagOrDev())
+}
+
+// bindings are every setting issueboard declares: flags and defaults only, all persistent so
+// they work before or after the lane word, as the hand-rolled loop read them anywhere. The tool
+// has no configuration file and reads no environment variable for them.
+func bindings() []cli.Binding {
+	return []cli.Binding{
+		{Key: "root", Kind: cli.String, Flag: "root", Persistent: true, Default: ".",
+			Usage: "repo root `path` to read docs/streams/{issue-loop,intake} from"},
+		{Key: "sla-days", Kind: cli.String, Flag: "sla-days", Persistent: true, Default: strconv.Itoa(escalateSLADays),
+			Usage: "decision-owed silence threshold of `N` days before ESCALATE"},
+		{Key: "projection", Kind: cli.String, Flag: "projection", Persistent: true, Default: "full",
+			Usage: "issues population: full, work-ready, intake, inbox (inbox requires --to)"},
+		{Key: "to", Kind: cli.String, Flag: "to", Persistent: true,
+			Usage: "(issues lane only) restrict to the desk-inbox items addressed to `role` (to:<role>)"},
+	}
+}
+
+// execute runs one invocation against a fresh command tree. pre is the process startup (nil in
+// the in-package tests, as run never did it).
+func execute(args []string, stdout, stderr io.Writer, pre func(io.Writer) int) int {
+	build := func() *cobra.Command {
+		root := cli.NewRoot("issueboard", "read-only issue + intake board")
+		root.Long = helpLong
+		set := cli.Declare(root, bindings()...)
+		lane := func(sub string) func(*cobra.Command, []string) error {
+			return func(*cobra.Command, []string) error {
+				deskkit.PerfCommand(perfVerbs, sub)
+				return codeErr(runLane(sub, set, stdout, stderr, pre))
 			}
-			toFilter = args[i+1]
-			i++
-		case a == "--root":
-			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "refused: --root needs a path")
-				return deskkit.ExitRefused
-			}
-			root = args[i+1]
-			i++
-		case a == "--sla-days":
-			if i+1 >= len(args) {
-				fmt.Fprintln(stderr, "refused: --sla-days needs a number")
-				return deskkit.ExitRefused
-			}
-			n, perr := strconv.Atoi(args[i+1])
-			if perr != nil || n < 0 {
-				fmt.Fprintln(stderr, "refused: --sla-days must be a non-negative integer, got "+strconv.Quote(args[i+1]))
-				return deskkit.ExitRefused
-			}
-			slaDays = n
-			i++
-		case a == "-h" || a == "--help":
-			fmt.Fprint(stdout, usage)
-			return deskkit.ExitOK
-		default:
-			pos = append(pos, a)
 		}
+		// An unknown lane word is a refusal before anything runs, never a guessed default.
+		root.Args = func(_ *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return fmt.Errorf("refused: unknown subcommand %s (see --help)", strconv.Quote(args[0]))
+			}
+			return nil
+		}
+		root.RunE = lane("board")
+		for _, l := range []struct{ name, short string }{
+			{"board", "full board: issue lane + intake lane (same as no subcommand)"},
+			{"issues", "issue lane only (one ACTION per open issue); --to <role> narrows it to a desk inbox"},
+			{"intake", "intake lane only (untriaged entries, age-flagged)"},
+		} {
+			// Words after the lane were ignored by the hand-rolled loop; they still are.
+			root.AddCommand(&cobra.Command{Use: l.name, Short: l.short, Args: cobra.ArbitraryArgs, RunE: lane(l.name)})
+		}
+		root.AddCommand(&cobra.Command{Use: "version", Short: "print the version", Hidden: true, Args: cobra.NoArgs,
+			RunE: func(*cobra.Command, []string) error {
+				deskkit.PerfCommand(perfVerbs, "version")
+				fmt.Fprintln(stdout, versionLine())
+				return nil
+			}})
+		return root
 	}
+	return cli.Run(build, args, cli.Options{
+		IO:              cli.IO{Out: stdout, Err: stderr},
+		Version:         versionLine(),
+		VersionTemplate: "{{.Version}}\n",
+		// A parse error keeps the legacy refusal code (5), not the adapter's default.
+		UsageExit: deskkit.ExitRefused,
+	})
+}
 
-	sub := "board"
-	if len(pos) > 0 {
-		sub = pos[0]
+// runLane resolves and checks the settings, then runs the process startup, the kill switch and
+// the lane, in that order: a bad value is refused before anything is read or echoed.
+func runLane(sub string, set *cli.Set, stdout, stderr io.Writer, pre func(io.Writer) int) int {
+	v, err := set.Resolve(cli.Inputs{})
+	if err != nil {
+		fmt.Fprintln(stderr, "refused:", err)
+		return deskkit.ExitRefused
 	}
-
+	if onResolve != nil {
+		onResolve(v)
+	}
+	raw := v.String("sla-days")
+	slaDays, perr := strconv.Atoi(raw)
+	if perr != nil || slaDays < 0 {
+		fmt.Fprintln(stderr, "refused: --sla-days must be a non-negative integer, got "+strconv.Quote(raw))
+		return deskkit.ExitRefused
+	}
+	projection := issueflow.Projection(v.String("projection"))
+	toFilter := v.String("to")
+	if !issueflow.Valid(projection) || (projection != issueflow.Full && sub != "issues") ||
+		(projection == issueflow.Inbox && toFilter == "") || (projection == issueflow.WorkReady && toFilter != "") {
+		fmt.Fprintln(stderr, "refused: --projection requires issues and a supported population; inbox requires --to; work-ready excludes --to")
+		return deskkit.ExitRefused
+	}
 	// --to is the desk-inbox filter and is meaningful only on the `issues` lane. Passing
 	// it to another subcommand is a caller error with a fix in hand, refused rather than
 	// silently ignored (a filter that quietly does nothing reads as an empty inbox).
@@ -177,9 +244,24 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "refused: --to <role> filters the `issues` lane only; it has no meaning for `"+sub+"`")
 		return deskkit.ExitRefused
 	}
+	if pre != nil {
+		if code := pre(stderr); code != deskkit.ExitOK {
+			return code
+		}
+	}
+	// Kill switch FIRST, before any read.
+	if err := guard(); err != nil {
+		fmt.Fprintln(stderr, err)
+		return deskkit.ExitCodeOf(err)
+	}
 
 	now := time.Now().UTC()
-	rep, err := dispatch(sub, root, now, slaDays, toFilter)
+	var rep *Report
+	if projection == issueflow.Full {
+		rep, err = dispatchFn(sub, v.String("root"), now, slaDays, toFilter)
+	} else {
+		rep, err = cmdProjection(v.String("root"), now, slaDays, toFilter, projection)
+	}
 	if err != nil {
 		logRun(sub, resultFor(err), err.Error())
 		fmt.Fprintln(stderr, err)

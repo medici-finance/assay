@@ -7,6 +7,11 @@ effort: S
 
 # held-c
 
+## Context
+
+files:
+- src/c.go
+
 ## Verify
 
 | # | Command | Expect |

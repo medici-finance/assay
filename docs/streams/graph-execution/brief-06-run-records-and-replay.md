@@ -8,7 +8,7 @@ why: >-
   one failed run into a replay fixture, proposes one reviewed pattern revision from it, and
   proves the revision fixes the motivating cases without changing the ones it did not touch.
   A human decides what ships; the loop proposes, it never promotes.
-wave: 6
+wave: 9
 depends: ["graph-execution/05", "graph-execution/09"]
 unblocks:
 - graph-execution/24
@@ -40,7 +40,7 @@ sources:
 exec-tier: strong
 exec-tier-why: "(a) the run-record field set and the replay-fixture derivation are design decisions the facts do not fully pre-specify; (b) correctness is cross-artifact — a pattern revision, its regression run and the holdout assertion must agree, and a loop that scores outcome only would silently reward a route that broke a constraint."
 domain: complex
-version: 3
+version: 4
 id: 227c272b-dc4c-4528-9066-9e8db14d223d
 consumers:
 - 'workflow/internalreview: follow-up graph-execution/24'
@@ -60,6 +60,7 @@ facts:
   - Single-point-of-failure note: the ONE control is the holdout byte-identity assertion (ii). Second, independent layer: the `permitted_method` column reddens a revision that reaches the outcome by widening authority even when every holdout is untouched; third, out-of-band: the 02 pattern lint (`pattern-effect-exceeds-role`) runs on the v2 file in CI regardless of what the replay says.
 
 ## Ground rules
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - NEVER git push / trigger workflows / run mutating kubectl. Leave commits per the task instructions only.
 - Public tree: records, fixtures and the report carry `example-org/*` placeholders and role names only; no login, no adopter repo, no adopter number.
 - Exactly ONE pattern revision is proposed in this brief. A second observed failure is a finding entry, not a second revision.
@@ -109,3 +110,11 @@ Implement the named failure/flow case below in the declared test surface. This a
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
 The reviewer's questions: (1) was the replay fixture derived from a run the 05 report actually records as failed, or from an injected fault — and does the report say which? (2) does the v2 revision reach its outcome by narrowing a declaration (acceptable) or by widening an effect set (row 4 must have caught it)? (3) is there exactly one revision?
+
+## Proposed measurement consumer — 2026-10-17
+
+desk-improvement/05 consumes this brief for run/attempt/subject bindings; existing run-record schema stays the source owner.
+This is a forward consumer-routing amendment only: the new consumer waits on this owner,
+not the reverse. Original Task/Verify and completed Evidence are unchanged. Reconcile any
+active implementation claim before adding capture hooks. Native emission qualification is
+delivered by the named follow-up; this source contract alone does not claim it exists.

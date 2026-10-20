@@ -5,9 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"maps"
-	"regexp"
-	"slices"
-	"sort"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -15,6 +12,44 @@ import (
 
 var outcomeEvidenceBindingFn = validateOutcomeEvidenceBinding
 var outcomeObservationBindingFn = validateOutcomeObservationBinding
+
+// A cross-repository receipt binds a conservative whole-deliverable commit
+// input as well as the tracking repository's ordinary file inputs. Old readers
+// do not recognize repo-source keys and therefore cannot claim unchangedness.
+func admittedOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskkit.ForgeRepo, branch string, receipt deskkit.VerifierReceipt) ([]byte, error) {
+	if receipt.Binding.Version != 2 {
+		return outcomeReceiptFn(raw, root, fg, fr, branch, receipt.Binding.Source)
+	}
+	var record deskkit.WakeReceipt
+	if err := json.Unmarshal(raw, &record); err != nil {
+		return nil, err
+	}
+	if !record.IsFailedOrBlocked() {
+		return raw, nil
+	}
+	if record.Schema == deskkit.SchemaWakeV1 {
+		if err := deskkit.CheckSuppliedReceipt(record); err != nil {
+			return nil, err
+		}
+		return raw, nil
+	}
+	b := receipt.Binding
+	landed, err := fg.ReadFile(fr, deskkit.ReadFileInput{File: b.Brief, Ref: branch})
+	if err != nil {
+		return nil, err
+	}
+	if kerr := plainFileRead(landed, fr, b.Brief, branch, "the outcome receipt's landed brief", true); kerr != nil {
+		return nil, kerr
+	}
+	tree, err := newGitOutcomeTree(root, b.TrackingSource)
+	if err != nil {
+		return nil, err
+	}
+	return deskkit.BuildOutcomeRecord(raw, deskkit.OutcomeReceiptInput{
+		BriefPath: b.Brief, LandedBrief: landed.Content, ToolVersion: deskkit.ReleaseTagOrDev(),
+		Repo: b.Repo, SourceRepo: b.SourceRepo, Source: b.Source,
+	}, tree)
+}
 
 // An outcome may hold future verification work. Admission alone does not prove
 // that this run's Evidence landed: its earlier write may have been refused.
@@ -43,6 +78,9 @@ func validateOutcomeEvidenceBinding(root string, fg deskkit.Forge, fr deskkit.Fo
 	if err != nil {
 		return deskkit.Unverifiable("cannot read landed Evidence for the outcome record", err)
 	}
+	if kerr := plainFileRead(landed, fr, b.Brief, branch, "the outcome record's landed Evidence", true); kerr != nil {
+		return kerr
+	}
 	if !landed.Exists || !bytes.Equal(atCommit, landed.Content) {
 		return deskkit.Refused("refused: outcome record does not name the Evidence as landed on its target branch")
 	}
@@ -52,25 +90,8 @@ func validateOutcomeEvidenceBinding(root string, fg deskkit.Forge, fr deskkit.Fo
 	// The binding must be a real line inside Evidence, not a mention in Context,
 	// a code example, or a previous run's stamp. Historical Evidence is allowed
 	// alongside it, but cannot substitute for this exact admitted run.
-	inEvidence := false
-	fence := ""
-	fenceLine := regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")
-	for _, line := range strings.Split(string(atCommit), "\n") {
-		if match := fenceLine.FindStringSubmatch(line); match != nil {
-			if fence == "" {
-				fence = match[1]
-			} else if match[1][0] == fence[0] && len(match[1]) >= len(fence) && strings.TrimSpace(match[2]) == "" {
-				fence = ""
-			}
-			continue
-		}
-		if fence != "" {
-			continue
-		}
-		if strings.HasPrefix(line, "## ") {
-			inEvidence = strings.TrimSpace(strings.TrimPrefix(line, "## ")) == "Evidence"
-		}
-		if inEvidence && strings.TrimRight(line, " \t\r") == receipt.EvidenceBinding() {
+	for _, line := range deskkit.VerifierEvidenceBindings(atCommit) {
+		if line == receipt.EvidenceBinding() {
 			return nil
 		}
 	}
@@ -93,7 +114,7 @@ func validateOutcomeObservationBinding(root string, fg deskkit.Forge, fr deskkit
 	if err != nil {
 		return err
 	}
-	expected, err := deriveOutcomeReceipt(raw, root, fg, fr, branch, receipt.Binding.Source)
+	expected, err := admittedOutcomeReceipt(raw, root, fg, fr, branch, receipt)
 	if err != nil {
 		return err
 	}
@@ -110,10 +131,10 @@ func validateOutcomeObservationBinding(root string, fg deskkit.Forge, fr deskkit
 	return nil
 }
 
-// The existing receipt hashes present files, not absence or directory membership.
-// Changed membership/kinds need a new admission instead of a stale failure hold.
+// Scope keys retain absence and membership at the observation. Changed
+// membership/kinds between Source and Evidence still require a new admission.
 func validateOutcomeInputShape(root string, receipt deskkit.VerifierReceipt, evidenceSHA string) error {
-	source, err := newGitOutcomeTree(root, receipt.Binding.Source)
+	source, err := newGitOutcomeTree(root, receipt.BriefSource())
 	if err != nil {
 		return err
 	}
@@ -129,53 +150,48 @@ func validateOutcomeInputShape(root string, receipt deskkit.VerifierReceipt, evi
 	if err != nil {
 		return deskkit.Unverifiable("cannot read Evidence input declarations", err)
 	}
-	paths := func(content []byte) []string {
-		unique := map[string]bool{}
-		for _, decl := range deskkit.BriefDeclaredFiles(string(content)) {
-			if p := strings.TrimSuffix(decl, "/"); p != "" {
-				unique[p] = true
-			}
-		}
-		var result []string
-		for p := range unique {
-			result = append(result, p)
-		}
-		sort.Strings(result)
-		return result
+	sourceDecl, err := deskkit.BriefDeclaredFiles(string(sourceBrief))
+	if err != nil {
+		return err
 	}
-	declared := paths(sourceBrief)
+	evidenceDecl, err := deskkit.BriefDeclaredFiles(string(evidenceBrief))
+	if err != nil {
+		return err
+	}
+	before, err := deskkit.ResolveDeclaredScope(sourceDecl, source)
+	if err != nil {
+		return err
+	}
+	after, err := deskkit.ResolveDeclaredScope(evidenceDecl, evidence)
+	if err != nil {
+		return err
+	}
 	changed := func() error {
 		return deskkit.Refused("refused: declared deliverables changed shape between admitted Source and Evidence; fresh independent verification on the current target branch is required before recording an outcome")
 	}
-	if !slices.Equal(declared, paths(evidenceBrief)) {
+	if !maps.Equal(before.Shapes, after.Shapes) {
 		return changed()
 	}
-	for _, p := range declared {
-		before, err := source.PathKind(p)
+	return nil
+}
+
+// Cross-repository delivery joins must also belong to the observed source,
+// rather than merely to a newer default branch at Evidence landing time.
+func checkAdmittedDeliveryPRs(fg deskkit.Forge, receipt deskkit.VerifierReceipt, facts joinFacts) error {
+	if receipt.Binding.Version != 2 {
+		return nil
+	}
+	for _, entry := range facts.Entries {
+		if !strings.EqualFold(entry.Repo, receipt.Binding.SourceRepo) {
+			continue
+		}
+		repo, _ := entryForgeRepo(entry.Repo)
+		compared, err := fg.CompareRefs(repo, entry.MergeSHA, receipt.Binding.Source)
 		if err != nil {
-			return deskkit.Unverifiable("cannot read observed input kind", err)
+			return deskkit.Unverifiable("cannot compare delivery PR with admitted deliverable source", err)
 		}
-		after, err := evidence.PathKind(p)
-		if err != nil {
-			return deskkit.Unverifiable("cannot read Evidence input kind", err)
-		}
-		if before != after {
-			return changed()
-		}
-		if before == "tree" {
-			oldFiles, err := source.ListFiles(p)
-			if err != nil {
-				return deskkit.Unverifiable("cannot read observed directory inputs", err)
-			}
-			newFiles, err := evidence.ListFiles(p)
-			if err != nil {
-				return deskkit.Unverifiable("cannot read Evidence directory inputs", err)
-			}
-			sort.Strings(oldFiles)
-			sort.Strings(newFiles)
-			if !slices.Equal(oldFiles, newFiles) {
-				return changed()
-			}
+		if compared == nil || (compared.Status != "identical" && compared.Status != "ahead") {
+			return deskkit.Refused("delivery PR is not in the admitted deliverable source")
 		}
 	}
 	return nil

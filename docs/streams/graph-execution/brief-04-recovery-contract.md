@@ -7,12 +7,17 @@ why: >-
   sees no record and does it again. Today the drain engine's journal is best-effort by
   contract, so nothing stops that second effect. This brief makes an effect's receipt the
   thing a retry must find first, so an interrupted run is reconciled, never repeated.
-wave: 1
-depends: ["graph-execution/02"]
+wave: 4
+depends: ["graph-execution/02", "graph-execution/28", "graph-execution/29"]
 unblocks:
 - graph-execution/05
 - graph-execution/21
 - graph-execution/25
+- graph-execution/16
+- graph-execution/19
+- "forge-neutral/38"
+- "forge-neutral/41"
+- performance-collection/09
 effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -38,6 +43,12 @@ sources:
   — no effect adapter, receipt, run/attempt identity or reconcile step exists; not already satisfied'
 - docs/streams/graph-execution/task-workflow-program.md — execution routing amendment 2026-10-02
 - freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
+- docs/proposals/non-ci-architecture/20-amendment-manifest.md — R2 owner row and R2 amendment scope (transactional intent/outbox handoff)
+- docs/proposals/non-ci-architecture/14-storage-forge-graph.md — lines 34, 36, 38 (intent committed with admission and claim generation; outbox/inbox; no per-effect Git append)
+- docs/proposals/non-ci-architecture/13-migration-and-decisions.md — line 71 (never replay stale outbox entries blindly)
+- docs/proposals/non-ci-architecture/16-delivery-sequence.md — lines 69, 104 (transaction/outbox handoff; no silent store fallback)
+- "medici-finance/assay#2500 — maintainer ratification of the whole target @ 23f655f5d (approval activates nothing)"
+- freshness-checked 2026-10-13 @ 4696d598e58820806d0bcf8c9b2dd87f29115400
 exec-tier: strong
 exec-tier-why: "(c) concurrency and safety plumbing — a subtle ordering error (record after apply, or reconcile after retry) passes every happy-path test and only shows as a duplicated external effect in production; (a) the receipt/idempotency-key shape is a design decision the facts do not fully pre-specify."
 domain: complicated
@@ -51,14 +62,15 @@ consumers:
   follow-up graph-execution/05'
 - 'workflow/controller: follow-up graph-execution/21'
 - 'workflow/publication: follow-up graph-execution/25'
-version: 3
+- 'workflow/store PostgreSQL outbox (implements the handoff seam): follow-up graph-execution/19'
+version: 4
 id: 961a1aa6-80a6-4712-b8ca-5a71cbdf6ece
 ---
 
 # Brief 04 — Recovery contract for effect-bearing nodes in drainloop
 
 ## Context
-files: `drainloop/effect.go` (planned) (Effect, Receipt, Reconcile), `drainloop/effect_test.go` (planned), `drainloop/item.go` (RunID/AttemptID on Item), `drainloop/engine.go` (Config.record becomes two-tier; Reconcile before an effect retry), `drainloop/journal.go` (the new Event kinds and the conditional contract), `drainloop/README.md` (§The contract, §Optional layers), `docs/enforcement-model.md` (one row: what the recovery contract enforces vs attributes), `changelog/graph-execution-04-recovery-contract.md` (planned)
+files: `drainloop/effect.go` (planned) (Effect, Receipt, Reconcile), `drainloop/effect_test.go` (planned), `drainloop/item.go` (RunID/AttemptID on Item), `drainloop/engine.go` (Config.record becomes two-tier; Reconcile before an effect retry), `drainloop/journal.go` (the new Event kinds and the conditional contract), `drainloop/README.md` (§The contract, §Optional layers), `docs/enforcement-model.md` (one row: what the recovery contract enforces vs attributes), `changelog/graph-execution-04-recovery-contract.md` (planned). Added by the R2 amendment (2026-10-13): `drainloop/handoff.go` (planned), `drainloop/handoff_test.go` (planned).
 facts:
   - Module: `github.com/medici-finance/assay/drainloop`, standalone (`drainloop/go.mod`, `go 1.25.0`); CI runs it with `GOWORK=off`. `TestNoDeskkitImports` (`drainloop/nodeskkit_test.go`) asserts the package imports no house package — the new file must keep that green.
   - Journal today (2026-09-16 @ d96fd3ba): `Config.record` in `drainloop/engine.go` logs a sink error as `JOURNAL ... (non-fatal)` and continues. `journal.go` documents the kinds the engine emits: CLAIM, DISPATCH, LAND, RELEASE (via LAND), SKIP, HOLD, GUARD, EVIDENCE, IDLE. Nothing in the engine distinguishes an event that precedes an external effect from one that does not.
@@ -84,6 +96,35 @@ Controller launches and publication use this intent/receipt protocol. Preserve s
 
 Implement the named failure/flow case below in the declared test surface. This amendment does not record implementation evidence or authorize live activation.
 
+## Non-CI R2 amendment — 2026-10-13 (transactional intent/outbox handoff)
+
+The maintainer ratified the non-CI target (medici-finance/assay#2500, revision 23f655f5d);
+approval activates nothing. Owner row: package R2 in the
+[amendment manifest](../../proposals/non-ci-architecture/20-amendment-manifest.md). The
+reconcile → intent → apply → done contract above is unchanged; this section says where the
+intent is committed.
+
+- **Handoff seam.** Add an opt-in, store-neutral handoff on `Config`: a journal that declares
+  transactional handoff commits the `EFFECT-INTENT` together with the item's claim generation
+  in one durable commit before `Apply`, and exposes pending outbox entries on resume, keyed by
+  the stable operation key (target 14:34). drainloop stays standalone and imports no database
+  driver; the PostgreSQL implementation is graph-execution/19's outbox.
+- **Resume.** With the store intact, a pending entry resumes through Reconcile first, then
+  Apply at most once. An entry whose claim generation is no longer current is never replayed
+  blindly: it reconciles against the authoritative store or holds (13:71).
+- **No fallback.** When the configuration requires transactional handoff for effect items and
+  the journal cannot provide it, `Run` refuses before any pass; it never drops to the
+  best-effort journal or to another store (16:104).
+- **No Git journal per effect.** The handoff is the coordination store's commit; no Git append
+  is added on the critical path of an effect (14:36).
+- Six-method `Loop` unchanged; `TestNoDeskkitImports` stays green. Risk answers and gate
+  unchanged.
+
+## R4 follow-up — not in this amendment
+
+Package R4 later amends this brief for role-bound effect identity and lost acknowledgment at
+the publisher. Nothing here pre-empts it.
+
 ## Task
 1. **Identity.** Add `RunID` and `AttemptID` to `Item` (`drainloop/item.go`): `RunID` is stable across attempts of one unit of work; `AttemptID` is minted per dispatch. Document that a queue re-selecting a failed item keeps `RunID` and mints a new `AttemptID`. Both are strings; empty means "the adapter did not assign one", legal only for items with no declared external effects (step 3).
 2. **Effect adapter** (`drainloop/effect.go` (planned)):
@@ -107,6 +148,7 @@ Implement the named failure/flow case below in the declared test surface. This a
    - `TestReceiptCouldNotCheckHolds` (planned): store returns an error → `VerdictHold`, zero `Apply`.
    - `TestNonEffectJournalStaysBestEffort` (planned): a sink error on `CLAIM` still does not abort (the existing `TestJournalRecordsScheduling` semantics for non-effect kinds).
 6. **Docs.** `drainloop/README.md`: a §Effect layer subsection under §Optional layers stating the reconcile → intent → apply → done order and the conditional journal contract; the Journal row's wording updated. `docs/enforcement-model.md`: one row stating that the recovery contract states the adapter-specific idempotency/fencing guarantee and holds unknown outcomes where it cannot enforce deduplication; bypasses are only ATTRIBUTED. `changelog/graph-execution-04-recovery-contract.md` (planned).
+7. **Handoff (R2, 2026-10-13).** Implement the handoff seam in `drainloop/handoff.go` (planned) with an in-memory transactional fake: intent and claim generation commit together before `Apply`; pending entries resume through Reconcile; a stale-generation entry reconciles or holds; a required handoff that the journal cannot provide refuses `Run`.
 
 ## Verify
 | # | Class | Command | Expect |
@@ -119,9 +161,11 @@ Implement the named failure/flow case below in the declared test surface. This a
 | 6 | check +dereference | `grep -c 'EFFECT-INTENT' drainloop/journal.go drainloop/engine.go drainloop/README.md` | each file count ≥ 1 — the documented kind is the emitted kind; a README that names a kind the engine never emits fails this row |
 | 7 | check +dereference | `grep -n 'reconcile' docs/enforcement-model.md` | ≥ 1 line, and that line states the adapter-specific idempotency/fencing guarantee, holds unknown outcomes where deduplication cannot be enforced, and says bypasses are only attributed (the bypass boundary named in Task 6) — a row that only claims exactly-once fails the reviewer's reading |
 | 8 | check +flow | `cd drainloop && GOWORK=off go run ./cmd/demo > /tmp/ge04-demo.txt 2>&1; grep -c LAND /tmp/ge04-demo.txt` | 5 — the demo's five non-effect items still drain unchanged with the layer off |
-| 9 | check | `statusgen --root . --consumers --diff-base $(git merge-base HEAD origin/main)` | exit 0 — the `consumers:` routing above is corroborated by the diff |
+| 9 | check | `statusgen --consumers --root . --brief graph-execution/04 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | pre-merge only; exit 0; branch routing dispositions are checked against the pinned fork. Inherited and out-of-scope routes remain unchecked obligations. At implementation replace this provisional command with the actual full delivery and first-parent pins, plus exact summary counts, before post-merge verification (see [delivery contract](../../consumer-delivery-checks.md)). |
 | 10 | check:ci +mutation | `cd drainloop && GOWORK=off go test -count=1 -v -run TestDeclaredEffectCannotBypassJournal ./...` | exit 0; named test PASS; an artifact node with a declared effect cannot bypass mandatory intent recording |
 | 11 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestEffectUnsupportedIdempotencyHolds$" ./... > "$routing_out" && grep -q -- "--- PASS: TestEffectUnsupportedIdempotencyHolds " "$routing_out")` | exit 0; named PASS; unreadable receipt and unsupported dedupe never permit a duplicate Apply; mutation: treat an unreadable receipt as not-applied and re-run Apply — the named test must fail |
+| 12 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestEffectIntentOutboxHandoff$" ./... > "$routing_out" && grep -q -- "--- PASS: TestEffectIntentOutboxHandoff " "$routing_out")` | exit 0; named PASS; the intent and claim generation commit together before Apply, a crash after that commit resumes through Reconcile with at most one Apply, and a pending entry from a superseded generation reconciles or holds; mutation: replay pending outbox entries on resume without the generation and reconcile checks — the named test must fail |
+| 13 | check:ci +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestOutboxRequiredNoFallback$" ./... > "$routing_out" && grep -q -- "--- PASS: TestOutboxRequiredNoFallback " "$routing_out")` | exit 0; named PASS; with transactional handoff required and a journal that cannot provide it, `Run` returns an error before any pass and no effect is applied; mutation: fall back to the best-effort journal when the handoff is unavailable — the named test must fail |
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —

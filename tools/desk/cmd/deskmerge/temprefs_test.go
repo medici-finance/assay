@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 )
 
 // regression: #2513
@@ -25,12 +27,10 @@ func TestFetchRefsArePrivate(t *testing.T) {
 			t.Fatalf("fetch=%s,%s,%v", base, head, err)
 		}
 	}
-	for _, call := range *w.gitAll {
-		if len(call) > 1 && call[1] == "fetch" {
-			for _, arg := range call {
-				if strings.HasPrefix(arg, "+refs/pull/7/head:") {
-					destinations = append(destinations, strings.TrimPrefix(arg, "+refs/pull/7/head:"))
-				}
+	for _, opts := range *w.fetches {
+		for _, spec := range opts.RefSpecs {
+			if strings.HasPrefix(spec, "+refs/pull/7/head:") {
+				destinations = append(destinations, strings.TrimPrefix(spec, "+refs/pull/7/head:"))
 			}
 		}
 	}
@@ -50,13 +50,13 @@ func TestFetchFailureDrainsRefs(t *testing.T) {
 	withScratchTemp(t)
 	w := newWorld(t, map[string]string{"pr.txt": "a\n"}, map[string]string{"main.txt": "b\n"})
 	w.install(t, defaultPR(), false)
-	prev := runGit
-	runGit = func(dir string, args ...string) (string, error) {
-		out, err := prev(dir, args...)
-		if len(args) > 0 && args[0] == "fetch" && err == nil {
-			return out, fmt.Errorf("injected failure after private destination was written")
+	prev := fetchFn
+	t.Cleanup(func() { fetchFn = prev })
+	fetchFn = func(root string, opts gitcore.FetchOpts) error {
+		if err := prev(root, opts); err != nil {
+			return err
 		}
-		return out, err
+		return fmt.Errorf("injected failure after private destination was written")
 	}
 	p := prInfo{Number: testPR, HeadRefOid: w.headSHA, BaseRefName: "main"}
 	if _, _, err := fetchState(w.root, testRepo, p); err == nil {
@@ -108,15 +108,16 @@ func TestFetchCompletionWarning(t *testing.T) {
 	withScratchTemp(t)
 	w := newWorld(t, map[string]string{"pr.txt": "a\n"}, map[string]string{"main.txt": "b\n"})
 	w.install(t, defaultPR(), false)
-	prev := runGit
-	runGit = func(dir string, args ...string) (string, error) {
-		out, err := prev(dir, args...)
-		if len(args) > 0 && args[0] == "fetch" && err == nil {
+	prev := fetchFn
+	t.Cleanup(func() { fetchFn = prev })
+	fetchFn = func(root string, opts gitcore.FetchOpts) error {
+		err := prev(root, opts)
+		if err == nil {
 			// Stop only this fixture process after the fetch. Observe still succeeds,
 			// but the real completion guard must refuse before declaring completion.
 			t.Setenv("DESK_TOOLS_DISABLED", "1")
 		}
-		return out, err
+		return err
 	}
 	var warn bytes.Buffer
 	prevWarn := cleanupWarn

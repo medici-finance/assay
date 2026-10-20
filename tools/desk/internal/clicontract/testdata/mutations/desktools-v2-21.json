@@ -1,0 +1,71 @@
+{
+  "test": "go test -timeout 120s -count=1 ./cmd/deskdispatch -run '^(TestCLIHelpOffline|TestCLIHelpDoesNotDiscoverManifests|TestCLIConfigFlow|TestCLILegacyForms|TestHostileItemKeysRefused|TestStampOnlyRejectsArgs|TestStepListIsTheDocumentedContract|TestHelpNamesTheEngineSeam)$'",
+  "control": {
+    "name": "CONTROL: usage exit is wrong",
+    "file": "cmd/deskdispatch/cli.go",
+    "old": "VersionTemplate: \"{{.Version}}\\n\", GoFlagCompat: true,",
+    "new": "VersionTemplate: \"{{.Version}}\\n\", UsageExit: 1, GoFlagCompat: true,"
+  },
+  "mutations": [
+    {
+      "name": "help reads configuration before Cobra",
+      "file": "cmd/deskdispatch/cli.go",
+      "old": "mode, args := modeArgs(args)",
+      "new": "if env.before != nil { _ = env.before() }\n\tmode, args := modeArgs(args)"
+    },
+    {
+      "name": "undeclared environment becomes a root config source",
+      "file": "cmd/deskdispatch/cli.go",
+      "old": "set := cli.Declare(root, dispatchBindings(mode)...)",
+      "new": "bindings := dispatchBindings(mode)\n\tfor i := range bindings { if bindings[i].Key == \"root\" { bindings[i].Env = []string{\"DESKDISPATCH_ROOT\"} } }\n\tset := cli.Declare(root, bindings...)"
+    },
+    {
+      "name": "drop single-dash legacy flags",
+      "file": "cmd/deskdispatch/cli.go",
+      "old": "GoFlagCompat: true,",
+      "new": "GoFlagCompat: false,"
+    },
+    {
+      "name": "generated help omits the dispatch-step contract",
+      "file": "cmd/deskdispatch/cli.go",
+      "old": "strings.Join(dispatchSteps, \", \")",
+      "new": "\"undocumented\""
+    },
+    {
+      "name": "activation discovery runs before help",
+      "file": "cmd/deskdispatch/main.go",
+      "old": "os.Exit(deskkit.PerfRun(\"deskdispatch\", perfVerbs, args, func(a []string) int {",
+      "new": "deskkit.CheckVerbActivation(os.Stderr)\n\tos.Exit(deskkit.PerfRun(\"deskdispatch\", perfVerbs, args, func(a []string) int {"
+    },
+    {
+      "name": "measurement finalizer no longer wraps parsing",
+      "file": "cmd/deskdispatch/main.go",
+      "old": "os.Exit(deskkit.PerfRun(\"deskdispatch\", perfVerbs, args, func(a []string) int {",
+      "new": "os.Exit(func(run func([]string) int) int { return run(args) }(func(a []string) int {"
+    },
+    {
+      "name": "help path starts a child process outside the PATH shims",
+      "file": "cmd/deskdispatch/main.go",
+      "old": "return parseDispatchCLI(a, env,",
+      "new": "_ = deskkit.Run(deskkit.ToolCall{Name: \"/nonexistent/cli-plant\"})\n\t\treturn parseDispatchCLI(a, env,"
+    },
+    {
+      "name": "help path makes a counted forge call",
+      "file": "internal/deskkit/perf.go",
+      "old": "\tcode := run(args)\n\tchildren, childWall, forge",
+      "new": "\tperfCountForgeCall()\n\tcode := run(args)\n\tchildren, childWall, forge"
+    },
+    {
+      "name": "perf-v2 record omits the subprocess counter",
+      "file": "internal/deskkit/perf.go",
+      "old": "\tsess.Add(perfrec.CounterSubprocess, children)",
+      "new": "\t_ = children"
+    },
+    {
+      "name": "perf-v2 record omits the http counter",
+      "file": "internal/deskkit/perf.go",
+      "old": "\tsess.Add(perfrec.CounterHTTP, forge)",
+      "new": "\t_ = forge"
+    }
+  ]
+}

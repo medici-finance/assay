@@ -150,7 +150,7 @@ func (c Callout) Run(stdin string, args ...string) (CalloutResult, error) {
 	// exit's final bytes drain before the pipes are cut.
 	cmd.WaitDelay = calloutWaitDelay
 
-	err := cmd.Run()
+	err := RunProcess(cmd)
 	res := CalloutResult{
 		Stdout: strings.TrimSpace(out.String()),
 		Stderr: strings.TrimSpace(errb.String()),

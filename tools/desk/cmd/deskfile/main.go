@@ -66,8 +66,23 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
          BLOCKER-EVIDENCE GATE: a new filing labelled needs-decision, help wanted or
          question is a blocker claim and is REFUSED (exit 5) unless its body carries an
          "### Evidence" heading followed by a fenced block (the verbatim output of a command
-         run this tick). human-only is NOT in the set (an act, not a claim) and attach is
-         unaffected. The refusal takes the audited --force-new --reason bypass.
+         run this tick). human-only is NOT in the set (an act, not a claim — it has its own
+         gate, below) and attach is unaffected. The refusal takes the audited
+         --force-new --reason bypass.
+
+         HUMAN-ONLY ACT GATE: a new filing that hands the driver an act — labelled
+         human-only, or with a body whose first non-blank line opens with
+         BLOCKED-ON-HUMAN — is REFUSED
+         (exit 5) unless its body carries the act in runnable form: a fenced block whose
+         info string is sh (runs top to bottom) or url (one URL plus the field values, for
+         a browser step), closed and non-empty. That is the Act block the ask-decision
+         skill defines. --force-new --reason is the only bypass, and the audit line of a
+         bypassed filing carries act-gate=bypassed:force-new. attach is unaffected.
+         The flag is not scoped to one gate: one --force-new --reason waives the dedupe
+         search, the blocker-evidence gate, the fork-test gate (on a needs-decision
+         filing) AND this act gate together. A pure ruling with
+         no act to run is not a hand-off: file it under needs-decision with its Evidence,
+         not with a body led by BLOCKED-ON-HUMAN or the human-only label.
 
          CORRECTION CAPTURE: --correction "<the human's message>" switches new into skill-bug
          composition mode. With --label skill-bug --section "<skill+section>" --reading
@@ -109,22 +124,24 @@ failing child's stderr in full. Credentials are redacted. With it off, output is
 unchanged. See tools/desk/README.md, "Diagnostics — DESK_TRACE".`
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident
-	// (a correctness review found: SetToolClass had no caller anywhere,
-	// so "ClassWrite is the safe default" was true only by luck — and
-	// TestEveryRosterReadingMainDeclaresClassAndEchoes now fails any main that reads
-	// the roster without one). deskfile ACTS on the roster (files issues, posts
-	// comments), so ciEligible=false: it reads the config-home file and never the
-	// environment, in CI as well as locally — matching deskpr/deskboard.
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// P3: echo the effective roster once per run. A control surface that lives in
-	// settings rather than in a diff is visible only at RUN time; without the echo a
-	// NARROWING is invisible.
-	deskkit.EchoEffectiveConfig(os.Stderr)
-	if !deskkit.CheckVerbActivation(os.Stderr) {
-		os.Exit(deskkit.ExitUnverifiable)
-	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskfile", nil, os.Args[1:], func([]string) int {
+		// The roster class is an EXPLICIT declaration, never the zero value by accident
+		// (a correctness review found: SetToolClass had no caller anywhere,
+		// so "ClassWrite is the safe default" was true only by luck — and
+		// TestEveryRosterReadingMainDeclaresClassAndEchoes now fails any main that reads
+		// the roster without one). deskfile ACTS on the roster (files issues, posts
+		// comments), so ciEligible=false: it reads the config-home file and never the
+		// environment, in CI as well as locally — matching deskpr/deskboard.
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// P3: echo the effective roster once per run. A control surface that lives in
+		// settings rather than in a diff is visible only at RUN time; without the echo a
+		// NARROWING is invisible.
+		deskkit.EchoEffectiveConfig(os.Stderr)
+		if !deskkit.CheckVerbActivation(os.Stderr) {
+			return deskkit.ExitUnverifiable
+		}
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

@@ -99,6 +99,13 @@ type Marker struct {
 	NotPinned []string
 	// Origin records where a derived composition came from, when it was derived.
 	Origin string
+	// NoUmbrellaLine is true on MarkerCouldNotDetermine when the cause is exactly that
+	// the pin file was read and carries no `assay` umbrella line. It tells this cause
+	// apart from the others (no file, an unreadable file, a malformed umbrella line,
+	// an unloadable composition). It is the one cause a caller may resolve by
+	// InferUmbrellaFromPins, and only on an explicit opt-in. Report does not render
+	// it, so `deskversion`'s output is unchanged.
+	NoUmbrellaLine bool
 	// Reason is a one-line human summary, always set.
 	Reason string
 }
@@ -145,7 +152,8 @@ func ReadMarkerFrom(root string, src CompositionSource) Marker {
 	}
 	if !present {
 		return Marker{
-			State: MarkerCouldNotDetermine,
+			State:          MarkerCouldNotDetermine,
+			NoUmbrellaLine: true,
 			Reason: "no umbrella pin: the pin file carries no `assay` umbrella line " +
 				"(a valid, expected state — the per-artifact lines stay authoritative; " +
 				"the consumer is simply not recorded against a suite version)",

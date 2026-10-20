@@ -7,7 +7,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/perfrec"
 )
 
 const (
@@ -28,19 +32,78 @@ const (
 // run-stop layer without a real git worktree. It is deliberately NOT wired to any env var
 // or flag — the run key must come from the worktree the verb is running in, never from an
 // operator-supplied value, or a caller could name another run's key and stop it.
-var runKeyResolver = gitWorktreeRunKey
+//
+// The key is resolved once per process: a verb that guards more than once pays one lookup.
+var runKeyResolver = defaultRunKeyResolver()
+
+// defaultRunKeyResolver builds the production resolver: processRunKey, memoised. It is a
+// named factory so a test can build a FRESH default and check its wiring; reading the
+// shared runKeyResolver instead would return whatever an earlier Guard() call cached.
+func defaultRunKeyResolver() func() string {
+	return onceRunKey(processRunKey)
+}
+
+// onceRunKey memoises read: the first call runs it, every later call returns that answer.
+func onceRunKey(read func() string) func() string {
+	var once sync.Once
+	var key string
+	return func() string {
+		once.Do(func() { key = read() })
+		return key
+	}
+}
+
+// processRunKey is the production resolver. Inside a `go test` binary it returns "" without
+// running git, so no package's tests read the run key of whatever worktree the developer
+// runs them from — the default covers every test binary, with no per-package stub to forget.
+// testing.Testing is fixed by the go test link step, never by an env var or flag, so a
+// shipped binary always takes the real read below.
+func processRunKey() string {
+	if testing.Testing() {
+		return ""
+	}
+	return gitWorktreeRunKey()
+}
 
 // gitWorktreeRunKey returns the assay.runKey recorded in the current worktree's git config,
 // or "" when there is none — a verb run OUTSIDE any worktree, or in one deskdispatch never
 // stamped, has no run key and skips the per-run stop layer entirely (no false refusals). A
-// git error (not a worktree, extension not enabled, key absent) is "" for the same reason:
-// could-not-read a run key is "this verb is not a stoppable run", never a refusal.
+// git error (not a worktree, key absent) is "" for the same reason: could-not-read a run key
+// is "this verb is not a stoppable run", never a refusal.
 func gitWorktreeRunKey() string {
-	out, err := exec.Command("git", "config", "--worktree", "assay.runKey").Output()
+	return worktreeRunKeyIn("")
+}
+
+// worktreeRunKeyIn reads assay.runKey from the per-worktree config file of the worktree at
+// dir ("" = the current directory), and from nothing else: no repository-local, global,
+// system or environment-supplied value can name the key.
+//
+// It reads the file directly rather than running `git config --worktree`, which walks every
+// registered worktree of the repository before it reads anything — about 2 s per call on a
+// repository with hundreds of worktrees. The file `rev-parse --git-path` names is the one
+// `--worktree` reads whenever extensions.worktreeConfig is on, the mode deskdispatch stamps
+// under. Without the extension `--worktree` read the repository config instead (single
+// worktree) or failed (several); this read returns "" there unless the file exists.
+//
+// A missing file needs no pre-check: `git config --file <missing> --get` exits 1, which is
+// "" below, the same answer as a file without the key. A relative path from rev-parse is
+// relative to dir, and the second git call runs in dir too, so it resolves the same file.
+func worktreeRunKeyIn(dir string) string {
+	git := func(args ...string) (string, error) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err := OutputProcess(cmd)
+		return strings.TrimSpace(string(out)), err
+	}
+	path, err := git("rev-parse", "--git-path", "config.worktree")
+	if err != nil || path == "" {
+		return ""
+	}
+	key, err := git("config", "--file", path, "--get", "assay.runKey")
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(out))
+	return key
 }
 
 // dirOverride, when non-empty, replaces the real ~/.config/assay directory.
@@ -65,11 +128,11 @@ var stateDirGuard func(dir string) error
 func deskDir() (string, error) {
 	dir := dirOverride
 	if dir == "" {
-		home, err := os.UserHomeDir()
+		d, err := perfrec.StateDir()
 		if err != nil {
 			return "", err
 		}
-		dir = filepath.Join(home, ".config", "assay")
+		dir = d
 	}
 	if stateDirGuard != nil {
 		if err := stateDirGuard(dir); err != nil {
@@ -124,11 +187,14 @@ func killSwitchState() (armed bool, reason string, err error) {
 	return true, reason, nil
 }
 
-// stopFlagState checks the loop stop-flags: STOP (all loops), then STOP.<loop> (per-loop
-// when DESK_LOOP is set). Returns armed=true and the flag filename as the reason.
+// stopFlagState checks the loop stop-flags: STOP (all loops), then STOP.cell.<cell> (every
+// loop of the session's cell, when the ASSAY_CELL marker is set), then STOP.<loop> and
+// STOP.cell.<cell>.<loop> (per-loop when DESK_LOOP is set; the cell form also for the loop
+// ASSAY_CELL_ROLE names). Returns armed=true and the flag filename as the reason.
 // A flag file that exists but cannot be read is an error (fail closed).
 //
-// Precedence is preserved exactly as documented (DISABLED > STOP > STOP.<name>): STOP is
+// Precedence is preserved exactly as documented (DISABLED > STOP > STOP.cell.<cell> >
+// STOP.<name> = STOP.cell.<cell>.<name>); any one present is a stop. STOP is
 // resolved BEFORE the loop name is even looked at, so an all-loops halt still wins over
 // an unrecognised loop name — a mis-spelled DESK_LOOP can never mask a STOP.
 //
@@ -149,6 +215,32 @@ func stopFlagState() (armed bool, reason string, err error) {
 	}
 	if stopAll {
 		return true, rsn, nil
+	}
+
+	// Check STOP.cell.<cell> (every loop of this session's cell) — only for a session that
+	// carries the cellctl marker (cellstopflag.go). Resolved after STOP and before the loop
+	// name, so a cell-wide stop also wins over an unrecognised DESK_LOOP. An invalid marker
+	// is Unverifiable and builds no path.
+	cell, cerr := sessionCell()
+	if cerr != nil {
+		return false, "", cerr
+	}
+	if cell != "" {
+		cellAll, crsn, ferr := flagFileState(dir, CellStopFlagName(cell, ""))
+		if ferr != nil {
+			return false, "", ferr
+		}
+		if cellAll {
+			return true, crsn, nil
+		}
+		// STOP.cell.<cell>.<role>: the role the marker names, when it is a known loop.
+		roleArmed, rrsn, rerr := cellLoopFlagState(dir, cell, cellRoleFlagNames())
+		if rerr != nil {
+			return false, "", rerr
+		}
+		if roleArmed {
+			return true, rrsn, nil
+		}
 	}
 
 	// Check STOP.<loop> when DESK_LOOP is set.
@@ -177,7 +269,8 @@ func stopFlagState() (armed bool, reason string, err error) {
 			return true, flagReason, nil
 		}
 	}
-	return false, "", nil
+	// STOP.cell.<cell>.<loop> — same precedence as STOP.<loop>; only for a marked session.
+	return cellLoopFlagState(dir, cell, flagNames)
 }
 
 // RunStopFlagName maps a run/claim key to the state-dir file name that stops THAT run and
@@ -365,15 +458,20 @@ type ActiveStopFlag struct {
 	Reason string `json:"reason"`
 	Stale  bool   `json:"stale,omitempty"` // true only for stale HEARTBEAT
 	// Inert marks a STOP.<name> flag whose <name> matches no known loop (see
-	// loopnames.go). Such a flag halts NOTHING — it is a human believing they hold a
-	// stop that no loop will ever read. That belief is the human-side half of the same
-	// silent failure the Guard fix closes, so the board must say so rather than list
-	// the file alongside flags that really are armed.
+	// loopnames.go), and a STOP.cell.<cell>[.<name>] flag whose cell name is malformed, whose
+	// <name> matches no known loop, or whose cell has no registration under the cells root
+	// AS THIS PROCESS RESOLVES IT. A flag with a malformed cell name or an unknown loop halts
+	// NOTHING — it is a human believing they hold a stop that no loop will ever read. That
+	// belief is the human-side half of the same silent failure the Guard fix closes, so the
+	// board must say so rather than list the file alongside flags that really are armed.
+	// The unregistered-cell case is tagged INERT too, but its Reason names the cells root this
+	// process looked in and does NOT claim the flag halts nothing: the Guard keys on the
+	// session's marker alone, so a cell registered under another root is still stopped.
 	Inert bool `json:"inert,omitempty"`
 }
 
 // ActiveStopFlags returns the list of currently active stop flags (STOP, STOP.<name>,
-// stale HEARTBEAT). DISABLED is NOT included — it is the broader kill switch and has
+// STOP.cell.<cell>[.<name>], stale HEARTBEAT). DISABLED is NOT included — it is the broader kill switch and has
 // its own banner. This is a best-effort diagnostic for deskboard; a read error on the
 // flag dir returns nil (the board run itself would have hit that error via Guard()).
 func ActiveStopFlags() []ActiveStopFlag {
@@ -400,6 +498,19 @@ func ActiveStopFlags() []ActiveStopFlag {
 			// STOP.<loop> flag (ListRunStops enumerates those). Excluding the prefix here
 			// keeps a per-run stop from being mis-reported as an inert per-loop flag.
 			if strings.HasPrefix(n, runStopPrefix) {
+				continue
+			}
+			// STOP.cell.<cell>[.<loop>] is cell-scoped (cellstopflag.go): inert when the cell
+			// name is malformed, the loop part names no known loop, or the cell has no
+			// registration under the cells root.
+			if strings.HasPrefix(n, cellStopPrefix) {
+				if r, ok := readFlagReason(dir, n); ok {
+					why := cellFlagInertReason(strings.TrimPrefix(n, cellStopPrefix))
+					if why != "" {
+						r = r + " — INERT: " + why
+					}
+					flags = append(flags, ActiveStopFlag{Name: n, Reason: r, Inert: why != ""})
+				}
 				continue
 			}
 			if strings.HasPrefix(n, "STOP.") && n != "STOP" {
@@ -449,7 +560,9 @@ func firstLine(s string) string {
 // Guard is the MANDATORY first call of every desk tool. It checks all
 // stop conditions in precedence order BEFORE any other action — including reads:
 //  1. DISABLED (kill switch)
-//  2. STOP (all-loops halt), then STOP.<loop> (per-loop halt when DESK_LOOP set)
+//  2. STOP (all-loops halt), then STOP.cell.<cell> (whole-cell halt when the ASSAY_CELL
+//     marker is set; an invalid marker is exit 6), then STOP.<loop> / STOP.cell.<cell>.<loop>
+//     (per-loop halt when DESK_LOOP set)
 //  3. STOP.run.<key> (per-run halt when the worktree records assay.runKey)
 //  4. HEARTBEAT staleness (dead-man lease >24h)
 //

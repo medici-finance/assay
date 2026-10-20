@@ -1,0 +1,1 @@
+Decision-gate hold on the close-to-done path (lifecycle-v1 §4.5): a refusal branch keyed on "decision-gate hold" that relays the refusal and reopens the card. Pending maintainer promotion over .github/workflows/verify-gate-close.yml (README Contents).

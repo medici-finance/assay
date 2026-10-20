@@ -99,6 +99,21 @@ var dispatchRequirements = []dispatchRequirement{
 		Note:    "verify table supplied by the board read via Payload[\"verify_table\"]",
 	},
 	{
+		ID:      "preflight-exact-acceptance-commands",
+		Anchors: []string{"preflight the exact acceptance commands", "approved executor envelope"},
+		How:     carriedInPrompt,
+		Probes: []string{"Preflight the exact acceptance commands before execution.",
+			"Never silently add a test filter", "reviewed amendment alone does not supersede the original baseline",
+			"Never invent a CLI override"},
+	},
+	{
+		ID:      "original-acceptance-row-inventory",
+		Anchors: []string{"account for the original row inventory", "immutable original acceptance table"},
+		How:     carriedInPrompt,
+		Probes: []string{"Account for the original row inventory.", "incomplete even on exit 0",
+			"supplemental rows receive no original acceptance credit", "Verification-Table"},
+	},
+	{
 		// Kit § "Run every row", clause 2.
 		ID:      "run-every-verify-row-observed-output",
 		Anchors: []string{"run every verify row", "exit code"},
@@ -271,6 +286,10 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 	b.WriteString("Isolation (MANDATORY):\n")
 	b.WriteString("- Create and work in your OWN temporary worktree under /private/tmp off the target SHA.\n")
 	b.WriteString("- Never touch a shared checkout; never `git restore`/`git clean`; path-specific `git add` only.\n\n")
+	// Keep these acceptance clauses verbatim with the kit; the sync test compares full clauses.
+	b.WriteString("- **Preflight the exact acceptance commands before execution.** Read every required row's Command, Expect and class against the approved executor envelope: offline/network limits, available tools, sandbox, timeout, output location and fail-first side effects. For protected tables use the original acceptance commands and provenance from `deskpathguard rederive --root <home> --brief <path>`. Read `docs/protected-paths.md` section \"Recording closure after re-derivation\" for the immutable table marker and original-row obligations; if that contract or its required objects are unavailable, report incomplete evidence. If a command cannot run as admitted, record the exact command and reason unrun and route the missing capability or a reviewed check-definition repair. Never silently add a test filter, replace a command, shorten its scope or relax the sandbox to make it runnable. A separately labelled supplemental probe (including a tighter test selector) can diagnose a blocker but discharges no original row. A definition repair requires fresh dispatch/admission after it lands. For a protected table, a reviewed amendment alone does not supersede the original baseline: closure still requires the delivered table and original obligations. Retain their provenance and hold when no supported acceptance-transition path exists. Never invent a CLI override, relabel a supplemental probe as acceptance, or repoint delivery to bypass that obligation.\n")
+	b.WriteString("- **Account for the original row inventory.** For a protected table, re-derive its immutable original acceptance table before execution and retain its provenance. Zero rows, a missing original row, or a filtered run with no required-row coverage is incomplete even on exit 0. Preserve every original row ID, Command, Expect, class and fail-first obligation. Author-added and supplemental rows receive no original acceptance credit. Retain the immutable `Verification-Table` marker required by the protected-table closure contract.\n")
+	b.WriteString("\n")
 	b.WriteString("Verify table — run EVERY row, record command -> exit code -> key observed output line\n")
 	b.WriteString("(real output, never a claim; a row that cannot run is recorded as explicitly unrun):\n")
 	b.WriteString(verifyTable)

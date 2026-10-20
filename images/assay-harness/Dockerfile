@@ -36,7 +36,7 @@
 # pinned by DIGEST (a tag is mutable at a registry). assay's sibling
 # `images/ci-tools/Dockerfile` pins by tag, not digest, so these are STANDALONE
 # digest pins with no sibling to keep them in lockstep; bump them deliberately
-# (they are the linux/amd64 golang:1.25.0-bookworm and debian:bookworm-slim
+# (they are the linux/amd64 golang:1.27.2-bookworm and debian:bookworm-slim
 # artifacts as of this image's addition). See the PR body's base-digest note.
 #
 # TARGET PLATFORM is linux/amd64 (the ARC runner convention).
@@ -46,11 +46,12 @@
 # ---------------------------------------------------------------------------
 # --platform=$BUILDPLATFORM keeps the Go toolchain on the builder's arch and
 # cross-compiles to linux/amd64 rather than running under qemu emulation.
-FROM --platform=$BUILDPLATFORM golang:1.25.0-bookworm@sha256:81dc45d05a7444ead8c92a389621fafabc8e40f8fd1a19d7e5df14e61e98bc1a AS gobuild
+ARG BINARY_STAGE=gobuild
+FROM --platform=$BUILDPLATFORM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS gobuild
 
 # GOWORK=off is load-bearing: the repo root carries no go.work, and statusgen/
 # and tools/desk are self-contained modules (only external dep is
-# gopkg.in/yaml.v3; the only `replace` is the stdlib-only sibling forgeread module), so each builds from its own dir with
+# gopkg.in/yaml.v3; the only `replace`s are the stdlib-only sibling forgeread and perfrec modules), so each builds from its own dir with
 # GOWORK off. GOARCH is fixed to amd64 to match the runtime stage's platform.
 ENV GOWORK=off CGO_ENABLED=0 GOOS=linux GOARCH=amd64
 
@@ -72,6 +73,14 @@ RUN if [ -z "${ASSAY_VERSION}" ]; then \
 # forgeread — the stdlib-only fact-reader module statusgen and tools/desk each resolve through a
 # `replace` to a sibling directory, so the sources keep the repository's layout under /src.
 COPY forgeread/ /src/forgeread/
+
+# comms — the stdlib-only public message contract (cellmsg-v1) tools/desk resolves through a
+# `replace ../../comms`; same sibling layout as forgeread.
+COPY comms/ /src/comms/
+
+# perfrec — the stdlib-only shared perf-v1 writer statusgen and tools/desk each resolve through a
+# `replace` to a sibling directory; same sibling layout as forgeread.
+COPY perfrec/ /src/perfrec/
 
 # statusgen — its own module, stamped with main.statusgenVersion.
 WORKDIR /src/statusgen
@@ -103,6 +112,11 @@ RUN DESK_LD="-s -w"; \
 # ---------------------------------------------------------------------------
 # Stage 2 — the runtime image.
 # ---------------------------------------------------------------------------
+# Release CI reuses the same binaries it publishes as Linux assets.
+FROM scratch AS released
+COPY .release-images/harness/ /out/
+FROM ${BINARY_STAGE} AS toolkit
+
 FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
 
 # Small, stable OS utilities a headless agent needs: TLS roots, git for the
@@ -120,7 +134,7 @@ RUN apt-get update \
 # The toolkit binaries, from stage 1. statusgen + every desk-tools command land
 # on PATH at /usr/local/bin — this is the container-channel equivalent of the
 # binary install the CLIs ship through, so `statusgen --version` answers here.
-COPY --from=gobuild /out/ /usr/local/bin/
+COPY --from=toolkit /out/ /usr/local/bin/
 
 # The assay plugin, pre-seeded at BUILD time. CLAUDE_CODE_PLUGIN_SEED_DIR
 # pre-populates marketplaces+plugins read-only with no runtime clone — the

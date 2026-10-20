@@ -104,11 +104,21 @@ func buildEnvKeys() []envKey {
 			desc: "Size budget of one cell's managed Go cache, in bytes (8 GiB)."},
 		{key: "CELL_GO_CACHE_MIN_FREE", class: envMachine, group: envGroupCache, def: "10737418240",
 			desc: "Free space the managed Go cache leaves on its volume, in bytes (10 GiB)."},
+		{key: "CELL_GO_CACHE_BUILD_MAX_AGE", class: envMachine, group: envGroupCache, def: "24h",
+			desc: "Age past which compiler-cache entries are trimmed whenever a trim runs, even with live consumers, as a duration of at least 2h."},
+		{key: "CELL_GO_CACHE_LOW_WATER_PERCENT", class: envMachine, group: envGroupCache, def: "60",
+			desc: "Where a cache trim stops, as a whole percentage of the budget below 75: compiler-cache entries go oldest first until the cache is at or under it."},
+		{key: "CELL_GO_CACHE_TRIM_MIN_AGE", class: envMachine, group: envGroupCache, def: "2h",
+			desc: "Safety floor of the cache trim: no compiler-cache entry younger than this is ever trimmed, as a duration of at least 2h."},
+		{key: "CELL_GO_TRIMPATH", class: envMachine, group: envGroupCache, def: "on",
+			desc: "Build with -trimpath (GOFLAGS) so worktrees share the managed Go cache: on or off."},
 		{key: "CELL_SCRATCH_MAX_AGE", class: envMachine, group: envGroupCache, def: "168h",
 			desc: "Age past which managed task scratch is swept, as a duration."},
 		{key: "CELL_SCRATCH_MAX_BYTES", class: envMachine, group: envGroupCache, def: "268435456",
 			desc: "Total size past which managed task scratch is swept oldest first, in bytes (256 MiB)."},
 
+		{key: envAssayTelemetry, class: envMachine, group: envGroupHarness, def: "0",
+			desc: "Local desk-tool performance logging: exactly 1 opts in; any other value is off. No upload."},
 		{key: "CELL_HARNESS", class: envMachine, group: envGroupHarness, def: "claude",
 			desc: "Harness every role window boots on: " + strings.Join(harnessValues, ", ") + " (cursor needs a house cell)."},
 		{key: "CELL_COCKPIT", class: envMachine, group: envGroupHarness, def: "auto",
@@ -154,6 +164,8 @@ func buildEnvKeys() []envKey {
 	for _, role := range strings.Fields(rolesDefault) {
 		keys = append(keys, envKey{key: "CURSOR_MODEL_" + underscore(role), class: envMachine, group: envGroupModels, desc: pinCursor})
 	}
+	keys = append(keys, envKey{key: "CELL_MODEL_TTL_DAYS", class: envMachine, group: envGroupModels,
+		desc: "Days a model pin recorded DEFAULT (`set ... --default`) stays before a launch lowers it to the MID tier: Nd, a number of days, or a Go duration; 0 turns the reset off. Default: 7."})
 	const tier = "Tier map, used when no pin and no harness default names a model: the-desk resolves at TOP, every other role at MID."
 	for _, harness := range []string{"claude", "codex", "cursor"} {
 		for _, level := range []string{"TOP", "MID", "FAST"} {
@@ -297,6 +309,8 @@ func buildEnvKeys() []envKey {
 			why: "is the operator config path cellctl captures before a launch moves the home, and a file-carried value would be an expectation the launch did not capture"},
 		envKey{key: "CELLCTL_PARITY_MUTATE", class: envNotLever, from: envInternal,
 			why: "is a test hook compiled only under the parity build tag"},
+		envKey{key: "CELLOP_FIXTURE_TRACE", class: envNotLever, from: envInternal,
+			why: "is a test hook compiled only under the cellopfixture build tag"},
 	)
 	return keys
 }

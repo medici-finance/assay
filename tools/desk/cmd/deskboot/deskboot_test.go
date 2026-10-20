@@ -106,6 +106,9 @@ func happyStub(t *testing.T, tokenPath string) []reply {
 		// worktree-current: FETCH_HEAD resolves, HEAD contains it (merge-base exits 0 by the
 		// stub default), and neither side carries a pin file (an empty `git show` is "no pin").
 		{match: "rev-parse FETCH_HEAD", stdout: "0123456789abcdef0123456789abcdef01234567"},
+		// first-sweep-prereqs: the source tree's origin/main carries tools/desk, which is
+		// desk-tools provenance on its own (#2986). A consumer stub fails this ref instead.
+		{match: "refs/remotes/origin/main:tools/desk", stdout: "89abcdef0123456789abcdef0123456789abcdef"},
 	}
 }
 
@@ -389,6 +392,23 @@ func TestRedPreflightSurfacesSummaryNotBanner(t *testing.T) {
 	// verdict. (deskboot's own main echoes the banner, but run() — exercised here — does not.)
 	if strings.Contains(stderr, "configured=true") {
 		t.Errorf("the boot log surfaced the assay-config banner instead of the preflight verdict.\nGot:\n%s", stderr)
+	}
+}
+
+// regression: #2713
+// The default echo is now ONE digest line rather than the full block. The summary must strip
+// that form as preamble too, and must still keep a REFUSED line, which is the message when the
+// roster itself refused.
+func TestPreflightSummaryDigestLine(t *testing.T) {
+	digest := "assay-config: class=write source=config file /x/roster.env configured=true " +
+		"digest=sha256:0123456789ab humans=2 bots=6 roles=6 repos=1 (full: ASSAY_CONFIG_ECHO=full)"
+	got := preflightSummary(digest+"\npreflight role=desk RED 4/5 checked-clean", "")
+	if got != "preflight role=desk RED 4/5 checked-clean" {
+		t.Errorf("the digest echo line was not stripped as preamble; got:\n%s", got)
+	}
+	refused := "assay-config: REFUSED — no roster configured"
+	if got := preflightSummary(digest+"\n"+refused, ""); got != refused {
+		t.Errorf("the REFUSED line must survive the preamble strip; got:\n%s", got)
 	}
 }
 
@@ -703,7 +723,7 @@ func TestEveryKnownRoleIsBothMappedAndStoppable(t *testing.T) {
 // consumer that keys on a step name.
 func TestStepListIsTheDocumentedContract(t *testing.T) {
 	want := []string{"loop-identity", "worktree-prune", "worktree-lock", "roster-set",
-		"roster-preflight", "token-mint", "board-fetch", "worktree-current"}
+		"roster-preflight", "token-mint", "board-fetch", "worktree-current", "first-sweep-prereqs"}
 	if len(bootSteps) != len(want) {
 		t.Fatalf("bootSteps has %d entries, want %d", len(bootSteps), len(want))
 	}
@@ -938,5 +958,20 @@ func TestCurrentWorktreeWithEqualPinsBoots(t *testing.T) {
 	}
 	if !s.ran("show FETCH_HEAD:.assay-versions") {
 		t.Error("a green boot never read FETCH_HEAD's pin — the pin comparison did not run")
+	}
+}
+
+// A boot step's stderr is captured and its echo stripped, so the child gets the stateless full
+// echo and records no config digest nobody saw.
+// regression: #2713
+func TestRunCmdChildEchoStateless(t *testing.T) {
+	t.Setenv(deskkit.EnvConfigEcho, "compact")
+	old := execCommand
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("/bin/sh", "-c", `printf %s "$ASSAY_CONFIG_ECHO"`)
+	}
+	t.Cleanup(func() { execCommand = old })
+	if r := runCmd("", "deskroster", "preflight"); r.err != nil || r.stdout != "full" {
+		t.Fatalf("child saw ASSAY_CONFIG_ECHO=%q (err %v), want full", r.stdout, r.err)
 	}
 }

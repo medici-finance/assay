@@ -4,13 +4,13 @@ title: Verifier domain contracts with qualified identities and candidate-bound a
 why: "The planned verifier runtime, its database and its cockpit all need one answer to 'which work item, which candidate, which acceptance, which facts'. Without one pure contract they each invent their own, and a verdict can attach to the wrong candidate or pass on missing facts."
 wave: 2
 depends: ["graph-execution/09"]
-unblocks: ["graph-execution/23", "graph-execution/29"]
+unblocks: ["graph-execution/23", "graph-execution/29", "graph-execution/04", "graph-execution/16", "graph-execution/19", "graph-execution/26", "forge-neutral/37", "forge-neutral/38", "graph-execution/30", "graph-execution/31"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-13 by worker-desk (author-brief), non-CI architecture reconciliation
 sources:
   - docs/proposals/non-ci-architecture/16-delivery-sequence.md — package R1 (domain contracts and regression floor)
@@ -28,7 +28,8 @@ consumers:
   - "workflow candidate record (spec/workflow-candidate-v1.md as planned by graph-execution/23): follow-up graph-execution/23"
   - "regression-floor adapters: follow-up graph-execution/29"
   - "statusgen/evaluation: out-of-scope (consumed unchanged through its exported API; statusgen/15 owns it)"
-  - "durable coordination store and runtime controller: out-of-scope (non-CI R2/R5 follow-up briefs consume this contract; see the amendment manifest)"
+  - "durable coordination store (workflow/store): follow-up graph-execution/19 (non-CI R2 amendment, 2026-10-13; keys its records on this contract)"
+  - "runtime controller: out-of-scope (the non-CI R5 follow-up consumes this contract; see the amendment manifest)"
 id: fefddc8e-4cd2-4438-8c26-965b24ffd5dc
 ---
 
@@ -91,6 +92,18 @@ design-fit:
   report NEEDS_CONTEXT instead of editing it.
 - This brief activates nothing: no runtime, store or publisher is wired to the contract.
 
+## Verifier migration amendment — 2026-10-19
+
+Consume [the migration contract](verifier-migration.md). Within the existing pure record
+surface, represent component progress (bind/admit/execute/assess/decide/publish), execution
+outcome, acceptance disposition, publication receipt state, typed hold and observation time
+separately. These are projections of the existing semantic owners, not new authority or a
+second queue classifier. Unsupported mandatory state is could-not-check. Existing /30
+owns complete applicability context; this brief must not approximate it with file hashes.
+Add `TestDomainStageSeparation` (planned) to the declared `statusgen/domain/` tests. It must distinguish
+execution-success/acceptance-held, accepted/publication-pending and complete/retirement-held.
+
+
 ## Task
 
 1. Write `spec/verification-domain-v1.md` (planned) and `schemas/verification-domain-v1.json` defining
@@ -137,6 +150,7 @@ turn its test red.
 | 6 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainEvaluationSeam$" ./domain/ > "$out" && grep -F -- "--- PASS: TestDomainEvaluationSeam " "$out")` | exit 0; named PASS; `Assess` drives the real `statusgen/evaluation` functions on frozen fixtures, the result names `evaluation.CurrentIdentity()`, and a witness at a different revision holds; mutation: map the candidate commit into the evaluator in place of the tree revision — the test must fail |
 | 7 | check:ci +mutation | `(cd statusgen && name=$(GOWORK=off go list -f '{{.Name}}' ./domain/) && test "$name" = domain && bad=$(GOWORK=off go list -f '{{range .Imports}}{{if or (eq . "os") (eq . "os/exec") (eq . "net") (eq . "net/http") (eq . "syscall") (eq . "io/ioutil") (eq . "path/filepath")}}{{.}} {{end}}{{end}}' ./domain/) && test -z "$bad")` | exit 0; the package exists and imports no filesystem, process or network package; mutation: add an `os` import to the package — the row must fail |
 | 8 | check:ci +dereference | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainSchemaFixtures$" ./domain/ > "$out" && grep -F -- "--- PASS: TestDomainSchemaFixtures " "$out")` | exit 0; named PASS; every fixture under `statusgen/testdata/domain/` (planned) validates (positive) or is refused (negative) against `schemas/verification-domain-v1.json` (planned), and the spec names each schema record |
+| 9 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainStageSeparation$" ./domain/ > "$out" && grep -Fq -- "--- PASS: TestDomainStageSeparation " "$out")` | exit 0; named PASS; the three stage combinations remain distinct; mutation: map execution success directly to accepted — the test fails |
 
 ## Pre-mortem
 

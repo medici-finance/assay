@@ -93,8 +93,11 @@ asset_name() {
   esac
 }
 
-is_sha256() { printf '%s' "$1" | grep -Eq '^[0-9a-f]{64}$'; }
+is_sha256() { grep -Eq '^[0-9a-f]{64}$' <<<"$1"; }
 is_placeholder() { case "$1" in REPLACE_WITH*|"") return 0 ;; esac; return 1; }
+# is_bare_umbrella <tag> — a strict bare vMAJOR.MINOR.PATCH (no leading zeros, no
+# `<component>/` prefix, no suffix): the only tag shape an `assay` umbrella line takes.
+is_bare_umbrella() { grep -Eq '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' <<<"$1"; }
 
 # pin_fields <pins-file> <asset> — prints "<tag> <sha256>" for the ONE pin line keyed on
 # <asset>, or refuses. Every way the expected digest can fail to be read is a refusal.
@@ -116,7 +119,7 @@ pin_fields() {
   if is_placeholder "$tag" || [ "$tag" = latest ]; then
     refuse "the pin line for $asset carries tag '$tag' — a placeholder or floating tag is not a pin"
   fi
-  printf '%s' "$tag" | grep -Eq '^[A-Za-z0-9._/+-]+$' || refuse "the pin line for $asset carries an unusable tag '$tag'"
+  grep -Eq '^[A-Za-z0-9._/+-]+$' <<<"$tag" || refuse "the pin line for $asset carries an unusable tag '$tag'"
   case "$tag" in *..*) refuse "the pin line for $asset carries an unusable tag '$tag'" ;; esac
   is_sha256 "$sha" || refuse "the pin line for $asset carries '$sha', not a 64-lowercase-hex sha256 — the expected digest could not be read"
   printf '%s %s' "$tag" "$sha"
@@ -178,7 +181,7 @@ cmd_acquire() {
   [ -n "$pins" ] || usage_err "acquire --pins <.assay-versions> --dest <bindir> [--kind statusgen|desk-tools]"
   [ -n "$dest" ] || usage_err "acquire needs --dest <bindir>"
   [ -n "$plat" ] || plat=$(detect_platform)
-  printf '%s' "$home" | grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$' || usage_err "--release-home must be <owner>/<repo> (got '$home')"
+  grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$' <<<"$home" || usage_err "--release-home must be <owner>/<repo> (got '$home')"
 
   local asset fields tag want url tmp got
   asset=$(asset_name "$kind" "$plat") || exit $?
@@ -310,13 +313,14 @@ cmd_pin() {
   # from the manifest (`statusgen init` writes several, and a half-filled file fails --lint's
   # same-tag check); one the manifest cannot fill is a refusal, and the pin file is left
   # byte-identical. Nothing is written until the whole file is decided.
-  local tmpf l key tag fill unfillable="" hostdone=0 changed=0 notes=""
+  local tmpf l key tag fill unfillable="" hostdone=0 changed=0 notes="" umbrella=0 offtag utmp
   tmpf=$(mktemp "${TMPDIR:-/tmp}/assay-pins.XXXXXX") || unverifiable "cannot create a temp file"
   if [ -f "$pins" ]; then
     while IFS= read -r l || [ -n "$l" ]; do
       key=$(printf '%s\n' "$l" | awk '$0 !~ /^[[:space:]]*#/ {print $1}')
       if [ -z "$key" ]; then printf '%s\n' "$l" >> "$tmpf"; continue; fi
       tag=$(printf '%s\n' "$l" | awk '{print $2}')
+      [ "$key" = assay ] && umbrella=1
       if is_placeholder "$tag"; then
         fill=$(pin_fill "$manifest" "$kind" "$key")
         if [ -n "$fill" ]; then
@@ -350,6 +354,26 @@ cmd_pin() {
     rm -f "$tmpf"
     say "already pinned, left untouched: $line"
     return 0
+  fi
+  # The umbrella line. Per-artifact lines with no `assay` line read as could-not-determine
+  # to the version marker (deskversion / upgrade-assay), so a write also records the
+  # release these pins come from: `assay <tag>`, placed before the first data line. It is
+  # written only when ALL of these hold: the file has no umbrella line (an existing one is
+  # never touched); the manifest's tag is a strict bare vX.Y.Z; and every per-artifact
+  # line in the result pins that same tag. `-source` lines and `same-tag: exempt` lines
+  # are not counted. Otherwise no umbrella line is written, and the reason is printed.
+  if [ "$umbrella" -eq 0 ] && is_bare_umbrella "$mtag"; then
+    offtag=$(awk -v t="$mtag" '$0 !~ /^[[:space:]]*(#|$)/ && $1 !~ /-source$/ && $0 !~ /same-tag: exempt/ && $2 != t {printf "%s%s", sep, $1; sep=", "}' "$tmpf")
+    if [ -z "$offtag" ]; then
+      utmp=$(mktemp "${TMPDIR:-/tmp}/assay-pins.XXXXXX") || { rm -f "$tmpf"; unverifiable "cannot create a temp file"; }
+      awk -v u="assay $mtag" '!d && $0 !~ /^[[:space:]]*(#|$)/ {print u; d=1} {print} END {if (!d) print u}' "$tmpf" > "$utmp" \
+        && mv "$utmp" "$tmpf" || { rm -f "$tmpf" "$utmp"; unverifiable "cannot stage the umbrella line for $pins"; }
+      notes="${notes}recorded the umbrella line: assay $mtag (the release these pins come from)
+"
+    else
+      notes="${notes}no umbrella line recorded: $offtag pin a tag other than $mtag
+"
+    fi
   fi
   cat "$tmpf" > "$pins" && rm -f "$tmpf" || unverifiable "cannot write $pins"
   printf '%s' "$notes" | while IFS= read -r l; do [ -n "$l" ] && say "$l"; done

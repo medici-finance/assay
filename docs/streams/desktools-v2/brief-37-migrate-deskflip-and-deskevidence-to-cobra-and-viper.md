@@ -6,12 +6,17 @@ why: >-
   FlagSets onto Cobra gives real help; state transitions and refusals must stay identical.
 wave: 3
 depends: ["desktools-v2/16"]
-unblocks: ["desktools-v2/17"]
+unblocks: []
+withdrawn-date: "2026-10-18"
+superseded-by: ["graph-execution/25", "composability/03"]
+withdrawn-reason: "The ratified target (docs/proposals/non-ci-architecture/11-target-architecture.md §\"What happens to today's tools\": thin adapters, do not port the entire command matrix; 13-migration-and-decisions.md: no parser migration is a prerequisite) retires or re-homes this domain: deskflip and deskevidence are the legacy publication path, kept as supported until it retires at R8 after verifier cutover (docs/proposals/non-ci-architecture/20-amendment-manifest.md R4/R8; graph-execution/25, composability/03). The owned entrypoints keep their current parser, routed exempt in cli-migration.json, until retired."
+decision-issue: 3420
+ruling: "https://github.com/medici-finance/assay/issues/3420#issuecomment-6257901942"
 effort: "L"
 gate: "human"
 risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-data": "yes"}
 issues: [2111]
-schema: "brief-v2"
+schema: "brief-v3"
 outcome: none
 version: 1
 id: "a57b5233-0398-4c33-a70e-2f5ea016e22a"
@@ -47,6 +52,8 @@ decision-trigger: "spec"
 ---
 
 # Brief 37 — Migrate deskflip and deskevidence to Cobra and Viper
+
+> **Withdrawn 2026-10-18 — superseded by `graph-execution/25`, `composability/03`.** The ratified target (docs/proposals/non-ci-architecture/11-target-architecture.md §"What happens to today's tools": thin adapters, do not port the entire command matrix; 13-migration-and-decisions.md: no parser migration is a prerequisite) retires or re-homes this domain: deskflip and deskevidence are the legacy publication path, kept as supported until it retires at R8 after verifier cutover (docs/proposals/non-ci-architecture/20-amendment-manifest.md R4/R8; graph-execution/25, composability/03). The owned entrypoints keep their current parser, routed exempt in cli-migration.json, until retired. The Cobra/Viper requirement now binds new tools instead (`docs/streams/desktools-v2/cli-contract.md` §7). Not executable.
 
 ## Context
 

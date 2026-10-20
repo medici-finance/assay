@@ -425,6 +425,14 @@ have a bounded Go-port owner. A small tool is not an exception.
 
 ### Rollout and acceptance
 
+**Amendment, 2026-10-18.** Ratification of the target architecture at revision 23f655f5d: https://github.com/medici-finance/assay/issues/2500#issuecomment-6137853872
+The new-tool rule has no ruling of its own: it applies that ratification and the request in medici-finance/assay#2111.
+Under the target architecture, Cobra/Viper is a
+requirement for every **new** command and verb adapter and for every surviving CLI, not a
+port of every existing verb: ports of verbs whose domain retires are withdrawn and their
+entrypoints are `exempt` until retired. Normative text: [cli-contract.md §7](cli-contract.md#7-new-tools-and-retiring-tools--2026-10-18).
+The paragraphs below stand for the surviving tools.
+
 `desktools-v2/15` supplies the foundation, a source-derived complete inventory, and **authors
 bounded implementation briefs for every remaining tool in that same deliverable**. Each row
 names its existing implementation owner; no unassigned bucket or promise to plan later is
@@ -449,3 +457,36 @@ malformed configuration on help, per-platform source semantics, stable non-help 
 independent domain admission and multiple invocations in one process. Negative controls
 must fail on an omitted tool, ignored Viper binding, effectful help, reintroduced custom
 parser or widened configuration source. A staged CI patch is not a live completion gate.
+
+## 10. Attributed performance — requested amendment, 19 October 2026
+
+The [perf-v3 contract](../../performance-attribution-spec.md) extends the future tool suite
+with qualified local brief/issue attribution, logical session and unique agent/invocation IDs,
+originating desk role and actual assigned role. Desks/launchers set explicit environment
+context; real CLI adapters accept validated overrides. Each subprocess records its own work
+and carries causal links. Measure actual forge attempts, request duration and attributable
+GraphQL points, preserving unknown/estimated coverage and preventing parent/child duplication.
+
+This is new versioned local workflow disclosure with an explicit additional profile. Preserve
+perf-v1/perf-v2, their defaults and tests; no existing opt-in authorizes new work linkage or
+remote transmission. perfrec stays the credential-free library and one local writer; future
+perfdata import owns aliased collection/export, storage and transport. No database/API is a
+prerequisite for local v3. Required audit, quota enforcement and custody are unaffected.
+
+Deliver through new /63 (schema/resolver/readers), /64 (launch and CLI/env context), /65
+(provider timing/cost), then unfinished /62 and statusgen/26. CLI migrations/new tools adopt
+this shared seam through cli-contract.md rather than duplicating parsers or stopping at v2
+collection. Preserve completed /61's implementation/Evidence; collection stays parked. The
+new implementation briefs carry their own disclosure gates; this authoring revision does
+not claim those gates passed or activate deployment.
+
+### Query/cache service observations
+
+The [same v3 contract](../../performance-attribution-spec.md#querycache-service-and-passthrough-boundaries)
+also covers service/client latency and per-handler cache/coalescing work, separately from
+actual provider sends, timing and cost. Shared refreshes count actual pages once; direct,
+service-passthrough, refresh, poll and repair origins remain visible. /63 freezes bounded
+kinds/reducer fixtures; /65 supplies provider observations and existing forge-neutral/37–45
+owns service implementation/qualification. Local v3 requires no unshipped service or database.
+No implicit diagnostic propagation, raw work locator forwarding or per-handler process-CPU
+attribution is permitted; missing service coverage is unknown.

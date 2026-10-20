@@ -31,7 +31,7 @@ exec-tier-why: >-
   passes is the failure to design against.
 consumers:
   - "tools/desk/cmd/deskdispatch/references/worker-prompt-objective.md (new kit): fixed-here"
-  - "tools/desk/cmd/deskdispatch/references/common-clauses.md: out-of-scope (the objective kit includes the common clauses byte-identical; the guards are not the variable under test)"
+  - "tools/desk/cmd/deskdispatch/references/common-clauses.md: fixed-here (extraction markers only; common-clause guard prose is unchanged)"
   - "plugins/assay/skills/worker-desk/SKILL.md: out-of-scope (no skill-body change in this brief; adoption is a separate brief citing the report)"
 version: 1
 id: eb82d786-ffc7-46d0-ae5e-98172a4b78f9
@@ -50,8 +50,16 @@ files:
 - `tools/desk/cmd/deskdispatch/main.go` — register the kit under `--kit worker-objective`.
 - `tools/skillbench/fixtures/worker-kit/` (new) — the task set: five briefs from this
   repo's own closed streams, re-runnable offline, each with a deterministic `check`.
-- `docs/streams/desk-supervision/08-report.md` (new) — the skillbench report plus the
-  wedge count per arm and the decision line.
+- `docs/streams/desk-supervision/08-report.md` — the stored skillbench reduction and
+  the observer-dependent decision, with missing evidence reported as could-not-check.
+- `docs/streams/desk-supervision/verify.d/08-reduction.sh` — rerun the reducer with a
+  scratch output path and check its report-file oracle.
+- `docs/streams/desk-supervision/verify.d/08-consumers.py` — corroborate all three
+  consumer routes against the exact historical delivery diff.
+- `docs/streams/desk-supervision/verify.d/08-mutations.py` — plant a failed task
+  result and an additional consumer in scratch; require each oracle to reject it.
+- `docs/streams/desktools-v2/cli-migration.json` — classify these three source-only
+  acceptance instruments as tests, using exact-path entries.
 
 single-point-of-failure: the task set — if the five tasks do not exercise a state the
 procedural kit anticipates and the objective kit must discover, the comparison measures
@@ -90,22 +98,45 @@ facts:
    would change.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits` | exit 0; output contains `worker-objective` |
-| 2 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --dry-run --kit worker-objective --root . assay/desk-supervision/08 \| grep -c 'KUBECONFIG=/dev/null'` | output is `1` or more (common clauses present) |
-| 3 | `cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md` | exit 0 (byte-identical inclusion) |
-| 4 | `ls tools/skillbench/fixtures/worker-kit/ \| wc -l` | output is `5` |
-| 5 | `cd tools/skillbench && GOWORK=off go run . --arms ../../docs/streams/desk-supervision/08-arms \| grep -c 'check_pass_rate'` | output is `1` or more |
-| 6 | `for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done` | each line is `15` or more (5 tasks × ≥3 runs) |
-| 7 | `grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md` | exit 0; exactly one line |
-| 8 | `grep -c 'wedges' docs/streams/desk-supervision/08-report.md` | output is `1` or more |
-| 9 | `statusgen --root . --consumers --brief desk-supervision/08` | exit 0; output does not contain `DISPROVED` (run on the implementing branch: corroborates the `consumers:` routing against the diff) |
+| # | Command | Expect | Class |
+|---|---------|--------|-------|
+| 1 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits` | exit 0; output contains `worker-objective` | check |
+| 2 | `bash -o pipefail -c 'cd tools/desk && GOWORK=off GOPROXY=off go run ./cmd/deskdispatch assay/desk-supervision/08 --dry-run --kit worker-objective --root ../.. \| grep -F "KUBECONFIG=/dev/null" >/dev/null'` | exit 0 (common clauses present; producer failure is retained) | check |
+| 3 | `cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md` | exit 0 (byte-identical inclusion) | check |
+| 4 | `ls tools/skillbench/fixtures/worker-kit/ \| wc -l` | output is `5` | check |
+| 5 | `bash docs/streams/desk-supervision/verify.d/08-reduction.sh` | exit 0; output contains `Safety floor (task-check pass rate): held` | check |
+| 6 | `for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done` | each line is `15` or more (5 tasks × ≥3 runs) | check |
+| 7 | `grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md` | exit 0; exactly one line | check |
+| 8 | `grep -c 'wedges' docs/streams/desk-supervision/08-report.md` | output is `1` or more | check |
+| 9 | `python3 docs/streams/desk-supervision/verify.d/08-consumers.py` | exit 0; output contains `CORROBORATED: 3 consumer routes` | check |
+| 10 | `python3 docs/streams/desk-supervision/verify.d/08-mutations.py` | exit 0; output contains `2 planted defects rejected` | check +mutation |
 
 Pre-mortem → detection: "the objective kit quietly drops a guard" → row 3; "the report
 declares a winner from one run" → row 6; "the decision is prose with no numbers" → row 7;
 "wedge rate is asserted, not read from the observer" → row 8 plus review of the cited log
 lines. Review-only: whether the five tasks are representative.
+
+## Rework boundary — 2026-10-17
+
+The kit, fixtures and 30 stored runs were delivered by #1266. This rework repairs the
+command/oracle defects in rows 2, 5 and 9 tracked in #1363; it does not repeat that
+comparison. Row 9 reads only delivery `badd7b58c` against its first parent, so later
+skill edits cannot be misattributed to this item. Its consumer route now records the
+actual marker-only common-clause change; it never permits a guard-prose change.
+
+The rework CLI classifications are read by `tools/desk/internal/clicontract`;
+`TestCLIInventory` and `TestCLIRoutingMutations` validate their exact paths and
+retain the independent discovery, stale-rule and shipped-entrypoint checks. These
+classifications do not change the original delivery's three historical kit consumers.
+
+The later finding #2816 remains an acceptance blocker: the stored artifacts include
+no observer log, so duration records cannot establish wedges. The report now states
+could-not-check for both wedges and the adoption decision. **Row 7 remains red until
+the original observer-based decision rule can actually be evaluated.** A row 8 word
+count only locates the discussion; it does not prove observer coverage or satisfy
+Task 3. No revised offline criterion or new comparison is claimed here. The separate
+row 3 execution-witness parser issue remains tracked in #2679; the byte comparison
+still applies unchanged. Historical verifier receipts below remain historical.
 
 ## Evidence
 <!-- appended at implementation time: one row per Verify item —
@@ -307,6 +338,36 @@ Findings:
 Status stays implemented. Re-running this item before rows 2, 5 and 9 are re-specified will reproduce this result.
 
 **VERIFY: FAIL** — 6/9 pass; rows 2 and 5 fail as written and row 9 is could-not-check on merged main (and at the implementing commit). All three are check-definition defects tracked at #1363. No deliverable property is failing.
+
+### Non-implementer verifier re-run: 2026-10-15, assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk), merged main 44054ca3756857c34eb818601a4ddcb19a7b4da5
+
+Pre-work admission: deskdispatch --check-verifier exited 0 for this home and brief (binding run 1a380652124c, source 44054ca37568, model claude-opus-5-5, tier any; attestation issue medici-finance/assay#2992). The delivering change is #1266 (merge commit badd7b58c0e1ed6f344384a72e3eb7381fb42d6a). Every row was run by hand exactly as authored, from the root of a detached worktree at the merged head, offline (KUBECONFIG=/dev/null, GOPROXY=off). Rows 1, 2 and 5 ran with a throwaway HOME holding a read-only copy of the roster, so the desk tools could not append to a live audit log. The row 2 supplementary run first hit a lock on a shared Go build cache that another live dispatcher process held (exit status 6, retryable); it was re-run with a scratch Go build cache outside the worktree, and nothing else changed. The report file that skillbench writes into the tree was moved out of the worktree after row 5. Row 9 used the pinned statusgen v1.0.42. The Verify table is unchanged since the 2026-10-11 run (251e9473). Since then the objective kit changed once on main (#2620, wording in the dependency-ladder text outside the common-clauses block, +13/-4). The dispatcher sources also changed (#2853, #2764, #2761, #2754, #2757, #2427, #2560). skillbench, the fixtures, the arms directory, the report and the common clauses did not change. The table has no check:ci rows.
+
+| # | Command | Expected | Observed (exit + key output line) | Date | Runner |
+|---|---------|----------|-----------------------------------|------|--------|
+| 1 | cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits | exit 0; output contains worker-objective | PASS — exit 0; kit list is review, verifier, worker, worker-objective | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 2 | cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --dry-run --kit worker-objective --root . assay/desk-supervision/08 \| grep -c 'KUBECONFIG=/dev/null' | output is 1 or more | FAIL — grep count 0, pipeline exit 1. deskdispatch refuses with "deskdispatch: first argument must be the <item-key>, not a flag (--dry-run)" (go run reports exit status 5); the guard is now at dispatch.go:207. Supplementary, not the row as written: with the item key placed first the same command exits 0, prints "deskdispatch: PLAN (dry run — nothing touched) item=assay/desk-supervision/08 repo=medici-finance/assay tier=any kit=worker-objective", and the count is 1 | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 3 | cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md | exit 0 (byte-identical inclusion) | PASS — diff exit 0, empty output (objective kit now 648 lines, block at lines 529-648; common clauses 120 lines) | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 4 | ls tools/skillbench/fixtures/worker-kit/ \| wc -l | output is 5 | PASS — exit 0; 5 (01-observable-probe, 02-run-stop-signal, 03-eligibility-reconcile, 05-per-class-caps, 06-workpad-upsert) | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 5 | cd tools/skillbench && GOWORK=off go run . --arms ../../docs/streams/desk-supervision/08-arms \| grep -c 'check_pass_rate' | output is 1 or more | FAIL — grep count 0, pipeline exit 1; skillbench itself writes 0 bytes to stdout. Its only line is on stderr: "skillbench: wrote reports/skillbench/2026-10-15-08-arms.md". That report has 0 occurrences of check_pass_rate and carries the safety floor as prose: "Safety floor (task-check pass rate): held — with-overlay pass rate 100% >= without-overlay 100%" | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 6 | for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done | each line is 15 or more | PASS — exit 0; 15 and 15 | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 7 | grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md | exit 0; exactly one line | PASS — exit 0; exactly one line (grep -c gives 1): "decision: adopt-candidate — check_pass_rate 100%/15 vs 100%/15 (equal), wedges 0/15 vs 0/15 (equal), wall_seconds 31.7 vs 23.7 (+33.8%, cost-side regression), diff_lines 8.3 vs 8.1 (+2.5%, cost-side regression)" | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 8 | grep -c 'wedges' docs/streams/desk-supervision/08-report.md | output is 1 or more | PASS — exit 0; count 7 | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+| 9 | statusgen --root . --consumers --brief desk-supervision/08 | exit 0; output does not contain DISPROVED | COULD-NOT-CHECK — exit 2 (statusgen v1.0.42): "--consumers: COULD-NOT-CHECK: assay:assay:desk-supervision:08 is not in the diff against 44054ca3756857c34eb818601a4ddcb19a7b4da5, so this run carries no evidence about its claims — no entry was corroborated and none was disproved". The output has no DISPROVED, but the exit-0 expectation is not met. As recorded on 2026-10-11, the implementing commit did not change the brief file either, so this row has no diff to read on merged main or at the implementing commit | 2026-10-15 | assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk) (on-behalf-of human:ian) |
+
+Verification-Attestation: medici-finance/assay#2992 run=1a380652124ce82c30759589754aeccb7c2d4153c71cb9458cbbff2b72e22c5f source=44054ca3756857c34eb818601a4ddcb19a7b4da5 brief=docs/streams/desk-supervision/brief-08-objectives-over-transitions.md model=claude-opus-5-5 tier=any
+
+Risk-bearing values: the frontmatter marks all four risk fields no, and irreversible is no. The fail-safe trigger does not fire. Since the 2026-10-11 run, no deliverable constant has changed: skillbench, the fixtures, the arms directory and the report are unchanged, and the one objective-kit change is prose outside the common-clauses block with no literal the brief's Deliverables name. The 2026-09-25 enumeration stands.
+RISK-VALUE: NAMED, NOT DERIVED — task-count = 5 @ docs/streams/desk-supervision/08-report.md:9 (five task dirs under tools/skillbench/fixtures/worker-kit) — missing: a derivation that these five tasks cover the states the procedural kit anticipates; the brief assigns representativeness to review only. Reversible.
+RISK-VALUE: DERIVED — runs-per-task-per-arm = 3 @ docs/streams/desk-supervision/08-report.md:9 — the brief's facts pre-register at least 3 runs per task per arm; 3 is the smallest value meeting that floor. Reversible.
+
+Findings:
+- This is the same verdict as every run since 2026-09-20. Rows 2 and 5 fail as written and row 9 is could-not-check. All three are check-definition defects tracked at #1363, which is open (last updated 2026-10-13) with no re-specification landed. No deliverable property is failing.
+- The objective kit has grown to 648 lines since the measurement. The 08-report decision line still describes an earlier revision of the kit, as noted on 2026-10-11.
+
+Status stays implemented. Re-running this item before rows 2, 5 and 9 are re-specified will reproduce this result.
+
+**VERIFY: FAIL** — 6/9 pass; rows 2 and 5 fail as written and row 9 is could-not-check on merged main. All three are check-definition defects tracked at #1363. No deliverable property is failing.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

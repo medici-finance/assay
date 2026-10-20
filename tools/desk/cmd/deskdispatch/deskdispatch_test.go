@@ -110,6 +110,12 @@ func isolateClaimTool(t *testing.T, home string) {
 	lookPath = func(string) (string, error) { return "", exec.ErrNotFound }
 	t.Cleanup(func() { lookPath = oldLook })
 
+	oldRefresh := refreshResume
+	refreshResume = func(o dispatchOpts, branch string) error {
+		r := runCmd(o.root, "fixture-fetch", "--quiet", branch)
+		return r.err
+	}
+	t.Cleanup(func() { refreshResume = oldRefresh })
 	oldResume := readResumeChange
 	readResumeChange = func(o dispatchOpts, _ string) (deskkit.PullRequest, error) {
 		branch := o.branch
@@ -238,7 +244,7 @@ func TestDispatchClaimsFirstThenBuildsTheWorktreeAndEmitsThePrompt(t *testing.T)
 		t.Errorf("claim at %d, worktree at %d — the claim must come first", claimIdx, wtIdx)
 	}
 
-	body, err := os.ReadFile(promptFile)
+	body, err := os.ReadFile(emittedPathFor(promptFile))
 	if err != nil {
 		t.Fatalf("prompt file: %v", err)
 	}
@@ -276,7 +282,7 @@ func TestTierStopIsStrongTierOnly(t *testing.T) {
 	if rc := run([]string{"item-1", "--root", root, "--tier", "any", "--prompt-file", promptFile}); rc != deskkit.ExitOK {
 		t.Fatalf("rc = %d", rc)
 	}
-	body, _ := os.ReadFile(promptFile)
+	body, _ := os.ReadFile(emittedPathFor(promptFile))
 	if strings.Contains(string(body), "requires a strong implementer") {
 		t.Error("an `any`-tier dispatch carried the strong-tier pickup STOP")
 	}
@@ -308,7 +314,7 @@ func TestClaimContentionNamesTheHolderAndNeverSteals(t *testing.T) {
 	if s.ran("deskwt add") {
 		t.Error("a worktree was created despite the refused claim")
 	}
-	if _, err := os.Stat(promptFile); err == nil {
+	if _, err := os.Stat(emittedPathFor(promptFile)); err == nil {
 		t.Error("a prompt was emitted despite the refused claim — the agent would have been launched")
 	}
 }
@@ -466,7 +472,7 @@ func TestClaimRootDecouplesTheClaimToolFromTheWorktreeSource(t *testing.T) {
 		t.Fatal("no worktree was created for the agent")
 	}
 
-	body, err := os.ReadFile(promptFile)
+	body, err := os.ReadFile(emittedPathFor(promptFile))
 	if err != nil {
 		t.Fatalf("prompt file: %v", err)
 	}
@@ -563,7 +569,8 @@ func TestBriefMetadataGateHumanFiresTheDecisionGate(t *testing.T) {
 		reply{match: "decision-issue.sh ensure", stdout: "created: decision issue #7"})
 
 	promptFile := filepath.Join(t.TempDir(), "p.md")
-	rc := run([]string{"item-1", "--root", root, "--brief", "brief.md", "--prompt-file", promptFile})
+	// --tier strong: the fixture brief is `exec-tier: strong`, which a --tier any dispatch refuses.
+	rc := run([]string{"item-1", "--root", root, "--brief", "brief.md", "--tier", "strong", "--prompt-file", promptFile})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("rc = %d, want 0", rc)
 	}
@@ -571,7 +578,7 @@ func TestBriefMetadataGateHumanFiresTheDecisionGate(t *testing.T) {
 		t.Error("a gate:human brief passed via --brief did NOT fire the decision gate — the empty " +
 			"decision surface (irreversible:no defeated the old irreversible-keyed detection)")
 	}
-	body, _ := os.ReadFile(promptFile)
+	body, _ := os.ReadFile(emittedPathFor(promptFile))
 	if !strings.Contains(string(body), "Human-gated item") {
 		t.Error("the prompt for a gate:human brief omits the human-gated clause")
 	}
@@ -600,7 +607,7 @@ func TestBriefMetadataNonHumanGateStillSkips(t *testing.T) {
 	if s.ran("decision-issue.sh ensure") {
 		t.Error("a non-human-gated brief fired the decision gate — detection must key on `gate: human` alone")
 	}
-	body, _ := os.ReadFile(promptFile)
+	body, _ := os.ReadFile(emittedPathFor(promptFile))
 	if strings.Contains(string(body), "Human-gated item") {
 		t.Error("the prompt for a non-human-gated brief carries the human-gated clause")
 	}
@@ -713,6 +720,7 @@ func TestNoCallerPreconditionIsCheckedAfterTheClaim(t *testing.T) {
 		{"a branch name the worktree verb would refuse", []string{"item-1", "--branch", "-dash-leading"}},
 		{"a branch name containing a parent-directory segment", []string{"item-1", "--branch", "feat/../x"}},
 		{"--prompt-file under a directory that does not exist", []string{"item-1", "--prompt-file", "/nonexistent-dir-for-test/p.md"}},
+		{"--prompt-file naming an existing directory", []string{"item-1", "--prompt-file", os.TempDir()}},
 		{"--claim-root naming a directory that does not exist", []string{"item-1", "--claim-root", "/nonexistent-claim-root-for-test"}},
 	}
 	for _, c := range cases {
@@ -862,7 +870,7 @@ func TestEveryClassPromptCarriesTheCommonClauses(t *testing.T) {
 		if rc := run([]string{"item-1", "--root", root, "--kit", kit, "--model", "gpt-6-astra", "--brief", "spec.md", "--prompt-file", promptFile}); rc != deskkit.ExitOK {
 			t.Fatalf("kit %q rc = %d, want 0", kit, rc)
 		}
-		body, err := os.ReadFile(promptFile)
+		body, err := os.ReadFile(emittedPathFor(promptFile))
 		if err != nil {
 			t.Fatalf("kit %q prompt: %v", kit, err)
 		}
@@ -961,7 +969,7 @@ func TestVerifierPlanItemKeyIsTranslatedForTheClaimTool(t *testing.T) {
 		t.Error("the verifier worktree was not derived from the ORIGINAL item key as a detached, verify-named worktree")
 	}
 
-	body, err := os.ReadFile(promptFile)
+	body, err := os.ReadFile(emittedPathFor(promptFile))
 	if err != nil {
 		t.Fatalf("prompt file: %v", err)
 	}
@@ -1100,14 +1108,19 @@ func TestClaimRefusalWithNoHolderIsNotReportedAsACollision(t *testing.T) {
 
 // A key that would be read as a flag, or that carries a parent-directory segment, is
 // refused before it reaches any child process.
+// regression: #2111
 func TestHostileItemKeysRefused(t *testing.T) {
 	for _, key := range []string{"--force", "../escape", "a b", ""} {
 		s := &stub{}
 		_, root := s.install(t)
 		plantScripts(t, root)
 		rc := run([]string{key, "--root", root})
-		if rc != deskkit.ExitRefused {
-			t.Errorf("key %q rc = %d, want %d (refused)", key, rc, deskkit.ExitRefused)
+		want := deskkit.ExitRefused
+		if key == "--force" {
+			want = 2
+		} // CLI syntax, before domain admission.
+		if rc != want {
+			t.Errorf("key %q rc = %d, want %d (refused)", key, rc, want)
 		}
 		if len(s.calls) != 0 {
 			t.Errorf("key %q reached a child process: %v", key, s.calls)
@@ -1129,7 +1142,7 @@ func TestWorktreeWithNoReportedPathIsUnverifiable(t *testing.T) {
 	if rc := run([]string{"item-1", "--root", root, "--prompt-file", promptFile}); rc != deskkit.ExitUnverifiable {
 		t.Fatalf("pathless worktree rc = %d, want %d", rc, deskkit.ExitUnverifiable)
 	}
-	if _, err := os.Stat(promptFile); err == nil {
+	if _, err := os.Stat(emittedPathFor(promptFile)); err == nil {
 		t.Error("a prompt naming no home worktree was emitted")
 	}
 }
@@ -1146,7 +1159,7 @@ func TestDryRunTouchesNothingButStillEmitsThePrompt(t *testing.T) {
 	if len(s.calls) != 0 {
 		t.Fatalf("--dry-run ran %d child processes: %v", len(s.calls), s.calls)
 	}
-	body, err := os.ReadFile(promptFile)
+	body, err := os.ReadFile(emittedPathFor(promptFile))
 	if err != nil {
 		t.Fatalf("prompt: %v", err)
 	}
@@ -1182,7 +1195,7 @@ func TestDryRunEmitsThePromptForEveryTier(t *testing.T) {
 		if len(s.calls) != 0 {
 			t.Fatalf("--tier %s --dry-run ran %d child processes: %v", tier, len(s.calls), s.calls)
 		}
-		body, err := os.ReadFile(promptFile)
+		body, err := os.ReadFile(emittedPathFor(promptFile))
 		if err != nil {
 			t.Fatalf("--tier %s --dry-run emitted no prompt: %v", tier, err)
 		}
@@ -1210,6 +1223,7 @@ func TestDryRunEmitsThePromptForEveryTier(t *testing.T) {
 	}
 }
 
+// regression: #2111
 func TestStepListIsTheDocumentedContract(t *testing.T) {
 	want := []string{"claim-acquire", "worktree-create", "roster-register", "decision-gate",
 		"model-stamp", "queue-label", "prompt-emit"}
@@ -1220,14 +1234,15 @@ func TestStepListIsTheDocumentedContract(t *testing.T) {
 		if dispatchSteps[i] != want[i] {
 			t.Errorf("dispatchSteps[%d] = %q, want %q", i, dispatchSteps[i], want[i])
 		}
-		if !strings.Contains(usage, want[i]) {
+		if !strings.Contains(dispatchHelp(), want[i]) {
 			t.Errorf("step %q is not documented in --help", want[i])
 		}
 	}
 }
 
+// regression: #2111
 func TestHelpNamesTheEngineSeam(t *testing.T) {
-	if !strings.Contains(usage, "engine seam: DISPATCH") {
+	if !strings.Contains(dispatchHelp(), "engine seam: DISPATCH") {
 		t.Error("deskdispatch --help does not name its engine seam")
 	}
 }

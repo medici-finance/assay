@@ -455,6 +455,9 @@ func buildRoot() *cobra.Command {
 		Usage: "absolute path of the cell registry to use for this run (overrides CELLS_ROOT)"})
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		maintenanceCommand = cmd.Name()
+		// A state-changing invocation (annotated cellop:state-changing) is refused off a
+		// terminal and in a desk session before anything else runs (cellop_cli.go).
+		gateStateChanging(cmd, args)
 		if cmd.Annotations[noEcho] == "1" {
 			return nil
 		}
@@ -475,9 +478,11 @@ func buildRoot() *cobra.Command {
 	}
 	root.AddCommand(
 		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(),
-		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(),
+		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(),
 	)
+	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
+	cellopFixtureCommands(root)
 	return root
 }
 
@@ -491,6 +496,27 @@ func resetCmd() *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		v := resolve(set, nil)
 		cmdReset(args[0], v.Bool("hard"))
+		return nil
+	}
+	return cmd
+}
+
+func modelsCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "models reset <cell> [--model-ttl <Nd|duration>]",
+		Short: "lower a cell's aged default model pins to the mid tier",
+		Long: "The explicit form of the boot-time cheap-default reset. Only a pin recorded as a resettable default\n" +
+			"(`cellctl set ... --default`) that has aged past the TTL moves, and only down to the mid tier. --model-ttl\n" +
+			"replaces the cell's CELL_MODEL_TTL_DAYS for this run, so it also recovers a cell whose line is malformed.",
+		Annotations: map[string]string{leadingArgsKey: "2"},
+		Args:        cobra.ArbitraryArgs,
+	}
+	set := declare(cmd, bStr("model-ttl", "TTL override for this run (Nd, e.g. 7d)"))
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 || args[0] != "reset" {
+			die("models: usage: %s", modelsUsage)
+		}
+		cmdModels(cellArg(args[1:]), resolve(set, nil))
 		return nil
 	}
 	return cmd
@@ -668,17 +694,31 @@ func deskCmd() *cobra.Command {
 func upCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "up <cell> [CLAUDE_CONFIG_DIR]",
-		Short: "open one window per role in the resolved cockpit",
-		Long: "One window per role in the resolved COCKPIT: a tmux session \"<cell>-cell\", a labelled herdr tab per role,\n" +
-			"or an orca terminal per role (deskd + the-desk + the loop roles; a house cell opens no deskd window unless\n" +
-			"DESKD=1). --cockpit overrides cell.env CELL_COCKPIT for this run.\n\n" +
+		Short: "converge the cell: open a window for every role that is not already up",
+		Long: "Converge the cell onto \"every targeted role is running\". Each role is classified first:\n" +
+			"  up      its cadence lease is held by a live process: reported already-up, never relaunched, its window\n" +
+			"          never touched;\n" +
+			"  stale   a running checkpoint with no live holder (a crashed session): plain up never reconciles it, the\n" +
+			"          role is reported failed and the exact recovery is named (up --plan, then up --apply);\n" +
+			"  absent  launched, in the resolved COCKPIT: a tmux session \"<cell>-cell\" (an existing session gets only\n" +
+			"          the missing windows), a labelled herdr tab per role, or an orca terminal per role.\n" +
+			"A house cell opens no deskd window unless DESKD=1. --cockpit overrides cell.env CELL_COCKPIT for this run.\n" +
+			"--role <name> (repeatable) limits the run to those roles; --no-the-desk and --with-the-desk stay as aliases.\n\n" +
+			"Launches are serialized: role N+1 opens only after role N holds its lease and has passed the scratch\n" +
+			"sweep (or has failed); --lease-wait bounds that wait per role. The run ends with one row per targeted role\n" +
+			"(up, already-up, reconciled+up, scheduled, failed with the first error line) and exits 0 when no row failed, else 1.\n\n" +
+			"--plan writes ONE cell-op plan clearing every stale role among the targeted roles (--role limits them; else the\n" +
+			"cell's ROLES) and stale comms state, and changes nothing else; --apply\n" +
+			"<plan-id>, on a terminal only, shows it, takes the typed confirm, re-measures and runs it, then launches\n" +
+			"the targeted roles. A role that came alive between plan and apply is refused as plan-stale, by name.\n" +
+			"--json prints the cell-op-v1 document (one entry per role) and nothing else on stdout.\n\n" +
 			"--model, --harness, --kind and --provider override the pin for EVERY role window this run opens (per run,\n" +
 			"not persisted, the same precedence as `cellctl desk`). --set persists every override given, with one cell.env\n" +
 			"backup first. --automate '<cron>' is an ORCA-only shape: one scheduled automation per role, fronted by an\n" +
-			"exit-code precheck, instead of a live terminal. DRY_RUN=1 prints the resolved cockpit and the per-role\n" +
-			"commands and launches nothing.\n\n" +
+			"exit-code precheck, instead of a live terminal. --dry-run (or DRY_RUN=1) prints each role's disposition,\n" +
+			"the resolved cockpit and the per-role commands and launches nothing.\n\n" +
 			"On a container or scrubbed cell up hands the single desk the same typed options; the host-cockpit flags\n" +
-			"(--no-the-desk, --with-the-desk, --no-attach, --automate) are refused there.",
+			"(--role, --plan, --apply, --json, --no-the-desk, --with-the-desk, --no-attach, --automate) are refused there.",
 		Annotations: map[string]string{leadingArgsKey: "1"},
 		Args:        cobra.ArbitraryArgs,
 	}
@@ -687,15 +727,36 @@ func upCmd() *cobra.Command {
 		bBool("with-the-desk", "open the the-desk window (the default; accepted for compatibility)"),
 		bBool("no-attach", "do not attach to the session after opening it"),
 		bStr("automate", "orca only: schedule one automation per role (a 5-field cron string or a preset)"),
+		bBool("dry-run", "print each role's disposition, the cockpit and the per-role commands; change and launch nothing (as DRY_RUN=1)"),
+		cli.Binding{Key: "role", Kind: cli.StringArray, Flag: "role", Usage: "converge only this role; repeatable"},
+		bBool("plan", "write one plan that reconciles every stale targeted role (and stale comms state) and change nothing else"),
+		bBool("json", "print the result as cell-op-v1 JSON, one entry per role, and nothing else on stdout"),
+		bStr("apply", "apply a stored reconcile plan on this terminal, then launch the targeted roles"),
+		cli.Binding{Key: "lease-wait", Kind: cli.Duration, Flag: "lease-wait", Default: upDefaultLeaseWait, Usage: "how long to wait for each launched role to take its lease and pass the scratch sweep"},
 	)
 	set := declare(cmd, bs...)
+	markStateChangingFlag(cmd, "apply")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		cell := cellArg(args)
 		c := loadCellWithKind(cell, kindScan(cmd, verbWords))
 		v := resolve(set, c)
+		if v.Bool("dry-run") {
+			c.Env.Put("DRY_RUN", "1")
+		}
 		launchNeeds(v)
 		needValue(v, "automate", "--automate needs a trigger (a 5-field cron string or a preset)")
-		cmdUp(c, v, lastBare(args[1:]))
+		if v.Bool("plan") && cmd.Flags().Changed("apply") {
+			die("up: --plan and --apply are exclusive")
+		}
+		if v.Bool("plan") {
+			upPlan(cmd, c, c.upTargets(v.Strings("role"), v.Bool("no-the-desk")))
+			return nil
+		}
+		ctl := upControl{cmd: cmd, json: v.Bool("json")}
+		if cmd.Flags().Changed("apply") {
+			ctl.applyID = cmd.Flags().Lookup("apply").Value.String()
+		}
+		cmdUp(c, v, lastBare(args[1:]), ctl)
 		return nil
 	}
 	return cmd
@@ -790,6 +851,7 @@ func setCmd() *cobra.Command {
 	}
 	set := declare(cmd,
 		bBool("force", "write a KEY that is not a known cell.env key"),
+		bBool("default", "record the model pin(s) as a resettable default (the cheap-default reset may lower it once it ages past the TTL)"),
 		bStr("harness", "harness ("+joinPipe(harnessValues)+")"),
 		bStr("model", "model pin (needs a role)"),
 		bStr("kind", "CELL_KIND ("+joinPipe(kindValues)+")"),
@@ -889,12 +951,17 @@ func cacheCmd() *cobra.Command {
 		Short: "report or clean a cell's managed Go caches",
 		Long: "Managed Go caches (opt-in CELL_GO_CACHE=on in cell.env or defaults.env; macOS/Linux).\n\n" +
 			"  cellctl cache <cell> status    dry-run JSON; no cleanup\n" +
-			"  cellctl cache <cell> clean     inactive caches, only under pressure\n" +
-			"  cellctl cache <cell> wipe      discard inactive build/module caches regardless of pressure\n" +
+			"  cellctl cache <cell> clean     under pressure: inactive caches whole; over 75% of budget: trim build entries\n" +
+			"  cellctl cache <cell> wipe      discard build/module caches regardless of pressure (live consumers: build entries past the floor only)\n" +
 			"  cellctl cache <cell> recover --confirm-stopped\n\n" +
-			"Defaults: 8 GiB logical-byte budget, 10 GiB filesystem free-space floor. Configure CELL_GO_CACHE_ROOT /\n" +
-			"CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE. Recovery requires external proof ALL cache consumers have\n" +
-			"stopped. See docs/cellctl-go-cache.md.",
+			"Defaults: 8 GiB logical-byte budget, 10 GiB filesystem free-space floor, 24h compiler-cache trim age,\n" +
+			"60% low-water mark, 2h trim safety floor.\n" +
+			"Configure CELL_GO_CACHE_ROOT / CELL_GO_CACHE_BYTES / CELL_GO_CACHE_MIN_FREE / CELL_GO_CACHE_BUILD_MAX_AGE /\n" +
+			"CELL_GO_CACHE_LOW_WATER_PERCENT / CELL_GO_CACHE_TRIM_MIN_AGE / CELL_GO_TRIMPATH.\n" +
+			"A trim (pressure, over 75% of budget, or a wipe with live consumers) removes compiler-cache entries\n" +
+			"oldest first down to the low-water mark (a wipe: as far as it can), plus any past the trim age, and\n" +
+			"never one younger than the safety floor; module caches, gopath and whole roots stay protected.\n" +
+			"Recovery requires external proof ALL cache consumers have stopped. See docs/cellctl-go-cache.md.",
 		Annotations: map[string]string{leadingArgsKey: "2"},
 		Args:        cobra.ArbitraryArgs,
 	}

@@ -10,6 +10,8 @@ A thin deterministic program advances canonical workflow instances through scope
 
 This amendment permits the executable host excluded by the original stream's “new orchestration platform” non-goal, narrowly: reuse the existing instance, eligibility, admission, claim, recovery and evidence contracts. It permits two local embedded stores and no other: a single-controller, embedded SQLite store of the existing instance/node/attempt record family (/19), and each loop-admin supervisor's own execution journal (/26), a per-supervisor, process-facts-only record of invocations, receipts, lifecycle, limits and usage on the supervisor's own filesystem, whose embedded engine is qualified in /26 (SQLite is the expected choice). Neither is a shared or distributed store, and the journal never holds work, decisions or acceptance. It still excludes a graph database or graph-store service, a distributed or shared store or lease service, a message bus, a credential broker, a new rule engine, a second scheduler authority and a duplicate evaluator. Role executors remain separate; model choice never grants capabilities. The existing interface remains compatible for non-cohort clients.
 
+**Storage routing superseded 2026-10-13:** the embedded-store permissions and shared-store exclusion in this historical paragraph are replaced by [Non-CI R2 routing — PostgreSQL coordination — 2026-10-13](README.md#non-ci-r2-routing--postgresql-coordination--2026-10-13). The cell's PostgreSQL database is the runtime coordination store; the other exclusions and human gates stand.
+
 ## Shared loop-admin: two clients, one execution component
 
 The reusable **loop-admin** component launches and supervises agents/models for two independent callers:
@@ -24,6 +26,8 @@ One implementation of start/observe/cancel/reconcile, provider adapters, process
 A new independent `loopadmin/` Go module contains runner contracts (/20), the first adapter (/22), the supervisor and execution journal (/26), and desk client bindings (/27). It has no dependency on the instance store. `workflow/` contains the instance store (/19), the controller (/21), candidate/review/publication logic (/23–25); /21 consumes /26. A desk-only installation must start with `workflow/` absent. The first useful increment is therefore shared execution under existing desks, before workflow adoption.
 
 The supervisor journal records invocation and process facts; desk queues and the instance store (/19) remain authoritative for work, decisions and acceptance. Caller intent is persisted before the launch request, and the returned receipt is correlated by stable caller/invocation/generation. The journal is the second permitted local store above, never a shared one. Separate stores cannot share an assumed atomic commit: a crash between them requires reconciliation, not another launch. Unknown cancellation remains unknown in either mode. Process success never means work accepted.
+
+**Journal storage superseded 2026-10-13:** the local-only journal choice above is historical; see [Non-CI R2 routing — PostgreSQL coordination — 2026-10-13](README.md#non-ci-r2-routing--postgresql-coordination--2026-10-13) and brief 26's R2 amendment. The journal now uses its own schema in the cell's PostgreSQL database. Process-fact ownership and reconciliation across separate caller/journal commits still apply.
 
 Standing role context can remain available when the adapter supports it; idle polling and terminal reconnect create no model request. Model choice and session retention are profile settings, not scheduling authority. A desk may request scoped child work, but recursion, concurrency, spend and role are bounded by the approved profile. A migrated binding has one launch owner; transfer from the legacy launcher (cellctl's existing launch path, below) requires drain/reconcile/fence.
 
@@ -50,6 +54,8 @@ This program reuses that path; it does not add a second one beside it:
 The new workflow module stores the existing instance/node/attempt family, not another work ID. Records bind accepted intent, pattern/policy/acceptance versions, input/dependency fingerprints, assignment backend/generation, runner/model/tool profile, candidate/artifact hashes, findings/evidence, decisions, outstanding effects, usage and stop state. Large immutable artifacts are referenced. Export/restore validates all referenced artifacts; restored stores are passive until the existing authority fences the previous owner.
 
 A single controller on durable local transactional storage is the first profile. SQLite is the initial store choice, with a pinned maintained driver and documented filesystem/durability assumptions qualified in 19. This is not a distributed lease service. Existing cross-machine ownership remains authoritative. An expected-version/generation transition is atomic; acknowledgment follows durability.
+
+**Engine choice superseded 2026-10-13:** the SQLite choice above is historical; see [Non-CI R2 routing — PostgreSQL coordination — 2026-10-13](README.md#non-ci-r2-routing--postgresql-coordination--2026-10-13) and brief 19's R2 amendment for PostgreSQL coordination. The durability and authority-fencing obligations still apply.
 
 Events wake reconciliation. A runnable node requires existing eligibility/admission, available reservations, current input/acceptance/policy and a valid role binding. Record actionable fingerprint and caller launch intent before asking loop-admin to invoke the runner. Duplicate notifications do not launch twice. Definite failed launches may retry; unknown launches/effects reconcile first. No relevant change means no model invocation. Human/external waits hold durable state without an active model session; productive context can continue inside a node.
 
@@ -101,3 +107,19 @@ Measure original accepted-and-subsequently-verified work, full attempt/preparati
 ## Contract ownership and documentation
 
 Public work depends only on public contracts and fake-provider conformance. Adopter-only data, cohort decisions, installed secrets, operator acts and private measurements stay in adopting repositories. All consumers share canonical IDs and versions; unsupported mandatory fields refuse rather than silently downgrading. Each implementation updates its declared lifecycle/enforcement/runner documentation and cross-module CI path registry. No public brief depends on an adopter's private brief.
+
+## Proposed native improvement evidence — 17 October 2026
+
+[The desk-improvement contract](../desk-improvement/spec.md#8-runtime-evidence-responsibilities)
+adds actual source emission to the future execution path. After the current owners land,
+desk-improvement/05 binds canonical run/outcome records, /06 captures supervisor lifecycle
+and usage, /07 workflow attempt/decision facts, and /08 standing per-item semantic outcomes.
+Source operation receipts, role/subject bindings, failed/no-PR attempts and unknown usage
+must survive source→assessment export. A successful invocation does not imply accepted work.
+
+These are measurement consumers of the existing PostgreSQL, recovery and authority owners;
+there is no reverse prerequisite from foundations to their new consumers. /10 qualifies
+actual native emission and cross-mode replay. Offline retained-input cards can precede the
+runtime; a claim of native measurement requires its producer/build/profile evidence. The
+[future-state amendment](../../proposals/non-ci-architecture/22-desk-improvement.md) keeps
+policy adoption and real enrollment under their existing separate gates.

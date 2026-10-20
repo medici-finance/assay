@@ -381,7 +381,7 @@ func consumersCheck(root string, streams []*Stream) (problems, notices []string)
 			// notices about the SHAPE of a closed brief's list are therefore
 			// suppressed; entry-level findings (below) still print, because they
 			// are statements about the world, not demands to edit the file.
-			open := status != "verified" && status != "done"
+			open := status != "verified" && status != "done" && !isWithdrawn(status)
 			if bf.ConsumersProse != "" {
 				notice("%s: consumers: is a prose paragraph, not a routed list — nothing can corroborate it; use `- \"<site>: fixed-here|follow-up <stream>/<NN>|out-of-scope (<why>)\"` items (brief-rule 9)", path)
 				continue
@@ -528,6 +528,21 @@ func followUpReferencesBack(streams []*Stream, target, referrer, referrerPath st
 //	2 — the instrument could not run at all (no git, unresolvable base). NOT 0:
 //	    "could not check" must never be reported as "checked clean".
 func runConsumers(root, base, briefFilter string) int {
+	return consumersRun(root, base, briefFilter, false)
+}
+
+// runConsumersDerived is runConsumers for a named --brief with neither --base nor
+// --delivery on the command line. Where the branch diff has no evidence about the
+// brief (merged main: HEAD == base), it pins the run to the brief's recorded
+// delivery instead of exiting COULD-NOT-CHECK; it never reads the unpinned diff
+// in place of that pin. See deriveConsumerDelivery.
+func runConsumersDerived(root, briefFilter string) int {
+	return consumersRun(root, remoteMainRef, briefFilter, briefFilter != "")
+}
+
+// consumersRun is the shared body. derive is true only when the caller gave no
+// explicit range; an explicit --base always takes the branch-diff path unchanged.
+func consumersRun(root, base, briefFilter string, derive bool) int {
 	streams, _, err := loadStreams(root)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "statusgen: --consumers:", err)
@@ -556,6 +571,9 @@ func runConsumers(root, base, briefFilter string) int {
 	}
 	changed, err := changedPathsSince(root, base)
 	if err != nil {
+		if derive {
+			return deriveOrRefuse(root, streams, briefFilter, base, fmt.Sprintf("%v (base %q)", err, base))
+		}
 		fmt.Fprintf(os.Stderr, "statusgen: --consumers: COULD-NOT-CHECK: %v (base %q) — no diff, so no routing claim was corroborated\n", err, base)
 		return 2
 	}
@@ -586,6 +604,9 @@ func runConsumers(root, base, briefFilter string) int {
 			if err != nil || changedSet[filepath.ToSlash(rel)] {
 				continue
 			}
+			if derive {
+				return deriveOrRefuse(root, streams, briefFilter, base, bf.Brief+" is not in the diff")
+			}
 			fmt.Fprintf(os.Stderr, "statusgen: --consumers: COULD-NOT-CHECK: %s is not in the diff against %s, so this run carries no evidence about its claims — no entry was corroborated and none was disproved.\n", bf.Brief, base)
 			fmt.Fprintf(os.Stderr, "  To corroborate a MERGED brief, re-run against the diff that made the claims: check out the branch head and pass its own merge-base.\n")
 			fmt.Fprintf(os.Stderr, "  For a merge commit M:  git checkout M^2 && statusgen --consumers --brief %s --base $(git merge-base M^1 M^2)\n", bf.Brief)
@@ -608,8 +629,29 @@ func runConsumers(root, base, briefFilter string) int {
 		verdicts = append(verdicts, corroborateBrief(root, streams, changedSet, inherited, bf)...)
 	}
 
+	return emitConsumers(base, len(briefs), verdicts, claimless, false)
+}
+
+// deriveOrRefuse is the only path off the branch diff. It either runs the pinned
+// delivery check or reports why it could not; it has no third outcome, so an
+// unresolvable delivery can never turn into an unpinned run.
+func deriveOrRefuse(root string, streams []*Stream, briefFilter, base, missed string) int {
+	code, why := runDerivedConsumers(root, streams, briefFilter)
+	if why == "" {
+		return code
+	}
+	fmt.Fprintf(os.Stderr, "statusgen: --consumers: COULD-NOT-CHECK: %s against %s, and the brief's delivery could not be derived: %s. No routing claim was corroborated and none was disproved.\n", missed, base, why)
+	fmt.Fprintf(os.Stderr, "  Pass the delivery explicitly: statusgen --consumers --brief %s --delivery <full-sha> --base <its first parent>\n", briefFilter)
+	return 2
+}
+
+func emitConsumers(base string, briefCount int, verdicts []consumerVerdict, claimless []string, requireEvidence bool) int {
 	nC, nD, nU := 0, 0, 0
-	fmt.Printf("consumers corroboration — base %s (committed diff + uncommitted working tree), %d brief(s)\n", base, len(briefs))
+	label := base
+	if !requireEvidence {
+		label += " (committed diff + uncommitted working tree)"
+	}
+	fmt.Printf("consumers corroboration — base %s, %d brief(s)\n", label, briefCount)
 	current := ""
 	for _, v := range verdicts {
 		if v.Brief != current {
@@ -653,6 +695,10 @@ func runConsumers(root, base, briefFilter string) int {
 	if nD > 0 {
 		fmt.Fprintf(os.Stderr, "statusgen: --consumers: %d routing claim(s) DISPROVED by the diff against %s\n", nD, base)
 		return 1
+	}
+	if requireEvidence && (nC == 0 || len(claimless) > 0) {
+		fmt.Fprintln(os.Stderr, "statusgen: --consumers: COULD-NOT-CHECK: delivery corroborated no routing claims or contains a claimless brief")
+		return 2
 	}
 	return 0
 }
@@ -822,12 +868,12 @@ func corroborateBrief(root string, streams []*Stream, changed map[string]bool, i
 //
 // A package-level var so tests can substitute a base without a git fixture.
 var consumerEntriesAtBase = func(root, base, rel string) map[string]bool {
-	mb, err := exec.Command("git", "-C", root, "merge-base", base, "HEAD").Output()
+	mb, err := historyGitEnv(exec.Command("git", "-C", root, "merge-base", base, "HEAD")).Output()
 	if err != nil {
 		return nil
 	}
 	ref := strings.TrimSpace(string(mb)) + ":" + filepath.ToSlash(rel)
-	content, err := exec.Command("git", "-C", root, "show", ref).Output()
+	content, err := historyGitEnv(exec.Command("git", "-C", root, "show", ref)).Output()
 	if err != nil {
 		return nil // absent at the base: this branch adds the file, so it makes every claim in it
 	}
@@ -1003,7 +1049,7 @@ func exactlyChanged(changed map[string]bool, paths []string) string {
 // changing what the gate checks. A package-level var so tests can pin a base
 // without a git fixture.
 var pinConsumerBase = func(root, base string) (string, error) {
-	out, err := exec.Command("git", "-C", root, "merge-base", base, "HEAD").Output()
+	out, err := historyGitEnv(exec.Command("git", "-C", root, "merge-base", base, "HEAD")).Output()
 	if err != nil {
 		return "", fmt.Errorf("git -C %s merge-base %s HEAD: %w", root, base, err)
 	}
@@ -1016,7 +1062,7 @@ var pinConsumerBase = func(root, base string) (string, error) {
 
 // A package-level var so tests can substitute a diff without a git fixture.
 var changedPathsSince = func(root, base string) ([]string, error) {
-	out, err := exec.Command("git", "-C", root, "diff", "--name-only", base+"...HEAD").CombinedOutput()
+	out, err := historyGitEnv(exec.Command("git", "-C", root, "diff", "--name-only", base+"...HEAD")).CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("git diff --name-only %s...HEAD: %v: %s", base, err, strings.TrimSpace(string(out)))
 	}
@@ -1029,7 +1075,7 @@ var changedPathsSince = func(root, base string) ([]string, error) {
 	// Working-tree state: `--porcelain` prefixes each path with a two-column
 	// status code; renames render as "old -> new" and both halves count as
 	// touched.
-	if st, sErr := exec.Command("git", "-C", root, "status", "--porcelain", "--untracked-files=all").Output(); sErr == nil {
+	if st, sErr := historyGitEnv(exec.Command("git", "-C", root, "status", "--porcelain", "--untracked-files=all")).Output(); sErr == nil {
 		for _, line := range strings.Split(string(st), "\n") {
 			if len(line) < 4 {
 				continue

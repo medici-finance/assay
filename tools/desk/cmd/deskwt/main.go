@@ -31,11 +31,13 @@ const usage = `deskwt — safe worktree lifecycle and coordinated offline Git ma
 
 USAGE:
   deskwt add <name> [--branch B | --detach] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R]
+             [--lock-session <id>]
   deskwt remove <path>
   deskwt maintain [--repo <path>] [--apply] [--min-interval <dur>] [--timeout <dur>]
   deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
                [--reap-dead-sessions] [--lock-ttl <dur>] [--dry-run]
-               [--no-branches | --branches-only] [--no-cache] [--cells-root <path>] [--no-maintenance]
+               [--no-branches | --branches-only] [--no-cache] [--cells-root <path>]
+               [--min-idle <dur>] [--no-maintenance]
   deskwt maintain objects [--repo <path>] [--dry-run | --apply] [--json]
                      [--min-interval 24h] [--timeout 2m]
   deskwt role-init  <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]
@@ -119,6 +121,11 @@ the url and the remedy. Fetch over SSH stays allowed (remote.origin.pushurl is w
 read whenever it is set), and with $DESK_LOOP unset the gate is inert — a human pushes under
 their own key, which is what the SSH remote is for.
 
+add --lock-session <id> LOCKS the new worktree for that live session, in role-init's lock
+reason format (` + "`session=<id>`" + `), so prune holds it from its first second and
+--reclaim-stale-locks / --reap-dead-sessions retire it only once that session's roster beacon
+is stale. A lock that cannot be taken and verified rolls the worktree back.
+
 add resolves a LOCAL BRANCH COLLISION by name rather than dying on git's. Worktrees share
 one refs store, so a branch left behind by an abandoned dispatch blocks every later add that
 derives the same name. A leftover that is checked out in no worktree and carries no commit its
@@ -130,6 +137,17 @@ Worktree creation/removal acts only on paths that RESOLVE under the sanctioned
 temporary-root prefix or <repo-root>/.claude/worktrees/. The shared checkout is refused
 by identity, and remove/prune refuse a dirty tracked tree or unpushed commits. There is NO
 --force flag. On any state it cannot positively verify it refuses.
+
+remove also clears a registration whose worktree has NO git link left — an empty-directory
+husk, or a directory already gone — which the gates above cannot open (they exited 6 and left
+the branch registered forever). It does so only when the directory holds nothing, no process
+holds it open (lsof — without root it sees only the caller's own processes; unavailable = could-not-check, refuse), the admin HEAD is recoverable
+(a branch that resolves, or a detached commit on a remote-tracking ref), and any lock is the
+caller's own session's or its session is proven gone by the roster. A husk with files, a lock
+naming no session, or git's "initializing" lock is refused. Then it unlocks, runs
+` + "`git worktree prune`" + `, verifies the registration is gone, and removes the empty directory; a
+failed clear restores the original lock. before_remove runs only when the directory exists (cwd = the husk); a
+directory already gone has nothing to clean, so the hook is skipped.
 
 prune first runs ` + "`git worktree prune`" + ` (drops entries for dirs already gone), then handles
 stale registrations whose directory survives but whose .git gitdir file is gone (the shape
@@ -147,6 +165,16 @@ and the shape a reclaim-by-detach leaves behind) must additionally pass three at
 old enough to be no session's just-created workspace (the fresh-worktree safety window),
 nothing uncommitted or untracked (the untracked-inclusive status), and no git-ignored
 payload. An at-tip tree passing all three drains; any other is LEFT with the reason named.
+A worktree holding a verifier admission record (an admitted verifier run's home, whose
+Evidence still lands from it) is LEFT by both this sweep and --reap-dead-sessions for 24h
+after admission; ` + "`deskwt remove`" + ` is the explicit release. An unreadable record holds that
+worktree; a record that names no worktree holds every candidate in the sweep.
+Ahead of every content gate, in this arm and the --reap-dead-sessions arm alike, the
+ACTIVITY gate holds any worktree git shows activity in within --min-idle (default 1h;
+tunable, never disableable): the newest mtime of its admin HEAD, index, logs/HEAD,
+ORIG_HEAD and FETCH_HEAD and of the worktree root itself. It is held as "active <age> ago";
+evidence that cannot be read holds it too. A tree a session is working in can be
+content-identical to residue — this gate needs no lock to see the session.
 With --interval (e.g. 30m) it loops forever, sweeping every interval (for a k8s desk pod's
 prune loop); it honors the kill switch / STOP flags between ticks and exits 0 on SIGTERM.
 Every sweep reports: pruned (bookkeeping), removed, held (and locked-held), locks-reclaimed,
@@ -155,8 +183,11 @@ dead-session-reaped, and branches-deleted — plus, when it acted, stale-registr
 Every sweep ALSO runs the CELL-CACHE pressure pass (Step D, default ON; --no-cache skips it):
 for each marked cell Go-cache root under the cells root (--cells-root, then $CELLS_ROOT,
 then the compiled per-user default) it runs the managed cache's own pressure check —
-reclaiming only over the byte budget or under the free-space floor, never while a consumer
-holds a lease — and it reaps a cache root whose owning directory this same sweep removed,
+reclaiming over the byte budget or under the free-space floor, and trimming over the
+high-water mark (75% of budget). Active consumer records protect mod/, gopath/ and whole
+roots; a trim removes build/ entries oldest first down to the low-water mark (60% of budget
+by default), plus any past the policy's trim age, and never one younger than the trim
+safety floor (2h by default) — and it reaps a cache root whose owning directory this same sweep removed,
 gated on the root's lease set re-read under its own lock at act time. The pass is SILENT
 when every cache is within policy; the summary gains a cache segment only when it
 reclaimed, reaped, or found pressure it could not clear.
@@ -202,6 +233,11 @@ chain, every child process with its command line, exit status and elapsed time, 
 failing child's stderr in full. Credentials are redacted. With it off, output is
 unchanged. See tools/desk/README.md, "Diagnostics — DESK_TRACE".`
 
+// perfVerbs is deskwt's registered first-argument set for the opt-in local perf record
+// (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
+// "other" otherwise, so no argv text can reach the record.
+var perfVerbs = []string{"add", "remove", "prune", "maintain", "role-init", "role-clean", "--version", "--help"}
+
 func main() {
 	// The roster class is an EXPLICIT declaration, never the zero value by accident
 	// (a correctness review found: SetToolClass had no caller anywhere,
@@ -216,7 +252,7 @@ func main() {
 	if !deskkit.CheckVerbActivation(os.Stderr) {
 		os.Exit(deskkit.ExitUnverifiable)
 	}
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskwt", perfVerbs, os.Args[1:], run))
 }
 
 func run(args []string) int {

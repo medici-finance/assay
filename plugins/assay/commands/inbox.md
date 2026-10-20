@@ -46,7 +46,7 @@ first — and the flow model is likewise computed ONCE for its own two rendering
 | Mode | What it does | Renderer |
 |---|---|---|
 | *(none)* | The terminal table — one row per item. The oracle's table adds a `class` column (it hides nothing); `deskinbox`'s has none. | `deskinbox` (or `assay-inbox.sh` for the class column) |
-| `--walk` | Prints **one** GENUINE item in the five-part decision format: `<repo>#<N> — question k of n`, then **Context** (3–6 lines: what it is, why it is blocked on a human, what it unblocks, the evidence links), **Options** (lettered, recommended default first and labelled, at most four), **Reply shape** (what a one-word answer must contain), **Verification** (what the desk checks after the act, and what it moves to next). Prints the first genuine item, then the screen's tail line. | `assay-inbox.sh --walk` (`deskinbox walk` only where the oracle cannot run — unscreened, every item) |
+| `--walk` | Prints **one** GENUINE item in the five-part decision format: `<repo>#<N> — question k of n`, then **Context** (3–6 lines: what it is, why it is blocked on a human, what it unblocks, the evidence links), **Options** (lettered, recommended default first and labelled, at most four), **Reply shape** (what a one-word answer must contain, plus a `command:` line — the copy-pasteable, fail-closed ruling command for the recommended option where a trusted author's issue visibly states its ruling phrase, else `not derivable — desk to fill`; `deskinbox` reads no roster and always prints the latter), **Verification** (what the desk checks after the act, and what it moves to next). Prints the first genuine item, then the screen's tail line. | `assay-inbox.sh --walk` (`deskinbox walk` only where the oracle cannot run — unscreened, every item) |
 | `--item K` | With `--walk`, and implying it: print the **K**th GENUINE item (1-based) instead of the first. Out of range (against the genuine count) is an error — never a silent empty. Under `deskinbox walk --item K`, `K` counts the whole queue instead, so it can name a different item. | `assay-inbox.sh --walk --item K` |
 | `--screened` | With `--walk`: instead of one item, prints every item **the screen classified out** — repo#number, class, and the evidence — never a standalone mode. | `assay-inbox.sh --walk --screened` |
 | `--html OUT.html` | Writes the whole queue to `OUT.html` as cards in that same five-part format, followed by the **Flow** section below. One self-contained file: inline CSS, no scripts, no external assets, light/dark via `prefers-color-scheme`. The only URLs on the page are the issue links. No server. The oracle's cards each carry a `Class:` line (it hides nothing); `deskinbox html`'s have none. | `assay-inbox.sh --html` (`deskinbox html OUT.html` only where the oracle cannot run — the `--no-screen` page) |
@@ -95,8 +95,13 @@ item; the `deskinbox` table makes no such call). From what either reads it lifts
   section, else the body's opening prose — plus the escalation label it is blocked on, an
   `Unblocks:`/`Depends:` line if the issue states one, the latest desk note, and a gate line
   carrying the labels, the age and the URL.
-- **Options** from a `## Options` section's lettered or numbered lines. The option whose text
-  says "recommended" is promoted to **A** and labelled; at most four are shown.
+- **Options** from a `## Options` section's lettered or numbered lines; at most four are
+  shown. When exactly one `(recommended)` marker appears across them, its option is promoted
+  to **A** and labelled; with none, or more than one, no option is labelled and the source
+  order stands. The marker is the token `(recommended)` in any case, after a space (or
+  opening the text) and before a space, the end, or one of `.,;:!?`, so `(recommended).` counts
+  but "recommendation", `(not recommended)` and `— recommended` do not. Text inside an HTML
+  comment is never read.
 
 Neither is invented. An issue that states no options renders
 `options not yet stated — desk to fill`, and the Reply shape degrades from "reply with one

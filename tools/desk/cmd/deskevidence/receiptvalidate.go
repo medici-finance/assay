@@ -54,7 +54,7 @@ func validateReceipt(root string, fg deskkit.Forge, fr deskkit.ForgeRepo, branch
 
 // parseDeclaredFiles is deskkit.BriefDeclaredFiles: the writer (BuildOutcomeRecord) derives a
 // receipt's inputs from the same parse this check (a) holds it to, so the two cannot drift.
-func parseDeclaredFiles(content string) []string { return deskkit.BriefDeclaredFiles(content) }
+func parseDeclaredFiles(content string) ([]string, error) { return deskkit.BriefDeclaredFiles(content) }
 
 // localBriefPath resolves a brief key to its repo-relative file path via the SAME glob
 // convention verifyloop's resolveBrief uses (docs/streams/<stream>/brief-<NN>-*.md) against the
@@ -79,7 +79,7 @@ func localBriefPath(root, stream, num string) (string, error) {
 // record's own sha is necessarily already in the past, so the local checkout (which every
 // verify-desk invocation of deskevidence runs from) already carries it.
 func gitShowAt(root, sha, relPath string) ([]byte, error) {
-	cmd := exec.Command("git", "-C", root, "show", sha+":"+relPath)
+	cmd := outcomeGit(root, "show", sha+":"+relPath)
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
@@ -89,27 +89,9 @@ func gitShowAt(root, sha, relPath string) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// gitPathKindAt reports whether relPath is a blob (file) or tree (directory) at sha in the local
-// checkout at root. exists is false whenever the object cannot be resolved — deliberately not
-// distinguished from a git-transport failure, because gitShowAt has already proven sha itself
-// resolves in this checkout (it is called only after a successful gitShowAt of the brief file at
-// the same sha), so any failure here is attributable to relPath simply being absent at that sha —
-// exactly the "(planned) file not yet written" case the brief's rule exempts.
-func gitPathKindAt(root, sha, relPath string) (kind string, exists bool) {
-	cmd := exec.Command("git", "-C", root, "cat-file", "-t", sha+":"+relPath)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		return "", false
-	}
-	return strings.TrimSpace(out.String()), true
-}
-
-// validateReceiptInputsCoverDeliverables is check (a): every backticked path the brief's
-// `## Context` `files:` block declares, read from the brief AT THE RECORD'S sha, must have
-// either its own `file:<path>` input key (a file) or at least one `file:` key nested under it (a
-// directory) — UNLESS the path is absent at that sha (a `(planned)` deliverable not yet
-// written), which is never required.
+// Coverage shares the writer's declaration expansion and requires every file,
+// not one arbitrary member of a declared directory. Observation binding separately
+// checks the exact file hashes and scope keys against the admitted Source.
 func validateReceiptInputsCoverDeliverables(root string, wr deskkit.WakeReceipt) error {
 	stream, num, kerr := deskkit.SplitBriefKey(wr.Brief)
 	if kerr != nil {
@@ -127,38 +109,22 @@ func validateReceiptInputsCoverDeliverables(root string, wr deskkit.WakeReceipt)
 	if gerr != nil {
 		return deskkit.Unverifiable("cannot read "+briefPath+" at "+sha+" (the record's own sha): "+gerr.Error(), gerr)
 	}
-	for _, raw := range parseDeclaredFiles(string(content)) {
-		// A directory entry may be written with a trailing slash (`foo/`); strip it before
-		// resolving at sha or building the nested `file:` key, so the key this builds is
-		// `file:foo`, matching how a nested entry (`file:foo/bar.go`) is actually spelled.
-		p := strings.TrimSuffix(raw, "/")
-		if p == "" {
-			continue
-		}
-		kind, exists := gitPathKindAt(root, sha, p)
-		if !exists {
-			continue // absent at this sha — a "(planned)" deliverable, never required
-		}
-		key := "file:" + p
-		switch kind {
-		case "blob":
-			if _, ok := wr.Inputs[key]; !ok {
-				return deskkit.Refused("refused: receipt inputs omits declared deliverable " + key +
-					" for " + wr.Brief + " (declared in ## Context files: at " + sha + ")")
-			}
-		case "tree":
-			prefix := key + "/"
-			covered := false
-			for k := range wr.Inputs {
-				if strings.HasPrefix(k, prefix) {
-					covered = true
-					break
-				}
-			}
-			if !covered {
-				return deskkit.Refused("refused: receipt inputs has no file: key under declared directory " +
-					p + " for " + wr.Brief + " (declared in ## Context files: at " + sha + ")")
-			}
+	declared, err := parseDeclaredFiles(string(content))
+	if err != nil {
+		return err
+	}
+	tree, err := newGitOutcomeTree(root, sha)
+	if err != nil {
+		return err
+	}
+	scope, err := deskkit.ResolveDeclaredScope(declared, tree)
+	if err != nil {
+		return err
+	}
+	for _, p := range scope.Files {
+		if _, ok := wr.Inputs["file:"+p]; !ok {
+			return deskkit.Refused("refused: receipt inputs omits declared deliverable file:" + p +
+				" for " + wr.Brief + " (declared in ## Context files: at " + sha + ")")
 		}
 	}
 	return nil
@@ -225,6 +191,9 @@ func validateReceiptBriefHashAsLanded(fg deskkit.Forge, fr deskkit.ForgeRepo, br
 	if rerr != nil {
 		return deskkit.Unverifiable("cannot read "+briefPath+" on "+branch+" to check the receipt's brief revision", rerr)
 	}
+	if kerr := plainFileRead(cur, fr, briefPath, branch, "the receipt's brief revision", true); kerr != nil {
+		return kerr
+	}
 	gotHash := deskkit.Sha256Hex(cur.Content)
 	if !strings.EqualFold(strings.TrimSpace(wantHash), gotHash) {
 		return deskkit.Refused(fmt.Sprintf(
@@ -233,4 +202,10 @@ func validateReceiptBriefHashAsLanded(fg deskkit.Forge, fr deskkit.ForgeRepo, br
 			key, briefPath, branch, wantHash, gotHash))
 	}
 	return nil
+}
+
+func outcomeGit(root string, args ...string) *exec.Cmd {
+	cmd := exec.Command("git", append([]string{"--no-replace-objects", "-C", root}, args...)...)
+	cmd.Env = deskkit.VerifierReadEnv()
+	return cmd
 }

@@ -4,7 +4,7 @@ name: ci
 # WHERE THIS RUNS — the self-hosted runner labelled `medici-builder-public`,
 #   which has no Docker daemon. That is exactly right for `go build`/`go test`,
 #   which need no container runtime. The Docker IMAGE build is a separate
-#   workflow (docker-publish.yml) that runs release-only.
+#   publication job in release.yml, behind its release approval.
 #
 # GO TOOLCHAIN — installed by hand from go.dev/dl, NOT actions/setup-go: the
 #   runner does not reach GitHub's release-asset CDN and its base image ships no
@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.25.0"
+  GO_VERSION: "1.27.2"
 
 jobs:
   desk-platform-compile:
@@ -60,6 +60,18 @@ jobs:
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
 
+      - name: Test release image contract
+        run: python3 -B -m unittest discover -s tools/release -p images_test.py -v
+
+      # Run before the all-module sweep: statusgen alone does not depend on the
+      # desk child compiled by its offline bridge test. Match the release gate.
+      - name: Test and vet statusgen
+        run: |
+          set -euo pipefail
+          go version
+          bash statusgen/prepare-test-deps.test.sh
+          cd statusgen && go test ./... && go vet ./...
+
       - name: Build and vet every module
         run: |
           set -euo pipefail
@@ -97,10 +109,18 @@ jobs:
             # behind, and un-wired they let both land green.
             extra=true
             case "$dir" in
+              # M2 mine/trace/report flow and the changed legacy CLI contract
+              # must execute on PRs; build/vet and rendering existing artifacts
+              # do not reach the trace append path (review F-m2-ci).
+              */qualgen|qualgen) extra="GOWORK=off go test -count=1 -timeout=60s -run '^(TestM2.*|TestCLILegacyForms)$' ." ;;
               */tools/desk|tools/desk) extra="go test ./..." ;;
               */tools/harnessgen|tools/harnessgen) extra="go test ./..." ;;
               */tools/harnesslint|tools/harnesslint) extra="go test ./..." ;;
               */tools/plugindrift|tools/plugindrift) extra="go test ./..." ;;
+              # perfrec (the shared perf-v1 writer, #3101) runs its own suite: its
+              # deps/audit-ledger guards over the CPU reader files are hermetic and
+              # were latent under build+vet alone.
+              */perfrec|perfrec) extra="go test ./..." ;;
             esac
             if ( cd "$dir" && go build ./... && go vet ./... && eval "$extra" ); then
               echo "${dir}: OK"
@@ -111,6 +131,11 @@ jobs:
             echo "::endgroup::"
           done < <(git ls-files '*go.mod')
           exit "$fail"
+
+      # The preceding build/vet sweep warms both modules' dependency caches.
+      # Tests run offline and cover the real cross-module child transport.
+      - name: Role-bound claim transport regressions
+        run: bash statusgen/test-role-claims.sh
 
   # The plugin SHELL suites. `assay-inbox.sh` / `inbound-monitor.sh` carry their
   # own regression suites (`*.test.sh`) but the build-test job above runs Go
@@ -227,14 +252,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Restore a native Windows matrix entry after an internal runner is qualified.
+        os: [medici-builder-public]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
+      - name: Install Go
+        env:
+          # Keep this download pin in sync with GO_VERSION, as in release.yml.
+          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
       # No generator or line-ending rewrite precedes these clean-checkout checks.
       - name: Native harnessgen suite on fresh checkout
         working-directory: tools/harnessgen
@@ -246,7 +282,25 @@ jobs:
         run: go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check
       - name: Build all tracked modules and desk executables (Unix)
         if: runner.os != 'Windows'
-        run: make build-all
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The internal Linux runner has no make. Match build-all discovery
+          # and binary output using the installed Go toolchain directly.
+          modules="$(git ls-files -- '*go.mod')"
+          test -n "$modules"
+          while IFS= read -r module; do
+            (cd "$(dirname "$module")" && go build ./...)
+          done <<< "$modules"
+          mkdir -p tools/desk/dist
+          source_sha="$(git rev-parse --short HEAD)"
+          built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          stamp="-X github.com/medici-finance/assay/tools/desk/internal/deskkit.SourceSHA=${source_sha} -X github.com/medici-finance/assay/tools/desk/internal/deskkit.BuiltAt=${built_at}"
+          for directory in tools/desk/cmd/*; do
+            test -d "$directory" || continue
+            name="$(basename "$directory")"
+            (cd tools/desk && go build -ldflags "$stamp" -o "dist/$name" "./cmd/$name")
+          done
       - name: Build all tracked modules and desk executables (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

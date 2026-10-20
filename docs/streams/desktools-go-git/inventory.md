@@ -255,6 +255,35 @@ destination-names-the-gated-repo) still run before the push. The transport gate'
 credential-helper NOTICE no longer describes deskpr's own push, which now uses no helper;
 retiring that notice is a follow-up, not done here, because it removes no attack surface.
 
+## Brief 05 — fetch migrated; the bespoke fetch hardening retired
+
+In THIS table's numbering brief 05's "op family 1 (fetch)" is row **19** (`fetch`). Same
+checklist contract as above.
+
+| # | Family | Ticked? | Note |
+|---|---|---|---|
+| 19 | `fetch` | **ticked** (all three sites) | **deskgit** `fetch` is `gitcore.Fetch` with the role App's token held in memory (`gitcore.BasicAuth`), against the exact `remote.origin.url` string the allowed-repo gate decided on (`gitcore.RemoteURLs`: one value, else the multi-valued refusal). The argv-hardening suite (`fetchHardening`, the program-naming flag pins, the scrubbed child env for fetch) is deleted: with no child process on any fetch path (a local origin included, served in-process) there is no argument or child environment to harden; the environment still steers the HTTP proxy and trust roots, never a program. The credential is bound to `https://github.com` by `credentialHostOK`; any other origin host fetches unauthenticated. **deskadvisory** `fetchAdvisoryTree` is `gitcore.FetchTree`: the fork's branches are fetched into an in-memory store and only the commit's regular files are written under a fresh temp directory (symlinks and gitlinks skipped, `.git`/non-local path elements refuse the write). No askpass script, no `credential.helper` override, no on-disk `init`/`checkout`, and no `.git` for the check tools to read a token from. **deskmerge** `fetchState` is `gitcore.Fetch` through `fetchFromOrigin`: the origin URL is re-resolved and re-checked against the gated repo at the point of use; https origins fetch from the forge's canonical URL with the minted role token in memory (`deskkit.ForgeGitEndpointForCheckout`), local origins (offline fixtures) with no credential, any other shape (ssh, scp-like, cleartext http) is could-not-check. The trial merge stays on the binary (brief 07). Allowlist entries `{deskmerge, fetch}`, `{deskadvisory, fetch}` and `{deskadvisory, checkout}` are removed from `internal/gitexec`. `registerid.go`'s `remoteHeadLiveness` network `ls-remote` (row 9) is still owed and not touched here |
+
+Behaviour that changed on purpose, for the reviewer: an in-process fetch reads only the
+repository's own config, so deskgit's fetch no longer follows global- or worktree-scope
+`url.<base>.insteadOf` rewrites or `remote.origin.url` (the gate and the connection read the
+same repo-local string, so they cannot disagree); an ssh origin is fetched by go-git's Go ssh
+client, which takes only the `Hostname` and `Port` of a host alias from `~/.ssh/config` (no
+`IdentityFile`, `ProxyCommand` or other program-naming option — desk worktrees use https
+origins); and `--upload-pack` is now refused by the flag parser as an unknown flag (still
+exit 5). A branch checked out in ANY worktree — this one or a linked one — is still refused
+by `--branch`/`--pr` (`gitcore.CheckedOutBranches` reads every worktree's HEAD; unreadable =
+exit 6), matching `git fetch`'s own refusal.
+
+A local-path or `file://` origin is fetched in-process too: go-git's stock local transport
+starts `git-upload-pack` with the caller's whole environment, so gitcore replaces that
+protocol's fetch side (`tools/desk/internal/gitcore/localtransport.go`) with an in-process server over
+the local repository's storage, for every caller of `Fetch`, `List` and `FetchTree`. Its
+receive side (a push to a local path) is still go-git's stock child — tracked separately, as
+it is the child that enforces the target's hooks and compare-and-swap. The environment still
+parameterises the https client (proxy and trust-store variables) and the ssh client (agent
+socket, known_hosts); none of those names a program.
+
 ## Baseline counter
 
 `sh tools/desk/scripts/count-git-exec.sh` — see the brief-01 PR body for the recorded
@@ -278,3 +307,60 @@ preflight probe was one). Under the widened script main read **163** before this
 (43 direct) and **162** after it (42 direct, 120 seam). The migrated push sites themselves
 never appeared in the count: they called a per-tool `git(` / `run(` wrapper that is not one
 of the four counted seam names.
+
+Brief 05's delivery comparison is now pinned by
+[`reproduce-05-counts.bash`](reproduce-05-counts.bash), under
+[#3035](https://github.com/medici-finance/assay/issues/3035). Each row below was
+reproduced with **that tree's own** `tools/desk/scripts/count-git-exec.sh`; all six
+copies are byte-identical (SHA-256 prefix `b9ae49bee74f`).
+
+| Role | Revision | Total | Direct | Seam |
+|---|---|---:|---:|---:|
+| Historical branch main | `3c8326f959a367c0b24ad40789bc767aac61c83e` | 179 | 49 | 130 |
+| Historical branch head | `d6c91cadc7ef4cb3923d56ffd705caa5957dbe61` | 172 | 49 | 123 |
+| Delivering squash commit's immediate parent | `44054ca3756857c34eb818601a4ddcb19a7b4da5` (`c93cd7dd8^`) | **199** | **52** | **147** |
+| Delivering squash commit (#2386) | `c93cd7dd8fc99941a588feb6608184330fc08dd3` | **192** | **52** | **140** |
+| Historical non-implementer Verify tree | `bbf8e351624538c2a03159cd5a58116fb97fc293` | 192 | 52 | 140 |
+| Amendment's source main (informational, not the delivery comparison) | `2f56cf2892afb4ce78aab1636344aa400bf3e93c` | 193 | 52 | 141 |
+
+The branch's **179 -> 172** pair remains true for its named revisions. The
+canonical delivery pair is **199 -> 192**, with the same reduction of **seven
+counted seam lines** and no direct-spawn increase. The delivering diff removes
+five matches in `tools/desk/cmd/deskadvisory/advisory.go` (the `runGit` declaration, its
+`execCommand` launch, and the init/fetch/checkout calls), one in
+`tools/desk/cmd/deskgit/deskgit.go` (fetch invocation), and one in
+`tools/desk/cmd/deskmerge/currency.go` (fetch invocation). The counter counts matching source
+lines, including helper declarations; seven matches does not mean seven network
+operations.
+
+### Concurrent growth, explained before the re-pin
+
+There are **265 commits** from `3c8326f95` to `44054ca37`. Normalizing away line
+numbers and whitespace in the counter's matching lines gives this complete
+file-level accounting. Values are added/removed matches, not a claim that each
+match is a distinct runtime operation. All paths are repository-relative.
+
+| File | Direct delta | Seam delta | Counted additions / route |
+|---|---:|---:|---|
+| `tools/desk/cmd/cellctl/reset.go` | +2 | +2 | worktree listing and its git runner; branch enumeration and common-dir resolution; outside brief 05's fetch sites |
+| `tools/desk/internal/deskkit/dispatchrecord.go` | +1 | 0 | worktree-scoped dispatch-ref config read; outside brief 05 |
+| `tools/desk/cmd/cellctl/deskd.go` | 0 | +1 | origin config read; outside brief 05 |
+| `tools/desk/cmd/deskdispatch/packet_worker.go` | 0 | +1 | worker packet HEAD read; outside brief 05 |
+| `tools/desk/cmd/deskwt/branchgc.go` | 0 | +5 | branch enumeration, parent reads, log/patch-id and guarded ref deletion; outside brief 05 |
+| `tools/desk/cmd/deskwt/huskremove.go` | 0 | +2 | worktree lock/unlock; linked-worktree follow-on scope |
+| `tools/desk/cmd/deskwt/lockreclaim.go` | 0 | +1 | worktree lock; linked-worktree follow-on scope |
+| `tools/desk/cmd/deskwt/stalereg.go` | 0 | +4 | ref validation/resolution, worktree lock/prune; outside brief 05 |
+| `tools/desk/internal/deskkit/publishidentity.go` | 0 | +1 | ref resolution added; ancestor check changes its source argument (one old match replaced by one new match) |
+| `tools/desk/cmd/deskwt/branchcollision.go` | 0 | 0 | guarded update-ref gains `--no-deref` (one match replaced by one match) |
+| **Total** | **+3** | **+17** | **+20**, explaining 179 -> 199 before the fetch delivery |
+
+These additions are outside the three migrated fetch sites; this accounting does
+not certify them as migrated or authorize a higher current ratchet. Brief 08
+still owns the final outside-allowlist enforcement; linked-worktree operations
+remain the named follow-on. Later main's net **+1** versus the delivery is a
+`worktree lock` seam in `tools/desk/cmd/deskwt/deskwt.go`; direct matches have net zero change
+(other additions, removals and rewrites cancel). The current advisory count is
+reported separately so future main growth cannot invalidate this brief's pinned
+delivery proof. No live ratchet, counter, CI assertion, lifecycle cell or security-posture gate
+is changed. The historical Verify FAIL is preserved;
+an independent verifier and the human gate still owe their own acts.

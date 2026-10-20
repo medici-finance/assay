@@ -89,6 +89,66 @@ func TestCLIInventory(t *testing.T) {
 	checkOwnTestNames(t, fsys)
 }
 
+// regression: #3307
+func TestCLIResearchReplay(t *testing.T) {
+	base, raw := realTree(t)
+	reg := decode(t, raw)
+	const replay = "docs/research/criterion-evidence-freshness/replay.py"
+	var exact bool
+	for _, rule := range reg.ExclusionRules {
+		if rule.Pattern != replay || rule.Class != "test" {
+			continue
+		}
+		owners := 0
+		for _, word := range strings.Fields(rule.Reason) {
+			id := strings.TrimSuffix(word, "'s")
+			if !ownerRE.MatchString(id) {
+				continue
+			}
+			owner, err := LoadBrief(base, id)
+			if err != nil || owner == nil || !strings.Contains(owner.Text, replay) {
+				t.Fatalf("replay route must name its actual owning brief: %q, %v", id, err)
+			}
+			owners++
+		}
+		if owners != 1 {
+			t.Fatalf("replay route must name exactly one owning brief; got %d", owners)
+		}
+		exact = true
+	}
+	if !exact {
+		t.Fatal("research replay needs an exact test-class route naming its owning brief")
+	}
+	if problems := Validate(base, reg); len(problems) != 0 {
+		t.Fatalf("baseline routing: %v", problems)
+	}
+	for _, planted := range []string{
+		"docs/research/criterion-evidence-freshness/other.py",
+		"docs/research/another-study/replay.py",
+	} {
+		t.Run(planted, func(t *testing.T) {
+			fsys := newOverlay(base, map[string]string{planted: "#!/usr/bin/env python3\nprint('planted')\n"})
+			problems := Validate(fsys, decode(t, raw))
+			if !strings.Contains(strings.Join(problems, "\n"), "unrouted entrypoint "+planted+" (script)") {
+				t.Fatalf("neighboring script must remain unrouted: %v", problems)
+			}
+			t.Log(strings.Join(problems, "\n"))
+		})
+	}
+	t.Run("shipped-replay", func(t *testing.T) {
+		makefile, err := fs.ReadFile(base, "Makefile")
+		if err != nil {
+			t.Fatal(err)
+		}
+		fsys := newOverlay(base, map[string]string{"Makefile": string(makefile) + "\nresearch-cli:\n\tcp " + replay + " replay-cli\n"})
+		problems := Validate(fsys, decode(t, raw))
+		if !strings.Contains(strings.Join(problems, "\n"), "shipped entrypoint "+replay+" is excluded") {
+			t.Fatalf("shipping the replay must invalidate its test route: %v", problems)
+		}
+		t.Log(strings.Join(problems, "\n"))
+	})
+}
+
 func hasRow(reg *Registry, p string) bool {
 	for _, e := range reg.Entrypoints {
 		if e.Path == p {
@@ -162,7 +222,7 @@ func TestCLIRoutingMutations(t *testing.T) {
 		t.Fatalf("baseline is not clean, so no mutation result means anything:\n  %s", strings.Join(p, "\n  "))
 	}
 	ref := decode(t, raw)
-	victim := rowFor(t, ref, "tools/desk/cmd/deskack")
+	victim := rowFor(t, ref, "tools/desk/cmd/deskaudit")
 	victimOwner := victim.Owner
 	final, err := LoadBrief(base, ref.FinalGate)
 	if err != nil || final == nil {
@@ -194,14 +254,14 @@ func TestCLIRoutingMutations(t *testing.T) {
 			files: map[string]string{"scripts/zzlauncher": "#!/usr/bin/env bash\nexec true\n"},
 			want:  "unrouted entrypoint scripts/zzlauncher"},
 		{name: "omitted-row",
-			edit: func(r *Registry) { dropRow(r, "tools/desk/cmd/deskack") },
-			want: "unrouted entrypoint tools/desk/cmd/deskack"},
+			edit: func(r *Registry) { dropRow(r, "tools/desk/cmd/deskaudit") },
+			want: "unrouted entrypoint tools/desk/cmd/deskaudit"},
 		{name: "orphan-owner",
-			edit: func(r *Registry) { rowFor(t, r, "tools/desk/cmd/deskack").Owner = "desktools-v2/99" },
+			edit: func(r *Registry) { rowFor(t, r, "tools/desk/cmd/deskaudit").Owner = "desktools-v2/99" },
 			want: "orphan owner desktools-v2/99"},
 		{name: "unowned-row",
-			edit: func(r *Registry) { rowFor(t, r, "tools/desk/cmd/deskack").Owner = "" },
-			want: "row tools/desk/cmd/deskack has no owner"},
+			edit: func(r *Registry) { rowFor(t, r, "tools/desk/cmd/deskaudit").Owner = "" },
+			want: "row tools/desk/cmd/deskaudit has no owner"},
 		{name: "missing-final-gate-dependency",
 			files: map[string]string{final.File: dropDepend(t, final.Text, victimOwner)},
 			want:  fmt.Sprintf("final gate %s does not depend on %s", ref.FinalGate, victimOwner)},
@@ -221,30 +281,30 @@ func TestCLIRoutingMutations(t *testing.T) {
 			},
 			want: "owner " + victimOwner + " over budget"},
 		{name: "complex-row-shares-owner",
-			edit: func(r *Registry) { rowFor(t, r, "tools/desk/cmd/deskack").Owner = complexOwner },
+			edit: func(r *Registry) { rowFor(t, r, "tools/desk/cmd/deskaudit").Owner = complexOwner },
 			want: "owner " + complexOwner + " over budget"},
 		{name: "shipped-command-excluded-by-rule",
 			edit: func(r *Registry) {
-				dropRow(r, "tools/desk/cmd/deskack")
-				r.ExclusionRules = append(r.ExclusionRules, Rule{Class: "fixture", Pattern: "tools/desk/cmd/deskack", Reason: "planted"})
+				dropRow(r, "tools/desk/cmd/deskaudit")
+				r.ExclusionRules = append(r.ExclusionRules, Rule{Class: "fixture", Pattern: "tools/desk/cmd/deskaudit", Reason: "planted"})
 			},
-			want: "shipped entrypoint tools/desk/cmd/deskack is excluded"},
+			want: "shipped entrypoint tools/desk/cmd/deskaudit is excluded"},
 		{name: "shipped-command-excluded-row",
 			edit: func(r *Registry) {
-				e := rowFor(t, r, "tools/desk/cmd/deskack")
+				e := rowFor(t, r, "tools/desk/cmd/deskaudit")
 				e.State, e.Class, e.Reason, e.Owner = StateExcluded, "demo", "planted", ""
 			},
-			want: "shipped entrypoint tools/desk/cmd/deskack is an excluded row"},
+			want: "shipped entrypoint tools/desk/cmd/deskaudit is an excluded row"},
 		{name: "stale-row",
 			edit: func(r *Registry) {
-				e := *rowFor(t, r, "tools/desk/cmd/deskack")
+				e := *rowFor(t, r, "tools/desk/cmd/deskaudit")
 				e.Path = "tools/desk/cmd/zzgone"
 				r.Entrypoints = append(r.Entrypoints, e)
 			},
 			want: "stale row tools/desk/cmd/zzgone"},
 		{name: "duplicate-row",
-			edit: func(r *Registry) { r.Entrypoints = append(r.Entrypoints, *rowFor(t, r, "tools/desk/cmd/deskack")) },
-			want: "duplicate row tools/desk/cmd/deskack"},
+			edit: func(r *Registry) { r.Entrypoints = append(r.Entrypoints, *rowFor(t, r, "tools/desk/cmd/deskaudit")) },
+			want: "duplicate row tools/desk/cmd/deskaudit"},
 		{name: "stale-exclusion-rule",
 			edit: func(r *Registry) {
 				r.ExclusionRules = append(r.ExclusionRules, Rule{Class: "test", Pattern: "zznone/**", Reason: "planted"})
@@ -253,9 +313,27 @@ func TestCLIRoutingMutations(t *testing.T) {
 		{name: "exclusion-rule-without-reason",
 			edit: func(r *Registry) { r.ExclusionRules[0].Reason = " " },
 			want: "has no reason"},
+		{name: "exempt-row-without-reason",
+			edit: func(r *Registry) {
+				e := rowFor(t, r, "tools/desk/cmd/deskaudit")
+				e.State, e.Reason = StateExempt, " "
+			},
+			want: "exempt row tools/desk/cmd/deskaudit needs a reason"},
+		{name: "exempt-row-orphan-owner",
+			edit: func(r *Registry) {
+				e := rowFor(t, r, "tools/desk/cmd/deskaudit")
+				e.State, e.Reason, e.Owner = StateExempt, "planted", "desktools-v2/99"
+			},
+			want: "orphan owner desktools-v2/99: no brief file carries it (exempt row"},
+		{name: "exempt-row-without-owner",
+			edit: func(r *Registry) {
+				e := rowFor(t, r, "tools/desk/cmd/deskaudit")
+				e.State, e.Reason, e.Owner = StateExempt, "planted", ""
+			},
+			want: "row tools/desk/cmd/deskaudit has no owner"},
 		{name: "imports-only-migration",
-			edit: func(r *Registry) { rowFor(t, r, "tools/desk/cmd/deskack").State = StateMigrated },
-			want: "migrated row tools/desk/cmd/deskack imports neither"},
+			edit: func(r *Registry) { rowFor(t, r, "tools/desk/cmd/deskaudit").State = StateMigrated },
+			want: "migrated row tools/desk/cmd/deskaudit imports neither"},
 		{name: "migrated-script-without-target",
 			edit: func(r *Registry) { rowFor(t, r, "plugins/assay/scripts/pdfingest.sh").State = StateMigrated },
 			want: "migrated script plugins/assay/scripts/pdfingest.sh must name"},

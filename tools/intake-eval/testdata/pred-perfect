@@ -1,0 +1,12 @@
+{
+  "syn-p01": "spec/brief",
+  "syn-p02": "spec/brief",
+  "syn-p03": "bug/issue",
+  "syn-p04": "bug/issue",
+  "syn-p05": "finding",
+  "syn-p06": "finding",
+  "syn-p07": "needs-decision",
+  "syn-p08": "needs-decision",
+  "syn-p09": "rejected/watching",
+  "syn-p10": "rejected/watching"
+}
