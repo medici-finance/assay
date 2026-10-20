@@ -70,8 +70,13 @@ Two shapes run every tick: the **board-wide instruments**, once for the whole sc
 deskboard dispatch                          # the work to START + the HELD-BACK decomposition
 deskboard stalled --min-age-hours 48        # stalled drafts + shepherd list (--json for the machine shape)
 deskboard health                            # is main red? green / RED / COULD-NOT-CHECK
-issueboard issues                           # un-briefed trusted issues; EXTERNAL/UNBLESSED quarantined
+issueboard issues --projection work-ready                           # un-briefed trusted issues; EXTERNAL/UNBLESSED quarantined
 ```
+
+Route a stalled `reconcile` row through `pr-shepherd`'s withdrawn-brief reconciliation
+step before CI repair; it is neither ordinary unfinished work nor a closure verdict.
+For a pending board retirement, the offline `statusgen withdrawal-audit` snapshot also
+finds fresh implementation/evidence PRs outside the stalled detector's age window.
 
 `issueboard` replaces the raw `gh issue list` form this runbook used to carry. It resolves the scan
 scope from the same roster key the placeholder scanner reads, applies the trust gate itself, and

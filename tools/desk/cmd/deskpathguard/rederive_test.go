@@ -46,7 +46,10 @@ brief: assay:at:x:09
 // added row, no edited command) re-derives to zero author-added rows and the ORIGINAL
 // command for row 1.
 func TestRederiveTableRow7(t *testing.T) {
-	rows := RederiveTable(baseTableMD, headTableMD)
+	rows, err := RederiveTable(baseTableMD, headTableMD)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(rows) != 3 {
 		t.Fatalf("want 3 rows at HEAD, got %d: %+v", len(rows), rows)
 	}
@@ -69,7 +72,10 @@ func TestRederiveTableRow7(t *testing.T) {
 	}
 
 	// perturb: re-derive base against itself — no row is new, no command differs.
-	unperturbed := RederiveTable(baseTableMD, baseTableMD)
+	unperturbed, err := RederiveTable(baseTableMD, baseTableMD)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, r := range unperturbed {
 		if r.AuthorAdded {
 			t.Fatalf("perturb (base vs base): no row should be author-added, got %+v", r)
@@ -79,7 +85,10 @@ func TestRederiveTableRow7(t *testing.T) {
 
 func TestRederiveTableBriefAbsentAtBase(t *testing.T) {
 	// A brand-new brief (no prior version at the merge-base): every row is author-added.
-	rows := RederiveTable("", headTableMD)
+	rows, err := RederiveTable("", headTableMD)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(rows) != 3 {
 		t.Fatalf("want 3 rows, got %d", len(rows))
 	}

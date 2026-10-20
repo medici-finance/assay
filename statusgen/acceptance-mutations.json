@@ -1,0 +1,65 @@
+{
+  "test": "go test . -run '^Test(AcceptanceTransition|TransitionExecution|TransitionCISkip|TransitionContext|ContextExecution)$' -count=1 -timeout 240s",
+  "control": {
+    "name": "approval payload binding removed",
+    "file": "acceptancetransition.go",
+    "old": "if strings.TrimSpace(strings.ReplaceAll(out.Body, \"\\r\\n\", \"\\n\")) != payload {",
+    "new": "if false && strings.TrimSpace(strings.ReplaceAll(out.Body, \"\\r\\n\", \"\\n\")) != payload {"
+  },
+  "mutations": [
+    {
+      "name": "restore immutable-only delivery contract",
+      "file": "protectedclosure.go",
+      "old": "if strings.Contains(evidence, \"Acceptance-Transition:\") {",
+      "new": "if false && strings.Contains(evidence, \"Acceptance-Transition:\") {"
+    },
+    {
+      "name": "omit original commands from host execution",
+      "file": "verifyrun.go",
+      "old": "rows = briefVerifyRows(protectedExecution.Verify)",
+      "new": "rows = briefVerifyRows(verify)"
+    },
+    {
+      "name": "origin host binding removed",
+      "file": "acceptancetransition.go",
+      "old": "if err != nil || remoteHost(string(origin)) != \"github.com\" {",
+      "new": "if err != nil {"
+    },
+    {
+      "name": "decision issue marker bypassed",
+      "file": "acceptancetransition.go",
+      "old": "return strings.Contains(iss.Body, \"<!-- acceptance-transition: \"+rel+\" -->\")",
+      "new": "return true || strings.Contains(iss.Body, \"<!-- acceptance-transition: \"+rel+\" -->\")"
+    },
+    {
+      "name": "CRLF comment normalization removed",
+      "file": "acceptancetransition.go",
+      "old": "strings.TrimSpace(strings.ReplaceAll(out.Body, \"\\r\\n\", \"\\n\")) != payload",
+      "new": "strings.TrimSpace(out.Body) != payload"
+    },
+    {
+      "name": "command context comparison omitted",
+      "file": "acceptancetransition.go",
+      "old": "!oldOK || !nextOK || oldContext != nextContext",
+      "new": "!oldOK || !nextOK || (false && oldContext != nextContext)"
+    },
+    {
+      "name": "original complete definition unbound",
+      "file": "acceptancetransition.go",
+      "old": "if !reflect.DeepEqual(source, old) {",
+      "new": "if false && !reflect.DeepEqual(source, old) {"
+    },
+    {
+      "name": "whole cell rewrite drops context",
+      "file": "acceptancetransition.go",
+      "old": "strings.Replace(originalCell, codeSpanOf(originals[cells[0]].Command), codeSpanOf(changed.Command), 1)",
+      "new": "codeSpanOf(changed.Command)"
+    },
+    {
+      "name": "ambiguous rendered context admitted",
+      "file": "acceptancetransition.go",
+      "old": "!plain || len(spans) != 1",
+      "new": "(false && !plain) || len(spans) != 1"
+    }
+  ]
+}

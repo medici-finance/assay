@@ -2,7 +2,7 @@
 brief: assay:assay:performance-collection:07
 title: "On-demand three-report bundle and thin skill"
 why: "Operators need one reproducible view of completions, stream movement and tool costs from collected data, without more provider calls."
-wave: 2
+wave: 5
 depends: ["performance-collection/02"]
 unblocks: ["performance-collection/08"]
 effort: L
@@ -12,13 +12,15 @@ gate-why: "Report collection, exposure and recurring effect boundaries need acce
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 3
+version: 5
 id: 29c71b10-6ca6-4594-bc10-1f294a5d1463
 authored: "2026-10-15 by reporting authoring session"
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
+  - "2026-10-16 wave reconciliation at origin/main 9f9bb35de: performance-collection/02 consumes desktools-v2/61; reporting scope and historical Evidence unchanged"
   - "medici-finance/assay#3353 — cell startup scratch scan; measurements on v1.0.48"
   - "medici-finance/assay#3099 — remaining parent launch telemetry coverage"
-  - "freshness-checked 2026-10-18 @ 56615f9ab; installed v1.0.49 records source 3cb57291e"
+  - "freshness-checked 2026-10-20 @ eb82d5b62 (merged main, installed v1.0.51); the 2026-10-18 v1.0.49 install recorded source 3cb57291e"
   - docs/streams/performance-collection/README.md
   - docs/streams/continuing-operations/spec.md
   - docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md
@@ -140,6 +142,33 @@ Named commands below are implementation deliverables. Each must run the named te
 | 6 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/07` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
 | 7 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPhaseReportFlow$' ./report/... > "$o" && grep -F -- '--- PASS: TestPhaseReportFlow ' "$o")` | exit 0; named PASS. Nested/failed/missing-child fixture produces correct component/cycle tables and unknowns; hidden downstream work or double-counted parent/child makes the expected report fail. |
 | 8 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellStartReport$' ./... > "$o" && grep -F -- '--- PASS: TestCellStartReport ' "$o")` | exit 0; named PASS. Hand-computed overlapping-role fixture yields correct first/all-start times and one shared preparation cost; failed/missing role makes all-start coverage incomplete. Mutation: omit failed roles, sum overlapping walls or relabel historical builds; test fails. |
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+Apply the [perf-v3 contract](../../performance-attribution-spec.md). Existing Tasks/Verify/Evidence and consent/retention controls remain owed.
+
+The tool panel can filter/group selected aliased work, session, agent, originating desk and
+assigned role. Show each process's own forge attempts, request-duration samples and actual,
+estimated and unknown GraphQL points separately by unit/resource. Show missing agent/parent
+coverage and unattributed/shared overhead; do not manufacture historical attribution for
+v1/v2. Deduplicate source/invocation, never sum parent inclusive wall with child/phase/request
+wall, and do not sum rate gauges. Extend TestPhaseReportFlow (existing report Verify
+obligation) with these mixed-version/parent-child and false-zero negative fixtures; preserve
+all three reports and the offline/no-provider-read contract.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Preserve the query/cache boundary contract from docs/performance-attribution-spec.md:
+client logical service calls and transport attempts, handler timing/cache/coalescing outcomes,
+and actual direct/passthrough/refresh/poll/repair provider sends/cost remain different kinds.
+Import correlation only under the selected aliased workflow policy; never forward raw local
+locators or infer missing server coverage as zero. Shared refresh/background cost remains
+shared/unallocated and one provider observation cannot be copied to all waiting work items.
+Do not sum client wait, handler/provider spans or concurrent process CPU as elapsed savings.
+Extend the existing local/served/replay/report Verify flow for this owner with the shared
+50-query/three-page fixture, warm hit, passthrough retry, background poll and absent server
+data. Wrongly combining the two sides of one service call or multiplying upstream points
+must fail the independent expected result; existing selectors and all Evidence remain intact.
 
 ## Evidence
 

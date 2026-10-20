@@ -34,10 +34,10 @@ exec-tier-why: >-
 consumers:
   - "schemas/desksupervise-status-v1.json: fixed-here (the reserved `tokens` stub is promoted into a `resource` block and filled; this is the documented intended evolution of the stub, so the schema id stays v1)"
   - "tools/desk/cmd/desksupervise/status.go: fixed-here (the status/JSON renderer surfaces the resource block, joining a claim's holder session to that session's beacon vitals)"
-  - "tools/desk/cmd/deskroster/sets.go (the beacon `set` write): fixed-here (gains optional vitals flags; unset ⇒ the field is written null, never 0)"
-  - "tools/desk/internal/deskkit/ackbeacon.go (beacon write pattern): fixed-here (a sibling field-preserving merge writes `resource`; it must not drop `acks`/`open_work`)"
+  - "tools/desk/cmd/deskroster/roster.go (the beacon `set` write): fixed-here (gains optional vitals flags; unset ⇒ the field is written null, never 0)"
+  - "tools/desk/internal/deskkit/vitals.go (beacon write pattern): fixed-here (a sibling field-preserving merge writes `resource`; it must not drop `acks`/`open_work`)"
   - "an operator console consuming the JSON (deskd's repo): out-of-scope (a private consumer; the versioned schema is the contract it reads. Because `tokens` moves from a claim-level const into `resource`, the console's reader is updated in its own repo when this lands — noted, not owned here)"
-version: 1
+version: 2
 id: f167b9b6-ec90-4766-87de-da21aa47ee2b
 ---
 

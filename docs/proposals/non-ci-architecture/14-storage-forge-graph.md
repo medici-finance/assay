@@ -192,3 +192,14 @@ Broker acceptance, recipient acknowledgment and completed business effect are di
 Messages that exist only in the broker cannot be reconstructed from Git/forge; the
 selected profile must qualify its own persistence, replication, backup and loss policy.
 The current file backend remains a transition implementation until explicit migration.
+
+## Performance identity and cost storage — requested amendment, 19 October 2026
+
+The [perf-v3 contract](../../performance-attribution-spec.md) keeps identifiable qualified
+work linkage in the explicitly selected local workflow record, using the existing perfrec
+history and retention. The future performance-collection adapter maps these references to
+source/epoch aliases before its separate spool, database, preview or upload; raw work locators
+and native harness IDs never cross that boundary. Preserve immutable invocation identity,
+causal links, units, nullable point/timing coverage and mergeable distributions through
+retention/replay. This adds no operational database table, cross-database foreign key,
+mandatory dual write or performance dependency to the forge service/cell.

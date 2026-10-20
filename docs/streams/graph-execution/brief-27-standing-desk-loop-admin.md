@@ -10,7 +10,8 @@ depends:
 - desk-supervision/34
 - desk-tools/39
 - desk-tools/42
-unblocks: []
+unblocks:
+- agent-execution/05
 effort: L
 gate: human
 risk:
@@ -25,7 +26,7 @@ authored: 2026-10-02 by task-workflow authoring session
 sources:
 - "medici-finance/assay#3353 — cell startup scratch scan; measurements on v1.0.48"
 - "medici-finance/assay#3099 — remaining parent launch telemetry coverage"
-- "freshness-checked 2026-10-18 @ 56615f9ab; installed v1.0.49 records source 3cb57291e"
+- "freshness-checked 2026-10-20 @ eb82d5b62 (merged main, installed v1.0.51); the 2026-10-18 v1.0.49 install recorded source 3cb57291e"
 - docs/streams/graph-execution/task-workflow-program.md
 - freshness-checked 2026-10-02 @ 307fe16992caef53fa46c52622753dd400c7b42a
 exec-tier: strong
@@ -183,6 +184,10 @@ The plausible wrong implementations are the negative cases named in Verify: stal
 ## Review
 
 Gate: human. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
+
+## Execution-environment follow-on routing — 2026-10-16
+
+Reciprocal unblocks only: agent-execution/05. The [execution amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md) adds a follow-on obligation over this brief's existing output. Its Task, Verify, gate, version and historical Evidence are unchanged; this note grants no delivery, reassignment or activation.
 
 ## Proposed measurement consumer — 2026-10-17
 

@@ -51,7 +51,7 @@ func streamArchiveReadyNotices(streams []*Stream) []string {
 			if b.Schema != "placeholder-v1" {
 				realBriefs++
 			}
-			if b.Status != "done" {
+			if b.Status != "done" && !isWithdrawn(b.Status) {
 				allDone = false
 			}
 		}

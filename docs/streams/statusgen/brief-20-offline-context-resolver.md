@@ -10,9 +10,11 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-10-13 by worker-desk (author-brief), non-CI architecture reconciliation
 sources:
+  - "assay:assay:statusgen:26 — consumer routing for the 2026-10-16 performance amendment"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - docs/proposals/non-ci-architecture/18-authoring-context-delivery.md — packages "Offline future-state resolver" and "Receipt and amendment validation"
   - docs/proposals/non-ci-architecture/15-regression-from-day-one.md — "Authoring and plan-evolution qualification"
   - docs/proposals/non-ci-architecture/17-context-substrate.md
@@ -79,6 +81,7 @@ design-fit:
 
 ## Ground rules
 
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - Isolated branch; draft PR only. No merge or release.
 - Neutral synthetic fixtures (two example repositories, withheld consumers). Do not hard-code the
   expected answer list into production discovery; tests withhold expected identities from the
@@ -142,6 +145,22 @@ active work (row 6), textual merge treated as semantic compatibility (row 7), de
 edited in place (row 8), a CLI that drifts from the package (row 9) and an architecture receipt
 presented as product alignment (row 10). Recall beyond the fixture
 corpus is not claimed; the fixture coverage limits go in `docs/context-handoff.md` (planned).
+
+## Performance reuse amendment — 2026-10-16
+
+Statusgen/26 supplies shared-recorder instrumentation and invocation-local parse reuse;
+the resolver keeps its existing membership and receipt owner. Reuse only explicit authorized
+source snapshots with qualified root/repository identity, parser/evaluator version, content
+revisions and independently established complete membership. No credential or deskkit import
+is introduced. A new consumer outside the previous read set, nested directory addition or
+dirty source change forces the existing reconciliation result even when HEAD and every
+previously read file are unchanged. A cached projection never authorizes dispatch.
+
+Optional measurement hooks may report source enumeration, parsing and evaluation work through
+the same library when available. This is not a new dependency for the pure resolver, not a
+persistent parse-cache implementation, and does not expand its unfinished scope into the
+future online mirror or a service.
+
 
 ## Evidence
 

@@ -163,7 +163,7 @@ not own.
 ## The board
 
 `issueboard` — read-only, one ACTION per open issue plus the intake lane's untriaged entries,
-age-flagged (`issueboard issues` / `issueboard intake` narrow to one lane). Its scan scope is the
+age-flagged (`issueboard issues --projection intake` / `issueboard intake` narrow to one lane). Its scan scope is the
 roster's, resolved at runtime; an unset/empty scan-repo roster value or a repo the token cannot read
 fails the WHOLE board with exit 6, so the board is never silently partial and an empty sweep is never
 reported as a clean board. A `needs-decision` or `question` issue ages against `--sla-days` (default
@@ -174,8 +174,16 @@ never be able to sink an ESCALATE row beneath a fresher high-impact one. An open
 `to:<role>` (filed by `deskfile new --to <role>`) is a desk-inbox item: it renders `ADDRESSED→<role>`
 in its own priority band, is held OUT of the un-briefed (CREATE-PLACEHOLDER) work — it is that desk's
 item, not free work — and, aged past `--sla-days` with no comment from that role's App, ESCALATES so
-an unread inbox surfaces without the addressee's cooperation. `issueboard issues --to <role>` narrows
+an unread inbox surfaces without the addressee's cooperation. `issueboard issues --projection inbox --to <role>` narrows
 to one desk's inbox.
+
+Use the projected forms only with an `issueboard --version` producer advertising
+`issue-projection-v1`. Older pinned producers retain `issueboard issues` and
+`issueboard issues --to <role>`; select that compatibility path before discovery,
+never as a retry after an incomplete projected read. The intake projection preserves
+the whole issue population, escalation/closure and quarantine; the inbox projection
+covers only the named addressee. Local raw intake remains `issueboard intake`.
+See [producer/plugin compatibility and rollback](../../../../docs/issue-projections.md).
 
 ## Scored triage — the impact/risk/effort triple at exit
 
@@ -516,9 +524,11 @@ Stated once for every desk; this skill adds only what is its own above.
   precise, *wrong* line numbers. State the SHA a sibling-repo detail was cross-checked against, or
   don't cite it; cannot reach the remote and cannot cross-check → **could-not-check**, never a
   claim badged as re-verified.
-- **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskpost`,
-  `deskreply`, `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script; a `gh`
-  call no verb covers runs as the role App per desk-shell.md §Forge CLI as the role. A shared
+- **Identity.** Post and file as this desk's own App via the desk verbs (`deskfile`, `deskreply`,
+  `deskpr`), minting with `desktoken <role>` — never a hand-rolled mint script; a `gh`
+  call no verb covers runs as the role App per desk-shell.md §Forge CLI as the role. For comments,
+  use `deskfile attach` on issues or `deskreply` on this desk's own PRs; `deskpost comment`
+  is reserved for `pr-review-desk`. A shared
   human/operator login makes authorship ambiguous; a token 404-ing on a repo it should cover means
   the wrong installation, never "App not installed". **Fallback:** the App genuinely not installed on
   a target repo (`desktoken coverage <role> --repo <owner>/<repo>` exits 5; a missing human `gh`

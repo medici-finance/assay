@@ -81,7 +81,7 @@ import (
 // the canonical repo-root schemas/*.json are mirrored here byte-for-byte;
 // TestEmbeddedSchemaMatchesCommitted pins each pair identical.
 //
-//go:embed schemas/brief-v1.json schemas/brief-v2.json
+//go:embed schemas/brief-v1.json schemas/brief-v2.json schemas/brief-v3.json
 var embeddedSchemaFS embed.FS
 
 // embeddedBriefV1SchemaName / embeddedBriefV2SchemaName are the embedded paths of
@@ -89,6 +89,7 @@ var embeddedSchemaFS embed.FS
 const (
 	embeddedBriefV1SchemaName = "schemas/brief-v1.json"
 	embeddedBriefV2SchemaName = "schemas/brief-v2.json"
+	embeddedBriefV3SchemaName = "schemas/brief-v3.json"
 )
 
 // embeddedBriefSchemaNames maps each brief-schema MARKER to the embedded artifact
@@ -100,6 +101,7 @@ const (
 var embeddedBriefSchemaNames = map[string]string{
 	briefSchemaCurrent: embeddedBriefV1SchemaName, // brief-v1
 	briefSchemaV2:      embeddedBriefV2SchemaName, // brief-v2
+	briefSchemaV3:      embeddedBriefV3SchemaName, // brief-v3
 }
 
 // embeddedBriefSchemaMarkers returns the known markers in sorted order (brief-v1,

@@ -2,8 +2,8 @@
 brief: assay:assay:performance-collection:02
 title: "Producer adapters for workflow, usage and local performance"
 why: "A logger with only synthetic input cannot explain desk delays or rework. Bounded adapters should turn existing performance, dispatch, historian and runner observations into locally useful measurements without waiting for the full cell runtime."
-wave: 1
-depends: ["performance-collection/01"]
+wave: 4
+depends: ["performance-collection/01", "desktools-v2/63", "desktools-v2/64", "desktools-v2/65"]
 unblocks: ["performance-collection/06", "performance-collection/07"]
 effort: L
 gate: human
@@ -12,13 +12,16 @@ gate-why: "Correlated operational measurements and their access/retention bounda
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 4
+version: 6
 id: 20aa552e-a2cf-4e0d-959c-0b47c9091d0a
 authored: 2026-10-13 by performance collection authoring
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
+  - "assay:assay:desktools-v2:62 — consumer routing for the 2026-10-16 performance amendment"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - "medici-finance/assay#3353 — cell startup scratch scan; measurements on v1.0.48"
   - "medici-finance/assay#3099 — remaining parent launch telemetry coverage"
-  - "freshness-checked 2026-10-18 @ 56615f9ab; installed v1.0.49 records source 3cb57291e"
+  - "freshness-checked 2026-10-20 @ eb82d5b62 (merged main, installed v1.0.51); the 2026-10-18 v1.0.49 install recorded source 3cb57291e"
   - docs/streams/performance-collection/README.md
   - docs/telemetry.md
   - docs/proposals/non-ci-architecture/11-target-architecture.md
@@ -32,6 +35,8 @@ exec-tier-why: Cross-component privacy, identity, concurrency and loss semantics
 domain: complicated
 outcome: none
 consumers:
+  - "perfrec/testdata/: follow-up performance-collection/02 (read all three instrument versions; no second writer)"
+  - "statusgen/perfrecord.go: out-of-scope (statusgen/26 owns producer integration; this brief imports selected records)"
   - "perfdata/adapters/: follow-up performance-collection/02"
   - "perfdata/cmd/perfdata/: follow-up performance-collection/02"
   - "perfdata/testdata/sources/: follow-up performance-collection/02"
@@ -102,7 +107,7 @@ Default if no answer: none — acceptance remains pending. The decision is prese
 
 ## Task
 
-1. Add version-selected read-only adapters for perf-v1 files, dispatch-record-v1, historian records and an explicit manually supplied observation file. Source readers take exact configured paths and scopes, never search home directories/transcripts. Re-import keeps stable source-event identity and an explicit cutoff; truncation, rotation, duplicate rows, schema changes and source loss retain coverage. Preserve source timestamps and their known resolution.
+1. Add version-selected read-only adapters for perf-v1/perf-v2/perf-v3 files, dispatch-record-v1, historian records and an explicit manually supplied observation file. Source readers take exact configured paths and scopes, never search home directories/transcripts. Re-import keeps stable source-event identity and an explicit cutoff; truncation, rotation, duplicate rows, schema changes and source loss retain coverage. Preserve source timestamps and their known resolution.
 
 2. At the existing dispatch-record seam, emit an optional bounded observation with the same canonical attempt identity through the alias mapper. Keep the canonical dispatch/audit records and their current semantics unchanged. Domain success never depends on optional emission; old tools are supported by file import. Consume the perf-v1 hooks and files present on the inspected main; do not modify its seven-day privacy contract. <!-- graph: not-a-gate — desk-tools/23 is an optional input adapter, not an implementation prerequisite; fixture import works without its merge. -->
 
@@ -116,7 +121,7 @@ Default if no answer: none — acceptance remains pending. The decision is prese
 
 7. Validate module packaging and the production-to-local-report flow with actual runner and dispatch seams, preserving all source authority tests. Build source adapters without DB/server packages. Provide local rollout and revert instructions without enabling collection on the authoring machine.
 
-8. Supply saved inputs for all three reports: qualified completion/stage transitions and current stream snapshots, explicit hold-reason/owner/source references, and perf-v1 invocation/cpu/child/forge samples. Preserve first-sighting opening balances, duplicate/reopen identity and known observation precision. Import does not guess stall causes, descendant CPU, bypassed HTTP calls or tokens. Export a coverage manifest for sources/versions/epochs and explicit unknown historical intervals. Add TestOperatingReportSourceCoverage for duplicated imports, opening balances, unknown hold reasons and unsupported counters; no forge polling is added here.
+8. Supply saved inputs for all three reports: qualified completion/stage transitions and current stream snapshots, explicit hold-reason/owner/source references, and version-qualified perf-v1/perf-v2/perf-v3 invocation/cpu/child/forge samples. Preserve first-sighting opening balances, duplicate/reopen identity and known observation precision. Import does not guess stall causes, descendant CPU, bypassed HTTP calls or tokens. Export a coverage manifest for sources/versions/epochs and explicit unknown historical intervals. Add TestOperatingReportSourceCoverage for duplicated imports, opening balances, unknown hold reasons and unsupported counters; no forge polling is added here.
 
 
 ### Approved workflow-efficiency amendment — 17 October 2026
@@ -178,7 +183,8 @@ below, exercising production code rather than an independently reimplemented che
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/02` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
 | 6 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v -run '^TestOperatingReportSourceCoverage$' ./... > "$o" && grep -F -- '--- PASS: TestOperatingReportSourceCoverage ' "$o")` | exit 0; named test runs and passes, including the negative cases in Task 8. |
 | 7 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPhaseProducerFlow$' ./... > "$o" && grep -F -- '--- PASS: TestPhaseProducerFlow ' "$o")` | exit 0; named PASS. Real adapter fixtures reconstruct nested work without double count; old perf-v1 yields unknown fields. Consent-off, drop/slow sink and missing children preserve domain results and expose coverage. |
-| 8 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellStartSourceCoverage$' ./... > "$o" && grep -F -- '--- PASS: TestCellStartSourceCoverage ' "$o")` | exit 0; named PASS. Versioned up/role/start fixtures preserve one shared cost, overlapping intervals, failure/unknown coverage and distinct measured/installed versions. Mutation: use launch-request time as confirmed start or fill missing phases with zero; test fails. |
+| 8 | check:ci +flow +mutation | `(cd perfdata && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerformanceInstrumentVersionImport$' ./adapters/... > "$out" && grep -F -- '--- PASS: TestPerformanceInstrumentVersionImport ' "$out")` | exit 0; named PASS; legacy and successor desk/statusgen fixtures preserve boundary, nullable coverage and stable import identity; mixed-version naive totals and absent-to-zero plants fail |
+| 9 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellStartSourceCoverage$' ./... > "$o" && grep -F -- '--- PASS: TestCellStartSourceCoverage ' "$o")` | exit 0; named PASS. Versioned up/role/start fixtures preserve one shared cost, overlapping intervals, failure/unknown coverage and distinct measured/installed versions. Mutation: use launch-request time as confirmed start or fill missing phases with zero; test fails. |
 
 ## Pre-mortem and detection
 
@@ -186,6 +192,51 @@ Drop the candidate binding, add cumulative samples, or allow sink errors to repl
 row must traverse actual public producer/reader or served interfaces. Scope/retention
 adequacy and deployment workload selection are review judgments; their measured evidence
 is required before activation, not invented from component-test success.
+
+## Performance reuse amendment — 2026-10-16
+
+Import both the existing perf-v1 and the deliberately versioned successor from
+desktools-v2/61 through read-only adapters. Preserve their instrument versions, timing
+boundaries, measurement availability and phase/child inclusion. Keep samples separated or
+explicitly normalize only where supported; never infer zero from an old absent counter.
+Actual board/dispatch/token records from /62 and statusgen/26 are consumer fixtures; they
+do not require an active service or add producer hooks here. Retain legacy import behavior
+when newer producers are unavailable. Do not add raw command text, repository identifiers,
+credential metadata or local paths to exported payloads. Follow the existing profile,
+pseudonymization, retention and remote-consent contract.
+
+The dependency on /61 is for the concrete versioned adapter fixtures; the hotpath local
+logging and credential work do not wait on this importer, perfdata or its database.
+
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+Apply the [perf-v3 contract](../../performance-attribution-spec.md). Existing Tasks/Verify/Evidence and consent/retention controls remain owed.
+
+Read perf-v1, perf-v2 and perf-v3 through version-selected adapters. /63–65 supply v3
+schema/propagation/request fixtures; old rows remain unattributed with historical timing and
+counter gaps, never backfilled by branch/argv inference. Actual producers remain their own
+owners. Explicit workflow import aliases every qualified local work and correlation reference
+under this source epoch before persistence/preview/export; tool-only import excludes them.
+Preserve deskRole versus assigned role, points basis/unit/sample coverage and request timing.
+Extend TestOperatingReportSourceCoverage and TestPhaseProducerFlow (the existing phase
+adapter obligation) with two same-number issues in different scopes, two agent roles, child
+causal links, re-import duplicates, mixed versions, missing cost and an uninstrumented child.
+Require the existing exact PASS lines; all earlier Verify rows remain obligations.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Preserve the query/cache boundary contract from docs/performance-attribution-spec.md:
+client logical service calls and transport attempts, handler timing/cache/coalescing outcomes,
+and actual direct/passthrough/refresh/poll/repair provider sends/cost remain different kinds.
+Import correlation only under the selected aliased workflow policy; never forward raw local
+locators or infer missing server coverage as zero. Shared refresh/background cost remains
+shared/unallocated and one provider observation cannot be copied to all waiting work items.
+Do not sum client wait, handler/provider spans or concurrent process CPU as elapsed savings.
+Extend the existing local/served/replay/report Verify flow for this owner with the shared
+50-query/three-page fixture, warm hit, passthrough retry, background poll and absent server
+data. Wrongly combining the two sides of one service call or multiplying upstream points
+must fail the independent expected result; existing selectors and all Evidence remain intact.
 
 ## Evidence
 

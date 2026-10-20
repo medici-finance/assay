@@ -152,13 +152,21 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | 1 | Board rows the board SHOWS, per root (the span-capped Next-up selection) | `(cd "$root" && deskgit fetch --as worker) && fanoutloop plan --root "$root"` (absolute configured root; desk-shell §Authenticated transport) |
 | 2 | Rows **held back** by the 4-per-stream cap, the span cap, or the drive worker floor | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span, K by the drive worker floor) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one |
 | 3 | Orphan PRs owing a worker action, `CONFLICTING` PRs, red checks | the per-slug PR + disposition reads in [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §The tick sweep, with the disposition read FIRST |
-| 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate) |
+| 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate / reconcile) |
 | 5 | `Awaiting implementer rework` board rows | `fanoutloop plan --root <root>` (desk-supervision/05: read per root from `refs/remotes/origin/main:STATUS.md`, the SAME offline ref read row 1 uses — no separate sweep) |
 | 5b | **Durable repair obligations** — a failed/blocked verification's actionable, still-unresolved obligation (desk-supervision/17) | `fanoutloop plan --root <root>` reads the reconciled obligations across the configured roots' `docs/streams/repair-obligations.jsonl` and surfaces the ASSIGNABLE ones (actionable, unresolved, awaiting-assignment or dead-lease) in the SAME rework lane as row 5. The item's ID is the IMMUTABLE obligation key, so a replacement worker resumes the SAME obligation after a dead lease — never a duplicate |
-| 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues` — fail-closed |
+| 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues --projection work-ready` — fail-closed |
 | 7 | A red default branch on a watched repo | `deskboard health` — three-state (green / RED / COULD-NOT-CHECK) |
 | 8 | Cross-root coverage: a board root that no sweep reaches, or a scanned repo with no board | the BOARD ROOTS ∪ SCAN REPOS symmetric difference printed at boot (§THE REPO SET) |
 | 9 | Queue **suppressors** — expired `refs/heads/dispatch/*` claims and dead branch-claims from merged/closed PRs | `desksupervise status --stops` (the liveness observer's runtime snapshot: per-claim liveness, timers-to-fire, and which stops are armed — the one structured read the sweep uses instead of guessing); the raw `git ls-remote origin 'refs/heads/dispatch/*'` + the claim tool's `list`/`show` verbs (`deskclaim-ref`, installed with desk-tools; a repo that ships its own `tools/dispatch-claim.sh` uses that instead) stay as the fallback — run BOTH, since the tool lists the `refs/dispatch/*` namespace it acquires in while that `ls-remote` pattern lists the `refs/heads/dispatch/*` branch refs the Go claim readers use |
+
+A `reconcile` disposition means the owning brief is withdrawn, not that the PR is
+finished. Route it to `pr-shepherd` for the withdrawn-brief reconciliation step before
+ordinary CI repair. Supply the current brief/withdrawal context, successor links and PR
+head; retain claim ownership checks. Never restore an obsolete plan just to green its
+branch, or auto-close its PR. Before a board amendment retires scope, use
+`statusgen withdrawal-audit` with an open-PR snapshot to discover these cases while the
+PRs are still fresh (the stalled detector deliberately sees only the aged subset).
 
 **Rows 5, 5b and 3 outrank row 1** — resuming started work outranks a fresh brief (mm/10) — and row 2 is
 what tells you whether row 1's zero means drained or throttled.
@@ -286,16 +294,26 @@ unreadable root in as an empty one.
   scaffolds every repo with the same `stream: example` identity, so init'd roots collide by
   construction — that, not root count, is what to check when a board goes missing.
 
+## Issue-reader compatibility
+
+Before selecting a projection, run `issueboard --version` locally and require its
+`issue-projection-v1` capability. Pair this skill with that producer source/release;
+an older binary uses the legacy `issueboard issues` sweep with the same manual
+work-readiness checks below until the pin is deliberately upgraded. Do not retry a
+failed projected sweep through a broad read. Reverting the plugin and producer pins
+restores the old sweep. See [the compatibility matrix](../../../../docs/issue-projections.md).
+An empty work-ready observation covers only unrepresented issue candidates; intake,
+addressed inbox, representation/PR checks and watcher health still need their own reads.
+
 ## Un-briefed issues — trusted, work-ready, on NO board (human:<name> 2026-08-13)
 
 A real, trusted, implementable issue can sit stranded merely because it is issue-shaped. Beside the
 board queue and the orphan sweep, the pool draws on **§Sources of work row 6**: open issues across
 SCAN REPOS, trusted + work-ready but represented by NO brief and NO placeholder on any board.
 
-**Sweep it with `issueboard issues`, not a hand-rolled list.** The verb resolves the scan scope from
+**Sweep it with `issueboard issues --projection work-ready`, not a hand-rolled list.** The verb resolves the scan scope from
 the same roster key the placeholder scanner reads, applies the trust gate itself (untrusted, unblessed
-authors are quarantined under EXTERNAL / UNBLESSED — visible, never actionable), ages
-`needs-decision` / `question` rows against its SLA, and **fails closed**: an unset or empty scan set,
+authors are quarantined under EXTERNAL / UNBLESSED — visible, never actionable), excludes represented, decision-owed, addressed and help-wanted issues before enrichment, and **fails closed**: an unset or empty scan set,
 or one unreadable repo, is exit 6 COULD-NOT-CHECK for the WHOLE board, never a silently partial one
 (a raw `gh issue list` reads a dropped repo as a clean, empty board). **ALL four must hold:**
 
@@ -333,7 +351,7 @@ that row's own instrument. Repos from §THE REPO SET; an exit-6 or empty `deskro
 could-not-check, never "no repos".
 
 - Run the board-wide instruments once (`deskboard dispatch`, `deskboard stalled`, `deskboard health`,
-  `issueboard issues`), then the per-slug PR + disposition reads — the exact queries and the three
+  `issueboard issues --projection work-ready`), then the per-slug PR + disposition reads — the exact queries and the three
   pre-resume guards are [`references/dispatch-runbook.md`](references/dispatch-runbook.md)
   §The tick sweep. `--limit` is mandatory on every raw list (bare `gh pr list` silently caps at 30) and
   at-cap is **could-not-check — blind, not idle**.

@@ -94,6 +94,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	// in a GitHub Actions job, file-only everywhere else (#3082).
 	scanSetToolClass(scanClassForMode(false))
 	fs := flag.NewFlagSet("reconcile", flag.ContinueOnError)
+	defer transitionFlags(fs)()
 	fs.SetOutput(stderr)
 	fs.Usage = func() {}
 	root := fs.String("root", ".", "repository root whose briefs to reconcile")

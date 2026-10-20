@@ -433,8 +433,15 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	oldBranchBoard := decisionGateBranchBoardFn
 	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
 	t.Cleanup(func() { decisionGateBranchBoardFn = oldBranchBoard })
+	oldLanded := landedClosureFn
+	landedClosureFn = func(root, target string, before, after []byte, exists bool, f deskkit.Forge, r deskkit.ForgeRepo, branch string) (string, string, func(), error) {
+		return root, "", func() {}, nil
+	}
+	t.Cleanup(func() { landedClosureFn = oldLanded })
 	oldOutcome := outcomeGuardFn
-	outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error { return nil }
+	outcomeGuardFn = func(string, string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error {
+		return nil
+	}
 	t.Cleanup(func() { outcomeGuardFn = oldOutcome })
 
 	// The verified-sidecar acceptance gate defaults to "accepts" so a verify-outcomes landing

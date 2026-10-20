@@ -277,10 +277,10 @@ func TestBriefFileParseExemptions(t *testing.T) {
 func TestBriefFileUnknownSchemaFailsClosed(t *testing.T) {
 	dir := t.TempDir()
 
-	// Unrecognized brief-schema-family version → hard refusal (fail closed). v2 is
-	// now RECOGNIZED (see below); the family versions this binary predates start at
-	// brief-v3.
-	for _, ver := range []string{"brief-v3", "brief-v99"} {
+	// Unrecognized brief-schema-family version → hard refusal (fail closed). v2 and
+	// v3 are now RECOGNIZED (see below); the family versions this binary predates
+	// start at brief-v4.
+	for _, ver := range []string{"brief-v4", "brief-v99"} {
 		p := writeTemp(t, dir, "brief-01-"+ver+".md", "---\nschema: "+ver+"\n---\n# Brief\n")
 		bf, ok, err := parseBriefFile(p)
 		if bf != nil || ok {

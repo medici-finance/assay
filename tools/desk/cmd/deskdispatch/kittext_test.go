@@ -205,7 +205,7 @@ func TestLeakMatcherIsLive(t *testing.T) {
 // incident it came from would leak exactly what the rewrite removed.
 func TestKitReaderSourceCarriesNoPrivateReferences(t *testing.T) {
 	for _, f := range []struct{ name, text string }{
-		{"usage text", usage},
+		{"generated help", dispatchHelp()},
 		{"tier clause", tierClause},
 	} {
 		checkNoLeaks(t, f.name, f.text)

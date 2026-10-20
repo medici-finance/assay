@@ -52,7 +52,7 @@ func build(t *testing.T) string {
 		if binaries.err != nil {
 			return
 		}
-		for _, tool := range []string{"deskboard", "reviewloop", "deskdispatch", "issueboard"} {
+		for _, tool := range []string{"deskboard", "reviewloop", "deskdispatch", "issueboard", "deskinbox"} {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			cmd := exec.CommandContext(ctx, "go", "test", "-c", "-o", filepath.Join(binaries.dir, tool+".test"), "./cmd/"+tool)
 			cmd.Dir = moduleRoot(t)
@@ -296,7 +296,7 @@ func TestWorkflowOracle(t *testing.T) {
 	// Mutate the production rendering path, leaving every internal observation
 	// intact. These overlays never edit the checkout and must fail the same oracle.
 	for _, mutation := range []struct{ tool, path, old, new, fixture, diagnostic string }{
-		{"reviewloop", "cmd/reviewloop/plan.go", "board.RenderRows(stdout)", `fmt.Fprintln(stdout, "rows omitted")`, "planner-mixed", "command output rows"},
+		{"reviewloop", "cmd/reviewloop/plan.go", "renderRows(board, stdout)", `fmt.Fprintln(stdout, "rows omitted")`, "planner-mixed", "command output rows"},
 		{"deskdispatch", "cmd/deskdispatch/reviewround.go", "Scope: DELTA (clause 19)", "Scope: OMITTED (clause 19)", "dispatch-delta", "command output missing"},
 	} {
 		t.Run("production-"+mutation.tool, func(t *testing.T) {

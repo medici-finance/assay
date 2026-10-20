@@ -61,7 +61,7 @@ func TestCrossRepoEvidenceOutcome(t *testing.T) {
 	deskkit.SetToolClass(deskkit.ClassCI)
 	t.Cleanup(func() { deskkit.SetToolClass(deskkit.ClassWrite) })
 	const brief = "docs/streams/sample/brief-01-check.md"
-	body := "---\nhomed-in: example-org/source\n---\n# Tracking canary\n\nfiles:\n- `source.txt`\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `test -f source.txt` | exit 0 |\n\n## Evidence\n\nPending.\n"
+	body := "---\nhomed-in: example-org/source\n---\n# Tracking canary\n\n## Context\nfiles:\n- `source.txt`\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `test -f source.txt` | exit 0 |\n\n## Evidence\n\nPending.\n"
 	source := crossLandRepo(t, "example-org/source", map[string]string{"source.txt": "observed\n"})
 	tracking := crossLandRepo(t, "example-org/tracker", map[string]string{brief: body, "docs/streams/graph-repos.yaml": "schema: graph-repos-v1\nrepos:\n  source:\n    repo: example-org/source\n"})
 	api := &attestationAPI{files: map[string]string{brief: body}}

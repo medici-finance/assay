@@ -281,6 +281,7 @@ type wfJob struct {
 }
 
 type workflow struct {
+	Permissions any               `yaml:"permissions"`
 	On          map[string]any    `yaml:"on"`
 	Concurrency map[string]any    `yaml:"concurrency"`
 	Env         map[string]string `yaml:"env"`
@@ -501,12 +502,13 @@ func TestReconcileJobFreshBranch(t *testing.T) {
 // TestReconcileJobStatusgenArgs is review B6's trailer-only half at the job
 // level: the step runs the reconcile WITHOUT --backfill, then the README
 // re-render, then the full lint — exactly these invocations, in this order.
+// regression: #3493
 func TestReconcileJobStatusgenArgs(t *testing.T) {
 	r := newJobRig(t)
 	if code, out := r.tick("STUB_FLIP=01"); code != 0 {
 		t.Fatalf("exit %d:\n%s", code, out)
 	}
-	want := []string{"reconcile --apply --root . --repo o/r", "regen --readmes --root .", "--root . --lint"}
+	want := []string{"reconcile --apply --root . --repo o/r --acceptance-forge", "regen --readmes --root .", "--root . --lint --acceptance-forge"}
 	if got := r.statusgenLog(); strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("statusgen invocations:\n  %s\nwant:\n  %s", strings.Join(got, "\n  "), strings.Join(want, "\n  "))
 	}

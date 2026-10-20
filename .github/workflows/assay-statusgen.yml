@@ -104,6 +104,9 @@ jobs:
   lint:
     if: github.event_name == 'pull_request'
     runs-on: medici-builder-public
+    permissions:
+      issues: read
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -123,8 +126,11 @@ jobs:
           go version
           ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
       - name: statusgen --lint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
-          "${RUNNER_TEMP}/statusgen" --root . --lint
+          "${RUNNER_TEMP}/statusgen" --root . --lint --acceptance-forge
       # The reconcile job's tests (statusgen/reconcilejob_test.go), and the
       # registry check that keeps its write-then-lint sequence passable. The job
       # tests execute that job's run: texts from this file's staged copy, so an
@@ -279,7 +285,10 @@ jobs:
     # App (minted below), NOT the default GITHUB_TOKEN — so the default token
     # needs only read; the App token carries the write.
     permissions:
+      issues: read
       contents: read
+      # dead-claim decay reads branch pull-request state over the GraphQL API (#3372)
+      pull-requests: read
     steps:
       # Mint a token for the assay-board-writer App. This App is the sole actor
       # on the protect-main + leak-sweep ruleset bypass lists, so its push to
@@ -297,6 +306,7 @@ jobs:
           # Persist the App token as the push credential (checkout default), so
           # the STATUS.md `git push` below authenticates as assay-board-writer[bot].
           token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0 # consumedFragmentIndex needs changelog/ history; a shallow regen reads a consumed fragment as a false PROBLEM (#3364)
       - name: Install Go
         run: |
           set -euo pipefail
@@ -312,9 +322,16 @@ jobs:
           go version
           ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
       - name: Regenerate STATUS.md
+        env:
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          "${RUNNER_TEMP}/statusgen" --root .
+          "${RUNNER_TEMP}/statusgen" --root . --acceptance-forge
       - name: Commit STATUS.md if it changed
+        env:
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+          # the retry loop re-runs statusgen against the new head
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           git config user.name  'assay-board-writer[bot]'
@@ -355,7 +372,7 @@ jobs:
             echo "push rejected: main moved. Re-syncing and regenerating (attempt ${attempt}/${attempts})"
             git fetch origin main
             git reset --hard origin/main
-            "${RUNNER_TEMP}/statusgen" --root .
+            "${RUNNER_TEMP}/statusgen" --root . --acceptance-forge
           done
   # verified→done auto-flip for `gate: model` briefs (the third half of the
   # single-writer shape; wired per the 2026-09-02 ruling on the house tracker).
@@ -388,6 +405,8 @@ jobs:
     if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-status-regen]') && !contains(github.event.head_commit.message, '[skip-autoflip]') }}
     runs-on: medici-builder-public
     permissions:
+      issues: read
+      pull-requests: read
       contents: read
     steps:
       - name: Mint assay-board-writer App token
@@ -435,6 +454,7 @@ jobs:
           echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
       - name: Auto-flip gate:model briefs from the App approval at the merged head
         env:
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
           GH_TOKEN: ${{ github.token }}
           # The roster is repository configuration, never a literal here: set the
           # ASSAY_TRUSTED_BOT_SLUGS Actions variable (role=slug:id, the reviewer=
@@ -451,13 +471,13 @@ jobs:
             git fetch --no-tags origin main
             git reset --hard FETCH_HEAD
             flip_rc=0
-            "${RUNNER_TEMP}/statusgen" --root . --auto-flip-model || flip_rc=$?
+            "${RUNNER_TEMP}/statusgen" --root . --auto-flip-model --acceptance-forge || flip_rc=$?
             if [ -z "$(git status --porcelain -- docs/streams)" ]; then
               echo "no brief flipped — nothing to commit"
               break
             fi
             # Sources must stay valid before we commit them.
-            "${RUNNER_TEMP}/statusgen" --root . --lint
+            "${RUNNER_TEMP}/statusgen" --root . --lint --acceptance-forge
             # Path-scoped add: never STATUS.md (single writer = the regen job).
             git add -- docs/streams
             git commit -m "chore(verify): auto-flip gate:model briefs verified→done from the App approval at head [skip-autoflip]"
@@ -746,9 +766,9 @@ jobs:
           # tee: the report — rows written AND rows held, with the problem each
           # would add — reaches the job log on every tick, including a tick on
           # which every witnessed row is held and nothing is carried.
-          "$statusgen" reconcile --apply --root . --repo "$repo" | tee "$out"
+          "$statusgen" reconcile --apply --root . --repo "$repo" --acceptance-forge | tee "$out"
           "$statusgen" regen --readmes --root .
-          "$statusgen" --root . --lint
+          "$statusgen" --root . --lint --acceptance-forge
           # This job may change stream READMEs and nothing else.
           # The same README pattern as the foreign-commit check above. The
           # status read is a plain assignment, so errexit sees its failure: a

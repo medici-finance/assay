@@ -12,10 +12,12 @@ gate-why: "sensitive-data is yes because inbound forge deliveries and the commen
 issues: []
 outcome: none
 schema: brief-v2
-version: 3
+version: 5
 id: 3542bd60-8abe-4927-ae46-fb3cd5d3e1f8
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - docs/proposals/non-ci-architecture/20-amendment-manifest.md — R6 owner row and the "R2–R8 amendment scope" R6 paragraph ("translate refreshed feedback into durable reevaluation; partial scans stay incomplete")
   - docs/proposals/non-ci-architecture/16-delivery-sequence.md — package R6 (lost/reordered events preserve uncertainty)
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md — "Reuse and expand the existing forge-mirror work" (authenticated deliveries, delivery IDs, reorder tolerance, polling repair) and "Feedback received during an active attempt"
@@ -250,6 +252,40 @@ environment (row 11). The webhook secret or other configuration is read through 
 `syscall` import under any name (row 13; cgo is outside that check). `forgeread` gains a dependency on statusgen and a module cycle forms (row 14). A
 captured body replayed under a fresh delivery ID creates a second requirement (row 3). Payload
 retention remains the human decision above; row 15 pins whichever option is chosen.
+
+## Performance reuse amendment — 2026-10-16
+
+Event hints feed /37's existing scoped refresh planner. Qualify a duplicated/reordered
+hint burst alongside simultaneous desk/status requests: equivalent demand coalesces without
+erasing distinct decisions, feedback generations or event identity. Polling repair remains
+the fallback owner; event loss cannot create fresh/complete state or launch a poller per
+client. Keep measured event-to-observation delay separate from workflow service time.
+No token provider, HTTP server or performance writer is linked into the pure events package;
+the eventual trusted service composition records its existing typed outcomes.
+
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+For this brief's existing performance observations, reuse the [perf-v3 contract](../../performance-attribution-spec.md) and /63–65's
+shared typed context and request-cost seam when those adapters are available. Each process
+records its own attempts, timing and observed GraphQL points with units/basis/coverage;
+client-to-service and service-to-provider work are distinct. Carry admitted parent invocation
+links when known, preserve missing context and never turn it into operational authority.
+No extra provider request or expanded business query for monitoring; qualified bounded cost
+metadata may join the same request. No copied descendant call total,
+and no v2-only replacement instrument. Keep this brief's scope/Verify/Evidence and independent
+service delivery; record unsupported boundaries until producer integration. /45's existing
+matched service qualification must include own-request and parent/child no-double-count cases.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Apply docs/performance-attribution-spec.md, including its query/cache boundary contract.
+
+Event-triggered refresh/poll/repair diagnostics keep their trigger class and own operation identity, never event payload/capability text. Duplicate event hints or polling reconciliation cannot multiply observed provider charges; retain unallocated background work and incomplete coverage.
+
+Extend this brief's existing production-flow Verify cases with these boundary/false-count
+negative fixtures; all existing Tasks, exact selectors and Evidence remain obligations.
+No service activation or extra dependency on a live collector is introduced.
 
 ## Evidence
 

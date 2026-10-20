@@ -444,7 +444,8 @@ unaffected and keep their current behaviour until they are moved over.
 
 The audit ledger records WHAT a verb did; it records nothing about how long it took. With
 `ASSAY_TELEMETRY=1` exported (exactly `1` — `true`, `yes` or an empty value are all OFF), the
-desk commands append ONE `perf-v1` line per completed invocation to a local day file.
+desk commands append ONE `perf-v2` line per completed invocation to a local day file
+(boot and launch steps, and `statusgen`, still write the legacy `perf-v1` line).
 All 67 operational commands are wrapped, including deskfile, deskreply, scanloop, issueboard,
 reviewloop, verifyloop and the supervisor. `deskperf` is excluded so reading a report cannot
 change its input; `muhar` is a developer mutation harness with separate execution accounting.
@@ -462,11 +463,17 @@ deskperf boot --role worker-desk --json
 **What is recorded** — and nothing else, enforced by the record's type: the schema tag, a
 second-resolution UTC timestamp, the tool (canonical key, else `other`), the verb (the verb's
 own registered subcommand, else `other`; boot steps as `step:<name>`), the role (`$DESK_LOOP`
-canonical name, else `none`), wall ms, process CPU ms (omitted where unmeasurable, e.g.
-Windows), the exit code and its fixed result word, how many child processes the verb started
-through the shared runner (`deskkit.Run`) and their summed wall ms, how many HTTP
-round-trips went through the forge client's counting transport, the build stamp (hex, else
-`unpinned`), and a random per-install id.
+canonical name, else `none`), the exit code and its fixed result word, the build stamp (hex,
+else `unpinned`), and a random per-install id. A `perf-v2` invocation record adds: the
+measurement `boundary` (`process-init`: wall and CPU both start at a mark taken as the
+shared recorder initialises, so `main`'s configuration and activation checks are inside),
+wall ms and — only when `cpu` is `measured` — process CPU ms over that same interval, the
+CPU state (`measured`, `unsupported`, `failed`, `missing`), the `subprocess`,
+`subprocessMs` and `http` counters (child processes through the shared runner, their summed
+inclusive wall, HTTP round-trips through the forge client's counting transport), the cache
+and coalesced-waiter counters listed as `unavailable` (not observed, never zero), and timed
+phases (none yet). A legacy `perf-v1` record has wall ms, optional CPU ms and the three
+counts as `childProcs` / `childWallMs` / `forgeCalls`. Field tables: `docs/telemetry.md`.
 
 **Newly covered commands use the fixed verb `other` rather than copying arbitrary argv;
 the original seven retain their registered verb lists. Tool-level timing/counts are complete
@@ -505,8 +512,13 @@ code or its output. Per-invocation agent usage (tokens, cost) is the agent runne
 - `deskperf report [--days N] [--tool X] [--role R] [--top N] [--json]` — per tool: count,
   p50 / p90 / max wall ms (nearest-rank), total wall ms, share of total wall, and refusal ratio
   (refused + unwritten + unverifiable over count); then the N slowest invocations (default
-  10) as ts / tool / verb / wall ms. Boot-step records are excluded (they subdivide a
-  `deskboot` run already counted once).
+  10) as ts / tool / verb / wall ms. Boot- and launch-step records are excluded (they
+  subdivide a `deskboot` or `cellctl` run already counted once). Legacy `perf-v1` records
+  render first, exactly as before; `perf-v2` records render as a SEPARATE group (JSON
+  `perfV2`) whose total is labelled summed invocation wall, with boundary and CPU-state
+  counts, the CPU distribution over measured records only, per-counter measured/unavailable
+  coverage (totals over measured records only) and per-phase distributions. The two groups
+  are never summed, and no inclusive child or phase time is added to a wall total.
 - `deskperf boot [--days N] [--role R] [--json]` — `deskboot`'s per-step p50 / p90 / max, in
   boot order, and the summed boot cost per role.
 
@@ -1597,6 +1609,13 @@ the gate consume the same distinction is the natural follow-up, not this PR.
 
 ## deskboard stalled — the stalled-draft detector
 
+A PR whose owning brief is `withdrawn` receives advisory disposition `reconcile`,
+before the behind-main close-candidate heuristic. Inspect surviving code, evidence
+and current claims before retargeting it or proposing closure through the ordinary
+independent confirmation gates. Retirement alone is neither completed work nor a
+stopped worker. Use `statusgen withdrawal-audit` against a candidate board to find
+these overlaps before rollout, including PRs that are fresh and thus not stalled.
+
 The review loop assumes a persistent worker: the reviewer requests changes, the worker
 fixes and replies. Sessions die, so sometimes nobody replies — and nothing noticed. The
 measurement that motivated this verb: **all 80 open PRs across at+tracker were drafts, 74 of
@@ -1674,7 +1693,8 @@ absent, so "we enumerated everything" is a positive statement.
 
 **Disposition is advisory.** `shepherd` is the default; `close-candidate` requires
 positive evidence — the branch is more than 200 commits behind main, or its owning brief
-is `done`/`superseded`. A signal that could not be read never produces a
+is `done`/`superseded`. A withdrawn owner takes precedence and reports `reconcile`,
+including when the behind-main threshold is exceeded. A signal that could not be read never produces a
 `close-candidate` (an unreadable compare reports `behindMain: -1`, not `0`). PR ownership
 is invisible: the desk or the human decides whether to adopt, and no loop auto-adopts.
 
@@ -3086,6 +3106,15 @@ The table's one hazard is the reverse: an entry for a flag that takes NO value w
 scan skip the real verb, so a flag goes into it only when the CLI's own help shows it consumes an
 argument.
 
+An allowlist entry can also be **bare-form only**. `talosctl services` is read-only as a bare
+listing, but the subcommand also accepts positional arguments, and the entry does not vouch for
+what an argument selects. So the guard inspects what follows that verb: with no positional
+argument (listed value flags with their values, and `--flag=value`, are not positional) the call
+is read-only; with one, it is classified like an unlisted verb and refused at the read-only tier,
+exit `5`. Any other flag after the verb is taken to consume nothing, so the token after it counts
+as positional — the fail-closed guess on this side of the verb. A lone `-` is positional, as the
+flag parser reads it, and so is anything after a bare `--`.
+
 Exit `5` is a **refusal, not a fallback trigger**. The message says so explicitly: reaching the
 same CLI by absolute path, by a rebuilt `PATH`, or through another tool is not the sanctioned
 response to it.
@@ -3177,10 +3206,16 @@ sudo make desk-install   # HUMAN ONLY
    `BuiltAt` ldflags.
 2. Installs the already-built `dist/` binaries to `/opt/desk-tools/bin/<tool>`,
    root-owned 0755 — agents cannot overwrite them.
-3. Runs `desk-hook-install`: copies `tools/desk/hooks/pre-push` to `.githooks/pre-push`
-   (the `deskpushguard` shim, activated by the repo's `core.hooksPath = .githooks`). It is
-   idempotent, and **refuses to clobber** a pre-existing non-`deskpushguard` pre-push hook
-   unless invoked with `FORCE=1`.
+3. Runs `desk-hook-install`: delegates to the built `deskpushguard hook-install`. Where
+   no hook exists it writes the PATH-resolving `.githooks/pre-push` shim (plus
+   `pre-push.cmd` on Windows). An exact copy of the shipped anchored hook
+   (`tools/desk/hooks/pre-push`, which runs `/opt/desk-tools/bin/deskpushguard` by
+   absolute path) is **kept** on Unix, so a routine install never trades that anchor for
+   PATH resolution; `FORCE=1` replaces it with the PATH shim. On Windows, where the
+   `/opt` path cannot exist, it is migrated to the current pair. Exact current hooks are
+   skipped, and foreign hooks are **refused** unless invoked with `FORCE=1` (`-Force` in
+   PowerShell). Standalone hook installation requires `desk-build` first; an absent
+   built guard refuses without changing hooks. No static-copy fallback remains.
 4. Runs `desk-manifest`: writes `tools/desk/MANIFEST.sha256` from the installed binaries.
 
 `/opt/desk-tools/bin` is deliberately **not on `PATH`** — every desk tool is invoked by its
@@ -4721,6 +4756,27 @@ digest and path), never an edit of an existing one. The verified-outcome closure
 (`guardVerifiedOutcomes`, `gateVerifiedSidecarLanding`) apply to a `verified` record exactly as
 they applied to an added log line; `verify-fail` is never gated.
 
+**Committed closure history.** A new `verified` outcome (including a direct per-file
+Evidence write) runs full lint, identity attribution, the pending-record lint diff
+and closure acceptance in a disposable checkout of the exact target commit.
+The existing `statusgen brief --check-verified` call also requests
+`--check-attribution`, checking this closure through statusgen's canonical actor
+policy and judge. This requires a paired statusgen release with that capability;
+an older binary's unknown-flag error is could-not-check, with no fallback.
+The admitted home keeps its original detached HEAD; its refreshed brief and stream
+README must match the landed commit byte for byte. Fetch the target branch and
+`origin/main` before publication: missing local commit history or baseline is
+could-not-check, never a fallback to the admission history.
+
+GitHub commits the record with an atomic `expectedHeadOid` condition on that
+same inspected parent, retaining destination revision and append-only checks.
+A moved branch, unreadable receipt or mismatched parent requires reconciliation;
+there is no retry with a newer mutable head. The current GitLab writer supports
+only file revisions, so it refuses these pinned verified outcomes before writing.
+Non-verified outcomes and ordinary Evidence retain their existing publication paths.
+Shared appended JSONL publication remains refused; its retained closure parser
+is tested against the same pinned-history contract.
+
 **Receipt validation.** For a record carrying `wake_schema: "verify-wake-v1"`, the writer
 additionally refuses (exit 5, naming the field) the three recurring defects reviewers kept
 bouncing Evidence PRs for:
@@ -5814,6 +5870,14 @@ over `deskkit.Acquire/Release` (Kind=`dispatch`), so the verifyloop/worker-desk 
 paths keep their exact behaviour on the shared primitive.
 
 ## The adapter layer — `deskboot`, `deskdispatch`, `deskflip`
+
+`deskdispatch` now generates help with Cobra. Use `deskdispatch --help`,
+`deskdispatch --stamp-only --help`, `deskdispatch --check-verifier --help` or
+`deskdispatch --attest-verifier --help`; `help --stamp-only` also selects mode help.
+Help and version do not read configuration or credentials. See the
+[compatibility matrix](../../docs/streams/desktools-v2/dispatch-cli-matrix.md) for
+flag precedence, preserved callers and the shared syntax-error exit 2. Domain
+refusals retain their existing exit codes.
 
 Three verbs sit between a desk loop and the tools it drives. Each corresponds to one seam
 in the drain engine's contract — the pre-loop **boot**, the per-item **Dispatch**, the

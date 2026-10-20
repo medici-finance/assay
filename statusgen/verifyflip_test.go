@@ -38,6 +38,8 @@ const (
 
 type vfOpts struct {
 	gate, risk, status, verified, evidence, verify, author string
+	// schema is the brief frontmatter schema; empty means brief-v1.
+	schema string
 }
 
 func vfDefaults() vfOpts {
@@ -56,8 +58,12 @@ func vfFixture(t *testing.T, o vfOpts) (root, readme string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	schemaLine := "schema: brief-v1\n"
+	if o.schema != "" {
+		schemaLine = "schema: " + o.schema + "\n"
+	}
 	brief := "---\nbrief: vf/01\ntitle: A flip fixture\nwave: 0\ndepends: []\nunblocks: []\neffort: S\n" +
-		"gate: " + o.gate + "\nrisk: " + o.risk + "\nissues: []\nschema: brief-v1\n" +
+		"gate: " + o.gate + "\nrisk: " + o.risk + "\nissues: []\n" + schemaLine +
 		"authored: 2026-08-13 by fixture\nsources: [\"fixture\"]\n---\n\n# Brief 01\n\n" +
 		"## Verify\n" + o.verify + "\n## Evidence\n" + o.evidence +
 		"\n\n## Review\nGate: model.\n"

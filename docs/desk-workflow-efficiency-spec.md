@@ -188,7 +188,9 @@ do not claim a fleet quota guarantee or build another coordinator for this optim
 
 First correct the fixed command/kit vocabulary and missing instrumentation paths in the
 existing local measurement owner. Keep `perf-v1` and its opt-in/field promises compatible.
-Richer records extend the versioned performance-collection contract; do not silently append
+The [perf-v3 contract](performance-attribution-spec.md) now owns the requested local
+attribution/request-cost extension through perfrec and desktools-v2/63–65. Richer collection
+still extends performance-collection's existing aliased event contract; do not silently append
 workflow identifiers to legacy records or treat an existing tool opt-in as workflow consent.
 The [collection design](streams/performance-collection/README.md) owns local retention,
 bounded loss, profiles, optional ingestion and upload. Database/API deployment is not a

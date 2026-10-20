@@ -5,8 +5,7 @@ why: Fast labels are useful only when error, abstention and escalation cost are 
 wave: 2
 depends:
 - graph-execution/11
-unblocks:
-- graph-execution/18
+unblocks: []
 effort: M
 gate: model
 risk:
@@ -26,7 +25,7 @@ domain: complicated
 consumers:
 - 'evaluation/decisions: fixed-here'
 - 'tools/desk/internal/deskkit/admission.go: follow-up graph-execution/13'
-version: 1
+version: 2
 id: d77c1094-2fd6-46eb-a453-2dafd933ebf8
 ---
 
@@ -51,6 +50,16 @@ single-point-of-failure: the new contract or policy alone cannot establish safe 
 - Stop at implemented; independent verification owns verified/done.
 - Existing authority and human gates remain binding. Missing prerequisite evidence is could-not-check.
 - Public fixtures use example-org and synthetic data; do not copy adopter evidence.
+
+## Optional-provider sequencing — 2026-10-19
+
+[Verifier migration](verifier-migration.md) removes this brief as a hard dependency of /18's
+fake/recorded-advice integration proof. This evaluation still gates any real calibrated
+provider activation. Start with a frozen, independently labelled failure-routing corpus;
+compare deterministic rules and a simple classifier as well as the provider. Raw confidence
+is not a calibrated safety probability. Preserve the original workload/calibration obligations.
+No classifier routes work authoritatively or grants acceptance in the initial shadow trial.
+
 
 ## Task
 

@@ -66,8 +66,10 @@ Exit codes: 0 every query/reader succeeded · 5 refused (bad arguments) · 6 unv
 (at least one read failed — the printed output, if any, is PARTIAL; in html mode a blind
 Flow section alone does not redden the exit — see plugins/assay/commands/inbox.md).`
 
+var perfVerbs = []string{"table", "walk", "html", "flow", "discovery", "version", "--version", "--help", "-h"}
+
 func main() {
-	os.Exit(deskkit.PerfRun("deskinbox", nil, os.Args[1:], func([]string) int {
+	os.Exit(deskkit.PerfRun("deskinbox", perfVerbs, os.Args[1:], func([]string) int {
 		return execute(os.Args[1:], os.Stdout, os.Stderr, time.Now(), startup)
 	}))
 }
@@ -118,7 +120,7 @@ func codeErr(code int) error {
 // versionLine is what --version and the legacy `version` word print.
 func versionLine() string {
 	s, b := deskkit.Version()
-	return fmt.Sprintf("deskinbox sourceSHA=%s builtAt=%s releaseTag=%s", s, b, deskkit.ReleaseTagOrDev())
+	return fmt.Sprintf("deskinbox sourceSHA=%s builtAt=%s releaseTag=%s issue-discovery-v1", s, b, deskkit.ReleaseTagOrDev())
 }
 
 // queueBindings are the settings of the table, walk and html forms; flowBindings are flow's.
@@ -188,7 +190,15 @@ func execute(args []string, stdout, stderr io.Writer, now time.Time, pre func(io
 				fmt.Fprintln(stdout, versionLine())
 				return nil
 			}}
-		root.AddCommand(walk, html, flow, version)
+		discovery := &cobra.Command{Use: "discovery owner/repo ...", Short: "complete escalation-label discovery as issue-discovery-v1 JSON (no detail reads)", Args: cobra.MinimumNArgs(1),
+			RunE: func(_ *cobra.Command, repos []string) error {
+				deskkit.PerfCommand(perfVerbs, "discovery")
+				if code := begin(stderr, pre); code != deskkit.ExitOK {
+					return codeErr(code)
+				}
+				return codeErr(discoveryJSON(stdout, stderr, repos))
+			}}
+		root.AddCommand(walk, html, flow, version, discovery)
 		return root
 	}
 	return cli.Run(build, args, cli.Options{
@@ -238,6 +248,7 @@ func queueCommand(mode, htmlOut string, repoArgs []string, set *cli.Set, stdout,
 	if v.Bool("walk") {
 		mode = "walk"
 	}
+	deskkit.PerfCommand(perfVerbs, mode)
 	if code := begin(stderr, pre); code != deskkit.ExitOK {
 		return code
 	}
@@ -247,6 +258,7 @@ func queueCommand(mode, htmlOut string, repoArgs []string, set *cli.Set, stdout,
 // flowCommand passes flow's values to runFlow (flow.go). flow reads CELLS (a statusgen-root
 // axis), never REPOS.
 func flowCommand(set *cli.Set, stdout, stderr io.Writer, now time.Time, pre func(io.Writer) int) int {
+	deskkit.PerfCommand(perfVerbs, "flow")
 	v, err := set.Resolve(cli.Inputs{})
 	if err != nil {
 		fmt.Fprintln(stderr, "deskinbox:", err)

@@ -80,13 +80,16 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 type spec struct {
-	Root      string     `json:"root"`
-	Test      string     `json:"test"`
-	Control   Mutation   `json:"control"`
-	Mutations []Mutation `json:"mutations"`
+	Root      string      `json:"root"`
+	Test      string      `json:"test"`
+	Build     string      `json:"build,omitempty"`
+	Timeout   TimeoutSpec `json:"timeout,omitempty"`
+	Control   Mutation    `json:"control"`
+	Mutations []Mutation  `json:"mutations"`
 	// Select configures -select; it has no effect without the flag.
 	Select *selectSpec `json:"select,omitempty"`
 	// Schemata opts this spec into mutant schemata (#2635). Off unless set:
@@ -232,6 +235,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "muhar: spec.test (the suite command) is required")
 		os.Exit(1)
 	}
+	if _, err := s.Timeout.policy(); err != nil {
+		fmt.Fprintf(os.Stderr, "muhar: %v\n", err)
+		os.Exit(1)
+	}
 	if s.Control.Name == "" || s.Control.Old == "" {
 		fmt.Fprintln(os.Stderr, "muhar: spec.control is required (a mutation the suite MUST catch) — a harness with no failing control is a green light with no bulb (#34)")
 		os.Exit(1)
@@ -275,37 +282,32 @@ func main() {
 		os.Exit(1)
 	}
 	defer func() { _ = os.RemoveAll(gocache) }()
-	// An interrupt mid-run must not strand the cache either.
+	// An interrupt mid-run must not strand the cache either. Every suite and
+	// build runs in its own process group, which a terminal Ctrl-C does not
+	// reach, so kill those groups first: an interrupted run leaves no suite
+	// running behind it.
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sig
+		liveGroups.killAll()
 		_ = os.RemoveAll(gocache)
 		selectTemps.removeAll() // -select's coverage binaries, if a pass is running
 		os.Exit(130)
 	}()
 
+	runEnv := envWithGOCACHE(os.Environ(), gocache)
 	h := &Harness{
 		Root:      s.Root,
 		Control:   s.Control,
 		Mutations: s.Mutations,
 		Jobs:      n,
-		Test: func(root string) bool {
-			// s.Test is an operator-authored suite command from the spec file
-			// (e.g. "go test ./... && ./verify.sh") — it legitimately needs a
-			// shell for pipes/&&, and the spec author already controls the box
-			// this runs on. It is configuration, not end-user input, so `sh -c`
-			// is the intended execution path, not an injection surface.
-			cmd := exec.Command("sh", "-c", s.Test) //nolint:gosec // operator-supplied suite command, by design
-
-			if root != "" {
-				cmd.Dir = root
-			}
-			cmd.Env = envWithGOCACHE(os.Environ(), gocache)
-			cmd.Stdout = os.Stderr // suite chatter goes to stderr; report to stdout
-			cmd.Stderr = os.Stderr
-			// Non-zero exit == suite failed == mutation caught.
-			return cmd.Run() != nil
+		Timeout:   s.Timeout,
+		RunTest: func(root string, timeout time.Duration) CommandResult {
+			return runShell(root, s.Test, runEnv, timeout)
+		},
+		Build: func(root string, m Mutation, timeout time.Duration) CommandResult {
+			return buildMutation(root, m, s.Build, s.Test, runEnv, timeout)
 		},
 	}
 	if *useSelect {
@@ -324,7 +326,9 @@ func main() {
 			c.Env = env
 			c.Stdout = os.Stderr
 			c.Stderr = os.Stderr
-			return c.Run() != nil // non-zero exit == narrowed suite failed == caught
+			return c.Run() != nil // non-zero exit during the pristine selection proof
+		}, func(root string, args []string, timeout time.Duration) CommandResult {
+			return runGoArgs(root, withTimeout(args, timeout), env, timeout)
 		})
 	}
 	// Mutant schemata (#2635), for a spec that opts in: eligible mutants share
@@ -338,17 +342,15 @@ func main() {
 	if s.Schemata && schemataUsable(s.Test, os.Getenv("GOFLAGS"), os.TempDir()) {
 		h.Log = os.Stderr
 		h.SchemaTest = func(root, overlay, selector string) bool {
-			cmd := exec.Command("sh", "-c", s.Test) //nolint:gosec // operator-supplied suite command, by design
-			if root != "" {
-				cmd.Dir = root
-			}
+			out := h.SchemaRun(root, overlay, selector, h.MutationTimeout)
+			return out.Failed || out.TimedOut || out.Err != nil
+		}
+		h.SchemaRun = func(root, overlay, selector string, timeout time.Duration) CommandResult {
 			env := envWithGOCACHE(os.Environ(), gocache)
-			cmd.Env = append(envWithout(env, "GOFLAGS", schemaEnv),
+			env = append(envWithout(env, "GOFLAGS", schemaEnv),
 				"GOFLAGS="+schemaGoflags(os.Getenv("GOFLAGS"), overlay),
 				schemaEnv+"="+selector)
-			cmd.Stdout = os.Stderr
-			cmd.Stderr = os.Stderr
-			return cmd.Run() != nil
+			return runShell(root, s.Test, env, timeout)
 		}
 		h.SchemaBuild = func(root, overlay string, dirs []string) (string, bool) {
 			// -e: report every compile error, so one probe finds every mutant

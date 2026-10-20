@@ -424,3 +424,12 @@ desk scorecards, diagnosis, experiment/follow-up validation and native evidence 
 It does not create a second subject/observation store, queue, identity or adoption authority.
 The public plan owns its bounded implementation; each adopter owns actual cases, permissions,
 budgets and trial decisions. Existing broader continuing-operations scope remains intact.
+
+### Perf-v3 observation compatibility — requested amendment, 19 October 2026
+
+[Attributed local performance](../../performance-attribution-spec.md) supplies optional
+qualified work/agent/role correlation and own-request timing/GraphQL point observations.
+Metric definitions and causal interpretation remain here; aliases and import remain with
+performance-collection. Preserve instrument/profile/coverage cohorts, measured/estimated/
+unknown units and parent/child exclusions. A missing dimension is not a zero-cost operation,
+and observed attribution alone cannot authorize work or demonstrate improved outcomes.

@@ -12,10 +12,11 @@ gate-why: "Report collection, exposure and recurring effect boundaries need acce
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: cba621ef-40f1-44de-ac2f-0ed90323628a
 authored: "2026-10-15 by reporting authoring session"
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - docs/streams/performance-collection/README.md
   - docs/streams/continuing-operations/spec.md
   - docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md
@@ -104,6 +105,17 @@ Named commands below are implementation deliverables. Each must run the named te
 | 5 | check:ci | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./assessment/... -run '^TestRepairOutcomeWindow$' > "$o" && grep -F -- '--- PASS: TestRepairOutcomeWindow ' "$o")` | exit 0; named PASS; merged repair remains awaiting observation; adverse/inconclusive result cannot be labelled improved |
 | 6 | check:ci +flow | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./internal/deskkit/ -run '^TestAutoLaneRefusesPerformanceRepairPR$' > "$o" && grep -F -- '--- PASS: TestAutoLaneRefusesPerformanceRepairPR ' "$o")` | exit 0; named PASS; `AdmitAutoLane` refuses a repair PR that is otherwise admissible (worker-App author, valid trailer, in-area path, risk classifier clear) when it carries only the label, and again when it carries only the body marker, with the perfdata executor and its refusals never consulted; the same PR whose label timeline holds a `performance-repair` application is refused although the label was later removed and the body marker is absent (an unreadable timeline trips `unreadable`); the same PR without either marker and with no such timeline entry is judged by the existing tripwires unchanged |
 | 7 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/09` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+Apply the [perf-v3 contract](../../performance-attribution-spec.md). Existing Tasks/Verify/Evidence and consent/retention controls remain owed.
+
+Compare compatible perf-v3 source/build/workload/profile/coverage cohorts, with own-process
+requests and measured versus estimated/unknown points kept separate. Attribution nominates
+an investigation; it grants no role, execution or merge authority and does not prove causal
+savings. Extend the existing assessment/dedup/no-effect Verify cases with a missing-cost or
+partial-child cohort that must remain inconclusive rather than issue speculative repair.
+Existing bounded proposal budgets, manual gates and auto-lane exclusion remain unchanged.
 
 ## Evidence
 
