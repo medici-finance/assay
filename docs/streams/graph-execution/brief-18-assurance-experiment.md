@@ -2,11 +2,10 @@
 brief: assay:assay:graph-execution:18
 title: Offline graph, advice and assurance integration proof
 why: Independent component tests cannot show that a confident model, a restarted worker or an incomplete audit packet is handled correctly across the whole path. One reproducible fixture suite makes the integration claim reviewable.
-wave: 9
+wave: 12
 depends:
 - graph-execution/05
 - graph-execution/07
-- graph-execution/12
 - graph-execution/14
 - graph-execution/15
 - graph-execution/17
@@ -35,7 +34,7 @@ domain: complicated
 consumers:
 - 'statusgen: fixed-here'
 - 'drainloop: out-of-scope (consumed through completed contracts, no duplicate executor)'
-version: 3
+version: 4
 id: 677d16bd-8d1f-4c11-a92d-4815b1f11991
 ---
 
@@ -83,6 +82,22 @@ Extend the existing integration suite with production controller, internal revie
 
 Implement the named failure/flow case below in the declared test surface. This amendment does not record implementation evidence or authorize live activation.
 
+## Model-disabled verifier qualification — 2026-10-19
+
+The [migration contract](verifier-migration.md) removes /12 from this brief's hard
+prerequisites. Retain every existing advice/calibration-expiry case using fixed synthetic
+observations and fake provider ports. Run with no model assets, API credentials or network
+provider available. Actual classifier performance and activation still require /12; absence
+of those measurements is explicitly unqualified, never treated as calibrated.
+
+Extend the declared integration tests/report with `TestVerifierNoModelJourney` (planned): production
+controller → store → runner/supervisor → assessor → publication boundary; crash/recover at
+admission, dispatch intent, result persistence, decision and publication receipt; duplicate
+result, lost acknowledgment, stale generation, changed contract, assertion failure, human
+wait, cancellation and cleanup hold. A synthetic external provider is injected at its real
+port, not a replacement hand-written workflow. Declare each expected outcome before the run.
+
+
 ## Task
 
 1. Implement GEA-18 integration cases listed in the amendment using real evaluator/coverage/record APIs and a fake external authority. Include confidence-versus-hard-gate, expired calibration, wrong subject, lost ack, stale owner, restore pause, quota and missing control population.
@@ -105,6 +120,7 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 4 | check:ci +flow | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestAssuranceExperimentInterveningChange.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestAssuranceExperimentInterveningChange$" ./... > "$wi_out" && grep -q -- "--- PASS: TestAssuranceExperimentInterveningChange " "$wi_out")` | exit 0; named PASS; dispatch → intervening change → result acceptance holds stale evidence and retains artifacts |
 | 5 | check:ci +mutation | `(cd statusgen && wi_out=$(mktemp "${TMPDIR:-/tmp}/assay-TestAssuranceExperimentCountsFailedWork.XXXXXX") && trap 'rm -f "$wi_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestAssuranceExperimentCountsFailedWork$" ./... > "$wi_out" && grep -q -- "--- PASS: TestAssuranceExperimentCountsFailedWork " "$wi_out")` | exit 0; named PASS; omitted preparation or failed-attempt spend is detected; accepted-work denominator cannot be inflated; mutation: drop failed-attempt spend from the report total — the named test must fail |
 | 6 | check:ci +flow +mutation | `(cd statusgen && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestAssuranceControllerToPublication$" ./... > "$routing_out" && grep -q -- "--- PASS: TestAssuranceControllerToPublication " "$routing_out")` | exit 0; named PASS; injected stale review or omitted failed cost changes integration verdict; mutation: skip the review-freshness check before publication — the named test must fail |
+| 7 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestVerifierNoModelJourney$" ./... > "$out" && grep -Fq -- "--- PASS: TestVerifierNoModelJourney " "$out")` | exit 0; named PASS; the connected journey recovers with no provider and preserves failed/held outcomes; mutation: retry an unknown published effect without reconciliation — the test fails |
 
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.

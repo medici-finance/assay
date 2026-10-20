@@ -24,7 +24,13 @@ func (c *Cell) cacheEnv(env []string) []string {
 	if p == nil {
 		return env
 	}
-	for _, kv := range p.Env() {
+	ambient := ""
+	for _, kv := range env {
+		if k, v, ok := strings.Cut(kv, "="); ok && k == "GOFLAGS" {
+			ambient = v
+		}
+	}
+	for _, kv := range p.WithAmbientGoFlags(ambient).Env() {
 		k, v, _ := strings.Cut(kv, "=")
 		env = envSet(env, k, v)
 	}
@@ -41,6 +47,12 @@ func (c *Cell) printCachePolicy() {
 	}
 }
 
+// cacheAdmission is the launch-path storage gate. It uses cellcache.Admit, not
+// cellcache.Check: a clean launch is cleared by the lock-free pre-check and takes
+// no cache lock and does no walk, so concurrent desk launches do not queue behind
+// one another's full measurement. When the pre-check cannot prove the cache clean
+// (near budget, stale or unreadable estimate, low free space) Admit runs the
+// unchanged locked Check, so a launch is never admitted without it.
 func (c *Cell) cacheAdmission() error {
 	p, err := c.cachePolicy()
 	if err != nil {
@@ -49,7 +61,7 @@ func (c *Cell) cacheAdmission() error {
 	if p == nil {
 		return nil
 	}
-	r, err := cellcache.Check(*p, false)
+	r, err := cellcache.Admit(*p, false)
 	b, _ := json.Marshal(r)
 	fmt.Fprintf(os.Stderr, "storage-admission %s\n", b)
 	return err
@@ -131,6 +143,14 @@ func (c *Cell) maintenanceCachePolicy() (*cellcache.Policy, error) {
 			return c.Env.Get("CELL_GO_CACHE_BYTES")
 		case "CELL_GO_CACHE_MIN_FREE":
 			return c.Env.Get("CELL_GO_CACHE_MIN_FREE")
+		case "CELL_GO_CACHE_BUILD_MAX_AGE":
+			return c.Env.Get("CELL_GO_CACHE_BUILD_MAX_AGE")
+		case "CELL_GO_CACHE_LOW_WATER_PERCENT":
+			return c.Env.Get("CELL_GO_CACHE_LOW_WATER_PERCENT")
+		case "CELL_GO_CACHE_TRIM_MIN_AGE":
+			return c.Env.Get("CELL_GO_CACHE_TRIM_MIN_AGE")
+		case "CELL_GO_TRIMPATH":
+			return c.Env.Get("CELL_GO_TRIMPATH")
 		}
 		return ""
 	})

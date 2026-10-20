@@ -9,12 +9,23 @@
 #
 #   A. EXPLICIT IDENTITY. A background monitor inherits the environment of the
 #      shell that launched it, and desk work routinely exports a role App token
-#      into GH_TOKEN. A private App installation token cannot see the desk's own
-#      private repo set — it 404s every read, byte-indistinguishable from "this
-#      repo has no open PRs" once stderr is discarded. So, exactly as the inbound
-#      monitor does, this one UNSETS GH_TOKEN/GITHUB_TOKEN at the top and polls as
-#      the keyring account. It holds no credential of its own and never writes to
-#      the forge: it only ever shells `gh pr list`.
+#      into GH_TOKEN. An installation token minted for one owner cannot see
+#      another owner's repos — it 404s every read, byte-indistinguishable from
+#      "this repo has no open PRs" once stderr is discarded. And the ambient `gh`
+#      login is no answer either: it is some OTHER identity than the desk's role,
+#      and a monitor that silently reads as it makes the watch's trust model
+#      depend on whoever happens to be logged in. So this one UNSETS
+#      GH_TOKEN/GITHUB_TOKEN at the top (an inherited token is never a read
+#      identity) and, for EACH repo, mints that repo's installation token for the
+#      session's role with `desktoken <role> --repo <owner>/<repo>` INSIDE the
+#      poll (the role comes from $DESK_LOOP). The token file's content is handed
+#      to that single `gh pr list` as `GH_TOKEN=... gh ...` and is never exported,
+#      never printed, never reused for another repo. A mint that fails — no role
+#      for $DESK_LOOP, no `desktoken` on PATH, a refused or unverifiable mint, a
+#      missing/empty token file — is MONITOR-DEGRADED (could-not-check) for THAT
+#      repo, with no `gh` call at all: it never reads as an empty result and
+#      NEVER falls back to the ambient `gh` login. It never writes to the forge:
+#      it only ever shells `gh pr list`.
 #
 #   B. PER-SOURCE STATE WITH RETENTION. State is one file per repo. A repo whose
 #      read FAILS RETAINS its previous lines and emits a MONITOR-DEGRADED line
@@ -52,7 +63,9 @@
 # stubbed `gh`; no test calls the real `gh`.
 #
 # ---------------------------------------------------------------------------
-# A. EXPLICIT IDENTITY — the very first thing, before any `gh` read.
+# A. EXPLICIT IDENTITY — the very first thing, before any `gh` read. This only
+# scrubs what the launching shell carried; the identity a read DOES run under is
+# the per-repo minted role token (mint_for_repo, below), never this environment.
 unset GH_TOKEN GITHUB_TOKEN
 
 set -uo pipefail
@@ -81,8 +94,14 @@ prints one line per change:
     kind ∈ opened | pushed | draft-flip | state | merge-state | closed
 
 It never silently goes blind:
-  · it polls as the keyring account (GH_TOKEN/GITHUB_TOKEN are unset), never as
-    an inherited App token that cannot see the private repo set;
+  · it reads each repo as the session's role App, minting that repo's token with
+    `desktoken <role> --repo <slug>` ($DESK_LOOP names the role) and handing it to
+    that one `gh` call only; an inherited GH_TOKEN/GITHUB_TOKEN is unset and the
+    ambient `gh` login is NEVER used;
+  · a repo whose token cannot be minted (no role for $DESK_LOOP, no `desktoken`,
+    a refused mint, an empty token file) prints
+    `MONITOR-DEGRADED: <slug> token mint FAILED (...)`, makes no read, and keeps
+    its previous state — could-not-check, never an empty result;
   · a repo whose read fails RETAINS its previous state and prints
     `MONITOR-DEGRADED: <slug> ...`;
   · a read that comes back AT the --limit is TRUNCATED (gh gives no truncation
@@ -102,8 +121,12 @@ Environment:
 
 Exit codes:
   0  every repo read cleanly (armed, quiet, or emitted PR-EVENT lines)
-  1  precondition failure — gh/jq missing, no repos resolvable, unusable state dir
-  2  at least one repo went DEGRADED (read failed, truncated, or rate-limited) — state RETAINED
+  1  precondition failure — gh/jq missing, no repos resolvable (or an invalid repo
+     token), unusable state dir. When the repo set cannot be resolved, a
+     `MONITOR-DEGRADED: <reason>` line is printed on STDOUT first (the line the
+     watch filter matches); stderr alone is invisible to it.
+  2  at least one repo went DEGRADED (token mint failed, read failed, truncated, or
+     rate-limited) — state RETAINED
 EOF
 }
 
@@ -124,6 +147,37 @@ for _kv in "LIMIT=$LIMIT" "PACE=$PACE" "MAX_REPOS=$MAX_REPOS"; do
   fi
 done
 
+# origin_to_slug <url> -- reduce a GitHub remote URL to owner/name. Handles every
+# supported github.com form: https/http/git/ssh/git+ssh with
+# an optional user[:password]@ and an optional :port, the scp-style
+# git@github.com:owner/name, a trailing slash and a trailing .git. A URL it does
+# not recognise passes through unchanged so the owner/name validator rejects it
+# loudly (never a silent skip). Pure bash regex: bash 3.2 safe.
+origin_to_slug() {
+  local u="$1" p
+  if [[ "$u" =~ ^(https|http|git|ssh|git\+ssh)://([^/@]*@)?github\.com(:[0-9]+)?/(.*)$ ]]; then
+    p="${BASH_REMATCH[4]}"
+  elif [[ "$u" =~ ^([^/@:]*@)?github\.com:(.*)$ ]]; then
+    p="${BASH_REMATCH[2]}"
+  else
+    p="$u"
+  fi
+  while [[ "$p" == */ ]]; do p="${p%/}"; done
+  p="${p%.git}"
+  printf '%s\n' "$p"
+}
+
+# Display only: remove userinfo even when a malformed URL failed parsing. Keep
+# the scheme and suffix after the last @; no escaped replacement (bash 3.2).
+origin_display() {
+  local u="$1" prefix=""
+  if [[ "$u" == *@* ]]; then
+    if [[ "$u" =~ ^([A-Za-z][A-Za-z0-9+.-]*://) ]]; then prefix="${BASH_REMATCH[1]}"; fi
+    u="$prefix${u##*@}"
+  fi
+  printf '%s' "$u"
+}
+
 resolve_repos() {
   if [[ $# -gt 0 ]]; then
     printf '%s\n' "$@"
@@ -136,8 +190,7 @@ resolve_repos() {
   local origin_url owner_name
   origin_url=$(git remote get-url origin 2>/dev/null || true)
   [[ -z "$origin_url" ]] && return
-  owner_name=$(printf '%s' "$origin_url" \
-    | sed -E 's#^git@github\.com:##; s#^https://github\.com/##; s#\.git$##')
+  owner_name=$(origin_to_slug "$origin_url")
   printf '%s\n' "$owner_name"
 }
 
@@ -150,6 +203,7 @@ while IFS= read -r _line; do
 done < <(resolve_repos "$@")
 
 if [[ -z "${REPOS[*]+x}" || ${#REPOS[@]} -eq 0 ]]; then
+  echo "MONITOR-DEGRADED: no repos to query (no repo args, no ./.assay/repos.txt, and no usable git origin remote)"
   echo "pr-monitor: no repos to query (no repo args, no ./.assay/repos.txt, and no git origin remote found)" >&2
   exit 1
 fi
@@ -158,7 +212,11 @@ fi
 # alphabet, nothing else.
 for _repo in "${REPOS[@]}"; do
   if [[ ! "$_repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
-    echo "pr-monitor: invalid repo '$_repo' (expected owner/name)" >&2
+    # Print the token with any user[:password]@ stripped: stdout is a watch
+    # stream, and an origin URL can carry a credential.
+    _shown="$(origin_display "$_repo")"
+    echo "MONITOR-DEGRADED: invalid repo '$_shown' (expected owner/name)"
+    echo "pr-monitor: invalid repo '$_shown' (expected owner/name)" >&2
     exit 1
   fi
 done
@@ -177,7 +235,8 @@ CURSOR_FILE="$STATE_DIR/.cursor"
 TMP_CUR=$(mktemp)
 TMP_ERR=$(mktemp)
 TMP_EVT=$(mktemp)
-trap 'rm -f "$TMP_CUR" "$TMP_ERR" "$TMP_EVT"' EXIT
+TMP_MINT=$(mktemp)
+trap 'rm -f "$TMP_CUR" "$TMP_ERR" "$TMP_EVT" "$TMP_MINT"' EXIT
 
 # `grep -c` prints "0" AND exits 1 on no match, so `grep -c ... || echo 0` would
 # emit TWO zeros. Count via this helper: exactly one number, "0" for an empty or
@@ -186,6 +245,65 @@ countlines() {
   local n
   n=$(grep -c . "$1" 2>/dev/null)
   printf '%s' "${n:-0}"
+}
+
+# ---- A. the read identity: a per-repo minted role token ---------------------
+# The App role this session acts as, from its loop identity ($DESK_LOOP). The
+# table is the compiled loop-to-role one (see "Forge CLI as the role" in the desk
+# shell reference); a loop that carries no role — or an unset $DESK_LOOP — leaves
+# ROLE empty, which degrades EVERY repo (below): the monitor never guesses an
+# identity and never substitutes the ambient `gh` login for one.
+ROLE=""
+ROLE_WHY="DESK_LOOP is unset - no App role to mint a read token as"
+if [[ -n "${DESK_LOOP:-}" ]]; then
+  case "$DESK_LOOP" in
+    the-desk)                  ROLE="desk" ;;
+    worker-desk|batch-fanout)  ROLE="worker" ;;
+    pr-review-desk)            ROLE="reviewer" ;;
+    verify-desk)               ROLE="verifier" ;;
+    intake-desk|issue-loop)    ROLE="issue-loop" ;;
+    *) ROLE_WHY="DESK_LOOP '$(printf '%s' "$DESK_LOOP" | tr -c 'A-Za-z0-9._-' '?' | cut -c1-40)' has no App role to mint a read token as" ;;
+  esac
+fi
+
+# mint_for_repo <owner/name> -- mint that repo's installation token for $ROLE.
+# On success sets MINT_TOK (the token VALUE, read from the custody file `desktoken`
+# named exactly once and whitespace-stripped) and returns 0. On
+# ANY failure sets MINT_WHY (one short line, the token never in it) and returns 1;
+# the caller then makes no `gh` call for the repo. A mint that "succeeds" with no
+# usable token is a failure too: an empty GH_TOKEN makes `gh` fall back to the
+# host's stored login, which is exactly the ambient identity this refuses.
+#
+# The file is read ONCE, here, and the caller passes this very value to `gh`: the
+# cache is rewritten in place by every concurrent mint for the role, so a second
+# read at the call site (after the pacing sleep) could see it truncated and hand
+# `gh` an empty GH_TOKEN that nothing checked.
+MINT_TOK=""
+MINT_WHY=""
+mint_for_repo() {
+  local repo="$1" out rc tok
+  MINT_TOK=""; MINT_WHY=""
+  if [[ -z "$ROLE" ]]; then MINT_WHY="$ROLE_WHY"; return 1; fi
+  if ! command -v desktoken >/dev/null 2>&1; then
+    MINT_WHY="desktoken not found on PATH"; return 1
+  fi
+  # ASSAY_CONFIG_ECHO=full: the minter prints its effective-config preamble on stderr,
+  # which this captures and mostly discards; "full" keeps that echo stateless so no
+  # digest is recorded as seen that nobody saw. The diagnosis is the LAST stderr line.
+  out=$(ASSAY_CONFIG_ECHO=full desktoken "$ROLE" --repo "$repo" 2>"$TMP_MINT"); rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    MINT_WHY="desktoken $ROLE exited $rc: $(grep . "$TMP_MINT" | tail -n 1 | cut -c1-200)"
+    return 1
+  fi
+  out=$(printf '%s\n' "$out" | tail -n 1)
+  if [[ -z "$out" || ! -f "$out" ]]; then
+    MINT_WHY="desktoken $ROLE named no token file"; return 1
+  fi
+  if ! tok=$(tr -d '[:space:]' < "$out" 2>/dev/null) || [[ -z "$tok" ]]; then
+    MINT_WHY="desktoken $ROLE's token file is empty or unreadable"; return 1
+  fi
+  MINT_TOK="$tok"
+  return 0
 }
 
 # The secondary-rate-limit / 429 signature, read from the captured gh stderr.
@@ -241,24 +359,41 @@ while [[ "$idx" -lt "$proc_n" ]]; do
   repo="${PROC[$idx]}"
   sf=$(statefile "$repo")
 
-  # PACING: sleep between consecutive reads, never before the first read and
-  # never around a repo that makes no call.
-  if [[ "$read_done" -gt 0 && "$PACE" -gt 0 ]]; then
-    sleep "$PACE"
+  # ---- A. mint this repo's read token BEFORE any pacing sleep: a repo that
+  # cannot be read makes no call, so it is never paced around and never counts
+  # as a read. A failed mint is a failed read for THIS repo only: no `gh` call,
+  # and the captured-stderr file is emptied so a stale rate-limit signature from
+  # an earlier repo cannot be mistaken for this one's.
+  mint_failed=0
+  if ! mint_for_repo "$repo"; then
+    mint_failed=1
+    : > "$TMP_ERR"
   fi
 
-  # Poll. `if hits=$(...)` keeps `set -e`-free status inspection; gh's own
-  # diagnostics are captured, never discarded.
-  if hits=$(gh pr list --repo "$repo" --state open --limit "$LIMIT" \
-      --json number,headRefOid,isDraft,state,mergeStateStatus 2>"$TMP_ERR"); then
-    read_ok=1
-  else
+  if [[ "$mint_failed" -eq 1 ]]; then
     read_ok=0
+    hits=""
+  else
+    # PACING: sleep between consecutive reads, never before the first read and
+    # never around a repo that makes no call.
+    if [[ "$read_done" -gt 0 && "$PACE" -gt 0 ]]; then
+      sleep "$PACE"
+    fi
+
+    # Poll. The token is handed to this one `gh` as its GH_TOKEN and is never
+    # exported. `if hits=$(...)` keeps `set -e`-free status inspection; gh's own
+    # diagnostics are captured, never discarded.
+    if hits=$(GH_TOKEN="$MINT_TOK" gh pr list --repo "$repo" --state open --limit "$LIMIT" \
+        --json number,headRefOid,isDraft,state,mergeStateStatus 2>"$TMP_ERR"); then
+      read_ok=1
+    else
+      read_ok=0
+    fi
+    read_done=$((read_done + 1))
   fi
-  read_done=$((read_done + 1))
 
   # ---- C. stop-on-limit -------------------------------------------------
-  if [[ "$read_ok" -eq 0 ]] && is_ratelimit; then
+  if [[ "$read_ok" -eq 0 && "$mint_failed" -eq 0 ]] && is_ratelimit; then
     # The tripped repo and every repo after it in this cycle degrade WITHOUT a
     # further call. Retain each baseline; end the cycle here.
     degraded=1
@@ -302,6 +437,10 @@ while [[ "$idx" -lt "$proc_n" ]]; do
     elif [[ "$read_ok" -eq 1 ]]; then
       cp "$TMP_CUR" "$sf"
       armed_total=$((armed_total + 1))
+    elif [[ "$mint_failed" -eq 1 ]]; then
+      degraded=1
+      printf 'MONITOR-DEGRADED: %s token mint FAILED (%s) — could-not-check, no baseline established, will retry next cycle\n' \
+        "$repo" "$MINT_WHY"
     else
       degraded=1
       printf 'MONITOR-DEGRADED: %s seed read FAILED (gh: %s) — no baseline established, will retry next cycle\n' \
@@ -312,6 +451,16 @@ while [[ "$idx" -lt "$proc_n" ]]; do
   fi
 
   prev_n=$(countlines "$sf")
+
+  if [[ "$mint_failed" -eq 1 ]]; then
+    # No read identity for this repo — RETAIN the previous baseline, go loud. The
+    # repo is neither empty nor unchanged: it is could-not-check.
+    degraded=1
+    printf 'MONITOR-DEGRADED: %s token mint FAILED (%s) — could-not-check, keeping its previous %s PR(s)\n' \
+      "$repo" "$MINT_WHY" "$prev_n"
+    idx=$((idx + 1))
+    continue
+  fi
 
   if [[ "$read_ok" -eq 0 ]]; then
     # Read FAILED (not a rate limit) — RETAIN the previous baseline, go loud.

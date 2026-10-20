@@ -54,6 +54,9 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 		"BASH_ENV": "",
 		"ENV":      "",
 	}
+	// Resolve from cell configuration even when the invoking shell differs. Only the
+	// normalized non-secret opt-in crosses argv; never copy arbitrary config values.
+	values[envAssayTelemetry] = c.telemetryValue()
 	// Record the operator context only when capture found an operator-side
 	// resource. From an already cell-scoped parent it stays unset, and the house
 	// check then refuses the cell link compared with itself.
@@ -62,7 +65,7 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 	}
 	// Forward only named non-secret launch context. Values are config overrides
 	// on argv, so copying the entire environment here would disclose credentials.
-	for _, key := range []string{"CLAUDE_CONFIG_DIR", "GOCACHE", "GOMODCACHE", "GOPATH", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION"} {
+	for _, key := range []string{"CLAUDE_CONFIG_DIR", "GOCACHE", "GOMODCACHE", "GOPATH", "GOFLAGS", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION"} {
 		for _, kv := range env {
 			k, value, ok := strings.Cut(kv, "=")
 			if ok && strings.EqualFold(k, key) {
@@ -107,7 +110,14 @@ func codexRolePrompt(role, goos, bash string) string {
 		prompt += "\nUse the native Windows command shell with profile loading disabled; do not require Bash, zsh, or WSL."
 	}
 	prompt += "\nEvery deskdispatch that will post a model-attested result must include --model with the actual selected worker model. Check the dispatch receipt for a successful model stamp before spending work on that dispatch; a skipped stamp is not a successful review admission."
-	return prompt
+	return codexSupervisionPrompt(prompt)
+}
+
+// Both host and scrubbed launches use the same reminder without changing their
+// shell/environment composition or native Goal admission.
+func codexSupervisionPrompt(prompt string) string {
+	return prompt + `
+Apply the loaded desk-common supervision/context procedure and Codex binding: react to child results, actionable messages and due role checks. Block on existing child/command handles until the next required check, using the longest wait permitted by the exposed tool and harness instructions; do not impose a 60-second polling cap. After an early timeout, re-arm the wait without agent inventories, log rereads or progress pings. Keep one non-model owner for routine CI watching; retain independent final readbacks. If efficient waiting is unavailable, report the gap and use only the existing operator-selected outer cadence after a clean handoff; do not simulate a monitor with repeated Goal turns or silently change launch mode. Keep the turn open while waiting for in-flight work instead of ending it just to trigger another Goal turn. Continue from instructions already in context; reload missing or changed instructions after compaction or source changes. For each new item use a fresh child context (fork_turns="none" when supported), passing the admitted assignment/packet paths and required instructions explicitly; reserve child reuse for the same item and lane. Preserve prior findings, refusals, claims, human holds, independent reviews, stop checks and required freshness checks.`
 }
 
 func codexBashPath() (string, error) {
@@ -129,6 +139,7 @@ func codexStandingPrompt(role, prompt string) string {
 	return fmt.Sprintf(`Before invoking the desk skill, establish its native Codex Goal. The user explicitly requests this standing objective: %q
 Call get_goal first. Only if no Goal exists, call create_goal with that exact objective and omit token_budget, then call get_goal again. Verify the returned objective and active status; report the actual readback, not a promise to continue. If a Goal already exists, preserve its objective, status, budget, and usage: do not replace, reset, resume, or reactivate it. Continue this bootstrap only if the existing Goal is active and has the exact requested objective; otherwise report the existing state and wait for user direction before starting the desk.
 If native Goal tools are unavailable, creation fails, or readback cannot confirm the active objective, report could-not-check: standing Goal not established, and wait for user direction. Do not substitute a prose promise or a headless loop.
+An inactive Goal gates standing desk continuation, not separately authorized corrective work. When the user asks to correct a problem and resume, complete the authorized correction first, then call get_goal again; do not ask for the same correction permission twice. Keep stop flags, guard refusals, approvals, isolation and protected-action boundaries authoritative. A plain-language resume request is authorization, not evidence that native status changed. If readback is still inactive and no native resume tool is available, give the user the exact /goal resume control and explain that the available Goal tools cannot reactivate it. Do not call update_goal with an unsupported active status, recreate the Goal, or claim resumption before matching active readback.
 Once verified, invoke the skill below. A completed batch, ordinary final response, or empty queue does not complete this standing objective. Continue authorized desk work across native Goal turns, using the skill's idle and stop rules. Human steering, pause/clear, stop flags, approvals, and protected-action boundaries remain authoritative; do not resume or recreate a Goal after the user pauses or clears it. Native continuation is not a durable timer or a guarantee of permanent service.
 %s`, objective, prompt)
 }

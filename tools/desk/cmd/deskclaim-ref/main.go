@@ -31,8 +31,10 @@
 //
 // CLAIM STORE. Which store holds the claims is deskkit.ResolveClaimStore's answer, read from the
 // roster (ASSAY_CLAIM_STORE) — no flag selects one. The forge transport above is the forge-ref
-// store: what an UNSET key resolves to for one release window, under a removal NOTICE. A
-// configured store that cannot be used is exit 6 and never falls back to the forge store.
+// store: what an UNSET key resolves to for one release window, under a removal NOTICE, and what a
+// VALID key naming a store this build does not ship resolves to, under a NOTICE naming that store
+// (medici-finance/assay#2753). A shipped store that cannot be used is exit 6 and never falls back
+// to the forge store.
 //
 // VERBS (identical to the script):
 //
@@ -57,6 +59,11 @@
 //	0 ok/acquired · 5 refused (a live holder owns it — do NOT proceed) · 6 unverifiable
 //
 // 6 is the fail-closed code: a claim we could not read or write is NEVER "assume free".
+//
+// `list` alone adds 7, PARTIAL BLINDNESS (outside the deskkit refusal classes, like loopengine's
+// tool-local 7): every readable claim is printed and every unreadable ref is named on stderr as
+// could-not-check with its own cause. 7 is never a pass — the listing is incomplete — and when no
+// ref at all could be read the verb is 6, not 7. The tool never deletes or repairs a bad ref.
 //
 // SCOPE NOTE — the `refs/dispatch/*` namespace this port speaks matches the bash script it
 // ports (and the transition requirement that a Go and a bash dispatcher collide on the same
@@ -101,8 +108,13 @@ progress  advance an acquired claim to state=dispatched (TTL 20m -> 120m).
 release   delete the claim ref (branch-as-claim takes over). A missing claim is a no-op.
 steal     forcibly take the claim, recording --reason in the replacement — an auditable
           takeover, not a hand-delete.
-show      print the claim's holder/state/branch/age, or FREE.
-list      show every dispatch claim in the repo.
+show      print the claim's holder/state/branch/age, or FREE. A claim still at state=claimed
+          past CLAIMED_TTL_MIN (default 20m) carries a trailing PREPARED-NOT-LAUNCHED note:
+          its dispatch was prepared and never progressed, so no agent is known to run behind it.
+list      show every dispatch claim in the repo, with the same note. A claim ref that cannot
+          be read is named on stderr as could-not-check (ref + cause) and the rest are still
+          listed; that partial listing exits 7. Removing or repairing a bad ref is a
+          maintainer act — this tool never deletes it.
 
 CLAIM STORE. Where the claims are kept is resolved from the roster, never chosen here — no
 flag selects a store. Roster keys:
@@ -110,17 +122,21 @@ flag selects a store. Roster keys:
   ` + deskkit.EnvClaimDir + `          the ` + deskkit.ClaimStoreFile + ` store's directory (absolute; default <config home>/dispatch-claims)
   ` + deskkit.EnvClaimSingleHost + `  yes — the declaration that this cell dispatches from this host only
 An unknown value — ` + deskkit.ClaimStoreForgeRef + ` included — is refused (exit 6) printing the two valid
-values, and a configured store that cannot be used is refused (exit 6), never replaced by
+values, and a shipped store that cannot be used is refused (exit 6), never replaced by
 another. The ` + deskkit.ClaimStoreFile + ` and ` + deskkit.ClaimStoreService + ` stores are not shipped in this build yet: setting either
-is refused naming the release that ships it. Unset, claims resolve to the legacy ` + deskkit.ClaimStoreForgeRef + `
-store, and every run prints:
+is accepted and ignored until the release that ships it — claims stay in the legacy
+` + deskkit.ClaimStoreForgeRef + ` store and every run prints a NOTICE naming the configured store and that
+release. Unset, claims resolve to the legacy ` + deskkit.ClaimStoreForgeRef + ` store, and every run prints:
   ` + deskkit.ClaimStoreLegacyNotice + `
 
 Exit codes (deskkit contract): 0 ok/acquired · 5 refused (a live holder owns it) ·
-6 unverifiable (a claim we could not read or write — NEVER "assume free").`
+6 unverifiable (a claim we could not read or write — NEVER "assume free") ·
+7 partial (list only: some claims listed, some refs unreadable — incomplete, never idle).`
 
 func main() {
-	os.Exit(run(os.Args[1:]))
+	os.Exit(deskkit.PerfRun("deskclaim-ref", nil, os.Args[1:], func([]string) int {
+		return run(os.Args[1:])
+	}))
 }
 
 func run(args []string) int {

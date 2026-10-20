@@ -171,7 +171,7 @@ func TestDispatchRecordWrittenAtModelStamp(t *testing.T) {
 				t.Errorf("--tier %q recorded tier %s, want %q", tc.in, sv(r.Tier), tc.want)
 			}
 			// The prompt reads the same canonical tier: a strong spelling carries the hand-back clause.
-			prompt, err := os.ReadFile(pf)
+			prompt, err := os.ReadFile(emittedPathFor(pf))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -245,7 +245,7 @@ func TestDispatchRecordWrittenAtModelStamp(t *testing.T) {
 		brief := plantRecordBrief(t, root)
 		_ = captureStdout(t, func() {
 			if rc := run([]string{"example-stream/28", "--root", root, "--repo", allowedRepo, "--brief", brief,
-				"--dry-run", "--prompt-file", filepath.Join(t.TempDir(), "p.md")}); rc != deskkit.ExitOK {
+				"--tier", "strong", "--dry-run", "--prompt-file", filepath.Join(t.TempDir(), "p.md")}); rc != deskkit.ExitOK {
 				t.Fatalf("dry-run rc = %d, want 0", rc)
 			}
 		})
@@ -468,7 +468,7 @@ func TestDispatchRecordFailureNeverFailsDispatch(t *testing.T) {
 	if !strings.Contains(errOut, "deskdispatch: WARNING: could not write dispatch record: ") {
 		t.Errorf("no record-write WARNING on stderr:\n%s", errOut)
 	}
-	if _, err := os.Stat(pf); err != nil {
+	if _, err := os.Stat(emittedPathFor(pf)); err != nil {
 		t.Errorf("the prompt was not emitted: %v", err)
 	}
 	if s.ran("dispatch-claim.sh release") {

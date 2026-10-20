@@ -19,7 +19,10 @@
 #   P  PIN — manifest → pin file: absent line appended; identical line untouched; scaffold
 #      placeholder replaced; a DIFFERENT real line refused with the file byte-identical; the
 #      bare `statusgen` line filled from the manifest's linux-amd64 line by name (any
-#      --platform), and refused when the manifest has none.
+#      --platform), and refused when the manifest has none; a write with no `assay` line
+#      records `assay <tag>` before the first data line when the tag is a bare vX.Y.Z and every
+#      line pins it, and never on a non-bare tag, an off-tag line, an existing umbrella line,
+#      or an untouched file.
 #   C  CLASSIFY — fresh / partial / adopted; adopted refuses (the refuse-not-clobber property).
 #   R  REHEARSE — the whole flow against a GitLab-remote target with no forge CLI on PATH,
 #      using a stub statusgen: exit 0, the real target untouched; an adopted target refuses
@@ -182,7 +185,7 @@ case_dir() { local d="$TMP/case-$1"; mkdir -p "$d"; printf '%s' "$d"; }
 
 d=$(case_dir A1)
 pins "$SG_ASSET $TAG $GOOD" "$d/pins"
-if env -i PATH="$NOCLI" bash -c 'command -v gh; command -v glab' | grep -q .; then
+if [ -n "$(env -i PATH="$NOCLI" bash -c 'command -v gh; command -v glab')" ]; then
   no "A0 the no-CLI PATH really has no gh/glab" "command -v found one"
 else
   ok "A0 the no-CLI PATH really has no gh/glab"
@@ -381,7 +384,7 @@ if ! grep -q '^statusgen  *REPLACE_WITH_TAG' "$d/pins"; then
 else
   runp "$NOCLI" "$d/r" pin --manifest "$MAN3" --pins "$d/pins"; rc=$?
   ntags=$(awk '$0 !~ /^[[:space:]]*#/ && NF {print $2}' "$d/pins" | sort -u | wc -l | tr -d ' ')
-  if [ "$rc" -eq 0 ] && ! grep -v '^[[:space:]]*#' "$d/pins" | grep -q REPLACE_WITH \
+  if [ "$rc" -eq 0 ] && [ "$(grep -v '^[[:space:]]*#' "$d/pins" | grep -c REPLACE_WITH)" = 0 ] \
      && grep -qx "statusgen $TAG $LSHA" "$d/pins" && grep -qx "$SG_ASSET $TAG $GOOD" "$d/pins" && [ "$ntags" = 1 ]; then
     ok "P5 init's four-line placeholder is filled whole (every platform line + the bare line from linux-amd64, one tag)"
   else
@@ -425,6 +428,72 @@ if [ "$rc" -eq 5 ] && cmp -s "$d/pins" "$d/pins.before" && grep -q 'statusgen-li
   ok "P8 no statusgen-linux-amd64 in the manifest: the bare line refuses, naming it, file untouched"
 else
   no "P8 a bare line without a linux-amd64 manifest line refuses" "rc=$rc err=$(tr '\n' '|' < "$d/r.err")"
+fi
+
+# P9-P15 — the umbrella line. A write into a file with no `assay` line records the release
+# the pins come from, so the version marker reads known instead of could-not-determine.
+MAN9="$TMP/manifest9.yaml"; UTAG="v9.9.9"
+printf 'statusgen:\n  release_home: %s\n  tag: %s\n  platforms:\n    darwin-arm64: statusgen-darwin-arm64 %s %s\n    darwin-amd64: statusgen-darwin-amd64 %s %s\n    linux-amd64: statusgen-linux-amd64 %s %s\n' \
+  "$HOME_REPO" "$UTAG" "$UTAG" "$D1" "$UTAG" "$D2" "$UTAG" "$D6" > "$MAN9"
+first_data() { awk '$0 !~ /^[[:space:]]*(#|$)/ {print; exit}' "$1"; }
+d=$(case_dir P9)
+runp "$NOCLI" "$d/r" pin --manifest "$MAN9" --pins "$d/pins" --platform darwin-arm64; rc=$?
+if [ "$rc" -eq 0 ] && [ "$(first_data "$d/pins")" = "assay $UTAG" ] && [ "$(grep -c '^assay ' "$d/pins")" = 1 ] \
+   && grep -qx "statusgen-darwin-arm64 $UTAG $D1" "$d/pins" && grep -q "recorded the umbrella line: assay $UTAG" "$d/r.out"; then
+  ok "P9 a fresh pin on a bare-tag manifest records the umbrella line"
+else
+  no "P9 a fresh pin records the umbrella line" "rc=$rc pins=$(tr '\n' '|' < "$d/pins" 2>/dev/null) out=$(tr '\n' '|' < "$d/r.out")"
+fi
+d=$(case_dir P10)
+init_placeholder "$d/pins"
+runp "$NOCLI" "$d/r" pin --manifest "$MAN9" --pins "$d/pins" --platform darwin-arm64; rc=$?
+if [ "$rc" -eq 0 ] && [ "$(first_data "$d/pins")" = "assay $UTAG" ] && [ "$(grep -c '^assay ' "$d/pins")" = 1 ] \
+   && grep -qx "statusgen $UTAG $D6" "$d/pins" && [ "$(grep -v '^[[:space:]]*#' "$d/pins" | grep -c REPLACE_WITH)" = 0 ]; then
+  ok "P10 init's placeholder filled on a bare tag gains the umbrella line before its first data line"
+else
+  no "P10 init's placeholder gains the umbrella line" "rc=$rc pins=$(grep -v '^#' "$d/pins" | tr '\n' '|') err=$(tr '\n' '|' < "$d/r.err")"
+fi
+d=$(case_dir P11)
+printf 'assay v9.9.8\nstatusgen-darwin-arm64 REPLACE_WITH_TAG REPLACE_WITH_SHA256\n' > "$d/pins"
+runp "$NOCLI" "$d/r" pin --manifest "$MAN9" --pins "$d/pins" --platform darwin-arm64; rc=$?
+if [ "$rc" -eq 0 ] && [ "$(grep -c '^assay ' "$d/pins")" = 1 ] && grep -qx 'assay v9.9.8' "$d/pins" \
+   && grep -qx "statusgen-darwin-arm64 $UTAG $D1" "$d/pins"; then
+  ok "P11 an existing umbrella line is left untouched on a write"
+else
+  no "P11 an existing umbrella line is left untouched" "rc=$rc pins=$(tr '\n' '|' < "$d/pins")"
+fi
+d=$(case_dir P12)
+printf 'statusgen-darwin-arm64 %s %s\n' "$UTAG" "$D1" > "$d/pins"; cp "$d/pins" "$d/pins.before"
+runp "$NOCLI" "$d/r" pin --manifest "$MAN9" --pins "$d/pins" --platform darwin-arm64; rc=$?
+if [ "$rc" -eq 0 ] && cmp -s "$d/pins" "$d/pins.before" && grep -q "already pinned, left untouched" "$d/r.out"; then
+  ok "P12 nothing to change: the file stays byte-identical (no umbrella line added)"
+else
+  no "P12 an untouched file stays byte-identical" "rc=$rc pins=$(tr '\n' '|' < "$d/pins")"
+fi
+d=$(case_dir P13)
+printf 'desk-tools-linux-amd64 v9.9.8 %s\n' "$DT_SHA" > "$d/pins"
+runp "$NOCLI" "$d/r" pin --manifest "$MAN9" --pins "$d/pins" --platform darwin-arm64; rc=$?
+if [ "$rc" -eq 0 ] && ! grep -q '^assay ' "$d/pins" && grep -qx "statusgen-darwin-arm64 $UTAG $D1" "$d/pins" \
+   && grep -q "no umbrella line recorded: desk-tools-linux-amd64" "$d/r.out"; then
+  ok "P13 a line on another tag blocks the umbrella line, and the reason is printed"
+else
+  no "P13 an off-tag line blocks the umbrella line" "rc=$rc pins=$(tr '\n' '|' < "$d/pins") out=$(tr '\n' '|' < "$d/r.out")"
+fi
+if ! grep -q '^assay ' "$TMP/case-P1/pins" && ! grep -q '^assay ' "$TMP/case-P3/pins"; then
+  ok "P14 a non-bare manifest tag ($TAG) never records an umbrella line"
+else
+  no "P14 a non-bare tag records no umbrella line" "P1=$(tr '\n' '|' < "$TMP/case-P1/pins")"
+fi
+# P15 — the common re-install: the umbrella line is already on the manifest's tag, so the
+# insert's guard is the only thing standing between a write and a duplicate `assay` line.
+d=$(case_dir P15)
+printf 'assay %s\nstatusgen-darwin-arm64 REPLACE_WITH_TAG REPLACE_WITH_SHA256\n' "$UTAG" > "$d/pins"
+runp "$NOCLI" "$d/r" pin --manifest "$MAN9" --pins "$d/pins" --platform darwin-arm64; rc=$?
+if [ "$rc" -eq 0 ] && [ "$(grep -c '^assay ' "$d/pins")" = 1 ] && grep -qx "assay $UTAG" "$d/pins" \
+   && grep -qx "statusgen-darwin-arm64 $UTAG $D1" "$d/pins"; then
+  ok "P15 an existing umbrella line on the manifest's tag stays the only one after a write"
+else
+  no "P15 an on-tag umbrella line is not duplicated" "rc=$rc pins=$(tr '\n' '|' < "$d/pins")"
 fi
 
 # ------------------------------------------------------------------ C classify

@@ -142,70 +142,108 @@ func TestRepairAdmissionDirectDispatch(t *testing.T) {
 
 // ---- Row 2 ------------------------------------------------------------------------------------
 
-// TestRepairAdmissionConcurrentAndCrash: two dispatchers race for the LAST free slot — exactly one
-// is admitted; and a crash at each of the two boundaries (after the lease, after the item claim)
-// leaks no slot and duplicates no worker.
+// TestRepairAdmissionConcurrentAndCrash: dispatchers are separate OS processes sharing one claim
+// store (see repairadmission_proc_test.go). Two race for the LAST free slot and exactly one is
+// admitted; a dispatcher killed at each boundary (holding the lease; after the item claim) leaks
+// no unbounded slot and never yields a second worker for an item.
 func TestRepairAdmissionConcurrentAndCrash(t *testing.T) {
-	restoreAdmission(t)
+	// RACE: width 3, two live claims => one free slot. Both contenders start on one signal and
+	// hold the lease across a widened count -> claim window. Several rounds, fresh store each.
+	contention := 0
+	for round := 0; round < 3; round++ {
+		f := newAdmitFixture(t, 3, "")
+		f.place("assay--busy--1")
+		f.place("assay--busy--2")
+		a, b := fmt.Sprintf("race-%d--a", round), fmt.Sprintf("race-%d--b", round)
+		codes, said, n := f.race(a, b)
+		contention += n
+		wins := 0
+		for i, c := range codes {
+			switch c {
+			case 0:
+				wins++
+			case deskkit.ExitRefused:
+				if !strings.Contains(said[i], "pool full") {
+					t.Errorf("round %d: the loser must be HELD on a full pool, got: %s", round, said[i])
+				}
+			default:
+				t.Errorf("round %d: unexpected dispatcher exit %d: %s", round, c, said[i])
+			}
+		}
+		if wins != 1 {
+			t.Fatalf("round %d: exactly one admission for the last slot, got %d (exits %v)", round, wins, codes)
+		}
+		if got := len(f.items()); got != 3 {
+			t.Fatalf("round %d: the store must hold width=3 item claims, got %d: %v", round, got, f.items())
+		}
+		if f.held(admitLeaseKey) {
+			t.Fatalf("round %d: the admission lease must be released after the race", round)
+		}
+	}
+	if contention == 0 {
+		t.Fatal("no round observed a dispatcher blocked on the held lease — the race never overlapped")
+	}
 
-	// RACE: width 3, occupancy 2 => one free slot; no runnable reserved demand, so both candidates
-	// are eligible fresh. The lease serializes them: the first counts 2 and admits+claims (occ->3),
-	// the second counts 3 and is held (pool full). Exactly one admission.
-	scope := &fakeScope{width: 3, reserve: map[string]int{}, occupancy: 2, demand: map[string]int{}}
-
-	a := &fakeBackend{scope: scope, owner: "A", class: deskkit.AdmissionFresh}
-	useBackend(t, a)
-	relA, errA := enforceAdmission(dispatchOpts{item: "s--1"}, dispatchPlan{}, "medici-finance/assay", claimAuth{})
-	if errA != nil || relA == nil {
-		t.Fatalf("dispatcher A should win the free slot, got err=%v", errA)
+	// CRASH holding the lease, before the item claim.
+	f := newAdmitFixture(t, 3, "")
+	f.place("assay--busy--1")
+	f.crash("crash--c", crashLease)
+	if !f.held(admitLeaseKey) || f.held("crash--c") {
+		t.Fatalf("killed after the lease: want lease held and no item claim, items=%v", f.items())
 	}
-	// While A still holds the lease, B cannot even serialize — the multi-host race the lease stops.
-	b := &fakeBackend{scope: scope, owner: "B", class: deskkit.AdmissionFresh}
-	useBackend(t, b)
-	if _, errB := enforceAdmission(dispatchOpts{item: "s--2"}, dispatchPlan{}, "medici-finance/assay", claimAuth{}); errB == nil || deskkit.ExitCodeOf(errB) != deskkit.ExitUnverifiable {
-		t.Fatalf("B must not proceed while A holds the lease — want could-not-serialize (exit 6), got %v", errB)
+	if code, said := f.run("crash--d"); code != deskkit.ExitUnverifiable || !strings.Contains(said, "holds the serialization lease") {
+		t.Fatalf("while the dead lease is inside its TTL another dispatcher must wait (exit 6), got %d: %s", code, said)
 	}
-	// A finishes: places its claim, releases the lease.
-	scope.placeItemClaim()
-	relA()
-	// Now B retries: the lease is free, but occupancy is 3 (full) => B is held.
-	useBackend(t, b)
-	if _, errB := enforceAdmission(dispatchOpts{item: "s--2"}, dispatchPlan{}, "medici-finance/assay", claimAuth{}); errB == nil || deskkit.ExitCodeOf(errB) != deskkit.ExitRefused {
-		t.Fatalf("B must be HELD once the last slot is taken, want exit 5, got %v", errB)
+	if f.held("crash--d") {
+		t.Fatal("a dispatcher refused at the lease must not have claimed its item")
 	}
-	if scope.admissions != 1 {
-		t.Fatalf("exactly one admission across the race, got %d", scope.admissions)
+	f.age(admitLeaseKey) // the dead dispatcher's lease passes the claim tool's TTL
+	if code, said := f.run("crash--d"); code != 0 {
+		t.Fatalf("the claim tool must reclaim the expired lease and admit, got %d: %s", code, said)
+	}
+	if code, said := f.run("crash--c"); code != 0 {
+		t.Fatalf("the crashed dispatcher's item must still be dispatchable (no slot leaked), got %d: %s", code, said)
+	}
+	if got := len(f.items()); got != 3 || f.held(admitLeaseKey) {
+		t.Fatalf("after recovery: want 3 item claims and no lease, got %v lease=%v", f.items(), f.held(admitLeaseKey))
 	}
 
-	// CRASH after the lease, before the item claim: enforceAdmission admitted and returned a
-	// release, but the dispatcher dies before stepClaim. No item claim was placed => occupancy is
-	// unchanged (no leaked slot); the lease is bounded (a later reclaim frees it) => no permanent
-	// hold. Model the reclaim by clearing the lease as the backend TTL would.
-	crash := &fakeScope{width: 3, reserve: map[string]int{}, occupancy: 1, demand: map[string]int{}}
-	cb := &fakeBackend{scope: crash, owner: "C", class: deskkit.AdmissionFresh}
-	useBackend(t, cb)
-	if _, err := enforceAdmission(dispatchOpts{item: "s--3"}, dispatchPlan{}, "medici-finance/assay", claimAuth{}); err != nil {
-		t.Fatalf("C should be admitted, got %v", err)
+	// CRASH after the item claim, before the lease release. Width 2, empty pool.
+	f = newAdmitFixture(t, 2, "")
+	f.crash("crash--e", crashClaim)
+	if !f.held(admitLeaseKey) || !f.held("crash--e") {
+		t.Fatalf("killed after the item claim: want lease and item claim held, items=%v", f.items())
 	}
-	// ... dispatcher C crashes here (no placeItemClaim, no release) ...
-	if crash.occupancy != 1 {
-		t.Errorf("a crash before the item claim must not increment occupancy — leaked a slot (occ=%d)", crash.occupancy)
+	f.age(admitLeaseKey)
+	// Resuming the SAME item: admitted (a slot is free) but the live item claim refuses it, and the
+	// resumed dispatcher releases the lease it took — never a second worker for crash--e.
+	code, said := f.run("crash--e")
+	if code != deskkit.ExitRefused || !strings.Contains(said, "LIVE holder") {
+		t.Fatalf("resuming a crashed item whose claim is live must be refused (exit 5, LIVE holder), got %d: %s", code, said)
 	}
-	if crash.admissions != 0 {
-		t.Errorf("a crash before the item claim must not count as an admission, got %d", crash.admissions)
+	if f.held(admitLeaseKey) {
+		t.Fatal("a refused item claim must release the admission lease")
 	}
-	crash.leaseHeldBy = "" // the backend TTL reclaims the crashed lease
-	// A fresh dispatcher recovers cleanly into the still-free slot: no duplicate, no leak.
-	rb := &fakeBackend{scope: crash, owner: "R", class: deskkit.AdmissionFresh}
-	useBackend(t, rb)
-	rel, err := enforceAdmission(dispatchOpts{item: "s--3"}, dispatchPlan{}, "medici-finance/assay", claimAuth{})
-	if err != nil || rel == nil {
-		t.Fatalf("recovery after a crashed lease must admit into the still-free slot, got %v", err)
+	// The dead claim counts as occupancy while inside its TTL: one more fills the pool.
+	if code, said := f.run("crash--f"); code != 0 {
+		t.Fatalf("the second slot must admit, got %d: %s", code, said)
 	}
-	crash.placeItemClaim()
-	rel()
-	if crash.occupancy != 2 || crash.admissions != 1 {
-		t.Errorf("recovery must place exactly one claim (occ=%d admissions=%d)", crash.occupancy, crash.admissions)
+	if code, said := f.run("crash--g"); code != deskkit.ExitRefused || !strings.Contains(said, "pool full") {
+		t.Fatalf("with the dead claim inside its TTL the pool is full, got %d: %s", code, said)
+	}
+	// Past its TTL the dead claim stops counting and exactly one resume reclaims it in place.
+	f.age("crash--e")
+	if code, said := f.run("crash--e"); code != 0 {
+		t.Fatalf("resume must reclaim the expired item claim, got %d: %s", code, said)
+	}
+	if code, said := f.run("crash--e"); code != deskkit.ExitRefused {
+		t.Fatalf("a second resume of the same item must be refused, got %d: %s", code, said)
+	}
+	if code, said := f.run("crash--g"); code != deskkit.ExitRefused {
+		t.Fatalf("the reclaimed slot is occupied again; a new item must be held, got %d: %s", code, said)
+	}
+	if got := f.items(); len(got) != 2 {
+		t.Fatalf("the pool must hold exactly width=2 item claims, got %v", got)
 	}
 }
 
@@ -273,88 +311,172 @@ func TestRepairAdmissionUnknownAndExternalWait(t *testing.T) {
 
 // ---- Row 4 ------------------------------------------------------------------------------------
 
-// TestRepairAdmissionFullCycleRestart: a failed verification becomes a claimed repair; review and
-// merge lead to exactly one owed reverification; an independent pass resolves it. At every
-// transition the obligation is written to the sidecar, RE-READ from disk (a restart), and the
-// admission gate is consulted — proving the obligation survives replacement and the repair is
-// admissible only while it is genuinely runnable.
+// repairForge is the repair PR as a forge read reports it. observe renders it as the observation
+// the production observation step (deskkit.ApplyForgeObservation, shared with fanoutloop) consumes.
+type repairForge struct {
+	pr, author, state, mergedSHA string // state: "", open, approved, merged
+}
+
+func (g *repairForge) observe() deskkit.RepairForgeObservation {
+	return deskkit.RepairForgeObservation{
+		ReviewOpened: g.state == "open",
+		Approved:     g.state == "approved",
+		Merged:       g.state == "merged",
+		MergedSHA:    g.mergedSHA,
+		RepairPR:     g.pr,
+		RepairedBy:   g.author,
+	}
+}
+
+// TestRepairAdmissionFullCycleRestart: a failed verification becomes a claimed repair; forge
+// observations of review and merge lead to exactly one owed reverification; an independent pass
+// resolves it. Dispatchers are real processes on a shared claim store (repairadmission_proc_test.go)
+// and the repair sidecar is the only obligation memory. At EVERY state boundary a dispatcher is
+// killed mid-admission and the process state is rebuilt from disk: the obligation survives with
+// one id, replaying the last forge observation changes nothing, and resuming never yields a second
+// worker for the repair.
 func TestRepairAdmissionFullCycleRestart(t *testing.T) {
-	restoreAdmission(t)
-	t.Setenv(deskkit.RootsEnv, "") // single-root fallback: read THIS temp root's sidecar
-	root := t.TempDir()
-	now := time.Date(2026, 9, 20, 1, 0, 0, 0, time.UTC)
+	// Width 4, rework reserve 2, two other live workers: a free slot exists, but only for the repair.
+	f := newAdmitFixture(t, 4, "rework=2")
+	f.place("assay--busy--1")
+	f.place("assay--busy--2")
+	forge := &repairForge{pr: "medici-finance/assay#1400", author: "worker-session-1"}
+	const mergedSHA = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 
 	// A failed verification => a durable, actionable repair obligation (needs-assignment).
-	o := deskkit.NewRepairObligation("medici-finance/assay", "example-stream/17", "wr-9", []int{3},
-		deskkit.BlockerImplementation, "the check reproduces on main", "row 3 passes", "", "2026-09-20T00:00:00Z")
-	origID := o.ID
+	o := deskkit.NewRepairObligation(admitRepo, "example-stream/17", "wr-9", []int{3},
+		deskkit.BlockerImplementation, "the check reproduces on main", "row 3 passes", "",
+		time.Now().UTC().Format(time.RFC3339))
+	id := o.ID
+	repairKey := claimKeyFor(id, admitRepo)
+	writeSidecar(t, f.root, o)
 
-	// assignableAfterRestart writes the log line, re-reads the whole sidecar, reconciles, and returns
-	// whether the (same-id) obligation is assignable now — the "restart preserves the obligation"
-	// check made concrete.
-	assignableAfterRestart := func(rec deskkit.RepairObligation) (deskkit.RepairObligation, bool) {
-		writeSidecar(t, root, rec)
-		be := &claimToolAdmissionBackend{o: dispatchOpts{root: root, item: origID}, now: now}
-		obligs, err := be.reconciledObligations()
-		if err != nil {
-			t.Fatalf("reconcile after restart: %v", err)
+	// boundary kills a dispatcher of the repair item while it holds the admission lease, restarts
+	// from disk, replays the last forge observation, and (resume) re-runs the dispatcher once the
+	// dead lease expires. It returns the restarted obligation.
+	boundary := func(stage, wantState string, resume bool) deskkit.RepairObligation {
+		t.Helper()
+		f.crash(id, crashLease)
+		got := sidecarObligations(t, f.root, id)
+		if got.State != wantState {
+			t.Fatalf("%s: after a dispatcher kill and restart the obligation is %s, want %s", stage, got.State, wantState)
 		}
-		for _, got := range obligs {
-			if got.ID == origID {
-				return got, got.Assignable(now, repairObligationLeaseTTL)
-			}
+		if replayed, changed := deskkit.ApplyForgeObservation(got, forge.observe()); changed {
+			t.Fatalf("%s: replaying the forge observation after restart moved %s -> %s", stage, got.State, replayed.State)
 		}
-		t.Fatalf("the obligation %s did not survive the restart", origID)
-		return deskkit.RepairObligation{}, false
+		f.age(admitLeaseKey)
+		if !resume {
+			return got
+		}
+		code, said := f.run(id)
+		if code != deskkit.ExitRefused || !strings.Contains(said, "LIVE holder") {
+			t.Fatalf("%s: resuming while the repair worker holds the item must be refused (LIVE holder), got %d: %s",
+				stage, code, said)
+		}
+		if f.held(admitLeaseKey) {
+			t.Fatalf("%s: the resumed dispatcher left the admission lease held", stage)
+		}
+		return got
 	}
 
-	// 1) needs-assignment: assignable; a fresh dispatch is HELD while the repair is runnable, the
-	//    repair is admitted.
-	got, ok := assignableAfterRestart(o)
+	// advance applies the current forge observation through the production observation step and records
+	// the result in the append-only sidecar.
+	advance := func(stage, wantState string) {
+		t.Helper()
+		next, changed := deskkit.ApplyForgeObservation(sidecarObligations(t, f.root, id), forge.observe())
+		if !changed || next.State != wantState {
+			t.Fatalf("%s: forge observation gave %s (changed=%v), want %s", stage, next.State, changed, wantState)
+		}
+		writeSidecar(t, f.root, next)
+	}
+
+	// 1) needs-assignment. A fresh dispatch is HELD: the last free slots are reserved for the
+	//    runnable repair, which the hold names.
+	if code, said := f.run("assay--fresh--1"); code != deskkit.ExitRefused || !strings.Contains(said, "example-stream/17") {
+		t.Fatalf("fresh must be held while the repair is runnable, got %d: %s", code, said)
+	}
+	// Kill a repair dispatcher holding the lease: nothing durable changed, the obligation is intact.
+	f.crash(id, crashLease)
+	if f.held(repairKey) {
+		t.Fatal("a dispatcher killed before its item claim must leave no claim")
+	}
+	if got := sidecarObligations(t, f.root, id); got.State != deskkit.RepairNeedsAssignment {
+		t.Fatalf("restart after a lease kill: %s, want needs-assignment", got.State)
+	}
+	f.age(admitLeaseKey)
+	// Kill the next one after its item claim, before the lease release.
+	f.crash(id, crashClaim)
+	if !f.held(repairKey) {
+		t.Fatal("the dispatcher killed after its item claim must have placed the claim")
+	}
+	f.age(admitLeaseKey)
+	if code, said := f.run(id); code != deskkit.ExitRefused || !strings.Contains(said, "LIVE holder") {
+		t.Fatalf("resuming while the dead dispatcher's item claim is live must be refused, got %d: %s", code, said)
+	}
+	// Past its TTL the dead claim is reclaimed by exactly one resume: the repair worker.
+	f.age(repairKey)
+	if code, said := f.run(id); code != 0 {
+		t.Fatalf("resume must reclaim the expired repair claim and admit the repair, got %d: %s", code, said)
+	}
+	if code, _ := f.run(id); code == 0 {
+		t.Fatal("a second dispatch of the claimed repair must not be admitted")
+	}
+
+	// 2) repairing: the worker takes the obligation lease.
+	writeSidecar(t, f.root, sidecarObligations(t, f.root, id).Claim("worker-session-1", time.Now()))
+	got := boundary("repairing", deskkit.RepairRepairing, true)
+	be := &claimToolAdmissionBackend{o: dispatchOpts{root: f.root, item: id}, now: time.Now()}
+	if d, _, _ := be.reservedDemand(); d[string(deskkit.AdmissionRework)] != 0 {
+		t.Errorf("a repair under a live lease is not unmet demand, got %d", d[string(deskkit.AdmissionRework)])
+	}
+	if got.Assignable(time.Now(), repairObligationLeaseTTL) {
+		t.Fatal("a live repairing lease must not be assignable after a restart")
+	}
+
+	// 3) the repair PR opens: awaiting-review.
+	forge.state = "open"
+	advance("review opened", deskkit.RepairAwaitingReview)
+	boundary("awaiting-review", deskkit.RepairAwaitingReview, true)
+
+	// 4) approved: awaiting-merge.
+	forge.state = "approved"
+	advance("approved", deskkit.RepairAwaitingMerge)
+	boundary("awaiting-merge", deskkit.RepairAwaitingMerge, true)
+
+	// 5) merged: one owed reverification — never a resolution.
+	forge.state, forge.mergedSHA = "merged", mergedSHA
+	advance("merged", deskkit.RepairAwaitingReverification)
+	got = boundary("awaiting-reverification", deskkit.RepairAwaitingReverification, true)
+	if got.IsResolved() || got.RepairSHA != mergedSHA {
+		t.Fatalf("a merge must wake reverification at %s without resolving: %+v", mergedSHA, got)
+	}
+	// The repair worker exits; its claim frees the slot. The obligation is not runnable again.
+	if err := deskkit.Release(f.cfg(), repairKey); err != nil {
+		t.Fatal(err)
+	}
+	be = &claimToolAdmissionBackend{o: dispatchOpts{root: f.root, item: id}, now: time.Now()}
+	if class, _ := be.candidateClass(); class != deskkit.AdmissionFresh {
+		t.Errorf("an obligation awaiting reverification is not repair work, resolved class %q", class)
+	}
+
+	// 6) an INDEPENDENT pass at the repaired revision resolves it; the repairing worker cannot.
+	if _, ok, _ := got.Resolve("worker-session-1", mergedSHA); ok {
+		t.Fatal("a same-actor pass must not resolve the obligation")
+	}
+	resolved, ok, reason := got.Resolve("independent-verifier", mergedSHA)
 	if !ok {
-		t.Fatal("a fresh needs-assignment obligation must be assignable")
-	}
-	scope := &fakeScope{width: 3, reserve: map[string]int{"rework": 1}, occupancy: 2,
-		demand: map[string]int{"rework": 1}, waiting: "repair " + got.Brief}
-	useBackend(t, &fakeBackend{scope: scope, owner: "fresh", class: deskkit.AdmissionFresh})
-	if _, err := enforceAdmission(dispatchOpts{item: "other--1"}, dispatchPlan{}, "medici-finance/assay", claimAuth{}); deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
-		t.Fatalf("fresh must be held while the repair is runnable, got %v", err)
-	}
-
-	// 2) claimed (repairing) under a live lease: NOT assignable — the mutual-exclusion the immutable
-	//    id preserves. A merge alone must not resolve it.
-	o = o.Claim("worker-session-1", now)
-	if _, ok := assignableAfterRestart(o); ok {
-		t.Error("a live repairing lease must NOT be assignable after a restart")
-	}
-
-	// 3) review opened, then approved, then MERGED — one owed reverification, still unresolved.
-	o = o.WithRepairPR("medici-finance/assay#1400", "", "worker-session-1")
-	o = o.MarkAwaitingMerge()
-	o = o.MarkRepairMerged("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
-	got, _ = assignableAfterRestart(o)
-	if got.State != deskkit.RepairAwaitingReverification {
-		t.Fatalf("a merged repair must be awaiting-reverification (a merge is not resolution), got %s", got.State)
-	}
-	if got.IsResolved() {
-		t.Fatal("a merge alone must never resolve the obligation")
-	}
-
-	// 4) an INDEPENDENT pass at the repaired revision resolves it — exactly once.
-	resolved, didResolve, reason := got.Resolve("independent-verifier", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef")
-	if !didResolve {
 		t.Fatalf("an independent pass at the repaired revision must resolve: %s", reason)
 	}
-	// A same-actor pass must NOT resolve — self-certification is refused.
-	if _, ok, _ := got.Resolve("worker-session-1", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"); ok {
-		t.Error("a same-actor pass must not resolve the obligation")
-	}
-	final, _ := assignableAfterRestart(resolved)
-	if !final.IsResolved() {
-		t.Fatal("the resolution must survive a restart")
-	}
-	if final.Assignable(now, repairObligationLeaseTTL) {
+	writeSidecar(t, f.root, resolved)
+	// No resume here: the repair worker is gone and the obligation is closed, so a dispatch of the
+	// item would be fresh work under the ordinary floor, not the repair.
+	final := boundary("resolved", deskkit.RepairResolved, false)
+	if final.Assignable(time.Now(), repairObligationLeaseTTL) {
 		t.Error("a resolved obligation must not be re-assignable after a restart")
+	}
+	// Across the whole cycle the sidecar recorded one line per transition for ONE obligation id.
+	if n := sidecarLines(t, f.root); n != 6 {
+		t.Errorf("want 6 sidecar lines (one per transition), got %d", n)
 	}
 }
 
@@ -380,5 +502,21 @@ func writeSidecar(t *testing.T, root string, o deskkit.RepairObligation) {
 	defer f.Close()
 	if _, err := f.Write(append(line, '\n')); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// regression: #2163
+// TestCountLiveSuffixItem: occupancy skips exactly this scope's admission lease. Another claim
+// whose id merely ends in "--admission" (another loop's lease, or an item named that way) is a
+// held claim and is counted — under-counting occupancy would admit past a full pool.
+func TestCountLiveSuffixItem(t *testing.T) {
+	lease := "assay--" + admissionLoop + "--admission"
+	out := strings.Join([]string{
+		"dispatch-claim: HELD " + lease + " — dispatch-claim owner=a state=claimed at=2026-09-20T00:00:00Z age=1m",
+		"dispatch-claim: HELD assay--other-loop--admission — dispatch-claim owner=b state=claimed at=2026-09-20T00:00:00Z age=1m",
+		"dispatch-claim: HELD assay--s--1 — dispatch-claim owner=c state=claimed at=2026-09-20T00:00:00Z age=1m",
+	}, "\n")
+	if n := countLiveClaims(out, lease); n != 2 {
+		t.Fatalf("countLiveClaims = %d, want 2 (only the scope's own lease is excluded)", n)
 	}
 }

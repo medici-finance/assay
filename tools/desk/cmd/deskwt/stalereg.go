@@ -62,7 +62,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -121,7 +120,7 @@ func judgeStaleRegistrations(guard *pathGuard, sc *sweepCtx, cwd string, roots [
 
 		// The CONTENT gate: the admin dir's HEAD survives the lost .git file and is
 		// deleted by the clearing, so it decides whether clearing can strand commits.
-		admin, aerr := guard.adminDirFor(rt)
+		admin, aerr := sc.adminDirFor(guard, rt)
 		if aerr != nil {
 			v.holdReason = "could-not-check: " + errText(aerr)
 		} else {
@@ -144,6 +143,23 @@ func judgeStaleRegistrations(guard *pathGuard, sc *sweepCtx, cwd string, roots [
 // (unreadable, unparseable, an ancestor set the sweep could not build) is a
 // could-not-check hold.
 func staleRegContentHold(sc *sweepCtx, dir, admin string) string {
+	return adminHeadHold(dir, admin, func(head string) string {
+		if sc.mainAncestors == nil {
+			return "could-not-check: detached HEAD, and the sweep could not build the refs/remotes/origin/main ancestor set"
+		}
+		if _, ok := sc.mainAncestors[head]; !ok {
+			return "detached HEAD " + head[:12] + " is not reachable from refs/remotes/origin/main — clearing the registration would strand possibly-unpushed commits"
+		}
+		return ""
+	})
+}
+
+// adminHeadHold is the admin-HEAD content gate shared by the prune sweep (above) and
+// `deskwt remove`'s husk arm (huskremove.go): the branch half is identical for both, and
+// only the proof a DETACHED commit is retained differs, so the caller supplies it.
+// detachedProof receives the full commit id and returns "" when clearing loses nothing,
+// else the hold reason.
+func adminHeadHold(dir, admin string, detachedProof func(head string) string) string {
 	raw, rerr := os.ReadFile(filepath.Join(admin, "HEAD"))
 	if rerr != nil {
 		return "could-not-check: cannot read the admin entry's HEAD: " + errText(rerr)
@@ -162,13 +178,7 @@ func staleRegContentHold(sc *sweepCtx, dir, admin string) string {
 	if !isFullSHA(head) {
 		return "could-not-check: the admin entry's HEAD is neither a branch ref nor a commit id"
 	}
-	if sc.mainAncestors == nil {
-		return "could-not-check: detached HEAD, and the sweep could not build the refs/remotes/origin/main ancestor set"
-	}
-	if _, ok := sc.mainAncestors[head]; !ok {
-		return "detached HEAD " + head[:12] + " is not reachable from refs/remotes/origin/main — clearing the registration would strand possibly-unpushed commits"
-	}
-	return ""
+	return detachedProof(head)
 }
 
 // isFullSHA reports whether s is a full lowercase-or-uppercase hex commit id.
@@ -347,42 +357,7 @@ func staleRegSegment(n int) string {
 // The comparison resolves the pointer the same way lockFileMtimes does, so keys compare
 // equal to the resolved roots the caller iterates.
 func (g *pathGuard) adminDirFor(rt string) (string, error) {
-	if g.commonDir == "" {
-		return "", deskkit.Unverifiable("the shared git-common-dir is not resolved", nil)
-	}
-	adminRoot := filepath.Join(g.commonDir, "worktrees")
-	entries, err := os.ReadDir(adminRoot)
-	if err != nil {
-		return "", deskkit.Unverifiable("cannot read the worktree admin registry", err)
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		admin := filepath.Join(adminRoot, e.Name())
-		gd, rerr := os.ReadFile(filepath.Join(admin, "gitdir"))
-		if rerr != nil {
-			continue
-		}
-		dotGit := strings.TrimSpace(string(gd))
-		if dotGit != "" && resolvePath(filepath.Dir(dotGit)) == rt {
-			return admin, nil
-		}
-	}
-	return "", deskkit.Unverifiable("no admin entry points at "+rt, nil)
-}
-
-// adminEntryAge returns how long ago the worktree's admin entry was last touched — the
-// only "how fresh is this worktree" signal available without opening the tree (which the
-// at-tip gate's callers sometimes cannot do, and a stale registration never can).
-func (g *pathGuard) adminEntryAge(rt string, now time.Time) (time.Duration, error) {
-	admin, err := g.adminDirFor(rt)
-	if err != nil {
-		return 0, err
-	}
-	fi, serr := os.Stat(admin)
-	if serr != nil {
-		return 0, deskkit.Unverifiable("cannot stat the worktree's admin entry", serr)
-	}
-	return now.Sub(fi.ModTime()), nil
+	// Explicit single-worktree removal always inventories current identity; only
+	// prune's sweepCtx retains an inventory across candidates.
+	return loadWorktreeAdminIndex(g.commonDir).lookup(rt)
 }

@@ -412,7 +412,7 @@ func TestPerRootPoolMatchesSerial(t *testing.T) {
 				var rep *Report
 				var err error
 				if verb == "dispatch" {
-					rep, err = cmdDispatch(hdr, verb)
+					rep, err = cmdDispatch(hdr, verb, "")
 				} else {
 					rep, err = cmdAwaiting(hdr, verb)
 				}

@@ -99,6 +99,14 @@ list the cells under the registry
   (no flags)
 ```
 
+## `cellctl models reset <cell> [--model-ttl <Nd|duration>]`
+
+lower a cell's aged default model pins to the mid tier
+
+```
+  --model-ttl                string   TTL override for this run (Nd, e.g. 7d)
+```
+
 ## `cellctl new <cell>`
 
 scaffold a cell
@@ -165,6 +173,7 @@ persist a change into a cell's cell.env
 
 ```
   --cockpit                  string   CELL_COCKPIT (auto|tmux|herdr|orca)
+  --default                           record the model pin(s) as a resettable default (the cheap-default reset may lower it once it ages past the TTL)
   --force                             write a KEY that is not a known cell.env key
   --harness                  string   harness (claude|codex|cursor)
   --kind                     string   CELL_KIND (k8s|house|container|scrubbed)
@@ -203,18 +212,24 @@ report a cell's session state
 
 ## `cellctl up <cell> [CLAUDE_CONFIG_DIR]`
 
-open one window per role in the resolved cockpit
+converge the cell: open a window for every role that is not already up
 
 ```
+  --apply                    string   apply a stored reconcile plan on this terminal, then launch the targeted roles
   --automate                 string   orca only: schedule one automation per role (a 5-field cron string or a preset)
   --cadence                  string   role cadence: a duration, or off
   --cockpit                  string   cockpit surface (auto|tmux|herdr|orca)
+  --dry-run                           print each role's disposition, the cockpit and the per-role commands; change and launch nothing (as DRY_RUN=1)
   --harness                  string   harness for this run (claude|codex|cursor)
+  --json                              print the result as cell-op-v1 JSON, one entry per role, and nothing else on stdout
   --kind                     string   cell kind for this run (k8s|house|container|scrubbed)
+  --lease-wait               duration how long to wait for each launched role to take its lease and pass the scratch sweep
   --model                    string   model for THIS run only, passed through verbatim to the harness
   --no-attach                         do not attach to the session after opening it
   --no-the-desk                       do not open the the-desk window
+  --plan                              write one plan that reconciles every stale targeted role (and stale comms state) and change nothing else
   --provider                 string   provider for this run (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)
+  --role                     stringArray converge only this role; repeatable
   --set                               persist every override given into cell.env
   --tick-budget              string   per-pass tick budget (a duration)
   --with-the-desk                     open the the-desk window (the default; accepted for compatibility)

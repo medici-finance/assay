@@ -131,17 +131,28 @@ func isBriefFileFor(p, stream, nn string) bool {
 // one completeness rule every BriefAuthoringOnly caller shares (deskdispatch's phantom check,
 // fanoutloop's plan reconciliation).
 func CompleteChangedFiles(fg Forge, fr ForgeRepo, number int) ([]ChangedFile, error) {
+	_, files, err := CompleteChangedFilesOf(fg, fr, number)
+	return files, err
+}
+
+// CompleteChangedFilesOf is CompleteChangedFiles also returning the pull-request read the
+// list was reconciled against, for a caller that needs that read's head and author too
+// (verifyloop's pending-Evidence join). Same completeness rule; an empty read is an error.
+func CompleteChangedFilesOf(fg Forge, fr ForgeRepo, number int) (*PullRequest, []ChangedFile, error) {
 	pr, err := fg.GetPullRequest(fr, number)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	if pr == nil {
+		return nil, nil, fmt.Errorf("%s#%d: empty change read", fr.Slug(), number)
 	}
 	files, err := fg.ListChangedFiles(fr, number)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(files) != pr.ChangedFiles {
-		return nil, fmt.Errorf("%s#%d lists %d changed files but the forge counts %d; the list is not "+
+		return nil, nil, fmt.Errorf("%s#%d lists %d changed files but the forge counts %d; the list is not "+
 			"provably complete", fr.Slug(), number, len(files), pr.ChangedFiles)
 	}
-	return files, nil
+	return pr, files, nil
 }

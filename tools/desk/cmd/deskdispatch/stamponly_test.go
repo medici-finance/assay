@@ -5,6 +5,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -23,7 +24,7 @@ func TestStampOnlyRoundTrip(t *testing.T) {
 			if rc := run(onlyArgs(model)); rc != 0 {
 				t.Fatalf("stamp-only rc=%d, want 0", rc)
 			}
-			got, state := deskkit.AttestedModelStampOf(deskkit.StampTimeline{Present: gh.labels, Events: ghEvents(gh)}, deskkit.IsStampAuthorityLogin)
+			got, state := deskkit.StampAuthored.AttestedStampOf(deskkit.StampTimeline{Present: gh.labels, Events: ghEvents(gh)}, deskkit.IsStampAuthorityLogin)
 			if state != deskkit.ModelStamped || got.Model != model || got.Tier != "strong" {
 				t.Fatalf("readback=%+v %v", got, state)
 			}
@@ -51,6 +52,7 @@ func ghEvents(s *ghStampServer) []deskkit.LabelEvent {
 	return out
 }
 
+// regression: #2111
 func TestStampOnlyRejectsArgs(t *testing.T) {
 	for _, args := range [][]string{
 		{"--stamp-only"},
@@ -67,8 +69,12 @@ func TestStampOnlyRejectsArgs(t *testing.T) {
 			s.install(t)
 			t.Setenv("DESK_LOOP", "the-desk")
 			gh := installGHStamp(t)
-			if rc := run(args); rc != deskkit.ExitRefused {
-				t.Fatalf("rc=%d, want 5", rc)
+			want := deskkit.ExitRefused
+			if slices.Contains(args, "--branch") || args[len(args)-1] == "extra" {
+				want = 2
+			}
+			if rc := run(args); rc != want {
+				t.Fatalf("rc=%d, want %d", rc, want)
 			}
 			if len(s.calls)+len(gh.requests)+len(gh.minted) != 0 {
 				t.Fatal("invalid arguments reached external work")
@@ -138,10 +144,10 @@ func TestStampOnlyFailure(t *testing.T) {
 
 func TestStampOnlyRepair(t *testing.T) {
 	for _, labels := range [][]string{
-		{"dispatched-tier:strong"},
-		{"dispatched-model:old", "dispatched-tier:any", "dispatched-tier:strong"},
-		{"dispatched-model:gpt-6.1-sol", "dispatched-tier:strong"},
-		{"dispatched-tier:unknown"},
+		{"authored-tier:strong"},
+		{"authored-model:old", "authored-tier:any", "authored-tier:strong"},
+		{"authored-model:gpt-6.1-sol", "authored-tier:strong"},
+		{"authored-tier:unknown"},
 	} {
 		t.Run(strings.Join(labels, ","), func(t *testing.T) {
 			s := &stub{}
@@ -161,7 +167,7 @@ func TestStampOnlyRepair(t *testing.T) {
 			if !labelsPresent(gh.labels, []string{"unrelated"}) {
 				t.Fatal("unrelated label removed")
 			}
-			stamp, state := deskkit.AttestedModelStampOf(deskkit.StampTimeline{Present: gh.labels, Events: ghEvents(gh)}, deskkit.IsStampAuthorityLogin)
+			stamp, state := deskkit.StampAuthored.AttestedStampOf(deskkit.StampTimeline{Present: gh.labels, Events: ghEvents(gh)}, deskkit.IsStampAuthorityLogin)
 			if state != deskkit.ModelStamped || stamp.Model != "gpt-6.1-sol" || stamp.Tier != "strong" {
 				t.Fatalf("stamp=%+v state=%v", stamp, state)
 			}
@@ -174,7 +180,7 @@ func TestStampOnlyDryRun(t *testing.T) {
 	home, _ := s.install(t)
 	t.Setenv("DESK_LOOP", "the-desk")
 	gh := installGHStamp(t)
-	gh.labels = []string{"dispatched-tier:any"}
+	gh.labels = []string{"authored-tier:any"}
 	out := captureStdout(t, func() {
 		if rc := run(append(onlyArgs("gpt-6-astra"), "--dry-run")); rc != 0 {
 			t.Fatalf("rc=%d", rc)

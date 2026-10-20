@@ -2,7 +2,7 @@
 brief: assay:assay:graph-execution:21
 title: Deterministic task controller with durable dispatch and waits
 why: Queue mechanics should survive sessions and invoke a model only when a work item becomes actionable.
-wave: 4
+wave: 7
 depends:
 - graph-execution/19
 - graph-execution/20
@@ -12,6 +12,8 @@ depends:
 unblocks:
 - graph-execution/05
 - graph-execution/24
+- agent-execution/04
+- "agent-execution/08"
 effort: M
 gate: human
 risk:
@@ -33,7 +35,7 @@ consumers:
 - 'workflow/internalreview: follow-up graph-execution/24'
 - 'statusgen/assuranceexperiment.go: follow-up graph-execution/18'
 - 'operator clients: out-of-scope (consume the published protocol through their own adoption gates)'
-version: 3
+version: 5
 id: 008dd7b9-6421-42bd-b6c6-d3c495837fa8
 ---
 
@@ -57,6 +59,7 @@ risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this st
 
 ## Ground rules
 
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - Work in an isolated branch; no merge, deployment or live infrastructure contact.
 - Offline fixtures/fake providers only in this brief; a concrete adapter does not authorize provider calls.
 - Stop at implemented; independent verification owns verified/done.
@@ -69,6 +72,26 @@ and a typed SDK client where a process boundary enforces authority or isolation.
 progression, process supervision and effect execution remain distinct; a shared binary or
 library grants no additional role. Preserve the existing independent fence, no-store standing
 mode, process-launch audit and cross-journal recovery tests. No cell taxonomy dependency is added.
+
+## Verifier migration amendment — 2026-10-19
+
+Implement [the migration state/queue contract](verifier-migration.md) through the existing
+/19 transactions and /26 supervisor. Expose each component, current owner, reason, wait age
+and release condition in the existing snapshot/export; queues remain derived views of the
+same records. Deterministic transitions consume versioned recorded facts, including model
+outputs and time observations. No inference on replay and no provider is required in the
+model-disabled profile. Generative judgment and System-1 classification are bounded
+activities selected by policy, never controller agents or publication credentials.
+
+Unknown launch or external effect enters reconciliation, not a fresh dispatch. Assertion
+failure is repair-required, not retry-until-green. A relevant event re-reads current facts
+before resumption; supersession/cancellation fences work while preserving reconciliation
+and resource-retirement obligations. Complete requires the authorized publication receipt;
+accepted/publication-pending remains visible. Snapshot consumers must not dispatch.
+
+Add `TestVerifierStagesReplay` (planned) in `workflow/controller/` (already declared). This is a
+checkpoint within /21, not independent activation or a new runtime implementation.
+
 
 ## Task
 
@@ -96,6 +119,7 @@ Additional implementation files: `workflow/controller/loopadmin_test.go` (planne
 | 2 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerCrashUnknownAndPause$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerCrashUnknownAndPause " "$routing_out")` | exit 0; named PASS; crash recovery retains pause/spend and reconciles unknown effects before resuming; mutation: resume after a crash without reconciling unknown effects — the named test must fail |
 | 3 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerStaleAcceptanceAndBypass$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerStaleAcceptanceAndBypass " "$routing_out")` | exit 0; named PASS; head movement or a direct call without a current owner cannot advance; mutation: skip the current-owner check on the direct transition call — the named test must fail |
 | 4 | check:ci +flow +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestControllerUsesSharedLoopAdmin$" ./... > "$routing_out" && grep -q -- "--- PASS: TestControllerUsesSharedLoopAdmin " "$routing_out")` | exit 0; named PASS; graph node progression uses the common supervisor; a lost cross-journal receipt does not double-launch; a process exit cannot advance an unaccepted node; mutation: advance a node on process exit without acceptance — the named test must fail |
+| 5 | check:ci +flow +mutation | `(cd workflow && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestVerifierStagesReplay$" ./controller/ > "$out" && grep -Fq -- "--- PASS: TestVerifierStagesReplay " "$out")` | exit 0; named PASS; recorded facts replay to identical transitions without inference; unchanged held inputs do not dispatch; accepted/publication-pending is not complete; mutation: advance on process success or infer on replay — the test fails |
 
 ## Pre-mortem and dispatch checks
 
@@ -108,3 +132,15 @@ The plausible wrong implementations are the negative cases named in Verify: stal
 ## Review
 
 Gate: human. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
+
+## Execution-environment follow-on routing — 2026-10-16
+
+Reciprocal unblocks only: agent-execution/04. The [execution amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md) adds a follow-on obligation over this brief's existing output. Its Task, Verify, gate, version and historical Evidence are unchanged; this note grants no delivery, reassignment or activation.
+
+## Proposed measurement consumer — 2026-10-17
+
+desk-improvement/07 consumes this brief for native controller decision/wait/attempt/outcome evidence after this controller exists.
+This is a forward consumer-routing amendment only: the new consumer waits on this owner,
+not the reverse. Original Task/Verify and completed Evidence are unchanged. Reconcile any
+active implementation claim before adding capture hooks. Native emission qualification is
+delivered by the named follow-up; this source contract alone does not claim it exists.

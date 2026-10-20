@@ -84,32 +84,35 @@ or removing any human gate (spec §5 states the divergence).
 | 01 | [Eligibility evaluator — gates and feathers become gating, with a reason](brief-01-eligibility-evaluator.md) | 0 | L | done | 2026-09-17 sonnet-5-verifier (9/12 clean PASS; rows 6/12 literal-fail-shaped but independently proven pre-existing board-drift, not regressions; risk-values DERIVED) | 2026-09-19 assay-reviewer-app[bot] (approved PR #1298 @ d3b1f88dd9a6941e7c8449a460513e4638b8ae38) |
 | 02 | [Workflow-pattern schema, node contract, and the implementation and research patterns](brief-02-pattern-schema-and-node-contract.md) | 0 | L | implemented | — | — |
 | 03 | [Evidence coverage rule and the observe evidence kind](brief-03-evidence-coverage-rule.md) | 1 | L | implemented | — | — |
-| 04 | [Recovery contract for effect-bearing nodes in drainloop](brief-04-recovery-contract.md) | 1 | L | todo | — | — |
-| 05 | [Offline two-pattern experiment on frozen fixtures](brief-05-offline-experiment.md) | 5 | L | todo | — | — |
-| 06 | [Run records and the replay/learning loop](brief-06-run-records-and-replay.md) | 6 | L | todo | — | — |
+| 04 | [Recovery contract for effect-bearing nodes in drainloop](brief-04-recovery-contract.md) | 4 | L | todo | — | — |
+| 05 | [Offline two-pattern experiment on frozen fixtures](brief-05-offline-experiment.md) | 8 | L | todo | — | — |
+| 06 | [Run records and the replay/learning loop](brief-06-run-records-and-replay.md) | 9 | L | todo | — | — |
 | 07 | [Flow instruments — service/wait split, CI-slot saturation, gate catch/override](brief-07-flow-instruments.md) | 1 | M | implemented | — | — |
 | 08 | [Signal-triggered pattern — incident and regression](brief-08-signal-triggered-pattern.md) | 1 | M | todo | — | — |
-| 09 | [Versioned workflow instances and shared identity](brief-09-instance-contract.md) | 1 | M | todo | — | — |
+| 09 | [Versioned workflow instances and shared identity](brief-09-instance-contract.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 10 | [Typed advice and separate deterministic policy records](brief-10-decision-contract.md) | 0 | M | done | 2026-09-30 assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) | 2026-09-30 assay-reviewer-app[bot] (approved PR #1499 @ f4c4e5222b775331f2d255daf981984b029023b3) |
 | 11 | [Optional pinned Laya provider with explicit CPU and GPU profiles](brief-11-laya-local-provider.md) | 1 | M | todo | — | — |
 | 12 | [Reproducible decision evaluation and calibration manifests](brief-12-decision-evaluation.md) | 2 | M | todo | — | — |
 | 13 | [Deterministic admission over facts and bounded probabilistic advice](brief-13-agentic-admission.md) | 1 | M | implemented | — | — |
-| 14 | [Bind admission and graph eligibility at the dispatch boundary](brief-14-admission-dispatch-binding.md) | 3 | M | todo | — | — |
-| 15 | [Control profiles and complete scoped evidence exports](brief-15-control-evidence.md) | 7 | L | todo | — | — |
-| 16 | [Cell ownership, cumulative budgets and restoration fencing](brief-16-cell-ownership-budgets.md) | 2 | L | todo | — | — |
-| 17 | [Graph-linked release and outcome records without new authority](brief-17-lifecycle-links.md) | 7 | M | todo | — | — |
-| 18 | [Offline graph, advice and assurance integration proof](brief-18-assurance-experiment.md) | 9 | M | todo | — | — |
-| 19 | [Durable instance store and production coverage binding](brief-19-durable-instance-store.md) | 2 | M | todo | — | — |
+| 14 | [Bind admission and graph eligibility at the dispatch boundary](brief-14-admission-dispatch-binding.md) | 6 | M | todo | — | — |
+| 15 | [Control profiles and complete scoped evidence exports](brief-15-control-evidence.md) | 10 | L | todo | — | — |
+| 16 | [Cell ownership, cumulative budgets and restoration fencing](brief-16-cell-ownership-budgets.md) | 5 | L | todo | — | — |
+| 17 | [Graph-linked release and outcome records without new authority](brief-17-lifecycle-links.md) | 10 | M | todo | — | — |
+| 18 | [Offline graph, advice and assurance integration proof](brief-18-assurance-experiment.md) | 12 | M | todo | — | — |
+| 19 | [Durable instance store and production coverage binding](brief-19-durable-instance-store.md) | 6 | L | todo | — | — |
 | 20 | [Shared loop-admin runner protocol and offline conformance kit](brief-20-runner-contract.md) | 0 | M | implemented | — | — |
-| 21 | [Deterministic task controller with durable dispatch and waits](brief-21-controller-host.md) | 4 | M | todo | — | — |
-| 22 | [First pinned local harness adapter and qualification fixtures](brief-22-local-harness-adapter.md) | 2 | M | todo | — | — |
-| 23 | [Immutable candidate workspaces and independent check inputs](brief-23-candidate-workspaces.md) | 3 | M | todo | — | — |
-| 24 | [Versioned author implement review pattern with bounded repair](brief-24-internal-specialist-pattern.md) | 7 | M | todo | — | — |
-| 25 | [Exact-candidate publication and independent review evidence bridge](brief-25-publication-review-bridge.md) | 8 | M | todo | — | — |
-| 26 | [Shared loop-admin launch supervision for desks and workflows](brief-26-shared-loop-admin.md) | 1 | M | todo | — | — |
-| 27 | [Standing desk clients for the shared loop-admin](brief-27-standing-desk-loop-admin.md) | 3 | M | todo | — | — |
+| 21 | [Deterministic task controller with durable dispatch and waits](brief-21-controller-host.md) | 7 | M | todo | — | — |
+| 22 | [First pinned local harness adapter and qualification fixtures](brief-22-local-harness-adapter.md) | 7 | M | todo | — | — |
+| 23 | [Immutable candidate workspaces and independent check inputs](brief-23-candidate-workspaces.md) | 7 | M | todo | — | — |
+| 24 | [Versioned author implement review pattern with bounded repair](brief-24-internal-specialist-pattern.md) | 10 | M | todo | — | — |
+| 25 | [Exact-candidate publication and independent review evidence bridge](brief-25-publication-review-bridge.md) | 11 | M | todo | — | — |
+| 26 | [Shared loop-admin launch supervision for desks and workflows](brief-26-shared-loop-admin.md) | 6 | M | todo | — | — |
+| 27 | [Standing desk clients for the shared loop-admin](brief-27-standing-desk-loop-admin.md) | 8 | M | todo | — | — |
 | 28 | [Verifier domain contracts with qualified identities and candidate-bound acceptance](brief-28-verifier-domain-contracts.md) | 2 | M | todo | — | — |
 | 29 | [Old and new regression floor for the verifier domain contracts](brief-29-verifier-regression-floor.md) | 3 | M | todo | — | — |
+| 30 | [Derived evaluation context and bounded validity](brief-30-derived-evaluation-context-and-bounded-validity.md) | 3 | M | todo | — | — |
+| 31 | [Accountable principal and assurance provenance](brief-31-accountable-principal-and-assurance-provenance.md) | 3 | M | todo | — | — |
+| 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
@@ -256,3 +259,121 @@ embedded store of 19 and the journal engine of 26 conflict with it. The R2 follo
 choice in 19 or 26 needs that amendment first. Owner rows for R1–R8: the
 [amendment manifest](../../proposals/non-ci-architecture/20-amendment-manifest.md).
 Existing completed history is unchanged.
+
+## Non-CI R2 routing — PostgreSQL coordination — 2026-10-13
+
+This section **replaces the storage routing** of the 2026-10-02 section above for this stream;
+that section stays as the record of its decision. Authority: the maintainer's ratification of
+the non-CI target (medici-finance/assay#2500, revision 23f655f5d); approval activates nothing,
+and activation stays gated by the delivery sequence. Owner row: package R2 in the
+[amendment manifest](../../proposals/non-ci-architecture/20-amendment-manifest.md).
+
+- **One runtime coordination store: the cell's PostgreSQL database.** Attempts, leases and
+  claim generations, schedules, effect intents and receipts, pending decisions and feedback,
+  and retirement progress live there (target doc 11 line 92; doc 14 lines 7 and 24). One
+  database and restricted role per cell on a shared server where the profile permits
+  (doc 11 line 100). The 2026-10-02 permission for an embedded SQLite instance store (19) and
+  a per-supervisor embedded journal engine (26) is withdrawn: there is no SQLite runtime
+  (doc 19 line 49), and SQLite may remain only an offline read-only projection format.
+- **The exclusion of a shared store is rewritten.** The cell's PostgreSQL coordination store
+  is the permitted shared store. Still excluded: a graph database or graph-store service, a
+  second online database backend, a message bus, a credential broker, a new rule engine, a
+  second scheduler authority, a duplicate evaluator and a compulsory per-operation Git journal
+  (doc 14 line 36).
+- **Owners.** 19 owns the store, the `coordination-store-v1` contract, migrations,
+  reconstruction, the carried claim-test intent and the R2 operating obligations. 16 owns the
+  operator incarnation (`operator-incarnation-v1`), held outside PostgreSQL. 04 owns the
+  store-neutral transactional intent/outbox handoff in drainloop. 26 keeps process facts only,
+  now in its own schema in the same cell database, with no Go dependency on `workflow/`.
+- **Claim store applicability.** forge-neutral/22–32 (the file/served claim store) remain the
+  supported claim path of the existing desk tools. They are not the coordination owner for the
+  non-CI runtime: no `workflow/` or `loopadmin/` code binds to them as lease authority. Nothing
+  there is retired; see the forge-neutral README's dated note.
+
+Path after R2 (R1 first):
+
+```
+02 verification -> 09 -> 28 -> 29
+28 + 29 + 02 -> 04 transactional handoff
+04 + 09 + 28 + 29 -> 16 operator incarnation
+09 + 03 + statusgen/15 + 28 + 29 + 04 + 16 -> 19 PostgreSQL coordination store
+20 + 28 + 29 + 16 -> 26 supervisor journal on the cell database -> 22 -> 27
+19 + 20 + 04 + 14 + 26 -> 21 -> 05 -> 06;  19 + 20 + 28 -> 23
+```
+
+Waves are recalculated from `depends:`: 04→4, 16→5, 19→6, 26→6, 14→6, 21→7, 22→7, 23→7,
+05→8, 27→8, 06→9, 15→10, 17→10, 24→10, 25→11, 18→12; iso-9001/09–11 move to 11–13 through
+their edge to 15. Only wave numbers changed in briefs outside R2.
+
+**R3 follow-up, not in this routing:** R3 later amends 16 (exclusive repository assignment),
+26 (runner guard events, budgets, resource capacity and custody) and 22 (first real adapter).
+R4 later amends 04 and 25. Those sections are marked in the briefs and are not authored here.
+
+
+## Public runtime alignment and gap routing — 2026-10-14
+
+The [runtime contract](../../proposals/non-ci-architecture/23-runtime-contract-alignment.md)
+selects one public Assay implementation. Existing PostgreSQL, recovery, candidate, runner,
+evidence and controller briefs remain owners; Scion source/cache work is forge-neutral/39–45.
+Only /30 (context/validity) and /31 (principal/proof provenance) are newly authored here.
+Generated lifecycle cells remain authoritative; no implementation is claimed.
+
+Critical path and waves for this addition:
+
+```text
+02 independent verification -> 09 -> 28
+                                  ├-> 30 -> 19 and 14
+                                  └-> 31 -> 14 and 25
+existing R2/R3/R4 dependencies -> managed consumers -> R5/R7/R8 proof -> operator activation
+```
+
+/30 and /31 are wave 3 and can develop independently after /28. Existing consumer waves
+remain /19=6, /14=6 and /25=11 because their other prerequisites are later. The smallest
+unblocking move remains independent /02 verification; a cache daemon or new SCM does not
+unblock it. Missing `workflow/` and `statusgen/domain/` at inspected main 9a8df91dc are
+planned deliverables, not a reason to claim the tests already pass. /31's trust-profile
+activation requires its human decision; no automatic waiver or stronger assurance is added.
+
+## Criterion evidence freshness investigation — 2026-10-16
+
+[Brief 32](brief-32-investigate-criterion-level-evidence-freshness.md) is an independent
+Wave 0 research item: trace the existing requirement-to-witness path and test acceptance
+edits against actual controls before proposing another mapping or identity mechanism.
+Its critical path is source inventory → fixed cases → offline replay → decision report;
+there is no implementation dependency on the proposed domain work in 28–31. Fresh main
+`d0580c5e5` was inspected on 2026-10-16: criteria are strings in the requirement register,
+while Command/Expect and dependency applicability already have baseline guards. The first
+unblocking move is reproducing their actual coverage, not assigning new criterion IDs.
+
+A no-change or guidance-only conclusion is valid. This research neither changes the main
+implementation dependency waves above nor authorizes a production freshness gate.
+
+## Execution-environment follow-ons — 2026-10-16
+
+The [agent-execution stream](../agent-execution/README.md) extends existing owners under
+[architecture amendment 27](../../proposals/non-ci-architecture/27-agent-execution-environments.md).
+Its /01 consumes implemented /20; /03 follows /22 and /26; /04 qualifies /21 and /25 under
+restoration; /05 follows /27. Reciprocal edges are declared in the brief frontmatter.
+Original Task/Verify obligations and Evidence remain unchanged. The new stream owns no
+second controller, claim store, publisher, process runner or lifecycle API. Its AX feasibility
+branch is offline and independent of this stream's existing critical path.
+
+## Proposed desk-improvement evidence consumers — 2026-10-17
+
+[Public desk-improvement](../desk-improvement/README.md) consumes this stream's native
+records instead of introducing another execution journal. Its /05 binds /06 run records;
+/06 captures the /26 supervisor and /22 adapter; /07 extends /21 controller evidence; /08
+consumes /27 standing clients; /10 qualifies native cross-mode source→card→assessment flow.
+These consumer prerequisites point toward this stream, with no reverse gating cycle. Existing
+source scope and activation remain controlling; supported native measurement is a separate
+qualified capability from offline cards or an implemented schema.
+
+## Verifier migration sequence — 19 October 2026
+
+[Execution-first migration](verifier-migration.md) maps the six visible verifier responsibilities
+to the existing owners and keeps evidence production separate from authority handover.
+The dependency amendment removes real-model calibration /12 from the model-disabled /18
+integration prerequisite; calibrated-provider activation still requires /12. Kubernetes is
+the separately gated agent-execution/08 profile, not an interim runner prerequisite.
+
+The historical critical-path sketch retains the former /12 → /18 edge for history; it is superseded by the 19 October verifier migration sequence above.

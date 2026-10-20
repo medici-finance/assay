@@ -780,3 +780,10 @@ func TestStalled_EmptyBoardSaysSo(t *testing.T) {
 		t.Errorf("empty board JSON must carry empty arrays, not null:\n%s", js.String())
 	}
 }
+
+func TestStalled_WithdrawnBriefRequiresReconciliation(t *testing.T) {
+	got, note := stallDisposition(stalledRepo, prBase{HeadRefName: "feat/stream-a-04-stalewatch"}, 0, map[string]string{stalledRepo + "|stream-a/04": "withdrawn"}, []string{"stream-a/04"})
+	if got != "reconcile" || !strings.Contains(note, "withdrawn") {
+		t.Fatalf("retired work should not be shepherded or presumed finished: %s %s", got, note)
+	}
+}

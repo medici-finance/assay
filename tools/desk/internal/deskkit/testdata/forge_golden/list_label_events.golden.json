@@ -11,13 +11,15 @@
       "Name": "dispatched-tier:strong",
       "AppliedBy": "desk[bot]",
       "Removed": false,
-      "CreatedAt": ""
+      "CreatedAt": "",
+      "AppliedByID": 0
     },
     {
       "Name": "stale",
       "AppliedBy": "desk[bot]",
       "Removed": true,
-      "CreatedAt": ""
+      "CreatedAt": "",
+      "AppliedByID": 0
     }
   ]
 }

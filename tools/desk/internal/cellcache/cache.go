@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -19,6 +20,9 @@ type Measurement struct {
 	At             time.Time `json:"at"`
 	LogicalBytes   *int64    `json:"logical_bytes"`
 	AvailableBytes *uint64   `json:"available_bytes"`
+	// buildBytes is the share of LogicalBytes under build/, the only part a
+	// trim can take. It is not serialized: the report's form is unchanged.
+	buildBytes int64
 }
 type Report struct {
 	Schema        string      `json:"schema"`
@@ -31,8 +35,40 @@ type Report struct {
 	After         Measurement `json:"after"`
 	SkippedActive []string    `json:"skipped_active"`
 	Reclaimed     int64       `json:"reclaimed_logical_bytes"`
-	Failures      []string    `json:"failures"`
+	// TrimmedBuild counts compiler-cache entries removed by the age trim, and
+	// TrimmedBuildBytes their summed logical sizes. Unlike Reclaimed (a
+	// before/after difference that concurrent builds can blur), these are
+	// exactly what this pass deleted.
+	TrimmedBuild      int      `json:"trimmed_build_entries"`
+	TrimmedBuildBytes int64    `json:"trimmed_build_bytes"`
+	Failures          []string `json:"failures"`
+	// LowWater describes the low-water trim when this pass ran one, and is
+	// absent otherwise, so a pass that trimmed nothing serializes exactly as
+	// it did before the trim existed.
+	LowWater *LowWaterTrim `json:"low_water_trim,omitempty"`
+	// Admission says how Admit reached this verdict: "precheck" when the
+	// lock-free test cleared it, "locked: <why>" when the full check ran
+	// because the test could not. Empty for every other caller.
+	Admission string `json:"admission,omitempty"`
 }
+
+// LowWaterTrim is what one low-water trim set out to do and whether it got
+// there. A trim that stops above its target says why in Reason: the entries
+// left are younger than the safety floor, a refused entry, or bytes that are
+// not compiler-cache entries at all (the module cache, which a trim never
+// touches). A shortfall is reported, never forced: the floor is not relaxed
+// to reach the target.
+type LowWaterTrim struct {
+	// Trigger is "pressure", "high-water" or "wipe".
+	Trigger       string `json:"trigger"`
+	TargetBytes   int64  `json:"target_bytes"`
+	MinAgeSeconds int64  `json:"min_age_seconds"`
+	Reached       bool   `json:"low_water_reached"`
+	// ShortfallBytes is how far the re-measured size sits above TargetBytes.
+	ShortfallBytes int64  `json:"shortfall_bytes,omitempty"`
+	Reason         string `json:"reason,omitempty"`
+}
+
 type manager struct {
 	p    Policy
 	r    *os.Root
@@ -171,6 +207,9 @@ func (m *manager) measure() (Measurement, []string) {
 		if err != nil {
 			failures = append(failures, fmt.Sprintf("measure %s: %v", name, err))
 		}
+		if name == "build" {
+			v.buildBytes = total
+		}
 	}
 	if len(failures) == 0 {
 		v.LogicalBytes = &total
@@ -225,9 +264,63 @@ func (m *manager) checkMode(dry, wipe bool) Report {
 		r.Failures = append(r.Failures, "active custody: "+err.Error())
 	}
 	removed := false
-	if len(r.Failures) == 0 && (wipe || pressure(r.Before, m.p)) && len(r.SkippedActive) == 0 && !dry {
+	// acted is set the moment any trim or removal is attempted, even one that
+	// fails part way: a partial removal changes what a second measurement sees.
+	acted := false
+	pressed := pressure(r.Before, m.p)
+	// whole is the inactive path: no consumer records, and pressure (or a
+	// wipe). Whole build/ and mod/ roots go, exactly as before the trim
+	// existed. Every other pass that has cause to act trims instead.
+	whole := (wipe || pressed) && len(r.SkippedActive) == 0
+	var tr trimResult
+	trigger := ""
+	switch {
+	case wipe:
+		trigger = "wipe"
+	case pressed:
+		trigger = "pressure"
+	case highWater(r.Before, m.p):
+		trigger = "high-water"
+	}
+	if len(r.Failures) == 0 && trigger != "" && !whole && !dry {
+		// Live consumer records protect mod/, gopath/ and whole-root removal,
+		// so only the build trim may act here (and it is the only act the
+		// high-water mark ever asks for, records or none): compiler-cache
+		// entries go oldest first until the cache is at or under the
+		// low-water mark (a wipe aims for zero), every entry past the
+		// policy's trim age goes, and nothing younger than the safety floor
+		// is ever touched — cmd/go's use stamp keeps an entry a running build
+		// looked up within the last hour younger than that floor. mod/ and
+		// gopath/ are left to the records.
+		target := m.p.LowWater()
+		trimTo := target
+		switch {
+		case wipe:
+			target, trimTo = 0, 0
+		case *r.Before.LogicalBytes-r.Before.buildBytes > target:
+			// What a trim can never take (mod/, chiefly) already holds the
+			// cache above the low-water mark, so emptying build/ cannot reach
+			// it. Chasing it anyway would evict every entry past the safety
+			// floor on every pass; instead only the age trim runs (target =
+			// the current size), and the report keeps the real target and
+			// names the untrimmable bytes as the shortfall.
+			trimTo = *r.Before.LogicalBytes
+		}
+		tr = m.trimBuild(time.Now(), *r.Before.LogicalBytes, trimTo)
+		r.TrimmedBuild, r.TrimmedBuildBytes = tr.n, tr.bytes
+		removed = tr.n > 0
+		// A pass that selected nothing and refused nothing changed nothing,
+		// so it keeps the single walk (#2791).
+		acted = tr.n > 0 || tr.err != nil
+		if tr.err != nil {
+			r.Failures = append(r.Failures, "trim build: "+tr.err.Error())
+		}
+		r.LowWater = &LowWaterTrim{Trigger: trigger, TargetBytes: target, MinAgeSeconds: int64(m.p.MinAge() / time.Second)}
+	}
+	if len(r.Failures) == 0 && whole && !dry {
 		// Whole inactive roots only. Consumers are enrolled under this same lock;
 		// no Go clean subprocess can race a build or module reader.
+		acted = true
 		for _, name := range []string{"build", "mod"} {
 			if err := m.remove(name); err != nil {
 				r.Failures = append(r.Failures, "remove "+name+": "+err.Error())
@@ -236,11 +329,21 @@ func (m *manager) checkMode(dry, wipe bool) Report {
 			removed = true
 		}
 	}
-	var afterErrors []string
-	r.After, afterErrors = m.measure()
-	r.Failures = append(r.Failures, afterErrors...)
+	if acted {
+		var afterErrors []string
+		r.After, afterErrors = m.measure()
+		r.Failures = append(r.Failures, afterErrors...)
+	} else {
+		// Nothing was trimmed or removed, so a second full walk would only
+		// re-read what the first just measured (assay#2791). The lock held
+		// here is the reason that matters: it is held for the walk's length.
+		r.After = r.Before
+	}
 	if removed && r.Before.LogicalBytes != nil && r.After.LogicalBytes != nil && *r.Before.LogicalBytes > *r.After.LogicalBytes {
 		r.Reclaimed = *r.Before.LogicalBytes - *r.After.LogicalBytes
+	}
+	if r.LowWater != nil {
+		r.LowWater.settle(r.After, tr)
 	}
 	if len(r.Failures) > 0 {
 		r.Outcome = "could-not-check"
@@ -261,6 +364,242 @@ func Wipe(p Policy, dry bool) (Report, error) {
 	}
 	defer m.close()
 	return finish(m, m.checkMode(dry, true))
+}
+
+// trimBuild is the low-water trim. It selects what cmd/go's own trimSubdir
+// selects: names ending "-a" (action) or "-d" (output) inside the 256
+// two-hex-digit subdirectories of build/. A "-d" output is a regular file,
+// or, for the executables `go run` and `go tool` cache, a directory; cmd/go
+// removes an aged one of either shape, and so does this. Nothing else under
+// build/ (README, trim.txt, a foreign file) and nothing outside it is ever
+// selected.
+//
+// Order and stop: every selected entry is listed with its mtime first, then
+// removed OLDEST FIRST while the running estimate (est, the pass's measured
+// logical size less what this trim has removed) is above target — and, past
+// the target, while the entry is still older than the policy's trim age, so
+// everything the age trim always took still goes. The trim stops at the
+// first entry younger than the safety floor (MinAge): sorted oldest first,
+// everything after it is younger too. Stopping there above target is a
+// SHORTFALL, reported by the caller, never a reason to dig further. The
+// floor is re-checked against each entry's mtime at removal, so an entry a
+// build touched after the listing is never removed.
+//
+// It is safe while consumers hold records because:
+//   - cmd/go refreshes an entry's mtime when it looks up one stamped more than
+//     an hour ago, so an entry a running build looked up is at most about an
+//     hour old, and the floor is always above an hour;
+//   - an entry missing at lookup is a cache miss that cmd/go rebuilds.
+//
+// Module directories have neither property (no use stamp, no refetch mid
+// build), so mod/ is never trimmed.
+//
+// Custody: every directory and entry passes checkEntry, the discipline
+// measurement uses. A directory entry is walked in full before anything in it
+// is removed, and any foreign, linked, cross-device or other-writable member
+// refuses the WHOLE directory. A refused entry is skipped, never followed,
+// and the trim continues with the next one: each entry's verdict is its own,
+// so skipping one cannot widen what another removal touches. Every refusal is
+// returned in the error, so the pass still reports could-not-check. Removal
+// goes through the verified root: Remove for a file (never follows a final
+// symlink) and removeTree, the inactive-cleanup path, for a directory.
+func (m *manager) trimBuild(now time.Time, est, target int64) trimResult {
+	const dir = "build"
+	st, err := m.r.Lstat(dir)
+	if os.IsNotExist(err) {
+		return trimResult{}
+	}
+	if err != nil {
+		return trimResult{err: err}
+	}
+	if err = checkEntry(st, m.dev); err != nil || !st.IsDir() {
+		return trimResult{err: fmt.Errorf("invalid compiler cache directory")}
+	}
+	var cands []trimCandidate
+	var refused []error
+	for i := 0; i < 256; i++ {
+		sub := fmt.Sprintf("%s/%02x", dir, i)
+		names, err := m.subdirNames(sub)
+		if err != nil {
+			refused = append(refused, err)
+			continue
+		}
+		for _, name := range names {
+			if !strings.HasSuffix(name, "-a") && !strings.HasSuffix(name, "-d") {
+				continue
+			}
+			// The listing reads only the entry's own mtime (Lstat never
+			// follows it); custody is judged where it matters, at removal.
+			fi, err := m.r.Lstat(sub + "/" + name)
+			if os.IsNotExist(err) {
+				continue
+			}
+			if err != nil {
+				refused = append(refused, err)
+				continue
+			}
+			cands = append(cands, trimCandidate{path: sub + "/" + name, mtime: fi.ModTime()})
+		}
+	}
+	sort.Slice(cands, func(i, j int) bool {
+		if !cands[i].mtime.Equal(cands[j].mtime) {
+			return cands[i].mtime.Before(cands[j].mtime)
+		}
+		return cands[i].path < cands[j].path
+	})
+	afterTrimListing()
+	floorCut := now.Add(-m.p.MinAge())
+	ageCut := now.Add(-m.p.BuildAge())
+	var res trimResult
+	for _, c := range cands {
+		if !c.mtime.Before(floorCut) {
+			res.floor = est > target
+			break
+		}
+		if est <= target && !c.mtime.Before(ageCut) {
+			break
+		}
+		size, removed, err := m.trimEntry(c.path, floorCut)
+		if err != nil {
+			refused = append(refused, err)
+			continue
+		}
+		if removed {
+			res.n++
+			res.bytes += size
+			est -= size
+		}
+	}
+	res.err = errors.Join(refused...)
+	return res
+}
+
+// afterTrimListing is the test seam between the trim's listing and its
+// removals: the window in which a running build can refresh an entry the
+// listing saw as old. Production code never sets it.
+var afterTrimListing = func() {}
+
+// trimCandidate is one selected compiler-cache entry as the listing saw it.
+type trimCandidate struct {
+	path  string
+	mtime time.Time
+}
+
+// trimResult is what one trimBuild pass did: entries and logical bytes
+// removed, whether it stopped at the safety floor while still above its
+// target, and every refusal joined.
+type trimResult struct {
+	n     int
+	bytes int64
+	floor bool
+	err   error
+}
+
+// highWater reports a measured size above the policy's high-water mark.
+func highWater(v Measurement, p Policy) bool {
+	return v.LogicalBytes != nil && *v.LogicalBytes > p.HighWater()
+}
+
+// settle records, from the pass's final measurement, whether the trim reached
+// its target and, when it did not, by how much and why.
+func (lw *LowWaterTrim) settle(after Measurement, tr trimResult) {
+	if after.LogicalBytes == nil {
+		lw.Reason = "the cache could not be re-measured after the trim; inspect failures"
+		return
+	}
+	if *after.LogicalBytes <= lw.TargetBytes {
+		lw.Reached = true
+		return
+	}
+	lw.ShortfallBytes = *after.LogicalBytes - lw.TargetBytes
+	switch {
+	case tr.floor:
+		lw.Reason = fmt.Sprintf("every compiler-cache entry left is younger than the %s safety floor", time.Duration(lw.MinAgeSeconds)*time.Second)
+	case tr.err != nil:
+		lw.Reason = "refused compiler-cache entries were skipped; inspect failures"
+	default:
+		lw.Reason = "what remains is not trimmable: module cache or files that are not compiler-cache entries"
+	}
+}
+
+// subdirNames lists one verified build/<xx> subdirectory; a missing one is empty.
+func (m *manager) subdirNames(sub string) ([]string, error) {
+	st, err := m.r.Lstat(sub)
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err = checkEntry(st, m.dev); err != nil || !st.IsDir() {
+		return nil, fmt.Errorf("invalid compiler cache subdirectory %s", sub)
+	}
+	f, err := m.r.OpenFile(sub, os.O_RDONLY|noFollow, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return f.Readdirnames(-1)
+}
+
+// trimEntry removes one selected entry if it is older than cutoff, returning
+// the logical bytes it held. A concurrent removal (cmd/go's own trim) is not
+// an error.
+func (m *manager) trimEntry(path string, cutoff time.Time) (int64, bool, error) {
+	st, err := m.r.Lstat(path)
+	if os.IsNotExist(err) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	if err = checkEntry(st, m.dev); err != nil || (!st.Mode().IsRegular() && !st.IsDir()) {
+		return 0, false, fmt.Errorf("invalid compiler cache entry %s", path)
+	}
+	if !st.ModTime().Before(cutoff) {
+		return 0, false, nil
+	}
+	if st.IsDir() {
+		size, err := m.verifiedTreeSize(path)
+		if err != nil {
+			return 0, false, fmt.Errorf("refused compiler cache directory %s: %w", path, err)
+		}
+		if err = m.removeTree(path); err != nil {
+			return 0, false, err
+		}
+		return size, true, nil
+	}
+	if err = m.r.Remove(path); err != nil {
+		if os.IsNotExist(err) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	return st.Size(), true, nil
+}
+
+// verifiedTreeSize walks a directory entry through the verified root, applying
+// checkEntry to every member, and sums its regular files. Any violation
+// refuses the whole directory before a byte of it is removed.
+func (m *manager) verifiedTreeSize(name string) (int64, error) {
+	var total int64
+	err := fs.WalkDir(m.r.FS(), name, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		st, err := m.r.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if err = checkEntry(st, m.dev); err != nil {
+			return err
+		}
+		if st.Mode().IsRegular() {
+			total += st.Size()
+		}
+		return nil
+	})
+	return total, err
 }
 
 // Go module directories are read-only. Open each verified directory and chmod
@@ -430,8 +769,11 @@ func CheckRecorded(root string, dry bool) (Report, error) {
 	return finish(m, m.check(dry))
 }
 
-// Lease is durable custody of both compiler and module caches, even if the
-// supervisor crashes. No PID or age is accepted as proof that consumers exited.
+// Lease is durable custody, even if the supervisor crashes: while any record
+// is held, mod/ and gopath/ are never reclaimed and no root is removed whole;
+// only compiler-cache entries older than the policy's trim age may be trimmed
+// under pressure (trimBuild). No PID or age is accepted as proof that
+// consumers exited.
 type Lease struct {
 	policy Policy
 	record string

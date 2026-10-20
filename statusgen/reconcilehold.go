@@ -34,7 +34,8 @@ import (
 
 // stagedReadmes is the in-memory README content the hold evaluates a move
 // against: readStreamREADME returns a staged entry in place of the file on
-// disk. Entries exist only while reconcileWrites runs (readmeStage.clear); the
+// disk. A drive-plan page whose generated region the move re-renders is staged
+// here too (readStaged, reconcilegenerated.go). Entries exist only while reconcileWrites runs (readmeStage.clear); the
 // lock is there because parallel tests load boards concurrently, each under
 // its own root.
 var stagedReadmes = struct {
@@ -52,6 +53,13 @@ func stageKey(path string) string {
 // readStreamREADME reads a stream README, preferring content staged by the
 // lint hold over the bytes on disk.
 func readStreamREADME(path string) ([]byte, error) {
+	return readStaged(path)
+}
+
+// readStaged reads any file the lint hold may stage — a stream README, or a
+// drive-plan page whose generated region a move re-renders (#2694) —
+// preferring the staged content over the bytes on disk.
+func readStaged(path string) ([]byte, error) {
 	stagedReadmes.RLock()
 	c, ok := stagedReadmes.m[stageKey(path)]
 	stagedReadmes.RUnlock()
@@ -145,9 +153,16 @@ var statusKeyedLintRules = []statusKeyedLintRule{
 	{"deployTransitionProblems", func(e *lintEnv) []string { return deployTransitionProblems(e.root, e.streams) }, deployIncremental},
 	{"attributionProblems", func(e *lintEnv) []string { p, _ := attributionProblems(e.streams); return p }, attributionIncremental},
 	{"verifyRowClassProblems", func(e *lintEnv) []string { return verifyRowClassProblems(e.streams) }, streamLocal},
+	{"protectedClosureProblems", func(e *lintEnv) []string { return protectedClosureProblems(e.streams) }, streamLocal},
 	{"danglingSatisfiesProblems", func(e *lintEnv) []string { return danglingSatisfiesProblems(e.root, e.streams) }, statusInvariant},
 	// Reads the tree itself (it re-renders each drive-snapshot region from disk),
 	// which is why a move is evaluated with the README already written.
+	// Judges a gate: human brief's status move against the merge-base, reading
+	// the working tree's READMEs through readStreamREADME (so a staged move is
+	// seen). Evaluated over the whole board on every move: a reconcile write that
+	// would carry a gate: human brief to implemented or later without a recorded
+	// ruling is HELD, not kept to red its own PR.
+	{"decisionGateHoldProblems", func(e *lintEnv) []string { p, _ := decisionGateHoldProblems(e.root); return p }, decisionGateIncremental},
 	{"driveRegionLintProblems", func(e *lintEnv) []string { p, _ := driveRegionLintProblems(e.root, nowFunc()); return p }, driveIncremental},
 }
 

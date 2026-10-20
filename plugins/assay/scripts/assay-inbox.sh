@@ -228,6 +228,37 @@ if [[ -n "$FLOW_SINCE" && ! "$FLOW_SINCE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; th
   exit 1
 fi
 
+# origin_to_slug <url> -- reduce a GitHub remote URL to owner/name. Handles every
+# supported github.com form: https/http/git/ssh/git+ssh with
+# an optional user[:password]@ and an optional :port, the scp-style
+# git@github.com:owner/name, a trailing slash and a trailing .git. A URL it does
+# not recognise passes through unchanged so the owner/name validator rejects it
+# loudly (never a silent skip). Pure bash regex: bash 3.2 safe.
+origin_to_slug() {
+  local u="$1" p
+  if [[ "$u" =~ ^(https|http|git|ssh|git\+ssh)://([^/@]*@)?github\.com(:[0-9]+)?/(.*)$ ]]; then
+    p="${BASH_REMATCH[4]}"
+  elif [[ "$u" =~ ^([^/@:]*@)?github\.com:(.*)$ ]]; then
+    p="${BASH_REMATCH[2]}"
+  else
+    p="$u"
+  fi
+  while [[ "$p" == */ ]]; do p="${p%/}"; done
+  p="${p%.git}"
+  printf '%s\n' "$p"
+}
+
+# Display only: remove userinfo even when a malformed URL failed parsing. Keep
+# the scheme and suffix after the last @; no escaped replacement (bash 3.2).
+origin_display() {
+  local u="$1" prefix=""
+  if [[ "$u" == *@* ]]; then
+    if [[ "$u" =~ ^([A-Za-z][A-Za-z0-9+.-]*://) ]]; then prefix="${BASH_REMATCH[1]}"; fi
+    u="$prefix${u##*@}"
+  fi
+  printf '%s' "$u"
+}
+
 resolve_repos() {
   if [[ $# -gt 0 ]]; then
     printf '%s\n' "$@"
@@ -246,8 +277,7 @@ resolve_repos() {
     # emit nothing; the caller detects an empty REPOS array and reports + exits.
     return
   fi
-  owner_name=$(printf '%s' "$origin_url" \
-    | sed -E 's#^git@github\.com:##; s#^https://github\.com/##; s#\.git$##')
+  owner_name=$(origin_to_slug "$origin_url")
   printf '%s\n' "$owner_name"
 }
 
@@ -290,7 +320,7 @@ cell_name_for() {
   local url
   url=$(git -C "$1" remote get-url origin 2>/dev/null || true)
   if [[ -n "$url" ]]; then
-    printf '%s' "$url" | sed -E 's#^git@github\.com:##; s#^https://github\.com(:[0-9]+)?/##; s#\.git$##'
+    origin_display "$(origin_to_slug "$url")"
     return
   fi
   basename "$(cd "$1" 2>/dev/null && pwd || printf '%s' "$1")"
@@ -467,7 +497,7 @@ fi
 # The charset is GitHub's own owner/name alphabet.
 for _repo in ${REPOS[@]+"${REPOS[@]}"}; do
   if [[ ! "$_repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
-    echo "assay-inbox: invalid repo '$_repo' (expected owner/name)" >&2
+    echo "assay-inbox: invalid repo '$(origin_display "$_repo")' (expected owner/name)" >&2
     exit 1
   fi
 done
@@ -502,6 +532,42 @@ truncated=0
 # a blind reader reddens the run exactly as a failed query does.
 flow_failures=0
 
+# The new producer is selected BEFORE any discovery. Never retry a partial typed
+# read through the legacy per-label fanout: that would duplicate collection and
+# could conceal the permission/page failure. Explicit legacy is the rollback.
+INBOX_READER="${ASSAY_INBOX_READER:-auto}"
+INBOX_PRODUCER="${ASSAY_DESKINBOX:-deskinbox}"
+case "$INBOX_READER" in
+  auto|typed|legacy) ;;
+  *) echo "assay-inbox: ASSAY_INBOX_READER must be auto, typed or legacy" >&2; exit 1 ;;
+esac
+use_typed=0
+if [[ "$INBOX_READER" != legacy ]]; then
+  producer_version=""
+  if command -v "$INBOX_PRODUCER" >/dev/null 2>&1; then
+    producer_version=$("$INBOX_PRODUCER" --version 2>/dev/null) || producer_version=""
+  fi
+  if [[ "$producer_version" == *" issue-discovery-v1"* ]]; then
+    use_typed=1
+  elif [[ "$INBOX_READER" == typed ]]; then
+    echo "assay-inbox: typed discovery requires a compatible deskinbox (issue-discovery-v1); no discovery attempted" >&2
+    exit 1
+  fi
+fi
+if [[ "$use_typed" -eq 1 ]]; then
+  if hits=$("$INBOX_PRODUCER" discovery "${REPOS[@]}" 2>"$TMP_ERR"); then
+    :
+  else
+    query_failures=$((query_failures + 1))
+  fi
+  cat "$TMP_ERR" >&2
+  if printf '%s' "$hits" | jq -e 'type == "array" and all(.[]; (.repo|type)=="string" and (.number|type)=="number" and (.labels|type)=="array")' >/dev/null; then
+    printf '%s' "$hits" > "$TMP_JSON"
+  else
+    echo "assay-inbox: invalid typed discovery output; queue could-not-check" >&2
+    query_failures=$((query_failures + 1))
+  fi
+else
 for repo in ${REPOS[@]+"${REPOS[@]}"}; do
   [[ -z "$repo" ]] && continue
   for label in "${LABELS[@]}"; do
@@ -532,6 +598,7 @@ for repo in ${REPOS[@]+"${REPOS[@]}"}; do
     printf '%s' "$merged" > "$TMP_JSON"
   done
 done
+fi
 
 # Dedupe by repo+number (an issue can carry more than one contract label), rank by the most
 # urgent label it carries (lower rank = more urgent), sort urgency-then-age (oldest createdAt
@@ -621,6 +688,38 @@ def strip: sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; "");
 def nonblank: map(select(test("[^[:space:]]")));
 def isheading: test("^[[:space:]]*#{1,6}[[:space:]]");
 def demd: gsub("\\*\\*"; "") | gsub("`"; "");
+# HTML comments are cut but their line breaks are kept, so the text either side of a
+# multi-line comment stays on its own line (deskkit's per-line scan reads it the same way).
+def visiblelines($text):
+  ($text // "") | gsub("\r"; "")
+  | gsub("<!--(?<c>[\\s\\S]*?)-->"; (.c | gsub("[^\n]"; "")))
+  | sub("<!--(?<c>[\\s\\S]*)$"; (.c | gsub("[^\n]"; ""))) | split("\n");
+def sectionin($ls; $re):
+  ($ls | to_entries | map(select(.value | test($re; "i"))) | first) as $h
+  | if $h == null then []
+    else ($ls[($h.key + 1):]) as $rest
+      | ($rest | map(isheading) | index(true)) as $stop
+      | (if $stop == null then $rest else $rest[:$stop] end)
+    end;
+def optionsin($ls):
+  sectionin($ls; "^[[:space:]]*#{1,6}[[:space:]]*Options?\\b") | nonblank | map(strip)
+  | map(select(test("^(?:[-*][[:space:]]*)?(?:\\*\\*)?[A-Da-d1-4][.)][[:space:]]")))
+  | map(capture("^(?:[-*][[:space:]]*)?(?:\\*\\*)?(?<let>[A-Da-d1-4])[.)][[:space:]]*(?<txt>.+)$"))
+  | .[0:4];
+# The standalone marker: `(recommended)` in any case, opening the text or after one space or
+# tab, and ending the text or followed by a space, a tab or one of .,;:!? (a lookahead, so
+# adjacent markers each count). A match also takes a `—`/`–`/`-` separator directly before
+# it when whitespace precedes that separator, so cutting it leaves no dangling dash.
+# ASCII whitespace only: deskkit.decMarkerSpans implements this same grammar.
+def recmark: "(?:[ \\t]+[—–-])?(?:^|[ \\t])\\(recommended\\)(?=$|[ \\t.,;:!?])";
+def markcount:
+  demd | clean | [scan(recmark; "i")] | length;
+def exact_recommendation($opts):
+  ($opts | to_entries | map(. + {markCount: (.value.txt | markcount)})) as $marked
+  | ([$marked[].markCount] | add // 0) as $count
+  | if $count == 1 then ($marked | map(select(.markCount == 1)) | first) else null end;
+def cleanoption:
+  demd | clean | strip | gsub(recmark; ""; "i") | strip;
 
 # The screen's roster input (resolve_roster: the ratifying identity, the trusted authors,
 # the roster App slugs) travels through the ENVIRONMENT ($ENV), not --argjson: this program
@@ -646,13 +745,8 @@ def loginlist: (try fromjson catch [])
 # HTML comments are the marker channel the desk tools write into issue bodies; they are not
 # prose for the driver, so they never become Context.
 | ((($d.body // "") | lines | map(select(test("^[[:space:]]*<!--") | not)))) as $bl
-| def section($re):
-    ($bl | to_entries | map(select(.value | test($re; "i"))) | first) as $h
-    | if $h == null then []
-      else ($bl[($h.key + 1):]) as $rest
-        | ($rest | map(isheading) | index(true)) as $stop
-        | (if $stop == null then $rest else $rest[:$stop] end)
-      end;
+| (visiblelines($d.body)) as $optionLines
+| def section($re): sectionin($bl; $re);
 
   (section("^[[:space:]]*#{1,6}[[:space:]]*(Context|Situation|Ask|Summary|Problem)\\b")) as $csec
 | (if ($csec | nonblank | length) > 0 then $csec else ($bl | map(select(isheading | not))) end
@@ -692,26 +786,22 @@ def loginlist: (try fromjson catch [])
 # line; at most two body lines plus unblocks, the desk note and the gate line.
 | (($ctx + [$blocked] + $unb + $note + [$gate]) | .[0:6]) as $context
 
-| (section("^[[:space:]]*#{1,6}[[:space:]]*Options?\\b")) as $osec
-| ($osec | nonblank | map(strip)
-   | map(select(test("^(?:[-*][[:space:]]*)?(?:\\*\\*)?[A-Da-d1-4][.)][[:space:]]")))
-   | map(capture("^(?:[-*][[:space:]]*)?(?:\\*\\*)?(?<let>[A-Da-d1-4])[.)][[:space:]]*(?<txt>.+)$"))
-   | .[0:4]) as $oraw
-# Detected on the RAW text, before the marker is stripped out of the rendered label.
-| ((($oraw | to_entries | map(select(.value.txt | test("recommend"; "i"))) | first | .key) // 0)) as $recidx
+| (sectionin($optionLines; "^[[:space:]]*#{1,6}[[:space:]]*Options?\\b")) as $osec
+| (optionsin($optionLines)) as $oraw
+# One exact marker controls both display order and command authority; zero or multiple
+# markers leave every option unlabelled and preserve source order.
+| (exact_recommendation($oraw)) as $rec
 | ($oraw | to_entries
-   | sort_by(if .key == $recidx then 0 else 1 end, .key)
-   | map(.value.txt | demd | clean | strip
-         | sub("[[:space:]]*[—-]?[[:space:]]*\\(?[Rr]ecommended\\)?[[:space:]]*$"; "")
-         | sub("^\\(?[Rr]ecommended\\)?[[:space:],:;—-]*"; "")
-         | strip)
-   | map(select(. != ""))
+   | sort_by(if ($rec != null) and (.key == $rec.key) then 0 else 1 end, .key)
+   | map(.key as $sourceIndex | (.value.txt | cleanoption) as $txt
+         | select($txt != "") | {sourceIndex:$sourceIndex, text:$txt})
    | to_entries
-   | map(.key as $i
-         | {letter: (["A", "B", "C", "D"] | .[$i]), text: .value, recommended: ($i == 0)})
+   | map(.key as $i | .value as $opt
+         | {letter: (["A", "B", "C", "D"] | .[$i]), text: $opt.text,
+            recommended: (($rec != null) and ($opt.sourceIndex == $rec.key))})
   ) as $opts
 | (if ($opts | length) > 0 then $opts
-   else [{letter: "A", text: "options not yet stated — desk to fill", recommended: true}]
+   else [{letter: "A", text: "options not yet stated — desk to fill", recommended: false}]
    end) as $options
 | (($opts | length) > 0) as $stated
 
@@ -781,11 +871,11 @@ def loginlist: (try fromjson catch [])
 # An Options section that parses to ONE entry and holds no second list line, or — only when
 # there is NO Options section — a fork-test block with exactly one `option:` line. A stray
 # "Option:" prose line never overrides a parsed Options section.
-| (($bl | map(select(test("^[[:space:]]*#{1,6}[[:space:]]*Options?\\b"; "i"))) | length) > 0) as $hasOptionsHeading
+| (($optionLines | map(select(test("^[[:space:]]*#{1,6}[[:space:]]*Options?\\b"; "i"))) | length) > 0) as $hasOptionsHeading
 | ($osec | nonblank | map(strip)
    | map(select(test("^(?:[-*+][[:space:]]|(?:\\*\\*)?[A-Za-z0-9][.)])"))) | length) as $osecListLines
 | ($hasOptionsHeading and (($opts | length) == 1) and ($osecListLines <= 1)) as $optionsSingle
-| ($bl | nonblank | map(strip | demd | clean) | map(select(test("^option:"; "i"))) | length) as $forkOptionCount
+| ($optionLines | nonblank | map(strip | demd | clean) | map(select(test("^option:"; "i"))) | length) as $forkOptionCount
 | (($hasOptionsHeading | not) and ($forkOptionCount == 1)) as $forkSingle
 | ($bodyTrusted and ($optionsSingle or $forkSingle)) as $isNoFork
 
@@ -821,6 +911,76 @@ def loginlist: (try fromjson catch [])
    else ""
    end) as $classEvidence
 
+# ------------------------------------------------- the recommended option's command --
+# Reply shape carries a copy-pasteable command that records the RECOMMENDED option, but only
+# where a TRUSTED author's issue visibly states the ruling phrase. Every gate must hold, else
+# the line is `not derivable — desk to fill`: this program never composes a ruling, and never
+# turns text a stranger wrote, or text the issue page does not show, into one.
+#   a. the body author is trusted ($bodyTrusted): anyone can open an issue on a public repo,
+#      so an untrusted body is never evidence (see resolve_roster);
+#   b. there is a recommended letter, and the ruling names it. The letter is the ORIGINAL
+#      letter (the walk re-letters it A) of the one visible option carrying the exact
+#      standalone "(recommended)" marker; the visible Options equal the ones the walk shows.
+#      With no Options section, the recommendation is a fork-test `default:` naming one of
+#      the block's own `option:` letters. The ruling is the first double-quoted phrase in a "How to
+#      answer" (or "How to reply" / "How to respond") section that names that letter
+#      ("A", "B — drop it", "ratify B"), else the fork-test default when its letter is the
+#      recommended one, verbatim;
+#   c. the phrase is VISIBLE: HTML comments (multi-line and unterminated ones included) and
+#      Markdown link-reference definitions, which GitHub does not render, are cut out of
+#      the body first;
+#   d. the ruling holds no \p{Cf} format character (a bidi override or zero-width
+#      character makes the displayed command differ from the posted bytes) and no
+#      `<placeholder>` (template text is not a ruling).
+# The command fails CLOSED on identity: it reads the driver's own token into a variable and
+# runs `gh` only when that read succeeded with a non-empty token. An empty GH_TOKEN makes gh
+# fall back to whichever account is active, so the bare `GH_TOKEN="$(…)" gh …` form would
+# post under that account when the lookup fails; this form posts nothing instead. The login
+# comes from $DRIVER_LOGIN when it is set and login-shaped (\z: a trailing newline is not);
+# otherwise the `<driver-login>` placeholder stays for the desk to fill. The ruling is
+# single-quoted for the shell (@sh), so a `$`, a backtick or a quote inside it stays text.
+| def optletter:
+    [capture("^(?:[Oo]ption[[:space:]]+)?(?<l>[A-Da-d1-4])(?:$|[.)!:,]|[[:space:]]*[—–-])") | .l | ascii_upcase] | first;
+  def phraseletter:
+    sub("^(?:[Ii][[:space:]]+)?(?:[Rr]atif(?:y|ied)|[Aa]pproved?)[[:space:]:,]+"; "") | optletter;
+  # Visible lines only: HTML comments and Markdown link-reference definitions
+  # (`[//]: # "…"`) are not rendered by GitHub.
+  ($optionLines | map(select(test("^ {0,3}\\[[^\\]]+\\]:") | not))) as $vis
+| ($vis | nonblank | map(strip | demd | clean)) as $visc
+| ($visc | map(select(test("^option:"; "i")) | sub("^option:[[:space:]]*"; ""; "i") | optletter | select(. != null))) as $forkLetters
+| ((($visc | map(select(test("^default:"; "i"))) | .[0]) // "") | sub("^default:[[:space:]]*"; ""; "i") | strip) as $defaultFull
+| ($defaultFull | optletter) as $defaultLetter
+| (($defaultLetter != null) and ($forkLetters | any(. == $defaultLetter))) as $defaultNamesFork
+| optionsin($vis) as $voraw
+| (exact_recommendation($voraw)) as $visibleRec
+# The command uses the same visible parse and exact-marker helper as the walk. A mismatch or
+# ambiguous/missing marker fails closed rather than composing a command for an invented choice.
+| (if ($voraw != $oraw) or ($visibleRec != $rec) then null
+   elif ($visibleRec != null) and (($visibleRec.value.txt | cleanoption) != "")
+   then ($visibleRec.value.let | ascii_upcase)
+   elif (($voraw | length) == 0) and $defaultNamesFork then $defaultLetter
+   else null
+   end) as $recLetter
+| (if $recLetter == null then null
+   else [sectionin($vis; "^[[:space:]]*#{1,6}[[:space:]]*How[[:space:]]+to[[:space:]]+(answer|reply|respond)\\b") | .[]
+         | demd | clean
+         | scan("[\"“]([^\"“”]+)[\"”]") | .[0] | strip
+         | select(. != "")
+         | select(phraseletter == $recLetter)] | first
+   end) as $answerPhrase
+| (if ($bodyTrusted | not) or ($recLetter == null) then null
+   elif $answerPhrase != null then $answerPhrase
+   elif $defaultNamesFork and ($defaultLetter == $recLetter) then $defaultFull
+   else null
+   end
+   | if (. != null) and ((test("\\p{Cf}") or test("<[^>]*>")) | not) then . else null end) as $rulingText
+| (($ENV.DRIVER_LOGIN // "") as $dl
+   | if ($dl | test("^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\\z")) then $dl else "<driver-login>" end) as $driverLogin
+| (if $rulingText == null then "not derivable — desk to fill"
+   else "t=\"$(gh auth token --user " + $driverLogin + ")\" && [ -n \"$t\" ] && GH_TOKEN=\"$t\" gh issue comment "
+        + ($it.number | tostring) + " -R " + $it.repo + " --body " + ($rulingText | @sh)
+   end) as $command
+
 | {
     repo: $it.repo,
     number: $it.number,
@@ -836,6 +996,7 @@ def loginlist: (try fromjson catch [])
     options: $options,
     optionsStated: $stated,
     reply: $reply,
+    command: $command,
     verificationBase: $verificationBase,
     verification: $verification,
     unread: $blind,
@@ -896,6 +1057,7 @@ render_walk() {
         "",
         "Reply shape",
         "  " + .reply,
+        "  command: " + (.command // "not derivable — desk to fill"),
         "",
         "Verification",
         "  " + .verification
@@ -931,6 +1093,7 @@ render_walk_genuine() {
         "",
         "Reply shape",
         "  " + $item.reply,
+        "  command: " + ($item.command // "not derivable — desk to fill"),
         "",
         "Verification",
         "  " + $verification
@@ -1211,6 +1374,7 @@ def flowsection($f):
       "</ul>",
       "<h3>Reply shape</h3>",
       ("<p>" + (.reply | esc) + "</p>"),
+      ("<p class=\"cmd\">command: <code>" + ((.command // "not derivable — desk to fill") | esc) + "</code></p>"),
       "<h3>Verification</h3>",
       ("<p>" + (.verification | esc) + "</p>"),
       "</article>"
@@ -1279,13 +1443,17 @@ DESKBOARD_BIN="${ASSAY_DESKBOARD:-deskboard}"
 # the flag exits non-zero with a usage dump, and one that half-wrote its output leaves
 # unparseable bytes. Both are could-not-check, and both carry the reader's own first stderr
 # line so the operator can see WHY. `assay-config:` provenance lines are the desk tools'
-# routine banner, not a diagnostic, so the first line past them is the one quoted.
+# routine banner, not a diagnostic, so the first line past them is the one quoted. Because that
+# stderr is captured, the reader runs with ASSAY_CONFIG_ECHO=full: it prints the full banner and
+# records no config digest as seen, since nobody sees it here.
 read_json() {
   local label="$1" out="$2" verdict="$3"; shift 3
   local rc detail
-  if "$@" > "$out" 2>"$TMP_ERR"; then rc=0; else rc=$?; fi
+  if ASSAY_CONFIG_ECHO=full "$@" > "$out" 2>"$TMP_ERR"; then rc=0; else rc=$?; fi
   if [[ "$rc" -ne 0 ]]; then
-    detail=$(grep -v '^assay-config' "$TMP_ERR" 2>/dev/null | head -1 | LC_ALL=C tr -d '\000-\037')
+    # The reader status is captured above; an empty/banner-only diagnostic must not let
+    # pipefail + errexit skip the explicit fallback and the could-not-check render.
+    detail=$(grep -v '^assay-config' "$TMP_ERR" 2>/dev/null | sed -n 1p | LC_ALL=C tr -d '\000-\037' || true)
     [[ -z "$detail" ]] && detail="exit ${rc}, no diagnostic"
     flow_failures=$((flow_failures + 1))
     printf 'assay-inbox: FLOW READER FAILED %s (exit %s): %s\n' "$label" "$rc" "$detail" >&2

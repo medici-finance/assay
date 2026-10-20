@@ -55,6 +55,7 @@ type rendered struct {
 	Options       []option
 	OptionsStated bool
 	Reply         string
+	Command       string
 	Verification  string
 	Unread        bool
 }
@@ -67,6 +68,13 @@ var (
 	unblocksLineRe     = regexp.MustCompile(`(?i)^(unblocks|blocks|depends|gates)\b`)
 	desknoteAuthorRe   = regexp.MustCompile(`(?i)\[bot\]$|desk`)
 )
+
+// commandNotDerivable is Reply shape's command line whenever no ruling command can be
+// derived. deskinbox ALWAYS renders it: the oracle derives a command only from a body whose
+// author the roster trusts (its $bodyTrusted), and deskinbox reads no roster, so it has no
+// way to tell a trusted body from one anyone could have filed. Until it gains a roster,
+// issue-body text never becomes a ruling here; the desk fills the line.
+const commandNotDerivable = "not derivable — desk to fill"
 
 // toLines is the oracle's `lines` def: strip every \r, then split on \n.
 func toLines(s string) []string {
@@ -269,18 +277,18 @@ func buildRendered(it item, d issueDetail, k, n int, now time.Time) rendered {
 	// ---- Options ---------------------------------------------------------------------
 	// The parse is deskkit's (lifted there so the human-decision-v1 record reads the SAME
 	// options the walk shows). The walk shows the recommended option
-	// first, re-lettered A–D; with no option marked, the first stated one leads, unchanged.
+	// first, re-lettered A–D. Without exactly one explicit marker, no option is labeled.
 	parsed := deskkit.ParseDecisionOptions(d.Body)
 	letterFor := []string{"A", "B", "C", "D"}
 	var opts []option
 	for i, idx := range parsed.Walk() {
-		opts = append(opts, option{Letter: letterFor[i], Text: parsed.Texts[idx], Recommended: i == 0})
+		opts = append(opts, option{Letter: letterFor[i], Text: parsed.Texts[idx], Recommended: i == 0 && parsed.Recommended >= 0})
 	}
 
 	stated := len(opts) > 0
 	options := opts
 	if !stated {
-		options = []option{{Letter: "A", Text: "options not yet stated — desk to fill", Recommended: true}}
+		options = []option{{Letter: "A", Text: "options not yet stated — desk to fill"}}
 	}
 
 	var reply string
@@ -311,6 +319,7 @@ func buildRendered(it item, d issueDetail, k, n int, now time.Time) rendered {
 		Options:       options,
 		OptionsStated: stated,
 		Reply:         reply,
+		Command:       commandNotDerivable,
 		Verification:  verification,
 		Unread:        d.Unavailable,
 	}

@@ -202,8 +202,14 @@ func (w witness) row() string {
 	// reason, so witnessStateRe still lifts the leading state, witnessResultRe
 	// still finds `exit=`, and a row with no sandbox renders byte-identical to
 	// the format before issue #2350.
+	if w.State == stateAuthorAdded {
+		result = fmt.Sprintf("author-added; execution exit=%s", exitCell(w.Exit))
+	}
 	if w.Sandbox != "" {
 		result += " sandbox=" + w.Sandbox
+	}
+	if w.State == stateAuthorAdded {
+		result += "; no acceptance credit"
 	}
 	// A could-not-run row's REASON belongs in Evidence, not only the console: a
 	// reader (or a tool) looking at the recorded table must be able to tell WHY a
@@ -1192,9 +1198,10 @@ func treeSHA(root string) string {
 // briefVerifyRows lifts a brief file's Verify rows (id + authored command cell +
 // Expect cell), reusing the shared table parser rather than adding a second one.
 type verifyRow struct {
-	ID      string
-	Command string // as authored: `\|`-escaped, code span lifted
-	Expect  string
+	ID          string
+	Command     string // as authored: `\|`-escaped, code span lifted
+	CommandCell string // complete authored cell, including non-command context
+	Expect      string
 	// Class is the resolved Verify row class (verdict-lane/02): check:ci, check,
 	// gate:model, gate:human. A legacy table with no Class column resolves every
 	// row to `check` (legacyRowClass). Classed records whether the table opted
@@ -1240,9 +1247,13 @@ func briefVerifyRows(verifySection string) []verifyRow {
 		if v := normalizeRowID(r.Num); v != "" {
 			id = v
 		}
-		row := verifyRow{ID: id, Command: cmd, Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell(), Obligations: r.obligations(), RiskText: strings.TrimSpace(r.Command) + " " + strings.TrimSpace(r.Expect)}
+		row := verifyRow{ID: id, Command: cmd, CommandCell: strings.TrimSpace(r.Command), Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell(), Obligations: r.obligations(), RiskText: strings.TrimSpace(r.Command) + " " + strings.TrimSpace(r.Expect)}
 		if first, why := proseLedCommandWhy(r.Command); why != "" {
-			row.ProseLed = "first span " + strings.ReplaceAll(first, "|", "\\|") + " is " + why
+			what := "first span "
+			if why == shellCommentMarkedWhy {
+				what = "marked command "
+			}
+			row.ProseLed = what + strings.ReplaceAll(first, "|", "\\|") + " is " + why
 		}
 		rows = append(rows, row)
 	})
@@ -1255,14 +1266,21 @@ func briefSections(path string) (verify, evidence string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	content := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	verify, evidence = briefSectionsOf(string(raw))
+	return verify, evidence, nil
+}
+
+// briefSectionsOf is briefSections over brief text already in hand, so a
+// committed blob and a working-tree file are split by one reader.
+func briefSectionsOf(raw string) (verify, evidence string) {
+	content := strings.ReplaceAll(raw, "\r\n", "\n")
 	body := content
 	if first, _, _ := strings.Cut(content, "\n"); strings.TrimSpace(first) == "---" {
 		if _, b, ferr := splitFrontmatter(content); ferr == nil {
 			body = b
 		}
 	}
-	return extractSectionByPrefix(body, "Verify"), extractEvidence(body), nil
+	return extractSectionByPrefix(body, "Verify"), extractEvidence(body)
 }
 
 // runWitnesses executes every Verify row and returns its witness.
@@ -1331,7 +1349,8 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 		// command is a mention, and running it measures nothing — it exits 127
 		// (could-not-run anyway) or, for a word like `gh`, exits 0 and would record
 		// a pass for a check that never ran. Recorded could-not-run with the lint's
-		// rule tag, so the Evidence says why; a `cmd:` marker clears it.
+		// rule tag, so the Evidence says why; a `cmd:` marker naming a real command
+		// clears it, a marked comment does not (#2684).
 		if r.ProseLed != "" {
 			out = append(out, witness{
 				ID: r.ID, Command: r.Command, State: stateCouldNotRun, Exit: -1,
@@ -1392,7 +1411,7 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 // proseLedNote is the could-not-run note for a prose-led row: the lint's
 // stable rule tag first (greppable in Evidence), then the reason and the fix.
 func proseLedNote(reason string) string {
-	return ruleProseLedCommand + ": not executed; the " + reason + ", not a command. Mark the command with a cmd: code span"
+	return ruleProseLedCommand + ": not executed; the " + reason + ", not a command. " + proseLedRemedy(reason)
 }
 
 // witnessTable renders a full Evidence table for a run.
@@ -1479,7 +1498,7 @@ func appendWitnessTable(path, table string) error {
 // checkFinding is one Verify row's audit result.
 type checkFinding struct {
 	ID     string
-	State  string // pass | fail | could-not-run  (the AUDIT's verdict, not the witness's)
+	State  string // pass | fail | could-not-run | author-added (authenticated disposition)
 	Detail string
 }
 
@@ -1543,6 +1562,8 @@ func checkExitCode(findings []checkFinding) int {
 	code := verifyrunExitPass
 	for _, f := range findings {
 		switch f.State {
+		case stateAuthorAdded:
+			continue // no acceptance credit; provenance was established by the audit
 		case stateCouldNotRun:
 			return verifyrunExitCouldNot
 		case stateFail:
@@ -1657,10 +1678,17 @@ Flags:
   --dry-run         run the rows and print the witness table, but do not write it back
   --timeout <dur>   per-row wall-clock limit (default 10m); a row that times out is could-not-run
   --root <dir>      repo root the commands run in (default: the git toplevel of the cwd);
-                    a directory below its repository's toplevel is refused
+                    a directory below its repository's toplevel is refused. A
+                    cross-repository verifier run executes its rows only in the
+                    admitted deliverable home (the default); any other --root,
+                    and --in-container, is refused before a row runs
   --ci              CI context: EXPLICITLY-classed check (env-bound) rows are
                     SKIPPED (runner-executed, not selected here); legacy rows and
                     check:ci rows are unaffected. check:ci rows always run network-off.
+  --acceptance-forge  explicitly permit fresh human-approval reads on the host.
+  --acceptance-record <file>  coordinate-only transition descriptor; host execution
+                    only, same-repository admission, with --acceptance-forge.
+                    Executes the canonical original-plus-approved obligation plan.
   --sandbox <mode>  the network-off sandbox (default unshare). unshare wraps each
                     check:ci row in ` + "`unshare --net --map-root-user`" + `.
                     container-netns is an EXPLICIT opt-in for a runner already
@@ -1740,6 +1768,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	}
 
 	fs := flag.NewFlagSet("verifyrun", flag.ContinueOnError)
+	defer transitionFlags(fs)()
 	fs.SetOutput(stderr)
 	// Silenced deliberately. flag.ContinueOnError calls Usage on BOTH a parse
 	// error and `--help`, and the two want different streams: help is output and
@@ -1748,6 +1777,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// and once from the ErrHelp branch below.
 	fs.Usage = func() {}
 	briefPath := fs.String("brief", "", "brief file whose Verify table to run")
+	transitionRecord := fs.String("acceptance-record", "", "coordinate-only protected transition descriptor; requires --acceptance-forge on the host")
 	checkMode := fs.Bool("check", false, "audit an existing witness table instead of running anything")
 	dryRun := fs.Bool("dry-run", false, "print the witness table without writing it back")
 	rootDir := fs.String("root", "", "repo root the commands run in (its repository's toplevel; a subdirectory is refused)")
@@ -1795,18 +1825,38 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitUsageError
 	}
 
-	attestation := ""
+	attestation, admittedHome := "", ""
 	if !*checkMode {
 		admissionRoot := *rootDir
 		if admissionRoot == "" {
 			admissionRoot = repoRootFor(path)
 		}
 		var admissionErr error
-		attestation, admissionErr = verifierAdmission(admissionRoot, path)
+		attestation, path, admittedHome, admissionErr = verifierAdmission(admissionRoot, path)
 		if admissionErr != nil {
 			fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
 			return verifyrunExitCouldNot
 		}
+		// A cross-repository admission has moved path to the tracking checkout,
+		// so the row root is never derived from it: it is the admitted
+		// deliverable home, and any other root is refused before a row runs.
+		if admittedHome != "" {
+			if why := admittedRowRootRefusal(*rootDir, admissionRoot, admittedHome); why != "" {
+				fmt.Fprintln(stderr, "statusgen verifyrun:", why)
+				return verifyrunExitCouldNot
+			}
+		}
+	}
+	// rowRoot is where the Verify rows run: the admitted deliverable home for a
+	// cross-repository run, else --root, else the brief's repository toplevel.
+	rowRoot := func() string {
+		switch {
+		case admittedHome != "":
+			return admittedHome
+		case *rootDir != "":
+			return *rootDir
+		}
+		return repoRootFor(path)
 	}
 
 	// --in-container hands the whole run off to a `statusgen verifyrun` inside the
@@ -1814,10 +1864,19 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// execution and does not need to parse the brief here — the inner run reads it
 	// against the bind-mounted /work. The pass-through flags (--check/--dry-run/--ci
 	// and a non-default --timeout) travel into the container.
+	if *transitionRecord != "" && (*inContainer || *checkMode || admittedHome != "" || !transitionForge) {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --acceptance-record requires host execution, --acceptance-forge, and same-repository admission")
+		return verifyrunExitCouldNot
+	}
 	if *inContainer {
-		root := *rootDir
-		if root == "" {
-			root = repoRootFor(path)
+		root := rowRoot()
+		// The container bind-mounts only the row root, and a cross-repository
+		// brief lives in the tracking checkout outside the admitted deliverable
+		// home by construction; the inner run would also not carry the host's
+		// admission. Refuse rather than run the rows against any other tree.
+		if admittedHome != "" {
+			fmt.Fprintf(stderr, "statusgen verifyrun: refusing --in-container: a cross-repository verifier run executes its Verify rows only in the admitted deliverable home %s on the host; the container would mount that home without the tracking brief, and its inner run would not carry this run's admission\n", admittedHome)
+			return verifyrunExitCouldNot
 		}
 		if why := verifyrunRootBelowToplevel(root); why != "" {
 			fmt.Fprintln(stderr, "statusgen verifyrun:", why)
@@ -1848,10 +1907,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return runVerifyrunCheck(path, verify, evidence, stdout)
 	}
 
-	root := *rootDir
-	if root == "" {
-		root = repoRootFor(path)
-	}
+	root := rowRoot()
 	if why := verifyrunRootBelowToplevel(root); why != "" {
 		fmt.Fprintln(stderr, "statusgen verifyrun:", why)
 		return verifyrunExitUsageError
@@ -1862,7 +1918,40 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitCouldNot
 	}
 
+	var protectedExecution protectedPlan
+	var transitionDescriptor string
+	if *transitionRecord != "" {
+		raw, err := os.ReadFile(*transitionRecord)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return verifyrunExitCouldNot
+		}
+		transitionDescriptor = strings.TrimSpace(string(raw))
+		descriptorLines := strings.Split(transitionDescriptor, "\n")
+		if len(descriptorLines) != 2 || !strings.HasPrefix(descriptorLines[0], "Verification-Table:") || !strings.HasPrefix(descriptorLines[1], "Acceptance-Transition:") {
+			fmt.Fprintln(stderr, "transition descriptor must contain exactly the two provenance markers")
+			return verifyrunExitCouldNot
+		}
+		var why string
+		protectedExecution, why = protectedAcceptanceFor(verify, evidence, transitionDescriptor, path)
+		if why != "" {
+			fmt.Fprintln(stderr, why)
+			return verifyrunExitCouldNot
+		}
+	}
 	rows := briefVerifyRows(verify)
+	if transitionDescriptor != "" {
+		rows = briefVerifyRows(protectedExecution.Verify)
+		added := map[string]bool{}
+		for _, a := range protectedExecution.Added {
+			added[a.ID] = true
+		}
+		for _, r := range briefVerifyRows(verify) {
+			if added[r.ID] {
+				rows = append(rows, r)
+			}
+		}
+	}
 	if len(rows) == 0 {
 		fmt.Fprintf(stderr, "statusgen verifyrun: %s has a `## Verify` section with no runnable rows\n", path)
 		return verifyrunExitCouldNot
@@ -1897,7 +1986,16 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 	}
-	ws := runWitnessesSandboxed(plan, *sandbox, root, rows, runner, runnerSource, treeSHA(root), nowFunc().Format("2006-01-02"), *timeout, *ci)
+	executionTree := treeSHA(root)
+	if transitionDescriptor != "" {
+		full, err := historyGit(root, "rev-parse", "--verify", "HEAD^{commit}").Output()
+		if err != nil || strings.Contains(executionTree, "+") {
+			fmt.Fprintln(stderr, "transition execution requires a clean immutable source")
+			return verifyrunExitCouldNot
+		}
+		executionTree = strings.TrimSpace(string(full))
+	}
+	ws := runWitnessesSandboxed(plan, *sandbox, root, rows, runner, runnerSource, executionTree, nowFunc().Format("2006-01-02"), *timeout, *ci)
 	if ff != nil {
 		for i := range ws {
 			f := ff[ws[i].ID]
@@ -1908,7 +2006,19 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	for i := range ws {
 		ws[i].Repo = target
 	}
+	if transitionDescriptor != "" {
+		for i := range ws {
+			for _, a := range protectedExecution.Added {
+				if ws[i].ID == a.ID {
+					ws[i].State = stateAuthorAdded
+				}
+			}
+		}
+	}
 	table := witnessTable(ws)
+	if transitionDescriptor != "" {
+		table = transitionDescriptor + "\n\n" + table
+	}
 	if attestation != "" {
 		table += "\n" + attestation + "\n"
 	}
@@ -1957,7 +2067,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 func runVerifyrunCheck(path, verify, evidence string, stdout *os.File) int {
 	// The audit does not run the lint, so it refuses an unterminated `<!--`
 	// itself (#1939) rather than report rows the rendered page may hide.
-	findings, refusal := closureWitnesses(verify, evidence)
+	findings, refusal := closureWitnesses(verify, evidence, path)
 	if refusal != "" {
 		fmt.Fprintf(stdout, "%s: refused — %s\n", path, refusal)
 		return verifyrunExitCouldNot
@@ -1971,8 +2081,8 @@ func runVerifyrunCheck(path, verify, evidence string, stdout *os.File) int {
 		counts[f.State]++
 		fmt.Fprintf(stdout, "row %s: %s — %s\n", f.ID, f.State, f.Detail)
 	}
-	fmt.Fprintf(stdout, "%s: %d pass, %d fail, %d could-not-run/missing (of %d Verify rows)\n",
-		path, counts[statePass], counts[stateFail], counts[stateCouldNotRun], len(findings))
+	fmt.Fprintf(stdout, "%s: %d pass, %d fail, %d could-not-run/missing (of %d Verify rows); %d author-added with no acceptance credit\n",
+		path, counts[statePass], counts[stateFail], counts[stateCouldNotRun], len(findings), counts[stateAuthorAdded])
 	return checkExitCode(findings)
 }
 

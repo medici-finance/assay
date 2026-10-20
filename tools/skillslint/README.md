@@ -25,6 +25,8 @@ own directory (`cd tools/skillslint && go test ./...`), not from the repo root.
 | Invisible-character / Trojan-Source (hard) + context-budget NOTICE (advisory) | the instruction surfaces (below) | `hidden.go` |
 | Unresolved house values | **every `*.md` under `plugins/`** | `housevalue.go` |
 | Shared-guardrail derive-or-diff | every declared guardrail copy | `guardrail.go` |
+| Act blocks paste safely in zsh and run `gh` as the driver (hard) | every act block (an `sh`, `bash`, `zsh` or `shell` fence defining a `driver_act…()` function) in a `*.md` under `plugins/` | `actblock.go` |
+| No desk reads a human's `gh auth token` (hard) | every `*.md` under `plugins/assay/skills/` and `plugins/assay/references/` | `ambientauth.go` |
 
 ### 1. Skill-file structure
 
@@ -297,6 +299,223 @@ rename rather than an in-place truncate-then-write. This closes a
 read-compute-write race that let concurrent `--sync` runs corrupt a file
 (medici-finance/assay#1692).
 
+### 5. Act blocks paste safely in zsh
+
+An act block is the fenced shell block the `ask-decision` skill's §Act tells a
+desk to hand the driver: pasting it must only print what it would do. zsh, the
+default macOS login shell, does not treat `#` as a comment at an interactive
+prompt unless `interactive_comments` is set, and it is unset by default. There a
+comment line is part of a command: a `;` ends it, and a backtick span or `$(...)`
+after it runs. The same goes for text after a `#` on a code line. Even a
+plain-text comment line is a command named `#` that fails, and that failure is
+not inert where a status is read: after `&&` or `||`, in an `if`, `elif`,
+`while` or `until` condition, or last in a tested group or function, it can
+change which branch runs. After a line that ends in a backslash its text joins
+the command before it, in every shell.
+
+The control on a block's first paste is the comment rule: plain text, and in
+the header only. A terminal
+hands zsh a paste as one bracketed paste, and zsh reads all of it before running
+its first line, so the zsh comment guard
+`[ -n "${ZSH_VERSION-}" ] && setopt interactive_comments` covers only later
+pastes and lines typed after it, never the paste that carries it. The
+`ACT-BLOCK` check holds every act block under `plugins/` (an `sh`, `bash`, `zsh`
+or `shell` fence that defines a function named `driver_act…`) to six rules:
+
+1. every full-line comment holds only letters, digits, spaces, tabs and
+   `. , : - / _ + #`, indented or not, and no code line carries a trailing
+   `#` comment, so a comment's words run nothing even where zsh reads it as a
+   command (rule 2 keeps its failing status from mattering).
+   Two checks find a trailing comment, and a line either one flags fails.
+   The guarantee is the per-line floor: it flags any `#` straight after a
+   blank, a tab, a carriage return or one of `;`, `&`, `|`, `(`, `)`, `<`,
+   `>`, a backtick, `!` or `-` on a code line. Those characters end every bash
+   and zsh operator (the `-` of `>&-`, the `!` of zsh's `>!` and `&!`
+   included), and the floor reads no quote, span or heredoc state, so no
+   misreading can hide such a `#`. It flags one inside quotes or a heredoc body
+   too (`echo "a;#b"` fails; write it another way). So `echo dry;#;echo live`
+   and `echo dry >&-#;echo live` are flagged (a first zsh paste runs
+   `echo live`), while `a#b`, `${#T}`, `${T#x}`, `$#`, `$((16#ff))` and `\#`
+   are not. A scanner, a best-effort reader rather than a shell parser, reads
+   the block whole: it adds a `#` that starts a word on a continuation line,
+   and it fails the block on the constructs where its reading could part from
+   a shell's. It models single quotes, double quotes, `$'...'` (with backslash
+   escapes), `$"..."`, `$( )` with nested `( )`, arithmetic (`$(( ))`, `(( ))`,
+   `$[ ]`), `${ }`, `$$`, backtick spans, backslash escapes and line
+   continuations, here-strings (`<<<`), and heredocs (`<<WORD` and `<<-WORD`,
+   `WORD` bare or quoted, several on one line): a quoted-delimiter body is
+   data, and an unquoted body is read like a double-quoted string, so `$( )`
+   and backticks in it are code. Text in a comment opens no quote. It fails
+   the block on: a block, or an unquoted heredoc body, that ends inside a
+   quote, a span, a heredoc with no closing line, or a line continuation;
+   `\'` inside `$'...'` (dash ends the quote there); a `'` inside `${ }`; the
+   word `case` inside `$( )`; a `<<` with no delimiter word, or with a `$` or
+   a backtick in it (`<<$'EOF'`); a heredoc whose `$( )` or backtick span
+   closes on its line (`x=$(cat <<EOF)`), or whose line ends inside a span
+   opened after it (`cat <<EOF $(`); a `<<` in arithmetic (`$((1<<2))`,
+   `(( x << 2 ))`); a `(( ))` or `$(( ))` closed by a single `)`; and a `${`
+   followed by a blank or `|` (bash 5.3's `${ cmd; }`). It does not follow
+   `eval`, `sh -c` or aliases;
+2. a full-line comment stands only in the header: every non-blank line before
+   it is the guard line or another `#` line. Anywhere else, inside the act
+   function, after the call, or after any code line, it is refused, and so is
+   a `#`-led line inside a multi-line quote or heredoc body, which errs strict.
+   In the header only the guard comes before it, so no status reads the
+   comment's failure and no continuation reaches it, unless the first code
+   line tests `$?` (the lint does not check that; write none). Where zsh has
+   `extendedglob` set a lone `#` is a bad pattern and the first paste stops
+   before the function is defined; nothing runs. A step inside the act
+   function opens with `echo '<n>. <text>'` instead;
+3. the block's first non-blank line is the zsh comment guard;
+4. the act function has a per-act name, `driver_act_<id>`, never the bare
+   `driver_act`, so a block that fails to parse leaves no earlier act's
+   function under the name the driver is told to type;
+5. every `read` is the whole safe shape on one line,
+   `NAME=; read -rs NAME || exit N` or `NAME=; read -rs NAME || { ...; exit N; }`:
+   the clear comes first in command position (never after `&&`, `||` or a
+   pipe), the read carries `-r` and `-s` and no other option, and the failure
+   branch ends with `exit N`, `N` from 1 to 255, closing the list. A shell
+   whose `read` has no `-s` fails without assigning, so an inherited value
+   would pass as the secret, and an `exit` in a child shell ends only that
+   child. This rule is a syntactic shape check, best effort: it does not
+   prove the read runs in the act function's own shell. It flags a read it
+   sees inside a `( )` subshell, `$( )`, backticks, a `|` pipeline, a
+   background `&` or another function, on the read's line or across lines.
+   Any word the tokenizer sees that is `read` once quotes and backslashes are
+   removed (`read`, `\read`, `"read"`, `r''ead`) is a read candidate. It
+   does **not** model the forms below, and a read inside one of them can pass
+   while a shell runs it in a child shell or past a failed read:
+   - `|&` piping (`echo x |& { T=; read -rs T || exit 1; }`);
+   - a backslash line continuation before a `|` or `&` after a closing
+     construct (`} \` then `| cat` on the next line);
+   - a redirect whose target is a command substitution, before a `|` or `&`
+     (`{ …; } >"$(printf f)" | cat`);
+   - a heredoc body fed to a shell (`sh <<'EOF'`), whose body it reads as act
+     code;
+   - a `#` straight after an operator (`;#`, `|#`), which it reads as a word;
+   - an operator inside `${X:-…}` (`${X:-;}`);
+   - `$'…'` quoting with an escaped quote inside it (`$'\''`);
+   - a function that shadows `exit` (`exit() { :; }`);
+   - a read run through `eval`, `sh -c` or a command name built from an
+     expansion.
+
+6. every `gh` step runs behind the driver's own token, pinned at the top of
+   the act function (`actpin.go`). The driver's shell may hold an exported
+   `GH_TOKEN` or `GITHUB_TOKEN`, which `gh` prefers to any stored login, and
+   with none exported it uses the active account; either runs the step as the
+   wrong identity. In a block that has a `gh` step, the function pins, at its
+   top level and before the first `gh` step,
+   `GH_TOKEN="$(gh auth token --user "<driver-login>")" || exit`, then a separate
+   `export GH_TOKEN` (an `export` that carries the assignment returns
+   `export`'s status, not the read's) and an `unset GITHUB_TOKEN`. The
+   assignment must end `|| exit`, `|| exit N` or `|| { ...; exit N; }`, the
+   fail-closed branch, and must stand as its own statement. The login is one
+   literal word, quoted (unquoted, `<driver-login>` is a redirect and the block
+   fails to parse, which in bash runs the live steps on a paste), never an
+   expansion. The rule refuses:
+   - an act function body written `{ }`, which runs in the driver's own shell:
+     the pin's `exit` ends that shell and the exported token outlives the call;
+   - a login given as an expansion (`"$LOGIN"`, `$(...)`, a backtick), or as
+     anything but one word;
+   - a `gh` step ahead of the pin or outside the function;
+   - a pin inside an `if`, loop, group, subshell or other function, after `||`,
+     `&&`, `|` or `|&` (including a newline after one of them), under `!` or a
+     wrapper word such as `time` or `env`, or followed by a pipe;
+   - after the pin, an assignment of `GH_TOKEN` or `GITHUB_TOKEN` (`NAME=`,
+     `NAME+=`, or as an argument of `export`, `declare`, `typeset`, `local` or
+     `readonly`), an `unset GH_TOKEN`, and `export -n GH_TOKEN` or
+     `declare +x GH_TOKEN` (also `typeset`), which take it out of the
+     environment; the builtin's name may be quoted or escaped (`\unset`,
+     `"export"`);
+   - after the pin, a `gh` step run through `env -u GH_TOKEN` (also
+     `--unset=GH_TOKEN`), `sudo` or `doas`, none of which hands the step
+     the pinned token;
+   - any `env` word before a `gh` step that is not `NAME=value`, `-u NAME`
+     (two words), `--unset=NAME` or `--`. That allowlist is the whole model
+     of `env`: `env -i`, a short cluster, any other long option or a lone `-`
+     refuses, and so does every later word naming `gh` in that command (a
+     `-S` string, `sh -c` text). It over-refuses on purpose: GNU and BSD
+     `env` read clusters differently, so no per-letter model is attempted.
+
+   A `gh` step is the word `gh` (or a path ending `/gh`, quoted or not) in
+   command position: at the start of a command, after `;`, `&`, `|`, `&&`,
+   `||`, `then`, `else`, `do`, `{`, `(`, `$(`, or after `run`, `command`,
+   `exec`, `env`, `nohup`, `builtin`, `time`, `sudo`, `doas`. The options of
+   those words (`-i`, `-p`, `-E`, `--`, and the options that take a separate
+   argument: `time -f`/`-o`, `exec -a`, `sudo -u`/`-g`/`-h`/`-p`/
+   `-r`/`-t`/`-C`/`-D`/`-R`/`-T`/`-U`, `doas -u`/`-C`; for `env`, the allowlist above)
+   and leading `NAME=value`
+   words are skipped to reach it; `command -v` and `command -V` only look a
+   name up and are not one. The pin's own `gh auth token --user` is not a step,
+   and text inside a quoted string (an `echo` of what would run) is not one. A
+   block with no `gh` step needs no pin. Syntactic and best effort like rule 5.
+   The lint refuses the shapes it models; the pin inside the function is the control. Not
+   modelled (examples, not exhaustive; a `gh` step in one can run with no pin, and a token
+   change in one can undo the pin): a `gh` run through `eval`, `sh -c`, `bash -c`, `xargs`,
+   `nice`, `timeout`, `stdbuf`, `exec -c` or a wrapper command the lint does not name, or one
+   whose name is quoted, escaped or given by path (`\env`, `"sudo"`, `\builtin`, `/usr/bin/env
+   -i gh`); a wrapper option that takes a separate argument and is not in the lint's list (`time
+   --output FILE`, say);
+   an alias; a command name built from an expansion; a function that wraps `gh`, or
+   one that shadows `export` or `unset`; a pin inside a heredoc body; a `trap … DEBUG`; a `gh`
+   step inside a process substitution (`<( )`, `>( )`), after a leading redirect such as `2>&1`,
+   or in a `case` arm whose pattern opens with `(`; a `case` pattern `)` that no `esac` closes;
+   an `export` or `unset` of the token run under `||`, `&&`, `&` or a pipe; a change of either
+   token variable by `read`, `printf -v`, `for`, `select`, `let`, `mapfile`, `getopts`,
+   `source`, `.`, a nameref, `eval`, zsh `integer` or `float`, or zsh `${GH_TOKEN::=…}`; a token
+   change by an `export` option cluster holding `n` (`-pn`), by a bare `local`, `declare` or
+   `typeset` of the token with no value (zsh), or by zsh `unset -m`. The pin governs `gh` only:
+   a `git push` uses git's credential helper, and `GH_HOST` and the enterprise-token variables
+   are left alone, which matters only against a GitHub Enterprise Server host.
+
+Rule 1's floor refuses a `#` after an operator, and its scanner refuses
+   `\'` inside `$'…'`, so a block holding either fails by rule 1; the read
+   rule itself still does not see them. The others can pass every rule.
+
+A violation is exit 1, naming the file and line. Finding no act block at all is
+could-not-check (exit 2), never a pass: the `ask-decision` example must exist.
+The check reads only the examples the plugin ships. An act block a desk writes
+at run time gets no lint. It finds an act block by one spelling of the function
+definition, a line that starts `driver_act…()`, which the skill prescribes; a
+shipped fence that defines the function another valid way (`function
+driver_act_1 {`, or a name on a continuation line) is not counted and gets none
+of the rules. Its fence finder matches the opening character and a
+closing run at least as long, but applies no indentation or list rule, so a
+four-space-indented example is still checked, which errs strict. The read rule
+tokenizes the block whole (quotes, backslashes, `$( )`, backticks, `( )`,
+`{ }`, `|`, `&` and the compound commands), so a `( )` subshell, `$( )`,
+backticks or `|` pipe that opens or closes on another line is seen; the forms
+rule 5 lists are not. It takes a full line that starts with `#` as a comment
+even inside a multi-line quoted string; rule 2 then refuses that line unless it
+sits in the header.
+
+### 6. No desk reads a human's `gh auth token`
+
+A skill or reference that tells a desk to authenticate `gh` with
+`gh auth token` makes every role borrow the trusted human's personal CLI login.
+When that login is absent, the desks report "missing desk authentication" even
+though `desktoken <role>` can mint the role App token they should be using
+(#3055). The canonical recipe, and the line between a desk-auth failure and a
+missing human login, is `plugins/assay/references/desk-shell.md`
+§Forge CLI as the role.
+
+The check flags every line carrying `gh auth token` in every `*.md` under
+`plugins/assay/skills/` and `plugins/assay/references/`. Two exemptions:
+
+- lines between `<!-- BEGIN forge cli as the role -->` and
+  `<!-- END forge cli as the role -->`, the canonical section that has to name
+  the anti-pattern to rule it out. A BEGIN with no END is itself a finding, so
+  the exemption cannot silently cover the rest of a file;
+- the driver's own human command, spelled exactly
+  `gh auth token --user <driver-login>` (the `ask-decision` Reply shape) or
+  `gh auth token --user "<driver-login>"` (the Act block's quoted pin). Only
+  those two spellings are exempt; a second, bare `gh auth token` on the same line is
+  still flagged.
+
+Hard (exit 1): the tree has no unexempt occurrence, so a new one is a
+regression, not lint debt. Missing scan directories or an empty tree are
+could-not-check (exit 2).
+
 ## Fixtures
 
 `testdata/plugintree/` holds a matched pair of fake roots:
@@ -326,9 +545,22 @@ conformance limits, each a directory of one or more `<name>/SKILL.md` skills:
   the 1024-character hard limit but sum past the 8000-character bundle budget.
   Must pass (exit 0) with a bundle NOTICE — the budget is advisory.
 
-## Not wired into a workflow
+## CI workflow
 
-No workflow in `.github/workflows/` calls this tool today; it runs as
-`make skillslint`. Wiring the gate is tracked separately
-(`docs/archive/mistake-proofing/brief-04-derived-enforcement-status.md`), and
-widening the check does not change that.
+The `skillslint` job in `.github/workflows/ci.yml` runs this check on pushes and
+pull requests. It installs Go on the `medici-builder-public` runner, which does
+not ship `make`, then invokes the tool from its source directory:
+
+```
+cd tools/skillslint && go run . --root ../..
+```
+
+That is the same check invocation as the `make skillslint` target above. The
+workflow calls the source directly rather than calling `make`; the standalone
+`--skills-dir` command remains the adopter-facing structural and conformance
+check, not the repository's CI invocation. The archived brief
+`docs/archive/mistake-proofing/brief-04-derived-enforcement-status.md` records
+the earlier wiring work and its verification, not the current workflow state.
+
+The job turns CI red when the check fails, but it is not a required status
+check on `main`: a red `skillslint` run does not by itself stop a merge.

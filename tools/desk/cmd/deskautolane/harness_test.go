@@ -116,6 +116,10 @@ type fakeForge struct {
 	// whole, as the forge walks it to the end (or refuses at its cap).
 	changeListCap int
 
+	// headCommittedAt is the committer date GetCommit reports for the PR's head ("" = none).
+	// The default puts the head commit BEFORE the default review's submitted_at.
+	headCommittedAt string
+
 	fail map[string]bool // operation name → answer an error
 }
 
@@ -144,8 +148,10 @@ func greenForge() *fakeForge {
 			{Filename: "BOARD.md", Status: "modified"},
 		},
 		reviews: []deskkit.Review{
-			{ID: 1, Author: deskkit.Account{Login: fxReviewer}, State: "APPROVED", CommitID: fxHead},
+			{ID: 1, Author: deskkit.Account{Login: fxReviewer}, State: "APPROVED", CommitID: fxHead,
+				SubmittedAt: fxReviewedAt},
 		},
+		headCommittedAt: fxHeadCommittedAt,
 		checks: &deskkit.ChecksAtHead{CheckRunsTotalCount: 1, CheckRuns: []deskkit.CheckRun{
 			{Name: "test", Status: "completed", Conclusion: "success", CompletedAt: "2026-01-01T00:00:00Z"}}},
 		events: []deskkit.LabelEvent{
@@ -198,6 +204,20 @@ func (f *fakeForge) GetPullRequest(r deskkit.ForgeRepo, n int) (*deskkit.PullReq
 		pr.HeadSHA = f.head2
 	}
 	return &pr, nil
+}
+
+// fxHeadCommittedAt is the default head commit's committer date, and fxReviewedAt the default
+// APPROVED's submitted_at — after it, so the default approval is a verdict at head (#3093).
+const (
+	fxHeadCommittedAt = "2026-01-01T00:00:00Z"
+	fxReviewedAt      = "2026-01-01T01:00:00Z"
+)
+
+func (f *fakeForge) GetCommit(r deskkit.ForgeRepo, sha string) (*deskkit.RepoCommit, error) {
+	if err := f.rec("GetCommit", sha, ""); err != nil {
+		return nil, err
+	}
+	return &deskkit.RepoCommit{SHA: sha, CommittedDate: f.headCommittedAt}, nil
 }
 
 func (f *fakeForge) ListChangedFiles(r deskkit.ForgeRepo, n int) ([]deskkit.ChangedFile, error) {

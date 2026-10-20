@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -42,8 +43,9 @@ func commsUpFixture(t *testing.T) (*repairFixture, *Cell, *deskCommsConfig, stri
 printf '%s\n' "$*" >> "$COMMS_CALLS"
 case "$1 $2" in
  "has-session -t") test -f "$COMMS_CALLS.session"; exit $?;;
- "new-session -d") touch "$COMMS_CALLS.session"; exit 0;;
+ "new-session -d") touch "$COMMS_CALLS.session"; case " $* " in *" -P "*) ;; *) exit 0;; esac;;
  "kill-session -t") rm -f "$COMMS_CALLS.session"; exit 0;;
+ "new-window -P"|"new-window -t") test -f "$COMMS_CALLS.session" || { echo "can't find session: example-cell" >&2; exit 1; };;
  "tab --help") echo "create close list"; exit 0;;
  "pane --help") echo "run"; exit 0;;
  "workspace --help") echo "list create report-metadata close"; exit 0;;
@@ -63,7 +65,7 @@ if test "$1 $2 $3" = 'terminal create --help'; then
  echo '--worktree --command --title --json'; exit 0
 fi
 command=''
-if test "$1" = new-window; then
+if test "$1" = new-window || test "$1" = new-session; then
  last=''
  for word in "$@"; do
   if test "$last" = -n; then printf '%s' "$word" > "$COMMS_CALLS.label"; fi
@@ -112,6 +114,26 @@ exit 0
 				return
 			}
 			time.Sleep(20 * time.Millisecond)
+		}
+	})
+	// Every cockpit test shares this failure path. The fake cockpit detaches the
+	// supervisor, so f.run's stderr alone cannot explain why it failed to own
+	// the lease. Log before the earlier cleanup requests supervisor shutdown.
+	t.Cleanup(func() {
+		if !t.Failed() {
+			return
+		}
+		for _, item := range []struct{ label, path string }{
+			{"cockpit calls", log},
+			{"supervisor output", log + ".service"},
+			{"comms checkpoint", filepath.Join(c.commsDir(), "checkpoint.json")},
+		} {
+			b, err := os.ReadFile(item.path)
+			if err != nil {
+				t.Logf("%s unavailable: %v", item.label, err)
+			} else {
+				t.Logf("%s:\n%s", item.label, b)
+			}
 		}
 	})
 	return f, c, cfg, log, env
@@ -224,7 +246,20 @@ func TestCommsUpPreflight(t *testing.T) {
 				os.WriteFile(filepath.Join(c.commsDir(), "checkpoint.json"), b, 0600)
 				l.Close()
 			}
+			if mode == "stale" {
+				// regression: #2880 — the dry run prints the reconcile inventory and changes nothing.
+				before, _ := os.ReadFile(filepath.Join(c.commsDir(), "checkpoint.json"))
+				dry := f.run(t, env, "up", "example", "--cockpit", "tmux", "--no-the-desk", "--no-attach", "--dry-run")
+				after, _ := os.ReadFile(filepath.Join(c.commsDir(), "checkpoint.json"))
+				if !strings.Contains(dry.stdout, "[reconcile] comms class=could-not-check") || !strings.Contains(dry.stdout, "dry run: nothing was changed") || string(before) != string(after) {
+					t.Fatalf("dry run did not inventory the stale comms record or changed it: %+v", dry)
+				}
+			}
 			r := f.run(t, env, "up", "example", "--cockpit", "tmux", "--no-the-desk", "--no-attach")
+			if mode == "stale" && (!strings.Contains(r.stdout, "[reconcile] refusing to clear anything") || !strings.Contains(r.stdout, "comms 'example' recover --confirm-stopped") || !strings.Contains(r.stderr, "up: stale cell state")) {
+				// regression: #2880 — the refusal carries the inventory and the exact commands.
+				t.Fatalf("stale refusal without inventory and commands: %+v", r)
+			}
 			if mode == "unset" || mode == "disabled" {
 				if r.code != 0 {
 					t.Fatal(r)
@@ -307,5 +342,49 @@ func TestCommsArgvRoundTrip(t *testing.T) {
 	want := []string{"--cells-root", filepath.Dir(c.Dir), "comms", "example", "run"}
 	if string(out) != strings.Join(want, "\n")+"\n" {
 		t.Fatalf("argv changed: %s", out)
+	}
+}
+
+// regression: #2881
+func TestUpTmuxNoDeskdRoleFirst(t *testing.T) {
+	f, _, _, log, env := commsUpFixture(t)
+	f.run(t, env, "set", "example", "CELL_COMMS_CONFIG=")
+	// The stub tmux opens the window but never starts the role, so the role's row is failed (exit 1).
+	r := f.run(t, env, "up", "example", "--cockpit", "tmux", "--no-attach", "--lease-wait", "1s")
+	if r.code != 1 || strings.Count(r.stderr, "with no deskd") != 1 {
+		t.Fatalf("up: %+v", r)
+	}
+	b, _ := os.ReadFile(log)
+	var creates []string
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "new-session") || strings.HasPrefix(line, "new-window") {
+			creates = append(creates, line)
+		}
+	}
+	if len(creates) != 1 || !strings.HasPrefix(creates[0], "new-session -d -s example-cell -n the-desk ") {
+		t.Fatalf("want the first role window to create the session and no placeholder window, got %q", creates)
+	}
+}
+
+// regression: #2790
+func TestCommsServiceLeaseRefusal(t *testing.T) {
+	f, c, _, log, env := commsUpFixture(t)
+	owner, err := cellcadence.Acquire(c.commsDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	r := f.run(t, env, "comms", "example", "run")
+	if r.code == 0 || !strings.Contains(r.stderr, `lock "role lease"`) || !strings.Contains(r.stderr, "holder:") {
+		t.Fatalf("service did not use launch lease refusal diagnostics: %+v", r)
+	}
+	if other, err := cellcadence.Acquire(c.commsDir()); !errors.Is(err, cellcadence.ErrBusy) {
+		if other != nil {
+			other.Close()
+		}
+		t.Fatalf("service disturbed existing ownership: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(log), "starts")); !os.IsNotExist(err) {
+		t.Fatalf("service children started without the lease: %v", err)
 	}
 }

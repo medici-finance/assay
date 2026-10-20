@@ -52,12 +52,63 @@ unchanged and awaits user direction. Missing tools or failed readback report
 could-not-check. A completed batch or empty queue does not finish a standing Goal.
 The user retains `/goal`, `/goal pause`, `/goal resume` and `/goal clear` controls.
 
+An inactive Goal stops standing continuation; it does not withdraw permission for
+a separately requested correction. On "correct and resume", do the authorized
+correction within the existing safeguards, then read the Goal again. A conversational
+resume request does not prove the native status changed. If it remains inactive
+and the exposed tools cannot resume it, give the user the exact `/goal resume`
+control. Preserve the objective, budget and usage; require matching active readback
+before restarting the standing desk. Do not ask again for correction permission or
+try an unsupported `update_goal` status. This is launcher guidance, not evidence
+that a native runtime transition was performed or that a model will follow it.
+
 Goals do not supply the fixed-time `cadence-tick` capability or a process-restart
 monitor. Those rows' scheduler and durability limits remain in force. Explicit
 cellctl cadence uses bounded exec passes with Goals disabled. Native continuation
 can stop for blocking conditions, interruption or continuation limits; it is not a
 promise of permanent unattended service. See the official [Goals guide](https://developers.openai.com/cookbook/examples/codex/using_goals_in_codex)
 and [native Goal RPC](https://learn.chatgpt.com/docs/app-server).
+
+## Supervision and context
+
+Apply [desk-common](./desk-common.md#supervision-and-context) with the tools actually
+exposed by this session; these are usage instructions, not a new capability qualification.
+
+- For V2 children, use one `wait_agent` mailbox wait for the live pool. It wakes on
+  child messages/completions; its timeout is a maximum, not a delay before handling
+  results. Set it to the remaining time before the next required sweep/stop check,
+  capped by the exposed tool limit and higher-priority harness instructions. There is
+  no desk-imposed 60-second cap. Do not surround waits with `list_agents`; inventory
+  only to recover missing handles or reconcile a real lifecycle change. On timeout
+  before a required deadline, re-arm the wait without another status inspection.
+- For a yielded `exec`, use `wait` on that cell; for an ongoing command use
+  `write_stdin` on its existing session. Choose the longest permitted wait before the
+  next required check and bound returned output. Reserve immediate/one-second polls
+  for a specific interactive need. Do not relaunch an unchanged command or add a
+  second CI watcher. A quiet watcher is not a reason to ask its owner for progress.
+- Keep the turn open while waiting for in-flight work. A final response followed by
+  automatic Goal continuation is not an event subscription. With only a future
+  cadence due, use the available interruptible wait. Higher-priority harness wait
+  limits still apply: if they force frequent wakeups, report the limitation rather
+  than claiming Claude-like idle efficiency. Goals provide neither a durable timer
+  nor an external-event monitor.
+- For an operator-selected outer scheduler, use the existing
+  [cellctl cadence](https://github.com/medici-finance/assay/blob/121a255f535634e473012a40d7378bef420d68e5/docs/cellctl-cadence.md#switching-an-existing-interactive-house)
+  path. It runs bounded ticks with Goals disabled and waits outside the model between
+  passes. Preserve the clean handoff and ownership checks; never start a second owner,
+  silently switch an interactive desk, pause/complete its Goal, or drop in-flight work.
+  This fallback is fixed-cadence, not event-driven wakeup. Updated plugin/launcher
+  instructions affect new launches; existing sessions need an explicitly authorized
+  instruction update. Neither installation nor compliance is established by this text.
+- When `spawn_agent` exposes `fork_turns`, use `fork_turns="none"` for a new item. Supply
+  the dispatch assignment/packet paths, lane, required instructions and shell constraints
+  explicitly rather than copying the supervisor's history. Readback and admission still
+  bind to the actual selected model; preserve the role's tier and independent-review rules.
+  If isolated child context is unavailable, state the limitation and use the supported
+  dispatch mechanism without dropping required instructions or review coverage.
+- Keep same-item follow-ups brief: changed head, remaining findings, next action and
+  artifact paths. Read a compact checkpoint after compaction, then restore any missing
+  binding instructions and revalidate mutable facts at their existing boundaries.
 
 ## Degradation — per skill (Codex CLI, v1 target)
 

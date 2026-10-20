@@ -624,7 +624,27 @@ type FileContent struct {
 	// and empty" (true, Content == nil). A caller that must merge into an existing document
 	// reads Exists, never len(Content).
 	Exists bool
+	// Kind is what the forge says the path holds at the ref: FileKindRegular for an ordinary
+	// file served with its own bytes, FileKindSymlink for a symbolic link (served as its
+	// target's bytes or as nothing), FileKindSubmodule for a submodule, FileKindUnproven when the
+	// bytes served cannot be shown to be the entry's own, or "" when the forge does not say.
+	// A caller that must read a file as a plain record (the decision-gate hold's branch
+	// board) requires FileKindRegular and treats anything else as could-not-check.
+	// omitempty keeps every file read that predates the field byte-identical in the golden
+	// corpus.
+	Kind string `json:",omitempty"`
 }
+
+// The FileContent.Kind values.
+const (
+	FileKindRegular   = "file"
+	FileKindSymlink   = "symlink"
+	FileKindSubmodule = "submodule"
+	// FileKindUnproven is a typed file read whose served bytes are not shown to be the
+	// entry's own blob: a link to a file served as its target's bytes, or a file served with
+	// its content omitted. A caller that needs a plain record refuses it like a link.
+	FileKindUnproven = "unproven"
+)
 
 // ReadFileInput addresses one file at one ref. The fields are a struct rather than positional
 // arguments so the interface method takes no parameter that reads as an endpoint address (the
@@ -645,7 +665,7 @@ type WriteFileInput struct {
 	File string
 	// Branch is the branch the write lands on.
 	Branch string
-	// Content is the whole new file content (a Contents-API PUT / Repository-Files write is
+	// Content is the whole new file content (a Contents-API PUT / GitLab commit action is
 	// whole-file, not a patch).
 	Content []byte
 	// Message is the commit message.
@@ -658,7 +678,7 @@ type WriteFileInput struct {
 	// AllowShrink overrides AppendOnly when a row reduction is genuinely intended.
 	AllowShrink bool
 	// StartBranch, when set and Branch does not yet exist, creates Branch off StartBranch as
-	// PART of the write (GitLab's Repository-Files `start_branch`). It exists so the
+	// PART of the write (GitLab's Commit API `start_branch`). It exists so the
 	// Evidence-lane fallback needs no separate CreateRef op on the frozen interface. Empty
 	// means "write to Branch, which must already exist".
 	StartBranch string
@@ -671,6 +691,10 @@ type WriteFileInput struct {
 	// against one specific read uses this so nothing that lands after that read can be
 	// overwritten unrefused. Empty means "no precondition beyond the backend's own fetch".
 	ExpectedSHA string
+	// ExpectedHead pins the whole parent tree for a verified-outcome write.
+	// A backend lacking an atomic branch-head precondition must refuse it;
+	// file-level ExpectedSHA alone cannot protect closure in other files.
+	ExpectedHead string
 }
 
 // expectedSHAPrecondition is the backend-neutral half of WriteFileInput.ExpectedSHA, run by
@@ -694,6 +718,12 @@ func expectedSHAPrecondition(in WriteFileInput, exists bool, priorSHA string) er
 	return nil
 }
 
+// ContentID is an opaque file precondition (a GitHub blob or GitLab file commit).
+type ContentID string
+
+// CommitSHA identifies a commit, never a file content digest.
+type CommitSHA string
+
 // WriteFileResult reports what a WriteFile actually did, so a caller can report the difference
 // rather than restating its own intent — the same reason LabelOutcome and PullRef exist.
 type WriteFileResult struct {
@@ -701,12 +731,15 @@ type WriteFileResult struct {
 	// idempotent noop and nothing was committed. The idempotency read is folded into WriteFile
 	// so a caller does not issue its own read to find out.
 	Changed bool
-	// SHA is the resulting content id — the new blob/commit id when Changed, and the existing
-	// one on a noop, so a caller always has an id to report.
-	SHA string
+	// ContentID is the resulting file precondition when known, including on a noop.
+	// It must never be used for commit attribution or delivery ancestry.
+	ContentID ContentID
+	// CommitSHA is the exact commit returned by the write, empty on a noop or when
+	// the provider did not prove it. Never resolve a mutable branch head to fill it.
+	CommitSHA CommitSHA
 	// Author is the git author the forge recorded on the write, when the forge reports one.
 	// GitHub's Contents API returns commit.author.name (an App-token write records the App's
-	// bot); GitLab's file write returns none, so Author is EMPTY there — which a caller reads
+	// bot); GitLab's commit author is a display name, so Author is EMPTY there — which a caller reads
 	// as could-not-check, never as a wrong identity. It is not guessed.
 	Author string
 	// DefaultBranchNotWritable is the sentinel: Branch was the forge's default branch and this
@@ -787,13 +820,18 @@ type RollupNode struct {
 // UNKNOWN/…) — the consumer reads its four-state mergeVerdict off it, and an empty value is
 // could-not-check, never mergeable. Consumer: cmd/deskboard's fetchOpenPRs → prBase.
 type OpenChange struct {
-	Number           int
-	Title            string
-	Body             string
-	State            string // OPEN | CLOSED | MERGED
-	Draft            bool
-	CreatedAt        string // RFC3339
-	LastEditedAt     string // RFC3339, "" until the title/body is first edited
+	Number       int
+	Title        string
+	Body         string
+	State        string // OPEN | CLOSED | MERGED
+	Draft        bool
+	CreatedAt    string // RFC3339
+	LastEditedAt string // RFC3339, "" until the title/body is first edited
+	// UpdatedAt is the forge's last-activity time for the change (GitHub's updatedAt: it
+	// moves on a push, a comment, a review, a label, a base retarget or an edit; it does NOT
+	// move when a check run changes). "" when the backend does not report it — a consumer
+	// that keys reuse on it must treat "" as "could have changed" and re-read.
+	UpdatedAt        string `json:",omitempty"`
 	Author           Account
 	Labels           []string
 	HeadSHA          string
@@ -801,6 +839,12 @@ type OpenChange struct {
 	BaseRef          string
 	MergeStateStatus string
 	Rollup           []RollupNode
+	// HeadCommittedAt is the head commit's COMMITTER date (RFC3339), read on the same node
+	// the rollup already comes from — no extra request. It is set only when that commit's oid
+	// is HeadSHA, so it can never describe a different commit; "" when the backend does not
+	// report it (GitLab) or the oids disagree, and a consumer that needs it (the #3093
+	// stale-approval test, ReviewPredatesHead) reads it per change or fails closed.
+	HeadCommittedAt string `json:",omitempty"`
 }
 
 // OpenChanges is the result of the bulk open-change read: the changes plus whether the read
@@ -1064,6 +1108,16 @@ type IssueStateHistory struct {
 // membership, not order; Complete=false means a SHA missing from the list is could-not-check.
 type ChangeCommits struct {
 	SHAs     []string
+	Complete bool
+}
+
+// LabelHistory is IssueLabelHistory's (op 64) result: every label add and remove event of one
+// issue, oldest first, INCLUDING an event whose label the forge no longer names (Name is empty,
+// the action, time and actor are kept). Complete=false means the walk stopped at its page bound
+// with the forge still paginating, so the list is a prefix of the history and a consumer must
+// read it as could-not-check, never as the whole.
+type LabelHistory struct {
+	Events   []LabelEvent
 	Complete bool
 }
 
@@ -1703,8 +1757,8 @@ type Forge interface {
 	// Consumer: cmd/deskflip's checks-green condition (freeze rule: this read lands with the
 	// call site that consumes it).
 	RequiredStatusChecks(repo ForgeRepo, branch string) ([]string, error)
-	// IssueReactions returns the reactions/awards on an issue or PR (the admission gate
-	// surface: reaction ↔ award emoji).
+	// IssueReactions returns the reactions/awards on an issue or PR (reaction ↔ award
+	// emoji). The public-repo write gate does not read it: that gate is repository-scoped.
 	IssueReactions(repo ForgeRepo, number int) ([]Reaction, error)
 	// ListLabelEvents returns the change's label application/removal events — the label name AND
 	// the actor that applied it. The applier is the whole point: it is what separates a
@@ -1713,6 +1767,15 @@ type Forge interface {
 	ListLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error)
 	// ListIssueLabelEvents reads issue stamp provenance without conflating an issue with a change.
 	ListIssueLabelEvents(repo ForgeRepo, number int) ([]LabelEvent, error)
+	// IssueLabelHistory (op 64, the label-removal hold brief) reads ONE issue's whole label add/remove
+	// history with each actor's login AND numeric id, keeping the events of a label the forge no
+	// longer names (an empty Name), and reports Complete=false when the walk reached its page
+	// bound. It is its own operation, not a change to ListIssueLabelEvents, because that read
+	// drops the unnamed events (deliberately: an unnamed stamp attests to nothing) and errors,
+	// rather than reports, a page bound, and seven current readers depend on exactly that. A
+	// transport or permission failure is an error. Consumers: cmd/deskread's `label-events`
+	// kind (statusgen's label-removal hold) and cmd/issueboard's un-briefed-row classifier.
+	IssueLabelHistory(repo ForgeRepo, number int) (*LabelHistory, error)
 	// ListComments returns the comments/notes on a change or issue, oldest first.
 	ListComments(repo ForgeRepo, number int) ([]Comment, error)
 	// ListCommentsTyped is ListComments for a caller that has STATED which kind of object

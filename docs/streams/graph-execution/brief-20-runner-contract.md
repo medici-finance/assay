@@ -10,6 +10,7 @@ unblocks:
 - graph-execution/23
 - graph-execution/21
 - graph-execution/26
+- agent-execution/01
 effort: M
 gate: model
 risk:
@@ -44,6 +45,48 @@ files: `loopadmin/runner/` (planned), `loopadmin/testdata/runner/` (planned), `s
 facts: The loopadmin Go module is planned here and must build without the workflow module, the instance store (19) or a pattern instance. At main 307fe1699 a harness process runner (`tools/desk/internal/cellprocess`), a per-role cadence lease (`tools/desk/internal/cellcadence`) and cellctl's Claude/Codex/Cursor launch path already exist; this contract is the caller/adapter API over them, not a second launcher: 26 moves the process runner into loopadmin, 22 wraps cellctl's resolved argv, and 27 transfers enrolled roles from cellctl's launch path. `tools/desk/internal/loopengine` owns in-session desk queue behavior; graph consumers retain canonical instance/admission/recovery ownership. Existing role capabilities and human merge/verification gates remain binding. All named commands/tests below are implementation deliverables, not tests already run.
 
 single-point-of-failure: the generation fence in the runner contract's result acceptance — behind it, each caller's own authority check (claim generation at the desk, admission at the controller), which rejects a fenced result that a faulty adapter still reports as success.
+
+## Verification environment — local Linux containers (2026-10-18)
+
+A local Docker Linux engine is now available on the macOS verification host. The
+2026-10-15 Evidence block's "no running daemon" condition is historical, not a
+current prerequisite for this brief. A remote Linux host or completion of the
+verify-runner release-image automation is not required to attempt the existing
+Linux witness locally.
+
+Run the five existing Verify commands and the `statusgen verifyrun` witness in a
+local Linux container with `--network none`. Use the supported
+`--sandbox container-netns` mode for an already isolated container namespace;
+Docker network isolation alone does not make a bare macOS witness valid. Check
+that the container has only loopback before running the witness. Do not weaken
+network isolation to download missing dependencies: prepare the approved image,
+Linux toolchain, source at the exact candidate revision and dependency cache
+before the network-off run. Keep credentials, host configuration and the Docker
+socket outside the container; use a disposable source copy and capture evidence
+outside the source under verification.
+
+Record the immutable image identity, architecture, Go/statusgen versions, source
+revision, network mode, row exits and witness output. A 2026-10-18 local preflight
+confirmed a Linux Docker daemon and a cached Linux/amd64 verification image
+reporting Go 1.27.2 and statusgen v1.0.46. This establishes local availability,
+not image-release qualification or a new verification result for this brief.
+The independent verifier must check the selected image/toolchain against the
+current verification requirements and produce the actual witness; missing tools,
+dependencies or namespace isolation remain could-not-check with their precise
+cause. Preserve prior Evidence and the five Verify rows. This amendment neither
+closes a fleet-wide environment issue nor advances implemented to verified/done.
+
+This is a verification-environment update within the existing
+[library-first ownership map](../../library-first.md) and
+[future runtime architecture](../../proposals/non-ci-architecture/11-target-architecture.md).
+Docker supplies disposable execution isolation; it does not become a second runner
+protocol, queue, scheduler, evidence store or acceptance authority. Reuse the existing
+`statusgen verifyrun` witness and this brief's conformance kit. Supervisor /26 and
+adapter /22 retain process-launch ownership, and /27 retains standing-desk adoption;
+this local verification path neither implements nor activates those consumers. Future
+runner integration must consume the same contract and evidence, not recreate this
+verification workflow. Image release/pinning automation remains its existing owner's
+work and can proceed independently of this local witness attempt.
 
 ## Read first
 
@@ -149,6 +192,78 @@ Risk-bearing value: the fail-safe trigger did not fire. The frontmatter risk blo
 
 **VERIFY: PASS — all 5 Verify rows exit 0 with their named PASS on merged main 91f04b81ba06 (darwin and Linux network-off), and each row's named mutation plus an independent one turns its test red**
 
+### 2026-10-11 re-verify — 5/5 Verify rows pass on merged main 1235e830437a, every named mutation killed
+
+Subject: merged main 1235e830437adfaf08c69f93a4d894df85426f4e, a detached home cut from origin/main. Since the 2026-10-07 subject 91f04b81ba06, the runner package, conformance kit, spec and schema have not changed. The one loopadmin change is the mutation gate's per-run GOCACHE quarantine (#2506, in the mutate directory only). Admission: deskdispatch --check-verifier exited 0 before any row ran.
+
+Verification-Attestation: medici-finance/assay#2599 run=9be0fd70ead45fd7d4d7fc585d326a7d74c462a2af7ff444132e9fe1e1860dee source=1235e830437adfaf08c69f93a4d894df85426f4e brief=docs/streams/graph-execution/brief-20-runner-contract.md model=claude-opus-5-5 tier=any
+
+Each row's command was taken character for character from the Verify table and run with bash from the repo root of the home. Host: darwin/arm64, go1.27.1, git 2.56.0. Each row also got a diagnostic rerun with GIT_CONFIG_GLOBAL=/dev/null and GIT_CONFIG_NOSYSTEM=1, so that host git signing config could not affect it. Both runs gave the same result on every row.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerConformanceUnknownLaunch$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerConformanceUnknownLaunch " "$routing_out")` | exit 0; named PASS; lost ack mapped to definite failure turns it red | as written: exit 0, named PASS line present (UnknownLaunch, 0.00s); diagnostic rerun without global git config: exit 0. Map mutation (lost ack read as definite failure) KILLED. Independent mutation IND-1 (the ack-lost branch deletes the held authority before it returns reconcile-required) KILLED with: concurrent replacement under the same authority: got nil, want runner: unknown or unfinished launch requires reconcile | 2026-10-11 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 2 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerConformanceLateResultDenied$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerConformanceLateResultDenied " "$routing_out")` | exit 0; named PASS; skipping the generation fence turns it red | as written: exit 0, named PASS line present (LateResultDenied); diagnostic rerun: exit 0. Map mutation (fence compare replaced by false) KILLED. Independent mutation IND-2 (the fence reads the attempt's own generation instead of calling the caller's Fence, so the fence trusts the attempt's word) KILLED with: late output from a fenced attempt: got nil, want runner: result is from a fenced authority generation | 2026-10-11 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerConformanceCredentialAndUsage$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerConformanceCredentialAndUsage " "$routing_out")` | exit 0; named PASS; missing usage defaulted to zero turns it red | as written: exit 0, named PASS line present (CredentialAndUsage); diagnostic rerun: exit 0. Map mutations (usage sum treats a nil figure as 0; credential pattern match always says no) both KILLED. Independent mutation IND-3 (Usage.Complete reports known when any one figure is known) KILLED with: missing cost must stay unknown, got CostMicros nil known=true | 2026-10-11 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 4 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerBothModesWithoutGraph$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerBothModesWithoutGraph " "$routing_out")` | exit 0; named PASS; optional workflow references turn it red | as written: exit 0, named PASS line present (BothModesWithoutGraph); diagnostic rerun: exit 0. Map mutation (workflow reference check disabled) KILLED. Independent mutation IND-4 (a workflow-stage request with no work block at all is admitted; only a partly filled block is checked) KILLED with: workflow request with no references: got reconcile-required, want runner: references do not match execution mode | 2026-10-11 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 5 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerCallerRecheck$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerCallerRecheck " "$routing_out")` | exit 0; named PASS; caller accepting without the claim recheck turns it red | as written: exit 0, named PASS line present (CallerRecheck); diagnostic rerun: exit 0. Map mutation (caller recheck replaced by false) KILLED. Independent mutation IND-5 (the reference caller overwrites its own claim record with the accepted result's generation before it rechecks) KILLED with: the caller's own claim-generation check must refuse the fenced result, got nil | 2026-10-11 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+
+Supporting checks, same subject:
+- Implementer mutation gate: go run ./mutate -map testdata/mutations.json from the loopadmin directory, with TMPDIR set to a verifier scratch directory outside the home. Exit 0; 196 of 196 KILLED; none survived or errored. Both scratch TMPDIRs were empty afterwards, so the #2506 per-run GOCACHE quarantine removed its cache as designed.
+- Independent mutations: five, written by this verifier at sites and spellings that differ from the map and from the 2026-10-03 and 2026-10-07 verifiers' mutations. They ran through the same gate from a map kept in verifier scratch: exit 0, 5 of 5 KILLED. The home stayed clean.
+- Whole module: gofmt -l lists nothing; go vet ./... exit 0; go test -count=1 ./... exit 0. The mutate, runner and runner/conformance packages pass; runner/fake has no test files.
+- Witness, host: statusgen v1.0.37 verifyrun --brief on this brief with --dry-run, run from the home. Exit 2, rows 1 to 5 could-not-run. These are check:ci rows, and on darwin the network-off sandbox (unshare --net, Linux only) is unavailable. This is the tool's by-design refusal and says nothing about the rows. The rows were therefore run by hand, as the table above records.
+- Witness, Linux network-off: the local image ghcr.io/medici-finance/verify-runner:v1.0.34 (linux/amd64, go1.25.14, statusgen v1.0.34), run with --network none; only the loopback interface was up. The tree was a scratch clone made from a git bundle of HEAD 1235e830437a, so no host path was mounted. Rows 1 to 5 run by hand there: all exit 0. statusgen verifyrun --dry-run --sandbox container-netns: exit 0, rows 1 to 5 pass exit=0. The runner it derived was assay-verifier-app[bot] @ 1235e830437a (git-config), from git identity that this verifier injected through the container's environment. Nothing was written back. This is not the harness image pinned in plugins/assay/paired-versions.yaml (desk-tools v1.0.29, by digest). That image is not present on this host, and pulling it was out of scope offline.
+- Context files: the loopadmin runner package, the loopadmin testdata runner fixtures, the runner spec (spec directory, loop-admin-runner-v1), the runner schema (schemas directory, loop-admin-runner-v1), the loopadmin README and loopadmin go.mod (go 1.25.0, no requires) all exist on main. There is no go.work at the repository root. The changelog fragment has been aggregated into CHANGELOG.md, now at line 517. The module test job is still staged at ci/staged-workflows/loopadmin.yml and is not live under .github/workflows, so no CI job runs these five tests yet. This is unchanged since 2026-10-03 and disclosed.
+- Vacuity: every row drives the production runner Client against the in-memory fake adapter, and each row turns red under both its map mutation and an independent one. Row 5's caller is the kit's ReferenceCaller fixture. Spec section 8 states that this proves the reference caller only; each real consumer (26, 21) must prove its own recheck.
+
+Risk-bearing value: the fail-safe trigger did not fire. The frontmatter risk block is present and every field is 'no', including irreversible. No loopadmin, spec, schema or staged-workflow path matches an entry in .assay-surfaces. No repo-pinned hard value changed: the runner package is unchanged since the last subject. Enumeration over the runner package, spec and schema at this head, for the record:
+- RISK-VALUE: DERIVED — Version = "loop-admin-runner/v1" @ loopadmin/runner/request.go:15. It equals the schema const (schema line 12), and any other value is refused. It can be changed by an edit plus a re-release.
+- RISK-VALUE: DERIVED — authority generation zero refused (Generation == 0) @ loopadmin/runner/request.go:351 and loopadmin/runner/result.go:111. The spec requires a generation of at least 1 (spec line 43), and the schema sets minimum 1 at lines 67 and 143. Zero is Go's value for an omitted field, so refusing it keeps an absent generation from passing as a real claim.
+- RISK-VALUE: DERIVED — budget limits refused below 0 (MaxTokens < 0 or MaxCostMicros < 0) @ loopadmin/runner/request.go:374, and a usage figure below 0 reads as unknown @ loopadmin/runner/usage.go:33. Both match the schema's minimum 0 (lines 79-80 and 110-112). A negative figure is not a measurement.
+- RISK-VALUE: NAMED, NOT DERIVED — credential-floor minimum lengths {20,} / {10,} / {8,} and AKIA [0-9A-Z]{16} @ loopadmin/runner/secrets.go:20-27. These are heuristic token-shape thresholds. Spec line 57 declares the check a floor, not a scanner, so there is no first-principles bound to derive them from. All of them are reversible by an edit.
+- Reversible knobs, ranked last and not derived: the per-test timeout of 120s (mutate gate line 130, staged workflow line 68) and go 1.25.0 at loopadmin go.mod line 3.
+
+**VERIFY: PASS** — all 5 Verify rows exit 0 with their named PASS on merged main 1235e830437a (darwin as written, darwin with no global git config, and Linux network-off), and each row's named mutation plus an independent one turns its test red
+### Non-implementer verifier run — 2026-10-14 claude-opus-5-5 verifier at 0cb90058470f (5/5 rows exit 0 by hand, every named and independent mutation killed; witness held on the darwin sandbox gap)
+
+Subject: merged main 0cb90058470f9608f76b96e2055e7327d9c5c178, a detached home cut from origin/main. Admission: deskdispatch --check-verifier exited 0 before any row ran. Since the 2026-10-11 subject 1235e830437a (an ancestor of this head), nothing under loopadmin, the runner spec, the runner schema or the staged loopadmin workflow has changed; git diff between the two heads over those paths is empty.
+
+Verification-Attestation: medici-finance/assay#2896 run=af935d658fa5c965ec966e553f73a2a68e9f2333b273082da3ee0d8ea80c3146 source=0cb90058470f9608f76b96e2055e7327d9c5c178 brief=docs/streams/graph-execution/brief-20-runner-contract.md model=claude-opus-5-5 tier=strong
+
+Each row's command was copied character for character from the Verify table and run with bash from the repo root of the home, with TMPDIR set to verifier scratch outside the home. Host: darwin/arm64, go1.27.2, git 2.56.0. The home was clean afterwards.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerConformanceUnknownLaunch$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerConformanceUnknownLaunch " "$routing_out")` | pass exit=0 | exit 0; named PASS line present (UnknownLaunch case, 0.00s). Map mutation (lost ack read as definite failure) KILLED. Independent mutation IND-A (an unknown invocation no longer counts as holding its authority) KILLED | 2026-10-14 | assay-verifier-app[bot] @ 0cb90058470f (on-behalf-of human:ian) (git-config) |
+| 2 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerConformanceLateResultDenied$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerConformanceLateResultDenied " "$routing_out")` | pass exit=0 | exit 0; named PASS line present (LateResultDenied case, 0.00s). Map mutation (fence compare replaced by false) KILLED. Independent mutation IND-B (the fence tolerates one generation of drift: refuses only when current exceeds the attempt by more than one) KILLED | 2026-10-14 | assay-verifier-app[bot] @ 0cb90058470f (on-behalf-of human:ian) (git-config) |
+| 3 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerConformanceCredentialAndUsage$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerConformanceCredentialAndUsage " "$routing_out")` | pass exit=0 | exit 0; named PASS line present (CredentialAndUsage case, 0.00s). Map mutations (missing usage defaulted to zero; credential pattern match always says no) both KILLED. Independent mutation IND-C (acceptance reports usage known when input tokens alone are known) KILLED | 2026-10-14 | assay-verifier-app[bot] @ 0cb90058470f (on-behalf-of human:ian) (git-config) |
+| 4 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerBothModesWithoutGraph$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerBothModesWithoutGraph " "$routing_out")` | pass exit=0 | exit 0; named PASS line present (BothModesWithoutGraph case, 0.00s). Map mutation (workflow reference check disabled) KILLED. Independent mutation IND-D (workflow references refused only when all three are blank together) KILLED | 2026-10-14 | assay-verifier-app[bot] @ 0cb90058470f (on-behalf-of human:ian) (git-config) |
+| 5 | `(cd loopadmin && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestRunnerCallerRecheck$" ./... > "$routing_out" && grep -q -- "--- PASS: TestRunnerCallerRecheck " "$routing_out")` | pass exit=0 | exit 0; named PASS line present (CallerRecheck case, 0.00s). Map mutation (caller accepts without its claim recheck) KILLED. Independent mutation IND-E (the reference caller tolerates one generation of drift between its claim and the result) KILLED | 2026-10-14 | assay-verifier-app[bot] @ 0cb90058470f (on-behalf-of human:ian) (git-config) |
+
+Supporting checks, same subject:
+- Implementer mutation gate: go run ./mutate -map testdata/mutations.json from the loopadmin directory of a no-hardlinks scratch clone at this head, TMPDIR in verifier scratch. Exit 0; 196 of 196 KILLED; none survived or errored.
+- Independent mutations: five, IND-A to IND-E, written by this verifier at sites or spellings that differ from the map and from the 2026-10-03, 2026-10-07 and 2026-10-11 verifiers' mutations. They ran through the same gate from a map kept in verifier scratch: exit 0, 5 of 5 KILLED.
+- Whole module, in the home: gofmt -l lists nothing; go vet ./... exit 0; go test -count=1 ./... passes the mutate, runner and runner/conformance packages (runner/fake has no test files). The home stayed clean.
+- Witness, host: statusgen v1.0.41 verifyrun --brief on this brief with --dry-run, run from the home. Exit 2; rows 1 to 5 could-not-run with sandbox=unshare, because these are check:ci rows and the network-off sandbox (unshare --net) is Linux-only and this host is darwin. This is the tool's by-design refusal and says nothing about the rows; it is the open hold medici-finance/assay#1800. Nothing was written back.
+- Witness, Linux network-off: could not be produced this run. The container engine on this host has no running daemon, so neither the pinned harness image (plugins/assay/paired-versions.yaml, desk-tools v1.0.29 by digest) nor a local verify-runner image could be started. No Linux execution witness exists at this head.
+- Context files: the loopadmin runner package, the loopadmin testdata runner fixtures, the runner spec and schema (loop-admin-runner-v1), the loopadmin README and loopadmin go.mod (go 1.25.0, no requires) exist on main, and there is no go.work at the repository root. The module test job is still staged at ci/staged-workflows/loopadmin.yml and is not live under .github/workflows, so no CI job runs these five tests yet. This has not changed since 2026-10-03 and is disclosed.
+- Vacuity: every row drives the production runner Client against the in-memory fake adapter, and each row turns red under its map mutation and under an independent one. Row 5's caller is the kit's ReferenceCaller fixture; spec section 8 says this proves the reference caller only, and each real consumer (26, 21) must prove its own recheck.
+
+Risk-bearing value: the fail-safe trigger did not fire. The frontmatter risk block is present and every field is 'no', irreversible included. No loopadmin, spec, schema or staged-workflow path changed since the last subject, so no repo-pinned hard value changed. Enumeration over the runner package, spec and schema at this head, for the record:
+- RISK-VALUE: DERIVED — Version = "loop-admin-runner/v1" @ loopadmin/runner/request.go:15 — equals the schema const (schemas/loop-admin-runner-v1.json line 12), and any other value is refused; it changes only by an edit plus a re-release.
+- RISK-VALUE: DERIVED — authority generation 0 refused (Generation == 0) @ loopadmin/runner/request.go:351 and loopadmin/runner/result.go:111 — the spec requires a generation of at least 1 (spec line 43) and the schema sets minimum 1 (lines 67 and 143). Zero is Go's value for an omitted field, so refusing it keeps an absent generation from passing as a real claim.
+- RISK-VALUE: DERIVED — budget limits refused below 0 (MaxTokens < 0 or MaxCostMicros < 0) @ loopadmin/runner/request.go:374, and a usage figure below 0 reads as unknown @ loopadmin/runner/usage.go:33 — both match the schema's minimum 0 (lines 79-80 and 110-112); a negative figure is not a measurement.
+- RISK-VALUE: DERIVED — artifact hash shape {64} @ loopadmin/runner/result.go:102 — a sha256 digest is 256 bits, which is 64 lowercase hex characters at 4 bits each.
+- RISK-VALUE: NAMED, NOT DERIVED — credential-floor minimum lengths {20,} @ loopadmin/runner/secrets.go:20, 21, 22 and 25; AKIA [0-9A-Z]{16} @ loopadmin/runner/secrets.go:23; {10,} @ loopadmin/runner/secrets.go:24; {8,} @ loopadmin/runner/secrets.go:27; basic-auth {4,} @ loopadmin/runner/secrets.go:76 — heuristic token-shape thresholds. Spec line 57 declares the check a floor, not a scanner, so there is no first-principles bound to derive them from. All are reversible by an edit.
+- Reversible knobs, ranked last and not derived: the per-test timeout of 120s (loopadmin mutate gate line 130, staged workflow line 68) and go 1.25.0 at loopadmin go.mod line 3.
+
+**VERIFY: BLOCKED** — all 5 Verify rows exit 0 with their named PASS on merged main 0cb90058470f (darwin, as written), and each row's map mutation plus an independent one turns its test red; the statusgen execution witness could-not-run on this darwin host and no Linux witness was available, so the environment hold medici-finance/assay#1800 stays open and status stays implemented.
+
 ## Review
 
 Gate: model. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
+
+## Execution-environment follow-on routing — 2026-10-16
+
+Reciprocal unblocks only: agent-execution/01. The [execution amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md) adds a follow-on obligation over this brief's existing output. Its Task, Verify, gate, version and historical Evidence are unchanged; this note grants no delivery, reassignment or activation.

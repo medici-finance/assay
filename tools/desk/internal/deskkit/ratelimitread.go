@@ -149,7 +149,7 @@ func boundedPointsFor(want string, now time.Time) (mine []auditPoint, ok bool) {
 				undetermined = true
 				return false
 			}
-			p := auditPoint{ts: ts, result: meterResult(e), repo: e.Repo, pr: e.PR}
+			p := auditPoint{tool: want, ts: ts, result: meterResult(e), verb: e.Verb, repo: e.Repo, pr: e.PR}
 			mine = append(mine, p)
 
 			recent := !ts.Before(coolCutoff)
@@ -206,7 +206,7 @@ func pointsFrom(entries []Entry, want, tool string) ([]auditPoint, error) {
 				fmt.Sprintf("audit entry for %q has an unparseable ts %q — run `deskaudit recover` (quarantines the bad line and carries good entries forward; a plain move resets the budget + idempotency)", tool, e.TS),
 				perr)
 		}
-		mine = append(mine, auditPoint{ts: ts, result: meterResult(e), repo: e.Repo, pr: e.PR})
+		mine = append(mine, auditPoint{tool: want, ts: ts, result: meterResult(e), verb: e.Verb, repo: e.Repo, pr: e.PR})
 	}
 	return mine, nil
 }
@@ -217,9 +217,11 @@ func sortPoints(mine []auditPoint) {
 	sort.SliceStable(mine, func(i, j int) bool { return mine[i].ts.Before(mine[j].ts) })
 }
 
-// meterResult recognizes historical local scan-override rows without rewriting
-// the append-only ledger. Only successful override receipts qualify; unknown
-// verbs/results retain their conservative charging treatment.
+// meterResult recognizes scan-override rows written before ResultLocal existed (both
+// writers, LogScanOverride and the outbound seam's logOutboundOverride, now emit
+// ResultLocal) without rewriting the append-only ledger. Only successful override
+// receipts qualify; unknown verbs/results retain their conservative charging treatment.
+// Do not remove this as dead compatibility code while any pre-change ledger can be read.
 func meterResult(e Entry) string {
 	if e.Verb == ScanOverrideVerb && e.Result == ResultOK {
 		return ResultLocal

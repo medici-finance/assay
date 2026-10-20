@@ -35,9 +35,19 @@ func renderWalk(w io.Writer, r rendered) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Reply shape")
 	fmt.Fprintln(w, "  "+r.Reply)
+	fmt.Fprintln(w, "  command: "+commandOrFill(r.Command))
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Verification")
 	fmt.Fprintln(w, "  "+r.Verification)
+}
+
+// commandOrFill is the oracle's `.command // "not derivable — desk to fill"`: an item
+// built without a command still renders the honest fallback, never an empty line.
+func commandOrFill(c string) string {
+	if c == "" {
+		return commandNotDerivable
+	}
+	return c
 }
 
 // runWalk resolves the repo queue, builds the requested 1-based item's detail + rendering,

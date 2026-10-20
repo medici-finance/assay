@@ -32,7 +32,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # (the bash oracle, the default, or the Go port) — desk-containers/10.
 CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" == /* ]] || CELLCTL="$PWD/$CELLCTL"
 T="$(cd "$(mktemp -d "${TMPDIR:-/tmp}/cellctl-set.XXXXXX")" && pwd -P)"
-trap 'rm -rf "$T"' EXIT
+trap 'suite_status=$?; if declare -F private_deskwt_finish >/dev/null; then private_deskwt_finish || suite_status=1; fi; rm -rf "$T"; exit "$suite_status"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
 sha(){ if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
@@ -73,8 +73,14 @@ esac
 echo "ARGS=$*" > "${CELLCTL_TEST_OUT:-/dev/null}"
 EOF
 chmod +x "$T/bin/claude"
-export PATH="$T/bin:$PATH"
+# shellcheck source=SCRIPTDIR/private-path.sh
+source "$HERE/private-path.sh"
+private_path "$T/bin"
+private_deskwt "$T/bin"
 export CELLS_ROOT="$T/cells" CLAUDE_CONFIG_DIR="$T/claude-config"; mkdir -p "$CLAUDE_CONFIG_DIR"
+# regression: #2738 — normal-path isolation and real-launch positive control.
+private_deskwt_check "$CELLCTL" "$REPO"
+
 
 "$CELLCTL" new house-cell --kind house --repo "$REPO" --roots "$ROOTS" >/dev/null
 CELL="$CELLS_ROOT/house-cell"
@@ -182,8 +188,8 @@ assert "--model opus --set is refused (opus rule outranks the sugar) and persist
 
 # ================================================================ #1303 scope 2: every per-run choice
 # `set` sugar flags, `desk`/`up --set` persisting EVERY override given, kind-change preconditions,
-# and the `show` read. A codex stub and a no-op tmux stub so the live `up --set` path runs
-# without a real cockpit.
+# and the `show` read. A codex stub, so the live `up --set` path runs; the no-op tmux stub
+# comes from private_path above.
 for stub in codex; do
   cat > "$T/bin/$stub" <<'EOF'
 #!/usr/bin/env bash
@@ -192,7 +198,6 @@ echo "ARGS=$*" > "${CELLCTL_TEST_OUT:-/dev/null}"
 EOF
   chmod +x "$T/bin/$stub"
 done
-printf '#!/usr/bin/env bash\nexit 0\n' > "$T/bin/tmux"; chmod +x "$T/bin/tmux"
 backups(){ find "$1" -maxdepth 1 -name 'cell.env.bak-*' | wc -l | tr -d ' '; }
 
 "$CELLCTL" new wide-cell --kind house --repo "$REPO" --roots "$ROOTS" >/dev/null
@@ -319,6 +324,7 @@ out="$("$CELLCTL" show wide-cell --kind container 2>&1)" && rc=0 || rc=$?
 assert "show --kind container on an unprovisioned cell refuses like desk would" '[[ $rc -ne 0 ]] && grep -q "CELL_CONTAINER_LAUNCHER" <<<"$out"'
 out="$("$CELLCTL" show wide-cell --harness bogus 2>&1)" && rc=0 || rc=$?
 assert "show validates its flags" '[[ $rc -ne 0 ]]'
+
 
 echo
 if [[ "$fails" -eq 0 ]]; then echo "cell-set.test.sh: OK"; else echo "cell-set.test.sh: $fails FAILED"; exit 1; fi

@@ -6,7 +6,8 @@
 // independent of it: every Go main package and every script launcher in the tree must be
 // either a registry row or matched by an explicit exclusion rule with a class and a
 // reason, and every row must be owned by a brief that depends on the reference migration
-// and is a dependency of the final gate. The contract itself is
+// and is a dependency of the final gate, except an exempt row, whose parser port was
+// withdrawn until the entrypoint retires. The contract itself is
 // docs/streams/desktools-v2/cli-contract.md.
 package clicontract
 
@@ -26,6 +27,11 @@ const (
 	StateMigrated = "migrated" // the owner's black-box suite passes on the migrated command
 	StateRetired  = "retired"  // removed, with its consumers, by a merged change of the owner
 	StateExcluded = "excluded" // not an operator entrypoint; class and reason required
+	// StateExempt: the owner's parser port was withdrawn because the entrypoint's domain
+	// retires or re-homes under the target architecture. The entrypoint keeps its current
+	// parser until it is retired; owner names the withdrawn brief (or the retiring brief)
+	// and reason names the retirement path. Exempt rows are not wired to the final gate.
+	StateExempt = "exempt"
 )
 
 // Registry is the parsed cli-migration.json.

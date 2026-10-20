@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -76,22 +75,17 @@ type CheckResult struct {
 	Files []FileScreenResult
 }
 
-// runCheck is the `check <paths>` mode entry point.
-func runCheck(args []string, stdout, stderr io.Writer) int {
-	// Leading positionals are the file/glob set to screen (`check a.go b.go --out x`).
-	var rawPaths []string
-	for len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		rawPaths = append(rawPaths, args[0])
-		args = args[1:]
-	}
-	fs := flag.NewFlagSet("check", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	out := fs.String("out", "", "tracking root to read mined artifacts from (required)")
-	repo := fs.String("repo", ".", "path to the git repository the screened paths live in (read-only; consulted only for the live reference-rot check)")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if *out == "" {
+// checkOptions are the `check` verb's parsed settings (cli.go declares them).
+// Paths are the positional file/glob set to screen.
+type checkOptions struct {
+	Paths     []string
+	Out, Repo string
+}
+
+// checkMain is the `check <paths>` mode entry point.
+func checkMain(o checkOptions, stdout, stderr io.Writer) int {
+	rawPaths := o.Paths
+	if o.Out == "" {
 		fmt.Fprintln(stderr, "qualgen check: --out <dir> is required (the tracking root to read mined artifacts from)")
 		return 2
 	}
@@ -100,7 +94,7 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	paths, err := expandCheckPaths(*repo, rawPaths)
+	paths, err := expandCheckPaths(o.Repo, rawPaths)
 	if err != nil {
 		fmt.Fprintln(stderr, "qualgen check:", err)
 		return 1
@@ -110,8 +104,8 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	store := NewStore(*out)
-	result, err := screenPaths(*repo, store, paths)
+	store := NewStore(o.Out)
+	result, err := screenPaths(o.Repo, store, paths)
 	if err != nil {
 		fmt.Fprintln(stderr, "qualgen check:", err)
 		return 1

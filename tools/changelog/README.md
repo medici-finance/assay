@@ -68,10 +68,10 @@ whole activation.
    git apply tools/changelog/release.yml.patch
    ```
 
-   (Or copy `tools/changelog/release.yml.proposed` over
-   `.github/workflows/release.yml`, dropping its leading `⚠️ STAGED …` banner
-   block down to the `# ---` rule — the `.proposed` file is the full intended
-   content; the `.patch` is the exact delta from the currently-live file.) The
+   (`tools/changelog/release.yml.proposed` is now a historical whole-file
+   snapshot of this rollout. The live workflow already carries its delta plus
+   later build and artifact contracts, so never copy the snapshot over
+   `.github/workflows/release.yml`; its own banner says the same.) The
    change reworks the two "CHANGELOG discipline"-marked steps in the `release`
    job:
    - **aggregate + refuse** — `aggregate.py highlights changelog CHANGELOG.md`

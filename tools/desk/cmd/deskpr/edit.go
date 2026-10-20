@@ -346,7 +346,7 @@ func cmdEdit(args []string) (err error) {
 }
 
 // trailerLink renders a body's single link trailer in one comparable form —
-// `Brief: <value>`, `Authors: <value>` or `Issue: #<n>` — and reports whether the body carries one at all.
+// `Brief: <value>`, `Authors: <value>`, `Cross-repo-brief: <value>` or `Issue: #<n>` — and reports whether the body carries one at all.
 //
 // It is deliberately TOTAL where requireTrailer refuses: a body with no trailer, a
 // multiplicity error, or the machine-written scan-carrier marker all come back
@@ -367,6 +367,8 @@ func trailerLink(body []byte) (string, bool) {
 		return "Issue: #" + trs[0].Value, true
 	case deskkit.TrailerAuthors:
 		return "Authors: " + trs[0].Value, true
+	case deskkit.TrailerCrossRepoBrief:
+		return "Cross-repo-brief: " + trs[0].Value, true
 	}
 	return "Brief: " + trs[0].Value, true
 }

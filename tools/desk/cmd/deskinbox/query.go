@@ -20,6 +20,7 @@ package main
 // deliberate, bounded divergence.
 
 import (
+	"github.com/medici-finance/assay/tools/desk/internal/issueflow"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,15 +45,7 @@ type item struct {
 // rankOf returns the lowest index into `labels` any of names carries, or 99 when none
 // match — the oracle's `$rankorder | index($n) | min // 99`.
 func rankOf(names []string) int {
-	best := 99
-	for _, n := range names {
-		for i, l := range labels {
-			if n == l && i < best {
-				best = i
-			}
-		}
-	}
-	return best
+	return issueflow.InboxRank(names)
 }
 
 // hasEscalationLabel reports whether names carries at least one of `labels`.

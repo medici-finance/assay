@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -128,7 +127,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// attestation for another brief refuses here. The refusals above need only the record's
 	// own bytes, so a record they refuse never mints; everything below reads or writes the
 	// forge and runs only for an admitted landing.
-	fg, fr, receipt, aerr := admitLanding(root, repoSlug, owner, name, targetRepoPath, ac)
+	fg, fr, receipt, aerr := admitLanding(root, repoSlug, owner, name, targetRepoPath, branch, ac)
 	if aerr != nil {
 		return aerr
 	}
@@ -142,6 +141,9 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	facts, ferr := resolveJoinFacts(fg, fr, kind, join, submitted.SHA, rec.TS)
 	if ferr != nil {
 		return ferr
+	}
+	if err := checkAdmittedDeliveryPRs(fg, receipt, facts); err != nil {
+		return err
 	}
 	redacted, rderr := redactOutcomeFn(rec.Raw, join, facts)
 	if rderr != nil {
@@ -171,8 +173,8 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused(fmt.Sprintf("refused: outcome record exceeds %d bytes (%d)", maxBytes, len(commitContent)))
 	}
 
-	// PUBLISH-identity gate — see cmdEvidence's own call for the full rationale (#1490 lane B).
-	if ierr := publishIdentityGate(root, branch); ierr != nil {
+	// Same admitted-source boundary as the conditional Evidence-file lane.
+	if ierr := publishEvidenceIdentityGate(root, receipt); ierr != nil {
 		return ierr
 	}
 
@@ -180,7 +182,8 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// verify-wake-v1 receipt the planner can hold it on. The receipt changes the record's
 	// bytes, so its name is re-derived — same stream directory, same brief number, which
 	// keeps the admission above bound to this brief.
-	derived, derr := outcomeReceiptFn(rec.Raw, root, fg, fr, branch, receipt.Binding.Source)
+	evidenceRoot := receipt.EvidenceRoot(root)
+	derived, derr := admittedOutcomeReceipt(rec.Raw, evidenceRoot, fg, fr, branch, receipt)
 	if derr != nil {
 		return derr
 	}
@@ -230,6 +233,9 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 			return cerr
 		}
 	} else {
+		if kerr := plainFileRead(cur, fr, targetRepoPath, branch, "whether the outcome record is already recorded", true); kerr != nil {
+			return kerr
+		}
 		remoteExists, remoteContent = cur.Exists, cur.Content
 	}
 
@@ -251,10 +257,19 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if err := json.Unmarshal(commitContent, &outcome); err != nil {
 		return deskkit.Refused("refused: invalid outcome record: " + err.Error())
 	}
-	if err := outcomeEvidenceBindingFn(root, fg, fr, branch, receipt, outcome.SHA); err != nil {
+	landedRoot, landedHead, cleanup, err := landedClosureFn(evidenceRoot, targetRepoPath, nil, commitContent, false, fg, fr, branch)
+	if err != nil {
 		return err
 	}
-	if err := outcomeObservationBindingFn(root, fg, fr, branch, receipt, outcome); err != nil {
+	defer cleanup()
+	closureRef := branch
+	if landedHead != "" {
+		closureRef = landedHead
+	}
+	if err := outcomeEvidenceBindingFn(evidenceRoot, fg, fr, closureRef, receipt, outcome.SHA); err != nil {
+		return err
+	}
+	if err := outcomeObservationBindingFn(evidenceRoot, fg, fr, closureRef, receipt, outcome); err != nil {
 		return err
 	}
 
@@ -272,7 +287,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	bodyDig := deskkit.Sha256Hex(commitContent)
 	ac.bodyDig = bodyDig
 
-	lintRoot := root
+	lintRoot := evidenceRoot
 	if lintRoot == "" {
 		lintRoot = "."
 	}
@@ -281,10 +296,10 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// added log line today: "before" is empty (a brand-new file), "after" is the record's own
 	// canonical bytes. isVerifyOutcomesSidecar recognises this per-file path, so the gates
 	// activate for a `verified` record precisely as they did for an appended log line.
-	if err := outcomeGuardFn(lintRoot, targetRepoPath, nil, commitContent, fg, fr, branch); err != nil {
+	if err := outcomeGuardFn(lintRoot, landedRoot, targetRepoPath, nil, commitContent, fg, fr, closureRef); err != nil {
 		return err
 	}
-	introduced, lerr := lintDiffFn(lintRoot, targetRepoPath, commitContent)
+	introduced, lerr := lintDiffFn(landedRoot, targetRepoPath, commitContent)
 	if lerr != nil {
 		return lerr
 	}
@@ -293,7 +308,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 			"refused: landing %s would introduce %d new statusgen PROBLEM(s) not present in %s before this change:\n%s",
 			targetRepoPath, len(introduced), lintRoot, strings.Join(introduced, "\n")))
 	}
-	if verr := gateVerifiedSidecarLanding(targetRepoPath, lintRoot, nil, commitContent, false); verr != nil {
+	if verr := gateVerifiedSidecarLanding(targetRepoPath, landedRoot, nil, commitContent, false); verr != nil {
 		return verr
 	}
 
@@ -306,12 +321,12 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return deskkit.Refused("refused: invalid --outcome-record JSON: " + jerr.Error())
 	}
 	if wr.Schema == deskkit.SchemaWakeV1 {
-		if verr := receiptValidateFn(lintRoot, fg, fr, branch, repoSlug, wr); verr != nil {
+		if verr := receiptValidateFn(lintRoot, fg, fr, closureRef, repoSlug, wr); verr != nil {
 			return verr
 		}
 	}
 
-	if werr := deskkit.AllowWrite(toolName, repoSlug, 0); werr != nil {
+	if werr := evidenceWriteBudget(toolName, repoSlug, 0); werr != nil {
 		return werr
 	}
 
@@ -320,26 +335,35 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return oerr
 	}
 
-	res, werr := fg.WriteFile(fr, deskkit.WriteFileInput{
+	writeInput := deskkit.WriteFileInput{
 		File:    targetRepoPath,
 		Branch:  branch,
 		Content: commitContent,
 		Message: "Evidence: verify-outcome record for " + wr.Brief + ac.attestationTrailer() + commitSuffix,
-	})
+	}
+	writeInput.ExpectedHead = landedHead
+	res, werr := fg.WriteFile(fr, writeInput)
 	if werr != nil {
 		return werr
 	}
 
 	if res.DefaultBranchNotWritable {
+		if landedHead != "" {
+			return deskkit.Unverifiable("pinned verified outcome cannot fall back to a different branch", nil)
+		}
 		return landOutcomeRecordAsChange(fg, fr, repoSlug, branch, targetRepoPath, commitContent, wr.Brief, ac)
 	}
 
-	attr, aerr := checkAttribution(fg, fr, res.SHA, res.Author)
-	ac.detail = fmt.Sprintf("committed %s to %s on %s (sha %s) — %s", targetRepoPath, repoSlug, branch, shortSHA(res.SHA), attr)
+	if reportWriteNoop(res, targetRepoPath, ac) {
+		return nil
+	}
+
+	attr, aerr := checkWriteAttribution(fg, fr, res)
+	ac.detail = fmt.Sprintf("committed %s to %s on %s (sha %s) — %s", targetRepoPath, repoSlug, branch, string(res.CommitSHA), attr)
 	if aerr != nil {
 		return aerr
 	}
-	fmt.Fprintf(stdout, "committed %s to %s on %s (sha %s) — %s\n", targetRepoPath, repoSlug, branch, shortSHA(res.SHA), attr)
+	fmt.Fprintf(stdout, "committed %s to %s on %s (sha %s) — %s\n", targetRepoPath, repoSlug, branch, string(res.CommitSHA), attr)
 	return nil
 }
 
@@ -371,6 +395,10 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 				"verify-outcome record was NOT landed", side), nil)
 	}
 
+	if reportWriteNoop(res, target, ac) {
+		return nil
+	}
+
 	// CreateHeldDraftChange, never the raw CreateDraftChange — see landEvidenceAsChange (#2254).
 	pr, perr := deskkit.CreateHeldDraftChange(fg, fr, deskkit.DraftChangeInput{
 		Title: "Evidence: " + target,
@@ -387,24 +415,18 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 		return perr
 	}
 
-	headSHA := ""
-	if res.Author == "" && pr != nil {
-		if got, gerr := fg.GetPullRequest(fr, pr.Number); gerr == nil && got != nil {
-			headSHA = got.HeadSHA
-		}
-	}
-	attr, aerr := checkAttribution(fg, fr, headSHA, res.Author)
+	attr, aerr := checkWriteAttribution(fg, fr, res)
 	loc := fmt.Sprintf("change #%d", pr.Number)
 	if pr.URL != "" {
 		loc = pr.URL
 	}
-	ac.detail = fmt.Sprintf("landed %s on %s in %s via draft %s — default branch not directly writable — %s",
-		target, repoSlug, side, loc, attr)
+	ac.detail = fmt.Sprintf("landed %s on %s in %s via draft %s (commit %s) — default branch not directly writable — %s",
+		target, repoSlug, side, loc, res.CommitSHA, attr)
 	if aerr != nil {
 		return aerr
 	}
-	fmt.Fprintf(stdout, "landed %s on %s: %s takes no direct write, so wrote branch %s and opened draft %s — %s\n",
-		target, repoSlug, base, side, loc, attr)
+	fmt.Fprintf(stdout, "landed %s on %s: %s takes no direct write, so wrote branch %s and opened draft %s (commit %s) — %s\n",
+		target, repoSlug, base, side, loc, res.CommitSHA, attr)
 	return nil
 }
 
@@ -459,6 +481,9 @@ func deriveOutcomeReceipt(raw []byte, root string, fg deskkit.Forge, fr deskkit.
 	if rerr != nil {
 		return nil, deskkit.Unverifiable("cannot read "+briefPath+" on "+branch+" to hash the receipt's brief revision", rerr)
 	}
+	if kerr := plainFileRead(landed, fr, briefPath, branch, "the receipt's brief revision", true); kerr != nil {
+		return nil, kerr
+	}
 	if len(observedSource) != 40 {
 		return nil, deskkit.Refused("refused: outcome receipt needs its admitted observation commit")
 	}
@@ -492,30 +517,42 @@ func newGitOutcomeTree(root, sha string) (gitOutcomeTree, error) {
 	if sha == "" || strings.HasPrefix(sha, "-") {
 		return gitOutcomeTree{}, deskkit.Refused("refused: sha " + strconv.Quote(sha) + " is not a commit")
 	}
-	if err := exec.Command("git", "-C", root, "cat-file", "-e", sha+"^{commit}").Run(); err != nil {
+	if err := outcomeGit(root, "cat-file", "-e", sha+"^{commit}").Run(); err != nil {
 		return gitOutcomeTree{}, deskkit.Unverifiable("could-not-check: commit "+sha+" is not in the local checkout at "+root, err)
 	}
 	return gitOutcomeTree{root: root, sha: sha}, nil
 }
 
 func (g gitOutcomeTree) PathKind(rel string) (string, error) {
-	kind, ok := gitPathKindAt(g.root, g.sha, rel)
-	if !ok {
-		return "", nil // the commit resolves (newGitOutcomeTree), so a miss is an absent path
+	// ls-tree distinguishes a successful absent lookup from a read failure.
+	out, err := outcomeGit(g.root, "ls-tree", "-z", g.sha, "--", ":(literal)"+rel).Output()
+	if err != nil {
+		return "", err
 	}
-	return kind, nil
+	if len(out) == 0 {
+		return "", nil
+	}
+	fields := strings.Fields(strings.SplitN(string(out), "\t", 2)[0])
+	if len(fields) != 3 {
+		return "", fmt.Errorf("unreadable input kind")
+	}
+	return fields[1], nil
 }
 
 func (g gitOutcomeTree) ReadFile(rel string) ([]byte, error) { return gitShowAt(g.root, g.sha, rel) }
 
 func (g gitOutcomeTree) ListFiles(rel string) ([]string, error) {
-	out, err := exec.Command("git", "-C", g.root, "ls-tree", "-r", "--name-only", g.sha, "--", strings.TrimSuffix(rel, "/")+"/").Output()
+	args := []string{"ls-tree", "-rz", "--name-only", g.sha}
+	if rel != "." {
+		args = append(args, "--", ":(literal)"+strings.TrimSuffix(rel, "/")+"/")
+	}
+	out, err := outcomeGit(g.root, args...).Output()
 	if err != nil {
 		return nil, err
 	}
 	var files []string
-	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if l = strings.TrimSpace(l); l != "" {
+	for _, l := range strings.Split(string(out), "\x00") {
+		if l != "" {
 			files = append(files, l)
 		}
 	}

@@ -47,6 +47,8 @@ id: 739df04b-fc17-473d-8697-32ecdc7a3c36
 
 # Brief 02 — mechanical responder
 
+> **Contract note, 2026-10-18.** This brief is the live mechanical exit of the gate-red class that graph-execution/08 now defines; this brief's canonicalized path allow-list is stricter than 08's pattern-level deny-list and stays this brief's control. Where this brief and graph-execution/08 differ, the stricter rule applies. This brief stays `todo` and keeps its own gate: it is where the executable code and live activation of the auto-triage response are built.
+
 ## Context
 
 single-point-of-failure: the classifier's `mechanical` decision (brief 01). If it

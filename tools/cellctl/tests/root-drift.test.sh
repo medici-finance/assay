@@ -74,8 +74,9 @@ for v in deskboot deskroster deskwt deskboard deskdispatch deskpr deskfile deskp
 done
 printf '#!/usr/bin/env bash\necho "claude-stub $*" > "%s/launched"\nexit 0\n' "$T" > "$T/bin/claude"
 chmod +x "$T/bin/claude"
-printf '#!/usr/bin/env bash\nexit 0\n' > "$T/bin/tmux"; chmod +x "$T/bin/tmux"
-export PATH="$T/bin:$PATH"
+# shellcheck source=SCRIPTDIR/private-path.sh
+source "$HERE/private-path.sh"
+private_path "$T/bin"
 export DESK_TOOLS_BIN="$T/bin"
 
 # Invoked directly, never `bash "$CELLCTL"`: the suite runs against either implementation

@@ -10,7 +10,7 @@ package main
 // (`@@ -a,b +c,d @@ <context>`, the line git's own function-context heuristic already
 // attaches for many text file types) naming a heading, and (b) walking every context and
 // changed line in the file's hunks and tracking which markdown ATX heading (`## ...`) they
-// fall under. A CHANGED (+/-) line while the tracked heading is "Verify" (case-insensitive)
+// fall under. A CHANGED (+/-) line while the tracked heading matches the Verify prefix
 // marks the section touched; a heading LINE ITSELF being added or removed also updates the
 // tracked heading before that line is tested, so opening or closing the section is itself a
 // touch of whichever heading it opens.
@@ -67,7 +67,7 @@ func verifySectionTouched(diffText, path string) bool {
 		if h, ok := headingText(content); ok {
 			section = h
 		}
-		if (marker == '+' || marker == '-') && strings.EqualFold(section, "Verify") {
+		if (marker == '+' || marker == '-') && isVerifyHeading("## "+section) {
 			touched = true
 		}
 	}

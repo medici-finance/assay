@@ -1,0 +1,89 @@
+{
+  "test": "go test ./cmd/clusterguard/... -count=1",
+  "control": {
+    "name": "CONTROL — the read-only tier stops consulting the classification (every verb passes under ASSAY_ALLOW_CLUSTER=1)",
+    "file": "cmd/clusterguard/shim.go",
+    "old": "\tcase tierReadOnly:\n\t\tif ro {",
+    "new": "\tcase tierReadOnly:\n\t\tif true {"
+  },
+  "mutations": [
+    {
+      "name": "an unlisted pre-verb flag is read as boolean again, so the token after it is taken as the verb (the --username get delete false pass)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\t\treturn verbScan{unlisted: a} // unknown arity: unclassifiable",
+      "new": "\t\t\tcontinue"
+    },
+    {
+      "name": "an unlisted pre-verb flag is guessed to consume the next token, still recorded for the refusal text (the --debug uninstall list false pass)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\t\treturn verbScan{unlisted: a} // unknown arity: unclassifiable",
+      "new": "\t\t\tif i+1 < len(args) {\n\t\t\t\ts := scanVerb(cli, args[i+2:])\n\t\t\t\ts.unlisted = a\n\t\t\t\treturn s\n\t\t\t}\n\t\t\treturn verbScan{unlisted: a}"
+    },
+    {
+      "name": "an unlisted pre-verb flag takes one value and the next non-flag token is the verb, cobra-style (the --warnings-as-errors delete events false pass)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\t\treturn verbScan{unlisted: a} // unknown arity: unclassifiable",
+      "new": "\t\t\tif i+2 < len(args) && !strings.HasPrefix(args[i+2], \"-\") {\n\t\t\t\treturn verbScan{verb: args[i+2], unlisted: a}\n\t\t\t}\n\t\t\treturn verbScan{unlisted: a}"
+    },
+    {
+      "name": "a listed value flag no longer consumes its value (-n ns get classifies on ns)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\t\t\ti++ // skip the value this flag consumes\n",
+      "new": "\n"
+    },
+    {
+      "name": "a self-contained --flag=value is treated as an unlisted flag (the documented workaround stops classifying)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\t\tif strings.Contains(a, \"=\") {",
+      "new": "\t\t\tif false && strings.Contains(a, \"=\") {"
+    },
+    {
+      "name": "the unclassified-flag refusal stops naming the flag and the --flag=value form",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\tif scan.unlisted != \"\" && len(readOnlyVerbs[cli]) > 0 {",
+      "new": "\t\tif false && scan.unlisted != \"\" && len(readOnlyVerbs[cli]) > 0 {"
+    },
+    {
+      "name": "a bare-form-only verb is classified on its first token again (services with a positional argument passes as read-only)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\tif bareOnlyVerbs[cli][s.verb] && hasPositional(cli, args[s.at+1:]) {",
+      "new": "\tif false && bareOnlyVerbs[cli][s.verb] && hasPositional(cli, args[s.at+1:]) {"
+    },
+    {
+      "name": "a non-flag token after a bare-form-only verb is not counted as positional",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\tif a == \"-\" || !strings.HasPrefix(a, \"-\") {\n\t\t\treturn true\n\t\t}",
+      "new": "\t\tif a == \"-\" || !strings.HasPrefix(a, \"-\") {\n\t\t\treturn false\n\t\t}"
+    },
+    {
+      "name": "a lone - after a bare-form-only verb is read as a flag, not a positional argument",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\tif a == \"-\" || !strings.HasPrefix(a, \"-\") {",
+      "new": "\t\tif !strings.HasPrefix(a, \"-\") {"
+    },
+    {
+      "name": "an unlisted flag after a bare-form-only verb is guessed to consume the next token (services --added-upstream x passes as read-only)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\tif !strings.Contains(a, \"=\") && vf[a] {",
+      "new": "\t\tif !strings.Contains(a, \"=\") && (vf[a] || true) {"
+    },
+    {
+      "name": "a listed value flag after a bare-form-only verb no longer consumes its value (services -n node1 is refused)",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\t\ti++ // skip the listed flag's value\n",
+      "new": "\n"
+    },
+    {
+      "name": "everything after a bare -- following a bare-form-only verb stops counting as positional",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\t\treturn i+1 < len(rest)",
+      "new": "\t\t\treturn false"
+    },
+    {
+      "name": "the bare-form refusal stops saying the entry is read-only only in its bare form",
+      "file": "cmd/clusterguard/shim.go",
+      "old": "\t\tif bareOnlyVerbs[cli][scan.verb] {",
+      "new": "\t\tif false && bareOnlyVerbs[cli][scan.verb] {"
+    }
+  ]
+}

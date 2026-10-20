@@ -73,10 +73,15 @@ where relevant, not required headings or a section-count gate.
   removing the hazard or reusing its owner before adding another guard or exception.
   State what the proposal retires and what added complexity remains justified. Apply the
   project's existing design-fit procedure rather than creating another register or gate.
+- **Quality attributes.** Use the [quality prompts](references/quality-requirements.md) to
+  select material concerns, prioritize tradeoffs and express verifiable scenarios with
+  conditions, targets, provenance and evidence owners. Reuse inherited obligations;
+  unknown targets stay explicit. Identify costly paths and scaling risks before decomposition.
+  Keep this proportionate: no mandatory category checklist or invented budgets.
 - **Change and compatibility.** Explain migration, version compatibility, affected callers,
   rollback or recovery, and retirement of the previous path where applicable. Distinguish
   the desired end state from a transition that intentionally carries two implementations.
-- **Proof and decisions.** Give observable acceptance examples, including a relevant
+- **Proof and decisions.** Map conditions to independently verifiable acceptance examples, including a relevant
   failure or boundary case, and the evidence that could falsify the design. State what can
   be checked now versus after implementation. Separate facts from hypotheses; do not claim
   a metric or retrospective comparison proves causation. Name remaining decisions and
@@ -90,11 +95,11 @@ spec-quality review needs a deeper check; do not load it for every small edit.
 
 ## Review and hand off
 
-Check the proposal against its actual sources and a plausible counterexample. Report
-material gaps with the source and consequence; missing preferred formatting is not a
-defect. An adequate existing spec is a legitimate no-change result. For redesigns, separate
-wrong or changed intent from code that drifted or implemented correct intent incorrectly.
-Do not rewrite correct intent to compensate for an implementation bug.
+Review coverage, contradictions and plausible counterexamples against actual sources. On
+revisions, include unchanged criteria, inherited constraints and accepted decisions. Report
+gaps with their source and consequence; formatting preferences are not defects.
+An adequate spec needs no change. Separate changed intent from implementation defects;
+do not weaken correct intent to fit a bug. Use the linked review prompts as needed.
 
 Follow the existing [spec lifecycle](https://github.com/medici-finance/assay/blob/main/spec/lifecycle-v1.md#8-spec-and-scoping-doc-lifecycle)
 for Assay-tracked specs: draft, approved, routed; the ruling and citing briefs establish

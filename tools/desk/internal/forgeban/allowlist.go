@@ -287,6 +287,12 @@ var UnresolvedArgv = []Allowance{
 			"argv[0] is that freshly built path, never a forge CLI; the build itself is a constant `go`.",
 	},
 	{
+		Key: "cmd/verifyloop/plan.go::baseQueueRows::<unresolved>",
+		Reason: "the canonical queue base read (two sites: exec.LookPath, then exec.Command): runs the statusgen " +
+			"binary named by STATUSGEN_BIN, else the one on PATH, as `statusgen --gate-scores --root <root>`. " +
+			"Fixed argv after the binary, read-only, JSON on stdout; never a forge CLI and never a write.",
+	},
+	{
 		Key:    "cmd/verifyloop/durable.go::newGitDurable::<unresolved>",
 		Reason: "git-only durable-state helper; its callers pass git argvs.",
 	},

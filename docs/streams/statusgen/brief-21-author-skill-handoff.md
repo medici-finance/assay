@@ -2,15 +2,15 @@
 brief: assay:assay:statusgen:21
 title: Author skills consume the shared context handoff
 why: "The spec and brief authoring skills are where plan changes are actually made. Until both call the same shipped context operation and emit the same handoff, a spec's obligations still reach brief authors as prose and missing amendments are found late, if at all."
-wave: 3
-depends: ["statusgen/20"]
+wave: 4
+depends: ["statusgen/20", "statusgen/23"]
 unblocks: []
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-13 by worker-desk (author-brief), non-CI architecture reconciliation
 sources:
   - docs/proposals/non-ci-architecture/18-authoring-context-delivery.md — packages "Canonical skill integration" and "Release and adoption support"
@@ -72,6 +72,15 @@ house-value leaks (row 3).
 - Neutral wording only; no adopter names, paths or house values in skill bodies.
 - Do not remove or weaken an existing skill check. Stop at implemented.
 
+## Product binding amendment — 13 October 2026
+
+Consume statusgen/23's supported product-binding extension after /20; distinguish the
+product-target and architecture revisions in both skills. Existing unbound briefs remain
+explicitly unbound, and a proposed target never invalidates approved work. Carry the original
+selection revision and checkpoint disposition into amendments. The manual bootstrap records
+unsupported bindings and coverage; it must not pretend the parser already supports them.
+This is an amendment to an unfinished brief, not a change to statusgen/19's merged contract or Evidence.
+
 ## Task
 
 1. `author-spec`: when a spec changes planned work, emit a target record and run
@@ -93,7 +102,7 @@ house-value leaks (row 3).
 ## Interface contract
 
 Skills call only `statusgen context discover|recheck|check` and read or write only
-`context-handoff-v1` / `amendment-manifest-v1`. A future schema version requires a skill update
+the shipped `context-handoff` / `amendment-manifest` versions, including /23’s product-binding extension. A future schema version requires a skill update
 and a citation-test change in the same PR.
 
 ## Verify
@@ -106,6 +115,7 @@ The named tests are deliverables of this brief and do not exist at a435badbd.
 | 2 | check:ci +dereference +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestSkillsCiteShippedContextVerbs$" . > "$out" && grep -F -- "--- PASS: TestSkillsCiteShippedContextVerbs " "$out")` | exit 0; named PASS; every `statusgen context` subcommand and schema version cited in both skill files resolves to the shipped dispatch and schema files; mutation: cite a nonexistent subcommand in a skill fixture — the test must fail |
 | 3 | check:ci | `cd tools/skillslint && go run . --root ../..` | exit 0; any non-zero exit (a violation or could-not-check) fails the row |
 | 4 | check:ci | `grep -q "manual bootstrap" plugins/assay/skills/author-spec/SKILL.md && grep -q "manual bootstrap" plugins/assay/skills/author-brief/SKILL.md` | exit 0; both skill files name the manual bootstrap path |
+| 5 | check:ci +flow +mutation | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestSkillsProductTargetHandoff$" . > "$check_output" && grep -F -- "--- PASS: TestSkillsProductTargetHandoff " "$check_output")` | exit 0; named PASS; both skill journeys preserve separate product/architecture bindings and original context; missing extension invokes explicit bootstrap; mutation: silently drop outcome revision |
 
 ## Pre-mortem
 

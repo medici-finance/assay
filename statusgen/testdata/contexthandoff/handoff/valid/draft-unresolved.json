@@ -1,0 +1,74 @@
+{
+  "schema": "context-handoff-v1",
+  "declared_by": "example:demo:gadgets:10",
+  "target": {
+    "state": "draft",
+    "revision": "0b1c2d3e4f",
+    "approval": null,
+    "intent": "Explore moving gadget rendering behind a feature flag.",
+    "contracts": [],
+    "transition": null,
+    "acceptance_source": "docs/notes/gadget-flag.md"
+  },
+  "discovery": {
+    "sources": [
+      {
+        "id": "demo",
+        "revision": "0b1c2d3e4f",
+        "membership": "included",
+        "reason": "the declaring repository"
+      }
+    ],
+    "queries": [
+      {
+        "rule": "path-owners",
+        "version": "v2",
+        "parameters": {},
+        "results": [
+          "docs/streams/gadgets/brief-06-render.md"
+        ],
+        "truncated": false
+      }
+    ],
+    "dependency_slice": [
+      "gadgets:06"
+    ],
+    "coverage": {
+      "state": "complete",
+      "enumerated": [
+        "demo"
+      ],
+      "unavailable": []
+    }
+  },
+  "impacts": [
+    {
+      "subject": "gadgets:06",
+      "lifecycle": "in-progress",
+      "evidence": null,
+      "relationship": {
+        "basis": "declared",
+        "edge": "realizes",
+        "locator": "docs/streams/gadgets/brief-06-render.md"
+      },
+      "disposition": "unresolved",
+      "reason": "whether the flag replaces or wraps the renderer is not decided"
+    }
+  ],
+  "amendments": [],
+  "history": [],
+  "active_work": [],
+  "readiness": {
+    "unresolved": [
+      "demo:gadgets:06"
+    ],
+    "deciding_role": "spec-author",
+    "next_act": "explore",
+    "prerequisites": [],
+    "facts": {
+      "source_available": true,
+      "proposal_approved": false,
+      "deployment_qualified": false
+    }
+  }
+}

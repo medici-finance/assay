@@ -27,6 +27,11 @@ func TestMain(m *testing.M) {
 		runFakeACPAgent(mode)
 		os.Exit(0)
 	}
+	// plan now reads pending Evidence as well as blockers. Legacy board/runner
+	// fixtures have no forge population; install its explicit empty offline
+	// source rather than letting their configured example repos mint credentials.
+	// Pending-Evidence integration tests replace this with their typed forge.
+	issueSourceFn = func() deskkit.IssueStateSource { return pendingFixture{} }
 	os.Exit(gitquiet.Run(m))
 }
 

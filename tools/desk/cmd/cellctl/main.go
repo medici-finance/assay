@@ -44,30 +44,43 @@ func die(format string, args ...any) {
 func exitWith(code int) { panic(exitCode{code}) }
 
 func main() {
-	// The roster class is an EXPLICIT declaration, never the zero value by accident
-	// (a correctness review found SetToolClass had no caller anywhere, so "ClassWrite is the
-	// safe default" was true only by luck — and TestEveryRosterReadingMainDeclaresClassAndEchoes
-	// fails any main that reads the roster without one). cellctl reads the cell home's roster to
-	// answer `check`'s write-authorisation rows — rosterParses() via deskkit.LoadConfig, and
-	// rosterAllowedRepos() for the scrubbed exact-scope row — so ciEligible=false, matching
-	// deskpr/deskboard/deskfile: the answer must come from the cell's config-home FILE and never
-	// from the environment. That is not a stylistic match. ClassCI would let the surrounding
-	// environment supply the very scope line `check` exists to audit, so a cell whose roster file
-	// is missing or wider than its CELL_REPO_SLUG could pass its own check on inherited env vars.
-	// The cell home's file is the thing under audit, so it is the only admissible source.
-	// The model-policy hook's deadline starts before anything that can block, the roster echo
-	// included (policy_enforce.go, armHookDeadline).
-	armHookDeadline(commandArgs(os.Args[1:]))
-	deskkit.SetToolClass(deskkit.ClassForTool(false))
-	// The roster echo (deskkit.EchoEffectiveConfig) runs from the command tree's pre-run hook
-	// (cobra.go), once per run, so that --help and --version stay pure introspection.
-	os.Exit(run())
+	os.Exit(deskkit.PerfRun("cellctl", perfVerbs(), commandArgs(os.Args[1:]), func([]string) int {
+		// The roster class is an EXPLICIT declaration, never the zero value by accident
+		// (a correctness review found SetToolClass had no caller anywhere, so "ClassWrite is the
+		// safe default" was true only by luck — and TestEveryRosterReadingMainDeclaresClassAndEchoes
+		// fails any main that reads the roster without one). cellctl reads the cell home's roster to
+		// answer `check`'s write-authorisation rows — rosterParses() via deskkit.LoadConfig, and
+		// rosterAllowedRepos() for the scrubbed exact-scope row — so ciEligible=false, matching
+		// deskpr/deskboard/deskfile: the answer must come from the cell's config-home FILE and never
+		// from the environment. That is not a stylistic match. ClassCI would let the surrounding
+		// environment supply the very scope line `check` exists to audit, so a cell whose roster file
+		// is missing or wider than its CELL_REPO_SLUG could pass its own check on inherited env vars.
+		// The cell home's file is the thing under audit, so it is the only admissible source.
+		// The model-policy hook's deadline starts before anything that can block, the roster echo
+		// included (policy_enforce.go, armHookDeadline).
+		armHookDeadline(commandArgs(os.Args[1:]))
+		dropInheritedCellMarker()
+		deskkit.SetToolClass(deskkit.ClassForTool(false))
+		// The roster echo runs from the command tree's pre-run hook (cobra.go), once
+		// per run, so that --help and --version stay pure introspection.
+		return run()
+	}))
 }
 
 // echoEffectiveConfig is P3: echo the effective roster once per run. A control surface that
 // lives in settings rather than in a diff is visible only at RUN time; without the echo a
 // NARROWING is invisible.
-func echoEffectiveConfig() { deskkit.EchoEffectiveConfig(os.Stderr) }
+//
+// The model-policy hook's stderr is not shown when it exits 0, so that line prints the full
+// block and records nothing (deskkit.EchoEffectiveConfigUnsurfaced): a digest it recorded would
+// count as "seen" for the next run someone does see.
+func echoEffectiveConfig() {
+	if hookVerb(os.Args[1:]) {
+		deskkit.EchoEffectiveConfigUnsurfaced(os.Stderr)
+		return
+	}
+	deskkit.EchoEffectiveConfig(os.Stderr)
+}
 
 // run parses and executes os.Args[1:] through the Cobra tree and returns the exit code.
 func run() int { return runTree(os.Args[1:]) }

@@ -335,6 +335,12 @@ func TestUnknownInvocationNameIsUnverifiable(t *testing.T) {
 // TestVerbClassification is the policy table. The allowlist is the fail-closed
 // direction: a verb nobody classified is MUTATING, so a new upstream subcommand
 // is refused rather than waved through.
+//
+// An entry can also be bare-form only: talosctl `services` is read-only when no
+// positional argument follows it, and any positional argument takes the call
+// off the read-only tier.
+//
+// regression: F-bare-form-verb
 func TestVerbClassification(t *testing.T) {
 	cases := []struct {
 		cli      string
@@ -370,12 +376,165 @@ func TestVerbClassification(t *testing.T) {
 		{"talosctl", []string{"reset"}, false, "talosctl reset mutates"},
 		{"talosctl", []string{"upgrade"}, false, "talosctl upgrade mutates"},
 		{"talosctl", []string{"apply-config"}, false, "talosctl apply-config mutates"},
+		{"talosctl", []string{"services"}, true, "bare services is read-only"},
+		{"talosctl", []string{"-n", "node1", "services"}, true, "a listed value flag before bare services is skipped"},
+		{"talosctl", []string{"services", "-n", "node1"}, true, "a listed value flag and its value after services are not a positional argument"},
+		{"talosctl", []string{"services", "--nodes=node1"}, true, "a self-contained flag after services is not a positional argument"},
+		{"talosctl", []string{"services", "x"}, false, "services with positional argument"},
+		{"talosctl", []string{"-n", "node1", "services", "x"}, false, "services with positional argument after a pre-verb flag"},
+		{"talosctl", []string{"services", "-n", "node1", "x"}, false, "services with positional argument after a listed flag's value"},
+		{"talosctl", []string{"services", "--added-upstream", "x"}, false, "services with an unlisted flag then a token: the token may be positional"},
+		{"talosctl", []string{"services", "--", "x"}, false, "services with positional argument after --"},
+		{"talosctl", []string{"services", "-"}, false, "a lone - after services is a positional argument, as the flag parser reads it"},
+		{"talosctl", []string{"services", "-n", "node1", "-"}, false, "a lone - after a listed flag's value is a positional argument"},
+		{"talosctl", []string{"services", "--"}, true, "a trailing -- with nothing after it is not a positional argument"},
+		{"talosctl", []string{"service"}, false, "singular service is not on the allowlist"},
+		{"talosctl", []string{"service", "x"}, false, "singular service with positional argument is not on the allowlist"},
 		{"k9s", nil, false, "k9s is an interactive TUI that can mutate from inside it — it has NO read-only lane"},
 		{"k9s", []string{"--readonly"}, false, "a flag the guard cannot enforce does not make k9s read-only"},
 	}
 	for _, c := range cases {
 		if got := isReadOnly(c.cli, c.args); got != c.readOnly {
 			t.Errorf("isReadOnly(%q, %v) = %v, want %v — %s", c.cli, c.args, got, c.readOnly, c.why)
+		}
+	}
+	// Every bare-form-only entry must also be on the read-only allowlist: an
+	// entry missing there is inert and states a rule the classifier never applies.
+	for cli, verbs := range bareOnlyVerbs {
+		for v := range verbs {
+			if !readOnlyVerbs[cli][v] {
+				t.Errorf("bareOnlyVerbs[%q][%q] is not in readOnlyVerbs[%q]", cli, v, cli)
+			}
+		}
+	}
+}
+
+// TestUnlistedFlagNotReadOnly pins the scan's fail-closed direction for FLAGS:
+// a flag before the subcommand whose arity the guard does not know may consume
+// the next argument, so the token after it cannot be trusted as the verb. Real
+// kubectl parses `--username get delete pod x` as username="get" and runs
+// `delete pod x`; a scan that read "get" as the verb waved a delete through the
+// read-only tier. An unlisted pre-verb flag makes the call unclassifiable, so
+// the value-flag table's completeness is never load-bearing for safety.
+//
+// Both wrong guesses about an unlisted flag's arity are pinned: "takes no value"
+// (`--username get delete`) and "consumes the next token" (`--debug uninstall
+// list`, where helm's --debug is boolean and the real verb is uninstall).
+//
+// regression: #2179
+func TestUnlistedFlagNotReadOnly(t *testing.T) {
+	cases := []struct {
+		cli      string
+		args     []string
+		readOnly bool
+		why      string
+	}{
+		// The reported instances: real value-taking globals missing from the table.
+		{"kubectl", []string{"--username", "get", "delete", "pod", "x"}, false, "--username consumes get; the real verb is delete"},
+		{"kubectl", []string{"--log-file", "get", "delete", "pod", "x"}, false, "--log-file consumes get"},
+		{"kubectl", []string{"--profile-output", "get", "delete", "pod", "x"}, false, "--profile-output consumes get"},
+		{"kubectl", []string{"--certificate-authority", "get", "delete", "pod", "x"}, false, "--certificate-authority consumes get"},
+		{"helm", []string{"--kube-as-user", "list", "uninstall", "rel"}, false, "--kube-as-user consumes list; the real verb is uninstall"},
+		{"helm", []string{"--burst-limit", "list", "uninstall", "rel"}, false, "--burst-limit consumes list"},
+		// The class: a flag no table has ever heard of, on every CLI with a read-only lane.
+		{"kubectl", []string{"--added-upstream", "get", "delete", "pod", "x"}, false, "an unknown flag's arity is unknown"},
+		{"helm", []string{"--added-upstream", "list", "uninstall", "rel"}, false, "an unknown flag's arity is unknown"},
+		{"flux", []string{"--added-upstream", "get", "reconcile", "source", "git", "x"}, false, "an unknown flag's arity is unknown"},
+		{"talosctl", []string{"--added-upstream", "get", "reset"}, false, "an unknown flag's arity is unknown"},
+		{"kubectl", []string{"-v", "get", "delete", "pod", "x"}, false, "a short flag with no = is unlisted too"},
+		// The other wrong guess: an unlisted flag that is really BOOLEAN takes no
+		// value, so the token after it IS the verb. A scan that assumed every
+		// unlisted flag consumes one token would skip the mutating verb and
+		// classify on its first argument.
+		{"helm", []string{"--debug", "uninstall", "list"}, false, "--debug is boolean; helm uninstalls the release named list"},
+		{"kubectl", []string{"--insecure-skip-tls-verify", "drain", "get"}, false, "a boolean flag; kubectl drains the node named get"},
+		{"kubectl", []string{"--warnings-as-errors", "delete", "events", "--all"}, false, "a boolean flag; kubectl deletes every event"},
+		{"flux", []string{"--verbose", "reconcile", "get"}, false, "a boolean flag; flux reconciles"},
+		{"talosctl", []string{"--added-upstream", "reset", "get"}, false, "an unknown flag may be boolean; the real verb is reset"},
+		{"kubectl", []string{"-nprod", "delete", "get"}, false, "an attached short value is self-contained; the real verb is delete"},
+		{"helm", []string{"-vd", "uninstall", "list"}, false, "a short-flag cluster may be all booleans; the real verb is uninstall"},
+		// What still classifies: listed value flags, self-contained flags, flags after the verb.
+		{"kubectl", []string{"-n", "ns", "get", "pods"}, true, "a listed value flag still consumes its value"},
+		{"kubectl", []string{"--username=u", "get", "pods"}, true, "--flag=value is self-contained whatever the flag"},
+		{"kubectl", []string{"get", "pods", "--username", "u"}, true, "flags after the verb do not move the verb"},
+		{"helm", []string{"--burst-limit=10", "list"}, true, "--flag=value is self-contained whatever the flag"},
+	}
+	for _, c := range cases {
+		if got := isReadOnly(c.cli, c.args); got != c.readOnly {
+			t.Errorf("isReadOnly(%q, %v) = %v, want %v — %s", c.cli, c.args, got, c.readOnly, c.why)
+		}
+	}
+}
+
+// TestROTierUnlistedFlagRefuses drives the reported bypass end to end: under
+// the READ-ONLY opt-in, `kubectl --username get delete pod x` is refused with
+// exit 5, the fixture never runs, and the refusal names the flag it could not
+// classify and the self-contained form that would. The same holds in the
+// boolean direction, `kubectl --insecure-skip-tls-verify drain get`.
+//
+// regression: #2179
+func TestROTierUnlistedFlagRefuses(t *testing.T) {
+	h := newHarness(t)
+	h.fixture(t, "kubectl")
+
+	got := h.invoke(t, "kubectl", "1", nil, "--username", "get", "delete", "pod", "x")
+
+	if got.code != 5 {
+		t.Errorf("exit = %d, want 5; stderr %q", got.code, got.stderr)
+	}
+	if strings.Contains(got.stdout, "FAKE-KUBECTL") {
+		t.Errorf("a delete hidden behind an unlisted flag reached the CLI under the read-only opt-in; stdout %q", got.stdout)
+	}
+	for _, want := range []string{`"--username"`, "--username=<value>"} {
+		if !strings.Contains(got.stderr, want) {
+			t.Errorf("the refusal does not name %s; stderr %q", want, got.stderr)
+		}
+	}
+
+	// The boolean direction: --insecure-skip-tls-verify takes no value, so
+	// kubectl runs `drain get` (drains the node named get). Guessing that the
+	// flag consumed "drain" would classify on "get" and let the drain through.
+	got = h.invoke(t, "kubectl", "1", nil, "--insecure-skip-tls-verify", "drain", "get")
+
+	if got.code != 5 {
+		t.Errorf("boolean direction: exit = %d, want 5; stderr %q", got.code, got.stderr)
+	}
+	if strings.Contains(got.stdout, "FAKE-KUBECTL") {
+		t.Errorf("a drain behind an unlisted boolean flag reached the CLI under the read-only opt-in; stdout %q", got.stdout)
+	}
+	for _, want := range []string{`"--insecure-skip-tls-verify"`, "--insecure-skip-tls-verify=<value>"} {
+		if !strings.Contains(got.stderr, want) {
+			t.Errorf("boolean direction: the refusal does not name %s; stderr %q", want, got.stderr)
+		}
+	}
+}
+
+// TestROTierBareFormVerb drives a bare-form-only allowlist entry end to end
+// under the READ-ONLY opt-in: `talosctl services` passes through to the CLI,
+// while `talosctl services x` (a positional argument after the verb) is refused
+// with exit 5, the fixture is not reached, and the refusal says the entry is
+// read-only only in its bare form.
+//
+// regression: F-bare-form-verb
+func TestROTierBareFormVerb(t *testing.T) {
+	h := newHarness(t, "talosctl")
+	h.fixture(t, "talosctl")
+
+	got := h.invoke(t, "talosctl", "1", nil, "services")
+	if got.code != 0 || !strings.Contains(got.stdout, "FAKE-TALOSCTL") {
+		t.Errorf("bare form: exit = %d, stdout %q, stderr %q — want a pass-through", got.code, got.stdout, got.stderr)
+	}
+
+	got = h.invoke(t, "talosctl", "1", nil, "services", "x")
+	if got.code != 5 {
+		t.Errorf("with argument: exit = %d, want 5; stderr %q", got.code, got.stderr)
+	}
+	if strings.Contains(got.stdout, "FAKE-TALOSCTL") {
+		t.Errorf("with argument: the fixture ran under the read-only opt-in; stdout %q", got.stdout)
+	}
+	for _, want := range []string{`"services"`, "bare form", "mutate"} {
+		if !strings.Contains(got.stderr, want) {
+			t.Errorf("with argument: the refusal does not name %s; stderr %q", want, got.stderr)
 		}
 	}
 }

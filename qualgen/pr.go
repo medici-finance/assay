@@ -2,13 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"regexp"
 	"sort"
 	"strconv"
-	"strings"
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -62,24 +60,16 @@ type PRFileFeature struct {
 	Measured          map[string]string `json:"measured"`
 }
 
-// runPR is the `pr <n>` mode entry point.
-func runPR(args []string, stdout, stderr io.Writer) int {
-	// The PR number is a leading positional before any flags (`pr 1 --out x`).
-	var prArg string
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		prArg = args[0]
-		args = args[1:]
-	}
-	fs := flag.NewFlagSet("pr", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	out := fs.String("out", "", "tracking root to read mined artifacts from (required)")
-	repo := fs.String("repo", ".", "path to the git repository the PR belongs to (read-only)")
-	head := fs.String("head", "", "an open PR's head ref/commit — used together with --base, overrides the merged-PR history search")
-	base := fs.String("base", "", "an open PR's base ref/commit — used together with --head")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	if *out == "" {
+// prOptions are the `pr` verb's parsed settings (cli.go declares them). PR is the
+// raw positional PR number, "" when none was given.
+type prOptions struct {
+	PR, Out, Repo, Head, Base string
+}
+
+// prMain is the `pr <n>` mode entry point.
+func prMain(o prOptions, stdout, stderr io.Writer) int {
+	prArg := o.PR
+	if o.Out == "" {
 		fmt.Fprintln(stderr, "qualgen pr: --out <dir> is required (the tracking root to read mined artifacts from)")
 		return 2
 	}
@@ -92,20 +82,20 @@ func runPR(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "qualgen pr: %q is not a valid PR number\n", prArg)
 		return 2
 	}
-	if (*head == "") != (*base == "") {
+	if (o.Head == "") != (o.Base == "") {
 		fmt.Fprintln(stderr, "qualgen pr: --head and --base must be given together")
 		return 2
 	}
 
-	r, err := git.PlainOpenWithOptions(*repo, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
+	r, err := git.PlainOpenWithOptions(o.Repo, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
 	if err != nil {
 		fmt.Fprintln(stderr, "qualgen pr: open repository:", err)
 		return 1
 	}
 
 	var paths []string
-	if *head != "" {
-		paths, err = touchedFilesHeadBase(r, *head, *base)
+	if o.Head != "" {
+		paths, err = touchedFilesHeadBase(r, o.Head, o.Base)
 	} else {
 		paths, err = touchedFilesMergedPR(r, prNum)
 	}
@@ -114,7 +104,7 @@ func runPR(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	store := NewStore(*out)
+	store := NewStore(o.Out)
 	feed, err := buildPRFeed(store, prNum, paths)
 	if err != nil {
 		fmt.Fprintln(stderr, "qualgen pr:", err)

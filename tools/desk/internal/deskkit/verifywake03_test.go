@@ -58,7 +58,7 @@ const wakeTestBriefPath = "docs/streams/demo/brief-01-thing.md"
 
 const wakeTestBrief = "# 01\n\n## Context\n\nfiles:\n" +
 	"- `tools/a.go` (edit)\n- `tools/pkg/` (new dir)\n- `tools/planned.go` (planned, absent)\n" +
-	"- `docs/<slug>.md` (placeholder)\n\nfacts:\n- `tools/not-declared.go` is outside the block\n"
+	"\nfacts:\n- `tools/not-declared.go` is outside the block\n"
 
 func wakeTestTree() fakeTree {
 	return fakeTree{files: map[string]string{
@@ -93,6 +93,7 @@ func wakeTestInput() OutcomeReceiptInput {
 // Verify row 1: a verify-fail record carries a complete receipt with one file: key per declared
 // path (every file under a declared directory; absent paths skipped) plus the brief and tool
 // keys; a verified record carries none.
+// regression: #2798
 func TestOutcomeRecordWritesReceipt(t *testing.T) {
 	out, err := BuildOutcomeRecord(wakeTestRecord("verify-fail", BlockerImplementation, "#42"), wakeTestInput(), wakeTestTree())
 	if err != nil {
@@ -115,8 +116,8 @@ func TestOutcomeRecordWritesReceipt(t *testing.T) {
 		"file:" + wakeTestBriefPath: Sha256Hex(wakeTestInput().LandedBrief),
 		"tool":                      "v9.9.9",
 	}
-	if len(r.Inputs) != len(want) {
-		t.Errorf("inputs has %d keys, want %d: %v", len(r.Inputs), len(want), r.Inputs)
+	if len(r.Inputs) != len(want)+3 {
+		t.Errorf("inputs has %d keys, want %d content/tool plus three scope keys: %v", len(r.Inputs), len(want), r.Inputs)
 	}
 	for k, v := range want {
 		if r.Inputs[k] != v {

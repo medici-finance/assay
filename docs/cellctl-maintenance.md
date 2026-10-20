@@ -9,7 +9,7 @@ These commands replace that sequence with explicit operations:
 
 | Command | Result |
 | --- | --- |
-| `cellctl cache CELL wipe` | Remove this cell's disposable build and module caches regardless of pressure. Keep policy, ownership, installed GOPATH binaries and other cell data. Active consumers still refuse deletion. |
+| `cellctl cache CELL wipe` | Remove this cell's disposable build and module caches regardless of pressure. Keep policy, ownership, installed GOPATH binaries and other cell data. Active consumer records protect `mod/`, `gopath/` and whole-root removal; with records held, wipe removes only compiler-cache (`build/`) entries older than the trim safety floor (`CELL_GO_CACHE_TRIM_MIN_AGE`, default 2h), with or without pressure, and reports `storage-deferred`. |
 | `cellctl reset CELL` | Stop this cell's owned processes and cockpit surfaces, clear stopped role/comms/cache custody, wipe caches, and remove all cell-owned worktrees. Preserve repository branches, comms messages, configuration, keys and login stores. |
 | `cellctl reset CELL --hard` | Also discard comms messages and refresh every repository in `CELL_ROOTS`: fetch origin/main, remove all linked worktrees, reset the primary checkout to main, remove other local branches and untracked/ignored files. Preserve remote branches and operator configuration outside repositories. |
 | `cellctl comms CELL init` | Generate the private signing seed, matching trust store, role bindings, reader and manifest, then select the manifest. Never print or commit credentials. Repeated init validates and reuses the existing setup. |
@@ -46,6 +46,23 @@ Equivalent filesystem paths cannot bypass retention checks: existing entries and
 ancestors are compared by filesystem identity. Uncertain identity lookups refuse
 reset; distinct entries on a case-sensitive filesystem remain distinct.
 
+A reset plan must compare filesystem locations consistently when deciding whether
+cell configuration is inside a repository or a worktree belongs to the cell.
+Spelling a location through a symbolic link must not change that decision.
+Paths that cannot be resolved safely must produce an explicit refusal rather
+than an assumption that the location is outside the protected tree.
+
+Planning resolves both sides of directory comparisons, including aliases of
+cell and worktree paths. Hard reset refuses nested cell configuration, repository
+roots, and comms storage. Soft reset selects only the cell's worktrees, and
+execution uses that same selection. Missing optional storage is allowed; broken
+links, unreadable paths, and non-directory paths are errors. The worktree
+directory itself must still be a real directory before cleanup.
+
+`DRY_RUN=1` prints the plan without executing cleanup. The planning, preflight and
+execution regressions use explicit symbolic links, temporary repositories and a
+symlinked `TMPDIR`, so Linux runs exercise the path spelling macOS produces by default.
+
 Unix cache/reset support initially covers macOS and Linux. Unsupported platforms
 refuse before mutation. Existing owner, no-link and single-filesystem cache checks
 remain in force. The cache lock wait must accommodate full measurements and cleanup
@@ -64,7 +81,7 @@ An explicitly supplied external ACP reader requires command, model, version pin 
 the existing containment attestation and custody checks still apply.
 
 Acceptance: wipe below budget actually empties disposable caches; a live consumer
-prevents wipe; reset kills a detached fixture child but leaves another cell alive;
+prevents a whole-cache wipe (wipe then trims only aged compiler-cache entries); reset kills a detached fixture child but leaves another cell alive;
 soft reset preserves mailbox contents and local branches; hard reset affects all
 configured fixture repositories and no outside repository; dry-run performs no
 mutation; failed fetch precedes Git destruction; init creates matching Ed25519

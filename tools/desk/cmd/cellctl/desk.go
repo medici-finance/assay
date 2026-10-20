@@ -214,6 +214,11 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 		die("desk: --provider '%s' is a claude-harness switch and has no codex equivalent — drop the provider or use --harness claude", provider)
 	}
 
+	// Cheap-default reset: pull aged DEFAULT pins back to the cheap default BEFORE the pin is
+	// resolved, so this boot already runs on the repinned model. Explicit pins never move, and
+	// a provider window's claude pins are left alone (the provider is passed in).
+	c.bootModelReset(time.Now(), provider)
+
 	var model string
 	resolvedSrc := ""
 	switch {
@@ -314,6 +319,13 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 		}
 	}
 
+	// The reconcile preflight (#2880): stale state a previous session of this role left behind is
+	// inventoried once, by pid and start time, and on a terminal cleared on one confirmation —
+	// before the lease below is taken, since recovery takes it itself.
+	if c.Kind == "house" {
+		c.reconcilePreflight("desk", []string{role}, nil, dryRun, "desk: unfinished cadence pass; inspect and reconcile before restarting")
+	}
+
 	if dryRun {
 		c.printCachePolicy()
 		if c.Cadence != nil {
@@ -358,9 +370,13 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 		// A sibling launch of this role may hold the lease for a moment; wait a little,
 		// then name the holder and say whether it is current. Only an explicit
 		// --end-stale-lock-holder lets a proven-stale own-cell holder be ended.
-		lease, err := cellcadence.AcquireRole(c.cadenceDir(role), cellcadence.RoleLock{
-			Cell: c.Name, Role: role, Wait: roleLeaseWait, EndStale: o.EndStaleLockHolder,
-			OptIn: "--end-stale-lock-holder", Log: os.Stderr,
+		var lease *cellcadence.Lease
+		err := launchStep("launch-role-lease", func() (aerr error) {
+			lease, aerr = cellcadence.AcquireRole(c.cadenceDir(role), cellcadence.RoleLock{
+				Cell: c.Name, Role: role, Wait: roleLeaseWait, EndStale: o.EndStaleLockHolder,
+				OptIn: "--end-stale-lock-holder", Log: os.Stderr,
+			})
+			return aerr
 		})
 		if err != nil {
 			die("desk: role already owned or cannot lock: %v", err)

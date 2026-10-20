@@ -4,13 +4,13 @@
 //
 // THE DEFECT IT CLOSES. A cell launcher exports ASSAY_GO_CACHE_POLICY into every shell it
 // starts, naming the cell's live Go-cache root. Desk tool code reads that variable from the
-// process environment: deskdispatch's storage admission runs a non-dry cellcache.Check
+// process environment: deskdispatch's storage admission runs a non-dry cellcache.Admit (cellcache.Check for anything it cannot prove cheap)
 // against the named root, and cellprocess's launch custody takes a lease on it. Both take
 // the root's exclusive advisory lock. A test binary run from such a shell inherits the
 // variable, so every test that drives those paths takes the operator's real lock, writes
 // the operator's real cache report and, under storage pressure, reclaims the operator's
 // real cache. While the test run holds the lock, a production dispatch on the same
-// machine waits its bounded 5 s and returns storage-deferred (exit 6, nothing claimed);
+// machine waits its bounded lock wait (one minute) and returns storage-deferred (exit 6, nothing claimed);
 // while production holds it, the tests fail the same way and read as a code regression.
 //
 // THE FIX. Isolate removes the cell's storage-admission variables (Vars) from the test

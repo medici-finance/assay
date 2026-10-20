@@ -208,8 +208,8 @@ func TestRun_ControlThatCannotBePlantedDiscardsRun(t *testing.T) {
 	if !rep.Broken {
 		t.Fatal("a control that cannot be planted must mark the run BROKEN")
 	}
-	if !strings.Contains(rep.BrokenReason, "could not be planted") {
-		t.Fatalf("broken reason should explain the control could not be planted, got: %s", rep.BrokenReason)
+	if !strings.Contains(rep.BrokenReason, "could not be validated") {
+		t.Fatalf("broken reason should explain the control could not be validated, got: %s", rep.BrokenReason)
 	}
 }
 
