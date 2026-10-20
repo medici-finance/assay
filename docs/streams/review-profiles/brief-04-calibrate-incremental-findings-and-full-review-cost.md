@@ -70,10 +70,11 @@ Versioned, scoped inputs and exact source revisions → explained assessment wit
 
 The named tests below are implementation deliverables, not claims that they exist today. Each must contain positive, negative and flow assertions described in Task; an empty test selection is not a pass.
 
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && go test -count=1 -v -run '^TestProfileCalibration$' ./cmd/deskcalibrate > /tmp/review-profile-04.log && grep -F -- '--- PASS: TestProfileCalibration ' /tmp/review-profile-04.log` | Seeded cohorts replay identically; family/label leakage and unequal caps are flagged; missing usage and zero-finding ratios stay unknown/undefined; paired totals include failures. |
-| 2 | `cd tools/desk && go test -count=1 ./internal/arch ./internal/deskkit` | Existing ownership, dependency, scope and finding tests remain green; do not weaken controls to pass. |
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 1 | check:ci +flow | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v -run '^TestProfileCalibration$' ./cmd/deskcalibrate > "$o" && grep -F -- '--- PASS: TestProfileCalibration ' "$o")` | Seeded cohorts replay identically; family/label leakage and unequal caps are flagged; missing usage and zero-finding ratios stay unknown/undefined; paired totals include failures. |
+| 2 | check:ci | `cd tools/desk && go test -count=1 ./internal/arch ./internal/deskkit` | Existing ownership, dependency, scope and finding tests remain green; do not weaken controls to pass. |
+| 3 | check:ci +dereference | `statusgen --root . --consumers --brief review-profiles/04` | exit 0; the brief's routing claims are corroborated against the implementation diff, including each changed consumer. |
 
 ## Definition of done
 

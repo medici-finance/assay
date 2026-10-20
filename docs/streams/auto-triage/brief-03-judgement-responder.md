@@ -45,6 +45,8 @@ id: 2b1b6409-6509-4d8e-a91d-9d0fc08f40a2
 
 # Brief 03 — judgement responder
 
+> **Contract note, 2026-10-18.** This brief is the live judgement exit of the gate-red class that graph-execution/08 now defines; every route still carries a recommended default. Where this brief and graph-execution/08 differ, the stricter rule applies. This brief stays `todo` and keeps its own gate: it is where the executable code and live activation of the auto-triage response are built.
+
 ## Context
 
 single-point-of-failure: this responder's routing message is the one artifact a human acts

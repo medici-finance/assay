@@ -4,7 +4,7 @@ name: ci
 # WHERE THIS RUNS — the self-hosted runner labelled `medici-builder-public`,
 #   which has no Docker daemon. That is exactly right for `go build`/`go test`,
 #   which need no container runtime. The Docker IMAGE build is a separate
-#   workflow (docker-publish.yml) that runs release-only.
+#   publication job in release.yml, behind its release approval.
 #
 # GO TOOLCHAIN — installed by hand from go.dev/dl, NOT actions/setup-go: the
 #   runner does not reach GitHub's release-asset CDN and its base image ships no
@@ -60,6 +60,18 @@ jobs:
           tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
 
+      - name: Test release image contract
+        run: python3 -B -m unittest discover -s tools/release -p images_test.py -v
+
+      # Run before the all-module sweep: statusgen alone does not depend on the
+      # desk child compiled by its offline bridge test. Match the release gate.
+      - name: Test and vet statusgen
+        run: |
+          set -euo pipefail
+          go version
+          bash statusgen/prepare-test-deps.test.sh
+          cd statusgen && go test ./... && go vet ./...
+
       - name: Build and vet every module
         run: |
           set -euo pipefail
@@ -97,10 +109,18 @@ jobs:
             # behind, and un-wired they let both land green.
             extra=true
             case "$dir" in
+              # M2 mine/trace/report flow and the changed legacy CLI contract
+              # must execute on PRs; build/vet and rendering existing artifacts
+              # do not reach the trace append path (review F-m2-ci).
+              */qualgen|qualgen) extra="GOWORK=off go test -count=1 -timeout=60s -run '^(TestM2.*|TestCLILegacyForms)$' ." ;;
               */tools/desk|tools/desk) extra="go test ./..." ;;
               */tools/harnessgen|tools/harnessgen) extra="go test ./..." ;;
               */tools/harnesslint|tools/harnesslint) extra="go test ./..." ;;
               */tools/plugindrift|tools/plugindrift) extra="go test ./..." ;;
+              # perfrec (the shared perf-v1 writer, #3101) runs its own suite: its
+              # deps/audit-ledger guards over the CPU reader files are hermetic and
+              # were latent under build+vet alone.
+              */perfrec|perfrec) extra="go test ./..." ;;
             esac
             if ( cd "$dir" && go build ./... && go vet ./... && eval "$extra" ); then
               echo "${dir}: OK"
@@ -111,6 +131,11 @@ jobs:
             echo "::endgroup::"
           done < <(git ls-files '*go.mod')
           exit "$fail"
+
+      # The preceding build/vet sweep warms both modules' dependency caches.
+      # Tests run offline and cover the real cross-module child transport.
+      - name: Role-bound claim transport regressions
+        run: bash statusgen/test-role-claims.sh
 
   # The plugin SHELL suites. `assay-inbox.sh` / `inbound-monitor.sh` carry their
   # own regression suites (`*.test.sh`) but the build-test job above runs Go

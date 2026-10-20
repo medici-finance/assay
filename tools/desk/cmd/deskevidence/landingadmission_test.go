@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -30,29 +31,38 @@ var productionAdmission = verifierEvidenceAdmissionFn
 // carried, which is what lets a test say WHICH token reached the forge and in
 // what order admission and the landing read it.
 type attestationAPI struct {
+	commit             func(string, string) string
+	head               string
+	branch             string
+	snapshotChange     func(map[string]any)
+	afterSnapshot      func()
+	loseCommitAck      bool
 	mu                 sync.Mutex
 	title, body, state string
 	labels             []string
 	timeline           []map[string]any
 	unexpected         []string
 
-	files map[string]string // branch content, by repo path
-	puts  []contentsPut     // every Contents-API write, in order
-	calls []apiCall         // every request, in order
+	commits map[string]bool   // only ids returned by successful writes, never blobs
+	files   map[string]string // branch content, by repo path
+	puts    []contentsPut     // every Contents-API write, in order
+	calls   []apiCall         // every request, in order
 }
 
 // contentsPut is one Contents-API write the offline API accepted.
 type contentsPut struct{ File, Message, Content string }
 
 // apiCall is one request the offline API received and the credential it carried.
-type apiCall struct{ Method, Path, Authorization string }
+type apiCall struct{ Method, Path, Authorization, Operation string }
 
 // contentsPrefix is the Contents-API path of the fixture repository.
 const contentsPrefix = "/repos/example-org/tracker/contents/"
 
-// blobID is a stand-in blob id: stable for equal content, different otherwise.
+// blobID is the git object id of a blob holding content: what the Contents API serves as a
+// file's `sha`, and what the backend checks the served bytes against before it reports a
+// plain file (S-2266-8).
 func blobID(content string) string {
-	sum := sha1.Sum([]byte(content))
+	sum := sha1.Sum(append([]byte(fmt.Sprintf("blob %d\x00", len(content))), []byte(content)...))
 	return hex.EncodeToString(sum[:])
 }
 
@@ -67,11 +77,18 @@ func (a *attestationAPI) serveContents(w http.ResponseWriter, r *http.Request, f
 			enc(map[string]any{"message": "Not Found"})
 			return
 		}
-		enc(map[string]any{"sha": blobID(content), "encoding": "base64",
+		enc(map[string]any{"type": "file", "path": file, "sha": blobID(content), "encoding": "base64",
 			"content": base64.StdEncoding.EncodeToString([]byte(content))})
 	case http.MethodPut:
+		a.calls[len(a.calls)-1].Operation = "commit"
 		var in struct{ Message, Content, Branch, SHA string }
 		_ = json.NewDecoder(r.Body).Decode(&in)
+		prior, exists := a.files[file]
+		if (exists && in.SHA != blobID(prior)) || (!exists && in.SHA != "") {
+			w.WriteHeader(http.StatusConflict)
+			enc(map[string]any{"message": "file revision changed"})
+			return
+		}
 		decoded, err := base64.StdEncoding.DecodeString(in.Content)
 		if err != nil {
 			w.WriteHeader(http.StatusUnprocessableEntity)
@@ -82,9 +99,21 @@ func (a *attestationAPI) serveContents(w http.ResponseWriter, r *http.Request, f
 		}
 		a.files[file] = string(decoded)
 		a.puts = append(a.puts, contentsPut{File: file, Message: in.Message, Content: string(decoded)})
+		sha := blobID(in.Message + string(decoded))
+		if a.commit != nil {
+			sha = a.commit(file, string(decoded))
+		}
+		if a.commits == nil {
+			a.commits = map[string]bool{}
+		}
+		a.commits[sha] = true
+		if a.loseCommitAck {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
 		enc(map[string]any{
 			"content": map[string]any{"sha": blobID(string(decoded))},
-			"commit": map[string]any{"sha": blobID(in.Message + string(decoded)),
+			"commit": map[string]any{"sha": sha,
 				"author": map[string]any{"name": "assay-verifier-app[bot]"}},
 		})
 	default:
@@ -109,6 +138,14 @@ func (a *attestationAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 	a.calls = append(a.calls, apiCall{Method: r.Method, Path: p, Authorization: r.Header.Get("Authorization")})
 	switch {
+	case r.Method == http.MethodGet && strings.Contains(p, "/commits/"):
+		sha := p[strings.LastIndex(p, "/")+1:]
+		if !a.commits[sha] {
+			w.WriteHeader(422)
+			return
+		}
+		a.calls[len(a.calls)-1].Operation = "receipt"
+		enc(map[string]any{"sha": sha, "author": map[string]any{"login": "assay-verifier-app[bot]"}})
 	case strings.Contains(p, contentsPrefix):
 		a.serveContents(w, r, p[strings.Index(p, contentsPrefix)+len(contentsPrefix):])
 	case r.Method == http.MethodPost && strings.HasSuffix(p, "/repos/example-org/tracker/issues"):
@@ -142,6 +179,9 @@ func (a *attestationAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		enc(a.timeline)
 	case strings.HasSuffix(p, "/graphql"):
+		if a.serveEvidenceGraphQL(w, r) {
+			return
+		}
 		enc(map[string]any{"data": map[string]any{"repository": map[string]any{"issue": map[string]any{"lastEditedAt": nil, "comments": map[string]any{"nodes": []any{}, "pageInfo": map[string]any{"hasNextPage": false}}}}}})
 	default:
 		a.unexpected = append(a.unexpected, r.Method+" "+p)

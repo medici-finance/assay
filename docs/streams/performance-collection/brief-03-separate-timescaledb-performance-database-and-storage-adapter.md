@@ -12,10 +12,11 @@ gate-why: "Correlated operational measurements and their access/retention bounda
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: cc4d6699-f1c8-4027-b1af-0fdee43fcf54
 authored: 2026-10-13 by performance collection authoring
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - docs/streams/performance-collection/README.md
   - docs/telemetry.md
   - docs/proposals/non-ci-architecture/11-target-architecture.md
@@ -144,6 +145,17 @@ Remove source scoping or transactionality, grant the ingest role cell access, or
 row must traverse actual public producer/reader or served interfaces. Scope/retention
 adequacy and deployment workload selection are review judgments; their measured evidence
 is required before activation, not invented from component-test success.
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+Apply the [perf-v3 contract](../../performance-attribution-spec.md). Existing Tasks/Verify/Evidence and consent/retention controls remain owed.
+
+Carry the collection contract's aliased v3 dimensions, invocation identity, causal links,
+point units/basis/coverage and mergeable request-duration distributions through SQL storage,
+retention and restore. Preserve unknowns as nullable/typed coverage rather than zeros. Do not
+store raw local work locators/native harness IDs or add cell-database joins. Extend the existing
+round-trip/retention Verify flow with mixed v1/v2/v3, measured-zero/missing points, same-ID
+conflict and parent/child observations; unchanged role-isolation tests remain required.
 
 ## Evidence
 

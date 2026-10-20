@@ -383,45 +383,16 @@ type OutcomeTree interface {
 
 // OutcomeReceiptInput is what the writer needs beyond the record and the tree.
 type OutcomeReceiptInput struct {
-	BriefPath   string // the brief's repo-relative path (docs/streams/<stream>/brief-<NN>-*.md)
-	LandedBrief []byte // the brief as it lands on the target branch: its hash is the brief input
-	ToolVersion string // the desk-tools version that wrote the record: the "tool" input
+	// Optional cross-repository observation; the whole immutable deliverable
+	// commit is a conservative input scope, alongside the tracking file keys.
+	SourceRepo, Source string
+	BriefPath          string // the brief's repo-relative path (docs/streams/<stream>/brief-<NN>-*.md)
+	LandedBrief        []byte // the brief as it lands on the target branch: its hash is the brief input
+	ToolVersion        string // the desk-tools version that wrote the record: the "tool" input
 	// Repo is the landing repository ("owner/name"). It is stamped as the record's repo key
 	// when the record carries none, so a bare #N blocker_ref resolves against the repository the
 	// record lands in — the same repository the writer's own reference check resolved it in.
 	Repo string
-}
-
-var (
-	filesBlockStartRe = regexp.MustCompile(`(?m)^files:\s*$`)
-	backtickSpanRe    = regexp.MustCompile("`([^`]+)`")
-)
-
-// BriefDeclaredFiles returns the distinct backtick-quoted spans inside a brief's `## Context`
-// `files:` block, in first-seen order. The block runs from the bare `files:` line to the first
-// blank line. Every span is a candidate path; one that does not exist at the record's sha (a
-// planned file, a placeholder such as `<slug>`) simply resolves absent. No `files:` line is an
-// empty set, never an error.
-func BriefDeclaredFiles(content string) []string {
-	loc := filesBlockStartRe.FindStringIndex(content)
-	if loc == nil {
-		return nil
-	}
-	block := content[loc[1]:]
-	if end := strings.Index(block, "\n\n"); end >= 0 {
-		block = block[:end]
-	}
-	var out []string
-	seen := map[string]bool{}
-	for _, m := range backtickSpanRe.FindAllStringSubmatch(block, -1) {
-		p := strings.TrimSpace(m[1])
-		if p == "" || seen[p] {
-			continue
-		}
-		seen[p] = true
-		out = append(out, p)
-	}
-	return out
 }
 
 // checkNonPassBlocker refuses a non-pass record whose caller-supplied blocker fields cannot
@@ -528,42 +499,31 @@ func BuildOutcomeRecord(raw []byte, in OutcomeReceiptInput, tree OutcomeTree) ([
 	if err != nil {
 		return nil, Unverifiable("could-not-check: inputs — cannot read "+in.BriefPath+" at "+sha, err)
 	}
-	inputs := map[string]string{}
-	for _, decl := range BriefDeclaredFiles(string(briefAtSHA)) {
-		p := strings.TrimSuffix(decl, "/")
-		if p == "" {
-			continue
+	declarations, err := BriefDeclaredFiles(string(briefAtSHA))
+	if err != nil {
+		return nil, err
+	}
+	scope, err := ResolveDeclaredScope(declarations, tree)
+	if err != nil {
+		return nil, err
+	}
+	inputs := scope.Shapes
+	for _, f := range scope.Files {
+		b, rerr := tree.ReadFile(f)
+		if rerr != nil {
+			return nil, Unverifiable("could-not-check: inputs — cannot read "+f+" at "+sha, rerr)
 		}
-		kind, kerr := tree.PathKind(p)
-		if kerr != nil {
-			return nil, Unverifiable("could-not-check: inputs — cannot resolve "+p+" at "+sha, kerr)
-		}
-		var files []string
-		switch kind {
-		case "":
-			continue // absent at this sha: a planned file or a placeholder, never an input
-		case "blob":
-			files = []string{p}
-		case "tree":
-			if files, err = tree.ListFiles(p); err != nil {
-				return nil, Unverifiable("could-not-check: inputs — cannot list "+p+" at "+sha, err)
-			}
-			if len(files) == 0 {
-				return nil, Refused("refused: inputs — declared directory " + p + " holds no file at " + sha)
-			}
-		default:
-			return nil, Refused("refused: inputs — declared path " + p + " is a " + kind + " at " + sha)
-		}
-		for _, f := range files {
-			b, rerr := tree.ReadFile(f)
-			if rerr != nil {
-				return nil, Unverifiable("could-not-check: inputs — cannot read "+f+" at "+sha, rerr)
-			}
-			inputs[inputKeyFilePrefix+f] = Sha256Hex(b)
-		}
+		inputs[inputKeyFilePrefix+f] = Sha256Hex(b)
 	}
 	inputs[inputKeyFilePrefix+in.BriefPath] = Sha256Hex(in.LandedBrief)
 	inputs[inputKeyTool] = in.ToolVersion
+	if in.SourceRepo != "" || in.Source != "" {
+		_, sourceErr := hex.DecodeString(in.Source)
+		if !IsAllowedRepo(in.SourceRepo) || len(in.Source) != 40 || sourceErr != nil || strings.EqualFold(in.SourceRepo, in.Repo) {
+			return nil, Refused("incomplete cross-repository outcome source")
+		}
+		inputs[InputKeyRepoSourcePrefix+in.SourceRepo] = in.Source
+	}
 
 	id := Sha256Hex([]byte(strings.Join([]string{r.Brief, sha, r.TS, r.Outcome, r.BlockerKind, r.BlockerRef}, "\x00")))
 	r.Schema, r.ID, r.Inputs, r.ToolVersion, r.WakePredicate = SchemaWakeV1, "vw1-"+id[:16], inputs, in.ToolVersion, WakeRelevantInputChanged

@@ -82,6 +82,72 @@ func Lift(cell string) string {
 	return stripInlineCode(cell)
 }
 
+// CommentOnly reports whether a lifted command is a shell comment: its first
+// non-blank character is `#`. The shell ignores such a command, so it exits 0
+// with no output and measures nothing (#2684, an inline `## Coverage` heading
+// lifted as the command). An executor MUST NOT run it and report the zero exit
+// as a pass. statusgen's shellCommentOnly is the same rule; both are held to
+// statusgen/testdata/shell-comment-vectors.json. A `#` later in the command (a
+// trailing comment, a quoted argument) leaves a real command.
+func CommentOnly(cmd string) bool {
+	return strings.HasPrefix(strings.TrimSpace(cmd), "#")
+}
+
+// CommentLed returns why the command a Verify Command cell names is only a shell
+// comment, or "" when it names a real one. An executor MUST NOT run a comment-led
+// cell: the shell ignores the comment, and what is left exits 0 with no output (a
+// whole raw cell such as "`## Coverage`: confirm it" runs as the `:` no-op once the
+// comment-only substitution expands to nothing), so the zero exit would record a
+// pass for a check that never looked (#2684, review S1).
+//
+// A marked cell is judged on its marked command, and a marked comment is refused
+// too: the marker names the command to run, and a comment runs nothing (review
+// F2; statusgen refuses it the same way). An unmarked cell is judged on BOTH
+// lifts: statusgen's (the first code span, firstSpan) and this package's legacy
+// Lift (the whole unwrapped cell, which is what runs). Either one comment-only
+// refuses the cell, so a cell statusgen records could-not-run is never one these
+// executors run. Both modules are held to the "cells" section of
+// statusgen/testdata/shell-comment-vectors.json.
+func CommentLed(cell string) string {
+	if c, ok := Marked(cell); ok {
+		if CommentOnly(c) {
+			return MarkedCommentWhy
+		}
+		return ""
+	}
+	if CommentOnly(firstSpan(cell)) || CommentOnly(stripInlineCode(cell)) {
+		return UnmarkedCommentWhy
+	}
+	return ""
+}
+
+// The could-not-run reasons CommentLed returns. Each names the remedy that fits:
+// a marked row is already marked, so it needs the comment replaced.
+const (
+	MarkedCommentWhy   = "the `cmd:`-marked command is only a shell comment, so it runs nothing; replace it with the command that performs the check"
+	UnmarkedCommentWhy = "the Verify command is a shell comment (an inline heading such as `## Coverage` lifts as one), so it runs nothing; mark the real command with a `cmd:` code span, or keep the row a manual procedure with its evidence"
+)
+
+// firstSpan is statusgen's unmarked lift (statusgen/verifyrows.go codeSpan),
+// ported so CommentLed judges the string statusgen judges: the content of the
+// cell's first code span — a run of N backticks closing at the next run of N, an
+// unclosed run taking the rest of the cell — or the trimmed cell when it has no
+// backtick. It is a judging lift only; Lift stays the executed one.
+func firstSpan(cell string) string {
+	s := strings.TrimSpace(cell)
+	start := strings.Index(s, "`")
+	if start < 0 {
+		return s
+	}
+	fence := strings.Repeat("`", backtickRun(s, start))
+	rest := s[start+len(fence):]
+	end := strings.Index(rest, fence)
+	if end < 0 {
+		return strings.TrimSpace(rest)
+	}
+	return strings.TrimSpace(rest[:end])
+}
+
 // stripInlineCode unwraps a `…` inline-code span that wraps the whole cell; a
 // cell with no wrapping backticks passes through unchanged.
 func stripInlineCode(s string) string {

@@ -10,9 +10,10 @@ import (
 	"testing"
 )
 
-// A cell is named by its directory under the cells root. These tests hold the refusal of every
-// other name — in `new`, in the loader and in `set` — and that the names which ARE under the
-// root, a nested one and a symlinked one included, load as they always did.
+// A cell is named by ONE directory under the cells root, spelled with lower-case letters, digits
+// and '-' (the rule the cell-scoped stop flags read ASSAY_CELL against). These tests hold the
+// refusal of every other name — in `new`, in the loader and in `set` — and that the names which
+// ARE under the root, a symlinked one included, load as they always did.
 
 // tryRefusal runs fn and reports whether it refused (died), with what it printed on stderr. It
 // is refusal without the fatal: a test that walks many names wants to report each one.
@@ -60,10 +61,17 @@ func cellNameRoot(t *testing.T) (tmp, root string) {
 	return tmp, root
 }
 
-// notLocalNames are names that do not name a directory under the cells root at `root`, whose
-// parent is tmp.
+// notLocalNames are names that are not a cell name under the cells root at `root`, whose parent
+// is tmp: a path that leaves the root, the root itself, and (PR #2971) every name
+// outside [a-z0-9-] — a nested one, an upper-case one, one with `_` or `.`.
+//
+// regression: PR #2971
 func notLocalNames(tmp string) map[string]string {
 	return map[string]string{
+		"a nested name":                     "team/demo",
+		"an upper-case letter":              "Demo",
+		"an underscore":                     "demo_1",
+		"a dot":                             "demo.1",
 		"climbs out of the root":            "../other/x",
 		"climbs out through a nested name":  "team/../../other/x",
 		"the root's parent":                 "..",
@@ -75,7 +83,7 @@ func notLocalNames(tmp string) map[string]string {
 
 func assertNotLocalRefusal(t *testing.T, what, msg, name, root string) {
 	t.Helper()
-	for _, want := range []string{"'" + name + "'", root, "is not a path under the cells root"} {
+	for _, want := range []string{"'" + name + "'", root, "is not a valid cell name under the cells root"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("%s: the refusal should name the cell name and the cells root, and say why (missing %q):\n%s", what, want, msg)
 		}
@@ -124,8 +132,8 @@ func TestCellNameNewRefusesANameOutsideTheRoot(t *testing.T) {
 		t.Errorf("a refused `new` left %v in the cells root (%v)", names, err)
 	}
 
-	// The names that are under the root still scaffold: one level down, and nested.
-	for _, name := range []string{"demo", "team/demo"} {
+	// The names that satisfy the rule still scaffold.
+	for _, name := range []string{"demo", "cell-1"} {
 		if msg, refused := tryRefusal(t, scaffold(name)); refused {
 			t.Fatalf("new %q is refused:\n%s", name, msg)
 		}
@@ -178,13 +186,11 @@ func TestCellNameLoaderRefusesANameOutsideTheRoot(t *testing.T) {
 	// A name that is under the root loads, however it is spelled, and re-enters by its path
 	// under the root.
 	writeCell(t, root, "demo", demoCell)
-	writeCell(t, root, filepath.Join("team", "demo"), demoCell)
 	for name, ref := range map[string]string{
-		"demo":             "demo",
-		"team/demo":        "team/demo",
-		"team/../demo":     "demo",
-		"./team//demo/":    "team/demo",
-		"team/./x/../demo": "team/demo",
+		"demo":           "demo",
+		"team/../demo":   "demo",
+		"./demo/":        "demo",
+		"./team/../demo": "demo",
 	} {
 		c, msg := tryLoadCell(t, name)
 		if c == nil {
@@ -209,5 +215,46 @@ func TestCellNameLoaderRefusesANameOutsideTheRoot(t *testing.T) {
 		if r, n := c.reenter(); r != root || n != "linked" {
 			t.Errorf("a symlinked cell re-enters as (%s, %s), want (%s, linked)", r, n, root)
 		}
+	}
+}
+
+// TestCellNameRuleBindsContainerCellsAndTheCellValue: the one rule is not a kind-specific
+// check. A container cell the old container regexp accepted (upper-case, `_`) is refused
+// like any other, and a cell.env whose CELL= value is outside the rule — the value cellctl
+// stamps into every child as ASSAY_CELL — is refused by the loader.
+//
+// regression: PR #2971
+func TestCellNameRuleBindsContainerCellsAndTheCellValue(t *testing.T) {
+	_, root := cellNameRoot(t)
+	for _, name := range []string{"Sample", "sample_1", "team/sample", "a.b"} {
+		msg, refused := tryRefusal(t, func() {
+			captureStdout(t, func() {
+				newArgv([]string{name, "--kind", "container", "--repo", "example-org/example-repo"})
+			})
+		})
+		if !refused {
+			t.Errorf("new %q --kind container was accepted; want a refusal under the [a-z0-9-] rule", name)
+			continue
+		}
+		assertNotLocalRefusal(t, "new "+name+" --kind container", msg, name, root)
+		if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(name))); !os.IsNotExist(err) {
+			t.Errorf("a refused container `new %s` left a directory behind (%v)", name, err)
+		}
+	}
+
+	for _, bad := range []string{"Demo", "demo_1", "team/demo"} {
+		writeCell(t, root, "demo", strings.Replace(demoCell, "CELL=demo", "CELL="+bad, 1))
+		c, msg := tryLoadCell(t, "demo")
+		if c != nil {
+			t.Errorf("the loader accepted CELL=%s; want a refusal", bad)
+			continue
+		}
+		if !strings.Contains(msg, "CELL='"+bad+"' is not a valid cell name") {
+			t.Errorf("CELL=%s: refusal should name the value and the rule:\n%s", bad, msg)
+		}
+	}
+	writeCell(t, root, "demo", demoCell)
+	if c, msg := tryLoadCell(t, "demo"); c == nil {
+		t.Fatalf("a cell with CELL=demo does not load:\n%s", msg)
 	}
 }

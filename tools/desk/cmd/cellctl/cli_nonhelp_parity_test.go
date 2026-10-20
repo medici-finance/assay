@@ -467,15 +467,16 @@ var deliberateDiffs = map[string]deliberateDiff{
 	"kind-whole-line/1": noDeskdDiff("example"),
 	"kind-whole-line/9": noDeskdDiff("scrub"),
 	"desk-scrubbed/2": {code: 0, stdoutReplace: func() []string {
-		return []string{bashQuote(`Invoke the "assay:worker-desk" skill now.`), bashQuote(codexStandingPrompt("worker-desk", `Invoke the "assay:worker-desk" skill now.`))}
-	}, stderrReplace: []string{"", ""}, why: "#2696: scrubbed Codex argv carries the qualified native bootstrap"},
+		return []string{bashQuote(`Invoke the "assay:worker-desk" skill now.`), bashQuote(codexStandingPrompt("worker-desk", codexSupervisionPrompt(`Invoke the "assay:worker-desk" skill now.`)))}
+	}, stderrReplace: []string{"", ""}, why: "#2696, #3324: scrubbed Codex argv carries native admission and shared supervision guidance; all other bytes remain equal"},
 
 	// Maintenance adds wipe to cache diagnostics; all other transcript bytes stay identical.
 	"cache-enabled/0": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},
 	"cache-enabled/1": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},
 	"cache-enabled/2": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},
 	// #2879 records the compiler-cache trim age in the policy and the trimmed
-	// entries and bytes in every report; all other transcript bytes stay identical.
+	// entries and bytes in every report; the policy also carries the consumers'
+	// GOFLAGS (-trimpath by default); all other transcript bytes stay identical.
 	"cache-enabled/3": {code: 6, stdoutReplace: cacheTrimFields, stderrReplace: []string{"", ""}, why: "#2879: reports carry the build trim age and trimmed bytes"},
 	"cache-enabled/4": {code: 0, stdoutReplace: cacheTrimFields, stderrReplace: []string{"", ""}, why: "#2879: reports carry the build trim age and trimmed bytes"},
 	"version-flag/0":  {code: 0, stderr: "", why: whyNoEcho},
@@ -530,10 +531,11 @@ var deliberateDiffs = map[string]deliberateDiff{
 	"cells-root-spellings/4": {code: 2, stderr: unknownCmd("-cells-root"), why: whyParseText + "; " + whyHookBlocks},
 }
 
-// cacheTrimFields is the #2879 report change, as old/new replacement pairs.
+// cacheTrimFields is the #2879 report change, plus the policy's default GOFLAGS, as old/new
+// replacement pairs.
 func cacheTrimFields() []string {
 	return []string{
-		`"minimum_free_bytes":10737418240}`, `"minimum_free_bytes":10737418240,"build_max_age_seconds":86400}`,
+		`"minimum_free_bytes":10737418240}`, `"minimum_free_bytes":10737418240,"build_max_age_seconds":86400,"goflags":"-trimpath"}`,
 		`"reclaimed_logical_bytes":0,`, `"reclaimed_logical_bytes":0,"trimmed_build_entries":0,"trimmed_build_bytes":0,`,
 	}
 }

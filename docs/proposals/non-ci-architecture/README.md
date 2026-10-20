@@ -1,8 +1,16 @@
 # Unified product architecture for Assay
 
-**Status: future architecture we are moving towards. Updated 14 October 2026; includes portfolio, drift and the write-through forge-service amendment.** This directory is the canonical public home of Assay's future product architecture. It states the direction of travel, not what is already implemented or deployed. Detailed contract changes still require revision-bound review; implementation and activation require their own evidence and authorization. Publishing or merging this documentation does not activate a runtime, grant credentials or amend existing briefs.
+**Status: future architecture we are moving towards. Updated 16 October 2026; includes portfolio, drift, the write-through forge service, operation-count split and portable execution environments.** This directory is the canonical public home of Assay's future product architecture. It states the direction of travel, not what is already implemented or deployed. Detailed contract changes still require revision-bound review; implementation and activation require their own evidence and authorization. Publishing or merging this documentation does not activate a runtime, grant credentials or amend existing briefs.
 
 Read the [implemented foundations and remaining work](11-target-architecture.md#implemented-foundations-and-work-still-to-build) alongside the target. Portfolio allocation, target/context drift and continuing observation are included in the destination; their integrated automation remains work to build and qualify.
+
+The draft [celld session and execution-host spec](../../celld-session-host-spec.md)
+explores service packaging and Codex, Claude and Cursor runtime integration against
+these owners, including the [cell operator surface](21-cell-operator-surface.md) lifecycle
+and Cell API owner and the [runtime contract alignment](23-runtime-contract-alignment.md).
+It adds no lifecycle vocabulary or second Cell API. Its six qualification spikes are
+proposed experiments; the draft does not amend this architecture's approved authority or
+activate remote/cluster execution.
 
 The maintainer ratified the whole target at revision `23f655f5d`, packages R1–R8, on [medici-finance/assay#2500](https://github.com/medici-finance/assay/issues/2500). That approval remains revision-bound: it does not imply that the portfolio/drift additions below were included in that earlier revision, or that any runtime has been activated.
 
@@ -31,6 +39,9 @@ Verification is the first end-to-end test.
 | [Runtime contract alignment](23-runtime-contract-alignment.md) | One public runtime: PostgreSQL coordination, existing Git/forge evidence owners, requirement-to-owner coverage and remaining gaps |
 | [Communications future state](24-communications.md) | Proposal pending approval: reusable client/server, broker-owned delivery, config CLI and applied backlog dependencies |
 | [Tool families and CI integration](25-ci-tooling.md) | Desk/service/CI placement, shared mechanisms and the migration stream |
+| [Product intent and portfolio](26-product-intent-and-portfolio.md) | Product-target, capacity and observation contracts; concrete briefs, active-work boundaries and remaining admission |
+| [Agent execution environments](27-agent-execution-environments.md) | Qualified harness/model/backend profiles, workspace readiness receipts, recovery and lifecycle visibility; seven implementation briefs |
+| [Desk workflow efficiency](../../desk-workflow-efficiency-spec.md) | Draft: complete review observations, shared collection/evaluation, diagnostic measurement and caller retirement; [existing-work reconciliation](../../desk-workflow-efficiency-change-map.md) |
 | [Synthetic change set](examples/architecture-change-v0.yaml) | Illustrative records with no approval or implementation claim; not a supported schema |
 
 ## Future direction and mechanisms to qualify
@@ -150,3 +161,7 @@ runtime effects; Git retains definitions/evidence; the forge service owns scoped
 observations and effects. There is no second runtime, native SCM prerequisite or new signer
 deployment. The coverage table maps existing owners and routes only two new contract gaps
 (graph-execution/30–31), with amendments to their existing admission/store/publication consumers.
+
+## Portable execution environments — 16 October 2026
+
+The [execution amendment](27-agent-execution-environments.md) extends existing R2/R3/R4/R7 owners through the [agent-execution stream](../../streams/agent-execution/README.md). It separates harness, model and backend selection, makes preparation and preservation explicit, and qualifies recovery without making an environment receipt an authority grant. AX remains an optional offline compatibility investigation. Existing PostgreSQL coordination, role executors, lifecycle and activation decisions remain controlling; no remote backend is selected.

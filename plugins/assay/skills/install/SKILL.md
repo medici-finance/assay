@@ -154,7 +154,11 @@ and fetched over plain HTTPS.
    (`statusgen init` writes one per platform plus the bare `statusgen` line) is filled from the
    manifest, or the step refuses naming the ones it cannot fill; a DIFFERENT real line is refused
    — a re-pin is a reviewed change, never a silent in-place edit. A refusal leaves the file
-   untouched.
+   untouched. When the step writes and the file has no `assay` umbrella line, it also records
+   `assay <tag>` before the first data line. It does so only if the manifest's tag is a bare
+   `vX.Y.Z` and every per-artifact line pins that tag, so the version marker (`deskversion`,
+   `assay:upgrade-assay`) reads the install as **known**. An existing umbrella line is never
+   touched, and an unchanged file stays byte-identical.
 4. **Fetch and verify**: `assay-install.sh acquire --pins <target>/.assay-versions --dest <bindir>
    --release-home <release_home>` — `<release_home>` is the one named in `paired-versions.yaml`
    (resolve it from there, do not hardcode it in prose). It fetches
@@ -191,6 +195,12 @@ the same HTTPS fetch, the same pin-file comparison, **REFUSE on a mismatch or an
 digest**, and only then extract and install the binaries to `PATH`. The only shape difference is
 the artifact is a `.tar.gz` of binaries, not a single file. Config is at the config-home
 (`../../references/desk-shell.md` §Config home) only, never the environment. See `install-desk-tools` in the `adopt` runbook.
+
+Skippable for the repo, **required for a desk**: `deskboot` refuses (exit 6, step
+`first-sweep-prereqs`) when the nearest `.assay-versions` has no `desk-tools` /
+`desk-tools-<os>-<arch>` line (or full-commit `desk-tools-source` line), and when the roster's
+`ASSAY_REPO_FORGES` names no forge for the repo. Statusgen lines alone are not a desk-tools pin.
+If desks will run here, land the pin on main and confirm the forge entry with the operator.
 
 **Verify:** `deskboard --version` prints `releaseTag=<the pinned desk-tools tag>` — the tag, not merely
 a line, so a stale binary left on `PATH` cannot pass — and its `assay-config:` echo shows the roster

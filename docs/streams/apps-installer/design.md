@@ -159,7 +159,9 @@ uploader takes raster). Rules:
   canvas, no stroke thinner than 7 units on a 64 grid, each with a distinct outline (ring, check,
   hammer, disc, star, ticket, funnel) so the set survives monochrome viewing.
 - **Read + Act: inversion, not hue.** The adopter's hue (hashed from the org login) colours both
-  tiles; read is a dark tile with a light glyph, act a filled tile with a dark glyph.
+  tiles; read is a dark tile with a light glyph, act a filled tile with a dark glyph. The team
+  tier's third App, `<prefix>-review`, takes the same hue on a muted body with the family
+  reviewer's glyph — a light solid disc — so the team set is three tiles, proofed together.
 - **Adopter identity sits behind the glyph** — initials or a quantized org avatar as a low-contrast
   field, visible at 64 px and above, invisible at 20 px where the role must win.
 - **The fineness mark leaves the uploaded avatar.** It stays on the large masters; at 20 px it is

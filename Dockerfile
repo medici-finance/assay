@@ -42,6 +42,7 @@
 # ---- Builder --------------------------------------------------------------
 # golang:1.27.2 is the fleet's single Go toolchain and covers the `go 1.27.0`
 # line of every go.mod (#2918). Alpine base, CGO off -> fully static Linux binaries.
+ARG BINARY_STAGE=builder
 FROM golang:1.27.2-alpine AS builder
 
 # Target GOOS/GOARCH. Defaulted so a plain `docker build` produces linux/amd64
@@ -66,6 +67,9 @@ COPY forgeread/ ./forgeread/
 # The comms module (the public cellmsg-v1 contract) is the same kind of sibling: tools/desk
 # resolves it through `replace ../../comms`, and it is stdlib-only.
 COPY comms/ ./comms/
+# The perfrec module (the shared perf-v1 writer) is the same kind of stdlib-only sibling:
+# statusgen resolves it through `replace ../perfrec`, tools/desk through `replace ../../perfrec`.
+COPY perfrec/ ./perfrec/
 COPY statusgen/go.mod statusgen/go.sum ./statusgen/
 COPY tools/desk/go.mod ./tools/desk/
 RUN cd statusgen && go mod download
@@ -82,7 +86,7 @@ ENV GOARCH=$TARGETARCH
 # stamps release-desk uses (same -X targets as tools/desk/internal/deskkit).
 RUN set -eux; \
     DESK_PKG="github.com/medici-finance/assay/tools/desk/internal/deskkit"; \
-    LDFLAGS="-X ${DESK_PKG}.SourceSHA=${SOURCE_SHA} -X ${DESK_PKG}.BuiltAt=${BUILT_AT}"; \
+    LDFLAGS="-X ${DESK_PKG}.SourceSHA=${SOURCE_SHA} -X ${DESK_PKG}.BuiltAt=${BUILT_AT} -X ${DESK_PKG}.ReleaseTag=${VERSION} -X main.cellctlVersion=${VERSION}"; \
     mkdir -p /out; \
     cd tools/desk; \
     for cmd in ./cmd/*/; do \
@@ -122,6 +126,11 @@ RUN set -eux; \
 # without it (issue #1491) — absent every other tool this image ships, it is
 # the one common "what kind of file is this" utility no Go/git/gh combination
 # substitutes for.
+# Release CI reuses the same binaries it publishes as Linux assets.
+FROM scratch AS released
+COPY .release-images/desk-tools/ /out/
+FROM ${BINARY_STAGE} AS toolkit
+
 FROM alpine:3.21
 
 # The explicit /work bind mount may be owned by root on a Docker Desktop backend;
@@ -135,7 +144,7 @@ RUN apk add --no-cache bash git github-cli ca-certificates file \
     && adduser -S -G desk -h /home/desk desk
 
 # Binaries onto PATH (desk-tools suite + statusgen + bugs-gc).
-COPY --from=builder /out/ /usr/local/bin/
+COPY --from=toolkit /out/ /usr/local/bin/
 
 # Re-declare in this stage so the OCI labels can read the build-args (ARG values
 # do not cross stage boundaries).

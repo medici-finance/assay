@@ -95,8 +95,13 @@ item; the `deskinbox` table makes no such call). From what either reads it lifts
   section, else the body's opening prose — plus the escalation label it is blocked on, an
   `Unblocks:`/`Depends:` line if the issue states one, the latest desk note, and a gate line
   carrying the labels, the age and the URL.
-- **Options** from a `## Options` section's lettered or numbered lines. The option whose text
-  says "recommended" is promoted to **A** and labelled; at most four are shown.
+- **Options** from a `## Options` section's lettered or numbered lines; at most four are
+  shown. When exactly one `(recommended)` marker appears across them, its option is promoted
+  to **A** and labelled; with none, or more than one, no option is labelled and the source
+  order stands. The marker is the token `(recommended)` in any case, after a space (or
+  opening the text) and before a space, the end, or one of `.,;:!?`, so `(recommended).` counts
+  but "recommendation", `(not recommended)` and `— recommended` do not. Text inside an HTML
+  comment is never read.
 
 Neither is invented. An issue that states no options renders
 `options not yet stated — desk to fill`, and the Reply shape degrades from "reply with one

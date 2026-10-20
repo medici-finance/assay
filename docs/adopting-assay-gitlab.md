@@ -200,7 +200,12 @@ no renew verb, and a re-run of `deskfleet provision` mints nothing for accounts 
 A Windows adopter therefore still runs renewal from Git-Bash or WSL until `windows-port/16` ships
 `deskfleet renew`.
 
-The script is idempotent bash + curl + jq, run by a human holding a **group-owner PAT**
+The script is a thin bash adapter onto the Go command `deskgitlab create`
+(`tools/desk/cmd/deskgitlab`): every flag below passes through unchanged, and the output and
+exit codes are the provisioner's (0 ok · 1 a step failed · 2 usage, before any effect). It
+runs the `deskgitlab` on PATH (the desk-tools release archive), or builds one from
+`tools/desk` with Go; it needs neither curl nor jq, and `deskgitlab create` takes the same
+flags directly. It is idempotent, run by a human holding a **group-owner PAT**
 (supplied only via the `GITLAB_TOKEN` environment variable — never a flag, never
 committed, never stored by the script). It creates the seven service accounts above,
 their group memberships, and their PATs; when `--project` is given, it also configures
@@ -227,7 +232,11 @@ the protected-branch/approval steps with a printed NOTICE, not silently); `--git
 defaults to `https://gitlab.com` (point it at your self-managed instance otherwise);
 `--pat-expiry-days` defaults to 7, the RECOMMENDED backstop from spec.md §5;
 `--out-dir` controls where minted token files land (default: a fresh `mktemp -d`);
-`--avatars-dir`, `--no-avatars` and `--avatars-only` control the avatar step below. Run
+`--avatars-dir`, `--no-avatars` and `--avatars-only` control the avatar step below (give
+`--avatars-dir` or `--no-avatars`, not both); `--tier` and the `--status-check-*` pair are §2b's.
+Flags take `--flag value` or `--flag=value`; an unknown flag or a bad value (a `--tier` outside
+free/premium/ultimate, a `--pat-expiry-days` that is not a whole number of days, 1 or more, a
+plain-http `--gitlab-url` off loopback) exits 2 before anything is read or sent. Run
 `tools/create-fleet-gitlab.sh --help` for the full reference.
 
 **Idempotency.** A re-run against an already-provisioned group is a set of named no-ops,
@@ -241,7 +250,10 @@ which is what rotate-on-mint (§5) actually calls at operation time. To renew ev
 role's PAT in one run, use `tools/renew-fleet-gitlab-tokens.sh` (§2g).
 
 **Token custody.** Every minted token is written to a `0600` file under `--out-dir`; the
-script prints the file's **path**, never the token value, on stdout or in argv. Move the
+script prints the file's **path**, never the token value, on stdout or in argv. Each file is
+created new and then moved into place, replacing whatever was at that name. An existing
+`--out-dir` that other users can write to is refused before any request is sent (Unix; use a
+directory only you can write to). Move the
 files out of the default `mktemp` location into your role-token store immediately — the
 directory is not cleaned up for you, by design, so a run's tokens survive the script
 exiting.
@@ -278,9 +290,10 @@ holds an invalidated one, so on that layout never copy the provisioned file back
 `gitlab-<role>.token` — doing so installs a dead credential, and the next desk verb fails `401`
 on its first API read. Prefer the link on any platform that has one. (#1112)
 
-The script itself is **bash + curl + jq** — a labelled **fallback** (#1646), not the Windows
-path (see **`deskfleet provision`** at the top of this section). If you do run it on native
-Windows, run it from Git-Bash or WSL, never from PowerShell.
+The script itself is a **bash** adapter onto `deskgitlab create` — a labelled **fallback**
+(#1646), not the Windows path (see **`deskfleet provision`** at the top of this section). If you
+do run it on native Windows, run it from Git-Bash or WSL, never from PowerShell, or run
+`deskgitlab create` with the same flags directly.
 
 **`GITLAB_API_BASE` — required before the next boot, and it is not a `roster.env` key.**
 Every GitLab-side token operation — the read-only custody check `deskboot` / `deskroster
@@ -715,12 +728,16 @@ ASSAY_GITLAB_DISPLAY_NAMES=example-verifier-bot=Assay verifier (fleet bot)
 - Renaming the service account's display name to equal its username is a valid deployment
   workaround, but it silently re-breaks whenever an admin edits the display name; declaring it
   here is the durable fix.
-- **Online alternative.** The desk verb that lands Evidence (`deskevidence`) resolves the landed
-  commit's GitLab account to its username through the typed forge (`GET /users?search=`) and
-  compares that to the verifier binding — so a deployment whose runners can reach the API gets the
-  check for free without declaring display names. The offline map is the fallback for the
-  network-free `--lint` path; unset, that path is simply could-not-check for the display-name case
-  (never a false pass).
+- **Online alternative — not available yet.** The desk verb that lands Evidence
+  (`deskevidence`) can resolve a landed commit's GitLab account to its username through the
+  typed forge (`GET /users?search=`) and compare that to the verifier binding, but on GitLab it
+  never reaches that step today: before any write it runs the decision-gate hold's branch-board
+  read, which needs a ref compare, and the GitLab backend serves none. Every `deskevidence`
+  landing on GitLab therefore stops as **could-not-check (exit 6)** with nothing written, until
+  the GitLab backend serves a compare; [adopting-assay.md](adopting-assay.md) gives the reason
+  (the decision-gate hold, under "PRIMITIVE: add-statusgen-ci"). The offline map above is what
+  the network-free `--lint` path compares against; unset, that path is could-not-check for the
+  display-name case (never a false pass).
 
 A roster-known **human** verifier on GitLab is accepted by the Evidence-actor check via GitLab's
 private commit noreply address `<user-id>-<username>@users.noreply.<host>` the way a GitHub human

@@ -25,12 +25,14 @@ file points, never re-states; incident rationale lives in the project's findings
 link. Bindings for your harness — which mechanism each `capability:*` names — are in
 `../../references/<harness>.md`.
 
-> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, and role/repo coverage — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+> Shell & transport mechanics every role re-derives — one call/one chain, workspace isolation and content-triggered write-guard refusals, per-commit inline identity, loop/session marker export, authenticated push/fetch transport, role/repo coverage, and running a `gh` call as the role App (never a human's CLI login: [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role)) — are in [`../../references/desk-shell.md`](../../references/desk-shell.md).
+
+> **Every `gh` call carries this role's `GH_TOKEN`, reads included.** When no desk verb covers a forge call, run it only through the recipe in [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role), never a hand-typed shortcut. That recipe takes the role from `$DESK_LOOP`, mints it with `desktoken`, scopes the token to that one command without exporting it, and stops before `gh` unless the mint exited 0 and the token file holds a non-whitespace token. A bare `gh` call runs as the host's stored login, which is usually a human's, so a desk never runs one, not even for a read.
 
 > Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
 
 
-> Procedure every desk role shares — the liveness contract, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
+> Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
 **References**, each carrying text the reviewer prompt needs verbatim:
 `references/leak-audience-check.md` (leak/audience axes for an outward-facing artifact),
@@ -44,7 +46,8 @@ each as one SIGNAL/PROBE/ACT/STOP row, plus the full-length-SHA posting rule).
 
 `deskboot pr-review-desk` — one command for the whole ceremony: loop identity, worktree prune,
 worktree lock, roster registration, the five-check operating-envelope preflight, a cold token mint,
-a read-only board fetch. It fails closed and NAMES the step that stopped it — exit 5 is a
+a read-only board fetch, worktree currency, and the first sweep's prerequisites (roster forge mapping,
+desk-tools pin). It fails closed and NAMES the step that stopped it — exit 5 is a
 precondition you control, exit 6 a step that ran and could not be proven green. **Either is a
 STOP:** claim nothing, and do not file an issue about the desk's own envelope (each failing check
 already names the issue that owns it). A probe REJECTION is a STOP — never retry it under another
@@ -96,7 +99,12 @@ identity. Three desk-specific residues `deskboot` does not carry:
    degraded, not diffed), keeps a per-repo baseline so the first sight of a repo SEEDS silently
    (pre-seeded, never a flood), and emits one `PR-EVENT: <slug>#<num> <kind> <old> -> <new>` line
    per change (`kind ∈ opened | pushed | draft-flip | state | merge-state | closed`) — so a fresh
-   PR, a push, or a draft flip surfaces within one cadence tick. It PACES its reads: it sleeps
+   PR, a push, or a draft flip surfaces within one cadence tick. Each repo is read under its own
+   per-repo role token, minted inside the poll from the window's `$DESK_LOOP` (`desktoken <role>
+   --repo <slug>`) and scoped to that one read — never the ambient `gh` login, never an inherited
+   `GH_TOKEN`. A mint that fails (or a `$DESK_LOOP` that is unset) prints `MONITOR-DEGRADED: <slug>
+   token mint FAILED (...)`, the repo keeps its previous baseline, and the cycle exits 2: that is
+   could-not-check, never "no open PRs" — so arm the monitor with `DESK_LOOP` exported. It PACES its reads: it sleeps
    `ASSAY_MONITOR_PACE_SECONDS` (default 2) between repos and, at
    `ASSAY_MONITOR_MAX_REPOS_PER_CYCLE` (default 0 = all), caps a cycle and carries a cursor to the
    next run, so the watcher cannot become the tight-loop poll that once tripped the forge's
@@ -178,13 +186,21 @@ Before each loop cycle (monitor wakeup, board sweep, dispatch), check for active
 
 ```bash
 [ -f "$HOME/.config/assay/STOP" ] && echo "STOP flag active — exiting loop" && exit 0
+case "$ASSAY_CELL" in ""|*[!a-z0-9-]*) ;; *) [ -f "$HOME/.config/assay/STOP.cell.$ASSAY_CELL" ] && echo "STOP.cell.$ASSAY_CELL active — exiting loop" && exit 0 ;; esac
 [ -n "$DESK_LOOP" ] && [ -f "$HOME/.config/assay/STOP.$DESK_LOOP" ] && echo "STOP.$DESK_LOOP active — exiting loop" && exit 0
+case "$ASSAY_CELL" in ""|*[!a-z0-9-]*) ;; *) [ -n "$DESK_LOOP" ] && [ -f "$HOME/.config/assay/STOP.cell.$ASSAY_CELL.$DESK_LOOP" ] && echo "STOP.cell.$ASSAY_CELL.$DESK_LOOP active — exiting loop" && exit 0 ;; esac
 ```
+
+`ASSAY_CELL` is the cell marker `cellctl` stamps on every desk it launches: `STOP.cell.<cell>` stops every
+loop of that cell, `STOP.cell.<cell>.<name>` one loop of it. A session with no marker skips both cell lines; a
+marker outside `[a-z0-9-]` builds no path here and is refused (exit 6) by the Guard. Cell flags only add a
+stop — they never lift `DISABLED`, `STOP` or `STOP.<name>`.
 
 `DESK_LOOP` is set by `deskboot`. A hit means exit cleanly (restart by `rm <flag>` + re-arm).
 Never halt mid-action; a started outward write always completes. Precedence: `DISABLED` > `STOP` >
-`STOP.<name>`. The tool layer (`deskkit.Guard()`) independently enforces these flags — a loop that
-skips its own check is defanged: every outward verb will refuse.
+`STOP.cell.<cell>` > `STOP.<name>` = `STOP.cell.<cell>.<name>`. The tool layer (`deskkit.Guard()`)
+independently enforces these flags — a loop that skips its own check is defanged: every outward verb
+will refuse.
 
 The same cadence tick reads the per-claim **armed stops** across in-flight dispatches with
 `desksupervise status --stops` (the liveness observer's runtime snapshot) — so this window sees a
@@ -290,8 +306,8 @@ failure this section prevents**, and there is no state in this loop called "the 
   push only when the declaration substantiates); the ready-flip reads BOTH lanes' verdicts AT THE FINAL head (stale ≠ pass), CI
   green at that head, mergeable; a `Security-Review: fail` at head blocks everything; dual-track
   out-of-scope FILING waits for both lanes at the same head (the VERDICTS themselves never wait for
-  each other); the human gates (public-repo human +1 before any verdict post, `needs-decision`, the
-  merge) are never parallelised around.
+  each other); the human gates (`needs-decision`, the merge, a public repo's repository-scoped
+  `:public` allowed-repos entry) are never parallelised around.
 - **Never stop-and-wait.** When actionable = 0, do not exit — the watchers keep the loop alive. "I
   dispatched everything I saw" is not a stop condition and is not an idle claim (§HARD GATE).
 - **Priority within a refill:** RE-REVIEW before NEEDS-REVIEW at the same score (the worker is
@@ -828,9 +844,9 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
      The PR body must state that the hunk is `reconcile --backfill --apply` output (the rows the
      read-only form reports as `wouldApply`) and name the witness PR for each row; that statement
      is a CLAIM, and the run above is the only evidence.
-     The carve-out exists because `--apply` only ever writes this one Status-only transition, and
-     only from a real merged-PR witness, so a PR carrying its output byte-for-byte adds nothing the
-     tool would not write itself. The code-existence check is the second layer on every admitted
+     The carve-out exists because `--apply` without `--regenerate` (the reproduce run never passes it) only ever
+     writes this one Status-only transition, and only from a real merged-PR witness, so a PR carrying its output
+     adds nothing the tool would not write itself. The code-existence check is the second layer on every admitted
      row, because no witness alone can tell whether this brief's work landed: a trailer-less
      branch-name or body match; a trailer whose `<stream>/<NN>` may belong to a different brief
      delivered into the same repo, whichever board tracks it; and a trailer in a body edited after

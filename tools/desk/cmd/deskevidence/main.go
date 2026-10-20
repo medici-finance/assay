@@ -8,13 +8,13 @@
 // Reads the local file at <repo-path>, BodyChecks it, fetches the
 // current file from GitHub on <branch> to get the tree SHA, checks
 // idempotency (same content at same head → noop), and commits via the
-// GitHub Contents API AS the verifier App. The commit author is
+// conditional forge API AS the verifier App. The commit author is
 // the verifier App because the API call uses the App's installation
 // token — unforgeable (a PAT commit would be example-org, which is the
 // whole point).
 //
 // The tool has NO push, no merge — commit only (weakest-verb). "Commit
-// only" does NOT mean the write is local: a Contents-API PUT carries the
+// only" does NOT mean the write is local: a forge commit carries the
 // branch, so the commit lands on the REMOTE branch as soon as the call
 // returns. There is nothing left to push and nothing to stage — including
 // on main. Because of that, main/master are refused unless VERIFIER_MAIN_OK
@@ -48,13 +48,19 @@ const usage = `deskevidence — commit Evidence rows as the verifier App (the ve
 USAGE:
   deskevidence <owner/repo> <branch> --evidence-file <repo-path> [--root <dir>]
                [--brief-path <repo-path>] [--append-only] [--allow-shrink]
-               [--row <NN> [--row <NN> ...]]
+               [--row <NN> [--row <NN> ...]] [--acceptance-forge]
   deskevidence flip --root <worktree> --brief <stream>/<NN> --sha <sha> [--base main] [--dry-run]
   deskevidence --version
 
+--acceptance-forge explicitly permits fresh read-only corroboration of protected
+acceptance transitions by every child statusgen audit, lint and flip. It supplies no
+approval verdict. Without it amended acceptance remains held; ordinary records
+retain their existing behavior. Each approval target is printed before contact.
+
 Commits the content of the local file at --evidence-file (a repo-relative path)
-to the same path on <branch> via the GitHub Contents API, using the verifier App
-installation token. Author = the verifier App.
+to the same path on <branch> through a conditional forge write, using the verifier
+credential. GitHub batches admission and destination reads, then commits only if
+the validated file revision is unchanged. GitLab retains its protected-branch MR path.
 
 --root <dir> resolves a repo-relative --evidence-file against <dir> (e.g. the verifier
 worktree) instead of the current working directory, so a stale cwd cannot read the wrong
@@ -120,7 +126,29 @@ func main() {
 	}))
 }
 
+var acceptanceForge bool
+
+func acceptanceArgs(args ...string) []string {
+	if acceptanceForge {
+		return append(args, "--acceptance-forge")
+	}
+	return args
+}
+
 func run(args []string) int {
+	old := acceptanceForge
+	defer func() { acceptanceForge = old }()
+	acceptanceForge = false
+	filtered := make([]string, 0, len(args))
+	for _, a := range args {
+		if a == "--acceptance-forge" {
+			acceptanceForge = true
+		} else {
+			filtered = append(filtered, a)
+		}
+	}
+	args = filtered
+
 	// --version / help are pure reads: no kill-switch gate, no audit line.
 	if len(args) == 1 && (args[0] == "--version" || args[0] == "-version") {
 		sha, built := deskkit.Version()

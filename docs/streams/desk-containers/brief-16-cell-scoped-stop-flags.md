@@ -35,8 +35,9 @@ gate-why: >-
   answers are all no, but the path is the suite's safety plumbing, and a stop flag that
   silently matches nothing reads as "stopped" while desks keep writing. What the human
   confirms: cell flags only ever ADD stops (never clear or outrank DISABLED, STOP or
-  STOP.<loop>); cell membership comes only from the launcher-set marker; an unknown cell name
-  is reported inert, not honoured silently; and the Guard enforces it for every loop, with the iteration check of the three loops that have one (pr-review-desk, verify-desk, worker-desk) as a second layer; intake-desk and the-desk have no iteration check yet, so for them the Guard is the only layer.
+  STOP.<loop>); cell membership comes only from the launcher-set marker; a cell flag
+  whose cell name is malformed or whose loop part names no known loop is reported inert, and one whose
+  cell has no registration under the reader's cells root is reported with that root named, not honoured silently; and the Guard enforces it for every loop, with the iteration check of the three loops that have one (pr-review-desk, verify-desk, worker-desk) as a second layer; intake-desk and the-desk have no iteration check yet, so for them the Guard is the only layer.
 exec-tier: strong
 exec-tier-why: (b) the flag is a shared value read by the Guard, three skill bodies and cellctl; (c) safety plumbing, where a silent no-op stop is the failure that unit tests miss
 domain: complicated
@@ -46,7 +47,7 @@ consumers:
   - "plugins/assay/skills/{pr-review-desk,verify-desk,worker-desk}/SKILL.md iteration-boundary check (the three with an existing STOP check): follow-up desk-containers/16 (this brief; one added line each, beside the existing two)"
   - "plugins/assay/skills/{intake-desk,the-desk}/SKILL.md: out-of-scope (they have no iteration-boundary STOP check today; adding one is new loop behaviour this brief does not take on — for these two the Guard is the only layer, as it already is for STOP and STOP.<loop>)"
   - ".cursor/skills/** (generated mirror of the skill bodies): follow-up desk-containers/16 (this brief; regenerated with `deskinstall --harness cursor`, never hand-edited)"
-  - "tools/desk/cmd/deskboard (STOP display, inert-name marking): follow-up desk-containers/16 (this brief; shows cell-scoped flags and marks an unknown cell inert)"
+  - "tools/desk/cmd/deskboard (STOP display, inert-name marking): follow-up desk-containers/16 (this brief; shows cell-scoped flags and marks a malformed cell name or unknown loop inert, and a cell unregistered under its cells root with that root named)"
   - "tools/desk/cmd/cellctl launch environment (`ASSAY_CELL`, `ASSAY_CELL_DIR`, `ASSAY_CELL_ROLE`): out-of-scope (#2880 / PR #2884 sets them; this brief only reads `ASSAY_CELL` and `ASSAY_CELL_ROLE`)"
   - "tools/desk/README.md §Runtime state: follow-up desk-containers/16 (this brief)"
 ---
@@ -70,13 +71,13 @@ facts:
 - **Baseline (checked 2026-10-14 @ 7bb318197):** `grep -c 'config/assay/STOP'` is 2 in pr-review-desk, verify-desk and worker-desk, and 0 in intake-desk and the-desk. Only those three loops have an iteration-boundary STOP check today, and only they gain the cell line. intake-desk and the-desk keep relying on the Guard alone, as they already do for `STOP` and `STOP.<loop>`.
 - **Threat model (same OS account).** Any desk on the machine can write `STOP.cell.<other-cell>` and pause another cell, and a session can drop its own marker. Neither is an escalation over today's machine-wide `STOP`, which any desk can already write.
 - Layer 1 is the loop's own iteration-boundary check in the three skill bodies above. Layer 2 is `Guard()` before every outward verb. They fail for different reasons in different components: a skill that skips its check is still refused by the Guard; a binary that predates this brief still stops at the skill check.
-- A cell flag naming a cell that has no registration under the cells root is reported **inert** by `deskboard`, the same treatment an unknown loop name gets today.
+- A cell flag whose cell name is malformed, or whose loop part names no known loop, is reported **inert** by `deskboard` (it halts nothing), the same treatment an unknown loop name gets today. A cell flag naming a cell with no registration under the cells root **as `deskboard` resolves it** is also tagged inert, but its reason names that root and says the flag may still be live: the Guard keys on the session's marker alone, so a cell registered under another root is still stopped. It is never reported as halting nothing.
 - Cell names are validated (`[a-z0-9-]`, the existing cell-name rule) before any path is built from them.
 
 ## Human decision
 Should desks be stoppable one cell at a time, by adding a cell-scoped stop flag to the safety check every desk tool runs?
 
-Today a stop switch either stops every desk on the machine or every desk with a given role, across all cells, because host cells share one settings folder. This adds a switch aimed at one cell (and one for one role in one cell). It can only add stops; it never lifts an existing stop or the master kill switch. A desk belongs to a cell only through a marker the launcher sets. A switch naming a cell that does not exist is shown as having no effect, rather than silently ignored.
+Today a stop switch either stops every desk on the machine or every desk with a given role, across all cells, because host cells share one settings folder. This adds a switch aimed at one cell (and one for one role in one cell). It can only add stops; it never lifts an existing stop or the master kill switch. A desk belongs to a cell only through a marker the launcher sets. A switch naming a cell with no registration under the cells root the board resolves is tagged INERT on the board, its reason naming that root and saying the cell may be registered elsewhere, rather than silently ignored.
 
 Options:
 1. **Adopt** — add both cell-scoped flags to the safety check and to the loop check of the three desks that have one. Drain and pause (brief 18) build on it.
@@ -108,6 +109,7 @@ Default if no answer: none — blocks until answered.
 | 5 | gate:model +flow | In a temp HOME: set the marker `cell=a`, touch `STOP.cell.a`, then run an outward verb such as `deskfile check` with `DESK_LOOP=worker-desk` | the Guard refuses with the stop exit code, naming `STOP.cell.a`. Remove the flag and the same command proceeds. With the skill-body check bypassed, the Guard alone still refuses. |
 | 6 | check | `statusgen --root . --lint` | exit 0 |
 | 6a | check | `statusgen --root . --consumers --brief desk-containers/16` | exit 0 — the `consumers:` routing holds against the branch diff |
+| 6b | check +mutation | `go -C tools/desk run ./cmd/muhar -spec cmd/deskboard/cellstopbanner-mutations.json` | exit 0 — baseline GREEN, positive control CAUGHT, `Totals: 3 caught, 0 NOT CAUGHT, 0 could-not-mutate`. The three mutants are planted in `tools/desk/cmd/deskboard/main.go`'s stop banner and each reddens `TestBannerShowsCellStopFlags` (`go -C tools/desk test ./cmd/deskboard/ -run '^TestBannerShowsCellStopFlags$' -count=1 -v` is `--- PASS` unmutated): the INERT tag dropped (a flag that halts nothing reads as armed), the INERT tag inverted (a live `STOP.cell.<cell>[.<loop>]` flag reads as inert), and the banner's read of active flags switched off (a cell-scoped drain is invisible on every board read) |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item

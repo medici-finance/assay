@@ -48,13 +48,32 @@ type fakeForge struct {
 	commitAuthorLogin string
 	commitErr         error
 	getCommitCalls    int
+	getCommitSHAs     []string
+	writeReceipt      *deskkit.WriteFileResult
 	// prHeadSHA is the HeadSHA GetPullRequest reports for the draft change opened on the GitLab
-	// landing path, and prErr its error. Empty HeadSHA leaves the online resolution with no sha.
+	// landing path, and prErr its error. It also supplies a deliberately different head in
+	// the receipt regression: attribution must use the write receipt instead.
 	prHeadSHA string
 	prErr     error
 	// onPut runs at the top of WriteFile, inside deskevidence's audit flock — the
 	// serialisation tests use it to observe what a concurrent invocation can do.
 	onPut func()
+
+	// cmpFiles are the files CompareRefs reports the branch changed since the base ref;
+	// cmpErr is its error; cmpIncomplete marks the commit interval as not fully read;
+	// cmpCalls records "<base>...<head>" per call.
+	cmpFiles      []deskkit.ChangedFile
+	cmpErr        error
+	cmpIncomplete bool
+	cmpCalls      []string
+	// cmpBehind is the BehindBy the compare reports (the home's HEAD not an ancestor).
+	cmpBehind int
+	// fileKinds is what ReadFile reports a path holds (deskkit.FileContent.Kind); a path
+	// not named is a regular file.
+	fileKinds map[string]string
+	// commitSHAs maps a ref GetCommit is asked for onto the SHA it resolves to; a ref not
+	// named resolves to itself.
+	commitSHAs map[string]string
 
 	hits    []string
 	reads   []deskkit.ReadFileInput
@@ -128,19 +147,26 @@ func (f *fakeForge) RepoDefaultBranch(repo deskkit.ForgeRepo) (string, error) {
 	return "main", nil
 }
 
-// CompareRefs answers the ancestry read the join-key dereference makes.
+// CompareRefs answers both compare reads a landing makes: the ancestry read of the join-key
+// dereference (compareStatus, compareErr, recorded in joinReads) and the decision gate's
+// branch-board read (cmpFiles, cmpErr, cmpIncomplete, recorded in cmpCalls).
 func (f *fakeForge) CompareRefs(repo deskkit.ForgeRepo, base, head string) (*deskkit.RefComparison, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	key := repo.Slug() + ":" + base + "..." + head
 	f.joinReadLocked("CompareRefs %s %s...%s", repo.Slug(), base, head)
+	f.cmpCalls = append(f.cmpCalls, base+"..."+head)
 	if f.compareErr != nil {
 		return nil, f.compareErr
 	}
-	if st, ok := f.compareStatus[key]; ok {
-		return &deskkit.RefComparison{Status: st}, nil
+	if f.cmpErr != nil {
+		return nil, f.cmpErr
 	}
-	return &deskkit.RefComparison{Status: "ahead"}, nil
+	st := "ahead"
+	if s, ok := f.compareStatus[key]; ok {
+		st = s
+	}
+	return &deskkit.RefComparison{Files: f.cmpFiles, CommitsComplete: !f.cmpIncomplete, Status: st, BehindBy: f.cmpBehind}, nil
 }
 
 // serveLocked answers one read of path (the caller holds f.mu): a scripted path advances its
@@ -203,7 +229,11 @@ func (f *fakeForge) ReadFile(_ deskkit.ForgeRepo, in deskkit.ReadFileInput) (*de
 		return nil, deskkit.Unverifiable("not found: "+in.File,
 			&deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: in.File})
 	}
-	return &deskkit.FileContent{Content: []byte(c), SHA: sha, Exists: true}, nil
+	kind := deskkit.FileKindRegular
+	if k, set := f.fileKinds[in.File]; set {
+		kind = k
+	}
+	return &deskkit.FileContent{Content: []byte(c), SHA: sha, Exists: true, Kind: kind}, nil
 }
 
 func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*deskkit.WriteFileResult, error) {
@@ -242,7 +272,10 @@ func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*
 	} else if author == "" {
 		author = verifierBotDisplay()
 	}
-	return &deskkit.WriteFileResult{Changed: true, SHA: "new-sha", Author: author}, nil
+	if f.writeReceipt != nil {
+		return f.writeReceipt, nil
+	}
+	return &deskkit.WriteFileResult{Changed: true, ContentID: "new-blob", CommitSHA: "new-sha", Author: author}, nil
 }
 
 func (f *fakeForge) CreateDraftChange(_ deskkit.ForgeRepo, in deskkit.DraftChangeInput) (*deskkit.PullRef, error) {
@@ -263,8 +296,8 @@ func (f *fakeForge) OpenMergeHold(_ deskkit.ForgeRepo, number int) (string, erro
 	return "disc-4242", nil
 }
 
-// GetPullRequest serves the head sha the online attribution resolution reads on the GitLab
-// draft-landing path (#1477). Only the HeadSHA field is populated (all deskevidence reads).
+// GetPullRequest serves delivery joins and supplies a distinct draft head for the receipt
+// regression. Attribution must not read this mutable head as the landed commit.
 func (f *fakeForge) GetPullRequest(repo deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -289,8 +322,12 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.getCommitCalls++
+	f.getCommitSHAs = append(f.getCommitSHAs, sha)
 	if f.commitErr != nil {
 		return nil, f.commitErr
+	}
+	if resolved, ok := f.commitSHAs[sha]; ok {
+		sha = resolved
 	}
 	return &deskkit.RepoCommit{SHA: sha, AuthorLogin: f.commitAuthorLogin}, nil
 }
@@ -298,17 +335,17 @@ func (f *fakeForge) GetCommit(_ deskkit.ForgeRepo, sha string) (*deskkit.RepoCom
 // stubAdmittedReceipt is the receipt the stubbed admission returns: a binding to the brief a
 // verify-outcome record target (docs/streams/verify-outcomes/<stream>/<NN>-<digest>.json) is
 // keyed to, so the writer's TARGET-TIE re-check of the final path has a real binding to hold.
-// Any other target yields the empty receipt.
+// Every admitted fixture includes a source; non-outcome targets need no brief tie.
 func stubAdmittedReceipt(target string) deskkit.VerifierReceipt {
+	r := deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{Source: strings.Repeat("a", 40)}}
 	rest, ok := strings.CutPrefix(target, deskkit.OutcomeRecordsDir+"/")
 	if !ok {
-		return deskkit.VerifierReceipt{}
+		return r
 	}
 	stream, file, _ := strings.Cut(rest, "/")
 	nn, _, _ := strings.Cut(file, "-")
-	return deskkit.VerifierReceipt{Binding: deskkit.VerifierBinding{
-		Brief: "docs/streams/" + stream + "/brief-" + nn + "-stub.md",
-	}}
+	r.Binding.Brief = "docs/streams/" + stream + "/brief-" + nn + "-stub.md"
+	return r
 }
 
 // setupFake wires isolation: a temp HOME with the fixture roster (so trust/write-auth decisions
@@ -390,8 +427,21 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 	oldLintDiff := lintDiffFn
 	lintDiffFn = func(string, string, []byte) ([]string, error) { return nil, nil }
 	t.Cleanup(func() { lintDiffFn = oldLintDiff })
+	oldDecisionGate := decisionGateDiffFn
+	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit) ([]string, error) { return nil, nil }
+	t.Cleanup(func() { decisionGateDiffFn = oldDecisionGate })
+	oldBranchBoard := decisionGateBranchBoardFn
+	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
+	t.Cleanup(func() { decisionGateBranchBoardFn = oldBranchBoard })
+	oldLanded := landedClosureFn
+	landedClosureFn = func(root, target string, before, after []byte, exists bool, f deskkit.Forge, r deskkit.ForgeRepo, branch string) (string, string, func(), error) {
+		return root, "", func() {}, nil
+	}
+	t.Cleanup(func() { landedClosureFn = oldLanded })
 	oldOutcome := outcomeGuardFn
-	outcomeGuardFn = func(string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error { return nil }
+	outcomeGuardFn = func(string, string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error {
+		return nil
+	}
 	t.Cleanup(func() { outcomeGuardFn = oldOutcome })
 
 	// The verified-sidecar acceptance gate defaults to "accepts" so a verify-outcomes landing

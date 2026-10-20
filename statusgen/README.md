@@ -23,10 +23,19 @@ fresh regen — the drift gate). The model is **single-writer**: only one CI
 job (typically triggered on push to the default branch) ever commits
 `STATUS.md`; every other context (PRs, local runs) only reads or lints.
 
-Both gate modes always end stdout with exactly one machine-parseable verdict
-line — `LINT: PASS` / `LINT: FAIL <n> problem(s)` for `--lint`, `CHECK: PASS`
-/ `CHECK: DRIFT <n>` for `--check` — so a caller reads the outcome from the
-output itself instead of interrogating the exit code in a separate shell.
+After evaluating sources, both gate modes end stdout with exactly one
+machine-parseable verdict line: `LINT: PASS` / `LINT: FAIL <n> problem(s)` for
+`--lint`, and `CHECK: PASS` / `CHECK: DRIFT <n>` for `--check`.
+
+A configuration refusal stops `--lint` **before evaluation**, with exit **5**
+and exactly `LINT: REFUSED configuration; trust-dependent checks could-not-check`
+on stdout. The existing `assay-config: REFUSED` diagnostics and a summary on
+stderr explain the unavailable trust axis. This also applies to repeated
+`--root` and `--diff-base`; a refusal is never a demotable source problem.
+Ordinary lint success remains exit **0**, source problems exit **1**, and
+argument/usage errors exit **2**. Check the exit status from the same invocation;
+`go run` wraps a binary's nonzero status, so use the built binary when the exact
+code matters. See [the caller inventory](../docs/statusgen-lint-refusal.md).
 
 ## Layout
 
@@ -88,6 +97,34 @@ executing it — the mention is not the check, and a word like `gh` exits 0; the
 NOTICE covers open briefs, and a closed brief's rows collapse into one summary line;
 the check:ci verdict re-execution lane refuses such a row unrun, and `--check` does not
 audit an old pass witness on it as pass).
+A Command cell whose lifted command is only a shell comment is the same case (issue
+#2684): a row that asks a reviewer to inspect `## Coverage` requires the review
+evidence, but lifted as a command the heading is a comment — it exits 0 with no output
+and used to witness a pass for a check that never looked. A lifted command whose first
+non-blank character is `#` is now flagged `prose-led-command` ("a shell comment")
+whatever surrounds it — even as the cell's only span, and even as the command a `cmd:`
+marker names (a marker names the command to run, and a comment runs nothing) — so
+`verifyrun` records the row could-not-run without executing it, `--check` does not audit
+an old pass witness on it as pass, and the check:ci re-execution lane refuses it. The
+tools/desk executors agree cell for cell: `verifyloop` records such a row as a non-zero
+(127) could-not-run without executing it, and `deskrebaseline` does not probe it. They
+judge the raw cell on statusgen's lift (the marked command, else the first code span)
+as well as on their own legacy lift (the whole unwrapped cell, which is what they run),
+so a cell like `` `## Coverage`: confirm it `` — which `sh` would run as the `:` no-op
+once the comment-only substitution expands to nothing — is refused there too, and a
+cell whose own text opens with `#` before a real span is refused by them though
+statusgen runs its span (they are never the looser executor). The rule (`#` first) and
+the whole-cell verdicts are held to `testdata/shell-comment-vectors.json` (`vectors` and
+`cells`) in both modules. Commands that merely contain `#` — a trailing ` # comment`, a
+quoted `'#'`, `a#b` — and every `cmd:`-marked real command are unchanged. Mark an actual
+executable check with `cmd:` where one exists; otherwise retain the manual procedure
+and its evidence obligation, and do not replace a procedure with a command that merely
+exits zero; a marked comment is fixed by replacing it with the command that performs the
+check. Sibling shapes left as they were, deliberately: a multi-word prose first span
+that is not a comment (`resolved: no→yes`) is not flagged and lands could-not-run as exit
+127 when executed, never a pass, so it needs no new arm. `--dry-run` runs rows, so
+investigate a suspect procedure in an isolated fixture, never by running the real brief.
+
 A marked command that cannot fail (`true`, `:`, `exit 0`, a lone `echo`) is NOTICEd as
 `cmd-marker-vacuous`. A marker counts only where the rendered table shows it as code:
 spans are found as CommonMark renders them (escaped backticks are literal), and a cell
@@ -263,6 +300,23 @@ PROBLEM it would cause, never written. The read-only form reports the same `held
 rows, decided the same way with nothing written. When the pulls cannot be read,
 `--apply` exits 3 and writes nothing.
 
+A move on a driven stream changes generated output too: the drive-snapshot
+region of each `docs/roadmap/drives/<slug>.md` page whose drive names it. By
+default such a move is held on its `drive-region-drift`, and `--apply` writes
+stream READMEs only — what the scheduled reconcile job and `deskreconcile`
+commit; each refuses a run that changed any other path. With the `--regenerate`
+opt-in (alongside `--apply` or `--backfill`), the
+hold judges the complete proposed output — the README edit plus each such region
+re-rendered (`statusgen --drive-snapshot <slug>`) against the moved board — with
+every lint rule, the drive-region drift check included. A clean move lists the
+regions it re-renders under the row's `generated` (`path`, `drive`,
+`regionBefore`, `regionAfter`, the text between the fences); `--apply` writes
+them beside the README, keeping the begin marker's `@<sha> <date>` stamp as it
+was, and the read-only form writes neither. A region that was already drifting
+(a hand edit inside the fences) is never re-rendered by the writer. A caller
+that passes `--regenerate` with `--apply` must be ready to commit the plan page
+beside the README; neither in-repo landing caller passes it.
+
 ```bash
 # Read-only: which board rows would --apply promote? No stream README is written
 # (add --report and the drift report file is written too).
@@ -289,7 +343,7 @@ statusgen brief desk-tools/12 --root . --text
 ```
 
 It is **read-only**: it never writes STATUS.md or any generated file, touches no
-network, and shells out to nothing. Resolution is exact — exactly one brief file
+network; optional closure checks may read local Git history. Resolution is exact — exactly one brief file
 must match the key: zero files, or more than one (the numeric-prefix collision a
 hand-rolled glob cannot detect), is an error naming what it found, exit 2, and no
 JSON body — so a consumer never reads a partial or wrong answer as success. A legacy
@@ -300,10 +354,21 @@ RELATIVE to `--root`, so the output carries no machine path.
 
 `statusgen brief --root . --check-verified <stream>/<NN>` additionally requires
 `verified` or `done`, a dated Verified stamp, and a passing execution witness for
-every Verify row. It returns exit 1 with no JSON when that closure check fails;
+every applicable original Verify row. Protected-table supplemental rows use the
+immutable snapshot marker and receive no acceptance credit; see
+[recording closure after re-derivation](../docs/protected-paths.md#recording-closure-after-re-derivation).
+It returns exit 1 with no JSON when that closure check fails;
 resolution/usage failures remain exit 2. This check does not grandfather missing
-witnesses and does not replace `statusgen --lint`. `deskevidence` uses both before
-appending a new verified outcome receipt.
+witnesses and does not replace `statusgen --lint`.
+
+Adding `--check-attribution` (requires `--check-verified`) also requires an accepted
+Evidence author under the same roster policy and Git blame judge as lint, without
+lint's historical severity classification. A known rejected identity returns 1;
+unavailable policy/history or a graft-hidden attribution returns 2. Both suppress
+JSON. Default resolution and `--check-verified` alone retain their behavior.
+`deskevidence` requests both flags and full lint before a new verified outcome.
+Its release must be paired with a statusgen release supporting this flag; an older
+statusgen returns an unknown-flag error and publication fails closed.
 
 ### `phantoms` — the sibling-merge-unreconciled dedicated exit code
 

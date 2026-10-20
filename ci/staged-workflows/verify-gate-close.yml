@@ -25,6 +25,15 @@ name: verify-gate-close
 # the runner + floor + remedy, and REOPENS the card so the human closes it
 # again once the re-verify stamp has landed. A red `done` never reaches main.
 #
+# Decision-gate hold (lifecycle-v1 §4.5; see the "Advance ..." step): the close
+# to done lands on main with no pull request, so `statusgen --close-verify` also
+# runs the network ruling check before it writes — a gate: human brief reaches
+# done only with a recorded `ruling:` link to a mapped human's unedited comment
+# on its decision issue that names the brief. A refusal is relayed, the card is
+# REOPENED, and nothing is committed. It reads the comment with the default
+# token (issues: read is within issues: write) and maps its author through
+# ASSAY_HUMAN_LOGIN_MAP.
+#
 # Human-not-bot guard (see the "Enforce ..." step): GitHub sets
 # `github.event.sender.type` to `User` for a person and `Bot` for a GitHub App /
 # Actions token, so any automated close is rejected. The FULL guard (type == User
@@ -252,7 +261,7 @@ jobs:
             git fetch --no-tags origin main
             git reset --hard FETCH_HEAD
 
-            if ! out=$("${RUNNER_TEMP}/statusgen" --root . --close-verify "$brief" 2>&1); then
+            if ! out=$("${RUNNER_TEMP}/statusgen" --root . --close-verify "$brief" --acceptance-forge 2>&1); then
               printf '%s\n' "$out"
               # Idempotency (already done): the brief is ALREADY `done`, so this
               # close is a benign replay of an earlier successful sign-off (the
@@ -271,6 +280,28 @@ jobs:
               if [ "$attempt" -gt 1 ]; then
                 echo "close-verify refused on retry $attempt — a prior attempt already advanced $brief; treating as success"
                 exit 0
+              fi
+              # Decision-gate hold (lifecycle-v1 §4.5). statusgen judged the
+              # close against the board as it stands and found the brief is
+              # gate: human with no human ruling it could confirm on its
+              # decision issue. The close lands on main with no pull request,
+              # so this is the only network check that sees it. Same shape as
+              # the floor branch that follows: relay the refusal, REOPEN the card so
+              # the human can close it again once the ruling is recorded, and
+              # commit nothing. The keyed phrase is the literal
+              # "decision-gate hold" closeVerifyDecisionGate always emits (a Go
+              # test pins it). $out goes to a body FILE, never a script line.
+              if printf '%s' "$out" | grep -q 'decision-gate hold'; then
+                body_file="${RUNNER_TEMP}/verify-gate-decision-refusal.md"
+                {
+                  printf '%s\n\n' "verify-gate close REFUSED for \`$brief\` — it is \`gate: human\` and no human ruling on its decision issue could be confirmed (decision-gate hold, lifecycle-v1 §4.5). Reopened; no change committed."
+                  printf '%s\n%s\n%s\n\n' '```' "$out" '```'
+                  printf '%s\n' "Remedy: record the brief's decision issue in its frontmatter \`decision-issue:\` and the link to the human's ruling comment in \`ruling:\`. The ruling must be an unedited comment on that issue, by a login mapped to a human (never a bot or app), whose own text names the brief by its board id (\`$brief\`). Land that change, then close this card again."
+                } > "$body_file"
+                gh issue reopen "$ISSUE" --repo "$REPO"
+                gh issue comment "$ISSUE" --repo "$REPO" --body-file "$body_file"
+                echo "::error::close-verify refused for $brief — decision-gate hold; card reopened, nothing committed"
+                exit 1
               fi
               # Verifier-floor refusal (two-stamp model, #1170). statusgen read
               # the Verified cell the done row would carry — the README cell,
@@ -316,7 +347,7 @@ jobs:
             # still RUNS whole-board for observability; a pre-existing, unrelated
             # problem in some other brief must NOT discard an already-computed,
             # legitimate human sign-off flip.
-            if ! lint_out=$("${RUNNER_TEMP}/statusgen" --root . --lint 2>&1); then
+            if ! lint_out=$("${RUNNER_TEMP}/statusgen" --root . --lint --acceptance-forge 2>&1); then
               printf '%s\n' "$lint_out"
               if printf '%s' "$lint_out" | grep -qF "$readme"; then
                 echo "::error::this flip's file ($readme) fails lint — refusing to commit"

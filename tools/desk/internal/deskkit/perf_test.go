@@ -16,6 +16,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/perfrec"
 )
 
 // perfTestNow is the fixed clock every perf test runs on.
@@ -40,11 +42,7 @@ func perfFixture(t *testing.T) string {
 	return dir
 }
 
-func resetPerfPrune() {
-	perfPruneMu.Lock()
-	perfPrunedDir = ""
-	perfPruneMu.Unlock()
-}
+func resetPerfPrune() { perfWriter.Reset() }
 
 func perfDayName(daysAgo int) string {
 	return perfTestNow.AddDate(0, 0, -daysAgo).Format("2006-01-02") + ".jsonl"
@@ -77,9 +75,9 @@ func perfKeys(m map[string]any) []string {
 	return ks
 }
 
-// TestPerfRecordGoldenShape pins the perf-v1 key set exactly, and feeds each of the four
-// mapped fields an UNREGISTERED input to prove the mapper answers with one of its own
-// constants — never the input.
+// TestPerfRecordGoldenShape pins the perf-v2 key set PerfRun writes exactly, and feeds each of
+// the four mapped fields an UNREGISTERED input to prove the mapper answers with one of its own
+// constants — never the input. PerfStep still writes perf-v1.
 // regression: F-dt23-perf-record
 func TestPerfRecordGoldenShape(t *testing.T) {
 	state := perfFixture(t)
@@ -93,17 +91,18 @@ func TestPerfRecordGoldenShape(t *testing.T) {
 		t.Fatalf("one wrapped run wrote %d records, want exactly 1", len(recs))
 	}
 	got := recs[0]
-	want := []string{"childProcs", "childWallMs", "exit", "forgeCalls", "install", "result", "role",
-		"schema", "sourceSHA", "tool", "ts", "verb", "wallMs"}
-	if _, measurable := processCPUMillis(); measurable {
+	want := []string{"boundary", "counters", "cpu", "exit", "install", "phaseOverlap", "phases", "result", "role",
+		"schema", "sourceSHA", "tool", "ts", "unavailable", "verb", "wallMs"}
+	if got["cpu"] == perfrec.CPUMeasured {
 		want = append(want, "cpuMs")
 	}
 	sort.Strings(want)
 	if k := perfKeys(got); strings.Join(k, ",") != strings.Join(want, ",") {
-		t.Fatalf("perf-v1 key set drifted:\n got  %v\n want %v", k, want)
+		t.Fatalf("perf-v2 key set drifted:\n got  %v\n want %v", k, want)
 	}
 	for field, val := range map[string]any{
-		"schema": "perf-v1", "tool": "deskpr", "verb": "create", "role": "worker-desk", "result": "ok", "exit": float64(0),
+		"schema": "perf-v2", "tool": "deskpr", "verb": "create", "role": "worker-desk", "result": "ok", "exit": float64(0),
+		"boundary": "process-init", "phaseOverlap": false,
 	} {
 		if got[field] != val {
 			t.Errorf("%s = %v, want %v", field, got[field], val)
@@ -119,13 +118,23 @@ func TestPerfRecordGoldenShape(t *testing.T) {
 		t.Errorf("sourceSHA = %q, want a hex build stamp or %q", sha, perfUnpinned)
 	}
 
+	// The desk seams measure child processes, their wall and forge round-trips; nothing here
+	// observes a cache or a coalesced waiter, so those are UNAVAILABLE, never a zero.
+	counters, _ := got["counters"].(map[string]any)
+	if len(counters) != 3 || counters["subprocess"] == nil || counters["subprocessMs"] == nil || counters["http"] == nil {
+		t.Errorf("measured counters = %v, want exactly subprocess, subprocessMs, http", counters)
+	}
+	if un, _ := got["unavailable"].([]any); len(un) != len(perfrec.Counters())-3 {
+		t.Errorf("unavailable = %v, want every cache and waiter counter", un)
+	}
+
 	// cpuMs is OMITTED when unmeasurable, and present (even as 0) when measured.
-	unmeasured, _ := json.Marshal(PerfRecord{})
+	unmeasured, _ := json.Marshal(PerfRecord{Schema: PerfSchema})
 	if bytes.Contains(unmeasured, []byte("cpuMs")) {
 		t.Errorf("an unmeasured record carries cpuMs: %s — a zero would claim a measurement", unmeasured)
 	}
 	zero := int64(0)
-	measured, _ := json.Marshal(PerfRecord{CPUMs: &zero})
+	measured, _ := json.Marshal(PerfRecord{Schema: PerfSchema, CPUMs: &zero})
 	if !bytes.Contains(measured, []byte(`"cpuMs":0`)) {
 		t.Errorf("a measured zero lost its cpuMs: %s", measured)
 	}
@@ -147,8 +156,8 @@ func TestPerfRecordGoldenShape(t *testing.T) {
 	if odd["exit"] != float64(42) {
 		t.Errorf("exit = %v, want the verb's own 42", odd["exit"])
 	}
-	if recs[2]["verb"] != "step:other" {
-		t.Errorf("an unknown boot step recorded verb %v, want step:other", recs[2]["verb"])
+	if recs[2]["verb"] != "step:other" || recs[2]["schema"] != "perf-v1" {
+		t.Errorf("an unknown boot step recorded verb %v schema %v, want step:other in perf-v1", recs[2]["verb"], recs[2]["schema"])
 	}
 	results := map[string]bool{ResultOK: true, ResultDisabled: true, ResultRefused: true, ResultUnverifiable: true}
 	for code := -1; code <= 300; code++ {
@@ -156,6 +165,46 @@ func TestPerfRecordGoldenShape(t *testing.T) {
 		if !results[r] || r == strconv.Itoa(code) {
 			t.Fatalf("resultForExit(%d) = %q — not one of its own constants", code, r)
 		}
+	}
+}
+
+// TestPerfRunWallStartsAtProcessEntry pins PerfRun's measurement start to perfEntry — the
+// process-init mark — not to its own call: work a verb's main does BEFORE PerfRun (config
+// echo, activation checks) is inside the recorded wall, and both wall and CPU share it.
+// regression: desktools-v2/61
+func TestPerfRunWallStartsAtProcessEntry(t *testing.T) {
+	state := perfFixture(t)
+
+	// The real hook: the wall covers at least everything since process init.
+	since := time.Since(perfrec.ProcessEntry().At()).Milliseconds()
+	PerfRun("deskpr", []string{"create"}, []string{"create"}, func([]string) int { return 0 })
+
+	// A planted entry 40ms before PerfRun: the delay is inside the wall.
+	old := perfEntry
+	t.Cleanup(func() { perfEntry = old })
+	planted := perfrec.SystemProbe().Mark()
+	perfEntry = func() perfrec.Mark { return planted }
+	time.Sleep(40 * time.Millisecond)
+	PerfRun("deskpr", []string{"create"}, []string{"create"}, func([]string) int { return 0 })
+
+	_, raw := perfLines(t, state)
+	var recs []PerfRecord
+	for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		r, err := perfrec.Decode([]byte(line))
+		if err != nil {
+			t.Fatalf("PerfRun wrote an invalid perf-v2 line %q: %v", line, err)
+		}
+		recs = append(recs, r)
+	}
+	if len(recs) != 2 {
+		t.Fatalf("want 2 records, got %d", len(recs))
+	}
+	if r := recs[0]; r.Boundary != perfrec.BoundaryProcess || r.WallMs < since {
+		t.Errorf("process-init record: boundary %q wall %dms, want process-init and ≥ %dms since init", r.Boundary, r.WallMs, since)
+	}
+	if r := recs[1]; r.Boundary != perfrec.BoundaryCaller || r.WallMs < 40 || r.CPU != planted.CPU() {
+		t.Errorf("planted-entry record: boundary %q wall %dms cpu %q, want caller, ≥ 40ms (the pre-run delay), cpu %q",
+			r.Boundary, r.WallMs, r.CPU, planted.CPU())
 	}
 }
 
@@ -383,7 +432,7 @@ func TestPerfNeverTouchesTheAuditLedger(t *testing.T) {
 	// No perf code path can open the ledger: no string literal naming it, no ledger function.
 	ledgerFuncs := map[string]bool{"auditPath": true, "segmentPaths": true, "Log": true, "LoadEntries": true,
 		"loadEntriesFrom": true, "LastEntry": true, "FirstTS": true, "rotateIfNeeded": true}
-	for _, src := range []string{"perf.go", "perfread.go", "perfcpu_unix.go", "perfcpu_windows.go"} {
+	for _, src := range []string{"perf.go", "perfread.go"} {
 		f, err := parser.ParseFile(token.NewFileSet(), src, nil, 0)
 		if err != nil {
 			t.Fatalf("parse %s: %v", src, err)
@@ -434,5 +483,61 @@ func BenchmarkPerfAppend(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		perfAppend(rec)
+	}
+}
+
+// launchStepNames is the launch-step roster as the cellctl launch spells it.
+var launchStepNames = []string{
+	"launch-role-lease", "launch-storage-admission", "launch-plugin-enable",
+	"launch-fetch-main", "launch-worktree",
+}
+
+// TestPerfLaunchStepsRecordNamed: each launch step is recorded as "step:<name>" under the
+// cellctl tool, not collapsed to "step:other"; an unknown name still collapses.
+// regression: #3099
+func TestPerfLaunchStepsRecordNamed(t *testing.T) {
+	state := perfFixture(t)
+	for _, s := range launchStepNames {
+		PerfStep("cellctl", s, 5*time.Millisecond, 0)
+	}
+	PerfStep("cellctl", "zz-unknown-step", time.Millisecond, 0)
+	recs, _ := perfLines(t, state)
+	if len(recs) != len(launchStepNames)+1 {
+		t.Fatalf("want %d records, got %d", len(launchStepNames)+1, len(recs))
+	}
+	for i, s := range launchStepNames {
+		if recs[i]["verb"] != "step:"+s || recs[i]["tool"] != "cellctl" {
+			t.Errorf("record %d = %v, want cellctl step:%s", i, recs[i], s)
+		}
+	}
+	if recs[len(launchStepNames)]["verb"] != "step:other" {
+		t.Errorf("unknown step = %v, want step:other", recs[len(launchStepNames)]["verb"])
+	}
+}
+
+// TestPerfRostersPassTheV2LabelGate: every label PerfRun can write — each canonical tool key,
+// each canonical loop name, the fallbacks and every boot and launch step — passes perfrec's
+// Label gate unchanged, so the perf-v2 gate never silently turns a real roster member into
+// "other".
+// regression: desktools-v2/61
+func TestPerfRostersPassTheV2LabelGate(t *testing.T) {
+	var labels []string
+	for k := range canonicalToolKeys {
+		labels = append(labels, k)
+	}
+	for k := range canonicalLoopNames {
+		labels = append(labels, k)
+	}
+	labels = append(labels, perfOther, perfRoleNone)
+	for _, st := range append(PerfBootSteps(), PerfLaunchSteps()...) {
+		labels = append(labels, st, perfStepPfx+st)
+	}
+	for _, l := range labels {
+		if got := perfrec.Label(l); got != l {
+			t.Errorf("roster label %q fails perfrec.Label (got %q)", l, got)
+		}
+	}
+	if got := perfrec.Label("Not A Label/../x"); got != perfOther {
+		t.Errorf("perfrec.Label passed free text: %q", got)
 	}
 }

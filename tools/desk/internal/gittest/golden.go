@@ -46,10 +46,13 @@ type Fixture struct {
 // Git runs `git <args...>` in the fixture dir and returns trimmed stdout.
 // Commits are made deterministic (fixed author/committer identity AND dates) so the
 // SHAs a golden snapshots are stable across runs — a real SHA, but a reproducible one.
+// External global/system config is excluded, including conditional signing settings;
+// repository-local config and explicit command arguments remain available to fixtures.
 func (f *Fixture) Git(args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = f.Dir
 	cmd.Env = append(os.Environ(),
+		"GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1",
 		"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@example.invalid",
 		"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@example.invalid",
 		"GIT_AUTHOR_DATE=2001-02-03T04:05:06Z", "GIT_COMMITTER_DATE=2001-02-03T04:05:06Z",

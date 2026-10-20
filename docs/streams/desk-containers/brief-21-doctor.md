@@ -59,6 +59,7 @@ facts:
 - Exit 0 when there are no findings, 1 when findings remain after the run, 6 when a probe could not check.
 
 ## Ground rules
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - NEVER git push / trigger workflows. Stop at `implemented`.
 - Every fix calls an existing verb or #2880's functions; doctor adds no new mutation of its own.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.

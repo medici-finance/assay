@@ -112,7 +112,7 @@ func verifiedClosureCheckAt(root, briefKey string) (closureVerdict, string, erro
 	if aerr != nil {
 		return closureCouldNotErr, "", deskkit.Unverifiable("cannot resolve an absolute path for the landing root "+root, aerr)
 	}
-	cmd := exec.Command("statusgen", "verifyclosure", "--root", absRoot, "--brief", briefKey)
+	cmd := exec.Command("statusgen", acceptanceArgs("verifyclosure", "--root", absRoot, "--brief", briefKey)...)
 	cmd.Dir = os.TempDir()
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout

@@ -17,6 +17,7 @@ var platformCases = []string{
 	"internal_visibility", "files_api_400", "draft_change_400", "mr_note_vs_issue_note",
 }
 
+// regression: #2794
 func TestContractConformance(t *testing.T) {
 	for _, backend := range []string{"github", "gitlab"} {
 		t.Run(backend, func(t *testing.T) {
@@ -175,7 +176,7 @@ func platformContract(t *testing.T, backend, name string) {
 		gl.repoFile = map[string]map[string]any{"EXAMPLE.md": {"file_name": "EXAMPLE.md", "file_path": "EXAMPLE.md", "content": glB64("old\n"), "encoding": "base64", "last_commit_id": "example-commit", "blob_id": "example-blob"}}
 		gl.updateFileStatus = 400
 		gh.repo = map[string]any{"private": true, "default_branch": "main"}
-		gh.contentsGet = map[string]any{"type": "file", "sha": "example-blob", "content": glB64("old\n"), "encoding": "base64"}
+		gh.contentsGet = ghServedFile("EXAMPLE.md", "old\n")
 		if backend == "github" {
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == "PUT" {
@@ -193,18 +194,40 @@ func platformContract(t *testing.T, backend, name string) {
 		if err == nil {
 			t.Fatal("failed update succeeded")
 		}
-		wrote := false
+		writes := 0
 		for _, r := range requests() {
-			if r.Method == "POST" {
-				t.Fatalf("failed update widened to create: %v", requests())
+			if r.Method != http.MethodPost && r.Method != http.MethodPut {
+				continue
 			}
-			if r.Method == "PUT" {
-				wrote = true
+			writes++
+			if backend == "github" {
+				if r.Method != http.MethodPut || !strings.Contains(r.Path, "/contents/EXAMPLE.md") {
+					t.Fatalf("failed update widened to another operation: %v", requests())
+				}
+				continue
+			}
+			if r.Method != http.MethodPost || !strings.HasSuffix(r.Path, "/repository/commits") {
+				t.Fatalf("failed update widened to another operation: %v", requests())
+			}
+			var body struct {
+				Branch  string `json:"branch"`
+				Actions []struct {
+					Action       string `json:"action"`
+					FilePath     string `json:"file_path"`
+					LastCommitID string `json:"last_commit_id"`
+				} `json:"actions"`
+			}
+			if err := json.Unmarshal(r.Body, &body); err != nil {
+				t.Fatal(err)
+			}
+			if body.Branch != "example/branch" || len(body.Actions) != 1 || body.Actions[0].Action != "update" || body.Actions[0].FilePath != "EXAMPLE.md" || body.Actions[0].LastCommitID != "example-commit" {
+				t.Fatalf("failed write lost its conditional file update: %s", r.Body)
 			}
 		}
-		if !wrote {
-			t.Fatalf("fixture failed before update: %v %v", err, requests())
+		if writes != 1 {
+			t.Fatalf("failed update must make exactly one write with no retry: writes=%d requests=%v err=%v", writes, requests(), err)
 		}
+
 	case "draft_change_400":
 		gl.createMRStatus = 400
 		gl.createMRErrBody = map[string]any{"message": "synthetic create rejected"}

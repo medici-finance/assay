@@ -72,6 +72,12 @@ type holdOptions struct {
 	reference  bool       // evaluate every rule over the whole board on every move (the pre-#2615 path)
 	crossCheck bool       // compare every move's incremental evaluation with a whole-board one
 	progress   io.Writer  // nil: silent; else progress lines (stderr in the CLI)
+	// regenerate is reconcile's --regenerate opt-in (#2694): a move that only
+	// drifts generated output it changes (a drive-snapshot region) is judged
+	// with that output re-rendered, and --apply writes it beside the README.
+	// Off (the default, and every in-repo landing caller): such a move is held
+	// on the drift, as before, and nothing but stream READMEs is written.
+	regenerate bool
 }
 
 // holdMove is one row move under evaluation.
@@ -247,6 +253,29 @@ func attributionIncremental(e *lintEnv, r statusKeyedLintRule) ([]string, holdRu
 	out := e.fullEval(r)
 	attributed := func(s string) bool { return s == "verified" || s == "done" }
 	return out, &reuseState{cur: out, full: func(m *holdMove) bool { return attributed(m.prev) || attributed(m.to) }}
+}
+
+// decisionGateIncremental: the decision-gate hold (decisiongatehold.go) judges
+// the status move, relabel or drop of a gate: human brief, and refuses records
+// it cannot read. A row's Status reaches its output only through that row's own
+// brief, so a move of any other row leaves it unchanged; the row of a gate:
+// human brief (or of a record the hold cannot read) is evaluated in full.
+func decisionGateIncremental(e *lintEnv, r statusKeyedLintRule) ([]string, holdRuleState) {
+	out := e.fullEval(r)
+	watched := map[string]bool{}
+	for k, b := range gateSnapshotOnDisk(e.root) {
+		if b.Gate == gateHumanValue || b.Unreadable != "" || b.FMErr {
+			watched[k] = true
+		}
+	}
+	return out, &reuseState{cur: out, full: func(m *holdMove) bool {
+		if len(watched) == 0 {
+			return false
+		}
+		s := e.streams[m.si]
+		num := normBriefNum(m.num)
+		return watched[filepath.Base(s.Dir)+"/"+num] || watched[s.Name+"/"+num]
+	}}
 }
 
 // deployIncremental: deployTransitionProblems reads only the Status of briefs

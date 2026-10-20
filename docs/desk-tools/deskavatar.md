@@ -18,7 +18,10 @@ bytes.
 deskavatar --org <login> --tier team|family --out <dir> [--sizes 200,512,1000] [--avatar org.png]
 ```
 
-- `--tier team` — the two-App set installed first: `<org>-read` and `<org>-act`.
+- `--tier team` — the three-App set installed first: `<org>-read`, `<org>-act`
+  and `<org>-review`. Read and act are the adopter's hue inverted against each
+  other (two stars); review is the same hue on a muted body with the family
+  reviewer's glyph, a light solid disc. All three are proofed together.
 - `--tier family` — the full six-role suite: `reviewer`, `worker`, `verifier`,
   `desk`, `issue-loop`, `intake-loop`.
 - Output per App: `<app>.svg` (source of truth) and `<app>.png` at 512 px. With
@@ -45,7 +48,9 @@ px) so a size cannot drive an unbounded allocation.
 >   ticket, funnel) so the set survives monochrome viewing.
 > - **Read + Act: inversion, not hue.** The adopter's hue (hashed from the org
 >   login) colours both tiles; read is a dark tile with a light glyph, act a
->   filled tile with a dark glyph.
+>   filled tile with a dark glyph. The team tier's third App, `<prefix>-review`,
+>   takes the same hue on a muted body with the family reviewer's glyph — a
+>   light solid disc — so the team set is three tiles, proofed together.
 > - **Adopter identity sits behind the glyph** — initials or a quantized org
 >   avatar as a low-contrast field, visible at 64 px and above, invisible at 20 px
 >   where the role must win.

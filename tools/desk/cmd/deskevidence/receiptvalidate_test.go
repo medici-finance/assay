@@ -52,6 +52,7 @@ func briefWithFiles(paths ...string) string {
 }
 
 // TestReceiptInputsCoverDeliverables is Verify row 13.
+// regression: #2798
 func TestReceiptInputsCoverDeliverables(t *testing.T) {
 	dir := t.TempDir()
 	rvGitIn(t, dir, "init", "-q", "-b", "main")
@@ -96,14 +97,18 @@ func TestReceiptInputsCoverDeliverables(t *testing.T) {
 	rvGitIn(t, dir, "commit", "-qm", "brief 03 base")
 	sha3 := rvGitIn(t, dir, "rev-parse", "HEAD")
 
-	t.Run("a directory entry needs one file: key under it", func(t *testing.T) {
+	t.Run("a directory entry needs every file: key under it", func(t *testing.T) {
 		missing := deskkit.WakeReceipt{Brief: "example-stream/03", SHA: sha3, Inputs: map[string]string{"tool": "v1"}}
 		if err := validateReceiptInputsCoverDeliverables(dir, missing); deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 			t.Fatalf("directory with no nested file: key: exit = %v, want Refused (err=%v)", deskkit.ExitCodeOf(err), err)
 		}
-		covered := deskkit.WakeReceipt{Brief: "example-stream/03", SHA: sha3, Inputs: map[string]string{"tool": "v1", "file:foo/bar.go": "h1"}}
+		covered := deskkit.WakeReceipt{Brief: "example-stream/03", SHA: sha3, Inputs: map[string]string{"tool": "v1", "file:foo/bar.go": "h1", "file:foo/baz.go": "h2"}}
 		if err := validateReceiptInputsCoverDeliverables(dir, covered); err != nil {
-			t.Fatalf("directory covered by a nested file: key must pass: %v", err)
+			t.Fatalf("directory covered by every nested file: key must pass: %v", err)
+		}
+		delete(covered.Inputs, "file:foo/baz.go")
+		if err := validateReceiptInputsCoverDeliverables(dir, covered); deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "foo/baz.go") {
+			t.Fatalf("partial directory coverage accepted: %v", err)
 		}
 	})
 
@@ -237,6 +242,8 @@ type rvBriefHashForge struct {
 	deskkit.Forge
 	content map[string][]byte // "branch:path" -> content
 	err     error
+	// kind is the Kind every read reports; "" is an untyped read (the GitLab backend's).
+	kind string
 }
 
 func (f *rvBriefHashForge) ReadFile(repo deskkit.ForgeRepo, in deskkit.ReadFileInput) (*deskkit.FileContent, error) {
@@ -248,7 +255,7 @@ func (f *rvBriefHashForge) ReadFile(repo deskkit.ForgeRepo, in deskkit.ReadFileI
 	if !ok {
 		return nil, deskkit.Unverifiable("not found", &deskkit.ForgeAPIError{Status: 404, Method: "GET", Path: in.File})
 	}
-	return &deskkit.FileContent{Content: c, Exists: true}, nil
+	return &deskkit.FileContent{Content: c, Exists: true, Kind: f.kind}, nil
 }
 
 // TestReceiptBriefHashAsLanded is Verify row 15.
@@ -293,6 +300,26 @@ func TestReceiptBriefHashAsLanded(t *testing.T) {
 		err := validateReceiptBriefHashAsLanded(fg, deskkit.ForgeRepo{Owner: "example-org", Name: "example"}, "main", dir, wr)
 		if deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
 			t.Fatalf("exit = %v, want Unverifiable (err=%v)", deskkit.ExitCodeOf(err), err)
+		}
+	})
+
+	// regression: S-2266-8 — a brief the forge serves with its content left out reads as an
+	// empty body; a receipt carrying the hash of nothing must not match it. Control: the
+	// same empty-hash receipt against an untyped read of real bytes is refused as a mismatch.
+	t.Run("a branch copy served without its content exits 6", func(t *testing.T) {
+		wr := deskkit.WakeReceipt{Brief: "example-stream/01", Inputs: map[string]string{
+			"file:docs/streams/example-stream/brief-01-x.md": deskkit.Sha256Hex(nil),
+		}}
+		for _, kind := range []string{deskkit.FileKindUnproven, deskkit.FileKindSymlink} {
+			fg := &rvBriefHashForge{kind: kind, content: map[string][]byte{"main:docs/streams/example-stream/brief-01-x.md": nil}}
+			err := validateReceiptBriefHashAsLanded(fg, deskkit.ForgeRepo{Owner: "example-org", Name: "example"}, "main", dir, wr)
+			if deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
+				t.Fatalf("%s: exit = %v, want Unverifiable (err=%v)", kind, deskkit.ExitCodeOf(err), err)
+			}
+		}
+		fg := &rvBriefHashForge{content: map[string][]byte{"main:docs/streams/example-stream/brief-01-x.md": asLanded}}
+		if err := validateReceiptBriefHashAsLanded(fg, deskkit.ForgeRepo{Owner: "example-org", Name: "example"}, "main", dir, wr); deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
+			t.Fatalf("control: exit = %v, want Refused (err=%v)", deskkit.ExitCodeOf(err), err)
 		}
 	})
 

@@ -13,15 +13,18 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 1
+version: 4
 id: 1fc36b0b-e3d0-4497-8863-0a039180a0f3
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
   - docs/streams/forge-neutral/README.md
   - freshness-checked 2026-10-14 @ 0cb90058470f9608f76b96e2055e7327d9c5c178
   - R6 proposal inspected at c5e8a3f8da3c715b72efa8d8d6b5e74e659ebd52; main merged into this authoring branch without editing historical Evidence
+  - "docs/desk-workflow-efficiency-spec.md"
+  - "freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d; approved spec and consolidation amendment"
 exec-tier: strong
 exec-tier-why: Cross-component identity, privacy, concurrency and failure semantics require design judgment and negative controls.
 domain: complicated
@@ -39,13 +42,14 @@ consumers:
   - "changelog/forge-write-through.md: follow-up forge-neutral/41"
   - "statusgen/evaluation/: out-of-scope (existing domain evaluation meaning preserved)"
   - "plugins/assay/skills/: out-of-scope (no caller wired to an unshipped service)"
+  - "tools/desk/internal/forgeservice/write/contextreceipt_test.go: follow-up forge-neutral/41"
 ---
 
 # Brief 41 — Write-through forge receipts and read-after-write projection
 
 ## Context
 
-files: `workflow/store/forgeeffects.go` (planned), `workflow/store/forgeeffects_test.go` (planned), `workflow/store/forgemirror.go` (planned), `workflow/store/forgemirror_test.go` (planned), `tools/desk/internal/forgeservice/write/` (planned), `tools/desk/internal/forgeexecutor/` (planned), `tools/desk/cmd/deskfile/`, `tools/desk/cmd/deskreply/`, `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `changelog/forge-write-through.md` (planned). Paths not present at the source pin are planned deliverables; existing
+files: `workflow/store/forgeeffects.go` (planned), `workflow/store/forgeeffects_test.go` (planned), `workflow/store/forgemirror.go` (planned), `workflow/store/forgemirror_test.go` (planned), `tools/desk/internal/forgeservice/write/` (planned), `tools/desk/internal/forgeexecutor/` (planned), `tools/desk/cmd/deskfile/`, `tools/desk/cmd/deskreply/`, `docs/forge-service.md` (planned), `docs/enforcement-model.md`, `changelog/forge-write-through.md` (planned), `tools/desk/internal/forgeservice/write/contextreceipt_test.go` (planned). Paths not present at the source pin are planned deliverables; existing
 files are amended only at the named seam. No user-home or out-of-repo configuration is edited.
 
 facts:
@@ -108,6 +112,20 @@ webhook payload decisions are not answered by this section.
 
 6. Exercise external edits and event/poll repair through the same mirror; newer authoritative state can supersede our write. Retention, access loss, complete database reconstruction and old-incarnation behavior use R2 and mirror contracts. Raw mirrored table UPDATE remains unable to authorize any effect.
 
+
+### Approved workflow-efficiency amendment — 17 October 2026
+
+An observation/ReviewContext is an optimization input, never a replacement for current effect
+admission or provider preconditions. Preserve exact-head claim/ready/verdict applicability, payload
+identity and unknown operation reconciliation; stale cached context cannot repeat an uncertain
+write. Receipt projection and minimum-token reads remain distinct from provider success. Exercise
+reuse followed by head/permission change and a lost receipt; no new effect journal, authority
+boolean or automatic direct fallback.
+
+This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
+obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
+authoring change claims no implementation or operational adoption.
+
 ## Interface contract
 
 Use forge-service-v1 from 39, mirror admission/freshness from 37, event hints/demand from 38,
@@ -131,6 +149,7 @@ boundary and independent expectation, not another implementation of the same che
 | 3 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestMinimumObservationFlow$' ./internal/forgeservice/... > "$r" && grep -F -- '--- PASS: TestMinimumObservationFlow ' "$r")` | exit 0; named PASS. Actual HTTP operation -> caller loses reply -> authorized lookup -> minimum-token query. Delayed pre-write refresh cannot roll back data; newer external edit is shown. Permission revoked between write and lookup hides the receipt/body. |
 | 4 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestLegacyIssueCommentServiceParity$' ./internal/forgeservice/... > "$r" && grep -F -- '--- PASS: TestLegacyIssueCommentServiceParity ' "$r")` | exit 0; named PASS. Real selected desk clients -> served service -> separate executor -> fake GitHub/GitLab. Existing guard refusal remains before contact; service outage cannot trigger direct/raw publication; execution identity and unknown semantics survive the client output. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/41` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
+| 6 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestContextReceiptBoundary$' ./internal/forgeservice/... > "$o" && grep -F -- '--- PASS: TestContextReceiptBoundary ' "$o")` | exit 0; named PASS. Stale context/changed head refuses effect admission; a lost reply with unknown outcome is held/reconciled without another provider effect, even when observation bytes are reusable. |
 
 ## Pre-mortem and detection
 
@@ -141,6 +160,29 @@ reject that variant; record the failing control with the restored production pas
 satisfy a flow row with a route registry, a prose legend or zero selected tests. Test fixtures
 qualify their named local boundary; provider permission inventories, deployment workload and
 operator cutover remain explicit evidence/acceptance obligations.
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+For this brief's existing performance observations, reuse the [perf-v3 contract](../../performance-attribution-spec.md) and /63–65's
+shared typed context and request-cost seam when those adapters are available. Each process
+records its own attempts, timing and observed GraphQL points with units/basis/coverage;
+client-to-service and service-to-provider work are distinct. Carry admitted parent invocation
+links when known, preserve missing context and never turn it into operational authority.
+No extra provider request or expanded business query for monitoring; qualified bounded cost
+metadata may join the same request. No copied descendant call total,
+and no v2-only replacement instrument. Keep this brief's scope/Verify/Evidence and independent
+service delivery; record unsupported boundaries until producer integration. /45's existing
+matched service qualification must include own-request and parent/child no-double-count cases.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Apply docs/performance-attribution-spec.md, including its query/cache boundary contract.
+
+Passthrough/write-through records actual executor provider attempts, retries and point cost at the provider leaf. Service client/handler timing is a separate view. A replayed receipt may be a service hit with zero observed provider sends, while unknown publication remains unknown. Diagnostics never change effect identity, replay policy, receipt authority or permit another write.
+
+Extend this brief's existing production-flow Verify cases with these boundary/false-count
+negative fixtures; all existing Tasks, exact selectors and Evidence remain obligations.
+No service activation or extra dependency on a live collector is introduced.
 
 ## Evidence
 

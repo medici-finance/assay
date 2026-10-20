@@ -32,6 +32,7 @@ files: `tools/desk/internal/deskkit/reviewlanes.go`, `tools/desk/internal/deskki
 facts:
 - At the pinned main there are four review lanes, existing advisory design-fit and architectural fitness tests; no calibrated performance/architecture routing policy exists.
 - Review finding identity, scope and rounds retain their existing owner; required acceptance evidence and budget accounting do not depend on optional telemetry.
+- Risk answers are all `no` because this slice is opt-in, advisory and revertible through configuration (Task 4), prepares offline work only and begins live routing solely after a recorded scoped human approval (`gate: human`). It still edits the lane-routing and ready-aggregation code that decides which reviews count; the security lane weighs that surface at review, and the answers are re-derived from the actual changed files at pickup.
 - This brief implements only its Task; the profile spec remains a draft and actual model/data use requires a permitted scoped budget.
 
 layering: pure assessment contracts/evaluation in tools/desk/internal/reviewprofile; deskkit and existing commands adapt inputs/effects. No controller, credential store, general service or parallel finding ledger. Task and Verify exercise that boundary.
@@ -82,10 +83,11 @@ Versioned, scoped inputs and exact source revisions → explained assessment wit
 
 The named tests below are implementation deliverables, not claims that they exist today. Each must contain positive, negative and flow assertions described in Task; an empty test selection is not a pass.
 
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && go test -count=1 -v -run '^TestReviewProfileIntegration$' ./internal/deskkit > /tmp/review-profile-05.log && grep -F -- '--- PASS: TestReviewProfileIntegration ' /tmp/review-profile-05.log` | Full dispatch-to-readiness fixtures preserve current required approvals and round counts; stale/advisory evidence never substitutes for required current-head evidence. |
-| 2 | `cd tools/desk && go test -count=1 ./internal/arch ./internal/deskkit` | Existing ownership, dependency, scope and finding tests remain green; do not weaken controls to pass. |
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 1 | check:ci +flow | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v -run '^TestReviewProfileIntegration$' ./internal/deskkit > "$o" && grep -F -- '--- PASS: TestReviewProfileIntegration ' "$o")` | Full dispatch-to-readiness fixtures preserve current required approvals and round counts; stale/advisory evidence never substitutes for required current-head evidence. |
+| 2 | check:ci | `cd tools/desk && go test -count=1 ./internal/arch ./internal/deskkit` | Existing ownership, dependency, scope and finding tests remain green; do not weaken controls to pass. |
+| 3 | check:ci +dereference | `statusgen --root . --consumers --brief review-profiles/05` | exit 0; the brief's routing claims are corroborated against the implementation diff, including each changed consumer. |
 
 ## Definition of done
 

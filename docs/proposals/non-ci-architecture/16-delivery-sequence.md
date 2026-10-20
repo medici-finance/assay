@@ -122,6 +122,14 @@ database operation, migration, discovery and qualification work. Net savings rem
 a hypothesis until the remaining implementation is sized and measured. A brief
 retirement count is not an engineering-effort estimate.
 
+## Portfolio and drift delivery — 13 October 2026
+
+The [product-intent and portfolio amendment](26-product-intent-and-portfolio.md) supplies a parallel offline lane with six authored briefs:
+statusgen/22–25 and continuing-operations/01–02, plus amendments to statusgen/20–21.
+It leaves statusgen/19 (merged in PR #2763) and its Evidence unchanged. The dependencies and remaining parked-stream
+admission are explicit there. This lane does not gate R1–R8, choose an adopter pilot,
+activate a scheduler or add a second database backend. R7 consumes its qualified view API.
+
 ## Scion-derived forge-service extension — 14 October 2026
 
 The [forge-service amendment](22-forge-service-and-source-queries.md) extends R6 alongside
@@ -182,3 +190,31 @@ the first workflow cutover. The [ci-tooling stream](../../streams/ci-tooling/REA
 owns this decomposition; it does not wait for the runtime controller. R8 retains the
 desk/operator/service relocation work routed by the layout inventory and must qualify
 module visibility, authority and lifecycle before retiring their old paths.
+
+## Execution-environment delivery — 16 October 2026
+
+[Agent-execution](../../streams/agent-execution/README.md) extends the R3 runner boundary:
+/01 profile contract then /02 preparation receipt can proceed over implemented runner v1;
+/03 follows the existing supervisor/first adapter, /04 follows actual controller/publication,
+and /05 follows their recovery proof and standing clients. The independent /06 AX feasibility
+report neither gates the local path nor activates a remote service. Use its typed dependency
+waves and existing R1–R8 owners; do not duplicate their implementations to accelerate a demo.
+
+## Verifier pilot sequencing proposal — 19 October 2026
+
+Consume [the verifier migration amendment](../../streams/graph-execution/verifier-migration.md).
+An adopter may move evidence production through its existing qualified owner before R2–R8,
+and evaluate shared assessment in shadow after R1. This grants neither a second standing
+claim authority nor a publisher. Managed completion retains R1–R8 and repository-wide
+handover. The proposed Kubernetes profile is agent-execution/08; its stream remains parked.
+
+## Perf-v3 delivery — requested amendment, 19 October 2026
+
+[Attributed performance](../../performance-attribution-spec.md) starts from implemented
+local perf-v2 (/61): /63 freezes schema/profiles/context/readers; /64 propagates desk/agent
+context through launchers and real CLI/env adapters; /65 independently adds actual request
+timing/GraphQL point observations. /62 and statusgen/26 qualify production records using
+these owners. Collection/01 defines aliased event meanings independently; /02 consumes
+v1/v2/v3 after /63–65; later storage/transport/reporting preserves their coverage and units.
+A local record/read/report path needs no server or database. Keep collection parked and
+credential work independent; do not reopen /61 or imply deployment/collection activation.

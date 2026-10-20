@@ -65,7 +65,7 @@ func (c *Cell) codexCommandEnvironment(env []string) (map[string]string, error) 
 	}
 	// Forward only named non-secret launch context. Values are config overrides
 	// on argv, so copying the entire environment here would disclose credentials.
-	for _, key := range []string{"CLAUDE_CONFIG_DIR", "GOCACHE", "GOMODCACHE", "GOPATH", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION"} {
+	for _, key := range []string{"CLAUDE_CONFIG_DIR", "GOCACHE", "GOMODCACHE", "GOPATH", "GOFLAGS", "ASSAY_GO_CACHE_POLICY", "DESK_LOOP", "DESK_SESSION", "DESK_ROOTS", "DESK_CELL", "DESK_ROLE", "DESK_COMMS_GATEWAY", "DESK_COMMS_KEY", "ASSAY_COCKPIT", "ASSAY_REPAIR_ADMISSION"} {
 		for _, kv := range env {
 			k, value, ok := strings.Cut(kv, "=")
 			if ok && strings.EqualFold(k, key) {
@@ -110,7 +110,14 @@ func codexRolePrompt(role, goos, bash string) string {
 		prompt += "\nUse the native Windows command shell with profile loading disabled; do not require Bash, zsh, or WSL."
 	}
 	prompt += "\nEvery deskdispatch that will post a model-attested result must include --model with the actual selected worker model. Check the dispatch receipt for a successful model stamp before spending work on that dispatch; a skipped stamp is not a successful review admission."
-	return prompt
+	return codexSupervisionPrompt(prompt)
+}
+
+// Both host and scrubbed launches use the same reminder without changing their
+// shell/environment composition or native Goal admission.
+func codexSupervisionPrompt(prompt string) string {
+	return prompt + `
+Apply the loaded desk-common supervision/context procedure and Codex binding: react to child results, actionable messages and due role checks. Block on existing child/command handles until the next required check, using the longest wait permitted by the exposed tool and harness instructions; do not impose a 60-second polling cap. After an early timeout, re-arm the wait without agent inventories, log rereads or progress pings. Keep one non-model owner for routine CI watching; retain independent final readbacks. If efficient waiting is unavailable, report the gap and use only the existing operator-selected outer cadence after a clean handoff; do not simulate a monitor with repeated Goal turns or silently change launch mode. Keep the turn open while waiting for in-flight work instead of ending it just to trigger another Goal turn. Continue from instructions already in context; reload missing or changed instructions after compaction or source changes. For each new item use a fresh child context (fork_turns="none" when supported), passing the admitted assignment/packet paths and required instructions explicitly; reserve child reuse for the same item and lane. Preserve prior findings, refusals, claims, human holds, independent reviews, stop checks and required freshness checks.`
 }
 
 func codexBashPath() (string, error) {

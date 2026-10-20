@@ -39,6 +39,8 @@ on:
       # statusgen resolves the forgeread module through a sibling `replace`, so a change
       # there changes what the lint binary is built from.
       - "forgeread/**"
+      # Likewise the perfrec module (the shared perf-v1 writer, #3101).
+      - "perfrec/**"
       - ".github/workflows/assay-statusgen.yml"
       # The reconcile job's run: texts below are what statusgen's job tests
       # execute, so a change to this file's staged copy runs those tests too.
@@ -63,6 +65,8 @@ on:
       # statusgen resolves the forgeread module through a sibling `replace`, so a change
       # there changes what the lint binary is built from.
       - "forgeread/**"
+      # Likewise the perfrec module (the shared perf-v1 writer, #3101).
+      - "perfrec/**"
       - ".github/workflows/assay-statusgen.yml"
   # Hourly board reconcile (derived-board/04). Scheduled workflows run only from
   # the default branch, so the reconcile job always executes main's copy of this
@@ -105,6 +109,9 @@ jobs:
   lint:
     if: github.event_name == 'pull_request'
     runs-on: medici-builder-public
+    permissions:
+      issues: read
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -124,8 +131,11 @@ jobs:
           go version
           ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
       - name: statusgen --lint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
-          "${RUNNER_TEMP}/statusgen" --root . --lint
+          "${RUNNER_TEMP}/statusgen" --root . --lint --acceptance-forge
       # The reconcile job's tests (statusgen/reconcilejob_test.go), and the
       # registry check that keeps its write-then-lint sequence passable. The job
       # tests execute that job's run: texts from this file's staged copy, so an
@@ -159,9 +169,11 @@ jobs:
   corroborate:
     if: github.event_name == 'pull_request'
     runs-on: medici-builder-public
-    # --corroborate reads the PR's reviews, comments and file list.
+    # --corroborate reads the PR's reviews, comments and file list; the
+    # decision-gate step reads the decision issue and its ruling comment.
     permissions:
       contents: read
+      issues: read
       pull-requests: read
     # GOENV=off: Go's per-user env file (written by `go env -w`, which an
     # earlier job on a reused runner could have run) is ignored. GOTOOLCHAIN=local:
@@ -233,9 +245,10 @@ jobs:
           parent="$(git rev-parse --verify 'HEAD^1^{commit}')"
           rm -rf "${RUNNER_TEMP}/base"
           mkdir -p "${RUNNER_TEMP}/base"
-          # statusgen's go.mod replaces forgeread with the sibling ../forgeread, so the base
-          # tree needs that directory beside it. A base that predates the module has none.
-          git archive "$parent" statusgen $(git ls-tree -d --name-only "$parent" forgeread) | tar -x -C "${RUNNER_TEMP}/base"
+          # statusgen's go.mod replaces forgeread and perfrec with the siblings ../forgeread and
+          # ../perfrec, so the base tree needs those directories beside it. A base that predates
+          # a module has none.
+          git archive "$parent" statusgen $(git ls-tree -d --name-only "$parent" forgeread perfrec) | tar -x -C "${RUNNER_TEMP}/base"
           ( cd "${RUNNER_TEMP}/base/statusgen" && go build -o "${RUNNER_TEMP}/statusgen-base" . )
       # Always the pinned tarball, never a gh already on PATH: the guard's review
       # and comment reads go through it.
@@ -277,6 +290,42 @@ jobs:
             exit 1
           fi
           "${RUNNER_TEMP}/statusgen-base" --root . --corroborate --pr "${PR_NUMBER}"
+      # The decision-gate hold, both layers (spec/lifecycle-v1.md §4.5): a
+      # gate: human brief this PR moves to implemented, verified or done,
+      # relabels away from human, or drops needs a ruling: link to an unedited
+      # comment by a human-mapped login (never a bot) on its decision issue,
+      # naming the brief by its board id. Judged against the PR's merge-base.
+      # It never runs at a PR's ready-flip. This check binds a merge only once
+      # a repository admin makes it a required status check (branch
+      # protection); merging this workflow does not do that.
+      - name: statusgen --decision-gate (gate:human status transitions)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # name:login pairs; unset leaves every login unmapped, so every ruling
+          # is refused. Fails closed.
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          # No path pre-filter here: the hold guards docs/archive/ as well as
+          # docs/streams/, and the binary already decides from the PR's own
+          # file listing whether the board was touched (and fails closed when
+          # that listing cannot be shown complete). A shell filter could only
+          # drift from that path set.
+          # The guard is built from the base. Until the base carries the hold
+          # (the PR that introduces it), there is nothing to run: say so.
+          help="$("${RUNNER_TEMP}/statusgen-base" --help 2>&1 || true)"
+          if ! printf '%s' "$help" | grep -q -- '-decision-gate'; then
+            echo "::notice::the base statusgen predates the decision-gate hold — not run on this PR"
+            exit 0
+          fi
+          live="$(gh pr view "${PR_NUMBER}" --json baseRefName --jq .baseRefName)"
+          if [ "$live" != "$BASE_REF" ]; then
+            echo "::error::PR base is now ${live}, not ${BASE_REF} as tied above (retargeted mid-run) — the retarget's own run judges it"
+            exit 1
+          fi
+          "${RUNNER_TEMP}/statusgen-base" --root . --decision-gate --pr "${PR_NUMBER}"
 
   regen:
     environment: board-writer
@@ -288,6 +337,7 @@ jobs:
     # App (minted below), NOT the default GITHUB_TOKEN — so the default token
     # needs only read; the App token carries the write.
     permissions:
+      issues: read
       contents: read
     steps:
       # Mint a token for the assay-board-writer App. This App is the sole actor
@@ -306,6 +356,7 @@ jobs:
           # Persist the App token as the push credential (checkout default), so
           # the STATUS.md `git push` below authenticates as assay-board-writer[bot].
           token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0 # consumedFragmentIndex needs changelog/ history; a shallow regen reads a consumed fragment as a false PROBLEM (#3364)
       - name: Install Go
         run: |
           set -euo pipefail
@@ -321,9 +372,15 @@ jobs:
           go version
           ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
       - name: Regenerate STATUS.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
-          "${RUNNER_TEMP}/statusgen" --root .
+          "${RUNNER_TEMP}/statusgen" --root . --acceptance-forge
       - name: Commit STATUS.md if it changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
           set -euo pipefail
           git config user.name  'assay-board-writer[bot]'
@@ -378,7 +435,7 @@ jobs:
             echo "push rejected: main moved. Re-syncing and regenerating (attempt ${attempt}/${attempts})"
             git fetch origin main
             git reset --hard origin/main
-            "${RUNNER_TEMP}/statusgen" --root .
+            "${RUNNER_TEMP}/statusgen" --root . --acceptance-forge
             pushcred_preflight "statusgen board regen" || exit 1
           done
   # verified→done auto-flip for `gate: model` briefs (the third half of the
@@ -412,6 +469,8 @@ jobs:
     if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-status-regen]') && !contains(github.event.head_commit.message, '[skip-autoflip]') }}
     runs-on: medici-builder-public
     permissions:
+      issues: read
+      pull-requests: read
       contents: read
     steps:
       - name: Mint assay-board-writer App token
@@ -459,6 +518,7 @@ jobs:
           echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
       - name: Auto-flip gate:model briefs from the App approval at the merged head
         env:
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
           GH_TOKEN: ${{ github.token }}
           # The roster is repository configuration, never a literal here: set the
           # ASSAY_TRUSTED_BOT_SLUGS Actions variable (role=slug:id, the reviewer=
@@ -483,13 +543,13 @@ jobs:
             git fetch --no-tags origin main
             git reset --hard FETCH_HEAD
             flip_rc=0
-            "${RUNNER_TEMP}/statusgen" --root . --auto-flip-model || flip_rc=$?
+            "${RUNNER_TEMP}/statusgen" --root . --auto-flip-model --acceptance-forge || flip_rc=$?
             if [ -z "$(git status --porcelain -- docs/streams)" ]; then
               echo "no brief flipped — nothing to commit"
               break
             fi
             # Sources must stay valid before we commit them.
-            "${RUNNER_TEMP}/statusgen" --root . --lint
+            "${RUNNER_TEMP}/statusgen" --root . --lint --acceptance-forge
             # Path-scoped add: never STATUS.md (single writer = the regen job).
             git add -- docs/streams
             git commit -m "chore(verify): auto-flip gate:model briefs verified→done from the App approval at head [skip-autoflip]"
@@ -535,8 +595,12 @@ jobs:
   #      witnessed todo|in-progress -> implemented Status cell. A row whose write
   #      would add a lint PROBLEM (a risk-gated brief with no design record) is
   #      held: reported in the job log on every tick, and in the commit and PR
-  #      body, never written. A reconcile that could not read the PRs exits
-  #      nonzero and fails the tick.
+  #      body, never written. So is a row on a stream an active drive names
+  #      whose move would re-render that drive's plan-page snapshot region: the
+  #      job never passes `--regenerate`, the opt-in under which `--apply` also
+  #      writes docs/roadmap/drives/<slug>.md, a path the check below refuses.
+  #      A reconcile that could not read the PRs exits nonzero and fails the
+  #      tick.
   #   2. `statusgen regen --readmes` — re-renders the marker-wrapped tables from
   #      brief frontmatter. Everything outside the markers is untouched.
   #   3. `statusgen --lint` — the full lint over the result; a failure fails the
@@ -717,6 +781,10 @@ jobs:
         env:
           # The READ token: statusgen reconcile resolves it from GITHUB_TOKEN.
           GITHUB_TOKEN: ${{ github.token }}
+          # The fold's provenance read resolves verifier identities from the roster (#3082).
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+          ASSAY_HOME_REPO: ${{ vars.ASSAY_HOME_REPO || github.repository }}
         run: |
           set -euo pipefail
           statusgen="${RUNNER_TEMP}/statusgen"
@@ -779,9 +847,9 @@ jobs:
           # tee: the report — rows written AND rows held, with the problem each
           # would add — reaches the job log on every tick, including a tick on
           # which every witnessed row is held and nothing is carried.
-          "$statusgen" reconcile --apply --root . --repo "$repo" | tee "$out"
+          "$statusgen" reconcile --apply --root . --repo "$repo" --acceptance-forge | tee "$out"
           "$statusgen" regen --readmes --root .
-          "$statusgen" --root . --lint
+          "$statusgen" --root . --lint --acceptance-forge
           # This job may change stream READMEs and nothing else.
           # The same README pattern as the foreign-commit check above. The
           # status read is a plain assignment, so errexit sees its failure: a

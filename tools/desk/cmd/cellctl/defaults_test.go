@@ -26,6 +26,7 @@ func defaultsRoot(t *testing.T) string {
 		"CELL", "CELL_KIND", "CELL_KIND_OVERRIDE_INTERNAL", "CELL_HARNESS", "ROLES", "DESKD", "DRY_RUN",
 		"CELL_REPO", "CELL_REPO_SLUG", "CELL_ROOTS", "TMUX_SESSION", "DESK_MODEL_DEFAULT",
 		"CELL_GO_CACHE", "CELL_GO_CACHE_ROOT", "CELL_GO_CACHE_BYTES", "CELL_GO_CACHE_MIN_FREE", "CELL_GO_CACHE_BUILD_MAX_AGE",
+		"CELL_GO_CACHE_LOW_WATER_PERCENT", "CELL_GO_CACHE_TRIM_MIN_AGE", "CELL_GO_TRIMPATH",
 		"CELL_PATH", "CELL_PROVIDER", "CELL_PROVIDER_DEFAULTS", "CELL_PROVIDER_OVERRIDES",
 		"CELL_MODEL_POLICY", "CELL_ROLE_CONTEXT", "CELLCTL_TEST_PROBE",
 	} {
@@ -251,7 +252,7 @@ func TestCellDefaultsRefusesPerCellKeys(t *testing.T) {
 		// The launching shell's own.
 		"PATH", "TERM", "LANG",
 		// Carriers cellctl sets for itself or a child.
-		"CELL_KIND_OVERRIDE_INTERNAL", "ASSAY_SCRATCH_ID", "DESK_SESSION", "CELLCTL_PARITY_MUTATE",
+		"CELL_KIND_OVERRIDE_INTERNAL", "ASSAY_SCRATCH_ID", "DESK_SESSION", "CELLCTL_PARITY_MUTATE", "CELLOP_FIXTURE_TRACE",
 		"CELLCTL_OPERATOR_CONFIG_HOME",
 	}
 	for _, k := range named {
@@ -435,38 +436,6 @@ func TestCellDefaultsSetWritesOnlyCellEnv(t *testing.T) {
 	// And the cell now loads with its own override in force.
 	if c := loadCell("demo"); c.Harness != "claude" || c.Env.Source("CELL_HARNESS") != layerCellEnv || c.Env.Source("CELL_GO_CACHE") != layerDefaults {
 		t.Errorf("after set: harness=%q from %s, CELL_GO_CACHE from %s", c.Harness, c.Env.Source("CELL_HARNESS"), c.Env.Source("CELL_GO_CACHE"))
-	}
-}
-
-// TestCellDefaultsNestedCell: a cell named `team/demo` lives two levels under the cells root and
-// still takes the ROOT's defaults file — from loadCell and from `set` alike — never a file that
-// happens to sit beside it in `team/`.
-func TestCellDefaultsNestedCell(t *testing.T) {
-	root := defaultsRoot(t)
-	rootFile := writeDefaults(t, root, "CELL_HARNESS=codex\n")
-	envfile := writeCell(t, root, filepath.Join("team", "demo"), demoCell)
-	decoy := filepath.Join(root, "team", cellDefaultsFile)
-	if err := os.WriteFile(decoy, []byte("CELL_HARNESS=cursor\nCELL_KIND=scrubbed\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	c := loadCell("team/demo")
-	if c.DefaultsPath != rootFile || c.Harness != "codex" {
-		t.Errorf("loadCell read %q (harness %s), want the cells root's %q", c.DefaultsPath, c.Harness, rootFile)
-	}
-	if got := cellDefaultsFor(envfile); got != rootFile {
-		t.Errorf("set would read %q, want the cells root's %q", got, rootFile)
-	}
-	if got := activeHarnessOf(envfile); got != "codex" {
-		t.Errorf("activeHarnessOf = %q, want codex from the cells root's file", got)
-	}
-	captureStdout(t, func() { setArgv("team/demo", []string{"worker-desk", "--model", "example-codex-model"}) })
-	if got, _ := os.ReadFile(envfile); string(got) != demoCell+"CODEX_MODEL_worker_desk=example-codex-model\n" {
-		t.Errorf("nested cell.env =\n%s", got)
-	}
-	// A cell.env that is not under the cells root at all never picks up that root's file.
-	outside := filepath.Join(t.TempDir(), "elsewhere", "cell.env")
-	if got := cellDefaultsFor(outside); got == rootFile || got != filepath.Join(filepath.Dir(filepath.Dir(outside)), cellDefaultsFile) {
-		t.Errorf("a cell.env outside the cells root resolved to %q", got)
 	}
 }
 

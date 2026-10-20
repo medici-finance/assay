@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/cellcache ./internal/cellprocess ./cmd/cellctl ./cmd/deskdispatch -run 'TestCache|TestStorage|TestReap|TestLoadMarkedPolicy|TestDomainFor|TestCheckRecorded' -count=1 -timeout=60s",
+  "test": "go test ./internal/cellcache ./internal/cellprocess ./cmd/cellctl ./cmd/deskdispatch ./cmd/deskwt -run 'TestCache|TestStorage|TestReap|TestLoadMarkedPolicy|TestDomainFor|TestCheckRecorded|TestAdmitRecorded|TestPruneCache' -count=1 -timeout=60s",
   "control": {
     "name": "CONTROL — an invalid CELL_GO_CACHE mode is accepted as off",
     "file": "internal/cellcache/policy.go",
@@ -94,8 +94,8 @@
     {
       "name": "omit prefetch storage admission",
       "file": "cmd/cellctl/launch.go",
-      "old": "if err := c.cacheAdmission(); err != nil {",
-      "new": "if err := c.cacheAdmission(); false && err != nil {"
+      "old": "if err := launchStep(\"launch-storage-admission\", c.cacheAdmission); err != nil {",
+      "new": "if err := launchStep(\"launch-storage-admission\", c.cacheAdmission); false && err != nil {"
     },
     {
       "name": "reap a root under an active consumer lease (the at-act-time lease check is skipped)",
@@ -148,20 +148,20 @@
     {
       "name": "no trim while a consumer record is held",
       "file": "internal/cellcache/cache.go",
-      "old": "&& len(r.SkippedActive) > 0 && !dry {",
-      "new": "&& len(r.SkippedActive) > 0 && false {"
+      "old": "trigger != \"\" && !whole && !dry {",
+      "new": "trigger != \"\" && !whole && false {"
     },
     {
       "name": "trim under a dry run",
       "file": "internal/cellcache/cache.go",
-      "old": "&& len(r.SkippedActive) > 0 && !dry {",
-      "new": "&& len(r.SkippedActive) > 0 {"
+      "old": "trigger != \"\" && !whole && !dry {",
+      "new": "trigger != \"\" && !whole {"
     },
     {
-      "name": "trim without pressure",
+      "name": "trim below the high-water mark",
       "file": "internal/cellcache/cache.go",
-      "old": "(wipe || pressure(r.Before, m.p)) && len(r.SkippedActive) > 0",
-      "new": "true && len(r.SkippedActive) > 0"
+      "old": "return v.LogicalBytes != nil && *v.LogicalBytes > p.HighWater()",
+      "new": "return v.LogicalBytes != nil"
     },
     {
       "name": "trim follows a linked entry",
@@ -172,14 +172,20 @@
     {
       "name": "trimmed bytes not reported",
       "file": "internal/cellcache/cache.go",
-      "old": "r.TrimmedBuild, r.TrimmedBuildBytes = n, bytes",
-      "new": "r.TrimmedBuild, r.TrimmedBuildBytes = n, 0*bytes"
+      "old": "r.TrimmedBuild, r.TrimmedBuildBytes = tr.n, tr.bytes",
+      "new": "r.TrimmedBuild, r.TrimmedBuildBytes = tr.n, 0*tr.bytes"
     },
     {
       "name": "a fractional-second trim age is silently truncated",
       "file": "internal/cellcache/policy.go",
-      "old": "d%time.Second != 0",
-      "new": "false"
+      "old": "d < MinBuildMaxAge || d%time.Second != 0",
+      "new": "d < MinBuildMaxAge"
+    },
+    {
+      "name": "a fractional-second trim safety floor is silently truncated",
+      "file": "internal/cellcache/policy.go",
+      "old": "d < MinTrimMinAge || d%time.Second != 0",
+      "new": "d < MinTrimMinAge"
     },
     {
       "name": "recorded trim age below the floor accepted",
@@ -208,14 +214,14 @@
     {
       "name": "a refused entry stops the whole trim",
       "file": "internal/cellcache/cache.go",
-      "old": "\t\t\tif err != nil {\n\t\t\t\trefused = append(refused, err)\n\t\t\t\tcontinue\n\t\t\t}",
-      "new": "\t\t\tif err != nil {\n\t\t\t\treturn n, total, err\n\t\t\t}"
+      "old": "size, removed, err := m.trimEntry(c.path, floorCut)\n\t\tif err != nil {\n\t\t\trefused = append(refused, err)\n\t\t\tcontinue\n\t\t}",
+      "new": "size, removed, err := m.trimEntry(c.path, floorCut)\n\t\tif err != nil {\n\t\t\trefused = append(refused, err)\n\t\t\tbreak\n\t\t}"
     },
     {
       "name": "a refused entry is not reported",
       "file": "internal/cellcache/cache.go",
-      "old": "return n, total, errors.Join(refused...)",
-      "new": "return n, total, nil"
+      "old": "res.err = errors.Join(refused...)",
+      "new": "res.err = nil"
     },
     {
       "name": "directory entry members not walked before removal (bytes unmeasured)",
@@ -290,10 +296,124 @@
       "new": "\t\tfor _, name := range"
     },
     {
+      "name": "prune cache pass takes the lock unconditionally",
+      "file": "cmd/deskwt/cachepressure.go",
+      "old": "cellcache.AdmitRecorded(p.Root, dryRun)",
+      "new": "cellcache.CheckRecorded(p.Root, dryRun)"
+    },
+    {
+      "name": "recorded admission always takes the lock",
+      "file": "internal/cellcache/admit.go",
+      "old": "\treturn admit(*advisory, dry, env)",
+      "new": "\treturn env.locked(*advisory, dry)"
+    },
+    {
       "name": "dispatch storage admission takes the lock unconditionally",
       "file": "cmd/deskdispatch/storage.go",
       "old": "cellcache.Admit(*p, dry)",
       "new": "cellcache.Check(*p, dry)"
+    },
+    {
+      "name": "trim ignores the safety floor at listing (shortfall reason lost)",
+      "file": "internal/cellcache/cache.go",
+      "old": "if !c.mtime.Before(floorCut) {\n\t\t\tres.floor = est > target",
+      "new": "if false {\n\t\t\tres.floor = est > target"
+    },
+    {
+      "name": "trim removes an entry refreshed after the listing",
+      "file": "internal/cellcache/cache.go",
+      "old": "m.trimEntry(c.path, floorCut)",
+      "new": "m.trimEntry(c.path, now.Add(time.Hour))"
+    },
+    {
+      "name": "trim ignores the low-water target",
+      "file": "internal/cellcache/cache.go",
+      "old": "if est <= target && !c.mtime.Before(ageCut) {",
+      "new": "if false && !c.mtime.Before(ageCut) {"
+    },
+    {
+      "name": "trim stops at the target with entries past the trim age left",
+      "file": "internal/cellcache/cache.go",
+      "old": "if est <= target && !c.mtime.Before(ageCut) {",
+      "new": "if est <= target && (true || !c.mtime.Before(ageCut)) {"
+    },
+    {
+      "name": "trim takes newest entries first",
+      "file": "internal/cellcache/cache.go",
+      "old": "return cands[i].mtime.Before(cands[j].mtime)",
+      "new": "return cands[j].mtime.Before(cands[i].mtime)"
+    },
+    {
+      "name": "trim never counts down its estimate",
+      "file": "internal/cellcache/cache.go",
+      "old": "\t\t\test -= size",
+      "new": "\t\t\test -= 0"
+    },
+    {
+      "name": "trim shortfall not reported",
+      "file": "internal/cellcache/cache.go",
+      "old": "lw.ShortfallBytes = *after.LogicalBytes - lw.TargetBytes",
+      "new": "lw.ShortfallBytes = 0"
+    },
+    {
+      "name": "recorded low-water mark at or above the high-water mark accepted",
+      "file": "internal/cellcache/policy.go",
+      "old": "(p.LowWaterPercent < 0 || p.LowWaterPercent >= HighWaterPercent)",
+      "new": "(p.LowWaterPercent < 0)"
+    },
+    {
+      "name": "recorded trim safety floor ignored, default always used",
+      "file": "internal/cellcache/policy.go",
+      "old": "\tif p.TrimMinAge == 0 {\n\t\treturn DefaultTrimMinAge",
+      "new": "\tif true {\n\t\treturn DefaultTrimMinAge"
+    },
+    {
+      "name": "trim re-checks an entry at removal against the trim's start time instead of the safety floor (a refresh to inside the floor no longer spares it)",
+      "file": "internal/cellcache/cache.go",
+      "old": "m.trimEntry(c.path, floorCut)",
+      "new": "m.trimEntry(c.path, now)"
+    },
+    {
+      "name": "a wipe under live records targets the low-water mark instead of zero",
+      "file": "internal/cellcache/cache.go",
+      "old": "\t\t\ttarget, trimTo = 0, 0\n",
+      "new": "\t\t\ttrimTo = target\n"
+    },
+    {
+      "name": "the trim runs on a pass whose measurement failed (nil size dereferenced on a wipe)",
+      "file": "internal/cellcache/cache.go",
+      "old": "if len(r.Failures) == 0 && trigger != \"\" && !whole && !dry {",
+      "new": "if trigger != \"\" && !whole && !dry {"
+    },
+    {
+      "name": "a trim that hit a refusal is not re-measured (a partly removed entry is reported at its old size)",
+      "file": "internal/cellcache/cache.go",
+      "old": "acted = tr.n > 0 || tr.err != nil",
+      "new": "acted = tr.n > 0"
+    },
+    {
+      "name": "the trim chases a low-water target the module cache alone keeps out of reach, evicting every entry past the floor on every pass",
+      "file": "internal/cellcache/cache.go",
+      "old": "case *r.Before.LogicalBytes-r.Before.buildBytes > target:",
+      "new": "case false:"
+    },
+    {
+      "name": "the trim safety floor minimum drops back to one hour (the use-stamp margin can shrink to seconds)",
+      "file": "internal/cellcache/policy.go",
+      "old": "MinTrimMinAge     = 2 * time.Hour",
+      "new": "MinTrimMinAge     = time.Hour"
+    },
+    {
+      "name": "Validate accepts a recorded trim safety floor under 2h",
+      "file": "internal/cellcache/policy.go",
+      "old": "p.TrimMinAge < int64(MinTrimMinAge/time.Second)",
+      "new": "p.TrimMinAge < int64(time.Hour/time.Second)"
+    },
+    {
+      "name": "launch admission takes the locked walk",
+      "file": "cmd/cellctl/cache.go",
+      "old": "r, err := cellcache.Admit(*p, false)",
+      "new": "r, err := cellcache.Check(*p, false)"
     }
   ]
 }

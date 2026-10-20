@@ -46,7 +46,7 @@ consumers:
 - 'loopadmin execution journal: follow-up graph-execution/26 (same engine, own schema; no Go dependency on workflow)'
 - 'tools/desk/cmd/deskclaim-ref claim tests: out-of-scope (their intent is carried here as TestPGClaimHolderSemantics per graph-execution/29 inventory; the command is unchanged)'
 - 'forge-neutral file/served claim store (forge-neutral/22-32): out-of-scope (supported legacy desk-tools claim path; applicability note in the forge-neutral README; retirement is the non-CI R8 decision)'
-version: 4
+version: 7
 id: ead4e747-4d61-4ec6-abaf-332873c79b21
 ---
 
@@ -147,6 +147,34 @@ PostgreSQL suite: store a context, restore/reload it after its lease/access boun
 its binding-to-evaluator flow cannot admit the action. A valid positive case must remain.
 No mandatory Git journal or signature infrastructure is introduced. Existing Evidence remains.
 
+## Operation-count accounting amendment — 2026-10-15
+
+The store consumes the target's [brake and pacing contract](../../proposals/non-ci-architecture/11-target-architecture.md#pacing-counts-are-best-effort-brakes-fail-closed).
+**Brake** counts (write ceilings, daily and new-issue caps, the circuit breaker, child-launch
+and retry budgets, cumulative attempt budgets) keep transactional records and fail closed:
+unknown brake usage after restart or reconstruction holds the governed effect until it is
+reconstructed from retained evidence or an explicitly authorized reset is recorded.
+
+**Pacing** count updates are not a mandatory part of admission's intent/outbox transaction
+and need no global lock across network work or exact budget-slot reservation. The store
+keeps one shared pacing estimate, never a per-process one. For an effect-class count it
+re-derives the estimate before each admission from the window's effect intents and
+receipts it already holds; that is a bounded window query, not an audit-history replay.
+A cached pacing row may exist only as an optimisation: it never counts as the source, and
+a skipped or failed row update cannot lower the estimate. A read-class count is seeded
+from its last retained count in one shared row. Effect-class counts are bounded by cap + C, or 2 × (cap + C) after the reset;
+read-class counts have no numeric bound. After whole-database loss, when neither survives, it records at most one reset per
+window, limiter scope and operator incarnation and treats a second unseeded reset as an exhausted window. The
+reset record lives where its absence is detectable within one incarnation, for example
+beside the incarnation's activation record, so a missing record is read as exhausted,
+never as no reset. Unknown
+usage never becomes a fresh allowance, and a missing estimate is reported, not zero.
+
+Required intent, effect identity, approval, incarnation and unknown-outcome records remain
+transactional and fail closed as already specified. Qualify against target doc 15's
+§Operation-count qualification cases; row 13 below carries that obligation and is red until
+the named test exists. Existing Task/Verify rows and Evidence are preserved.
+
 ## Task
 
 1. Create the workflow Go module and a single-controller SQLite store (engine superseded 2026-10-13: PostgreSQL per the R2 amendment above) with transactions, versioned migrations and content-addressed artifact references. Select and pin a maintained driver; document supported filesystem/durability assumptions. Persist canonical instance/node/attempt IDs, revisions, wait/stop state and artifact manifests. No second work identity or claim authority.
@@ -177,6 +205,7 @@ Pinned instance/attempt/subject and actor capability enter; typed state, evidenc
 | 10 | check:ci +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestNoSQLiteRuntimeStore$" ./... > "$routing_out" && grep -q -- "--- PASS: TestNoSQLiteRuntimeStore " "$routing_out")` | exit 0; named PASS; no package under `workflow/store` imports a SQLite or other embedded database driver, and an unreachable database refuses rather than falling back; mutation: add an embedded-driver import under `workflow/store` — the named test must fail |
 | 11 | check:ci +dereference +mutation | `(cd workflow && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCoordinationSpecMatchesMigrations$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCoordinationSpecMatchesMigrations " "$routing_out")` | exit 0; named PASS; every table and column `spec/coordination-store-v1.md` (planned) names exists in `workflow/store/migrations/` (planned), and every migrated table is named in the contract; mutation: drop one column from the contract text — the named test must fail |
 | 12 | check:ci +flow +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGContextRestore$" ./store/ > "$out" && grep -F -- "--- PASS: TestPGContextRestore " "$out")` | exit 0; named PASS; real PostgreSQL reload/restore retains old cutoff and expiry; binding flow holds stale context and accepts current context; mutation: replace expiry with restore time |
+| 13 | check:ci +flow +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGOperationCountSeedAndBrake$" ./... > "$routing_out" && grep -q -- "--- PASS: TestPGOperationCountSeedAndBrake " "$routing_out")` | exit 0; named PASS against a real disposable PostgreSQL; with at least two processes and a seed at most half the cap, after the pacing counter rows are dropped mid-window, the estimate is re-derived from the window's effect intents and receipts before each admission, and restarts and concurrent processes admit no more than cap + C; with intents committed but every pacing-row update skipped, admissions still stay within cap + C; after whole-database loss one reset is recorded, admissions stay within 2 × (cap + C), and a second reset, or a reset record deleted while the activation record survives, treats the window as exhausted; an unknown brake count holds; mutation: seed the lost estimate at zero, keep a per-process estimate, or admit against the cached pacing row instead of the re-derived estimate — the named test must fail |
 
 ## Pre-mortem and dispatch checks
 

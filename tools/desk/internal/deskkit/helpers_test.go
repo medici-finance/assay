@@ -27,6 +27,11 @@ func setup(t *testing.T) string {
 	t.Setenv("DESK_SESSION", "")
 	t.Setenv("CLAUDE_CODE_SESSION_ID", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test-session")
+	// Neutralise the cellctl cell marker: a suite run from inside a cell-launched process
+	// inherits ASSAY_CELL / ASSAY_CELL_ROLE, which would bring the cell-scoped stop layer
+	// (cellstopflag.go) into every Guard test. Tests that exercise it set them explicitly.
+	t.Setenv(CellMarkerEnv, "")
+	t.Setenv(CellRoleMarkerEnv, "")
 	return dir
 }
 

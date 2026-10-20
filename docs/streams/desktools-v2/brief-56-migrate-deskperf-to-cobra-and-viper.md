@@ -15,10 +15,12 @@ risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-da
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 1
+version: 3
 id: "0c579884-688c-46f0-90ae-5960c789df38"
 authored: "2026-10-14 by desk-tools/23 (routing the entrypoint that PR added)"
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - "https://github.com/medici-finance/assay/issues/2111"
   - "docs/streams/desktools-v2/spec.md §9"
   - "docs/streams/desktools-v2/cli-contract.md"
@@ -91,6 +93,10 @@ deliverables, not claims that they already exist.
 | 8 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
 | 9 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
 
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 10 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCLIHelpDoesNotDiscoverManifests$' ./cmd/deskperf/ > "$out" && grep -F -- '--- PASS: TestCLIHelpDoesNotDiscoverManifests ' "$out")` | exit 0; named PASS; compiled help/version with malformed config and a large manifest fixture performs zero operational config/discovery/custody reads; moving discovery before help fails |
+
 ## Pre-mortem
 
 Help reads config, checks the guard or opens a perf file before printing: row 1 runs with hostile config and effect counters.
@@ -98,6 +104,30 @@ Viper's generic precedence replaces a per-key rule or loses an explicit empty: r
 A documented invocation stops parsing: row 3 replays each consumer's forms.
 The owner tests pass on the happy path but miss a broken guard: the mutation row plants each break and requires it to redden.
 The day-window refusal moves into the parser and disappears from the handler: row 4 plants its removal from the handler.
+
+## Performance reuse amendment — 2026-10-16
+
+Keep this brief's parser ownership and existing compatibility rows. The shared credential
+implementation belongs to /58–59, runtime manifest discovery to /60 and timing semantics to
+/61–62. Help/version acceptance includes every pre-handler entrypoint step: no config echo,
+activation discovery, file/index read, credential lookup or child process may occur first.
+Count those effects in the compiled command test, not only inside the handler. If the shared
+performance recorder is armed, a local best-effort performance record remains subject to its
+existing explicit consent; help must not read operational configuration to classify itself.
+Retain the one measurement finalizer when moving to Cobra. Do not reset the timer after
+parsing, add a second writer or reintroduce a minter callout in an adapter.
+
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+The [perf-v3 contract](../../performance-attribution-spec.md) defines future shared performance flags/envs and selected profiles.
+/63 owns schema/resolution; /64 owns common adapter/launcher integration and inventory;
+/65 owns forge observations. Preserve this brief's existing migration/qualification scope,
+help/version, exit and parser rules. Do not implement a competing v2-only collector or copy
+work identity into old schemas. Adopt /64's common binding when present; otherwise record
+the explicit integration gap for /64, retaining prior behavior until that owner lands.
+Final suite conformance /17 must exercise the common precedence/profile fixtures and show
+that attribution cannot change operational identity or fail a valid operation.
 
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->

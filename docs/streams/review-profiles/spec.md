@@ -209,7 +209,8 @@ Diff/FileAt caching and context receipts; mutable check/review state has explici
 No new general graph service or alternate source of architectural decisions is needed.
 
 Later cadence: observed opportunity → independent confirmation/applicability → deduplicated
-issue → admitted, bounded repair attempt → draft PR → existing correctness/security plus
+issue → admitted, bounded repair attempt → draft PR (opened only through the
+performance-collection/09 proposal path, never by this profile) → existing correctness/security plus
 applicable new assessment → independent verification → exposure-window reassessment.
 Reuse stable occurrence/effect identities, ownership/claims, cumulative budgets and restart
 recovery. Stop on stale evidence, recurring same-class failure, exhausted budget or lost

@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen/17` Verify rows 9 and 10 now run the same way before and after merge. Row 10 pins the current text of the seven test functions it guards: a later change to the scan planner's signature edited two of them, so the old hash no longer matched main. Row 9 now names the delivering commit and its parent explicitly (`--delivery` and `--base`) instead of deriving the base from `HEAD`, so it passes on merged main instead of exiting 2 (could-not-check). Expect and class are unchanged for both rows, and the brief's `version:` moves from 1 to 2.

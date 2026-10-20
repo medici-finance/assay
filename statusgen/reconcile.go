@@ -89,7 +89,12 @@ const (
 var reconcileGHClient = newGHClient
 
 func runReconcile(args []string, stdout, stderr *os.File) int {
+	// main() hands `reconcile` off before it sets the roster class, so set it
+	// here, before any roster read, by the same per-mode rule: the CI transport
+	// in a GitHub Actions job, file-only everywhere else (#3082).
+	scanSetToolClass(scanClassForMode(false))
 	fs := flag.NewFlagSet("reconcile", flag.ContinueOnError)
+	defer transitionFlags(fs)()
 	fs.SetOutput(stderr)
 	fs.Usage = func() {}
 	root := fs.String("root", ".", "repository root whose briefs to reconcile")
@@ -100,10 +105,15 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	backfill := fs.Bool("backfill", false, "declared history-only fallback (brief-07): a merged PR whose branch name or body names the brief in <stream>/<NN> or <stream>-<NN> form counts as a witness when no trailer links one; a hand-asserted implemented/verified/done with neither renders unknown, never a silent todo. Without --apply it also reports the rows --apply would write (JSON: wouldApply, present only when the run could look) and writes no stream README; it writes the drift report file only when --report is also given")
 	report := fs.Bool("report", false, "with --backfill: write docs/streams/board-drift-<date>.md, one row per brief where the last hand-edited (pre-generation) README cell disagrees with what this run derives; requires --backfill")
 	apply := fs.Bool("apply", false, "WRITE a witnessed todo|in-progress -> implemented cell back into the brief's stream README Status column (only, never Verified/Reviewed, never verified/done, never a demotion). Without --backfill only a `Brief:` trailer witness is written; with --backfill the declared branch/body match is written too. A row whose move would add a lint PROBLEM is held and reported, never written. Exits 3 when the PR read could not be done")
+	regenerate := fs.Bool("regenerate", false, "opt-in, with --apply or --backfill: a witnessed move on a driven stream whose only added PROBLEM is the drive-snapshot region it changes is judged with that region re-rendered, listed under the row's `generated`, and --apply also writes the docs/roadmap/drives/<slug>.md page beside the stream README. Off by default: such a row is held, and --apply writes stream READMEs only (what the scheduled reconcile job and deskreconcile commit)")
 	if err := fs.Parse(args); err != nil {
 		if err == flag.ErrHelp {
 			return reconcileOK
 		}
+		return reconcileUsageErr
+	}
+	if *regenerate && !*apply && !*backfill {
+		fmt.Fprintln(stderr, "reconcile: --regenerate requires --apply or --backfill (it changes which rows the lint hold admits)")
 		return reconcileUsageErr
 	}
 	if *report && !*backfill {
@@ -238,7 +248,7 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		} else if found {
 			var werr error
 			// The lint hold's progress goes to stderr: --json's stdout is unchanged.
-			opts := holdOptions{crossCheck: holdCrossCheck, progress: stderr}
+			opts := holdOptions{crossCheck: holdCrossCheck, progress: stderr, regenerate: *regenerate}
 			if rows, held, werr = reconcileWritesWith(boardRoot, cells, *apply, opts); werr != nil {
 				label := "reconcile --backfill"
 				if *apply {
@@ -382,6 +392,14 @@ func reconcileDetail(b BriefCell) string {
 	}
 }
 
+// printRegenerated prints the generated output a row's move re-renders with it
+// (#2694): the page and the drive whose snapshot region changes.
+func printRegenerated(w *os.File, a appliedRow, verb string) {
+	for _, g := range a.Generated {
+		fmt.Fprintf(w, "      %s: %s (drive-snapshot region, `statusgen --drive-snapshot %s`)\n", verb, g.Path, g.Drive)
+	}
+}
+
 func printReconcileTable(w *os.File, res reconcileResult) {
 	if !res.LookedAt {
 		fmt.Fprintf(w, "reconcile: could-not-check — %s\n", res.Reason)
@@ -404,12 +422,14 @@ func printReconcileTable(w *os.File, res reconcileResult) {
 		fmt.Fprintf(w, "%s: --apply would write %d row(s)\n", label, len(*res.WouldApply))
 		for _, a := range *res.WouldApply {
 			fmt.Fprintf(w, "  %-40s %s -> %s   %s\n", a.ID, a.From, a.To, a.Path)
+			printRegenerated(w, a, "would regenerate")
 		}
 	}
 	if len(res.Applied) > 0 {
 		fmt.Fprintf(w, "reconcile --apply: wrote %d row(s)\n", len(res.Applied))
 		for _, a := range res.Applied {
 			fmt.Fprintf(w, "  %-40s %s -> %s   %s   [%s]\n", a.ID, a.From, a.To, a.Path, a.Witness)
+			printRegenerated(w, a, "regenerated")
 		}
 	}
 	// Held rows print whether or not anything was written: a tick that holds

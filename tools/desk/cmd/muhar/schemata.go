@@ -668,8 +668,21 @@ func (h *Harness) schemataFor(root string, p *schemaPlan) *schemaTree {
 // whose suite -select narrows skips schemata (selectNarrows, selection.go).
 func (h *Harness) runMutation(root string, t *schemaTree, i int) (Result, error) {
 	m := h.Mutations[i]
-	if t != nil && t.ids[schemaID(i)] && !h.selectNarrows(root, m) && h.SchemaTest(root, t.overlay, schemaID(i)) {
-		return Caught, nil
+	if t != nil && t.ids[schemaID(i)] && !h.selectNarrows(root, m) {
+		// The schema run and a classic fallback each get the whole limit: a
+		// fallback on what the schema run left over would count a suite cut
+		// short as a TIMEOUT, so as CAUGHT (runOne).
+		if h.SchemaRun != nil {
+			out := h.SchemaRun(root, t.overlay, schemaID(i), h.MutationTimeout)
+			if out.TimedOut {
+				return Caught, suiteTimeout{h.MutationTimeout}
+			}
+			if out.Err == nil && out.Failed {
+				return Caught, nil
+			}
+		} else if h.SchemaTest(root, t.overlay, schemaID(i)) {
+			return Caught, nil
+		}
 	}
 	return h.runOne(root, m)
 }

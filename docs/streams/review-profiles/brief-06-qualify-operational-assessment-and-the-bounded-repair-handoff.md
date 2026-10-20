@@ -58,7 +58,7 @@ Read [the controlling spec](spec.md), [the plan](README.md), `tools/desk/interna
 
 2. Name observation window, source coverage, accountable practice owner and independent evaluator. Preserve actual versus proxy usage and source freshness; absent tools cannot appear efficient merely because uninstrumented. Include claimed PR benefits requiring later exposure and adverse/disconfirmed outcomes.
 
-3. Exercise confirmed observation → deduplicated issue proposal → bounded admitted repair → draft PR → independent review/verification → exposure reassessment using existing intake/work/effect interfaces and synthetic offline fixtures. Preserve occurrence/effect identity, cumulative budgets, cancellation, stop/escalation and restart semantics. This brief implements no automatic posting, merge, deployment, target rewrite or new scheduler.
+3. Exercise confirmed observation → deduplicated issue proposal → bounded admitted repair → draft PR → independent review/verification → exposure reassessment using existing intake/work/effect interfaces and synthetic offline fixtures. Preserve occurrence/effect identity, cumulative budgets, cancellation, stop/escalation and restart semantics. The draft-PR step is exercised as a synthetic fixture of the performance-collection/09 proposal path (its executor writes the `performance-repair` label and body marker, and its repair PRs are never admitted to an automated merge lane); this brief opens no repair PR of its own. This brief implements no automatic posting, merge, deployment, target rewrite or new scheduler.
 
 4. Document future mapping to continuing-operations O08/O10/O11 and the single cell controller: definitions, pure policy, coordinated attempts, isolated workers, role-bound effects, canonical evidence and optional performance copies remain distinct. Qualification must include stale evidence, duplicate cadence triggers, lost authorization and exhausted budget. Any actual cadence or repair authority is separately approved.
 
@@ -70,10 +70,11 @@ Versioned, scoped inputs and exact source revisions → explained assessment wit
 
 The named tests below are implementation deliverables, not claims that they exist today. Each must contain positive, negative and flow assertions described in Task; an empty test selection is not a pass.
 
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && go test -count=1 -v -run '^TestOperationalAssessment$' ./internal/reviewprofile > /tmp/review-profile-06.log && grep -F -- '--- PASS: TestOperationalAssessment ' /tmp/review-profile-06.log` | Manual offline journey works without telemetry backend; duplicate/stale/over-budget repair proposals cannot become new effects; adverse outcomes remain assessable. |
-| 2 | `cd tools/desk && go test -count=1 ./internal/arch ./internal/deskkit` | Existing ownership, dependency, scope and finding tests remain green; do not weaken controls to pass. |
+| # | Class | Command | Expect |
+|---|---|---|---|
+| 1 | check:ci +flow | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v -run '^TestOperationalAssessment$' ./internal/reviewprofile > "$o" && grep -F -- '--- PASS: TestOperationalAssessment ' "$o")` | Manual offline journey works without telemetry backend; duplicate/stale/over-budget repair proposals cannot become new effects; adverse outcomes remain assessable. |
+| 2 | check:ci | `cd tools/desk && go test -count=1 ./internal/arch ./internal/deskkit` | Existing ownership, dependency, scope and finding tests remain green; do not weaken controls to pass. |
+| 3 | check:ci +dereference | `statusgen --root . --consumers --brief review-profiles/06` | exit 0; the brief's routing claims are corroborated against the implementation diff, including each changed consumer. |
 
 ## Definition of done
 

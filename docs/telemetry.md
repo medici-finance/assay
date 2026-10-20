@@ -99,8 +99,10 @@ only meaningful mode, and it is purely local.
 
 The desk tools (`tools/desk/`) keep a separate, **local-only** performance log under the
 same promise and the same environment variable. With `ASSAY_TELEMETRY=1` exported, the
-67 operational desk commands each append one `perf-v1` record per completed invocation to
-`~/.config/assay/perf/<YYYY-MM-DD>.jsonl`; `deskperf report` and `deskperf boot` read it back.
+67 operational desk commands each append one `perf-v2` record per completed invocation to
+`~/.config/assay/perf/<YYYY-MM-DD>.jsonl`; `deskboot` boot steps, `cellctl desk` launch steps
+and `statusgen` still append the legacy `perf-v1` record. `deskperf report` and
+`deskperf boot` read both back (see [Two schemas](#two-schemas-perf-v1-and-perf-v2)).
 Day files are kept for 7 UTC days and pruned on write. With the variable unset — or set to
 anything other than exactly `1` — nothing is created: no directory, no file, no install id.
 
@@ -112,22 +114,24 @@ opted in gets nothing new. **The two-switch rule binds any future remote sink fo
 records in full**: a sender for the perf history needs its own explicit flag in addition
 to `ASSAY_TELEMETRY=1`, exactly as `statusgen --telemetry` does.
 
-Every record carries exactly these fields and no field capable of holding free text:
+A `perf-v1` record — the legacy schema, frozen: its fields and their meanings never change, and
+history already on disk is never reinterpreted — carries exactly these fields and no field
+capable of holding free text:
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `schema` | string | Record schema version, `perf-v1`. Adding any field bumps it. |
+| `schema` | string | Record schema version, `perf-v1`. Adding any field bumps it (perf-v2 is that bump). |
 | `ts` | string | UTC timestamp, second resolution. |
 | `tool` | string | The desk tool's canonical key from a compiled-in roster; anything else is `other`. |
-| `verb` | string | The tool's own registered subcommand, or `other`; a boot step is `step:<name>` from `deskboot`'s compiled step list (else `step:other`). Never argv text. |
+| `verb` | string | The tool's own registered subcommand, or `other`; a boot step is `step:<name>` from `deskboot`'s compiled step list, and a `cellctl desk` launch phase is `step:launch-<phase>` from `cellctl`'s compiled launch-step list (else `step:other`). Never argv text. |
 | `role` | string | `$DESK_LOOP` mapped onto the compiled loop-name roster; unset or unknown is `none`. |
-| `wallMs` | int | Wall-clock duration of the invocation (or boot step). |
+| `wallMs` | int | Wall-clock duration of the invocation (from the wrapper's own start) or of the boot/launch step. |
 | `cpuMs` | int, optional | Process user+system CPU; **omitted** where it cannot be measured (Windows, boot steps), so "unmeasured" never reads as zero. |
 | `exit` | int | The verb's exit code. |
 | `result` | string | The exit code mapped onto a fixed word (`ok`, `disabled`, `refused`, `unverifiable`); never the input. |
-| `childProcs` | int | Child processes the invocation started through the shared subprocess runner (`deskkit.Run`). |
-| `childWallMs` | int | The summed wall time of those counted children. |
-| `forgeCalls` | int | HTTP round-trips through the forge client's counting transport (counted, never inspected). |
+| `childProcs` | int | Child process attempts through `deskkit.Run`, `RunProcess` or `OutputProcess`, including failed starts. |
+| `childWallMs` | int | The summed wall time of those counted attempts; overlapping children are not elapsed workflow time. |
+| `forgeCalls` | int | HTTP attempts reaching the forge client's leaf counting transport, including failures, retries and 304 responses; local refusals are excluded. Requests are not GraphQL quota points. |
 | `sourceSHA` | string | The binary's build stamp when it is hex, else `unpinned`. |
 | `install` | string | 32 random hex characters minted once per state directory. Identifies nothing but the install. |
 
@@ -135,13 +139,119 @@ Every record carries exactly these fields and no field capable of holding free t
 they are lower bounds, not totals. A verb that starts its own children or makes its own
 HTTP calls outside them is not counted. The known cases: `deskboot` starts its boot-step
 children through its own runner; `desktoken`'s token mint and `deskpost`'s posts use their
-own direct HTTP client; and the repository-visibility read uses one when no client is
-injected. A `0` from those tools means "not counted", not "none made".
+own direct HTTP client; and other command-specific direct transports remain outside this inventory. A `0` from those tools means "not counted", not "none made".
+
+### Review workflow attribution and coverage
+
+`deskboard` records the parsed operation, preserving canonical aliases (`todo`, `next`
+and `next-up` map to `dispatch`). Output flags are not operations. `issueboard` records
+`board`, `issues` or `intake` from its selected handler, including the default board.
+The deskboard Cobra adapter keeps help/version and parse refusals outside its
+recording callback (no sample); the other adapters retain allowlisted spellings or
+`other` for early rejection. A failed operation still carries its selected operation
+and original exit. No parser is duplicated to obtain attribution.
+
+`deskdispatch` records `dispatch:worker`, `dispatch:worker-objective`, `dispatch:review`
+or `dispatch:verifier`, and the corresponding `stamp-only:<kit>` constants. Kit comes
+from the existing parser (default `worker`), with its existing case/space normalization;
+it never comes from session role or an item key. Unknown kit/arguments remain `other`.
+These are additive values of the existing `verb` string, not new perf-v1 fields. Existing
+`deskperf` readers decode and display them unchanged; legacy rows are not reclassified.
+The current dispatch CLI port must keep these handler calls when it changes adapters.
+
+| Three-tool inventory | Coverage and boundary |
+|---|---|
+| `deskboard` statusgen version, gate-score and next-up launches | `OutputProcess` observes all four source sites without trimming bytes, replacing stderr, changing environment or wrapping the original error. |
+| `deskdispatch` claim, worktree, roster and Git children | Existing `Run` delegates to `RunProcess` once; local argv/trace/redaction and error causes stay with the existing runner. |
+| Shared role minter, verifier Git, run-key/dispatch-ref Git, lifecycle hooks and optional content/risk/advisor callouts | Raw process observers retain each owner's cancellation, process-group cleanup, streams, environment and refusals. All callers of these shared helpers gain counters. |
+| `issueboard` direct children | None in the command package; shared helpers above still apply. |
+| Resolved GitHub REST/GraphQL, GitHub diff, GitLab SDK | Existing counter; the GitHub conditional wrapper counts at its delegated leaf. A request refused locally by the board quota floor costs zero HTTP attempts. A validated 304 still counts one attempt. |
+| Shared account-liveness and visibility reads | Copy the existing client with a counting transport, preserving its redirect/timeout policy and caller-owned client. |
+| External claim scripts, statusgen, token minter and hooks' own descendants/HTTP | Not recursively instrumented by the parent. Their child counts/CPU/requests remain unknown unless independently measured. |
+| Other command-specific runners, preflight/migration/lock-holder inspection, direct mint/post HTTP | Outside these three tools' direct inventory; existing lower-bound semantics remain. This change is not fleet-wide complete coverage. |
+
+`cpuMs` measures only the current process; descendant and inclusive CPU are unavailable
+in perf-v1. Do not add child `cpuMs` to a parent's inclusive measurement. Do not add
+`childWallMs` to `wallMs`, or sum overlapping invocation wall times as elapsed time.
+The record carries neither endpoint/retry/304 breakdown nor GraphQL quota points;
+those distinctions remain unknown in this dataset, even though every delegated attempt
+is counted. The qualification fixtures can observe these distinctions independently.
+Performance-collection/01–02 own richer coverage, correlation and quota events. No new
+collection consent, sender, spool, sink or listener is enabled here; the one schema expansion
+is the versioned `perf-v2` record below, and it adds no consent or sender either.
+
+### Two schemas: perf-v1 and perf-v2
+
+Since desktools-v2/61, `deskkit.PerfRun` — the wrapper around every operational desk
+command — writes `perf-v2`. Boot and launch step records and `statusgen` keep writing
+`perf-v1`. Both live in the same day files; a reader groups by `schema` and never merges the
+two, because their `wallMs` is measured over different boundaries. A `perf-v2` record carries
+exactly these fields:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string | `perf-v2`. |
+| `ts`, `tool`, `verb`, `role`, `exit`, `result`, `sourceSHA`, `install` | | As in perf-v1, and every label (`tool`, `verb`, `role`) also passes perfrec's label gate — lower-case, at most 64 characters, roster-shaped — or is recorded as `other`. |
+| `boundary` | string | Where the measurement starts: `process-init` (the default: a mark taken while the shared `perfrec` package initialises, before any importer's initialisers and before `main`) or `caller` (a mark a caller took itself). |
+| `wallMs` | int | Wall time from the boundary mark to the end of the measured work. Executable load, Go runtime start-up and the standard-library initialisers `perfrec` imports precede a `process-init` mark and are NOT included; writing the record (encoding, install-id read, prune, append) follows the end and is NOT included. A verb's configuration echo and activation checks in `main` ARE included. Whole-executable elapsed time is a separate benchmark, never this field. |
+| `cpu` | string | CPU coverage state: `measured` (`cpuMs` present), `unsupported` (the platform has no reader, e.g. Windows), `failed` (a read failed, or the clock went backwards), `missing` (the switch was off when the process started, so no start sample exists). Only `measured` carries a number. |
+| `cpuMs` | int, only when `cpu` is `measured` | This process's user+system CPU over the SAME interval as `wallMs`: the start sample is read with the boundary's wall reading and the end sample right after the end wall reading. Own process only; descendants are never included. |
+| `counters` | object | Each counter that was measured, with its count (a measured zero is `0`). |
+| `unavailable` | array | Each counter that was NOT measured, in roster order. `counters` and `unavailable` together list every roster counter exactly once, so "not observed" never reads as zero. |
+| `phases` | array of `{name, n, ms}` | Timed phases from the tool's own fixed roster (at most 16 names; any other name is `other`): instance count and summed ms per name. Empty when the tool times none. |
+| `phaseOverlap` | bool | A phase started while another was open: the phase ms then overlap and must not be summed against `wallMs`. |
+
+The counter roster is closed: `subprocess` and `subprocessMs` (child process attempts through
+the shared runners, and their summed inclusive wall), `http` (HTTP attempts reaching the
+counting transport), `cacheLookup`, `cacheHit`, `cacheMiss`, `cacheRefresh` (a shared cache's
+outcomes), and `waitShared`, `waitFailed`, `waitAbandon` (a coalesced waiter that received a
+shared result, received the leader's failure, or gave up). `PerfRun` measures `subprocess`,
+`subprocessMs` and `http` through the same seams and with the same lower-bound meaning as
+perf-v1's `childProcs`, `childWallMs` and `forgeCalls`; until desktools-v2/62 places provider
+hooks, every cache and waiter counter is `unavailable`. Measurement adapters only observe an
+effect that already happened; none can start a credential, provider, network or process call.
+
+Rules for any reader, enforced by `deskperf`:
+
+- Never add `subprocessMs` or phase `ms` to `wallMs`: both are inclusive, already inside it.
+- Never add a step record (`verb` `step:<name>`) to an invocation total: the step is inside a
+  `deskboot` or `cellctl` invocation that has its own record. Steps appear only in
+  `deskperf boot`.
+- A sum of `wallMs` over many records is summed invocation time, not elapsed time: concurrent
+  invocations overlap. `deskperf report` labels its perf-v2 total that way.
+- A CPU or counter distribution is over the records that MEASURED it; `unavailable`,
+  `unsupported`, `failed` and `missing` are coverage to report, never zeros to average in.
+- `perf-v1` totals and `perf-v2` totals are not comparable and are reported as separate
+  groups; a perf-v1-only history renders exactly as it did before perf-v2.
+
+`deskperf report` therefore prints the legacy perf-v1 group first (unchanged lines and JSON
+`summary`), then a perf-v2 group (JSON `perfV2`) with its boundary and CPU-state counts,
+phase-overlap count, per-tool wall and measured-CPU distributions, per-counter
+measured/unavailable counts with totals over measured records only, and per-phase
+distributions. The `perfrec` module's README documents the recorder API for other
+standalone tools.
 
 Never recorded: argv, flag values, repo, PR or issue numbers, branch, path, title, body,
 error text, session tag, environment values, hostname, user name, or tokens. A test plants a
 repo slug, a PR number, a branch, an absolute path, a session tag and a token-shaped
 environment value, and asserts none of them appears in the written bytes.
+
+### statusgen writes the same local record
+
+`statusgen` appends to the same history. With `ASSAY_TELEMETRY=1` exported, each `statusgen`
+process writes one legacy `perf-v1` record on exit into the same `~/.config/assay/perf/` day files,
+with `tool` set to `statusgen`, `verb` the mode that ran (a positional sub-command such as
+`verifyrun`, else the first mode flag such as `--lint`, else `regen` for a plain run; a token
+outside that compiled-in roster is `other`), `exit` the process exit code and `result` its
+fixed word. `role` is `none`, `sourceSHA` is the build stamp when it is hex (a release tag or
+`dev` is `unpinned`), and the child and forge counters stay `0` ("not counted"), so
+`deskperf report --tool statusgen` reads it like any other tool. With the variable unset, or
+anything other than exactly `1`, `statusgen` creates nothing and behaves as it did before.
+
+This is the same local file, not the network payload above: the payload still needs
+`--telemetry` as well, and nothing in this section sends anything. The record is written by
+one shared module (`perfrec/`) that the desk tools and `statusgen` both call, so the schema,
+layout, retention and install id exist once.
 
 The perf history is not the desk audit ledger and never reads or writes it. It also holds no
 agent usage: per-invocation tokens and cost belong to the agent runner's own usage record.
@@ -156,10 +266,40 @@ introduced.
 
 Every operational command under tools/desk/cmd has exactly one optional performance wrapper.
 The inventory test maintains two explicit exceptions: deskperf must not measure its own report
-reads, and muhar is a developer mutation harness. The original seven commands keep their
-registered verb vocabularies; added commands record the fixed `other` verb. User argv, file
+reads, and muhar is a developer mutation harness. The review workflow commands select their closed vocabulary from the actual parsed
+operation; other commands retain their existing registered vocabularies and fallbacks. User argv, file
 paths, subjects, credentials and free-form error messages never enter these records.
 On/off does not change exit codes or stdout/stderr; a failed sink cannot fail an operation.
 Coverage is terminal observations, not a running-process census: killed or still-running
 commands may have no record. Child and forge counters retain the documented lower bounds;
 adding wrappers does not make custom runners or HTTP clients counted transports.
+
+## Planned perf-v3 workflow profile — 19 October 2026
+
+The [attributed performance specification](performance-attribution-spec.md) is a future
+contract, delivered by desktools-v2/63–65. No perf-v3 producer is implemented by this
+amendment. The preceding field prohibitions remain binding on perf-v1/perf-v2; this section
+scopes their future exception to a new schema and explicit workflow profile only.
+
+Existing `ASSAY_TELEMETRY=1` without a selected new profile keeps prior producer behavior.
+Explicit tool profile adds bounded v3 measurements without work/session/agent correlation;
+workflow profile permits typed qualified **local** brief/issue references, random logical
+session/agent IDs, fresh tool invocation and parent IDs, desk role and assigned execution
+role. Local workflow data is identifiable, not anonymous. Unknown or invalid context remains
+coverage, never guessed identity. No raw argv/path/title/body/error/credential or arbitrary
+environment capture is permitted. File permissions and the seven-UTC-day diagnostic window
+remain; a writer failure cannot change the tool result. There is no new sender or listener.
+
+V3 also carries own-process forge attempt/timing observations and actual/estimated/unknown
+GraphQL points with explicit units and measured sample coverage. Children emit their own
+observations; parent inclusive time and child/request time are never summed into elapsed
+workflow time. Future perfdata import applies its own explicit workflow consent and
+source/epoch aliases before preview or upload; it never forwards raw local work locators or
+native harness IDs. Existing counts-only network telemetry and its two switches are unchanged.
+
+The planned v3 contract includes query/cache-service calls as a separate observation boundary:
+client logical/transport counts and latency, handler/cache/coalescing work, and actual upstream
+provider attempts/cost. Optional opaque diagnostic links can use only a separately admitted
+service protocol/transport with workflow consent at both ends; a selected profile alone never
+adds headers or forwards raw work/session/agent locators. Shared refresh cost is counted once,
+missing server measurements remain unknown, and process CPU cannot be duplicated per handler.

@@ -174,7 +174,16 @@ func observeBrief(root, path, id string, bf *BriefFile) evaluation.BriefObservat
 			obs.DeclaredFiles = append(obs.DeclaredFiles, filepath.ToSlash(e))
 		}
 	}
-	for _, r := range briefVerifyRows(bf.Verify) {
+	plan, refusal := protectedAcceptance(bf.Verify, bf.Evidence, path)
+	if refusal != "" {
+		// Retain visible rows and an explicit held observation. Empty rows
+		// alone could be released by a separate pattern binding's claims.
+		obs.AcceptanceProblem = refusal
+		plan.Verify = bf.Verify
+	}
+	obs.AcceptanceRevision = plan.Original
+	obs.AcceptanceRevisions = plan.Revisions
+	for _, r := range briefVerifyRows(plan.Verify) {
 		row := evaluation.VerifyRow{
 			ID: r.ID, Command: r.Command, Expect: r.Expect,
 			Shell: r.Shell, Obligations: r.Obligations, ProseLed: r.ProseLed,
@@ -184,7 +193,7 @@ func observeBrief(root, path, id string, bf *BriefFile) evaluation.BriefObservat
 		}
 		obs.VerifyRows = append(obs.VerifyRows, row)
 	}
-	for rowID, rows := range parseEvidenceRows(bf.Evidence) {
+	for rowID, rows := range parseEvidenceRows(plan.Evidence) {
 		for _, er := range rows {
 			if !isWitnessRow(er.Text) {
 				continue

@@ -1,0 +1,203 @@
+{
+  "test": "go test . -count=1 -timeout 60s -run '^(TestWorkspaceContractRoundTrip|TestWorkspaceSchemaCoverage|TestWireUnicode|TestWireOtherDecoders|TestWireTruncated|TestPathByteLimit)$'",
+  "control": {
+    "name": "CONTROL \u2014 accept unknown schema: a cell-workspace/v2 (or schema-less) document is read as v1",
+    "file": "contract.go",
+    "old": "func checkSchema(s string) error {\n\tif s != Schema {",
+    "new": "func checkSchema(s string) error {\n\tif false && s != Schema {"
+  },
+  "mutations": [
+    {
+      "name": "a changed payload replayed under an existing key is accepted as the same allocation",
+      "file": "contract.go",
+      "old": "\tif prior.PayloadDigest != q.Digest() {",
+      "new": "\tif false && prior.PayloadDigest != q.Digest() {"
+    },
+    {
+      "name": "the repository key drops the forge, so two forges with the same repository path share a directory",
+      "file": "contract.go",
+      "old": "sha256.Sum256([]byte(r.Forge + \"\\x00\" + r.Repository))",
+      "new": "sha256.Sum256([]byte(r.Repository))"
+    },
+    {
+      "name": "a transition succeeds against a generation the caller did not read (lost compare-and-set)",
+      "file": "contract.go",
+      "old": "\tif r.Generation != expected {",
+      "new": "\tif false && r.Generation != expected {"
+    },
+    {
+      "name": "a repeated key at any depth is accepted (last value silently wins)",
+      "file": "contract.go",
+      "old": "\t\t\tif _, dup := obj[k]; dup {",
+      "new": "\t\t\tif _, dup := obj[k]; false && dup {"
+    },
+    {
+      "name": "a null or explicitly empty optional field is accepted as absent",
+      "file": "contract.go",
+      "old": "\t\t\tif ina != inb {",
+      "new": "\t\t\tif false && ina != inb {"
+    },
+    {
+      "name": "a failed result may still hand out a record (a path to work in)",
+      "file": "contract.go",
+      "old": "\tif s.Record != nil {\n\t\treturn refuse(ReasonInvalid, \"record\", \"a %s outcome hands out no workspace\", s.Outcome.Kind)",
+      "new": "\tif false && s.Record != nil {\n\t\treturn refuse(ReasonInvalid, \"record\", \"a %s outcome hands out no workspace\", s.Outcome.Kind)"
+    },
+    {
+      "name": "an active record no longer needs a process lease",
+      "file": "contract.go",
+      "old": "\t} else if r.State == StateActive {",
+      "new": "\t} else if false && r.State == StateActive {"
+    },
+    {
+      "name": "a review workspace may hold a branch instead of a detached subject",
+      "file": "contract.go",
+      "old": "\t\tcase KindReview, KindVerify, KindCheck:\n\t\t\treturn refuse(",
+      "new": "\t\tcase \"\":\n\t\t\treturn refuse("
+    },
+    {
+      "name": "the transition table admits retired -> active (a tombstone comes back to life)",
+      "file": "contract.go",
+      "old": "\tStateRetired:    nil,",
+      "new": "\tStateRetired:    {StateActive},"
+    },
+    {
+      "name": "the canonical encoding HTML-escapes <, > and & as json.Marshal does, so a payload digest cannot be reproduced from the spec's canonical bytes",
+      "file": "contract.go",
+      "old": "\tenc.SetEscapeHTML(false)",
+      "new": "\tenc.SetEscapeHTML(true)"
+    },
+    {
+      "name": "the canonical encoding keeps the encoder's trailing newline",
+      "file": "contract.go",
+      "old": "\tb := bytes.TrimSuffix(buf.Bytes(), []byte(\"\\n\"))",
+      "new": "\tb := buf.Bytes()"
+    },
+    {
+      "name": "U+2028 stays escaped in the canonical encoding instead of being written as UTF-8",
+      "file": "contract.go",
+      "old": "\t\t\tcase \"2028\":",
+      "new": "\t\t\tcase \"2028-\":"
+    },
+    {
+      "name": "an escaped backslash followed by the text u2028 is rewritten as a line separator",
+      "file": "contract.go",
+      "old": "\t\tout = append(out, b[i], b[i+1])\n\t\ti++",
+      "new": "\t\tout = append(out, b[i])"
+    },
+    {
+      "name": "identifiers admit a space (the visible-ASCII range starts one character early)",
+      "file": "contract.go",
+      "old": "idRe         = regexp.MustCompile(`^[!-~]{1,256}$`)",
+      "new": "idRe         = regexp.MustCompile(`^[ -~]{1,256}$`)"
+    },
+    {
+      "name": "a network (UNC) root is admitted as an absolute path",
+      "file": "contract.go",
+      "old": "absPathPattern = `^(/|[A-Za-z]:[\\\\/])((`",
+      "new": "absPathPattern = `^(/|[A-Za-z]:[\\\\/]|\\\\\\\\)((`"
+    },
+    {
+      "name": "a .. segment is admitted after the first separator",
+      "file": "contract.go",
+      "old": "`|\\.?))*)?$`",
+      "new": "`|\\.?|\\.\\.))*)?$`"
+    },
+    {
+      "name": "a control character is admitted inside a path segment",
+      "file": "contract.go",
+      "old": "pathChar       = `[^` + pathCtl + `/",
+      "new": "pathChar       = `[^` + `/"
+    },
+    {
+      "name": "a path that is not valid UTF-8 is admitted",
+      "file": "contract.go",
+      "old": "!utf8.ValidString(p) ||",
+      "new": "false ||"
+    },
+    {
+      "name": "workspace decoders bypass wire integrity and silently replace malformed Unicode",
+      "file": "contract.go",
+      "old": "\tif err := checkWire(data); err != nil {",
+      "new": "\tif err := checkWire(data); false && err != nil {"
+    },
+    {
+      "name": "path bound counts Unicode characters instead of decoded UTF-8 bytes",
+      "file": "contract.go",
+      "old": "len(p) > 4096",
+      "new": "utf8.RuneCountInString(p) > 4096"
+    },
+    {
+      "name": "a high surrogate followed by a backslash that starts no \\u escape is accepted",
+      "file": "contract.go",
+      "old": " || data[i+1] != '\\\\' || data[i+2] != 'u' {",
+      "new": " || data[i+1] != '\\\\' {"
+    },
+    {
+      "name": "a low surrogate in first position is accepted as the start of a pair",
+      "file": "contract.go",
+      "old": "if code > 0xdbff || i+6",
+      "new": "if i+6"
+    },
+    {
+      "name": "a high surrogate followed by an escape above the low-surrogate range is accepted",
+      "file": "contract.go",
+      "old": "low < 0xdc00 || low > 0xdfff {",
+      "new": "low < 0xdc00 {"
+    },
+    {
+      "name": "a high surrogate followed by text that merely contains u is read as a pair",
+      "file": "contract.go",
+      "old": "i+6 >= len(data) || data[i+1] != '\\\\' ||",
+      "new": "i+6 >= len(data) ||"
+    },
+    {
+      "name": "the lexer runs on syntactically invalid JSON and panics on a truncated escape",
+      "file": "contract.go",
+      "old": "!utf8.Valid(data) || !json.Valid(data) {",
+      "new": "!utf8.Valid(data) {"
+    },
+    {
+      "name": "a second high surrogate just below the low range is accepted as a pair's low half",
+      "file": "contract.go",
+      "old": "low < 0xdc00 ||",
+      "new": "low < 0xdbff ||"
+    },
+    {
+      "name": "the lowest low surrogate is refused as the second half of a valid pair",
+      "file": "contract.go",
+      "old": "low < 0xdc00 ||",
+      "new": "low < 0xdc01 ||"
+    },
+    {
+      "name": "the code point just below the surrogate range is treated as a surrogate",
+      "file": "contract.go",
+      "old": "if code < 0xd800 || code > 0xdfff {",
+      "new": "if code < 0xd7ff || code > 0xdfff {"
+    },
+    {
+      "name": "the code point just above the surrogate range is treated as a surrogate",
+      "file": "contract.go",
+      "old": "if code < 0xd800 || code > 0xdfff {",
+      "new": "if code < 0xd800 || code > 0xe000 {"
+    },
+    {
+      "name": "wire bytes that are not valid UTF-8 reach the lossy decoder",
+      "file": "contract.go",
+      "old": "if !utf8.Valid(data) || !json.Valid(data) {",
+      "new": "if !json.Valid(data) {"
+    },
+    {
+      "name": "an escaped backslash is not consumed as a pair, so literal text \\\\ud800 reads as a surrogate",
+      "file": "contract.go",
+      "old": "if data[i+1] != 'u' {\n\t\t\ti++\n\t\t\tcontinue",
+      "new": "if data[i+1] != 'u' {\n\t\t\tcontinue"
+    },
+    {
+      "name": "a high surrogate followed by any \\u escape below the low range is accepted",
+      "file": "contract.go",
+      "old": "err != nil || low < 0xdc00 ||",
+      "new": "err != nil ||"
+    }
+  ]
+}

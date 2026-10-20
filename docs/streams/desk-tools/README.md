@@ -194,7 +194,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 12 | [`statusgen brief <stream/NN>` — resolve an item key to its file, frontmatter and board row, as JSON](brief-12-statusgen-brief-subcommand.md) | 1 | M | done | 2026-09-16 verify-desk (desk-tools/12 dispatched verifier; 9/9 rows PASS, corrects a prior over-broad row-8 HELD; risk-value DERIVED on exit-code contract) | 2026-09-17 assay-reviewer-app[bot] (approved PR #1237 @ 27030b470e5c4381915c3a25da4f9602c6ab771c) |
 | 13 | [`pr-monitor.sh` — a paced, per-repo head-sha / draft-state PR monitor shipped in the plugin tree](brief-13-paced-pr-monitor.md) | 1 | M | done | 2026-09-15 sonnet-5-verifier (8/8 rows PASS incl. a negative-control call-count assertion; risk-value DERIVED) | 2026-09-15 assay-reviewer-app[bot] (approved PR #1118 @ d7af8a7ba30d4aa86e3d1b64d956b22396fd6cf8) |
 | 14 | [bodycheck — three measured false-positive classes into the negative corpus, plus `--explain`](brief-14-bodycheck-negative-classes-and-explain.md) | 1 | M | done | 2026-09-07 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #609 @ f82d0db3ffafb37fb16d262a52b5f2988981869d) |
-| 15 | [`deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home](brief-15-deskdispatch-dryrun-worktree.md) | 1 | S | implemented | — | — |
+| 15 | [`deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home](brief-15-deskdispatch-dryrun-worktree.md) | 1 | S | verified | 2026-10-19 assay-verifier-app[bot] @ 810a5edf064b (claude-opus-5-5) | — |
 | 16 | [`deskevidence` — an Evidence block equivalent to one already standing is a no-op, not a second block](brief-16-deskevidence-block-equivalence-noop.md) | 1 | S | done | 2026-09-15 sonnet-5-verifier (7/7 rows PASS incl. a negative-control equivalence test; risk-value DERIVED) | 2026-09-15 assay-reviewer-app[bot] (approved PR #736 @ 95a31a5698e3943ae16efb01cb642d08d573da57) |
 | 17 | [One trust bar for public-repo authors — `deskboard` classifies on the same predicate `deskpost` gates on](brief-17-one-trust-bar-public-authors.md) | 1 | M | implemented | — | — |
 | 18 | [Public-repo write gate — an allowed-repos entry tagged `:public` authorizes outward writes, replacing the per-item `+1` reaction check](brief-18-allowed-public-repos-write-gate.md) | 1 | M | implemented | — | — |
@@ -202,7 +202,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 20 | [Cross-repo triage/verify evidence binds to the remote — a sibling checkout must be cross-checked, not trusted as-is](brief-20-cross-repo-remote-verify.md) | 1 | S | done | 2026-09-06 opus-4.8[1m]-verifier | 2026-09-07 assay-reviewer-app[bot] (approved PR #556 @ b3294437716536ad815cf13b2b80490e7bf4a4df) |
 | 21 | [`DESK_TRACE` and cause-carrying errors — one subprocess runner, and a swallowed child's message reaches the operator on the first read](brief-21-desk-trace-and-cause-carrying-errors.md) | 1 | M | implemented | — | — |
 | 22 | [Trust-gate account-liveness NOTICE — `deskroster liveness` reads what GitHub currently says about a trusted login, without touching `TrustedAuthor`'s verdict](brief-22-trust-gate-account-liveness-notice.md) | 1 | M | done | 2026-09-16 verify-desk (desk-tools/22 dispatched verifier; 13/13 rows PASS; risk-values DERIVED x2, NAMED-NOT-DERIVED x2 filed assay#1242) | 2026-09-17 assay-reviewer-app[bot] (approved PR #1243 @ d156ff7d8e6cff02d849b652a9bb5075fd964cdf) |
-| 23 | [Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it](brief-23-usage-and-timing-telemetry.md) | 2 | M | implemented | — | — |
+| 23 | [Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it](brief-23-usage-and-timing-telemetry.md) | 2 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 24 | [Audit ledger — bounded tail read in `Guard`, no `desktoken` cache-reuse rows, daily rotation, and a `deskaudit tail` read verb](brief-24-audit-ledger-tail-read-and-rotation.md) | 2 | M | done | 2026-09-17 sonnet-5-verifier (14/14 rows PASS incl. SPOF equivalence + 10/10 mutation-caught; found+filed unrelated statusgen consumers bug assay#1296; risk-values DERIVED) | 2026-09-18 assay-reviewer-app[bot] (approved PR #1297 @ 08829451c27fb6a8f943349b8e9b78e8965e1541) |
 | 25 | [One token lookup per owner per process — a memo in front of the minter, and `desktoken` consulting its cache BEFORE it resolves the install id](brief-25-token-memo-and-cache-before-install-id.md) | 2 | M | done | 2026-09-18 sonnet-5-verifier (desk-tools/25 dispatched verifier; 18/19 rows checked-clean direct, 1 pre-existing unrelated drift filed separately; risk-values DERIVED) | 2026-09-19 assay-reviewer-app[bot] (approved PR #1315 @ 7d1c1e09e432ce88ced8b65151708d06702c1e8f) |
 | 26 | [`deskwt prune` — one origin/main walk per sweep, the merge gate before `Status()`, batched removal, a read-only `--dry-run`, and a prune singleton](brief-26-deskwt-prune-one-walk-and-a-lock.md) | 2 | M | implemented | — | — |
@@ -215,6 +215,23 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 34 | [Pinned golangci-lint across every Go module](brief-34-pinned-golangci-lint-across-every-go-module.md) | 1 | M | todo | — | — |
 | 35 | [Go security analysis with gosec and govulncheck](brief-35-go-security-analysis-with-gosec-and-govulncheck.md) | 2 | L | todo | — | — |
 | 36 | [The scheduled board reconcile's PR class becomes generated output — auto-approve lane (default) or direct-CI single-writer, per the driver's ruling on #2688](brief-36-reconcile-generated-class.md) | 1 | S | implemented | — | — |
+| 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | todo | — | — |
+| 38 | [Correct desk performance attribution and counter coverage](brief-38-correct-desk-performance-attribution-and-counter-coverage.md) | 2 | M | implemented | — | — |
+| 39 | [Extract shared review observation and pure planning contracts](brief-39-extract-shared-review-observation-and-pure-planning-contracts.md) | 2 | M | todo | — | — |
+| 40 | [Deliver one review queue observation and offline planning bridge](brief-40-deliver-one-review-queue-observation-and-offline-planning-bridge.md) | 3 | M | todo | — | — |
+| 41 | [Share exact-source review preparation context](brief-41-share-exact-source-review-preparation-context.md) | 3 | M | todo | — | — |
+| 42 | [Narrow issue discovery projections before enrichment](brief-42-narrow-issue-discovery-projections-before-enrichment.md) | 3 | M | in-progress | — | — |
+| 43 | [Migrate review callers with qualified versions and rollback](brief-43-migrate-review-callers-with-qualified-versions-and-rollback.md) | 4 | M | todo | — | — |
+| 44 | [Qualify complete workflow cost and last-consumer retirement](brief-44-qualify-complete-workflow-cost-and-last-consumer-retirement.md) | 5 | M | todo | — | — |
+| 45 | [Expose the canonical verification queue to its consumers](brief-45-expose-the-canonical-verification-queue-to-its-consumers.md) | 1 | M | todo | — | — |
+| 46 | [Reuse accepted verification inputs to stop repeated PASS dispatch](brief-46-reuse-accepted-verification-inputs-to-stop-repeated-pass-dispatch.md) | 2 | M | todo | — | — |
+| 47 | [Resume interrupted Evidence landing through the existing sanctioned paths](brief-47-resume-interrupted-evidence-landing-through-the-existing-sanctioned-paths.md) | 3 | M | todo | — | — |
+| 48 | [Report remaining landing capacity from the enforced budget owners](brief-48-report-remaining-landing-capacity-from-the-enforced-budget-owners.md) | 2 | M | todo | — | — |
+| 49 | [Deduplicate verifier filings by their canonical work identity](brief-49-deduplicate-verifier-filings-by-their-canonical-work-identity.md) | 1 | M | todo | — | — |
+| 50 | [Bind verifier environment evidence to the run admission](brief-50-bind-verifier-environment-evidence-to-the-run-admission.md) | 1 | M | todo | — | — |
+| 51 | [Drive the verifier skill from the current queue and landing contract](brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md) | 4 | M | todo | — | — |
+| 52 | [Link decision and verification cards without conflating their authority](brief-52-link-decision-and-verification-cards-without-conflating-their-authority.md) | 1 | M | todo | — | — |
+| 53 | [Rename pr-review-desk to review-desk without breaking live windows or adopters](brief-53-rename-pr-review-desk-to-review-desk.md) | 1 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -269,3 +286,147 @@ in PR #2620. They do not mark desk-tools/32 implemented or resurrect its closed 
   alternation.
 - The desk-tools binaries are consumed as pinned release binaries via `.assay-versions`;
   desk-tools source changes are authored here under `tools/desk/`.
+
+## Review-efficiency follow-ons
+
+Approved source: [workflow-efficiency spec](../../desk-workflow-efficiency-spec.md),
+with [consolidation and active-work checkpoints](../../desk-workflow-efficiency-change-map.md#authored-delivery-routing).
+The maintainer confirmed merge of #3322 as approval on 17 October 2026. Briefs 37–44
+are implementation contracts, not delivery claims. Preserve /23–27 implementation/Evidence.
+
+Critical path: `37 -> (38 and 39) -> (40 and 41) -> 43 -> 44`.
+The smallest unblocking move is /37's independent semantic/cost fixture; the missing
+complete observation and attribution were checked against current source. Building the
+whole mirror, a persistent cache, or the future runtime first does not resolve this blocker.
+
+- Wave 1: 37 (no new prerequisite).
+- Wave 2: 38 and 39 after 37.
+- Wave 3: 40 and 41 after 38+39; 42 after 38 runs independently.
+- Wave 4: 43 after 40+41; review migration does not wait for issue projection 42.
+- Wave 5: 44 after 41+42+43.
+
+The richer phase schema, adapters and tool panel amend performance-collection/01, /02,
+/07 (stream remains parked). Future serving amends forge-neutral/37–45; only its /39
+public contract mapping waits for desk-tools/39 and /45 qualification for desk-tools/43–44.
+The early lane has no reverse service/DB dependency. Active parser ports #3248/#3302,
+proposed supervision #3325 and generic improvement #3305 are pickup checkpoints, not
+assumptions of shipped behavior. Read-only release, installed caller adoption, writer
+handover and control retirement are separate claims with their existing gates.
+
+
+## Verification flow refresh — 2026-10-17
+
+Checked source: 8f1206fe5eb4b4ab19f5f2f7266c515aa71f8eae. This plan authors
+remaining source work; it claims no implementation, activation or rollout.
+
+### What exists and what remains
+
+The current owned-queue classifier is bucketAwaiting/placeAwaiting, not the old
+blockerSegment/classifyAwaiting design. The board already distinguishes human gate,
+implementer rework, environment-blocked, runner-pending, desk-actionable and unknown
+states, with separate paused/parked handling. runGateScores still drops those facts
+from its JSON rows, and throughput still counts every implemented brief as verify
+depth. Export and consume the canonical meaning rather than add a second taxonomy.
+
+The planner already suppresses unchanged failed/blocked wake receipts, preserves
+partial-row holds, routes stuck flips and supports Evidence-only human work.
+The remaining successful-run gap is matching accepted PASS provenance to the actual
+current Verify definition and declared input revisions. A nonempty Evidence section
+or a display SHA alone is insufficient.
+
+deskevidence flip already makes a derived, lint-checked branch commit. It refuses
+human/risk-bearing briefs and delegates the strict source/runner/provenance checks
+to statusgen verifyflip. Preserve those checks. The remaining need is resumable
+coordination after interruption, through existing authorized landing profiles.
+Do not activate the default dry-run durable sink or duplicate desk-tools/30's
+separate verdict-transcription migration.
+
+Budget policies, bounded audit reads, width limits, operating-envelope preflight
+and verifier admission already exist. Extend their read models and run binding;
+do not reproduce old fixed throughput numbers, introduce another limiter or replace
+admission with a prose assertion. Title dedupe also exists; exact verification-case
+identity must complement it without suppressing genuinely distinct failures.
+
+### Required contracts
+
+- One versioned queue meaning is exported through the current supported command
+  seam. Existing fields remain compatible. Text, JSON, board counts and consumer
+  advice agree on the same classified input. Missing roots or fields stay unknown.
+- Existing receipt ownership carries successful-run input identity. Reuse requires
+  an accepted independent run and current table/declared-file/tool inputs. Scheduling
+  reuse does not grant a lifecycle transition. The approved table-only legacy fallback
+  remains explicitly incomplete rather than pretending full input coverage.
+- Continuations reconcile completed effects and accepted commit/run receipts before
+  retry. Keep human acceptance, Reviewed stamps, risk exclusions, publication guards
+  and existing per-repository channel authority unchanged. A denied channel stops.
+- Capacity is derived from current enforced meters and remaining operation cost,
+  with observation time and scope. Local ledger headroom is not account-wide or
+  cross-host capacity. Unknown provider evidence cannot justify widening.
+- Exact case lookup reuses existing repair identity and the typed forge boundary.
+  Failed or incomplete lookup creates nothing. Legacy title matching remains.
+- Run prerequisites extend current preflight/admission and are checked again on
+  landing. Source, declared sibling or applicable tool drift invalidates reuse.
+  No implicit cluster/production probe or credential scope expansion is allowed.
+- Decision purpose and final verification purpose remain distinct by default.
+  Link cards and canonical IDs; never treat an earlier design ruling as final
+  acceptance. A human stamp requires the existing exact authorized close path.
+
+### Source briefs
+
+| Brief | Remaining delivery | Wave |
+|---|---|---|
+| desk-tools/45 | [Expose the canonical verification queue to its consumers](brief-45-expose-the-canonical-verification-queue-to-its-consumers.md) | 1 |
+| desk-tools/46 | [Reuse accepted verification inputs to stop repeated PASS dispatch](brief-46-reuse-accepted-verification-inputs-to-stop-repeated-pass-dispatch.md) | 2 |
+| desk-tools/47 | [Resume interrupted Evidence landing through the existing sanctioned paths](brief-47-resume-interrupted-evidence-landing-through-the-existing-sanctioned-paths.md) | 3 |
+| desk-tools/48 | [Report remaining landing capacity from the enforced budget owners](brief-48-report-remaining-landing-capacity-from-the-enforced-budget-owners.md) | 2 |
+| desk-tools/49 | [Deduplicate verifier filings by their canonical work identity](brief-49-deduplicate-verifier-filings-by-their-canonical-work-identity.md) | 1 |
+| desk-tools/50 | [Bind verifier environment evidence to the run admission](brief-50-bind-verifier-environment-evidence-to-the-run-admission.md) | 1 |
+| desk-tools/51 | [Drive the verifier skill from the current queue and landing contract](brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md) | 4 |
+| desk-tools/52 | [Link decision and verification cards without conflating their authority](brief-52-link-decision-and-verification-cards-without-conflating-their-authority.md) | 1 |
+
+### Critical path and dependency waves
+
+The verified head is desk-tools/45: canonical board classification and the command
+seam already exist, but the seam discards ownership. Exporting it is unblocked;
+there is no need to invent a framework or assume package main is importable.
+Use an existing importable API only after proving caller/module compatibility.
+
+Wave 1: /45 queue contract, /49 filing identity, /50 environment binding and /52
+card purpose. Wave 2: /46 accepted PASS inputs and /48 capacity after /45.
+Wave 3: /47 continuation after /46. Wave 4: /51 skill/action integration after
+/45–50 and /52. Critical path: /45 → /46 → /47 → /51.
+
+The skill is last because its actions must describe real implemented commands.
+Rewriting the skill first would leave the original repeated inference problem.
+Source merge is followed by a verified paired tool/skill release and separate
+consumer pin adoption. Consumer workflow promotion and real human recovery acts
+are outside these source PRs; no release number or activation is invented here.
+
+### Existing ownership and acceptance
+
+desk-tools/30 remains the separately gated verdict-transcription migration. This
+plan does not activate it or replace its scope. The current branch flip and its
+strict human/risk refusal remain the baseline. The closer already accepting legacy
+and canonical v2 IDs is not re-authored as a missing parser feature.
+
+The consumer qualification must cover one fresh run, an accepted unchanged PASS,
+a changed declared input, interrupted/ambiguous landing, human/Evidence-only work,
+an unreadable root and an exhausted budget. Each case must agree across plan text,
+JSON, board and supported action. Plant a second stale-input or foreign-card case
+to prove the lower guard rejects it with the planner bypassed. Record exact source,
+binary/skill versions, hashes, fixture outputs and all remaining human acts.
+Old dispatch and stranded-card counts are historical measurements, not current
+acceptance evidence. Tests must demonstrate named PASS output so a zero-test match
+cannot satisfy a Verify row. Authoring supplies these contracts; implementers and
+independent verifiers supply their execution evidence later.
+
+## Review-desk rename — 2026-10-18
+
+Brief 53 renames the `pr-review-desk` role to `review-desk`, the same way the two earlier
+role renames went: register the successor first, and keep the old name as an accepted alias
+forever. The alias covers stop flags, `DESK_LOOP`, cellctl role arguments, the comms lane
+list, spec role sets, worktrees and claims. The issue label values (`to:reviewer`,
+`raised-by:reviewer`) do not change. Readers additionally accept the loop spellings. For at
+least one release, a thin deprecated `pr-review-desk` skill redirects to `review-desk`, and a
+skillslint gate fails on any new bare use of the old name. The matching change to the
+maintainers' house layer is a separate brief there.

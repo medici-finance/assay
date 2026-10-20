@@ -445,3 +445,51 @@ func joinRepairInts(xs []int) string {
 	}
 	return strings.Join(parts, ",")
 }
+
+// RepairForgeObservation is what an ALREADY-AUTHORIZED forge read reports about an obligation's
+// repair PR. It is the ONLY input ApplyForgeObservation consumes: the interim/offline build makes
+// no probe of its own, so tests inject it and the live cutover supplies it from the forge resolver.
+type RepairForgeObservation struct {
+	ReviewOpened bool   // a repair PR is open and under review
+	Approved     bool   // the repair PR is approved and awaits a human merge
+	Merged       bool   // the repair PR MERGED — a legitimate wake event
+	MergedSHA    string // the revision the merge landed at (the repaired revision)
+	RepairPR     string // owner/repo#N of the repair PR, recorded on first observation
+	RepairedBy   string // the worker identity that produced the repair
+}
+
+// ApplyForgeObservation reconciles ONE obligation against a forge observation and returns the
+// (possibly advanced) obligation plus whether it changed. It NEVER resolves an obligation: a merge
+// WAKES independent reverification (awaiting-reverification), it does not close the obligation —
+// only Resolve, driven by an independent verifier at the repaired revision, can do that. State only
+// ADVANCES here (merge outranks approve outranks review-open), so a stale or out-of-order
+// observation can never regress a further-progressed obligation: a worker assertion or a merge is
+// a scheduling event, never acceptance. fanoutloop's rework source and deskdispatch's admission
+// tests both drive this one function.
+func ApplyForgeObservation(o RepairObligation, obs RepairForgeObservation) (RepairObligation, bool) {
+	if o.IsResolved() {
+		// Resolution is terminal. A restart that replays the merge observation must not reopen a
+		// resolved obligation into a second owed reverification.
+		return o, false
+	}
+	before := o.State
+	switch {
+	case obs.Merged:
+		if o.RepairPR == "" && strings.TrimSpace(obs.RepairPR) != "" {
+			o = o.WithRepairPR(obs.RepairPR, obs.MergedSHA, obs.RepairedBy)
+		}
+		if o.RepairedBy == "" && strings.TrimSpace(obs.RepairedBy) != "" {
+			o.RepairedBy = strings.TrimSpace(obs.RepairedBy)
+		}
+		o = o.MarkRepairMerged(obs.MergedSHA)
+	case obs.Approved:
+		if o.State == RepairAwaitingReview || o.State == RepairRepairing {
+			o = o.MarkAwaitingMerge()
+		}
+	case obs.ReviewOpened:
+		if o.State == RepairRepairing {
+			o = o.WithRepairPR(obs.RepairPR, obs.MergedSHA, obs.RepairedBy)
+		}
+	}
+	return o, o.State != before
+}

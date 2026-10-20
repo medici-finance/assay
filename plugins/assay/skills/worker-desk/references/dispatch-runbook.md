@@ -69,8 +69,13 @@ Two shapes run every tick: the **board-wide instruments**, once for the whole sc
 deskboard dispatch                          # the work to START + the HELD-BACK decomposition
 deskboard stalled --min-age-hours 48        # stalled drafts + shepherd list (--json for the machine shape)
 deskboard health                            # is main red? green / RED / COULD-NOT-CHECK
-issueboard issues                           # un-briefed trusted issues; EXTERNAL/UNBLESSED quarantined
+issueboard issues --projection work-ready                           # un-briefed trusted issues; EXTERNAL/UNBLESSED quarantined
 ```
+
+Route a stalled `reconcile` row through `pr-shepherd`'s withdrawn-brief reconciliation
+step before CI repair; it is neither ordinary unfinished work nor a closure verdict.
+For a pending board retirement, the offline `statusgen withdrawal-audit` snapshot also
+finds fresh implementation/evidence PRs outside the stalled detector's age window.
 
 `issueboard` replaces the raw `gh issue list` form this runbook used to carry. It resolves the scan
 scope from the same roster key the placeholder scanner reads, applies the trust gate itself, and
@@ -142,7 +147,9 @@ re-surfaces onto a board — can zero a stream's whole allowance while it still 
 with `git ls-remote origin 'refs/heads/dispatch/*'` plus the claim tool's `list`/`show` verbs, and file
 what the read shows rather than concluding the stream is drained. The claim tool is **`deskclaim-ref`**
 — installed with desk-tools, verbs `acquire` / `progress` / `release` / `steal` / `show` / `list`,
-deskkit exit codes **0** ok · **5** refused (a live holder owns it) · **6** unverifiable; a repo that
+deskkit exit codes **0** ok · **5** refused (a live holder owns it) · **6** unverifiable, and `list`
+alone exits **7** partial when some claim refs are unreadable (each named on stderr as could-not-check;
+the listing is incomplete, never idle — a bad ref is the maintainer's to remove); a repo that
 ships its own `tools/dispatch-claim.sh` gets that instead, since `deskdispatch` prefers the script when
 the resolved root carries it. Run BOTH reads: the tool acquires and lists in `refs/dispatch/*`, while
 the `ls-remote` pattern above lists the `refs/heads/dispatch/*` branch refs the fleet's Go claim readers

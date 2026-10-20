@@ -77,10 +77,14 @@ nothing measured.
    `newbrief`, the row lint, and the tools/desk executors `verifyloop` and
    `deskrebaseline`) takes the first honoured `cmd:` span. A cell whose first span is
    already its command needs no marker, and a cell with no marker lifts exactly as
-   before — except that a row the lint flags `prose-led-command` is recorded could-not-run
+   before — except that a row the lint flags `prose-led-command` (including a lifted
+   command that is only a `#` shell comment) is recorded could-not-run
    without being executed (running the mention measures nothing, and a word like `gh`
-   exits 0), until its command is marked; the check:ci verdict re-execution lane refuses such a
+   or a comment exits 0), until its command is marked; the check:ci verdict re-execution lane refuses such a
    row the same way, and `verifyrun --check` does not audit an old pass witness on it as pass.
+   A `cmd:` span whose command is itself only a `#` comment is refused the same way, by
+   statusgen and the tools/desk executors alike: replace it with the command that
+   performs the check.
    A marker counts only where the rendered table shows it as code: not between
    escaped backticks, and not in a cell whose prose carries an unescaped `<` or `[` (raw
    HTML, a comment, a link or an image can hide text from the reader) or a dollar in any
@@ -90,7 +94,7 @@ nothing measured.
    cell start or a `(` may lead a span). The marker span itself must follow whitespace or the
    cell start, and end the cell or be followed by whitespace or plain punctuation. Escape
    `<` and `[` as `\<`, `\[`; keep dollars out of a marked Command cell. `statusgen --lint`
-   NOTICEs a prose cell whose first span is not a command shape (`prose-led-command`), a
+   NOTICEs a prose cell whose first span is not a command shape, or is only a shell comment such as an inline `## Coverage` heading (`prose-led-command`), a
    cell with two markers (`cmd-marker-ambiguous`), a marker that replaces a command-shaped
    first span (`cmd-marker-overrides-command`), and a `cmd:` span that is not honoured
    (`cmd-marker-not-honoured`), and a marked command that cannot fail — `true`, `:`,
@@ -132,6 +136,11 @@ nothing measured.
    | `CORROBORATED` | every path the `fixed-here` site resolves to is in the diff; `follow-up <stream>/<NN>` exists **and** references back | — |
    | `DISPROVED` | the diff contradicts the claim: a path the site names is absent from the diff, the target brief does not exist, `out-of-scope` names a file this same diff edits, or the entry states no routing at all | **exit 1 — the gate** |
    | `UNCHECKED` | the evidence is not visible here: an out-of-repo path, a component named in prose, `out-of-scope` whose truth is a judgement no diff settles, or an entry **inherited unchanged from the merge-base** (some earlier branch made that claim) | printed and counted, never a pass |
+
+   For post-merge verification, pin the delivery and its first parent with the explicit
+   [delivery-check contract](consumer-delivery-checks.md); the branch default is not a
+   historical verification range. Assert exact corroborated/unchecked counts and retain
+   the unchecked review obligations.
 
    Site grammar, as the gate reads it:
    - a **directory** site (`statusgen/`) is touched when anything under it is — and because

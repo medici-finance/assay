@@ -19,6 +19,9 @@ type verifyRow struct {
 	Num     int
 	Class   string // check | check:ci | gate:model | gate:human
 	Command string
+	// CommentLed is verifycmd.CommentLed of the raw cell: why the row's command is
+	// only a shell comment, or "". runBriefRows never executes such a row (#2684).
+	CommentLed string
 }
 
 // runnerExecuted reports whether this class is one the deterministic runner executes.
@@ -84,10 +87,13 @@ func parseVerifyRowsIn(section string) []verifyRow {
 			}
 			// verifycmd.Lift honours the `cmd:` marker (spec §4.4, #1805) and
 			// otherwise unwraps a fully-backticked cell exactly as before.
+			// verifycmd.CommentLed judges the RAW cell, not the lift: a cell whose
+			// first span is a comment can lift (whole) as a runnable no-op (#2684 S1).
 			rows = append(rows, verifyRow{
-				Num:     num,
-				Class:   class,
-				Command: verifycmd.Lift(cell(cmdCol)),
+				Num:        num,
+				Class:      class,
+				Command:    verifycmd.Lift(cell(cmdCol)),
+				CommentLed: verifycmd.CommentLed(cell(cmdCol)),
 			})
 		}
 		return rows

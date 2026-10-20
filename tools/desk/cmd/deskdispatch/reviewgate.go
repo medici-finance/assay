@@ -27,14 +27,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // decisionLabel is the label that marks an item as waiting on a human ruling. It is the one
 // the review loop already holds a change on.
-const decisionLabel = "needs-decision"
+const decisionLabel = deskkit.DecisionLabel
 
 // heldMarker opens every hold's first line.
 const heldMarker = "review dispatch HELD"
@@ -252,33 +251,15 @@ const (
 // created after that application. Missing: the history is complete and holds none. Unknown:
 // the application cannot be dated, or the history is incomplete and holds none.
 func rulingRecordedSince(events []deskkit.LabelEvent, trust *deskkit.TrustPayload, isRatifier func(string, int64) bool) rulingState {
-	var applied time.Time
-	standing := false
-	for _, e := range events {
-		if !strings.EqualFold(strings.TrimSpace(e.Name), decisionLabel) {
-			continue
-		}
-		standing = !e.Removed
-		if standing {
-			t, err := time.Parse(time.RFC3339, e.CreatedAt)
-			if err != nil {
-				return rulingUnknown
-			}
-			applied = t
-		}
+	// The one reading lives in deskkit, shared with the brief-admission hold
+	// (deskkit.BriefDecisionWait), so the two decision reads cannot disagree.
+	switch deskkit.RulingRecordedSince(events, trust, isRatifier) {
+	case deskkit.RulingRecorded:
+		return rulingRecorded
+	case deskkit.RulingMissing:
+		return rulingMissing
 	}
-	if !standing || applied.IsZero() || trust == nil {
-		return rulingUnknown
-	}
-	for _, ev := range trust.Events {
-		if isRatifier(ev.Author, ev.AuthorID) && ev.CreatedAt.After(applied) {
-			return rulingRecorded
-		}
-	}
-	if !trust.Complete {
-		return rulingUnknown
-	}
-	return rulingMissing
+	return rulingUnknown
 }
 
 func hasDecisionLabel(labels []string) bool {

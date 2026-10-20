@@ -614,22 +614,45 @@ thing the boot reads — so it is reported as a notice and the boot continues.
 **The whole cockpit:**
 
 ```bash
-cellctl up <cell> [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca] \
+cellctl up <cell> [--role <name>]... [--no-the-desk] [--no-attach] [--cockpit auto|tmux|herdr|orca] \
+                  [--lease-wait <duration>] [--plan | --apply <plan-id>] [--json] \
                   [--automate '<cron>'] [--model <m>] [--provider <name>] [--harness <claude|codex>] \
                   [CLAUDE_CONFIG_DIR]
 ```
 
-One window per role in `ROLES`, plus a `deskd` window (watching `/healthz` if it is already up,
-otherwise standing it — see *How far the attended affirmation carries* above), in whichever
-**cockpit** resolves for this run — see *Cockpits* below. A cell with no deskd (a house cell
-without `DESKD=1`) has no `deskd` window and no placeholder in its place: `up` opens only the role
-windows (plus the comms window when comms is configured), the comms window or else the first role
-window creates the tmux session, and the one-line "no deskd" note is printed once on `up`'s stderr.
-When there is nothing at all to open (no deskd, no comms, and no role after `--no-the-desk`), `up`
-says so on stderr, creates no session, and exits 0. On the default tmux cockpit that is a
-session named `<cell>-cell`, and `up` attaches unless you pass `--no-attach`; re-attach later with
-`tmux attach -t <cell>-cell`. Windows start two seconds apart in every cockpit, so they do not all
-arrive at the fetch lock together.
+`up` **converges** the cell: it brings every targeted role to running and leaves a running role
+alone, so it is safe to run again on a half-up cell. Targets are the roles in `ROLES` (plus
+`the-desk` unless `--no-the-desk`), or exactly the roles named by `--role <name>` (repeatable;
+`--no-the-desk` and `--with-the-desk` stay as aliases). Each target is classified from its cadence
+lease (`run/cadence/<role>/owner.lock`):
+
+| Disposition | Meaning | What `up` does |
+|---|---|---|
+| up | the lease is held by a live process | row `already-up`; never relaunched, its window never touched |
+| stale | a running checkpoint with no live holder | row `failed`, naming `up --plan`; plain `up` never reconciles it |
+| absent | no lease holder, no checkpoint | its window is opened |
+
+Windows are opened **one at a time**: role N+1 opens only after role N has taken its lease and
+passed the scratch sweep, or has failed. `--lease-wait` (default 2m) bounds how long `up` waits
+for one role; a window that never takes its lease is a `failed` row. On an existing cockpit
+session `up` adds only the missing windows. A cell with a `deskd` window or a configured comms
+window starts those first, as before.
+
+It ends with one table, one row per targeted role: `up`, `already-up`, `reconciled+up`, `scheduled` or `failed`
+(with the first line of the error, verbatim). `scheduled` is a cadenced role that took its lease and is
+resting until its next pass is due (its last pass was under one interval ago): it has no role child yet,
+and the detail names the next due time. The exit code is 0 when every role is `up`, `already-up`,
+`reconciled+up` or `scheduled`, otherwise 1. `--json` prints the `cell-op-result` document
+([the machine seam](cellctl-machine-seam.md)) with one entry per role and nothing else on stdout.
+
+**Stale roles.** A hand-closed window leaves a checkpoint behind; `up` does not clear it for you.
+`cellctl up <cell> --plan` writes ONE plan that clears every stale role among the targeted roles (`--role` limits them; otherwise the cell's `ROLES`) and stale comms state (it works off a
+terminal and changes nothing else; with nothing stale it writes no plan). `cellctl up <cell>
+--apply <plan-id>` works on a terminal only: it shows the plan, takes the typed confirm,
+re-measures each role, clears the stale state and then launches the targets, reporting the cleared
+roles as `reconciled+up`. A role that came alive between plan and apply is refused `plan-stale`
+(exit 5), naming the role, and nothing is launched. Stale comms state is refused the same way,
+with the reconcile inventory and a pointer to `up --plan`.
 
 `--model <m>` applies the per-run override (see *Pinned models* below) to **every** role window this
 run opens, the-desk included — there is no per-role `--model-<role>` form, since that case is
@@ -639,12 +662,11 @@ actually boots resolves the same override the plan named. `--provider <name>` th
 role window the same way, for the same reason — see *Providers* below.
 
 `cellctl up <cell> --dry-run` (or `DRY_RUN=1 cellctl up <cell>`) prints the resolved cockpit and
-the per-role commands and launches nothing. On a house cell, `up` first runs a **reconcile
-preflight**. Stale role and comms checkpoints left by hand-closed or crashed windows, and
-orphaned processes carrying the cell's marker, are inventoried by pid and start time. On a
-terminal you are asked once before they are cleared. Otherwise the refusal prints the whole
-inventory and the exact recovery commands. A dry run prints the inventory and plan and changes
-nothing. `cellctl desk <cell> <role>` runs the same preflight for its one role. See
+each role's disposition (an absent role shows the command its window would run) and launches
+nothing. On a house cell, stale comms checkpoints and orphaned processes carrying the cell's
+marker are inventoried by pid and start time; `up` refuses them with the whole inventory and the
+exact recovery commands (`up --plan`, then `up --apply`). A dry run prints the inventory and plan
+and changes nothing. `cellctl desk <cell> <role>` runs the same preflight for its one role. See
 [Reconcile preflight](cellctl-cadence.md#reconcile-preflight). `--harness <h>` overrides `CELL_HARNESS` for **every** role window this run opens (the-desk
 included — there is no per-role `--harness-<role>` form) by threading `--harness <h>` onto each
 role's own `cellctl desk <cell> <role>` invocation; `[dry-run] harness=<h> — applied to every role
@@ -1420,23 +1442,27 @@ still overrides all four for that run, as before.
   directory, and can now also set a default for every cell at once — keep the root yours. The
   file holds no secrets of its own. It is opened as `providers.json` is — a regular file only,
   never a FIFO or a directory.
-- **A cell is named by its directory under the cells root.** `demo` and `team/demo` are cell
-  names. An absolute path, `.`, and a name that leaves the root through `..` (`../other/x`,
-  `team/..`) are refused — by `new`, by `set` and by every verb that loads a cell — in a message
-  that names the name and the root. The test is on the name as written, so a cell directory
-  that is a symlink to somewhere else still loads. `defaults.env` is not available as a cell
-  name.
-- **There is one file per cells root, for a nested cell too.** A cell named `team/demo` takes
-  the cells root's file like any other, never one beside `team/`. That holds for the later
-  cellctl processes a launch starts, as far as each is told where the cell is. The model-policy
-  hook, a container cell's console, the comms pane, a cadence-supervised role pane and a
-  managed scratch task are each handed the cells root the launch resolved and the cell's path
-  under it, not the cell directory's parent. An ordinary role pane is handed the cell's path
-  under the root and takes the root from its own environment. Two commands are as they
-  were before this file existed: the `deskd` stand pane and the precheck of a scheduled
-  (`--automate`) run name the cell by its `CELL=` value and take the cells root from their own
-  environment, so for a nested cell they reach the same cell only when `CELL=` is its path
-  under the root and `CELLS_ROOT` is the same there.
+- **A cell is named by ONE directory under the cells root, in `[a-z0-9-]`.** `demo` and
+  `cell-2` are cell names. A nested name (`team/demo`), an upper-case letter, `_` or `.` in the
+  name, an absolute path, `.`, and a name that leaves the root through `..` (`../other/x`,
+  `team/..`) are refused — by `new` (every kind, a container cell included), by `set` and by
+  every verb that loads a cell — in a message that names the name, the root and the rule. A
+  cell's `CELL=` value is held to the same rule, because it is what a launch stamps into every
+  child as `ASSAY_CELL` and what the cell-scoped stop flags (`STOP.cell.<cell>`) name the cell
+  by; a cell cellctl accepts is a cell those flags can address. The test is on the name as
+  written, so a cell directory that is a symlink to somewhere else still loads. `defaults.env`
+  is not available as a cell name. A cell made earlier under a name outside the rule (a nested
+  `team/demo`, `Demo`, `demo_1`) no longer loads: rename its directory and set `CELL=` to the
+  new name.
+- **There is one file per cells root.** Every cell takes the cells root's file. That holds for
+  the later cellctl processes a launch starts, as far as each is told where the cell is. The
+  model-policy hook, a container cell's console, the comms pane, a cadence-supervised role pane
+  and a managed scratch task are each handed the cells root the launch resolved and the cell's
+  name under it. An ordinary role pane is handed the cell's name and takes the root from its
+  own environment. Two commands are as they were before this file existed: the `deskd` stand
+  pane and the precheck of a scheduled (`--automate`) run name the cell by its `CELL=` value and
+  take the cells root from their own environment, so they reach the same cell only when
+  `CELLS_ROOT` is the same there.
 
 **The template, and the list of keys.** `cellctl defaults print` writes the template to
 standard output. It is generated from the one registry of keys cellctl keeps, and it prints
@@ -1496,7 +1522,7 @@ processes are not configuration.
 | `DRY_RUN`, `CELL_ATTENDED`, `DESK_MODEL_OVERRIDE` | switches for one run: a dry run, the statement that a person is at this command, and a model that outranks every pin — give them in the environment of the command they are for |
 | `ASSAY_CONFIG_HOME`, `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME` | locate the operator's own config homes — where the desk tools, the GitHub CLI and the harnesses find their credentials |
 | `HOME`, `USERPROFILE`, `APPDATA`, `LOCALAPPDATA`, `PATH`, `TERM`, `LANG` | the host's own variables, taken from the launching shell (`DESK_TOOLS_BIN` and `CELL_PATH` are the levers for the parts of `PATH` cellctl composes) |
-| `CELL_KIND_OVERRIDE_INTERNAL`, `ASSAY_SCRATCH_ID`, `DESK_SESSION`, `CELLCTL_PARITY_MUTATE`, `CELLCTL_OPERATOR_CONFIG_HOME` | not configuration: set by cellctl for a process it starts and read back there, or a test hook |
+| `CELL_KIND_OVERRIDE_INTERNAL`, `ASSAY_SCRATCH_ID`, `DESK_SESSION`, `CELLCTL_PARITY_MUTATE`, `CELLOP_FIXTURE_TRACE`, `CELLCTL_OPERATOR_CONFIG_HOME` | not configuration: set by cellctl for a process it starts and read back there, or a test hook |
 
 Typical uses of the file are `CELL_GO_CACHE` and its `_BYTES` / `_MIN_FREE` budget,
 `CELL_COCKPIT`, `CELL_HARNESS`, and the model keys (`DESK_MODEL_DEFAULT`, the `TIER_MODEL_*`

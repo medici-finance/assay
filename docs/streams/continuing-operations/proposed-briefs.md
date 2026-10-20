@@ -10,6 +10,22 @@ Read [the specification](spec.md) and [stream admission/critical path](README.md
 The effort estimates are ceilings for review, not duration estimates. Split an L-sized
 scope if its reviewed interfaces cannot fit one independently verifiable change.
 
+## Authored-slice disposition — 13 October 2026
+
+The original O-numbers below remain outline IDs. They are not canonical brief numbers.
+The six-brief portfolio lane is described in the [delivery amendment](../../proposals/non-ci-architecture/26-product-intent-and-portfolio.md).
+
+| Outline | Current disposition |
+|---|---|
+| O01 | Bounded subject identity/REQ-reference contract is authored as continuing-operations/01. Its new prerequisite is statusgen/22; do not dispatch the old outline separately. |
+| O03, O05, O06, O10 | Their shared observation-obligation and manual handoff subset is authored as continuing-operations/02. Broader practices, recorded-data adapters, runtime integration and a standing outcomes desk remain unauthored. |
+| O02 | Full portable measurement taxonomy remains an outline. Minimal signal/unit/band/window semantics needed by /02 live in change-impact-v1; reconcile them before extending O02, never create another obligation store. |
+| O07, O08 | Portfolio views go through statusgen/25; product binding authoring through statusgen/21 and /23. Broader Operations UI and impact authoring remain future consumers of the same owners. |
+| O04, O09, O11–O14 | Remain outlines; no runtime activation, universal brief migration or trial approval follows from the new briefs. |
+
+The historical wave table describes the full proposed programme. For the authored subset,
+use the typed dependencies in the actual briefs and the amendment's critical path instead.
+
 ## Dependency waves
 
 Local waves are topological layers, not dates. External graph prerequisites may dominate
@@ -168,10 +184,10 @@ that named implementation tests or commands already exist.
 - **Depends on:** O05, O10. **External:** graph-execution/04, graph-execution/09, graph-execution/14, graph-execution/16.
 - **Unblocks:** cadence-enabled adopter/client rollout.
 - **Why:** Automate due assessments without introducing a second scheduler or duplicate interventions.
-- **Deliverables:** Bind practice triggers/windows/deadlines to existing admission, claims, recovery and budget machinery. Define occurrence identity, restart, coalescing, overdue behavior and stale-input handling. No automatic remediation or policy self-modification.
+- **Deliverables:** Bind practice triggers/windows/deadlines to existing admission, claims, recovery and budget machinery. Define occurrence identity, restart, coalescing, overdue behavior and stale-input handling. No automatic remediation or policy self-modification. The bounded issue/draft-repair proposal profile in performance-collection/09, separately activated and routed through existing desks to human-merged draft PRs, is a proposal path and falls outside the automatic-remediation prohibition only; the policy self-modification prohibition, and 09's own refusals of budget raises, gate removal, merge and deployment, apply to it unchanged. Do not duplicate that profile or its effect lineage.
 - **Owning surfaces:** Practice-to-`workflow-instance-v1` adapter at existing graph admission/dispatch boundary; recovery, coalescing and budget conformance fixtures. No second scheduler.
 - **Acceptance scenarios:** Repeated triggers and a crash resume one logical occurrence; cumulative budget survives restart; stale sources cannot initiate an unjustified intervention. Existing permission denial remains binding.
-- **Review-profile consumer:** A later performance/architecture cadence uses this same occurrence/admission/recovery adapter. Confirmed opportunities can propose bounded repair draft PRs through existing role effects, cumulative budgets, review and independent verification. Stale inputs, duplicate triggers and exhausted budgets cannot initiate new repairs. No autonomous merge/deployment or policy/target rewrite.
+- **Review-profile consumer:** A later performance/architecture cadence uses this same occurrence/admission/recovery adapter. Confirmed opportunities reach a bounded repair draft PR only through the performance-collection/09 proposal path, whose executor writes the `performance-repair` label and body marker and whose repair PRs are never admitted to an automated merge lane; the review-profile path opens no repair PR of its own, and the cadence reuses existing cumulative budgets, review and independent verification. Stale inputs, duplicate triggers and exhausted budgets cannot initiate new repairs. No autonomous merge/deployment or policy/target rewrite.
 - **Review / activation considerations:** Require prerequisite contract acceptance and an explicit activation decision. Derive risk from actual scheduled effects; no production access is implied by the outline.
 
 <a id="o12"></a>
@@ -236,3 +252,12 @@ also a separate automation branch: O12/O13 deliberately prove manual adoption wi
   verification. Leave Evidence empty until execution; never mark this outline delivered.
 - Generate the README Briefs table from actual authored briefs. Keep proposed scopes out
   of lifecycle rows until then; central boards remain generated.
+
+## Operating-report delivery amendment — 15 October 2026
+
+The three concrete reports and local collection are independently deliverable under
+performance-collection/01, /02, /07 and /08. O02/O04 adopt their source/coverage contracts;
+O07 consumes their typed report result; O10/O11 reuse /09 assessment/proposal lineage and
+retain general subject/practice ownership. These draft outlines do not hold local reporting
+behind the whole framework. Full managed cadence/effects still require their existing
+runtime prerequisites, policy and qualification; the amendment grants no activation.

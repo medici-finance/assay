@@ -12,10 +12,12 @@ gate-why: "sensitive-data is yes because inbound forge deliveries and the commen
 issues: []
 outcome: none
 schema: brief-v2
-version: 2
+version: 5
 id: 3542bd60-8abe-4927-ae46-fb3cd5d3e1f8
 authored: 2026-10-13 by statusgen newbrief (non-CI R6 authoring follow-up)
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
+  - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - docs/proposals/non-ci-architecture/20-amendment-manifest.md — R6 owner row and the "R2–R8 amendment scope" R6 paragraph ("translate refreshed feedback into durable reevaluation; partial scans stay incomplete")
   - docs/proposals/non-ci-architecture/16-delivery-sequence.md — package R6 (lost/reordered events preserve uncertainty)
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md — "Reuse and expand the existing forge-mirror work" (authenticated deliveries, delivery IDs, reorder tolerance, polling repair) and "Feedback received during an active attempt"
@@ -26,6 +28,8 @@ sources:
   - docs/streams/graph-execution/brief-28-verifier-domain-contracts.md — qualified work identity, candidate and reevaluation generation
   - docs/streams/graph-execution/brief-04-recovery-contract.md — intent and outbox handoff (as amended by the R2 follow-up)
   - freshness-checked 2026-10-13 @ 4696d598e (origin/main)
+  - "docs/desk-workflow-efficiency-spec.md"
+  - "freshness-checked 2026-10-17 @ fb85924c039c27e7d2aa80e055bfce118e46125d; approved spec and consolidation amendment"
 exec-tier: strong
 exec-tier-why: "Question (c), silent failure toward a pass: a delivery accepted before it is durable, a reordered event that rolls state back, or an older run clearing a newer feedback generation each pass a single-delivery test and lose or duplicate work."
 domain: complicated
@@ -38,13 +42,14 @@ consumers:
   - "statusgen/: out-of-scope (forge-neutral/18 owns statusgen's forge reads; this brief adds no statusgen link and no deskread kind)"
   - "a mounted receiver route, network listener or deployment: out-of-scope (R7's public API and the activation sequence own mounting and exposure; this brief ships a library and an in-process test handler only)"
   - "tools/forge-import-check/: fixed-here (source-only verification helper relocation; not a runtime mirror implementation)"
+  - "forgeread/events/reviewrepair_test.go: follow-up forge-neutral/38"
 ---
 
 # Brief 38 — Forge event adapter, feedback observations and durable reevaluation demand
 
 ## Context
 
-files: `tools/forge-import-check/check_env_imports.go` (source-only helper), `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures), `forgeread/events/` (new), `forgeread/mirror/` (feedback kinds, hint intake),
+files: `tools/forge-import-check/check_env_imports.go` (source-only helper), `tools/forge-import-check/check_env_imports_test.go` (source-only compiler fixtures), `forgeread/events/` (new), `forgeread/mirror/` (feedback kinds, hint intake), `forgeread/events/reviewrepair_test.go` (planned)
 `tools/desk/internal/deskkit/mirrorsource.go` (planned) and tests, `workflow/store/` (planned by
 graph-execution/19; delivery inbox, the pending-feedback use and the graph-execution/28 mapping),
 `forgeread/README.md`,
@@ -195,6 +200,21 @@ answered.
 7. **Docs.** Update `forgeread/README.md` (events package, disabled by default, no listener) and
    add the changelog fragment.
 
+
+### Approved workflow-efficiency amendment — 17 October 2026
+
+Qualify head/body/review/check/comment event changes used by review and issue projections, retaining
+provider-specific applicability and repair. Equal authenticated hints may coalesce a refresh but
+must not erase different head/access/query generations or independent reviewer obligations. Event
+loss, out-of-order delivery and poll repair preserve partial until complete. Reuse this event/demand
+owner, not a desk-specific watcher journal. Compare actual refresh request work without claiming
+hints are authoritative state or that duplicate routine watchers are removed merely by changing
+ingestion.
+
+This is an amendment to unfinished implementation acceptance. Preserve every prior Task, Verify
+obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
+authoring change claims no implementation or operational adoption.
+
 ## Verify
 
 Named tests are implementation deliverables and fail at authoring (they do not exist yet). Each one
@@ -218,6 +238,7 @@ transports only.
 | 13 | check:ci +mutation | `GOWORK=off GOPROXY=off GOTOOLCHAIN=local go run tools/forge-import-check/check_env_imports.go forgeread/events` | exit 0 and output `0`: the shared source-only checker parses every non-test Go file below the target and decodes each import path with `strconv.Unquote`. No decoded `os` or `syscall` import is allowed, including raw, escaped, plain, aliased and dot imports. Build-constrained files are scanned regardless of the current platform; `*_test.go` files remain excluded. Missing/empty targets, parse/decode/walk errors and symbolic links fail closed with no clean count. It fails at authoring because the target package is absent. The companion `check_env_imports_test.go` compiles synthetic raw/escaped imports offline without calling their environment-read functions, then runs both rows' exact commands; ordinary aliases, build-tagged files, excluded tests and clean imports remain controls. **Mutation**: use the former literal matcher or stop decoding import literals; compiler-valid raw/escaped `os` and `syscall` plants evade rejection and the fixture test fails. **Mutation**: plant any of those imports in shipped `events` source; the row reports a nonzero count and exit status |
 | 14 | check +mutation | `test -f forgeread/go.mod && { grep -n -w -e require -e replace forgeread/go.mod \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: `forgeread` keeps no module dependency, so `events` cannot import `statusgen/domain` or a `workflow` package, and the graph-execution/28 mapping stays in `workflow`. Passes at authoring as an invariant guard. **Mutation**: a planted `require github.com/medici-finance/assay/statusgen v0.0.0` line counts `1` |
 | 15 | check:ci +mutation | `(cd workflow && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEventsPayloadRetentionPostgres$" ./store/... > "$result" && grep -F -- "--- PASS: TestEventsPayloadRetentionPostgres " "$result")` | exit 0; named PASS (a skip prints no PASS and fails the row). **Decision-conditional**: the worker implements only after the human decision is recorded, and the edit that records it deletes the unchosen option's sentence and mutation from this cell. Against real PostgreSQL in the graph-execution/19 harness, signed fixture deliveries carry private canary strings in their bodies. Option 1 (hints only): after acceptance and processing, a scan of every table the adapter writes finds no canary. Option 2 (retained snapshots): each canary is present within the configured window and absent after the purge runs past it. **Mutation (option 1)**: store the body in the inbox row, and a canary is found and the test fails. **Mutation (option 2)**: make the purge a no-op, and a canary survives the window and the test fails |
+| 16 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewEventRepair$' ./events/... > "$o" && grep -F -- '--- PASS: TestReviewEventRepair ' "$o")` | exit 0; named PASS. Lost/reordered head/body/check/comment hints plus polling produce the same qualified population as fresh reads; an omitted generation or silent complete mark fails. |
 
 ## Pre-mortem
 
@@ -231,6 +252,40 @@ environment (row 11). The webhook secret or other configuration is read through 
 `syscall` import under any name (row 13; cgo is outside that check). `forgeread` gains a dependency on statusgen and a module cycle forms (row 14). A
 captured body replayed under a fresh delivery ID creates a second requirement (row 3). Payload
 retention remains the human decision above; row 15 pins whichever option is chosen.
+
+## Performance reuse amendment — 2026-10-16
+
+Event hints feed /37's existing scoped refresh planner. Qualify a duplicated/reordered
+hint burst alongside simultaneous desk/status requests: equivalent demand coalesces without
+erasing distinct decisions, feedback generations or event identity. Polling repair remains
+the fallback owner; event loss cannot create fresh/complete state or launch a poller per
+client. Keep measured event-to-observation delay separate from workflow service time.
+No token provider, HTTP server or performance writer is linked into the pure events package;
+the eventual trusted service composition records its existing typed outcomes.
+
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+For this brief's existing performance observations, reuse the [perf-v3 contract](../../performance-attribution-spec.md) and /63–65's
+shared typed context and request-cost seam when those adapters are available. Each process
+records its own attempts, timing and observed GraphQL points with units/basis/coverage;
+client-to-service and service-to-provider work are distinct. Carry admitted parent invocation
+links when known, preserve missing context and never turn it into operational authority.
+No extra provider request or expanded business query for monitoring; qualified bounded cost
+metadata may join the same request. No copied descendant call total,
+and no v2-only replacement instrument. Keep this brief's scope/Verify/Evidence and independent
+service delivery; record unsupported boundaries until producer integration. /45's existing
+matched service qualification must include own-request and parent/child no-double-count cases.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Apply docs/performance-attribution-spec.md, including its query/cache boundary contract.
+
+Event-triggered refresh/poll/repair diagnostics keep their trigger class and own operation identity, never event payload/capability text. Duplicate event hints or polling reconciliation cannot multiply observed provider charges; retain unallocated background work and incomplete coverage.
+
+Extend this brief's existing production-flow Verify cases with these boundary/false-count
+negative fixtures; all existing Tasks, exact selectors and Evidence remain obligations.
+No service activation or extra dependency on a live collector is introduced.
 
 ## Evidence
 

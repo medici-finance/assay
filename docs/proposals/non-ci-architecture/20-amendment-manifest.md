@@ -123,6 +123,17 @@ Owner rows for the [cell operator surface amendment](21-cell-operator-surface.md
 Adopters make their corresponding local amendments separately; nothing in this manifest edits an
 adopter repository or names private repositories, credentials or deployment details.
 
+## Portfolio/drift follow-through — 13 October 2026
+
+The [product-intent and portfolio amendment](26-product-intent-and-portfolio.md) adds a concrete owner/dependency table and six brief files,
+not just owner rows. Statusgen/19's merged work is unchanged; /23 extends its reviewed
+result after /20. Statusgen/20–21 amendments are limited to declared coverage and supported
+product-binding consumption. Continuing-operations remains parked pending explicit admission.
+R2 and R6 are covered by the merged PRs #2750 and #2743; this amendment changes neither.
+R7 must consume statusgen/25 and map independent product/architecture/binding/allocation/
+observation dimensions; its `cell-api` owner stream is named above, and its scaffolding and
+serving brief remain owed.
+
 ## Forge-service follow-on — amendment of 14 October 2026
 
 The new [bounded design](22-forge-service-and-source-queries.md) extends R6/R4 and R7's
@@ -165,3 +176,93 @@ rows remain owners; no separate implementation programme is opened. Actual patch
 Historical Evidence is byte-preserved. /28 receives reciprocal unblocks only, not Task/Verify
 changes. The merged forge-neutral/39–45 and performance-collection/01–06 are reused unchanged.
 R3/R4 custody and R5/R7/R8 integration/migration remain their existing proof obligations.
+
+### Operating-report owner routing — 15 October 2026
+
+| Slice | Owner and delivery | Runtime boundary |
+|---|---|---|
+| Capture and retained coverage/distributions | performance-collection/01–02; preserve /03–06 separate database/transport qualification | Local-first optional observations, no operational authority |
+| On-demand command/skill and daily three-report bundle | performance-collection/07–08; existing flow/lifecycle meanings retained | R7 consumes the same projection; local report-pack host can precede R2–R8 |
+| Later issue/draft-repair proposal loop | performance-collection/09; continuing-operations assessment and existing desk consumers | Managed activation depends on R2/R3/R4 and the brief's typed graph prerequisites; no new scheduler or autonomous merge |
+
+This is a requested specification/brief amendment, not implementation or activation evidence. It supersedes the "reused unchanged" record above for performance-collection/01, 02 and 06 only: the 15 October operating-report amendment extends those briefs and adds 07–09, with their collection/storage boundaries and runtime authority unchanged.
+
+## Operation-count brakes and pacing — 15 October 2026
+
+Controlling delta: [brake and pacing contract](11-target-architecture.md#pacing-counts-are-best-effort-brakes-fail-closed).
+Counts that bound a runaway or blast radius are brakes and stay fail-closed: write
+ceilings, daily and new-issue caps, the circuit breaker, the child-launch budget, ingress
+and retry budgets. Only pacing counts become best effort, with a shared estimate (always
+re-derived from durable admission records for effect-class counts) and a
+declared drift bound for effect-class counts (cap + C, or
+2 × (cap + C) after one recorded reset per window and operator incarnation); read-class
+pacing counts carry no numeric bound and are unbounded on counter loss.
+Unknown usage still cannot become a fresh allowance. Docs 14, 15, 19 and 23 carry the
+split; doc 15 adds an operation-count qualification section. No brake is relaxed;
+relaxing one is a separate human decision.
+
+| Consumer | Applied amendment | Qualification |
+|---|---|---|
+| R2 store/ownership: graph-execution/16 and /19, versions 7 | Cumulative attempt budgets and brake counts keep fail-closed reservations; pacing counts need no exact budget slot and keep one shared estimate, re-derived from window intents and receipts for effect-class counts, never from a cached row | New Verify rows: brake holds on an unavailable count; restart or per-process fallback cannot multiply a pacing cap |
+| R3 supervisor: graph-execution/26, version 6 | The child-launch budget is classified as a fail-closed brake; only desk/tool pacing is best effort, and launch pacing is effect-class, re-derived from recorded launches | Missing configuration and an unavailable child-launch count both refuse; new Verify row with a mutation that treats the count as under budget |
+
+Existing Task/Verify rows and historical Evidence remain intact; each brief adds rows and
+bumps `version:`. No installed limiter, default, credential, executor activation or hard
+resource limit changes in this documentation PR.
+
+## Portable execution environments — 16 October 2026
+
+Controlling delta: [agent execution environments](27-agent-execution-environments.md).
+The new agent-execution stream, parked until that amendment is approved, authors seven
+bounded extensions of existing owners:
+
+| Gap | Owning brief | Existing prerequisite/consumer | Change made in this authoring PR |
+|---|---|---|---|
+| Qualified harness/model/backend and explicit preservation | agent-execution/01 | implemented graph-execution/20 | New extension obligation; reciprocal edge only on /20, existing Evidence untouched |
+| Prepared-environment receipt and workspace port | agent-execution/02 | /01; existing candidate and retirement owners retained | New pure port; no second Git, resource store or pruner |
+| Local enforcement | agent-execution/03 | /02, graph-execution/22 and /26 | Follow-on to their existing implementation; reciprocal edges, no reassignment |
+| Integrated restore/effect proof | agent-execution/04 | /03, graph-execution/21 and /25 | Production-owner integration tests; no alternative scheduler or effect ledger |
+| Lifecycle projection | agent-execution/05 | /03–04, graph-execution/27 | Existing cellop/cellctl consumers; R7 retains API/cockpit ingress |
+| AX source/fixture qualification | agent-execution/06 | /01–02, independent of managed integration | Offline go/no-go/unknown report; no production adapter or cluster activation |
+| Governed harness refinement | agent-execution/07 | /01–02; existing improvement/promotion owners retained | Offline protocol experiment with independent holdouts, protected controls and complete cost; no live optimizer |
+
+Source: main ec8d77e56627a7c2269f3d143ef6a31f3e41bd02, open-PR inventory refreshed
+16 October. No listed implementation PR targets the new extension/receipt paths. The open
+/20 Evidence PR is preserved. Refresh claims and PRs again at pickup; this bounded observation
+is not an ownership transfer. Existing Task/Verify text, gates, versions and Evidence are
+unchanged; only reciprocal unblocks and dated routing notes are added. /03's concrete profile
+adoption decision ripens after its implementation design. Full live qualification retains
+existing R1–R8 and operator decisions. No existing platform/profile is silently replaced.
+
+## Desk-process improvement — proposed owner set, 17 October 2026
+
+[Amendment 22](22-desk-improvement.md) extends continuing operations/quality. It does not
+replace R1–R8 or their activation sequence. Source state: public main 2f56cf289; current
+open claims/PRs were not enumerated in this offline audit and must be reconciled at pickup.
+
+| Work | Owner briefs | Source owners / treatment |
+|---|---|---|
+| Definition and pure calculation | desk-improvement/01–02 | Extend qualgen assessment/projection, semantic-owner index; no new miner |
+| Diagnosis/experiment/follow-up validation and role procedure | desk-improvement/03–04 | Continuing-operations lineage; shared skill reference; concrete procedure activation remains reviewed |
+| Native source bindings | desk-improvement/05 | Consume graph-execution/06 + brief-quality/05, compatible associations only |
+| Runtime evidence | desk-improvement/06–08 | After graph-execution/26 + /22, /21, /27 respectively; /08 also consumes brief-quality/07; foundations receive consumer notes, no reverse dependency |
+| Read-only proposal context | desk-improvement/09 | Existing Improve human/cadence and internal-module boundary |
+| End-to-end native qualification | desk-improvement/10 | Actual producer→mapping→cards→assessment→view, recovery and unknown/private cases |
+
+The new stream is parked and proposal-scoped. Every new brief is M/strong and carries
+executable discriminating checks. Existing completed Evidence/approval is preserved.
+Offline assistance can precede native emission, while measured native-mode benefit requires
+its real producer closure. Public implementation has no private adopter dependency.
+
+Semantic prerequisites: desk-improvement/01 consumes continuing-operations/01 (after
+statusgen/22); /03 consumes continuing-operations/02. These are explicit build gates,
+so generic source contracts are implemented once, before their assessment consumers.
+
+## Perf-v3 attribution and forge cost — requested amendment, 19 October 2026
+
+[Contract](../../performance-attribution-spec.md): new desktools-v2/63–65 own versioned local
+schema/readers, desk/agent/CLI propagation and own-request timing/points. Unfinished /62,
+statusgen/26 and performance-collection/01–09 are amended; completed /61 stays intact.
+The target, future-state bindings, storage/recovery and runtime handoff carry the same
+context/consent/coverage contract. This supersedes earlier v2-only future measurement intent,
+not historical v1/v2 facts, Evidence or the collection stream's parked state.
