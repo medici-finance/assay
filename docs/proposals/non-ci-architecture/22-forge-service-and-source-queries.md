@@ -196,3 +196,20 @@ served boundary and recovery, inventory legacy credentials, and request one scop
 cutover. Preserve one mutating cell per external repository. No SQL edit is a publication API,
 no new universal service token is provisioned, and no deployment/merge/release is performed by
 this authoring change.
+
+## Performance boundary contract — requested amendment, 19 October 2026
+
+[Perf-v3](../../performance-attribution-spec.md#querycache-service-and-passthrough-boundaries)
+measures service client calls, per-handler query/cache/coalescing work, and actual upstream
+direct/passthrough/refresh/poll/repair requests separately. Local/cache answers remain observed
+operations even when their covered upstream call count is zero. Client/server views of one
+logical request cannot be added into two queries, and a shared refresh's provider pages or
+GraphQL points cannot be copied to every waiter. Missing service instrumentation stays unknown.
+
+Per-request context is immutable; concurrent handler CPU cannot be inferred from process CPU.
+Opaque diagnostic links require explicit service-protocol/transport admission and workflow
+consent on both ends; profile selection alone adds no headers, authority, endpoint discovery
+or raw work locator forwarding. Required auth/access/receipt fields and optional diagnostics
+remain distinct. /39 owns typed client context, /37–38 refresh/poll, /40–41 handler/executor,
+/42–43 cache/source outcomes and /45 the real served workload proof. This does not claim the
+planned service exists or add a service prerequisite to the local perf-v3 recorder.

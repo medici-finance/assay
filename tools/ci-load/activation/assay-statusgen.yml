@@ -73,6 +73,9 @@ jobs:
   lint:
     if: github.event_name == 'pull_request'
     runs-on: medici-builder-public
+    permissions:
+      issues: read
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -92,8 +95,11 @@ jobs:
           go version
           ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
       - name: statusgen --lint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
-          "${RUNNER_TEMP}/statusgen" --root . --lint
+          "${RUNNER_TEMP}/statusgen" --root . --lint --acceptance-forge
 
   regen:
     environment: board-writer
@@ -105,6 +111,7 @@ jobs:
     # App (minted below), NOT the default GITHUB_TOKEN — so the default token
     # needs only read; the App token carries the write.
     permissions:
+      issues: read
       contents: read
     steps:
       # Mint a token for the assay-board-writer App. This App is the sole actor
@@ -139,9 +146,15 @@ jobs:
           go version
           ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
       - name: Regenerate STATUS.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
-          "${RUNNER_TEMP}/statusgen" --root .
+          "${RUNNER_TEMP}/statusgen" --root . --acceptance-forge
       - name: Commit STATUS.md if it changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
           set -euo pipefail
           git config user.name  'assay-board-writer[bot]'
@@ -196,7 +209,7 @@ jobs:
             echo "push rejected: main moved. Re-syncing and regenerating (attempt ${attempt}/${attempts})"
             git fetch origin main
             git reset --hard origin/main
-            "${RUNNER_TEMP}/statusgen" --root .
+            "${RUNNER_TEMP}/statusgen" --root . --acceptance-forge
             pushcred_preflight "statusgen board regen" || exit 1
           done
   # verified→done auto-flip for `gate: model` briefs (the third half of the
@@ -221,6 +234,8 @@ jobs:
     if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, '[skip-status-regen]') && !contains(github.event.head_commit.message, '[skip-autoflip]') }}
     runs-on: medici-builder-public
     permissions:
+      issues: read
+      pull-requests: read
       contents: read
     steps:
       - name: Mint assay-board-writer App token
@@ -268,6 +283,7 @@ jobs:
           echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
       - name: Auto-flip gate:model briefs from the App approval at the merged head
         env:
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
           GH_TOKEN: ${{ github.token }}
           # The roster is repository configuration, never a literal here: set the
           # ASSAY_TRUSTED_BOT_SLUGS Actions variable (role=slug:id, the reviewer=
@@ -292,13 +308,13 @@ jobs:
             git fetch --no-tags origin main
             git reset --hard FETCH_HEAD
             flip_rc=0
-            "${RUNNER_TEMP}/statusgen" --root . --auto-flip-model || flip_rc=$?
+            "${RUNNER_TEMP}/statusgen" --root . --auto-flip-model --acceptance-forge || flip_rc=$?
             if [ -z "$(git status --porcelain -- docs/streams)" ]; then
               echo "no brief flipped — nothing to commit"
               break
             fi
             # Sources must stay valid before we commit them.
-            "${RUNNER_TEMP}/statusgen" --root . --lint
+            "${RUNNER_TEMP}/statusgen" --root . --lint --acceptance-forge
             # Path-scoped add: never STATUS.md (single writer = the regen job).
             git add -- docs/streams
             git commit -m "chore(verify): auto-flip gate:model briefs verified→done from the App approval at head [skip-autoflip]"

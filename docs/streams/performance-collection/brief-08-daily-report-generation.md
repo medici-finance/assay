@@ -2,7 +2,7 @@
 brief: assay:assay:performance-collection:08
 title: "Daily report generation and report-pack qualification"
 why: "A scheduled run and a manual invocation must produce the same charts from the same saved snapshot, with missing collection visible."
-wave: 4
+wave: 6
 depends: ["performance-collection/07"]
 unblocks: ["performance-collection/09"]
 effort: M
@@ -12,10 +12,11 @@ gate-why: "Report collection, exposure and recurring effect boundaries need acce
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 2
+version: 4
 id: bcf69d42-62dd-4b7f-a609-af76d88ee19c
 authored: "2026-10-15 by reporting authoring session"
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 wave reconciliation at origin/main 9f9bb35de: performance-collection/02 consumes desktools-v2/61; reporting scope and historical Evidence unchanged"
   - docs/streams/performance-collection/README.md
   - docs/streams/continuing-operations/spec.md
@@ -100,6 +101,30 @@ Named commands below are implementation deliverables. Each must run the named te
 | 4 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./reportpack/... -run '^TestReportPackWriterBoundary$' > "$o" && grep -F -- '--- PASS: TestReportPackWriterBoundary ' "$o")` | exit 0; named PASS; unapproved canonical writes refuse; PR render and explicit manual export remain usable without network |
 | 5 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./reportpack/... -run '^TestReportPackRedaction$' > "$o" && grep -F -- '--- PASS: TestReportPackRedaction ' "$o")` | exit 0; named PASS; seeded credential-, prompt-, title- and error-shaped strings are absent from the committed daily JSON, HTML and manifest |
 | 6 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/08` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+Apply the [perf-v3 contract](../../performance-attribution-spec.md). Existing Tasks/Verify/Evidence and consent/retention controls remain owed.
+
+Daily generation consumes the same /07 v3 grouping, attribution coverage and cost units as
+on-demand generation at the same saved cutoff. Retain source/invocation deduplication and
+aliased references; do not scrape a live forge or agent transcript to fill missing dimensions.
+Extend the existing daily/on-demand parity Verify fixture with mixed versions, two work items,
+child overlap and missing points; no average-of-percentiles or unknown-as-zero is permitted.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Preserve the query/cache boundary contract from docs/performance-attribution-spec.md:
+client logical service calls and transport attempts, handler timing/cache/coalescing outcomes,
+and actual direct/passthrough/refresh/poll/repair provider sends/cost remain different kinds.
+Import correlation only under the selected aliased workflow policy; never forward raw local
+locators or infer missing server coverage as zero. Shared refresh/background cost remains
+shared/unallocated and one provider observation cannot be copied to all waiting work items.
+Do not sum client wait, handler/provider spans or concurrent process CPU as elapsed savings.
+Extend the existing local/served/replay/report Verify flow for this owner with the shared
+50-query/three-page fixture, warm hit, passthrough retry, background poll and absent server
+data. Wrongly combining the two sides of one service call or multiplying upstream points
+must fail the independent expected result; existing selectors and all Evidence remain intact.
 
 ## Evidence
 

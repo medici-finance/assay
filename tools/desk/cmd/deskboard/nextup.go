@@ -66,6 +66,19 @@ type gateScoreRow struct {
 	Stream       string `json:"stream"`
 	Status       string `json:"status"`
 	Repo         string `json:"repo,omitempty"`
+	// The versioned queue classification (statusgen queueFor, brief 45).
+	// Absent from an older statusgen: such a row is "unclassified", a coverage
+	// gap, never a zero (rowSupported / classOf in roots.go).
+	QueueVersion      int    `json:"queueVersion,omitempty"`
+	QueueClass        string `json:"queueClass,omitempty"`
+	QueueBucket       string `json:"queueBucket,omitempty"`
+	QueueOwner        string `json:"queueOwner,omitempty"`
+	QueueNextAct      string `json:"queueNextAct,omitempty"`
+	QueueGate         string `json:"queueGate,omitempty"`
+	QueueRisk         bool   `json:"queueRisk,omitempty"`
+	QueueIrreversible bool   `json:"queueIrreversible,omitempty"`
+	QueueValid        bool   `json:"queueValid,omitempty"`
+	QueueWhy          string `json:"queueWhy,omitempty"`
 }
 
 // nextupRow is one merged, repo-attributed row of the cross-repo queue.
@@ -77,6 +90,16 @@ type nextupRow struct {
 	Status       string `json:"status"`
 	Score        int    `json:"score"`
 	BlockedCount int    `json:"blockedCount"`
+	// Class is the queue class as a consumer must read it (classOf): the
+	// statusgen class, "unreadable" for an invalid classification, or
+	// "unclassified" when statusgen delivered none.
+	Class     string `json:"queueClass"`
+	Bucket    string `json:"queueBucket,omitempty"`
+	Owner     string `json:"queueOwner,omitempty"`
+	NextAct   string `json:"queueNextAct,omitempty"`
+	Gate      string `json:"queueGate,omitempty"`
+	Risk      bool   `json:"queueRisk"`
+	ClassNote string `json:"queueWhy,omitempty"`
 }
 
 // Population labelling. Measured on the live board: this verb
@@ -126,6 +149,15 @@ type nextupReport struct {
 	StatusgenVersion string      `json:"statusgenVersion"`
 	StatusgenSkew    bool        `json:"statusgenSkew"`
 	Rows             []nextupRow `json:"rows"`
+	// QueueCoverage grades every configured root against the queue contract and
+	// QueueGaps counts the roots that are anything but healthy. A consumer sizing
+	// work from Rows must read these first: a gap means Rows is a lower bound.
+	QueueCoverage []rootCoverage `json:"queueCoverage"`
+	QueueGaps     int            `json:"queueGaps"`
+	// QueueClasses counts Rows by class (classOf), so the work a verifier can
+	// actually be handed (judgment-dispatch) reads apart from the runner's,
+	// the continuation's and the human's.
+	QueueClasses map[string]int `json:"queueClasses"`
 }
 
 // resolveStatusgen returns the path of the statusgen binary to run. Fail-closed:
@@ -293,6 +325,19 @@ func cmdAwaiting(hdr Header, verbUsed string) (*Report, error) {
 // out so `throughput`, which reads one integer out of it, can obtain that integer from a
 // root set resolved once for the whole run rather than by re-running the whole verb.
 func awaitingFromRoots(hdr Header, verbUsed string, rs rootSet) (*nextupReport, error) {
+	return awaitingQueue(hdr, verbUsed, rs, false)
+}
+
+// awaitingQueue is awaitingFromRoots with the root-error policy explicit.
+//
+// strict (the `awaiting` verb): any root error fails the whole call closed.
+//
+// tolerant (`throughput`): a root that cannot be read, or whose declared repo
+// disagrees with its configuration, contributes NO rows and is recorded in
+// QueueCoverage as unreadable, so the caller keeps the partial reading AND the
+// named gap. It is the caller's job to refuse to size anything from a report
+// with QueueGaps > 0; an unreadable root is never a zero.
+func awaitingQueue(hdr Header, verbUsed string, rs rootSet, tolerant bool) (*nextupReport, error) {
 	resolved, bin := rs.roots, rs.bin
 	pinnedTag, pinRepo, running := rs.pinnedTag, rs.pinRepo, rs.running
 
@@ -307,40 +352,47 @@ func awaitingFromRoots(hdr Header, verbUsed string, rs rootSet) (*nextupReport, 
 		StatusgenVersion:   running,
 		StatusgenSkew:      running != pinnedTag,
 		Rows:               []nextupRow{},
+		QueueCoverage:      []rootCoverage{},
 	}
 	if verbUsed == "nextup" {
 		rep.AliasUsed = "nextup"
 	}
 
 	// Read every root CONCURRENTLY under the per-root pool (roots.go), fail-closed on any
-	// root's error — the lowest-index root's error wins, so which failure surfaces does not
-	// depend on which subprocess finished first. Results come back in configured order, so
-	// the attribution loop below sees exactly the sequence it saw when this was serial.
-	perRoot, rerr := runPerRoot(rs, func(r deskkit.RootConfig) ([]gateScoreRow, error) {
-		return gateScoresForRoot(bin, r.Path, r.Repo)
+	// root's error (strict) — the lowest-index root's error wins, so which failure surfaces
+	// does not depend on which subprocess finished first. Results come back in configured
+	// order, so the attribution loop below sees exactly the sequence it saw when this was
+	// serial. In tolerant mode the error rides in the result instead, and becomes coverage.
+	type rootRead struct {
+		rows []gateScoreRow
+		err  error
+	}
+	perRoot, rerr := runPerRoot(rs, func(r deskkit.RootConfig) (rootRead, error) {
+		rows, err := gateScoresForRoot(bin, r.Path, r.Repo)
+		if tolerant {
+			return rootRead{rows, err}, nil
+		}
+		return rootRead{rows, nil}, err
 	})
 	if rerr != nil {
 		return nil, rerr // fail-closed
 	}
 	for i, r := range resolved {
-		rows := perRoot[i]
+		rows, readErr := perRoot[i].rows, perRoot[i].err
+		if readErr == nil {
+			readErr = checkRowRepos(r, rows)
+			if readErr != nil && !tolerant {
+				return nil, readErr
+			}
+			if readErr != nil {
+				rows = nil
+			}
+		}
+		rep.QueueCoverage = append(rep.QueueCoverage, coverageOf(r, rows, readErr))
 		for _, row := range rows {
 			repo := row.Repo
-			switch {
-			case repo == "":
+			if repo == "" {
 				repo = r.Repo // pre-multi-root statusgen emits no repo field
-			case repo != r.Repo:
-				// The root DECLARED a repo (statusgen's `repo:` stream frontmatter)
-				// that disagrees with the repo it was CONFIGURED under. Preferring
-				// the declaration would let a checkout re-attribute its briefs at
-				// will — including to a repo roots.go would have refused outright
-				// and silent misattribution is the exact failure this board
-				// exists to eliminate. So: fail-closed, naming both sides.
-				return nil, deskkit.Unverifiable(fmt.Sprintf(
-					"root %s is configured for %s but statusgen reports its stream %s as %s — "+
-						"refusing to attribute briefs to a repo the root was not configured under "+
-						"(fix the root path in %s, or the stream's repo: frontmatter)",
-					r.Path, r.Repo, row.Stream, repo, deskkit.RootsEnv), nil)
 			}
 			rep.Rows = append(rep.Rows, nextupRow{
 				Repo:         repo,
@@ -350,8 +402,24 @@ func awaitingFromRoots(hdr Header, verbUsed string, rs rootSet) (*nextupReport, 
 				Status:       row.Status,
 				Score:        row.Score,
 				BlockedCount: row.BlockedCount,
+				Class:        classOf(row),
+				Bucket:       row.QueueBucket,
+				Owner:        row.QueueOwner,
+				NextAct:      row.QueueNextAct,
+				Gate:         row.QueueGate,
+				Risk:         row.QueueRisk,
+				ClassNote:    row.QueueWhy,
 			})
 		}
+	}
+	for _, c := range rep.QueueCoverage {
+		if c.gap() {
+			rep.QueueGaps++
+		}
+	}
+	rep.QueueClasses = map[string]int{}
+	for _, r := range rep.Rows {
+		rep.QueueClasses[r.Class]++
 	}
 
 	// Score descending, then repo/stream/brief for a deterministic board.
@@ -370,6 +438,28 @@ func awaitingFromRoots(hdr Header, verbUsed string, rs rootSet) (*nextupReport, 
 	})
 
 	return &rep, nil
+}
+
+// checkRowRepos refuses a root whose statusgen reports a stream under a repo the
+// root was not configured for.
+func checkRowRepos(r deskkit.RootConfig, rows []gateScoreRow) error {
+	for _, row := range rows {
+		if row.Repo == "" || row.Repo == r.Repo {
+			continue
+		}
+		// The root DECLARED a repo (statusgen's `repo:` stream frontmatter)
+		// that disagrees with the repo it was CONFIGURED under. Preferring
+		// the declaration would let a checkout re-attribute its briefs at
+		// will — including to a repo roots.go would have refused outright
+		// and silent misattribution is the exact failure this board
+		// exists to eliminate. So: fail-closed, naming both sides.
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"root %s is configured for %s but statusgen reports its stream %s as %s — "+
+				"refusing to attribute briefs to a repo the root was not configured under "+
+				"(fix the root path in %s, or the stream's repo: frontmatter)",
+			r.Path, r.Repo, row.Stream, row.Repo, deskkit.RootsEnv), nil)
+	}
+	return nil
 }
 
 // renderAwaiting wraps the merged awaiting report in the Report the verb returns. It is the
@@ -395,6 +485,26 @@ func renderAwaiting(hdr Header, rep nextupReport) *Report {
 		for _, r := range rep.Roots {
 			fmt.Fprintf(w, "  root %-24s %s\n", shortRepo(r.Repo), r.Path)
 		}
+		// Queue-contract coverage: a root that is not healthy makes every count
+		// below a LOWER BOUND, and the reader is told so where the rows are read.
+		for _, c := range rep.QueueCoverage {
+			if c.gap() {
+				fmt.Fprintf(w, "QUEUE-GAP %s %s: %s — counts from this root are a lower bound, not zero\n",
+					shortRepo(c.Repo), c.State, c.Reason)
+			}
+		}
+		if len(rep.QueueClasses) > 0 {
+			classes := make([]string, 0, len(rep.QueueClasses))
+			for c := range rep.QueueClasses {
+				classes = append(classes, c)
+			}
+			sort.Strings(classes)
+			parts := make([]string, 0, len(classes))
+			for _, c := range classes {
+				parts = append(parts, fmt.Sprintf("%s=%d", c, rep.QueueClasses[c]))
+			}
+			fmt.Fprintf(w, "queue classes: %s\n", strings.Join(parts, " "))
+		}
 		if len(rep.Rows) == 0 {
 			// Say WHICH roots were read. "no rows" after a fail-closed run means
 			// every configured root really is empty — the sentence has to carry
@@ -402,10 +512,10 @@ func renderAwaiting(hdr Header, rep nextupReport) *Report {
 			fmt.Fprintf(w, "(no awaiting briefs — all %d configured root(s) read successfully)\n", len(rep.Roots))
 			return
 		}
-		fmt.Fprintf(w, "%-8s %-24s %-6s %-14s %s\n", "REPO", "STREAM", "SCORE", "STATUS", "BRIEF")
+		fmt.Fprintf(w, "%-8s %-24s %-6s %-14s %-18s %s\n", "REPO", "STREAM", "SCORE", "STATUS", "CLASS", "BRIEF")
 		for _, r := range rep.Rows {
-			fmt.Fprintf(w, "%-8s %-24s %-6d %-14s %s\n",
-				shortRepo(r.Repo), trunc(r.Stream, 24), r.Score, r.Status, r.Brief)
+			fmt.Fprintf(w, "%-8s %-24s %-6d %-14s %-18s %s\n",
+				shortRepo(r.Repo), trunc(r.Stream, 24), r.Score, r.Status, r.Class, r.Brief)
 		}
 	}}
 }

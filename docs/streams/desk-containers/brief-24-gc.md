@@ -57,6 +57,7 @@ facts:
 - The result reports bytes reclaimed (logical, as `cache` reports them) and items per category, plus skipped items with reasons.
 
 ## Ground rules
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - NEVER git push / trigger workflows. Stop at `implemented`.
 - gc calls the existing instruments; it adds no deletion logic of its own beyond plan pruning.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.

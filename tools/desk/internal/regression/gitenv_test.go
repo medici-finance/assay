@@ -269,6 +269,33 @@ func TestFloorRunnerGitIsolation(t *testing.T) {
 	}
 }
 
+// TestFloorRunnerCellEnv runs the floor runner, check-floor.sh, over a one-row
+// manifest whose planted test fails on any CELLCTL_* variable it inherits, while the
+// caller exports the variables a cellctl shim exports. A cellctl row reads those names
+// as the cell it builds, so the runner's scrub is what keeps a floor run from a cell
+// shell from failing for a reason unrelated to the change under test.
+//
+// regression: #1631
+func TestFloorRunnerCellEnv(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX runner: check-floor.sh is the Linux/macOS entrypoint")
+	}
+	manifest, err := filepath.Abs(filepath.Join("testdata", "runner-cell-manifest.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "bash", "check-floor.sh", manifest)
+	cmd.Env = FixtureEnv("KUBECONFIG=/dev/null",
+		"CELLCTL_GH_AMBIENT=planted-ambient-1631", "CELLCTL_DESKWT=1")
+	cmd.WaitDelay = time.Second
+	out, err := cmd.CombinedOutput()
+	if err != nil || !strings.Contains(string(out), "seed passes=1") {
+		t.Fatalf("floor runner let an inherited CELLCTL_* variable reach a row: %v\n%s", err, out)
+	}
+}
+
 var (
 	shGoSpawn = regexp.MustCompile(`(^|[\s;&|(])go\s+\S`)
 	pyGoSpawn = regexp.MustCompile(`["']go["']\s*[,\]]`)

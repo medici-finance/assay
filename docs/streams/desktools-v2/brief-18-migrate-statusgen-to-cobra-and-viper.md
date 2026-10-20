@@ -16,10 +16,11 @@ risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-da
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 3
+version: 4
 id: "818e8f71-66e0-4614-b503-a6fd0aa301a1"
 authored: "2026-10-04 by desktools-v2/15"
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - "https://github.com/medici-finance/assay/issues/2111"
   - "docs/streams/desktools-v2/spec.md §9"
@@ -125,6 +126,17 @@ Go entrypoint rather than restarting timing inside Cobra. Do not link deskkit or
 credential provider: online reads remain on the existing read verb, while offline/frozen
 libraries stay usable without a service.
 
+
+## Perf-v3 consumer routing — 19 October 2026
+
+[The attributed performance contract](../../performance-attribution-spec.md) governs future
+local measurement. Preserve this brief's existing behavior, tests and legacy v1/v2 privacy;
+new qualified work/agent linkage requires the selected v3 workflow profile. /63 owns the
+schema/resolver/readers, /64 the shared CLI/env and launch propagation, /65 own-request
+cost/timing, /62 desk producer qualification and statusgen/26 standalone phase integration.
+Reuse those seams when available and record missing coverage otherwise; no duplicate
+writer/parser, speculative ID inference or additional measurement request. Existing credential,
+cache/discovery and CLI work remains independently deliverable and is not held for v3.
 
 ## Evidence
 <!-- Independent verifier records actual command, exit, output, date and runner. -->

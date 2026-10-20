@@ -143,3 +143,14 @@ review contract (/39 in desk-tools); /45 requires compatible callers and cost qu
 
 Refresh these PR states and their source heads at implementation. No external task was
 messaged and no active PR contract was silently changed by this authoring change.
+
+## Perf-v3 consumer amendment — 19 October 2026
+
+[Contract](performance-attribution-spec.md): perfrec /63–65 now owns the new local v3
+instrument, typed CLI/env/launcher context and own-request timing/GraphQL points. Collection
+retains aliased import, its event/spool/transport owner and parked state. Earlier statements
+that richer measurement belongs only in collection apply to that transport contract, not to
+this explicitly versioned local instrument. /62 and statusgen/26 adopt v3; collection/01–09
+preserve identity/coverage/units into reports, without raw local locators in exports.
+The source/consumer routing table in the contract classifies the remaining performance briefs;
+completed implementations and their Evidence are not reopened.

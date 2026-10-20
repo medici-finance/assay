@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -447,5 +448,34 @@ func TestDependsOnWithdrawnNamesSuccessorsInFileOrder(t *testing.T) {
 	}
 	if n := linesFor(linesFor(notices, "brief-11"), "no successor"); len(n) > 0 {
 		t.Errorf("withdrawn deps with successors must not read as won't-fix: %v", n)
+	}
+}
+
+// briefSchemaFirstRelease and the normative table in spec/brief-v1.md §3.5
+// name the same first release for every schema. A "" row (a schema not yet in
+// any release) is exempt until the release cut stamps both.
+func TestBriefSchemaFirstReleaseMatchesSpecTable(t *testing.T) {
+	raw, err := os.ReadFile("../spec/brief-v1.md")
+	if err != nil {
+		t.Fatalf("read spec: %v", err)
+	}
+	row := regexp.MustCompile("(?m)^\\| `(brief-v[0-9]+)` \\|.*\\| ([^|]*?) \\|$")
+	seen := map[string]bool{}
+	for _, m := range row.FindAllStringSubmatch(string(raw), -1) {
+		schema, cell := m[1], strings.Fields(m[2])
+		seen[schema] = true
+		want, ok := briefSchemaFirstRelease[schema]
+		if !ok {
+			t.Errorf("spec table names %s, which briefSchemaFirstRelease lacks", schema)
+			continue
+		}
+		if want != "" && (len(cell) == 0 || cell[0] != want) {
+			t.Errorf("%s: spec first release %q, briefSchemaFirstRelease %q", schema, m[2], want)
+		}
+	}
+	for s := range briefSchemaFirstRelease {
+		if !seen[s] {
+			t.Errorf("briefSchemaFirstRelease names %s, which the spec table lacks", s)
+		}
 	}
 }

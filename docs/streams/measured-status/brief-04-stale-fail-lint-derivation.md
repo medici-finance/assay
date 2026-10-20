@@ -26,7 +26,7 @@ exec-tier: strong
 exec-tier-why: changes lint routing logic that steers worker vs verify-desk vs human effort; a mis-derived state sends work down the wrong lane, which is the exact failure the issue reports
 domain: complicated
 value: med
-version: 1
+version: 2
 id: 666a7cba-7992-475b-ac9c-e5435b6e4be8
 ---
 
@@ -83,9 +83,9 @@ facts:
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1` | exit 0; output contains "ok" | check |
-| 2 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (all three fixture-state assertions ran and passed) | check |
+| 2 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -c '^--- PASS: TestStaleFailVsMissingCard'` | prints `1`, exit 0 (the test's own `--- PASS:` line is present, so all three fixture-state assertions ran and passed and a renamed or missing test cannot pass vacuously). `grep -c` reads the whole stream, so the row holds under `pipefail`, where the earlier `grep -q` closed the pipe early and `go test` took SIGPIPE (exit 141). Re-baselined 2026-10-16 | check |
 | 3 | `ls statusgen/testdata/*stale*fail* statusgen/testdata/*missing*card* >/dev/null 2>&1` | exit 0 (a fixture tree exists per state) | check |
-| 4 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -q 'stale FAIL'` | exit 0 (the stale-FAIL branch's message is exercised) | check |
+| 4 | `cd statusgen && go test . -run TestStaleFailVsMissingCard -count=1 -v 2>&1 \| grep -c 'stale FAIL'` | prints a count >= 1, exit 0 (the stale-FAIL branch's message is exercised); the same `pipefail`-safe `grep -c` form as row 2. Re-baselined 2026-10-16 | check |
 | 5 | `cd statusgen && bash testdata/stalefail-mutation.sh` | exit 0; planted second route is detected | check +mutation |
 
 ## Evidence

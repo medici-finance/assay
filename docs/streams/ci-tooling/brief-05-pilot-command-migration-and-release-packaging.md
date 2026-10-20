@@ -67,6 +67,7 @@ Default if no answer: none — activation blocks until answered.
 
 ## Ground rules
 
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - Author staged workflows only; no workflow activation, credential expansion or live infrastructure probes.
 - Preserve historical Evidence and independent controls. Stop at implementation; do not assert verified/done.
 - Missing publication, release or consumer evidence is could-not-check, never permission to delete source.

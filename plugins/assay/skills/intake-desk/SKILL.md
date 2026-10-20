@@ -163,7 +163,7 @@ not own.
 ## The board
 
 `issueboard` — read-only, one ACTION per open issue plus the intake lane's untriaged entries,
-age-flagged (`issueboard issues` / `issueboard intake` narrow to one lane). Its scan scope is the
+age-flagged (`issueboard issues --projection intake` / `issueboard intake` narrow to one lane). Its scan scope is the
 roster's, resolved at runtime; an unset/empty scan-repo roster value or a repo the token cannot read
 fails the WHOLE board with exit 6, so the board is never silently partial and an empty sweep is never
 reported as a clean board. A `needs-decision` or `question` issue ages against `--sla-days` (default
@@ -174,8 +174,16 @@ never be able to sink an ESCALATE row beneath a fresher high-impact one. An open
 `to:<role>` (filed by `deskfile new --to <role>`) is a desk-inbox item: it renders `ADDRESSED→<role>`
 in its own priority band, is held OUT of the un-briefed (CREATE-PLACEHOLDER) work — it is that desk's
 item, not free work — and, aged past `--sla-days` with no comment from that role's App, ESCALATES so
-an unread inbox surfaces without the addressee's cooperation. `issueboard issues --to <role>` narrows
+an unread inbox surfaces without the addressee's cooperation. `issueboard issues --projection inbox --to <role>` narrows
 to one desk's inbox.
+
+Use the projected forms only with an `issueboard --version` producer advertising
+`issue-projection-v1`. Older pinned producers retain `issueboard issues` and
+`issueboard issues --to <role>`; select that compatibility path before discovery,
+never as a retry after an incomplete projected read. The intake projection preserves
+the whole issue population, escalation/closure and quarantine; the inbox projection
+covers only the named addressee. Local raw intake remains `issueboard intake`.
+See [producer/plugin compatibility and rollback](../../../../docs/issue-projections.md).
 
 ## Scored triage — the impact/risk/effort triple at exit
 

@@ -143,6 +143,7 @@ type decisionRecordStamp struct {
 
 // rulingOutcome is the resolved verdict for one record's ruling link.
 type rulingOutcome struct {
+	Body    string       // authenticated, unedited human comment, populated only on success
 	Present bool         // the record carries a ruling: (or could not be read)
 	Reason  rulingReason // rulingOK on a pass
 	Detail  string       // human-readable evidence (pass) or explanation (refusal)
@@ -407,6 +408,7 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 	}
 
 	out.Reason = rulingOK
+	out.Body = cm.Body
 	url := cm.HTMLURL
 	if url == "" {
 		url = rec.Ruling

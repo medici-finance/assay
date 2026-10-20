@@ -53,10 +53,10 @@ fi
 if [ -n "$FAKE_SG_REPO" ]; then
   # multi-root statusgen stamps each row with the repo the ROOT declares
   # (stream repo: frontmatter), which may disagree with the configured key.
-  printf '[{"brief":"%s-stream/01","score":42,"blockedCount":1,"stream":"%s-stream","status":"implemented","repo":"%s"}]\n' "$name" "$name" "$FAKE_SG_REPO"
+  printf '[{"brief":"%s-stream/01","score":42,"blockedCount":1,"stream":"%s-stream","status":"implemented","repo":"%s","queueVersion":1,"queueClass":"judgment-dispatch","queueBucket":"desk-actionable","queueOwner":"verify-desk","queueNextAct":"dispatch one judge","queueValid":true}]\n' "$name" "$name" "$FAKE_SG_REPO"
   exit 0
 fi
-printf '[{"brief":"%s-stream/01","score":42,"blockedCount":1,"stream":"%s-stream","status":"implemented"}]\n' "$name" "$name"
+printf '[{"brief":"%s-stream/01","score":42,"blockedCount":1,"stream":"%s-stream","status":"implemented","queueVersion":1,"queueClass":"judgment-dispatch","queueBucket":"desk-actionable","queueOwner":"verify-desk","queueNextAct":"dispatch one judge","queueValid":true}]\n' "$name" "$name"
 `
 
 // installFakeStatusgen writes the shim and points STATUSGEN_BIN at it.

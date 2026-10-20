@@ -23,11 +23,14 @@ exec-tier-why: Semantic extraction, cost coverage and cross-caller failure behav
 domain: complicated
 gate-why: Review/issue observations can expose scoped operational facts; implemented coverage and authority boundaries require the existing human acceptance.
 decision-trigger: spec
+design: DR-issue-projections
 consumers:
-  - "plugins/assay/skills/worker-desk/SKILL.md: follow-up desk-tools/42"
-  - "plugins/assay/skills/intake-desk/SKILL.md: follow-up desk-tools/42"
-  - "plugins/assay/scripts/assay-inbox.sh: follow-up desk-tools/42"
-  - "tools/desk/cmd/deskboard/: follow-up desk-tools/42"
+  - "plugins/assay/skills/worker-desk/SKILL.md: fixed-here"
+  - "plugins/assay/skills/worker-desk/references/dispatch-runbook.md: fixed-here"
+  - "plugins/assay/skills/intake-desk/SKILL.md: fixed-here"
+  - "plugins/assay/scripts/assay-inbox.sh: fixed-here"
+  - "tools/desk/cmd/deskinbox/: fixed-here"
+  - "tools/desk/cmd/deskboard/: out-of-scope (independent board populations; intake-depth note already names the local intake reader)"
 ---
 
 # Brief 42 — Narrow issue discovery projections before enrichment
@@ -120,3 +123,14 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 Retain the derived frontmatter gate. Approval of the source spec is recorded; this brief
 adds implementation acceptance rather than reopening that decision. Existing adopter
 writer/custody/equivalence and collection consent gates remain separate.
+
+## Implementation acceptance hold
+
+This draft includes the actual deskinbox consumer and preserves the inbox script's
+positive ruling screen, cards and flow. Both readers use the current shared
+perfrec integration; its producer currently emits perf-v2. Completion is held until
+the canonical perf-v3 schema/context/provider owners (desktools-v2/63–65, as
+applicable) deliver their shared seam and both readers are integrated and qualified.
+The independent desk-tools/38 verification prerequisite remains outstanding. Source
+qualification here neither certifies that prerequisite nor activates any deployment,
+writer, credential, pin, release or collection policy.

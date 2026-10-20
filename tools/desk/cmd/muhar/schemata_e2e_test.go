@@ -115,10 +115,10 @@ func fxMutations() ([]Mutation, []Result) {
 		{"\treturn\n}", "\tn = 0\n\treturn\n}", Caught},
 		{"m[k]++", "m[k]--", Caught},
 		{"m[k]++", "m[k] = 0", Caught},
-		{"n * 2", "n * 3", Caught},                                 // only the source-reading test sees it
-		{"Limit = 10", "Limit = 11", Caught},                       // not in a function: classic
-		{"\treturn strings", "\tx := 1\n\treturn strings", Caught}, // does not compile
-		{"range s {", "range s + \"\" {", NotCaught},               // an equivalent mutant
+		{"n * 2", "n * 3", Caught},                                         // only the source-reading test sees it
+		{"Limit = 10", "Limit = 11", Caught},                               // not in a function: classic
+		{"\treturn strings", "\tx := 1\n\treturn strings", CouldNotMutate}, // does not compile
+		{"range s {", "range s + \"\" {", NotCaught},                       // an equivalent mutant
 	}
 	var ms []Mutation
 	var want []Result
@@ -170,7 +170,7 @@ func TestSchemataOneBuildPerWorker(t *testing.T) {
 	for i, m := range ms {
 		line := ""
 		for _, l := range strings.Split(out, "\n") {
-			if strings.HasSuffix(l, " "+m.Name) {
+			if strings.HasSuffix(l, " "+m.Name) || strings.Contains(l, " "+m.Name+" ") {
 				line = l
 			}
 		}
@@ -178,7 +178,7 @@ func TestSchemataOneBuildPerWorker(t *testing.T) {
 			t.Errorf("mutation %s (%q -> %q): got line %q, want %s", m.Name, m.Old, m.New, line, want[i])
 		}
 	}
-	if !strings.Contains(out, "Totals: 15 caught, 1 NOT CAUGHT, 0 could-not-mutate.") {
+	if !strings.Contains(out, "Totals: 14 caught, 1 NOT CAUGHT, 1 could-not-mutate.") {
 		t.Errorf("Totals line changed:\n%s", out)
 	}
 	logRaw, _ := os.ReadFile(logPath)
@@ -302,7 +302,7 @@ func TestSchemataIsOptIn(t *testing.T) {
 	if !strings.Contains(out, "NOT_CAUGHT       sep-wire") {
 		t.Errorf("the Sep mutant survives the classic way but was not reported NOT CAUGHT:\n%s", out)
 	}
-	if !strings.Contains(out, "Totals: 15 caught, 2 NOT CAUGHT, 0 could-not-mutate.") {
+	if !strings.Contains(out, "COULD_NOT_MUTATE mo") || !strings.Contains(out, "Totals: 14 caught, 2 NOT CAUGHT, 1 could-not-mutate.") {
 		t.Errorf("Totals line is not the classic one:\n%s", out)
 	}
 }

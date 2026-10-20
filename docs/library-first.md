@@ -210,11 +210,10 @@ existing `deskcore` module. It does not export `deskkit` or move role/forge auth
 The command hook remains a supported process integration; compatible Go consumers
 link the evaluator directly. Canonical decisions, observed filesystem context and
 actual sandbox enforcement have different owners. desktools-v2/66 delivers the
-extraction and consumer census; /31 consumes it for writeguard CLI migration.
+extraction and consumer census.
 
-Target-consumer clarification, 18 October 2026: graph-execution/22 directly consumes
-/66 for the local harness boundary and independent sandbox proof. The pending
-medici-finance/assay#3409 proposal may retire /31's parser work after its human
-ruling; that never retires the shared policy or the target consumer. /66 does not
-depend on any parser port. Until an authorized withdrawal lands, /31's existing
-compatibility contract and human gate remain intact.
+Target-consumer clarification, 19 October 2026: graph-execution/22 directly consumes
+/66 for the local harness boundary and independent sandbox proof. desktools-v2/31's
+parser port is withdrawn (medici-finance/assay#3409 merged, ruled at
+medici-finance/assay#3420), so /66 has no parser-port edge: writeguard keeps its current
+parser, routed exempt, and /66 owns the hook adapter. The guard controls are not retired.

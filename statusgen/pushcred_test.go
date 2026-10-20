@@ -78,6 +78,14 @@ exit 1
 // genStub stands in for statusgen and qualgen: every call is logged, and each
 // regeneration writes a fresh board so a retry always has something to commit.
 const genStub = `#!/usr/bin/env bash
+if [ "$(basename "$0")" = statusgen ]; then
+  case " $* " in
+    *" --acceptance-forge "*)
+      [ "${GH_TOKEN:-}" = READ-TOKEN-SENTINEL ] && [ "${ASSAY_HUMAN_LOGIN_MAP:-}" = alex:ada ] || {
+        echo "acceptance caller lacks read token or human map" >&2; exit 98;
+      } ;;
+  esac
+fi
 echo "$(basename "$0") $*" >>"$STUB_LOG/gen-calls"
 n=$(wc -l <"$STUB_LOG/gen-calls" | tr -d ' ')
 case " $* " in
@@ -298,10 +306,14 @@ func (bt boardTarget) run(t *testing.T) string {
 	}
 	for _, st := range parseWorkflow(t, raw, bt.file).Jobs[bt.job].Steps {
 		if st.Name == bt.step {
-			if len(st.Env) > 0 && bt.job != "model-autoflip" {
-				t.Fatalf("%s: step %q grew an env: map the rig does not resolve", bt.name(), bt.step)
+			// Resolve the actual step env with the same read/write sentinels as
+			// the reconcile rig. Unknown expressions still fail closed.
+			var prefix string
+			for _, kv := range stepEnv(t, st, nil) {
+				k, v, _ := strings.Cut(kv, "=")
+				prefix += "export " + k + "='" + strings.ReplaceAll(v, "'", "'\\''") + "'\n"
 			}
-			return st.Run
+			return prefix + st.Run
 		}
 	}
 	t.Fatalf("%s: no step named %q", bt.name(), bt.step)

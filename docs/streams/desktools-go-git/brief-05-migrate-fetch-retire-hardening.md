@@ -29,7 +29,7 @@ why: >-
   injection, upload-pack override, remote helpers, insteadOf, PATH trust. gitcore.Fetch
   executes none of them. Migrating the three fetch sites is what lets the old hardening
   code be deleted and the deskadvisory askpass-to-disk pattern disappear.
-version: 2
+version: 3
 id: 7d8455f5-acc2-477a-9d89-3facc6c7de7e
 ---
 
@@ -96,7 +96,20 @@ facts:
 | 3 | `cd tools/desk && go test ./cmd/deskgit/ -run DisallowedOriginRefused` | exit 0; a disallowed origin is still REFUSED after migration (the allowed-repo gate survived — mutation-style row) |
 | 4 | `grep -cE -e 'GIT_ASKPASS' -e 'credential.helper' tools/desk/cmd/deskadvisory/advisory.go` | exit 1 (grep exits 1 when nothing matches); output is `0` (the askpass file + helper-suppression path is gone). Command and Expect re-written 2026-10-03 (#1862): the path is named from the repository root with no `cd`, because a failed `cd` exits 1, the status this Expect requires; a missing file now exits 2 and fails the row. |
 | 5 | `test -d tools/desk/cmd/deskgit && { grep -rnE -e 'upload-pack' -e 'refmap' tools/desk/cmd/deskgit/ \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` (the moot argv-hardening flags are deleted). Command and Expect re-written 2026-10-03 (#1862): the earlier form began with `cd tools/desk &&` and was decided by exit status alone, so a failed `cd` (status 1, the one a no-match grep also returns) passed it; the directory is now named from the repository root behind a `test -d` leg (an absent directory leaves no output line and exits 1, which fails the row), and the matching lines are counted. |
-| 6 | `sh tools/desk/scripts/count-git-exec.sh` | prints `git-exec sites: <N>`; N below the count recorded before this brief |
+| 6 | `bash docs/streams/desktools-go-git/reproduce-05-counts.bash` | exit 0; pinned parent `44054ca37` reads 199 (52 direct, 147 seam), delivering commit `c93cd7dd8` reads 192 (52 direct, 140 seam), using each tree's own counter; exactly seven seam sites removed and no direct-spawn increase |
+
+Row 6 was re-authored under [#3035](https://github.com/medici-finance/assay/issues/3035)
+to measure this brief's **delivery delta**, rather than comparing a later main with
+an older branch count. The [inventory](inventory.md#baseline-counter) records the
+reproduced revisions and concurrent growth. The command archives only tracked
+counter inputs, runs each revision's own counter, and fails on missing history,
+unexpected output or a changed total/direct/seam result. It makes no remote reads.
+The current counter remains advisory and is not re-baselined by this amendment.
+
+The historical Evidence below is unchanged: its row-6 FAIL at `bbf8e3516245`
+judged the old Expect and remains that result. This amendment is authored check
+repair, **not a new independent Verify pass**. Lifecycle remains `implemented`;
+the human security-posture review remains owed.
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->

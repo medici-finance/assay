@@ -261,7 +261,7 @@ func TestPerfCommandKit(t *testing.T) {
 				}
 				return
 			}
-			if rec.Verb != tc.want || rec.Tool != tc.tool || rec.Exit != code || rec.Schema != "perf-v1" {
+			if rec.Verb != tc.want || rec.Tool != tc.tool || rec.Exit != code || rec.Schema != "perf-v2" {
 				t.Fatalf("record %+v, want verb=%s exit=%d", rec, tc.want, code)
 			}
 			if bytes.Contains(raw, []byte("private-argument")) || bytes.Contains(raw, []byte(home)) || bytes.Contains(raw, []byte("bad-item")) {
@@ -280,7 +280,7 @@ func TestPerfCommandKit(t *testing.T) {
 		})
 	}
 	t.Run("mutation_actual_kit_assignment", func(t *testing.T) {
-		mutated := mutationBinary(t, "deskdispatch", "cmd/deskdispatch/dispatch.go", `deskkit.PerfCommand(perfVerbs, perfKitVerb("dispatch", *kit))`, "")
+		mutated := mutationBinary(t, "deskdispatch", "cmd/deskdispatch/cli.go", `deskkit.PerfCommand(perfVerbs, perfKitVerb("dispatch", v.String("kit")))`, "")
 		rec, _, _, _ := perfEntry(t, mutated, "deskdispatch", t.TempDir(), "1", []string{"bad-item", "--kit=review"})
 		if rec.Verb == "dispatch:review" {
 			t.Fatal("oracle accepted removed production kit attribution")

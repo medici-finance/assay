@@ -1,6 +1,6 @@
 # Assay’s future architecture
 
-**Status: future architecture we are moving towards. Updated 14 October 2026.** This is the whole-system direction for Assay, including portfolio-directed improvement and drift assessment. It describes the destination, not the currently deployed system. Detailed contract/schema amendments, implementation and activation retain their own review and qualification requirements; this designation does not approve every mechanism or grant deployment authority. The [implementation boundary](#implemented-foundations-and-work-still-to-build) below separates inspected foundations from work still to build.
+**Status: future architecture we are moving towards. Updated 16 October 2026.** This is the whole-system direction for Assay, including portfolio-directed improvement and drift assessment. It describes the destination, not the currently deployed system. Detailed contract/schema amendments, implementation and activation retain their own review and qualification requirements; this designation does not approve every mechanism or grant deployment authority. The [implementation boundary](#implemented-foundations-and-work-still-to-build) below separates inspected foundations from work still to build.
 
 The target starts with one host containing multiple isolated cells, permits command breaks where they simplify the design, reconciles affected unfinished plans together, and includes the service and cockpit in public Assay. PostgreSQL coordinates runtime work; recovery should reconstruct useful state while permitting classified transient loss and safe repeated work. See [storage and recovery](14-storage-forge-graph.md).
 
@@ -82,6 +82,28 @@ existing Git evidence and forge ownership; preserves exact-candidate acceptance 
 role authority; separates offline inspection from managed admission; and routes the uncovered
 evaluation-context and accountable-principal contracts. Signing, federation and a native SCM
 remain separately qualified later capabilities. Historical decisions and Evidence remain.
+
+## Portable execution environments — amendment of 16 October 2026
+
+Use one runner boundary over independently selected, qualified harness, model and
+execution-backend profiles. Workspace preparation produces a versioned readiness receipt;
+launch requires effective configuration and current authority to match it. Preservation of
+files, conversation, processes and pending interactions is declared separately. A restored
+sandbox cannot renew ownership, budget, a human answer or permission to repeat an unknown
+external effect. Show preparation, process, recovery, effects and acceptance as separate
+facts through existing client/API owners.
+
+Harness-improvement loops produce versioned, untrusted profile proposals and probe evidence.
+Independent evaluation and existing review/adoption decide promotion; generated compositions
+cannot rewrite enforced controls, acceptance or an active invocation's pinned bundle.
+
+The [execution-environment amendment](27-agent-execution-environments.md) supplies the
+contracts and [seven implementation briefs](../../streams/agent-execution/README.md).
+They extend loop-admin and existing workspace/cell/effect owners. AX/Substrate is an optional
+backend investigation; neither Redis nor another scheduler/store enters the Assay target.
+Existing R2 PostgreSQL, R3 isolation, R4 role authority and R7 ingress retain ownership.
+The earlier architecture ratification does not establish implementation or activation of
+this later delta.
 
 ## Progressive deployment and human involvement
 
@@ -455,6 +477,26 @@ PostgreSQL/role/attempt owners; no replacement store, scheduler or event lifecyc
 Actual adopter trials, data and budgets are outside the public method. This is a new proposal,
 not an enlargement of the earlier revision-bound ratification or a deployed capability.
 
+## Attributed operational performance — requested amendment, 19 October 2026
+
+Use the [perf-v3 contract](../../performance-attribution-spec.md) for new local tool and
+runtime diagnostic observations: qualified local work references, distinct desk/assigned role,
+logical session/agent identity, per-process invocation/parent links, actual forge attempts,
+request durations and attributable GraphQL points with explicit unknown coverage. Desks and
+launchers supply bounded environment defaults, tools expose shared parsed overrides, and each
+subprocess measures its own work. No recursive parent charging or additional monitoring requests.
+
+perfrec remains the optional local instrument with explicit tool/workflow profiles; existing
+v1/v2 consent is not widened. The separate performance-collection owner imports/aliases selected
+v3 data before any spool/export, without becoming operational coordination or acceptance state.
+Local v3 precedes DB/API deployment. New /63–65 and amended /62, statusgen/26 and collection
+briefs carry delivery; authored intent does not assert implementation, adoption or benefit.
+
+The perf-v3 service measurements also cover the planned query/cache layer: caller-facing
+logical requests and latency, per-handler/cache/coalescing work, and actual direct/passthrough
+or background provider requests/cost. Keep these observation kinds distinct and charge shared
+refreshes once; see the [boundary contract](../../performance-attribution-spec.md#querycache-service-and-passthrough-boundaries).
+
 ## Local write policy — amendment, 18 October 2026
 
 The proposed [shared write-policy contract](../../write-policy.md) places deterministic
@@ -462,12 +504,10 @@ write-isolation evaluation in `deskcore/writepolicy`, with writeguard retained a
 command-hook adapter. Managed workspace owners supply validated allocation context;
 the harness/container still confines actual filesystem access. This adds no generic
 security service and merges no push, credential, process or cleanup authority.
-Delivery: desktools-v2/66, then the writeguard portion of /31 and managed consumer
-integration/qualification. This amendment is proposed, not part of an earlier ratification.
+Delivery: desktools-v2/66, then managed consumer integration/qualification. This amendment is proposed, not part of an earlier ratification.
 
-Target-consumer clarification, 18 October 2026: graph-execution/22 directly consumes
-/66 for the local harness boundary and independent sandbox proof. The pending
-medici-finance/assay#3409 proposal may retire /31's parser work after its human
-ruling; that never retires the shared policy or the target consumer. /66 does not
-depend on any parser port. Until an authorized withdrawal lands, /31's existing
-compatibility contract and human gate remain intact.
+Target-consumer clarification, 19 October 2026: graph-execution/22 directly consumes
+/66 for the local harness boundary and independent sandbox proof. desktools-v2/31's
+parser port is withdrawn (medici-finance/assay#3409 merged, ruled at
+medici-finance/assay#3420), so /66 has no parser-port edge: writeguard keeps its current
+parser, routed exempt, and /66 owns the hook adapter. The guard controls are not retired.

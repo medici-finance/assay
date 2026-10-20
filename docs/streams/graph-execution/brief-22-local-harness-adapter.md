@@ -10,6 +10,7 @@ depends:
 - desktools-v2/66
 unblocks:
 - graph-execution/27
+- agent-execution/03
 effort: L
 gate: human
 risk:
@@ -67,8 +68,8 @@ risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this st
 Perform brief-v1 §4.1.1 pickup against the approved target, `docs/go-engineering.md`
 and the [write-policy contract](../../write-policy.md). Consume desktools-v2/66's
 shared evaluator/profile in the local adapter; keep hook execution as an adapter
-where the selected host requires it. This survives any separately authorized
-withdrawal of old CLI-parser migration work. Reuse validated workspace/context
+where the selected host requires it. This is unaffected by the withdrawn
+old CLI-parser migration work (desktools-v2/31). Reuse validated workspace/context
 ports; do not duplicate allocation, claim, custody or write-policy meanings.
 
 Include `loopadmin/adapters/localharness/writepolicy_test.go` (planned) and its
@@ -120,3 +121,7 @@ The plausible wrong implementations are the negative cases named in Verify: stal
 ## Review
 
 Gate: human. Confirm scope, exact-subject evidence, independent failure controls and cross-component flow. No test result changes merge authority.
+
+## Execution-environment follow-on routing — 2026-10-16
+
+Reciprocal unblocks only: agent-execution/03. The [execution amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md) adds a follow-on obligation over this brief's existing output. Its Task, Verify, gate, version and historical Evidence are unchanged; this note grants no delivery, reassignment or activation.

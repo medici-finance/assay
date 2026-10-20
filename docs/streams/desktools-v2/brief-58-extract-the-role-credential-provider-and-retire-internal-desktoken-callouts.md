@@ -11,10 +11,11 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
 outcome: none
-version: 1
+version: 2
 id: 8c796b94-21a4-4f83-94a0-e1954671972b
 authored: 2026-10-16 by performance brief authoring
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - docs/streams/desktools-v2/README.md — Performance delivery priority, 2026-10-16
   - docs/library-first.md
   - docs/streams/desk-tools/brief-25-token-memo-and-cache-before-install-id.md
@@ -146,6 +147,17 @@ break planted, not a duplicate checker.
 
 Scope sufficiency and workload representativeness remain review judgments; publish the
 measured environment and limitations. No fixture success is a live permission or fleet speed claim.
+
+## Perf-v3 consumer routing — 19 October 2026
+
+[The attributed performance contract](../../performance-attribution-spec.md) governs future
+local measurement. Preserve this brief's existing behavior, tests and legacy v1/v2 privacy;
+new qualified work/agent linkage requires the selected v3 workflow profile. /63 owns the
+schema/resolver/readers, /64 the shared CLI/env and launch propagation, /65 own-request
+cost/timing, /62 desk producer qualification and statusgen/26 standalone phase integration.
+Reuse those seams when available and record missing coverage otherwise; no duplicate
+writer/parser, speculative ID inference or additional measurement request. Existing credential,
+cache/discovery and CLI work remains independently deliverable and is not held for v3.
 
 ## Evidence
 

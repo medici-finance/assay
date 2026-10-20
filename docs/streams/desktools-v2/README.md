@@ -71,33 +71,33 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 14 | [regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green](brief-14-regression-floor.md) | 2 | M | verified | 2026-10-07 assay-verifier-app[bot] @ 91f04b81ba06 (claude-opus-5-5) | — |
 | 15 | [Cobra and Viper foundation and complete CLI migration routing](brief-15-cobra-and-viper-foundation-and-complete-cli-migration-routing.md) | 1 | L | verified | 2026-10-04 assay-verifier-app[bot] @ 5f5072d89b11 (claude-opus-5-5) | — |
 | 16 | [Migrate cellctl to Cobra commands and Viper configuration](brief-16-migrate-cellctl-to-cobra-commands-and-viper-configuration.md) | 2 | L | implemented | — | — |
-| 17 | [Enforce complete Cobra and Viper adoption across the tool suite](brief-17-enforce-complete-cobra-and-viper-adoption-across-the-tool-suite.md) | 5 | L | todo | — | — |
+| 17 | [Enforce Cobra and Viper on every new command and every surviving CLI](brief-17-enforce-complete-cobra-and-viper-adoption-across-the-tool-suite.md) | 5 | L | todo | — | — |
 | 18 | [Migrate statusgen to Cobra and Viper](brief-18-migrate-statusgen-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 19 | [Migrate qualgen to Cobra and Viper](brief-19-migrate-qualgen-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 20 | [Migrate deskboard to Cobra and Viper](brief-20-migrate-deskboard-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
-| 21 | [Migrate deskdispatch to Cobra and Viper](brief-21-migrate-deskdispatch-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 21 | [Migrate deskdispatch to Cobra and Viper](brief-21-migrate-deskdispatch-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 22 | [Migrate deskwt to Cobra and Viper](brief-22-migrate-deskwt-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 23 | [Migrate deskfleet to Cobra and Viper](brief-23-migrate-deskfleet-to-cobra-and-viper.md) | 3 | M | todo | — | — |
-| 24 | [Migrate desksupervise to Cobra and Viper](brief-24-migrate-desksupervise-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 24 | [Migrate desksupervise to Cobra and Viper](brief-24-migrate-desksupervise-to-cobra-and-viper.md) | 3 | M | withdrawn | — | — |
 | 25 | [Migrate deskapps to Cobra and Viper](brief-25-migrate-deskapps-to-cobra-and-viper.md) | 3 | M | todo | — | — |
-| 26 | [Migrate deskclose to Cobra and Viper](brief-26-migrate-deskclose-to-cobra-and-viper.md) | 3 | M | todo | — | — |
-| 27 | [Migrate deskpost to Cobra and Viper](brief-27-migrate-deskpost-to-cobra-and-viper.md) | 3 | L | todo | — | — |
-| 28 | [Migrate deskroster to Cobra and Viper](brief-28-migrate-deskroster-to-cobra-and-viper.md) | 3 | M | todo | — | — |
+| 26 | [Migrate deskclose to Cobra and Viper](brief-26-migrate-deskclose-to-cobra-and-viper.md) | 3 | M | withdrawn | — | — |
+| 27 | [Migrate deskpost to Cobra and Viper](brief-27-migrate-deskpost-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
+| 28 | [Migrate deskroster to Cobra and Viper](brief-28-migrate-deskroster-to-cobra-and-viper.md) | 3 | M | withdrawn | — | — |
 | 29 | [Port the assay-inbox launcher onto deskinbox](brief-29-port-the-assay-inbox-launcher-onto-deskinbox.md) | 4 | M | todo | — | — |
 | 30 | [Port the GitLab fleet provisioner to a Go command](brief-30-port-the-gitlab-fleet-provisioner-to-a-go-command.md) | 3 | M | todo | — | — |
-| 31 | [Migrate the push and write guards to Cobra and Viper](brief-31-migrate-the-push-and-write-guards-to-cobra-and-viper.md) | 3 | L | todo | — | — |
-| 32 | [Migrate the scan and cluster guards to Cobra and Viper](brief-32-migrate-the-scan-and-cluster-guards-to-cobra-and-viper.md) | 3 | M | todo | — | — |
-| 33 | [Migrate the token and claim custody verbs to Cobra and Viper](brief-33-migrate-the-token-and-claim-custody-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
-| 34 | [Migrate the preflight and git transport verbs to Cobra and Viper](brief-34-migrate-the-preflight-and-git-transport-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 31 | [Migrate the push and write guards to Cobra and Viper](brief-31-migrate-the-push-and-write-guards-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
+| 32 | [Migrate the scan and cluster guards to Cobra and Viper](brief-32-migrate-the-scan-and-cluster-guards-to-cobra-and-viper.md) | 3 | M | withdrawn | — | — |
+| 33 | [Migrate the token and claim custody verbs to Cobra and Viper](brief-33-migrate-the-token-and-claim-custody-verbs-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
+| 34 | [Migrate the preflight and git transport verbs to Cobra and Viper](brief-34-migrate-the-preflight-and-git-transport-verbs-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
 | 35 | [Migrate the install path to Cobra and Viper](brief-35-migrate-the-install-path-to-cobra-and-viper.md) | 3 | M | todo | — | — |
-| 36 | [Migrate the merge authority verbs to Cobra and Viper](brief-36-migrate-the-merge-authority-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
-| 37 | [Migrate deskflip and deskevidence to Cobra and Viper](brief-37-migrate-deskflip-and-deskevidence-to-cobra-and-viper.md) | 3 | L | todo | — | — |
-| 38 | [Migrate the PR writer verbs to Cobra and Viper](brief-38-migrate-the-pr-writer-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
-| 39 | [Migrate the issue writer verbs to Cobra and Viper](brief-39-migrate-the-issue-writer-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
-| 40 | [Migrate verifyloop and reviewloop to Cobra and Viper](brief-40-migrate-verifyloop-and-reviewloop-to-cobra-and-viper.md) | 3 | L | todo | — | — |
-| 41 | [Migrate the scan and monitor loops to Cobra and Viper](brief-41-migrate-the-scan-and-monitor-loops-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 36 | [Migrate the merge authority verbs to Cobra and Viper](brief-36-migrate-the-merge-authority-verbs-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
+| 37 | [Migrate deskflip and deskevidence to Cobra and Viper](brief-37-migrate-deskflip-and-deskevidence-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
+| 38 | [Migrate the PR writer verbs to Cobra and Viper](brief-38-migrate-the-pr-writer-verbs-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
+| 39 | [Migrate the issue writer verbs to Cobra and Viper](brief-39-migrate-the-issue-writer-verbs-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
+| 40 | [Migrate verifyloop and reviewloop to Cobra and Viper](brief-40-migrate-verifyloop-and-reviewloop-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
+| 41 | [Migrate the scan and monitor loops to Cobra and Viper](brief-41-migrate-the-scan-and-monitor-loops-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
 | 42 | [Migrate the comms verbs to Cobra and Viper](brief-42-migrate-the-comms-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
-| 43 | [Migrate fanoutloop, desktick and deskdigest to Cobra and Viper](brief-43-migrate-fanoutloop-desktick-and-deskdigest-to-cobra-and-viper.md) | 3 | L | todo | — | — |
+| 43 | [Migrate fanoutloop, desktick and deskdigest to Cobra and Viper](brief-43-migrate-fanoutloop-desktick-and-deskdigest-to-cobra-and-viper.md) | 3 | L | withdrawn | — | — |
 | 44 | [Migrate the metrics and calibration verbs to Cobra and Viper](brief-44-migrate-the-metrics-and-calibration-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
 | 45 | [Migrate the board reader verbs to Cobra and Viper](brief-45-migrate-the-board-reader-verbs-to-cobra-and-viper.md) | 3 | L | implemented | — | — |
 | 46 | [Migrate the release and provenance verbs to Cobra and Viper](brief-46-migrate-the-release-and-provenance-verbs-to-cobra-and-viper.md) | 3 | L | todo | — | — |
@@ -115,8 +115,11 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 58 | [Extract the role credential provider and retire internal desktoken callouts](brief-58-extract-the-role-credential-provider-and-retire-internal-desktoken-callouts.md) | 1 | L | todo | — | — |
 | 59 | [Share concurrent credential lookups and bound reuse by credential expiry](brief-59-share-concurrent-credential-lookups-and-bound-reuse-by-credential-expiry.md) | 2 | M | todo | — | — |
 | 60 | [Bound component activation discovery and reuse validated manifest snapshots](brief-60-bound-component-activation-discovery-and-reuse-validated-manifest-snapshots.md) | 1 | M | todo | — | — |
-| 61 | [Version shared performance boundaries and keep legacy reports comparable](brief-61-version-shared-performance-boundaries-and-keep-legacy-reports-comparable.md) | 1 | M | todo | — | — |
-| 62 | [Instrument desk hot paths and qualify credential and startup savings](brief-62-instrument-desk-hot-paths-and-qualify-credential-and-startup-savings.md) | 3 | M | todo | — | — |
+| 61 | [Version shared performance boundaries and keep legacy reports comparable](brief-61-version-shared-performance-boundaries-and-keep-legacy-reports-comparable.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 0e661b6e15de (claude-opus-5-5) | — |
+| 62 | [Instrument desk hot paths and qualify credential and startup savings](brief-62-instrument-desk-hot-paths-and-qualify-credential-and-startup-savings.md) | 4 | M | todo | — | — |
+| 63 | [Define perf-v3 attribution, profiles and compatible local readers](brief-63-define-perf-v3-attribution-profiles-and-compatible-local-readers.md) | 2 | M | todo | — | — |
+| 64 | [Propagate performance context through desks, agents and tool CLIs](brief-64-propagate-performance-context-through-desks-agents-and-tool-clis.md) | 3 | M | todo | — | — |
+| 65 | [Measure own forge request timing and GraphQL cost](brief-65-measure-own-forge-request-timing-and-graphql-cost.md) | 3 | M | todo | — | — |
 | 66 | [Extract shared write policy and make writeguard a hook adapter](brief-66-extract-shared-write-policy-and-make-writeguard-a-hook-adapter.md) | 1 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
@@ -227,12 +230,32 @@ fixtures use local git repositories, local HTTP servers and fake CLI executables
   owning brief or to a classified exclusion; [cli-contract.md](cli-contract.md) is the shared
   command and configuration contract. TestCLIInventory fails on any unrouted, orphaned or
   over-budget row.
-- **Final — wave 5, /17:** depends on /16 and every child; zero pending/unowned entrypoints,
+- **Final — wave 5, /17:** depends on /16 and every surviving child; zero pending/unowned entrypoints (withdrawn verbs' rows are `exempt` until retired),
   executed binary/configuration tests, generated reference help and a proven PR CI gate. It
   does not perform an omnibus port.
 
 CLI critical path: `15 → 16 → 45 → 29 → 17` (tied with `15 → 16 → 30 → 54 → 17`, which
 carries two human gates and so paces in practice); /16 is the next head once /15 lands. Library selection is settled by #2111; implementation risk gates remain.
+**Scope amendment — 2026-10-18.** Ratification of the target architecture at revision 23f655f5d: https://github.com/medici-finance/assay/issues/2500#issuecomment-6137853872
+The target retires or
+re-homes the domains of many desk verbs: desk-tools verbs become thin adapters to typed use
+cases and role-bound effects, and the command matrix is not ported as a milestone
+([target architecture](../../proposals/non-ci-architecture/11-target-architecture.md),
+"What happens to today's tools"); no parser migration is a prerequisite, and obsolete
+parser work is dropped once its consumers are identified
+([migration](../../proposals/non-ci-architecture/13-migration-and-decisions.md)). The
+per-verb ports /24, /26–/28, /31–/34 and /36–/41, /43 are therefore `withdrawn`;
+the human-gated withdrawals (/26–/28, /31–/34, /36–/39) are ruled at https://github.com/medici-finance/assay/issues/3420#issuecomment-6257901942;
+each names its successor in front matter. /21 (deskdispatch) is not withdrawn: its port
+merged before this amendment, so it stays an implemented child of /17. The withdrawn ports'
+entrypoints stay on their current parsers,
+routed `exempt` in the registry until retired. Withdrawing /31 and /32 withdraws the
+parser port only: the guard controls themselves stay and re-home to executor checks.
+Cobra/Viper becomes a **requirement for new tools** instead (no ruling of its own: it applies the ratification above and the request in medici-finance/assay#2111)
+([cli-contract.md §7](cli-contract.md#7-new-tools-and-retiring-tools--2026-10-18)), and /17
+enforces it on every surviving CLI and every new `main` package. /54 (including GitLab token
+renewal) is unchanged, pending medici-finance/assay#2987.
+
 The old forge path proceeds alongside this track. /06, /08 and /11 retain their original
 deliverables under the configuration/CLI contract. /12 carries compatibility guidance only:
 all new CLI platform fixtures and checks are owned by /15, /16, their migration children
@@ -241,6 +264,9 @@ and historical Evidence remain unchanged. The dependency waves and critical path
 therefore need no additional edge for /12.
 
 ## Performance delivery priority — 2026-10-16
+
+**Historical schedule:** the wave bullets and direct instrumentation edges below describe
+the 16 October plan. Use the 19 October attributed-performance table for current pickup.
 
 This authoring amendment prioritizes credential extraction and concurrency, startup discovery
 and trustworthy instrumentation. It grants no credential, deployment or collection authority.
@@ -252,20 +278,20 @@ mirror/service work and the local recorder each keep their current semantic owne
 | 1 | desktools-v2/58 | Internal credential provider; CLI and shared Go resolver share one implementation. New, todo; human acceptance of implemented custody parity. |
 | 2 | desktools-v2/59 | Per-identity in-flight sharing and original-expiry reuse. New, todo; follows 58. |
 | 3 | desktools-v2/60 | Source-validated activation discovery reuse. New, todo; independent local fixtures. |
-| 3 | desktools-v2/61 | Shared perfrec boundary/schema/readers. New, todo; independent, no perfdata/DB prerequisite. |
-| 4 | desktools-v2/62 | Actual desk hotpath attribution and matched before/after workload. New, todo; follows 58, 59, 60 and 61. |
-| 4 | statusgen/26 | Shared-recorder phase attribution and invocation-local parse reuse. New, todo; follows 61; remains credential-free. |
+| 3 | desktools-v2/61 | Implemented perf-v2 boundary/schema/readers (PR #3431); preserve independent verification/Evidence. |
+| 4 | desktools-v2/62 | Actual desk hotpath attribution and matched before/after workload. Todo; now follows 58, 59, 60, 63, 64 and 65. |
+| 4 | statusgen/26 | Shared-recorder phase attribution and invocation-local parse reuse. Todo; now follows 63/64; remains credential-free. |
 
-Critical path for the credential outcome: `58 → 59 → 62`. Instrumentation starts independently:
+Historical 16 October critical path for the credential outcome: `58 → 59 → 62`. Instrumentation starts independently:
 `61 → 62` and `61 → statusgen/26`. Discovery 60 starts beside them and feeds 62's matched startup workload.
 The smallest unblocking move is 58's internal extraction with synthetic custody/CLI parity;
 it does not wait on Cobra, repo-scope policy changes, a service, a database or the mirror.
 Review its concrete custody evidence under its own human gate. Do not export deskkit or move
 a credential into statusgen to remove a process boundary.
 
-- Wave 1: 58, 60 and 61 — separate owners; coordinate entrypoint integration on current main.
-- Wave 2: 59 and statusgen/26 — consume the provider and shared recorder respectively.
-- Wave 3: 62 — qualify the combined desk path after all four local inputs; no new remote activation dependency.
+- Historical wave 1: 58, 60 and 61 — separate owners; coordinate entrypoint integration on current main.
+- Historical wave 2: 59 and statusgen/26 — consume the provider and shared recorder respectively.
+- Historical wave 3: 62 — qualify the combined desk path after all four local inputs; no new remote activation dependency.
 
 Freshness: inspected origin/main eba941721 on 2026-10-16. Open-PR and dispatch-claim reads
 were collected at authoring. The reporting plan merged during authoring was reconciled at
@@ -280,19 +306,37 @@ performance-collection/01–02 keep correlated collection/import; forge-neutral/
 shared online ingestion, serving and qualification; statusgen/20 keeps complete offline
 context discovery. Amend those unfinished owners; do not reopen delivered /09 or desk-tools/24–25.
 
+## Attributed performance delivery — 19 October 2026
+
+[The v3 contract](../../performance-attribution-spec.md) supersedes v2-only future intent;
+completed /61 remains implemented, with existing Evidence untouched. No collection is activated.
+
+| Owner | Wave | Deliverable |
+|---|---|---|
+| /63 | 2 | New perf-v3 contract/context/profile/readers after implemented /61; no DB or perfdata dependency. |
+| /64 | 3 | Launchers, agent lifecycle and shared real CLI/env attribution after /63. |
+| /65 | 3 | Own-request timing and attributable GraphQL cost after /63; unknown is not zero. |
+| statusgen/26 | 4 | Credential-free v3 producer after /63 and /64. |
+| /62 | 4 | Matched desk workload after /58, /59, /60, /63, /64 and /65. |
+
+Attribution critical path: `61 (implemented) → 63 → 64`; observation proceeds `63 → 65`.
+Combined desk qualification has both that path and `58 → 59 → 62`; /60 remains independent.
+The next unblocking move for attribution is /63's schema/profile/resolver, verified absent
+at 2e02111ed. /64 and /65 consume its fixtures independently. Final CLI qualification /17
+includes /64; existing CLI migrations adopt shared bindings without duplicating them.
+Collection/02 follows /01 and /63–65 in wave 4; it remains parked and never blocks local v3.
+The earlier 16 October schedule is historical; these amended dependencies control pickup.
+
 ## Write-policy delivery — 18 October 2026
 
 [Contract](../../write-policy.md): /66 extracts `deskcore/writepolicy` and retains the
-writeguard command-hook adapter; /31 then adapts its CLI without duplicating policy.
+writeguard command-hook adapter.
 /66 is independent of allocator completion and starts from current legacy behavior.
 Managed consumers separately bind allocation context and prove actual sandbox flow.
-The dependency edge 66 → 31 → 17 preserves the existing CLI finish gate; other guard
-work within /31 may proceed independently. Recheck current contracts and engineering
-guidelines at pickup under brief-v1 §4.1.1; no implementation is claimed here.
+Recheck current contracts and engineering guidelines at pickup under brief-v1 §4.1.1; no implementation is claimed here.
 
-Target-consumer clarification, 18 October 2026: graph-execution/22 directly consumes
-/66 for the local harness boundary and independent sandbox proof. The pending
-medici-finance/assay#3409 proposal may retire /31's parser work after its human
-ruling; that never retires the shared policy or the target consumer. /66 does not
-depend on any parser port. Until an authorized withdrawal lands, /31's existing
-compatibility contract and human gate remain intact.
+Target-consumer clarification, 19 October 2026: graph-execution/22 directly consumes
+/66 for the local harness boundary and independent sandbox proof. desktools-v2/31's
+parser port is withdrawn (medici-finance/assay#3409 merged, ruled at
+medici-finance/assay#3420), so /66 has no parser-port edge: writeguard keeps its current
+parser, routed exempt, and /66 owns the hook adapter. The guard controls are not retired.

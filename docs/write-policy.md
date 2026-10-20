@@ -81,8 +81,8 @@ managed decisions do not replace OS/harness confinement or operator activation g
 | Consumer | Disposition / owner | Retirement proof |
 |---|---|---|
 | Existing `cmd/writeguard` and command-hook wiring | desktools-v2/66 extracts policy and retains binary/protocol | Old command-local decision functions removed; common fixtures exercise import and built binary |
-| Target local harness adapter | graph-execution/22 consumes /66 directly | Actual adapter/library decisions and independent sandbox refusal remain required if legacy CLI parser work is withdrawn |
-| CLI parsing of writeguard and other guards | desktools-v2/31 consumes /66 for writeguard | Typed options reach the same evaluator; other guards retain their own meanings |
+| Target local harness adapter | graph-execution/22 consumes /66 directly | Actual adapter/library decisions and independent sandbox refusal remain required now that the legacy CLI parser work (desktools-v2/31) is withdrawn |
+| CLI parsing of writeguard and other guards | Unchanged: the desktools-v2/31 parser port is withdrawn and writeguard keeps its current parser | The hook adapter reaches the same evaluator; other guards retain their own meanings |
 | Managed launch, tool hooks and host/container path mapping | managed workspace harness integration | Admitted allocation flows to hook and sandbox; missing/stale/foreign context refuses before launch/write; legacy hook integration still works |
 | Other actual duplicate write-isolation evaluators | /66 discovers and records each site; migrate bounded sites there or route a named follow-up | Source-bound census with no unowned site or competing policy; calling an allocator alone does not require a writepolicy import |
 | Statusgen checkout/audit lifecycle | shared workspace-library migration | Uses the workspace owner, not a blanket import of write policy; only a discovered duplicate evaluator adds a migration obligation |

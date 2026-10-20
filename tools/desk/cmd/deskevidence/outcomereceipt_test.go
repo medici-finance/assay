@@ -34,6 +34,7 @@ func receiptGitRoot(t *testing.T) (string, string) {
 	return dir, rvGitIn(t, dir, "rev-parse", "HEAD")
 }
 
+// regression: #2798
 func TestDeriveReceiptFromGit(t *testing.T) {
 	root, sha := receiptGitRoot(t)
 	f := &fakeForge{}
@@ -56,8 +57,8 @@ func TestDeriveReceiptFromGit(t *testing.T) {
 			t.Errorf("inputs has no %s: %v", k, wr.Inputs)
 		}
 	}
-	if len(wr.Inputs) != 5 {
-		t.Errorf("inputs = %v, want exactly 5 keys (the planned path is absent at the sha)", wr.Inputs)
+	if len(wr.Inputs) != 8 {
+		t.Errorf("inputs = %v, want 5 content/tool keys and 3 scope keys (including planned absence)", wr.Inputs)
 	}
 	if wr.Inputs["file:"+receiptBriefPath] != deskkit.Sha256Hex([]byte(landed)) {
 		t.Errorf("the brief input is not the brief as it lands")

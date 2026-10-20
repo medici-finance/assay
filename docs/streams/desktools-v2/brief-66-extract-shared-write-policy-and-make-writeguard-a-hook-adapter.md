@@ -4,7 +4,7 @@ title: Extract shared write policy and make writeguard a hook adapter
 why: "Write-isolation decisions are trapped in a command package. Extract one reusable evaluator so command hooks and managed adapters share policy without sharing effects or weakening enforcement."
 wave: 1
 depends: []
-unblocks: ["desktools-v2/31", "graph-execution/22"]
+unblocks: ["graph-execution/22"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -28,7 +28,7 @@ consumers:
   - "deskcore/writepolicy: follow-up desktools-v2/66"
   - "tools/desk/cmd/writeguard, tools/desk/go.mod, tools/desk/go.sum: follow-up desktools-v2/66"
   - "docs/contracts.md, docs/write-policy-consumers.md, tools/desk/README.md: follow-up desktools-v2/66"
-  - "tools/desk/cmd/writeguard CLI parsing: follow-up desktools-v2/31"
+  - "tools/desk/cmd/writeguard CLI parsing: out-of-scope (the parser port, desktools-v2/31, is withdrawn; writeguard keeps its current parser)"
   - "loopadmin/adapters/localharness: follow-up graph-execution/22"
   - "managed launch/harness adapters outside the public runner: out-of-scope (separate consumer plans bind the producer version and qualify allocation/sandbox flow)"
   - "statusgen workspace lifecycle: out-of-scope (consumes workspace; only an actual duplicate write-policy evaluator requires migration)"
@@ -82,7 +82,7 @@ No existing control removal/weakening without its recorded authorization; preser
 
 1. Perform architecture pickup. Census current and planned write-policy consumers and duplicates from fresh source; record revisions, queries, exclusions and each site's migrate/retain/follow-up owner. Migrate bounded actual duplicates here; route larger ones to concrete briefs before claiming closure. Do not relabel allocator users as policy duplicates.
 2. Define versioned typed operation/observation/outcome fixtures and implement pure Classify/Evaluate in deskcore/writepolicy. Separate lexical classification from filesystem/ancestor observations. Unknown remains explicit; no environment, filesystem, clock, Git, process, callout, network or credential capability in the transitive core. Preserve sentinel-before-exemption and only-adds-refusals ordering.
-3. Convert writeguard into a thin protocol/observation/callout adapter. Retain all hook tool names, JSON/exit/stdout, activation, configuration-source, sentinel and legacy failure behavior. Remove old decision functions when common fixtures pass; command-local wrappers may compose, never reimplement policy. CLI parsing remains /31's work only while that compatibility migration is retained; a separately authorized withdrawal does not retire this evaluator or /22's consumer.
+3. Convert writeguard into a thin protocol/observation/callout adapter. Retain all hook tool names, JSON/exit/stdout, activation, configuration-source, sentinel and legacy failure behavior. Remove old decision functions when common fixtures pass; command-local wrappers may compose, never reimplement policy. CLI parsing is unchanged: the parser port (/31) is withdrawn, which does not retire this evaluator or /22's consumer.
 4. Add the tools/desk module requirement/build wiring and qualify a separate external Go consumer with GOWORK=off. Settle compatible deskcore version/profile and release dependency resolution; source replacements alone are insufficient. Update source/consumer contract coverage and CI path triggers through the existing workflow-landing path.
 5. Hand back exact API/profile/source versions to managed consumers, update the semantic owner and checked census, and preserve source-bound regression cases plus before/after observation-cost measurements. No claim that publishing source installs a hook.
 

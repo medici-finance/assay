@@ -69,8 +69,12 @@ type stageRow struct {
 	// this verb's depth/slot ratio is unchanged by the reservation, which floors a share of the
 	// pool for resume/rework rather than shrinking the pool itself. Empty for a loop this
 	// throughput verb does not resolve a reservation for (a blind row).
-	Reserve   string `json:"reserve,omitempty"`
-	Blind     string `json:"blind,omitempty"`
+	Reserve string `json:"reserve,omitempty"`
+	Blind   string `json:"blind,omitempty"`
+	// Partial, when set, says Depth was read but is a LOWER BOUND: some root was
+	// unreadable, unsupported by the running statusgen, or held could-not-check
+	// rows. The advice never widens a stage on a partial depth.
+	Partial   string `json:"partial,omitempty"`
 	DepthNote string `json:"depthNote"`
 }
 
@@ -80,6 +84,10 @@ type throughputReport struct {
 	// Bottleneck names the stage with the highest ratio among the stages that were READ.
 	// Empty when nothing was readable or every readable stage has an empty queue.
 	Bottleneck string `json:"bottleneck"`
+	// BottleneckWithheld says why Bottleneck is empty although a stage was read: a partial
+	// (lower-bound) depth cannot name the deepest stage, so the field is withheld rather
+	// than published for a consumer that reads it and ignores Advice.
+	BottleneckWithheld string `json:"bottleneckWithheld,omitempty"`
 	// StagesRead / StagesTotal make the coverage explicit on every emission, so a
 	// bottleneck computed from two of four stages can never be read as the whole picture.
 	StagesRead  int `json:"stagesRead"`
@@ -161,8 +169,9 @@ func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Durat
 	}
 	verifyStage := stageRow{
 		Stage: "verify", Loop: "verify-desk",
-		DepthNote: "briefs at `implemented` awaiting a verifier across every configured root " +
-			"(via `deskboard awaiting`)",
+		DepthNote: "`implemented` briefs the canonical queue classes judgment-dispatch (work a model " +
+			"verifier can be handed) across every configured root — runner, continuation and " +
+			"human-action rows are excluded (via the statusgen queue contract)",
 	}
 	intakeStage := stageRow{
 		Stage: "intake", Loop: "intake-desk",
@@ -234,19 +243,12 @@ func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Durat
 	// ---- verify depth ----
 	if rootsErr != nil {
 		// already blinded above; no read to attempt
-	} else if nv, err := awaitingFromRoots(hdr, "awaiting", rs); err != nil {
+	} else if nv, err := awaitingQueue(hdr, "awaiting", rs, true); err != nil {
 		verifyStage.Blind = appendBlind(verifyStage.Blind, "depth: "+err.Error())
 	} else if nv != nil {
-		n := 0
-		for _, row := range nv.Rows {
-			// `awaiting` carries implemented AND verified; only the first is work a
-			// verifier has to do. Counting both would inflate the queue with rows whose
-			// verification already happened.
-			if row.Status == "implemented" {
-				n++
-			}
-		}
+		n, partial := verifyDepth(nv)
 		verifyStage.Depth = intp(n)
+		verifyStage.Partial = partial
 		if len(rep.Roots) == 0 {
 			rep.Roots = nv.Roots
 		}
@@ -269,6 +271,17 @@ func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Durat
 		rep.Stages = append(rep.Stages, *s)
 	}
 
+	pickBottleneck(&rep)
+	rep.Advice = throughputAdvice(&rep)
+
+	return &Report{
+		value:  rep,
+		detail: throughputDetail(&rep),
+		render: func(w io.Writer) { renderThroughput(w, &rep) },
+	}, nil
+}
+
+func pickBottleneck(rep *throughputReport) {
 	// Bottleneck: the highest ratio among stages that were actually READ. Ties break on
 	// stage name so two consecutive ticks over identical state name the same stage — the
 	// desk's rule is "the same stage over two ticks", and a signal that alternated between
@@ -288,13 +301,16 @@ func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Durat
 		// would have the desk widening a pool with nothing to put in it.
 		rep.Bottleneck = ""
 	}
-	rep.Advice = throughputAdvice(&rep)
-
-	return &Report{
-		value:  rep,
-		detail: throughputDetail(&rep),
-		render: func(w io.Writer) { renderThroughput(w, &rep) },
-	}, nil
+	// A stage read from a PARTIAL queue is only a lower bound, so the deepest stage
+	// could be a different one. Withhold the name (and say why) instead of publishing a
+	// bottleneck a consumer could widen on while ignoring Advice.
+	for _, s := range rep.Stages {
+		if s.Partial != "" && s.Depth != nil {
+			rep.Bottleneck = ""
+			rep.BottleneckWithheld = fmt.Sprintf("%s depth is a LOWER BOUND (%s)", s.Stage, s.Partial)
+			return
+		}
+	}
 }
 
 // throughputAdvice is the ONE line a coordinator acts on. It states the exact command when
@@ -304,6 +320,16 @@ func throughputAdvice(rep *throughputReport) string {
 	if rep.StagesRead == 0 {
 		return "COULD-NOT-CHECK: no stage's depth was readable, so nothing here says which desk is the " +
 			"bottleneck. Blind is not idle — fix the reads before acting on this signal."
+	}
+	// A stage read from a PARTIAL queue is only a lower bound, so the true bottleneck
+	// could be it, whatever the readable ratios say, and "no bottleneck" would be a
+	// false clean. No width change is advised for ANY stage until the gap closes.
+	for _, s := range rep.Stages {
+		if s.Partial != "" && s.Depth != nil {
+			return fmt.Sprintf("COVERAGE-GAP: %s depth (%d) is a LOWER BOUND (%s). NOT advising a width "+
+				"change for any stage: the unread work could move the answer. Blind is not idle — "+
+				"fix the coverage first.", s.Stage, *s.Depth, s.Partial)
+		}
 	}
 	if rep.Bottleneck == "" {
 		return fmt.Sprintf("no bottleneck: every one of the %d readable stage(s) has an empty queue. "+
@@ -363,6 +389,8 @@ func renderThroughput(w io.Writer, rep *throughputReport) {
 		note := s.SlotsSource
 		if s.Blind != "" {
 			note = "COULD-NOT-CHECK — " + s.Blind
+		} else if s.Partial != "" {
+			note = "PARTIAL (lower bound) — " + s.Partial
 		}
 		fmt.Fprintf(w, "%-9s %-15s %-7s %-6d %-16s %-7s %-5d %s\n",
 			s.Stage, s.Loop, depth, s.Slots, reserve, ratio, s.MaxSlots, note)
@@ -373,4 +401,30 @@ func renderThroughput(w io.Writer, rep *throughputReport) {
 		fmt.Fprintf(w, "root: %s (%s)\n", r.Path, r.Repo)
 	}
 	renderScopeLine(w, rep.Header.Scope)
+}
+
+// verifyDepth is the verify stage's depth from the canonical queue reading: the
+// `implemented` rows classed judgment-dispatch (statusgen queueFor, via the
+// gate-scores seam), the only class a model verifier can be handed. Runnable-offline
+// rows are the runner's, continuation rows (CI auto-flip, implementer rework) are
+// another party's, and human-action rows wait on a person; counting any of them
+// would size a verifier pool against work it cannot do. `awaiting` carries
+// implemented AND verified, and only the first is work a verifier has to do.
+//
+// COVERAGE GAPS ARE NOT ZERO. An unreadable root, a root whose statusgen predates
+// the contract, or rows explicitly could-not-check make the depth a LOWER BOUND:
+// partial names why ("" when the reading is complete), and the advice refuses to
+// widen on a partial depth.
+func verifyDepth(nv *nextupReport) (depth int, partial string) {
+	for _, row := range nv.Rows {
+		if row.Status == "implemented" && row.Class == queueClassJudgment {
+			depth++
+		}
+	}
+	for _, c := range nv.QueueCoverage {
+		if c.gap() {
+			partial = appendBlind(partial, fmt.Sprintf("%s %s: %s", shortRepo(c.Repo), c.State, c.Reason))
+		}
+	}
+	return depth, partial
 }

@@ -13,10 +13,11 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 2
+version: 4
 id: 2b089f0c-6ce5-4e2f-a5bf-d62842845b29
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
@@ -94,6 +95,7 @@ webhook payload decisions are not answered by this section.
 
 ## Ground rules
 
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - Isolate changes; never push main, merge, ready-flip, release, dispatch workflows or contact live infrastructure.
 - Use synthetic data, disposable processes/repositories and explicit local database fixtures; no production tokens or data.
 - Preserve role, candidate, unknown-outcome, required audit/budget and canonical acceptance meanings.
@@ -181,6 +183,29 @@ publisher token and cannot request arbitrary roles or token values.
 Retain the exact separate process/revocation boundary of this brief. Extracting code inside
 one role environment does not remove that boundary or amend statusgen's online read contract.
 
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+For this brief's existing performance observations, reuse the [perf-v3 contract](../../performance-attribution-spec.md) and /63–65's
+shared typed context and request-cost seam when those adapters are available. Each process
+records its own attempts, timing and observed GraphQL points with units/basis/coverage;
+client-to-service and service-to-provider work are distinct. Carry admitted parent invocation
+links when known, preserve missing context and never turn it into operational authority.
+No extra provider request or expanded business query for monitoring; qualified bounded cost
+metadata may join the same request. No copied descendant call total,
+and no v2-only replacement instrument. Keep this brief's scope/Verify/Evidence and independent
+service delivery; record unsupported boundaries until producer integration. /45's existing
+matched service qualification must include own-request and parent/child no-double-count cases.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Apply docs/performance-attribution-spec.md, including its query/cache boundary contract.
+
+Instrument per-handler service latency and directly observed phases separately from executor-to-provider requests. Keep per-request immutable context and actual authenticated server role distinct from descriptive caller role. Do not attribute concurrent process-wide CPU to each handler. Denial/expiry/cache-hit paths retain result/coverage and make no extra provider calls for diagnostics.
+
+Extend this brief's existing production-flow Verify cases with these boundary/false-count
+negative fixtures; all existing Tasks, exact selectors and Evidence remain obligations.
+No service activation or extra dependency on a live collector is introduced.
 
 ## Evidence
 

@@ -12,10 +12,12 @@ gate-why: "Correlated operational measurements and their access/retention bounda
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 3
+version: 5
 id: 1f12e2ac-a0b9-4881-a452-4be522f432ad
 authored: 2026-10-13 by performance collection authoring
 sources:
+  - "assay:assay:desktools-v2:63 — perf-v3 contract fixture and importer compatibility"
+  - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - docs/streams/performance-collection/README.md
   - docs/telemetry.md
@@ -189,6 +191,35 @@ Preserve the historical sources and the merged reporting amendment as dated hist
 the current implementation state is the shared perfrec module at eba941721. This amendment
 does not replace its writer or retrospectively widen old payload/consent promises.
 
+
+## Perf-v3 delivery amendment — 19 October 2026
+
+Apply the [perf-v3 contract](../../performance-attribution-spec.md). Existing Tasks/Verify/Evidence and consent/retention controls remain owed.
+
+Freeze the collection representation of the perf-v3 contract, not a second local instrument.
+Local workflow v3 may contain typed qualified work locators; the existing source/epoch alias
+mapper must translate them before this spool, preview or upload. Keep the explicit selected
+workflow profile and never forward native harness IDs/raw qualified locators. Preserve agent,
+session, fresh invocation/parent identities with scoped aliases, desk versus assigned role,
+request-duration distributions and measured/estimated/unknown GraphQL units/sample coverage.
+Child observations are own-process; deduplicate identity and never sum inclusive timing.
+Extend TestPhaseCostSchema and TestEventPrivacy to reject planted raw locators, inherited
+identity in tool profile, invalid context, false-zero points and parent-summary duplication.
+No dependency on v3 implementation is required to freeze synthetic collection fixtures.
+
+## Query/cache measurement amendment — 19 October 2026
+
+Preserve the query/cache boundary contract from docs/performance-attribution-spec.md:
+client logical service calls and transport attempts, handler timing/cache/coalescing outcomes,
+and actual direct/passthrough/refresh/poll/repair provider sends/cost remain different kinds.
+Import correlation only under the selected aliased workflow policy; never forward raw local
+locators or infer missing server coverage as zero. Shared refresh/background cost remains
+shared/unallocated and one provider observation cannot be copied to all waiting work items.
+Do not sum client wait, handler/provider spans or concurrent process CPU as elapsed savings.
+Extend the existing local/served/replay/report Verify flow for this owner with the shared
+50-query/three-page fixture, warm hit, passthrough retry, background poll and absent server
+data. Wrongly combining the two sides of one service call or multiplying upstream points
+must fail the independent expected result; existing selectors and all Evidence remain intact.
 
 ## Evidence
 

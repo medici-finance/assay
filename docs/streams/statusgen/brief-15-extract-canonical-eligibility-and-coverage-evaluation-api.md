@@ -184,6 +184,22 @@ RISK-VALUE: DERIVED — EvaluatorVersion = "statusgen-evaluation/1" @ statusgen/
 
 **VERIFY: PASS** — 4/4 rows exit 0 with the named PASS under a proven network-off sandbox. The control and 13/13 shipped mutations fail the suite; 12/13 fail the test their category names, and mutation 5 is caught by rows 1 and 4 instead of row 2 (precision note above).
 
+### Network-off execution witness — 2026-10-19 claude-opus-5-5 verifier at 4b15482af5c6 (4/4 rows pass, sandbox=container-netns)
+
+A fresh non-implementer verifier was admitted by `deskdispatch --check-verifier` (rc 0) against merged main 4b15482af5c6c71b9312ca7df0f23b219de3f840. The binding is in the Verification-Attestation line below. The execution witness ran under the driver's 2026-10-19 interim-runner ruling (recorded on the private house tracker). The runner was a local docker container started with `--network none` and the engine's default seccomp profile. statusgen and the desk tools were built from the cloned tree inside it, and `statusgen verifyrun --sandbox container-netns` ran non-dry with GOPROXY=off and GOTOOLCHAIN=local. verifyrun exited 0 and wrote the witness table below.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEvaluationLibraryCLIParity$" ./... > "$result" && grep -F -- "--- PASS: TestEvaluationLibraryCLIParity " "$result")` | pass exit=0 sandbox=container-netns | sha256:9aeb5c7332b1 | 2026-10-19 | assay-verifier-app[bot] @ 4b15482af5c6 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEvaluationUncertainEvidenceHolds$" ./... > "$result" && grep -F -- "--- PASS: TestEvaluationUncertainEvidenceHolds " "$result")` | pass exit=0 sandbox=container-netns | sha256:f7199ac1a095 | 2026-10-19 | assay-verifier-app[bot] @ 4b15482af5c6 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEvaluationPureDependencyBoundary$" ./... > "$result" && grep -F -- "--- PASS: TestEvaluationPureDependencyBoundary " "$result")` | pass exit=0 sandbox=container-netns | sha256:12dacdaee356 | 2026-10-19 | assay-verifier-app[bot] @ 4b15482af5c6 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestEvaluationExternalConsumer$" ./... > "$result" && grep -F -- "--- PASS: TestEvaluationExternalConsumer " "$result")` | pass exit=0 sandbox=container-netns | sha256:6a764910a93b | 2026-10-19 | assay-verifier-app[bot] @ 4b15482af5c6 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#3490 run=0fb94e6086281a7faabdcaeb2f1de6f012b8dfca6a5931633f45733ec8ddec67 source=4b15482af5c6c71b9312ca7df0f23b219de3f840 brief=docs/streams/statusgen/brief-15-extract-canonical-eligibility-and-coverage-evaluation-api.md model=claude-opus-5-5 tier=strong
+
+The substance is the existing by-hand Evidence block of 2026-10-15 at source a39ad90497c10cdc16413695c3ce9b74c2b098d6. In it all 4 rows passed network-off, and the control and 13/13 shipped mutations were caught by the suite. This pass adds the container execution witness to that substance.
+
+**VERIFY: PASS** — all 4 Verify rows now carry a passing network-off execution witness (exit 0, sandbox=container-netns) at 4b15482af5c6, on top of the 2026-10-15 by-hand PASS.
+
 ## Review
 
 Gate: model. This is behavior-preserving offline extraction, not an authority change. Any

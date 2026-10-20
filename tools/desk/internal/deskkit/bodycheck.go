@@ -13,7 +13,7 @@ import (
 // pattern filters. There is NO override flag anywhere.
 
 var (
-	reGitHubToken = regexp.MustCompile(`(ghp_|github_pat_|ghs_|gho_)[A-Za-z0-9_]+`)
+	reGitHubToken = regexp.MustCompile(`(ghp_|github_pat_|ghs_|gho_|ghu_|ghr_)[A-Za-z0-9_]+`)
 	reAWSKeyID    = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
 	// reGitLabToken is a GitLab personal/project/group access token: the `glpat-` prefix
 	// and a 20+ char body (#1642). The body is under runThreshold, so the entropy loop
@@ -453,7 +453,7 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 	s := markerSurface(raw)
 	switch {
 	case reGitHubToken.MatchString(s):
-		return RefusedFinding("refused: "+surface+" contains a GitHub token prefix (ghp_/github_pat_/ghs_/gho_)",
+		return RefusedFinding("refused: "+surface+" contains a GitHub token prefix (ghp_/github_pat_/gho_/ghu_/ghs_/ghr_)",
 			regexFinding("github-token", s, reGitHubToken))
 	case reGitLabToken.MatchString(s):
 		return RefusedFinding("refused: "+surface+" contains a GitLab access-token prefix (glpat-)",

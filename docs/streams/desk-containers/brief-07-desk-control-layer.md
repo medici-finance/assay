@@ -60,6 +60,7 @@ facts:
   check it, so a reviewer can re-run the check rather than trust the prose.
 
 ## Ground rules
+- CLI built on the desktools-v2 Cobra/Viper foundation (desktools-v2 cli-contract.md §7): every new command, verb or launcher this brief adds uses that shared foundation (added 2026-10-18).
 - NEVER git push to main / trigger workflows / run mutating infra commands. Feature
   branch + draft PR only.
 - Stop at `implemented` — you do not set verified/done.

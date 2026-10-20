@@ -676,3 +676,14 @@ isolated role executors, /43 incremental recomputation, /44 Git reuse trial and 
 served qualification. /40 now explicitly consumes /58–59's internal provider; /45 consumes
 /62's matched workload. Their existing later waves and activation gates remain. No
 local credential/startup fix is made dependent on the service or PostgreSQL.
+
+## Query/cache performance observations — 19 October 2026
+
+The [perf-v3 boundary contract](../../performance-attribution-spec.md#querycache-service-and-passthrough-boundaries)
+uses /37–45's existing service owners. /39 defines typed client diagnostic context, /37–38
+refresh/poll/event origins, /40–41 service/executor/passthrough, /42–43 query/cache outcomes
+and /45 the served 50-query/three-page/coalescing/report flow. Client, handler and provider
+measurements stay separately named; shared upstream cost is observed once and missing
+instrumentation is a gap. These remain planned todo packages at inspected main 2e02111ed,
+not claims of deployment. Reuse /63–65's local contract/adapters without creating a new
+measurement service or making local v3 depend on the future forge service.
