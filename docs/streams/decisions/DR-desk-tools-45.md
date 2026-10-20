@@ -6,22 +6,21 @@ consequence: major
 decided-by: "human:<name>"
 alternatives:
   - "Option B on the decision issue, reject or amend the design before it moves (\"a follow-up commit can change the class set, the base precedence or the --json shape\") — not chosen for the contract: the driver answered A (https://github.com/medici-finance/assay/issues/3382#issuecomment-6258267531). No rationale was recorded, and none is supplied here."
-  - "Hold until the reviewer has reviewed the pull request — offered as option C in the desk's relay of the question, not in the issue body's fork test; not chosen for the contract, which the driver accepted on that issue. No rationale was recorded."
+  - "Hold until the reviewer has reviewed the pull request — offered as option C in the relay comment that put the question (posted by the worker role's App, not the desk's), not in the issue body's fork test; not chosen for the contract, which the driver accepted on that issue. No rationale was recorded."
   - "A second, independent classifier in each consumer (deskboard and verifyloop each inferring the queue from status fields) — ruled out by the brief's own design-fit: \"One canonical queue meaning, additive JSON fields and explicit unknown coverage; no new independent classifier or subprocess per row.\" The delivered `queueFor` calls the existing `bucketAwaiting` once and maps its answer onto the class vocabulary."
   - "Consumers importing statusgen's classifier as a Go package — ruled out by the brief's facts: \"The existing supported cross-module seam is the statusgen command output. Do not promise importing its package main\". The delivered seam is the `--gate-scores` JSON output."
   - "A canonical base that may also promote an item an overlay holds, or widen a dispatch — not delivered: `applyBase` lets the overlays decide first and lets the base only demote a dispatch to `queue-held` or could-not-check. The security review's advisory SEC-2 relies on exactly this bound."
 accepted:
-  - "The canonical base read in `verifyloop plan --base-queue` runs the statusgen binary named by `STATUSGEN_BIN`, else the one on PATH, with no version pin or skew check (security advisory SEC-2 on the delivering pull request, `baseQueueRows` in verifyloop's plan.go, a file that pull request adds). Accepted only because the read is opt-in, offline and read-only, and `applyBase` can only demote: the worst a substituted or stale binary can do is hold work back, never advance state. A later change that lets the base widen anything must add the pin and skew check first."
-  - "A statusgen that predates the contract, an unreadable root or a could-not-check row makes the reading partial, not zero: `deskboard` reports a coverage gap and refuses to advise widening any stage, and `verifyloop plan` reports the plan as incomplete and exits 6. Adopters running an older statusgen see gaps until they upgrade."
+  - "An unreadable root or a could-not-check row makes the reading partial, not zero: `deskboard` reports a coverage gap and refuses to advise widening any stage. In `verifyloop plan`, a skipped or unreadable root marks the plan incomplete and makes the exit code 6. A could-not-check item is held in its bucket and changes neither the exit code nor the plan's completeness. (The exit status for an unsupported or partial canonical base is not accepted here; see Open / not decided.)"
   - "Only `implemented` rows classed `judgment-dispatch` count toward verify depth. Runnable-offline, continuation and human-action rows no longer size a model verifier pool, so a board reading counts fewer verify items than before for the same tree."
 ---
 
-**This record transcribes a recorded human ruling and states the delivered design. The
-design approval itself is NOT recorded here: it is the driver's own act on the pull request
-that adds this record.** The ruling below accepts brief desk-tools/45's queue contract and
-says, in its own words, that the design-approval record is a separate follow-up. This file is
-that follow-up's draft. Until the driver approves it, nothing here claims the design was
-approved.
+**This record transcribes a recorded human ruling and states the delivered design. It is
+NOT approved.** The ruling below accepts brief desk-tools/45's queue contract and says, in its
+own words, that the design-approval record is a separate follow-up. This file is that
+follow-up's draft. The design approval is pending on its own decision issue: https://github.com/medici-finance/assay/issues/3577
+Until the driver's comment approving this record exists there, nothing here claims the design
+was approved.
 
 ## The ruling recorded
 
@@ -34,7 +33,7 @@ The driver's own comment (type User, 2026-10-19T02:19:33Z, not edited), verbatim
 
 > Ruling: A. Accept the delivered brief 45 queue contract (additive queue classification on statusgen --gate-scores rows; deskboard awaiting/throughput reading it; verifyloop plan with --json and --base-queue, where the canonical base can only demote a dispatch to queue-held). The design-approval record is a separate follow-up.
 
-The issue's only other comment is the desk's relay, posted sixteen seconds earlier. It says of
+The issue's only other comment is the relay comment, posted by the worker role's App sixteen seconds earlier. It says of
 itself that it "is a relay RECORD, not the ruling", and that "The design-approval record
 (§4.4) is a separate follow-up question and is not decided here." No later comment on the
 issue rules on the design (read 2026-10-20).
@@ -46,12 +45,17 @@ after independent verification", "2. Request corrections and keep the change pen
 issue's A, not the brief's option 1, and the independent verification that option 1 names has
 not run.
 
-**Why this record carries no `ruling:` key.** `spec/registers-v1.md` §7.5 corroborates a
-`ruling:` link only when the comment's own text names the record by its `DR-<slug>` id
-(condition 5). The ruling comment names no record, and it accepts the contract rather than
-the design. The corroboration for `decided-by` is therefore expected from the driver's own
-approval of the pull request that adds this record; until then the corroboration check is
-expected to report it missing.
+**Why this record carries no `ruling:` key yet.** `decided-by` is the public placeholder
+`human:<name>`. Under `spec/registers-v1.md` §7.5's placeholder rule, a placeholder names
+nobody: it is never looked up in a login map and never corroborated by a pull-request
+approval. Its only route is a `ruling:` link to an unedited human comment whose own text names
+this record by its id, posted on a decision issue that carries this record's decision-gate
+marker. The ruling comment above fails that test: it names no record (condition 5), and it
+accepts the contract rather than the design, so a `ruling:` pointing at it would fail closed.
+The decision issue for this record's approval carries the marker and asks the driver for a new
+comment naming the record. The `ruling:` key is added to this record, by a later push, only
+after that unedited comment exists. Until then this record is not approved, and the
+corroboration check correctly reports `decided-by` as `placeholder-unratified`.
 
 ## The design stated for approval
 
@@ -94,19 +98,29 @@ The brief and its delivering diff are the authority. This summary does not amend
 it from the brief's risk answers (`customer: yes`, the other three `no`, including
 `irreversible: no`) and its `gate-why`: the change alters "verification scheduling/landing
 behavior relied on by adopters". A wrong queue can hide verification work or hold it back,
-and a route back exists. The approver can correct the level at the same merge gate.
+and a route back exists. The driver can correct the level before the record's approval is linked.
 
 ## Open / not decided
 
-- **The design approval.** It is the driver's, and only the driver's own approval of this
-  record's pull request corroborates it. Neither the desk nor any reviewer verdict stands in
-  for it.
+- **The design approval.** It is the driver's, and it is pending on https://github.com/medici-finance/assay/issues/3577
+  It counts only as the driver's own unedited comment there naming `DR-desk-tools-45`, linked
+  from this record's `ruling:` key. A pull-request approval, a desk relay or a reviewer verdict
+  does not stand in for it.
 - **SEC-2, the unpinned statusgen in the base read.** The security review of the delivering
   pull request (review 5579323310, advisory) found that `baseQueueRows`
   (verifyloop's plan.go, lines 156-167 at that head) runs `STATUSGEN_BIN` or the statusgen on
-  PATH with no version pin or skew check. This record accepts that only inside the
-  demote-only bound above. Whether to add the pin and skew check, and when, is not decided
-  here.
+  PATH with no version pin or skew check. It is an open advisory: no ruling has accepted or
+  mitigated it, and this record accepts neither. The demote-only rule bounds what the base
+  can do to the plan's output: a substituted or stale binary can hold work back but not advance
+  it. It does not bound what that binary does when it runs, with the caller's full
+  environment. Whether to add the pin and skew check, and when, is not decided here.
+- **The exit status for an unsupported or partial canonical base.** At the delivering pull
+  request's head, `verifyloop plan --base-queue` over an unsupported or partial base (for
+  example an older statusgen that predates the contract) marks the plan incomplete
+  (`complete: false`, with each gap named on stderr) but exits 0. A change so that an
+  incomplete plan does not exit 0 has been requested on that pull request. This record does
+  not accept the exit-0 behaviour; which exit status ships is open until that change lands
+  or is declined.
 - **Independent verification.** The brief's Verify table, including the 12-entry consumer
   corroboration (row 4) and the negative control (row 5), runs after merge by a
   non-implementer. This record attests none of it.
