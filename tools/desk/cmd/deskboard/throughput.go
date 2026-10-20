@@ -84,6 +84,10 @@ type throughputReport struct {
 	// Bottleneck names the stage with the highest ratio among the stages that were READ.
 	// Empty when nothing was readable or every readable stage has an empty queue.
 	Bottleneck string `json:"bottleneck"`
+	// BottleneckWithheld says why Bottleneck is empty although a stage was read: a partial
+	// (lower-bound) depth cannot name the deepest stage, so the field is withheld rather
+	// than published for a consumer that reads it and ignores Advice.
+	BottleneckWithheld string `json:"bottleneckWithheld,omitempty"`
 	// StagesRead / StagesTotal make the coverage explicit on every emission, so a
 	// bottleneck computed from two of four stages can never be read as the whole picture.
 	StagesRead  int `json:"stagesRead"`
@@ -267,6 +271,17 @@ func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Durat
 		rep.Stages = append(rep.Stages, *s)
 	}
 
+	pickBottleneck(&rep)
+	rep.Advice = throughputAdvice(&rep)
+
+	return &Report{
+		value:  rep,
+		detail: throughputDetail(&rep),
+		render: func(w io.Writer) { renderThroughput(w, &rep) },
+	}, nil
+}
+
+func pickBottleneck(rep *throughputReport) {
 	// Bottleneck: the highest ratio among stages that were actually READ. Ties break on
 	// stage name so two consecutive ticks over identical state name the same stage — the
 	// desk's rule is "the same stage over two ticks", and a signal that alternated between
@@ -286,13 +301,16 @@ func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Durat
 		// would have the desk widening a pool with nothing to put in it.
 		rep.Bottleneck = ""
 	}
-	rep.Advice = throughputAdvice(&rep)
-
-	return &Report{
-		value:  rep,
-		detail: throughputDetail(&rep),
-		render: func(w io.Writer) { renderThroughput(w, &rep) },
-	}, nil
+	// A stage read from a PARTIAL queue is only a lower bound, so the deepest stage
+	// could be a different one. Withhold the name (and say why) instead of publishing a
+	// bottleneck a consumer could widen on while ignoring Advice.
+	for _, s := range rep.Stages {
+		if s.Partial != "" && s.Depth != nil {
+			rep.Bottleneck = ""
+			rep.BottleneckWithheld = fmt.Sprintf("%s depth is a LOWER BOUND (%s)", s.Stage, s.Partial)
+			return
+		}
+	}
 }
 
 // throughputAdvice is the ONE line a coordinator acts on. It states the exact command when

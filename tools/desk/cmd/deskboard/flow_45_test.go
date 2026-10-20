@@ -257,6 +257,48 @@ func TestFlowQueue(t *testing.T) {
 			t.Fatalf("an unreadable root must not read as an empty queue: %q", adv)
 		}
 	})
+
+	t.Run("the bottleneck is withheld on a partial depth", bottleneckWithheldOnPartialDepth)
+}
+
+// A partial verify depth is a lower bound, so the JSON bottleneck field must not name a
+// stage computed from it (F3): withheld and marked, never published beside advice that
+// says COVERAGE-GAP.
+func bottleneckWithheldOnPartialDepth(t *testing.T) {
+	d, r := 9, 2
+	rep := &throughputReport{Stages: []stageRow{
+		{Stage: "dispatch", Loop: "worker-desk", Depth: &r, Slots: 2, MaxSlots: 4, Ratio: f64p(1)},
+		{Stage: "verify", Loop: "verify-desk", Depth: &d, Slots: 1, MaxSlots: 4, Ratio: f64p(9),
+			Partial: "assay unreadable: boom"},
+	}}
+	pickBottleneck(rep)
+	if rep.Bottleneck != "" {
+		t.Fatalf("bottleneck %q published from a partial verify depth", rep.Bottleneck)
+	}
+	if rep.BottleneckWithheld == "" || !strings.Contains(rep.BottleneckWithheld, "verify") {
+		t.Fatalf("withheld reason must name the partial stage, got %q", rep.BottleneckWithheld)
+	}
+	if rep.StagesRead != 2 {
+		t.Errorf("StagesRead = %d, want 2 (partial stages are still read)", rep.StagesRead)
+	}
+	if adv := throughputAdvice(rep); !strings.Contains(adv, "COVERAGE-GAP") {
+		t.Errorf("advice = %q", adv)
+	}
+	b, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), `"bottleneck":""`) || !strings.Contains(string(b), `"bottleneckWithheld"`) {
+		t.Errorf("JSON must carry an empty bottleneck and the withheld marker: %s", b)
+	}
+
+	// Control: with no partial stage the bottleneck is still named and nothing is withheld.
+	rep.Stages[1].Partial = ""
+	rep.Bottleneck, rep.BottleneckWithheld, rep.StagesRead = "", "", 0
+	pickBottleneck(rep)
+	if rep.Bottleneck != "verify" || rep.BottleneckWithheld != "" {
+		t.Errorf("complete depth: bottleneck %q withheld %q, want verify and none", rep.Bottleneck, rep.BottleneckWithheld)
+	}
 }
 
 func withoutUnreadable(rows []gateScoreRow) []gateScoreRow {

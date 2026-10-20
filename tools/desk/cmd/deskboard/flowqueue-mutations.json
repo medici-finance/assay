@@ -30,6 +30,12 @@
       "file": "cmd/deskboard/roots.go",
       "old": "\t\tc.State, c.Reason, c.Rows = rootUnreadable, readErr.Error(), 0",
       "new": "\t\tc.Reason, c.Rows = readErr.Error(), 0"
+    },
+    {
+      "name": "the bottleneck is still published from a partial depth",
+      "file": "cmd/deskboard/throughput.go",
+      "old": "\t\t\trep.Bottleneck = \"\"\n\t\t\trep.BottleneckWithheld = fmt.Sprintf(",
+      "new": "\t\t\trep.BottleneckWithheld = fmt.Sprintf("
     }
   ]
 }

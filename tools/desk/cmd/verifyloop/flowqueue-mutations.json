@@ -30,6 +30,12 @@
       "file": "cmd/verifyloop/plan.go",
       "old": "\tif disp != dispDispatch && disp != dispDispatchForEvidence {",
       "new": "\tif false {"
+    },
+    {
+      "name": "an incomplete plan (complete=false) exits 0",
+      "file": "cmd/verifyloop/main.go",
+      "old": "\tif !doc.Complete {\n",
+      "new": "\tif false {\n"
     }
   ]
 }

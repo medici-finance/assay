@@ -24,6 +24,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
@@ -147,6 +148,14 @@ func cmdPlan(args []string) error {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"%d configured root(s) skipped (preflight red or unreadable) — this plan is not the whole queue", doc.Skipped), nil)
 	}
+	if !doc.Complete {
+		// A healthy root whose canonical queue was partial or unsupported (--base-queue) is a
+		// named gap: the affected items were demoted to could-not-check, but a scripted caller
+		// keying on the exit code must not read this plan as the whole queue either.
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"the plan is incomplete (%d gap(s): %s) — this plan is not the whole queue",
+			len(doc.Gaps), strings.Join(doc.Gaps, "; ")), nil)
+	}
 	return nil
 }
 
@@ -240,7 +249,9 @@ JSON document on stdout and nothing else (the text lines, and any note about wha
 not cover, never reach stdout in that mode; gaps go to stderr). The document names every root with
 an explicit state (healthy, skipped on a red preflight, unreadable), every item with its kind,
 disposition, tier, reason and authority (flip, evidence-only or none), the counts, and whether the
-plan is complete. A skipped or unreadable root is a named gap and exit 6, never a zero.
+plan is complete. A skipped or unreadable root is a named gap and exit 6, never a zero; under
+--base-queue a healthy root whose canonical queue is partial or unsupported is likewise a named
+gap and exit 6 (complete=false never exits 0).
 
 'plan --base-queue' composes statusgen's CANONICAL queue classification (the queueClass fields on
 'statusgen --gate-scores' rows, read with STATUSGEN_BIN or statusgen on PATH) under verifyloop's own

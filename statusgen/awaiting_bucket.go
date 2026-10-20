@@ -848,22 +848,24 @@ func queueClassOf(bucket awaitingBucket, owner string) string {
 // is the could-not-check text.
 func queueFor(s *Stream, br *Brief) queueFacts {
 	f := queueFacts{Version: queueContractVersion, Valid: true}
-	b, rows, ev, oc := awaitInputs(s, br)
+	b, _, _, _ := awaitInputs(s, br)
 	f.Gate, f.Risk, f.Irreversible = b.Gate, b.RiskYes || b.Irreversible, b.Irreversible
-	switch s.Status {
-	case "paused":
+	// placeAwaiting is the ONE owner of the paused/parked placement and of the
+	// bucketAwaiting call; this only maps its answer to the contract class.
+	p := placeAwaiting(s, br)
+	switch {
+	case p.paused:
 		f.Class = queueClassPaused
 		return f
-	case streamStatusParked:
+	case p.parked:
 		f.Class = queueClassParked
 		return f
 	}
-	bucket, owner, next := bucketAwaiting(b, rows, ev, oc)
-	f.Class = queueClassOf(bucket, owner)
-	f.Bucket, f.Owner, f.NextAct = bucket.String(), owner, next
-	if bucket == bucketCouldNotCheck {
+	f.Class = queueClassOf(p.bucket, p.owner)
+	f.Bucket, f.Owner, f.NextAct = p.bucket.String(), p.owner, p.nextAct
+	if p.bucket == bucketCouldNotCheck {
 		f.Valid = false
-		f.Why = strings.TrimPrefix(next, couldNotCheckLabel)
+		f.Why = strings.TrimPrefix(p.nextAct, couldNotCheckLabel)
 	}
 	return f
 }

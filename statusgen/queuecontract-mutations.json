@@ -42,6 +42,12 @@
       "file": "awaiting_bucket.go",
       "old": "f := queueFacts{Version: queueContractVersion, Valid: true}",
       "new": "f := queueFacts{Valid: true}"
+    },
+    {
+      "name": "a parked stream falls through to the bucket answer (queueFor no longer defers to placeAwaiting's parked placement)",
+      "file": "awaiting_bucket.go",
+      "old": "\tcase p.parked:\n\t\tf.Class = queueClassParked",
+      "new": "\tcase false:\n\t\tf.Class = queueClassParked"
     }
   ]
 }

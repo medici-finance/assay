@@ -302,6 +302,37 @@ func TestFlowQueue(t *testing.T) {
 		}
 	})
 
+	// A healthy root whose canonical queue is partial or unsupported makes the plan
+	// incomplete (Complete=false plus a named gap), and an incomplete read never exits 0:
+	// the repo's incomplete-read code (6, unverifiable) is what a scripted caller keys on.
+	t.Run("an incomplete canonical read exits 6", func(t *testing.T) {
+		old := make([]baseRow, len(golden))
+		copy(old, golden)
+		for i := range old {
+			old[i].QueueVersion = 0 // a statusgen that predates the contract
+		}
+		serveBase(t, map[string][]baseRow{root: old})
+		var err error
+		out := captureStdout(t, func() { err = cmdPlan([]string{"--root", root, "--base-queue", "--json"}) })
+		var doc planDoc
+		if jerr := json.Unmarshal([]byte(out), &doc); jerr != nil {
+			t.Fatalf("not JSON: %v\n%s", jerr, out)
+		}
+		if doc.Complete || len(doc.Gaps) == 0 {
+			t.Fatalf("complete=%v gaps=%v: an unsupported canonical queue must be a named gap", doc.Complete, doc.Gaps)
+		}
+		if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
+			t.Fatalf("complete=false must not exit 0; want exit 6, got %v", err)
+		}
+
+		// Control: a fully canonical reading is complete and exits 0.
+		serveBase(t, map[string][]baseRow{root: golden})
+		out = captureStdout(t, func() { err = cmdPlan([]string{"--root", root, "--base-queue", "--json"}) })
+		if err != nil {
+			t.Fatalf("a complete canonical plan must exit 0, got %v\n%s", err, out)
+		}
+	})
+
 	// With the planner BYPASSED the lower landing guard still refuses to turn a risk-flagged
 	// brief into model acceptance: an irreversible PASS is written as Evidence with no flip
 	// and a human checkpoint, and a ROUTE_HUMAN verdict is routed, never flipped.
