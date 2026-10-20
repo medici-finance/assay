@@ -12,13 +12,22 @@ import (
 func TestMain(m *testing.M) { os.Exit(Run(m)) }
 
 // git runs git in dir with GIT_TRACE written to trace (when non-empty), failing the test
-// on error. Identity is inline so the host's config is never needed.
+// on error. Identity is inline so the host's config is never needed, and the host's global
+// and system git config are disabled so a developer's settings (a core.hooksPath, say) cannot
+// reach the temporary repositories.
 func git(t *testing.T, dir, trace string, args ...string) string {
+	t.Helper()
+	return gitWithGlobal(t, dir, trace, os.DevNull, args...)
+}
+
+// gitWithGlobal is git with an explicit global config file: TestHostileGitConfig points it at
+// a deliberately hostile file; every other caller gets os.DevNull.
+func gitWithGlobal(t *testing.T, dir, trace, global string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@example.invalid",
 		"-c", "commit.gpgsign=false"}, args...)...)
 	cmd.Dir = dir
-	cmd.Env = os.Environ()
+	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL="+global, "GIT_CONFIG_NOSYSTEM=1")
 	if trace != "" {
 		cmd.Env = append(cmd.Env, "GIT_TRACE="+trace)
 	}
@@ -152,9 +161,9 @@ func TestHostileGitConfig(t *testing.T) {
 	}
 	t.Cleanup(restore)
 	quiet := filepath.Join(root, "quiet")
-	git(t, root, "", "init", "-q", quiet)
+	gitWithGlobal(t, root, "", cfg, "init", "-q", quiet)
 	for _, kv := range Settings {
-		if got := git(t, quiet, "", "config", "--get", kv[0]); got != kv[1] {
+		if got := gitWithGlobal(t, quiet, "", cfg, "config", "--get", kv[0]); got != kv[1] {
 			t.Errorf("effective %s = %q, want %q", kv[0], got, kv[1])
 		}
 	}
@@ -163,8 +172,8 @@ func TestHostileGitConfig(t *testing.T) {
 		t.Fatal("caller template was not restored")
 	}
 	plain := filepath.Join(root, "plain")
-	git(t, root, "", "init", "-q", plain)
-	if got := git(t, plain, "", "config", "--get", "maintenance.auto"); got != "true" {
+	gitWithGlobal(t, root, "", cfg, "init", "-q", plain)
+	if got := gitWithGlobal(t, plain, "", cfg, "config", "--get", "maintenance.auto"); got != "true" {
 		t.Fatalf("negative control did not inherit hostile config: %q", got)
 	}
 }
