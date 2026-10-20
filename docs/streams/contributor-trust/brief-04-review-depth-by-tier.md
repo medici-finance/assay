@@ -360,5 +360,30 @@ RISK-VALUE: NAMED, NOT DERIVED — claimMarkerRe (the assertion-marker word list
 
 **VERIFY: PASS** — 12/12 rows pass on merged main 446ceaa76f9f by direct execution; row 12 in its re-authored pinned form exits 0 with 3 corroborated, 0 disproved, 1 unchecked (the out-of-scope entry); both mutation probes killed. Gate is model; risk all no.
 
+### Execution witness — 2026-10-19 claude-opus-5-5 verifier at 2f44050f8a70 (12/12 rows pass in a network-off container)
+
+Verification-Attestation: medici-finance/assay#3565 run=88eca35830f1c9bc29460e425ec6cb923a240408acb5db28c2739116408509e3 source=2f44050f8a706d0865e1a95ca3cd8709abe1bd2f brief=docs/streams/contributor-trust/brief-04-review-depth-by-tier.md model=claude-opus-5-5 tier=strong
+
+This is a mechanical execution witness on merged main 2f44050f8a70, not a fresh review, recorded under the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). Runner class: a local docker container, image assay-verify:go1.27 (built FROM golang:1.27.2-trixie, git 2.47), started with `--network none`, GOPROXY=off, GOTOOLCHAIN=local, the engine's default seccomp profile, with statusgen and the desk tools built from the attested tree inside the container; `statusgen verifyrun --sandbox container-netns` ran every Verify row in a throwaway clone at the attested source and wrote the table below. Admission: `deskdispatch --check-verifier` exit 0 at source 2f44050f8a70 before the witness, under the attestation above.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanes' -count=1` | pass exit=0 sandbox=container-netns | sha256:54f60be27166 | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesUnknownTier' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:a424870b6cfb | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesContributorTier' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:e3fb8719f9ee | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimStateUnverifiedIsRepresentable' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:f5fbf7a23417 | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ClaimEveryClaimCarriesAState' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:572de86e2dd2 | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -n 'unverified' tools/desk/cmd/deskdispatch/references/review-lanes.md` | pass exit=0 sandbox=container-netns | sha256:affec666f7bd | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -n 'merge base' tools/desk/cmd/deskdispatch/references/review-lanes.md` | pass exit=0 sandbox=container-netns | sha256:fb5b5d540866 | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && GOWORK=off go build ./... && GOWORK=off go vet ./internal/deskkit/` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/skillslint && go run . --root ../..; echo rc=$?` | pass exit=0 sandbox=container-netns | sha256:6544fd42ba12 | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesReferenceMatchesTable' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:99fd5c396464 | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && GOWORK=off go test ./internal/deskkit/ -run 'ReviewLanesDispatchEndToEnd' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:cb66bcd6e7a1 | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `d=; d=$(mktemp -d "${TMPDIR:-/tmp}/ct04-consumers.XXXXXX") && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach 2083064fdeb279d886f4b40e5761b3e958961c61 && statusgen --consumers --root "$d" --brief assay:assay:contributor-trust:04 --base cabdc0b8455aa532fcb9267946c0e8da2e93bb5f; s=$?; test -n "$d" && rm -rf "$d"; exit $s` | pass exit=0 sandbox=container-netns | sha256:cdb3314a95e5 | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+
+The substance is the existing by-hand Evidence block of 2026-10-16 on merged main 446ceaa76f9f above, where all 12 rows passed with 0 fail, both mutation probes were killed and the risk-bearing values were enumerated; this witness adds only the execution record on a network-off runner.
+
+**VERIFY: PASS** — 12/12 rows pass with 0 fail in the network-off container witness at 2f44050f8a70 (sandbox=container-netns), matching the 2026-10-16 by-hand pass; gate is model and every risk answer is no.
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
