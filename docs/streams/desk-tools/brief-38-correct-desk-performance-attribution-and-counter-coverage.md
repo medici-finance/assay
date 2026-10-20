@@ -351,13 +351,13 @@ Landing note: this block lands on the Evidence branch after a two-parent merge o
 
 Outcome record: `blocked`, environment, medici-finance/assay#1800. It supersedes the newest earlier receipt for this brief, `38-20261018T033804Z-d754182b67fc`. The withdrawal above retracts that receipt's claims. All earlier receipts stay unchanged as history.
 
+### Independent re-verification — 2026-10-19 (container witness)
+
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
 | 1 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCommandKit$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCommandKit ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e675fede3a96 | 2026-10-19 | assay-verifier-app[bot] @ 5d048bb82886 (on-behalf-of human:ian) (forge-identity) |
 | 2 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCoverageFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCoverageFlow ' "$o")` | pass exit=0 sandbox=container-netns | sha256:c37241186c0c | 2026-10-19 | assay-verifier-app[bot] @ 5d048bb82886 (on-behalf-of human:ian) (forge-identity) |
 | 3 | `statusgen --root . --consumers --brief desk-tools/38` | fail exit=2 sandbox=container-netns | sha256:96ce9f09039c | 2026-10-19 | assay-verifier-app[bot] @ 5d048bb82886 (on-behalf-of human:ian) (forge-identity) |
-
-### Independent re-verification — 2026-10-19 (container witness)
 
 Observed source: 5d048bb82886e0e53293521653efe65b2cf29bfc (merged main at dispatch). Actual delivery: merged PR #3332, eded7ba6e4461a3afac436ff7196987d83268bb3, first parent da7a4be21e61acf2f8a2c09749f8cec7d60468f1. The witness table directly above is the execution witness: statusgen verifyrun, non-dry, sandbox=container-netns, in a local docker container (image assay-verify:go1.27, id sha256:955fd6c46c93, built FROM golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e, git 2.47) started with `--network none` and the engine's default seccomp profile; statusgen and the desk tools were built inside the container from the observed source. The run uses the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). Fresh dispatcher admission passed before the witness and again after it (same run, source, brief and home binding).
 
@@ -382,6 +382,8 @@ RISK-VALUE: DERIVED — perfKitVerb review label = "dispatch:review" @ tools/des
 RISK-VALUE: DERIVED — perfActive start = true @ tools/desk/internal/deskkit/perf.go:145, finish = false (deferred) @ tools/desk/internal/deskkit/perf.go:146 — attribution may be selected only while a consented PerfRun is executing (perf.go:168 returns early otherwise); the deferred reset closes that window on every return path.
 
 **VERIFY: BLOCKED** — rows 1 and 2 pass in the network-off container witness and by hand; row 3 as delivered returns could-not-check (exit 2) on merged main, the check-definition defect medici-finance/assay#1915, so no row was observed to fail and none can close the brief until that defect is resolved.
+
+Outcome record: owed, not on this branch. This run's receipt (`blocked`, check-definition, medici-finance/assay#1915) holds rows 1, 2 and 3, the full row set, and it lands from a fresh admitted verifier pass. It supersedes `38-20261019T190035Z-1845e794f80a` (`blocked`, environment, medici-finance/assay#1800), the newest earlier receipt for this brief. Reason: the blocker is reclassified from environment (medici-finance/assay#1800, cleared by the network-off container witness above) to check-definition (medici-finance/assay#1915, after medici-finance/assay#3508 restored the delivered row 3). Nothing that receipt carried is dropped: its row-3 pass was under the immutable-delivery row that medici-finance/assay#3508 retired. All earlier receipts stay unchanged as history.
 
 ## Review
 
