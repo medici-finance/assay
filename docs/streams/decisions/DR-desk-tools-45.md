@@ -54,7 +54,9 @@ marker. The ruling comment above fails that test: it names no record (condition 
 accepts the contract rather than the design, so a `ruling:` pointing at it would fail closed.
 The decision issue for this record's approval carries the marker and asks the driver for a new
 comment naming the record. The `ruling:` key is added to this record, by a later push, only
-after that unedited comment exists. Until then this record is not approved, and the
+after that unedited comment exists. It links only the driver's own comment choosing option A
+(approve) and naming this record. A comment from any other login, or one that requests
+changes or rejects the design, never qualifies. Until then this record is not approved, and the
 corroboration check correctly reports `decided-by` as `placeholder-unratified`.
 
 ## The design stated for approval
@@ -130,6 +132,15 @@ and a route back exists. The driver can correct the level before the record's ap
 
 ## What happens after merge
 
-The delivering pull request merges with desk-tools/45 not yet at `implemented`. After this
-record merges, a new follow-up pull request flips desk-tools/45 to `implemented` and adds
-`design: DR-desk-tools-45` to the brief's frontmatter, then re-runs `lint`.
+The delivering pull request merges with desk-tools/45 not yet at `implemented`. **Merging this
+record alone authorizes no flip.** A new follow-up pull request that flips desk-tools/45 to
+`implemented` and adds `design: DR-desk-tools-45` to the brief's frontmatter waits for ALL of:
+
+1. the driver's own unedited comment on https://github.com/medici-finance/assay/issues/3577
+   approving `DR-desk-tools-45` (option A, naming the record);
+2. a push adding this record's `ruling:` key, linking that comment;
+3. a clean `statusgen --corroborate` read of this record.
+
+A passing `lint` on that follow-up is not evidence of approval. The design gate checks that the
+record exists, not that it is ratified, and the corroboration job skips a change that touches
+only a decision record. That gap is tracked at https://github.com/medici-finance/assay/issues/2704
