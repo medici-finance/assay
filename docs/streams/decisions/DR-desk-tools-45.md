@@ -56,14 +56,16 @@ The decision issue for this record's approval carries the marker and asks the dr
 comment naming the record. The `ruling:` key is added to this record, by a later push, only
 after that unedited comment exists. It links only the driver's own comment choosing option A
 (approve) and naming this record. A comment from any other login, or one that requests
-changes or rejects the design, never qualifies. Until then this record is not approved, and the
+changes or rejects the design, never qualifies; that is a procedural rule for whoever reviews
+the `ruling:` push, not a rule the corroboration check enforces (see "What happens after
+merge"). Until then this record is not approved, and the
 corroboration check correctly reports `decided-by` as `placeholder-unratified`.
 
 ## The design stated for approval
 
 The brief is `docs/streams/desk-tools/brief-45-expose-the-canonical-verification-queue-to-its-consumers.md`.
-Its delivering pull request is medici-finance/assay#3376 (draft, head `a6f0dae2`). What it
-delivers, read from that diff:
+Its delivering pull request is medici-finance/assay#3376. It merged at 2026-10-20T01:06:30Z
+at head `a6f0dae2` (merge commit `ff225b35`). What it delivers, read from that diff:
 
 1. **One classification, exported additively.** `statusgen --gate-scores` rows keep their
    legacy fields (`brief`, `score`, `blockedCount`, `stream`, `status`, `repo`) and add
@@ -132,7 +134,9 @@ and a route back exists. The driver can correct the level before the record's ap
 
 ## What happens after merge
 
-The delivering pull request merges with desk-tools/45 not yet at `implemented`. **Merging this
+The delivering pull request merged with desk-tools/45 still at `todo` in the stream README.
+The brief's frontmatter keeps `gate: human` and `decision-issue: 3382` and carries no
+`design:` key. **Merging this
 record alone authorizes no flip.** A new follow-up pull request that flips desk-tools/45 to
 `implemented` and adds `design: DR-desk-tools-45` to the brief's frontmatter waits for ALL of:
 
@@ -141,6 +145,15 @@ record alone authorizes no flip.** A new follow-up pull request that flips desk-
 2. a push adding this record's `ruling:` key, linking that comment;
 3. a clean `statusgen --corroborate` read of this record.
 
-A passing `lint` on that follow-up is not evidence of approval. The design gate checks that the
-record exists, not that it is ratified, and the corroboration job skips a change that touches
-only a decision record. That gap is tracked at https://github.com/medici-finance/assay/issues/2704
+No tool enforces these three conditions or their order. The corroboration check's ruling lane
+establishes who wrote the linked comment and where, not what it says. For a record whose
+`decided-by` is the placeholder, it accepts a comment by any login that the check's human-login
+map resolves to a human. It counts an approval and a rejection alike as a ruling. Whoever
+reviews the `ruling:` push confirms by hand that the linked comment is the driver's own
+unedited option-A approval.
+
+A passing `lint` on that follow-up is not evidence of approval, for two separate reasons. The
+design gate checks that the record exists, not that it is ratified; that gap is tracked at
+https://github.com/medici-finance/assay/issues/2704. The corroboration job reports success
+without running `statusgen --corroborate` on a change that touches only a decision record; that
+gap is tracked at https://github.com/medici-finance/assay/issues/2669.
