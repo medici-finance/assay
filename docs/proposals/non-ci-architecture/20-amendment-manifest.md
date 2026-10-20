@@ -238,7 +238,7 @@ so generic source contracts are implemented once, before their assessment consum
 
 | Obligation | Owning plan / candidate change | Proof and limits |
 |---|---|---|
-| One reusable local write evaluator and command adapter | New desktools-v2/63; /31 consumes /63 for writeguard | Library/built-hook parity, effect boundary, source-bound consumers and external-module builds; other guards keep independent owners |
+| One reusable local write evaluator and command adapter | New desktools-v2/66; /31 consumes /66 for writeguard | Library/built-hook parity, effect boundary, source-bound consumers and external-module builds; other guards keep independent owners |
 | Future/guideline recheck at implementation pickup | statusgen/20–21 amended; current spec and worker-kit instructions use the manual procedure | /20 scoped guideline/target discovery; /21 actual dispatch hold/continue behavior and shipped-version citation; no resolver/activation claimed |
 | Managed workspace consumers | Consumer plans must bind allocation observations, hook profile and sandbox roots; qualification consumes exact producer versions | Public contracts stand alone; adopter tracking/rollout and active-worker acknowledgments remain in their own venue |
 
@@ -250,6 +250,6 @@ checkpoint/reconciliation before dispatch and never silently rebind a running wo
 Active-plan inspection, 18 October 2026: 52 open public PRs were enumerated through
 the worker identity. medici-finance/assay#3409 proposes /31 withdrawal (still gated
 on its own ruling); medici-finance/assay#3429 also changes the brief specification.
-This amendment keeps /63 independent and adds graph-execution/22 as its target
+This amendment keeps /66 independent and adds graph-execution/22 as its target
 consumer. Reconcile source revisions at merge/pickup; no running worker is rebound
 and no competing proposal is treated as approved. Dispatch refs were not read.

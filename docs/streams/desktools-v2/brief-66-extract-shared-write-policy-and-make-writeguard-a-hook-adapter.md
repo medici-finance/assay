@@ -1,5 +1,5 @@
 ---
-brief: assay:assay:desktools-v2:63
+brief: assay:assay:desktools-v2:66
 title: Extract shared write policy and make writeguard a hook adapter
 why: "Write-isolation decisions are trapped in a command package. Extract one reusable evaluator so command hooks and managed adapters share policy without sharing effects or weakening enforcement."
 wave: 1
@@ -25,9 +25,9 @@ exec-tier-why: Cross-module extraction, command classification and security-boun
 domain: complicated
 outcome: none
 consumers:
-  - "deskcore/writepolicy: follow-up desktools-v2/63"
-  - "tools/desk/cmd/writeguard, tools/desk/go.mod, tools/desk/go.sum: follow-up desktools-v2/63"
-  - "docs/contracts.md, docs/write-policy-consumers.md, tools/desk/README.md: follow-up desktools-v2/63"
+  - "deskcore/writepolicy: follow-up desktools-v2/66"
+  - "tools/desk/cmd/writeguard, tools/desk/go.mod, tools/desk/go.sum: follow-up desktools-v2/66"
+  - "docs/contracts.md, docs/write-policy-consumers.md, tools/desk/README.md: follow-up desktools-v2/66"
   - "tools/desk/cmd/writeguard CLI parsing: follow-up desktools-v2/31"
   - "loopadmin/adapters/localharness: follow-up graph-execution/22"
   - "managed launch/harness adapters outside the public runner: out-of-scope (separate consumer plans bind the producer version and qualify allocation/sandbox flow)"
@@ -35,7 +35,7 @@ consumers:
   - "push, credential, process, scratch and retirement guards: out-of-scope (independent owners and enforcement boundaries)"
 ---
 
-# Brief 63 — Extract shared write policy and make writeguard a hook adapter
+# Brief 66 — Extract shared write policy and make writeguard a hook adapter
 
 ## Context
 

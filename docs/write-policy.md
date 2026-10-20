@@ -1,7 +1,7 @@
 # Shared write policy and the writeguard adapter
 
 **Status:** proposed implementation contract, 2026-10-18. This amendment does not
-change installed hooks or approve weaker controls. Delivery owner: desktools-v2/63;
+change installed hooks or approve weaker controls. Delivery owner: desktools-v2/66;
 managed workspace integration and qualification have separate consumer obligations.
 **Inspected source:** public Assay `c3d073572f41e09bedcac05944f9a202c3267353`.
 
@@ -15,7 +15,7 @@ versions and qualify actual external consumers; a repository-relative replace is
 source integration, not release proof. Do not create a second shared-core module.
 
 The proposed `S-write-policy` extraction in [contracts.md](contracts.md) records
-the current command-local implementation; /63 registers its source-gated row,
+the current command-local implementation; /66 registers its source-gated row,
 marker baseline and consumer checks together. `S-worktree` remains allocation, identity and lifecycle;
 process leases, scratch preservation, push authorization and credentials keep their
 existing owners. A workspace allocation grants no additional permission.
@@ -80,11 +80,11 @@ managed decisions do not replace OS/harness confinement or operator activation g
 
 | Consumer | Disposition / owner | Retirement proof |
 |---|---|---|
-| Existing `cmd/writeguard` and command-hook wiring | desktools-v2/63 extracts policy and retains binary/protocol | Old command-local decision functions removed; common fixtures exercise import and built binary |
-| Target local harness adapter | graph-execution/22 consumes /63 directly | Actual adapter/library decisions and independent sandbox refusal remain required if legacy CLI parser work is withdrawn |
-| CLI parsing of writeguard and other guards | desktools-v2/31 consumes /63 for writeguard | Typed options reach the same evaluator; other guards retain their own meanings |
+| Existing `cmd/writeguard` and command-hook wiring | desktools-v2/66 extracts policy and retains binary/protocol | Old command-local decision functions removed; common fixtures exercise import and built binary |
+| Target local harness adapter | graph-execution/22 consumes /66 directly | Actual adapter/library decisions and independent sandbox refusal remain required if legacy CLI parser work is withdrawn |
+| CLI parsing of writeguard and other guards | desktools-v2/31 consumes /66 for writeguard | Typed options reach the same evaluator; other guards retain their own meanings |
 | Managed launch, tool hooks and host/container path mapping | managed workspace harness integration | Admitted allocation flows to hook and sandbox; missing/stale/foreign context refuses before launch/write; legacy hook integration still works |
-| Other actual duplicate write-isolation evaluators | /63 discovers and records each site; migrate bounded sites there or route a named follow-up | Source-bound census with no unowned site or competing policy; calling an allocator alone does not require a writepolicy import |
+| Other actual duplicate write-isolation evaluators | /66 discovers and records each site; migrate bounded sites there or route a named follow-up | Source-bound census with no unowned site or competing policy; calling an allocator alone does not require a writepolicy import |
 | Statusgen checkout/audit lifecycle | shared workspace-library migration | Uses the workspace owner, not a blanket import of write policy; only a discovered duplicate evaluator adds a migration obligation |
 | Push, credential, scratch, process and retirement guards | Out of scope: independent semantic/trust boundaries | Existing tests and enforcement remain; no blanket consolidation |
 

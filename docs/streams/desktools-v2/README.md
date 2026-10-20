@@ -117,7 +117,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 60 | [Bound component activation discovery and reuse validated manifest snapshots](brief-60-bound-component-activation-discovery-and-reuse-validated-manifest-snapshots.md) | 1 | M | todo | — | — |
 | 61 | [Version shared performance boundaries and keep legacy reports comparable](brief-61-version-shared-performance-boundaries-and-keep-legacy-reports-comparable.md) | 1 | M | todo | — | — |
 | 62 | [Instrument desk hot paths and qualify credential and startup savings](brief-62-instrument-desk-hot-paths-and-qualify-credential-and-startup-savings.md) | 3 | M | todo | — | — |
-| 63 | [Extract shared write policy and make writeguard a hook adapter](brief-63-extract-shared-write-policy-and-make-writeguard-a-hook-adapter.md) | 1 | L | todo | — | — |
+| 66 | [Extract shared write policy and make writeguard a hook adapter](brief-66-extract-shared-write-policy-and-make-writeguard-a-hook-adapter.md) | 1 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -282,17 +282,17 @@ context discovery. Amend those unfinished owners; do not reopen delivered /09 or
 
 ## Write-policy delivery — 18 October 2026
 
-[Contract](../../write-policy.md): /63 extracts `deskcore/writepolicy` and retains the
+[Contract](../../write-policy.md): /66 extracts `deskcore/writepolicy` and retains the
 writeguard command-hook adapter; /31 then adapts its CLI without duplicating policy.
-/63 is independent of allocator completion and starts from current legacy behavior.
+/66 is independent of allocator completion and starts from current legacy behavior.
 Managed consumers separately bind allocation context and prove actual sandbox flow.
-The dependency edge 63 → 31 → 17 preserves the existing CLI finish gate; other guard
+The dependency edge 66 → 31 → 17 preserves the existing CLI finish gate; other guard
 work within /31 may proceed independently. Recheck current contracts and engineering
 guidelines at pickup under brief-v1 §4.1.1; no implementation is claimed here.
 
 Target-consumer clarification, 18 October 2026: graph-execution/22 directly consumes
-/63 for the local harness boundary and independent sandbox proof. The pending
+/66 for the local harness boundary and independent sandbox proof. The pending
 medici-finance/assay#3409 proposal may retire /31's parser work after its human
-ruling; that never retires the shared policy or the target consumer. /63 does not
+ruling; that never retires the shared policy or the target consumer. /66 does not
 depend on any parser port. Until an authorized withdrawal lands, /31's existing
 compatibility contract and human gate remain intact.

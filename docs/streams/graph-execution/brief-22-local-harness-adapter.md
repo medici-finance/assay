@@ -7,7 +7,7 @@ wave: 7
 depends:
 - graph-execution/20
 - graph-execution/26
-- desktools-v2/63
+- desktools-v2/66
 unblocks:
 - graph-execution/27
 effort: L
@@ -65,7 +65,7 @@ risk-answers: `irreversible: yes`, so `gate: human`, as for 14 and 16 in this st
 ## Shared write-policy amendment — 18 October 2026
 
 Perform brief-v1 §4.1.1 pickup against the approved target, `docs/go-engineering.md`
-and the [write-policy contract](../../write-policy.md). Consume desktools-v2/63's
+and the [write-policy contract](../../write-policy.md). Consume desktools-v2/66's
 shared evaluator/profile in the local adapter; keep hook execution as an adapter
 where the selected host requires it. This survives any separately authorized
 withdrawal of old CLI-parser migration work. Reuse validated workspace/context
@@ -84,7 +84,7 @@ profile, not the independent evaluator extraction. Preserve prior source account
 4. Run the 20 conformance suite against a process fixture plus captured protocol outputs. Publish an offline qualification report; live model calls and additional adapters require an adopting cohort decision. Record control gaps rather than weakening them. Update docs and changelog.
 
 5. Map the selected profile's validated repository/allocation/generation/session and
-   resolved path observations into /63's evaluator at the local tool/effect boundary.
+   resolved path observations into /66's evaluator at the local tool/effect boundary.
    Use typed writes directly where known; preserve pure command classification for
    hook-shaped requests. Refuse absent/stale/foreign mandatory context; no permissive
    cwd/prefix inference or legacy fallback. Keep writeguard as a thin command hook

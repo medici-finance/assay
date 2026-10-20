@@ -410,7 +410,7 @@ go-live.
 ## Proposed write-policy semantic extraction — 18 October 2026
 
 The [write-policy contract](write-policy.md) proposes `S-write-policy`, currently
-implemented by writeguard's command-local checks. desktools-v2/63 delivers the
+implemented by writeguard's command-local checks. desktools-v2/66 delivers the
 importable `deskcore/writepolicy` owner, its versioned fixtures, implementation
 marker/census checks and consumer conformance together. Register the semantic row
 and its architecture-check baseline in that implementation, rather than assert a
