@@ -7,11 +7,11 @@ decided-by: "human:<name>"
 alternatives:
   - "Option B on the decision issue, reject or amend the design before it moves (\"a follow-up commit can change the class set, the base precedence or the --json shape\") — not chosen for the contract: the driver answered A (https://github.com/medici-finance/assay/issues/3382#issuecomment-6258267531). No rationale was recorded, and none is supplied here."
   - "Hold until the reviewer has reviewed the pull request — offered as option C in the relay comment that put the question (posted by the worker role's App, not the desk's), not in the issue body's fork test; not chosen for the contract, which the driver accepted on that issue. No rationale was recorded."
-  - "A second, independent classifier in each consumer (deskboard and verifyloop each inferring the queue from status fields) — ruled out by the brief's own design-fit: \"One canonical queue meaning, additive JSON fields and explicit unknown coverage; no new independent classifier or subprocess per row.\" The delivered `queueFor` calls the existing `bucketAwaiting` once and maps its answer onto the class vocabulary."
+  - "A second, independent classifier in each consumer (deskboard and verifyloop each inferring the queue from status fields) — ruled out by the brief's own design-fit: \"One canonical queue meaning, additive JSON fields and explicit unknown coverage; no new independent classifier or subprocess per row.\" The delivered `queueFor` takes the existing `placeAwaiting` answer (the one owner of the paused/parked placement and of the `bucketAwaiting` call) and maps it onto the class vocabulary."
   - "Consumers importing statusgen's classifier as a Go package — ruled out by the brief's facts: \"The existing supported cross-module seam is the statusgen command output. Do not promise importing its package main\". The delivered seam is the `--gate-scores` JSON output."
   - "A canonical base that may also promote an item an overlay holds, or widen a dispatch — not delivered: `applyBase` lets the overlays decide first and lets the base only demote a dispatch to `queue-held` or could-not-check. The security review's advisory SEC-2 relies on exactly this bound."
 accepted:
-  - "An unreadable root or a could-not-check row makes the reading partial, not zero: `deskboard` reports a coverage gap and refuses to advise widening any stage. In `verifyloop plan`, a skipped or unreadable root marks the plan incomplete and makes the exit code 6. A could-not-check item is held in its bucket and changes neither the exit code nor the plan's completeness. (The exit status for an unsupported or partial canonical base is not accepted here; see Open / not decided.)"
+  - "An unreadable root or a could-not-check row makes the reading partial, not zero: `deskboard` reports a coverage gap and refuses to advise widening any stage. In `verifyloop plan`, a skipped or unreadable root, or under `--base-queue` a root whose canonical queue is partial, unsupported or unreadable, marks the plan incomplete and makes the exit code 6; an incomplete plan never exits 0. A could-not-check item is held in its bucket and changes neither the exit code nor the plan's completeness."
   - "Only `implemented` rows classed `judgment-dispatch` count toward verify depth. Runnable-offline, continuation and human-action rows no longer size a model verifier pool, so a board reading counts fewer verify items than before for the same tree."
 ---
 
@@ -60,26 +60,30 @@ corroboration check correctly reports `decided-by` as `placeholder-unratified`.
 ## The design stated for approval
 
 The brief is `docs/streams/desk-tools/brief-45-expose-the-canonical-verification-queue-to-its-consumers.md`.
-Its delivering pull request is medici-finance/assay#3376 (draft, head `2caa578a`). What it
+Its delivering pull request is medici-finance/assay#3376 (draft, head `a6f0dae2`). What it
 delivers, read from that diff:
 
 1. **One classification, exported additively.** `statusgen --gate-scores` rows keep their
    legacy fields (`brief`, `score`, `blockedCount`, `stream`, `status`, `repo`) and add
    `queueVersion`, `queueClass`, `queueBucket`, `queueOwner`, `queueNextAct`, `queueGate`,
    `queueRisk`, `queueIrreversible`, `queueValid` and `queueWhy`. `queueFor`
-   (`statusgen/awaiting_bucket.go`) calls the existing `bucketAwaiting` once and maps its
-   answer onto contract version 1's classes: `judgment-dispatch` (the only class that is
+   (`statusgen/awaiting_bucket.go`) takes the answer of the existing `placeAwaiting`, which
+   is the one owner of the paused/parked placement and of the `bucketAwaiting` call, and maps it
+   onto contract version 1's classes: `judgment-dispatch` (the only class that is
    model-verify work), `runnable-offline`, `continuation`, `human-action`, `unreadable`
    (`queueValid=false`, unknown, never zero), and the `paused` / `parked` placements. A row
    with an unknown or missing `queueVersion` is a coverage gap for every consumer.
 2. **The board reads it.** `deskboard awaiting` and `throughput` count only `implemented`
    rows classed `judgment-dispatch` toward verify depth. An unreadable root, a statusgen older
    than the contract, or could-not-check rows make the depth a lower bound; the advice then
-   widens no stage.
+   widens no stage. When any stage's depth is a lower bound, `throughput` names no bottleneck
+   and says why in a `bottleneckWithheld` field.
 3. **The planner builds one value.** `verifyloop plan` builds one plan value and renders it as
    text or, with `--json`, as a versioned JSON document. Diagnostics stay off JSON stdout.
    Each root is reported as healthy, skipped or unreadable, and a skipped or unreadable root
-   makes the plan incomplete and the exit code 6. Evidence-only human work carries a different
+   makes the plan incomplete and the exit code 6. Under `--base-queue`, a healthy root whose
+   canonical queue is partial, unsupported or unreadable is likewise a named gap and exit 6:
+   `complete: false` never exits 0. Evidence-only human work carries a different
    authority from a flip: its Evidence rows may be written, its status never.
 4. **The base can only demote.** With `--base-queue` (opt-in; off, the plan is the overlay
    plan it always was), `applyBase` (in verifyloop's plan.go, new in the delivering pull request) composes the
@@ -108,19 +112,12 @@ and a route back exists. The driver can correct the level before the record's ap
   does not stand in for it.
 - **SEC-2, the unpinned statusgen in the base read.** The security review of the delivering
   pull request (review 5579323310, advisory) found that `baseQueueRows`
-  (verifyloop's plan.go, lines 156-167 at that head) runs `STATUSGEN_BIN` or the statusgen on
+  (verifyloop's plan.go, lines 156-167 at head `2caa578a`) runs `STATUSGEN_BIN` or the statusgen on
   PATH with no version pin or skew check. It is an open advisory: no ruling has accepted or
   mitigated it, and this record accepts neither. The demote-only rule bounds what the base
   can do to the plan's output: a substituted or stale binary can hold work back but not advance
   it. It does not bound what that binary does when it runs, with the caller's full
   environment. Whether to add the pin and skew check, and when, is not decided here.
-- **The exit status for an unsupported or partial canonical base.** At the delivering pull
-  request's head, `verifyloop plan --base-queue` over an unsupported or partial base (for
-  example an older statusgen that predates the contract) marks the plan incomplete
-  (`complete: false`, with each gap named on stderr) but exits 0. A change so that an
-  incomplete plan does not exit 0 has been requested on that pull request. This record does
-  not accept the exit-0 behaviour; which exit status ships is open until that change lands
-  or is declined.
 - **Independent verification.** The brief's Verify table, including the 12-entry consumer
   corroboration (row 4) and the negative control (row 5), runs after merge by a
   non-implementer. This record attests none of it.
