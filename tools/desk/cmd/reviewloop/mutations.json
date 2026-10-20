@@ -94,8 +94,8 @@
     {
       "name": "waiting rows stop rendering — a row with no verb vanishes from the reactor's output",
       "file": "cmd/reviewloop/render.go",
-      "old": "\tfor _, r := range b.Rows {\n\t\tfmt.Fprintf(w, \"%-10s %-24s %-9s head=%-12s score=%-4d %s\\n\",",
-      "new": "\tfor _, r := range b.Rows {\n\t\tif r.Rule.Verb == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\tfmt.Fprintf(w, \"%-10s %-24s %-9s head=%-12s score=%-4d %s\\n\","
+      "old": "\tfor _, r := range b.Rows {\n\t\t_, _ = fmt.Fprintf(w, \"%-10s %-24s %-9s head=%-12s score=%-4d %s\\n\",",
+      "new": "\tfor _, r := range b.Rows {\n\t\tif r.Rule.Verb == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\t_, _ = fmt.Fprintf(w, \"%-10s %-24s %-9s head=%-12s score=%-4d %s\\n\","
     },
     {
       "name": "an unjoined row gets an EMPTY head rather than the UNRESOLVED sentinel — the missing key compares equal to nothing and looks answered",

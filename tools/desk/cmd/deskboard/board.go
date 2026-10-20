@@ -58,12 +58,10 @@ func isReviewerBot(login string) bool {
 // reviewerBotDisplay is for MESSAGE TEXT only — never a comparison.
 func reviewerBotDisplay() string { return deskkit.RoleAppLoginOrEmpty("reviewer") }
 
-// securityPassMarker is the literal line an App security-review verdict must carry for
-// a risk-classed PR to be flip-eligible (#216). A line-exact match.
-const securityPassMarker = reviewflow.SecurityPassMarker
-
-// securityFailMarker is the retraction twin of securityPassMarker. Without parsing it
-// the board could not see a pass being withdrawn at the same head (#216).
+// securityFailMarker is the retraction twin of reviewflow.SecurityPassMarker, the literal
+// line an App security-review verdict must carry for a risk-classed PR to be flip-eligible
+// (#216; a line-exact match). Without parsing it the board could not see a pass being
+// withdrawn at the same head (#216).
 const securityFailMarker = "Security-Review: fail"
 
 // verifyGateLabel selects the awaiting-verification issues for the queue view. It is
