@@ -4,7 +4,7 @@ title: Narrow issue discovery projections before enrichment
 why: "Worker discovery pays broad issue enrichment cost while worker-ready, intake and inbox populations require different coverage and decisions."
 wave: 3
 depends: ["desk-tools/38"]
-unblocks: ["desk-tools/44"]
+unblocks: ["desk-tools/44", "graph-execution/27"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -25,6 +25,7 @@ gate-why: Review/issue observations can expose scoped operational facts; impleme
 decision-trigger: spec
 design: DR-issue-projections
 consumers:
+  - "tools/desk/internal/deskclient/: follow-up graph-execution/27"
   - "plugins/assay/skills/worker-desk/SKILL.md: fixed-here"
   - "plugins/assay/skills/worker-desk/references/dispatch-runbook.md: fixed-here"
   - "plugins/assay/skills/intake-desk/SKILL.md: fixed-here"
@@ -134,3 +135,11 @@ applicable) deliver their shared seam and both readers are integrated and qualif
 The independent desk-tools/38 verification prerequisite remains outstanding. Source
 qualification here neither certifies that prerequisite nor activates any deployment,
 writer, credential, pin, release or collection policy.
+
+## Standing-desk consumer routing — 2026-10-18
+
+graph-execution/27 consumes this brief's planned pure policy/projection API from a
+tools/desk-local binding. It does not import cmd/main across modules, duplicate the
+classifier, change this brief's acceptance or add a process supervisor here. Preserve
+the current oracle, authority boundary and planned library home. This is a forward
+consumer, not a dependency on future workflow/controller delivery.

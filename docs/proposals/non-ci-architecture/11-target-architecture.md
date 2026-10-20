@@ -454,6 +454,28 @@ This amends the catch-all communications disposition above, not the authority of
 domains. The four comms-core extraction briefs are real prerequisites for their named
 consumers; they do not block every R1–R8 package or unrelated supported-path fixes.
 
+## Proposed assessment-profile alignment — 15 October 2026
+
+[Performance and architecture profiles](../../streams/review-profiles/spec.md) apply
+this direction to changed designs and enduring operational subjects. Architecture's
+lead question is whether the PR moves toward the applicable future state; performance
+asks whether equivalent results can use less work/contention or a better algorithm.
+The assessment binds to the exact target revision, approval status and migration stage;
+this addendum neither expands earlier ratification nor activates new review policy.
+
+Definitions live with reviewed planning/quality definitions; pure policy selects
+applicability; the existing runtime and future single cell controller own attempts,
+budgets and cadence. Isolated workers produce canonical evidence, existing review/
+decision owners judge it, and continuing operations evaluates later exposure/outcomes.
+Context packets use scoped revision manifests; forge reads can reuse exact-SHA source
+queries without caching mutable approval state indefinitely. Optional performance data
+is a separate, consented observation copy, never acceptance or budget authority.
+
+Local/manual calibration works before managed adoption. Later confirmed observations
+may feed deduplicated issues and bounded repair draft PRs through existing admission,
+effect custody, independent review/verification and post-exposure assessment. No new
+scheduler, finding ledger, autonomous merger or architecture-decision authority arises.
+
 ## Tool families and CI
 
 The [CI extension](25-ci-tooling.md) separates desk and operator clients, services,

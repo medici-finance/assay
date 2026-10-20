@@ -45,9 +45,97 @@ This program reuses that path; it does not add a second one beside it:
 
 - **Process supervision is moved, not duplicated (/26).** `cellprocess` moves into the loopadmin module as its one process runner, and cellctl's cadence path calls it there through a `require` plus relative `replace` of the loopadmin module in `tools/desk/go.mod`, the pattern `tools/loopresolve/go.mod` already uses for `cellconfig`. The process-launch audit that scans `tools/desk` today must also scan the moved runner. Dropping it from the scan would weaken a control.
 - **The per-role cadence lease is reused (/27).** `cellcadence` stays cellctl's host-desk clock. An enrolled role holds the same per-role lease while loop-admin supervises it, so the legacy and shared launchers cannot both own one role. An unfinished checkpoint maps to a held unknown stop, not a relaunch.
-- **Harness argv is wrapped (/22).** The first adapter takes cellctl's resolved, operator-approved Claude argv/env as its pinned profile input and adds no second argv builder. Codex and Cursor stay on the legacy path until each has its own adapter qualification.
+- **Harness argv is wrapped (/22).** The shared adapter takes cellctl's resolved, operator-approved argv/env profiles and adds no second argv builder. /22 qualifies bounded Codex first and Claude through the same implementation; each profile stays legacy until independently qualified (its own argv/environment/credential boundary included) and enrolled. Cursor remains legacy until separately qualified.
 - **The legacy launcher (/27)** is cellctl's `deskLaunch` → `runInteractiveHarness`/`runCadencedHarness` path. A role binding moves off it only through the drain/reconcile/fence rule above. Non-enrolled roles keep it unchanged.
 - `tools/desk/internal/loopengine` stays the in-session queue engine of a standing desk, not a process launcher. /27 binds it as a caller.
+
+## Standing-desk efficiency delivery — 2026-10-18
+
+**Outcome:** existing desk policy selects work; deterministic code owns admission,
+claim/slot bookkeeping, process observation, CI/external waiting and result collection;
+models receive bounded implementation, review or judgment assignments. No actionable
+input means no new model request. Both supervisor and specialist consumption count:
+moving a polling loop into a child is not a saving.
+
+This is one delivery path, not another engine or stream. Apply the approved
+[future architecture](../../proposals/non-ci-architecture/11-target-architecture.md),
+[library-first ownership](../../library-first.md) and
+[workflow-efficiency ownership map](../../desk-workflow-efficiency-change-map.md).
+The first independent-verifier contracts remain the safety foundation; the review desk
+is the first standing-desk adoption candidate because it exercises independent lanes
+and substantial supervision. That order does not replace the first verifier product
+milestone or authorize activation.
+
+| Owner | Deliverable | Boundary / what is not repeated |
+|---|---|---|
+| Existing desk/queue policy and loopengine adapters | Eligible work, claims, next-item policy, role-specific judgment requests and result disposition | Use the existing drain contract. A planner CLI is not a running conductor. No second queue or evaluator in loop-admin. |
+| /20 | Runner contract and conformance kit | Implemented delivery and historical Evidence stay intact; refresh its Linux witness through the existing local-container path, not another protocol. |
+| /28–29, /04, /16 | Verification contracts/regression floor, unknown-effect recovery and ownership/budget fencing | Retain dependency and human gates. Idle efficiency does not justify weakening these controls. |
+| /26 | One process runner, PostgreSQL process journal, deterministic observation/waits and launch brakes | Move/reuse cellprocess; no model heartbeat, alternate local store, all-role credential broker or second scheduler authority. Preserve the startup preparation/telemetry amendments. |
+| /22 | Shared local-harness adapter; independently qualified Codex and Claude profiles | Codex is first in the bounded-invocation qualification; reuse cellctl's existing argv/env builders, with each profile proving the launcher boundary (argv refusal, sanitized environment, workspace/tool access or a recorded control gap) on its own. Cursor remains legacy until separately qualified. No provider-specific copy of the supervisor. |
+| desk-tools/39 and /42 | Importable review policy and role-specific issue projections | Existing extraction owners; /27 consumes them from tools/desk-local bindings, never imports cmd/main or duplicates classifiers. |
+| /27 | Deterministic standing-desk clients, bounded jobs and one-owner transfer | Existing queues/claims remain work owners. Remove model-managed mechanical loops only when the replacement behavior is proven. No workflow store/controller required. |
+| desk-supervision/34 | Usage compatibility for non-enrolled workers | /27 preserves the existing skip for enrolled workers; do not count one invocation in two stores. |
+| desk-tools/37, /43–44 | Matched baseline, caller migration and complete-workflow qualification | Reuse its oracle/cohorts and qualification record. Minimal local counters are sufficient initially; parked performance collection is not an activation prerequisite or a second measurement pipeline. |
+
+### Priority, blockers and dependency waves
+
+Operational containment can use the **already shipped** explicit cellctl cadence mode
+under the [existing clean-handoff procedure](../../cellctl-cadence.md#switching-an-existing-interactive-house).
+This requires operator selection and ownership checks, not a new launcher or automatic
+Goal manipulation. It is temporary containment: scheduled empty ticks still invoke a
+model and therefore do not meet the target's zero-idle-request criterion. No live desk
+is switched by this planning amendment.
+
+The implementation path retains its declared safety dependencies:
+
+| Wave | Existing work | Exit / next consumer |
+|---|---|---|
+| 0 | /20 independent witness refresh; /02 and /09 inherited contract verification; desk-supervision/34 and desk-tools/37 baseline in parallel | Preserve implemented work; resolve actual witness/definition holds, not status-table cosmetics. Local Docker availability is a route to a witness, not proof it exists. |
+| 1 | /28 after /09; desk-tools/39 and /38 after /37 in parallel | Qualified candidate/acceptance identities and fact completeness; shared review policy and attribution. |
+| 2 | /29 after /28; desk-tools/42 after /38 in parallel | Independent old/new regression floor; role-specific issue projections. |
+| 3 | /04 after /02, /28–29 | Unknown outcomes reconcile before replacement. |
+| 4 | /16 after /04, /09, /28–29 | Ownership, cumulative budgets, transfer and restoration fencing. |
+| 5 | /26 after /20, /28–29, /16 | Shared execution with bounded startup and code-owned waits. |
+| 6 | /22 after /20 and /26 | Codex-first and Claude profile qualification over that execution component. |
+| 7 | /27 after /26, /22, desk-supervision/34 and desk-tools/39, /42 | Offline five-role proof; operator-approved review cohort first, then worker/verify/intake/coordinator only after each role's policy and retirement checks pass. |
+
+Critical implementation path: **/09 → /28 → /29 → /04 → /16 → /26 → /22 → /27**;
+/02 and /20 verification plus desk-supervision/34 join at their existing edges.
+The parallel policy branch is **desk-tools/37 → /39** and **/37 → /38 → /42**,
+both joining /27; these are missing reusable APIs, not optional tool optimizations.
+The frontmatter edges and generated authoring table remain authoritative; these waves
+express delivery order rather than introducing duplicate brief identities. The immediate
+head is qualification of existing contracts plus the unimplemented /28, not /27.
+At authoring, runner Client/conformance, cellprocess/cellcadence and the planner CLIs
+exist; supervisor/process/adapters do not yet implement the proposed shared launch path.
+Do not treat `reviewloop plan` or native Goal continuation as that implementation.
+
+### Acceptance and retirement
+
+The /27 production-path fixture must prove zero model starts for unchanged queues,
+pending CI, repeated notifications, viewer attach and idle timer checks; a changed
+admitted item starts exactly once, and a newly completed slot is refilled without a
+model polling for it. Unknown stop, missing facts, exhausted budgets and stale generations
+hold. An error needing judgment can produce one bounded assignment through the existing
+role policy; an unchanged repeated error cannot create an endless model loop.
+
+The same fixture must attribute supervisor versus child calls and uncached/cached input,
+output and reported reasoning to invocation, role, lane, exact subject and profile.
+Missing telemetry stays unknown. Compare matched completed-item cohorts using the
+existing desk-tools/37–44 qualification machinery; report review/verification coverage, rework
+and completed outcomes as well as cost. There is no invented percentage saving target.
+Zero idle launches is a deterministic criterion; useful-work efficiency requires the
+independent matched comparison. No cost claim may omit children or count lost coverage
+as a saving.
+
+Remove duplicate calls before duplicate code. /27 owns removal of the adopted mechanical
+skill loop at the same transfer boundary; independent review/verification judgments,
+prior findings, source reads, acceptance tests, STOP/guard-refusal/trust-gate rules and human authority remain. Legacy paths
+stay for non-enrolled profiles until the last supported consumer is qualified and fenced.
+Legacy skill-simplification work owns only remaining prose/kit cleanup and its own
+historical close-out; it must not author another launch supervisor. Broad workflow/store,
+publication and cockpit adoption follow their existing owners after this desk milestone.
 
 ## Canonical records and execution
 

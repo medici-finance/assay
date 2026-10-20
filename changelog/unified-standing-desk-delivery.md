@@ -1,0 +1,1 @@
+- Reconcile standing-desk delivery around existing drain policy, one shared process supervisor and qualified Codex/Claude profiles, with explicit zero-idle-launch proof and matched whole-workflow accounting. Preserve startup, recovery and adoption gates.

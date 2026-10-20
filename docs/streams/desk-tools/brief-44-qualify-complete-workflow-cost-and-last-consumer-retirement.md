@@ -10,7 +10,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-17 by statusgen newbrief
 sources:
   - docs/desk-workflow-efficiency-spec.md
@@ -94,6 +94,17 @@ design-fit:
    documentation with the existing statusgen README generator. No generated global board is branch-
    committed. All planned tests must be wired to actual production paths, not a parallel test
    implementation.
+
+## Shared execution qualification consumer — 2026-10-18
+
+When graph-execution/27 is qualified, include its invocation-attributed supervisor and
+bounded-child records in this brief's existing matched cohort and retirement report.
+Its minimal offline launch-count proof is owned by /27 and does not depend on this
+whole read-path optimization chain; this broad qualification consumes that proof when
+available. No new benchmark, spool, scorecard or analytics owner is introduced. Retain
+separate tool-only, supervision-only and combined arms; include total child consumption,
+matched completed outcomes, exact-head review/verification coverage and rework. Missing
+usage stays unknown; silence caused by blocked/lost work is not a saving.
 
 ## Verify
 

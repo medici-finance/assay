@@ -12,12 +12,15 @@ gate-why: "Report collection, exposure and recurring effect boundaries need acce
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 4
+version: 5
 id: 29c71b10-6ca6-4594-bc10-1f294a5d1463
 authored: "2026-10-15 by reporting authoring session"
 sources:
   - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 wave reconciliation at origin/main 9f9bb35de: performance-collection/02 consumes desktools-v2/61; reporting scope and historical Evidence unchanged"
+  - "medici-finance/assay#3353 — cell startup scratch scan; measurements on v1.0.48"
+  - "medici-finance/assay#3099 — remaining parent launch telemetry coverage"
+  - "freshness-checked 2026-10-20 @ eb82d5b62 (merged main, installed v1.0.51); the 2026-10-18 v1.0.49 install recorded source 3cb57291e"
   - docs/streams/performance-collection/README.md
   - docs/streams/continuing-operations/spec.md
   - docs/proposals/non-ci-architecture/23-runtime-contract-alignment.md
@@ -43,7 +46,7 @@ consumers:
 
 ## Context
 
-files: `perfdata/report/` (planned), `perfdata/cmd/perfdata/` (planned), `perfdata/testdata/operating-reports/` (planned), `plugins/assay/skills/operating-report/SKILL.md` (planned), `docs/performance-collection.md` (planned), `docs/contracts.md`, `changelog/operating-reports.md` (planned), `perfdata/report/phasecost_test.go` (planned)
+files: `perfdata/report/` (planned), `perfdata/cmd/perfdata/` (planned), `perfdata/testdata/operating-reports/` (planned), `plugins/assay/skills/operating-report/SKILL.md` (planned), `docs/performance-collection.md` (planned), `docs/contracts.md`, `changelog/operating-reports.md` (planned), `perfdata/report/phasecost_test.go` (planned); additional startup scope: `perfdata/report/cellstart_test.go` (planned).
 
 facts:
 - This is authored todo scope, not deployed capability. Collection briefs 01/02 produce the bounded source contract; no database or remote endpoint is needed by local reports.
@@ -110,6 +113,21 @@ This is an amendment to unfinished implementation acceptance. Preserve every pri
 obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
 authoring change claims no implementation or operational adoption.
 
+### Cell startup report acceptance — 2026-10-18
+
+Extend the existing tool panel with cell time-to-first and time-to-all requested confirmed
+harness starts, shared preparation, per-role admission and lock waits from /02. Separate
+startup from session lifetime and subsequent deskboot. A refused, failed, unknown or missing
+requested role prevents a successful all-started sample; show its outcome and coverage rather
+than silently shrinking the requested set. Never sum concurrent role wall times or repeat a
+shared parent cost. Compare cold/warm and 1x/10x retained-history workloads at fixed role count,
+with exact measured build/source, sample counts and uncertainty. Keep installed-version metadata
+separate from sample version; upgrading to v1.0.49 cannot relabel #3353's v1.0.48 sample.
+
+Use saved local observations with DB/API absent. Missing phase/correlation data is could-not-check,
+never proof of faster startup. This reports the existing launch owner's result; it introduces
+neither a latency SLO nor another runtime owner and does not activate this parked stream.
+
 ## Verify
 
 Named commands below are implementation deliverables. Each must run the named test (not succeed with no matching tests).
@@ -123,6 +141,7 @@ Named commands below are implementation deliverables. Each must run the named te
 | 5 | check:ci +flow | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && go test -count=1 -v ./report/... -run '^TestOperatingReportRedaction$' > "$o" && grep -F -- '--- PASS: TestOperatingReportRedaction ' "$o")` | exit 0; named PASS; credential-, prompt-, title- and error-shaped strings seeded into fixture sources (including blocker reasons) are absent from the JSON, the HTML and the manifest |
 | 6 | check:ci +dereference | `statusgen --root . --consumers --brief performance-collection/07` | exit 0; routing claims corroborated against the implementation diff, including each changed consumer. |
 | 7 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPhaseReportFlow$' ./report/... > "$o" && grep -F -- '--- PASS: TestPhaseReportFlow ' "$o")` | exit 0; named PASS. Nested/failed/missing-child fixture produces correct component/cycle tables and unknowns; hidden downstream work or double-counted parent/child makes the expected report fail. |
+| 8 | check:ci +flow +mutation | `(cd perfdata && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellStartReport$' ./... > "$o" && grep -F -- '--- PASS: TestCellStartReport ' "$o")` | exit 0; named PASS. Hand-computed overlapping-role fixture yields correct first/all-start times and one shared preparation cost; failed/missing role makes all-start coverage incomplete. Mutation: omit failed roles, sum overlapping walls or relabel historical builds; test fails. |
 
 ## Perf-v3 delivery amendment — 19 October 2026
 
