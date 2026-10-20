@@ -384,6 +384,23 @@ RISK-VALUE: NAMED, NOT DERIVED — repairLeaseTTL = 45 * time.Minute @ tools/des
 
 Verification-Attestation: medici-finance/assay#3000 run=5c71001adc311481b112971e9df2dbb215fa530b810a33be213eb7112c79dbd1 source=8a1c4aa15569d489e0b19444875a8f461dbb7e10 brief=docs/streams/desk-supervision/brief-17-verification-repair-obligations.md model=claude-opus-5-5 tier=any
 
+### Execution witness: 2026-10-19, assay-verifier-app[bot] (claude-opus-5-5 verifier, on behalf of verify-desk), merged main 2f44050f8a706d0865e1a95ca3cd8709abe1bd2f
+
+This is a mechanical close under the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker). Runner class: a local docker container, image assay-verify:go1.27 (id sha256:955fd6c46c93, built FROM golang:1.27.2-trixie, git 2.47), run with `--network none`, GOPROXY=off and GOTOOLCHAIN=local, the engine's default seccomp profile, and `statusgen verifyrun --sandbox container-netns`. statusgen and the desk tools were built inside the container from a throwaway clone of the home at source 2f44050f8a706d0865e1a95ca3cd8709abe1bd2f. The pre-work `deskdispatch --check-verifier` admission returned exit 0; its binding is the Verification-Attestation line at the end of this section. Each row's named test is defined exactly once in the fanoutloop repair_test.go at this source, so no anchored `-run` pattern can pass vacuously. The table below is the unedited verifyrun witness, and `statusgen verifyrun --check` reports 4 pass, 0 fail, 0 could-not-run/missing (of 4 Verify rows).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationFailToWorker$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:9129f3af1200 | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationRestartAndDuplicate$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:34fced902da7 | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationMergeIsNotResolved$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:86dffbdb72fc | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOWORK=off go test ./cmd/fanoutloop/ -run ^TestRepairObligationCrossRepoFollowUp$ -v -count=1` | pass exit=0 sandbox=container-netns | sha256:5493e7bceb86 | 2026-10-19 | assay-verifier-app[bot] @ 2f44050f8a70 (on-behalf-of human:ian) (forge-identity) |
+
+The substance is the 2026-10-15 by-hand Evidence block above, at merged main 8a1c4aa15569d489e0b19444875a8f461dbb7e10: all four rows passed with their named PASS lines and 0 fail, and the only gap was the hermetic witness this run supplies. Since 8a1c4aa15569 the forge-transition step moved from fanoutloop repair.go into deskkit repairobligation.go (ApplyForgeObservation) and gained a guard that keeps a resolved obligation resolved; this witness runs all four rows over that change. repairLeaseTTL = 45m is still NAMED, NOT DERIVED and routed to medici-finance/assay#1897; it is a reversible knob that ranks last.
+
+**VERIFY: PASS** — all 4 Verify rows pass with 0 fail in the network-off container witness at 2f44050f8a70, which supplies the hermetic witness the 2026-10-15 by-hand PASS was missing.
+
+Verification-Attestation: medici-finance/assay#3566 run=f8d3205ab94b802e495073ddf6d3e6bc07265daf8cf7291832b315ea80f6db1d source=2f44050f8a706d0865e1a95ca3cd8709abe1bd2f brief=docs/streams/desk-supervision/brief-17-verification-repair-obligations.md model=claude-opus-5-5 tier=strong
+
 ## Review
 
 Gate: model. Review the negative paths, migration compatibility and limits of enforcement. Any newly discovered need to alter authority is separate human-gated scope, not an implicit part of this brief.
