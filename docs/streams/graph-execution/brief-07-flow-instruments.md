@@ -365,7 +365,7 @@ Still open at this date: medici-finance/assay#1800 (darwin host has no network-o
 
 **VERIFY: BLOCKED** — all 9 rows pass by hand at 0cb90058470f, and both mutation checks are caught. The check:ci witness for rows 1, 2 and 6 needs a Linux network-off runner (environment, medici-finance/assay#1800, still open). gate: model; status stays implemented.
 
-### Non-implementer execution witness — 2026-10-20 claude-opus-5-5 verifier at 22c0ca20c477 (container, network none)
+### Non-implementer execution witness — 2026-10-20 claude-opus-5-5 verifier at 22c0ca20c477 (container, network none; VERIFY: BLOCKED — check-definition, row 8 on medici-finance/assay#1915)
 
 Verification-Attestation: medici-finance/assay#3588 run=904f33303c3cf3ffcfcf009adc11e0dd63bb0f8739b3fa261c8831e08eecf20c source=22c0ca20c477ed745a3bc3bae7c81d654e951189 brief=docs/streams/graph-execution/brief-07-flow-instruments.md model=claude-opus-5-5 tier=strong
 
@@ -385,7 +385,7 @@ This is a mechanical execution witness against merged main 22c0ca20c477ed745a3bc
 
 The substance is the by-hand Evidence block of 2026-10-14 at source 0cb90058470f9608f76b96e2055e7327d9c5c178 above, where all 9 rows passed with 0 failures and both mutation checks were caught; its risk-bearing value lines stand unchanged, because those literals are unchanged at this source.
 
-**VERIFY: PASS** — all 9 rows pass with 0 fail in the network-off container witness at 22c0ca20c477, matching the 9/9 by-hand pass of 2026-10-14; the only hold was environment, and this runner clears it.
+**VERIFY: BLOCKED** — check-definition: row 8 [consumer-delivery-range] (medici-finance/assay#1915); the closing-time lint refuses a verified flip on it because it pins `--base` but no `--delivery` snapshot, so it needs re-authoring. All 9 rows pass with 0 fail in the network-off container witness at 22c0ca20c477, matching the 9/9 by-hand pass of 2026-10-14, so the environment hold (medici-finance/assay#1800) is cleared; row 8's check definition is the remaining hold.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
