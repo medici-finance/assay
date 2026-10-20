@@ -11,14 +11,14 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
-| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/10 | 2026-10-19 |  |
+| [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/10 | 2026-10-20 |  |
 | [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 4/13 | 2026-10-19 |  |
 | [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-10-16 |  |
 | [comms-core](docs/streams/comms-core/README.md) | P1 | active | 0/4 | 2026-10-15 |  |
 | [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-10-19 |  |
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 0/9 | 2026-10-19 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/9 | 2026-10-19 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/27 | 2026-10-19 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/27 | 2026-10-20 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 7/35 | 2026-10-19 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/52 | 2026-10-19 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-19 |  |
@@ -118,7 +118,7 @@ _Held by per-stream caps: 17 brief(s) across 1 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: f83457dc 2026-10-19T23:37:28Z_
+_last regen: ec3098f3 2026-10-20T00:29:35Z_
 
 **Progress:** 11/13 brief items done.
 
@@ -139,7 +139,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: f83457dc 2026-10-19T23:37:28Z_
+_last regen: ec3098f3 2026-10-20T00:29:35Z_
 
 **Progress:** 33/82 brief items done.
 
