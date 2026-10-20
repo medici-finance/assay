@@ -532,6 +532,42 @@ truncated=0
 # a blind reader reddens the run exactly as a failed query does.
 flow_failures=0
 
+# The new producer is selected BEFORE any discovery. Never retry a partial typed
+# read through the legacy per-label fanout: that would duplicate collection and
+# could conceal the permission/page failure. Explicit legacy is the rollback.
+INBOX_READER="${ASSAY_INBOX_READER:-auto}"
+INBOX_PRODUCER="${ASSAY_DESKINBOX:-deskinbox}"
+case "$INBOX_READER" in
+  auto|typed|legacy) ;;
+  *) echo "assay-inbox: ASSAY_INBOX_READER must be auto, typed or legacy" >&2; exit 1 ;;
+esac
+use_typed=0
+if [[ "$INBOX_READER" != legacy ]]; then
+  producer_version=""
+  if command -v "$INBOX_PRODUCER" >/dev/null 2>&1; then
+    producer_version=$("$INBOX_PRODUCER" --version 2>/dev/null) || producer_version=""
+  fi
+  if [[ "$producer_version" == *" issue-discovery-v1"* ]]; then
+    use_typed=1
+  elif [[ "$INBOX_READER" == typed ]]; then
+    echo "assay-inbox: typed discovery requires a compatible deskinbox (issue-discovery-v1); no discovery attempted" >&2
+    exit 1
+  fi
+fi
+if [[ "$use_typed" -eq 1 ]]; then
+  if hits=$("$INBOX_PRODUCER" discovery "${REPOS[@]}" 2>"$TMP_ERR"); then
+    :
+  else
+    query_failures=$((query_failures + 1))
+  fi
+  cat "$TMP_ERR" >&2
+  if printf '%s' "$hits" | jq -e 'type == "array" and all(.[]; (.repo|type)=="string" and (.number|type)=="number" and (.labels|type)=="array")' >/dev/null; then
+    printf '%s' "$hits" > "$TMP_JSON"
+  else
+    echo "assay-inbox: invalid typed discovery output; queue could-not-check" >&2
+    query_failures=$((query_failures + 1))
+  fi
+else
 for repo in ${REPOS[@]+"${REPOS[@]}"}; do
   [[ -z "$repo" ]] && continue
   for label in "${LABELS[@]}"; do
@@ -562,6 +598,7 @@ for repo in ${REPOS[@]+"${REPOS[@]}"}; do
     printf '%s' "$merged" > "$TMP_JSON"
   done
 done
+fi
 
 # Dedupe by repo+number (an issue can carry more than one contract label), rank by the most
 # urgent label it carries (lower rank = more urgent), sort urgency-then-age (oldest createdAt

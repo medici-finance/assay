@@ -52,7 +52,7 @@ func build(t *testing.T) string {
 		if binaries.err != nil {
 			return
 		}
-		for _, tool := range []string{"deskboard", "reviewloop", "deskdispatch", "issueboard"} {
+		for _, tool := range []string{"deskboard", "reviewloop", "deskdispatch", "issueboard", "deskinbox"} {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 			cmd := exec.CommandContext(ctx, "go", "test", "-c", "-o", filepath.Join(binaries.dir, tool+".test"), "./cmd/"+tool)
 			cmd.Dir = moduleRoot(t)

@@ -410,3 +410,12 @@ go-live.
 
 | module | S- row | since | churn | fixes | complexity | coupling partner(s) | class issue | investigation | cleared |
 |---|---|---|---|---|---|---|---|---|---|
+
+## Issue projection selection
+
+`tools/desk/internal/issueflow` owns pure candidate population selection and the
+human inbox's escalation-label rank. It consumes observed facts and caller-owned
+policy booleans. Issueboard retains classification, trust, escalation and closure;
+deskkit retains provider reads, custody and identity. Deskinbox and the shell
+adapter consume the same human-inbox ordering without moving the ruling screen.
+See [projection and compatibility contracts](issue-projections.md).
