@@ -31,15 +31,25 @@ above (immutable snapshot, exact summary counts, same exit codes).
 
 It is could-not-check (exit 2), never an unpinned diff and never a verdict, when the brief is
 not committed at HEAD, has no marker, a code-span or malformed marker, short ids, more than
-one distinct delivery, a delivery that is not on HEAD's first-parent chain, or a base that
-is not its baseline. No command-line value, environment variable or working-tree edit can
-supply the delivery: a dirty marker is not read. An explicit `--base` is untouched and keeps
+one distinct delivery, a delivery that is not on HEAD's first-parent chain, a base that
+is not its baseline, or a delivery that is not reachable from the fetched mainline ref
+(`refs/remotes/origin/main`; with no such ref nothing can be shown to have landed). No
+command-line value, environment variable or working-tree edit can supply the delivery: a
+dirty marker is not read, and every git read of the derivation runs without the
+repository-locating variables (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`,
+`GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`, `GIT_ALTERNATE_OBJECT_DIRECTORIES`), so the
+checked-out directory alone names the repository. An explicit `--base` is untouched and keeps
 the branch-diff meaning above, and a branch whose diff does carry the brief is checked
 against that diff exactly as before. Without `--brief` nothing is derived.
 
-Limit: the marker is verifier-authored committed text, authenticated against the git graph
-but not against the brief's declared files, so a reviewer still owns the claim that the
-named commit is the real delivery. Evidence that has not yet recorded a marker gets
+Limit: the base is bound and the delivery is not. The base is computed from the named
+delivery, never copied from the marker, but the delivery itself is chosen by whoever wrote
+the committed marker: it is checked against the git graph (on HEAD's first-parent chain,
+landed on the mainline ref, with its exact baseline), not against the brief's declared files
+or any record the verifier does not author. A marker that names a later mainline commit is
+accepted, so a reviewer still owns the claim that the named commit is the real delivery.
+The derivation reads every marker in the committed Evidence and refuses distinct triples;
+the protected-table closure reads only the current run's marker. Evidence that has not yet recorded a marker gets
 could-not-check. The `consumer-delivery-range` lint below is unchanged and still asks for
 explicit pins in authored rows.
 

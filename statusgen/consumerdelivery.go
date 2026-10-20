@@ -210,6 +210,12 @@ func deriveConsumerDelivery(root, rel string) (delivery, base, why string) {
 	if cwhy != "" {
 		return "", "", cwhy
 	}
+	// A commit made only in this checkout is not a landed delivery. The named
+	// delivery must be reachable from the fetched mainline ref; with no such ref
+	// there is nothing to land against, so the answer is could-not-check.
+	if err := historyGit(root, "merge-base", "--is-ancestor", chosen.delivery, remoteMainRef).Run(); err != nil {
+		return "", "", "the delivery is not reachable from the fetched mainline ref " + remoteMainRef + " (absent, or a local commit that has not landed)"
+	}
 	// A merge delivery records the divergence baseline as its marker base; the
 	// consumer range is always the delivery against its first parent.
 	if len(parents) == 0 || !consumerCommit.MatchString(parents[0]) {

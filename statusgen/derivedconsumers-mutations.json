@@ -54,6 +54,90 @@
       "file": "main.go",
       "old": "if !baseGiven && *consumersBrief != \"\" {",
       "new": "if *consumersBrief != \"\" {"
+    },
+    {
+      "name": "literal check: a marker with a trailing code span is accepted",
+      "file": "consumerdelivery.go",
+      "old": "if !m.literal {",
+      "new": "if false && !m.literal {"
+    },
+    {
+      "name": "shape check: a marker with extra fields is accepted",
+      "file": "consumerdelivery.go",
+      "old": "len(fields) != 4 ||",
+      "new": "len(fields) < 4 ||"
+    },
+    {
+      "name": "path guard: a brief path outside the repository root is passed to git",
+      "file": "consumerdelivery.go",
+      "old": "if rel == \"\" || strings.HasPrefix(rel, \"../\") || filepath.IsAbs(rel) {",
+      "new": "if false {"
+    },
+    {
+      "name": "one-brief guard: an ambiguous brief id resolves to the first file",
+      "file": "consumerdelivery.go",
+      "old": "if len(briefs) != 1 {\n\t\treturn 2, \"the brief must resolve to exactly one file\"",
+      "new": "if len(briefs) == 0 {\n\t\treturn 2, \"the brief must resolve to exactly one file\""
+    },
+    {
+      "name": "landing check: a delivery that has not landed on the fetched mainline ref is accepted",
+      "file": "consumerdelivery.go",
+      "old": "if err := historyGit(root, \"merge-base\", \"--is-ancestor\", chosen.delivery, remoteMainRef).Run(); err != nil {",
+      "new": "if err := historyGit(root, \"merge-base\", \"--is-ancestor\", chosen.delivery, remoteMainRef).Run(); false && err != nil {"
+    },
+    {
+      "name": "git environment: the repository-locating variables are inherited",
+      "file": "evidenceactor.go",
+      "old": "append(historyCleanEnv(os.Environ()),",
+      "new": "append(os.Environ(),"
+    },
+    {
+      "name": "git environment: GIT_DIR is not cleared",
+      "file": "evidenceactor.go",
+      "old": "\t\"GIT_DIR\",\n",
+      "new": ""
+    },
+    {
+      "name": "git environment: GIT_WORK_TREE is not cleared",
+      "file": "evidenceactor.go",
+      "old": "\t\"GIT_WORK_TREE\",\n",
+      "new": ""
+    },
+    {
+      "name": "git environment: GIT_COMMON_DIR is not cleared",
+      "file": "evidenceactor.go",
+      "old": "\t\"GIT_COMMON_DIR\",\n",
+      "new": ""
+    },
+    {
+      "name": "git environment: GIT_INDEX_FILE is not cleared",
+      "file": "evidenceactor.go",
+      "old": "\t\"GIT_INDEX_FILE\",\n",
+      "new": ""
+    },
+    {
+      "name": "git environment: GIT_OBJECT_DIRECTORY is not cleared",
+      "file": "evidenceactor.go",
+      "old": "\t\"GIT_OBJECT_DIRECTORY\",\n",
+      "new": ""
+    },
+    {
+      "name": "git environment: GIT_ALTERNATE_OBJECT_DIRECTORIES is not cleared",
+      "file": "evidenceactor.go",
+      "old": "\t\"GIT_ALTERNATE_OBJECT_DIRECTORIES\",\n",
+      "new": ""
+    },
+    {
+      "name": "git environment: the tree enumeration adapter inherits the repository-locating variables",
+      "file": "coverage_repo.go",
+      "old": "return historyGitEnv(exec.Command(\"git\", append([]string{\"--no-replace-objects\", \"-C\", root}, args...)...))",
+      "new": "return exec.Command(\"git\", append([]string{\"--no-replace-objects\", \"-C\", root}, args...)...)"
+    },
+    {
+      "name": "git environment: the working-tree status read inherits the repository-locating variables",
+      "file": "consumers.go",
+      "old": "historyGitEnv(exec.Command(\"git\", \"-C\", root, \"status\", \"--porcelain\", \"--untracked-files=all\"))",
+      "new": "exec.Command(\"git\", \"-C\", root, \"status\", \"--porcelain\", \"--untracked-files=all\")"
     }
   ]
 }

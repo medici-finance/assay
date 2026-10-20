@@ -868,12 +868,12 @@ func corroborateBrief(root string, streams []*Stream, changed map[string]bool, i
 //
 // A package-level var so tests can substitute a base without a git fixture.
 var consumerEntriesAtBase = func(root, base, rel string) map[string]bool {
-	mb, err := exec.Command("git", "-C", root, "merge-base", base, "HEAD").Output()
+	mb, err := historyGitEnv(exec.Command("git", "-C", root, "merge-base", base, "HEAD")).Output()
 	if err != nil {
 		return nil
 	}
 	ref := strings.TrimSpace(string(mb)) + ":" + filepath.ToSlash(rel)
-	content, err := exec.Command("git", "-C", root, "show", ref).Output()
+	content, err := historyGitEnv(exec.Command("git", "-C", root, "show", ref)).Output()
 	if err != nil {
 		return nil // absent at the base: this branch adds the file, so it makes every claim in it
 	}
@@ -1049,7 +1049,7 @@ func exactlyChanged(changed map[string]bool, paths []string) string {
 // changing what the gate checks. A package-level var so tests can pin a base
 // without a git fixture.
 var pinConsumerBase = func(root, base string) (string, error) {
-	out, err := exec.Command("git", "-C", root, "merge-base", base, "HEAD").Output()
+	out, err := historyGitEnv(exec.Command("git", "-C", root, "merge-base", base, "HEAD")).Output()
 	if err != nil {
 		return "", fmt.Errorf("git -C %s merge-base %s HEAD: %w", root, base, err)
 	}
@@ -1062,7 +1062,7 @@ var pinConsumerBase = func(root, base string) (string, error) {
 
 // A package-level var so tests can substitute a diff without a git fixture.
 var changedPathsSince = func(root, base string) ([]string, error) {
-	out, err := exec.Command("git", "-C", root, "diff", "--name-only", base+"...HEAD").CombinedOutput()
+	out, err := historyGitEnv(exec.Command("git", "-C", root, "diff", "--name-only", base+"...HEAD")).CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("git diff --name-only %s...HEAD: %v: %s", base, err, strings.TrimSpace(string(out)))
 	}
@@ -1075,7 +1075,7 @@ var changedPathsSince = func(root, base string) ([]string, error) {
 	// Working-tree state: `--porcelain` prefixes each path with a two-column
 	// status code; renames render as "old -> new" and both halves count as
 	// touched.
-	if st, sErr := exec.Command("git", "-C", root, "status", "--porcelain", "--untracked-files=all").Output(); sErr == nil {
+	if st, sErr := historyGitEnv(exec.Command("git", "-C", root, "status", "--porcelain", "--untracked-files=all")).Output(); sErr == nil {
 		for _, line := range strings.Split(string(st), "\n") {
 			if len(line) < 4 {
 				continue

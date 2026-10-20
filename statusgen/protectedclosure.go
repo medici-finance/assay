@@ -256,9 +256,12 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 
 // deliveryCoordinates authenticates a recorded delivery/base/original triple
 // against the git graph reachable from HEAD in dir and returns the delivery's
-// parents. It is the one reader of those coordinates: the protected-table
+// parents. It is the one validator of those coordinates: the protected-table
 // closure and the consumer-delivery derivation (consumerdelivery.go) both call
-// it, so neither can accept a range the other refuses. why is empty on success.
+// it, so a triple that fails here fails both. It does NOT choose which marker
+// supplies the triple: the closure reads the current run's marker, the
+// derivation reads every marker in the committed Evidence and refuses
+// distinct triples. why is empty on success.
 func deliveryCoordinates(dir, delivery, base, original string) (parents []string, why string) {
 	head, err := historyGit(dir, "rev-parse", "--verify", "HEAD^{commit}").Output()
 	if err != nil || !isObjectID(strings.TrimSpace(string(head))) {

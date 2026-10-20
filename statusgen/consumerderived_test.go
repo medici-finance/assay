@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -115,12 +116,110 @@ func TestDerivedDeliveryPinsRecordedDeliveryParent(t *testing.T) {
 }
 
 // regression: #1281
-func TestDerivedDeliveryWithoutOriginMain(t *testing.T) {
-	// The first miss site: no base ref at all, so the diff cannot be taken.
+func TestDerivedDeliveryDiffCannotBeTaken(t *testing.T) {
+	// The first miss site: the branch diff cannot be taken at all. The recorded,
+	// landed delivery still pins the run.
 	root, _, _ := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
-	runGit(t, root, "update-ref", "-d", remoteMainRef)
+	orig := changedPathsSince
+	changedPathsSince = func(root, base string) ([]string, error) { return nil, fmt.Errorf("simulated diff failure") }
+	defer func() { changedPathsSince = orig }()
 	if got := runConsumersDerived(root, "alpha/01"); got != 0 {
-		t.Fatalf("missing base ref with a recorded delivery: got %d, want 0", got)
+		t.Fatalf("untakeable diff with a recorded delivery: got %d, want 0", got)
+	}
+}
+
+// regression: #1281
+func TestDerivedDeliveryRequiresLandedDelivery(t *testing.T) {
+	// A marker committed only in this checkout is not a landed delivery. With no
+	// fetched mainline ref there is nothing to land against; with a ref that
+	// does not yet contain the named delivery the commit is still local.
+	cases := []struct {
+		name  string
+		cli   bool // a ref behind the delivery leaves the brief in the branch diff, which is not the derivation
+		after func(t *testing.T, root, base, delivery string)
+	}{
+		{"no mainline ref", true, func(t *testing.T, root, base, delivery string) {
+			runGit(t, root, "update-ref", "-d", remoteMainRef)
+		}},
+		{"mainline ref behind the delivery", false, func(t *testing.T, root, base, delivery string) {
+			runGit(t, root, "update-ref", remoteMainRef, base)
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root, base, delivery := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
+			c.after(t, root, base, delivery)
+			if d, _, why := deriveConsumerDelivery(root, derivedBrief); d != "" || !strings.Contains(why, "not reachable from the fetched mainline ref") {
+				t.Fatalf("a never-landed delivery must be refused: delivery %q why %q", d, why)
+			}
+			if !c.cli {
+				return
+			}
+			code, stdout, stderr := runDerivedCLI(t, buildStatusgenBinary(t), root, "--brief", "alpha/01")
+			if code != 2 || !strings.Contains(stderr, "COULD-NOT-CHECK") || strings.Contains(stdout, "summary:") {
+				t.Fatalf("exit %d, want 2 COULD-NOT-CHECK with no verdict\n%s\n%s", code, stdout, stderr)
+			}
+		})
+	}
+	// Positive control: the same checkout with the delivery landed derives.
+	root, base, delivery := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
+	if d, b, why := deriveConsumerDelivery(root, derivedBrief); why != "" || d != delivery || b != base {
+		t.Fatalf("positive control: %q %q %q", d, b, why)
+	}
+}
+
+// regression: #1281
+func TestDerivedDeliveryRefusalBranches(t *testing.T) {
+	// One case per refusal branch of deriveConsumerDelivery, each reached with
+	// everything else valid, so a weakened branch changes the answer.
+	root, _, _ := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
+	for _, rel := range []string{"", "../outside.md", "/etc/passwd"} {
+		if d, _, why := deriveConsumerDelivery(root, rel); d != "" || !strings.Contains(why, "not inside the repository root") {
+			t.Errorf("path guard: %q gave delivery %q why %q", rel, d, why)
+		}
+	}
+	good := func(base, delivery string) string { return strings.TrimSpace(goodMarker(base, delivery)) }
+	cases := []struct {
+		name   string
+		marker func(base, delivery string) string
+		want   string
+	}{
+		// The code span leaves the line still starting with the marker prefix, so
+		// only the literal-text check can refuse it.
+		{"trailing code span", func(b, d string) string { return good(b, d) + " `note`\n" }, "literal live text"},
+		{"five fields", func(b, d string) string { return good(b, d) + " extra=1\n" }, "expected Verification-Table"},
+		{"three fields", func(b, d string) string { return "Verification-Table: delivery=" + d + " base=" + b + "\n" }, "expected Verification-Table"},
+		{"fields out of order", func(b, d string) string {
+			return "Verification-Table: base=" + b + " delivery=" + d + " original=" + b + "\n"
+		}, "expected Verification-Table"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r, _, _ := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, c.marker)
+			if d, _, why := deriveConsumerDelivery(r, derivedBrief); d != "" || !strings.Contains(why, c.want) {
+				t.Fatalf("delivery %q why %q, want a refusal naming %q", d, why, c.want)
+			}
+		})
+	}
+}
+
+// regression: #1281
+func TestDerivedDeliveryRefusesAmbiguousBrief(t *testing.T) {
+	// Two brief files claiming the same brief id: the derivation must not pick
+	// the first one.
+	root, _, _ := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
+	dir := filepath.Join(root, "docs", "streams", "alpha")
+	dup := strings.Replace(readFileT(t, filepath.Join(dir, "brief-02-target.md")), "brief: alpha/02", "brief: alpha/01", 1)
+	if !strings.Contains(dup, "brief: alpha/01") {
+		t.Fatal("fixture: the duplicate brief id was not planted")
+	}
+	mustWrite(t, filepath.Join(dir, "brief-02-target.md"), dup)
+	streams, _, err := loadStreams(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, why := runDerivedConsumers(root, streams, "alpha/01"); code != 2 || !strings.Contains(why, "exactly one file") {
+		t.Fatalf("ambiguous brief: code %d why %q, want 2 naming exactly one file", code, why)
 	}
 }
 
@@ -293,5 +392,72 @@ func TestDerivedDeliveryMergeCommitPinsFirstParent(t *testing.T) {
 	}
 	if code := runConsumersDerived(root, "alpha/01"); code != 0 {
 		t.Fatalf("merge delivery judged against its first parent: got %d, want 0", code)
+	}
+}
+
+// decoyRepoEnv builds a repository that is NOT the fixture (it holds none of
+// the fixture's commits) and returns the repository-locating variables that
+// would redirect a git read to it.
+func decoyRepoEnv(t *testing.T) map[string]string {
+	t.Helper()
+	decoy := t.TempDir()
+	mustWrite(t, filepath.Join(decoy, "decoy.txt"), "decoy\n")
+	mustGitInit(t, decoy)
+	runGit(t, decoy, "commit", "--allow-empty", "-qm", "decoy only")
+	return map[string]string{
+		"GIT_DIR":              filepath.Join(decoy, ".git"),
+		"GIT_WORK_TREE":        decoy,
+		"GIT_COMMON_DIR":       filepath.Join(decoy, ".git"),
+		"GIT_OBJECT_DIRECTORY": filepath.Join(decoy, ".git", "objects"),
+	}
+}
+
+// regression: #1281
+func TestDerivedDeliveryIgnoresRepoLocatingEnv(t *testing.T) {
+	// The environment must not redirect the delivery derivation: with a
+	// repository-locating variable pointing at a decoy repository the derived
+	// run still reads the real checkout and reaches the same verdict.
+	root, base, delivery := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
+	bin := buildStatusgenBinary(t)
+	if code, _, _ := runDerivedCLI(t, bin, root, "--brief", "alpha/01"); code != 0 {
+		t.Fatalf("positive control: clean environment exit %d, want 0", code)
+	}
+	for name, val := range decoyRepoEnv(t) {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(name, val)
+			code, stdout, stderr := runDerivedCLI(t, bin, root, "--brief", "alpha/01")
+			if code != 0 || !strings.Contains(stdout, base+".."+delivery+" (immutable delivered snapshot)") {
+				t.Fatalf("%s=decoy redirected the derivation: exit %d\n%s\n%s", name, code, stdout, stderr)
+			}
+		})
+	}
+}
+
+// regression: #1281
+func TestDerivedDeliveryEnvIsCleanedPerVariable(t *testing.T) {
+	// Every repository-locating variable is removed from a provenance read's
+	// environment (an alternate object directory, an index file, ... have no
+	// end-to-end effect on a clean fixture, so each is pinned here directly).
+	want := []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES"}
+	for _, name := range want {
+		t.Setenv(name, "/nonexistent/decoy")
+	}
+	t.Setenv("GIT_UNRELATED_KEPT", "kept")
+	env := historyGit(t.TempDir(), "rev-parse", "HEAD").Env
+	has := func(k string) bool {
+		for _, kv := range env {
+			if strings.HasPrefix(kv, k+"=") {
+				return true
+			}
+		}
+		return false
+	}
+	for _, name := range want {
+		if has(name) {
+			t.Errorf("%s survives into the provenance git environment", name)
+		}
+	}
+	if !has("GIT_UNRELATED_KEPT") || !has("GIT_GRAFT_FILE") {
+		t.Errorf("unrelated variables must be kept and the graft pin set: %v", env)
 	}
 }
