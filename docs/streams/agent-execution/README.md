@@ -36,6 +36,7 @@ activation gates stay separate, and existing human and deployment gates still bi
 | 08 | [Qualify a Kubernetes verification runner through the existing supervisor](brief-08-qualify-a-kubernetes-verification-runner-through-the-existing-supervisor.md) | 12 | M | todo | — | — |
 | 09 | [Qualify interactive Kubernetes standing desks through the shared runner](brief-09-qualify-interactive-kubernetes-standing-desks-through-the-shared-runner.md) | 9 | M | todo | — | — |
 | 10 | [Evaluate a Pi Durable runner with offline recovery fixtures](brief-10-evaluate-a-pi-durable-runner-with-offline-recovery-fixtures.md) | 1 | M | todo | — | — |
+| 11 | [Evaluate Vercel durable-harness hosting against the Pi runner baseline](brief-11-evaluate-vercel-durable-harness-hosting-against-the-pi-runner-baseline.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 The generator owns the table. All briefs are M-sized, strong-tier work. New tests and
@@ -162,3 +163,24 @@ graph-execution/20 (existing runner contract) -> 10 offline Pi investigation (wa
 
 The second arrow is an advisory handoff, not a new hard dependency on core runtime work.
 No live trial or performance/savings claim is created by this authoring change.
+
+
+## Vercel durable-harness evaluation — 22 October 2026
+
+[Brief 11](brief-11-evaluate-vercel-durable-harness-hosting-against-the-pi-runner-baseline.md)
+adds a wave-2 offline evaluation after /10's plain-Pi baseline and conformance workload.
+It compares the public World-backed Pi adapter with the same dependency tuple and inputs,
+covering queued recovery, real competing writers, stale effects, read-only observation,
+unknown cancellation, replay cost and honest backend portability. Reuse any applicable
+Vercel-arm evidence already produced by /10; no second Pi pilot is commissioned.
+
+```text
+graph-execution/20 -> 10 Pi baseline -> 11 World-host evaluation (wave 2)
+                                            -> optional evidence for /22, /26, /01, /03-04
+```
+
+The final arrow is advisory, not a new hard dependency of core runtime work. Local World
+feasibility, incremental simplification and managed portability have separate verdicts.
+Postgres/hosted behavior is source-classified only; a local result grants no runtime-store,
+Kubernetes, Sandbox or profile adoption. The stream remains parked and existing approval,
+verification and activation owners are unchanged.
