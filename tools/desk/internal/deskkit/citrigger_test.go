@@ -272,6 +272,13 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test: "statusgen/lifecycleworkflow_test.go", module: "statusgen",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"ci/staged-workflows/lifecycle-preflight.yml"},
+			runInvokes: []string{"cd statusgen && go test ./... && go vet ./..."},
+			why:        "the unconditional statusgen suite executes the prospective lifecycle job's head binding and refusal propagation when its staged workflow changes",
+		},
+		{
 			test: "statusgen/boardcohort_test.go", module: "statusgen",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"docs/streams", "statusgen/testdata/witness-admission"},

@@ -1,0 +1,29 @@
+{
+  "test": "go test ./cmd/deskflip -run 'TestLifecycle|TestDelivery' -count=1 -timeout 90s",
+  "control": {
+    "name": "CONTROL: exempt every lifecycle declaration",
+    "file": "cmd/deskflip/lifecycle.go",
+    "old": "\tif !lifecycleDelivery(body, files) {",
+    "new": "\tif true || !lifecycleDelivery(body, files) {"
+  },
+  "mutations": [
+    {
+      "name": "an approved delivery with no lifecycle check is admitted",
+      "file": "cmd/deskflip/lifecycle.go",
+      "old": "\treturn deskkit.Unverifiable(fmt.Sprintf(\"condition %s: delivering Brief: PR has no successful lifecycle-preflight check at %s; an absent or previous-head result is not a pass\", condLifecyclePreflight, short(head)), nil)",
+      "new": "\treturn nil"
+    },
+    {
+      "name": "a skipped lifecycle check grants delivery readiness",
+      "file": "cmd/deskflip/lifecycle.go",
+      "old": "strings.EqualFold(c.Conclusion, \"success\")) ||",
+      "new": "(strings.EqualFold(c.Conclusion, \"success\") || strings.EqualFold(c.Conclusion, \"skipped\"))) ||"
+    },
+    {
+      "name": "a successful lifecycle check predating the live declaration is accepted",
+      "file": "cmd/deskflip/lifecycle.go",
+      "old": "err != nil || startErr != nil || started.Before(edited)",
+      "new": "err != nil || startErr != nil || (false && started.Before(edited))"
+    }
+  ]
+}

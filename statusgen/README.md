@@ -885,3 +885,41 @@ pull request, and on push to `main` regenerates and commits `STATUS.md`
 self-triggering loop). Adopters wiring this into their own repo should copy
 the workflow and adjust the `docs/streams/**` path filters if their stream
 docs live elsewhere.
+
+### Prospective delivery lifecycle check
+
+`statusgen lifecycle-preflight --root <PR-tree> --repo owner/name --pr N --expected-head <40-character-PR-head-SHA> --json`
+
+This read-only GitHub check tests the lifecycle transition an implementation PR
+would establish before it merges. It reads the authoritative PR body and complete
+changed-file list, then evaluates only its `Brief:` delivery edges using the same
+authoring/Evidence classifier, structured `delivery:` partial declarations and
+in-memory lint hold as reconciliation. `Authors:` and `Issue:` carriers create no
+implementation edge. Partial deliveries keep `to` equal to `from`: the check proposes no implementation
+transition for them. Every declared brief, including a partial delivery, requires a
+readable complete file list. An unresolved partial claim,
+unreadable input, missing brief/board row, or changed head cannot pass.
+
+A full delivery is evaluated prospectively at `implemented`, even if the board
+still says `todo`. The human decision gate uses its existing two-layer evaluator;
+a referenced risk-gated design record uses the existing register validator, and a
+present ruling URL uses the existing network ruling resolver. Optional ruling URLs
+remain optional under the existing PR-anchor policy. The tool neither approves a
+design nor advances verification or writes a generated board. Its human-authority
+reads confirm provenance, with the same limitations as `--decision-gate` and
+`--corroborate`; review still judges whether a recorded design reflects the ruling.
+
+JSON schema `lifecycle-preflight-v1` returns `repo`, `pr`, `headSha`, `lookedAt`,
+`passed`, `briefs` (each with `id`, `classification`, `from`, `to`, and any
+`problems`), and an optional `reason`. Classifications are `delivery`, `partial`,
+and `authoring-or-evidence`. Exit codes: **0** admitted or genuinely exempt,
+**1** lifecycle refusal, **2** invalid arguments, **3** could-not-check. Consumers
+must require exit 0 and the expected repository, PR and immutable head, never infer
+success from an empty list. Authentication is read-only through `GITHUB_TOKEN` or
+`--token-file`; roster human-login configuration follows existing network modes.
+
+CI must run a trusted checker against a materialized tree for that PR head (or its
+merge with the intended base), and keep the head-bound check result required for
+merge. Do not execute PR-authored checker code with forge credentials. `deskflip`
+consumes the current-head `lifecycle-preflight` check result rather than copying
+lifecycle policy into desk tooling.

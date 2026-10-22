@@ -1,0 +1,101 @@
+name: lifecycle-preflight
+
+# Pending maintainer promotion. This file runs nowhere until copied to
+# .github/workflows/lifecycle-preflight.yml after the checker lands on main.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    # No path filter: an implementation can omit all board/doc changes.
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: lifecycle-preflight-${{ github.event.pull_request.number }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.27.2"
+  GO_LINUX_AMD64_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+
+jobs:
+  lifecycle-preflight:
+    runs-on: medici-builder-public
+    env:
+      GOENV: "off"
+      GOTOOLCHAIN: local
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Bind the data tree to the event head and base
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EVENT_BASE: ${{ github.event.pull_request.base.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          parent="$(git rev-parse --verify 'HEAD^1^{commit}')"
+          head="$(git rev-parse --verify 'HEAD^2^{commit}')"
+          test "$head" = "$EXPECTED_HEAD"
+          git merge-base --is-ancestor "$EVENT_BASE" "$parent"
+          tip="$(git rev-parse --verify "refs/remotes/origin/${BASE_REF}^{commit}")"
+          mb="$(git merge-base --end-of-options "$tip" HEAD)"
+          test "$mb" = "$parent"
+      - name: Install isolated pinned toolchain
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/go.tar.gz" | cut -d' ' -f1)"
+          test "$got" = "$GO_LINUX_AMD64_SHA256"
+          mkdir -p "${RUNNER_TEMP}/go-toolchain"
+          tar -C "${RUNNER_TEMP}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${RUNNER_TEMP}/go-toolchain/go/bin" >> "$GITHUB_PATH"
+          {
+            echo "GOPATH=${RUNNER_TEMP}/gopath"
+            echo "GOCACHE=${RUNNER_TEMP}/gocache"
+            echo "GOMODCACHE=${RUNNER_TEMP}/gopath/pkg/mod"
+            echo "GOFLAGS="
+            echo "GH_CONFIG_DIR=${RUNNER_TEMP}/gh-config"
+          } >> "$GITHUB_ENV"
+      - name: Build the checker from the trusted base
+        run: |
+          set -euo pipefail
+          parent="$(git rev-parse --verify 'HEAD^1^{commit}')"
+          mkdir -p "${RUNNER_TEMP}/lifecycle-base"
+          # Never execute PR-authored code while holding the read credential.
+          # statusgen's local module replacements must come from the same base.
+          git archive "$parent" statusgen forgeread perfrec gitquiet | tar -x -C "${RUNNER_TEMP}/lifecycle-base"
+          ( cd "${RUNNER_TEMP}/lifecycle-base/statusgen" && go build -o "${RUNNER_TEMP}/statusgen-base" . )
+      - name: Install pinned gh for existing ruling readers
+        run: |
+          set -euo pipefail
+          url="https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/gh.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/gh.tar.gz" | cut -d' ' -f1)"
+          test "$got" = "912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00"
+          tar -C "$RUNNER_TEMP" -xzf "${RUNNER_TEMP}/gh.tar.gz"
+          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "$GITHUB_PATH"
+      - name: Validate the proposed lifecycle transition
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          live_base="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json baseRefName --jq .baseRefName)"
+          test "$live_base" = "$BASE_REF"
+          # Exit 1 (held) and exit 3 (could-not-check) both fail this check.
+          # Unsupported base binaries fail too: promotion follows source merge.
+          "${RUNNER_TEMP}/statusgen-base" lifecycle-preflight --root . --repo "$GITHUB_REPOSITORY" --pr "$PR_NUMBER" --expected-head "$EXPECTED_HEAD" --json
+          live_base="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json baseRefName --jq .baseRefName)"
+          test "$live_base" = "$BASE_REF"

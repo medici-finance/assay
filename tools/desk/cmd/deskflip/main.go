@@ -128,6 +128,12 @@ nothing is mutated:
   security-verdict  on a RISK-CLASSED PR (a public repo is always one), an App review at
                     the CURRENT head carries the literal Security-Review: pass line. An
                     explicit fail at head blocks the flip whether risk-classed or not.
+  lifecycle-preflight
+                    a delivering Brief: PR must carry a completed, successful
+                    lifecycle-preflight check at the current head. Missing, skipped,
+                    pending or failed checks never grant a flip. Authors:/Issue: and
+                    actual authoring-only diffs are exempt; statusgen owns partial
+                    delivery and lifecycle policy.
   head-stable       the head AND the reviewer verdicts are re-read immediately before the
                     mutation. A moved head means the verified state is stale; an unchanged
                     head is not enough on its own, because a security verdict can be

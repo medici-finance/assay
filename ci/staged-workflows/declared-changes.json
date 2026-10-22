@@ -1,4 +1,8 @@
 {
+  "lifecycle-preflight.yml": {
+    "mode": "pending",
+    "reason": "New prospective lifecycle admission check; promote after checker source lands, then require it before deploying the enforcing deskflip (docs/lifecycle-preflight.md)."
+  },
   "evidence-automerge.yml": {
     "mode": "identical"
   },

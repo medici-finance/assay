@@ -29,6 +29,19 @@ Do NOT approve over red CI whatever local verification shows. A red rollup outra
 local trace: CI runs the real toolchain and a local stub does not, so when they disagree CI
 wins and the reviewer investigates WHY.
 
+**Brief lifecycle preflight.** In repositories that have adopted the lifecycle-preflight gate,
+require a successful `lifecycle-preflight` check at the current head for every PR carrying a
+`Brief:` delivery trailer, including a declared partial delivery. Read its classification and
+transition diagnostics against the current body and diff: a stored `todo` row and green lint
+do not prove the proposed delivery can advance. Genuine brief authoring and declared partial
+work may be exempt from an `implemented` transition only when statusgen classifies them that
+way; a prose claim or a skipped job grants no exemption. Missing, stale, skipped or unreadable
+evidence is could-not-check and blocks approval (clause 5). Cite the head and result in the
+verdict. Do not edit generated boards or invent an approval record to clear a failure:
+statusgen owns lifecycle policy; the reviewer inspects its result and `deskflip` enforces it.
+Before gate adoption, record the absent coverage as could-not-check and route provisioning to
+the desk; do not report the prevention as live.
+
 **Stub-validation trap.** Proving a script emits the right argv is NOT proving the tool
 accepts it. A reviewer that stubs a binary to inspect its inputs must say so, and may not
 present that as end-to-end proof.

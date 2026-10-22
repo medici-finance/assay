@@ -17,16 +17,17 @@ const toolName = "deskflip"
 // caller (a loop, a runbook, a human reading the line) keys on it. A name that drifts
 // breaks every consumer, so these are constants.
 const (
-	condCallerRole       = "caller-role"
-	condAppToken         = "app-token"
-	condPROpenDraft      = "pr-open-draft"
-	condModelFloor       = "model-floor"
-	condReviewerApproved = "reviewer-approved"
-	condChecksGreen      = "checks-green"
-	condMergeable        = "mergeable"
-	condSecurityVerdict  = "security-verdict"
-	condDeskDecided      = deskkit.DeskDecidedCondition
-	condHeadStable       = "head-stable"
+	condCallerRole         = "caller-role"
+	condAppToken           = "app-token"
+	condPROpenDraft        = "pr-open-draft"
+	condModelFloor         = "model-floor"
+	condReviewerApproved   = "reviewer-approved"
+	condChecksGreen        = "checks-green"
+	condMergeable          = "mergeable"
+	condSecurityVerdict    = "security-verdict"
+	condLifecyclePreflight = "lifecycle-preflight"
+	condDeskDecided        = deskkit.DeskDecidedCondition
+	condHeadStable         = "head-stable"
 )
 
 // flipConditions is the ordered condition list, pinned by a test so a condition cannot be
@@ -92,6 +93,7 @@ var flipConditions = []string{
 	condDeskDecided,
 	condModelFloor,
 	condSecurityVerdict,
+	condLifecyclePreflight,
 	condHeadStable,
 }
 
@@ -445,6 +447,12 @@ func flip(o flipOpts) error {
 	}
 	o.say("%s OK: %d changed file(s) read", condSecurityVerdict, len(files))
 
+	if err := checkLifecyclePreflight(pr.Body, files, checks, head, bodyEditedAt); err != nil {
+		return err
+	}
+
+	o.say("%s OK: delivery check succeeded at %s, or declaration is authoring/issue-only", condLifecyclePreflight, short(head))
+
 	// --- head-stable (TOCTOU) ----------------------------------------------------
 	// The ready mutation has no compare-and-swap, so the head is re-read HERE, after every
 	// condition above and immediately before the mutation. A head that moved means each
@@ -505,6 +513,14 @@ func flip(o flipOpts) error {
 	// desk-decided re-runs against the SAME re-read (review finding F2 on attention-budget/19's
 	// PR): an `Undeclared-desk-decision:` line posted at this head during the checks, or a body
 	// or label edited between the reads, is exactly the change this re-read exists to see.
+	// The body can acquire a delivery trailer without a head change. Reclassify
+	// the live body against the same complete diff before any mutation.
+	if body2 != pr.Body && (lifecycleDelivery(pr.Body, files) || lifecycleDelivery(body2, files)) {
+		return deskkit.Unverifiable(fmt.Sprintf("condition %s: the PR body changed during gating; rerun lifecycle-preflight for the current declaration", condLifecyclePreflight), nil)
+	}
+	if err := checkLifecyclePreflight(body2, files, checks, head, bodyEditedAt); err != nil {
+		return err
+	}
 	pr2 := pr
 	pr2.Body = body2
 	pr2.Labels = labels2

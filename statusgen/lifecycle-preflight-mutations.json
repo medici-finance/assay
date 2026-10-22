@@ -1,0 +1,41 @@
+{
+  "test": "go test . -run '^TestLifecyclePreflight' -count=1 -timeout 120s",
+  "control": {
+    "name": "CONTROL accept wrong immutable head",
+    "file": "lifecyclepreflight.go",
+    "old": "if pull.Head.SHA != head {",
+    "new": "if pull.Head.SHA == head {"
+  },
+  "mutations": [
+    {
+      "name": "drop reconcile hold problems",
+      "file": "lifecyclepreflight.go",
+      "old": "for _, h := range held {",
+      "new": "for _, h := range held[:0] {"
+    },
+    {
+      "name": "drop existing or projected design violation",
+      "file": "lifecyclepreflight.go",
+      "old": "if !exists {",
+      "new": "if false && !exists {"
+    },
+    {
+      "name": "ignore human decision refusal",
+      "file": "lifecyclepreflight.go",
+      "old": "if !verdict.Refused {",
+      "new": "if true || !verdict.Refused {"
+    },
+    {
+      "name": "partial bypasses unreadable file list",
+      "file": "lifecyclepreflight.go",
+      "old": "files := cl.files(n)",
+      "new": "files := cl.files(n)\n\t\tif cl.partials.partial(n, id) { files = filesResult{files: []prFile{{Filename: \"pretend.go\"}}} }"
+    },
+    {
+      "name": "empty delivery declaration silently exempt",
+      "file": "lifecyclepreflight.go",
+      "old": "return nil, fmt.Errorf(\"empty Brief: declaration\")",
+      "new": "return nil, nil"
+    }
+  ]
+}

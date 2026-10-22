@@ -60,6 +60,10 @@ var reviewObligations = []obligation{
 	{2, "is an automatic blocker", bothLanes},
 	{2, "Do NOT approve over red CI whatever local verification shows.", bothLanes},
 	{2, "**Stub-validation trap.**", bothLanes},
+	{2, "**Brief lifecycle preflight.**", bothLanes},
+	{2, "a successful `lifecycle-preflight` check at the current head", bothLanes},
+	{2, "Missing, stale, skipped or unreadable evidence is could-not-check", bothLanes},
+	{2, "statusgen owns lifecycle policy", bothLanes},
 
 	{3, "**Trigger** (each where the repository carries its instrument", []string{laneC}},
 	{3, "A \"no\" is a finding with basis `design-fit` (clause 13)", []string{laneC}},

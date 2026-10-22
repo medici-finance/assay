@@ -692,6 +692,7 @@ func TestOwningBriefGateHumanRiskClassesWithoutAPathTrigger(t *testing.T) {
 	// demands exactly a pass and does not simply brick a brief-carrying PR.
 	s2 := newStub()
 	s2.pr.Body = "Delivers the leaksweep predicate change.\n\nBrief: example-stream/15\n"
+	s2.rollup = append(s2.rollup, rollupEntry{Name: condLifecyclePreflight, Status: "completed", Conclusion: "success"})
 	s2.files = greenFiles()
 	s2.install(t)
 	plantBriefRoot(t, privateCIRepo, "example-stream", "15", humanGated)
@@ -738,6 +739,7 @@ func TestNonRiskBriefDoesNotRequireASecurityPass(t *testing.T) {
 	nonRisk := "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n---\nbody"
 
 	s := newStub()
+	s.rollup = append(s.rollup, rollupEntry{Name: condLifecyclePreflight, Status: "completed", Conclusion: "success"})
 	s.pr.Body = "Brief: example-stream/15\n"
 	s.files = greenFiles()
 	s.install(t)
@@ -1404,7 +1406,7 @@ func TestForeignRepoRefused(t *testing.T) {
 // non-CI reason is not sent to the CI gate.
 func TestConditionListIsTheDocumentedContract(t *testing.T) {
 	want := []string{"caller-role", "app-token", "pr-open-draft", "mergeable", "reviewer-approved",
-		"checks-green", "desk-decided", "model-floor", "security-verdict", "head-stable"}
+		"checks-green", "desk-decided", "model-floor", "security-verdict", "lifecycle-preflight", "head-stable"}
 	if len(flipConditions) != len(want) {
 		t.Fatalf("flipConditions has %d entries, want %d", len(flipConditions), len(want))
 	}
