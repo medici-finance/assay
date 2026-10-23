@@ -314,3 +314,37 @@ all other families; their next contract-changing briefs must carry the reader-fi
 compatibility matrix and consumer dispositions before implementation. This amendment
 changes no existing Verify/Evidence section or active owner's implementation. The
 earlier whole-target ratification does not certify these later codec changes.
+
+
+## Contract acceptance and consumer integration — 23 October 2026
+
+This coupled authoring amendment separates local /28 acceptance from its required
+consumer integration, preserving the R1 → R2/R3 → R4 → R5 → R7 → R8 sequence.
+It changes no execution architecture, runtime authority or activation gate. The existing
+independent Evidence PR #3921 owner must record a checkpoint before this amendment
+is merged or used for qualification. Its draft preparation is not that checkpoint.
+
+Original /28 rows 1–9 belong to the pre-delivery definition at
+0580e0a02df8dce18bd2d65359225e49d525bcd6. Original implementation delivery
+3ced448e5ff83c6fbbd2a7c08d6d4b9dc6e2fdaf has that actual first parent; later
+metadata repair #4174 is not a new delivery. /28's entire delivered Verify section and current historical Evidence
+remain unchanged by this amendment. Delivery-added row 10 remains an uncredited supplemental routing
+disposition; it neither proves consumer use nor supplies an original acceptance witness.
+/29's entire six-row Verify definition and Evidence also remain unchanged.
+
+| Retained assertion | Existing acceptance owner and proof |
+|---|---|
+| Qualified work/path independence; explicit missing/could-not-check facts; exact candidate/acceptance binding; execution never acceptance; current reevaluation generation | /28 original Verify 1–5, with all original positive and mutation controls |
+| Real evaluator identity and tree-bound witnesses; pure imports; schema/semantic fixtures and canonical records; separate execution, acceptance, publication and retirement | /28 original Verify 6–9 and its existing spec/schema contract |
+| Immutable delivery/first-parent provenance and exact routing result counts; follow-up ownership is not actual use | /28 unchanged supplemental row 10, disposition only; independent subject/environment/admission requirements remain |
+| Actual old package-main adapter and new domain.Record/domain.Assess consume identical frozen facts and hand-written expected results | /29 Task 3, original Verify 2; original inventory, difference/staleness, zero-case, six baseline and runner-conformance checks all remain |
+| Durable shared identity, subject, definition, fact completeness, generation and progress round-trip through the real evaluator; valid recovery succeeds, missing facts hold and wrong/stale bindings cannot pass | /19 Tasks 3–4, strengthened prospective Verify 1–2; all existing PostgreSQL/outbox/incarnation/claim/feedback/reconstruction/context/brake obligations in rows 3–13 remain |
+| Actual shared candidate/acceptance records at freeze, independent reviewer input and restore; same-branch replacement, foreign/dirty/wrong-tree input, artifact/binding tampering and stale generations cannot inherit evidence | /23 Tasks 1–4, strengthened prospective Verify 1–3, retaining valid snapshot/recovery and existing mutation controls |
+| Connected production controller/store/runner/assessor/publication flow, crashes and unknown-outcome reconciliation | Existing /18 Task and Verify 6–7; no new owner, runtime or prerequisite is introduced |
+
+Every actual-use row above remains a required hold on its named consumer's acceptance
+until independently proved. Local /28 acceptance discharges none; routing success,
+serialization alone and matching hashes cannot substitute for production flow. No row
+is recorded passed, no historical hold/result is rewritten, and the independent owners
+still decide adequacy and omitted-consumer coverage. No /19 or /23 reverse dependency
+is added to the existing /26–27 launcher path. Generated lifecycle views are untouched.
