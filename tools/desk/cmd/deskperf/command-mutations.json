@@ -1,0 +1,29 @@
+{
+  "test": "go test ./cmd/deskperf -count=1 -run '^TestCommandOverview'",
+  "control": {
+    "name": "command invocation count conserves observations",
+    "file": "internal/deskkit/perfcommands.go",
+    "old": "st.Count++",
+    "new": "st.Count += 2"
+  },
+  "mutations": [
+    {
+      "name": "collapse expensive and cheap verbs into one command",
+      "file": "internal/deskkit/perfcommands.go",
+      "old": "k := key{schema, boundary, perfrec.Label(r.Tool), perfrec.Label(r.Verb)}",
+      "new": "k := key{schema, boundary, perfrec.Label(r.Tool), perfrec.Other}"
+    },
+    {
+      "name": "filter tool before whole-window identity selection",
+      "file": "internal/deskkit/perfcommands.go",
+      "old": "perfrec.SelectV3(recs, permission, filter)",
+      "new": "perfrec.SelectV3(FilterPerf(recs, tool, role), permission, filter)"
+    },
+    {
+      "name": "count nested service observations as command invocations",
+      "file": "internal/deskkit/perfcommands.go",
+      "old": "if r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess {",
+      "new": "if false && r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess {"
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+- Lead deskperf reports with command costs: count, cumulative invocation wall, typical/tail latency, exact outcomes, and measured CPU/HTTP coverage. Keep timing cohorts separate, preserve existing detailed JSON fields, and select replay/conflict identities before tool filters.

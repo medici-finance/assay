@@ -231,10 +231,36 @@ Rules for any reader, enforced by `deskperf`:
 - A CPU or counter distribution is over the records that MEASURED it; `unavailable`,
   `unsupported`, `failed` and `missing` are coverage to report, never zeros to average in.
 - `perf-v1` totals and `perf-v2` totals are not comparable and are reported as separate
-  groups; a perf-v1-only history renders exactly as it did before perf-v2.
+  groups; the detailed legacy group retains its original fields and meaning.
 
-`deskperf report` therefore prints the legacy perf-v1 group first (unchanged lines and JSON
-`summary`), then a perf-v2 group (JSON `perfV2`) with its boundary and CPU-state counts,
+`deskperf report` leads with a **command performance** overview (JSON `commands`):
+one row per tool, command and timing cohort, largest accumulated invocation costs first.
+This exposes expensive `statusgen verifyrun` calls beside `statusgen --lint`, and
+`issueboard issues` beside its cheaper projections, without letting frequent cheap commands
+dilute the expensive command's median. Rows show count, summed wall, nearest-rank p50/p90/max,
+exact outcome counts, own measured CPU and direct HTTP attempts with measured/missing counts.
+The overview uses readable durations; JSON retains exact milliseconds. Text durations of
+a minute or more omit subsecond detail.
+A measured zero differs from unavailable. Legacy CPU is unavailable in this view because
+its process-wide total is not a delta over its wrapper interval.
+
+Each timing cohort retains the source record family and declared boundary. Its share uses
+only that cohort's total; separate rows do not pool caller intervals, process-initialization
+intervals or legacy wrapper intervals. Summed invocation work includes overlapping parent,
+child and concurrent runs, so it is neither unique elapsed time nor human time saved. Phases,
+subprocess/request durations and non-process service observations are never added to wall.
+Workflow filters exclude unattributed old records from this overview; default output carries
+no workflow identifiers. V3 identity selection precedes tool filtering, so a conflicting copy
+under another tool cannot disappear from the selection. `--top 0` still suppresses the
+individual slowest list; the overview is independent of that list. `--by-day` retains its
+existing tool-by-day view. The committed command-summary fail-first map is
+`tools/desk/cmd/deskperf/command-mutations.json`; from `tools/desk`, run
+`go run ./cmd/muhar -j 1 -spec cmd/deskperf/command-mutations.json`. It uses a distinct
+count-conservation control and checks verb separation, whole-window identity selection
+and exclusion of nested service observations. This is local qualification, not a claim
+that the map is wired into the truth-suite CI matrix.
+
+The detailed legacy perf-v1 group follows (unchanged lines and JSON `summary`), then a perf-v2 group (JSON `perfV2`) with its boundary and CPU-state counts,
 phase-overlap count, per-tool wall and measured-CPU distributions, per-counter
 measured/unavailable counts with totals over measured records only, and per-phase
 distributions. The `perfrec` module's README documents the recorder API for other
