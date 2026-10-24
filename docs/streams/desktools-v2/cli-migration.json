@@ -62,6 +62,21 @@
       "reason": "release-owned in-image Python capability probe invoked only by tools/release/images.py before publication; never installed or exposed as an operator CLI (#3469)"
     },
     {
+      "class": "test",
+      "pattern": "images/verify-runner/stage-source.sh",
+      "reason": "verification-harness step baked into the verify-runner image: the container runtime execs it as a cluster stage Job's init container with the argument list the admission policy fixes, to stage the source a verify witness runs Verify rows against; never installed on an operator host or exposed as an operator CLI (#4264)"
+    },
+    {
+      "class": "test",
+      "pattern": "images/verify-runner/stage-cache.sh",
+      "reason": "verification-harness step baked into the verify-runner image: the container runtime execs it as a cluster stage Job's container with the argument list the admission policy fixes, to fill the module cache a verify witness runs Verify rows against; never installed on an operator host or exposed as an operator CLI (#4264)"
+    },
+    {
+      "class": "test",
+      "pattern": "images/verify-runner/witness.sh",
+      "reason": "verification-harness step baked into the verify-runner image: the container runtime execs it in a cluster witness Job to run one brief's Verify rows offline; never installed on an operator host or exposed as an operator CLI (#4264)"
+    },
+    {
       "class": "library",
       "pattern": "tools/release/images_contract.py",
       "reason": "pure image reference validation library imported by release workflow and offline fixtures; no standalone CLI or network calls (#3204)"

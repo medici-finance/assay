@@ -101,3 +101,74 @@ changes would cost `(K+1)(R+E)`; reuse costs `R+E`, saving `K(R+E)` and removing
 from network complexity. Cache hits can lower E; this is not a claim that enrichment
 has disappeared or that live desks already use the bridge. Desk-tools/44 owns wider
 cost qualification; /43 owns adoption and retirement of duplicate live reads.
+
+
+## Exact-source review preparation
+
+`deskdispatch <claim-key> --kit review --repo <owner/repo> --pr N
+--observation FILE ...` accepts the existing closed review-observation-v1 artifact
+(up to 16 MiB). The optional flag is valid only for an open-change review kit.
+The existing dispatch arguments, model/role admission, canonical claim, attestation,
+workspace and stamp checks still apply. Dry-run does not read the file or the forge.
+The bridge validates complete observation structure/results and the assigned
+provider/instance/repository/number/head (and base when used), before claiming.
+Unknown schemas, partial populations and mismatched subjects refuse with exit 6.
+
+The file supplies advisory source attribution, not approval or a cached raw review
+history. Its policy revision is untrusted attribution, never an approved selection
+policy. The adapter reads current metadata, review bodies and checks from the live
+provider; it does not substitute observation classification or grants for those
+reads. Consequently no age cutoff in the file can authorize stale mutable facts.
+The planner's caller-owned policy/cutoff remains the separate selection contract.
+
+One invocation-scoped context supplies the round and packet. Successful assembly
+reads are shared; terminal reads bypass the memo. A head/base/body/base-branch/open-state/decision-label,
+review/check or required-check-policy change, or failed access at that boundary,
+aborts the assignment and releases the claim. Unrelated title, mergeability,
+update-time and routine label changes do not invalidate source applicability. Packet construction remains optional;
+if it fails before its terminal check, dispatch performs that check itself. It never
+silently relabels old source facts with a new head. Publisher and reviewer-owned
+freshness checks remain necessary after dispatch.
+
+Immutable source keys include provider/host/repository, full commit, path and
+adapter version. Bounded local APIs accept canonical commit object IDs directly;
+missing objects fall back to the provider without revision-expression interpretation. Comparisons additionally key both full endpoint SHAs and the
+comparison adapter. Branch-named comparisons are not memoized. Source bytes come
+from gitcore at the assigned head, even when the allocated checkout has another
+HEAD; missing objects fall back to exact-head provider reads. Local regular blobs
+are size-checked before reading and limited to the packet's per-item byte ceiling;
+symlinks are never followed. When both base and head objects exist, gitcore builds
+the three-dot diff from the exact endpoints. A provider without an exact base
+endpoint gets full-pass scope and an explicit diff omission, not a claimed frozen diff. Packet file,
+history, time and output caps and untrusted-content escaping remain in force.
+Round reads, packet assembly and terminal rechecks each have their own bounded
+60-second context through both provider transports, including blocked requests and
+response bodies. The packet clock starts at packet construction, after claim/workspace
+latency; an expired optional packet reports omissions and does not poison the fresh
+terminal check. A terminal read failure is reported as could-not-recheck, distinct
+from an observed input change. Omitted/unused requests still count as requests.
+GitLab maps `diff_refs.base_sha` to the exact base so its existing patch fallback and
+delta path remain available. Local diff inputs are header-checked against a separate 4 MiB input budget before
+rename detection or patch construction can inflate blobs; the rendered diff keeps
+its 192 KiB output cap. Over-budget or non-regular local inputs use the already-
+collected per-file patches under the existing packet caps, with explicit omission
+only where a patch is unavailable. This adds no whole-provider diff request.
+
+The qualified one-file delta fixture measures **17 -> 14 HTTP attempts** for round
+plus packet with local exact objects (18% fewer), while adding terminal mutable
+review/check/protection checks. By endpoint: PR metadata 3 -> 2, changed-files
+2 -> 1, diff 1 -> 0, contents 1 -> 0, required-policy 1 -> 2; reviews remain 2,
+check/status attempts 4, comparisons 2 and commit detail 1. This is one cold scenario,
+not a fleet average. With missing local objects diff/content provider reads remain;
+with F packet files available locally, those F content calls become zero. For D
+review preparations, this fixture is 17D -> 14D, both O(D); generally mutable and
+history reads remain O(D(1+H)), and content requests fall O(DF) -> 0 when exact local
+objects cover them. No cross-dispatch or cross-lane cache is introduced.
+
+The reviewer packet contract already requires reading supplied immutable material
+without fetching it again, while independently checking the head and current checks.
+Tests qualify the dispatcher and packet handoff; live agent compliance and complete
+attributed workflow cost remain desk-tools/44 acceptance, not a fabricated zero-cost
+measurement. Desk-tools/43 owns adoption of the observation handoff in both prose and
+discrete callers. Desktools-v2 retains CLI/custody ownership, and drainloop retains
+execution/claim lifecycle; future role-executor cutover remains separately gated.

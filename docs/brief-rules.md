@@ -777,6 +777,33 @@ passing run — which is why they are lint rules and not review vigilance.
       in (2) is the anchor; only server-side rules on who may push to the
       brief's branch prevent the forgery, and a verifier roster entry with
       no numeric id leaves provenance could-not-check.
+      **A table that mixes container-witnessable rows with host-only rows**
+      (rows that need git history, a host tool or an env-bound input) is
+      assembled with `statusgen verifyrun --rows <id>[,<id>...]`
+      (desktools-v2/74), which runs and records only the named rows, under
+      the standard witness header so each keys by its `#` ID, and prints
+      every other row `row <id>: not selected`. Run the container bracket
+      above with `--rows` naming the container-witnessable rows, then a host
+      `verifyrun --rows` naming the host-only rows. The two selections are
+      **disjoint** and together cover the whole Verify table. Either landing
+      order satisfies the audit, and both tables must be landed in the same
+      run before its verdict line. Before that verdict, `statusgen verifyrun
+      --check` reports every row pass and `--bracket-digest` reports
+      `verdict=match` for the container bracket. Never hand-paste or fence a
+      witness table: every table in Evidence is one `verifyrun` wrote.
+      `--rows` changes only which rows a run executes: `--check` always
+      audits the whole table, the last witness for a row still wins, and the
+      credit rule above is unchanged. `--rows` is refused, running no row and
+      writing nothing, for an ID the table does not carry (under
+      `--acceptance-record`, one outside the protected run set), an empty
+      list or element, an ID named twice or shared by two rows, a table with
+      no `#` column, and with `--check`, `--open-bracket`, `--close-bracket`
+      or `--bracket-digest`.
+      Under `--acceptance-record` the protected run set is witnessed by ONE
+      run that covers it whole (no `--rows`, or one naming every protected
+      row): its `Verification-Table:` descriptor must appear exactly once in
+      the run closure reads, so split `--rows` runs under one transition
+      fail closed and never close.
     - `check` — deterministic but ENV-BOUND (a live PEM, a real queue, a tool on
       PATH). A runner executes it; CI skips an explicitly-classed one (its verdict
       rests on the verifier's authorship+signature, not on a CI re-run).

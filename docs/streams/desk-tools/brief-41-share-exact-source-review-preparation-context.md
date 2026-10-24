@@ -24,9 +24,11 @@ domain: complicated
 gate-why: Review/issue observations can expose scoped operational facts; implemented coverage and authority boundaries require the existing human acceptance.
 decision-trigger: spec
 consumers:
-  - "tools/desk/cmd/deskdispatch/: follow-up desk-tools/41"
-  - "plugins/assay/references/review-prompt.md: follow-up desk-tools/41"
-  - "plugins/assay/skills/pr-review-desk/SKILL.md: follow-up desk-tools/41"
+  - "tools/desk/cmd/deskdispatch/: fixed-here"
+  - "tools/desk/cmd/deskdispatch/references/review-prompt.md: fixed-here"
+  - "plugins/assay/skills/pr-review-desk/SKILL.md: fixed-here"
+  - ".cursor/skills/pr-review-desk/SKILL.md: fixed-here"
+  - ".cursor/assay-managed.json: fixed-here"
 ---
 
 # Brief 41 — Share exact-source review preparation context
@@ -110,6 +112,30 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 | Adapter produces plausible output while duplicating or omitting work | row 1, independent oracle and actual entrypoint/count instrumentation |
 | A partial/unsupported observation or hidden consumer creates a false success | row 2, planted invalid input and explicit refusal/coverage |
 | Operational activation or control deletion inferred from source qualification | review-only: review scope and separate existing adoption gates; no live effects in the test harness |
+
+## Architecture pickup
+
+Continue against main `d92df1b1ab898db5f537fab33dae3087114c9fb0` after #4248 merged.
+The controlling spec and change map, library-first direction, brief rules, telemetry
+contract and semantic-owner index were read at that revision. Spec SHA-256:
+`c2aa79b9423289b3484eb81973ae92f5a538dfde015c770938eb250b8790e1ed`;
+library-first SHA-256: `9272c94d8ff0fa2f02ddf6ee173e12e267527515c2e9ba88eb92fcb9bf3103af`.
+The existing round, gate, packet, CLI and gitcore APIs are inspected; #3248 and
+#3302 are merged, so this extends the delivered CLI parser rather than another port.
+Reuse `reviewflow` for the pure context/key values, deskdispatch for credentialed
+composition, gitcore for exact objects and deskkit for checked provider transport.
+The process boundary remains at the existing CLI/custody owner. No SDK gains credentials.
+
+Adapt the stale prompt consumer locator to the shipped embedded reference under
+`tools/desk/cmd/deskdispatch/references/`; no parallel prompt owner is created.
+Observation v1 contains resolved advisory classification, not raw reviews/checks or
+an authenticated approved-policy receipt. Therefore preparation takes source
+attribution from it and reads mutable raw inputs live; it cannot remove those reads
+by trusting the file. Existing terminal checks are strengthened, not replaced.
+The API/CLI/packet consumers are updated here; actual prose/discrete flag adoption
+remains desk-tools/43 and full attributed downstream cost remains /44. Existing
+readonly packet guidance is retained. No lifecycle/design approval or independent
+Evidence is inferred from this implementation checkpoint.
 
 ## Evidence
 

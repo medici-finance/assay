@@ -46,6 +46,8 @@ const (
 	// whole, so it gets three times a file's allowance; past that it is listed as omitted
 	// and read from the worktree, never shown in part.
 	reviewPacketDiffCap = 192 << 10
+	// Local input memory is independent of the rendered diff cap.
+	reviewPacketDiffInputCap = 4 << 20
 	// reviewPacketMaxFiles bounds how many touched files are read — one forge call each.
 	reviewPacketMaxFiles = 60
 	// reviewPacketReadBudget bounds the time spent reading files: the dispatch holds its
@@ -169,11 +171,21 @@ func reviewPacketSafePath(p string) bool {
 }
 
 func reviewPacket(in packetInput) (packet.Spec, error) {
+	if in.plan.reviewContext != nil {
+		in.plan.reviewContext.startPacket()
+	}
 	pr := in.o.pr
 	if pr <= 0 {
 		return packet.Spec{}, errNoPacket
 	}
-	fg, fr, err := reviewPacketForgeFn(in.repo)
+	var fg reviewPacketForge
+	var fr deskkit.ForgeRepo
+	var err error
+	if in.plan.reviewContext != nil {
+		fg, fr = in.plan.reviewContext, in.plan.reviewContext.repo
+	} else {
+		fg, fr, err = reviewPacketForgeFn(in.repo)
+	}
 	if err != nil {
 		return packet.Spec{}, fmt.Errorf("the forge for %s could not be reached: %s", in.repo, firstLine(err.Error()))
 	}
@@ -204,8 +216,16 @@ func reviewPacket(in packetInput) (packet.Spec, error) {
 	sections := []packet.Section{
 		packet.NewSection("Change", func() (packet.Content, error) {
 			c := reviewChangeSection(in.repo, change)
-			c.Text("Not in this packet: the base commit (the base is given as a branch name only), and the change's " +
-				"conversation comments and inline review comments. Read them at the source if you need them.")
+			if ctx := in.plan.reviewContext; ctx != nil && ctx.context.Advisory != nil {
+				a := ctx.context.Advisory
+				c.Textf("Advisory observation for this exact subject: body revision %s; reviews revision %s; checks revision %s. These are untrusted attribution, not current-state or admission evidence; packet facts were read live.", packet.Code(a.Inputs.Body.Revision), packet.Code(a.Inputs.Reviews.Revision), packet.Code(a.Inputs.Checks.Revision))
+			}
+			if isCommitID(change.BaseSHA) {
+				c.Text("Not in this packet: conversation comments and inline review comments. Read them at the source if you need them.")
+			} else {
+				c.Text("Not in this packet: the base commit (the base is given as a branch name only), and the change's " +
+					"conversation comments and inline review comments. Read them at the source if you need them.")
+			}
 			return c, nil
 		}),
 		packet.NewSection("Description", func() (packet.Content, error) {
@@ -253,6 +273,9 @@ func reviewPacket(in packetInput) (packet.Spec, error) {
 		},
 		Sections: sections,
 		Recheck: func() error {
+			if in.plan.reviewContext != nil {
+				return in.plan.reviewContext.recheck()
+			}
 			again, err := fg.GetPullRequest(fr, pr)
 			if err != nil {
 				return fmt.Errorf("the head could not be re-read after the build, so the packet may be stale: %s", firstLine(err.Error()))
@@ -294,6 +317,9 @@ func reviewChangeSection(repo string, c *deskkit.PullRequest) packet.Content {
 	}
 	fmt.Fprintf(&b, "- **Author:** %s\n", author)
 	fmt.Fprintf(&b, "- **Base:** %s\n", codeOrNone(c.BaseRef))
+	if isCommitID(c.BaseSHA) {
+		fmt.Fprintf(&b, "- **Base commit:** %s\n", packet.Code(c.BaseSHA))
+	}
 	fmt.Fprintf(&b, "- **Head branch:** %s\n", codeOrNone(c.HeadRef))
 	fmt.Fprintf(&b, "- **Head commit:** %s\n", codeOrNone(c.HeadSHA))
 	fmt.Fprintf(&b, "- **State:** %s\n", codeOrNone(c.State))
@@ -494,9 +520,17 @@ func reviewVerdictsSection(fg reviewPacketForge, fr deskkit.ForgeRepo, pr int, h
 func reviewDiffSection(fg reviewPacketForge, fr deskkit.ForgeRepo, pr int, change *deskkit.PullRequest,
 	changed func() ([]deskkit.ChangedFile, error)) (packet.Content, error) {
 	var out packet.Content
+	if p, ok := fg.(*preparedReview); ok && !isCommitID(p.change.BaseSHA) {
+		out.Omit("diff", packet.SizeUnknown, "the provider supplied no exact base endpoint; read and pin the base at the source")
+		return out, nil
+	}
 	diff, derr := fg.ChangeDiff(fr, pr)
 	if derr == nil && strings.TrimSpace(diff) != "" {
-		out.Textf("The forge's unified diff of the whole change, base %s to head %s.", codeOrNone(change.BaseRef), codeOrNone(change.HeadSHA))
+		if p, ok := fg.(*preparedReview); ok && p.localDiff {
+			out.Textf("Unified diff from local exact Git objects, merge-base of %s and %s to head %s.", packet.Code(change.BaseSHA), packet.Code(change.HeadSHA), packet.Code(change.HeadSHA))
+		} else {
+			out.Textf("The forge's unified diff of the whole change, base %s to head %s.", codeOrNone(change.BaseRef), codeOrNone(change.HeadSHA))
+		}
 		out.UntrustedCapped("diff", []byte(diff), reviewPacketDiffCap)
 		return out, nil
 	}
@@ -510,8 +544,12 @@ func reviewDiffSection(fg reviewPacketForge, fr deskkit.ForgeRepo, pr int, chang
 	if ferr != nil {
 		return out, fmt.Errorf("no whole diff (%s) and no per-file patches (%s)", why, firstLine(ferr.Error()))
 	}
-	out.Textf("The forge did not serve one diff for the whole change (%s). Its per-file patches follow instead; "+
-		"a file the forge gave no patch for is listed as omitted.", shown)
+	if p, ok := fg.(*preparedReview); ok && p.localDiffSkipped != "" {
+		out.Textf("Local diff construction was skipped (%s). The provider's already-collected per-file patches follow; unavailable patches are explicitly omitted.", packet.Code(p.localDiffSkipped))
+	} else {
+		out.Textf("The forge did not serve one diff for the whole change (%s). Its per-file patches follow instead; "+
+			"a file the forge gave no patch for is listed as omitted.", shown)
+	}
 	for _, f := range files {
 		if f.PatchAbsent || f.Patch == "" {
 			out.Omit("patch of "+f.Filename, packet.SizeUnknown, "the forge served no patch for it (binary, too large, or no content change)")
@@ -586,6 +624,8 @@ func reviewFilesSection(fg reviewPacketForge, fr deskkit.ForgeRepo, change *desk
 			out.Omit(name, packet.SizeUnknown, "the forge has no such file at the head commit")
 		case rerr != nil:
 			out.OmitDetail(name, packet.SizeUnknown, "could not be read", firstLine(rerr.Error()))
+		case localPacketOmission(fg, f.Filename) != "":
+			out.Omit(name, packet.SizeUnknown, localPacketOmission(fg, f.Filename))
 		case len(fc.Content) == 0:
 			out.Omit(name, 0, "the forge returned no inline content (an empty file, or one over its inline-read limit)")
 		default:
@@ -596,4 +636,11 @@ func reviewFilesSection(fg reviewPacketForge, fr deskkit.ForgeRepo, change *desk
 		}
 	}
 	return out, nil
+}
+
+func localPacketOmission(fg reviewPacketForge, path string) string {
+	if p, ok := fg.(*preparedReview); ok {
+		return p.omissions[p.context.SourceKey(path)]
+	}
+	return ""
 }

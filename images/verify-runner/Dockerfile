@@ -142,6 +142,21 @@ COPY .release-images/harness/statusgen /usr/local/bin/statusgen
 COPY --from=gitbuild /out/usr/ /usr/
 COPY containers/scripts/git-floor-check.sh /usr/local/bin/git-floor-check
 
+# The cluster backend's fixed entrypoints. An admission policy that pins each
+# container's command (or the absence of one) to a single script path can only
+# admit a Job whose scripts are already in the image, so they ship here, at a
+# fixed path, root-owned and not writable by the non-root row user. Each one
+# prints its usage and exits 2 when run with no argument; check.py proves that
+# by executing each path directly. The image's ENTRYPOINT and CMD are unchanged.
+COPY images/verify-runner/stage-source.sh images/verify-runner/stage-cache.sh \
+     images/verify-runner/witness.sh /usr/local/bin/
+RUN set -eu; \
+    for f in stage-source.sh stage-cache.sh witness.sh; do \
+      chown 0:0 "/usr/local/bin/$f"; \
+      chmod 0755 "/usr/local/bin/$f"; \
+      test "$(head -n 1 "/usr/local/bin/$f")" = '#!/bin/bash'; \
+    done
+
 # GIT FLOOR CHECK: the last RUN of the final stage, so no later layer can bring in
 # a git unchecked. The test -x lines make a missing binary fail (ldd alone would
 # print its error to stderr and let the grep pass); the ldd gate catches a shared

@@ -27,7 +27,7 @@ clients. `statusgen/evaluation` remains the owner of eligibility/coverage semant
 This package is internal to `tools/desk`; a different module cannot import it.
 Public serving extraction belongs to forge-neutral/39. The library extraction
 introduced no CLI flags. Desk-tools/40 now supplies collection and the direct-reader
-CLI handoff below; desk-tools/41 owns dispatcher preparation and its `--observation`
+CLI handoff below; desk-tools/41 delivers dispatcher preparation and its `--observation`
 handoff, while desk-tools/43 owns live caller adoption.
 
 ## Scope, identity and population

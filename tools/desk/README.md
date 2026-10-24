@@ -34,9 +34,12 @@ proposed verbs are advisory and do not grant claims or permission to write.
 
 `deskboard` shares classifier input assembly and `reviewloop plan` shares plan
 assembly with this API. Their existing flags and output remain compatible. The
-new contract has no collection command or observation-file CLI flag in this change;
-that handoff is desk-tools/40. The legacy idle cadence is unchanged; new library
-callers must supply their own policy revision, clock and oldest acceptable input.
+collector is `deskboard review-queue --out FILE`; `reviewloop plan --snapshot`
+selects locally. `deskdispatch --kit review --pr N --observation FILE` validates
+an advisory source handoff and shares one preparation context with its packet.
+The [operator contract](../../docs/deskboard.md) records freshness boundaries,
+exact-source reuse, measured costs and separate live adoption. The legacy idle
+cadence is unchanged; library planners require explicit policy, clock and cutoff.
 
 ## Review planner state contract
 

@@ -227,6 +227,22 @@ could-not-check. Version 2 (cross-repository) receipts are refused in container 
 worktree's git directory is not mounted in the container, so rows that need git history
 run on the host.
 
+When a Verify table mixes container-witnessable rows with host-only rows, assemble its
+Evidence with `statusgen verifyrun --rows <id>[,<id>...]`, which runs and records only the
+named rows under the standard witness header and prints every other row as `row <id>: not
+selected`. Run the container bracket above with `--rows` naming the container-witnessable
+rows, then a host `statusgen verifyrun --rows` naming the host-only rows. The two selections
+are **disjoint** and together cover the whole table. Either landing order works; land both
+tables in the same run before its verdict line. Before that verdict, `statusgen verifyrun
+--check <brief>` must report every row pass, and `--bracket-digest` must report
+`verdict=match` for the container bracket. Never hand-paste or fence a witness table. `--rows`
+narrows a run, never an audit: `--check` covers the whole table, the last witness for a row
+wins, and the credit rule above is unchanged. A bad selector (an unknown, empty, repeated or
+shared ID, a table with no `#` column, or `--rows` with an audit or bracket step) is refused
+before any row runs. Under `--acceptance-record`, witness the protected run set in ONE run
+that covers it whole: its `Verification-Table:` descriptor must appear exactly once, so split
+`--rows` runs under one transition fail closed and never close.
+
 On failed pre-work stamping, no verifier prompt is emitted and the claim is released.
 Keep the retained worktree for recovery; return its real dispatch receipt to the coordinator
 desk, which runs `deskdispatch --attest-verifier --root <home>`. This creates no replacement
@@ -430,7 +446,12 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   `deskpr`, replies via `deskreply` — never a raw forge call.
 - **Evidence is `command → exit code → real observed output`**, one row per Verify item, dated and
   runner-attributed, never a bare ✓ and never a claim. A row that cannot run is recorded EXPLICITLY
-  unrun with its reason — never silently skipped, never assumed-pass.
+  unrun with its reason — never silently skipped, never assumed-pass. Every submitted execution
+  row has separate `Date` and `Runner` cells, including BLOCKED/unrun rows and supplemental
+  host observations. For unrun rows they identify observation of the blocker, not execution.
+  A dated heading or commit author is insufficient. Recover missing attribution from retained
+  run records or rerun; never infer it. Preflight every submission with `deskevidence … --dry-run`
+  before publishing its Evidence PR; repair any refusal without advancing the brief.
 - **The emitted verifier kit owns command preflight, row coverage and verdict spelling.**
   Its sections 2 and 5 carry the execution procedure; dispatch it verbatim. This desk checks
   the returned accounting and routes the outcome as described below.

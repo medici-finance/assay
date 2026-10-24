@@ -454,6 +454,13 @@ queue/pools; `reviewloop plan --snapshot` calls `PlanCandidates` locally. The
 [operator contract](deskboard.md) defines explicit selection invocation inputs,
 complete-artifact/refusal behavior, compatibility and the /43 adoption boundary.
 
+`deskdispatch` now carries a pure `reviewflow.ReviewContext` identity/source-key
+contract through one invocation-scoped credentialed preparation adapter. It shares
+round/packet reads, uses gitcore exact objects, and terminally rechecks mutable
+facts. `deskkit.WithForgeReadContext` copies the existing checked backend and
+propagates cancellation without dropping the outbound guard. It creates no new
+credential owner, persistent cache or service. See [preparation contract](deskboard.md#exact-source-review-preparation).
+
 The operational adapter owns trust admission, reviewer identity, stale-grant
 filtering, latest-check selection, body-edit verification and rank inputs. Independent
 lane conclusions stay distinct from the legacy board's aggregate review signal.

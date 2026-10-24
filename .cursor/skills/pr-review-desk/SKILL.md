@@ -293,6 +293,11 @@ failure this section prevents**, and there is no state in this loop called "the 
   issued together run concurrently), up to N; never dispatch-one-then-wait-then-the-next. A
   risk-classed PR takes TWO slots — correctness and security — in the SAME turn, not security after
   the correctness verdict.
+- **Preparation handoff:** supported `deskdispatch --kit review --observation FILE`
+  consumes advisory exact-subject attribution and shares round/packet preparation.
+  The existing caller migration owns live adoption; do not add a collection sweep or
+  bypass claims/model admission to populate the flag. Read the packet once, refetch
+  omitted material only, and preserve the review prompt's independent head/check reads.
 - **Fill to N** at the risk-keyed tier; a risk-classed PR's separate `/security-review` agent
   occupies its own slot. **Refill on completion fills ALL free slots, not one:** the instant a
   reviewer finishes (verdict posted, or errored), sweep and dispatch every actionable `(PR, lane)`

@@ -143,6 +143,7 @@ type PullRequest struct {
 	// to tell "no CI rollup because nothing is required" apart from "no rollup because the
 	// required checks have not reported". Empty when the forge did not report a base branch,
 	// which the consumer treats as could-not-check rather than as "no branch".
+	BaseSHA string `json:",omitempty"` // exact provider base endpoint, when supplied
 	BaseRef string
 	// UpdatedAt is the forge's own last-modified timestamp, RFC3339, empty when the forge
 	// did not report one. Consumed by the loopengine liveness taxonomy's PR-activity probe

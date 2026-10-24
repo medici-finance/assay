@@ -29,7 +29,13 @@ roll remains a separate downstream job under its own existing identity.
 3. Check statusgen's version in all nine images. Execute the release-owned
    `images/verify-runner/check.py` inside the built runner: import PyYAML and
    jsonschema, parse YAML, validate a Draft 2020-12 schema, and prove that a
-   valid instance passes and an invalid one raises a validation error. The probe
+   valid instance passes and an invalid one raises a validation error. It also
+   checks the cluster backend's baked entrypoints (`stage-source.sh`,
+   `stage-cache.sh`, `witness.sh` in `/usr/local/bin`): `/usr/local/bin` is a
+   `root:root` directory that neither its group nor others can write, and each
+   script is a `root:root` regular file, executable, with no set-user-id or
+   set-group-id bit, that neither its group nor others can write, and,
+   executed directly with no argument, prints its usage and exits 2. The probe
    prints Python and distribution versions into the release build log. It uses
    no pulls, network, mounts or credentials; it runs as user 1000:1000 with a
    read-only root, all capabilities dropped, no new privileges, default seccomp

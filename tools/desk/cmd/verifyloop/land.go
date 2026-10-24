@@ -116,7 +116,7 @@ func renderEvidence(r loopengine.Result, date string) string {
 		runner = "unknown-runner"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "| # | Command | Exit | Output | When | Runner |\n")
+	fmt.Fprintf(&b, "| # | Command | Exit | Output | Date | Runner |\n")
 	fmt.Fprintf(&b, "|---|---------|------|--------|------|--------|\n")
 	for i, row := range r.Rows {
 		out := strings.ReplaceAll(strings.TrimSpace(row.Output), "|", `\|`)
