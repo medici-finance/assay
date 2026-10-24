@@ -511,6 +511,11 @@ type SearchIssuesInput struct {
 	// DecisionGateBrief optionally narrows marker discovery to one exact brief
 	// spelling. It is an opaque marker token, never provider search syntax.
 	DecisionGateBrief string
+	// FilingKey selects the exact filing-identity lookup: OPEN issues of this repo whose body
+	// carries the key's marker, walked to completion or an error (a truncated read is unknown,
+	// never an empty answer). Query and the decision fields must be empty in this mode. The key
+	// is an opaque FilingKey value; callers still confirm each hit with MatchFiledIssues.
+	FilingKey string
 }
 
 // IssueSearchResult is one issue matched by SearchIssues: the fields deskfile's dedupe scores
@@ -525,7 +530,12 @@ type IssueSearchResult struct {
 	State  string // open | closed
 	Labels []string
 	URL    string
-	Body   string `json:",omitempty"` // decision-marker discovery only
+	Body   string `json:",omitempty"` // decision-marker and filing-key discovery only
+	// Author and AuthorID are the issue AUTHOR's login and numeric id as the forge reports them,
+	// carried by the filing-key discovery only (zero elsewhere). A hit whose author the trust
+	// gate does not admit is never a case's filing (MatchFiledIssues).
+	Author   string `json:",omitempty"`
+	AuthorID int64  `json:",omitempty"`
 }
 
 // LabelSpec names a label plus the cosmetic metadata used ONLY when the label has to be

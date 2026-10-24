@@ -177,6 +177,11 @@ type NextUp struct {
 	// carrying the same finding is NEVER held and so never appears
 	// here — see Brief.MergedInSibling, set only for a held TODO row.
 	MergedElsewhere map[string]string
+	// PhantomElsewhere maps the id of every TODO brief held OUT of Next-up by a
+	// strong board-honesty finding (Brief.PhantomHeld: delivered by a merged
+	// `Brief:`-trailer PR, or a re-homed pointer row) to "<class> (<evidence>)".
+	// NAMED, never silently dropped — the HomedElsewhere shape.
+	PhantomElsewhere map[string]string
 	// --- Drive fields (methodology-metrics/45). All zero when no drive is active,
 	// keeping a no-manifest board byte-identical to the pre-drives generator. ---
 	//
@@ -564,6 +569,11 @@ func eligibleBase(streams []*Stream, s *Stream, b Brief, claimed map[string]bool
 	if b.MergedInSibling != "" {
 		return false
 	}
+	// Board-honesty strong findings (boardhonesty.go applyPhantomHolds): the SAME
+	// classifier that surfaces the NON-DISPATCHABLE notice, not a second list.
+	if b.PhantomHeld != "" {
+		return false
+	}
 	if claimed[s.Name+"/"+b.Num] {
 		return false
 	}
@@ -937,6 +947,12 @@ func nextUp(streams []*Stream, claims ClaimView, briefTouch map[string]time.Time
 						nu.MergedElsewhere = map[string]string{}
 					}
 					nu.MergedElsewhere[s.Name+"/"+b.Num] = b.MergedInSibling
+				}
+				if b.PhantomHeld != "" && s.Status == "active" {
+					if nu.PhantomElsewhere == nil {
+						nu.PhantomElsewhere = map[string]string{}
+					}
+					nu.PhantomElsewhere[s.Name+"/"+b.Num] = b.PhantomHeld
 				}
 				continue
 			}

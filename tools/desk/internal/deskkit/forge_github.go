@@ -685,6 +685,9 @@ func (g *GitHubForge) OpenChangeForBranch(repo ForgeRepo, branch string) (*PullR
 // prefixed with `repo:{o}/{r} is:issue`, so the caller supplies free text and the backend owns
 // the scope qualifiers — the closed-surface property (no caller-supplied search syntax).
 func (g *GitHubForge) SearchIssues(repo ForgeRepo, in SearchIssuesInput) ([]IssueSearchResult, error) {
+	if in.FilingKey != "" {
+		return g.searchFilingKey(repo, in)
+	}
 	if in.DecisionGateMarkers {
 		if err := validateDecisionSearch(in); err != nil {
 			return nil, err

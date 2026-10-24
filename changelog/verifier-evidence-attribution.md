@@ -1,2 +1,0 @@
-### Fixed
-- Require separate per-row dates and runner identities for new command Evidence submissions, including blocked and supplemental observations, before `deskevidence` writes or passes its dry-run. Preserve historical evidence and require retained run records or reruns for missing attribution. Align the verifier kit and native dispatch guidance with this preflight; no lifecycle advancement is granted (#4201, regression #4114).
