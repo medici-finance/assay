@@ -98,9 +98,9 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
-> **Already delivered or re-homed — held out of dispatch (7):** composability/02 → already-merged-unflipped (merged PR #4278, Brief: trailer), desk-supervision/34 → already-merged-unflipped (merged PR #4135, Brief: trailer), desktools-v2/70 → already-merged-unflipped (merged PR #4074, Brief: trailer), desktools-v2/74 → already-merged-unflipped (merged PR #4260, Brief: trailer), statusgen/27 → already-merged-unflipped (merged PR #4134, Brief: trailer), statusgen/28 → already-merged-unflipped (merged PR #4140, Brief: trailer), statusgen/32 → already-merged-unflipped (merged PR #4137, Brief: trailer). Each is a board-honesty finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose brief file is gone); reconcile or retire the row to clear it.
+> **Already delivered or re-homed — held out of dispatch (8):** composability/02 → already-merged-unflipped (merged PR #4278, Brief: trailer), desk-supervision/34 → already-merged-unflipped (merged PR #4135, Brief: trailer), desktools-v2/70 → already-merged-unflipped (merged PR #4074, Brief: trailer), desktools-v2/74 → already-merged-unflipped (merged PR #4260, Brief: trailer), statusgen/24 → already-merged-unflipped (merged PR #4337, Brief: trailer), statusgen/27 → already-merged-unflipped (merged PR #4134, Brief: trailer), statusgen/28 → already-merged-unflipped (merged PR #4140, Brief: trailer), statusgen/32 → already-merged-unflipped (merged PR #4137, Brief: trailer). Each is a board-honesty finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose brief file is gone); reconcile or retire the row to clear it.
 
-_Next-up: 20 of 56 eligible — 36 held back (19 by per-stream caps, 17 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 20 of 55 eligible — 35 held back (19 by per-stream caps, 16 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
 _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (18), desk-tools (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
@@ -131,7 +131,7 @@ _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: f2fa65b9 2026-10-24T20:15:45Z_
+_last regen: 6ef86eeb 2026-10-24T20:58:00Z_
 
 **Progress:** 11/14 brief items done.
 
@@ -152,7 +152,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: f2fa65b9 2026-10-24T20:15:45Z_
+_last regen: 6ef86eeb 2026-10-24T20:58:00Z_
 
 **Progress:** 34/91 brief items done.
 
