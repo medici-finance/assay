@@ -385,6 +385,32 @@ RISK-VALUE: DERIVED — perfActive start = true @ tools/desk/internal/deskkit/pe
 
 Outcome record: owed, not on this branch. This run's receipt (`blocked`, check-definition, medici-finance/assay#1915) holds rows 1, 2 and 3, the full row set, and it lands from a fresh admitted verifier pass. It supersedes `38-20261019T190035Z-1845e794f80a` (`blocked`, environment, medici-finance/assay#1800), the newest earlier receipt for this brief. Reason: the blocker is reclassified from environment (medici-finance/assay#1800, cleared by the network-off container witness above) to check-definition (medici-finance/assay#1915, after medici-finance/assay#3508 restored the delivered row 3). Nothing that receipt carried is dropped: its row-3 pass was under the immutable-delivery row that medici-finance/assay#3508 retired. All earlier receipts stay unchanged as history.
 
+### Independent re-verification — 2026-10-21
+
+Observed source: merged main 1f0b54e745d8 (detached home, admitted by `deskdispatch --check-verifier`). Actual delivery: merged PR #3332 (eded7ba6e446, first parent da7a4be21e61). `deskpathguard rederive` re-derived 3 original rows, 0 author-added, and the Verify section at the observed source is byte-identical to the one at the delivery commit, so the delivered table governs. Host: darwin, Go 1.27.2 darwin/arm64, published statusgen v1.0.54. Each command ran byte-for-byte from the repository root, with scratch output kept outside the source tree.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCommandKit$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCommandKit ' "$o")` | exit 0; named PASS | exit 0; `--- PASS: TestPerfCommandKit (11.61s)` | 2026-10-21 | assay-verifier-app[bot] @ 1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 2 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCoverageFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCoverageFlow ' "$o")` | exit 0; named PASS | exit 0; `--- PASS: TestPerfCoverageFlow (19.23s)` | 2026-10-21 | assay-verifier-app[bot] @ 1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | `statusgen --root . --consumers --brief desk-tools/38` | exit 0; implementation consumer routing corroborated against the actual diff; out-of-scope judgments remain review obligations | exit 0; base da7a4be21e61..eded7ba6e446 (immutable delivered snapshot); `summary: 8 corroborated, 0 disproved, 7 unchecked, 0 brief(s) claiming nothing` | 2026-10-21 | assay-verifier-app[bot] @ 1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+Discrimination (supplemental probe, earns no acceptance credit): the two named tests were re-run with `-v` and every subtest passed. That includes the in-test production mutations: mutation_actual_kit_assignment (row 1), and mutation_skips_ordinary_work, mutation_erases_budget_history and mutation_counts_local_refusal (row 2). Each one rebuilds a real command with one planted production change and asserts that the change is rejected. Row 1 also covers help, version, alias, error and private-argument forms on deskboard, issueboard and deskdispatch. Row 2 covers consent-off and broken-sink preservation of output, audit, work and budget/breaker for ordinary deskboard, issueboard and deskdispatch runs. It also runs the production-package seams TestPerfLeafTransport, TestPerfStatusgenChildren, TestPerfProcessCoverage and TestPerfAccountTransport.
+
+Row 3: the 7 unchecked entries are the brief's out-of-scope consumer judgments. The Expect cell leaves those to review, and the 2026-10-19 block above records why each holds. The check-definition defect that blocked row 3 on 2026-10-19 (medici-finance/assay#1915) no longer reproduces: the published statusgen v1.0.54 resolves the immutable delivered snapshot on merged main.
+
+Environment: this pass ran on the darwin host and did not produce a network-off container witness. The rows need no network beyond the local Go module cache.
+
+Risk-value: risk metadata is present and all-no, and the item is not irreversible. The literals the delivery introduces are compiled attribution vocabularies (perfVerbs in tools/desk/cmd/deskboard/main.go:46, tools/desk/cmd/deskdispatch/main.go:75 and tools/desk/cmd/issueboard/main.go:90; the deskboard alias set "todo", "next", "next-up" mapped to "dispatch" in tools/desk/cmd/deskboard/main.go:163; and the perfKitVerb labels plus fallback in tools/desk/cmd/deskdispatch/kits.go). There is also the perfActive attribution window in tools/desk/internal/deskkit/perf.go. None of them is a numeric bound, and all are reversible by an edit and a redeploy.
+
+RISK-VALUE: DERIVED — perfKitVerb fallback = "other" @ tools/desk/cmd/deskdispatch/kits.go:127 — Task 1 requires unknown kits to stay explicit with no raw argv; a fixed compiled fallback carries no caller text and matches the perf-v1 Other fallback in perfrec Verb.
+RISK-VALUE: DERIVED — perfKitVerb review label = "dispatch:review" @ tools/desk/cmd/deskdispatch/kits.go:111 — a compiled label chosen by the parsed kit; any kit outside the four accepted ones maps to "other", and the label grants no role authority.
+RISK-VALUE: DERIVED — perfActive start = true @ tools/desk/internal/deskkit/perf.go:166, finish = false (deferred) @ tools/desk/internal/deskkit/perf.go:167 — PerfCommand selects an attribution only while a PerfRun is executing (perf.go:190 returns early otherwise), and the deferred reset closes that window on every return path.
+
+Verification-Attestation: medici-finance/assay#3901 run=7c0a7ae82e1aa604041a761d61196c57b8372abf36358203249eab08ee1a61ae source=1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 brief=docs/streams/desk-tools/brief-38-correct-desk-performance-attribution-and-counter-coverage.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: PASS** — 3/3 rows: rows 1 and 2 return a named PASS with every production mutation rejected, and row 3 exits 0 with 8 corroborated and 0 disproved.
+
 ## Review
 
 Retain the derived frontmatter gate. Approval of the source spec is recorded; this brief
