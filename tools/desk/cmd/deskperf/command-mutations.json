@@ -22,8 +22,8 @@
     {
       "name": "count nested service observations as command invocations",
       "file": "internal/deskkit/perfcommands.go",
-      "old": "if r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess {",
-      "new": "if false && r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess {"
+      "old": "if r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess || r.Schema == perfrec.SchemaV4 && r.V4.Kind != perfrec.ObservationProcess {",
+      "new": "if false && (r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess || r.Schema == perfrec.SchemaV4 && r.V4.Kind != perfrec.ObservationProcess) {"
     }
   ]
 }

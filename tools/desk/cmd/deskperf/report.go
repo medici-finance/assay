@@ -28,6 +28,7 @@ type reportJSON struct {
 	Skipped  int                        `json:"skipped"`
 	Summary  deskkit.PerfSummary        `json:"summary"`
 	PerfV3   *perfrec.V3Summary         `json:"perfV3,omitempty"`
+	PerfV4   *perfrec.V4Summary         `json:"perfV4,omitempty"`
 	PerfV2   *deskkit.PerfV2Summary     `json:"perfV2,omitempty"`
 	Forge    *deskkit.PerfForgeSummary  `json:"forge,omitempty"`
 	// RequestsByTool is the perf-v3 request rollup split per tool (the PerfV3 section's
@@ -41,11 +42,13 @@ type reportJSON struct {
 // timeseries — a separate top-level shape from reportJSON, so the day view never reads as
 // a pooled window.
 type reportDayJSON struct {
-	Days    int                    `json:"days"`
-	Tool    string                 `json:"tool,omitempty"`
-	Role    string                 `json:"role,omitempty"`
-	Skipped int                    `json:"skipped"`
-	ByDay   deskkit.PerfDaySummary `json:"byDay"`
+	Days        int                    `json:"days"`
+	Tool        string                 `json:"tool,omitempty"`
+	Role        string                 `json:"role,omitempty"`
+	Skipped     int                    `json:"skipped"`
+	ByDay       deskkit.PerfDaySummary `json:"byDay"`
+	PerfV4      *perfrec.V4Summary     `json:"perfV4,omitempty"`
+	PerfV4ByDay []deskkit.PerfV4Day    `json:"perfV4ByDay,omitempty"`
 }
 
 func cmdReport(args []string, stdout, stderr io.Writer) error {
@@ -103,7 +106,12 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 			verbs = append(verbs, r)
 		}
 	}
+	allVerbs := verbs
+	verbs, mixedConflicts := perfrec.ExcludeMixedSchemaIdentities(verbs)
 	if len(verbs) == 0 {
+		if mixedConflicts > 0 {
+			return noMatch(fmt.Sprintf("mixed-schema identity selection excluded %d conflicting identities", mixedConflicts))
+		}
 		return noMatch("a verb-level report (only boot-step records are in the window — try `deskperf boot`)")
 	}
 	// Identity selection must precede tool/role filtering: a conflicting copy
@@ -112,16 +120,31 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return deskkit.Refused(err.Error())
 	}
-	recs := deskkit.FilterPerf(keptV3, *tool, *role)
+	keptV4, selection4, err := perfrec.SelectV4(verbs, permission, filter)
+	if err != nil {
+		return deskkit.Refused(err.Error())
+	}
+	recs := deskkit.FilterPerf(append(keptV3, keptV4...), *tool, *role)
 	for _, r := range verbs {
-		if r.Schema == perfrec.SchemaV3 || (*tool != "" && r.Tool != *tool) || (*role != "" && r.Role != *role) {
+		if r.Schema == perfrec.SchemaV3 || r.Schema == perfrec.SchemaV4 || (*tool != "" && r.Tool != *tool) || (*role != "" && r.Role != *role) {
 			continue
 		}
+		if filter.Used() {
+			continue
+		} // historical records have no supported workflow attribution
 		recs = append(recs, r)
 	}
 	if len(recs) == 0 {
-		if selection.Conflicts+selection.Invalid > 0 {
-			return noMatch(fmt.Sprintf("%s (whole-window identity selection excluded %d conflicting identities and %d invalid records)", filterText(*tool, *role), selection.Conflicts, selection.Invalid))
+		if selection.Conflicts+selection.Invalid+selection4.Conflicts+selection4.Invalid+mixedConflicts > 0 {
+			return noMatch(fmt.Sprintf("%s (whole-window identity selection excluded %d conflicting identities and %d invalid records)", filterText(*tool, *role), selection.Conflicts+selection4.Conflicts+mixedConflicts, selection.Invalid+selection4.Invalid))
+		}
+		if filter.Used() {
+			for _, r := range verbs {
+				if r.Schema == perfrec.SchemaV4 {
+					return deskkit.Refused("no v3/v4 record matches the workflow filter")
+				}
+			}
+			return deskkit.Refused("no v3 record matches the workflow filter")
 		}
 		return noMatch(filterText(*tool, *role))
 	}
@@ -133,13 +156,24 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 		return deskkit.Refused(err.Error())
 	}
 	v3.Duplicates, v3.Conflicts, v3.Invalid = selection.Duplicates, selection.Conflicts, selection.Invalid
-	if (*group != "tool" || *session != "" || *agent != "" || *deskRole != "" || *assigned != "" || *work != "") && v3.Records == 0 {
+	v4, err := perfrec.ReduceV4(recs, permission, *group, filter)
+	if err != nil {
+		return deskkit.Refused(err.Error())
+	}
+	v4.Duplicates, v4.Conflicts, v4.Invalid = selection4.Duplicates, selection4.Conflicts+mixedConflicts, selection4.Invalid
+	if (*group != "tool" || *session != "" || *agent != "" || *deskRole != "" || *assigned != "" || *work != "") && v3.Records+v4.Records == 0 {
+		// Preserve the historical diagnostic when the window contains no v4.
+		for _, r := range verbs {
+			if r.Schema == perfrec.SchemaV4 {
+				return deskkit.Refused("no v3/v4 record matches the workflow filter")
+			}
+		}
 		return deskkit.Refused("no v3 record matches the workflow filter")
 	}
 	if *byDay {
-		return reportByDay(recs, permission, filter, *days, *tool, *role, h.Skipped, *asJSON, selection, stdout)
+		return reportByDay(recs, permission, filter, *days, *tool, *role, h.Skipped, *asJSON, selection, &v4, stdout)
 	}
-	commands, err := deskkit.SummarisePerfCommands(verbs, permission, filter, *tool, *role)
+	commands, err := deskkit.SummarisePerfCommands(allVerbs, permission, filter, *tool, *role)
 	if err != nil {
 		return deskkit.Refused(err.Error())
 	}
@@ -154,6 +188,9 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 		rep := reportJSON{Days: *days, Commands: commands, Tool: *tool, Role: *role, Skipped: h.Skipped, Summary: sum}
 		if v3.Records > 0 || v3.Conflicts > 0 || v3.Invalid > 0 {
 			rep.PerfV3 = &v3
+		}
+		if v4.Records > 0 || v4.Conflicts > 0 || v4.Invalid > 0 {
+			rep.PerfV4 = &v4
 		}
 		if v2.Records > 0 {
 			rep.PerfV2 = &v2
@@ -219,6 +256,9 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 	}
+	if v4.Records+v4.Conflicts+v4.Invalid > 0 {
+		v4Table(stdout, v4)
+	}
 	return nil
 }
 
@@ -226,18 +266,32 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 // the pooled window. Walls stay per schema group; the forge count pools every schema as one
 // budget; each row carries its perf-v3 request rollup.
 func reportByDay(recs []deskkit.PerfRecord, permission perfrec.Profile, filter perfrec.V3Filter,
-	days int, tool, role string, skipped int, asJSON bool, selection perfrec.V3Selection, stdout io.Writer) error {
+	days int, tool, role string, skipped int, asJSON bool, selection perfrec.V3Selection, v4 *perfrec.V4Summary, stdout io.Writer) error {
 	s, err := deskkit.SummarisePerfDays(recs, permission, filter)
 	if err != nil {
 		return deskkit.Refused(err.Error())
 	}
 	s.V3Duplicates, s.V3Conflicts, s.V3Invalid = selection.Duplicates, selection.Conflicts, selection.Invalid
+	v4Days, err := deskkit.SummarisePerfV4Days(recs, permission, filter)
+	if err != nil {
+		return deskkit.Refused(err.Error())
+	}
+	if v4.Records+v4.Conflicts+v4.Invalid == 0 {
+		v4 = nil
+	}
 	if asJSON {
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
-		return encodeErr(enc.Encode(reportDayJSON{Days: days, Tool: tool, Role: role, Skipped: skipped, ByDay: s}))
+		return encodeErr(enc.Encode(reportDayJSON{Days: days, Tool: tool, Role: role, Skipped: skipped, ByDay: s, PerfV4: v4, PerfV4ByDay: v4Days}))
 	}
-	return dayTable(stdout, s, days, tool, role, skipped)
+	if err := dayTable(stdout, s, days, tool, role, skipped); err != nil {
+		return err
+	}
+	for _, day := range v4Days {
+		fmt.Fprintf(stdout, "\n%s %s — ", day.Day, day.Tool)
+		v4Table(stdout, day.Summary)
+	}
+	return nil
 }
 
 // dayTable renders the --by-day timeseries: a header with the undated count, one wall table

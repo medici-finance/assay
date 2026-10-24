@@ -35,6 +35,32 @@ names: a perf-v1 record carrying a perf-v2 field (or the reverse) is refused,
 and an invalid perf-v2 line does not decode. The field tables, the boundary and
 exclusion statements and the reader rules live in `docs/telemetry.md`.
 
+## Extensible reader (perf-v4)
+
+`SchemaV4`, `ToV4`, `Decode`, `SelectV4` and `ReduceV4` use the same recorder,
+observation types, historical validators and reducer. `V4Data` is a closed typed
+registry: process, attribution, requests and query. `ToV4` converts a newly
+measured selected-profile record before its single append; it is not a migration
+of retained historical lines and does not choose a producer default.
+
+The stable core remains useful when an optional facet is absent or unsupported.
+Unknown data is bounded, counted and discarded. A private canonical-input digest
+retains conflict detection without exposing a raw extension map. Supported malformed
+facets invalidate the whole record. Core assigned role alone never matches workflow
+filters. Tool profile cannot carry even an empty supported attribution payload.
+
+The exact-key registry derives from canonical Go member tags. The checked
+[schema](../schemas/perf-v4.json) enumerates the same members; the codec additionally
+owns duplicate detection, JSONL/depth bounds, privacy and cross-field arithmetic.
+The public external consumer imports no desk-internal package. The ordinary
+opt-in, 0700 directory, 0600 files, seven-day retention and never-load-bearing
+append remain unchanged.
+
+This is reader-first delivery. Existing `BeginSelected`/`Finish` producer selection
+still emits v3; default no-profile behavior remains v2. /68 must consume qualified
+readers and preserve /64–65 eligibility before changing selected-profile adapters.
+No release, install, repin, upload or collection activation is included.
+
 ## Recorder API (perf-v2)
 
 ```go
