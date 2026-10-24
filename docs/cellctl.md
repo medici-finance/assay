@@ -345,7 +345,10 @@ The launch is `env -i` plus an explicit allowlist — the parent shell contribut
 default. This is the exact list `cellctl` exports (`scrubbedEnvKeys` in
 `tools/desk/cmd/cellctl/env.go` is the single source this table, the `[plan]` lines below, and the
 live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares the same set, and
-`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it):
+`tools/cellctl/tests/scrubbed-cell.test.sh` fails if the emitted set drifts from it). The last two
+rows, the cell database pointer, are the Go program's alone: they are present only when `cell.env`
+sets `CELL_DB_DSN`, no parity fixture sets it, and so the oracle's set and every parity plan are
+unchanged:
 
 | Variable | Value |
 |---|---|
@@ -369,6 +372,8 @@ live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares t
 | DESK_ROOTS | `CELL_ROOTS`, when `cell.env` carries one |
 | TERM | passed through from the parent — a TUI harness needs it |
 | LANG | passed through from the parent |
+| ASSAY_CELL_DB_DSN | `CELL_DB_DSN`, when `cell.env` carries one |
+| PGPASSFILE | `CELL_DB_PASSFILE`, when `cell.env` carries `CELL_DB_DSN` |
 
 `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are mutually exclusive — only the active harness's variable
 is ever exported. No `SSH_AUTH_SOCK`, no `GH_TOKEN`, no `ANTHROPIC_*`, no `AWS_*`, and no
@@ -499,6 +504,17 @@ On a machine with a `$CELLS_ROOT/defaults.env`, two rows say that the file was r
 managed Go cache's setting came from (see *Machine-wide defaults*). They print directly under the
 `[check]` header — for a container cell, which prints no such header, after its `[model]` lines
 and before the container's own check. They are never a `MISS`.
+
+**Cell database rows** — only when `cell.env` sets `CELL_DB_DSN` (with it unset, no row is
+printed, so the transcript of a cell with no database is unchanged): the DSN carries no password
+(no `password=` keyword, including one inside a quoted `dbname` value, and no password in URI
+userinfo, including a URI given as the `dbname` value — the value is withheld when it does, and
+`desk` refuses the launch rather than compose it), and
+`CELL_DB_PASSFILE` is set, absolute, readable and mode `0600` or `0400` (the same mode helper as the
+PEM rows). On a `container` cell the key is a `MISS` naming the gap: a container cell's plan
+carries no such environment or mount yet. The mode keeps out other OS users only; these rows never
+claim that cells are separated from each other (see [`docs/postgres.md`](postgres.md) §Isolation
+boundary).
 
 Run it after `new`, and again after any key or token rotation.
 
@@ -1368,6 +1384,8 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `CELL_PROVIDER_<NAME>_BASE_URL` | the provider's endpoint — exported as `ANTHROPIC_BASE_URL` when this provider is resolved |
 | `CELL_PROVIDER_<NAME>_TOKEN_ENV` | the **name** of an env var (never the token itself) whose value is exported as `ANTHROPIC_AUTH_TOKEN`; that env var must be set in the shell running `cellctl` |
 | `TMUX_SESSION` | override the tmux session name (default `<cell>-cell`) |
+| `CELL_DB_DSN` | the cell's own PostgreSQL database, as a libpq connection string with **no password** (for example `host=127.0.0.1 port=5432 dbname=cell_example_cell user=cell_example_cell sslmode=disable`); when set, every role window gets it as `ASSAY_CELL_DB_DSN`; unset, the cell has no database and nothing is composed (see [`docs/postgres.md`](postgres.md)) |
+| `CELL_DB_PASSFILE` | the absolute path of that database's pgpass file (mode `0600` or `0400`, outside the repository); exported as `PGPASSFILE` when `CELL_DB_DSN` is set, so libpq reads the password itself and it is never an environment value or an argv element |
 
 ### Machine-wide defaults — `defaults.env`
 
@@ -1517,6 +1535,7 @@ processes are not configuration.
 | `DESKD`, `DESKD_ADDR`, `DESKD_INDEX`, `TMUX_SESSION` | what one running cell holds: whether it stands a `deskd`, the address that `deskd` binds, its index, the session `down` stops |
 | `CELL_GO_CACHE_ROOT` | a managed cache root is marked for exactly one cell, and a second cell is refused it |
 | `CELL_CONTAINER_CONFIG`, `CELL_CONTAINER_LAUNCHER` | bind one cell to its container definition or launcher |
+| `CELL_DB_DSN`, `CELL_DB_PASSFILE` | one cell's database and its credential file: each cell has its own role and database ([docs/postgres.md](postgres.md)) |
 | `CELL_FORGE`, `GITHUB_HOST`, `FORGE_API_BASE`, `GITLAB_API_BASE`, `GITLAB_GROUP`, `GITLAB_TOKEN_STORE`, `DESKD_GITLAB_TOKEN_FILE`, `DESKD_APP_PEM`, `DESKD_APP_ID_VAR`, `ORGS` | one cell's forge binding: which forge its credentials are minted for, held in and sent to |
 | `CELLS_ROOT`, `XDG_DATA_HOME` | locate this file: the cells root, and the data directory its default is under, are resolved before the file is read |
 | `DRY_RUN`, `CELL_ATTENDED`, `DESK_MODEL_OVERRIDE` | switches for one run: a dry run, the statement that a person is at this command, and a model that outranks every pin — give them in the environment of the command they are for |

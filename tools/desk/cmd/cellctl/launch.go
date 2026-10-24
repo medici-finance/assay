@@ -30,6 +30,65 @@ func (c *Cell) repairAdmissionValue() string {
 	return ""
 }
 
+// The two variables a cell with a database composes into every role window, from its cell.env
+// CELL_DB_DSN and CELL_DB_PASSFILE (docs/postgres.md). libpq reads PGPASSFILE itself, so the
+// password is never an environment value or an argv element: only the DSN (which `check` proves
+// carries no password) and the path of the 0600 credential file are composed.
+const (
+	envCellDBDSN      = "ASSAY_CELL_DB_DSN"
+	envCellDBPassfile = "PGPASSFILE"
+)
+
+// cellDBValues is the (DSN, passfile path) pair this cell composes into a launched desk's
+// environment. Both are "" when CELL_DB_DSN is unset: a cell with no database is unchanged, as
+// with repairAdmissionValue. With the DSN set and CELL_DB_PASSFILE unset the path is "" (and so
+// not composed); `check` reports that as a MISS.
+func (c *Cell) cellDBValues() (dsn, passfile string) {
+	dsn = strings.TrimSpace(c.Env.Get("CELL_DB_DSN"))
+	if dsn == "" {
+		return "", ""
+	}
+	return dsn, strings.TrimSpace(c.Env.Get("CELL_DB_PASSFILE"))
+}
+
+// cellDBComposed is the pair cellDBValues returns, withheld ("", "") when the DSN carries a
+// password: no compose site (host launch, scrubbed launch, codex argv, dry-run plan) ever sees a
+// password-bearing value, and desk refuses the launch itself (cellDBRefusal).
+func (c *Cell) cellDBComposed() (dsn, passfile string) {
+	dsn, passfile = c.cellDBValues()
+	if dsnCarriesPassword(dsn) {
+		return "", ""
+	}
+	return dsn, passfile
+}
+
+// cellDBRefusal is the reason `desk` refuses to launch, or "" when the cell may launch: a
+// CELL_DB_DSN that carries a password is never composed into a window or onto a harness argv.
+func (c *Cell) cellDBRefusal() string {
+	if dsn, _ := c.cellDBValues(); dsn != "" && dsnCarriesPassword(dsn) {
+		return "desk: CELL_DB_DSN carries a password (a password= keyword or URI userinfo) — remove it; libpq reads the password from CELL_DB_PASSFILE (the value is not printed)"
+	}
+	return ""
+}
+
+// cellDBEnv composes the cell database variables into a host launch environment. An empty value
+// is skipped, never exported as `KEY=`, and a key this cell does not compose is REMOVED: the
+// launching shell may already carry another cell's ASSAY_CELL_DB_DSN or PGPASSFILE (every role
+// window of a database cell does), and a cell with no database, or with no passfile, must not
+// inherit it.
+func (c *Cell) cellDBEnv(env []string) []string {
+	dsn, passfile := c.cellDBComposed()
+	env = envUnset(env, envCellDBDSN)
+	env = envUnset(env, envCellDBPassfile)
+	if dsn != "" {
+		env = envSet(env, envCellDBDSN, dsn)
+	}
+	if passfile != "" {
+		env = envSet(env, envCellDBPassfile, passfile)
+	}
+	return env
+}
+
 // deskLaunch is the LIVE (non-dry-run) half of `desk`: persist what --set asked for, enable the
 // plugin on the claude arm, fetch the shared checkout under a lock, bring the role worktree up
 // to main, generate the shims, and exec the harness.
@@ -155,6 +214,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	if rav := c.repairAdmissionValue(); rav != "" {
 		env = envSet(env, deskkit.EnvRepairAdmission, rav)
 	}
+	// The cell's database pointer (CELL_DB_DSN / CELL_DB_PASSFILE), composed for every role and
+	// absent when the cell has none. The codex arm forwards both by name.
+	env = c.cellDBEnv(env)
 	// The cell's one resolved cockpit (see cmdDesk) — ALWAYS set on a host window, so an
 	// ASSAY_COCKPIT the launching shell happened to carry never outlives the cell's own value.
 	if cockpit.Cockpit != "" {

@@ -280,3 +280,8 @@ Confirm the previous execution stopped before admitting a replacement role;
 retains claims, but namespace/PVC deletion and storage-provider policy still
 require separate backup/recovery planning. Neither offline schema validation nor
 an attach connection establishes safe recovery or a qualified managed cell.
+
+## Local PostgreSQL for host cells
+
+A separate compose project, `containers/postgres/`, runs one loopback-only PostgreSQL server
+with one database and restricted role per cell — see [`docs/postgres.md`](postgres.md).
