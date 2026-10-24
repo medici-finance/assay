@@ -35,9 +35,10 @@ activation gates stay separate, and existing human and deployment gates still bi
 | 07 | [Evaluate governed harness refinement with isolated offline fixtures](brief-07-harness-refinement-evaluation.md) | 3 | M | todo | — | — |
 | 08 | [Qualify a Kubernetes verification runner through the existing supervisor](brief-08-qualify-a-kubernetes-verification-runner-through-the-existing-supervisor.md) | 12 | M | todo | — | — |
 | 09 | [Qualify interactive Kubernetes standing desks through the shared runner](brief-09-qualify-interactive-kubernetes-standing-desks-through-the-shared-runner.md) | 9 | M | todo | — | — |
+| 10 | [Evaluate a Pi Durable runner with offline recovery fixtures](brief-10-evaluate-a-pi-durable-runner-with-offline-recovery-fixtures.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
-The generator owns the table. All eight briefs are M-sized, strong-tier work. New tests and
+The generator owns the table. All briefs are M-sized, strong-tier work. New tests and
 paths named by their Verify tables are future deliverables, not authoring-time evidence.
 
 ## Critical path and checked head
@@ -136,3 +137,28 @@ verifier Job restrictions and controller/publication prerequisites. /09 -> desk-
 Windows dependency or second runtime owner. Current optimization, custody and unknown-stop
 contracts remain. The stream stays parked pending its controlling amendment's admission;
 authoring /09 does not activate a profile.
+
+
+## Pi Durable runner investigation — 22 October 2026
+
+[Brief 10](brief-10-evaluate-a-pi-durable-runner-with-offline-recovery-fixtures.md)
+adds a wave-1 offline experiment after the implemented graph-execution/20 runner contract.
+The fresh source check at `ecc895ce2dd5989ff2119fb7aeeed5e1e0b8761e` found the runner kit
+and no supervisor or workflow implementation; those absent components are not its first
+blocker. The stream remains parked under its controlling amendment's approval gate.
+
+The experiment uses real Pi durable tasks with scripted models and synthetic effects to
+produce a go/no-go/unknown decision, recovery evidence and a concrete omission/deletion
+map. It has no managed store/profile, provider call, deployment or default adapter change.
+Graph-execution/22 and /26 retain adapter/supervisor ownership and can proceed independently.
+A favorable report is optional input to those owners and agent-execution/01, /03-04; it
+does not satisfy their qualification or activation obligations. Vercel World hosting is
+a separately labeled optional comparison within the same cap, not another scheduler.
+
+```text
+graph-execution/20 (existing runner contract) -> 10 offline Pi investigation (wave 1)
+                                              -> optional source/evidence input to /22, /26, /01, /03-04
+```
+
+The second arrow is an advisory handoff, not a new hard dependency on core runtime work.
+No live trial or performance/savings claim is created by this authoring change.
