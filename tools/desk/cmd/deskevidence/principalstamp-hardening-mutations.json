@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed)$' -count=1 -timeout=300s",
+  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed)$' -count=1 -timeout=300s",
   "control": {
     "name": "unreadable-cell refusal not consulted",
     "file": "cmd/deskevidence/principalstamp.go",
@@ -518,40 +518,148 @@
       "new": "return true"
     },
     {
-      "name": "a Runner cell a reader takes as App-run is read as the lint reads it",
-      "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if isAppRunnerCell(t) || readerAppRun(readerFold(t)) {",
-      "new": "if isAppRunnerCell(t) {"
-    },
-    {
-      "name": "a line closing a table is not read the way a reader folds it",
-      "file": "cmd/deskevidence/principalstamp.go",
-      "old": "strings.Contains(t, onBehalfOfCellMarker) ||\n\t\t\treaderBotRe.MatchString(readerFold(t)) {",
-      "new": "strings.Contains(t, onBehalfOfCellMarker) {"
-    },
-    {
       "name": "a shortcut reference link is not reduced to its text",
       "file": "cmd/deskevidence/principalstamp.go",
       "old": "readings := append(linkReadings(c), reduceLinksMode(c, true, true))",
       "new": "readings := linkReadings(c)"
     },
     {
-      "name": "a format character or combining mark is kept",
+      "name": "a Runner cell that shows a login and tag is read only as the lint reads it",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "case unicode.In(r, unicode.Cf, unicode.Mn, unicode.Me, unicode.Mc):\n",
-      "new": "case false:\n"
+      "old": "if isAppRunnerCell(t) || identityShowsTag(t) {",
+      "new": "if isAppRunnerCell(t) {"
     },
     {
-      "name": "a non-ASCII letter is not read as a possible lookalike",
+      "name": "a line closing a table is not read for a login and tag",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "case unicode.IsLetter(r) || unicode.IsDigit(r):\n\t\t\tb.WriteByte('?')",
-      "new": "case false:\n\t\t\tb.WriteByte('?')"
+      "old": "if (i == 0 || t[i-1] == ' ' || t[i-1] == '\\t') && identityShowsTag(t[i:]) {",
+      "new": "if false && identityShowsTag(t[i:]) {"
     },
     {
-      "name": "a non-ASCII bracket is not read as a bracket",
+      "name": "a line closing a table is read for a login and tag only at its start",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "case unicode.Is(unicode.Ps, r):\n\t\t\tb.WriteByte('[')\n\t\tcase unicode.Is(unicode.Pe, r):\n\t\t\tb.WriteByte(']')\n",
-      "new": ""
+      "old": "if (i == 0 || t[i-1] == ' ' || t[i-1] == '\\t') && identityShowsTag(t[i:]) {",
+      "new": "if i == 0 && identityShowsTag(t[i:]) {"
+    },
+    {
+      "name": "a non-ASCII bracket opens no tag",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return r == '[' || r == '<' || r > unicode.MaxASCII && unicode.In(r, unicode.Ps, unicode.Pi)",
+      "new": "return r == '[' || r == '<'"
+    },
+    {
+      "name": "a non-ASCII bracket closes no tag",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return r == ']' || r == '>' || r > unicode.MaxASCII && unicode.In(r, unicode.Pe, unicode.Pf)",
+      "new": "return r == ']' || r == '>'"
+    },
+    {
+      "name": "an angle bracket opens no tag",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return r == '[' || r == '<' || r > unicode.MaxASCII && unicode.In(r, unicode.Ps, unicode.Pi)",
+      "new": "return r == '[' || r > unicode.MaxASCII && unicode.In(r, unicode.Ps, unicode.Pi)"
+    },
+    {
+      "name": "a tag may open after any character",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return !tagOpen(r) && !tagClose(r) && (loginByte(r) || r > unicode.MaxASCII)",
+      "new": "return true"
+    },
+    {
+      "name": "a tag may open after a closing bracket",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return !tagOpen(r) && !tagClose(r) && (loginByte(r) || r > unicode.MaxASCII)",
+      "new": "return !tagOpen(r) && (loginByte(r) || r > unicode.MaxASCII)"
+    },
+    {
+      "name": "a tag may open after an opening bracket",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return !tagOpen(r) && !tagClose(r) && (loginByte(r) || r > unicode.MaxASCII)",
+      "new": "return !tagClose(r) && (loginByte(r) || r > unicode.MaxASCII)"
+    },
+    {
+      "name": "a tag never opens after a non-ASCII character",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return !tagOpen(r) && !tagClose(r) && (loginByte(r) || r > unicode.MaxASCII)",
+      "new": "return !tagOpen(r) && !tagClose(r) && loginByte(r)"
+    },
+    {
+      "name": "a space inside a tag ends the identity region",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case !open && (r == ' ' || r == '('):",
+      "new": "case r == ' ' || r == '(':"
+    },
+    {
+      "name": "a tag broken by a parenthesis or bracket still extends the identity region",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case open && (r == '(' || tagOpen(r)):\n\t\t\treturn s[:cut]",
+      "new": "case false:\n\t\t\treturn s[:cut]"
+    },
+    {
+      "name": "a tag that never closes extends the identity region",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tif open {\n\t\treturn s[:cut]\n\t}\n\treturn s\n}",
+      "new": "\treturn s\n}"
+    },
+    {
+      "name": "a square bracket is outside the login alphabet",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "strings.ContainsRune(\"._-[]\", r)",
+      "new": "strings.ContainsRune(\"._-\", r)"
+    },
+    {
+      "name": "a character outside the login alphabet is not noticed",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tif !loginByte(r) {\n\t\t\tforeign = true\n\t\t}\n",
+      "new": "\t\t_ = loginByte(r)\n"
+    },
+    {
+      "name": "a region of CJK text is not exempt",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return (three || wide && foreign) && !cjkOnly(ir)",
+      "new": "return (three || wide && foreign)"
+    },
+    {
+      "name": "a wide tag needs no character outside the login alphabet",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return (three || wide && foreign) && !cjkOnly(ir)",
+      "new": "return (three || wide) && !cjkOnly(ir)"
+    },
+    {
+      "name": "a wide tag is never read",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return (three || wide && foreign) && !cjkOnly(ir)",
+      "new": "return three && !cjkOnly(ir)"
+    },
+    {
+      "name": "a tag needs four letters to read as one",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "three, wide, open = three || words == 3, wide || glyphs >= 3, false",
+      "new": "three, wide, open = three || words == 4, wide || glyphs >= 3, false"
+    },
+    {
+      "name": "a wide tag needs four glyphs",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "three, wide, open = three || words == 3, wide || glyphs >= 3, false",
+      "new": "three, wide, open = three || words == 3, wide || glyphs >= 4, false"
+    },
+    {
+      "name": "a symbol in a tag is not counted",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case open && unicode.IsSymbol(r):\n\t\t\tglyphs++",
+      "new": "case false:\n\t\t\tglyphs++"
+    },
+    {
+      "name": "a region with no letters reads as CJK text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\treturn seen\n}",
+      "new": "\treturn true\n}"
+    },
+    {
+      "name": "an invisible letter reads as CJK text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": " ||\n\t\t\tunicode.Is(unicode.Other_Default_Ignorable_Code_Point, r) {",
+      "new": " {"
     }
   ]
 }

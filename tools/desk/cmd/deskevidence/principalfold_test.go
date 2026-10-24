@@ -75,7 +75,7 @@ func TestStampRefusesFoldedLayout(t *testing.T) {
 }
 
 // regression: #4075
-// TestStampFoldShapesAllowed: what the folded reading leaves alone still lands — Runner cells
+// TestStampFoldShapesAllowed: what the identity-region reading leaves alone still lands — Runner cells
 // that carry `[bot]` or a bracket tag without opening with an App login, and a human name
 // with a non-ASCII letter.
 func TestStampFoldShapesAllowed(t *testing.T) {
@@ -98,7 +98,7 @@ func TestStampFoldShapesAllowed(t *testing.T) {
 
 // regression: #4075
 // TestStampRefusesFoldedNoteLine: a line that closes a table without a blank line shows as a
-// one-cell row, and shows App-run or on-behalf-of text under the same folds.
+// one-cell row, and shows App-run or on-behalf-of text under the same reading.
 func TestStampRefusesFoldedNoteLine(t *testing.T) {
 	for _, tc := range foldedRunners {
 		if tc.name == "tab" {

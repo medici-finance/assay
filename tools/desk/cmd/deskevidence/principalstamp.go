@@ -770,11 +770,11 @@ func inlineDestinationEnd(s string, p int) int {
 	return -1
 }
 
-// shownMarkup describes the first thing in s that shownTexts or readerFold strips, decodes or
-// reduces, for a refusal: an HTML tag or comment bracket, an entity, emphasis, strikethrough,
-// code or escape character, then a character a reader cannot tell from another (a non-ASCII
-// character or a tab), then link or image syntax, then a `[bot]` login followed by something a
-// reader takes no differently from a space.
+// shownMarkup describes the first thing in s that shownTexts strips, decodes or reduces, or
+// that keeps the lint from reading it as a reader does, for a refusal: an HTML tag or comment
+// bracket, an entity, emphasis, strikethrough, code or escape character, then a character
+// outside printable ASCII (a non-ASCII character or a tab), then a `[bot]` login followed by
+// something other than a space or `(`, then link or image syntax.
 func shownMarkup(s string) string {
 	if i := strings.IndexAny(s, "<>&*_~`\\"); i >= 0 {
 		return fmt.Sprintf("the markup character `%c`", s[i])
@@ -784,7 +784,7 @@ func shownMarkup(s string) string {
 			return fmt.Sprintf("the character U+%04X", r)
 		}
 	}
-	if readerAppRun(readerFold(s)) {
+	if asciiAppRunRe.MatchString(s) {
 		return "a login ending `[bot]` followed by something other than a space or `(`"
 	}
 	if i := strings.IndexAny(s, "[]!"); i >= 0 {
@@ -793,51 +793,120 @@ func shownMarkup(s string) string {
 	return "markup"
 }
 
-// readerFold returns s as a reader takes it, for deciding whether it opens with an App login:
-// invisible format characters (zero-width and bidirectional marks, soft hyphens) and combining
-// marks dropped; a non-ASCII opening or closing bracket (fullwidth ones included) read as `[`
-// or `]`; and any other non-ASCII letter or digit, which may be a lookalike for an ASCII one,
-// read as `?`.
-func readerFold(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		switch {
-		case r <= unicode.MaxASCII:
-			b.WriteRune(r)
-		case unicode.In(r, unicode.Cf, unicode.Mn, unicode.Me, unicode.Mc):
-		case unicode.Is(unicode.Ps, r):
-			b.WriteByte('[')
-		case unicode.Is(unicode.Pe, r):
-			b.WriteByte(']')
-		case unicode.IsLetter(r) || unicode.IsDigit(r):
-			b.WriteByte('?')
-		default:
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
+// asciiAppRunRe matches text that opens with an ASCII App login directly followed by `[bot]`
+// in any case, whatever follows, for a refusal's description.
+var asciiAppRunRe = regexp.MustCompile(`(?i)^[a-z0-9][a-z0-9._-]*\[bot\]`)
+
+// tagOpen and tagClose report whether r opens or closes a tag a reader may take for the
+// brackets of a `[bot]` tag: an ASCII square or angle bracket, or any non-ASCII opening or
+// closing bracket or quotation mark.
+func tagOpen(r rune) bool {
+	return r == '[' || r == '<' || r > unicode.MaxASCII && unicode.In(r, unicode.Ps, unicode.Pi)
 }
 
-var (
-	// readerAppRunRe matches text, after readerFold, that opens with an App login: an
-	// identifier (a `?` stands for any letter) directly followed by `[bot]` (its letters
-	// likewise), whatever follows. A reader takes that as App-run text however the lint splits
-	// the cell.
-	readerAppRunRe = regexp.MustCompile(`(?i)^[a-z0-9?][a-z0-9?._-]*\[[b?][o?][t?]\]`)
-	// readerBotRe matches a `[bot]` tag anywhere in readerFold text.
-	readerBotRe = regexp.MustCompile(`(?i)\[[b?][o?][t?]\]`)
-)
+func tagClose(r rune) bool {
+	return r == ']' || r == '>' || r > unicode.MaxASCII && unicode.In(r, unicode.Pe, unicode.Pf)
+}
 
-// readerAppRun reports whether folded text (see readerFold) opens with an App login.
-func readerAppRun(folded string) bool {
-	return readerAppRunRe.MatchString(strings.TrimSpace(folded))
+// tagAfter reports whether a tag bracket that directly follows r may read as the tag of a
+// login ending in r: r is an ASCII letter, digit, `.`, `_` or `-`, or any non-ASCII character
+// other than a tag bracket. A bracket at the start of a text, or after another bracket or
+// other ASCII punctuation, opens no tag.
+func tagAfter(r rune) bool {
+	return !tagOpen(r) && !tagClose(r) && (loginByte(r) || r > unicode.MaxASCII)
+}
+
+// identityRegion returns the part of a shown text that names who ran a row: the text up to
+// the first ASCII space or `(`, as the lint splits a Runner cell, except that a space inside a
+// tag (see tagAfter) does not end it when the tag closes before any `(` or other tag bracket.
+// A tag that does not close so leaves the lint's cut.
+func identityRegion(s string) string {
+	cut := len(s)
+	if i := strings.IndexAny(s, " ("); i >= 0 {
+		cut = i
+	}
+	open, prev := false, rune(-1)
+	for i, r := range s {
+		after := prev
+		prev = r
+		switch {
+		case open && tagClose(r):
+			open = false
+		case open && (r == '(' || tagOpen(r)):
+			return s[:cut]
+		case !open && tagAfter(after) && tagOpen(r):
+			open = true
+		case !open && (r == ' ' || r == '('):
+			return s[:i]
+		}
+	}
+	if open {
+		return s[:cut]
+	}
+	return s
+}
+
+// loginByte reports whether r is in the alphabet an App login and its `[bot]` tag are written
+// in: ASCII letters, digits, `.`, `_`, `-` and square brackets.
+func loginByte(r rune) bool {
+	return r <= unicode.MaxASCII && (unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("._-[]", r))
+}
+
+// cjkOnly reports whether every letter and digit in s, and at least one, is Han, Hiragana,
+// Katakana or Hangul text that renders as itself. Such text cannot spell an App login.
+func cjkOnly(s string) bool {
+	seen := false
+	for _, r := range s {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			continue
+		}
+		if !unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul) ||
+			unicode.Is(unicode.Other_Default_Ignorable_Code_Point, r) {
+			return false
+		}
+		seen = true
+	}
+	return seen
+}
+
+// identityShowsTag reports whether a shown text's identity region (see identityRegion) shows
+// a reader a login followed by a tag that the lint does not read as App-run. A tag is a tag
+// bracket opened directly after a character a login may end in (see tagAfter) and closed
+// later in the region. The region shows one when a tag holds exactly three letters or digits,
+// as `[bot]` does, or when a tag holds three or more letters, digits or symbols and any
+// character in the region is outside the login alphabet (see loginByte). Only a region whose
+// letters are all CJK text (see cjkOnly) is exempt. No character is folded to or matched
+// against another, so a character no check names still fails closed.
+func identityShowsTag(s string) bool {
+	ir := identityRegion(s)
+	open, words, glyphs, prev := false, 0, 0, rune(-1)
+	three, wide, foreign := false, false, false
+	for _, r := range ir {
+		if !loginByte(r) {
+			foreign = true
+		}
+		after := prev
+		prev = r
+		switch {
+		case !open && tagAfter(after) && tagOpen(r):
+			open, words, glyphs = true, 0, 0
+		case open && tagClose(r):
+			three, wide, open = three || words == 3, wide || glyphs >= 3, false
+		case open && (unicode.IsLetter(r) || unicode.IsDigit(r)):
+			words++
+			glyphs++
+		case open && unicode.IsSymbol(r):
+			glyphs++
+		}
+	}
+	return (three || wide && foreign) && !cjkOnly(ir)
 }
 
 // showsAppRun reports whether a cell shows a reader an App-run Runner cell in any of its
-// shown texts, as the lint reads one or as a reader does (see readerFold).
+// shown texts, as the lint reads one or as a reader does (see identityShowsTag).
 func showsAppRun(cell string) bool {
 	for _, t := range shownTexts(cell) {
-		if isAppRunnerCell(t) || readerAppRun(readerFold(t)) {
+		if isAppRunnerCell(t) || identityShowsTag(t) {
 			return true
 		}
 	}
@@ -845,12 +914,17 @@ func showsAppRun(cell string) bool {
 }
 
 // showsAttribution reports whether a line shows a reader App-run or on-behalf-of text in any
-// of its shown texts.
+// of its shown texts: a `[bot]` tag or the on-behalf-of marker anywhere, or a word that shows
+// as App-run (see identityShowsTag).
 func showsAttribution(line string) bool {
 	for _, t := range shownTexts(line) {
-		if t = strings.ToLower(t); strings.Contains(t, "[bot]") || strings.Contains(t, onBehalfOfCellMarker) ||
-			readerBotRe.MatchString(readerFold(t)) {
+		if l := strings.ToLower(t); strings.Contains(l, "[bot]") || strings.Contains(l, onBehalfOfCellMarker) {
 			return true
+		}
+		for i := 0; i < len(t); i++ {
+			if (i == 0 || t[i-1] == ' ' || t[i-1] == '\t') && identityShowsTag(t[i:]) {
+				return true
+			}
 		}
 	}
 	return false
