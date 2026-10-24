@@ -317,6 +317,14 @@ func productionDiffLintRunner(treeRoot string, budget []string, changed, scope s
 		exe = "statusgen"
 	}
 	args := []string{"--root", treeRoot, "--lint"}
+	if lintDetailAll {
+		// Forwarded only when the caller passed --all: the inner head lint's
+		// notices are what this run prints, so without --all they are the bounded
+		// historical report (its could-not-check lines are NOTICE-prefixed and
+		// kept below). The base-vs-head comparison itself is over PROBLEM lines,
+		// which --all never changes.
+		args = append(args, "--all")
+	}
 	for _, b := range budget {
 		args = append(args, "--budget", b)
 	}

@@ -41,8 +41,9 @@ type prFacts struct {
 	BaseRef   string `json:"baseRef"`
 	Rollup    string `json:"rollup"`
 
-	HaveFiles bool     `json:"haveFiles,omitempty"`
-	Files     []string `json:"files,omitempty"`
+	HeadValidated bool     `json:"headValidated,omitempty"`
+	HaveFiles     bool     `json:"haveFiles,omitempty"`
+	Files         []string `json:"files,omitempty"`
 
 	// Intervals maps a reviewed sha to the files touched between it and Head.
 	Intervals map[string][]string `json:"intervals,omitempty"`
@@ -57,11 +58,12 @@ type prFactsFile struct {
 // prFactStore holds the previous sweep's facts for one repo and collects this sweep's.
 // A nil store is valid and reuses nothing (every caller outside the actions sweep).
 type prFactStore struct {
-	mu    sync.Mutex
-	repo  string
-	path  string
-	prior map[int]prFacts
-	next  map[int]prFacts
+	qualified bool
+	mu        sync.Mutex
+	repo      string
+	path      string
+	prior     map[int]prFacts
+	next      map[int]prFacts
 }
 
 func prFactsPath(repo string) string {
@@ -137,7 +139,7 @@ func (s *prFactStore) changedFiles(repo string, p prBase) (map[string]bool, bool
 	if s != nil {
 		s.mu.Lock()
 		f, ok := s.current(p)
-		if ok && f.HaveFiles {
+		if ok && f.HaveFiles && (!s.qualified || f.HeadValidated) {
 			s.next[p.Number] = f
 			s.mu.Unlock()
 			boardMeter.skip(2) // the PR-metadata read and the file-list read
@@ -145,7 +147,11 @@ func (s *prFactStore) changedFiles(repo string, p prBase) (map[string]bool, bool
 		}
 		s.mu.Unlock()
 	}
-	files, complete, err := fetchChangedFiles(repo, p.Number)
+	var expected []string
+	if s != nil && s.qualified {
+		expected = []string{p.HeadRefOid}
+	}
+	files, complete, err := fetchChangedFiles(repo, p.Number, expected...)
 	if s == nil || err != nil || !complete {
 		return files, complete, err
 	}
@@ -153,6 +159,7 @@ func (s *prFactStore) changedFiles(repo string, p prBase) (map[string]bool, bool
 	defer s.mu.Unlock()
 	if f, ok := s.current(p); ok {
 		f.HaveFiles, f.Files = true, fromSet(files)
+		f.HeadValidated = s.qualified
 		s.next[p.Number] = f
 	}
 	return files, complete, err

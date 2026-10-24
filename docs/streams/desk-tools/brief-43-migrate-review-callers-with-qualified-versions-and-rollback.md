@@ -87,7 +87,11 @@ retirement inventory; both drivers must use policy rank, not operation-key print
 1. Publish exact producer/tool, plugin/skill, observation schema, harness/launcher and supported pin
    versions before callers require new forms. Release producer first through existing release owner;
    no invented future tag. Old supported forms remain usable until the declared window ends.
-   CI/fixture evidence is distinct from installed-cell adoption.
+   CI/fixture evidence is distinct from installed-cell adoption. Before activation, qualify
+   the whole-cycle hold when one PR is quarantined or degraded, including an externally
+   opened public PR. Preserve the prior supported recipe on hold, surface the affected
+   population and recovery action, and prove recovery without silently dropping that PR
+   or running both effect paths.
 2. Replace review actions+prs+plan sequence with one ReviewQueue observation, PlanReview and
    PrepareReview; migrate actual classified watcher/PR monitor, review-depth throughput, coordinator
    guidance and inbox readers. Reuse only a compatible cutoff; preserve independent wake and
@@ -117,7 +121,7 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewCallerFlow$' ./internal/deskkit/... > "$o" && grep -F -- '--- PASS: TestReviewCallerFlow ' "$o")` | exit 0; named PASS. Fixture supervisor uses production queue/plan/preparation path plus monitor/report adapters with one observation per cutoff; no second actions/prs join, overlapping routine watch or duplicate effect occurs. |
-| 2 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewCallerRollback$' ./internal/deskkit/... > "$o" && grep -F -- '--- PASS: TestReviewCallerRollback ' "$o")` | exit 0; named PASS. Supported version matrix covers old producer/new skill, new producer/old skill and rollback; incompatible schema fails explicitly. Missed completion, stale head and failed watcher cannot produce idle/ready or drop prior findings. |
+| 2 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewCallerRollback$' ./internal/deskkit/... > "$o" && grep -F -- '--- PASS: TestReviewCallerRollback ' "$o")` | exit 0; named PASS. Supported version matrix covers old producer/new skill, new producer/old skill and rollback; incompatible schema fails explicitly. Missed completion, stale head and failed watcher cannot produce idle/ready or drop prior findings. One quarantined/degraded PR (including an external public PR) holds the complete cycle visibly; the supported compatibility recipe and recovery are qualified without dropping the PR or duplicating effects. |
 | 3 | check:ci +dereference | `statusgen --root . --consumers --brief desk-tools/43` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
 | 4 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewDriverParity$' ./... > "$o" && grep -F -- '--- PASS: TestReviewDriverParity ' "$o")` | exit 0; named PASS. actual prose/skill recipe adapter and existing reviewloop bridge produce the same limited-slot choices, holds and exact heads. Compatible watcher/caller reuse does not recollect; incompatible scope/time and moved head refresh or refuse. A caller-local ranker or omitted monitor-health obligation fails. |
 

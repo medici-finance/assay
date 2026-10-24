@@ -64,7 +64,7 @@ changed or discarded.
 
 | Tool | Verb(s) | Class | Write budget + breaker |
 |------|---------|-------|------------------------|
-| `deskboard` | `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
+| `deskboard` | `review-queue`, `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass), `land` (record a judgment exit for a parked item) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item, each also appended as an `intake-exit-v1` record to `<state dir>/intake-exits.jsonl` (schema: `spec/intake-exit-v1.md`) | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) / local state (`land`) | yes (`run`) |
@@ -1538,7 +1538,7 @@ The same probe rides on `deskboard actions`: its header carries `mainHealth`, th
 `MAIN-RED` / `MAIN-UNKNOWN` lines print **above** every row (a red `main` outranks a
 merge onto it), and each row on an affected repo is flagged `baseBranchRed` with a note.
 An **absent** `mainHealth` field means the verb did not probe — never that it found
-nothing wrong. `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
+nothing wrong. `review-queue`, `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
 `next-up`, `throughput`, `scope`, `policydrift`, `stalled`,
 `reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
 the absence for every verb on it (JSON **and** `--table`), `TestVerbInventory_Complete`
@@ -2014,7 +2014,7 @@ list of a subset means "no PRs in that repo" and "that repo is not read at all" 
 the same output, so a merge-ready PR in an unwatched repo is not missed — it is
 structurally invisible, and nothing knows to alert. Two halves:
 
-- **Every sweeping verb states its scope.** `prs`, `actions`, `queue`, `health`, `scope`,
+- **Every sweeping verb states its scope.** `review-queue` (requested/admitted/population in its observation), `prs`, `actions`, `queue`, `health`, `scope`,
   `policydrift`, `stalled` and `throughput` carry a `scope` object in the JSON header (repos, count, source) and
   print one scope line on `--table`. Verbs taking an explicit repo (`reviews`, `diff`,
   `files`) **omit** the field entirely — absent means "swept nothing", never "the set was
@@ -7812,3 +7812,12 @@ validation reads=0, reuse=0 on cold startup. The production candidate is availab
 only within that process. No current shipped entrypoint repeats activation, and
 no cross-process reuse or speedup is claimed. The mandatory fresh validation before
 any future reused return remains exercised by the in-package owner tests.
+
+### Frozen review queue and local selection
+
+`deskboard review-queue --out FILE` saves the complete review-observation-v1
+artifact and prints a compact generation/cutoff summary. `reviewloop plan
+--snapshot FILE --selection JSON --now RFC3339` joins it with explicit approved
+priorities/capacity using shared `PlanCandidates`, with zero network calls. See
+[the operator contract](../../docs/deskboard.md) for inputs, failure behavior,
+compatibility and the separately gated live-adoption boundary.

@@ -98,8 +98,10 @@ nothing measured.
    cell with two markers (`cmd-marker-ambiguous`), a marker that replaces a command-shaped
    first span (`cmd-marker-overrides-command`), and a `cmd:` span that is not honoured
    (`cmd-marker-not-honoured`), and a marked command that cannot fail — `true`, `:`,
-   `exit 0`, a lone `echo` — (`cmd-marker-vacuous`). A closed brief's `prose-led-command` rows collapse
-   into one summary NOTICE, since closed records are not rewritten.
+   `exit 0`, a lone `echo` — (`cmd-marker-vacuous`). Findings on a brief already `done` or `verified` at the merge-base are not rewritten: `statusgen --lint`
+   counts them per rule in one shared historical report (`[historical-notices]` lines and a totals
+   line) instead of printing each; `--lint --all` lists every one and `--lint --json` emits the
+   deterministic report. Active, newly closed and unknown-status briefs keep individual NOTICEs.
    The marker is `cmd:`, not `run:`: `run:` is the GitHub Actions step key, and a quoted
    workflow line in Verify prose must never become the command the witness executes.
 8. **Prose deliverables get PRESENCE gates; quality is the human gate (the honesty rule).**

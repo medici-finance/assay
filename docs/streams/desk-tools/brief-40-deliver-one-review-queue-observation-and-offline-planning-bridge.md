@@ -25,9 +25,14 @@ domain: complicated
 gate-why: Review/issue observations can expose scoped operational facts; implemented coverage and authority boundaries require the existing human acceptance.
 decision-trigger: spec
 consumers:
-  - "plugins/assay/skills/pr-review-desk/SKILL.md: follow-up desk-tools/40"
-  - "plugins/assay/scripts/pr-monitor.sh: follow-up desk-tools/40"
-  - "tools/desk/cmd/deskboard/throughput.go: follow-up desk-tools/40"
+  - "docs/deskboard.md: fixed-here"
+  - "docs/streams/desk-tools/brief-43-migrate-review-callers-with-qualified-versions-and-rollback.md: fixed-here"
+  - "tools/desk/cmd/deskboard/main.go: fixed-here"
+  - "tools/desk/cmd/reviewloop/plan.go: fixed-here"
+  - "docs/contracts.md: fixed-here"
+  - "plugins/assay/skills/pr-review-desk/SKILL.md: follow-up desk-tools/43"
+  - "plugins/assay/scripts/pr-monitor.sh: follow-up desk-tools/43"
+  - "tools/desk/cmd/deskboard/throughput.go: follow-up desk-tools/43"
 ---
 
 # Brief 40 — Deliver one review queue observation and offline planning bridge
@@ -54,8 +59,21 @@ design-fit:
   owner: deskboard collection adapter and reviewloop pure plan adapter over reviewflow
   contract: review-observation-v1 and approved spec A1–A3
   retires: duplicate work only after the applicable caller and equivalence acceptance
-  weight: verbs +1 review-queue, flags +2 at most, refusals +0 authority, rule-text +0 duplicate policy; legacy adapters retained temporarily
+  weight: verbs +1 review-queue, flags +2 at most, refusal call sites +5 (validation only; +0 authority), rule-text +0 duplicate policy; legacy adapters retained temporarily
   why-add: reuse existing contracts/runner/typed reads; a complete observation is required before removing the second read, and a new cache would preserve that duplication
+
+## Implementation pickup — 23 October 2026
+
+Pickup base `3e24567bb`; #4235 (desk-tools/39) and CLI port #3248 are merged.
+The existing dispatch claim was acquired before implementation. Command ownership
+remains deskboard/reviewloop; the operator contract is [docs/deskboard.md](../../deskboard.md).
+Legacy role skill, monitor and throughput migration belongs to existing /43, not a
+second /40 plan. No generated board or independent Evidence is advanced here.
+
+Implementation weight qualification: the counter reports flags 584→586 and refusal
+call sites 1441→1446. These five calls validate invocation shape; they add no grant
+or write authority. Its verb scan remains 71 because it does not inventory the Cobra
+command table; the actual CLI adds one verb, covered by the command inventory tests.
 
 ## Read first
 

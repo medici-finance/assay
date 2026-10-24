@@ -31,7 +31,7 @@ func verifyPortabilityNotices(streams []*Stream) []string {
 			}
 			verifyRowTable(bf.Verify, func(r verifyRowCells) {
 				if verifyPortability(r) {
-					notices = append(notices, fmt.Sprintf("%s: Verify row %s [verify-row-portability] OS-specific command without explicit OS marker; prefer Go tests or mktemp/${TMPDIR:-/tmp}", path, r.Num))
+					notices = append(notices, fmt.Sprintf("%s: Verify row %s [%s] OS-specific command without explicit OS marker; prefer Go tests or mktemp/${TMPDIR:-/tmp}", path, r.Num, ruleVerifyRowPortability))
 				}
 			})
 		}

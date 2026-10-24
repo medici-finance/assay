@@ -239,7 +239,7 @@ func productionWorktree(root, sha string) (string, func(), error) {
 // only its PROBLEM/NOTICE lines; the lint exit code is deliberately ignored (the audit
 // tallies firings, and a sample tree may legitimately be red on unrelated checks).
 func productionLintRunner(treeDir, executable string) []string {
-	cmd := exec.Command(executable, "--root", treeDir, "--lint")
+	cmd := exec.Command(executable, "--root", treeDir, "--lint", "--all") // --all: the audit tallies each rule firing, not the bounded summary
 	out, _ := cmd.CombinedOutput()
 	var lines []string
 	for _, l := range strings.Split(string(out), "\n") {

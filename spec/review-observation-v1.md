@@ -25,9 +25,10 @@ Unsupported schema/evaluator or mismatched policy revisions are schema errors.
 The library reads no environment, files, clocks, subprocesses, credentials or provider
 clients. `statusgen/evaluation` remains the owner of eligibility/coverage semantics.
 This package is internal to `tools/desk`; a different module cannot import it.
-Public serving extraction belongs to forge-neutral/39. Collection and the eventual
-CLI handoff belong to desk-tools/40; dispatcher adoption belongs to desk-tools/41.
-There are no new CLI flags in this change.
+Public serving extraction belongs to forge-neutral/39. The library extraction
+introduced no CLI flags. Desk-tools/40 now supplies collection and the direct-reader
+CLI handoff below; desk-tools/41 owns dispatcher preparation and its `--observation`
+handoff, while desk-tools/43 owns live caller adoption.
 
 ## Scope, identity and population
 
@@ -197,3 +198,11 @@ the source/input ordering disagrees with the selected order. It covers changed p
 on the same source, zero capacity, 111 candidates, second-root-only work, host-qualified joins,
 unmapped and unobserved entries, high-ranked holds/watch rows, shuffled inputs, stale/partial
 and contradictory observations, repeated pure execution and the closed import boundary.
+
+## Direct-reader command adapters
+
+Desk-tools/40 delivers `deskboard review-queue --out FILE` and
+`reviewloop plan --snapshot FILE --selection JSON --now RFC3339` over this contract.
+The [operator contract](../docs/deskboard.md) specifies scope/source-policy binding,
+explicit freshness/capacity and compatibility. Both planning adapters reuse the
+shared library; no independent sorter or live consumer migration is introduced.

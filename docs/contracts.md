@@ -449,6 +449,10 @@ with explicit owner/revision/evaluator and visible unmapped/not-observed entries
 `ClassificationFacts.ClassifyInput` and `PlanBoard` also serve the existing
 `deskboard` and `reviewloop plan` adapters; neither command imports another command.
 `statusgen/evaluation` retains eligibility and coverage semantics.
+`deskboard review-queue` now collects that observation through the existing typed
+queue/pools; `reviewloop plan --snapshot` calls `PlanCandidates` locally. The
+[operator contract](deskboard.md) defines explicit selection invocation inputs,
+complete-artifact/refusal behavior, compatibility and the /43 adoption boundary.
 
 The operational adapter owns trust admission, reviewer identity, stale-grant
 filtering, latest-check selection, body-edit verification and rank inputs. Independent
