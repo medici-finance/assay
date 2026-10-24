@@ -551,14 +551,16 @@ func cmdAdd(args []string) (err error) {
 	// Local-only verb: NO AllowWrite (deskkit/ratelimit.go "Verb classes"). Constructed
 	// argv only; no caller flag reaches git, and no --force exists.
 	if *detach {
-		if _, aerr := runGit(dir, "worktree", "add", "--detach", target, *base); aerr != nil {
-			return deskkit.Unverifiable("git worktree add --detach failed: could not check out "+*base+" at "+target, aerr)
+		if _, gerrText, aerr := runGitStreams(dir, "worktree", "add", "--detach", target, *base); aerr != nil {
+			return deskkit.Unverifiable("git worktree add --detach failed: could not check out "+*base+" at "+target+
+				rollbackFailedAdd(guard, dir, target, gerrText), aerr)
 		}
 	} else if *upstream != "" {
 		// Checkout uses the immutable commit; tracking is configured separately.
 		// --no-track also overrides branch.autoSetupMerge from operator config.
-		if _, aerr := runGit(dir, "worktree", "add", "--no-track", "-b", br, target, *base); aerr != nil {
-			return deskkit.Unverifiable("git worktree add failed at pinned commit "+*base, aerr)
+		if _, gerrText, aerr := runGitStreams(dir, "worktree", "add", "--no-track", "-b", br, target, *base); aerr != nil {
+			return deskkit.Unverifiable("git worktree add failed at pinned commit "+*base+
+				rollbackFailedAdd(guard, dir, target, gerrText), aerr)
 		}
 		if _, uerr := runGit(target, "branch", "--set-upstream-to", *upstream, br); uerr != nil {
 			if rerr := removeWorktreeDir(guard, dir, resolvePath(target)); rerr != nil {
@@ -566,11 +568,11 @@ func cmdAdd(args []string) (err error) {
 			}
 			return deskkit.Unverifiable("cannot set pinned worktree upstream; worktree rolled back", uerr)
 		}
-	} else if _, aerr := runGit(dir, "worktree", "add", "--track", "-b", br, target, *base); aerr != nil {
+	} else if _, gerrText, aerr := runGitStreams(dir, "worktree", "add", "--track", "-b", br, target, *base); aerr != nil {
 		// Name what was attempted. A failure here is the operator's work item, and a message
 		// that says only "it failed" sends them to raw git to find out what.
 		return deskkit.Unverifiable("git worktree add failed: could not create branch "+br+" at "+target+
-			" off "+*base, aerr)
+			" off "+*base+rollbackFailedAdd(guard, dir, target, gerrText), aerr)
 	}
 	// Positively verify the worktree now exists (prove success, don't assume it).
 	set, lerr := guard.worktreePaths(dir)
