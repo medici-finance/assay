@@ -161,8 +161,10 @@ const attestedHead = restampHead + renderHuman + "Verification-Attestation: exam
 func TestStampAppendAfterAttest(t *testing.T) {
 	const appRunRow = "| 5 | `e` | 0 | ok | 2026-10-14 | " + renderApp + " |\n"
 	same := "| # | Command | Exit | Result | Date | Runner |\n|---|---|---|---|---|---|\n" + appRunRow
-	own := "| # | Command | Exit | Result | Runner | Date |\n|---|---|---|---|---|---|\n" +
-		"| 5 | `e` | 0 | ok | " + renderApp + " | 2026-10-14 |\n"
+	// Date sits immediately left of Runner, as the attribution preflight requires of an
+	// execution row, so only the header differs from the base's.
+	own := "| # | Command | Result | Exit | Date | Runner |\n|---|---|---|---|---|---|\n" +
+		"| 5 | `e` | ok | 0 | 2026-10-14 | " + renderApp + " |\n"
 	for _, tc := range []struct{ name, content string }{
 		{"merged-same-header", mergedEvidence(t, attestedHead, same)},
 		{"merged-own-header", mergedEvidence(t, attestedHead, own)},

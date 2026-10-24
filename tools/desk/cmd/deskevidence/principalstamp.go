@@ -262,7 +262,7 @@ func stampEvidencePrincipal(content, base []byte, resolve func() (string, error)
 			// comments included, since a renderer can show a comment's text.
 			if showsAppRun(orig[sp[0]:sp[1]]) {
 				return nil, nil, deskkit.Refused(fmt.Sprintf("refused: the Evidence row at line %d has a Runner cell "+
-					"this tool cannot read the way the lint does (it holds the markup character `%c`, and a renderer "+
+					"this tool cannot read the way the lint does (it holds %s, and a renderer "+
 					"shows it as an App-run Runner cell the lint does not read as one), so it cannot check or stamp "+
 					"its on-behalf-of principal — nothing was written. Land the row with a plain Runner cell: %s",
 					start+i+1, shownMarkup(orig[sp[0]:sp[1]]), strings.TrimSpace(orig)))
@@ -553,7 +553,12 @@ func linkReadings(s string) []string {
 func shownTexts(s string) []string {
 	var out []string
 	for _, c := range commentReadings(s) {
-		for _, v := range linkReadings(c) {
+		// The shortcut reading takes every balanced `[text]` as a reference link whose
+		// definition stands somewhere in the brief (or on another branch), since a renderer
+		// shows its text and not its brackets whenever a definition resolves; it is a reading
+		// of what could be shown, never of link syntax (see linkSyntax).
+		readings := append(linkReadings(c), reduceLinksMode(c, true, true))
+		for _, v := range readings {
 			v = htmlTagRe.ReplaceAllString(v, "")
 			out = append(out, strings.TrimSpace(runnerMarkupRe.ReplaceAllString(html.UnescapeString(v), "")))
 		}
@@ -574,6 +579,14 @@ var (
 // spans are copied as written, since a renderer reads no link inside them. A bracket that opens
 // no link is copied, and the text after it is read on.
 func reduceLinks(s string, keepAlt bool) string {
+	return reduceLinksMode(s, keepAlt, false)
+}
+
+// reduceLinksMode is reduceLinks that, with shortcuts set, also reduces a balanced `[text]`
+// (or `![alt]`) that opens no inline or full reference link to its (reduced) text: a shortcut
+// reference link, which a renderer shows as its text once a `[text]: destination` definition
+// stands anywhere the renderer reads.
+func reduceLinksMode(s string, keepAlt, shortcuts bool) string {
 	var b strings.Builder
 	for i := 0; i < len(s); {
 		c := s[i]
@@ -601,10 +614,19 @@ func reduceLinks(s string, keepAlt bool) string {
 			}
 			if text, end, ok := linkAt(s, open); ok {
 				if c == '[' || keepAlt {
-					b.WriteString(reduceLinks(text, keepAlt))
+					b.WriteString(reduceLinksMode(text, keepAlt, shortcuts))
 				}
 				i = end
 				continue
+			}
+			if shortcuts {
+				if close := closingBracket(s, open); close > open {
+					if c == '[' || keepAlt {
+						b.WriteString(reduceLinksMode(s[open+1:close], keepAlt, shortcuts))
+					}
+					i = close + 1
+					continue
+				}
 			}
 		}
 		b.WriteByte(c)
@@ -748,24 +770,74 @@ func inlineDestinationEnd(s string, p int) int {
 	return -1
 }
 
-// shownMarkup returns the first character in s that shownTexts strips, decodes or reduces (an
-// HTML tag or comment bracket, an entity, emphasis, strikethrough, code or escape character,
-// then link or image syntax), or '?' when there is none.
-func shownMarkup(s string) rune {
+// shownMarkup describes the first thing in s that shownTexts or readerFold strips, decodes or
+// reduces, for a refusal: an HTML tag or comment bracket, an entity, emphasis, strikethrough,
+// code or escape character, then a character a reader cannot tell from another (a non-ASCII
+// character or a tab), then link or image syntax, then a `[bot]` login followed by something a
+// reader takes no differently from a space.
+func shownMarkup(s string) string {
 	if i := strings.IndexAny(s, "<>&*_~`\\"); i >= 0 {
-		return rune(s[i])
+		return fmt.Sprintf("the markup character `%c`", s[i])
+	}
+	for _, r := range s {
+		if r > unicode.MaxASCII || r == '\t' {
+			return fmt.Sprintf("the character U+%04X", r)
+		}
+	}
+	if readerAppRun(readerFold(s)) {
+		return "a login ending `[bot]` followed by something other than a space or `(`"
 	}
 	if i := strings.IndexAny(s, "[]!"); i >= 0 {
-		return rune(s[i])
+		return fmt.Sprintf("the markup character `%c`", s[i])
 	}
-	return '?'
+	return "markup"
+}
+
+// readerFold returns s as a reader takes it, for deciding whether it opens with an App login:
+// invisible format characters (zero-width and bidirectional marks, soft hyphens) and combining
+// marks dropped; a non-ASCII opening or closing bracket (fullwidth ones included) read as `[`
+// or `]`; and any other non-ASCII letter or digit, which may be a lookalike for an ASCII one,
+// read as `?`.
+func readerFold(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r <= unicode.MaxASCII:
+			b.WriteRune(r)
+		case unicode.In(r, unicode.Cf, unicode.Mn, unicode.Me, unicode.Mc):
+		case unicode.Is(unicode.Ps, r):
+			b.WriteByte('[')
+		case unicode.Is(unicode.Pe, r):
+			b.WriteByte(']')
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteByte('?')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+var (
+	// readerAppRunRe matches text, after readerFold, that opens with an App login: an
+	// identifier (a `?` stands for any letter) directly followed by `[bot]` (its letters
+	// likewise), whatever follows. A reader takes that as App-run text however the lint splits
+	// the cell.
+	readerAppRunRe = regexp.MustCompile(`(?i)^[a-z0-9?][a-z0-9?._-]*\[[b?][o?][t?]\]`)
+	// readerBotRe matches a `[bot]` tag anywhere in readerFold text.
+	readerBotRe = regexp.MustCompile(`(?i)\[[b?][o?][t?]\]`)
+)
+
+// readerAppRun reports whether folded text (see readerFold) opens with an App login.
+func readerAppRun(folded string) bool {
+	return readerAppRunRe.MatchString(strings.TrimSpace(folded))
 }
 
 // showsAppRun reports whether a cell shows a reader an App-run Runner cell in any of its
-// shown texts.
+// shown texts, as the lint reads one or as a reader does (see readerFold).
 func showsAppRun(cell string) bool {
 	for _, t := range shownTexts(cell) {
-		if isAppRunnerCell(t) {
+		if isAppRunnerCell(t) || readerAppRun(readerFold(t)) {
 			return true
 		}
 	}
@@ -776,7 +848,8 @@ func showsAppRun(cell string) bool {
 // of its shown texts.
 func showsAttribution(line string) bool {
 	for _, t := range shownTexts(line) {
-		if t = strings.ToLower(t); strings.Contains(t, "[bot]") || strings.Contains(t, onBehalfOfCellMarker) {
+		if t = strings.ToLower(t); strings.Contains(t, "[bot]") || strings.Contains(t, onBehalfOfCellMarker) ||
+			readerBotRe.MatchString(readerFold(t)) {
 			return true
 		}
 	}

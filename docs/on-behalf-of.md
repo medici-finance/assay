@@ -272,8 +272,19 @@ same roster's human set:
     `<span>…[bot]</span>`, `**…[bot]**`, `_…[bot]_` and a login in a code span. Link, image
     and autolink syntax is read as the text a renderer shows for it (a link's text, an image's
     alt text both shown and not shown, an autolink's address), and a closed HTML comment both
-    hidden and shown; a cell or line shows App-run text when any of these readings does, and
-    every check of what a cell, line or heading shows uses them. An App Runner cell holding
+    hidden and shown; a bracketed `[text]` that opens no link is also read as a shortcut
+    reference link (its text shown, since a definition elsewhere in the brief can resolve it).
+    A cell or line shows App-run text when any of these readings does, and every check of what
+    a cell, line or heading shows uses them. A reader also takes a cell that opens with an App
+    login as App-run whatever follows `[bot]` (a space-like character, a tab, punctuation),
+    and cannot tell several characters from the ones the lint reads: invisible format
+    characters and combining marks (also as entities) are dropped, a fullwidth or other
+    non-ASCII bracket reads as `[` or `]`, and a non-ASCII letter reads as a possible
+    lookalike for an ASCII one. A Runner cell the lint does not read as App-run is refused
+    when, after that folding, it opens with an identifier directly followed by `[bot]`, so
+    `name[bot]\u00a0@ …`, `name[bo\u200bt]`, `name[bot]:` and `[name\[bot\]]` are refused;
+    `[bot]` later in a cell (`human:operator (via name[bot] review)`), a model tag and a human
+    name with a non-ASCII letter land. An App Runner cell holding
     `<`, `>`, `&`, `~` or `\`, or link, image or autolink syntax, is refused as unreadable
     (above); brackets that open no link, such as a model tag, are left alone.
   - **Headers.** A header the landing adds, or adds rows under, is refused when a reader can

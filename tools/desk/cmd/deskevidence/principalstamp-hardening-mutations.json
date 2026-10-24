@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest)$' -count=1 -timeout=300s",
+  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed)$' -count=1 -timeout=300s",
   "control": {
     "name": "unreadable-cell refusal not consulted",
     "file": "cmd/deskevidence/principalstamp.go",
@@ -516,6 +516,42 @@
       "file": "cmd/deskevidence/principalstamp.go",
       "old": "return j == n-1",
       "new": "return true"
+    },
+    {
+      "name": "a Runner cell a reader takes as App-run is read as the lint reads it",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if isAppRunnerCell(t) || readerAppRun(readerFold(t)) {",
+      "new": "if isAppRunnerCell(t) {"
+    },
+    {
+      "name": "a line closing a table is not read the way a reader folds it",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "strings.Contains(t, onBehalfOfCellMarker) ||\n\t\t\treaderBotRe.MatchString(readerFold(t)) {",
+      "new": "strings.Contains(t, onBehalfOfCellMarker) {"
+    },
+    {
+      "name": "a shortcut reference link is not reduced to its text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "readings := append(linkReadings(c), reduceLinksMode(c, true, true))",
+      "new": "readings := linkReadings(c)"
+    },
+    {
+      "name": "a format character or combining mark is kept",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case unicode.In(r, unicode.Cf, unicode.Mn, unicode.Me, unicode.Mc):\n",
+      "new": "case false:\n"
+    },
+    {
+      "name": "a non-ASCII letter is not read as a possible lookalike",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case unicode.IsLetter(r) || unicode.IsDigit(r):\n\t\t\tb.WriteByte('?')",
+      "new": "case false:\n\t\t\tb.WriteByte('?')"
+    },
+    {
+      "name": "a non-ASCII bracket is not read as a bracket",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case unicode.Is(unicode.Ps, r):\n\t\t\tb.WriteByte('[')\n\t\tcase unicode.Is(unicode.Pe, r):\n\t\t\tb.WriteByte(']')\n",
+      "new": ""
     }
   ]
 }
