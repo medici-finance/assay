@@ -92,11 +92,40 @@ func TestRunnersAgree(t *testing.T) {
 		{"k3-verifier", "assay-worker-app", false, "two different actors do not agree"},
 		{"k3-verifier", "opus-verifier", false, "two distinct verifier tokens do not agree"},
 		{"", "opus-verifier", true, "an empty side never manufactures a disagreement"},
+		{"assay-verifier-app[bot]", "model-verifier (assay-verifier-app[bot]) @ abc123", true, "an explicitly named forge actor is an alias, not a different executor"},
+		{"assay-verifier-app[bot]", "model-verifier (assay-worker-app[bot]) @ abc123", false, "different explicit forge actors must still disagree"},
+		{"assay-verifier-app[bot]", "model-verifier (assay-verifier-app[bot]-copy)", false, "an alias-shaped prefix of a different actor is not an alias"},
+		{"assay-verifier-app[bot]", "assay-worker-app[bot] (published by assay-verifier-app[bot])", false, "two distinct declared actors cannot establish an alias"},
 	}
 	for _, c := range cases {
 		if got := runnersAgree(c.cell, c.evidence); got != c.want {
 			t.Errorf("runnersAgree(%q, %q) = %v, want %v — %s", c.cell, c.evidence, got, c.want, c.why)
 		}
+	}
+}
+
+func TestEvidenceRunnerSameDayIsNotChronology(t *testing.T) {
+	rows := "| # | Date | Runner |\n|---|---|---|\n" +
+		"| 1 | 2026-09-25 | implementer |\n\n" +
+		"| # | Date | Runner |\n|---|---|---|\n" +
+		"| 1 | 2026-09-25 | independent-verifier |\n"
+	if raw, n, total, ok := evidenceRunnerTally(rows); ok || raw != "" || n != 0 || total != 1 {
+		t.Fatalf("same-date conflicting actors cannot establish which ran last: %q %d/%d ok=%v", raw, n, total, ok)
+	}
+	// A dated later run resolves the ambiguity; no row is permanently excluded.
+	rows += "\n| # | Date | Runner |\n|---|---|---|\n| 1 | 2026-09-26 | independent-verifier |\n"
+	if raw, n, total, ok := evidenceRunnerTally(rows); !ok || raw != "independent-verifier" || n != 1 || total != 1 {
+		t.Fatalf("later dated run must resolve the actor: %q %d/%d ok=%v", raw, n, total, ok)
+	}
+}
+
+func TestAmbiguousRunnersCannotInflateAMajority(t *testing.T) {
+	rows := "| # | Date | Runner |\n|---|---|---|\n" +
+		"| 1 | 2026-09-25 | implementer |\n| 2 | 2026-09-25 | independent-verifier |\n| 3 | 2026-09-25 | independent-verifier |\n\n" +
+		"| # | Date | Runner |\n|---|---|---|\n| 2 | 2026-09-25 | other-verifier |\n| 3 | 2026-09-25 | other-verifier |\n"
+	_, n, total, _ := evidenceRunnerTally(rows)
+	if n != 1 || total != 3 || n*2 > total {
+		t.Fatalf("ambiguous rows remain in the denominator: %d/%d", n, total)
 	}
 }
 

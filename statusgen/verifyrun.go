@@ -1601,14 +1601,14 @@ func checkExitCode(findings []checkFinding) int {
 // witnessNotices flags a brief the stream README calls `verified`/`done` whose
 // Evidence carries no execution witness for one or more Verify rows.
 //
-// SEVERITY — NOTICE, not PROBLEM, and for the same reason gate-why and
-// unfailableRowNotices are NOTICEs: every brief closed before this mechanism
-// existed lacks witnesses by construction. A hard error would red main on merge,
-// and the only way to green it would be to write witnesses into already-closed
-// briefs — retroactively manufacturing evidence for runs nobody performed, which
-// is precisely the falsification the witness exists to prevent. So: NOTICE now,
-// visible on every run, backfill the ACTIVE streams, then flip to a hard problem
-// once main is clean. The phased path is the established one in this codebase.
+// SEVERITY — NOTICE here; witnessAbsenceGateChecks separately rejects a NEW
+// closure when a readable merge-base establishes the transition. An inherited
+// closure need not predate verifyrun: the runner existed before the absence gate,
+// and this function does not inspect closure history at all. Narrative Evidence
+// can describe a real verification without the structured command/output record
+// a witness supplies. Absence alone proves neither non-execution nor closure age.
+// Preserve those historical records; never synthesize witnesses for old runs.
+// Any independent re-verification records a NEW run rather than backdating one.
 // ROLLED UP PER STREAM, not per brief. The unwitnessed set is the entire corpus
 // closed before this mechanism existed — 141 briefs on main the day it landed —
 // and 141 lines would have grown `--lint`'s notice output by half, drowning the
@@ -1660,7 +1660,7 @@ func witnessNotices(streams []*Stream) []string {
 			continue
 		}
 		notices = append(notices, fmt.Sprintf(
-			"%s: %d closed brief(s) carry Verify rows with no EXECUTION WITNESS in Evidence — %s. The Evidence says the rows were run; nothing records a run. `statusgen verifyrun --brief %s` writes one. NOTICE this phase: a brief closed before the witness existed cannot have one, and hand-writing witnesses into closed briefs to green the gate would manufacture exactly the evidence the witness exists to replace",
+			"%s: %d closed brief(s) carry Verify rows with no EXECUTION WITNESS in Evidence — %s. These rows lack structured run records; narrative Evidence may still describe verification. Absence alone establishes neither non-execution nor closure age. New closures are gated separately. Preserve historical Evidence; never fabricate past witnesses. When independent re-verification is appropriate, `statusgen verifyrun --brief %s` records a NEW run",
 			s.Name, len(offenders), strings.Join(offenders, ", "), firstPath))
 	}
 	sort.Strings(notices)
