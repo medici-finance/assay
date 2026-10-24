@@ -9,7 +9,7 @@ why: >-
   `plugins/assay/skills/install/SKILL.md` §Scope still frames Windows as an ACQUISITION arm only
   ("The statusgen binary acquisition in step 3 is the only OS-specific arm", :249-251), and
   `docs/adopting-assay.md:978-987` still says the Windows CI leg "lives at
-  `ci/staged-workflows/windows-ci-leg.yml`, *not yet* under `.github/workflows/`" — which it does,
+  `windows-ci-leg.yml` (staged copy, retired #4106), *not yet* under `.github/workflows/`" — which it does,
   and has since the promotion commit, with `windows-port/04` recorded `done` on this stream's own
   board. A doc that understates a shipped capability is the same defect class as one that
   overstates an unshipped one: the reader cannot act on it.
@@ -71,7 +71,7 @@ files:
 - **edit** `plugins/assay/references/cursor.md` — the five manual steps (:11-25) become a pointer.
 - **edit** `docs/streams/windows-port/README.md` — the stream's end-state paragraph.
 - **create** `changelog/<branch-slug>.md` — this repo enforces a per-PR fragment.
-- **do NOT** edit `.github/workflows/windows-ci-leg.yml` — this brief corrects the doc's
+- **do NOT** edit `windows-ci-leg.yml` (live copy, retired #4106) — this brief corrects the doc's
   DESCRIPTION of it, not the workflow.
 
 facts:
@@ -89,8 +89,8 @@ facts:
   an overstatement, which is worse.
 - **The CI-leg claim is stale, and the board already disagrees with it.**
   `docs/adopting-assay.md:978-987` says the Windows leg "lives at
-  `ci/staged-workflows/windows-ci-leg.yml`, *not yet* under `.github/workflows/`" and is therefore
-  "pending promotion, not a live green check". At the freshness head `.github/workflows/windows-ci-leg.yml`
+  `windows-ci-leg.yml` (staged copy, retired #4106), *not yet* under `.github/workflows/`" and is therefore
+  "pending promotion, not a live green check". At the freshness head `windows-ci-leg.yml` (live copy, retired #4106)
   exists, carrying `windows-smoke` (:77), `windows-bootstrap-smoke` (:141) and a deliberately
   never-scheduled `arm64-native-smoke` (:171, `if: false`); `windows-port/04` is recorded `done` on
   this stream's board (verified 2026-09-06, reviewed 2026-09-08). Note the file ALSO still exists

@@ -461,8 +461,8 @@ priority: P1
 // written by verify-gate-close.yml) was reported as a gain.
 //
 // This runs relPath's core logic directly against both separator styles so
-// the regression is caught on ANY OS in CI, not only rediscovered on the
-// windows-smoke leg.
+// the regression is caught on ANY OS in CI. No native-Windows CI leg runs
+// since #4106, so this is the only place it is caught.
 func TestRelPath_HandlesBothSeparatorStyles(t *testing.T) {
 	cases := []struct {
 		name string

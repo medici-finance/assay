@@ -1024,16 +1024,6 @@
       "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
     },
     {
-      "executable": "windows-bootstrap-hashcheck-smoke.ps1",
-      "path": "scripts/windows-bootstrap-hashcheck-smoke.ps1",
-      "module": "pwsh",
-      "parser_owner": "desktools-v2/35",
-      "parser_state": "pending",
-      "context": "standalone-gap",
-      "owner": "desktools-v2/35",
-      "gap": "No qualified typed context handoff; adopt public perfrec through the existing CLI or runtime owner without importing desk internals."
-    },
-    {
       "executable": "lintbench.sh",
       "path": "statusgen/bench/lintbench.sh",
       "module": "bash",

@@ -284,7 +284,7 @@ this brief has not landed. No dependency in either direction is introduced.
 
 - All fourteen Verify rows pass on Linux (the suite's home). Rows 1–3 and 8 also pass on the
   `windows-latest` leg that desktools-v2/13 deliverable 4 adds, once that leg lands.
-  **NOTE — when that Windows proof runs.** Today `.github/workflows/windows-ci-leg.yml`
+  **NOTE — when that Windows proof runs.** Today `windows-ci-leg.yml` (live copy, retired #4106)
   triggers only on a `v*` tag push and on `workflow_dispatch`, not on `pull_request`. Unless
   desktools-v2/13's staged workflow patch adds a `pull_request` trigger and a human applies
   it, the Windows pass for rows 1–3 and 8 is proven at release time (or by a manual dispatch),

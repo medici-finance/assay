@@ -20,7 +20,7 @@ import (
 // TestConsumedChangelogFragmentUnreadableHistoryIsCouldNotCheck already covers.
 // That test's tree never had a git repo; this one has a full, real history with
 // the fragment genuinely committed-then-removed, cloned down to depth 1 — the
-// exact shape GitHub Actions hands `lint`/`windows-smoke` on every PR.
+// exact shape GitHub Actions hands `lint` on every PR.
 func TestConsumedFragmentIndexShallowCloneIsCouldNotCheck(t *testing.T) {
 	full, _ := writeConsumedFragmentFixture(t, true)
 

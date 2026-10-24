@@ -76,7 +76,7 @@ files:
   desk containers run (statusgen ships in it — docs/docker.md); there is no separate `assay-harness`
   image. The committed `digest:` is a fail-closed **placeholder** until a maintainer harvests the
   real registry digest.
-- **add** two jobs to the staged `ci/staged-workflows/windows-ci-leg.yml` (a maintainer promotes it
+- **add** two jobs to the staged `windows-ci-leg.yml` (staged copy, retired #4106) (a maintainer promotes it
   into `.github/workflows/` — gate:human, same as windows-port/04): `verify-in-container` (the live
   witness-lands proof) and a held `windows-verify-in-container` (native-Windows-Docker, BLOCKED).
 - **edit** `docs/adopting-assay.md` §Windows adopters — state that the container is THE supported
@@ -117,7 +117,7 @@ the CI leg's fail-closed step reddens if it ever stops refusing.
 ## Human decision
 <!-- decision-trigger: creation — the fork is nameable now; filed as the brief lands. Self-contained. -->
 
-This leg touches a workflow-file path (`ci/staged-workflows/windows-ci-leg.yml` → promoted into
+This leg touches a workflow-file path (`windows-ci-leg.yml` (staged copy, retired #4106) → promoted into
 `.github/workflows/`), which is gate:human territory: an agent credential cannot push a workflow
 file, and promotion needs a workflow-scoped human credential. Two human acts are owed:
 

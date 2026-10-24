@@ -61,7 +61,7 @@ files:
   keeps the verify-or-refuse, and writes the user PATH entry.
 - **edit** `scripts/windows-bootstrap-hashcheck-smoke.ps1` — add the manifest negative-path
   assertions (tampered manifest, absent platform line) alongside the three it already runs.
-- **edit** `.github/workflows/windows-ci-leg.yml` — the `windows-bootstrap-smoke` step no longer
+- **edit** `windows-ci-leg.yml` (live copy, retired #4106) — the `windows-bootstrap-smoke` step no longer
   pre-extracts tag+sha in bash (lines 156-162); it calls the driver, which calls the script that
   resolves them. **NOTE:** an App credential cannot push a workflow file — stage the workflow edit
   in the PR and name it for a maintainer, exactly as `windows-port/04` did.
@@ -169,7 +169,7 @@ check before it ever reaches the download comparison. NONE is not the answer her
    and installs nothing. Keep its existing non-vacuity assertion shape — a check-removed copy must
    still let the bad input through — so a green refusal cannot be vacuous.
 7. **Simplify the CI step to prove the script does the work.** In
-   `.github/workflows/windows-ci-leg.yml`, drop the bash pre-extraction at lines 156-162 and pass
+   `windows-ci-leg.yml` (live copy, retired #4106), drop the bash pre-extraction at lines 156-162 and pass
    only the tag; the step passing is then evidence that the SCRIPT resolved the sha, because
    nothing else did.
 8. **Add the changelog fragment** (`changelog/<branch-slug>.md`), one or more highlight bullets.

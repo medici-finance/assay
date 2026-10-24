@@ -1016,8 +1016,6 @@
         "docs/adopting-assay.md",
         "plugins/assay/skills/install/SKILL.md",
         "scripts/bootstrap-windows.ps1",
-        ".github/workflows/windows-ci-leg.yml",
-        "ci/staged-workflows/windows-ci-leg.yml",
         "docs/cellctl-cadence.md"
       ],
       "parser": "manual os.Args parsing",
@@ -1181,8 +1179,7 @@
         "tools/desk/README.md",
         "docs/contracts.md",
         "plugins/assay/skills/pr-review-desk/SKILL.md",
-        "plugins/assay/skills/pr-review-desk/references/verdict-format.md",
-        ".github/workflows/windows-ci-leg.yml"
+        "plugins/assay/skills/pr-review-desk/references/verdict-format.md"
       ],
       "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
       "complexity": "complex",
@@ -2261,11 +2258,9 @@
       "path": "scripts/bootstrap-windows.ps1",
       "kind": "script",
       "module": "pwsh",
-      "release": "repo tooling; run by windows-ci-leg.yml",
+      "release": "repo tooling; run by adopters on Windows (no CI caller)",
       "consumers": [
         "docs/adopting-assay.md",
-        ".github/workflows/windows-ci-leg.yml",
-        "ci/staged-workflows/windows-ci-leg.yml",
         "ci/staged-workflows/README.md",
         "plugins/assay/skills/install/SKILL.md"
       ],
@@ -2292,24 +2287,6 @@
       "parser": "PowerShell param block",
       "complexity": "simple",
       "basis": "485 lines at 3ad1ad83c871",
-      "owner": "desktools-v2/35",
-      "state": "pending"
-    },
-    {
-      "executable": "windows-bootstrap-hashcheck-smoke.ps1",
-      "path": "scripts/windows-bootstrap-hashcheck-smoke.ps1",
-      "kind": "script",
-      "module": "pwsh",
-      "release": "repo tooling; run by windows-ci-leg.yml",
-      "consumers": [
-        "ci/staged-workflows/README.md",
-        ".github/workflows/windows-ci-leg.yml",
-        "ci/staged-workflows/windows-ci-leg.yml",
-        "docs/adopting-assay.md"
-      ],
-      "parser": "PowerShell param block",
-      "complexity": "simple",
-      "basis": "177 lines at 3ad1ad83c871",
       "owner": "desktools-v2/35",
       "state": "pending"
     },

@@ -29,6 +29,11 @@ import (
 // directory, i.e. the checkout) or is the checkout itself. A planted instance —
 // the pre-fix step, verbatim in shape — is the positive control, so a matcher that
 // silently stops matching fails instead of reporting clean.
+//
+// The CI leg that carried the only in-container invocations was retired with the
+// rest of the native-Windows CI (#4106), so the tree may hold none. The guard stays
+// armed for any workflow that adds one back; the planted control is what keeps it
+// from reporting clean on a broken matcher, and an empty workflow scan still fails.
 
 // vicCommittedRoots are the `--root` spellings that name the checkout itself.
 var vicCommittedRoots = map[string]bool{
@@ -90,12 +95,11 @@ func TestInContainerCIRoots(t *testing.T) {
 		}
 		files = append(files, m...)
 	}
-	staged := filepath.Join(repo, "ci", "staged-workflows", "windows-ci-leg.yml")
-	if _, err := os.Stat(staged); err != nil {
-		if _, gerr := os.Stat(filepath.Join(repo, ".github", "workflows")); gerr == nil {
-			t.Fatalf("full checkout but %s is unreadable (%v) — the guard would check nothing", staged, err)
-		}
-		t.Skipf("%s absent in this subset tree", staged)
+	if _, err := os.Stat(filepath.Join(repo, ".github", "workflows")); err != nil {
+		t.Skipf(".github/workflows absent in this subset tree")
+	}
+	if len(files) == 0 {
+		t.Fatalf("full checkout but no workflow file found — the guard would check nothing")
 	}
 	sort.Strings(files)
 	seen := 0
@@ -114,31 +118,20 @@ func TestInContainerCIRoots(t *testing.T) {
 		bad = append(bad, vicCommittedRootSites(filepath.ToSlash(f), body)...)
 	}
 	if seen == 0 {
-		t.Fatalf("no in-container invocation found in %d workflow files — the guard checked nothing", len(files))
+		t.Logf("no in-container invocation in %d workflow files; the planted control above proves the matcher", len(files))
 	}
 	for _, b := range bad {
 		t.Errorf("in-container CI run against the committed tree: %s — point it at a scratch/fixture root", b)
 	}
 }
 
-// TestFailClosedStepToken couples the staged leg's fail-closed step to the
-// launcher's own refusal line: the step must assert the refusal TOKEN (never
-// merely a non-zero exit), and the launcher must still print that token when it
-// refuses a placeholder, so the two cannot drift apart silently.
+// TestFailClosedStepToken pins the launcher's own refusal line: when it refuses a
+// placeholder digest it must exit could-not-run AND print the refusal TOKEN, so a
+// caller can tell a real refusal from any other non-zero exit. It once also
+// coupled a CI fail-closed step to that token; that step was retired with the
+// native-Windows CI leg (#4106), and the launcher half stands on its own.
 func TestFailClosedStepToken(t *testing.T) {
 	const token = "refusing to run"
-	staged := filepath.Join("..", "ci", "staged-workflows", "windows-ci-leg.yml")
-	raw, err := os.ReadFile(staged)
-	if err != nil {
-		if _, gerr := os.Stat(filepath.Join("..", ".github", "workflows")); gerr == nil {
-			t.Fatalf("full checkout but %s is unreadable: %v", staged, err)
-		}
-		t.Skipf("%s absent in this subset tree", staged)
-	}
-	if !strings.Contains(string(raw), "grep -q '"+token+"'") {
-		t.Errorf("%s: the fail-closed step no longer asserts the launcher's %q line — a non-zero exit alone is not a refusal", staged, token)
-	}
-
 	root := t.TempDir()
 	writePairedVersions(t, root, "  digest: PENDING-HARVEST-x\n")
 	writeFileWP10(t, filepath.Join(root, "b.md"), "# b\n")

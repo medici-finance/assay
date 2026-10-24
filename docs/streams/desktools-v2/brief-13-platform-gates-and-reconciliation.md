@@ -57,7 +57,7 @@ files:
 - `tools/desk/scripts/forge-ban.sh` + NEW `tools/desk/scripts/forge-ban-probe.sh` (planned) — classes e and f, still advisory.
 - `docs/streams/desktools-v2/forge-ban-baseline.txt` — the `desktools-v2/13` line.
 - `statusgen/` — the Verify-row portability NOTICE and its test.
-- `.github/workflows/ci.yml`, `.github/workflows/windows-ci-leg.yml` — staged as a patch for the human to apply; never pushed by this brief's implementer.
+- `.github/workflows/ci.yml`, `windows-ci-leg.yml` (live copy, retired #4106) — staged as a patch for the human to apply; never pushed by this brief's implementer.
 - `docs/streams/desktools-v2/brief-06-installation-token-scoping.md` — the re-derivation, offered to its human gate.
 - `docs/streams/desk-containers/README.md` — row 10 corrected.
 - `changelog/<branch>.md` — the per-PR fragment this repository requires.
