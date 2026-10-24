@@ -452,7 +452,12 @@ with explicit owner/revision/evaluator and visible unmapped/not-observed entries
 `deskboard review-queue` now collects that observation through the existing typed
 queue/pools; `reviewloop plan --snapshot` calls `PlanCandidates` locally. The
 [operator contract](deskboard.md) defines explicit selection invocation inputs,
-complete-artifact/refusal behavior, compatibility and the /43 adoption boundary.
+complete-artifact/refusal behavior and compatibility. The /43 caller adapters use
+that same planner: the selected monitor emits one observation/ordered plan, and
+`throughput --review-observation` validates current local policy/scope/freshness
+before deriving review depth through `PlanObservation`. An incompatible artifact
+blinds review depth without recollection. [Caller qualification and retirement](review-efficiency-compatibility.md)
+retain the supported legacy path and separate deployed adoption gates.
 
 `deskdispatch` now carries a pure `reviewflow.ReviewContext` identity/source-key
 contract through one invocation-scoped credentialed preparation adapter. It shares

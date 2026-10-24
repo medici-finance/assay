@@ -295,6 +295,13 @@ func ciCrossModuleRegistry() []ciEntry {
 			runInvokes: deskShardInvokes,
 			why:        "the actual built writeguard hook is compared with the core, then uses disposable mutated copies of that producer; deskcore-only edits must rerun parity"},
 
+		{test: "tools/desk/internal/deskkit/reviewcallers_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"plugins/assay/scripts/pr-monitor.sh", "plugins/assay/scripts/pr-monitor.test.sh"},
+			runInvokes: deskShardInvokes,
+			why:        "caller qualification executes shipped shell monitor and compatibility tests; the source workflow is unfiltered"},
+		{test: "tools/desk/internal/reviewtest/callers_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads: []string{"plugins/assay/scripts/pr-monitor.sh"}, runInvokes: deskShardInvokes,
+			why: "prose/discrete parity executes the actual monitor against a production collector fixture and built planner; unfiltered desk CI runs after shell-only edits"},
 		{test: "tools/desk/internal/reviewtest/observation_boundary_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"schemas/review-observation-v1.json"},
 			runInvokes: deskShardInvokes,

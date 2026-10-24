@@ -172,3 +172,12 @@ attributed workflow cost remain desk-tools/44 acceptance, not a fabricated zero-
 measurement. Desk-tools/43 owns adoption of the observation handoff in both prose and
 discrete callers. Desktools-v2 retains CLI/custody ownership, and drainloop retains
 execution/claim lifecycle; future role-executor cutover remains separately gated.
+
+### Reusing a complete review observation
+
+`deskboard throughput --review-observation FILE` consumes an applicable complete
+`review-observation-v1` artifact instead of another review actions sweep. Its review
+stage reports the observation cutoff, with current configured scope and local policy
+checked and a five-minute freshness limit. Incompatible or unreadable inputs blind
+that stage, preserving the other independently measured stages. There is no silent
+provider fallback. See [compatibility and rollback](review-efficiency-compatibility.md).

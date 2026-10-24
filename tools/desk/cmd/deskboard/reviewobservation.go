@@ -88,17 +88,7 @@ func cmdReviewQueue() (*Report, error) {
 		known = append(known, k)
 	}
 	repos := deskkit.AllowedRepos()
-	// Revision binds collection configuration, including access scope, trust, CI and
-	// reviewer identity. Only its digest is stored, never configuration/credentials.
-	repoPolicies := map[string]any{}
-	for _, repo := range repos {
-		repoPolicies[repo] = struct{ CIRequired, VisibilityRiskClassed bool }{deskkit.CIRequired(repo), deskkit.VisibilityRiskClassed(repo)}
-	}
-	policy := "deskboard-review-v1:" + observationRevision(struct {
-		Config       any
-		Scores       map[string]int
-		RepoPolicies map[string]any
-	}{deskkit.EffectiveConfig(), scores, repoPolicies})
+	policy := reviewCollectionPolicy(scores, repos)
 	partials, err := sweepRepos(repos, sweepConcurrency, func(repo string) (actionsPartial, error) {
 		return sweepActionsRepo(repo, scores, known, nil, start, true)
 	})
@@ -174,4 +164,17 @@ func writeReviewObservation(path string, value any) error {
 		return closeErr
 	}
 	return os.Rename(f.Name(), path)
+}
+
+// One local policy digest for collection and frozen-depth applicability.
+func reviewCollectionPolicy(scores map[string]int, repos []string) string {
+	repoPolicies := map[string]any{}
+	for _, repo := range repos {
+		repoPolicies[repo] = struct{ CIRequired, VisibilityRiskClassed bool }{deskkit.CIRequired(repo), deskkit.VisibilityRiskClassed(repo)}
+	}
+	return "deskboard-review-v1:" + observationRevision(struct {
+		Config       any
+		Scores       map[string]int
+		RepoPolicies map[string]any
+	}{deskkit.EffectiveConfig(), scores, repoPolicies})
 }

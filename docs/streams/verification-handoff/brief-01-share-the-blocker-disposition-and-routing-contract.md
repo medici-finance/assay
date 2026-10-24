@@ -10,6 +10,8 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Changes the deskcore/issueflow boundary used to schedule, preserve or resolve verification work; human review must confirm that trust, ownership, retention and independent acceptance cannot be inferred from routing."
 decision-trigger: start
+decision-issue: 4216
+ruling: "https://github.com/medici-finance/assay/issues/4216#issuecomment-6373774704"
 issues: []
 schema: brief-v2
 version: 1
@@ -81,6 +83,41 @@ Options:
 3. Hold the proposed change.
 
 Default if no answer: none — blocks until answered.
+
+### Approval and evidence reconciliation — 2026-10-24
+
+The driver chose option 1 for `verification-handoff/01`, from the driver's own account, on 2026-10-23: https://github.com/medici-finance/assay/issues/4216#issuecomment-6373774704
+
+The delivered external-owner vocabulary was separately confirmed on 2026-10-24: https://github.com/medici-finance/assay/issues/4257#issuecomment-6378313940
+
+Delivery is PR #4225. Independent verification is the appended PASS in PR #4255,
+attested by #4254 against source `cb17e8f99a550ce4b08a6d61030c3f9d0d1f310a`.
+On 2026-10-24, `statusgen verifyrun --bracket-digest --witness <this-file>
+--credit --source cb17e8f99a550ce4b08a6d61030c3f9d0d1f310a` reported
+`verdict=match credit=credited` for witness
+`sha256:97d3da70383bbea33761d965763df798a7dc14fe020dde5d84bc4f2f8cd23406`.
+This is a read-back of the independent witness, not another verification run.
+The original blocked attempt and the later independent PASS remain unchanged below.
+
+The remaining lifecycle gap is explicit: this brief has no approved `design:`
+record. The existing approval names the brief, as its decision issue requested,
+but does not name a `DR-` ID. Under registers-v1 §7.5 it cannot be represented as
+approval of a subsequently authored design record. Recording the approval above
+repairs the missing decision metadata; it does not claim that the design gate,
+human final sign-off, or the dependent briefs' gates have passed.
+
+The bounded design to adopt as `DR-handoff-shared` is the delivered
+[`verification-handoff-v1`](../../../spec/verification-handoff-v1.md) contract:
+`deskcore/issueflow` owns pure population selection and advisory handoff assessment;
+callers retain trust, provider reads, custody, claims, effects and independent
+acceptance. Legacy or incomplete observations remain unknown. An observed routing
+record grants no readiness or acceptance. The five existing intake exits remain
+unchanged. Alternatives rejected by this scope are per-caller policy copies
+(drift), a helper process (an unnecessary process boundary), and using labels or
+local logs as assignment authority (loss of source and actor binding).
+The accepted cost is an additive versioned observation and source-module dependency;
+operational writer activation, release and consumer qualification remain separate.
+No design-approval stamp is asserted by this proposal.
 
 ## Ground rules
 
