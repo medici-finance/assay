@@ -296,6 +296,92 @@ Raw outputs that print the role-context flag by name, roster echo lines and the 
 
 **VERIFY: FAIL** — row 2: TestPerfV3CLIContextPrecedence does not fail when a claim or token-custody entrypoint's parser exemption is flipped in the CLI migration registry. The row's Expect names that change as a failing control. Row 4 now passes at a570e840520a: exit 0, 13 corroborated, 0 disproved, 2 unchecked, both out of scope.
 
+### Fresh re-verify — 2026-10-21 at 5dcdff9fb1ec
+
+The table at the end of this block is the statusgen verifyrun witness, copied back unchanged. It ran inside a local docker container: image assay-verify:go1.27 (id sha256:955fd6c46c93, built FROM golang:1.27.2-trixie@sha256:47667934874913a449b96faa7ef4777fa285d9ec29126ee80ed61c45b7cccf0e, git 2.47), `--network none`, sandbox=container-netns, default seccomp, no live infrastructure (KUBECONFIG=/dev/null). Subject: merged source 5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7, detached home, clean before and after every run apart from this Evidence. verifyrun exited 0 with 4 of 4 rows passing. The runner and environment follow the driver's 2026-10-19 interim-runner and substance-over-environment rulings (recorded on the private house tracker).
+
+Verification-Attestation: medici-finance/assay#3809 run=32bc2676b236da52c751d5114ea607f919b37bcd479fd377c0abe22a0f020159 source=5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7 brief=docs/streams/desktools-v2/brief-64-propagate-performance-context-through-desks-agents-and-tool-clis.md model=claude-opus-5-5 tier=strong
+
+Verification-Table: delivery=4b7f4847f7f3531185fdfb23fbf978ae9551a242 base=b73d90d774fca8aec8974ef410da63ebcb10eece original=3d737b4871bf604e698c6c96427bb89c5e794db7
+
+Why this re-run: the previous run at f3724a2d07a8 recorded a fail verdict, with its row 4 follow-up at the landing commit a570e840520a. Row 2's parser-exemption control did not discriminate because the named test hardcoded its entrypoint list. Since then, medici-finance/assay#3781 changed only that test: it now derives the exercised binaries from docs/performance-entrypoints.json joined to the CLI migration registry, and it validates the registry on every exercised row. Separately, the parser flag for the role context was renamed to its loop-role form. That rename touches the CLI helper, its test and the brief's Task text. The Verify table is unchanged. `deskpathguard rederive` re-derived 4 original rows, 0 author-added, all from base. Admission: `deskdispatch --check-verifier` exited 0 before the first row and exited 0 again after the last, with the same binding.
+
+By-hand runs: host macOS, go1.27.2, pinned desk shims v1.0.53, offline, KUBECONFIG=/dev/null. Each ran in a scratch clone at the source with a dead push URL and origin/main pinned to the source.
+
+| # | Command | Expected | Observed | Date / runner |
+|---|---|---|---|---|
+| 1 | exact row 1 command | exit 0; named PASS; plants fail | exit 0 — `--- PASS: TestPerfV3LauncherChildFlow (1.03s)` (sha256:4befbc4a997f). All plants named by the row are red: inherited agent, child invocation reused as parent, stale work, cross-task global context (3 of 3 reps), manufactured opt-in, attribution overriding the desk loop. | 2026-10-21 assay-verifier-app[bot] @ 5dcdff9fb1ec (on-behalf-of human:ian) (claude-opus-5-5 dispatched verifier, hand run) |
+| 2 | exact row 2 command | exit 0; named PASS; claim identity, token custody or parser-exemption changes fail | exit 0 — `--- PASS: TestPerfV3CLIContextPrecedence (11.30s)` (sha256:59d7a1529c52). The claim-identity and token-custody plants are red, and all four parser-exemption plants are red (table below). Discriminating. | 2026-10-21 assay-verifier-app[bot] @ 5dcdff9fb1ec (on-behalf-of human:ian) (claude-opus-5-5 dispatched verifier, hand run) |
+| 3 | exact row 3 command | exit 0; named PASS; lifecycle plants fail | exit 0 — `--- PASS: TestPerfV3RunnerIdentityLifecycle (0.00s)` (sha256:f2e42d58df1a). Red: no explicit resume, retention past seven UTC days, concealed unknown-mapping gap, replacement inheriting the previous agent, disabled sink blocking launch, resume keeping stale work. Discriminating. | 2026-10-21 assay-verifier-app[bot] @ 5dcdff9fb1ec (on-behalf-of human:ian) (claude-opus-5-5 dispatched verifier, hand run) |
+| 4 | exact row 4 command | exit 0; routing corroborated; unavailable is not pass | exit 0 (sha256:e3fb036a0321) — `summary: 13 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing` over base 9d4ae27f2d0d..4b7f4847f7f3 (immutable delivered snapshot). Both unchecked entries are out of scope: graph-execution/19 and /16 with forge-neutral/40, and qualgen/ with the other standalone entrypoints. | 2026-10-21 assay-verifier-app[bot] @ 5dcdff9fb1ec (on-behalf-of human:ian) (claude-opus-5-5 dispatched verifier, hand run) |
+
+Row 2 fail-first, the control that failed last time. Each plant flips one registry state from exempt to migrated in docs/streams/desktools-v2/cli-migration.json, one at a time, and runs the exact row 2 command:
+
+| Plant (parser exemption flipped) | Registry line | Row 2 exit |
+|---|---|---|
+| deskclaim | 598 | 1 |
+| deskclaim-ref | 619 | 1 |
+| desktoken | 1387 | 1 |
+| deskboot | 564 | 1 |
+| baseline (restored) | — | 0 |
+
+Each plant fails inside TestPerfV3CLIContextPrecedence, reporting that the inventory's parser exemption disagrees with the registry. A joint flip of both the registry and the inventory for desktoken is still red, through the registry-validation arm alone. medici-finance/assay#3804 is verified-fixed by medici-finance/assay#3781 at 5dcdff9fb1ec.
+
+Mutation summary (exact row commands; every plant compiles and the clone was clean after each set):
+- Row 1, shipped deskkit perfcontext spec: the control and 6 plants are red. 5 are not caught by row 1 alone: present empty flag, nil parser context, CI runner suite, second launcher invocation, untyped grandparent. These target other tests in the spec's wider selection. Row 2 kills present-empty-flag and nil-parser-context.
+- Row 3, shipped runner performance spec: the control and 3 of 4 are red. The second-module plant targets TestNoGraphDependency, which is outside this row.
+- Shipped deskdispatch handoff spec, run with its own test: the control and 18 of 18 are red. Supplemental only.
+- Totals: 4 required rows, all pass and discriminate. Unrun rows: 0.
+
+RISK-VALUE: DERIVED — mapping retention cutoff = today.AddDate(0, 0, -6) @ loopadmin/runner/performance.go:54. It keeps today−6 through today, exactly seven UTC days, and a −7 plant is red under row 3.
+RISK-VALUE: DERIVED — handoff dir mode = 0700 @ tools/desk/cmd/deskdispatch/performance_handoff.go:28, group/other refusal mask = 0077 @ performance_handoff.go:32, handoff file mode = 0o600 @ tools/desk/internal/packet/packet.go:747. The handoff is owner-only, as the brief requires. Shipped handoff mutations are red, but no Verify row covers these values.
+RISK-VALUE: DERIVED — handoff expiry = today.AddDate(0, 0, 7) @ tools/desk/cmd/deskdispatch/performance_handoff.go:49 and prune cutoff = today.AddDate(0, 0, -6) @ performance_handoff.go:56. Both bounds are seven UTC days.
+Ranked lower, reversible: perfrec NewID = 16 random bytes @ perfrec/context.go:114. MaxWork = 8 and MaxWorkBytes = 4096 come from desktools-v2/63. The medici-finance/assay#3781 test oracles are the inventory path, its schema string and the parsed-to-recorder state.
+
+Advisory (no verdict weight):
+- A plant that removes the telemetry gate inside the resolver still survives row 2. perfrec's own TestPerfV3ContextAndConsent kills it.
+- The 19 October amendment cases (separate protocol-off, concurrent two-work, unknown service context) are outside the protected table and were not re-examined in this pass.
+
+Raw outputs that print the role-context flag by name, roster echo lines and full test logs stay in the verifier's local scratch and are not copied here.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3LauncherChildFlow$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3LauncherChildFlow ' "$out")` | pass exit=0 sandbox=container-netns | sha256:369919d0f0b5 | 2026-10-21 | assay-verifier-app[bot] @ 5dcdff9fb1ec (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3CLIContextPrecedence$' ./internal/clicontract/ > "$out" && grep -F -- '--- PASS: TestPerfV3CLIContextPrecedence ' "$out")` | pass exit=0 sandbox=container-netns | sha256:d1ef66704cda | 2026-10-21 | assay-verifier-app[bot] @ 5dcdff9fb1ec (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3RunnerIdentityLifecycle$' ./... > "$out" && grep -F -- '--- PASS: TestPerfV3RunnerIdentityLifecycle ' "$out")` | pass exit=0 sandbox=container-netns | sha256:f2e42d58df1a | 2026-10-21 | assay-verifier-app[bot] @ 5dcdff9fb1ec (on-behalf-of human:ian) (forge-identity) |
+| 4 | `statusgen --root . --consumers --brief desktools-v2/64` | pass exit=0 sandbox=container-netns | sha256:3c6bfee6a7c4 | 2026-10-21 | assay-verifier-app[bot] @ 5dcdff9fb1ec (on-behalf-of human:ian) (forge-identity) |
+
+**VERIFY: PASS** — at 5dcdff9fb1ec all four rows exit 0 with their named result, both in the container-netns verifyrun witness and by hand. Row 2's parser-exemption control now discriminates: deskclaim, deskclaim-ref, desktoken and deskboot each exit 1. Rows 1 and 3 kill their named plants, and row 4 corroborates 13 with 0 disproved.
+
+### Independent second verification attempt — 2026-10-21
+
+Fresh independent gpt-6-astra / strong verifier, admitted run 72193a797b5e9c2281ddbac5bdf82d50a584d66f6becee36cbd287c331c33356, attestation #3818, source 5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7. Repair #3781 is merged at 4395628b9ff5575e2c5d7d62f8ded2902d1c9ee7 and is an ancestor of this source. Expectations were written from the brief and specification before inspecting implementation, tests or prior Evidence. Native host admission exited 0 before and after execution; the full returned bindings were byte-identical. The admitted home remains detached, with no tracked or untracked changes.
+
+Verification-Table: delivery=4b7f4847f7f3531185fdfb23fbf978ae9551a242 base=b73d90d774fca8aec8974ef410da63ebcb10eece original=b73d90d774fca8aec8974ef410da63ebcb10eece
+
+Delivery #3582 was independently read from the forge. Its first parent is 9d4ae27f2d0dcf429b1ac2e82094464b6ba2a7a3; the parents' unique merge-base is the table base above. Explicit re-derivation at that base returned four original rows and zero author-added rows. Complete table bytes agree at divergence, first parent, delivery and observed source (SHA-256 e8b641ef3c071e3dfa78ba41da08987da106bddd1123cbff783d5b9266f2b545).
+
+The installed v1.0.53 statusgen executed `verifyrun --fail-first --base 9d4ae27f2d0dcf429b1ac2e82094464b6ba2a7a3 --dry-run` against the exact admitted home and brief. Exit 2. It returned the following native witness, retained unchanged. No command filter, modified Verify/Expect, substituted binary, installation or confinement relaxation was used.
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3LauncherChildFlow$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3LauncherChildFlow ' "$out")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-21 | assay-verifier-app[bot] @ 5dcdff9fb1ec (on-behalf-of human:ian) (forge-identity) | base=9d4ae27f2d0d unproven · head=5dcdff9fb1ec |
+| 2 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3CLIContextPrecedence$' ./internal/clicontract/ > "$out" && grep -F -- '--- PASS: TestPerfV3CLIContextPrecedence ' "$out")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-21 | assay-verifier-app[bot] @ 5dcdff9fb1ec (on-behalf-of human:ian) (forge-identity) | base=9d4ae27f2d0d unproven · head=5dcdff9fb1ec |
+| 3 | `(cd loopadmin && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3RunnerIdentityLifecycle$' ./... > "$out" && grep -F -- '--- PASS: TestPerfV3RunnerIdentityLifecycle ' "$out")` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-21 | assay-verifier-app[bot] @ 5dcdff9fb1ec (on-behalf-of human:ian) (forge-identity) | base=9d4ae27f2d0d unproven · head=5dcdff9fb1ec |
+| 4 | `statusgen --root . --consumers --brief desktools-v2/64` | pass exit=0 | sha256:7d1ac15c760b | 2026-10-21 | assay-verifier-app[bot] @ 5dcdff9fb1ec (on-behalf-of human:ian) (forge-identity) | base=9d4ae27f2d0d red rc=2 · head=5dcdff9fb1ec |
+
+Verification-Attestation: medici-finance/assay#3818 run=72193a797b5e9c2281ddbac5bdf82d50a584d66f6becee36cbd287c331c33356 source=5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7 brief=docs/streams/desktools-v2/brief-64-propagate-performance-context-through-desks-agents-and-tool-clis.md model=gpt-6-astra tier=strong
+
+Row accounting: 4 required; 1 passed; 0 failed; 3 could-not-run; 0 deferred or author-added. Rows 1–3 were refused before their test commands executed, at both base and head. Their required fail-first and mutation checks therefore remain unproven. No named PASS or mutation result from the earlier verifier is adopted as this run's result.
+
+Row 4 independently re-ran exactly as written: exit 0, `summary: 13 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing`. The consumer paths agree with the immutable delivery diff. The two unchecked claims are the declared out-of-scope replacement owners and standalone entrypoints, retained for reviewer judgment. Native fail-first records base exit 2 and head exit 0; that base result is unavailable routing evidence, not a demonstrated implementation failure.
+
+Environment blocker: #1800 is open and tracks this exact Darwin network-sandbox limitation. The current pinned verify-runner v1.0.53 image was inspected locally and is absent. The operator must make the pinned image available and complete its required installed-runner qualification, then a fresh independent verifier must run the exact table with valid admission, fail-first and mutation evidence. A local unqualified image is not a substitute. Full raw logs, pre/post receipts and hashes are retained by the desk.
+
+The earlier FAIL, first-stamp PASS and its three advisories remain preserved as history. Their claims are not promoted or retracted by an unavailable second run. Full risk-value enumeration and derivation, and the separate service-amendment coverage questions, remain incomplete in this attempt. Human done/sign-off stays separate from start decision #3537. The existing Evidence PR's control hold is separate from this runner blocker.
+
+**VERIFY: BLOCKED** — second stamp incomplete: rows 1–3 could not run in the required sandbox; row 4 passed. No lifecycle advancement or second PASS is supported.
+
 ## Review
 
 Gate: human. Reject changed legacy meanings, guessed identity/cost, lost coverage or optional measurement that changes an operation.
