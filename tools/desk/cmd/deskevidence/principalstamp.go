@@ -69,6 +69,7 @@ import (
 	"html"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -548,8 +549,10 @@ func linkReadings(s string) []string {
 
 // shownTexts returns the texts a renderer can show for s, for deciding what a reader sees: each
 // comment reading and each link reading, with HTML tags and emphasis, strikethrough, code and
-// escape characters removed, and entities decoded. A cell shows something when any of these
-// does.
+// escape characters removed, and entities decoded. Each is read once as it stands and once with
+// every character that renders as nothing dropped (see rendersBlank) and the white space this
+// leaves at either end trimmed, so a text's identity region (see identityRegion) starts at the
+// first character a reader sees. A cell shows something when any of these does.
 func shownTexts(s string) []string {
 	var out []string
 	for _, c := range commentReadings(s) {
@@ -560,10 +563,65 @@ func shownTexts(s string) []string {
 		readings := append(linkReadings(c), reduceLinksMode(c, true, true))
 		for _, v := range readings {
 			v = htmlTagRe.ReplaceAllString(v, "")
-			out = append(out, strings.TrimSpace(runnerMarkupRe.ReplaceAllString(html.UnescapeString(v), "")))
+			for _, d := range decodings(v) {
+				t := strings.TrimSpace(runnerMarkupRe.ReplaceAllString(d, ""))
+				out = append(out, t)
+				if seen := strings.TrimSpace(strings.Map(dropBlank, t)); seen != t {
+					out = append(out, seen)
+				}
+			}
 		}
 	}
 	return out
+}
+
+// c1RefRe matches a numeric character reference to a C1 control (U+0080 to U+009F).
+var c1RefRe = regexp.MustCompile(`&#(?:[xX]0*[89][0-9a-fA-F]|0*(?:12[89]|1[3-5][0-9]));`)
+
+// decodings returns s with its entities decoded as html.UnescapeString does, which reads a
+// reference to a C1 control as the windows-1252 character a browser shows for it, and, when s
+// holds such a reference, once more with it read as the control itself, which is what a
+// CommonMark renderer emits for it and shows as nothing.
+func decodings(s string) []string {
+	d := html.UnescapeString(s)
+	c := c1RefRe.ReplaceAllStringFunc(s, func(ref string) string {
+		n, hex := strings.TrimSuffix(ref[2:], ";"), 10
+		if n[0] == 'x' || n[0] == 'X' {
+			n, hex = n[1:], 16
+		}
+		v, _ := strconv.ParseUint(n, hex, 32)
+		return string(rune(v))
+	})
+	if c == s {
+		return []string{d}
+	}
+	return []string{d, html.UnescapeString(c)}
+}
+
+// rendersBlank reports whether r renders as nothing and is not white space: a nonspacing or
+// enclosing mark, a default-ignorable code point (the filler letters among them), the blank
+// braille pattern, or a character in no letter, mark, number, punctuation, symbol or separator
+// category, which is a control, format, private-use, noncharacter or unassigned code point.
+// It is wider than rowattribution.go's stripInvisible, which reads an empty Runner: shownTexts
+// keeps each text as it stands beside the text with these dropped, so a wider family only reads
+// more of what a reader can be shown.
+func rendersBlank(r rune) bool {
+	if unicode.IsSpace(r) {
+		return false
+	}
+	if r == '\u2800' || unicode.In(r, unicode.Mn, unicode.Me, unicode.Other_Default_Ignorable_Code_Point) {
+		return true
+	}
+	return !unicode.In(r, unicode.L, unicode.M, unicode.N, unicode.P, unicode.S, unicode.Z)
+}
+
+// dropBlank is the strings.Map form of rendersBlank: it drops a character that renders as
+// nothing and keeps every other.
+func dropBlank(r rune) rune {
+	if rendersBlank(r) {
+		return -1
+	}
+	return r
 }
 
 var (
@@ -915,14 +973,15 @@ func showsAppRun(cell string) bool {
 
 // showsAttribution reports whether a line shows a reader App-run or on-behalf-of text in any
 // of its shown texts: a `[bot]` tag or the on-behalf-of marker anywhere, or a word that shows
-// as App-run (see identityShowsTag).
+// as App-run (see identityShowsTag). A word starts the text or follows a space, a tab or a `(`,
+// since identityRegion ends a region at a space or `(` and a word in parentheses shows as one.
 func showsAttribution(line string) bool {
 	for _, t := range shownTexts(line) {
 		if l := strings.ToLower(t); strings.Contains(l, "[bot]") || strings.Contains(l, onBehalfOfCellMarker) {
 			return true
 		}
 		for i := 0; i < len(t); i++ {
-			if (i == 0 || t[i-1] == ' ' || t[i-1] == '\t') && identityShowsTag(t[i:]) {
+			if (i == 0 || t[i-1] == ' ' || t[i-1] == '\t' || t[i-1] == '(') && identityShowsTag(t[i:]) {
 				return true
 			}
 		}

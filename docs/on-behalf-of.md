@@ -256,7 +256,8 @@ same roster's human set:
   - **Lines without a leading `|`.** Inside a table, a line holding a `|` that does not begin
     with one renders as a row the lint never reads, and is refused. A pipe-less line that
     closes a table renders as a one-cell row: it lands when it shows no `[bot]` or
-    on-behalf-of text and no word in it shows a login and tag (below). A line after a blank
+    on-behalf-of text and no word in it (at its start or after a space, a tab or a `(`) shows a
+    login and tag (below). A line after a blank
     line or a heading starts no table and is not read for that text. After it the lint has dropped the table's header, so a `|`-led row
     added later in that table is refused, unless a repeat of the table's own header (with its
     separator line) comes first, or the row has exactly as many cells as the table's header
@@ -278,7 +279,13 @@ same roster's human set:
     A cell or line shows App-run text when any of these readings does, and every check of what
     a cell, line or heading shows uses them. A reader also takes a cell that opens with a login
     and a tag as App-run, whatever follows the tag and whatever characters the login holds, so
-    the tool reads that by structure rather than by folding characters it knows. A cell's
+    the tool reads that by structure rather than by folding characters it knows. Each reading
+    is also read with every character that renders as nothing dropped (a nonspacing or
+    enclosing mark, a default-ignorable code point such as a filler letter, the blank braille
+    pattern, and a control, format, private-use, noncharacter or unassigned code point, with a
+    numeric reference to a C1 control read both as a browser maps it and as the control
+    itself) and the white space this leaves at either end trimmed, so a cell's text starts at
+    the first character a reader sees. A cell's
     identity region is its text up to the first ASCII space or `(`, where the lint cuts it,
     extended over spaces inside a tag that closes before any `(` or other tag bracket. A tag
     is an ASCII square or angle bracket, or a non-ASCII opening or closing bracket or quotation
@@ -286,8 +293,9 @@ same roster's human set:
     closed later in the region. A Runner cell the lint does not read as App-run is refused when
     its region holds a tag of exactly three letters or digits, as `[bot]` does, or a tag of
     three or more letters, digits or symbols while any character in the region is outside the
-    ASCII login alphabet (letters, digits, `.`, `_`, `-`, `[`, `]`). A character no rule names
-    therefore fails closed: `name[bot]\u00a0@ …`, `name[bo\u200bt]`, `name[bot]:`,
+    ASCII login alphabet (letters, digits, `.`, `_`, `-`, `[`, `]`). A character in the region
+    that no rule names therefore fails closed, and one that renders as nothing before the
+    region is read past: `name[bot]\u00a0@ …`, `name[bo\u200bt]`, `name[bot]:`,
     `[name\[bot\]]` and an ASCII-only `name[abc]` are refused. A region whose letters are all
     CJK text (`東京【東京都】`) cannot spell a login and lands, as do `[bot]` later in a cell
     (`human:operator (via name[bot] review)`), a model tag (`[1m]`), brackets that open no tag

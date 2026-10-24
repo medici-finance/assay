@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly)$' -count=1 -timeout=300s",
+  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunBlankLead|TestStampBlankLeadAllowed)$' -count=1 -timeout=300s",
   "control": {
     "name": "unreadable-cell refusal not consulted",
     "file": "cmd/deskevidence/principalstamp.go",
@@ -532,13 +532,13 @@
     {
       "name": "a line closing a table is not read for a login and tag",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if (i == 0 || t[i-1] == ' ' || t[i-1] == '\\t') && identityShowsTag(t[i:]) {",
+      "old": "if (i == 0 || t[i-1] == ' ' || t[i-1] == '\\t' || t[i-1] == '(') && identityShowsTag(t[i:]) {",
       "new": "if false && identityShowsTag(t[i:]) {"
     },
     {
       "name": "a line closing a table is read for a login and tag only at its start",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if (i == 0 || t[i-1] == ' ' || t[i-1] == '\\t') && identityShowsTag(t[i:]) {",
+      "old": "if (i == 0 || t[i-1] == ' ' || t[i-1] == '\\t' || t[i-1] == '(') && identityShowsTag(t[i:]) {",
       "new": "if i == 0 && identityShowsTag(t[i:]) {"
     },
     {
@@ -660,6 +660,60 @@
       "file": "cmd/deskevidence/principalstamp.go",
       "old": " ||\n\t\t\tunicode.Is(unicode.Other_Default_Ignorable_Code_Point, r) {",
       "new": " {"
+    },
+    {
+      "name": "the reading with blank characters dropped not taken",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if seen := strings.TrimSpace(strings.Map(dropBlank, t)); seen != t {",
+      "new": "if seen := strings.TrimSpace(t); seen != t {"
+    },
+    {
+      "name": "the reading with blank characters dropped not trimmed",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "seen := strings.TrimSpace(strings.Map(dropBlank, t));",
+      "new": "seen := strings.Map(dropBlank, t);"
+    },
+    {
+      "name": "a nonspacing mark not read as blank",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "unicode.In(r, unicode.Mn, unicode.Me, unicode.Other_Default_Ignorable_Code_Point)",
+      "new": "unicode.In(r, unicode.Me, unicode.Other_Default_Ignorable_Code_Point)"
+    },
+    {
+      "name": "an enclosing mark not read as blank",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "unicode.In(r, unicode.Mn, unicode.Me, unicode.Other_Default_Ignorable_Code_Point)",
+      "new": "unicode.In(r, unicode.Mn, unicode.Other_Default_Ignorable_Code_Point)"
+    },
+    {
+      "name": "a default-ignorable letter not read as blank",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "unicode.In(r, unicode.Mn, unicode.Me, unicode.Other_Default_Ignorable_Code_Point)",
+      "new": "unicode.In(r, unicode.Mn, unicode.Me)"
+    },
+    {
+      "name": "the blank braille pattern not read as blank",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if r == '\\u2800' || unicode.In(r, unicode.Mn,",
+      "new": "if unicode.In(r, unicode.Mn,"
+    },
+    {
+      "name": "an uncategorised character not read as blank",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return !unicode.In(r, unicode.L, unicode.M, unicode.N, unicode.P, unicode.S, unicode.Z)\n}",
+      "new": "return false\n}"
+    },
+    {
+      "name": "a reference to a C1 control read only as windows-1252",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return []string{d, html.UnescapeString(c)}",
+      "new": "return []string{d}"
+    },
+    {
+      "name": "a word after a parenthesis not read on a note line",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "t[i-1] == '\\t' || t[i-1] == '(') && identityShowsTag",
+      "new": "t[i-1] == '\\t') && identityShowsTag"
     }
   ]
 }
