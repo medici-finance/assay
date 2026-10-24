@@ -7824,3 +7824,15 @@ artifact and prints a compact generation/cutoff summary. `reviewloop plan
 priorities/capacity using shared `PlanCandidates`, with zero network calls. See
 [the operator contract](../../docs/deskboard.md) for inputs, failure behavior,
 compatibility and the separately gated live-adoption boundary.
+
+### Qualified review caller handoff
+
+The source-qualified review caller adapters reuse the existing `review-queue`,
+`reviewloop plan --snapshot ... --selection ... --now ...`, and
+`deskdispatch --kit review --observation FILE` interfaces. The optional
+`deskboard throughput --review-observation FILE` reports review depth from that same
+complete artifact with current scope/policy and a five-minute cutoff; an invalid
+artifact blinds review depth without provider recollection. Other stages retain their
+independent readers. See [caller compatibility](../../docs/review-efficiency-compatibility.md)
+for supported producer/plugin versions, explicit monitor selection, legacy rollback,
+coverage and qualification limits. This reader option does not activate an executor.

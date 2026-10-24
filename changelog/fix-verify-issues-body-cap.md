@@ -1,2 +1,0 @@
-### Fixed
-- `statusgen --verify-issues` caps each verify-gate card body below the forge's 65,536-character issue-body limit. An oversize Verify or Evidence section is cut at a line boundary, largest first; the marker, the card header and the closing checklist stay whole, and the cut is stated with a link to the brief file at the rendering commit. One oversize brief no longer stops `verify-gate-open` and the cards for every brief after it.

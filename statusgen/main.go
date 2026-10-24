@@ -356,6 +356,13 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// hard-gated, and the git-derived class 1 reuses the same merge read.
 	// Declared source: statusgen/boardhonesty.go.
 	notices = append(notices, boardHonestyNotices(checkStreams, mergedPRs, mergedErr)...)
+	// The same classifier, applied to dispatch: a todo row caught on STRONG evidence
+	// (a merged `Brief:`-trailer PR, a re-homed pointer row) is held out of Next-up
+	// via Brief.PhantomHeld before nextUp() below. Full `streams`, like the
+	// sibling-merge mutation, so an out-of-scope stream's row is held on the board
+	// that renders it. A failed merge read holds no merged-delivery row (re-homed
+	// pointer rows, which need no git, are still held).
+	applyPhantomHolds(streams, mergedPRs, mergedErr)
 	// Sibling-merge-unreconciled (siblingmerge.go): the
 	// SEVENTH board-honesty phantom class, wired right after class 1 like the
 	// package comment describes, but through its OWN driver rather than
@@ -2503,12 +2510,16 @@ func main() {
 		exitProcess(runAuditPackExport(*root, *auditPackRelease, *auditPackOutput, generated))
 	}
 	if *registerLinksFlag {
-		n, err := backfillRegisterRefs(*root)
+		rep, err := backfillRegisterRefsReport(*root)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "register-links:", err)
 			exitProcess(1)
 		}
-		fmt.Printf("register-links: %d bare references linked across brief files\n", n)
+		fmt.Printf("register-links: %d bare references linked across brief files\n", rep.Linked)
+		fmt.Printf("register-links: %d generated-view links repaired to their unique durable entry\n", rep.Repaired)
+		for _, u := range rep.Unresolved {
+			fmt.Printf("register-links: author-owed, left unchanged: %s\n", u)
+		}
 		exitProcess(0)
 	}
 	// Lint-audit (statusgen/01) — read-only advisory sub-command: sample daily commits

@@ -10,6 +10,7 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Changes the intake and scanner adapters boundary used to schedule, preserve or resolve verification work; human review must confirm that trust, ownership, retention and independent acceptance cannot be inferred from routing."
 decision-trigger: start
+decision-issue: 4307
 issues: []
 schema: brief-v2
 version: 1
@@ -80,6 +81,63 @@ Options:
 3. Hold the proposed change.
 
 Default if no answer: none — blocks until answered.
+
+### Design for confirmation — DR-handoff-intake
+
+Adopt the controlling scope and the shipped /01 contract, without adding an
+assignment authority. Intake must retain the source event and the obligation to
+decide after polling advances; a restart must reconstruct outstanding work from
+durable observations and the existing forge/register owners. A polling cursor,
+mechanical placeholder, exit log, routing comment or closed issue is insufficient
+proof that a successor accepted the work.
+
+Both intake writers keep `intake-exit-v1` byte-compatible. Accountable disposition
+uses the separately negotiated companion contract, assessed through
+`deskcore/issueflow` in-process. The issue lane and committed register expose the
+same unresolved, scoping, repair, duplicate and external-prerequisite meanings.
+Scoping needs a linked authoring task and a strong author; external work needs an
+owner, action and wake condition; delivered code routes to qualification.
+Scanner scheduling and issueboard consume that shared assessment while retaining
+their independent trust, history, claim, human and acceptance checks. Legacy or
+unreadable records remain classification-needed, never implicitly ready.
+
+The proposed alternatives are to keep delta-only collection (loses unanswered
+work), infer assignment from a label/comment/scan PR (confuses observation with
+accountability), or add a central lifecycle database (duplicates existing owners).
+This design chooses none of those. Its cost is a versioned companion read/write
+path and explicit outstanding-work reconstruction; rollout must preserve old
+records and negotiate reader support before enabling a required writer.
+
+This is a proposal for `DR-handoff-intake`, not an approved decision record.
+The decision issue must receive the driver's own comment naming this brief and
+that record ID before a `design:` record can be claimed. The design gate and final
+independent verification remain required. The source, approval metadata and
+credited independent PASS for /01 are distinct from its still-unadvanced board row.
+
+### Architecture pickup — 2026-10-24
+
+Observed main: `385cb29e5682dcb9a886b298076f722b4823ec1b`.
+The /01 public library and `verification-handoff-v1` contract are now shipped in
+source; both consumer modules import them. The original authoring-time statements
+above remain historical, rather than being rewritten as implementation evidence.
+
+Inspected owners: `scanloop.SelectQueue`, the production monitor composition in
+`tools/desk/cmd/scanloop/run.go`, `scanloop land` and `appendExitRecord`, the register export in
+`statusgen/intakeexits.go`, `statusgen/scanissues.go`, placeholder eligibility in
+`statusgen/nextup.go`, and issueboard classification. `SelectQueue` currently uses
+only the monitor's current delta. An unresolved item with no new delta can vanish
+after a restart. The current placeholder eligibility branch also accepts an
+unblocked `todo` placeholder without a disposition assessment. These are the two
+production boundaries the named Verify tests must exercise.
+
+Pickup disposition: **hold implementation at the design gate; continue bounded
+preparation and regression design**. No overlapping open implementation PR or
+dispatch claim was found before this run took the /03 claim. The first scratch
+restart regression reproduces an empty queue for quiet outstanding work and for
+an unread outstanding-work input; this is a developer experiment, not the brief's
+independent Evidence or a completed Verify row. The remaining regression work must
+cover source/event identity, partial writes, duplicate retries, both writers,
+successor/external obligations, and shared scanner/issueboard eligibility.
 
 ## Ground rules
 

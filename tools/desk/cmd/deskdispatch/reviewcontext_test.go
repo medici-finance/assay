@@ -20,6 +20,7 @@ import (
 
 type prepareFixture struct {
 	head, base, root string
+	number           int
 	transport        *reviewtest.Transport
 	moved            string
 	prReads          int
@@ -33,7 +34,7 @@ func prepareTestFixture(t *testing.T) *prepareFixture {
 }
 func prepareSourceFixture(t *testing.T, assigned string) *prepareFixture {
 	t.Helper()
-	f := &prepareFixture{root: t.TempDir()}
+	f := &prepareFixture{root: t.TempDir(), number: 77}
 	git := func(args ...string) string {
 		c := exec.Command("git", args...)
 		c.Dir = f.root
@@ -77,7 +78,7 @@ ASSAY_REPO_FORGES=example-org/tracker=github
 		if r.Method != "GET" {
 			t.Fatalf("preparation wrote %s %s", r.Method, path)
 		}
-		if strings.HasSuffix(path, "/pulls/77") && !strings.Contains(r.Header.Get("Accept"), "diff") {
+		if strings.HasSuffix(path, fmt.Sprintf("/pulls/%d", f.number)) && !strings.Contains(r.Header.Get("Accept"), "diff") {
 			f.prReads++
 			if f.prReads > 1 && f.moved == "access" {
 				return 403, `{"message":"denied"}`
@@ -96,7 +97,7 @@ ASSAY_REPO_FORGES=example-org/tracker=github
 					body = "edited"
 				}
 			}
-			return 200, fmt.Sprintf(`{"number":77,"state":"open","body":%q,"changed_files":1,"head":{"sha":%q,"ref":"feat/x"},"base":{"sha":%q,"ref":"main"}}`, body, head, base)
+			return 200, fmt.Sprintf(`{"number":%d,"state":"open","body":%q,"changed_files":1,"head":{"sha":%q,"ref":"feat/x"},"base":{"sha":%q,"ref":"main"}}`, f.number, body, head, base)
 		}
 		if strings.HasSuffix(path, "/timeline") {
 			return 200, `[]`

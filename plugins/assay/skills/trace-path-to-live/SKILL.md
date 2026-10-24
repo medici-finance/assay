@@ -2,7 +2,7 @@
 name: trace-path-to-live
 description: >-
   Turn an objective into its prerequisite brief graph and a ranked list of moves. Use when asked
-  "what has to be done before X can go live", "trace the path to live for <stream>/<NN>", "what
+  "what has to be done before X can go live", "trace the path to live for a brief", "what
   is blocking this drive", "what can we do now to move X forward", "map the dependencies of this
   objective", or when given a go-live brief id, a drive slug or a plain-language goal and asked
   for the critical path. Read-only. It does not dispatch, review or verify anything itself.
@@ -11,14 +11,14 @@ description: >-
 # Trace path to live: objective → prerequisite graph → ranked moves
 
 Answer two questions about one objective: what must be `done` before it can go live, and what
-can be done now to move it forward. The answer is a page with three parts:
+can be done now to move it forward. The answer is a page with:
 
-- the prerequisite graph, with done work greyed;
+- a month of progress at the top, using plain-language labels;
+- the prerequisite graph, showing only work that is not fully done;
 - the critical path;
 - a ranked move list, where each move is tied to one node and the role that owns it.
 
-The skill only puts together what the existing readers already report. It adds no reader of its
-own.
+Combine existing readers with recorded default-branch history; never invent progress.
 
 ## 1. Resolve the objective, then confirm it
 
@@ -124,21 +124,11 @@ Rank the moves in this order:
 
 ## 7. The page
 
-Write ONE self-contained HTML page: inline CSS and JS, no external fetch, no CDN. It contains:
-
-- the objective and the confirmed targets;
-- the critical path, overall and per target;
-- the ranked moves;
-- the graph:
-  - each node shows its status, gate, eligibility, PR and claim badges;
-  - the critical path is highlighted;
-  - `verified` and `done` nodes are greyed;
-  - clicking a node isolates its prerequisites and dependents;
-- a coverage block. It lists each root with its SHA, every `could-not-check` root, hold or reader,
-  every fallback used, and the cross-root dependents.
-
-The page names private boards when a root is private, so write it **outside any repository** in
-the operator's scratch location and never commit it. Hand the operator its absolute path.
+Read [Report presentation](references/report.md) before writing the HTML. It defines the
+plain-language titles, six-line progress chart (three weekly readings plus seven daily),
+remaining-work graph, historical evidence and coverage requirements. Put progress first;
+hide only `done` nodes from the graph and retain `verified` work awaiting final approval.
+Write the self-contained report outside repositories and never commit it.
 
 ## Boundaries
 
