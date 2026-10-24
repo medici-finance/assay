@@ -373,3 +373,18 @@ func TestV4WriterConsentIsolation(t *testing.T) {
 		}
 	}
 }
+
+// regression: #4360
+func TestV4PaddedDecodeLineBound(t *testing.T) {
+	raw, e := json.Marshal(v4Record(t, "tool"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, n := range []int{MaxV4LineBytes - 2, MaxV4LineBytes - 1} {
+		padded := append(append([]byte{}, raw...), bytes.Repeat([]byte(" "), n-len(raw))...)
+		_, e := Decode(padded)
+		if (e == nil) != (n+1 < MaxV4LineBytes) {
+			t.Fatalf("padded input bytes=%d: %v", n, e)
+		}
+	}
+}

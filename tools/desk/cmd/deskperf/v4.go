@@ -8,6 +8,7 @@ import (
 
 func v4Table(out io.Writer, s perfrec.V4Summary) {
 	fmt.Fprintf(out, "perf-v4 — %d records; %d duplicates; %d conflicting identities excluded; %d invalid\n", s.Records, s.Duplicates, s.Conflicts, s.Invalid)
+	fmt.Fprintf(out, "logical service queries %d; service transport attempts %d; handlers %d (separate boundaries)\n", s.LogicalQueries, s.ServiceTransports, s.Handlers)
 	for _, g := range s.Groups {
 		fmt.Fprintf(out, "%s: %d records; summed own-process wall %s; measured own CPU %s (%d records)\n", g.Key, g.Records, commandDuration(g.SumOwnProcessWallMs), commandDuration(g.SumOwnCPUMs), g.CPURecords)
 	}

@@ -52,6 +52,10 @@ filters. Tool profile cannot carry even an empty supported attribution payload.
 The exact-key registry derives from canonical Go member tags. The checked
 [schema](../schemas/perf-v4.json) enumerates the same members; the codec additionally
 owns duplicate detection, JSONL/depth bounds, privacy and cross-field arithmetic.
+For raw JSONL input, call `Decode` with the complete line excluding its LF; keep
+all other padding, including CR. Generic `encoding/json.Unmarshal` strips outer
+whitespace before invoking a custom unmarshaler and cannot certify transport-byte
+limits. The native file reader preserves those bytes and applies `Decode`.
 The public external consumer imports no desk-internal package. The ordinary
 opt-in, 0700 directory, 0600 files, seven-day retention and never-load-bearing
 append remain unchanged.

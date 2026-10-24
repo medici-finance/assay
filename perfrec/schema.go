@@ -317,10 +317,11 @@ func (s *schemaDiscriminator) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Decode parses one day-file line as either schema (Record.UnmarshalJSON).
+// Decode parses one complete day-file line as its named historical or current
+// schema. Exclude the LF, but preserve all other bytes for the v4 wire bound.
 func Decode(line []byte) (Record, error) {
 	var r Record
-	err := json.Unmarshal(line, &r)
+	err := r.UnmarshalJSON(line)
 	return r, err
 }
 

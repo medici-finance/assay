@@ -6,3 +6,6 @@ remain intact; unsupported facets retain useful core timing with explicit gaps.
 Duplicate keys, malformed known payloads, role/linkage confusion and oversized
 records refuse. Selected producers remain v3 until the separate reader-dependent
 cutover. No collection, consent, identity, permission or release change.
+
+- Count raw padding and CRLF bytes before v4 validation; preserve historical
+  decoding and restore logical service query/transport/handler text counters.

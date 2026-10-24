@@ -1,0 +1,23 @@
+{
+  "test": "go test -count=1 -run '^TestV4HistoryLineBounds$' ./internal/deskkit",
+  "control": {
+    "name": "valid below-limit line duplicated",
+    "file": "internal/deskkit/perfread.go",
+    "old": "recs = append(recs, r)",
+    "new": "recs = append(recs, r, r)"
+  },
+  "mutations": [
+    {
+      "name": "outer whitespace evades complete wire byte bound",
+      "file": "internal/deskkit/perfread.go",
+      "old": "r, decodeErr := perfrec.Decode(line)",
+      "new": "r, decodeErr := perfrec.Decode(bytes.TrimSpace(line))"
+    },
+    {
+      "name": "CRLF loses a wire byte before validation",
+      "file": "internal/deskkit/perfread.go",
+      "old": "sc.Split(scanPerfJSONL)",
+      "new": "sc.Split(bufio.ScanLines)"
+    }
+  ]
+}

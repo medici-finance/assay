@@ -67,6 +67,12 @@
       "file": "mixed_identity.go",
       "old": "if masks[k] != 3 {",
       "new": "if true || masks[k] != 3 {"
+    },
+    {
+      "name": "padded line loses byte bound through generic JSON decoding",
+      "file": "schema.go",
+      "old": "err := r.UnmarshalJSON(line)",
+      "new": "err := json.Unmarshal(line, &r)"
     }
   ]
 }

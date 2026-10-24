@@ -16,7 +16,7 @@ package deskkit
 
 import (
 	"bufio"
-	"encoding/json"
+	"bytes"
 	"errors"
 	"math"
 	"os"
@@ -119,13 +119,14 @@ func readPerfDayFile(path string) ([]PerfRecord, int, error) {
 	skipped := 0
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 4096), 1<<20)
+	sc.Split(scanPerfJSONL)
 	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if line == "" {
+		line := sc.Bytes()
+		if len(bytes.TrimSpace(line)) == 0 {
 			continue
 		}
-		var r PerfRecord
-		if json.Unmarshal([]byte(line), &r) != nil || (r.Schema != PerfSchema && r.Schema != PerfSchemaV2 && r.Schema != perfrec.SchemaV3 && r.Schema != perfrec.SchemaV4) {
+		r, decodeErr := perfrec.Decode(line)
+		if decodeErr != nil || (r.Schema != PerfSchema && r.Schema != PerfSchemaV2 && r.Schema != perfrec.SchemaV3 && r.Schema != perfrec.SchemaV4) {
 			skipped++
 			continue
 		}
@@ -525,3 +526,15 @@ func nearestRank(sorted []int64, k float64) int64 {
 
 func round1(f float64) float64 { return math.Round(f*10) / 10 }
 func round3(f float64) float64 { return math.Round(f*1000) / 1000 }
+
+// scanPerfJSONL preserves CR and all padding for the wire-byte validator. The
+// scanner still bounds allocations; blank-line recognition alone trims spaces.
+func scanPerfJSONL(data []byte, atEOF bool) (int, []byte, error) {
+	if i := bytes.IndexByte(data, '\n'); i >= 0 {
+		return i + 1, data[:i], nil
+	}
+	if atEOF && len(data) > 0 {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
+}

@@ -87,7 +87,7 @@ not advance lifecycle, independently verify itself or claim consumer rollout.
 | 4 | check:ci +flow | `cd tools/desk && GOWORK=off go test -count=1 -v -run '^TestV4ReadReportFlow$' ./cmd/deskperf` | exit 0 and named PASS; actual files and compiled CLI JSON; tool role none, workflow assigned role, legacy --role excludes v3/v4, assigned-role needs supported matching workflow attribution, including combined flags; query not-applicable/unavailable by kind; no double-counted summaries |
 | 5 | check:ci +flow | `cd perfrec && GOWORK=off go test -count=1 -v -run '^TestV4ExternalConsumer$' .` | exit 0 and named PASS; separate consumer module uses public API with supported/unsupported optional extensions |
 | 6 | check:ci +flow | `statusgen --root . --lint` | exit 0 |
-| 7 | check +mutation | `cd perfrec && muhar -j 1 -spec v4-mutations.json && muhar -j 1 -spec overflow-mutations.json && muhar -j 1 -spec mutations.json` | exit 0; healthy baseline, distinct caught control, all v4/overflow and retained v3 mutations caught, zero survivors/could-not-mutate; exact restoration |
+| 7 | check +mutation | `cd perfrec && muhar -j 1 -spec v4-mutations.json && muhar -j 1 -spec overflow-mutations.json && muhar -j 1 -spec mutations.json && cd ../tools/desk && muhar -j 1 -spec cmd/deskperf/v4-reader-mutations.json` | exit 0; healthy baseline, distinct caught control, all v4/overflow and retained v3 mutations caught, zero survivors/could-not-mutate; exact restoration |
 
 Pre-mortem: permissive known fields/privacy leaks → row 2; unsupported extensions
 blanking all timing → rows 1/4; bound bypass → row 3; desk-internal coupling → row 5.
