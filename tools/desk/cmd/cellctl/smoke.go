@@ -36,7 +36,18 @@ func cmdSmoke(cell string, v *cli.Values, extra []string) {
 	if !valueIn(harness, harnessValues) {
 		die("smoke: --harness must be claude or codex, got '%s'", harness)
 	}
+	provider := c.Env.Get("CELL_PROVIDER")
+	var prov Provider
+	if provider != "" {
+		if harness != "claude" {
+			die("smoke: providers require the claude harness")
+		}
+		prov = c.resolveProvider(provider)
+	}
 	model := modelOverride
+	if model == "" && provider != "" {
+		model = prov.Model
+	}
 	if model == "" {
 		rm := c.resolveRoleModel("smoke", harness)
 		if !rm.OK {
@@ -61,10 +72,17 @@ func cmdSmoke(cell string, v *cli.Values, extra []string) {
 		c.printPlan(env, c.Repo, argv)
 		return
 	}
-	fmt.Printf("[smoke] resolved model=%s harness=%s (read-only, tool-free, one shot)\n", model, harness)
+	if provider != "" {
+		fmt.Printf("[smoke] resolved model=%s harness=%s base_url=%s (read-only, tool-free, one shot)\n", model, harness, prov.BaseURL)
+	} else {
+		fmt.Printf("[smoke] resolved model=%s harness=%s (read-only, tool-free, one shot)\n", model, harness)
+	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = c.Repo
 	cmd.Env = env.Pairs
+	if provider != "" {
+		cmd.Env = scrubbedProviderEnv(cmd.Env, prov, model)
+	}
 	var buf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &buf, &buf
 	rc := 0
@@ -72,6 +90,9 @@ func cmdSmoke(cell string, v *cli.Values, extra []string) {
 		rc = exitStatus(err)
 	}
 	last := lastNonBlankLine(buf.String())
+	if provider != "" {
+		last = strings.ReplaceAll(last, prov.TokenVal, "<redacted>")
+	}
 	if rc == 0 && last == "READY" {
 		fmt.Println("READY")
 		return
