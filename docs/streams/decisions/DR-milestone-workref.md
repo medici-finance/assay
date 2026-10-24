@@ -4,6 +4,7 @@ date: "2026-10-24"
 title: "Use one pure shared work-reference library with explicit legacy consumer profiles"
 consequence: major
 decided-by: "human:<name>"
+ruling: "https://github.com/medici-finance/assay/issues/4219#issuecomment-6389330807"
 alternatives:
   - "Keep independent QID and trailer parsers: rejected because equivalent references can drift across consumers and revisions."
   - "Use a helper binary or subprocess protocol: rejected because the approved design requires direct importable library calls without another runtime or authority boundary."
@@ -24,13 +25,12 @@ approval of that bounded design while preserving independent authority checks an
 legacy parser acceptance sets. The maintainer selected
 [option 1 on 23 October](https://github.com/medici-finance/assay/issues/4219#issuecomment-6373998126).
 
-That comment names the brief, not this newly recorded DR identifier. It is preserved
-as the existing design decision; it is not falsely asserted as a corroborated
-`ruling:` for this record. The maintainer requested reconciliation on 24 October in
-[the approval and reconciliation change](https://github.com/medici-finance/assay/issues/4347).
-Before merging this record, link a new, unedited maintainer comment on #4219 naming
-`DR-milestone-workref` as required by registers-v1 §7.5. Until that link is recorded,
-this public placeholder is unratified; a bot relay or PR approval is not its replacement.
+The 23 October comment names the brief. The maintainer reaffirmed that same bounded
+design on 24 October in an unedited own-account comment explicitly naming this
+record, linked by `ruling:` above. This records the exact identifier required by
+registers-v1 §7.5 without treating a bot relay or a PR approval as the human's comment.
+The [reconciliation request](https://github.com/medici-finance/assay/issues/4347)
+preserves independent verification and final acceptance authority.
 
 ## Acceptance boundary
 
