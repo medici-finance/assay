@@ -7,6 +7,12 @@ required path. Earlier revision-bound approvals and activation gates retain thei
 
 Request tracked by [Assay #3669](https://github.com/medici-finance/assay/issues/3669).
 
+Implementation admission update, 24 October: the maintainer approved amendment 27
+and requested agent-execution activation in
+[the approval and reconciliation change](https://github.com/medici-finance/assay/pull/4349).
+That approval removes the stream-level hold. This chapter's concrete custody/profile
+decisions, effective qualification and deployment gates retain their independent scope.
+
 ## Outcome and checked starting point
 
 An operator enters a dedicated Linux operator container and uses `cellctl` to start,

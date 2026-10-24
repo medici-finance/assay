@@ -1,11 +1,19 @@
 # Portable agent execution environments
 
-**Status: requested future-state amendment, 16 October 2026; routed to the
-[agent-execution stream](../../streams/agent-execution/README.md), which stays parked until
-this amendment is approved.** This extends the
-existing R2/R3/R4/R7 owners. It specifies implementation work, not deployment,
-credential migration, a remote backend selection or an expansion of the earlier
-revision-bound architecture approval. Existing decisions and historical Evidence stay intact.
+**Status:** approved — bounded implementation scope and agent-execution admission approved
+by the maintainer on 24 October 2026; effective on the maintainer's merge of the
+[approval and reconciliation change](https://github.com/medici-finance/assay/pull/4349),
+the ruling-bearing PR under lifecycle §8.4.
+
+**Routes-to:** docs/streams/agent-execution/
+
+This extends the existing R2/R3/R4/R7 owners through the already-authored
+[agent-execution stream](../../streams/agent-execution/README.md). The maintainer explicitly
+approved amendment 27 for implementation and requested that stream be unparked.
+This is a new bounded implementation approval, not an expansion of the earlier
+revision-bound architecture decision. Deployment, credential migration, remote backend
+selection, concrete profile adoption and live activation retain their separate approvals.
+Existing decisions, Task/Verify obligations and historical Evidence stay intact.
 
 ## Outcome and controlling design
 

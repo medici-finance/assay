@@ -213,8 +213,11 @@ resource limit changes in this documentation PR.
 ## Portable execution environments — 16 October 2026
 
 Controlling delta: [agent execution environments](27-agent-execution-environments.md).
-The new agent-execution stream, parked until that amendment is approved, authors seven
-bounded extensions of existing owners:
+The agent-execution stream authors the seven bounded extensions of existing owners below.
+Amendment 27 and implementation admission are approved by the 24 October
+[approval and reconciliation change](https://github.com/medici-finance/assay/pull/4349),
+effective on the maintainer's merge of its ruling-bearing PR. Later /08–09 profile
+qualification and all deployment/custody gates remain separate:
 
 | Gap | Owning brief | Existing prerequisite/consumer | Change made in this authoring PR |
 |---|---|---|---|
