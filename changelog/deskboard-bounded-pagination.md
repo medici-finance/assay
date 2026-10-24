@@ -1,0 +1,1 @@
+- Complete bounded GitHub reviewed-head history and commit-file reads through the shared adapter, preserving deskboard's RE-REVIEW fallback whenever evidence is incomplete or inconsistent.

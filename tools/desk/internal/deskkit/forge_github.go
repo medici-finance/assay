@@ -248,8 +248,8 @@ func (g *GitHubForge) doJSON(method, path string, in, out any) error {
 	return err
 }
 
-// doJSONHeader is doJSON returning the response headers too, for the ONE caller that needs
-// the forge's own pagination signal (ListOpenIssues reads `Link: rel="next"`).
+// doJSONHeader is doJSON returning the response headers too, including the forge's
+// own pagination signal (`Link: rel="next"`).
 //
 // A degraded transport never yields a SHORTER answer with a nil error (#1032): the body
 // read's error is kept — a connection cut mid-transfer hands back whatever arrived, which
@@ -2177,13 +2177,7 @@ func (g *GitHubForge) GetCommit(repo ForgeRepo, sha string) (*RepoCommit, error)
 	if strings.TrimSpace(sha) == "" {
 		return nil, Unverifiable("GetCommit needs a non-empty sha for "+repo.Slug(), nil)
 	}
-	var w ghCommitWire
-	path := fmt.Sprintf("/repos/%s/%s/commits/%s", repo.Owner, repo.Name, sha)
-	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
-		return nil, err
-	}
-	rc := w.toRepoCommit()
-	return &rc, nil
+	return g.commitWithFiles(repo, sha)
 }
 
 // ListFileCommits reads ONE page of the commits reachable from ref that touched file, newest
@@ -2247,24 +2241,7 @@ func (g *GitHubForge) CompareRefs(repo ForgeRepo, base, head string) (*RefCompar
 	if strings.TrimSpace(base) == "" || strings.TrimSpace(head) == "" {
 		return nil, Unverifiable("CompareRefs needs both base and head for "+repo.Slug(), nil)
 	}
-	var w ghCompareWire
-	path := fmt.Sprintf("/repos/%s/%s/compare/%s...%s", repo.Owner, repo.Name, base, head)
-	if err := g.doJSON(http.MethodGet, path, nil, &w); err != nil {
-		return nil, err
-	}
-	out := &RefComparison{Status: w.Status, AheadBy: w.AheadBy, BehindBy: w.BehindBy}
-	for _, c := range w.Commits {
-		out.Commits = append(out.Commits, c.toRepoCommit())
-	}
-	// The unpaginated compare can stop at 250 commits. The count is evidence,
-	// never treat a missing count or a short read as an empty interval.
-	out.CommitsComplete = w.TotalCommits != nil && len(w.Commits) == *w.TotalCommits
-	for _, f := range w.Files {
-		out.Files = append(out.Files, ChangedFile{
-			Filename: f.Filename, PreviousFilename: f.PreviousFilename, Status: f.Status,
-		})
-	}
-	return out, nil
+	return g.compareWithHistory(repo, base, head)
 }
 
 // ghSearchWire is the /search/issues read shape (only the fields consumed). The search API
