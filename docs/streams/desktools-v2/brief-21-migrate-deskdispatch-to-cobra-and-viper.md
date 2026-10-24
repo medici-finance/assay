@@ -306,5 +306,47 @@ Closure note: row 9's command, as defined, has no explicit --brief, --delivery o
 
 **VERIFY: PASS** — all 10 Verify rows pass with 0 fail in the network-off container witness at b787e831d0be; the verified closure still needs row 9 re-authored with pinned consumer endpoints (medici-finance/assay#1915).
 
+### Verifier pass — 2026-10-21 (merged main 471fa0febe6d, re-wake re-verify)
+
+Source 471fa0febe6d4370b973cf2380a0513f6a1d7efd. Admission: the dispatcher admission check (`deskdispatch --check-verifier`) returned 0 before any row ran (medici-finance/assay#3985). Why this pass: since b787e831d0be the deliverable changed in Go source. The perf-v3 common binding landed (shared `--perf-*` persistent flags on the root, a typed performance context, `PerfRunMeasured` as the one measurement finalizer, an owner-only performance handoff sidecar). Alias-held claim handling was added, and the mutation spec was re-targeted at the new `PerfRunMeasured` call site. The Verify table is unchanged. Every row was re-run.
+
+Environment: each row ran exactly as written, from the repository root, in a local docker container started with `--network none` and `--rm`, as uid 65534 (passwd entry `nobody`), with GOPROXY=off, GOTOOLCHAIN=local, an offline read-only module cache and a read-only roster mount. The source was a full-history local clone at the verified sha, with origin/main set to it and the origin URL set to the home's. Tree identity with the home was proven by a recursive diff that excluded only the git directory (no differences). statusgen was built in-container from the clone's own statusgen module. Rows 1-7, 9 and 10 ran in image assay-verify:go1.27-py (id sha256:9951b77a257f, go 1.27.2, git 2.47.3). Row 8 ran in image assay-verify:go1.27 (id sha256:955fd6c46c93, same go and git), for the reason given at row 8.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | Verify row 1 command as written | exit 0, one top-level TestCLIHelpOffline PASS | exit 0; the grep count of the top-level PASS line was 1 | 2026-10-21 | assay-verifier-app[bot] @ 471fa0febe6d (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 2 | Verify row 2 command as written | exit 0, one top-level TestCLIConfigFlow PASS | exit 0; the grep count of the top-level PASS line was 1 | 2026-10-21 | assay-verifier-app[bot] @ 471fa0febe6d (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | Verify row 3 command as written | exit 0, one top-level TestCLILegacyForms PASS | exit 0; the grep count of the top-level PASS line was 1 | 2026-10-21 | assay-verifier-app[bot] @ 471fa0febe6d (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 4 | Verify row 4 command as written | exit 0; last line `Totals: N caught, 0 NOT CAUGHT, 0 could-not-mutate.` with N = spec mutation count | exit 0; `Harness healthy: baseline GREEN, positive control CAUGHT.`; last line `Totals: 10 caught, 0 NOT CAUGHT, 0 could-not-mutate.`; the spec holds 10 mutations | 2026-10-21 | assay-verifier-app[bot] @ 471fa0febe6d (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 5 | Verify row 5 command as written | exit 0 | exit 0; `ok` for the deskdispatch package | 2026-10-21 | assay-verifier-app[bot] @ 471fa0febe6d (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 6 | Verify row 6 command as written | exit 0 | exit 0, no output | 2026-10-21 | assay-verifier-app[bot] @ 471fa0febe6d (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 7 | Verify row 7 command as written | exit 0, named PASS | exit 0; `--- PASS: TestCLIOwnerMigrated` | 2026-10-21 | assay-verifier-app[bot] @ 471fa0febe6d (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 8 | Verify row 8 command as written | exit 0, every floor seed passes | assay-verify:go1.27 image: exit 0, `seed passes=26`. The go1.27-py image gave exit 1 on one fixture assertion only (the no-gh case of the cellctl gen-shims gh-token suite under TestReg1145ShimCredential). That case sets PATH to /usr/bin:/bin and requires gh to be absent, but that image ships gh at /usr/bin/gh. This is an environment precondition, not a deliverable defect. | 2026-10-21 | assay-verifier-app[bot] @ 471fa0febe6d (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 9 | Verify row 9 command as written | exit 0, no consumer routing disproved | exit 0; roster loaded; `consumers: no brief files in the diff against 471fa0febe6d… — nothing to corroborate` | 2026-10-21 | assay-verifier-app[bot] @ 471fa0febe6d (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 10 | Verify row 10 command as written (check:ci) | exit 0, named PASS | exit 0 network-off in the go1.27-py image as uid 65534; `--- PASS: TestCLIHelpDoesNotDiscoverManifests` | 2026-10-21 | assay-verifier-app[bot] @ 471fa0febe6d (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+Totals: 10 rows, 10 pass, 0 fail, 0 could-not-run.
+
+Run notes. A first run used a clone whose origin URL was the local checkout path. Row 5 then failed with 48 tests, all of them in the model-stamp forge resolution step: the resolver reads the current checkout's origin host when the roster has no forge entry. With the origin URL set to the home's, row 5 passed. The deskdispatch tests do not pin that input, so a checkout with a non-forge origin fails them. This is a test-hermeticity gap in a resolver this change did not touch, not a deliverable defect. Row 9's roster was first refused because the mount's parent directory was root-owned; the recorded row ran with an owned, read-only roster directory.
+
+Supplemental, outside the Verify table, discharging no row: the pinned consumer form, with --brief desktools-v2/21, --delivery 66dbced7188e (full sha) and --base its first parent 418592cb5b78 (full sha), exited 0 with summary 8 corroborated, 0 disproved, 0 unchecked. Row 9's command as defined still has no pinned endpoints (medici-finance/assay#1915).
+
+Review ask: the deskdispatch package's non-test Go sources hold no `flag.NewFlagSet` or `"flag"` import, so the old parser is gone. Legacy forms are covered by row 3, and their mutation by row 4.
+
+Risk-bearing values: frontmatter risk metadata is present, with all four fields "no", and the gate is model. Enumerated over b787e831d0be..471fa0febe6d for the deskdispatch package, the shared CLI package, the mutation spec and the migration registry, plus the values named in the earlier passes:
+- ExitUsage = 2 @ tools/desk/internal/cli/cli.go:20 (moved from line 18, value unchanged). Reversible.
+- tier default = "any" and kit default = "worker" @ tools/desk/cmd/deskdispatch/cli.go:73 (unchanged values). Reversible.
+- MkdirAll mode = 0700 @ tools/desk/cmd/deskdispatch/performance_handoff.go:28; group/other permission refusal mask = 0077 @ performance_handoff.go:32; sidecar file mode = 0o600 @ tools/desk/internal/packet/packet.go:747. Reversible by edit, but an over-wide mode would expose local attribution metadata until fixed.
+- expiresBeforeUtc = today + 7 days @ performance_handoff.go:49; deletion cutoff = today - 6 days @ performance_handoff.go:56. Reversible.
+- performanceSuffix = ".perf-context.json" @ performance_handoff.go:14; perfNames = 8 canonical `--perf-*` flag names @ tools/desk/internal/cli/performance.go:13; child role mapping implement/review/verify @ tools/desk/cmd/deskdispatch/dispatch.go:229. Reversible naming.
+
+RISK-VALUE: DERIVED — ExitUsage = 2 @ tools/desk/internal/cli/cli.go:20 — the shared CLI contract fixes exit 2 for unknown input before any handler runs (cli-contract.md:23); domain refusals keep 5 and unavailable reads keep 6, so callers keyed on custody outcomes see no change.
+RISK-VALUE: DERIVED — tier default = "any" @ tools/desk/cmd/deskdispatch/cli.go:73 — identical to the pre-migration default; the brief requires the same worktree, branch and claim per invocation.
+RISK-VALUE: DERIVED — MkdirAll mode = 0700, refusal mask = 0077 @ tools/desk/cmd/deskdispatch/performance_handoff.go:28 and :32 (file 0o600 @ tools/desk/internal/packet/packet.go:747) — the perf-v3 contract requires private launcher state with 0700 directories and 0600 files (docs/performance-attribution-spec.md:114-115); the mask refuses any group or other bit, which is exactly that requirement.
+RISK-VALUE: DERIVED — expiry = today + 7 days, cutoff = today - 6 days @ tools/desk/cmd/deskdispatch/performance_handoff.go:49 and :56 — the same contract caps retention at seven UTC days (docs/performance-attribution-spec.md:115); a sidecar kept from the start of day minus 6 lives under seven UTC days, and its stated expiry is at most seven days after it was written.
+
+**VERIFY: PASS** — all 10 Verify rows pass with 0 fail at 471fa0febe6d, network-off as uid 65534. Row 10 (check:ci) ran in the go1.27-py image. Row 8 ran in the gh-free go1.27 image, because the go1.27-py image ships gh, which breaks one fixture's no-gh precondition.
+Verification-Attestation: medici-finance/assay#3985 run=4a73c7016557fd11f6e672024a6b345e364ea8d6de11a3b7961a54e78fdd48a2 source=471fa0febe6d4370b973cf2380a0513f6a1d7efd brief=docs/streams/desktools-v2/brief-21-migrate-deskdispatch-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.
