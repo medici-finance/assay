@@ -13,6 +13,7 @@ depends: []
 unblocks: []
 effort: M
 gate: human
+decision-issue: 3368
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: [1116]
 schema: brief-v2
