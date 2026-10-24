@@ -34,6 +34,11 @@ var witnessOnBehalfOfLiteralRe = regexp.MustCompile(`(?i)on-behalf-of(:|\s+human
 // here after confirming its repo argument names the repo the row is written INTO.
 var witnessOnBehalfOfCallSites = map[string]int{
 	"verifyrun.go:row:onBehalfOfSuffix(w.Repo)": 1,
+	// The container bracket's host step (#4208): the annotation a container row
+	// carries, derived on the host for the repo the row lands in — the same
+	// witnessAnnotationRepo(witnessTargetRepo(brief), witnessOriginRepo(home))
+	// verifyrun sets as every row's Repo.
+	"containerbracket.go:hostRunnerCell:onBehalfOfSuffix(witnessAnnotationRepo(witnessTargetRepo(brief), witnessOriginRepo(home)))": 1,
 }
 
 // scanWitnessOnBehalfOf parses every non-test Go file directly in dir and returns the

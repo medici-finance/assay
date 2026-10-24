@@ -830,7 +830,8 @@ func cmdNew(args []string) (err error) {
 	reason := fs.String("reason", "", "stated reason for --force-new / --force-file (required with either)")
 	forPR := fs.String("for-pr", "", "bind this filing to the open change request `<owner>/<repo>#<N>` whose review requires "+
 		"it — a workflow-bound filing: not counted by the per-session new-issue rate, counted instead per role per "+
-		"change request (issue.file.bound_per_pr) and by the per-change and repo-wide write tiers. Needs --brief when "+
+		"change request (issue.file.bound_per_pr), by the per-change write tier and by the PR-bound backstop "+
+		"(write.bound.repo_hour), not by the fixed repo-wide ceiling unbound filings keep. Needs --brief when "+
 		"the change carries a brief; refused with --force-file. It does not bind the filer to that change")
 	briefID := fs.String("brief", "", "the brief id of the --for-pr change (<stream>/<NN> or a qualified colon form); "+
 		"must be that change's brief (a Brief:/Cross-repo-brief: trailer, or its diff touches the brief file)")
@@ -1261,8 +1262,8 @@ func cmdNew(args []string) (err error) {
 	//
 	// A workflow-bound filing (--for-pr) is verified here — the change request is open and the
 	// brief is its brief — and is then counted by the per-role, per-change cap INSTEAD of the
-	// per-session rate, then by the per-change write tier; the repo-wide tier below runs for
-	// it as for every filing. A binding that is refused or cannot be read logs as an uncharged
+	// per-session rate, then by the per-change write tier; the PR-bound backstop below replaces
+	// the fixed repo-wide ceiling for it. A binding that is refused or cannot be read logs as an uncharged
 	// `new` line.
 	var binding boundBinding
 	rate, window := newBudgetConfig()
@@ -1285,7 +1286,12 @@ func cmdNew(args []string) (err error) {
 		if lerr != nil {
 			return lerr
 		}
-		ac.boundCfg = boundConfigNote(limit, bwindow)
+		tier, terr := boundTier()
+		if terr != nil {
+			return terr
+		}
+		ac.boundCfg = boundConfigNote(limit, bwindow, tier)
+		binding.cfg = ac.boundCfg
 		if !limit.Off() {
 			if cerr := checkBoundBudget(b.pr, boundAs, time.Now(), limit.Value, bwindow.Duration()); cerr != nil {
 				return cerr
@@ -1305,7 +1311,13 @@ func cmdNew(args []string) (err error) {
 	// Standard outward-write budget. `new` creates a target whose number is not
 	// known in advance, so AllowWriteRepoWide is the scope whose bucket its writes land in
 	// (the same reasoning as deskpr create — see deskkit.AllowWriteRepoWide).
-	if werr := deskkit.AllowWriteRepoWide("deskfile", *repo); werr != nil {
+	// A bound filing is held by the PR-bound backstop instead (allowBoundTier), which counts the
+	// bound class apart from this fixed ceiling; every other filing keeps the fixed ceiling.
+	if boundPR != nil {
+		if _, werr := allowBoundTier(*repo); werr != nil {
+			return werr
+		}
+	} else if werr := deskkit.AllowWriteRepoWide("deskfile", *repo); werr != nil {
 		return werr
 	}
 
@@ -1545,6 +1557,22 @@ func cmdAttach(args []string) (err error) {
 			"refused: issue #%d is %s, not OPEN — reopen it first (a human action) or file a new issue via "+
 				"`deskfile new -R %s --title ... --body-file ...`. Target: %s",
 			target, view.State, *repo, view.URL))
+	}
+
+	// An attach to a change request is PR-bound work: its audit line is the attach-pr verb, which
+	// the fixed repo-wide ceiling does not count, and the PR-bound backstop gates it instead
+	// (before the write, so it is refused before anything is posted). An attach to an issue is
+	// unchanged: the per-target tier only.
+	if kind == deskkit.TargetChange {
+		ac.verb = attachPRVerb
+		tier, terr := boundTier()
+		if terr != nil {
+			return terr
+		}
+		ac.boundCfg = tierConfigNote(tier)
+		if werr := deskkit.AllowPRBoundWrite(*repo, int(tier.Value)); werr != nil {
+			return werr
+		}
 	}
 
 	ref, cerr := postAttach(fg, fr, *repo, target, kind, body)

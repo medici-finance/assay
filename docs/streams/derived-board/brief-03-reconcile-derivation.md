@@ -654,6 +654,55 @@ RISK-VALUE: NAMED, NOT DERIVED — Version = 1 @ statusgen/briefv2.go:209 (and s
 
 Verification-Attestation: medici-finance/assay#2996 run=67cbc979f2ede4e369c7894e4afc112c9b602fcd20f7e211f9479b90850f8f7b source=44054ca3756857c34eb818601a4ddcb19a7b4da5 brief=docs/streams/derived-board/brief-03-reconcile-derivation.md model=claude-opus-5-5 tier=any
 
+### Non-implementer verifier re-run — VERIFY: BLOCKED (rows 3, 4 and 9 could-not-check network-off) — 2026-10-21, assay-verifier-app[bot] (claude-opus-5-5 verifier), merged main 443a26a3f019251987504f73929ac422c6c63cb4
+
+Independent verifier, not the implementer, on merged main at 443a26a3f019251987504f73929ac422c6c63cb4. The home is a detached worktree at that source, admitted by `deskdispatch --check-verifier` (attestation below); the home holds no file other than this Evidence edit.
+
+Environment. Every credited row ran inside the local assay-verify:go1.27-py container started with `--network none` (go1.27.2 linux/arm64, Python 3.13.5), over a no-hardlinks scratch clone checked out at the source sha (row 5 writes an untracked fixture, row 10 mutates sources). GOPROXY=off, GOTOOLCHAIN=local, KUBECONFIG=/dev/null; the Go module cache was prefetched into a fresh scratch dir before the run and mounted in. Each row ran under bash exactly as authored from the repo root. The first container pass ran without a trust roster: row 5 then printed "LINT: REFUSED configuration" and `rc=1` (lint exit 5), an environment gap, not a code result. Row 5 was re-run in the same network-off container with the operator roster mounted read-only, and that run is the one recorded. Rows 3, 4 and 9 were also re-run network-off with the roster mounted; results matched the first pass. gate: model; risk metadata present, every field no (irreversible: no).
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | Verify row 1 command, verbatim | exit 0, `suites-at-floor=3` | exit 0, `suites-at-floor=3` | 2026-10-21 | assay-verifier-app[bot] @ 443a26a3f019251987504f73929ac422c6c63cb4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 2 | Verify row 2 command, verbatim | `ok` | exit 0, `ok` | 2026-10-21 | assay-verifier-app[bot] @ 443a26a3f019251987504f73929ac422c6c63cb4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | Verify row 3 command, verbatim | `ok`: an auth failure gives lookedAt false with the HTTP status | could-not-check: network-off the command exits 0 and prints `ok`, but the reason is "HTTP transport error: ... dial udp ... network is unreachable", a transport failure, so the auth-failure obligation (a 401 status) cannot be exercised without a forge read; no credit taken (blocker: #4173) | 2026-10-21 | assay-verifier-app[bot] @ 443a26a3f019251987504f73929ac422c6c63cb4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 4 | Verify row 4 command, verbatim | prints implemented, verified or done, with witness PR #80 | could-not-check: the row needs a read-only GitHub REST read with a token; network-off the PR list read fails (network is unreachable), every PR-derived cell is unknown, and the python assertion ends rc=1 (AssertionError). That is the absent network, not an observed engine failure (blocker: #4173) | 2026-10-21 | assay-verifier-app[bot] @ 443a26a3f019251987504f73929ac422c6c63cb4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 5 | Verify row 5 command, verbatim (scratch clone, roster mounted read-only) | `rc=0`, output holds `[eligibility-could-not-check] demo/01: held by rec:ingest/06` | exit 0; `LINT: PASS` then `rc=0`; stderr carries "NOTICE: [eligibility-could-not-check] demo/01: held by rec:ingest/06 — could-not-check (alias rec is unpublished — its target repo is not resolvable from this tree)" | 2026-10-21 | assay-verifier-app[bot] @ 443a26a3f019251987504f73929ac422c6c63cb4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 6 | Verify row 6 command, verbatim | ≥ 3 | exit 0, prints 16 | 2026-10-21 | assay-verifier-app[bot] @ 443a26a3f019251987504f73929ac422c6c63cb4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 7 | Verify row 7 command, verbatim | ≥ 1 | exit 0, prints 15 | 2026-10-21 | assay-verifier-app[bot] @ 443a26a3f019251987504f73929ac422c6c63cb4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 8 | Verify row 8 command, verbatim | exit 0 | exit 0; go vet clean, grep finds no graphql in the four named files (all four exist) | 2026-10-21 | assay-verifier-app[bot] @ 443a26a3f019251987504f73929ac422c6c63cb4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 9 | Verify row 9 command, verbatim | exit 0, `fold-wired` | could-not-check: half (a) passed network-off (no fold-test-failed; the TestFoldWiresAllInputs PASS line was found). Half (b) needs a read-only GitHub REST read; network-off the fold reports "a fold read is unread: could-not-check the open-issues read: HTTP transport error ... network is unreachable" and the command ends rc=1. That is the absent network, not an observed wiring failure (blocker: #4173) | 2026-10-21 | assay-verifier-app[bot] @ 443a26a3f019251987504f73929ac422c6c63cb4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 10 | Verify row 10 command, verbatim | exit 0, `Totals: 36 caught, 0 NOT CAUGHT, 0 could-not-mutate.` | exit 0, `Totals: 36 caught, 0 NOT CAUGHT, 0 could-not-mutate.` | 2026-10-21 | assay-verifier-app[bot] @ 443a26a3f019251987504f73929ac422c6c63cb4 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+Supplemental, no row credit. Rows 3, 4 and 9 were also run verbatim on the host (darwin/arm64) against the live forge, read-only, row 3 with GITHUB_TOKEN=invalid and rows 4 and 9 with the verifier App's read token: row 3 exit 0 `ok` (reason begins "HTTP 401"), row 4 exit 0 `implemented`, row 9 exit 0 `fold-wired`. These are diagnostic: they show the three rows would pass in an online read-only lane, but a host run is not network-off evidence and earns none of the rows.
+
+Reviewer question (1). The PR page cap flagged by the 2026-10-15 run is fixed at this source: fetchAllPulls walks to fetchAllPullsMaxPages = 1000 pages and, if still full, returns lookedAt=false with "not provably complete" (statusgen/ghfetch.go:138), so a truncated walk is no longer printed as complete. No input combination found this run prints a negative with lookedAt=true.
+
+Risk-bearing value. Trigger: none fires (risk present, all fields no, irreversible: no, no risk-classed path); the enumeration is recorded anyway. Step 1, literals over statusgen/ghfetch.go, statusgen/reconcile.go, statusgen/lifecycle.go, statusgen/briefv2.go and statusgen/reconcilefold.go at this source:
+
+- githubAPIBase = "https://api.github.com" @ statusgen/ghfetch.go:47
+- http.Client Timeout = 30 * time.Second @ statusgen/ghfetch.go:54
+- fetchAllPullsMaxPages = 1000 @ statusgen/ghfetch.go:105; perPage = 100 @ statusgen/ghfetch.go:119
+- status != http.StatusOK @ statusgen/ghfetch.go:126 and :195; status != 200 @ statusgen/reconcilefold.go:331
+- reviews per_page=100 @ statusgen/ghfetch.go:190 (ReviewsAtHead, not called by the fold)
+- blockingIssueLabels = {question, needs-decision, help wanted} @ statusgen/lifecycle.go:147
+- uuidV4Re @ statusgen/briefv2.go:79; Version < 1 refused @ statusgen/briefv2.go:433; default Version = 1 @ statusgen/briefv2.go:218 and statusgen/reconcilefold.go:89
+- openIssuePages = 20 @ statusgen/reconcilefold.go:312
+- reconcileOK = 0 @ statusgen/reconcile.go:76, reconcileUsageErr = 2 @ :77, reconcileCouldNotCheck = 3 @ :81
+
+Ranking: none is irreversible; the tool reads, and reconcile --apply writes only README Status cells in a working tree, so an edit and a redeploy undo any of them. Highest: the PR page cap and page size (they bound the witness set), then the success-status guards (the three-state invariant), then the issues page cap; the timeout and API base are reversible knobs.
+
+rows_passed=7 rows_total=10 (rows 1, 2, 5, 6, 7, 8, 10 checked-clean network-off; rows 3, 4, 9 could-not-check; 0 checked-failed)
+
+**VERIFY: BLOCKED** — 7 of 10 rows checked-clean network-off on merged main 443a26a3f019251987504f73929ac422c6c63cb4, 0 checked-failed. Rows 3, 4 and 9 need a read-only GitHub REST read, which a network-off run cannot make, so they are could-not-check (blocker: #4173); supplemental host runs of all three met their Expect but earn no credit. Status stays implemented.
+
+RISK-VALUE: DERIVED — perPage = 100 @ statusgen/ghfetch.go:119 — 100 is the GitHub REST maximum per_page for the pulls list, so it minimises calls (the brief's one-list-call-per-repo rule); a smaller value only costs calls, and completeness is decided by a short page, not by the size
+RISK-VALUE: DERIVED — fetchAllPullsMaxPages = 1000 @ statusgen/ghfetch.go:105 — a non-termination bound, not a size limit: 100,000 pulls at 100 a page, and reaching it returns lookedAt=false (statusgen/ghfetch.go:138), so any value is fail-closed; too small degrades to unknown, never to a false todo
+RISK-VALUE: DERIVED — status != http.StatusOK @ statusgen/ghfetch.go:126 (paired at :195; status != 200 @ statusgen/reconcilefold.go:331) — 200 is the HTTP success constant; any other status returns lookedAt=false with the status text, the brief's three-state ground rule
+RISK-VALUE: DERIVED — openIssuePages = 20 @ statusgen/reconcilefold.go:312 — a full last page at the cap returns lookedAt=false (statusgen/reconcilefold.go:350), so the value is fail-closed at any repository size
+RISK-VALUE: DERIVED — blockingIssueLabels = {question, needs-decision, help wanted} @ statusgen/lifecycle.go:147 — identical to the blocked row of the stream spec §2 derivation table (docs/streams/derived-board/spec.md line 25)
+
+Verification-Attestation: medici-finance/assay#3935 run=1fb99e81fdbdd268bcb89aab2de04ca313ec6129120e9c12bb409505e8412fd5 source=443a26a3f019251987504f73929ac422c6c63cb4 brief=docs/streams/derived-board/brief-03-reconcile-derivation.md model=claude-opus-5-5 tier=strong
+
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
 Reviewer questions: (1) find one input combination where the engine prints a negative

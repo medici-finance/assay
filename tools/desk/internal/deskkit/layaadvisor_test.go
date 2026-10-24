@@ -12,6 +12,13 @@ import (
 	"time"
 )
 
+// The fixture hangs far past the envelope, so a call that returns inside the envelope
+// proves the deadline killed it; the margin keeps runner scheduling out of the result.
+const (
+	layaHang     = 10 * time.Second
+	layaEnvelope = 3 * time.Second
+)
+
 // Reexec this test binary, not Python or any model, across the production seam.
 func TestLayaProcess(t *testing.T) {
 	if os.Getenv("HF_HUB_OFFLINE") != "1" {
@@ -22,7 +29,7 @@ func TestLayaProcess(t *testing.T) {
 		os.Exit(2)
 	}
 	if req.Consultation.Detail == "timeout" {
-		time.Sleep(time.Second)
+		time.Sleep(layaHang)
 		os.Exit(0)
 	}
 	if req.Consultation.Detail == "malformed" {
@@ -103,8 +110,8 @@ func TestLayaAdvisorLimits(t *testing.T) {
 		if _, err := a.Predict(context.Background(), Consultation{Detail: detail}); err == nil {
 			t.Fatalf("accepted %s", detail)
 		}
-		if time.Since(start) > 500*time.Millisecond {
-			t.Fatal("process exceeded deadline envelope")
+		if time.Since(start) > layaEnvelope {
+			t.Fatalf("%s exceeded deadline envelope", detail)
 		}
 	}
 	a.MaxBytes = 1
@@ -115,7 +122,7 @@ func TestLayaAdvisorLimits(t *testing.T) {
 
 func TestLayaPipeHold(t *testing.T) {
 	if os.Getenv("HF_HUB_OFFLINE") == "1" {
-		time.Sleep(time.Second)
+		time.Sleep(layaHang)
 		os.Exit(0)
 	}
 }
@@ -141,7 +148,7 @@ func TestLayaAdvisorPipeDeadline(t *testing.T) {
 		if err == nil {
 			t.Errorf("expired %s accepted", detail)
 		}
-		if time.Since(start) > 500*time.Millisecond {
+		if time.Since(start) > layaEnvelope {
 			t.Errorf("%s exceeded completion deadline", detail)
 		}
 	}

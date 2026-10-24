@@ -98,8 +98,10 @@ nothing measured.
    cell with two markers (`cmd-marker-ambiguous`), a marker that replaces a command-shaped
    first span (`cmd-marker-overrides-command`), and a `cmd:` span that is not honoured
    (`cmd-marker-not-honoured`), and a marked command that cannot fail — `true`, `:`,
-   `exit 0`, a lone `echo` — (`cmd-marker-vacuous`). A closed brief's `prose-led-command` rows collapse
-   into one summary NOTICE, since closed records are not rewritten.
+   `exit 0`, a lone `echo` — (`cmd-marker-vacuous`). Findings on a brief already `done` or `verified` at the merge-base are not rewritten: `statusgen --lint`
+   counts them per rule in one shared historical report (`[historical-notices]` lines and a totals
+   line) instead of printing each; `--lint --all` lists every one and `--lint --json` emits the
+   deterministic report. Active, newly closed and unknown-status briefs keep individual NOTICEs.
    The marker is `cmd:`, not `run:`: `run:` is the GitHub Actions step key, and a quoted
    workflow line in Verify prose must never become the command the witness executes.
 8. **Prose deliverables get PRESENCE gates; quality is the human gate (the honesty rule).**
@@ -662,12 +664,22 @@ passing run — which is why they are lint rules and not review vigilance.
       A `sandbox=container-netns` row is credited only inside a closed
       **admission bracket** (desktools-v2/71), run within one dispatch with no
       edit to the home between its steps: (1) on the host, `statusgen verifyrun
-      --open-bracket --root <home> --brief <path> --out <receipt>` runs the
-      admission check, digests the home's tree and writes the receipt (check
-      JSON, `tree`, `opened`) outside the home; (2) in the container,
-      `verifyrun --sandbox=container-netns --admission-receipt <receipt>
-      --container-image-digest sha256:<64 hex> --witness <file>` never runs
-      admission itself, refuses before any row unless its mounted root digests
+      --open-bracket --root <home> --brief <path> --out <receipt>` derives
+      every part of a witness Runner cell on the host — the executing runner
+      (the same sources and order as any witness; `could-not-attribute` and
+      no receipt when there is none), the home's tree token and the
+      on-behalf-of annotation for the repo the rows are written into — runs
+      the admission check, digests the home's tree and writes the receipt
+      (check JSON, `tree`, `opened`, `runner`, `runner_source`,
+      `runner_tree`, `on_behalf_of`) outside the home; (2) in the container, `verifyrun --sandbox=container-netns
+      --admission-receipt <receipt> --container-image-digest sha256:<64 hex>
+      --witness <file>` never runs admission or derives an identity itself,
+      refuses `could-not-attribute` before any row when the receipt names no
+      runner, and refuses before any row when the runner, source, tree token
+      or annotation is malformed, writes every row's Runner cell from the
+      receipt alone (`<runner> @ <runner_tree> (<on_behalf_of>)
+      (<runner_source>)`, deriving no part of it from its own git, roster or
+      environment), refuses before any row unless its mounted root digests
       to the receipt's `tree` and the receipt admits this brief, refuses after
       the rows if they changed that tree (then no attestation or
       `Tree-Digest` is written), and writes the witness table, then
@@ -677,7 +689,10 @@ passing run — which is why they are lint rules and not review vigilance.
       <receipt> --witness <file>` re-runs the check and appends one
       `Admission-Bracket: run=… source=… tree=sha256:… witness=sha256:…
       opened=… closed=… before=receipt after=check-verifier` line only when the
-      check re-admits the run the witness names and the home still digests to
+      check re-admits the run the witness names, the Runner cell it
+      re-derives on the host (runner, source, tree token, annotation) equals
+      the receipt's and every row's Runner cell is exactly that cell, and the
+      home still digests to
       both the receipt's `tree` and the witness's `Tree-Digest`, read only
       from the span that ends at the append position (a span with more than
       one `Tree-Digest`, `Container-Image` or attestation line is refused). The tree
@@ -746,7 +761,15 @@ passing run — which is why they are lint rules and not review vigilance.
       `--admission-receipt` is a usage refusal whatever `DESK_LOOP` says.
       Known limits: version 2 (cross-repository) receipts are refused; a
       linked worktree's git directory is not mounted in the container, so rows
-      that need git history run on the host; the in-container digest is
+      that need git history run on the host, and the container takes its
+      Runner cell only from the receipt, which is keyless: the close step's
+      host re-derivation is what confirms it, and a receipt written by an
+      older `statusgen` (no `runner` or `runner_tree`) is refused; the
+      bracket's `witness=` digest does not cover the on-behalf-of annotation
+      (digest normalisation drops it, as `deskevidence` stamps it at
+      landing), so an annotation edit after the close is not a digest
+      mismatch — the exact cell check binds it only at the close; the
+      in-container digest is
       only as trustworthy as the pinned image that computes it; and the
       per-line provenance in (1) reads the commit author git records, which
       is author-asserted attribution, not authorization: whoever can commit

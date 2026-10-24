@@ -12,10 +12,12 @@ specification for the Assay methodology — the brief format, the register syste
 and the lifecycle and status board. These documents define what a conforming
 implementation MUST do.
 
-The specification covers three domains:
+The specification covers the following contracts:
 
 | Document | Domain |
 |----------|--------|
+| [`milestone-v1.md`](./milestone-v1.md) | **Proposed, unimplemented:** delivery outcomes, scope and acceptance, versioned capability dependencies, contribution ownership, change propagation and report history. |
+| [`stream-v1.md`](./stream-v1.md) | **Proposed, unimplemented:** stream ownership and integration of milestone records and generated views; preserves existing stream behavior. |
 | [`brief-v1.md`](./brief-v1.md) | The brief-v1 schema: frontmatter fields, body structure, dependency rules, Verify tables, execution tiering, mid-flight change routing, and conformance requirements. |
 | [`registers-v1.md`](./registers-v1.md) | The append-only registers (FINDINGS, INTAKE; RETRO informative): per-entry-file storage and generated views, slug IDs, append-only and tombstone rules, deletion detection, and linter conformance. |
 | [`lifecycle-v1.md`](./lifecycle-v1.md) | The brief lifecycle (`todo` through `done`), the single-writer STATUS.md board, the Next-up work-queue semantics, review gates, and what the board does and does not measure. |
@@ -89,6 +91,16 @@ implementation's conformance statement is **self-asserted and unaudited**: anyth
 declare itself conforming, and nothing in this specification checks that it is. A
 machine-checkable conformance fixture set is the intended remedy; until one exists, a
 conformance claim carries exactly the weight of its author's reputation.
+
+## Proposed delivery milestone contracts
+
+The milestone and stream integration drafts, and the explicitly proposed sections in
+the brief and lifecycle contracts, are not claims of reference-implementation support.
+The proposed prefixed brief labels and deprecation in brief §3.8 likewise require
+coordinated reader support; canonical internal brief IDs remain unchanged. These drafts
+do not add supported YAML fields, require existing streams to migrate, or authorize
+implementation. Their capability negotiation and rollout requirements must be implemented
+before use; they are excluded from current reference-implementation conformance claims.
 
 ## Reference implementation
 

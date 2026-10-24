@@ -548,3 +548,23 @@ additive fields or optional extensions. Perf-v4 is the first concrete migration:
 retain v1/v2/v3 readers, qualify the new reader before selecting producers, and direct
 future performance upgrades to v4. This supersedes v3 as the *future format target*
 in the earlier performance amendment, not its completed implementation or evidence.
+
+## Shared candidate and priority planning — requested 23 October 2026
+
+The [existing efficiency specification](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+owns the candidate-observation plus explicit current-policy/time/capacity plan contract.
+Both prose and discrete desks consume the same role-qualified pure planner; existing
+work/policy evaluators retain their meanings. Runtime coordination consumes ordered
+proposals, rechecks admission and owns attempts; provider effects retain credential custody.
+No new scheduler, per-role independent ranker, universal replacement score or policy store.
+
+Use uncapped authorized source coverage, visible held/unknown/unmapped work, stable aliases
+and policy/evaluator revisions. A presentation cap is not a full candidate set. Slot refill
+and priority edits reevaluate supplied observations without automatically re-enumerating GH.
+R6 refreshes invalidated/due source observations once per admitted scope; final consequential
+checks stay fresh. Portfolio allocation remains advisory until its own qualified migration.
+
+Delivery reuses desk-tools/39–45 and /51, graph-execution/27, desktools-v2's existing typed
+query/custody boundaries and forge-neutral/37–43. Existing adopter role cutovers qualify
+same-input prose/discrete parity. The ranked request model and A11–A12 acceptance live in
+the efficiency spec; this pointer grants no new activation or revision-bound approval.

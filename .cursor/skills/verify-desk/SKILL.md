@@ -430,7 +430,12 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   `deskpr`, replies via `deskreply` — never a raw forge call.
 - **Evidence is `command → exit code → real observed output`**, one row per Verify item, dated and
   runner-attributed, never a bare ✓ and never a claim. A row that cannot run is recorded EXPLICITLY
-  unrun with its reason — never silently skipped, never assumed-pass.
+  unrun with its reason — never silently skipped, never assumed-pass. Every submitted execution
+  row has separate `Date` and `Runner` cells, including BLOCKED/unrun rows and supplemental
+  host observations. For unrun rows they identify observation of the blocker, not execution.
+  A dated heading or commit author is insufficient. Recover missing attribution from retained
+  run records or rerun; never infer it. Preflight every submission with `deskevidence … --dry-run`
+  before publishing its Evidence PR; repair any refusal without advancing the brief.
 - **The emitted verifier kit owns command preflight, row coverage and verdict spelling.**
   Its sections 2 and 5 carry the execution procedure; dispatch it verbatim. This desk checks
   the returned accounting and routes the outcome as described below.
@@ -1178,7 +1183,7 @@ relay onto the tracker, nor does a durable escalation ride the lane alone. A fil
 PR's own review or verification requires (a blocker, a question) is workflow-bound: file it with
 `deskfile new --for-pr <owner>/<repo>#<N> --brief <id> …`, which the per-session budget does not
 count, so a spent budget never defers it — its bounds are a per-role, per-PR cap (off unless
-configured) and the outward-write ceiling, and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
+configured), the per-PR outward-write tier and a separate repo-wide backstop for change-bound writes (not the fixed ceiling that unbound filings keep), and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
 every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME

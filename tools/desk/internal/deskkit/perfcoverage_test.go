@@ -49,14 +49,14 @@ func TestEveryDeskCommandRecordsPerformance(t *testing.T) {
 					return true
 				}
 				sel, ok := call.Fun.(*ast.SelectorExpr)
-				if !ok || (sel.Sel.Name != "PerfRun" && sel.Sel.Name != "PerfRunResolved" && sel.Sel.Name != "PerfRunMeasured" && sel.Sel.Name != "PerfRunSelected") {
+				if !ok || (sel.Sel.Name != "PerfRun" && sel.Sel.Name != "PerfRunResolved" && sel.Sel.Name != "PerfRunMeasured" && sel.Sel.Name != "PerfRunMeasuredConfig" && sel.Sel.Name != "PerfRunSelected") {
 					return true
 				}
 				wantArgs := 4
 				if sel.Sel.Name == "PerfRunSelected" {
 					wantArgs = 5
 				}
-				if len(call.Args) != wantArgs && !(sel.Sel.Name == "PerfRunMeasured" && len(call.Args) == 5 && call.Ellipsis.IsValid()) {
+				if len(call.Args) != wantArgs && !((sel.Sel.Name == "PerfRunMeasured" || sel.Sel.Name == "PerfRunMeasuredConfig") && len(call.Args) == 5 && call.Ellipsis.IsValid()) {
 					t.Errorf("%s: wrong performance entrypoint", name)
 					return true
 				}

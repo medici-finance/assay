@@ -32,6 +32,12 @@ import (
 // against the head tree, and the two PROBLEM sets are compared. The inner runs
 // never carry --diff-base, so there is no recursion.
 //
+// The same comparison also covers NOTICEs on the briefs the diff adds or edits
+// (noticeratchet.go): an actionable finding there that the merge-base did not
+// carry at that brief is promoted to PROBLEM, so new verification debt cannot
+// merge behind a green lint. Unavailable inputs report could-not-check instead
+// of a clean comparison.
+//
 // Fail-safe direction: whenever the base cannot be resolved, materialised, or
 // linted (a shallow CI checkout lacking the base commit, an unresolvable ref, a
 // git-archive export with no history), NOTHING is demoted — every head problem
@@ -59,6 +65,10 @@ type diffLintConfig struct {
 	relFromTop  func(root string) (string, error)
 	worktreeFn  func(root, sha string) (dir string, cleanup func(), err error)
 	lintRunner  func(treeRoot string, budget []string, changed, scope string) (problems, notices []string, err error)
+	// changedBriefs lists the brief files the head tree adds or edits relative
+	// to baseSHA (head path -> base path, "" when added). A nil seam or an error
+	// makes the notice ratchet could-not-check, never a clean comparison.
+	changedBriefs func(root, baseSHA string) (map[string]string, error)
 }
 
 // diffLintResult is the parsed outcome of one root's differential run.
@@ -67,6 +77,13 @@ type diffLintResult struct {
 	demoted       []string // pre-existing (base-side) problems — demoted to NOTICE
 	notices       []string // head-side NOTICE lines, passed through
 	couldNotCheck string   // non-empty => differential unavailable, full teeth applied
+
+	// Notice ratchet (statusgen/27): actionable findings the diff introduces on
+	// added or edited briefs are promoted from NOTICE to PROBLEM.
+	ratchetIntroduced  []string // head NOTICE lines promoted to PROBLEM
+	ratchetCarried     int      // actionable findings on changed briefs already at the base (stay NOTICE)
+	ratchetExamined    int      // changed briefs the comparison covered
+	ratchetUnavailable string   // non-empty => no new-notice comparison was made (never a clean read)
 }
 
 // runDiffLintRoots is the --diff-base entry point. It applies the differential
@@ -141,6 +158,7 @@ func runDiffLintOne(cfg diffLintConfig) (diffLintResult, error) {
 		// could-not-check NOTICE naming why the differential was unavailable.
 		res.introduced = headProblems
 		res.couldNotCheck = reason
+		res.ratchetUnavailable = "no base tree to compare against (see the diff-lint could-not-check above)"
 		return res, nil
 	}
 
@@ -164,7 +182,7 @@ func runDiffLintOne(cfg diffLintConfig) (diffLintResult, error) {
 	defer cleanup()
 
 	baseRoot := filepath.Join(dir, rel)
-	baseProblems, _, err := cfg.lintRunner(baseRoot, cfg.budget, cfg.changed, cfg.scope)
+	baseProblems, baseNotices, err := cfg.lintRunner(baseRoot, cfg.budget, cfg.changed, cfg.scope)
 	if err != nil {
 		return fail(fmt.Sprintf("base lint against %s failed to execute (%v) — full-strength lint, none demoted", short(baseSHA), err))
 	}
@@ -190,12 +208,46 @@ func runDiffLintOne(cfg diffLintConfig) (diffLintResult, error) {
 			res.introduced = append(res.introduced, p)
 		}
 	}
+
+	// Notice ratchet: PROBLEMs above are compared as before; the actionable
+	// NOTICEs of the briefs this diff adds or edits are compared here, on the
+	// structured finding (rule, path, row, subject), not the rendered line.
+	// Unavailable inputs leave every notice a NOTICE and say so — the run never
+	// claims a no-new-notices result it did not compute.
+	if cfg.changedBriefs == nil {
+		res.ratchetUnavailable = "no changed-brief source is wired for this run"
+		return res, nil
+	}
+	changed, cerr := cfg.changedBriefs(cfg.root, baseSHA)
+	if cerr != nil {
+		res.ratchetUnavailable = fmt.Sprintf("the briefs this diff changes could not be listed (%v)", cerr)
+		return res, nil
+	}
+	rr := evaluateNoticeRatchet(headNotices, baseNotices, cfg.root, baseRoot, changed)
+	res.ratchetIntroduced = rr.introduced
+	res.ratchetCarried = rr.carried
+	res.ratchetExamined = rr.examined
+	if len(rr.introduced) > 0 {
+		promoted := map[string]bool{}
+		for _, n := range rr.introduced {
+			promoted[n] = true
+		}
+		kept := make([]string, 0, len(headNotices))
+		for _, n := range headNotices {
+			if !promoted[n] {
+				kept = append(kept, n)
+			}
+		}
+		res.notices = kept
+	}
 	return res, nil
 }
 
 // emitDiffLintResult prints one root's differential outcome and returns the
-// number of diff-introduced problems (the exit-code contributors). NOTICEs
-// (head-side, demoted, and the could-not-check line) never affect the count.
+// number of diff-introduced problems (the exit-code contributors): the
+// introduced PROBLEMs plus the actionable notices the ratchet promoted. Every
+// other NOTICE (head-side, demoted, and the could-not-check lines) never
+// affects the count.
 func emitDiffLintResult(res diffLintResult) int {
 	var notices []string
 	notices = append(notices, res.notices...)
@@ -209,8 +261,14 @@ func emitDiffLintResult(res diffLintResult) int {
 	for _, n := range notices {
 		fmt.Fprintln(os.Stderr, "NOTICE:", n)
 	}
+	if res.ratchetUnavailable != "" {
+		fmt.Fprintln(os.Stderr, "NOTICE: notice-ratchet could-not-check: "+res.ratchetUnavailable+" — actionable notices on changed briefs are reported as NOTICE only, none compared")
+	}
 	for _, p := range res.introduced {
 		fmt.Fprintln(os.Stderr, "PROBLEM:", stripProblemPrefix(p))
+	}
+	for _, p := range res.ratchetIntroduced {
+		fmt.Fprintln(os.Stderr, "PROBLEM: [notice-ratchet] new actionable finding on a changed brief, absent at the merge-base:", stripProblemPrefix(p))
 	}
 	// The summary line — always printed, so a reviewer or desk routes base-side
 	// vs diff-side in one read (option 2, included even when option 1 fires).
@@ -219,7 +277,12 @@ func emitDiffLintResult(res diffLintResult) int {
 	} else {
 		fmt.Fprintf(os.Stderr, "diff-lint: %d base-side problem(s) demoted to NOTICE, %d diff-introduced problem(s)\n", len(res.demoted), len(res.introduced))
 	}
-	return len(res.introduced)
+	if res.ratchetUnavailable != "" {
+		fmt.Fprintln(os.Stderr, "diff-lint: notice-ratchet comparison UNAVAILABLE — no new-notice result is claimed")
+	} else {
+		fmt.Fprintf(os.Stderr, "diff-lint: notice-ratchet: %d new actionable notice(s) promoted to PROBLEM across %d changed brief(s), %d already at the base stay NOTICE\n", len(res.ratchetIntroduced), res.ratchetExamined, res.ratchetCarried)
+	}
+	return len(res.introduced) + len(res.ratchetIntroduced)
 }
 
 // normalizeDiffProblem strips the PROBLEM:/NOTICE: prefix and the tree's own
@@ -230,7 +293,11 @@ func normalizeDiffProblem(line, treeRoot string) string {
 	if abs, err := filepath.Abs(treeRoot); err == nil && abs != "" {
 		s = strings.ReplaceAll(s, abs, "")
 	}
-	s = strings.ReplaceAll(s, treeRoot, "")
+	// A "." (or empty) root must not be replaced as a string: that deletes every
+	// dot in the line. Both trees are normalised alike, so matching is unchanged.
+	if treeRoot != "" && treeRoot != "." {
+		s = strings.ReplaceAll(s, treeRoot, "")
+	}
 	// A stripped absolute root leaves a leading separator ("/repo/docs/..." ->
 	// "/docs/..."); trim it so the key is a clean tree-relative path. Both trees
 	// are normalised the same way, so this only affects legibility, not matching.
@@ -267,6 +334,8 @@ func diffLintProductionConfig(root, baseRef string, budget []string, changed, sc
 		relFromTop:  productionRelFromTop,
 		worktreeFn:  productionWorktree, // shared with lintaudit.go
 		lintRunner:  productionDiffLintRunner,
+
+		changedBriefs: productionChangedBriefs,
 	}
 }
 
@@ -317,6 +386,14 @@ func productionDiffLintRunner(treeRoot string, budget []string, changed, scope s
 		exe = "statusgen"
 	}
 	args := []string{"--root", treeRoot, "--lint"}
+	if lintDetailAll {
+		// Forwarded only when the caller passed --all: the inner head lint's
+		// notices are what this run prints, so without --all they are the bounded
+		// historical report (its could-not-check lines are NOTICE-prefixed and
+		// kept below). The base-vs-head comparison itself is over PROBLEM lines,
+		// which --all never changes.
+		args = append(args, "--all")
+	}
 	for _, b := range budget {
 		args = append(args, "--budget", b)
 	}

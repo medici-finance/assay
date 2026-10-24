@@ -12,6 +12,9 @@ import (
 )
 
 func (c *Cell) cachePolicy() (*cellcache.Policy, error) {
+	if c.Env == nil {
+		return nil, nil
+	}
 	return cellcache.Resolve(c.Dir, c.Env.Get)
 }
 func (c *Cell) cacheEnv(env []string) []string {
@@ -47,12 +50,8 @@ func (c *Cell) printCachePolicy() {
 	}
 }
 
-// cacheAdmission is the launch-path storage gate. It uses cellcache.Admit, not
-// cellcache.Check: a clean launch is cleared by the lock-free pre-check and takes
-// no cache lock and does no walk, so concurrent desk launches do not queue behind
-// one another's full measurement. When the pre-check cannot prove the cache clean
-// (near budget, stale or unreadable estimate, low free space) Admit runs the
-// unchanged locked Check, so a launch is never admitted without it.
+// cacheAdmission performs bounded preparation. Missing or dirty accounting
+// requires explicit maintenance; launch never falls through into a cache walk.
 func (c *Cell) cacheAdmission() error {
 	p, err := c.cachePolicy()
 	if err != nil {
@@ -61,11 +60,28 @@ func (c *Cell) cacheAdmission() error {
 	if p == nil {
 		return nil
 	}
-	r, err := cellcache.Admit(*p, false)
+	r, err := cellcache.Prepare(*p)
 	b, _ := json.Marshal(r)
 	fmt.Fprintf(os.Stderr, "storage-admission %s\n", b)
 	return err
 }
+
+// cadenceCacheMaintenance belongs to the existing supervisor between completed
+// passes. Interactive launches, startup and Finish never call this lifecycle.
+func (c *Cell) cadenceCacheMaintenance(ctx context.Context) error {
+	p, err := c.cachePolicy()
+	if err != nil || p == nil {
+		return err
+	}
+	r, err := cellcache.Maintain(ctx, *p)
+	if err != nil && r.Outcome == "" {
+		r.Policy, r.Outcome, r.Reason = *p, "could-not-check", "cache maintenance did not complete"
+	}
+	b, _ := json.Marshal(r)
+	fmt.Fprintf(os.Stderr, "cadence-cache-maintenance %s\n", b)
+	return err
+}
+
 func cmdCache(cell string, args []string) {
 	c := loadCell(cell)
 	p, err := c.cachePolicy()

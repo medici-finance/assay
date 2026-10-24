@@ -471,6 +471,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		commitContent = stampedContent
 	}
 
+	if err := checkAddedRowAttribution(commitContent, remoteContent); err != nil {
+		return err
+	}
+
 	// Row-scoped README landings. A direct-write target (never
 	// --brief-path — a brief file never carries the generated table) whose REMOTE content
 	// carries the marker-wrapped Briefs table may only have its NAMED rows' lifecycle cells

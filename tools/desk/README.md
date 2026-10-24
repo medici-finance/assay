@@ -34,9 +34,12 @@ proposed verbs are advisory and do not grant claims or permission to write.
 
 `deskboard` shares classifier input assembly and `reviewloop plan` shares plan
 assembly with this API. Their existing flags and output remain compatible. The
-new contract has no collection command or observation-file CLI flag in this change;
-that handoff is desk-tools/40. The legacy idle cadence is unchanged; new library
-callers must supply their own policy revision, clock and oldest acceptable input.
+collector is `deskboard review-queue --out FILE`; `reviewloop plan --snapshot`
+selects locally. `deskdispatch --kit review --pr N --observation FILE` validates
+an advisory source handoff and shares one preparation context with its packet.
+The [operator contract](../../docs/deskboard.md) records freshness boundaries,
+exact-source reuse, measured costs and separate live adoption. The legacy idle
+cadence is unchanged; library planners require explicit policy, clock and cutoff.
 
 ## Review planner state contract
 
@@ -64,7 +67,7 @@ changed or discarded.
 
 | Tool | Verb(s) | Class | Write budget + breaker |
 |------|---------|-------|------------------------|
-| `deskboard` | `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
+| `deskboard` | `review-queue`, `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass), `land` (record a judgment exit for a parked item) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item, each also appended as an `intake-exit-v1` record to `<state dir>/intake-exits.jsonl` (schema: `spec/intake-exit-v1.md`) | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) / local state (`land`) | yes (`run`) |
@@ -89,6 +92,7 @@ changed or discarded.
 | `deskclaim` | `acquire`, `release`, `list`, `stale` — the flock-backed claimable-action lock | local-only (claims dir) | no |
 | `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
 | `opmetrics` | (no verbs) — operator-layer collector: reads transcripts/beacons/claims, writes one **aggregates-only** day-file | local-only (strictly read-only against every input) | no |
+| `deskusage` | `record` reported counts at worker completion; `summary --by item\|tier [--json]` aggregates only; never reads transcripts, prompts, stdin or tool output | local-only counts write, outside Git worktrees; no network | no |
 | `deskperf` | `report` (per-tool p50 / p90 / max / total wall, share of total wall, refusal ratio, top-N slowest; forge calls per tool and per release against the App rate-limit budget), `boot` (deskboot's per-step cost, per role) — reads the opt-in local perf history; see [Local performance history](#local-performance-history--deskperf) | read-only (local perf files; no network; the shared kill-switch guard still writes its audit row) | no |
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `maintain objects` inventories and compacts the common Git directory offline; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); inspection takes `--dry-run` | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
@@ -459,6 +463,26 @@ assertions. A verb opts into the whole contract by routing its terminal error th
 
 Retrofitted so far: `deskdispatch`, `deskwt`, `desktoken`, `deskfile`. Other verbs are
 unaffected and keep their current behaviour until they are moved over.
+
+### Local worker usage — `deskusage`
+
+`deskusage record (<dispatch_ref> | --claim-key KEY) --repo owner/name --item stream/NN
+--tier any|strong` accepts only reported nonnegative integer counts (or `could-not-check`)
+through `--input-tokens`, `--output-tokens`, `--total-tokens`, `--cost-micros` and
+`--wall-seconds`. Omitted counts stay null. It never reads stdin, transcripts, prompts or tool
+output. The claim-key form resolves the latest dispatched run and requires the matching repo.
+The schema is `usage-v1`; records append under an exclusive lock with mode 0600. `ASSAY_USAGE_DIR`
+selects one absolute directory, otherwise `<state dir>/usage`; Git worktrees and symlinks into
+one are refused. `deskusage summary --by item|tier [--json]` prints only group counts, sums,
+medians and measured/null/could-not-check tallies; unknown fields or polluted lines refuse
+with a line number. These figures are not for ranking agents or people.
+
+This record is interim: the shared execution journal replaces it for an enrolled worker role.
+No enrollment behavior is activated by this command.
+
+A Git-managed HOME also makes its default usage directory ineligible. Set `ASSAY_USAGE_DIR`
+to a private directory outside every Git working tree. Claim-key resolution tolerates
+historical torn dispatch lines, but refuses a damaged tail that could hide a newer run.
 
 ### Local performance history — `deskperf`
 
@@ -1517,7 +1541,7 @@ The same probe rides on `deskboard actions`: its header carries `mainHealth`, th
 `MAIN-RED` / `MAIN-UNKNOWN` lines print **above** every row (a red `main` outranks a
 merge onto it), and each row on an affected repo is flagged `baseBranchRed` with a note.
 An **absent** `mainHealth` field means the verb did not probe — never that it found
-nothing wrong. `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
+nothing wrong. `review-queue`, `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
 `next-up`, `throughput`, `scope`, `policydrift`, `stalled`,
 `reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
 the absence for every verb on it (JSON **and** `--table`), `TestVerbInventory_Complete`
@@ -1993,7 +2017,7 @@ list of a subset means "no PRs in that repo" and "that repo is not read at all" 
 the same output, so a merge-ready PR in an unwatched repo is not missed — it is
 structurally invisible, and nothing knows to alert. Two halves:
 
-- **Every sweeping verb states its scope.** `prs`, `actions`, `queue`, `health`, `scope`,
+- **Every sweeping verb states its scope.** `review-queue` (requested/admitted/population in its observation), `prs`, `actions`, `queue`, `health`, `scope`,
   `policydrift`, `stalled` and `throughput` carry a `scope` object in the JSON header (repos, count, source) and
   print one scope line on `--table`. Verbs taking an explicit repo (`reviews`, `diff`,
   `files`) **omit** the field entirely — absent means "swept nothing", never "the set was
@@ -7039,6 +7063,7 @@ The roster keys (`~/.config/assay/roster.env`; strictly parsed):
 | Key | Value |
 |---|---|
 | `ASSAY_CLAIM_STORE` | `file` or `service` — one value for the cell, or `owner/name=<store>` entries for a cell whose repos genuinely differ (a repo the per-repo form does not name is refused, not defaulted) |
+| `ASSAY_USAGE_DIR` | optional one absolute local usage directory; defaults to `<state dir>/usage`; refuses Git worktrees including symlink targets |
 | `ASSAY_CLAIM_DIR` | the `file` store's directory, one absolute path; default `<config home>/dispatch-claims` |
 | `ASSAY_CLAIM_SINGLE_HOST` | `yes` — the declaration that this cell's repos are dispatched from this host only; any other value is refused |
 
@@ -7790,3 +7815,12 @@ validation reads=0, reuse=0 on cold startup. The production candidate is availab
 only within that process. No current shipped entrypoint repeats activation, and
 no cross-process reuse or speedup is claimed. The mandatory fresh validation before
 any future reused return remains exercised by the in-package owner tests.
+
+### Frozen review queue and local selection
+
+`deskboard review-queue --out FILE` saves the complete review-observation-v1
+artifact and prints a compact generation/cutoff summary. `reviewloop plan
+--snapshot FILE --selection JSON --now RFC3339` joins it with explicit approved
+priorities/capacity using shared `PlanCandidates`, with zero network calls. See
+[the operator contract](../../docs/deskboard.md) for inputs, failure behavior,
+compatibility and the separately gated live-adoption boundary.

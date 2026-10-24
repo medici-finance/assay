@@ -40,6 +40,8 @@ const roleLeaseWait = 5 * time.Second
 // role is validated before the flags, the flags before the provider, the provider before the
 // model, and the Opus rule binds the RESOLVED model whether it came from a pin or an override.
 func cmdDesk(c *Cell, role string, o deskInputs) {
+	c.launchStarted = perfrec.ProcessEntry().At()
+
 	if !valueIn(role, knownRoles) {
 		die("unknown role '%s'", role)
 	}

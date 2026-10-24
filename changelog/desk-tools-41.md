@@ -1,0 +1,4 @@
+- Share one exact-source review preparation context between dispatch round and packet builders; accept an advisory observation handoff, reuse exact local objects, and preserve fresh mutable admission and publisher boundaries.
+- Preserve separate round/packet/terminal deadlines and GitLab exact bases; qualify dispatch abort/release and preflight loose blob and diff sizes before content loading.
+- Require canonical commit objects at local preparation boundaries, preserving provider fallback when an assigned object is unavailable.
+- Preserve small diffs in large files with a separate local input budget and reuse collected per-file patches when local construction is skipped.

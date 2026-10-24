@@ -204,25 +204,25 @@ func TestStampRefusesNoRoster(t *testing.T) {
 // regression: #4070
 func TestPrincipalStampReadsBodyNotFrontmatter(t *testing.T) {
 	head := "---\nschema: brief-v1\n## Evidence\ngate: model\n---\n\n# Brief\n\n## Evidence\n\n" +
-		"| # | Result | Runner |\n|---|---|---|\n"
+		"| # | Result | Date | Runner |\n|---|---|---|---|\n"
 	for _, tc := range []struct {
 		name, base, content, want string
 		code                      int
 		why                       string // a refusal's detail must name it ("" = any refusal)
 	}{
 		{name: "different-human", base: head,
-			content: head + "| 1 | ok | example-app[bot] @ abc1234 (on-behalf-of human:colleague) |\n",
+			content: head + "| 1 | ok | 2026-10-23 | example-app[bot] @ abc1234 (on-behalf-of human:colleague) |\n",
 			code:    deskkit.ExitRefused},
 		{name: "different-human-new-file",
-			content: head + "| 1 | ok | example-app[bot] @ abc1234 (on-behalf-of human:colleague) |\n",
+			content: head + "| 1 | ok | 2026-10-23 | example-app[bot] @ abc1234 (on-behalf-of human:colleague) |\n",
 			code:    deskkit.ExitRefused},
 		{name: "unannotated", base: head,
-			content: head + "| 1 | ok | example-app[bot] @ abc1234 (forge-identity) |\n",
+			content: head + "| 1 | ok | 2026-10-23 | example-app[bot] @ abc1234 (forge-identity) |\n",
 			code:    deskkit.ExitOK,
-			want:    head + "| 1 | ok | example-app[bot] @ abc1234 (on-behalf-of human:operator) (forge-identity) |\n"},
+			want:    head + "| 1 | ok | 2026-10-23 | example-app[bot] @ abc1234 (on-behalf-of human:operator) (forge-identity) |\n"},
 		{name: "unclosed-frontmatter",
-			content: "---\nschema: brief-v1\n\n# Brief\n\n## Evidence\n\n| # | Result | Runner |\n|---|---|---|\n" +
-				"| 1 | ok | example-app[bot] @ abc1234 (forge-identity) |\n",
+			content: "---\nschema: brief-v1\n\n# Brief\n\n## Evidence\n\n| # | Result | Date | Runner |\n|---|---|---|---|\n" +
+				"| 1 | ok | 2026-10-23 | example-app[bot] @ abc1234 (forge-identity) |\n",
 			code: deskkit.ExitRefused, why: "frontmatter block that never closes"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

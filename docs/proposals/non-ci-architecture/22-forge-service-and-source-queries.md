@@ -213,3 +213,14 @@ or raw work locator forwarding. Required auth/access/receipt fields and optional
 remain distinct. /39 owns typed client context, /37–38 refresh/poll, /40–41 handler/executor,
 /42–43 cache/source outcomes and /45 the real served workload proof. This does not claim the
 planned service exists or add a service prerequisite to the local perf-v3 recorder.
+
+## Candidate-plan query consumer — requested 23 October 2026
+
+Expose the [existing candidate-plus-priority planning contract](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+through current /39–43 serving/derived-query owners. Scope filtering precedes joins and
+counts. The supplied policy/evaluator revision, time/capacity, candidate membership and
+source freshness bind selection; a local priority change need not fetch unchanged GH
+facts. Preserve visible missing matches and partial coverage. One mirror refresh can feed
+prose/discrete planning and depth only at compatible scope/cutoff, while role executors
+retain consequential current-state checks. No new endpoint is promised by this pointer;
+qualify producer/consumer versions and count the retained provider work once.

@@ -293,6 +293,11 @@ failure this section prevents**, and there is no state in this loop called "the 
   issued together run concurrently), up to N; never dispatch-one-then-wait-then-the-next. A
   risk-classed PR takes TWO slots — correctness and security — in the SAME turn, not security after
   the correctness verdict.
+- **Preparation handoff:** supported `deskdispatch --kit review --observation FILE`
+  consumes advisory exact-subject attribution and shares round/packet preparation.
+  The existing caller migration owns live adoption; do not add a collection sweep or
+  bypass claims/model admission to populate the flag. Read the packet once, refetch
+  omitted material only, and preserve the review prompt's independent head/check reads.
 - **Fill to N** at the risk-keyed tier; a risk-classed PR's separate `/security-review` agent
   occupies its own slot. **Refill on completion fills ALL free slots, not one:** the instant a
   reviewer finishes (verdict posted, or errored), sweep and dispatch every actionable `(PR, lane)`
@@ -1299,7 +1304,7 @@ relay onto the tracker, nor does a durable escalation ride the lane alone. A fil
 PR's own review or verification requires (a blocker, a question) is workflow-bound: file it with
 `deskfile new --for-pr <owner>/<repo>#<N> --brief <id> …`, which the per-session budget does not
 count, so a spent budget never defers it — its bounds are a per-role, per-PR cap (off unless
-configured) and the outward-write ceiling, and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
+configured), the per-PR outward-write tier and a separate repo-wide backstop for change-bound writes (not the fixed ceiling that unbound filings keep), and `-R` must be that PR's repo; `--for-pr` does not bind the filer to that PR. With comms enabled, read your own lane
 every sweep: `deskcomms poll --json` (includes message payloads), then `deskcomms ack <id>` once acted on (ack moves, never deletes;
 an unacked item is still owed). The sender's cell and role come from the session context, never
 from a flag; the gateway address and signing key resolve from the project's house layer by NAME

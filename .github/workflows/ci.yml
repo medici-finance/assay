@@ -254,6 +254,7 @@ jobs:
               # do not reach the trace append path (review F-m2-ci).
               */qualgen|qualgen) extra="GOWORK=off go test -count=1 -timeout=60s -run '^(TestM2.*|TestCLILegacyForms)$' ." ;;
               */deskcore|deskcore) extra="GOWORK=off go test -count=1 ./..." ;;
+              */deskd|deskd) extra="GOWORK=off go test -count=1 -timeout=180s ./..." ;;
               # tools/desk: build+vet here; `go test` in the desk-K legs.
               */tools/desk|tools/desk) extra=true ;;
               */tools/harnessgen|tools/harnessgen) extra="go test ./..." ;;

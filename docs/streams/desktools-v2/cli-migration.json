@@ -62,6 +62,21 @@
       "reason": "release-owned in-image Python capability probe invoked only by tools/release/images.py before publication; never installed or exposed as an operator CLI (#3469)"
     },
     {
+      "class": "test",
+      "pattern": "images/verify-runner/stage-source.sh",
+      "reason": "verification-harness step baked into the verify-runner image: the container runtime execs it as a cluster stage Job's init container with the argument list the admission policy fixes, to stage the source a verify witness runs Verify rows against; never installed on an operator host or exposed as an operator CLI (#4264)"
+    },
+    {
+      "class": "test",
+      "pattern": "images/verify-runner/stage-cache.sh",
+      "reason": "verification-harness step baked into the verify-runner image: the container runtime execs it as a cluster stage Job's container with the argument list the admission policy fixes, to fill the module cache a verify witness runs Verify rows against; never installed on an operator host or exposed as an operator CLI (#4264)"
+    },
+    {
+      "class": "test",
+      "pattern": "images/verify-runner/witness.sh",
+      "reason": "verification-harness step baked into the verify-runner image: the container runtime execs it in a cluster witness Job to run one brief's Verify rows offline; never installed on an operator host or exposed as an operator CLI (#4264)"
+    },
+    {
       "class": "library",
       "pattern": "tools/release/images_contract.py",
       "reason": "pure image reference validation library imported by release workflow and offline fixtures; no standalone CLI or network calls (#3204)"
@@ -168,6 +183,11 @@
     },
     {
       "class": "test",
+      "pattern": "statusgen/domain/mutate_test.py",
+      "reason": "offline regression for issue #4116; tests the domain mutation snapshot dependency closure and rejects setup failures as behavioral kills; invoked by the statusgen test suite, never an operator CLI"
+    },
+    {
+      "class": "test",
       "pattern": "tools/desk/internal/cellcache/mutate.py",
       "reason": "cellcache developer mutation runner for issue #2228; temporarily mutates source in an isolated checkout and runs bounded Go tests, not an installed operator CLI"
     },
@@ -250,9 +270,124 @@
       "class": "library",
       "pattern": "tools/cellctl/tests/private-path.sh",
       "reason": "private_path helper sourced by the cellctl shell suites to stub tmux and herdr ahead of the inherited PATH (issue #1927); no shebang, never executed"
+    },
+    {
+      "pattern": "deskd/cmd/deskd/mutate-route-walk.sh",
+      "class": "test",
+      "reason": "retained offline mutation control for relocated deskd; invoked only to verify negative controls, never installed or released as an operator command"
+    },
+    {
+      "pattern": "deskd/config/schema/mutate-env-rules.sh",
+      "class": "test",
+      "reason": "retained offline mutation control for relocated deskd; invoked only to verify negative controls, never installed or released as an operator command"
+    },
+    {
+      "pattern": "deskd/internal/chat/mutate-chat-controls.sh",
+      "class": "test",
+      "reason": "retained offline mutation control for relocated deskd; invoked only to verify negative controls, never installed or released as an operator command"
+    },
+    {
+      "pattern": "deskd/internal/serve/mutate-v1-read.sh",
+      "class": "test",
+      "reason": "retained offline mutation control for relocated deskd; invoked only to verify negative controls, never installed or released as an operator command"
+    },
+    {
+      "pattern": "deskd/internal/serve/mutate-workflow-named-actions.sh",
+      "class": "test",
+      "reason": "retained offline mutation control for relocated deskd; invoked only to verify negative controls, never installed or released as an operator command"
+    },
+    {
+      "pattern": "deskd/internal/terminal/mutate-attach-controls.sh",
+      "class": "test",
+      "reason": "retained offline mutation control for relocated deskd; invoked only to verify negative controls, never installed or released as an operator command"
+    },
+    {
+      "pattern": "deskd/internal/terminal/mutate-workflow-projection.sh",
+      "class": "test",
+      "reason": "retained offline mutation control for relocated deskd; invoked only to verify negative controls, never installed or released as an operator command"
+    },
+    {
+      "pattern": "deskd/web/static/app.js",
+      "class": "library",
+      "reason": "embedded browser asset served by deskd; no CLI launcher, shebang or independent operator entrypoint"
+    },
+    {
+      "pattern": "deskd/web/static/askassay.js",
+      "class": "library",
+      "reason": "embedded browser asset served by deskd; no CLI launcher, shebang or independent operator entrypoint"
+    },
+    {
+      "pattern": "deskd/web/static/fleet.js",
+      "class": "library",
+      "reason": "embedded browser asset served by deskd; no CLI launcher, shebang or independent operator entrypoint"
+    },
+    {
+      "pattern": "deskd/web/static/webmcp-diagnostics.js",
+      "class": "library",
+      "reason": "embedded browser asset served by deskd; no CLI launcher, shebang or independent operator entrypoint"
+    },
+    {
+      "pattern": "deskd/web/scripts/validate_palette.js",
+      "class": "test",
+      "reason": "offline palette contract validator retained with the embedded web view; test-only Node script, not an operator command"
+    },
+    {
+      "pattern": "deskd/internal/humanid/mutate-policy.py",
+      "class": "test",
+      "reason": "offline mutation qualification of startup identity invariants with automatic source restoration; never an operator CLI"
     }
   ],
   "entrypoints": [
+    {
+      "executable": "deskd",
+      "path": "deskd/cmd/deskd",
+      "kind": "go",
+      "module": "deskd",
+      "release": "source-only relocation; no release or installation added",
+      "consumers": [
+        "deskd/README.md"
+      ],
+      "parser": "Go flag: global FlagSet",
+      "complexity": "complex",
+      "basis": "existing service entrypoint relocated under issue #3669; explicit human-login startup policy added",
+      "owner": "cell-api/02",
+      "state": "exempt",
+      "reason": "Compatibility relocation retains the legacy parser until cell-api/02 composes the target public service; cell-api/04 owns client migration and cell-api/07 qualifies retirement. No target brief is completed by this placement."
+    },
+    {
+      "executable": "cellsvalidate",
+      "path": "deskd/cmd/cellsvalidate",
+      "kind": "go",
+      "module": "deskd",
+      "release": "source-only validation helper; never installed or released",
+      "consumers": [
+        "deskd/config/schema/mutate-env-rules.sh",
+        "deskd/internal/chat/mutate-chat-controls.sh"
+      ],
+      "parser": "Go os.Args positional paths",
+      "complexity": "simple",
+      "basis": "retained schema validation helper and three generic command tests required by mutation harness closure",
+      "owner": "cell-api/02",
+      "state": "exempt",
+      "reason": "Compatibility relocation preserves the existing offline validator used by schema and chat control harnesses; target CLI composition remains cell-api/02 work."
+    },
+    {
+      "executable": "openapigen",
+      "path": "deskd/cmd/openapigen",
+      "kind": "go",
+      "module": "deskd",
+      "release": "source-only generator; never installed or released",
+      "consumers": [
+        "deskd/internal/contract/generate.go"
+      ],
+      "parser": "Go flag: global FlagSet",
+      "complexity": "simple",
+      "basis": "retained typed-wire-schema generation and drift check",
+      "owner": "",
+      "state": "excluded",
+      "class": "test",
+      "reason": "build-time contract artifact generator invoked through go generate and contract drift tests; not an operator service command"
+    },
     {
       "executable": "demo",
       "path": "drainloop/cmd/demo",
@@ -2503,6 +2638,23 @@
       "complexity": "simple",
       "basis": "406 lines at 056d7b634c12",
       "owner": "desktools-v2/55",
+      "state": "pending"
+    },
+    {
+      "executable": "deskusage",
+      "path": "tools/desk/cmd/deskusage",
+      "kind": "go",
+      "module": "tools/desk",
+      "release": "desk-tools release archive (release.yml cmd/* loop) and Makefile DESK_CMDS",
+      "consumers": [
+        "tools/desk/README.md",
+        "plugins/assay/skills/worker-desk/SKILL.md",
+        "docs/streams/desk-supervision/brief-34-worker-usage-counts.md"
+      ],
+      "parser": "Cobra through tools/desk/internal/cli; generic owner fixture qualification pending",
+      "complexity": "simple",
+      "basis": "2 verbs (record, summary), 11 command flags; record semantics belong to desk-supervision/34, shared CLI qualification to this owner",
+      "owner": "desktools-v2/56",
       "state": "pending"
     }
   ]

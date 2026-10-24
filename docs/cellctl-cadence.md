@@ -282,3 +282,32 @@ go test ./cmd/cellctl -run 'TestCodex|TestWindowsCommandEnvironment|TestInteract
 
 These checks exercise compiled local fixtures and require no provider login. They do
 not certify a complete Windows cell installation or an interactive cockpit launch.
+
+## Bounded storage preparation
+
+`up`, direct `desk`, and cadence restarts share bounded preparation in the existing
+cell launcher. A local initialization receipt is bound to cell/configuration,
+profile and binary generation; it grants no role lease, stop exemption or storage
+allowance. Every launch still checks current role authority and storage custody.
+Scratch completion records outcomes and evidence without sweeping historical data.
+Explicit `cellctl scratch <cell> sweep --apply` owns reclamation.
+
+Managed Go-cache preparation and final process enrollment never recursively inventory
+the cache. Fresh clean accounting, current free-space headroom and owned root metadata
+are required; missing, stale, dirty or corrupt accounting refuses with a request to run
+`cellctl cache <cell> clean`. A newly created empty owned root is initialized with
+bounded metadata reads. Maintenance inventory releases admission custody while walking,
+then reacquires it and revalidates consumer enrollment and current free space before
+cleanup. A consumer admitted during inventory invalidates that pass even if it exits
+before the pass resumes. Live consumers and uncertain shutdown retain custody.
+
+Resolved `ASSAY_TELEMETRY=1`, including a cell-only setting, records preparation once per
+compatible initialization, scratch lock wait/admission, final cache enrollment and confirmed
+child start through the existing local performance writer. `up` records first/all confirmed
+starts separately; scheduled, refused and unknown starts cannot count as confirmed.
+These step intervals overlap and must not be summed as invocation time. No timing SLO
+or permission for live enrollment is introduced.
+
+In cache-enabled cadence, the existing supervisor triggers cache maintenance after each completed pass and again at the next due boundary, so normal build writes and accounting aging during the interval do not require manual clean between passes. Fresh clean accounting avoids a recursive scan. A needed refresh waits the existing two-second filesystem timestamp margin before measurement, then uses the same cache clean owner, unlocked inventory and final custody revalidation. The supervisor keeps its role lease and heartbeat while maintenance runs. Its checkpoint records `maintenance` as `checked-clean` or `could-not-check`; failures preserve the next enrollment’s ordinary fail-closed refusal. Uncertain child shutdown never triggers maintenance. This is between-pass work, outside startup and Finish, with no new service or scheduler.
+
+Interactive mode (`--cadence off`) has no between-pass supervisor. Missing, dirty, stale or corrupt accounting there still requires the operator to run `cellctl cache <cell> clean` after writes settle before retrying. First startup also retains bounded admission and its corrective maintenance refusal. Scratch retention still requires explicit operator sweep. See the [scope reconciliation](https://github.com/medici-finance/assay/issues/4172#issuecomment-6354063056).

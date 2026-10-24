@@ -39,7 +39,7 @@ func (c *Cell) repairAdmissionValue() string {
 func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider string, prov Provider, deskRoots string, persist bool, persistKVs []string, policyRes *PolicyResolution, cockpit cockpitResolution, performance ...perfrec.Context) {
 	// Refuse storage-heavy boot work before fetch/worktree creation as well as
 	// atomically rechecking at child enrollment in the process supervisor.
-	if err := launchStep("launch-storage-admission", c.cacheAdmission); err != nil {
+	if err := launchStep("launch-storage-admission", func() error { _, err := c.prepareLaunch(); return err }); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		exitWith(6)
 	}

@@ -4,7 +4,7 @@ title: "Deduplicate verifier filings by their canonical work identity"
 why: "Title similarity already blocks some duplicate issues, but different wording can file the same verification failure again. Exact existing work identity should lead the verifier to its owned obligation without losing distinct findings."
 wave: 1
 depends: []
-unblocks: ["desk-tools/51"]
+unblocks: ["desk-tools/51", "verification-handoff/02"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}

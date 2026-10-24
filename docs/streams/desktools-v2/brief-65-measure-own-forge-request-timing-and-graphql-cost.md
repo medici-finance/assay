@@ -10,7 +10,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v3
-version: 2
+version: 3
 id: 72fd07fd-5323-4631-8807-fc07c277ca3c
 authored: 2026-10-19 by performance attribution authoring
 sources:
@@ -124,7 +124,7 @@ cannot pass. Plant the stated defect through the production boundary, not a dupl
 | 1 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3ForgeAttemptTimingFlow$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3ForgeAttemptTimingFlow ' "$out")` | exit 0; named PASS. Production backend/transport/record/report counts exact retry,304,error and canceled attempts with body-lifetime timing; local cache/refusal and existing auth HTTP are distinct; planted Authorization headers, token-bearing auth responses and secret URL values must not enter records; planted double-count/timer-at-headers fails. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3GraphQLCostCoverage$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3GraphQLCostCoverage ' "$out")` | exit 0; named PASS. Existing response cost yields measured zero/nonzero while missing/unsupported/failed/estimated remain distinct; unrelated concurrent quota changes cannot become actual cost; raw queries/URLs/bodies never enter records. |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3ForgeObservationParity$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3ForgeObservationParity ' "$out")` | exit 0; named PASS. On/off has identical provider calls and business selections/results, preserves provider body bytes through observation and the original errors/cancellation/result, with bounded metadata differences documented; parent/child fixture counts each request only in its emitting process and reports uninstrumented child coverage. |
-| 4 | check +dereference | `statusgen --root . --consumers --brief desktools-v2/65` | exit 0; changed consumer routing corroborates the actual diff; unavailable is not pass. |
+| 4 | check +dereference | `statusgen --root . --consumers --brief desktools-v2/65 --delivery 578a9f39d73ec48bdc07fbdfd3938edb463e7b9b --base 1b00388fb9c5bd17c0817ae3a49751607b0d9cae` | exit 0; changed consumer routing corroborates the actual diff; unavailable is not pass. |
 
 ## Pre-mortem and detection
 

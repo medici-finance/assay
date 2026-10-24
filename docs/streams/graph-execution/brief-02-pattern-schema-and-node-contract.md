@@ -598,6 +598,48 @@ RISK-VALUE: reversible knob, ranked last, no derivation owed — budget.attempts
 
 **VERIFY: BLOCKED** — 5 of 9 rows witnessed passing, 0 fail. Rows 1, 3, 4 and 7 are could-not-run: the check:ci rows need a Linux network-off runner that can complete verifier admission (#4010). Status stays where it is.
 
+### Non-implementer verifier re-run — 2026-10-22, merged main b87d9f502cff0e426a221d93ce826e4f10d47e9f
+
+Run by a fresh, non-implementer verifier (claude-opus-5-5, strong tier) under attestation medici-finance/assay#4155. Admission: `deskdispatch --check-verifier` re-admitted the run at the source above, with the home clean, before the run and again before this landing. The witness below comes from the installed `statusgen verifyrun` (v1.0.56) on the host (darwin). Every row ran against this commit.
+
+- The check:ci rows (1, 3, 4 and 7) are could-not-run again. The host has no network-off sandbox: `unshare --net` is Linux-only. The container admission bracket (brief-rule 45, desktools-v2/71), which would give these rows a sanctioned network-off lane, landed on main on 2026-10-22 in 3989f898e but is in no release yet, and the installed v1.0.56 has no `--open-bracket`. This pass does not use a locally built statusgen in place of the installed instrument. A container run made with a source-built binary earlier in this dispatch is NOT recorded here and claims no credit. Cause: #4010. Rows 1, 3, 4 and 7 need a release that contains 3989f898e.
+- Row 5 (`check`, env-bound) needs PyYAML and jsonschema. The verifier's desk launcher swaps HOME, so the interpreter's per-user site-packages became invisible. An earlier invocation in this pass therefore recorded row 5 as `fail exit=1` (`ModuleNotFoundError: No module named 'yaml'`). The cause was the runner environment, not the tree. That table was discarded before landing, and the run below sets PYTHONPATH to the same interpreter's site-packages. The row 5 output hash (dc51b8c96c2d) equals the earlier passing witnesses of this row.
+- The `echo rc=$?` rows were read directly at this commit, because their exit cell cannot fail. Row 2 printed `patterns: 2 checked-clean, 0 checked-failed, 0 could-not-check (2 file(s) scanned)`, then `rc=0`. Row 8 printed `LINT: PASS`, then `rc=0`; it emitted NOTICE lines only and no PROBLEM. Row 10 read base 060980aa0 against the immutable delivered snapshot 5b384e52c (#1259). It CORROBORATED spec/README.md, statusgen/main.go and docs/lifecycle.md §Review gates, left the desk-skill entry UNCHECKED, and printed the exact `summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing` with s=0.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test -run TestPatterns ./...` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 2 | `statusgen patterns --lint --root .; echo rc=$?` | pass exit=0 | sha256:e86054a2ccc7 | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test -run TestPatternsEffectExceedsRoleIsProblem ./...` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test -run TestPatternsReviewSameRoleIsProblem ./...` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 5 | `python3 -c 'import json,yaml;s=json.load(open("schemas/workflow-pattern-v1.json"));import jsonschema;[jsonschema.validate(yaml.safe_load(open(p)),s) for p in ["spec/workflow-patterns/implementation-v1.yaml","spec/workflow-patterns/research-v1.yaml"]];print("ok")'` | pass exit=0 | sha256:dc51b8c96c2d | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -c 'workflow-pattern-v1' spec/README.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test -run TestTopologyValuesMatchSource ./...` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --lint; echo rc=$?` | pass exit=0 | sha256:c816b5c89433 | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 10 | `o=$(statusgen --root . --consumers --brief graph-execution/02 --delivery 5b384e52c684be71b1447949a9403250640b66a7 --base 060980aa0f1a34035b4ce47e9d4c932c0e829662); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | pass exit=0 | sha256:57f9f3c09f54 | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4155 run=01602a76c346503338e0fa4bb43609ea0593f3429385ba102add252b90f3d149 source=b87d9f502cff0e426a221d93ce826e4f10d47e9f brief=docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md model=claude-opus-5-5 tier=strong
+
+Risk-value enumeration, re-read at b87d9f502cff:
+
+1. patternRoleEffectPermissions: worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:92-95.
+2. Implementation risk-input: elevated = [review, verify], human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:17-18.
+3. topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:74-77.
+4. patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100.
+5. patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70.
+6. budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
+
+The ranking is unchanged from the 2026-10-21 section. None of these values is irreversible (frontmatter irreversible: no). Entry 6 is a retry knob, so it ranks last.
+
+RISK-VALUE: DERIVED — patternRoleEffectPermissions worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:92-95 — these are the effects each topology.yaml apps: role performs today (spec/workflow-pattern-v1.md §7).
+RISK-VALUE: NAMED, NOT DERIVED — implementation risk-input elevated = [review, verify], human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:17-18 — Task 1's example maps these to the same pair as standard. The mapping ruling is still open at #1933, unchanged by this pass.
+RISK-VALUE: DERIVED — topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:74-77 — equals the four apps: roles in topology.yaml. Row 7 pins the two together; in this pass row 7 is could-not-run, so the pin is unwitnessed at this commit.
+RISK-VALUE: DERIVED — patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100 — the stream's fixed risk-class vocabulary from the brief's Context.
+RISK-VALUE: DERIVED — patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70 — Task 4's stated exit contract.
+RISK-VALUE: reversible knob, ranked last, no derivation owed — budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
+
+**VERIFY: BLOCKED** — 5 of 9 rows witnessed passing (2, 5, 6, 8, 10) and 0 fail. Rows 1, 3, 4 and 7 are could-not-run because the check:ci rows have no admitted network-off lane in the installed tools (#4010). The admission-bracket lane awaits a release that contains 3989f898e. Status stays where it is.
+
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
 Reviewer questions: (1) can any node in either shipped pattern act with an authority the

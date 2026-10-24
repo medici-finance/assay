@@ -566,6 +566,8 @@ type issueClassifyInput struct {
 	// work item, not free work: it is EXCLUDED from CREATE-PLACEHOLDER and rendered
 	// ADDRESSED→<role> so the addressee's own sweep leads with it.
 	addressed bool
+	// addressUnknown holds malformed or conflicting to: labels without guessing a role.
+	addressUnknown bool
 	// addresseeResponded is whether the addressed role's App has commented on the issue.
 	// It is the SECOND, independent layer behind the inbox: an addressed item aged past
 	// the SLA with no response from that role's App becomes visible (ESCALATE) without the
@@ -605,6 +607,9 @@ func classifyIssue(in issueClassifyInput) string {
 			return actEscalate
 		}
 		return actAddressed
+	}
+	if in.open && in.addressUnknown {
+		return actAwait
 	}
 	if in.hasPlaceholder {
 		if !in.open {
@@ -747,7 +752,8 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 			if projection != issueflow.Full && !issueflow.Select(projection, issueflow.Candidate{
 				HasPlaceholder: hasPh, Excluded: hasExcludedLabel(names),
 				DecisionOwed: decisionOwed, Addressed: addressed, Role: addrRole,
-				HelpWanted: helpWanted,
+				AddressUnknown: addrState == deskkit.RaisedByIndeterminate,
+				HelpWanted:     helpWanted,
 			}, toFilter) {
 				continue
 			}
@@ -771,7 +777,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 			}
 
 			// Desk-inbox addressee (`to:<role>`), ONE valid role only (a conflicting pair
-			// is malformed and falls through to ordinary classification, never a guess).
+			// is malformed and held as AWAIT, never offered as ordinary work).
 
 			// The --to view shows ONLY that role's inbox: an issue addressed to a different
 			// role (or to nobody) is not part of it and is dropped before any extra read.
@@ -820,6 +826,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 				decisionOwed:       decisionOwed,
 				agedPastSLA:        agedPastSLA,
 				addressed:          addressed,
+				addressUnknown:     addrState == deskkit.RaisedByIndeterminate,
 				addresseeResponded: addresseeResponded,
 			})
 			row := issueBoardRow{Repo: repo, Number: iss.Number, Title: iss.Title, Action: action, AgeDays: ageDays, EscalationUnverifiable: escalationUnverifiable}
