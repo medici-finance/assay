@@ -47,7 +47,8 @@ preflight requires an App PEM and model credentials. /08 is a distinct candidate
 profile requiring the workflow controller/publication bridge. Standing roles must not
 inherit that requirement or its execution identity. Consume /03 readiness/profile and
 /27 standing-desk outputs as actual importable APIs, never cmd/main or tools/desk/internal
-from this external module. The execution stream remains parked pending admission.
+from this external module. The stream was parked at authoring; amendment 27 and stream admission are approved
+for implementation by the 24 October change, with individual human/profile gates retained.
 
 single-point-of-failure: adapter maps the wrong Pod or credential profile; independent
 supervisor generation/stop checks and the existing executor's current-authority checks
@@ -92,8 +93,7 @@ Default if no answer: none — blocks until answered
 ## Ground rules
 
 Isolated branch and draft PR only. No deployment, workflow dispatch, live cluster or model
-contact. Fake Kubernetes API/streams and disposable local storage only. Preserve the parked
-stream's admission gate. Independent verification owns Evidence. Existing budgets, effect
+contact. Fake Kubernetes API/streams and disposable local storage only. Follow the approved stream's scope and each brief's remaining admission/profile gates. Independent verification owns Evidence. Existing budgets, effect
 and human gates remain in force. Refresh claims/active PRs before implementation.
 
 ## Task
