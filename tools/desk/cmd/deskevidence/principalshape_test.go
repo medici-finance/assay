@@ -71,6 +71,32 @@ func TestStampRefusesShapeFamily(t *testing.T) {
 }
 
 // regression: #4102
+// TestStampRefusesShownOnly: text that shows App-run or on-behalf-of text in only one shown
+// reading (emphasis removed, a comment hidden, an image's alt text shown, or a bracket read as
+// a shortcut reference link), so the cell or line as written does not.
+func TestStampRefusesShownOnly(t *testing.T) {
+	for _, tc := range []struct{ name, note, cell string }{
+		{"strong-emphasis", "see on-behalf-**of** human:colleague", ""},
+		{"underscore-emphasis", "see on-behalf-_of_ human:colleague", ""},
+		{"hidden-comment", "see on-behalf<!--x-->-of human:colleague", ""},
+		{"image-alt", "", "![example-app](x.png)[bot]: @ abc1234"},
+		{"shortcut-link", "", "[example-app]\\[bot\\]: @ abc1234"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := setupStamp(t, true)
+			if tc.note != "" {
+				code := landRendered(t, f, restampHead+renderHuman, restampHead+renderHuman+tc.note+"\n")
+				wantRenderRefusal(t, f, code, "closes a table without a blank line", "line 8")
+				return
+			}
+			base := "# Brief\n\n## Evidence\n"
+			code := landRendered(t, f, base, base+"| 3 | "+tc.cell+" | "+humanRunner+" |\n")
+			wantRenderRefusal(t, f, code, "cell 2 shows as an App-run", "line 4")
+		})
+	}
+}
+
+// regression: #4102
 // TestStampShapeRegionAllowed: brackets that open no tag, an unclosed bracket, and a tag
 // written only in the login alphabet still land in a human Runner cell.
 func TestStampShapeRegionAllowed(t *testing.T) {
