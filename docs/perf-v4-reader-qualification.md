@@ -31,6 +31,10 @@ can be composed with both source variants.
 
 ## Controls exercised
 
+- CI quiet-home guard reproduced the new compiled fixture starting Go under a
+  scratch home without the existing telemetry-child isolation. The fixture now
+  uses shared test-only `gitquiet/goquiet.Cmd` and checks for stray files; the
+  original guard remains unchanged. Assay recording and consent are unaffected.
 - Actual typed writer, file reader, compiled deskperf JSON/text/day report and
   external Go consumer; mixed historical data, permission filters, STOP refusal
   and unavailable observation coverage remain distinct.

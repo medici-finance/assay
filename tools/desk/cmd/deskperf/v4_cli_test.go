@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -63,7 +64,13 @@ func buildV4CLI(t *testing.T) string {
 	binary := filepath.Join(t.TempDir(), name)
 	build := exec.CommandContext(ctx, goTool, "build", "-mod=readonly", "-o", binary, "./cmd/deskperf")
 	build.Dir, build.Env = filepath.Clean(filepath.Join(pkg, "..", "..")), env
-	if out, e := build.CombinedOutput(); e != nil {
+	t.Cleanup(func() {
+		wrote, e := goquiet.Wrote(env)
+		if e != nil || len(wrote) > 0 {
+			t.Errorf("scratch Go build emitted telemetry: files=%q error=%v", wrote, e)
+		}
+	})
+	if out, e := goquiet.Cmd(build).CombinedOutput(); e != nil {
 		t.Fatalf("build current deskperf: %v\n%s", e, out)
 	}
 	return binary
