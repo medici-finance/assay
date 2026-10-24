@@ -142,7 +142,7 @@ suppress a reclaim on the other. The full framing is at the top of `desk-supervi
 | 31 | [Persist CI check results the desk tools already read](brief-31-ci-check-history.md) | 0 | M | implemented | — | — |
 | 32 | [Human decision record — options, recommended default, the pick and the latency](brief-32-human-decision-record.md) | 0 | M | implemented | — | — |
 | 33 | [Intake exit record — every triaged item lands one structured disposition](brief-33-intake-exit-record.md) | 0 | L | implemented | — | — |
-| 34 | [Worker usage counts at claim release — counts only, never transcripts](brief-34-worker-usage-counts.md) | 1 | M | todo | — | — |
+| 34 | [Worker usage counts at claim release — counts only, never transcripts](brief-34-worker-usage-counts.md) | 1 | M | implemented | — | — |
 | 35 | [Records and retention page lists every analysis record and what is never recorded](brief-35-records-and-retention-page.md) | 2 | S | todo | — | — |
 | 36 | [Directory scope keys in outcome records carry a trailing slash; readers accept both forms](brief-36-directory-scope-keys-carry-a-trailing-slash.md) | 0 | M | todo | — | — |
 | 37 | [Verification re-runs as waste — every attempt on the outcome record, joined to measured cost](brief-37-verification-reruns-as-waste.md) | 0 | L | todo | — | — |
