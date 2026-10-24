@@ -215,7 +215,7 @@ resource limit changes in this documentation PR.
 Controlling delta: [agent execution environments](27-agent-execution-environments.md).
 The agent-execution stream authors the seven bounded extensions of existing owners below.
 Amendment 27 and implementation admission are approved by the 24 October
-[approval and reconciliation change](https://github.com/medici-finance/assay/issues/4347),
+[approval and reconciliation change](https://github.com/medici-finance/assay/pull/4349),
 effective on the maintainer's merge of its ruling-bearing PR. Later /08–09 profile
 qualification and all deployment/custody gates remain separate:
 

@@ -9,7 +9,7 @@ Request tracked by [Assay #3669](https://github.com/medici-finance/assay/issues/
 
 Implementation admission update, 24 October: the maintainer approved amendment 27
 and requested agent-execution activation in
-[the approval and reconciliation change](https://github.com/medici-finance/assay/issues/4347).
+[the approval and reconciliation change](https://github.com/medici-finance/assay/pull/4349).
 That approval removes the stream-level hold. This chapter's concrete custody/profile
 decisions, effective qualification and deployment gates retain their independent scope.
 

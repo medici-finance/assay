@@ -2,7 +2,7 @@
 
 **Status:** approved — bounded implementation scope and agent-execution admission approved
 by the maintainer on 24 October 2026; effective on the maintainer's merge of the
-[approval and reconciliation change](https://github.com/medici-finance/assay/issues/4347),
+[approval and reconciliation change](https://github.com/medici-finance/assay/pull/4349),
 the ruling-bearing PR under lifecycle §8.4.
 
 **Routes-to:** docs/streams/agent-execution/

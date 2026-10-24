@@ -16,7 +16,7 @@ Deliver portable, qualified execution through the existing runner, workspace, co
 and effect owners. The [future-state amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md)
 is the controlling specification. The maintainer approved amendment 27 for implementation
 and requested stream activation on 24 October 2026, recorded by
-[the approval and reconciliation change](https://github.com/medici-finance/assay/issues/4347).
+[the approval and reconciliation change](https://github.com/medici-finance/assay/pull/4349).
 Scope approval and active-stream admission take effect on the maintainer's merge of that
 ruling-bearing PR under lifecycle §8.4. The existing nine briefs retain their statuses,
 dependencies, individual human decisions and independent verification requirements.
