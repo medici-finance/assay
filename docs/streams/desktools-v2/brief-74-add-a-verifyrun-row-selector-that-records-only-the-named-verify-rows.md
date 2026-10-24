@@ -23,10 +23,10 @@ exec-tier-why: "(b) and (c): the selector must compose with the container admiss
 domain: complicated
 outcome: none
 consumers:
-  - "statusgen/verifyrun.go, statusgen/verifyincontainer.go and their tests: follow-up desktools-v2/74"
-  - "docs/brief-rules.md rule 45 (a mixed-assembly paragraph only; the credit rule is unchanged): follow-up desktools-v2/74"
-  - "plugins/assay/skills/verify-desk/SKILL.md and the generated Cursor mirror: follow-up desktools-v2/74"
-  - "changelog/ (one top-level fragment): follow-up desktools-v2/74"
+  - "statusgen/verifyrun.go, statusgen/verifyincontainer.go and their tests: fixed-here"
+  - "docs/brief-rules.md rule 45 (a mixed-assembly paragraph only; the credit rule is unchanged): fixed-here"
+  - "plugins/assay/skills/verify-desk/SKILL.md and the generated Cursor mirror: fixed-here"
+  - "changelog/ (one top-level fragment): fixed-here"
   - "closure audit last-wins (checkWitnesses) and rule 45 credit: out-of-scope (the #4247 ruling chose the row selector as the remedy and kept last-wins and rule 45 unchanged; the selector changes only which rows a run writes)"
   - "protected-record audit run selection and its single Verification-Table marker rule (statusgen/protectedclosure.go): out-of-scope (unchanged; the selector composes with it, it does not relax it)"
   - "parseEvidenceRows reading a table inside a code fence (statusgen/unrun.go): out-of-scope (a scope choice of this brief, not part of the #4247 ruling, which chose the row selector and kept last-wins and rule 45 unchanged; the fence-aware parser is owned by follow-up issue #4250)"

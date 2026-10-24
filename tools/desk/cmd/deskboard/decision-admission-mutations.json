@@ -94,8 +94,8 @@
     {
       "name": "GitHub search syntax forwarded to GitLab",
       "file": "internal/deskkit/decisionsearch.go",
-      "old": "gitlab.Ptr(search)",
-      "new": "gitlab.Ptr(fmt.Sprintf(\"%q in:body\", search))"
+      "old": "gitlab.Ptr(ms.text)",
+      "new": "gitlab.Ptr(fmt.Sprintf(\"%q in:body\", ms.text))"
     },
     {
       "name": "GitHub discovery loses stable sort",
@@ -112,8 +112,8 @@
     {
       "name": "GitHub short-page overrun mislabelled as result cap",
       "file": "internal/deskkit/decisionsearch.go",
-      "old": "Unverifiable(\"decision-marker search exceeded its page bound\", errDecisionSearchIncomplete)",
-      "new": "Unverifiable(\"decision-marker search exceeded its page bound\", errDecisionSearchCap)"
+      "old": "Unverifiable(ms.what+\" search exceeded its page bound\", errDecisionSearchIncomplete)",
+      "new": "Unverifiable(ms.what+\" search exceeded its page bound\", errDecisionSearchCap)"
     },
     {
       "name": "embedded double quote accepted",
