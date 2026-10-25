@@ -576,8 +576,8 @@ func TestZeroCI_Unverified_AllSkipped(t *testing.T) {
 	}
 }
 
-// TestZeroCI_Unverified_CheckRunsReadError pins funnel K of R3 (PR #428 review
-// @ d79aafd1): a transient failure reading check-runs at head must NEVER fall
+// TestZeroCI_Unverified_CheckRunsReadError pins funnel K of R3 (the funnel review
+// of R3): a transient failure reading check-runs at head must NEVER fall
 // through to no-checks. Before this test the funnel was asserted in prose
 // ("the fail-closed contract is asserted at 11 call sites") but never
 // exercised end-to-end — a K-shaped mutant (treat the read error as

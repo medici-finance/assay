@@ -17,6 +17,9 @@ effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 decision-trigger: creation
+decision-issue: 4401
+ruling: "https://github.com/medici-finance/assay/issues/4401#issuecomment-6399335268"
+design: DR-cell-stop-flags
 issues: []
 schema: brief-v2
 version: 1
@@ -85,6 +88,13 @@ Options:
 3. **Reject** — drain and pause use the machine-wide flags, stopping every cell's matching desks.
 
 Default if no answer: none — blocks until answered.
+
+**Ruled 2026-10-25: option 1, adopt**, per the driver's ruling on decision issue
+medici-finance/assay#4401:
+https://github.com/medici-finance/assay/issues/4401#issuecomment-6399335268
+The ruling keeps the implementation already on main, delivered by medici-finance/assay#2971
+(merged 2026-10-16, trailer `Brief: desk-containers/16`). The adopted design is recorded in
+[DR-cell-stop-flags](../decisions/DR-cell-stop-flags.md).
 
 ## Ground rules
 - NEVER git push / trigger workflows. Stop at `implemented`.
