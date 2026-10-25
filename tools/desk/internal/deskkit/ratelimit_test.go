@@ -591,7 +591,7 @@ func TestDryRunsDoNotRESETTheBreakerEither(t *testing.T) {
 // preview: a silent skip, reported as success.
 func TestDryRunIsNotIdempotencyDone(t *testing.T) {
 	pr := 214
-	head := "5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b"
+	head := "4c418b16e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b"
 	entries := []Entry{{
 		Repo: "medici-finance/assay", Verb: "review:APPROVE",
 		PR: &pr, HeadSHA: &head, Result: ResultDryRun,

@@ -86,6 +86,7 @@ package main
 // executing anything.
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -611,6 +612,9 @@ type shellPlan struct {
 	ok     bool     // a pipefail-capable bash was found AND probed clean
 	reason string   // when !ok, exactly what was tried, for the could-not-run row
 	env    []string // the rows' environment; nil inherits the caller's (rowEnv)
+	// stop is the run's interrupt (watchRunInterrupt): a delivered stop
+	// signal cancels it, and with it every row. nil never cancels.
+	stop context.Context
 }
 
 // rowEnv is the environment every Verify row of the run executes in: the
@@ -864,7 +868,9 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	}
 	posixShell := shell != rowShellCmd && shell != rowShellPwsh
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	// The row deadline derives from the run's interrupt, so a stop signal
+	// delivered to statusgen cancels the row the same way the deadline does.
+	ctx, cancel := context.WithTimeout(plan.rowParent(), timeout)
 	defer cancel()
 
 	// The wrapper (netnsWrapperArgv: `unshare --net --map-root-user` + the
@@ -889,6 +895,18 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	argv := append(append([]string{}, wrapper...), shellArgv...)
 	argv = append(argv, unescapePipes(command))
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	// Keep the unchanged row deadline effective for ordinary descendants too:
+	// killing only the shell leaves children holding the output pipe, so a
+	// timed-out check can keep running while verifyrun waits for their EOF.
+	// Reuse the same platform policy as the bounded Git reader. Unix kills the
+	// owned process group; Windows retains its documented direct-child limit.
+	// Do not add a short WaitDelay: it also starts after a successful shell
+	// exit and could truncate valid background output before this row deadline.
+	// The group kill is armed below with context.AfterFunc, not left to
+	// exec's own Cancel alone: exec calls Cancel only while the shell is
+	// un-reaped, and a shell that exits leaving a child on the pipe would
+	// otherwise outrun the deadline.
+	killWholeProcessGroup(cmd)
 	cmd.Dir = root
 	cmd.Env = plan.rowEnv()
 	// On Windows a `cmd` row's command line must be built RAW, not from
@@ -905,7 +923,25 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// reason that has nothing to do with the check.
 	cmd.Stdin = nil
 
-	out, err := cmd.CombinedOutput()
+	// One buffer for both streams, as CombinedOutput gives: exec shares a
+	// single pipe when Stdout and Stderr are the same writer.
+	var combined bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &combined, &combined
+	err := cmd.Start()
+	if err == nil {
+		// Fires at the row deadline or on a run interrupt, whether or not the
+		// shell has already been reaped; stopped once Wait has every byte.
+		stopGroupKill := context.AfterFunc(ctx, func() { _ = cmd.Cancel() })
+		err = cmd.Wait()
+		stopGroupKill()
+	}
+	out := combined.Bytes()
+	// A stop signal is checked first: its cancellation is not a deadline, and
+	// a row it killed must never fall through to a pass/fail verdict.
+	if why := plan.interruption(); why != "" {
+		return runResult{exit: -1, output: out, couldNotRun: true,
+			reason: why + " — the row was stopped and no verdict was produced"}
+	}
 	if ctx.Err() == context.DeadlineExceeded {
 		return runResult{exit: -1, output: out, couldNotRun: true,
 			reason: fmt.Sprintf("timed out after %s — no verdict was produced", timeout)}
@@ -1475,6 +1511,10 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 		// prechecked container every row runs in.
 		rowSandbox := ""
 		switch {
+		case plan.interruption() != "":
+			// The run was stopped by a signal: no later row starts.
+			res = runResult{exit: -1, couldNotRun: true,
+				reason: plan.interruption() + " before this row started — it was not run"}
 		case refused != "":
 			rowSandbox = sandbox
 			res = runResult{exit: -1, couldNotRun: true, reason: refused}
@@ -2402,6 +2442,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	}
 
 	plan := resolveShellPlan()
+	// Rows run in their own process groups, so statusgen forwards a stop
+	// signal to them itself (verifyinterrupt.go) from here until it returns.
+	stop, releaseInterrupt := watchRunInterrupt()
+	defer releaseInterrupt()
+	plan.stop = stop
 	if attestation != "" {
 		plan.env = admittedRowEnv(os.Environ())
 	}
@@ -2534,6 +2579,12 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		for ; next < len(ws); next++ {
 			report(ws[next])
 		}
+	}
+	// A stopped run is not a witness: the rows above report could-not-run on
+	// the console, and nothing is written to the brief or a witness file.
+	if why := plan.interruption(); why != "" {
+		fmt.Fprintf(stderr, "statusgen verifyrun: %s; the run stopped and no witness was written\n", why)
+		return verifyrunExitCouldNot
 	}
 	if ff != nil {
 		worst = foldFailFirst(ws, ff, riskyIDs, worst, stdout)

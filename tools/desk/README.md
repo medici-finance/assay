@@ -875,7 +875,7 @@ work queue or steer a desk action.
   the sensitive-notes rule above it is still prose, and the repo-scoped token above it
   does not exist at all. It inverts an asymmetry that ran the wrong way:
   the risk-path triggers were five tracker-shaped paths applied to every repo, and
-  `example-org/example-k8s` — public, holding the Ledger/Identity manifests — has no
+  `example-org/example-k8s` — public, holding the product's deployment manifests — has no
   `k8s/` directory at all, so it could never be risk-classed and the PUBLIC
   infrastructure repo got strictly LESS mandatory scrutiny than the private
   application one. **This is a policy call standing in for a human decision** (the
@@ -2348,8 +2348,8 @@ the budget to free, then retries. Bounded and explicit: a retry-after longer tha
 returns the plain exit 4 and says why.
 
 Use this instead of the raw `gh pr review` fallback. That command has **no head-pinning
-flag**: on #195 a `CHANGES_REQUESTED` written against `151ebe99` landed on `2bbf529c`, a
-commit that had already fixed two of its three findings. Under a saturated limiter the
+flag**: on one review PR a `CHANGES_REQUESTED` written against an earlier commit landed on a
+later commit that had already fixed two of its three findings. Under a saturated limiter the
 fallback is the *common* path, so `--head` — the guarantee that a verdict names the code it
 assessed — was off more often than on. Looping is safe by construction: a `ratelimited`
 audit line neither charges the budget nor feeds the non-progress breaker, so waiting cannot
@@ -2471,7 +2471,7 @@ Constraints in code:
   the comment refuses (exit 5, nothing posted) if the PR head has moved since the comment
   was written, and the assertion runs BEFORE the idempotency read so a stale head can never
   be answered with a success-shaped no-op. Without it the tool stamps whichever head is live
-  at POST time — on #505 the reviewer examined `f9c9ca94` and `d7b2d1d3` was
+  at POST time — on one review the reviewer examined one commit and a later one was
   recorded, because a merge landed mid-review; that one was a clean keep-current merge so
   the conclusions still held, but the tool guaranteed nothing (#513).
   `review`, `security-review` and `ready` stay PR-only and, given an issue number,
@@ -2515,8 +2515,8 @@ Constraints in code:
   `detail`.
 - **If you fall back to raw `gh pr review` on exit 4, RE-ASSERT THE HEAD FIRST** (#197).
   `gh pr review` has no head-pinning flag: it attaches the verdict to whatever the head is
-  at post time. Observed on #195 — a `CHANGES_REQUESTED` written against `151ebe99` landed
-  on `2bbf529c`, a commit that had already fixed two of its three findings; both commands
+  at post time. Observed once — a `CHANGES_REQUESTED` written against an earlier commit landed
+  on a later one, a commit that had already fixed two of its three findings; both commands
   exited 0 and nothing in the output said so. A stale `CHANGES_REQUESTED` blocks a flip on
   closed findings; a stale `APPROVED` certifies a commit nobody reviewed. `deskpost review`
   now prints the assertion recipe itself on exit 4 — read its stderr rather than
@@ -2535,9 +2535,9 @@ deskpost finish security-review <owner/repo> <pr> --verdict pass|fail           
 
 # e.g.
 deskpost finish review example-org/project 42 --verdict approve \
-  --head 5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b --body-file verdict.md --claim project--pr-42
+  --head 4c418b16e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b --body-file verdict.md --claim project--pr-42
 # stdout, exactly one line:
-# deskpost finish: review=<link or id> state=APPROVED head=5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b claim=released
+# deskpost finish: review=<link or id> state=APPROVED head=4c418b16e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b claim=released
 ```
 
 The arguments after `finish review` / `finish security-review` are that verb's own, parsed by
@@ -2723,7 +2723,7 @@ parent), and there is **no `--force` flag anywhere**. It is a local-only verb cl
 takes the C-5 audit line and the C-6 kill switch but NOT the outward-write rate limit.
 
 ```bash
-deskwt add <name> [--branch B] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R] [--lock-session <id>]   # create tracker-<name> on a tracking branch
+deskwt add <name> [--branch B] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R] [--lock-session <id>] [--adopt-run <key>]   # create tracker-<name> on a tracking branch
 deskwt remove <path>                                   # remove ONE proven-safe worktree
 deskwt prune [--repo <path>] [--interval <dur>] [--min-idle 1h]   # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
@@ -2796,7 +2796,14 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
   `add` fails. `<id>` must be a plain name (no `/`, no `..`). The reason carries role-init's
   `session=<id>` form, so `--reclaim-stale-locks` and `--reap-dead-sessions` retire the lock
   only once that session's roster beacon is stale. Without the flag `add` locks nothing, as
-  before.
+  before. `--adopt-run <run key>` (resume only; it requires `--upstream`) is how a rework
+  dispatch reuses the home its earlier run left: instead of the never-clobbered or
+  checked-out refusal, `add` prints that home as the new one when it carries the
+  worktree-scoped `assay.runKey` the caller names, is registered and unlocked, is on
+  `--branch` at exactly the pinned `--base`, and has an empty status including untracked
+  files. `deskdispatch` passes the item's claim key, which it holds by then, so the earlier
+  run is over. Nothing is deleted or reset; a home that fails any clause keeps the original
+  refusal, which says which clause failed.
 
 - **`remove`** refuses a dirty TRACKED tree, unpushed commits, a no-upstream branch, an
   unregistered path, or anything resolving outside the prefixes; untracked build artifacts
@@ -5873,7 +5880,7 @@ trailers by hand, under the same review the trailer text is meant to receive. Th
 covers the routine path (tag current `main`, no waiver) and refuses to be the vehicle for
 the exceptional one.
 
-**The `workflow_dispatch` release path (2026-08-02, `4dfcac9`) closes the channel the
+**The `workflow_dispatch` release path (2026-08-02) closes the channel the
 same way.** All three release workflows now take a `version` input and cut the tag inside
 the publishing run. That tag *is* annotated (`git tag -a`), but the annotation is composed
 by the workflow — `<component> <version> (dispatched by <actor>)` — not supplied by the

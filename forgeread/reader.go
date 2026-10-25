@@ -28,7 +28,7 @@ import (
 const (
 	// APIVersion is the version of this package's Go contract. Additive changes bump the minor
 	// part; a removed or re-typed identifier bumps the major part.
-	APIVersion = "1.0.0"
+	APIVersion = "1.1.0"
 
 	// EnvelopeSchema is the JSON wire contract of the issues envelope. A document declaring any
 	// other value is refused (ErrUnsupportedSchema), never best-effort parsed.

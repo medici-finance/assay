@@ -773,7 +773,7 @@ func TestParseRepo(t *testing.T) {
 // This closes a class the review found twice. publicRepoGateFn is stubbed by every
 // other test here, so the tests above prove only that the caller PROPAGATES the gate's
 // error — they would pass identically if production had never been bound to the gate
-// at all. That is not hypothetical: at head 1b91e146 `deskpr create` returned exit 6
+// at all. That is not hypothetical: at one earlier head `deskpr create` returned exit 6
 // on EVERY repo, private ones included, and no test noticed, because they all ran
 // against a stub. Asserting the production binding is what makes the other assertions
 // mean something.
