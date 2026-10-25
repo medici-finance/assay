@@ -25,8 +25,13 @@ import (
 // have. A corpus with no v2 cell makes none of these reads.
 
 // witnessGit is coverageGit plus GIT_NO_REPLACE_OBJECTS=1 and no system or
-// global attributes file: a v2 digest depends on the repository's own
-// committed content, never on this machine's attribute configuration.
+// global attributes file, so a v2 digest does not depend on this machine's
+// user-level or system-level attribute configuration. It does still honour the
+// repository's own $GIT_DIR/info/attributes, which `git check-attr --source`
+// reads whatever the flags: a line there can change a recorded attribute set
+// on one clone and not another. That fails safe (a false wrong-revision, never
+// a false release), and the committed .gitattributes files are the authority
+// a digest is meant to bind.
 func witnessGit(root string, args ...string) *exec.Cmd {
 	cmd := coverageGit(root, append([]string{"-c", "core.attributesFile=" + os.DevNull, "-c", "core.quotePath=false"}, args...)...)
 	cmd.Env = append(cmd.Env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1")

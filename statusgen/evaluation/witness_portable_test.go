@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // witness_portable_test.go — statusgen/36 Verify row 9. The digest is computed
@@ -21,7 +23,7 @@ func portableGit(t *testing.T, dir string, stdin []byte, args ...string) []byte 
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-c", "core.attributesFile=" + os.DevNull, "-c", "core.quotePath=false"}, args...)...)
 	cmd.Dir = dir
-	home := t.TempDir()
+	home := goquiet.Home(t) // a scratch HOME with go telemetry off (TestGoPackagesQuietHome)
 	cmd.Env = append(os.Environ(),
 		"GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1", "GIT_ATTR_NOSYSTEM=1",
 		"GIT_NO_REPLACE_OBJECTS=1", "HOME="+home, "XDG_CONFIG_HOME="+home,

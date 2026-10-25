@@ -558,7 +558,7 @@ func ParseInputsDeclaration(context string) (entries []string, found bool, probl
 					return nil, false, fmt.Sprintf("`inputs:` entry %q climbs out of or names its own directory", tok)
 				}
 			}
-			if isBoardBookkeepingPath(tok) || isBoardBookkeepingPath(strings.TrimSuffix(tok, "/")) || strings.HasPrefix("docs/streams/", tok) {
+			if isBoardBookkeepingPath(tok) || isBoardBookkeepingPath(strings.TrimSuffix(tok, "/")) {
 				bookkeeping = append(bookkeeping, tok)
 				continue
 			}
@@ -745,17 +745,28 @@ func AttributeDigest(lines []string) string {
 // TreeDigest is the SHA-256 of the sorted `<mode> <blob id> <path>` lines of
 // every non-bookkeeping entry of a listing.
 func TreeDigest(listing []TreeBlob) string {
-	var lines []string
+	kept := make([]TreeBlob, 0, len(listing))
 	for _, e := range listing {
-		if isBoardBookkeepingPath(e.Path) {
-			continue
+		if !isBoardBookkeepingPath(e.Path) {
+			kept = append(kept, e)
 		}
-		lines = append(lines, e.Mode+" "+e.OID+" "+e.Path+"\n")
 	}
-	sort.Slice(lines, func(i, j int) bool {
-		return lines[i][strings.LastIndexByte(lines[i][:len(lines[i])-1], ' ')+1:] < lines[j][strings.LastIndexByte(lines[j][:len(lines[j])-1], ' ')+1:]
+	// Sort by path (then mode and id), never by a substring of the rendered
+	// line: a path holding a space must not make the digest depend on input order.
+	sort.Slice(kept, func(i, j int) bool {
+		if kept[i].Path != kept[j].Path {
+			return kept[i].Path < kept[j].Path
+		}
+		if kept[i].Mode != kept[j].Mode {
+			return kept[i].Mode < kept[j].Mode
+		}
+		return kept[i].OID < kept[j].OID
 	})
-	return sha256Hex([]byte(strings.Join(lines, "")))
+	var b strings.Builder
+	for _, e := range kept {
+		b.WriteString(e.Mode + " " + e.OID + " " + e.Path + "\n")
+	}
+	return sha256Hex([]byte(b.String()))
 }
 
 // ComputeWitnessContent computes the canonical v2 content of one row at one
@@ -808,6 +819,7 @@ func WorktreeListing(committed []TreeBlob, worktree map[string]string) (listing 
 		}
 	}
 	sort.Strings(dirty)
+	sort.Slice(listing, func(i, j int) bool { return listing[i].Path < listing[j].Path })
 	return listing, dirty
 }
 
@@ -929,46 +941,199 @@ var networkTools = map[string]bool{
 
 var networkGitVerbs = map[string]bool{"fetch": true, "pull": true, "push": true, "clone": true, "ls-remote": true, "submodule": true, "remote": true}
 
+// opaqueRunners are build-runner commands whose recipe is a file the library
+// does not read: a command that runs one is unreadable, never "no network".
+var opaqueRunners = map[string]bool{
+	"make": true, "gmake": true, "just": true, "task": true, "mage": true, "ninja": true,
+	"bazel": true, "bazelisk": true, "gradle": true, "gradlew": true, "mvn": true, "mvnw": true,
+	"eval": true,
+}
+
+// shellInterpreters run the string after -c as a command.
+var shellInterpreters = map[string]bool{"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "ash": true}
+
+// wrapperSpec describes how a wrapper command's own words are skipped to reach
+// the command it runs: the number of leading operands consumed after the
+// wrapper's flags, and which flags take a value.
+type wrapperSpec struct {
+	valueFlags map[string]bool // flags that consume the next word
+	operands   int             // positional operands before the wrapped command
+	assigns    bool            // NAME=value words are skipped (env)
+}
+
+var commandWrappers = map[string]wrapperSpec{
+	"env":        {valueFlags: map[string]bool{"-u": true, "-C": true, "-S": true, "--unset": true, "--chdir": true}, assigns: true},
+	"timeout":    {valueFlags: map[string]bool{"-k": true, "-s": true, "--kill-after": true, "--signal": true}, operands: 1},
+	"nice":       {valueFlags: map[string]bool{"-n": true, "--adjustment": true}},
+	"nohup":      {},
+	"sudo":       {valueFlags: map[string]bool{"-u": true, "-g": true, "-h": true, "-p": true, "-C": true, "-D": true, "-R": true, "-T": true, "-r": true, "-t": true, "-U": true}},
+	"doas":       {valueFlags: map[string]bool{"-u": true, "-C": true}},
+	"xargs":      {valueFlags: map[string]bool{"-I": true, "-n": true, "-P": true, "-d": true, "-E": true, "-L": true, "-s": true, "-a": true, "-J": true}},
+	"command":    {},
+	"exec":       {valueFlags: map[string]bool{"-a": true}},
+	"time":       {valueFlags: map[string]bool{"-f": true, "-o": true}},
+	"stdbuf":     {valueFlags: map[string]bool{"-i": true, "-o": true, "-e": true}},
+	"setsid":     {},
+	"ionice":     {valueFlags: map[string]bool{"-c": true, "-n": true, "-p": true}},
+	"chrt":       {operands: 1},
+	"caffeinate": {valueFlags: map[string]bool{"-t": true, "-w": true}},
+}
+
+func isEnvAssign(w string) bool {
+	i := strings.IndexByte(w, '=')
+	if i <= 0 {
+		return false
+	}
+	for j := 0; j < i; j++ {
+		c := w[j]
+		if !(c == '_' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || j > 0 && c >= '0' && c <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
 // commandNamesNetworkTool reads a command for option 1: readable is false when
-// the library cannot read it; network is true when a simple command's first
-// word is a network tool (or git with a network verb), or a word is a URL.
+// the library cannot read it; network is true when a simple command runs a
+// network tool (looking through the common wrappers, `sh -c` strings and
+// `find -exec`), git with a network verb, a networked go command, or a word is
+// a URL. An opaque runner (make, eval, ...) is unreadable.
 func commandNamesNetworkTool(command, shell string) (network, readable bool) {
 	if shell != "" && shell != ShellSh {
 		return false, false
 	}
-	words, err := lexRow(UnescapePipes(command))
+	return networkInCommand(UnescapePipes(command), 0)
+}
+
+const maxShellNesting = 3
+
+func networkInCommand(command string, depth int) (network, readable bool) {
+	if depth > maxShellNesting {
+		return false, false
+	}
+	words, err := lexRow(command)
 	if err != nil {
 		return false, false
 	}
-	first := true
-	for i, w := range words {
+	readable = true
+	var simple []shellWord
+	flush := func() {
+		if len(simple) == 0 {
+			return
+		}
+		n, r := networkInSimple(simple, depth)
+		network = network || n
+		readable = readable && r
+		simple = nil
+	}
+	for _, w := range words {
 		if w.op != "" {
-			first = true
+			flush()
 			continue
 		}
+		simple = append(simple, w)
+	}
+	flush()
+	if network {
+		return true, true
+	}
+	return false, readable
+}
+
+// networkInSimple judges one simple command (the words between operators).
+func networkInSimple(words []shellWord, depth int) (network, readable bool) {
+	for _, w := range words {
 		if strings.Contains(w.text, "://") {
 			return true, true
 		}
-		if first {
-			name := pathpkg.Base(w.text)
-			if networkTools[name] {
-				return true, true
+	}
+	i := 0
+	for i < len(words) && isEnvAssign(words[i].text) {
+		i++
+	}
+	// Look through wrappers to the command that actually runs.
+	for i < len(words) {
+		name := pathpkg.Base(words[i].text)
+		spec, wrapped := commandWrappers[name]
+		if !wrapped {
+			break
+		}
+		i++
+		for i < len(words) {
+			t := words[i].text
+			if spec.assigns && isEnvAssign(t) {
+				i++
+				continue
 			}
-			if name == "git" {
-				for _, n := range words[i+1:] {
-					if n.op != "" {
-						break
-					}
-					if networkGitVerbs[n.text] {
-						return true, true
-					}
+			if strings.HasPrefix(t, "-") && t != "-" {
+				i++
+				if spec.valueFlags[t] && i < len(words) {
+					i++
 				}
+				continue
 			}
-			if name == "go" && i+1 < len(words) && (words[i+1].text == "get" || words[i+1].text == "install") {
+			break
+		}
+		for n := 0; n < spec.operands && i < len(words); n++ {
+			i++
+		}
+		for i < len(words) && spec.assigns && isEnvAssign(words[i].text) {
+			i++
+		}
+	}
+	if i >= len(words) {
+		return false, true
+	}
+	name := pathpkg.Base(words[i].text)
+	rest := words[i+1:]
+	switch {
+	case networkTools[name]:
+		return true, true
+	case opaqueRunners[name]:
+		return false, false
+	case shellInterpreters[name]:
+		for j, a := range rest {
+			if len(a.text) >= 2 && a.text[0] == '-' && a.text[1] != '-' && strings.Contains(a.text[1:], "c") {
+				if j+1 >= len(rest) {
+					return false, false
+				}
+				return networkInCommand(rest[j+1].text, depth+1)
+			}
+		}
+		return false, true // a script file: judged by its argument words only
+	case name == "git":
+		for _, n := range rest {
+			if networkGitVerbs[n.text] {
 				return true, true
 			}
 		}
-		first = false
+	case name == "go":
+		for k, a := range rest {
+			if strings.HasPrefix(a.text, "-") {
+				continue
+			}
+			switch a.text {
+			case "get", "install":
+				return true, true
+			case "run":
+				for _, b := range rest[k+1:] {
+					if strings.Contains(b.text, "@") && !strings.HasPrefix(b.text, "-") {
+						return true, true
+					}
+				}
+			case "mod":
+				if k+1 < len(rest) && (rest[k+1].text == "download" || rest[k+1].text == "tidy" || rest[k+1].text == "vendor") {
+					return true, true
+				}
+			}
+			break
+		}
+	case name == "find":
+		for k, a := range rest {
+			if (a.text == "-exec" || a.text == "-execdir" || a.text == "-ok" || a.text == "-okdir") && k+1 < len(rest) {
+				return networkInSimple(rest[k+1:], depth)
+			}
+		}
 	}
 	return false, true
 }
