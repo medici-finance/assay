@@ -131,14 +131,42 @@ mutations=(
 	'dup-named^TestBriefEventCompat^compat-duplicate^briefevent.go^return nil, errBfeDuplicate^return nil, errors.New("duplicate member " + k)^duplicate refusal names the member'
 )
 
+# local_replace_dirs — print, one per line, the repo-relative directory of every
+# local (`./` or `../`) `replace` target of the statusgen module, read from
+# `go mod edit -json` so a new local module is copied without editing this
+# runner (the class of medici-finance/assay#2549 and #3484: a scratch copy that
+# drifts behind the module's local replace set). A target that does not exist
+# or lies outside the repo is could-not-check, never skipped.
+local_replace_dirs() {
+	local json rel abs
+	json="$(cd "$pkg" && GOWORK=off go mod edit -json)" || cnc "go mod edit -json failed on statusgen/go.mod"
+	# A local replacement is the only "Path" value that starts with ./ or ../
+	# (module paths never do), so this selects replacement targets alone.
+	printf '%s\n' "$json" | sed -n 's/.*"Path": "\(\.\.\{0,1\}\/[^"]*\)".*/\1/p' | while IFS= read -r rel; do
+		abs="$(cd "$pkg" && cd "$rel" 2>/dev/null && pwd -P)" || { echo "could-not-check: local replace target $rel does not exist" >&2; exit 2; }
+		case "$abs" in
+		"$repo"/*) echo "${abs#"$repo"/}" ;;
+		*) echo "could-not-check: local replace target $rel is outside the repository" >&2; exit 2 ;;
+		esac
+	done
+}
+
 mode_mutation() {
-	local entry id test wants want want_list file from to desc copy mbin log rc observed=0
+	local entry id test wants want want_list file from to desc copy mbin log rc observed=0 dirs d
+	# Resolve the replace set once; a refusal from the helper is its exit code.
+	dirs="$(local_replace_dirs)" || exit $?
+	[ -n "$dirs" ] || cnc "statusgen/go.mod has no local replace targets to copy — the derivation matched nothing"
 	for entry in "${mutations[@]}"; do
 		IFS='^' read -r id test wants file from to desc <<<"$entry"
 		copy="$work/mut-$id"
 		mkdir -p "$copy/docs/streams/graph-execution"
 		cp -R "$pkg" "$copy/statusgen" || cnc "could not copy the module"
 		cp -R "$repo/schemas" "$copy/schemas" || cnc "could not copy schemas"
+		while IFS= read -r d; do
+			[ -n "$d" ] || continue
+			mkdir -p "$copy/$(dirname "$d")"
+			cp -R "$repo/$d" "$copy/$d" || cnc "could not copy replace target $d"
+		done <<<"$dirs"
 		cp "$runrec" "$copy/docs/streams/graph-execution/" 2>/dev/null || true
 		subst "$copy/statusgen/$file" "$from" "$to"
 		mbin="$work/mut-$id.test"
