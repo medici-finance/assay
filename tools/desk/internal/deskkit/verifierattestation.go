@@ -54,6 +54,10 @@ type VerifierReceipt struct {
 	// the tracking tree, so a root derived from the brief's location would run
 	// the rows against a tree the attestation does not name.
 	SourceHome string `json:",omitempty"`
+	// World is the run-bound prerequisite record admitted with this run
+	// (desk-tools/50), local-only like BriefRoot and never part of the issue
+	// body. Admission rechecks it before rows execute, and landing consumes it.
+	World *RunWorld `json:",omitempty"`
 }
 type verifierLocal struct {
 	VerifierReceipt
@@ -427,6 +431,11 @@ func checkVerifierAttestation(root, brief string, f Forge, phase verifierPhase) 
 	if err = verifierLocalCheck(root, brief, r, phase); err != nil {
 		return r.VerifierReceipt, err
 	}
+	if r.World != nil {
+		if err = r.World.Recheck(worldRecheckProbes); err != nil {
+			return r.VerifierReceipt, err
+		}
+	}
 	if r.Issue <= 0 {
 		return r.VerifierReceipt, Refused("verifier stamp is pending; no Verify rows admitted")
 	}
@@ -746,6 +755,31 @@ func VerifierEvidenceBindings(content []byte) []string {
 		}
 	}
 	return lines
+}
+
+// worldRecheckProbes is the probe set admission rechecks a bound RunWorld with.
+// Tests replace it; production reads local state only.
+var worldRecheckProbes PreflightProbes
+
+// BindVerifierWorld persists w as the prepared run's prerequisite record. A
+// run already bound to a different record refuses: the record is admitted
+// once, and a changed world is a new run, never a silent rebind.
+func BindVerifierWorld(home string, w RunWorld) (VerifierReceipt, error) {
+	r, err := verifierLoad(home)
+	if err != nil {
+		return r.VerifierReceipt, err
+	}
+	if r.World != nil {
+		if r.World.Digest() != w.Digest() {
+			return r.VerifierReceipt, Refused("verifier run is already bound to a different prerequisite record; re-admit a new run")
+		}
+		return r.VerifierReceipt, nil
+	}
+	r.World = &w
+	if err = verifierSave(home, r); err != nil {
+		return r.VerifierReceipt, err
+	}
+	return r.VerifierReceipt, nil
 }
 
 // PlanVerifierAttestation validates the existing local binding without forge access.

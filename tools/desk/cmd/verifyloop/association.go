@@ -149,3 +149,26 @@ func verifierPromptPlan(text string) string {
 	}
 	return text
 }
+
+// itemWorldSpec reads what one item's run needs from its brief: the declared
+// sibling checkouts and the pinned instruments its runner-executed Verify rows
+// call. It reads the brief already materialized under root and nothing else.
+func itemWorldSpec(it loopengine.Item, root string) (deskkit.WorldSpec, error) {
+	spec := deskkit.WorldSpec{Root: root}
+	if strings.TrimSpace(it.BriefPath) == "" {
+		return spec, fmt.Errorf("item %s names no brief to read prerequisites from", it.ID)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, it.BriefPath))
+	if err != nil {
+		return spec, fmt.Errorf("cannot read the brief's prerequisites: %w", err)
+	}
+	var commands []string
+	for _, row := range parseVerifyRows(string(raw)) {
+		if row.runnerExecuted() {
+			commands = append(commands, row.Command)
+		}
+	}
+	spec.Siblings = deskkit.DeclaredSiblings(string(raw))
+	spec.Instruments = deskkit.WorldInstruments(root, commands)
+	return spec, nil
+}

@@ -93,3 +93,129 @@ func (v *VerifyLoop) takeRun(it loopengine.Item) (verifierRun, bool) {
 	delete(v.attested.runs, it.ID)
 	return r, ok
 }
+
+// worldGate binds each queued run to its prerequisite record (desk-tools/50).
+// The root's record comes from that root's envelope preflight; each item's is
+// admitted on top of it at selection, rechecked at dispatch, bound into the
+// receipt, and rechecked again at landing. A nil gate on the loop is the
+// legacy path: no record is required or consumed.
+type worldGate struct {
+	mu sync.Mutex
+	// root returns the admitted record for an absolute stream root, or nil.
+	root   func(abs string) *deskkit.RunWorld
+	items  map[string]deskkit.RunWorld
+	probes deskkit.PreflightProbes
+}
+
+func newWorldGate() *worldGate { return &worldGate{root: admittedRootWorld} }
+
+// admittedRoots holds every root record this process's preflight admitted.
+var admittedRoots struct {
+	sync.Mutex
+	m map[string]deskkit.RunWorld
+}
+
+// recordRootWorld stores (or, for a held root, forgets) root's admitted record.
+func recordRootWorld(root string, w *deskkit.RunWorld) {
+	abs := absRoot(root)
+	admittedRoots.Lock()
+	defer admittedRoots.Unlock()
+	if admittedRoots.m == nil {
+		admittedRoots.m = map[string]deskkit.RunWorld{}
+	}
+	if w == nil {
+		delete(admittedRoots.m, abs)
+		return
+	}
+	admittedRoots.m[abs] = *w
+}
+
+func admittedRootWorld(abs string) *deskkit.RunWorld {
+	admittedRoots.Lock()
+	defer admittedRoots.Unlock()
+	if w, ok := admittedRoots.m[abs]; ok {
+		return &w
+	}
+	return nil
+}
+
+func absRoot(root string) string {
+	if root == "" {
+		root = "."
+	}
+	if abs, err := filepath.Abs(root); err == nil {
+		return abs
+	}
+	return root
+}
+
+// admitItems admits every still-dispatchable item's record. An item whose
+// prerequisites are missing or contradict their pins is held as could-not-check
+// with the admission's exact reason, so no row is spent on it; the other items
+// (and the other roots) keep their coverage.
+func (g *worldGate) admitItems(v *VerifyLoop, items []loopengine.Item) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.items = map[string]deskkit.RunWorld{}
+	for i := range items {
+		it := &items[i]
+		if payloadValue(*it, "could_not_check") != "" || payloadValue(*it, "awaiting_merge") != "" {
+			continue
+		}
+		if it.Payload == nil {
+			it.Payload = map[string]string{}
+		}
+		root, repo := payloadValue(*it, "root"), payloadValue(*it, "repo")
+		if root == "" {
+			root = v.Root
+		}
+		if repo == "" {
+			repo = v.RootRepo
+		}
+		base := g.root(absRoot(root))
+		if base == nil {
+			it.Payload["could_not_check"] = "environment could-not-check: no admitted prerequisite record for root " + absRoot(root)
+			continue
+		}
+		spec, err := itemWorldSpec(*it, root)
+		if err != nil {
+			it.Payload["could_not_check"] = "environment could-not-check: " + oneLine(err)
+			continue
+		}
+		spec.Repo, spec.Base = repo, base
+		adm := deskkit.AdmitWorld(spec, g.probes)
+		if !adm.Ready() {
+			it.Payload["could_not_check"] = adm.Reason()
+			continue
+		}
+		g.items[it.ID] = adm.World
+	}
+}
+
+func (g *worldGate) item(id string) (deskkit.RunWorld, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	w, ok := g.items[id]
+	return w, ok
+}
+
+// landWorld is landing's consumption of the record the run was dispatched
+// with: the admission read back now must carry the same record, and that
+// record must still hold. Either failing refuses before any Evidence is
+// written or any bug is filed — the result describes a world that is gone.
+func (v *VerifyLoop) landWorld(dispatched, now deskkit.VerifierReceipt) error {
+	if dispatched.World == nil {
+		if v.World != nil {
+			return deskkit.Refused("verifier result has no admitted prerequisite record")
+		}
+		return nil
+	}
+	if now.World != nil && now.World.Digest() != dispatched.World.Digest() {
+		return deskkit.Refused("verifier result prerequisite record changed since dispatch")
+	}
+	var probes deskkit.PreflightProbes
+	if v.World != nil {
+		probes = v.World.probes
+	}
+	return dispatched.World.Recheck(probes)
+}

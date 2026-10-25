@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
@@ -367,4 +368,31 @@ func assertNoSharedCheckout(prompt string) error {
 		}
 	}
 	return nil
+}
+
+// bindDispatchWorld is the dispatch half of the run-bound prerequisite record
+// (desk-tools/50). After admission and BEFORE any prompt is emitted or child
+// launched, the item's admitted record must exist and still hold; it is then
+// bound into the receipt (and, for a run in its own home, persisted with the
+// run record so the executor's own --check-verifier recheck consumes it). A
+// missing record is could-not-check, a moved input refuses: neither spends a
+// Verify row, and neither is a FAIL about the code.
+func (v *VerifyLoop) bindDispatchWorld(it loopengine.Item, home string, receipt deskkit.VerifierReceipt, persist bool) (deskkit.VerifierReceipt, error) {
+	if v.World == nil {
+		return receipt, nil
+	}
+	w, ok := v.World.item(it.ID)
+	if !ok {
+		return receipt, deskkit.Unverifiable("environment could-not-check: "+it.ID+" has no admitted prerequisite record; re-plan before dispatch", nil)
+	}
+	if err := w.Recheck(v.World.probes); err != nil {
+		return receipt, err
+	}
+	if persist {
+		if _, err := deskkit.BindVerifierWorld(home, w); err != nil {
+			return receipt, err
+		}
+	}
+	receipt.World = &w
+	return receipt, nil
 }

@@ -55,7 +55,10 @@ func TestVerifyPerformanceOperationsAndParity(t *testing.T) {
 	root := planFixtureRoot(t, map[string]string{"01": planBrief("model", "no", "no", "no", "no")})
 	old := preflightRoot
 	preflightRoot = func(string) error { return nil }
-	t.Cleanup(func() { preflightRoot = old })
+	// The stubbed envelope admits no prerequisite record (flow_50_test.go gates on one).
+	oldWorld := planWorldGate
+	planWorldGate = func() *worldGate { return nil }
+	t.Cleanup(func() { preflightRoot, planWorldGate = old, oldWorld })
 	for _, tc := range []struct {
 		name string
 		args []string

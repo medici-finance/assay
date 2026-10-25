@@ -28,6 +28,10 @@ type VerifyLoop struct {
 	performance verifyPerformance // optional invocation diagnostics; never scheduling authority
 	attested    verifierRuns
 	Attest      func(loopengine.Item, string, string) (deskkit.VerifierReceipt, error)
+	// World, when set, binds every run to its admitted prerequisite record
+	// (desk-tools/50). nil keeps the legacy path, which neither requires nor
+	// consumes one.
+	World *worldGate
 
 	Root      string // repo root the Awaiting scan runs against
 	TargetSHA string // merged-main SHA verifiers run against (stamped onto every Item)
@@ -160,6 +164,9 @@ func (v *VerifyLoop) SelectQueue() ([]loopengine.Item, error) {
 			}
 		}
 	}
+	if v.World != nil {
+		v.World.admitItems(v, items)
+	}
 	return items, nil
 }
 
@@ -210,6 +217,11 @@ func (v *VerifyLoop) dispatchInterim(it loopengine.Item, tier loopengine.Tier) (
 	}
 	receipt, err := v.attestRun(it, v.Root, "")
 	if err != nil {
+		return nil, err
+	}
+	// Interim mode reads the shared record in place, so the world is bound in
+	// memory only; Land consumes it from the remembered run.
+	if receipt, err = v.bindDispatchWorld(it, v.Root, receipt, false); err != nil {
 		return nil, err
 	}
 	prompt, err := admittedVerifierPrompt(it, tier, receipt)
