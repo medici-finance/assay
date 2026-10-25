@@ -430,3 +430,19 @@ list, spec role sets, worktrees and claims. The issue label values (`to:reviewer
 least one release, a thin deprecated `pr-review-desk` skill redirects to `review-desk`, and a
 skillslint gate fails on any new bare use of the old name. The matching change to the
 maintainers' house layer is a separate brief there.
+
+## Candidate-plus-priority planner reuse — requested 23 October 2026
+
+See the [single contract and ranked provider-cost model](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+and [owner map](../../desk-workflow-efficiency-change-map.md#candidate-plus-priority-ownership-reconciliation--23-october-2026).
+Extend existing /39–40 pure observation/planning, /43 caller and /44 parity/cost work;
+/42 retains issue projection ownership and /45,/51 retain verification queue/skill ownership.
+No new brief IDs or generated status changes. Both prose and discrete clients consume the
+same role-qualified plan; graph-execution/27 composes all five existing role evaluators.
+
+Critical path stays /37 -> /39 -> /40 -> /43 -> /44 for the review bridge. All-five-role
+runtime parity in graph-execution/27 also waits on /42, /45 and the actual prose adapters
+from /43 and /51, including /51’s existing human gate. Those edges are reciprocal; R6
+cross-window reuse follows its own route.
+Completed Evidence remains intact. A modified active assignment is rebound only through its
+owner checkpoint; authoring this amendment does not replace its current contract.

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	rf "github.com/medici-finance/assay/tools/desk/internal/reviewflow"
 )
 
@@ -164,7 +165,7 @@ func TestReviewBoundary(t *testing.T) {
 		cmd := exec.CommandContext(ctx, "go", "build", ".")
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOSUMDB=off")
-		out, e := cmd.CombinedOutput()
+		out, e := goquiet.Cmd(cmd).CombinedOutput()
 		if e == nil || !strings.Contains(string(out), "use of internal package github.com/medici-finance/assay/tools/desk/internal/reviewflow not allowed") {
 			t.Fatalf("wanted Go internal-boundary refusal, got %v\n%s", e, out)
 		}

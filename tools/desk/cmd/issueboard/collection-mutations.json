@@ -1,0 +1,47 @@
+{
+  "test": "go test ./cmd/issueboard -count=1 -timeout 120s -run '^(TestCollectionScopedReader|TestCollectionResolutionFailureIsFresh|TestProjectionJourney|TestProjectionFailures|TestProjectionV3ActualRecorder|TestTrustGate_BlessThenEdit|TestTrustGate_AdaWrongID|TestPositiveClosedRead_StillRetires)$'",
+  "control": {
+    "name": "trust verdict cannot admit unblessed content",
+    "file": "cmd/issueboard/board.go",
+    "old": "return deskkit.Blessed(bodyEdited, events), nil",
+    "new": "_ = bodyEdited; _ = events; return true, nil"
+  },
+  "mutations": [
+    {
+      "name": "re-resolve for every selected issue",
+      "file": "cmd/issueboard/board.go",
+      "old": "for _, iss := range issues {",
+      "new": "for _, iss := range issues {\n\t\t\treader, err = newIssueReader(repo, observers...)\n\t\t\tif err != nil { return nil, nil, err }"
+    },
+    {
+      "name": "re-resolve after the listing",
+      "file": "cmd/issueboard/board.go",
+      "old": "\t\tseen := map[string]bool{}",
+      "new": "\t\treader, err = newIssueReader(repo, observers...)\n\t\tif err != nil { return nil, nil, err }\n\t\tseen := map[string]bool{}"
+    },
+    {
+      "name": "drop repository coordinates",
+      "file": "cmd/issueboard/forge.go",
+      "old": "return &issueReader{forge: f, repo: fr}, nil",
+      "new": "_ = fr; return &issueReader{forge: f}, nil"
+    },
+    {
+      "name": "drop invocation observer at the collection boundary",
+      "file": "cmd/issueboard/forge.go",
+      "old": "f, fr, err := forgeFor(repo, observers...)",
+      "new": "f, fr, err := forgeFor(repo)"
+    },
+    {
+      "name": "treat live absent issue as closed",
+      "file": "cmd/issueboard/board.go",
+      "old": "if state == \"open\" {",
+      "new": "_ = state; if false {"
+    },
+    {
+      "name": "trust verdict cannot admit unblessed content",
+      "file": "cmd/issueboard/board.go",
+      "old": "return deskkit.Blessed(bodyEdited, events), nil",
+      "new": "_ = bodyEdited; _ = events; return true, nil"
+    }
+  ]
+}

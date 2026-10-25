@@ -1,0 +1,35 @@
+# Negative-path fixture for cellsvalidate (the service contract Verify row 5).
+#
+# Correct tier, correct dev namespaces — and an access level of
+# `cluster-admin`. The access enum is closed at {read, exec-admin-pod, logs},
+# so this level cannot be EXPRESSED, never mind granted: a verb the schema
+# cannot say cannot be granted by a config edit.
+#
+# This is the fixture that would catch the schema drifting from a closed enum
+# into a free-form string list, which is the shape this rule most plausibly
+# rots into.
+#
+# Expect: non-zero exit, error naming `access`.
+cells:
+  - name: assay
+    repos:
+      - example-org/toolkit
+    streams_root: docs/streams
+    loops:
+      - role: review
+        schedule: "*/10 * * * *"
+        models: [deepseek-chat, glm-5.2]
+        app: assay-reviewer-app
+    silence_threshold: 48h
+    notification_tiers:
+      review: push
+      question: badge
+      notify: none
+    environments:
+      - name: tracker-dev
+        kind: k8s
+        tier: dev
+        cluster: fixture-cluster
+        namespaces: [example-dev-app, example-dev-canton]
+        access: [read, cluster-admin]
+        runner_pool: example-verify-tracker

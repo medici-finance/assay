@@ -1,0 +1,54 @@
+{{define "measures.html"}}{{template "panehead" "measures"}}
+<body class="pane measures">
+<div id="live" aria-live="polite" class="visually-hidden"></div>
+{{template "panenav" "measures"}}
+{{template "ambient" .Ambient}}
+<main class="pane-body">
+  <h1 class="pane-title">Measures <span class="pane-sub">where a number decomposes (§5.2)</span></h1>
+
+  <section class="measure-group" aria-label="index-native figures">
+    <h2>Index-native <span class="group-sub">derived here, checked-clean</span></h2>
+    <div class="tiles">{{range .IndexTiles}}{{template "tile" .}}{{end}}</div>
+  </section>
+
+  <section class="measure-group" aria-label="DORA">
+    <h2>DORA <span class="group-sub">deploy freq · lead time · CFR · MTTR</span></h2>
+    <div class="tiles">{{range .DORA}}{{template "tile" .}}{{end}}</div>
+  </section>
+
+  <section class="measure-group" aria-label="TOC — theory of constraints">
+    <h2>TOC <span class="group-sub">name the constraint — usually the human gate</span></h2>
+    <div class="tiles">{{range .TOC}}{{template "tile" .}}{{end}}</div>
+  </section>
+
+  <section class="measure-group" aria-label="OODA — the decision loop">
+    <h2>OODA <span class="group-sub">observe → orient → decide → act; decide dominates</span></h2>
+    <div class="tiles">{{range .OODA}}{{template "tile" .}}{{end}}</div>
+  </section>
+
+  <section class="measure-group" aria-label="escalation health">
+    <h2>Escalation health <span class="group-sub">decision-first (§3.1.1)</span></h2>
+    <div class="tiles">{{range .Escalation}}{{template "tile" .}}{{end}}</div>
+    <p class="note">Acceptance rate is a <strong>tuning</strong> instrument (◐): <code>default_id</code>
+      is agent-declared and gameable, so it never faces an auditor. Time-to-decision (both endpoints
+      ●) is the figure that does. Every figure is delegated to statusgen's emitter and renders
+      could-not-check until that substrate is ingested — never a fabricated number.</p>
+  </section>
+
+  <section class="lifecycle-legend" aria-label="lifecycle ramp (CVD-validated)">
+    <h2>Lifecycle ramp <span class="group-sub">single-hue sequential, CVD-validated (§7.6)</span></h2>
+    <div class="lifecycle-ramp" role="img"
+         aria-label="lifecycle stages: todo, in-progress, implemented, verified, done">
+      <span class="seg seg-todo">todo</span>
+      <span class="seg seg-inprogress">in-progress</span>
+      <span class="seg seg-implemented">implemented</span>
+      <span class="seg seg-verified">verified</span>
+      <span class="seg seg-done">done</span>
+    </div>
+    <p class="note">Single-hue sequential + 2px surface gaps + direct-labeled counts. The wireframes'
+      five-hue bar failed CVD validation (protan-indistinguishable at ΔE 0.4); run
+      <code>node web/scripts/validate_palette.js</code> to check the shipped ramp.</p>
+  </section>
+</main>
+<script src="/static/app.js"></script>
+</body></html>{{end}}

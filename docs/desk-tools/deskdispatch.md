@@ -134,6 +134,24 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       marker dedupe. The script runs under the dispatching role's
                       credential (GH_TOKEN in its environment, from the same resolution
                       the claim uses), never the ambient login; with none it refuses.
+                      A brief whose human has already ruled may carry the ruling as a
+                      `**Ruling (<YYYY-MM-DD>): option <N>.**` line linking one record
+                      under docs/streams/decisions/ (by path in the brief's own
+                      checkout, never by URL). Then the gate runs `statusgen --corroborate
+                      --ruling-record <record> --ruling-brief <brief>` INSTEAD of the
+                      script: exit 0 passes ("ruling recorded"), exit 1 refuses, anything
+                      else is a could-not-check (exit 6). The record must carry a ruling:
+                      link to the human's ruling comment (spec/registers-v1.md §7.5) —
+                      outside a PR nothing else can corroborate it — and that ruling must
+                      be one on THIS brief: the comment's decision issue carries the
+                      brief's decision-gate marker (as well as the record's), and the
+                      comment names the brief as well as the record. A record ruled for
+                      another brief refuses. Only provenance is checked: the option the
+                      line names is not compared with what the human chose. A Ruling
+                      line that links a record but is malformed (shape, date, missing
+                      record, two records, two rulings) refuses pre-claim, naming the
+                      line; statusgen absent from PATH is a pre-claim exit 6. A Ruling
+                      line that links no record leaves the script path unchanged (#2079).
   5 model-stamp       computes and validates the dispatcher's attestation labels
                       and applies them when --pr is known: a --kit review dispatch
                       writes dispatched-model:<slug> + dispatched-tier:<tier> (the

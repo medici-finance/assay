@@ -21,18 +21,25 @@ type VerifierAttestationResult struct {
 // and other backends keep their existing per-target reader. In particular, this
 // does not unwrap an arbitrary Forge or expose a credential or write capability.
 func VerifierAttestationBatchReader(f Forge) func(ForgeRepo, []int) map[int]VerifierAttestationResult {
-	var g *GitHubForge
-	switch v := f.(type) {
-	case *GitHubForge:
-		g = v
-	case *outboundForge:
-		g, _ = v.Forge.(*GitHubForge)
-	}
+	g := githubPlanningBatchForge(f)
 	if g == nil {
 		return nil
 	}
 	return func(repo ForgeRepo, numbers []int) map[int]VerifierAttestationResult {
 		return g.verifierAttestations(f, repo, numbers)
+	}
+}
+
+// Shared optional-capability fence. Never unwrap arbitrary decorators.
+func githubPlanningBatchForge(f Forge) *GitHubForge {
+	switch v := f.(type) {
+	case *GitHubForge:
+		return v
+	case *outboundForge:
+		g, _ := v.Forge.(*GitHubForge)
+		return g
+	default:
+		return nil
 	}
 }
 
@@ -52,11 +59,13 @@ var verifierIssueBatchQuery = verifierBatchQuery(verifierIssueSelection)
 var verifierHistoryBatchQuery = verifierBatchQuery(verifierHistorySelection)
 var verifierLabelsBatchQuery = verifierBatchQuery(verifierLabelsSelection)
 
-func verifierBatchQuery(selection string) string {
+func verifierBatchQuery(selection string) string { return githubNumberedBatchQuery("issue", selection) }
+
+func githubNumberedBatchQuery(field, selection string) string {
 	var variables, fields strings.Builder
 	for slot := 0; slot < verifierAttestationBatchCap; slot++ {
 		fmt.Fprintf(&variables, ",$n%d:Int!,$use%d:Boolean!", slot, slot)
-		fmt.Fprintf(&fields, "a%d:issue(number:$n%d) @include(if:$use%d){%s} ", slot, slot, slot, selection)
+		fmt.Fprintf(&fields, "a%d:%s(number:$n%d) @include(if:$use%d){%s} ", slot, field, slot, slot, selection)
 	}
 	return `query($owner:String!,$name:String!` + variables.String() + `){repository(owner:$owner,name:$name){` + fields.String() + `}}`
 }
@@ -149,7 +158,7 @@ func (g *GitHubForge) verifierAttestations(f Forge, repo ForgeRepo, numbers []in
 			observations[n] = &verifierBatchObservation{}
 		}
 		for stage, query := range []string{verifierIssueBatchQuery, verifierHistoryBatchQuery, verifierIssueBatchQuery, verifierLabelsBatchQuery} {
-			raw, failures, err := g.verifierObservationBatch(repo, chunk, query)
+			raw, failures, err := g.githubReadBatch(repo, chunk, query)
 			for _, n := range chunk {
 				o := observations[n]
 				switch {
@@ -209,7 +218,7 @@ func (g *GitHubForge) verifierAttestations(f Forge, repo ForgeRepo, numbers []in
 
 // Alias errors belong to that target only. Errors with no attributable target
 // make the whole observation unavailable. No provider error text is echoed.
-func (g *GitHubForge) verifierObservationBatch(repo ForgeRepo, numbers []int, selection string) (map[int]json.RawMessage, map[int]error, error) {
+func (g *GitHubForge) githubReadBatch(repo ForgeRepo, numbers []int, selection string) (map[int]json.RawMessage, map[int]error, error) {
 	variables := map[string]any{"owner": repo.Owner, "name": repo.Name}
 	aliases := map[string]int{}
 	for slot := 0; slot < verifierAttestationBatchCap; slot++ {

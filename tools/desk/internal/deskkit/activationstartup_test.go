@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // regression: F-activation-snapshot
@@ -72,7 +74,7 @@ func TestCompiledStartupDiscoveryWorkload(t *testing.T) {
 				cmd.Env = append(cmd.Env, key+"="+value)
 			}
 		}
-		if out, err := cmd.CombinedOutput(); err != nil {
+		if out, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
 			t.Fatalf("build %s: %v %s", tool, err, out)
 		}
 		return bin

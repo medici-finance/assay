@@ -1,0 +1,9 @@
+{
+  "encoding": "typed-v2-malformed",
+  "options": null,
+  "options_rev": "",
+  "problems": [
+    "option `stop-here` has no `Consequence:` line"
+  ],
+  "confidence": "could-not-check"
+}

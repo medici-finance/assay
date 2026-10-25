@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
@@ -360,8 +361,7 @@ func (f *FanoutLoop) inboxRole() string {
 // default STATUS.md reader) carry no labels and are never addressed, exactly as
 // isForeignDispatchToken degrades.
 func addressedToRole(r BoardRow, role string) bool {
-	addr, state := deskkit.AddressedToOf(r.Labels)
-	return state == deskkit.RaisedByStamped && strings.EqualFold(addr, role)
+	return issueflow.Select(issueflow.Inbox, issueflow.CandidateForLabels(issueflow.Candidate{}, r.Labels), role)
 }
 
 // TierPolicy is in tier.go.

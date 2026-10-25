@@ -1,7 +1,7 @@
 {
   "test": "go test ./internal/cellcache ./internal/cellprocess ./cmd/cellctl ./cmd/deskdispatch ./cmd/deskwt -run 'TestCache|TestStorage|TestReap|TestLoadMarkedPolicy|TestDomainFor|TestCheckRecorded|TestAdmitRecorded|TestPruneCache' -count=1 -timeout=60s",
   "control": {
-    "name": "CONTROL — an invalid CELL_GO_CACHE mode is accepted as off",
+    "name": "CONTROL \u2014 an invalid CELL_GO_CACHE mode is accepted as off",
     "file": "internal/cellcache/policy.go",
     "old": "\t\treturn nil, fmt.Errorf(\"CELL_GO_CACHE must be on or off\")",
     "new": "\t\treturn nil, nil"
@@ -28,8 +28,8 @@
     {
       "name": "hide measurement failure",
       "file": "internal/cellcache/cache.go",
-      "old": "r.Outcome = \"could-not-check\"",
-      "new": "r.Outcome = \"checked-clean\""
+      "old": "if len(r.Failures) > 0 {\n\t\tr.Outcome = \"could-not-check\"",
+      "new": "if len(r.Failures) > 0 {\n\t\tr.Outcome = \"checked-clean\""
     },
     {
       "name": "lose uncertain custody",
@@ -93,9 +93,9 @@
     },
     {
       "name": "omit prefetch storage admission",
-      "file": "cmd/cellctl/launch.go",
-      "old": "if err := launchStep(\"launch-storage-admission\", c.cacheAdmission); err != nil {",
-      "new": "if err := launchStep(\"launch-storage-admission\", c.cacheAdmission); false && err != nil {"
+      "file": "cmd/cellctl/prepare.go",
+      "old": "if err := c.cacheAdmission(); err != nil {",
+      "new": "if err := c.cacheAdmission(); false && err != nil {"
     },
     {
       "name": "reap a root under an active consumer lease (the at-act-time lease check is skipped)",
@@ -412,7 +412,7 @@
     {
       "name": "launch admission takes the locked walk",
       "file": "cmd/cellctl/cache.go",
-      "old": "r, err := cellcache.Admit(*p, false)",
+      "old": "r, err := cellcache.Prepare(*p)",
       "new": "r, err := cellcache.Check(*p, false)"
     }
   ]

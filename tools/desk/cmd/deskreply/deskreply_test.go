@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
@@ -145,7 +146,7 @@ func runTests(m *testing.M) int {
 	buildDT := exec.Command("go", "build", "-o", filepath.Join(dir, "desktoken"), ".")
 	buildDT.Dir = dir
 	buildDT.Env = fakeBuildEnv()
-	if out, berr := buildDT.CombinedOutput(); berr != nil {
+	if out, berr := goquiet.Cmd(buildDT).CombinedOutput(); berr != nil {
 		fmt.Fprintf(os.Stderr, "build fake desktoken: %v\n%s\n", berr, out)
 		return 1
 	}
@@ -735,7 +736,7 @@ func TestNoAppTokenPath(t *testing.T) {
 	}
 
 	// Best-effort transitive proof: the whole build graph carries no deskpost dependency.
-	out, lerr := exec.Command("go", "list", "-deps", ".").CombinedOutput()
+	out, lerr := goquiet.Cmd(exec.Command("go", "list", "-deps", ".")).CombinedOutput()
 	if lerr != nil {
 		t.Logf("skipping `go list -deps` transitive check: %v", lerr)
 		return

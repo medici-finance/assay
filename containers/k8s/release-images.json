@@ -1,0 +1,53 @@
+{
+  "schema": "release-images-v1",
+  "version": "v1.0.52",
+  "source_revision": "2718fc978b7454f0f2aa422e1236fb6ad543e0d2",
+  "repository": "medici-finance/assay",
+  "images": [
+    {
+      "name": "desk-tools",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/desk-tools:v1.0.52@sha256:64f131ec208def087b50565a4ddd407b95bd89ac418a86597ad1bac1d29047d3"
+    },
+    {
+      "name": "assay-harness",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/assay-harness:v1.0.52@sha256:d8c497c47d363d013acd66277226b36c7c52ca027d1de4bc14a3d145d1b82b8d"
+    },
+    {
+      "name": "desk-base",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/desk-base:v1.0.52@sha256:9fb86e836ed270c00842b1b999f481a72a0de8cefead7c955e31b24a8ed7ddf3"
+    },
+    {
+      "name": "intake-desk",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/intake-desk:v1.0.52@sha256:16b5e263591ae279c273128a9c423dea7ed3572b0f501eea9ce80395ee3962fa"
+    },
+    {
+      "name": "worker-desk",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/worker-desk:v1.0.52@sha256:25f7be893ff5d3135cbea26cbfb9d1a0fcb356e92397f42030f9d9bbf4fcd6c5"
+    },
+    {
+      "name": "pr-review-desk",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/pr-review-desk:v1.0.52@sha256:a0882bbb50cbc14ec4631d70415ebbcd02f7f9c736fb0395095991b1eb3eb68c"
+    },
+    {
+      "name": "verify-desk",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/verify-desk:v1.0.52@sha256:906d3487ae40858ca527af023b1f7443c6fc52d3c3afa771f9c6ba3c2e15423c"
+    },
+    {
+      "name": "the-desk",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/assay/the-desk:v1.0.52@sha256:c957dd21f3a132d63a8d16ee2bb60633f45357181b5f599b6dbf3ef9b6a4ce1e"
+    },
+    {
+      "name": "verify-runner",
+      "platform": "linux/amd64",
+      "ref": "ghcr.io/medici-finance/verify-runner:v1.0.52@sha256:dedb190448d9a09579885e136faa714d6185de1cf79d3043f230568c75be7a97"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "test": "go test ./cmd/deskevidence/ -run '^TestPrincipalStampLintParity$' -count=1 -timeout=600s",
+  "control": {
+    "name": "canonical stamp written in a different form",
+    "file": "cmd/deskevidence/principalstamp.go",
+    "old": "return \"(\" + onBehalfOfCellMarker + \" human:\" + subject + \")\"",
+    "new": "return \"(\" + onBehalfOfCellMarker + \" human: \" + subject + \")\""
+  },
+  "mutations": [
+    {
+      "name": "needsPrincipalStamp reverted to the bare on-behalf-of skip",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tif n == 0 {\n\t\treturn stampAdd, \"\"\n\t}\n",
+      "new": "\tif n == 0 {\n\t\treturn stampAdd, \"\"\n\t}\n\tif n > 0 {\n\t\treturn stampLeave, \"\"\n\t}\n"
+    },
+    {
+      "name": "a different recognised human is restamped instead of refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\t\treturn stampRefuse, p\n",
+      "new": "\t\t\treturn stampRestamp, p\n"
+    },
+    {
+      "name": "leave accepts a same-subject cell not in the exact written form",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "p == strings.ToLower(strings.TrimSpace(subject)) &&\n\t\tstrings.Count(cell, canonicalStamp(subject)) == 1 {",
+      "new": "p == strings.ToLower(strings.TrimSpace(subject)) {"
+    },
+    {
+      "name": "an unclosed fragment runs to a later closing paren",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "closeAt >= 0 && (openAt < 0 || closeAt < openAt) {",
+      "new": "closeAt >= 0 && (openAt < 0 || closeAt < openAt || openAt >= 0) {"
+    },
+    {
+      "name": "a bare fragment no longer ends at the next open paren",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "strings.IndexAny(cell[after:textEnd], \"()\")",
+      "new": "strings.IndexAny(cell[after:textEnd], \")\")"
+    },
+    {
+      "name": "a restamp no longer keeps the separator the old annotation carried",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tsep := \"\"\n\t\tif b := cell[head];",
+      "new": "\t\tsep := \" \"\n\t\tif b := cell[head];"
+    },
+    {
+      "name": "a tab before a trailing source tag is not treated as whitespace",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for pos > 0 && (text[pos-1] == ' ' || text[pos-1] == '\\t') {",
+      "new": "for pos > 0 && text[pos-1] == ' ' {"
+    }
+  ]
+}

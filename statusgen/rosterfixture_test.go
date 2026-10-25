@@ -26,6 +26,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/gitquiet"
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // fixtureRoster is the config-home file contents. 0600, in a directory this
@@ -52,7 +53,7 @@ ASSAY_SCAN_REPOS=example-org/tracker,example-org/agents,example-org/examples,exa
 // fixture replaces HOME. Every Go child compiler, including the cross-module
 // heads bridge, must use the dependencies prepared by the caller (#3327).
 func pinFixtureGoCaches() error {
-	out, err := exec.Command("go", "env", "-json", "GOMODCACHE", "GOCACHE", "GOPATH").Output()
+	out, err := goquiet.Cmd(exec.Command("go", "env", "-json", "GOMODCACHE", "GOCACHE", "GOPATH")).Output()
 	if err != nil {
 		return fmt.Errorf("resolve Go fixture paths: %w", err)
 	}

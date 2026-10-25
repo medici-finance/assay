@@ -7,8 +7,11 @@
 // The ratchet has three parts: a `// regression: #<N>` doc-comment tag that says what a test
 // pins, a `Retires-test: <Name> — <why>` commit trailer that says why a test leaves, and this
 // report, which lists every departure for the reviewer to judge: an untrailed one as such, a
-// trailed one with each trailer's commit and reason. A trailer never hides a departure, so the
-// report is `clean` only when nothing departed.
+// trailed one with each trailer's commit and reason. A trailer never hides a departure. A
+// `// characterization: <module> <oracle-file>` tag marks a test written to record today's
+// behaviour ahead of a redesign; the report also lists each one its oracle's triage table
+// (`## 3.`) has no row for (docs/refactor-oracle-template.md). The report is `clean` only when
+// nothing departed and every characterization test is triaged.
 //
 // DEFINITIONS (over every `*_test.go` outside testdata/, vendor/, node_modules/ and dot or
 // underscore directories):
@@ -20,6 +23,9 @@
 //	           ", ", where a ref is `#<N>`, `F-<slug>` (slug: lower-case letters and digits
 //	           in hyphen-separated runs) or `class #<N>`. A line with anything else after the
 //	           prefix is prose that happens to wrap there, and is not a tag.
+//	char tag — the doc-comment line `// characterization: <module> <oracle-file>`: exactly
+//	           two fields, the second a slash path ending `.md`; otherwise prose, not a tag.
+//	triaged  — the oracle's `## 3.` section has a table row whose first cell is the bare name.
 //	hash     — the func body's token stream (comments and layout dropped), hashed.
 //	deleted  — in base, not in head (same package, same name).
 //	renamed  — a deletion paired with an addition in the same package whose hash, or else
@@ -63,6 +69,10 @@ import (
 // TagPrefix opens the doc-comment line that tags a regression test.
 const TagPrefix = "// regression: "
 
+// CharPrefix opens the doc-comment line that marks a characterization test: one written to
+// record what code does today, ahead of a redesign, and triaged in a refactor oracle.
+const CharPrefix = "// characterization: "
+
 // TestFunc is one test function in a tree.
 type TestFunc struct {
 	Pkg  string // slash directory path relative to the tree root ("." at the root)
@@ -70,6 +80,8 @@ type TestFunc struct {
 	Tag  string // the tag's refs joined ", "; empty when untagged
 	Hash string // normalised body hash
 	File string // slash path of the declaring file
+	// Module and Oracle are the characterization tag's two fields; both empty when untagged.
+	Module, Oracle string
 }
 
 // Rename pairs a deleted test with the added test that replaced it.
@@ -161,12 +173,15 @@ func fileTests(p string, src []byte) ([]TestFunc, error) {
 			continue
 		}
 		body := src[fset.Position(fn.Body.Pos()).Offset:fset.Position(fn.Body.End()).Offset]
+		module, oracle := characterization(fn.Doc)
 		out = append(out, TestFunc{
-			Pkg:  path.Dir(p),
-			Name: fn.Name.Name,
-			Tag:  tag(fn.Doc),
-			Hash: bodyHash(body),
-			File: p,
+			Pkg:    path.Dir(p),
+			Name:   fn.Name.Name,
+			Tag:    tag(fn.Doc),
+			Hash:   bodyHash(body),
+			File:   p,
+			Module: module,
+			Oracle: oracle,
 		})
 	}
 	return out, nil
@@ -209,6 +224,26 @@ func tag(doc *ast.CommentGroup) string {
 		}
 	}
 	return strings.Join(refs, ", ")
+}
+
+// characterization reads the doc-comment line `// characterization: <module> <oracle-file>`:
+// exactly two fields, the second a valid slash path ending `.md`. Anything else after the
+// prefix is prose that happens to wrap there, and is not a tag.
+func characterization(doc *ast.CommentGroup) (module, oracle string) {
+	if doc == nil {
+		return "", ""
+	}
+	for _, c := range doc.List {
+		v, ok := strings.CutPrefix(c.Text, CharPrefix)
+		if !ok {
+			continue
+		}
+		f := strings.Fields(v)
+		if len(f) == 2 && strings.HasSuffix(f[1], ".md") && fs.ValidPath(f[1]) {
+			return f[0], f[1]
+		}
+	}
+	return "", ""
 }
 
 // allRefs reports whether every element is a tag ref: `#<N>`, `F-<slug>` or `class #<N>`.
@@ -551,4 +586,49 @@ func covering(retired []Retirement, name string, newName func(string) bool) stri
 		fmt.Fprintf(&b, "; Retires-test in %s: %s%q", c, renamed, x.Why)
 	}
 	return b.String()
+}
+
+// Untriaged returns one `characterization-untriaged` line per characterization test in head
+// whose oracle's triage table has no row for it. A row counts only inside the oracle's
+// `## 3.` section, with the test's bare name (backticks and spaces trimmed) as its first
+// cell: a name anywhere else in the oracle is prose, not a triage. An oracle that cannot be
+// read lists each of its tests with the read error, never as triaged.
+func Untriaged(head []TestFunc, fsys fs.FS) []string {
+	var out []string
+	rows := map[string]map[string]bool{}
+	errs := map[string]error{}
+	for _, f := range head {
+		if f.Oracle == "" {
+			continue
+		}
+		if _, seen := rows[f.Oracle]; !seen {
+			rows[f.Oracle], errs[f.Oracle] = triageRows(fsys, f.Oracle)
+		}
+		switch {
+		case errs[f.Oracle] != nil:
+			out = append(out, fmt.Sprintf("characterization-untriaged: %s.%s (%s could not be read: %v)", f.Pkg, f.Name, f.Oracle, errs[f.Oracle]))
+		case !rows[f.Oracle][f.Name]:
+			out = append(out, fmt.Sprintf("characterization-untriaged: %s.%s (%s has no row for it)", f.Pkg, f.Name, f.Oracle))
+		}
+	}
+	return out
+}
+
+// triageRows returns the first cells of the table rows in the oracle's `## 3.` section.
+func triageRows(fsys fs.FS, oracle string) (map[string]bool, error) {
+	b, err := fs.ReadFile(fsys, oracle)
+	if err != nil {
+		return nil, err
+	}
+	names, in := map[string]bool{}, false
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "## ") {
+			in = strings.HasPrefix(line, "## 3.")
+			continue
+		}
+		if in && strings.HasPrefix(line, "|") {
+			names[strings.Trim(strings.SplitN(line[1:], "|", 2)[0], " `")] = true
+		}
+	}
+	return names, nil
 }

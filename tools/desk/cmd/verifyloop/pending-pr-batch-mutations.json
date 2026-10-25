@@ -1,0 +1,15 @@
+{
+ "root": ".",
+ "test": "go test ./cmd/verifyloop ./internal/deskkit -run '^Test(PendingChange|PendingBatch|PendingReuse|PendingFileReuse|VerifierBatch)' -count=1 -timeout 180s",
+ "control": {"name":"fresh-pr-head","file":"cmd/verifyloop/pending.go","old":"after, e := f.GetPullRequest(repo, change.Number)","new":"after, e := pr, error(nil)"},
+ "mutations": [
+  {"name":"metadata-target","file":"internal/deskkit/pendingchangebatch.go","old":"*w.Number != number","new":"false"},
+  {"name":"files-head-binding","file":"internal/deskkit/pendingchangebatch.go","old":"*w.HeadRefOID != pr.HeadSHA","new":"false"},
+  {"name":"files-total-count","file":"internal/deskkit/pendingchangebatch.go","old":"*w.Files.TotalCount != pr.ChangedFiles","new":"false"},
+  {"name":"per-alias-error","file":"internal/deskkit/pendingchangebatch.go","old":"observation := PendingChangeObservation{Err: failures[n]}","new":"observation := PendingChangeObservation{}"},
+  {"name":"complete-overflow-walk","file":"internal/deskkit/pendingchangebatch.go","old":"if observation.Err == nil && more {","new":"if observation.Err == nil && more && false {"},
+  {"name":"fallback-head-binding","file":"internal/deskkit/pendingchangebatch.go","old":"pr.HeadSHA != observation.PR.HeadSHA","new":"false"},
+  {"name":"prepared-error-cache","file":"cmd/verifyloop/pending.go","old":"&pendingRead{pr: result.PR, files: result.Files, err: result.Err}","new":"&pendingRead{pr: result.PR, files: result.Files}"},
+  {"name":"fresh-pr-head","file":"cmd/verifyloop/pending.go","old":"after, e := f.GetPullRequest(repo, change.Number)","new":"after, e := pr, error(nil)"}
+ ]
+}

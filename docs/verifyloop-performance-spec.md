@@ -13,6 +13,9 @@ The subsequent GitHub batching slice is qualified in
 [medici-finance/assay#3808](https://github.com/medici-finance/assay/pull/3808).
 Its acceptance point is independent review, required checks and human merge of that PR;
 the PR records the reversible GitHub-first scope decision. GitLab batching remains proposed.
+The next bounded slice batches pending verifier PR metadata and complete file lists;
+its contract and repeatable busy population are in [verifyloop-pr-batching.md](verifyloop-pr-batching.md).
+It retains normal code review, required checks and human merge as its acceptance point.
 The broader extension to [desk-workflow-efficiency-spec.md](desk-workflow-efficiency-spec.md)
 remains proposed; its source's approval does not approve this extension. No runtime,
 cache service, collection, credentials, release or consumer cutover is activated.

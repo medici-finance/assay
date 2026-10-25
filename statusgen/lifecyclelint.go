@@ -74,8 +74,22 @@ func outcomeAbsentNotices(streams []*Stream) []string {
 // canonical spec home docFiles does not walk (it is not under docs/). Only files
 // carrying a `**Status:**` line are treated as lifecycle documents downstream;
 // scanning a superset is harmless because a non-opted-in file is ignored.
+//
+// docs/archive/** is EXCLUDED (statusgen/28): an archived document is a frozen
+// record, not live lifecycle state, so its `**Status:**` header is never
+// classified, never owed a Routes-to, never owed a citing brief. Only that one
+// subtree is excluded — docFiles still returns it to the link checks, which
+// must keep resolving references into the archive, and no active document is
+// exempted by this.
 func lifecycleCandidateDocs(root string) (files []string, walkProblems []string) {
-	files, walkProblems = docFiles(root)
+	all, walkProblems := docFiles(root)
+	archive := filepath.Join(root, "docs", "archive") + string(filepath.Separator)
+	for _, f := range all {
+		if strings.HasPrefix(f, archive) {
+			continue
+		}
+		files = append(files, f)
+	}
 	specDir := filepath.Join(root, "spec")
 	_ = filepath.WalkDir(specDir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {

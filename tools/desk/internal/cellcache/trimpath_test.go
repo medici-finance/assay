@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestCacheTrimpathPolicy pins the managed cache's default GOFLAGS: on unless
@@ -104,6 +105,8 @@ func TestCacheAmbientGoFlags(t *testing.T) {
 // the same package built from a second directory must reuse the first build's
 // cache entries. With the cell opted out, cmd/go keys the package on its
 // absolute directory and recompiles it, which is the control.
+//
+// regression: #3707
 func TestCacheBuildReuseAcrossWorktrees(t *testing.T) {
 	goBin, err := exec.LookPath("go")
 	if err != nil {
@@ -123,7 +126,7 @@ func TestCacheBuildReuseAcrossWorktrees(t *testing.T) {
 			if err = os.WriteFile(filepath.Join(work, "cache.go"), []byte("package cache\nfunc Sum(a,b int) int{return a+b}\n"), 0600); err != nil {
 				t.Fatal(err)
 			}
-			env := append(p.Env(), "HOME="+t.TempDir(), "PATH="+os.Getenv("PATH"), "GOTOOLCHAIN=local", "GOPROXY=off", "GOSUMDB=off", "CGO_ENABLED=0")
+			env, _ := goEnv(t, goBin, p)
 			l, err := Acquire(env)
 			if err != nil {
 				t.Fatal(err)
@@ -133,6 +136,15 @@ func TestCacheBuildReuseAcrossWorktrees(t *testing.T) {
 			cmd.Env = env
 			out, buildErr := cmd.CombinedOutput()
 			finishErr := l.Finish(true)
+			if i == 0 {
+				// First build creates the cache's top-level shards. Explicit
+				// maintenance refreshes accounting outside enrollment, retaining
+				// the existing timestamp slack instead of waiving its guard.
+				time.Sleep(AdmitMtimeSlack)
+				if _, err := Check(p, false); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if buildErr != nil || finishErr != nil {
 				t.Fatalf("build: %s %v %v", out, buildErr, finishErr)
 			}

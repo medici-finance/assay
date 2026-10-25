@@ -42,6 +42,7 @@ import (
 	"github.com/medici-finance/assay/forgeread/adapters"
 	ghadapter "github.com/medici-finance/assay/forgeread/adapters/github"
 	gladapter "github.com/medici-finance/assay/forgeread/adapters/gitlab"
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 const parityDir = "../forgeread/testdata/parity"
@@ -418,7 +419,7 @@ func goList(t *testing.T, dir string, args ...string) string {
 	cmd.Env = append(os.Environ(), "GOWORK=off")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	out, err := goquiet.Cmd(cmd).Output()
 	if err != nil {
 		t.Fatalf("go %v in %s: %v\n%s", args, dir, err, stderr.String())
 	}
@@ -518,7 +519,7 @@ func buildConsumer(t *testing.T, proxy string) (string, error) {
 			"GOWORK=off", "GOFLAGS=-mod=mod -modcacherw", "GOPROXY=file://"+proxy, "GOSUMDB=off",
 			"GONOSUMDB=*", "GOMODCACHE="+filepath.Join(dir, "modcache"),
 			"GOTOOLCHAIN=local", "GOPRIVATE=")
-		out, err := cmd.CombinedOutput()
+		out, err := goquiet.Cmd(cmd).CombinedOutput()
 		return string(out), err
 	}
 	if out, err := run("build", "-o", filepath.Join(dir, "consumer"), "."); err != nil {

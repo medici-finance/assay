@@ -383,6 +383,10 @@ const (
 	// raisedByFlag is the flag name, restated once so the NOTICE text and the usage
 	// string cannot drift from the flag registration.
 	raisedByFlag = "raised-by"
+
+	// filingBriefFlag / filingCaseFlag carry the structured filing identity (example-stream/49).
+	filingBriefFlag = "filing-brief"
+	filingCaseFlag  = "filing-case"
 	// toFlag is the addressee flag name, restated once so its NOTICE text and usage
 	// string cannot drift from the flag registration.
 	toFlag = "to"
@@ -681,11 +685,27 @@ type auditCtx struct {
 	// reset it, and charges nothing), which is exactly right for a verb that writes
 	// nothing. The refusal reason is still on the line, in Detail.
 	readOnly bool
+
+	// bound is the Detail prefix of a workflow-bound filing (boundPrefix: `for-pr <owner/repo#N>
+	// role <role> brief <id> | `), set only once the binding and the counted role are both
+	// resolved. It LEADS the line, ahead of createSentMarker: checkBoundBudget strips it and then
+	// applies chargedNewEntry to the rest, so the create-sent discriminator is read in the same
+	// place on a bound line as on an unbound one.
+	bound string
+	// boundCfg is the bound cap's provenance (boundConfigNote), appended to every bound line
+	// once the cap resolves, so an override of the cap is never off the line it governs.
+	boundCfg string
 }
 
 func (a *auditCtx) log(result, detail string) {
 	if a.createSent {
 		detail = createSentMarker + detail
+	}
+	if a.bound != "" {
+		detail = a.bound + detail
+	}
+	if a.boundCfg != "" {
+		detail = strings.TrimSpace(detail + " | " + a.boundCfg)
 	}
 	if a.raisedBy != "" {
 		detail = strings.TrimSpace(detail + " | " + a.raisedBy)
@@ -812,10 +832,22 @@ func cmdNew(args []string) (err error) {
 		"rate is spent (escape hatch; requires --reason). Distinct from --force-new, which bypasses dedupe; "+
 		"--force-file does NOT weaken dedupe and does NOT reset the rate count (the filing is still audited and charged).")
 	reason := fs.String("reason", "", "stated reason for --force-new / --force-file (required with either)")
+	forPR := fs.String("for-pr", "", "bind this filing to the open change request `<owner>/<repo>#<N>` whose review requires "+
+		"it — a workflow-bound filing: not counted by the per-session new-issue rate, counted instead per role per "+
+		"change request (issue.file.bound_per_pr), by the per-change write tier and by the PR-bound backstop "+
+		"(write.bound.repo_hour), not by the fixed repo-wide ceiling unbound filings keep. Needs --brief when "+
+		"the change carries a brief; refused with --force-file. It does not bind the filer to that change")
+	briefID := fs.String("brief", "", "the brief id of the --for-pr change (<stream>/<NN> or a qualified colon form); "+
+		"must be that change's brief (a Brief:/Cross-repo-brief: trailer, or its diff touches the brief file)")
 	noFork := fs.String("no-fork", "", "re-routes a filing that turned out to have fewer than two workable options "+
 		"(the `deskfile new` fork-test gate's refusal names this flag): one of "+noForkBriefContradicts+" | "+
 		noForkWrongRepo+" | "+noForkToolFalsePositive+". Files WITHOUT the needs-decision label, and refuses a one-way item (deskkit.OneWay, or a "+
 		"human-only hand-off: the human-only label or a body led by BLOCKED-ON-HUMAN) — that stays on the driver's queue")
+	filingBrief := fs.String(filingBriefFlag, "", "structured filing identity, part 1: the brief the case belongs to "+
+		"(<stream>/<NN> or a qualified colon form; resolved to its canonical id). Needs --"+filingCaseFlag+" and --"+raisedByFlag+
+		"; an exact lookup of OPEN issues in -R carrying the same identity runs BEFORE the title dedupe")
+	filingCase := fs.String(filingCaseFlag, "", "structured filing identity, part 2: the case id (the repair obligation's repair/<16 hex> "+
+		"id, or receipt/<16 hex>). The filed body is stamped with the identity's marker; a different case on the same brief is NOT a duplicate")
 	applyOverride, _ := deskkit.RegisterOutboundOverride(fs, "deskfile", "new")
 	if perr := fs.Parse(args); perr != nil {
 		// TIER TWO: `-h`/`--help` in any spelling reaches flag.Parse as flag.ErrHelp.
@@ -835,12 +867,22 @@ func cmdNew(args []string) (err error) {
 	if strings.TrimSpace(*repo) == "" {
 		return deskkit.Refused("refused: -R <repo> is required")
 	}
+	if (strings.TrimSpace(*filingBrief) == "") != (strings.TrimSpace(*filingCase) == "") {
+		return deskkit.Refused("refused: --" + filingBriefFlag + " and --" + filingCaseFlag + " name one filing identity — pass both or neither")
+	}
+	structured := strings.TrimSpace(*filingBrief) != ""
+	if structured && strings.TrimSpace(*raisedBy) == "" {
+		return deskkit.Refused("refused: a structured filing identity is scoped to the raising role — pass --" + raisedByFlag + " <role>")
+	}
 	// Correction-capture (skill-bug) mode: the tool composes the title and body from this
 	// session's last receipt, so --title/--body-file are refused here and --label skill-bug,
 	// --section and --reading are required. Ordinary mode requires --title/--body-file and
 	// forbids the correction-only flags.
 	composeMode := strings.TrimSpace(*correction) != ""
 	if composeMode {
+		if structured {
+			return deskkit.Refused("refused: --" + filingBriefFlag + "/--" + filingCaseFlag + " are not valid with --correction (skill-bug mode)")
+		}
 		if strings.TrimSpace(*title) != "" {
 			return deskkit.Refused("refused: --title is composed by --correction (skill-bug mode) — drop --title")
 		}
@@ -872,6 +914,38 @@ func cmdNew(args []string) (err error) {
 	}
 	if !deskkit.IsAllowedRepo(*repo) {
 		return deskkit.Refused("refused: " + *repo + " is not in the desk-tools repo set")
+	}
+	// Workflow-bound filing (bound.go): the flag combinations refuse first, then the counted
+	// role resolves — both before any forge read, and the role before anything can be created.
+	var boundPR *prRef
+	boundAs := ""
+	if strings.TrimSpace(*briefID) != "" && strings.TrimSpace(*forPR) == "" {
+		return deskkit.Refused("refused: --brief names the brief of a --for-pr change request — pass --for-pr <owner>/<repo>#<N> with it")
+	}
+	if strings.TrimSpace(*forPR) != "" {
+		if *forceFile {
+			return deskkit.Refused("refused: --force-file raises the per-session rate, which a --for-pr filing is not " +
+				"counted by — drop --force-file (a bound filing has its own per-change count)")
+		}
+		p, perr := parseForPR(*forPR)
+		if perr != nil {
+			return perr
+		}
+		if !deskkit.IsAllowedRepo(p.Repo) {
+			return deskkit.Refused("refused: --for-pr repository " + p.Repo + " is not in the desk-tools repo set")
+		}
+		// The bound line is charged to (-R repo, PR number), so the two must be one repository:
+		// otherwise the PR's own per-change tier is under-charged and an unrelated item with the
+		// same number in -R is charged instead.
+		if p.Repo != *repo {
+			return deskkit.Refused("refused: --for-pr " + p.String() + " is in " + p.Repo + ", but -R is " + *repo +
+				" — a bound filing is filed in the change request's own repository (-R " + p.Repo + ")")
+		}
+		role, rerr := boundRole()
+		if rerr != nil {
+			return rerr
+		}
+		boundPR, boundAs = &p, role
 	}
 	// desk-decided is the notice lane's OWN label: the tool applies it after the fork-test
 	// gate admits a filing, never a caller. A caller --label desk-decided would put an item off
@@ -954,6 +1028,17 @@ func cmdNew(args []string) (err error) {
 		stampLabel = l
 	}
 
+	// The structured filing identity: derived from the actual -R repository, the brief resolved to
+	// its canonical id, the raising role and the case id — validated before any forge read.
+	filingKey := ""
+	if structured {
+		k, kerr := deskkit.FilingKey(*repo, *filingBrief, *raisedBy, *filingCase)
+		if kerr != nil {
+			return kerr
+		}
+		filingKey = k
+	}
+
 	// Validate the --to ROLE the same way and for the same reason: an unbound addressee
 	// is a caller error with a fix in hand (exit 5, bound set named), refused BEFORE any
 	// write. Whether the `to:<role>` LABEL exists on the repo is resolved later, after the
@@ -1009,6 +1094,15 @@ func cmdNew(args []string) (err error) {
 		return deskkit.Refused("refused: the body carries the " + deskDecidedMarker + " marker (in some spelling), which only this " +
 			"tool writes (the notice lane's record that its gate admitted the filing). Remove it; a " +
 			needsDecisionLabel + " filing with a `### Fork test` block gets it from the gate if admitted.")
+	}
+
+	// The filing-key marker is the filing tool's own record that an issue is a case's filing; a
+	// caller body carrying one (any spelling) would forge the identity a later lookup trusts,
+	// --force-new included.
+	if deskkit.HasFilingKeyClaim(string(body)) {
+		return deskkit.Refused("refused: the body carries a filing-key marker (in some spelling), which only this tool " +
+			"writes, from --" + filingBriefFlag + "/--" + filingCaseFlag + ". Remove it; to discuss the marker in prose, " +
+			"spell it without the `filing-key:` colon form (for example `filing key fk1/...`).")
 	}
 
 	// --no-fork content requirements: each re-route names what its body must carry, checked
@@ -1169,6 +1263,19 @@ func cmdNew(args []string) (err error) {
 	// CLOSED (exit 6): minting a possibly-duplicate issue is the expensive direction, and
 	// `check`-style certainty about absence of duplicates cannot be bought with a guess.
 	if !*forceNew {
+		// The exact identity comes first. Found: reconcile to that issue and file nothing. Not
+		// answerable (failed, truncated or incomplete read): unknown, so nothing is filed.
+		if filingKey != "" {
+			found, untrusted, ferr := filedCases(fg, fr, filingKey, *raisedBy)
+			noteUntrustedHits(os.Stderr, *repo, untrusted)
+			if ferr != nil {
+				return deskkit.Unverifiable(
+					"exact filing-identity search failed — refuse rather than mint a possible duplicate (override with --force-new --reason)", ferr)
+			}
+			if len(found) > 0 {
+				return filedCaseRefusal(*repo, filingKey, found)
+			}
+		}
 		cands, serr := dedupeSearch(fg, fr, *title)
 		if errors.Is(serr, errNoScorableTokens) {
 			// Not an outage: this title can never match anything, so the gate cannot run
@@ -1204,10 +1311,50 @@ func cmdNew(args []string) (err error) {
 	// most once). --force-file raises the rate for THIS one filing: it skips the gate but is
 	// still charged below, so it never resets or erases the count. It is audit-logged with its
 	// reason and the filing session so the override leaves a trail (anti-evasion is preserved).
+	//
+	// A workflow-bound filing (--for-pr) is verified here — the change request is open and the
+	// brief is its brief — and is then counted by the per-role, per-change cap INSTEAD of the
+	// per-session rate, then by the per-change write tier; the PR-bound backstop below replaces
+	// the fixed repo-wide ceiling for it. A binding that is refused or cannot be read logs as an uncharged
+	// `new` line.
+	var binding boundBinding
 	rate, window := newBudgetConfig()
-	if *forceFile {
+	switch {
+	case boundPR != nil:
+		b, berr := verifyBinding(*boundPR, *briefID)
+		if berr != nil {
+			return berr
+		}
+		binding = b
+		prefix, perr := boundPrefix(b.pr, b.brief, boundAs)
+		if perr != nil {
+			return perr
+		}
+		ac.verb = boundVerb
+		ac.bound = prefix
+		bn := b.pr.N
+		ac.target = &bn
+		limit, bwindow, lerr := boundLimits(boundAs)
+		if lerr != nil {
+			return lerr
+		}
+		tier, terr := boundTier()
+		if terr != nil {
+			return terr
+		}
+		ac.boundCfg = boundConfigNote(limit, bwindow, tier)
+		binding.cfg = ac.boundCfg
+		if !limit.Off() {
+			if cerr := checkBoundBudget(b.pr, boundAs, time.Now(), limit.Value, bwindow.Duration()); cerr != nil {
+				return cerr
+			}
+		}
+		if werr := deskkit.AllowWrite("deskfile", b.pr.Repo, b.pr.N); werr != nil {
+			return werr
+		}
+	case *forceFile:
 		ac.forceFileReason = *reason
-	} else {
+	default:
 		if berr := checkSessionBudget(*repo, deskkit.SessionTag(), time.Now(), rate, window); berr != nil {
 			return berr
 		}
@@ -1216,7 +1363,13 @@ func cmdNew(args []string) (err error) {
 	// Standard outward-write budget. `new` creates a target whose number is not
 	// known in advance, so AllowWriteRepoWide is the scope whose bucket its writes land in
 	// (the same reasoning as deskpr create — see deskkit.AllowWriteRepoWide).
-	if werr := deskkit.AllowWriteRepoWide("deskfile", *repo); werr != nil {
+	// A bound filing is held by the PR-bound backstop instead (allowBoundTier), which counts the
+	// bound class apart from this fixed ceiling; every other filing keeps the fixed ceiling.
+	if boundPR != nil {
+		if _, werr := allowBoundTier(*repo); werr != nil {
+			return werr
+		}
+	} else if werr := deskkit.AllowWriteRepoWide("deskfile", *repo); werr != nil {
 		return werr
 	}
 
@@ -1275,6 +1428,9 @@ func cmdNew(args []string) (err error) {
 	// On-behalf-of trailer (multi-principal/01), appended to the filed body only — every
 	// gate above (dedupe/title checks, the secret/self-contain scans) already ran against
 	// the caller-supplied body.
+	if filingKey != "" {
+		body = append(append([]byte(nil), body...), []byte("\n\n"+deskkit.FilingKeyMarker(filingKey)+"\n")...)
+	}
 	fileBody, oerr := deskkit.AppendOnBehalfOf(body, "", *repo)
 	if oerr != nil {
 		return oerr
@@ -1291,10 +1447,14 @@ func cmdNew(args []string) (err error) {
 		return cerr
 	}
 	if cerr != nil {
-		return deskkit.Unverifiable("file issue failed", cerr)
+		return ambiguousCreate(fg, fr, *repo, filingKey, *raisedBy, cerr)
 	}
-	n := ref.Number
-	ac.target = &n
+	// A bound filing's audit line keeps the bound change request's number (set at binding), so
+	// the per-change write tier counts it; the filed issue's URL is in its Detail.
+	if boundPR == nil {
+		n := ref.Number
+		ac.target = &n
+	}
 	// Apply the resolved labels. Every caller/stamp/to label in applyLabels was confirmed to
 	// EXIST above (user labels refuse if missing; stamp/to labels resolve to "" if missing), so
 	// ApplyLabels' ensure step no-ops for them (the create returns already-exists). The ONE
@@ -1337,6 +1497,9 @@ func cmdNew(args []string) (err error) {
 	if ac.forceFileReason != "" {
 		parts = append(parts, "force-file (rate override) by "+deskkit.StripControl(deskkit.SessionTag())+": "+deskkit.StripControl(ac.forceFileReason))
 	}
+	if filingKey != "" {
+		parts = append(parts, "filing-key "+filingKey)
+	}
 	parts = append(parts, "created "+url)
 	// When the rate/window were RAISED (or otherwise changed) from the shipped defaults by the
 	// env knobs, the effective values are APPENDED to the audit Detail. Without this an entry
@@ -1344,11 +1507,21 @@ func cmdNew(args []string) (err error) {
 	// so the env path would launder over-filing as ordinary activity and defeat the anti-evasion
 	// property that IS the control. Appended (never prepended): chargedNewEntry keys on
 	// createSentMarker being the PREFIX of Detail, so nothing may go in front of it.
-	if rate != defaultNewRate || window != defaultNewWindow {
+	if boundPR == nil && (rate != defaultNewRate || window != defaultNewWindow) {
 		parts = append(parts, fmt.Sprintf("rate-config: %d per %s (env)", rate, window))
 	}
 	ac.detail = strings.Join(parts, " | ")
 	fmt.Println(url)
+	// A bound filing's back-link: one comment on the change request naming the issue, through
+	// the attach path. The issue exists whatever happens here, so a failure is reported as
+	// could-not-confirm (exit 6) naming it — never a delete, never a second create.
+	if boundPR != nil {
+		if lerr := backLink(binding, url); lerr != nil {
+			return deskkit.Unverifiable(fmt.Sprintf("issue filed at %s, but the back-link comment on %s could not be "+
+				"confirmed — do not re-file; post it with `deskfile attach -R %s --to %d --kind pr`", url, binding.pr,
+				binding.pr.Repo, binding.pr.N), lerr)
+		}
+	}
 	return nil
 }
 
@@ -1444,23 +1617,25 @@ func cmdAttach(args []string) (err error) {
 			target, view.State, *repo, view.URL))
 	}
 
-	// Outward-write budget. Attach is NOT subject to the per-session new-issue
-	// budget (this tool's accounting counts `new` only), only the standard outward-write
-	// gate. The target number is known, so the per-issue scope is correct.
-	if werr := deskkit.AllowWrite("deskfile", *repo, target); werr != nil {
-		return werr
+	// An attach to a change request is PR-bound work: its audit line is the attach-pr verb, which
+	// the fixed repo-wide ceiling does not count, and the PR-bound backstop gates it instead
+	// (before the write, so it is refused before anything is posted). An attach to an issue is
+	// unchanged: the per-target tier only.
+	if kind == deskkit.TargetChange {
+		ac.verb = attachPRVerb
+		tier, terr := boundTier()
+		if terr != nil {
+			return terr
+		}
+		ac.boundCfg = tierConfigNote(tier)
+		if werr := deskkit.AllowPRBoundWrite(*repo, int(tier.Value)); werr != nil {
+			return werr
+		}
 	}
 
-	// On-behalf-of trailer (multi-principal/01), appended to the posted body only —
-	// ac.bodyDigest above (audit-only here; attach has no body-keyed idempotency gate)
-	// stays keyed on the caller-supplied body.
-	attachBody, oerr := deskkit.AppendOnBehalfOf(body, "", *repo)
-	if oerr != nil {
-		return oerr
-	}
-	ref, cerr := fg.PostCommentTyped(fr, target, kind, string(attachBody))
+	ref, cerr := postAttach(fg, fr, *repo, target, kind, body)
 	if cerr != nil {
-		return deskkit.Unverifiable("post comment failed", cerr)
+		return cerr
 	}
 	// A forge whose note reference carries no page URL (a GitLab issue note reports only its
 	// numeric id) still gets the TARGET's URL printed, so the caller can find what it wrote.
@@ -1471,6 +1646,31 @@ func cmdAttach(args []string) (err error) {
 	ac.detail = "commented " + url + " kind=" + string(kind)
 	fmt.Println(url)
 	return nil
+}
+
+// postAttach is the attach write path, shared by `attach` and a bound filing's back-link: the
+// per-target outward-write gate, the On-behalf-of trailer, then the one comment.
+//
+// Outward-write budget: attach is NOT subject to the per-session new-issue budget (this
+// tool's accounting counts `new` only), only the standard outward-write gate. The target
+// number is known, so the per-target scope is correct.
+//
+// On-behalf-of trailer (multi-principal/01), appended to the posted body only — the caller's
+// bodyDigest (audit-only here; attach has no body-keyed idempotency gate) stays keyed on the
+// caller-supplied body.
+func postAttach(fg deskkit.Forge, fr deskkit.ForgeRepo, repo string, target int, kind deskkit.TargetKind, body []byte) (*deskkit.CommentRef, error) {
+	if werr := deskkit.AllowWrite("deskfile", repo, target); werr != nil {
+		return nil, werr
+	}
+	attachBody, oerr := deskkit.AppendOnBehalfOf(body, "", repo)
+	if oerr != nil {
+		return nil, oerr
+	}
+	ref, cerr := fg.PostCommentTyped(fr, target, kind, string(attachBody))
+	if cerr != nil {
+		return nil, deskkit.Unverifiable("post comment failed", cerr)
+	}
+	return ref, nil
 }
 
 // cmdCheck implements `deskfile check -R <repo> --title <t>`: a dry-run dedupe. Prints the

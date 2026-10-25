@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // This file exercises the BUILT cellctl binary end to end (assay#1390's ask: "Go tests that
@@ -47,7 +49,7 @@ func cellctlBinary(t *testing.T) string {
 		out := filepath.Join(tmp, "cellctl")
 		cmd := exec.Command("go", "build", "-o", out, "./cmd/cellctl")
 		cmd.Dir = moduleRoot
-		if b, err := cmd.CombinedOutput(); err != nil {
+		if b, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
 			buildErr = fmt.Errorf("go build ./cmd/cellctl (from %s): %v\n%s", moduleRoot, err, b)
 			return
 		}

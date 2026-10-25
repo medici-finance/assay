@@ -21,7 +21,7 @@
 set -uo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-SCRIPT="$HERE/pr-monitor.sh"
+SCRIPT="${PR_MONITOR_TEST_SCRIPT:-$HERE/pr-monitor.sh}"
 
 CASE_FILTER=""
 if [[ "${1:-}" == "--case" ]]; then CASE_FILTER="${2:-}"; fi
@@ -497,7 +497,14 @@ if want mint-reread-race; then
   w="$TMPROOT/rr"; st="$TMPROOT/rr-st"; make_gh "$w"
   resp "$w" o/a "$(arr "$(pr 1 aaa false OPEN CLEAN)")"
   resp "$w" o/b "$(arr "$(pr 1 bbb false OPEN CLEAN)")"
-  : > "$w/mintrace/$(san o/b)"
+  # Synchronize the planted rewrite with the actual pacing boundary, after
+  # validation and before gh. A wall-clock background sleep could fire before
+  # validation under CPU load, testing a different (correctly refused) condition.
+  cat > "$w/sleep" <<STUB
+#!/bin/sh
+: > "$w/tok/o__b"
+STUB
+  chmod +x "$w/sleep"
   run "$w" "$st" ASSAY_MONITOR_PACE_SECONDS=1 GH_TOKEN=x-bogus-app-token -- o/a o/b
   check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "the cycle exits 0" "got $RC; stdout: ${OUT:-<empty>}"
   check "$([[ "$(cat "$w/token.log")" == "GH_TOKEN=[x-minted-o__a] GITHUB_TOKEN=[]
@@ -551,6 +558,80 @@ if want role-mapping; then
     check "$([[ "$(cat "$w/mint.log")" == "$role --repo o/r" ]] && echo 0 || echo 1)" \
       "$loop mints as role '$role'" "mints: $(tr '\n' ';' < "$w/mint.log")"
   done
+fi
+
+if want classified-version-hold; then
+  echo "classified-version-hold — unsupported producer never falls back or retains a reusable artifact"
+  w="$TMPROOT/classified"; st="$TMPROOT/classified-st"; make_gh "$w"
+  for tool in deskboard reviewloop; do
+    cat > "$w/$tool" <<'STUB'
+#!/bin/sh
+printf 'tool releaseTag=v1.0.58\n'
+STUB
+    chmod +x "$w/$tool"
+  done
+  artifact="$w/review.json"
+  printf '{"prior":"valid-looking"}' > "$artifact"
+  run "$w" "$st" "PR_MONITOR_REVIEW_OBSERVATION=$artifact" 'PR_MONITOR_REVIEW_POLICY={}' PR_MONITOR_REVIEW_CAPACITY=1 -- o/r
+  check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" "unsupported selected producer holds the cycle" "$OUT"
+  check "$(contains "$OUT" 'requires released v1.0.59' && echo 0 || echo 1)" "hold gives the supported producer recovery" "$OUT"
+  check "$([[ ! -s "$artifact" && ! -s "$w/calls.log" && ! -s "$w/mint.log" ]] && echo 0 || echo 1)" "hold invalidates output without legacy GH or credential calls" "$OUT"
+  # Explicit rollback on a later cycle chooses only the established recipe.
+  resp "$w" o/r "$(arr "$(pr 1 aaa false OPEN CLEAN)")"
+  run "$w" "$st" PR_MONITOR_REVIEW_OBSERVATION= -- o/r
+  check "$([[ "$RC" -eq 0 ]] && echo 0 || echo 1)" "legacy rollback recovers full monitor population" "$OUT"
+fi
+
+if want classified-invalidation-failure; then
+  echo "classified-invalidation-failure — output IO failures still report a held, non-reusable cycle"
+  for fault in mktemp mv; do
+    w="$TMPROOT/invalidation-$fault"; st="$TMPROOT/invalidation-$fault-st"; make_gh "$w"
+    for tool in deskboard reviewloop; do
+      cat > "$w/$tool" <<'STUB'
+#!/bin/sh
+printf 'tool releaseTag=v1.0.58\n'
+STUB
+      chmod +x "$w/$tool"
+    done
+    cat > "$w/$fault" <<'STUB'
+#!/bin/sh
+exit 1
+STUB
+    chmod +x "$w/$fault"
+    artifact="$w/review.json"
+    printf 'prior-observation' > "$artifact"
+    printf 'prior-plan' > "$artifact.plan"
+    run "$w" "$st" "PR_MONITOR_REVIEW_OBSERVATION=$artifact" 'PR_MONITOR_REVIEW_POLICY={}' PR_MONITOR_REVIEW_CAPACITY=1 -- o/r
+    check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" "$fault failure exits held" "$OUT"
+    check "$(contains "$OUT" 'MONITOR-DEGRADED: complete review cycle held' && echo 0 || echo 1)" "$fault failure reports monitor degradation" "$OUT"
+    check "$(contains "$OUT" 'artifact invalidation failed' && contains "$OUT" 'must not be reused' && echo 0 || echo 1)" "$fault failure explicitly rejects surviving artifacts" "$OUT"
+    check "$([[ "$(cat "$artifact")" == prior-observation && "$(cat "$artifact.plan")" == prior-plan && ! -s "$w/calls.log" && ! -s "$w/mint.log" ]] && echo 0 || echo 1)" "$fault failure retains data safely and makes no legacy read" "$OUT"
+  done
+fi
+
+# regression: medici-finance/assay#4311
+if want classified-unwritable-hold; then
+  echo "classified-unwritable-hold — a real unwritable output directory still reports a held, non-reusable cycle"
+  w="$TMPROOT/classified-ro"; st="$TMPROOT/classified-ro-st"; make_gh "$w"
+  for tool in deskboard reviewloop; do
+    cat > "$w/$tool" <<'STUB'
+#!/bin/sh
+printf 'tool releaseTag=v1.0.58\n'
+STUB
+    chmod +x "$w/$tool"
+  done
+  ro="$w/ro"; mkdir -p "$ro"; artifact="$ro/review.json"
+  printf '{"prior":"valid-looking"}' > "$artifact"
+  chmod 555 "$ro"
+  run "$w" "$st" "PR_MONITOR_REVIEW_OBSERVATION=$artifact" 'PR_MONITOR_REVIEW_POLICY={}' PR_MONITOR_REVIEW_CAPACITY=1 -- o/r
+  chmod 755 "$ro"
+  check "$([[ "$RC" -eq 2 ]] && echo 0 || echo 1)" "unwritable artifact directory still holds the cycle" "$OUT"
+  check "$(contains "$OUT" 'MONITOR-DEGRADED: complete review cycle held' && echo 0 || echo 1)" \
+    "the hold line prints even when no invalidating file can be made" "$OUT"
+  check "$(contains "$OUT" 'artifact invalidation failed' && contains "$OUT" 'must not be reused' && echo 0 || echo 1)" \
+    "a surviving prior artifact is explicitly rejected, never left silently" "$OUT"
+  check "$([[ ! -s "$w/calls.log" && ! -s "$w/mint.log" ]] && echo 0 || echo 1)" \
+    "the hold makes no legacy GH or credential call" "$OUT"
 fi
 
 echo

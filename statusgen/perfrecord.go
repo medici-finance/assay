@@ -62,7 +62,7 @@ var (
 		"version", "init", "verifyrun", "verifyclosure", "verifyflip", "mergecheck",
 		"shardcheck", "phantoms", "enforcement-status", "backfill", "reconcile", "outcomes",
 		"regen", "conform", "patterns", "instance", "runtime-resource", "migrate", "brief",
-		"newbrief", "lint", "verify-gate-close",
+		"newbrief", "lint", "verify-gate-close", "context",
 	}
 	perfModeFlags = []string{
 		"check", "lint", "lint-audit", "instrument-audit", "record", "verify-issues",

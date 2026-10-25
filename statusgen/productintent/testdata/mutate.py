@@ -6,14 +6,20 @@ Every patched file must match HEAD before its plant: a file that already differs
 the run instead of being treated as the baseline. SIGTERM/SIGHUP restore through
 the same `finally` as a normal exit; SIGKILL cannot, and the next run's HEAD check
 then refuses until `git checkout -- <file>` restores it.
+
+An optional argument names another package's mutations file, relative to the
+statusgen module root (portfolio/testdata/mutations.json); paths and packages in
+it are relative to that root too. With none, this package's own file runs.
 """
 import json
 from pathlib import Path
 import signal
 import subprocess
+import sys
 
 root = Path(__file__).resolve().parents[2]
-mutations = json.loads(Path(__file__).with_name('mutations.json').read_text())
+source = root / sys.argv[1] if len(sys.argv) > 1 else Path(__file__).with_name('mutations.json')
+mutations = json.loads(source.read_text())
 
 
 def interrupted(signum, _frame):

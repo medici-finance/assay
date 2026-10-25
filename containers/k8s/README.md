@@ -56,7 +56,8 @@ not measured capacity promises. Supply an approved storage class with suitable
 retention, backup and access controls. StatefulSet deletion and scale-down
 retain PVCs; namespace deletion or explicit PVC deletion can still destroy data.
 
-The process uses the pinned images' `desk` account at UID/GID 999, with fsGroup 999
+The process uses the pinned images' `desk` account at UID/GID 999 (pinned in the
+base image build; see "Image account verification" below), with fsGroup 999
 granting write access to `/work` and group read on the 0440 Secret volume. No privileged ownership-fix init
 container is used. Validate CSI fsGroup handling and preflight readability before
 admitting a profile. Kubernetes Secret files otherwise default to root ownership;
@@ -125,10 +126,34 @@ The five manifests consume the `linux/amd64` immutable role references from
 `release-images.json`, SHA-256
 `ff9237178e5bbf9523012a83e2366b99d2ff3cd0092c6116ad4c0dee08afdd64`.
 Published source revision: `2718fc978b7454f0f2aa422e1236fb6ad543e0d2`.
-The node selector matches that published platform. To update, verify the new
-release asset against its published checksums, update all five references from
-that same release and repeat both offline checks. No registry lookup occurs
-inside `check.sh`; a well-formed digest is not a fresh image availability proof.
+The node selector matches that published platform.
+
+[`release-images.json`](release-images.json) in this directory is that release
+asset, kept **byte for byte**: it is the record the release build itself wrote
+(schema `release-images-v1`, see [release images](../../docs/release-images.md)),
+naming the umbrella version, the source revision it was built from and the
+registry manifest digest of every image it pushed. Its SHA-256 is the one listed
+for it in that release's `checksums.txt`. Each manifest's `image:` line cites it,
+and `check.sh --base` binds them: it requires the record's bytes to hash to the
+SHA-256 pinned in `check.py` (`RECORD_SHA256`, the value stated above, which
+this README must also state), validates the record with the release's own
+contract validator (`tools/release/images_contract.py`) and rejects any role
+reference that is not exactly the one the record holds for that role (a digest no
+release recorded, another role's digest, or a recorded digest under another
+tag). `testdata/mutations.py` plants each of those at every role, plus a
+fabricated digest written into both the record and one manifest, which only the
+pin rejects. The check is offline and never contacts the release: the pin makes
+a record edit change `check.py` and this README too, and a reviewer confirms that
+value against the release's `checksums.txt`.
+
+To update, from one selected release: download its `checksums.txt` and
+`release-images.json`, confirm `sha256sum -c` passes for the record, replace this
+file with the downloaded bytes unchanged, copy the five role references from it
+into the manifests, update the release, SHA-256 and source revision above and
+`RECORD_SHA256` in `check.py`, and repeat both offline checks. Never hand-edit the record: a record that is not the
+release's own bytes no longer binds anything. No registry lookup occurs inside
+`check.sh`; a well-formed digest is not a fresh image availability proof, and the
+record states integrity and version alignment, not a signed build attestation.
 
 ### Image account verification
 
@@ -140,10 +165,16 @@ negative control failed Node user lookup with `ENOENT` in every image. No model
 entrypoint, credentials, host mounts or container network were used. This verifies
 the pinned image account; it does not qualify CSI or live Secret permissions.
 
-The Dockerfile allocates a system account without a numeric pin. A rebuild or
-matching source line alone therefore does not prove the published artifact's
-identity. At each image update, acquire the exact reviewed digests explicitly,
-then run this local check for **every** role before adopting those references.
+`containers/base/Dockerfile` now pins the account: `groupadd --gid 999` and
+`useradd --uid 999`, followed by a build step that fails unless `desk` resolves to
+`999:999`. `tools/desk/internal/deskkit/deskuid_test.go` holds that Dockerfile
+line and all five manifests' `runAsUser`, `runAsGroup` and `fsGroup` to the same
+value on every PR, so 999 holds by construction for images built from that
+Dockerfile. The v1.0.52 images above were built before the pin, when system-ID
+allocation happened to yield 999; the check recorded above is what establishes
+their account. Until the manifests move to a release built with the pin, and as a
+cheap confirmation afterwards, acquire the exact reviewed digests explicitly and
+run this local check for **every** role before adopting those references.
 `--pull never` makes a missing local artifact a failure, not an implicit download:
 
 ```sh
@@ -167,6 +198,7 @@ done
 ```
 
 Record each digest and the result. Missing artifacts or an account mismatch hold
-adoption. Update the manifests, the checker's identity invariant, fixtures and
-this procedure together if the image account changes. The static checker rejects
+adoption. Update the Dockerfile pin, `deskuid_test.go`, the manifests, the
+checker's identity invariant, fixtures and this procedure together if the image
+account changes. The static checker rejects
 a different UID, GID or fsGroup at every role; it does not inspect registry images.

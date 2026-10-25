@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // regression: #3057
@@ -15,7 +17,7 @@ func TestLintConfigRefusal(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "statusgen")
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	if out, err := exec.CommandContext(ctx, "go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(exec.CommandContext(ctx, "go", "build", "-o", bin, ".")).CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	// Exercise the actual file-class configuration loader, independently of the

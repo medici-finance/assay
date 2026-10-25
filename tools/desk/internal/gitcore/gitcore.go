@@ -1043,6 +1043,10 @@ func (r *Repo) Diff(from, to string, contextLines int) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return diffTrees(fromTree, toTree, contextLines, from, to)
+}
+
+func diffTrees(fromTree, toTree *object.Tree, contextLines int, from, to string) (string, error) {
 	changes, err := object.DiffTreeWithOptions(context.Background(), fromTree, toTree, renameDetectOptions)
 	if err != nil {
 		return "", fmt.Errorf("gitcore: diff %s..%s: %w", from, to, err)

@@ -35,6 +35,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: the-desk
+          # Recorded by its release build: ../release-images.json (check.sh binds it).
           image: ghcr.io/medici-finance/assay/the-desk:v1.0.52@sha256:c957dd21f3a132d63a8d16ee2bb60633f45357181b5f599b6dbf3ef9b6a4ce1e
           imagePullPolicy: IfNotPresent
           stdin: true

@@ -114,6 +114,8 @@ func meterOf(err error) string {
 		return "repo-budget"
 	case strings.Contains(err.Error(), "repo-wide write budget"):
 		return "repo-wide"
+	case strings.Contains(err.Error(), "PR-bound write budget"):
+		return "pr-bound"
 	case strings.Contains(err.Error(), "tool-wide write budget"):
 		return "tool-budget"
 	case strings.Contains(err.Error(), "circuit breaker"):
@@ -1250,5 +1252,84 @@ func TestBreakerOutOfScopeEntriesAreInvisibleNotProgress(t *testing.T) {
 	// And the targets that were succeeding stay open.
 	if got := meterOf(AllowWriteAt("deskpost", testRepo, 300, now)); got != "none" {
 		t.Fatalf("healthy sibling target: %s meter fired, want none", got)
+	}
+}
+
+// --- #4161: deskfile's PR-bound writes leave the fixed repo-wide ceiling for their own tier ---
+
+// seedBoundClass appends n charged deskfile lines of one verb on repo, each on its own number.
+func seedBoundClass(t *testing.T, dir, repo, verb string, n int) {
+	t.Helper()
+	for i := 0; i < n; i++ {
+		num := 7000 + i
+		appendEntry(t, dir, Entry{Repo: repo, PR: &num, Tool: "deskfile", Verb: verb, Result: ResultOK})
+	}
+}
+
+// TestPRBoundOutOfFixedBucket: bound filings, back-links and change replies no longer fill the
+// fixed ceiling, so the unbound filing that follows them is not refused.
+// regression: #4161
+func TestPRBoundOutOfFixedBucket(t *testing.T) {
+	for _, verb := range []string{PRBoundVerbNew, PRBoundVerbAttach} {
+		t.Run(verb, func(t *testing.T) {
+			dir := setup(t)
+			seedBoundClass(t, dir, testRepo, verb, 3*RateLimitPerPRPerHour)
+			if got := meterOf(AllowWriteRepoWide("deskfile", testRepo)); got != "none" {
+				t.Fatalf("%s lines fired %s on the fixed ceiling, want none", verb, got)
+			}
+		})
+	}
+}
+
+// TestUnboundStillInFixedBucket: the positive control for the test above. The same count of
+// every other shape (an unbound filing, a plain attach, a legacy or unknown deskfile verb, and
+// another tool's write) still fills the fixed ceiling.
+// regression: #4161
+func TestUnboundStillInFixedBucket(t *testing.T) {
+	for _, tc := range []struct{ tool, verb string }{
+		{"deskfile", "new"}, {"deskfile", "attach"}, {"deskfile", "new-bound-x"}, {"deskfile", ""}, {"deskpr", "create"},
+	} {
+		t.Run(tc.tool+"/"+tc.verb, func(t *testing.T) {
+			dir := setup(t)
+			for i := 0; i < RateLimitPerPRPerHour; i++ {
+				num := 7000 + i
+				appendEntry(t, dir, Entry{Repo: testRepo, PR: &num, Tool: tc.tool, Verb: tc.verb, Result: ResultOK})
+			}
+			if got := meterOf(AllowWriteRepoWide(tc.tool, testRepo)); got != "repo-wide" {
+				t.Fatalf("%s/%s fired %s, want repo-wide", tc.tool, tc.verb, got)
+			}
+		})
+	}
+}
+
+// TestPRBoundBackstopHolds: the bound tier refuses at its limit, not one below, counts both
+// bound verbs and nothing else, is repo scoped, and is never off.
+// regression: #4161
+func TestPRBoundBackstopHolds(t *testing.T) {
+	const limit = 30
+	dir := setup(t)
+	seedBoundClass(t, dir, testRepo, PRBoundVerbNew, limit/2)
+	seedBoundClass(t, dir, testRepo, PRBoundVerbAttach, limit/2-1)
+	// Neither the fixed bucket's members nor another repo's bound writes are in this count.
+	seedBoundClass(t, dir, testRepo, "new", 2*limit)
+	seedBoundClass(t, dir, "medici-finance/elsewhere", PRBoundVerbNew, 2*limit)
+	if got := meterOf(AllowPRBoundWrite(testRepo, limit)); got != "none" {
+		t.Fatalf("at limit-1 fired %s, want none", got)
+	}
+	seedBoundClass(t, dir, testRepo, PRBoundVerbAttach, 1)
+	if got := meterOf(AllowPRBoundWrite(testRepo, limit)); got != "pr-bound" {
+		t.Fatalf("at the limit fired %s, want pr-bound", got)
+	}
+	if got := meterOf(AllowPRBoundWrite(testRepo, limit+1)); got != "none" {
+		t.Fatalf("a larger limit fired %s, want none", got)
+	}
+	for _, bad := range []struct {
+		repo  string
+		limit int
+	}{{testRepo, 0}, {testRepo, -1}, {"", limit}} {
+		err := AllowPRBoundWrite(bad.repo, bad.limit)
+		if err == nil || IsRateLimited(err) {
+			t.Fatalf("AllowPRBoundWrite(%q, %d) = %v, want an unverifiable hold", bad.repo, bad.limit, err)
+		}
 	}
 }

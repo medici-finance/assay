@@ -223,6 +223,16 @@ const (
 // common in random base62, an exact four-entry list is not.
 var numeronyms = []string{"K8s", "I18n", "L10n", "A11y"}
 
+// mixedCaseWords are the closed list of established mixed-case terms an identifier may
+// carry as ONE CamelCase word unit, on the same terms as numeronyms (identifier callers
+// only, must end the run or be followed by a capital). `OAuth` opens with a lone capital
+// followed by another capital-led unit, which wordDecomposition otherwise admits only for
+// the English words `A` and `I`; a `TestOAuth…` name therefore refused as a whole. A
+// closed one-entry list, not an "any lone capital" relaxation: a lone `O` (or any other
+// letter) before a capital-led word stays debris, so random base62 gains nothing but the
+// exact five-letter spelling (TestOAuthWordControls, TestNewRulesCostOnRandom).
+var mixedCaseWords = []string{"OAuth"}
+
 // digestKeys are the closed list of env-var name TAILS isDigestKeyAssign will strip in
 // front of a git-SHA-shaped value (#1642). A closed list, not an ALL-CAPS shape rule: a
 // shape rule admits `TOKEN=<64 hex>`, and a 64-hex value is exactly what `openssl rand -hex
@@ -616,16 +626,29 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 		if isQuantifierGluedPath(run) {
 			continue
 		}
+		// Rule 7 (Go subtest-name arm) and Rule 8 (diffstat-bar arm). Each is NARROWER than
+		// the class it clears and bounded by paired positive controls: isGoSubtestName admits
+		// `TestX/sub` only when the head is already an exempt identifier and the tail is
+		// at most 16 characters of words plus at most four other characters
+		// (TestSubtestNameControls and TestSubtestTailCostOnRandom keep a token
+		// glued behind a test name refused); isDiffstatBar admits a run of nothing but '+'
+		// (TestDiffstatBarControls keeps a mixed run and a repeated letter refused).
+		if isGoSubtestName(run) || isDiffstatBar(run) {
+			continue
+		}
 		return RefusedFinding(fmt.Sprintf(
 			"refused: %s contains a %d-char high-entropy run (possible secret); "+
 				"only git SHAs (40/64 lowercase hex), slash-separated paths built from "+
 				"word-shaped segments (optionally behind one leading '+' quantifier or "+
 				"diff marker), bare word-shaped CamelCase identifiers (a 2-4 letter "+
-				"acronym, optionally plural like PRs, a V plus 1-2 digits like V1, and the "+
-				"numeronyms K8s/I18n/L10n/A11y "+
-				"count as words), key=<sha|path|identifier> assignments whose key is short "+
+				"acronym, optionally plural like PRs, a V plus 1-2 digits like V1, the "+
+				"numeronyms K8s/I18n/L10n/A11y and OAuth "+
+				"count as words), Go subtest names (TestX/sub) whose head is such an "+
+				"identifier and whose subtest path is words of at most 16 chars, "+
+				"key=<sha|path|identifier> assignments whose key is short "+
 				"or word-shaped, a git SHA behind an ALL-CAPS digest key (…_SHA, …_DIGEST, "+
-				"…_DIGEST_HEX; never a credential-named variable), all-'=' banner separators, a PGP key fingerprint (40 "+
+				"…_DIGEST_HEX; never a credential-named variable), all-'=' banner separators, "+
+				"all-'+' diffstat bars, a PGP key fingerprint (40 "+
 				"uppercase hex after a pgp:/fp: field, or on a line that names it with "+
 				"fingerprint/fpr/pgp/gpg), a slash-list of short ALL-CAPS "+
 				"enum words, a 32-hex run behind a recognised Kubernetes object-kind "+
@@ -748,6 +771,112 @@ func isQuantifierGluedPath(run string) bool {
 		return false
 	}
 	return isPathLike(rest)
+}
+
+// goTestPrefixes are the function-name prefixes `go test` discovers. A subtest name is
+// always `<TopLevel>/<sub>[/<sub>…]`, and the top level carries one of these.
+var goTestPrefixes = []string{"Test", "Benchmark", "Fuzz", "Example"}
+
+// maxSubtestOpaque bounds the characters a Go subtest name may carry in tail segments
+// that are NOT word-shaped: the same 2-4 letter budget a short acronym gets
+// (maxAcronym). It is a TOTAL across every tail segment, not a per-segment allowance,
+// so `…/ab/cd/ef/gh` cannot assemble a token out of short pieces.
+const maxSubtestOpaque = maxAcronym
+
+// maxSubtestTail caps the WHOLE subtest path after the first slash — every segment and
+// the slashes between them — at half runThreshold. A tail that short is a fragment the
+// scanner would never flag on its own, so gluing it behind an already-exempt head adds no
+// run the scanner was holding back. Without it the word-shaped arm (looksLikeWords) has no
+// cap below maxWordSegment, and a random all-lowercase run is one long "word": a 32-char
+// lowercase tail behind a valid test name would pass (TestSubtestTailCostOnRandom). The
+// longest tail the admitted fixtures need is 13 (`rejects/stale`).
+const maxSubtestTail = runThreshold / 2
+
+// isGoSubtestName reports whether run is a Go test name with a subtest path —
+// `TestX/sub`, as `go test -run` and the test output print it — whose top-level name is
+// itself an exempt identifier and whose subtest segments are words (Rule 7).
+//
+// Why it is needed: `/` is in the base64 alphabet, so the slash that joins a test name to
+// its subtest makes ONE run of the two. A name like `TestSupersedeMarker…Rejects/no`
+// (Verify Expect cells quote these verbatim) then reaches isPathLike, which reads the
+// CamelCase head and the two-letter `no` as path segments — the head is too long, or
+// carries an acronym, for looksLikeWords, and `no` is below minLowerWord — so the run has
+// no more word segments than opaque ones and refuses. Without the `/no` the same head
+// passes isIdentifierLike on its own.
+//
+// The exemption is earned by the parts, never by the slash:
+//
+//   - the head must open with a goTestPrefixes entry AND pass isIdentifierLike by itself,
+//     i.e. it is already exempt as a bare run;
+//   - the tail (everything after the first slash) is at most maxSubtestTail (16)
+//     characters long;
+//   - every tail segment must be non-empty and either word-shaped by the same test a
+//     path segment gets (looksLikeWords) or a short lowercase-alphanumeric piece (`no`,
+//     `go`, `v2`); the short pieces together may carry at most maxSubtestOpaque
+//     characters.
+//
+// So the run can carry no more payload than an exempt identifier plus a 16-character
+// tail — a sub-threshold fragment — of which at most four characters are not word-shaped.
+// A credential glued behind a test name (`TestFoo/<token>`), a random head that merely
+// starts with `Test`, and a tail split into many short pieces all still refuse
+// (TestSubtestNameControls), and on uniformly random base64 runs the rule admits nothing
+// (TestSubtestRuleCostOnRandom).
+func isGoSubtestName(run string) bool {
+	head, tail, ok := strings.Cut(run, "/")
+	if !ok || len(tail) > maxSubtestTail || !hasGoTestPrefix(head) || !isIdentifierLike(head) {
+		return false
+	}
+	opaque := 0
+	for _, seg := range strings.Split(tail, "/") {
+		switch {
+		case seg == "":
+			return false
+		case looksLikeWords(seg):
+		case len(seg) <= maxSubtestOpaque && isLowerAlnum(seg):
+			opaque += len(seg)
+		default:
+			return false
+		}
+	}
+	return opaque <= maxSubtestOpaque
+}
+
+// hasGoTestPrefix reports whether name opens with a goTestPrefixes entry followed by a
+// non-lowercase character — the rule `go test` itself applies (`Testify` is not a test).
+func hasGoTestPrefix(name string) bool {
+	for _, p := range goTestPrefixes {
+		if rest, ok := strings.CutPrefix(name, p); ok && rest != "" && !(rest[0] >= 'a' && rest[0] <= 'z') {
+			return true
+		}
+	}
+	return false
+}
+
+// isLowerAlnum reports whether s is non-empty and made only of lowercase ASCII letters
+// and digits — the shape `go test` gives a short subtest name (`no`, `ok`, `v2`, `4xx`).
+func isLowerAlnum(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
+// isDiffstatBar reports whether run is composed ENTIRELY of '+' — the change bar of a
+// pasted `git diff --stat` line (`docs/x.md | 108 ++++…`), which reaches the run
+// threshold on any change of roughly fifty lines (Rule 8). It is the twin of isAllEquals
+// and safe for the same reason: a run of one repeated character carries no information,
+// so it cannot encode a credential of any length. Only '+' is admitted — the reported
+// shape — and a bar's '-' half is outside reBase64ish's charset already. A run of one
+// repeated LETTER or DIGIT (`AAAA…`, `XXXX…`) is NOT admitted: those stay placeholder-
+// or test-token-shaped material the scanner keeps refusing (TestDiffstatBarControls).
+func isDiffstatBar(run string) bool {
+	return run != "" && strings.Trim(run, "+") == ""
 }
 
 // regexFinding builds the explain ScanFinding for a literal-marker arm: the rule id, the
@@ -1849,11 +1978,15 @@ func versionUnit(seg string, k, acronymsSoFar int) (int, bool) {
 	return 0, false
 }
 
-// numeronymAt returns the length of the closed-list numeronym starting at i, or 0. The
-// numeronym must end the run or be followed by a capital, so `K8s` is a word while `K8sx`
-// and `K8s9` are not — the unit never ends mid-token.
+// closedListUnits is numeronyms followed by mixedCaseWords: every closed-list unit
+// numeronymAt may consume.
+var closedListUnits = append(append([]string{}, numeronyms...), mixedCaseWords...)
+
+// numeronymAt returns the length of the closed-list numeronym (or mixedCaseWords entry)
+// starting at i, or 0. The unit must end the run or be followed by a capital, so `K8s` is
+// a word while `K8sx` and `K8s9` are not — the unit never ends mid-token.
 func numeronymAt(seg string, i int) int {
-	for _, w := range numeronyms {
+	for _, w := range closedListUnits {
 		if strings.HasPrefix(seg[i:], w) {
 			e := i + len(w)
 			if e == len(seg) || (seg[e] >= 'A' && seg[e] <= 'Z') {

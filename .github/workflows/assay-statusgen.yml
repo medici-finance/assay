@@ -229,10 +229,9 @@ jobs:
           parent="$(git rev-parse --verify 'HEAD^1^{commit}')"
           rm -rf "${RUNNER_TEMP}/base"
           mkdir -p "${RUNNER_TEMP}/base"
-          # statusgen's go.mod replaces forgeread and perfrec with the siblings ../forgeread and
-          # ../perfrec, so the base tree needs those directories beside it. A base that predates
-          # a module has none.
-          git archive "$parent" statusgen $(git ls-tree -d --name-only "$parent" forgeread perfrec) | tar -x -C "${RUNNER_TEMP}/base"
+          # statusgen's local replacements need their sibling modules beside it, all
+          # from the same trusted base commit. ls-tree omits modules absent at older bases.
+          git archive "$parent" statusgen $(git ls-tree -d --name-only "$parent" deskcore forgeread gitquiet perfrec) | tar -x -C "${RUNNER_TEMP}/base"
           ( cd "${RUNNER_TEMP}/base/statusgen" && go build -o "${RUNNER_TEMP}/statusgen-base" . )
       # Always the pinned tarball, never a gh already on PATH: the guard's review
       # and comment reads go through it.

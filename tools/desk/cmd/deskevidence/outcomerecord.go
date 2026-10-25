@@ -56,14 +56,21 @@ var receiptValidateFn = validateReceipt
 var nowFn = time.Now
 
 // cmdOutcomeRecordWrite implements `deskevidence <owner/repo> <branch> --outcome-record <file>`.
-// localFile is the LOCAL path to a file holding exactly one JSON verify-outcome record; root, if
-// set, rebases a repo-relative localFile against it (mirrors --evidence-file's --root handling,
-// #1709).
+// localFile is the LOCAL path to a file holding exactly one JSON verify-outcome record.
+//
+// With --root (the verifier home) the record must be an absolute file OUTSIDE that home,
+// mirroring the --brief-path fragment guard: a file inside the home is an untracked file there,
+// which refuses verifier admission, so a relative path (it would resolve inside the home) or an
+// absolute one pathWithin places inside it (symlink aliases included) is refused here, before
+// the file is read or the forge is touched. The dispatcher names the directory to use in the
+// verifier prompt. Without --root the path is read as given, unchanged.
 func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string, ac *auditCtx) error {
-	readPath := localFile
-	if root != "" && !filepath.IsAbs(localFile) {
-		readPath = filepath.Join(root, localFile)
+	if root != "" && (!filepath.IsAbs(localFile) || pathWithin(root, localFile)) {
+		return deskkit.Refused("refused: with --root, --outcome-record must be an absolute file OUTSIDE --root " +
+			"(the verifier home; a record inside it refuses admission) — write it to the dispatcher-named " +
+			"outcome directory from the verifier prompt; got " + localFile)
 	}
+	readPath := localFile
 	raw, rerr := os.ReadFile(readPath)
 	if rerr != nil {
 		return deskkit.Unverifiable("cannot read --outcome-record "+readPath, rerr)

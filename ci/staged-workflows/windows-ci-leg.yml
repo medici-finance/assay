@@ -51,6 +51,12 @@ on:
   push:
     tags:
       - 'v*'
+  # Nightly, so the native Windows suite runs between releases too, not only on a
+  # tag. Every job here is GitHub-hosted (windows-latest / ubuntu-latest), so the
+  # schedule costs no self-hosted pool time. `inputs.failfirst` is unset on a
+  # scheduled run, so the fail-first demonstration step stays skipped.
+  schedule:
+    - cron: "41 3 * * *"
   workflow_dispatch:
     inputs:
       failfirst:

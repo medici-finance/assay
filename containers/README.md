@@ -42,8 +42,8 @@ The base carries everything a desk session needs that is common across desks:
 - The **assay plugin** (skills, commands, hooks) baked from `plugins/assay/` into
   `/opt/assay/plugin`, so a desk session finds its skill by public desk name.
 - A first-run installer for the **interactive agent CLI** (see below).
-- A **non-root `desk` user** and a declared **`VOLUME /work`** for persistent
-  working state.
+- A **non-root `desk` user**, UID/GID pinned to 999 (the Kubernetes manifests
+  run as 999:999), and a declared **`VOLUME /work`** for persistent working state.
 
 ### Build it locally
 

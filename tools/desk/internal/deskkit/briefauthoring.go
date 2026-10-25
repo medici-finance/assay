@@ -150,6 +150,14 @@ func CompleteChangedFilesOf(fg Forge, fr ForgeRepo, number int) (*PullRequest, [
 	if err != nil {
 		return nil, nil, err
 	}
+	return completeChangedFilesObservation(pr, files, fr, number)
+}
+
+// Both ordinary native walks and planning batches use this count proof.
+func completeChangedFilesObservation(pr *PullRequest, files []ChangedFile, fr ForgeRepo, number int) (*PullRequest, []ChangedFile, error) {
+	if pr == nil {
+		return nil, nil, fmt.Errorf("%s#%d: empty change read", fr.Slug(), number)
+	}
 	if len(files) != pr.ChangedFiles {
 		return nil, nil, fmt.Errorf("%s#%d lists %d changed files but the forge counts %d; the list is not "+
 			"provably complete", fr.Slug(), number, len(files), pr.ChangedFiles)

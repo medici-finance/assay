@@ -1,0 +1,5 @@
+{
+  "requests": [],
+  "err": "refusing to reach the GitLab forge without an explicitly minted token — this backend never falls back to an anonymous or ambient identity",
+  "not_found": false
+}

@@ -1,0 +1,59 @@
+{
+  "test": "go test ./cmd/deskfile -run '^TestFlowFileKey$' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL - an unreadable exact search no longer stops the filing",
+    "file": "cmd/deskfile/deskfile.go",
+    "old": "\t\t\tif ferr != nil {\n\t\t\t\treturn deskkit.Unverifiable(\n\t\t\t\t\t\"exact filing-identity search failed",
+    "new": "\t\t\tif false && ferr != nil {\n\t\t\t\treturn deskkit.Unverifiable(\n\t\t\t\t\t\"exact filing-identity search failed"
+  },
+  "mutations": [
+    {
+      "name": "the exact lookup is skipped, so only the title matcher runs",
+      "file": "cmd/deskfile/deskfile.go",
+      "old": "\t\tif filingKey != \"\" {\n\t\t\tfound, untrusted, ferr := filedCases(",
+      "new": "\t\tif false && filingKey != \"\" {\n\t\t\tfound, untrusted, ferr := filedCases("
+    },
+    {
+      "name": "the repository is dropped from the key (cross-root suppression)",
+      "file": "internal/deskkit/repairobligation.go",
+      "old": "\t\tstrings.ToLower(repo), canon,",
+      "new": "\t\tcanon,"
+    },
+    {
+      "name": "the case is dropped from the key (brief-wide suppression)",
+      "file": "internal/deskkit/repairobligation.go",
+      "old": "strings.TrimPrefix(label, RaisedByPrefix), caseID,",
+      "new": "strings.TrimPrefix(label, RaisedByPrefix),"
+    },
+    {
+      "name": "a closed issue counts as the case's filing",
+      "file": "internal/deskkit/repairobligation.go",
+      "old": "!strings.EqualFold(strings.TrimSpace(h.State), \"open\") || stampedByOtherRole",
+      "new": "stampedByOtherRole"
+    },
+    {
+      "name": "an issue stamped by another role counts as the case's filing",
+      "file": "internal/deskkit/repairobligation.go",
+      "old": "|| stampedByOtherRole(h.Labels, want) {",
+      "new": "|| false && stampedByOtherRole(h.Labels, want) {"
+    },
+    {
+      "name": "an ambiguous create is not reconciled to the issue that landed",
+      "file": "cmd/deskfile/matcher.go",
+      "old": "\tcase len(found) > 0:",
+      "new": "\tcase false:"
+    },
+    {
+      "name": "the audited override stops recording the key",
+      "file": "cmd/deskfile/deskfile.go",
+      "old": "\t\tparts = append(parts, \"filing-key \"+filingKey)",
+      "new": "\t\t_ = filingKey"
+    },
+    {
+      "name": "an untrusted author's marker-carrying issue counts as the case's filing",
+      "file": "internal/deskkit/repairobligation.go",
+      "old": "if trustedContentAuthor(h.Author, h.AuthorID) {",
+      "new": "if true {"
+    }
+  ]
+}

@@ -17,13 +17,16 @@ import (
 )
 
 type scratchLaunch struct {
-	store  *cellscratch.Store
-	run    *cellscratch.Run
-	tail   *cellscratch.Tail
-	policy cellscratch.Policy
+	store *cellscratch.Store
+	run   *cellscratch.Run
+	tail  *cellscratch.Tail
 }
 
 func (c *Cell) beginScratch(role string, env []string) (*scratchLaunch, []string, error) {
+	began := time.Now()
+	if _, err := c.prepareLaunch(); err != nil {
+		return nil, env, err
+	}
 	value := func(key string) string {
 		for _, kv := range env {
 			if k, v, ok := strings.Cut(kv, "="); ok && k == key {
@@ -40,7 +43,7 @@ func (c *Cell) beginScratch(role string, env []string) (*scratchLaunch, []string
 	if session == "" {
 		session = c.Name + "/" + role
 	}
-	policy, err := c.scratchPolicy()
+	_, err := c.scratchPolicy()
 	if err != nil {
 		return nil, env, err
 	}
@@ -49,15 +52,9 @@ func (c *Cell) beginScratch(role string, env []string) (*scratchLaunch, []string
 		return nil, env, err
 	}
 	s.Label(c.Name, role)
-	report, err := s.Sweep(policy, true)
-	if err != nil {
-		s.Close()
-		return nil, env, err
-	}
-	if report.OverBudget {
-		fmt.Fprintln(os.Stderr, "NOTICE: scratch retention exceeds budget; protected tasks require evidence handoff or resumption")
-	}
 	r, err := s.Begin(session, role, revision)
+	c.recordLaunchStep("launch-scratch-lock-wait", s.LockWait(), err)
+	c.recordLaunchStep("launch-scratch-admission", time.Since(began), err)
 	if err != nil {
 		s.Close()
 		return nil, env, err
@@ -66,7 +63,7 @@ func (c *Cell) beginScratch(role string, env []string) (*scratchLaunch, []string
 	for k, v := range map[string]string{"TMPDIR": r.Work(), "TMP": r.Work(), "TEMP": r.Work(), "ASSAY_SCRATCH_ID": r.Record.ID, "ASSAY_SCRATCH_ROOT": s.Path, "ASSAY_SCRATCH_CELL": cellName, "CELLS_ROOT": cellsRoot} {
 		env = envSet(env, k, v)
 	}
-	return &scratchLaunch{s, r, r.Tail(), policy}, env, nil
+	return &scratchLaunch{s, r, r.Tail()}, env, nil
 }
 func (s *scratchLaunch) finish(result *cellcadence.Result) {
 	code := result.ExitCode
@@ -75,11 +72,7 @@ func (s *scratchLaunch) finish(result *cellcadence.Result) {
 	} // malformed completion remains a diagnostic failure
 	err := s.run.Finish(code, !result.Uncertain && s.tail.Err() == nil)
 	err = errors.Join(err, s.run.Close())
-	report, sweepErr := s.store.Sweep(s.policy, true)
-	err = errors.Join(err, sweepErr, s.store.Close())
-	if report.Partial || report.OverBudget {
-		fmt.Fprintf(os.Stderr, "[scratch] partial=%t over_budget=%t reclaimed=%d\n", report.Partial, report.OverBudget, report.Reclaimed)
-	}
+	err = errors.Join(err, s.store.Close())
 	if err != nil {
 		result.Err = errors.Join(result.Err, err)
 		result.Outcome = "could-not-check"

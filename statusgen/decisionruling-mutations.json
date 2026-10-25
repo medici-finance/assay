@@ -172,8 +172,8 @@
     {
       "name": "runner glue drops the registry aliases (resolveDecisionRulings derives none, #2735)",
       "file": "decisionruling.go",
-      "old": "aliases := repoAliasesFor(reg, repo)",
-      "new": "aliases := repoAliasesFor(nil, repo); _ = reg"
+      "old": "return repoAliasesFor(reg, repo)",
+      "new": "_ = reg\n\treturn repoAliasesFor(nil, repo)"
     },
     {
       "name": "self alias accepted even when its entry is published under another repository (#2735)",

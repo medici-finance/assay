@@ -14,15 +14,17 @@ const ResponseEnv = "ASSAY_REVIEW_TEST_RESPONSE"
 
 // Request selects a bounded test-only adapter in a command's package main.
 type Request struct {
-	Case    string          `json:"case"`
-	Size    int             `json:"size"`
-	Root    string          `json:"root"`
-	Home    string          `json:"home,omitempty"`
-	Head    string          `json:"head,omitempty"`
-	Base    string          `json:"base,omitempty"`
-	Actions json.RawMessage `json:"actions,omitempty"`
-	PRs     json.RawMessage `json:"prs,omitempty"`
-	Now     string          `json:"now,omitempty"`
+	Snapshot  json.RawMessage `json:"snapshot,omitempty"`
+	Selection string          `json:"selection,omitempty"`
+	Case      string          `json:"case"`
+	Size      int             `json:"size"`
+	Root      string          `json:"root"`
+	Home      string          `json:"home,omitempty"`
+	Head      string          `json:"head,omitempty"`
+	Base      string          `json:"base,omitempty"`
+	Actions   json.RawMessage `json:"actions,omitempty"`
+	PRs       json.RawMessage `json:"prs,omitempty"`
+	Now       string          `json:"now,omitempty"`
 }
 
 // Row is observed output, not a second classifier. Order is significant.
@@ -34,6 +36,7 @@ type Row struct {
 }
 
 type Response struct {
+	Snapshot     json.RawMessage   `json:"snapshot,omitempty"`
 	Output       string            `json:"output"`
 	Actions      json.RawMessage   `json:"actions,omitempty"`
 	PRs          json.RawMessage   `json:"prs,omitempty"`

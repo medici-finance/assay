@@ -69,17 +69,25 @@ type PerfRecord = perfrec.Record
 
 // PerfEnabled reports whether local perf logging is armed: ASSAY_TELEMETRY compared to "1"
 // EXACTLY (perfrec.Enabled).
-func PerfEnabled() bool { return perfrec.Enabled() }
+func PerfEnabled() bool {
+	if perfActive.Load() {
+		if selected := perfSelectedConsent.Load(); selected != nil {
+			return *selected
+		}
+	}
+	return perfrec.Enabled()
+}
 
 // The in-process counters PerfRun reads. They are incremented unconditionally (an atomic add
 // is cheaper than the branch that would skip it) and reset at PerfRun entry; with the switch
 // off they are never read and never leave memory.
 var (
-	perfChildProcs   atomic.Int64
-	perfChildWallNs  atomic.Int64
-	perfForgeCalls   atomic.Int64
-	perfActive       atomic.Bool
-	perfSelectedVerb atomic.Pointer[string]
+	perfChildProcs      atomic.Int64
+	perfChildWallNs     atomic.Int64
+	perfForgeCalls      atomic.Int64
+	perfActive          atomic.Bool
+	perfSelectedVerb    atomic.Pointer[string]
+	perfSelectedConsent atomic.Pointer[bool]
 )
 
 // perfCountChild records one attempt through the shared process observers and
@@ -157,16 +165,44 @@ func PerfRunResolved(tool string, verbs []string, args []string, run func([]stri
 // Optional phases are a fixed tool-owned roster, bounded by perfrec; existing callers keep
 // their empty roster and unchanged measurement boundary.
 func PerfRunMeasured(tool string, verbs []string, args []string, run func([]string, *perfrec.Session) (int, perfrec.Context), phases ...string) int {
-	if !PerfEnabled() {
+	return perfRunMeasured(tool, verbs, args, run, false, phases...)
+}
+
+// PerfRunMeasuredConfig retains process-entry measurement until the application
+// resolves its existing config opt-in. Other tools keep PerfRunMeasured's off
+// fast path. No environment or process-wide consent is modified.
+func PerfRunMeasuredConfig(tool string, verbs []string, args []string, run func([]string, *perfrec.Session) (int, perfrec.Context), phases ...string) int {
+	return perfRunMeasured(tool, verbs, args, run, true, phases...)
+}
+
+// PerfSelectConsent is scoped to the active invocation, like PerfCommand. The
+// application calls it only with its validated effective configuration.
+func PerfSelectConsent(enabled bool) {
+	if perfActive.Load() {
+		value := enabled
+		perfSelectedConsent.Store(&value)
+	}
+}
+
+func perfRunMeasured(tool string, verbs []string, args []string, run func([]string, *perfrec.Session) (int, perfrec.Context), late bool, phases ...string) int {
+	enabled := PerfEnabled()
+	if !enabled && !late {
 		code, _ := run(args, nil)
 		return code
 	}
 	perfResetCounters()
 	perfSelectedVerb.Store(nil)
+	perfSelectedConsent.Store(nil)
 	perfActive.Store(true)
 	defer perfActive.Store(false)
 	sess := perfrec.Begin(perfProbe(), perfEntry(), phases)
 	code, ctx := run(args, sess)
+	if consent := perfSelectedConsent.Load(); consent != nil {
+		enabled = *consent
+	}
+	if !enabled {
+		return code
+	}
 	sess.SelectContext(ctx)
 	children, childWall, forge := PerfCounters()
 	sess.Add(perfrec.CounterSubprocess, children)
@@ -179,7 +215,7 @@ func PerfRunMeasured(tool string, verbs []string, args []string, run func([]stri
 	}
 	sha, _ := Version()
 	rec := sess.Finish(perfTool(tool), verb, perfRole(os.Getenv("DESK_LOOP")), code, sha)
-	perfAppend(rec)
+	perfAppendEnabled(enabled, rec)
 	return code
 }
 
@@ -223,6 +259,13 @@ var perfLaunchSteps = []string{
 	"launch-plugin-enable",
 	"launch-fetch-main",
 	"launch-worktree",
+	"launch-preparation",
+	"launch-scratch-lock-wait",
+	"launch-scratch-admission",
+	"launch-cache-enrollment",
+	"launch-child-start",
+	"launch-first-start",
+	"launch-all-starts",
 }
 
 // PerfLaunchSteps returns a copy of the launch-step roster, in launch order.
@@ -234,10 +277,15 @@ func PerfLaunchSteps() []string { return append([]string(nil), perfLaunchSteps..
 // process-wide CPU reading is not a per-step measurement. A step subdivides an invocation
 // that has its own record, so readers keep steps out of invocation totals.
 func PerfStep(tool, step string, d time.Duration, exit int) {
-	if !PerfEnabled() {
-		return
+	PerfStepEnabled(PerfEnabled(), tool, step, d, exit)
+}
+
+// PerfStepEnabled uses the launch owner's resolved opt-in. The fixed rosters,
+// existing writer, state directory and retention contract remain unchanged.
+func PerfStepEnabled(enabled bool, tool, step string, d time.Duration, exit int) {
+	if enabled {
+		perfAppendEnabled(true, newPerfRecord(tool, perfStepVerb(step), d, exit))
 	}
-	perfAppend(newPerfRecord(tool, perfStepVerb(step), d, exit))
 }
 
 // perfStepVerb returns "step:" plus the ROSTER's spelling of step (boot or launch), or
@@ -311,6 +359,12 @@ func perfDayOf(name string) (time.Time, bool) { return perfrec.DayOf(name) }
 // perfAppend writes rec as one line to today's day file, best-effort. It returns nothing:
 // the perf log is never allowed to change what the verb does.
 func perfAppend(rec PerfRecord) { _ = perfWrite(rec) }
+func perfAppendEnabled(enabled bool, rec PerfRecord) {
+	dir, err := StateDir()
+	if err == nil {
+		_ = perfWriter.WriteEnabled(enabled, dir, rec)
+	}
+}
 
 // perfWrite is perfAppend's body with the error kept, for the tests that need to see WHY a
 // write did not land.

@@ -1,0 +1,119 @@
+{
+  "test": "go test ./cmd/deskrebaseline ./cmd/verifyloop ./internal/verifycmd -count=1 -timeout=60s -run 'Test(RenameKeepsGuardPath|RenameWholePaths|NumericExitWinsProse|ExpectStaysFailClosed|CommentRenameNeverRuns|RenameJudgesRenamedExpect|EscapedPipeStaysInCommand|CommandColumnLiftsViaLift|RebaselineCommentCells|RunBriefRowsCommentCells|RunnerGetsWholePipeline|RenameRerunsAgainstTarget|ProbeCouldNotRunIsNotChanged|EvidenceKeepsPipedCommand|StreamTableHonoursEscapedPipe|RenameUndecidableExpectRefused|RefusedRenameNeverRuns)$'",
+  "control": {
+    "name": "CONTROL: exact path rewrite disabled",
+    "file": "cmd/deskrebaseline/rename.go",
+    "old": "return prefix + quote + f.RenameHop + quote",
+    "new": "return prefix + quote + value + quote"
+  },
+  "mutations": [
+    {
+      "name": "substring rewrite also changes the guard path",
+      "file": "cmd/deskrebaseline/rename.go",
+      "old": "\tspans := renameTokens.FindAllStringIndex(s, -1)",
+      "new": "\tif true { return strings.ReplaceAll(s, f.PathRef, f.RenameHop) }\n\tspans := renameTokens.FindAllStringIndex(s, -1)"
+    },
+    {
+      "name": "non-zero prose overrides explicit numeric exit",
+      "file": "cmd/deskrebaseline/expect.go",
+      "old": "spec.nonZero = !spec.exitFrom && expectNonZeroRe.MatchString(exitRest)",
+      "new": "spec.nonZero = expectNonZeroRe.MatchString(exitRest)"
+    },
+    {
+      "name": "rename-proof re-run is no longer gated",
+      "file": "cmd/deskrebaseline/facts.go",
+      "old": "if mayRun && f.PathRef != \"\" && !f.PathExists && f.RenameHop != \"\" {",
+      "new": "if f.PathRef != \"\" && !f.PathExists && f.RenameHop != \"\" {"
+    },
+    {
+      "name": "behaviour probe is no longer gated",
+      "file": "cmd/deskrebaseline/facts.go",
+      "old": "if mayRun && (f.PathRef == \"\" || f.PathExists) {",
+      "new": "if f.PathRef == \"\" || f.PathExists {"
+    },
+    {
+      "name": "gate judges the lift only, not the raw cell",
+      "file": "cmd/deskrebaseline/facts.go",
+      "old": "mayRun := row.Refused == \"\" && verifycmd.CommandRefused(row.Command) == \"\"",
+      "new": "mayRun := verifycmd.CommandRefused(row.Command) == \"\""
+    },
+    {
+      "name": "direct row judged on the raw cell only",
+      "file": "cmd/deskrebaseline/facts.go",
+      "old": "mayRun := row.Refused == \"\" && verifycmd.CommandRefused(row.Command) == \"\"",
+      "new": "mayRun := row.Refused == \"\" && (verifycmd.CommandRefused(row.Command) == \"\" || true)"
+    },
+    {
+      "name": "rebaseline parser loses raw-cell refusal",
+      "file": "cmd/deskrebaseline/brief.go",
+      "old": "Refused:    verifycmd.Refused(cell(cmdCol))",
+      "new": "Refused:    \"\""
+    },
+    {
+      "name": "overflowed expectation can pass its output check",
+      "file": "cmd/deskrebaseline/expect.go",
+      "old": "return !e.invalid && !e.nonZero &&",
+      "new": "return !e.nonZero &&"
+    },
+    {
+      "name": "open consumer bypasses whole-token rewrite",
+      "file": "cmd/deskrebaseline/open.go",
+      "old": "newCommand, newExpect = renamed(newCommand, f), renamed(newExpect, f)",
+      "new": "newCommand, newExpect = strings.ReplaceAll(newCommand, f.PathRef, f.RenameHop), strings.ReplaceAll(newExpect, f.PathRef, f.RenameHop)"
+    },
+    {
+      "name": "rename proof uses unrewritten Expect",
+      "file": "cmd/deskrebaseline/facts.go",
+      "old": "renamed(row.Command, f), renamed(row.ExpectCell, f)",
+      "new": "renamed(row.Command, f), row.ExpectCell"
+    },
+    {
+      "name": "rebaseline parser loses escaped-pipe lift",
+      "file": "cmd/deskrebaseline/brief.go",
+      "old": "verifycmd.UnescapePipes(verifycmd.Lift(cell(cmdCol)))",
+      "new": "verifycmd.Lift(cell(cmdCol))"
+    },
+    {
+      "name": "runner parser loses raw-cell refusal",
+      "file": "cmd/verifyloop/verifyrows.go",
+      "old": "Refused: verifycmd.Refused(cell(cmdCol))",
+      "new": "Refused: \"\""
+    },
+    {
+      "name": "runner parser loses pipe unescaping",
+      "file": "cmd/verifyloop/verifyrows.go",
+      "old": "verifycmd.UnescapePipes(verifycmd.Lift(cell(cmdCol)))",
+      "new": "verifycmd.Lift(cell(cmdCol))"
+    },
+    {
+      "name": "failing rename becomes unclassified",
+      "file": "cmd/deskrebaseline/classify.go",
+      "old": "return Classification{RefusedBehaviourChanged, \"pinned path",
+      "new": "return Classification{RefusedUnclassified, \"pinned path"
+    },
+    {
+      "name": "could-not-run probe becomes behaviour-changed",
+      "file": "cmd/deskrebaseline/facts.go",
+      "old": "f.RCDiffers = j == judgeFail",
+      "new": "f.RCDiffers = ran && j != judgePass"
+    },
+    {
+      "name": "evidence no longer escapes command pipes",
+      "file": "cmd/verifyloop/land.go",
+      "old": "verifycmd.EscapePipes(row.Command)",
+      "new": "func() string { _ = verifycmd.EscapePipes; return row.Command }()"
+    },
+    {
+      "name": "README table splits on escaped pipe",
+      "file": "cmd/verifyloop/briefscan.go",
+      "old": "func splitRow(line string) []string { return verifycmd.SplitRow(line) }",
+      "new": "func splitRow(line string) []string { _ = verifycmd.SplitRow; return strings.Split(strings.Trim(strings.TrimSpace(line), \"|\"), \"|\") }"
+    },
+    {
+      "name": "undecided rename treated as proof",
+      "file": "cmd/deskrebaseline/classify.go",
+      "old": "case judgePass:",
+      "new": "case judgePass, judgeUndecided:"
+    }
+  ]
+}

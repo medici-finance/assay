@@ -1,0 +1,125 @@
+{
+  "test": "go test ./contexthandoff/ . -run '^(TestContextResolverWithheldConsumers|TestContextRecheckUnrelatedEdit|TestContextRecheckNewConsumerOutsideReadSet|TestContextMissingInputScoped|TestContextAmendmentPreservesDatedSources|TestContextActiveWorkerRefusesSilentRebind|TestContextCompetingProposals|TestContextDeliveredBriefRoutesFollowOn|TestContextRecheckTruncatedCoverageHolds|TestContextCLITruncatedCoverageHolds|TestContextDuplicateBriefIDVisible|TestContextCLIDiscoverRoundTrip|TestContextArchitectureCoverageNotProductAlignment|TestPickupContextRecheck)$' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL: claims ignored by the amendment check",
+    "file": "contexthandoff/check.go",
+    "old": "\tfor _, c := range ix.s.Claims {\n",
+    "new": "\tfor _, c := range ix.s.Claims[:0] {\n"
+  },
+  "mutations": [
+    {
+      "name": "row1-typed-edges-only",
+      "file": "contexthandoff/discover.go",
+      "old": "\tqueries := []Query{capped(QueryDeclaredEdge, map[string]string{\"source\": \"snapshot\"}, res, max)}\n",
+      "new": "\tqueries := []Query{capped(QueryDeclaredEdge, map[string]string{\"source\": \"snapshot\"}, res, max)}\n\toffer = func(candidate) {}\n"
+    },
+    {
+      "name": "row2-invalidate-all",
+      "file": "contexthandoff/recheck.go",
+      "old": "\t\tc.add(\"file:\"+loc, FindingPreserved, \"unrelated edit: no conclusion depends on it\")\n",
+      "new": "\t\tc.add(\"file:\"+loc, FindingReconcile, \"any edit\")\n\t\tfor _, im := range c.fresh.Impacts {\n\t\t\tc.touched[im.Subject] = true\n\t\t}\n"
+    },
+    {
+      "name": "row3-prior-hashes-only",
+      "file": "contexthandoff/recheck.go",
+      "old": "\t\tcase !inPrior:\n",
+      "new": "\t\tcase !inPrior && false:\n"
+    },
+    {
+      "name": "row4-unavailable-as-empty",
+      "file": "contexthandoff/snapshot.go",
+      "old": "\t\t\tsrc.Unavailable, src.Files = true, nil\n",
+      "new": "\t\t\tsrc.Unavailable, src.Files = false, map[string][]byte{}\n"
+    },
+    {
+      "name": "row5-apply-only",
+      "file": "contexthandoff/check.go",
+      "old": "\tif r := rewrites(b, res); r != \"\" {\n",
+      "new": "\tif r := rewrites(b, res); r != \"\" && false {\n"
+    },
+    {
+      "name": "row6-ignore-claims",
+      "file": "contexthandoff/check.go",
+      "old": "\tfor _, c := range ix.s.Claims {\n",
+      "new": "\tfor _, c := range ix.s.Claims[:0] {\n"
+    },
+    {
+      "name": "row7-textual-merge",
+      "file": "contexthandoff/check.go",
+      "old": "\tif r := ix.rivalConflict(a, hd); r != \"\" {\n",
+      "new": "\tif r := ix.rivalConflict(a, hd); r != \"\" && false {\n"
+    },
+    {
+      "name": "row8-patch-delivered",
+      "file": "contexthandoff/check.go",
+      "old": "\tif b.delivered() {\n",
+      "new": "\tif b.delivered() && false {\n"
+    },
+    {
+      "name": "row10-product-aligned",
+      "file": "contexthandoff/discover.go",
+      "old": "map[string]string{\"scope\": \"architecture\", \"product-alignment\": \"unchecked\"}",
+      "new": "map[string]string{\"scope\": \"architecture\", \"product-alignment\": \"aligned\"}"
+    },
+    {
+      "name": "row11-ignore-guideline",
+      "file": "contexthandoff/recheck.go",
+      "old": "\t\t\tif rule == QueryGuidelines && c.inUnavailable(k) {\n",
+      "new": "\t\t\tif rule == QueryGuidelines {\n"
+    },
+    {
+      "name": "row11-ignore-replacement",
+      "file": "contexthandoff/recheck.go",
+      "old": "\t\tsubj, _, _ := strings.Cut(r, \";\")\n",
+      "new": "\t\tsubj, _, _ := strings.Cut(r, \";\")\n\t\tif strings.Contains(r, \";replaces;\") {\n\t\t\tcontinue\n\t\t}\n"
+    },
+    {
+      "name": "f1-partial-coverage-never-holds",
+      "file": "contexthandoff/recheck.go",
+      "old": "\tc.coverageHolds()\n",
+      "new": ""
+    },
+    {
+      "name": "f1-truncated-query-unnamed",
+      "file": "contexthandoff/recheck.go",
+      "old": "\t\t\tif q.Truncated {\n\t\t\t\tn++\n",
+      "new": "\t\t\tif q.Truncated && false {\n\t\t\t\tn++\n"
+    },
+    {
+      "name": "f1-brief-via-read-set",
+      "file": "contexthandoff/recheck.go",
+      "old": "\tcase read && prev == BlobRevision(b.Raw):\n",
+      "new": "\tcase !read || prev == BlobRevision(b.Raw):\n"
+    },
+    {
+      "name": "f1-cut-brief-reads-changed",
+      "file": "contexthandoff/recheck.go",
+      "old": "\tcase !read && priorCut:\n",
+      "new": "\tcase !read && priorCut && false:\n"
+    },
+    {
+      "name": "f1-hold-reads-current",
+      "file": "contexthandoff/check.go",
+      "old": "Current: !rc.Reconcile() && !rc.Hold(), Findings",
+      "new": "Current: !rc.Reconcile(), Findings"
+    },
+    {
+      "name": "f1-hold-reads-stale",
+      "file": "contexthandoff/check.go",
+      "old": "\tstale := rc.Reconcile()\n",
+      "new": "\tstale := !rep.Current\n"
+    },
+    {
+      "name": "a1-unlinked-follow-up",
+      "file": "contexthandoff/check.go",
+      "old": "\t\t\tif how == \"\" {\n",
+      "new": "\t\t\tif how == \"\" && false {\n"
+    },
+    {
+      "name": "a3-silent-duplicate",
+      "file": "contexthandoff/discover.go",
+      "old": "\treturn append(out, ix.dups...)\n",
+      "new": "\treturn out\n"
+    }
+  ]
+}

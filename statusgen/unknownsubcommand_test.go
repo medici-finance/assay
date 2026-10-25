@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // TestUnknownSubcommandFailsClosed pins #1075: an unrecognised positional
@@ -25,7 +27,7 @@ func TestUnknownSubcommandFailsClosed(t *testing.T) {
 		t.Skip("go toolchain unavailable")
 	}
 	bin := filepath.Join(t.TempDir(), "statusgen")
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(exec.Command("go", "build", "-o", bin, ".")).CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 
