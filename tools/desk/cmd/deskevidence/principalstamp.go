@@ -550,9 +550,10 @@ func linkReadings(s string) []string {
 // shownTexts returns the texts a renderer can show for s, for deciding what a reader sees: each
 // comment reading and each link reading, with HTML tags and emphasis, strikethrough, code and
 // escape characters removed, and entities decoded. Each is read once as it stands and once with
-// every character that renders as nothing dropped (see rendersBlank) and the white space this
-// leaves at either end trimmed, so a text's identity region (see identityRegion) starts at the
-// first character a reader sees. A cell shows something when any of these does.
+// every character that renders as nothing dropped (see rendersBlank) and the words that lead it
+// and cannot be a login skipped (see pastLead), so a text's identity region (see
+// identityRegion) starts at the first word a reader can take for a name. A cell shows
+// something when any of these does.
 func shownTexts(s string) []string {
 	var out []string
 	for _, c := range commentReadings(s) {
@@ -566,13 +567,30 @@ func shownTexts(s string) []string {
 			for _, d := range decodings(v) {
 				t := strings.TrimSpace(runnerMarkupRe.ReplaceAllString(d, ""))
 				out = append(out, t)
-				if seen := strings.TrimSpace(strings.Map(dropBlank, t)); seen != t {
+				if seen := pastLead(strings.Map(dropBlank, t)); seen != t {
 					out = append(out, seen)
 				}
 			}
 		}
 	}
 	return out
+}
+
+// pastLead returns t trimmed and without the words that lead it and hold no ASCII letter or
+// digit, a word ending at white space. Such a word cannot be a login, so a reader takes the word
+// after it for the name, whatever its characters are and whether or not they render. A word
+// that holds an ASCII letter or digit ends the skip, and its characters are read as they stand.
+func pastLead(t string) string {
+	t = strings.TrimSpace(t)
+	for i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {
+		t = strings.TrimSpace(t[i:])
+	}
+	return t
+}
+
+// asciiAlnum reports whether r is an ASCII letter or digit.
+func asciiAlnum(r rune) bool {
+	return r < utf8.RuneSelf && (unicode.IsLetter(r) || unicode.IsDigit(r))
 }
 
 // c1RefRe matches a numeric character reference to a C1 control (U+0080 to U+009F).

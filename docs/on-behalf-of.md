@@ -284,8 +284,10 @@ same roster's human set:
     enclosing mark, a default-ignorable code point such as a filler letter, the blank braille
     pattern, and a control, format, private-use, noncharacter or unassigned code point, with a
     numeric reference to a C1 control read both as a browser maps it and as the control
-    itself) and the white space this leaves at either end trimmed, so a cell's text starts at
-    the first character a reader sees. A cell's
+    itself), and with every word that leads it and holds no ASCII letter or digit skipped
+    (a word ends at white space), since such a word cannot be a login and a reader takes the
+    word after it for the name, whatever its characters are and whether or not they render.
+    A cell's text so starts at the first word a reader can take for a name. A cell's
     identity region is its text up to the first ASCII space or `(`, where the lint cuts it,
     extended over spaces inside a tag that closes before any `(` or other tag bracket. A tag
     is an ASCII square or angle bracket, or a non-ASCII opening or closing bracket or quotation
@@ -294,8 +296,8 @@ same roster's human set:
     its region holds a tag of exactly three letters or digits, as `[bot]` does, or a tag of
     three or more letters, digits or symbols while any character in the region is outside the
     ASCII login alphabet (letters, digits, `.`, `_`, `-`, `[`, `]`). A character in the region
-    that no rule names therefore fails closed, and one that renders as nothing before the
-    region is read past: `name[bot]\u00a0@ …`, `name[bo\u200bt]`, `name[bot]:`,
+    that no rule names therefore fails closed, and a leading word that cannot be a login is
+    read past: `name[bot]\u00a0@ …`, `name[bo\u200bt]`, `name[bot]:`,
     `[name\[bot\]]` and an ASCII-only `name[abc]` are refused. A region whose letters are all
     CJK text (`東京【東京都】`) cannot spell a login and lands, as do `[bot]` later in a cell
     (`human:operator (via name[bot] review)`), a model tag (`[1m]`), brackets that open no tag

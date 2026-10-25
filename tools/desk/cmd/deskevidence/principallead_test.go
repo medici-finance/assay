@@ -11,12 +11,14 @@ import (
 )
 
 // A renderer shows nothing for a character that renders as nothing and trims the white space
-// at either end of a cell, so a cell that opens with such a character and then a space shows a
-// reader the login that follows. Every cell below shows a reader an App login and then the
-// annotation of a recognised human other than the resolved principal, and is not App-run to the
-// lint, so a landing that carries one is refused wherever the checks read it.
+// at either end of a cell, and a reader takes a leading word with no ASCII letter or digit for
+// something other than a name, so a cell that opens with such a character or word and then
+// white space shows a reader the login that follows. Every cell below shows a reader an App
+// login and then the annotation of a recognised human other than the resolved principal, and
+// is not App-run to the lint, so a landing that carries one is refused wherever the checks read
+// it.
 
-// leadRunners are the Runner cells, by family of the character that leads them.
+// leadRunners are the Runner cells, by family of the character or word that leads them.
 var leadRunners = []struct{ name, cell string }{
 	{"format-raw", "\u2063 example-app[bot]" + foldTail},
 	{"format-entity", "&#x2063; example-app[bot]" + foldTail},
@@ -29,6 +31,20 @@ var leadRunners = []struct{ name, cell string }{
 	{"unassigned", "\u0530 example-app[bot]" + foldTail},
 	{"repeated-lead", "\u2063 \u2063 example-app[bot]" + foldTail},
 	{"lead-wide-tag", "\u2063 example-app\uff3bbot\uff3d" + foldTail},
+	{"symbol-raw", "\u2713 example-app[bot]" + foldTail},
+	{"symbol-entity", "&#x2713; example-app[bot]" + foldTail},
+	{"symbol-repeated", "\u2713 \u2713 example-app[bot]" + foldTail},
+	{"symbol-after-blank", "\u2063 \u2713 example-app[bot]" + foldTail},
+	{"letter", "\u00e9 example-app[bot]" + foldTail},
+	{"digit", "\u0663 example-app[bot]" + foldTail},
+	{"punctuation", "- example-app[bot]" + foldTail},
+	{"symbol-nbsp", "\u2713\u00a0example-app[bot]" + foldTail},
+	{"symbol-wide-space", "\u2713\u3000example-app[bot]" + foldTail},
+	{"symbol-tab", "\u2713\texample-app[bot]" + foldTail},
+	{"blank-nbsp", "\u2063\u00a0example-app[bot]" + foldTail},
+	{"blank-tab", "\u2063\texample-app[bot]" + foldTail},
+	{"nbsp-only", "\u00a0example-app[bot]" + foldTail},
+	{"wide-space-only", "\u3000example-app[bot]" + foldTail},
 }
 
 // regression: #4102
@@ -83,11 +99,60 @@ func TestStampRefusesBlankLeadNote(t *testing.T) {
 }
 
 // regression: #4102
-// TestShowsAppRunBlankLead: every code point of a family that renders as nothing (sampled in the
-// planes that hold no assigned character), put before an App login with a space between, raw or
-// as a numeric entity, is read as showing App-run text. A raw control is also refused in any row
-// before this is read (see rowControlCharacter); its entity is not.
-func TestShowsAppRunBlankLead(t *testing.T) {
+// TestShowsAppRunLeadWord: every code point that is not an ASCII letter, digit or white space
+// (sampled in the planes 2 to 13, 15 and 16), put before an App login with white space between,
+// raw or as a numeric entity, is read as showing App-run text, as is an App login after white
+// space alone. A raw control is also refused in any row before this is read (see
+// rowControlCharacter); its entity is not.
+func TestShowsAppRunLeadWord(t *testing.T) {
+	for _, sp := range []string{" ", "\t", "\u00a0", "\u3000"} {
+		if cell := sp + "example-app[bot]" + foldTail; !showsAppRun(cell) {
+			t.Errorf("%q not read as App-run", cell)
+		}
+	}
+	type span struct{ lo, hi rune }
+	var spans []span
+	for lo := rune(0); lo <= utf8.MaxRune; lo += 0x4000 {
+		spans = append(spans, span{lo, lo + 0x3FFF})
+	}
+	for _, sp := range spans {
+		t.Run(fmt.Sprintf("U+%04X", sp.lo), func(t *testing.T) {
+			checked, missed, first := 0, 0, []string(nil)
+			for r := sp.lo; r <= sp.hi; r++ {
+				if !utf8.ValidRune(r) || r == 0 || unicode.IsSpace(r) || asciiAlnum(r) {
+					continue
+				}
+				// Planes 2 to 13 and the private-use planes hold no character that is not a
+				// letter, an unassigned or a private-use code point: one in 257 of them, and
+				// each plane's two noncharacters, is enough.
+				if sparse := r >= 0x20000 && r < 0xE0000 || r >= 0xF0000; sparse && r%0x101 != 0 && r&0xFFFE != 0xFFFE {
+					continue
+				}
+				checked++
+				for _, cell := range []string{
+					string(r) + " example-app[bot]" + foldTail,
+					fmt.Sprintf("&#x%X; example-app[bot]", r) + foldTail,
+				} {
+					if !showsAppRun(cell) {
+						if missed++; len(first) < 5 {
+							first = append(first, fmt.Sprintf("U+%04X", r))
+						}
+					}
+				}
+			}
+			if missed > 0 {
+				t.Fatalf("%d of %d cells with a lead and a space not read as App-run; first: %v", missed, 2*checked, first)
+			}
+		})
+	}
+}
+
+// regression: #4102
+// TestShowsTagBlankInside: every code point of a family that renders as nothing (sampled in the
+// planes that hold no assigned character), put inside a `[bot]` tag that opens a line, raw or
+// as a numeric entity, is read as showing App-run text, which only the reading with such
+// characters dropped shows.
+func TestShowsTagBlankInside(t *testing.T) {
 	families := []*unicode.RangeTable{unicode.Cc, unicode.Cf, unicode.Co, unicode.Mn, unicode.Me,
 		unicode.Other_Default_Ignorable_Code_Point, unicode.Noncharacter_Code_Point}
 	blank := func(r rune) bool {
@@ -103,17 +168,15 @@ func TestShowsAppRunBlankLead(t *testing.T) {
 		if !utf8.ValidRune(r) || unicode.IsSpace(r) || !blank(r) {
 			continue
 		}
-		// Planes 4 to 13 and the private-use planes hold only unassigned and private-use code
-		// points: one in 257 of them, and each plane's two noncharacters, is enough.
 		if sparse := r >= 0x40000 && r < 0xE0000 || r >= 0xF0000; sparse && r%0x101 != 0 && r&0xFFFE != 0xFFFE {
 			continue
 		}
 		checked++
-		for _, cell := range []string{
-			string(r) + " example-app[bot]" + foldTail,
-			fmt.Sprintf("&#x%X; example-app[bot]", r) + foldTail,
+		for _, line := range []string{
+			"[b" + string(r) + "ot] signed rows 2-3",
+			fmt.Sprintf("[b&#x%X;ot] signed rows 2-3", r),
 		} {
-			if !showsAppRun(cell) {
+			if !showsAttribution(line) {
 				if missed++; len(first) < 5 {
 					first = append(first, fmt.Sprintf("U+%04X", r))
 				}
@@ -124,7 +187,7 @@ func TestShowsAppRunBlankLead(t *testing.T) {
 		t.Fatal("no code point checked")
 	}
 	if missed > 0 {
-		t.Fatalf("%d of %d cells with a blank lead and a space not read as App-run; first: %v", missed, 2*checked, first)
+		t.Fatalf("%d of %d lines with a blank inside a tag not read as App-run; first: %v", missed, 2*checked, first)
 	}
 }
 
@@ -136,6 +199,8 @@ func TestStampBlankLeadAllowed(t *testing.T) {
 		"\u2063 human:operator @ abc1234",
 		"\u2800 release[draft] @ abc1234",
 		"\ufe0f operator @ abc1234 (see example-app review)",
+		"\u2713 human:operator @ abc1234",
+		"- operator @ abc1234 (see example-app review)",
 	} {
 		t.Run(strings.TrimSpace(runner[strings.IndexByte(runner, ' '):]), func(t *testing.T) {
 			f := setupStamp(t, true)

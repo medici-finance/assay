@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunBlankLead|TestStampBlankLeadAllowed)$' -count=1 -timeout=300s",
+  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunLeadWord|TestShowsTagBlankInside|TestStampBlankLeadAllowed)$' -count=1 -timeout=300s",
   "control": {
     "name": "unreadable-cell refusal not consulted",
     "file": "cmd/deskevidence/principalstamp.go",
@@ -664,14 +664,50 @@
     {
       "name": "the reading with blank characters dropped not taken",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if seen := strings.TrimSpace(strings.Map(dropBlank, t)); seen != t {",
-      "new": "if seen := strings.TrimSpace(t); seen != t {"
+      "old": "if seen := pastLead(strings.Map(dropBlank, t)); seen != t {",
+      "new": "if seen := pastLead(t); seen != t {"
     },
     {
-      "name": "the reading with blank characters dropped not trimmed",
+      "name": "a leading word that cannot be a login not read past",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "seen := strings.TrimSpace(strings.Map(dropBlank, t));",
-      "new": "seen := strings.Map(dropBlank, t);"
+      "old": "if seen := pastLead(strings.Map(dropBlank, t)); seen != t {",
+      "new": "if seen := strings.TrimSpace(strings.Map(dropBlank, t)); seen != t {"
+    },
+    {
+      "name": "the reading past a leading word not trimmed",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tt = strings.TrimSpace(t)\n\tfor i := strings.IndexFunc",
+      "new": "\tfor i := strings.IndexFunc"
+    },
+    {
+      "name": "only the first leading word read past",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "; i = strings.IndexFunc(t, unicode.IsSpace) {",
+      "new": "; i = 0 {"
+    },
+    {
+      "name": "the word after a leading word not trimmed",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tt = strings.TrimSpace(t[i:])\n",
+      "new": "\t\tt = t[i:]\n"
+    },
+    {
+      "name": "a leading word read past only when it ends at a space",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for i := strings.IndexFunc(t, unicode.IsSpace); i > 0",
+      "new": "for i := strings.IndexByte(t, ' '); i > 0"
+    },
+    {
+      "name": "an ASCII punctuation word taken for a name",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return r < utf8.RuneSelf && (unicode.IsLetter(r) || unicode.IsDigit(r))",
+      "new": "return r < utf8.RuneSelf"
+    },
+    {
+      "name": "a non-ASCII letter taken for a login",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return r < utf8.RuneSelf && (unicode.IsLetter(r) || unicode.IsDigit(r))",
+      "new": "return unicode.IsLetter(r) || unicode.IsDigit(r)"
     },
     {
       "name": "a nonspacing mark not read as blank",
