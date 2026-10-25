@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,13 +20,55 @@ const observationFile = "intake-observations-v1.json"
 // These are observations of source events, not acknowledgements or assignments.
 // Retain all event identities. The queue presents one current item, while the
 // history remains available even after an issue closes or a scan carrier stops.
+//
+// Retired is a recorded TERMINAL disposition for one event, written by the drain
+// after the trust gate read it: "gone" (the forge answered a definite not-found
+// for an issue in a repo the poller read cleanly this pass) or "quarantined"
+// (read cleanly, untrusted and unblessed at its current content). A retired event
+// stays in the history and is never replayed. A newer event on the same issue is
+// a new key and is read and gated again, so a later blessing or edit is not lost.
 type intakeObservation struct {
-	Item   string    `json:"item"`
-	Opened time.Time `json:"opened"`
+	Item    string    `json:"item"`
+	Opened  time.Time `json:"opened"`
+	Retired string    `json:"retired,omitempty"`
 }
 type intakeObservations struct {
 	Schema string              `json:"schema"`
 	Events []intakeObservation `json:"events"`
+}
+
+const (
+	retiredGone        = "gone"
+	retiredQuarantined = "quarantined"
+)
+
+// observationRetirement is one terminal disposition the drain records for an event.
+type observationRetirement struct {
+	Item   string
+	Opened time.Time
+	Reason string
+}
+
+func observationKey(item string, opened time.Time) string {
+	return strings.ToLower(item) + "@" + opened.UTC().Format(time.RFC3339Nano)
+}
+
+// replayCap bounds how many RETAINED (replayed) events per repo one pass presents.
+// It reuses the poller's own per-repo burst knob, so retention cannot route around
+// the bound the poller already applies to a fresh delta. The rest stay retained and
+// are named as deferred; they are presented oldest first on later passes.
+func replayCap() int {
+	if v, err := strconv.Atoi(strings.TrimSpace(os.Getenv("INBOUND_MONITOR_BURST_CAP"))); err == nil && v > 0 {
+		return v
+	}
+	return 25
+}
+
+// settledHandoff reports whether a recorded accountable judgment discharges the
+// event from the routing queue. Only a recorded, assessed judgment does; labels,
+// closure, a scan PR or a v1 exit never do. Owed, held or unreadable states stay.
+func settledHandoff(state string) bool {
+	return state == "observed" || state == "external-wait"
 }
 
 func readObservations(dir string) (intakeObservations, error) {
@@ -46,6 +89,11 @@ func readObservations(dir string) (intakeObservations, error) {
 	for _, e := range out.Events {
 		if !issueItemRe.MatchString(e.Item) || e.Opened.IsZero() {
 			return out, fmt.Errorf("invalid intake source event")
+		}
+		switch e.Retired {
+		case "", retiredGone, retiredQuarantined:
+		default:
+			return out, fmt.Errorf("unknown intake observation disposition")
 		}
 	}
 	return out, nil
@@ -78,6 +126,34 @@ func baselineObservations(dir string, scope []string) ([]Inbound, error) {
 	return out, nil
 }
 
+// writeObservations replaces the history atomically. Callers hold the audit lock.
+func writeObservations(dir string, obs intakeObservations) error {
+	raw, err := json.Marshal(obs)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".intake-observations-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name())
+	if _, err := f.Write(raw); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), filepath.Join(dir, observationFile))
+}
+
 // Save by atomic replacement under the existing audit lock; no second lock
 // protocol or mutable lifecycle store. Re-read inside the lock so overlapping
 // polls cannot overwrite each other's observations. A failed write is loud and
@@ -90,21 +166,18 @@ func retainObservations(dir string, incoming []Inbound) (intakeObservations, err
 			return err
 		}
 		seen := map[string]bool{}
-		key := func(e intakeObservation) string {
-			return strings.ToLower(e.Item) + "@" + e.Opened.UTC().Format(time.RFC3339Nano)
-		}
 		for _, e := range previous.Events {
-			seen[key(e)] = true
+			seen[observationKey(e.Item, e.Opened)] = true
 		}
 		changed := false
 		for _, item := range incoming {
-			e := intakeObservation{item.ID(), item.UpdatedAt.UTC()}
+			e := intakeObservation{Item: item.ID(), Opened: item.UpdatedAt.UTC()}
 			if !issueItemRe.MatchString(e.Item) || e.Opened.IsZero() {
 				return fmt.Errorf("invalid inbound source event")
 			}
-			if !seen[key(e)] {
+			if k := observationKey(e.Item, e.Opened); !seen[k] {
 				previous.Events = append(previous.Events, e)
-				seen[key(e)] = true
+				seen[k] = true
 				changed = true
 			}
 		}
@@ -112,35 +185,54 @@ func retainObservations(dir string, incoming []Inbound) (intakeObservations, err
 		if !changed {
 			return nil
 		}
-		raw, err := json.Marshal(previous)
-		if err != nil {
-			return err
-		}
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			return err
-		}
-		f, err := os.CreateTemp(dir, ".intake-observations-*")
-		if err != nil {
-			return err
-		}
-		defer os.Remove(f.Name())
-		if _, err := f.Write(raw); err != nil {
-			f.Close()
-			return err
-		}
-		if err := f.Sync(); err != nil {
-			f.Close()
-			return err
-		}
-		if err := f.Close(); err != nil {
-			return err
-		}
-		return os.Rename(f.Name(), filepath.Join(dir, observationFile))
+		return writeObservations(dir, previous)
 	})
 	if err != nil {
 		return result, deskkit.Unverifiable("intake observations could not be retained", err)
 	}
 	return result, nil
+}
+
+// retireObservations records terminal dispositions under the same lock and atomic
+// replacement. It never deletes an event: the retired event remains history. An
+// event already retired keeps its first recorded disposition.
+func retireObservations(dir string, rs []observationRetirement) error {
+	err := withAuditLock(func(_ string) error {
+		obs, err := readObservations(dir)
+		if err != nil {
+			return err
+		}
+		index := map[string]int{}
+		for i, e := range obs.Events {
+			index[observationKey(e.Item, e.Opened)] = i
+		}
+		changed := false
+		for _, r := range rs {
+			if !issueItemRe.MatchString(r.Item) || r.Opened.IsZero() || (r.Reason != retiredGone && r.Reason != retiredQuarantined) {
+				return fmt.Errorf("invalid intake observation disposition")
+			}
+			k := observationKey(r.Item, r.Opened)
+			i, ok := index[k]
+			if !ok {
+				obs.Events = append(obs.Events, intakeObservation{Item: r.Item, Opened: r.Opened.UTC(), Retired: r.Reason})
+				index[k] = len(obs.Events) - 1
+				changed = true
+				continue
+			}
+			if obs.Events[i].Retired == "" {
+				obs.Events[i].Retired = r.Reason
+				changed = true
+			}
+		}
+		if !changed {
+			return nil
+		}
+		return writeObservations(dir, obs)
+	})
+	if err != nil {
+		return deskkit.Unverifiable("intake observation dispositions could not be recorded", err)
+	}
+	return nil
 }
 
 func retainingMonitor(dir string, scope []string, poll func() (*MonitorReport, error)) func() (*MonitorReport, error) {
@@ -186,8 +278,10 @@ func retainingMonitor(dir string, scope []string, poll func() (*MonitorReport, e
 		// First-time arming still seeds silently. The saved seed becomes visible
 		// on the next pass; only old observations and this poll's delta queue now.
 		visible := append([]intakeObservation(nil), old.Events...)
+		delta := map[string]bool{}
 		for _, item := range report.Inbound {
-			visible = append(visible, intakeObservation{item.ID(), item.UpdatedAt})
+			visible = append(visible, intakeObservation{Item: item.ID(), Opened: item.UpdatedAt})
+			delta[observationKey(item.ID(), item.UpdatedAt)] = true
 		}
 		for _, e := range visible {
 			parsed := ParseMonitorOutput("INBOUND: " + e.Item + " " + e.Opened.Format(time.RFC3339Nano))
@@ -212,17 +306,49 @@ func retainingMonitor(dir string, scope []string, poll func() (*MonitorReport, e
 				latest[key] = item
 			}
 		}
-		report.Inbound = nil
-		for _, item := range latest {
-			report.Inbound = append(report.Inbound, item)
+		retired := map[string]bool{}
+		for _, e := range old.Events {
+			if e.Retired != "" {
+				retired[observationKey(e.Item, e.Opened)] = true
+			}
 		}
-		sort.Slice(report.Inbound, func(i, j int) bool {
-			a, b := report.Inbound[i], report.Inbound[j]
+		var current []Inbound
+		for _, item := range latest {
+			// The LATEST event decides: a recorded terminal disposition or a settled
+			// accountable judgment on it discharges the issue from replay. A newer
+			// event is a different key, so it is presented again.
+			if retired[observationKey(item.ID(), item.UpdatedAt)] || settledHandoff(item.HandoffState) {
+				continue
+			}
+			current = append(current, item)
+		}
+		sort.Slice(current, func(i, j int) bool {
+			a, b := current[i], current[j]
 			if a.UpdatedAt.Equal(b.UpdatedAt) {
 				return a.ID() < b.ID()
 			}
 			return a.UpdatedAt.Before(b.UpdatedAt)
 		})
+		limit := replayCap()
+		presented, deferred := map[string]int{}, map[string]int{}
+		report.Inbound = nil
+		for _, item := range current {
+			// This poll's delta is already bounded by the poller; only retained events count.
+			if !delta[observationKey(item.ID(), item.UpdatedAt)] {
+				if presented[item.Repo] >= limit {
+					deferred[item.Repo]++
+					continue
+				}
+				presented[item.Repo]++
+			}
+			report.Inbound = append(report.Inbound, item)
+		}
+		for _, repo := range scope {
+			if n := deferred[repo]; n > 0 {
+				report.Deferred = append(report.Deferred, fmt.Sprintf("%s %d retained observation(s) deferred to a later pass (replay cap %d per repo; retained, oldest first)", repo, n, limit))
+			}
+		}
+		report.retire = func(rs []observationRetirement) error { return retireObservations(dir, rs) }
 		return report, nil
 	}
 }

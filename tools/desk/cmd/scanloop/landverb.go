@@ -119,8 +119,12 @@ func cmdLand(args []string, declaredLoop string, w io.Writer) error {
 		if err != nil {
 			return deskkit.Refused("invalid intake handoff: " + err.Error())
 		}
-		if err := landHandoff(rec, h); err != nil {
+		prior, err := landHandoff(rec, h)
+		if err != nil {
 			return err
+		}
+		if prior != "" {
+			fmt.Fprintf(w, "scanloop land: %s already left by %s; that exit is immutable and --exit %s was NOT recorded\n", rec.Item, prior, rec.Exit)
 		}
 		fmt.Fprintf(w, "scanloop land: %s disposition revision %d recorded; successor admission remains independent\n", rec.Item, h.Revision)
 		return nil

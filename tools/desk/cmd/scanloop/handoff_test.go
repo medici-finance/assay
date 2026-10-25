@@ -2,13 +2,16 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/medici-finance/assay/deskcore/issueflow"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestIntakeHandoffDisposition(t *testing.T) {
@@ -88,6 +91,21 @@ func TestIntakeHandoffDisposition(t *testing.T) {
 		records, err := readHandoffRecords(filepath.Join(stateDir, handoffRecordsFile))
 		if err != nil || len(records) != 1 || recordFileBytes(t, stateDir) != before {
 			t.Fatalf("retry: %v %v", records, err)
+		}
+		// A retry naming a DIFFERENT exit keeps the immutable first exit and says so.
+		raw, err := json.Marshal(h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(companion, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+		var out strings.Builder
+		if err := cmdLand([]string{"--item", h.Item, "--opened", h.Opened, "--exit", "finding", "--artifact", "repair/01", "--tier", "strong", "--handoff", companion, "--handoff-reader", issueflow.IntakeHandoffSchema}, "intake-desk", &out); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out.String(), "already left by bug") || !strings.Contains(out.String(), "--exit finding was NOT recorded") || recordFileBytes(t, stateDir) != before {
+			t.Fatalf("differing exit silently ignored: %q", out.String())
 		}
 		for _, tc := range []struct {
 			name string
@@ -187,6 +205,180 @@ func TestIntakeHandoffDisposition(t *testing.T) {
 			t.Fatalf("err=%v polled=%v", err, called)
 		}
 	})
+	t.Run("settled judgment discharges replay on the next pass", func(t *testing.T) {
+		isolatedDeskHome(t)
+		dir := t.TempDir()
+		scope := []string{"medici-finance/assay"}
+		baseline := filepath.Join(dir, "medici-finance__assay.state")
+		if err := os.WriteFile(baseline, []byte("medici-finance/assay#77 2026-08-24T11:50:00Z\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		settled := issueflow.IntakeHandoff{Schema: issueflow.IntakeHandoffSchema, Item: "medici-finance/assay#77", Opened: "2026-08-24T11:50:00Z", Revision: 1, DecidingRole: "intake-desk", Disposition: issueflow.Repair, Route: "repair", Successor: "#77", Evidence: "medici-finance/assay#77"}
+		if err := appendHandoffRecord(settled); err != nil {
+			t.Fatal(err)
+		}
+		pollOut := ""
+		poll := func() (*MonitorReport, error) { return ParseMonitorOutput(pollOut), nil }
+		// Pass 1 reports a new, unjudged issue; it is retained after the poll.
+		pollOut = "INBOUND: medici-finance/assay#78 2026-08-24T12:00:00Z\n"
+		if err := os.WriteFile(baseline, []byte("medici-finance/assay#77 2026-08-24T11:50:00Z\nmedici-finance/assay#78 2026-08-24T12:00:00Z\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		pass := func() []string {
+			t.Helper()
+			loop := passLoop(t, "")
+			loop.Monitor = retainingMonitor(dir, scope, poll)
+			if _, err := loop.SelectQueue(); err != nil {
+				t.Fatal(err)
+			}
+			pollOut = ""
+			return loop.Queued()
+		}
+		for n := 1; n <= 3; n++ {
+			q := pass()
+			if strings.Contains(strings.Join(q, ","), "#77") {
+				t.Fatalf("pass %d: settled #77 queued again: %v", n, q)
+			}
+			if len(q) != 1 || q[0] != "medici-finance/assay#78" {
+				t.Fatalf("pass %d: unjudged #78 must stay owed: %v", n, q)
+			}
+		}
+		// Recording an accountable judgment for #78 discharges it as well.
+		dup := settled
+		dup.Item, dup.Opened, dup.Disposition, dup.Route, dup.Successor = "medici-finance/assay#78", "2026-08-24T12:00:00Z", issueflow.Duplicate, "duplicate", "#77"
+		if err := appendHandoffRecord(dup); err != nil {
+			t.Fatal(err)
+		}
+		if q := pass(); len(q) != 0 {
+			t.Fatalf("settled judgments still queued: %v", q)
+		}
+		// A newer source event for a judged issue is a new key: it is owed again.
+		pollOut = "INBOUND: medici-finance/assay#77 2026-08-24T13:00:00Z\n"
+		if q := pass(); len(q) != 1 || q[0] != "medici-finance/assay#77" {
+			t.Fatalf("newer event on a judged issue lost: %v", q)
+		}
+	})
+
+	t.Run("replay is bounded per pass and defers the rest", func(t *testing.T) {
+		isolatedDeskHome(t)
+		t.Setenv("INBOUND_MONITOR_BURST_CAP", "3")
+		dir := t.TempDir()
+		var lines strings.Builder
+		for n := 1; n <= 5; n++ {
+			fmt.Fprintf(&lines, "medici-finance/assay#%d 2026-08-24T11:5%d:00Z\n", 100+n, n)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "medici-finance__assay.state"), []byte(lines.String()), 0600); err != nil {
+			t.Fatal(err)
+		}
+		loop := passLoop(t, "")
+		loop.Monitor = retainingMonitor(dir, []string{"medici-finance/assay"}, func() (*MonitorReport, error) { return &MonitorReport{}, nil })
+		if _, err := loop.SelectQueue(); err != nil {
+			t.Fatal(err)
+		}
+		if q := loop.Queued(); len(q) != 3 || q[0] != "medici-finance/assay#101" {
+			t.Fatalf("replay not bounded oldest-first: %v", q)
+		}
+		if rep := loop.Report(); rep == nil || len(rep.Deferred) != 1 || !strings.HasPrefix(rep.Deferred[0], "medici-finance/assay 2 ") {
+			t.Fatalf("deferred replay not reported: %+v", rep)
+		}
+	})
+
+	t.Run("retained unreadable or untrusted observation retires", func(t *testing.T) {
+		isolatedDeskHome(t)
+		dir := t.TempDir()
+		scope := []string{"medici-finance/assay"}
+		baseline := filepath.Join(dir, "medici-finance__assay.state")
+		if err := os.WriteFile(baseline, []byte("medici-finance/assay#77 2026-08-24T11:50:00Z\nmedici-finance/assay#78 2026-08-24T11:51:00Z\nmedici-finance/assay#79 2026-08-24T11:52:00Z\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		pollOut := ""
+		poll := func() (*MonitorReport, error) {
+			// Deleted or closed issues leave the complete open-issue listing.
+			if err := os.WriteFile(baseline, nil, 0600); err != nil {
+				return nil, err
+			}
+			return ParseMonitorOutput(pollOut), nil
+		}
+		calls := map[int]int{}
+		probe := func(_ string, n int) (string, time.Time, []deskkit.ContentEvent, bool, error) {
+			calls[n]++
+			switch n {
+			case 77: // deleted: the forge answers a definite not-found
+				return "", time.Time{}, nil, false, fmt.Errorf("cannot read the author: %w", &deskkit.ForgeAPIError{Status: http.StatusNotFound, Method: "GET", Path: "/repos/x/issues/77"})
+			case 78: // untrusted opener, read cleanly, unblessed
+				return "mallory", time.Time{}, nil, true, nil
+			default: // transient: never retired, keeps failing closed
+				return "", time.Time{}, nil, false, fmt.Errorf("cannot read the author: %w", &deskkit.ForgeAPIError{Status: http.StatusBadGateway, Method: "GET", Path: "/repos/x/issues/79"})
+			}
+		}
+		pass := func() *ScanLoop {
+			t.Helper()
+			loop := passLoop(t, "")
+			loop.Probe = probe
+			loop.Monitor = retainingMonitor(dir, scope, poll)
+			if _, err := loop.SelectQueue(); err != nil {
+				t.Fatal(err)
+			}
+			pollOut = ""
+			return loop
+		}
+		first := pass()
+		if blind := couldNotCheck(first.Admissions()); strings.Join(blind, ",") != "medici-finance/assay#77,medici-finance/assay#79" {
+			t.Fatalf("discovery pass must stay fail-closed: %v", blind)
+		}
+		for n := 2; n <= 3; n++ {
+			loop := pass()
+			if blind := couldNotCheck(loop.Admissions()); strings.Join(blind, ",") != "medici-finance/assay#79" {
+				t.Fatalf("pass %d: blind=%v (gone item must not blind every pass; transient must)", n, blind)
+			}
+			for _, a := range loop.Admissions() {
+				if a.Item.Number == 78 || a.Item.Number == 77 {
+					t.Fatalf("pass %d: retired item replayed: %+v", n, a)
+				}
+			}
+		}
+		if calls[77] != 1 || calls[78] != 1 || calls[79] != 3 {
+			t.Fatalf("retired items still re-probed every pass: %v", calls)
+		}
+		obs, err := readObservations(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := map[string]string{}
+		for _, e := range obs.Events {
+			got[e.Item] = e.Retired
+		}
+		if got["medici-finance/assay#77"] != "gone" || got["medici-finance/assay#78"] != "quarantined" || got["medici-finance/assay#79"] != "" {
+			t.Fatalf("terminal dispositions not recorded: %v", got)
+		}
+		// A newer event (say, a blessing comment) is a new key and is read again.
+		pollOut = "INBOUND: medici-finance/assay#78 2026-08-24T13:00:00Z\n"
+		if loop := pass(); calls[78] != 2 || len(loop.Admissions()) != 2 {
+			t.Fatalf("newer event on a retired issue lost: calls=%v admissions=%v", calls, loop.Admissions())
+		}
+	})
+
+	t.Run("degraded repo never retires a not-found item", func(t *testing.T) {
+		isolatedDeskHome(t)
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "medici-finance__assay.state"), []byte("medici-finance/assay#77 2026-08-24T11:50:00Z\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		for n := 1; n <= 2; n++ {
+			loop := passLoop(t, "")
+			loop.Probe = probeReturning("", time.Time{}, nil, false, &deskkit.ForgeAPIError{Status: http.StatusNotFound})
+			loop.Monitor = retainingMonitor(dir, []string{"medici-finance/assay"}, func() (*MonitorReport, error) {
+				return ParseMonitorOutput("MONITOR-DEGRADED: medici-finance/assay token mint FAILED\n"), nil
+			})
+			if _, err := loop.SelectQueue(); err != nil {
+				t.Fatal(err)
+			}
+			if blind := couldNotCheck(loop.Admissions()); len(blind) != 1 {
+				t.Fatalf("pass %d: a not-found under a degraded read was retired: %v", n, blind)
+			}
+		}
+	})
+
 	t.Run("replay still checks current trust", func(t *testing.T) {
 		isolatedDeskHome(t)
 		dir := t.TempDir()

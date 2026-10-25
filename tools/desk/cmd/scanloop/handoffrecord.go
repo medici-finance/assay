@@ -88,15 +88,17 @@ func appendHandoffRecord(h issueflow.IntakeHandoff) error {
 // A companion can refine a mechanical exit without rewriting intake-exit-v1.
 // Retry still writes the companion after a prior exit succeeded: the v1 no-op
 // must never suppress recovery from a failed second write.
-func landHandoff(rec IntakeExitRecord, h issueflow.IntakeHandoff) error {
+// The returned string is the PRIOR exit when the event already left by a different one: the
+// original exit stays immutable, so the caller must say the supplied --exit was not recorded.
+func landHandoff(rec IntakeExitRecord, h issueflow.IntakeHandoff) (string, error) {
 	if err := rec.Validate(); err != nil {
-		return err
+		return "", err
 	}
 	if h.Item != rec.Item || h.Opened != rec.Opened || h.DecidingRole != rec.TriagerRole {
-		return deskkit.Refused("handoff must bind this event and the acting role")
+		return "", deskkit.Refused("handoff must bind this event and the acting role")
 	}
 	if h.Disposition == issueflow.NeedsScoping && rec.TriagerTier != tierStrong {
-		return deskkit.Refused("authoring handoff requires a strong deciding session")
+		return "", deskkit.Refused("authoring handoff requires a strong deciding session")
 	}
 	facts := issueflow.IntakeFacts{Item: rec.Item, Opened: rec.Opened, Complete: true}
 	if h.Verification != nil {
@@ -106,14 +108,14 @@ func landHandoff(rec IntakeExitRecord, h issueflow.IntakeHandoff) error {
 	}
 	assessment := issueflow.AssessIntakeHandoff(h, facts)
 	if assessment.State != "observed" && assessment.State != "external-wait" {
-		return deskkit.Refused("intake disposition: " + assessment.Reason)
+		return "", deskkit.Refused("intake disposition: " + assessment.Reason)
 	}
 	if h.Disposition != issueflow.External {
 		if err := checkHandoffSuccessor(h, rec.Repo); err != nil {
-			return err
+			return "", err
 		}
 	}
-	exists := false
+	exists, prior := false, ""
 	if err := withAuditLock(func(dir string) error {
 		records, err := readExitRecords(filepath.Join(dir, intakeExitsFile))
 		if err != nil {
@@ -122,20 +124,23 @@ func landHandoff(rec IntakeExitRecord, h issueflow.IntakeHandoff) error {
 		for _, prev := range records {
 			if sameEvent(prev, rec) {
 				exists = true
+				if prev.Exit != rec.Exit {
+					prior = string(prev.Exit)
+				}
 			}
 		}
 		return nil
 	}); err != nil {
-		return err
+		return "", err
 	}
 	if !exists {
 		if _, err := appendExitRecord(rec, func() error {
 			return auditExit("scanloop", ExitRecord{ItemID: rec.Item, Exit: rec.Exit, Lane: LaneRouting, Artifact: rec.Artifact})
 		}); err != nil {
-			return err
+			return "", err
 		}
 	}
-	return appendHandoffRecord(h)
+	return prior, appendHandoffRecord(h)
 }
 
 // Resolve links through the existing forge adapter or the declared brief files.

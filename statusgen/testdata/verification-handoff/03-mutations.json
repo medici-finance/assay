@@ -30,8 +30,8 @@
     {
       "id": "partial-write-retry",
       "target": "tools/desk/cmd/scanloop/handoffrecord.go",
-      "old": "return appendHandoffRecord(h)",
-      "new": "if exists { return nil }; return appendHandoffRecord(h)",
+      "old": "return prior, appendHandoffRecord(h)",
+      "new": "if exists { return prior, nil }; return prior, appendHandoffRecord(h)",
       "test": "TestIntakeHandoffDisposition",
       "expect": "retry:",
       "module": "tools/desk",
@@ -125,6 +125,72 @@
       "module": "statusgen",
       "package": ".",
       "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case direct-repair-target"
+    },
+    {
+      "id": "settled-discharge",
+      "target": "tools/desk/cmd/scanloop/observations.go",
+      "old": "retired[observationKey(item.ID(), item.UpdatedAt)] || settledHandoff(item.HandoffState)",
+      "new": "retired[observationKey(item.ID(), item.UpdatedAt)]",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "settled #77 queued again",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case settled-discharge"
+    },
+    {
+      "id": "replay-cap",
+      "target": "tools/desk/cmd/scanloop/observations.go",
+      "old": "if presented[item.Repo] >= limit {",
+      "new": "if false {",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "replay not bounded oldest-first",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case replay-cap"
+    },
+    {
+      "id": "quarantine-retire",
+      "target": "tools/desk/cmd/scanloop/adapter.go",
+      "old": "case a.State == AdmissionQuarantined:",
+      "new": "case false:",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "retired item replayed",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case quarantine-retire"
+    },
+    {
+      "id": "gone-retire",
+      "target": "tools/desk/cmd/scanloop/adapter.go",
+      "old": "a.State == AdmissionCouldNotCheck && a.gone && !degraded[a.Item.Repo]",
+      "new": "a.State == AdmissionCouldNotCheck && a.gone && false",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "pass 2: blind=[medici-finance/assay#77",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case gone-retire"
+    },
+    {
+      "id": "gone-degraded-guard",
+      "target": "tools/desk/cmd/scanloop/adapter.go",
+      "old": "a.State == AdmissionCouldNotCheck && a.gone && !degraded[a.Item.Repo]",
+      "new": "a.State == AdmissionCouldNotCheck && a.gone",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "a not-found under a degraded read was retired",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case gone-degraded-guard"
+    },
+    {
+      "id": "transient-not-gone",
+      "target": "tools/desk/cmd/scanloop/trust.go",
+      "old": "gone:   forgeGone(err),",
+      "new": "gone:   true,",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "pass 2: blind=[]",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case transient-not-gone"
     }
   ]
 }

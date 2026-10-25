@@ -384,5 +384,11 @@ func renderPassReport(w io.Writer, loop *ScanLoop) {
 		for _, b := range rep.Bursts {
 			fmt.Fprintf(w, "  BURST (items suppressed, not enumerable this pass): %s\n", b)
 		}
+		for _, d := range rep.Deferred {
+			fmt.Fprintf(w, "  DEFERRED (retained, presented on a later pass): %s\n", d)
+		}
+		for _, r := range rep.Retired {
+			fmt.Fprintf(w, "  RETIRED (terminal disposition recorded; a newer event is read again): %s\n", r)
+		}
 	}
 }

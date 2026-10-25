@@ -42,6 +42,12 @@ Verification observations retain the /01 exact-source and freshness checks.
 An offline reader with no independent source observation must report
 classification-needed rather than corroborating a record against itself.
 
+`deciding_role` is self-asserted by the writer. It binds the record to the
+acting lane's command, not to a proven identity; accountability rests on the
+reviewed change that publishes the companion. The free-text `evidence`,
+`required_action` and `wake_condition` values are published as written, so scrub
+them before committing a companion to a public repository.
+
 ## Existing writers
 
 The issue lane accepts `scanloop land ... --handoff <json-file>
@@ -49,14 +55,21 @@ The issue lane accepts `scanloop land ... --handoff <json-file>
 source event and acting role. It checks a successor through the existing typed
 forge adapter or a declared brief file. Strong authoring requires strong execution
 on both the deciding session and linked brief. An unread or missing successor
-refuses; it does not create another issue automatically.
+refuses; it does not create another issue automatically. A declared brief file
+is checked in the writer's working tree as a convenience only; the reviewed
+intake change must commit that successor, and readers check it there. When the
+companion carries a verification observation, the writer checks that
+observation's consistency only. That check is not a source observation, and no
+reader may reuse it as corroboration.
 
 The original exit remains immutable. A companion can refine a mechanical exit
 without changing it. Local `intake-handoffs-v1.jsonl` is append-only under the
 existing audit lock: exact retries are idempotent, conflicting revisions refuse,
 and a new judgment increments the per-event revision. If the exit write succeeds
-and the companion fails, a retry still attempts the companion. Never invent a new
-source event to bypass a conflict.
+and the companion fails, a retry still attempts the companion. A retry that
+names a different exit for the same event keeps the first exit and reports that
+the new exit was not recorded. Never invent a new source event to bypass a
+conflict.
 
 The committed register and placeholders may point at a sibling JSON file using
 `handoff: <filename.json>` and the independently retained `handoff-opened:` event
@@ -82,6 +95,26 @@ existing throwaway state copy. Observation retention does not infer discharge
 from labels, closure, a scan PR or a v1 exit. Current companion assessments are
 shown beside the routing work; the owning records remain authoritative.
 
+A retained issue leaves replay only on its latest event. A recorded companion
+whose current assessment is `observed` or `external-wait` discharges it. An
+owed, held or unreadable judgment does not. A newer source event on the same
+issue is a new key, so the issue is presented again.
+
+The trust gate records a terminal disposition on a retained event in two cases.
+The first is `gone`: the forge gave a definite not-found (404 or 410) for an
+issue in a repository that the same pass read cleanly. The second is
+`quarantined`: the event was read cleanly and is untrusted and unblessed. The
+retired event stays in the history and is not read again. A newer event is read
+and gated again, so a later blessing or edit is not lost. The pass that first
+reads a gone item still reports could-not-check. Transient failures, other
+errors and reads in a degraded repository are never retired.
+
+Replayed events share the poller's per-repository burst bound
+(`INBOUND_MONITOR_BURST_CAP`, default 25). One pass presents at most that many
+retained events per repository, oldest first. The pass names the rest as
+deferred, and they stay retained for later passes. The poll's own delta is
+already bounded by the poller and is not counted again.
+
 Raw placeholders remain representations. Ordinary scheduling requires a recorded
 repair disposition naming that same issue as the repair target, plus existing
 trust, history, decision, addressee and claim checks. A different successor has its
@@ -94,7 +127,8 @@ event cannot reuse a prior judgment.
 ## Validation
 
 `TestIntakeHandoffDisposition` exercises production composition, restart, current
-trust, role/event binding, successor existence, partial writes and retries.
+trust, role/event binding, successor existence, partial writes and retries,
+settled discharge, the replay bound and terminal retirement.
 `TestScanHandoffAdmission` exercises scanner output, placeholder scheduling and
 both committed-register exports. Executable negative controls live in
 `statusgen/testdata/verification-handoff/03-mutations.json` and use the existing

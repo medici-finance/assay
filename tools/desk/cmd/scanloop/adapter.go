@@ -251,6 +251,9 @@ func (s *ScanLoop) SelectQueue() ([]loopengine.Item, error) {
 	// visible and counted, exactly like a quarantined one.
 	inScope, outOfScope := splitByScope(report.Inbound, s.scope())
 	adm := ApplyTrustGate(inScope, s.Probe)
+	if err := retireSettledReads(report, adm); err != nil {
+		return nil, err
+	}
 	for _, o := range outOfScope {
 		adm = append(adm, Admission{
 			Item:  o,
@@ -310,6 +313,43 @@ func (s *ScanLoop) SelectQueue() ([]loopengine.Item, error) {
 	s.meta = meta
 	s.mu.Unlock()
 	return items, nil
+}
+
+// retireSettledReads records a terminal disposition for each retained event whose trust read
+// reached a definite answer that no replay can change: quarantined (read cleanly, untrusted and
+// unblessed at its current content) or gone (a definite not-found in a repo the poller read
+// cleanly this pass). Only in-scope trust-gate verdicts qualify; an out-of-scope leftover is not
+// judged here. Nothing is admitted by this: quarantine stays quarantine and a gone item stays
+// COULD-NOT-CHECK for this pass. Transient and degraded failures are never retired, so they keep
+// failing closed. A failed write is loud.
+func retireSettledReads(report *MonitorReport, adm []Admission) error {
+	if report == nil || report.retire == nil {
+		return nil
+	}
+	degraded := map[string]bool{}
+	for _, d := range report.Degraded {
+		if f := strings.Fields(d); len(f) > 0 {
+			degraded[f[0]] = true
+		}
+	}
+	var rs []observationRetirement
+	for _, a := range adm {
+		reason := ""
+		switch {
+		case a.State == AdmissionQuarantined:
+			reason = retiredQuarantined
+		case a.State == AdmissionCouldNotCheck && a.gone && !degraded[a.Item.Repo]:
+			reason = retiredGone
+		default:
+			continue
+		}
+		rs = append(rs, observationRetirement{Item: a.Item.ID(), Opened: a.Item.UpdatedAt, Reason: reason})
+		report.Retired = append(report.Retired, a.Item.ID()+" "+reason+" at "+renderTime(a.Item.UpdatedAt))
+	}
+	if len(rs) == 0 {
+		return nil
+	}
+	return report.retire(rs)
 }
 
 // splitByScope partitions events by whether their repo is in the configured intake scan scope. An

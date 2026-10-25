@@ -292,6 +292,14 @@ Legacy or unreadable companions remain classification-needed. Do not promote
 raw placeholders or open a new issue merely to acknowledge an observation.
 The drain replays durable observations after restart and still applies current
 trust; use the displayed judgment to reconcile existing work, not to repeat it.
+Replay of an issue stops only when its latest event has a recorded companion
+assessed `observed` or `external-wait`. Read that assessment back with
+`statusgen --intake-handoffs` before treating the issue as settled. A newer
+source event on the issue presents it again. A `RETIRED` line records a terminal
+`gone` or `quarantined` disposition for one event. A `DEFERRED` line names
+retained events held past this pass's replay bound. Neither line is an empty queue.
+Before committing a companion to a public repository, scrub its free-text
+`evidence`, `required_action` and `wake_condition` fields; they publish as written.
 
 **Standing-doctrine pointer.** A successor scan-transcription lane (ruling R-7) would have an
 `issues`-event workflow commit the placeholder delta for trusted-author issues. Until R-7 signs and
