@@ -101,6 +101,36 @@ This admission covers only the interpretation correction. No Verify-table rerun,
 
 Verification-Attestation: medici-finance/assay#3928 run=59a39fbe97a350fdcf76b628305403442ef2de849af7c247fa32fbcaf0b2e9e2 source=116a2f1494fca6c97209f10883861467f729216d brief=docs/streams/desktools-v2/brief-69-specify-extensible-json-contracts-and-migration-targets.md model=gpt-6-astra tier=strong
 
+### Execution witness re-verification — 2026-10-24
+
+Verified against medici-finance/assay origin/main 385cb29e5682dcb9a886b298076f722b4823ec1b, which contains delivery merge 3cea6aa621ec0364fb7a6cbd1196141829ba6c4c (PR 3830). The earlier blocks above are unchanged. This block adds the statusgen verifyrun (v1.0.59) execution witness that the earlier hand-recorded table lacks. All six rows are legacy-class (none is check:ci), so one host verifyrun pass on a clean admitted home ran the whole table; rows 1 and 3-6 also read the home's git history, which the container lane does not mount. Totals: 6 of 6 required rows run, 6 pass, 0 fail, 0 could-not-run.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `git diff --check` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `statusgen --root . --lint` | pass exit=0 | sha256:a621a2dd6336 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `git show af897c3c112bd426cbbc794839dca6d41df911d6:loopadmin/runner/request.go` | pass exit=0 | sha256:290349cc0d7f | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `git show af897c3c112bd426cbbc794839dca6d41df911d6:tools/desk/cmd/opmetrics/emit.go` | pass exit=0 | sha256:7fc5609df4aa | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `git show af897c3c112bd426cbbc794839dca6d41df911d6:perfrec/v3.go` | pass exit=0 | sha256:02bb1ae8df6f | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `git show af897c3c112bd426cbbc794839dca6d41df911d6:tools/desk/internal/deskkit/perfread.go` | pass exit=0 | sha256:4901dd4ca761 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4298 run=68eaa8b9252f59343de330065facd47d0b8e749a118347c9c2c142e94abd502f source=385cb29e5682dcb9a886b298076f722b4823ec1b brief=docs/streams/desktools-v2/brief-69-specify-extensible-json-contracts-and-migration-targets.md model=claude-opus-5-5 tier=strong
+
+Expect-content reading of the witnessed output, same run, 2026-10-24, assay-verifier-app[bot] at 385cb29e5682 (each digest above was recomputed from the same command's stdout and matches):
+
+- Row 1: empty output (sha256:e3b0c44298fc is the empty-string digest), so no whitespace errors.
+- Row 2: LINT: PASS; no PROBLEM line names desktools-v2/67, /68 or /69 (NOTICE lines only).
+- Row 3: 475 lines. LaunchRequest carries Extensions under json ext; DecodeRequest runs scanStrict, checkKeys and DisallowUnknownFields, and its comment says optional additions travel under ext. CheckCapabilities returns ErrUnsupportedMandatory for a require entry naming an undeclared ext: extension, a capability this version does not define, or a capability the adapter does not declare.
+- Row 4: 259 lines. The comment above SchemaVersion = opmetrics/2 reads: Bump on any field REMOVAL or meaning change; additive fields do not require a bump.
+- Row 5: 459 lines. V3Data has seven members (profile, attribution, observationKind, requests, requestDrops, requestCoverage, and query as a pointer with omitempty). Each is mapped in the perf-v4 roster of the attribution spec: profile and observationKind in the core, attribution in the attribution extension, requests, requestDrops and requestCoverage in the requests extension, query in the query extension. queryCoverage has zero matches in the file. validV3 rejects a tool profile whose role is anything other than RoleNone, and a workflow profile whose role differs from the attribution role (RoleNone allowed only for an empty attribution role). validQuery returns false for a non-nil query unless the kind is client or handler.
+- Row 6: 527 lines. The FilterPerf comment says a legacy role filter excludes v3, which needs the workflow-aware ReduceV3 filter, and the code drops a record when role is set and Schema equals perfrec.SchemaV3.
+
+Risk-bearing values: the frontmatter carries risk metadata with every answer no, and the delivery is docs/spec only, so the fail-safe trigger does not fire. Re-enumerated at this source anyway; the literals and their lines are unchanged from the earlier block, and all are reversible proposed design bounds for desktools-v2/67:
+
+- RISK-VALUE: DERIVED — v4 JSON line size < 1 MiB including newline @ docs/performance-attribution-spec.md:356 — stays below the reader scanner ceiling sc.Buffer(..., 1<<20) at tools/desk/internal/deskkit/perfread.go:121. This covers scanner byte capacity only; pre-v4 readers may reject perf-v4, and the spec requires qualified readers before the writer is selected (docs/performance-attribution-spec.md:387).
+- RISK-VALUE: NAMED, NOT DERIVED — max extensions = eight; name grammar = [a-z][a-z0-9-]{0,31}; max version = 2147483647; max nesting depth = 32 @ docs/performance-attribution-spec.md:357-359 — 2147483647 is int32 max and eight is four initial groups plus headroom, per the spec's own text; whether depth 32 is enough depends on the largest typed v4 record, which the spec assigns to /67 boundary tests. Question #3851 stays the route for that derivation.
+
+**VERIFY: PASS** — 6/6 rows
+
 ## Review
 
 Independent correctness and security review of the exact head; normal ready/merge gates.

@@ -23,8 +23,9 @@ runtime containment. Taxonomy membership describes components and grants no auth
 | Meaning | Canonical implementation / planned interface | Consumers and restrictions |
 |---|---|---|
 | Inter-cell message contract (cellmsg-v1) | `comms/contract` (module `github.com/medici-finance/assay/comms`, comms-core/01): `Envelope`, `ParseEnvelope`, `ParseEnvelopeWith`, `Vocabulary`, `Message`, `Address`, `Receipt`, `ErrorCode`, `Mint`, `Verify`, `VerifyEnvelope` | `tools/desk/internal/comms` (the Assay policy adapter: verb and class vocabulary, compiled lane ACL, `Admit`), then `commsgw`, `commsloop`, `deskcomms`, `commsqueue`. Follow-ups comms-core/02 (server) and /03 (client SDK) consume it. Structure only: no role names, no ACL, no credential, no network, no process launch. |
-| Forge facts and completeness | Existing forge adapters; narrow `forgeread` API, forge-neutral/36 | `deskread`, statusgen's reader adapter. No generic query, raw token getter or write API on the consumer interface. |
+| Forge facts and completeness | Existing forge adapters; narrow `forgeread` API, forge-neutral/36; typed positive issue-state adapter in Go API 1.1 | `deskread`, issueboard and statusgen's offline/frozen reader adapter. No generic query, raw token getter or write API on the consumer interface. Statusgen's online reads remain on `deskread`. |
 | Local write-isolation policy | Proposed `deskcore/writepolicy`, [write-policy contract](write-policy.md), desktools-v2/66 | `writeguard` is a thin hook adapter; managed adapters supply validated allocation observations. Core has no effects or authority; independent guards keep their owners. |
+| Work-reference interpretation | `statusgen/workref` (`Parse`, `Resolve`, copied supplied registry), milestone-support/01 | Both actual QID and trailer adapters call the package in-process with explicit, distinct legacy profiles. Typed brief adapter remains opt-in; no operational prefixed writes, capability advertisement, credential or authority moves. |
 | Eligibility and evidence coverage | `statusgen/evaluation` (canonical owner since statusgen/15): `EvaluateEligibility`, `EvaluateCoverage` | statusgen commands, workflow bindings, projection producers. Explicit observations in; deterministic verdicts out. No admission, identity, capacity or claim authority. |
 | Stream-view wire schema | Existing `statusgen/streamview` | Producers and authorized readers pin the contract; no policy or serving behavior in this package. |
 | Workflow progression | `workflow` store/controller, graph-execution/19 and /21 | Calls evaluation and loop-admin APIs; process exit is not work acceptance. |
@@ -102,6 +103,14 @@ explicit repository set.
 |---|---|---|
 | Root package `forgeread` | The `Reader` interface (`OpenIssues(ctx, repos)`), the `Issue` / `Result` / `Unavailable` types, the three-state envelope parser (`ParseIssuesEnvelope`, fail-closed on an unknown schema or kind), `Reconcile` (every requested repository appears exactly once, as data or as unavailable) and the offline and frozen-result readers. It imports no subpackage, no `net/http` and no `os/exec`; its whole dependency closure is checked. | statusgen and desk-tools. Offline and frozen inputs only. |
 | `forgeread/adapters` and `adapters/github`, `adapters/gitlab` | The provider-specific pagination and mapping for open issues, written against an `Access` interface that serves one page of an already-admitted repository. They hold no credential, resolve no host and read no environment. | desk-tools only (`deskkit` composes them over its own authenticated transport). A statusgen import of anything below the module root is a counted failure. |
+| `forgeread/adapters/github` positive issue states (Go API 1.1) | A narrow `IssueStateAccess` port for positive state/title observations of explicitly numbered issues. The query document is fixed, at most twenty aliases are active, and missing/null/changed identities, unknown states or any GraphQL error refuse the result. No raw query or credential input is added. | issueboard's original wrapped desk reader. Explicit CI read-only and outbound wrappers retain the capability; unknown wrappers and other providers keep serial reads. Statusgen's authenticated boundary does not move. |
+
+The positive-state addition changes neither the root offline/frozen dependency
+closure nor `EnvelopeSchema`. Listing absence still cannot retire a placeholder;
+every proposed retirement needs the positive state observation. The existing
+projection, trust, comment/history and label completeness controls stay with their
+owners. Batching reduces HTTP sends for this observation only; GraphQL points
+remain unknown, and no production saving follows from a local fixture alone.
 
 How the two paths meet: `deskread issues` and the in-process SDK run the same adapters over the
 same observations, so a repository is "known empty", "unavailable", "truncated" (the provider
@@ -217,3 +226,33 @@ Target-consumer clarification, 19 October 2026: graph-execution/22 directly cons
 parser port is withdrawn (medici-finance/assay#3409 merged, ruled at
 medici-finance/assay#3420), so /66 has no parser-port edge: writeguard keeps its current
 parser, routed exempt, and /66 owns the hook adapter. The guard controls are not retired.
+
+## Shared work-reference core — milestone-support/01
+
+`statusgen/workref` is a stdlib-only package inside the existing statusgen module.
+It parses/resolves explicit declaring context, graph-root aliases and supplied stable
+identity bindings. Logical identity/key, input spelling, exact version selector and
+legacy compatibility fullId remain separate. A resolution establishes neither record
+existence nor revision availability; source observations and exact revision qualification
+belong to host loaders. Missing requested revisions must remain unknown there.
+
+`contexthandoff.ResolveQualifiedID` and desk's `SplitBriefTrailer` and
+`SplitCrossRepoBriefTrailer` now call the core using separate preserved legacy
+profiles. Existing strict QID and permissive trailer reduction contracts do not converge
+by broadening either API. The explicit `deskkit.ResolveWorkTrailer` adapter accepts typed
+brief references and retains revision selectors; existing operational writers do not call
+it yet. Human/risk gates, subject checks, online forge reads and credential custody retain
+their existing owners. See [the API contract](../statusgen/workref/README.md).
+
+The desk manifest uses the repository's placeholder require/relative replace pattern for
+statusgen. Both real consumers are exercised with `GOWORK=off`; an external fixture runs
+the public API via a local file proxy with the actual statusgen manifest and no consumer
+replace. That fixture qualifies this pure API closure, not a publication of statusgen or
+its placeholder sibling requirements. The production workref closure is stdlib only;
+existing effectful desk dependencies are not exported by this package. No module, helper
+binary, daemon or subprocess integration seam was added.
+
+Consumer routing: the two QID/trailer adapters and domain's isolated mutation snapshot
+are fixed here. `statusgen/briefv2.go`/new authoring, record loaders, capability negotiation,
+claims, ruling/domain adaptation and history/export remain the respective milestone
+follow-ups /02, /03, /04, /08, /09 and /12. No operational new grammar is advertised here.

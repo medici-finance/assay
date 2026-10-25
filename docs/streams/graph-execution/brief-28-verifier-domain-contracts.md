@@ -159,9 +159,22 @@ are refused, never ignored.
 
 Acceptance-boundary amendment — 2026-10-23. This separates the existing pure contract
 from required downstream integration; it grants no acceptance, activation or effect authority.
-Do not merge or use this amendment for qualification until the existing independent
-Evidence PR #3921 owner records its checkpoint on the proposed boundary and preservation
-of historical Evidence. Independent review and the existing human gates remain required.
+
+The boundary is approved through the acceptance-transition route, per the driver's ruling:
+https://github.com/medici-finance/assay/issues/4452#issuecomment-6403449344
+
+That ruling selected option A: local /28 acceptance is original rows 1–9, row 10 stays
+present and uncredited, and the /19, /23 and /29 consumer-use holds attach to those briefs.
+
+The existing independent Evidence PR #3921 owner recorded its checkpoint on the proposed
+boundary and the preservation of historical Evidence (preserved: yes):
+https://github.com/medici-finance/assay/pull/3921#issuecomment-6403147264
+
+That checkpoint answers the request at
+https://github.com/medici-finance/assay/pull/3921#issuecomment-6367743364 . It is a
+readiness record, not acceptance of these semantics or merge permission; its reconciliation
+conditions for the Evidence branch still apply. Independent review and the existing human
+gates remain required.
 
 The original acceptance definition is the nine rows at
 0580e0a02df8dce18bd2d65359225e49d525bcd6. The implementation delivery is

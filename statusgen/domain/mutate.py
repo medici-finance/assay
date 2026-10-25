@@ -32,10 +32,10 @@ MUTATIONS = [
 ]
 
 def snapshot(dest):
-    for package in ("domain", "evaluation", "internal/testschema"):
+    for package in ("domain", "evaluation", "workref", "internal/testschema"):
         source = ROOT / "statusgen" / package
         for f in source.glob("*.go"):
-            if package == "evaluation" and f.name.endswith("_test.go"):
+            if package in ("evaluation", "workref") and f.name.endswith("_test.go"):
                 continue
             out = dest / f.relative_to(ROOT)
             out.parent.mkdir(parents=True, exist_ok=True)

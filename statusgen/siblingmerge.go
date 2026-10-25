@@ -524,10 +524,10 @@ type siblingCommit struct {
 // readSiblingCommits reads a sibling checkout's first-parent history. The
 // format uses %x1e (record separator) ahead of each commit and %x00 between
 // its hash and its raw body, so a multi-line %B can never be mistaken for a
-// record boundary — mergedPRsFromGit (mergedstatus.go) can get away with
-// %s-per-line because it reads only the SUBJECT; this detector needs the
-// full body for the body-only id shape (fact 3) and the Issue:/closing-keyword
-// trailer (key k2), so it cannot use a newline-delimited format.
+// record boundary. It needs the full body for the body-only id shape (fact 3)
+// and the Issue:/closing-keyword trailer (key k2), so it cannot use a
+// newline-delimited format. (mergedPRsFromGit, mergedstatus.go, reads its
+// messages length-prefixed through cat-file instead.)
 func readSiblingCommits(path string) ([]siblingCommit, error) {
 	out, err := exec.Command("git", "-C", path, "log", "--first-parent",
 		"-n", strconv.Itoa(siblingMergeHistoryLimit), "--format=%x1e%H%x00%B").Output()
@@ -727,6 +727,22 @@ func runSiblingMergeIfOptedIn(streams []*Stream, root string) (notices []string,
 	}
 	notices, _, _ = siblingMergeCheck(streams, root, effectiveSiblingRootOverrides(siblingRootFlagValues))
 	return notices, true
+}
+
+// holdPhantomRowsFromGit is runSiblingMergeIfOptedIn's counterpart for the in-tree
+// board-honesty holds: the dispatch emitters (--next-up, --roadmap) call it before
+// nextUp() so they hold the same rows STATUS.md does. A tree with no .git, or an
+// unreadable history, holds no merged-delivery row — could-not-check is never
+// "delivered" — but still holds a re-homed pointer row, whose evidence is the tree
+// itself, exactly as run() does (errNoGitForMerge): the queue and the board must not
+// disagree about the same tree.
+func holdPhantomRowsFromGit(streams []*Stream, root string) {
+	if hasNoGitDir(root) {
+		applyPhantomHolds(streams, nil, errNoGitForMerge)
+		return
+	}
+	merged, err := mergedPRsFromGit(root)
+	applyPhantomHolds(streams, merged, err)
 }
 
 // siblingMergeOffNotices is what --lint prints INSTEAD of the check when the

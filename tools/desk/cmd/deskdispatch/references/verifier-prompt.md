@@ -98,11 +98,20 @@ refuses.
 One Evidence row per Verify item, attributed to the runner and dated:
 
 ```
-| <#> | <command> | <expected> | <observed: exit code + key output line> | <YYYY-MM-DD> <runner> |
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| <original row ID> | <exact command> | <expected> | <observed exit + output, or could-not-run + reason> | <YYYY-MM-DD> | <actual runner> |
 ```
 
-- `YYYY-MM-DD <runner>` — never a bare check mark. An unattributed row records that
-  somebody was satisfied, which is not evidence.
+- A `Date` cell (`YYYY-MM-DD`) and a `Runner` cell (the actual runner) — never a bare check
+  mark. An unattributed row records that somebody was satisfied, which is not evidence.
+  Keep the two cells separate, not one combined token, for PASS, FAIL and BLOCKED submissions, including every unrun row and any supplemental
+  host observation (clearly labelled no acceptance credit). A dated heading or commit author
+  does not attribute a row. For unrun rows these cells identify when and by whom the blocker
+  was observed, not an execution or container witness. Recover missing attribution only from
+  retained run records or rerun; never guess it. Before publication run `deskevidence … --dry-run`;
+  a refusal means repair the submission, with no lifecycle flip. Preserve admitted witness
+  bytes and do not type an on-behalf-of annotation; the landing tool owns that stamp.
 - A row that could not run says so in its own words, in the observed cell.
 - Keep the wording plain: a phrase that reads as "this was not run" in an Evidence cell is
   read by the board tooling as an unrun row and will mark the item accordingly. When a row

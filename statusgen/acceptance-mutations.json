@@ -16,8 +16,8 @@
     {
       "name": "omit original commands from host execution",
       "file": "verifyrun.go",
-      "old": "rows = briefVerifyRows(protectedExecution.Verify)",
-      "new": "rows = briefVerifyRows(verify)"
+      "old": "rows, numbered = numberedVerifyRows(protectedExecution.Verify)",
+      "new": "rows, numbered = numberedVerifyRows(verify)"
     },
     {
       "name": "origin host binding removed",

@@ -109,15 +109,34 @@ func getFile(t *testing.T, path string) string {
 	return string(raw)
 }
 
+// fixtureRunner is the runner the host derives from the fixture home's git
+// identity (user.name "fixture"): what --open-bracket records.
+const fixtureRunner = `"runner":"human:fixture","runner_source":"git-config"`
+
 // writeBracketReceipt writes the open step's receipt file directly, with the
-// home's current tree digest, so a container test starts no deskdispatch.
+// home's current tree digest and the fixture's host runner, so a container
+// test starts no deskdispatch.
 func (fx containerFixture) writeBracketReceipt(t *testing.T, check string) {
+	t.Helper()
+	fx.writeReceiptRunner(t, check, fixtureRunner)
+}
+
+// writeReceiptRunner is writeBracketReceipt with the receipt's runner fields
+// given as a JSON fragment ("" for none). A fragment that names no
+// runner_tree gets the home's host tree token, as the open step records it.
+func (fx containerFixture) writeReceiptRunner(t *testing.T, check, runner string) {
 	t.Helper()
 	tree, err := homeTreeDigest(fx.home)
 	if err != nil {
 		t.Fatal(err)
 	}
-	putFile(t, fx.receipt, `{"check":`+check+`,"tree":"`+tree+`","opened":"`+fixtureOpened+`"}`+"\n")
+	if runner != "" && !strings.Contains(runner, `"runner_tree"`) {
+		runner += `,"runner_tree":"` + treeSHA(fx.home) + `"`
+	}
+	if runner != "" {
+		runner = "," + runner
+	}
+	putFile(t, fx.receipt, `{"check":`+check+`,"tree":"`+tree+`","opened":"`+fixtureOpened+`"`+runner+"}\n")
 }
 
 func (fx containerFixture) containerArgs(extra ...string) []string {

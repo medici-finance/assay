@@ -13,10 +13,11 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 4
+version: 5
 id: dd9e0da4-b348-4311-a31c-83605c8a6522
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "Planning amendment 2026-10-23; source checked on App-fetched main 9c4307a19a190964db084104ecc1f7bd62cba433; candidate-plus-priority parity and GH-call audit"
   - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - "2026-10-16 performance authoring amendment, inspected origin/main eba941721; docs/streams/desktools-v2/README.md performance priority"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
@@ -98,6 +99,18 @@ webhook payload decisions are not answered by this section.
 - Stop at implemented; independent verification and acceptance remain separate.
 - Do not widen an unsupported provider capability or duplicate another store/evaluator to make a test pass.
 
+## Candidate and priority amendment — 2026-10-23
+
+Include planner observation membership, policy/evaluator revision, explicit time and
+capacity in this owner's existing dependency-aware derived-query validity contract.
+A priority-only change invalidates selection, not unchanged provider facts. An absent reverse
+edge, new candidate, permission change, SLA expiry or unknown dependency triggers bounded
+recompute/refresh rather than returning a cached complete/idle answer. Reuse the canonical
+role planners; no new acceptance predicate, cached ready boolean or second scheduler.
+Qualify the ranked GH model through the existing derive reviewcontext_test scope, separating
+client-service from service-provider requests. Do not count unchanged immutable-byte reuse
+already supplied by /42 as another independent fleet saving.
+
 ## Task
 
 1. Implement versioned rebuildable reverse indexes from source observations to bounded query results (repository inventory, change/comment/check references and affected source query keys). Declare every input revision/admission, derivation version and coverage requirement. Persist adapters in the existing workflow store and keep pure dependency planning in forgeread.
@@ -149,6 +162,7 @@ boundary and independent expectation, not another implementation of the same che
 | 4 | check:ci +flow +mutation | `(cd forgeread && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestDerivationCostAndFallback$' ./mirror/derive/... > "$r" && grep -F -- '--- PASS: TestDerivationCostAndFallback ' "$r")` | exit 0; named PASS. Declared fan-out fixture records selective/full recomputation costs; unknown membership forces bounded full recomputation. Faster but stale results fail the independent oracle. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/43` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
 | 6 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewIndexInvalidation$' ./mirror/derive/... > "$o" && grep -F -- '--- PASS: TestReviewIndexInvalidation ' "$o")` | exit 0; named PASS. All review applicability/scope/access changes match fresh oracle; omitted dependency, cached ready or unknown-as-empty mutation fails. |
+| 7 | check:ci +flow +mutation | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPlannerInvalidation$' ./... > "$o" && grep -F -- '--- PASS: TestPlannerInvalidation ' "$o")` | exit 0; named PASS. policy/time/capacity changes recompute the existing planner locally; changed source/membership/access invalidates the proper facts. Full recomputation gives the same order/holds, no candidate disappears, and dropping a dependency edge or refetching GH for every pure priority change fails. |
 
 ## Pre-mortem and detection
 

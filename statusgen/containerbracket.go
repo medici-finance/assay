@@ -23,19 +23,23 @@ import (
 // bytes the container ran to the admitted home three times:
 //
 //  1. host open: `verifyrun --open-bracket` runs `deskdispatch
-//     --check-verifier`, digests the home, and writes the receipt file (the
-//     check's JSON verbatim, `tree`, `opened`) outside the home;
+//     --check-verifier`, derives the executing runner on the host, digests the
+//     home, and writes the receipt file (the check's JSON verbatim, `tree`,
+//     `opened`, `runner`, `runner_source`) outside the home;
 //  2. container: `verifyrun --sandbox=container-netns --admission-receipt
 //     <file> --container-image-digest sha256:<…>` reads that receipt (no
-//     admission of its own), digests its own root and refuses unless it equals
-//     the receipt's tree, runs the rows, digests its root again, and only when
-//     the rows left it unchanged records Tree-Digest, Container-Image and the
-//     attestation line under the table;
+//     admission and no identity derivation of its own), digests its own root
+//     and refuses unless it equals the receipt's tree, runs the rows under the
+//     receipt's runner, digests its root again, and only when the rows left it
+//     unchanged records Tree-Digest, Container-Image and the attestation line
+//     under the table;
 //  3. host close: `verifyrun --close-bracket` re-runs the check, compares it
-//     with the witness's attestation line, recomputes the home's digest, and
-//     only when it equals both the receipt's tree and the witness's
-//     Tree-Digest appends an Admission-Bracket line whose witness= is
-//     bracketDigest of the span above it.
+//     with the witness's attestation line, re-derives the runner on the host
+//     and requires it to equal the receipt's and every container row's Runner
+//     cell, recomputes the home's digest, and only when it equals both the
+//     receipt's tree and the witness's Tree-Digest appends an
+//     Admission-Bracket line whose witness= is bracketDigest of the span above
+//     it (the Runner cells are inside that digest).
 //
 // A container-sandboxed row is credited only inside a closed bracket. The
 // bracket digest is keyless and computed from the file's own bytes, so a
@@ -62,11 +66,79 @@ var (
 	attestationV1Re = regexp.MustCompile(`^Verification-Attestation: (\S+)#([0-9]+) run=(\S+) source=(\S+) brief=(\S+) model=(\S+) tier=(\S+)$`)
 )
 
-// bracketReceipt is the open step's receipt file.
+// bracketReceipt is the open step's receipt file. Runner, RunnerSource,
+// RunnerTree and OnBehalfOf are every part of a witness Runner cell, as the
+// HOST derived them at the open step (executingRunner, treeSHA and
+// onBehalfOfSuffix on the home), never values the container derives or a
+// caller types (#4208): a home cut as a linked worktree keeps its git
+// directory outside the mounted tree, and the container's own roster and git
+// config are not the host's. The close step re-derives all four on the host
+// and refuses unless they equal these and every row of the container's table
+// carries exactly the cell they render.
 type bracketReceipt struct {
-	Check  json.RawMessage `json:"check"`
-	Tree   string          `json:"tree"`
-	Opened string          `json:"opened"`
+	Check        json.RawMessage `json:"check"`
+	Tree         string          `json:"tree"`
+	Opened       string          `json:"opened"`
+	Runner       string          `json:"runner"`
+	RunnerSource string          `json:"runner_source"`
+	RunnerTree   string          `json:"runner_tree"`
+	OnBehalfOf   string          `json:"on_behalf_of"`
+}
+
+// receiptRunnerRe is the shape of a runner token executingRunner derives: a
+// roster App slug with `[bot]`, a GitLab username, a CI actor, a git bot name
+// or `human:<name>`. No whitespace, `|`, parentheses or control character can
+// reach a witness Runner cell through a receipt.
+var receiptRunnerRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:+\[\]-]{0,127}$`)
+
+// receiptTreeRe is the shape of a tree token treeSHA renders: `no-git`, or a
+// short commit SHA with an optional `+dirty` or `+unknown` qualifier.
+var receiptTreeRe = regexp.MustCompile(`^(?:no-git|[0-9a-f]{7,40}(?:\+dirty|\+unknown)?)$`)
+
+// receiptOnBehalfOfRe is the shape of an annotation onBehalfOfSuffix renders.
+var receiptOnBehalfOfRe = regexp.MustCompile(`^on-behalf-of human:[^\s()|]+$`)
+
+// receiptRunnerProblem validates the Runner-cell parts a receipt carries. An
+// absent runner is could-not-attribute, exactly as on the host lane: the
+// container never derives one of its own and never invents a placeholder.
+func receiptRunnerProblem(r bracketReceipt) error {
+	if r.Runner == "" && r.RunnerSource == "" {
+		return fmt.Errorf("could-not-attribute — the receipt carries no runner identity from the host open step. A container run never derives its own identity (a linked worktree's git directory is not mounted) and never invents one; re-open the bracket on the host with a statusgen that records the runner")
+	}
+	if !receiptRunnerRe.MatchString(r.Runner) {
+		return fmt.Errorf("the receipt's runner %q is not a runner identity the host derives", r.Runner)
+	}
+	switch r.RunnerSource {
+	case runnerSourceForge, runnerSourceCIEnv, runnerSourceGitConfig:
+	default:
+		return fmt.Errorf("the receipt's runner source %q is not one of %s, %s or %s", r.RunnerSource, runnerSourceForge, runnerSourceCIEnv, runnerSourceGitConfig)
+	}
+	if !receiptTreeRe.MatchString(r.RunnerTree) {
+		return fmt.Errorf("the receipt's runner tree %q is not a tree token the host derives (no-git, or a short SHA with an optional +dirty or +unknown); re-open the bracket on the host with a statusgen that records it", r.RunnerTree)
+	}
+	if r.OnBehalfOf != "" && !receiptOnBehalfOfRe.MatchString(r.OnBehalfOf) {
+		return fmt.Errorf("the receipt's on-behalf-of %q is not an annotation the host renders", r.OnBehalfOf)
+	}
+	return nil
+}
+
+// hostRunnerCell derives, on the host, every part of the Runner cell a witness
+// row taken on home for brief carries: the same executingRunner, treeSHA and
+// onBehalfOfSuffix (for the repo the row is written into) a host-lane row uses.
+// ok is false when no executing identity is available.
+func hostRunnerCell(home, brief string) (r bracketReceipt, ok bool) {
+	r.Runner, r.RunnerSource, ok = executingRunner(home)
+	if !ok {
+		return bracketReceipt{}, false
+	}
+	r.RunnerTree = treeSHA(home)
+	r.OnBehalfOf = onBehalfOfSuffix(r.Runner, witnessAnnotationRepo(witnessTargetRepo(brief), witnessOriginRepo(home)))
+	return r, true
+}
+
+// receiptRunnerCell is the Runner cell a container row records under r.
+func receiptRunnerCell(r bracketReceipt) string {
+	return runnerCellText(r.Runner, r.RunnerTree, r.OnBehalfOf, r.RunnerSource)
 }
 
 // containerBracketRefusal validates the bracket flags of a row-running
@@ -117,6 +189,9 @@ func readBracketReceipt(path, home, brief string) (bracketReceipt, string, strin
 	if _, err := time.Parse(time.RFC3339, r.Opened); err != nil {
 		return r, "", "", fmt.Errorf("the receipt carries no RFC 3339 opened time from the open step")
 	}
+	if err := receiptRunnerProblem(r); err != nil {
+		return r, "", "", err
+	}
 	var peek struct {
 		Binding struct {
 			Version                  int
@@ -149,22 +224,31 @@ func readBracketReceipt(path, home, brief string) (bracketReceipt, string, strin
 	return r, line, b.Brief, nil
 }
 
+// containerAdmit is what a container run takes from the host's receipt: the
+// attestation line, the admitted tree digest, and every part of the Runner
+// cell the host derived at the open step.
+type containerAdmit struct {
+	attestation, tree string
+	cell              bracketReceipt // Runner, RunnerSource, RunnerTree, OnBehalfOf
+}
+
 // containerAdmission is the container half: the host's receipt replaces
-// admission, and the mounted root must digest to the receipt's tree before
-// any row runs. It returns the attestation line and that digest.
-func containerAdmission(receiptPath, root, brief string) (string, string, error) {
+// admission and identity derivation, and the mounted root must digest to the
+// receipt's tree before any row runs.
+func containerAdmission(receiptPath, root, brief string) (containerAdmit, error) {
 	r, line, _, err := readBracketReceipt(receiptPath, root, brief)
 	if err != nil {
-		return "", "", fmt.Errorf("container admission refused; no Verify rows executed: %w", err)
+		return containerAdmit{}, fmt.Errorf("container admission refused; no Verify rows executed: %w", err)
 	}
 	tree, err := homeTreeDigest(root)
 	if err != nil {
-		return "", "", fmt.Errorf("container admission refused; no Verify rows executed: %w", err)
+		return containerAdmit{}, fmt.Errorf("container admission refused; no Verify rows executed: %w", err)
 	}
 	if tree != r.Tree {
-		return "", "", fmt.Errorf("container admission refused; no Verify rows executed: the mounted root %s digests to %s, not the %s the host recorded at the open step. The container is not running the admitted home", root, tree, r.Tree)
+		return containerAdmit{}, fmt.Errorf("container admission refused; no Verify rows executed: the mounted root %s digests to %s, not the %s the host recorded at the open step. The container is not running the admitted home", root, tree, r.Tree)
 	}
-	return line, tree, nil
+	cell := bracketReceipt{Runner: r.Runner, RunnerSource: r.RunnerSource, RunnerTree: r.RunnerTree, OnBehalfOf: r.OnBehalfOf}
+	return containerAdmit{attestation: line, tree: tree, cell: cell}, nil
 }
 
 // relWithin returns p's slash path relative to root when p lies inside root,
@@ -305,7 +389,8 @@ func writeContainerWitness(path, home, table string) error {
 }
 
 // runOpenBracket is `verifyrun --open-bracket`: the host's first half. It
-// writes the receipt file only when the host check admits the home.
+// writes the receipt file only when the host derives an executing identity
+// for the home and the host check admits it.
 func runOpenBracket(home, brief, out string, stdout, stderr io.Writer) int {
 	refuse := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "statusgen verifyrun --open-bracket: refused, no receipt written: "+format+"\n", a...)
@@ -313,6 +398,16 @@ func runOpenBracket(home, brief, out string, stdout, stderr io.Writer) int {
 	}
 	if rel, ok := relWithin(home, out); ok {
 		return refuse("--out %s sits inside the home (%s); the receipt must be outside it", out, rel)
+	}
+	// The Runner cell is derived here, on the host, where the home's git
+	// directory and the roster are readable. The container reads it from the
+	// receipt.
+	cell, ok := hostRunnerCell(home, brief)
+	if !ok {
+		return refuse("could-not-attribute — no executing identity is available on the host for %s (no forge role, no GITHUB_ACTOR under GitHub Actions, no git user.name/user.email). The container run would have no runner to record; set the home's git identity and re-open", home)
+	}
+	if err := receiptRunnerProblem(cell); err != nil {
+		return refuse("%v", err)
 	}
 	check, err := hostCheckVerifier(home, brief)
 	if err != nil {
@@ -328,11 +423,14 @@ func runOpenBracket(home, brief, out string, stdout, stderr io.Writer) int {
 		return refuse("%v", err)
 	}
 	opened := nowFunc().UTC().Format(time.RFC3339)
-	body := `{"check":` + string(check) + `,"tree":"` + tree + `","opened":"` + opened + `"}` + "\n"
+	quoted := func(s string) string { b, _ := json.Marshal(s); return string(b) }
+	body := `{"check":` + string(check) + `,"tree":"` + tree + `","opened":"` + opened +
+		`","runner":` + quoted(cell.Runner) + `,"runner_source":` + quoted(cell.RunnerSource) +
+		`,"runner_tree":` + quoted(cell.RunnerTree) + `,"on_behalf_of":` + quoted(cell.OnBehalfOf) + `}` + "\n"
 	if err := os.WriteFile(out, []byte(body), 0o644); err != nil {
 		return refuse("%v", err)
 	}
-	fmt.Fprintf(stdout, "opened %s tree=%s receipt=%s\n", opened, tree, out)
+	fmt.Fprintf(stdout, "opened %s tree=%s runner=%s (%s) receipt=%s\n", opened, tree, cell.Runner, cell.RunnerSource, out)
 	return verifyrunExitPass
 }
 
@@ -360,6 +458,7 @@ type containerBlock struct {
 	attestation string
 	brief       string // the attestation's home-relative brief
 	tree        string
+	rows        []string // the table rows between its own header and Tree-Digest
 }
 
 // findContainerBlock reads a container witness file: it must END with the
@@ -404,11 +503,13 @@ func findContainerBlock(text string) (containerBlock, error) {
 		}
 	}
 	containerRows, ownHeader := 0, false
+	var rows []string
 	for i := n - 4; i >= 0 && strings.HasPrefix(lines[i], "|"); i-- {
 		if isWitnessHeaderLine(lines[i]) {
 			ownHeader = true
 			break
 		}
+		rows = append(rows, lines[i])
 		if witnessSandboxOf(lines[i]) == sandboxContainerNetns {
 			containerRows++
 		}
@@ -424,7 +525,36 @@ func findContainerBlock(text string) (containerBlock, error) {
 		// table's Tree-Digest, image and attestation lines.
 		return containerBlock{}, fmt.Errorf("the container rows above the %sline carry no witness table header of their own, so the bracket's span would start at another table", treeDigestPrefix)
 	}
-	return containerBlock{lines: lines, attestation: lines[n-1], brief: m[5], tree: tree}, nil
+	return containerBlock{lines: lines, attestation: lines[n-1], brief: m[5], tree: tree, rows: rows}, nil
+}
+
+// containerRowRunnerProblem is the close step's check of the Runner cell of
+// every row of the container's own table (rows run upward from the Tree-Digest
+// line, so the last one is the header's separator line, which is skipped):
+// each must be a witness row whose Runner cell is exactly want, the cell the
+// host derived, byte for byte: runner, tree token, on-behalf-of annotation and
+// source tag. A row the container wrote under any other identity, tree or
+// principal, or with none, refuses the close.
+func containerRowRunnerProblem(rows []string, want string) string {
+	for i, row := range rows {
+		if i == len(rows)-1 && witnessSeparatorLine(row) {
+			continue
+		}
+		cells := witnessCells(row)
+		if cells == nil {
+			return fmt.Sprintf("the container table carries a row that is not a witness row: %q", row)
+		}
+		if cell := strings.TrimSpace(cells[witnessCellRunner]); cell != want {
+			return fmt.Sprintf("row %s's Runner cell %q is not the cell the host derived and recorded at the open step, %q", strings.TrimSpace(cells[0]), cell, want)
+		}
+	}
+	return ""
+}
+
+// witnessSeparatorLine reports whether a table line is a header separator
+// (`|---|---|…`).
+func witnessSeparatorLine(l string) bool {
+	return strings.Trim(strings.TrimSpace(l), "|-: ") == ""
 }
 
 // runCloseBracket is `verifyrun --close-bracket`: the host's second half. It
@@ -459,6 +589,38 @@ func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stder
 	if receiptLine != block.attestation {
 		return refuse("the receipt does not name the run the witness names:\n  witness: %s\n  receipt: %s", block.attestation, receiptLine)
 	}
+	// The home must be the tree the open step admitted before anything is
+	// re-derived from it: a moved home refuses here, by digest.
+	tree, err := homeTreeDigest(home)
+	if err != nil {
+		return refuse("%v", err)
+	}
+	if tree != receipt.Tree {
+		return refuse("the home's tree digest %s is not the %s recorded at the open step: the home moved between open and close", tree, receipt.Tree)
+	}
+	if tree != block.tree {
+		return refuse("the home's tree digest %s is not the witness's Tree-Digest %s: the witness was not taken on this home", tree, block.tree)
+	}
+	// The Runner cell is re-derived on the host, from the same sources the
+	// open step read, never taken from the receipt or the witness: a receipt
+	// altered after the open step, or a container that wrote another
+	// identity, tree or principal into its rows, refuses here. The container
+	// witness and the receipt both sit outside the home, whose digest has
+	// just matched the receipt's, so an honest home renders the same tree
+	// token at close as at open. None of this starts deskdispatch.
+	host, ok := hostRunnerCell(home, brief)
+	if !ok {
+		return refuse("could-not-attribute — no executing identity is available on the host for %s, so the runner the receipt names cannot be confirmed", home)
+	}
+	if host.Runner != receipt.Runner || host.RunnerSource != receipt.RunnerSource {
+		return refuse("the receipt names runner %s (%s), but the host derives %s (%s): the receipt was not written by this home's open step, or it was altered", receipt.Runner, receipt.RunnerSource, host.Runner, host.RunnerSource)
+	}
+	if host.RunnerTree != receipt.RunnerTree || host.OnBehalfOf != receipt.OnBehalfOf {
+		return refuse("the receipt names runner tree %q and on-behalf-of %q, but the host derives %q and %q: the receipt was altered, or the home moved between open and close", receipt.RunnerTree, receipt.OnBehalfOf, host.RunnerTree, host.OnBehalfOf)
+	}
+	if problem := containerRowRunnerProblem(block.rows, receiptRunnerCell(host)); problem != "" {
+		return refuse("%s", problem)
+	}
 	check, err := hostCheckVerifier(home, brief)
 	if err != nil {
 		return refuse("%v", err)
@@ -472,16 +634,6 @@ func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stder
 	}
 	if hostLine != block.attestation {
 		return refuse("the host check does not re-admit the run the witness names (run, source, brief, model or tier differ):\n  witness: %s\n  host:    %s", block.attestation, hostLine)
-	}
-	tree, err := homeTreeDigest(home)
-	if err != nil {
-		return refuse("%v", err)
-	}
-	if tree != receipt.Tree {
-		return refuse("the home's tree digest %s is not the %s recorded at the open step: the home moved between open and close", tree, receipt.Tree)
-	}
-	if tree != block.tree {
-		return refuse("the home's tree digest %s is not the witness's Tree-Digest %s: the witness was not taken on this home", tree, block.tree)
 	}
 	opened, _ := time.Parse(time.RFC3339, receipt.Opened)
 	closed := nowFunc().UTC()

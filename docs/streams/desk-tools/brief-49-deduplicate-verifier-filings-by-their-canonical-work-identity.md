@@ -23,13 +23,13 @@ outcome: none
 version: 2
 id: 2aad844d-9d46-42bb-8597-6a27eba517ad
 consumers:
-  - "tools/desk/cmd/verifyloop/flow_49_test.go: follow-up desk-tools/49 (planned test contract)"
-  - "tools/desk/cmd/deskfile/flow_49_test.go: follow-up desk-tools/49 (planned test contract)"
-  - "tools/desk/cmd/deskfile/deskfile.go: follow-up desk-tools/49 (this implementation brief)"
-  - "tools/desk/cmd/deskfile/matcher.go: follow-up desk-tools/49 (this implementation brief)"
-  - "tools/desk/cmd/verifyloop/repair.go: follow-up desk-tools/49 (this implementation brief)"
-  - "tools/desk/internal/deskkit/repairobligation.go: follow-up desk-tools/49 (this implementation brief)"
-  - "changelog/verifier-filing-key.md: follow-up desk-tools/49 (this implementation brief)"
+  - "tools/desk/cmd/verifyloop/flow_49_test.go: fixed-here (planned test contract)"
+  - "tools/desk/cmd/deskfile/flow_49_test.go: fixed-here (planned test contract)"
+  - "tools/desk/cmd/deskfile/deskfile.go: fixed-here (this implementation brief)"
+  - "tools/desk/cmd/deskfile/matcher.go: fixed-here (this implementation brief)"
+  - "tools/desk/cmd/verifyloop/repair.go: fixed-here (this implementation brief)"
+  - "tools/desk/internal/deskkit/repairobligation.go: fixed-here (this implementation brief)"
+  - "changelog/verifier-filing-key.md: fixed-here (this implementation brief)"
 ---
 
 # Brief 49 — Deduplicate verifier filings by their canonical work identity

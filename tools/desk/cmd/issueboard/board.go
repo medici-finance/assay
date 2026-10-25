@@ -566,6 +566,8 @@ type issueClassifyInput struct {
 	// work item, not free work: it is EXCLUDED from CREATE-PLACEHOLDER and rendered
 	// ADDRESSED→<role> so the addressee's own sweep leads with it.
 	addressed bool
+	// addressUnknown holds malformed or conflicting to: labels without guessing a role.
+	addressUnknown bool
 	// addresseeResponded is whether the addressed role's App has commented on the issue.
 	// It is the SECOND, independent layer behind the inbox: an addressed item aged past
 	// the SLA with no response from that role's App becomes visible (ESCALATE) without the
@@ -605,6 +607,9 @@ func classifyIssue(in issueClassifyInput) string {
 			return actEscalate
 		}
 		return actAddressed
+	}
+	if in.open && in.addressUnknown {
+		return actAwait
 	}
 	if in.hasPlaceholder {
 		if !in.open {
@@ -747,7 +752,8 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 			if projection != issueflow.Full && !issueflow.Select(projection, issueflow.Candidate{
 				HasPlaceholder: hasPh, Excluded: hasExcludedLabel(names),
 				DecisionOwed: decisionOwed, Addressed: addressed, Role: addrRole,
-				HelpWanted: helpWanted,
+				AddressUnknown: addrState == deskkit.RaisedByIndeterminate,
+				HelpWanted:     helpWanted,
 			}, toFilter) {
 				continue
 			}
@@ -771,7 +777,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 			}
 
 			// Desk-inbox addressee (`to:<role>`), ONE valid role only (a conflicting pair
-			// is malformed and falls through to ordinary classification, never a guess).
+			// is malformed and held as AWAIT, never offered as ordinary work).
 
 			// The --to view shows ONLY that role's inbox: an issue addressed to a different
 			// role (or to nobody) is not part of it and is dropped before any extra read.
@@ -820,6 +826,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 				decisionOwed:       decisionOwed,
 				agedPastSLA:        agedPastSLA,
 				addressed:          addressed,
+				addressUnknown:     addrState == deskkit.RaisedByIndeterminate,
 				addresseeResponded: addresseeResponded,
 			})
 			row := issueBoardRow{Repo: repo, Number: iss.Number, Title: iss.Title, Action: action, AgeDays: ageDays, EscalationUnverifiable: escalationUnverifiable}
@@ -852,6 +859,28 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 		// could-not-check as a whole, because a listing that omitted a live issue has also
 		// silently omitted CREATE-PLACEHOLDER / ESCALATE work this board cannot see. Rows
 		// are walked in placeholder order so the refusal names the same issue every run.
+		// Gather only the same positive reads the serial loop needs. Observations
+		// are held in this repository/invocation only; no closure is cached. The
+		// wrapped capability batches bounded positive reads where supported and
+		// preserves each original GetIssue read everywhere else.
+		var absent []int
+		uniqueAbsent := map[int]bool{}
+		groupPositive := true
+		if toFilter == "" && projection != issueflow.Inbox {
+			for _, ph := range placeholders {
+				if ph.Repo == repo && ph.Status != "done" && !seen[repo+"#"+strconv.Itoa(ph.Issue)] {
+					if uniqueAbsent[ph.Issue] {
+						groupPositive = false
+					}
+					uniqueAbsent[ph.Issue] = true
+					absent = append(absent, ph.Issue)
+				}
+			}
+		}
+		positive := map[int]deskkit.PositiveIssueState{}
+		// Load at most the next bounded page when needed. A partial-listing or
+		// failed read still stops the sweep before later pages are requested.
+		absentOffset := 0
 		for _, ph := range placeholders {
 			if ph.Repo != repo || seen[repo+"#"+strconv.Itoa(ph.Issue)] {
 				continue
@@ -873,10 +902,36 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 				rows = append(rows, issueBoardRow{Repo: repo, Number: ph.Issue, Title: "(placeholder already retired)", Action: actNone})
 				continue
 			}
-			state, title, serr := reader.fetchIssueState(ph.Issue)
-			if serr != nil {
-				return nil, nil, serr
+			if _, ok := positive[ph.Issue]; !ok || !groupPositive {
+				end := min(absentOffset+deskkit.PositiveIssueStateBatchSize, len(absent))
+				if !groupPositive {
+					end = absentOffset + 1
+				}
+				var observed []deskkit.PositiveIssueState
+				var serr error
+				if end-absentOffset == 1 {
+					n := absent[absentOffset]
+					state, title, err := reader.fetchIssueState(n)
+					serr = err
+					if err == nil {
+						observed = []deskkit.PositiveIssueState{{Number: n, State: state, Title: title}}
+					}
+				} else {
+					observed, serr = deskkit.ReadPositiveIssueStates(reader.forge, reader.repo, absent[absentOffset:end])
+				}
+				if serr != nil {
+					return nil, nil, deskkit.Unverifiable(fmt.Sprintf("could-not-check: positive issue states for %s could not be read (RETIRE needs a positive closed read, never listing absence)", repo), serr)
+				}
+				for _, observation := range observed {
+					positive[observation.Number] = observation
+				}
+				absentOffset = end
 			}
+			observation, ok := positive[ph.Issue]
+			if !ok || (observation.State != "open" && observation.State != "closed") {
+				return nil, nil, deskkit.Unverifiable(fmt.Sprintf("could-not-check: positive issue state for %s#%d was not returned", repo, ph.Issue), nil)
+			}
+			state, title := observation.State, observation.Title
 			if state == "open" {
 				return nil, nil, deskkit.Unverifiable(fmt.Sprintf(
 					"could-not-check: the open-issue listing for %s is partial — %s#%d reads open but was absent "+

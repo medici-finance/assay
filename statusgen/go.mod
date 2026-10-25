@@ -3,6 +3,7 @@ module github.com/medici-finance/assay/statusgen
 go 1.27.0
 
 require (
+	github.com/medici-finance/assay/deskcore v0.0.0-00010101000000-000000000000
 	github.com/medici-finance/assay/forgeread v0.0.0-00010101000000-000000000000
 	github.com/medici-finance/assay/gitquiet v0.0.0-00010101000000-000000000000
 	github.com/medici-finance/assay/perfrec v0.0.0-00010101000000-000000000000
@@ -33,3 +34,5 @@ replace github.com/medici-finance/assay/forgeread => ../forgeread
 replace github.com/medici-finance/assay/perfrec => ../perfrec
 
 replace github.com/medici-finance/assay/gitquiet => ../gitquiet
+
+replace github.com/medici-finance/assay/deskcore => ../deskcore

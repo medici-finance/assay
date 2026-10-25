@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"gopkg.in/yaml.v3"
 )
 
@@ -465,6 +466,7 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 		// reactivate one whose issue lost it while staying open.
 		openSet := map[int]bool{}
 		openExcluded := map[int]bool{}
+		openAddressed := map[int]bool{}
 		// openIssue keeps each open issue itself, so a reactivate re-derives the
 		// placeholder's gate and labels from LIVE state (reactivatePlan).
 		openIssue := map[int]ghIssue{}
@@ -474,7 +476,14 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 			labels := labelNames(iss.Labels)
 			excluded := hasExcludedLabel(labels)
 			openExcluded[iss.Number] = excluded
-			if excluded {
+			candidate := issueflow.CandidateForLabels(issueflow.Candidate{Excluded: excluded}, labels)
+			openAddressed[iss.Number] = candidate.Addressed || candidate.AddressUnknown
+			if candidate.AddressUnknown {
+				notices = append(notices, fmt.Sprintf("scan-issues: %s#%d held: unknown addressee; no ordinary scan action", repo, iss.Number))
+			} else if candidate.Addressed {
+				notices = append(notices, fmt.Sprintf("scan-issues: %s#%d held in %s inbox; no ordinary scan action", repo, iss.Number, candidate.Role))
+			}
+			if !issueflow.Select(issueflow.Scanner, candidate, "") {
 				continue
 			}
 			if existing[repo+"#"+strconv.Itoa(iss.Number)] {
@@ -565,7 +574,6 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 					}
 					continue
 				}
-				// Issue is still open.
 				if openExcluded[ph.Issue] {
 					// Open but has GAINED an excluded label — retire it the same
 					// way as a close-out, but with a distinct resolved marker
@@ -579,6 +587,17 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 					} else {
 						// Already done + still excluded, but sitting at the ROOT
 						// → sweep it into done/ too (frontmatter unchanged).
+						closeOuts = append(closeOuts, closeOutPlan{
+							Repo: repo, Issue: ph.Issue, Path: ph.Path, Rel: rel,
+							Action: "sweep", Dest: dest,
+						})
+					}
+					continue
+				}
+				// Addressing prevents reactivation, but never overrides an excluded
+				// label above or leaves a completed placeholder at the stream root.
+				if openAddressed[ph.Issue] {
+					if ph.Status == "done" {
 						closeOuts = append(closeOuts, closeOutPlan{
 							Repo: repo, Issue: ph.Issue, Path: ph.Path, Rel: rel,
 							Action: "sweep", Dest: dest,
@@ -611,7 +630,7 @@ func planScan(root string, streams []*Stream, list issueLister, bless issueBless
 				if err != nil || !ok || ph.Repo != repo {
 					continue
 				}
-				if !openSet[ph.Issue] || openExcluded[ph.Issue] {
+				if !openSet[ph.Issue] || openExcluded[ph.Issue] || openAddressed[ph.Issue] {
 					continue
 				}
 				if held(repo, ph.Issue, "reactivated") {

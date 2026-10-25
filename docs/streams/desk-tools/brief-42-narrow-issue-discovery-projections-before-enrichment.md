@@ -148,3 +148,13 @@ tools/desk-local binding. It does not import cmd/main across modules, duplicate 
 classifier, change this brief's acceptance or add a process supervisor here. Preserve
 the current oracle, authority boundary and planned library home. This is a forward
 consumer, not a dependency on future workflow/controller delivery.
+
+## Prospective planner consumer checkpoint — 23 October 2026
+
+The efficiency spec §2.1/A11–A12 nominates the existing issueflow projection as a
+candidate input to graph-execution/27's shared role planner. Preserve the currently
+assigned Task/Verify/revision until its owner acknowledges any material amendment.
+At pickup, retain all work-ready/intake/inbox populations and projection-before-enrichment;
+qualify per-operation batching only through this owner and existing forge-neutral/37–38.
+No hidden global scan per root, parallel issue classifier or status/acceptance claim is added.
+This checkpoint records requested integration, not new execution Evidence or activation.

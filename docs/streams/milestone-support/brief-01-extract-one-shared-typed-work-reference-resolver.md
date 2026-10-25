@@ -27,15 +27,18 @@ sources:
   - docs/library-first.md
   - "freshness-checked 2026-10-22 @ a631d47ea71b3270ab33ba08af47d3dde8c9e7d5"
 consumers:
-  - "statusgen/workref/: follow-up milestone-support/01 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/contexthandoff/ids.go: follow-up milestone-support/01 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/contexthandoff/ids_test.go: follow-up milestone-support/01 (this delivery; replace with fixed-here in implementation)"
-  - "tools/desk/internal/deskkit/trailer.go: follow-up milestone-support/01 (this delivery; replace with fixed-here in implementation)"
-  - "tools/desk/internal/deskkit/trailer_test.go: follow-up milestone-support/01 (this delivery; replace with fixed-here in implementation)"
-  - "tools/desk/go.mod: follow-up milestone-support/01 (this delivery; replace with fixed-here in implementation)"
-  - "tools/desk/go.sum: follow-up milestone-support/01 (this delivery; replace with fixed-here in implementation)"
-  - "docs/contracts.md: follow-up milestone-support/01 (this delivery; replace with fixed-here in implementation)"
-  - "docs/library-first.md: follow-up milestone-support/01 (this delivery; replace with fixed-here in implementation)"
+  - "statusgen/workref/: fixed-here milestone-support/01 (shared parser, actual adapters and bounded qualification)"
+  - "statusgen/contexthandoff/ids.go: fixed-here milestone-support/01 (shared parser, actual adapters and bounded qualification)"
+  - "statusgen/contexthandoff/ids_test.go: fixed-here milestone-support/01 (shared parser, actual adapters and bounded qualification)"
+  - "tools/desk/internal/deskkit/trailer.go: fixed-here milestone-support/01 (shared parser, actual adapters and bounded qualification)"
+  - "tools/desk/internal/deskkit/trailer_test.go: fixed-here milestone-support/01 (shared parser, actual adapters and bounded qualification)"
+  - "tools/desk/go.mod: fixed-here milestone-support/01 (shared parser, actual adapters and bounded qualification)"
+  - "tools/desk/go.sum: fixed-here milestone-support/01 (shared parser, actual adapters and bounded qualification)"
+  - "statusgen/domain/mutate.py: fixed-here milestone-support/01 (snapshot includes the extracted workref dependency)"
+  - "statusgen/briefv2.go: follow-up milestone-support/04 (strict legacy grammar retained)"
+  - "statusgen/domain/: follow-up milestone-support/09 (strict compatibility fullIds retained)"
+  - "docs/contracts.md: fixed-here milestone-support/01 (shared parser, actual adapters and bounded qualification)"
+  - "docs/library-first.md: fixed-here milestone-support/01 (shared parser, actual adapters and bounded qualification)"
   - "docs/streams/milestone-support/brief-02-negotiate-reader-capabilities-through-one-shared-contract.md: follow-up milestone-support/02 (consumes this delivery; exact runtime readers enumerated at pickup)"
   - "docs/streams/milestone-support/brief-03-load-and-validate-versioned-milestone-records.md: follow-up milestone-support/03 (consumes this delivery; exact runtime readers enumerated at pickup)"
   - "docs/streams/milestone-support/brief-04-add-negotiated-brief-schema-and-prefixed-authoring.md: follow-up milestone-support/04 (consumes this delivery; exact runtime readers enumerated at pickup)"
@@ -76,6 +79,46 @@ single-point-of-failure: incorrect shared identity or capability interpretation;
 - [Existing semantic owners](../../contracts.md).
 - [Dependency waves and adoption holds](README.md).
 
+## Architecture pickup — implementation assessment
+
+Disposition: **continue** within the user's explicitly requested bounded implementation.
+The gate remains human; issue #4219 has no recorded ruling at pickup. This delivery supplies
+a reviewable implementation, not human design sign-off, acceptance or reader activation.
+The controlling brief includes the parseable Human decision repair from source commit
+`01b032dc`; its pre-implementation source SHA-256 is `c7276db0aec9d74b629ec49b8aa4c3e9e108775a4322be36cac25552cb9d3a27`.
+Implementation/packet baseline is `0221bf5c15bde20fa69a4b7e47fd492fd596736d`.
+
+Read current project rules, implementation-pickup, Go engineering/catalogue, brief §3.8,
+milestone §2, stream integration, library-first and existing semantic-owner rows. The public
+workref API was absent at pickup; the two Go modules and their actual legacy entrypoints
+were inspected. No third-party parser fits this project-specific grammar; the brief requires
+a stdlib-only owner, reusing the existing statusgen module and Go text/number primitives.
+No new dependency version, process, credential or online forge authority is introduced.
+
+Consumer coverage: QID decoding/checking and domain consumers retain the existing fullId;
+trailer authors/representation/claim readers retain their existing reductions. Those actual
+entrypoints call the new core. The domain mutation snapshot is updated to include the
+extracted pure dependency. Separate brief-v2 grammar, schema/generator, milestone loaders,
+capability assessment, claims/rulings and history are routed to the named follow-ups above.
+The concurrent verification-handoff/01 work touches separate deskcore/module and semantic-owner
+lines; it does not provide or change workref behavior. No active claim is overwritten.
+Coverage is bounded to these source readers and the observed open PR set, not a claim that
+all future/private readers or published module versions have been qualified.
+
+Source records (SHA-256 at pickup):
+
+| Source | Digest |
+|---|---|
+| `spec/brief-v1.md` | `2ded10f427b07489a9b2701566ee0f0b08d5a8ad8ce94f16738597a3b4ad9842` |
+| `spec/milestone-v1.md` | `372430ec71ac115935ae33bdd19b44c44460c607be296faa505e540f521dd3cb` |
+| `spec/stream-v1.md` | `8ddceacbb239bdc2ee537d576827387914293d74adbf9cd844fdc786f9cfdca9` |
+| `docs/contracts.md` | `71c68c56b1c13da48feb00596b0e07e590814273255cfd94824568fcb48f4c0d` |
+| `docs/go-engineering.md` | `dbb0f6bf68f6f0ccad88da47531c14c993d4cd2c07776df24e385ce35480f957` |
+| `docs/library-first.md` | `a844301545abea0d3708894b44c151665a43f1a94063e8b95b1d1ab2d642b9b2` |
+
+The named test/mutation commands below are implementation qualification. Independent
+post-merge Evidence remains empty until a non-implementer verifies the merged delivery.
+
 ## Ground rules
 
 - Own isolated branch and draft implementation PR. Do not merge, flip status/spec/stream/PR readiness, dispatch work, cut a tag, change installed pins or contact a cluster.
@@ -86,7 +129,14 @@ single-point-of-failure: incorrect shared identity or capability interpretation;
 
 ## Human decision
 
-Review the concrete identity/capability boundary and preserved existing authority checks through the existing decision process before implementation. Options: approve the bounded design, request correction, or hold. No answer supplies no approval. The authoring request does not grant implementation sign-off.
+Review the concrete identity/capability boundary and preserved existing authority checks through the existing decision process before implementation. The authoring request does not grant implementation sign-off.
+
+Options:
+1. Approve the bounded design while preserving independent authority checks and legacy parser acceptance sets.
+2. Request corrections while retaining the existing holds.
+3. Hold the proposed change.
+
+Default if no answer: none — blocks until answered
 
 ## Task
 
@@ -105,10 +155,10 @@ The following named tests, fixtures and executable mutation maps are FUTURE DELI
 
 | # | Class | Shell | Command | Expect |
 |---|---|---|---|---|
-| 1 | check:ci +flow +mutation | sh | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestWorkrefGrammarAndAliases$' ./workref/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestWorkrefGrammarAndAliases ' "$milestone_verify_out")` | exit 0 and named PASS; mixed colon/slash aliases yield one identity, exact revision survives, wrong kind/whitespace/unknown root/overflow fail; remove alias context or classify a prefix-shaped stream as the kind and the test fails. |
-| 2 | check:ci +flow +mutation | sh | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestLegacyQIDParity$' ./contexthandoff/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestLegacyQIDParity ' "$milestone_verify_out")` | exit 0 and named PASS; actual legacy API still refuses prefixes/slashes/revision selectors while valid old QIDs preserve meaning; broadening the legacy profile fails. |
-| 3 | check:ci +flow +mutation | sh | `(cd tools/desk && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedWorkrefTrailerParity$' ./internal/deskkit/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestSharedWorkrefTrailerParity ' "$milestone_verify_out")` | exit 0 and named PASS; actual trailer parser delegates and preserves existing outputs; a divergent alias interpretation or dropped revision in the new explicit adapter fails. |
-| 4 | check:ci +flow +mutation | sh | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestWorkrefPublicImportBoundary$' ./workref/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestWorkrefPublicImportBoundary ' "$milestone_verify_out")` | exit 0 and named PASS; both module-consumer fixtures import the public package with GOWORK=off; planted tools/desk/internal, net/http, os/exec or credential dependency fails. |
+| 1 | check:ci +flow +mutation | sh | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -timeout=160s -v -run '^TestWorkrefGrammarAndAliases$' ./workref/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestWorkrefGrammarAndAliases ' "$milestone_verify_out")` | exit 0 and named PASS; mixed colon/slash aliases yield one identity, exact revision survives, wrong kind/whitespace/unknown root/overflow fail; remove alias context or classify a prefix-shaped stream as the kind and the test fails. |
+| 2 | check:ci +flow +mutation | sh | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -timeout=160s -v -run '^TestLegacyQIDParity$' ./contexthandoff/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestLegacyQIDParity ' "$milestone_verify_out")` | exit 0 and named PASS; actual legacy API still refuses prefixes/slashes/revision selectors while valid old QIDs preserve meaning; broadening the legacy profile fails. |
+| 3 | check:ci +flow +mutation | sh | `(cd tools/desk && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -timeout=160s -v -run '^TestSharedWorkrefTrailerParity$' ./internal/deskkit/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestSharedWorkrefTrailerParity ' "$milestone_verify_out")` | exit 0 and named PASS; actual trailer parser delegates and preserves existing outputs; a divergent alias interpretation or dropped revision in the new explicit adapter fails. |
+| 4 | check:ci +flow +mutation | sh | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -timeout=160s -v -run '^TestWorkrefPublicImportBoundary$' ./workref/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestWorkrefPublicImportBoundary ' "$milestone_verify_out")` | exit 0 and named PASS; both module-consumer fixtures import the public package with GOWORK=off; planted tools/desk/internal, net/http, os/exec or credential dependency fails. |
 
 ## Pre-mortem and dispatch check
 
@@ -117,6 +167,47 @@ The wrong-but-plausible delivery is the mutation named in each Verify row. Each 
 ## Evidence
 
 <!-- Empty by design. Independent verifier records actual commit, environment, command/exit, named test and mutation result, coverage/unknowns and evidence location. -->
+
+### Independent run 2026-10-24 (claude-opus-5-5, strong) — container-netns admission bracket
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -timeout=160s -v -run '^TestWorkrefGrammarAndAliases$' ./workref/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestWorkrefGrammarAndAliases ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-24 | assay-verifier-app[bot] @ cb17e8f99a55 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -timeout=160s -v -run '^TestLegacyQIDParity$' ./contexthandoff/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestLegacyQIDParity ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-24 | assay-verifier-app[bot] @ cb17e8f99a55 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd tools/desk && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -timeout=160s -v -run '^TestSharedWorkrefTrailerParity$' ./internal/deskkit/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestSharedWorkrefTrailerParity ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-24 | assay-verifier-app[bot] @ cb17e8f99a55 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -timeout=160s -v -run '^TestWorkrefPublicImportBoundary$' ./workref/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestWorkrefPublicImportBoundary ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-24 | assay-verifier-app[bot] @ cb17e8f99a55 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:02c3cffe5a0ce6e37a9c7ddda5941024f04ab4eba05b05c2549c10a2d595f40c
+Container-Image: sha256:be2d252957e0a5f152b42cd21860c13ed02c63d4bb98ad4234ca3e1d5e800204
+Verification-Attestation: medici-finance/assay#4253 run=ba4b7302fd2f6d1b9b585a1a1b825196ef650a30982af23502990ae516afea1c source=cb17e8f99a550ce4b08a6d61030c3f9d0d1f310a brief=docs/streams/milestone-support/brief-01-extract-one-shared-typed-work-reference-resolver.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=ba4b7302fd2f6d1b9b585a1a1b825196ef650a30982af23502990ae516afea1c source=cb17e8f99a550ce4b08a6d61030c3f9d0d1f310a tree=sha256:02c3cffe5a0ce6e37a9c7ddda5941024f04ab4eba05b05c2549c10a2d595f40c witness=sha256:0b44b107266b045c6bdadda3ca5ed6827a1fed199ba2e5257911c8a0e5aabae6 opened=2026-10-24T01:20:05Z closed=2026-10-24T01:21:28Z before=receipt after=check-verifier
+
+Verified source cb17e8f99a550ce4b08a6d61030c3f9d0d1f310a (merged main; delivery merged as #4224, merge commit 3de4d1295d64236ccfcda8e8925cbda332fef385). Independent non-implementer verifier: claude-opus-5-5, strong tier, attestation medici-finance/assay#4253 (run ba4b7302fd2f6d1b9b585a1a1b825196ef650a30982af23502990ae516afea1c). Admission check before the bracket exited 0. Host tools: statusgen v1.0.58; deskdispatch sourceSHA=832f9c8f builtAt=2026-10-23T22:20:17Z releaseTag=v1.0.58. Container lane: release-pinned runner ghcr.io/medici-finance/verify-runner:v1.0.58@sha256:be2d252957e0a5f152b42cd21860c13ed02c63d4bb98ad4234ca3e1d5e800204, image Id sha256:767f6a3545748b57a85f85dc80216e97203a39aa07e2ef137483d197dd60b175, linux/amd64, run with --network none. All four check:ci rows ran in ONE closed admission bracket (open 2026-10-24T01:20:05Z, close 2026-10-24T01:21:28Z); bracket-digest reported verdict=match. Rows 1-4: pass, exit 0, named PASS guard satisfied. The home tree was clean before and after the bracket.
+
+Mutation obligations (supplemental probe, discharges no original row). The repo's own mutation driver, statusgen/testdata/milestone-support/01-mutate.py, was run in the same offline release-pinned image against a git-archive copy of cb17e8f99 outside the verifier home. Every baseline passed and all 10 manifest mutations were caught (exit 0):
+- Row 1, TestWorkrefGrammarAndAliases: declaring-root (alias context removed), final-segment-kind (prefix-shaped stream classified as the kind), exact-overflow, alias-collision. All caught.
+- Row 2, TestLegacyQIDParity: legacy-qid-broadens. Caught.
+- Row 3, TestSharedWorkrefTrailerParity: trailer-projection (divergent alias interpretation), trailer-exact-revision (dropped revision). Both caught.
+- Row 4, TestWorkrefPublicImportBoundary: second-process-import (os/exec), second-network-import (net/http), second-environment-import (os). All caught.
+- Row 4 additional hand plants on the same copy. A planted tools/desk/internal/deskkit import turns the row red only as a build failure ("no required module provides package ... [setup failed]", exit 1). The row exits non-zero, but the named boundary assertion is not what fires, because statusgen cannot resolve the tools/desk module. A planted credential-named in-module package (statusgen/internal/credential) is caught by the named assertion itself ("pure workref boundary", "non-stdlib dependency", "forbidden dependency"; exit 1). By inspection, the AST import allowlist (fmt, regexp, strconv, strings, unicode) refuses any other import.
+
+Risk-bearing values. Frontmatter: risk sensitive-data yes, irreversible no. Enumeration covered the workref package (workref.go, legacy.go) and the legacy grammars it replaced. Ranked: grammar and bounds first (a wrong value silently re-identifies or merges work identities); test timeouts last (operational, reversible).
+RISK-VALUE: DERIVED — nameRe = ^[a-z0-9][a-z0-9-]*$ @ statusgen/workref/workref.go:139 — byte-identical to the legacy idSegmentRe still at statusgen/contexthandoff/ids.go:20, so it preserves legacy segment meaning
+RISK-VALUE: DERIVED — numberRe = ^[0-9]{2,4}[a-z]?$ @ statusgen/workref/workref.go:140 — identical to legacy idNumberRe (statusgen/contexthandoff/ids.go:21); brief section 3.8 says number grammar follows context-handoff section 2
+RISK-VALUE: DERIVED — milestoneRe = ^[0-9]{2,}$ (and n != 0) @ statusgen/workref/workref.go:141, :218 — spec/milestone-v1.md: a positive decimal number padded to at least two digits; m-3 is rejected
+RISK-VALUE: DERIVED — issueRe = ^[A-Za-z0-9._/-]*#[0-9]+$ @ statusgen/workref/workref.go:142 — identical to the removed contexthandoff issueRefRe at the delivery parent 0221bf5c
+RISK-VALUE: DERIVED — crossRepoRe = ^([a-z][a-z0-9_-]{0,31}):([^:/\s]+)/([0-9]+)$ @ statusgen/workref/workref.go:143 — identical to the removed deskkit reCrossRepoBriefValue at 0221bf5c, which preserves trailer outputs
+RISK-VALUE: DERIVED — segment bounds 2..4 @ statusgen/workref/workref.go:193, statusgen/workref/legacy.go:25 — identical to the removed bounds; the longest spec form is cell:repo:stream:NN (four segments)
+RISK-VALUE: DERIVED — revision == 0 refused, uint64 bound @ statusgen/workref/workref.go:176-177 — section 3.8: a present version is a positive integer. uint64 is an implementation bound; overflow is refused rather than truncated, and the maximum value is kept exactly
+RISK-VALUE: DERIVED — milestone requires revision != 0 @ statusgen/workref/workref.go:218 — milestone-v1: a milestone reference pins an exact positive contract version
+RISK-VALUE: DERIVED — prefixed slash alias with 3 segments refused @ statusgen/workref/workref.go:213 — the spec's draft slash forms are only stream/ID and the full cell:repo:stream/ID
+
+Gate. The brief is gate: human with risk sensitive-data yes. Its start decision #4219 was ruled option 1 (approve the bounded design) by the ratifying human at 2026-10-23T20:23Z. That was after implementation began (#4224 opened at 14:40Z, and the pickup section above records no ruling at pickup) and before the delivery merged (#4224, merge 3de4d1295, at 20:50Z). That ruling approves the design and signs off no verification run. A model PASS does not flip a gate: human item, so the verified transition stays with the human gate (human:ian).
+
+Output column. Every row's Output cell is the SHA-256 of empty input (sha256:e3b0c44298fc…). This follows from the commands themselves, not a capture gap: each row redirects its go test output to a mktemp file and gates on grep -q, so it prints nothing to stdout. The cells therefore attest each row's exit code and its named-PASS grep guard, not test output.
+
+Disclosure (#4163). There were no discarded or failed attempts. One admitted bracket run produced the table above. The only other runs were the supplemental mutation probe and the hand plants. They ran on a copy outside the verifier home and receive no row credit.
+
+**VERIFY: PASS** — 4/4 rows pass exit=0 in one closed container-netns admission bracket at cb17e8f99a55 (bracket-digest verdict=match). Container-row credit is deferred to --bracket-digest --credit on the landed brief. The human gate is still owed: the brief is gate: human (risk sensitive-data yes), and its start decision #4219 approved the design but signs off no verification.
 
 ## Review
 

@@ -34,9 +34,12 @@ proposed verbs are advisory and do not grant claims or permission to write.
 
 `deskboard` shares classifier input assembly and `reviewloop plan` shares plan
 assembly with this API. Their existing flags and output remain compatible. The
-new contract has no collection command or observation-file CLI flag in this change;
-that handoff is desk-tools/40. The legacy idle cadence is unchanged; new library
-callers must supply their own policy revision, clock and oldest acceptable input.
+collector is `deskboard review-queue --out FILE`; `reviewloop plan --snapshot`
+selects locally. `deskdispatch --kit review --pr N --observation FILE` validates
+an advisory source handoff and shares one preparation context with its packet.
+The [operator contract](../../docs/deskboard.md) records freshness boundaries,
+exact-source reuse, measured costs and separate live adoption. The legacy idle
+cadence is unchanged; library planners require explicit policy, clock and cutoff.
 
 ## Review planner state contract
 
@@ -64,7 +67,7 @@ changed or discarded.
 
 | Tool | Verb(s) | Class | Write budget + breaker |
 |------|---------|-------|------------------------|
-| `deskboard` | `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
+| `deskboard` | `review-queue`, `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass), `land` (record a judgment exit for a parked item) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item, each also appended as an `intake-exit-v1` record to `<state dir>/intake-exits.jsonl` (schema: `spec/intake-exit-v1.md`) | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) / local state (`land`) | yes (`run`) |
@@ -872,7 +875,7 @@ work queue or steer a desk action.
   the sensitive-notes rule above it is still prose, and the repo-scoped token above it
   does not exist at all. It inverts an asymmetry that ran the wrong way:
   the risk-path triggers were five tracker-shaped paths applied to every repo, and
-  `example-org/example-k8s` — public, holding the Ledger/Identity manifests — has no
+  `example-org/example-k8s` — public, holding the product's deployment manifests — has no
   `k8s/` directory at all, so it could never be risk-classed and the PUBLIC
   infrastructure repo got strictly LESS mandatory scrutiny than the private
   application one. **This is a policy call standing in for a human decision** (the
@@ -1538,7 +1541,7 @@ The same probe rides on `deskboard actions`: its header carries `mainHealth`, th
 `MAIN-RED` / `MAIN-UNKNOWN` lines print **above** every row (a red `main` outranks a
 merge onto it), and each row on an affected repo is flagged `baseBranchRed` with a note.
 An **absent** `mainHealth` field means the verb did not probe — never that it found
-nothing wrong. `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
+nothing wrong. `review-queue`, `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
 `next-up`, `throughput`, `scope`, `policydrift`, `stalled`,
 `reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
 the absence for every verb on it (JSON **and** `--table`), `TestVerbInventory_Complete`
@@ -2014,7 +2017,7 @@ list of a subset means "no PRs in that repo" and "that repo is not read at all" 
 the same output, so a merge-ready PR in an unwatched repo is not missed — it is
 structurally invisible, and nothing knows to alert. Two halves:
 
-- **Every sweeping verb states its scope.** `prs`, `actions`, `queue`, `health`, `scope`,
+- **Every sweeping verb states its scope.** `review-queue` (requested/admitted/population in its observation), `prs`, `actions`, `queue`, `health`, `scope`,
   `policydrift`, `stalled` and `throughput` carry a `scope` object in the JSON header (repos, count, source) and
   print one scope line on `--table`. Verbs taking an explicit repo (`reviews`, `diff`,
   `files`) **omit** the field entirely — absent means "swept nothing", never "the set was
@@ -2345,8 +2348,8 @@ the budget to free, then retries. Bounded and explicit: a retry-after longer tha
 returns the plain exit 4 and says why.
 
 Use this instead of the raw `gh pr review` fallback. That command has **no head-pinning
-flag**: on #195 a `CHANGES_REQUESTED` written against `151ebe99` landed on `2bbf529c`, a
-commit that had already fixed two of its three findings. Under a saturated limiter the
+flag**: on one review PR a `CHANGES_REQUESTED` written against an earlier commit landed on a
+later commit that had already fixed two of its three findings. Under a saturated limiter the
 fallback is the *common* path, so `--head` — the guarantee that a verdict names the code it
 assessed — was off more often than on. Looping is safe by construction: a `ratelimited`
 audit line neither charges the budget nor feeds the non-progress breaker, so waiting cannot
@@ -2468,7 +2471,7 @@ Constraints in code:
   the comment refuses (exit 5, nothing posted) if the PR head has moved since the comment
   was written, and the assertion runs BEFORE the idempotency read so a stale head can never
   be answered with a success-shaped no-op. Without it the tool stamps whichever head is live
-  at POST time — on #505 the reviewer examined `f9c9ca94` and `d7b2d1d3` was
+  at POST time — on one review the reviewer examined one commit and a later one was
   recorded, because a merge landed mid-review; that one was a clean keep-current merge so
   the conclusions still held, but the tool guaranteed nothing (#513).
   `review`, `security-review` and `ready` stay PR-only and, given an issue number,
@@ -2512,8 +2515,8 @@ Constraints in code:
   `detail`.
 - **If you fall back to raw `gh pr review` on exit 4, RE-ASSERT THE HEAD FIRST** (#197).
   `gh pr review` has no head-pinning flag: it attaches the verdict to whatever the head is
-  at post time. Observed on #195 — a `CHANGES_REQUESTED` written against `151ebe99` landed
-  on `2bbf529c`, a commit that had already fixed two of its three findings; both commands
+  at post time. Observed once — a `CHANGES_REQUESTED` written against an earlier commit landed
+  on a later one, a commit that had already fixed two of its three findings; both commands
   exited 0 and nothing in the output said so. A stale `CHANGES_REQUESTED` blocks a flip on
   closed findings; a stale `APPROVED` certifies a commit nobody reviewed. `deskpost review`
   now prints the assertion recipe itself on exit 4 — read its stderr rather than
@@ -2532,9 +2535,9 @@ deskpost finish security-review <owner/repo> <pr> --verdict pass|fail           
 
 # e.g.
 deskpost finish review example-org/project 42 --verdict approve \
-  --head 5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b --body-file verdict.md --claim project--pr-42
+  --head 4c418b16e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b --body-file verdict.md --claim project--pr-42
 # stdout, exactly one line:
-# deskpost finish: review=<link or id> state=APPROVED head=5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b claim=released
+# deskpost finish: review=<link or id> state=APPROVED head=4c418b16e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b claim=released
 ```
 
 The arguments after `finish review` / `finish security-review` are that verb's own, parsed by
@@ -2720,7 +2723,7 @@ parent), and there is **no `--force` flag anywhere**. It is a local-only verb cl
 takes the C-5 audit line and the C-6 kill switch but NOT the outward-write rate limit.
 
 ```bash
-deskwt add <name> [--branch B] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R] [--lock-session <id>]   # create tracker-<name> on a tracking branch
+deskwt add <name> [--branch B] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R] [--lock-session <id>] [--adopt-run <key>]   # create tracker-<name> on a tracking branch
 deskwt remove <path>                                   # remove ONE proven-safe worktree
 deskwt prune [--repo <path>] [--interval <dur>] [--min-idle 1h]   # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
@@ -2793,7 +2796,14 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
   `add` fails. `<id>` must be a plain name (no `/`, no `..`). The reason carries role-init's
   `session=<id>` form, so `--reclaim-stale-locks` and `--reap-dead-sessions` retire the lock
   only once that session's roster beacon is stale. Without the flag `add` locks nothing, as
-  before.
+  before. `--adopt-run <run key>` (resume only; it requires `--upstream`) is how a rework
+  dispatch reuses the home its earlier run left: instead of the never-clobbered or
+  checked-out refusal, `add` prints that home as the new one when it carries the
+  worktree-scoped `assay.runKey` the caller names, is registered and unlocked, is on
+  `--branch` at exactly the pinned `--base`, and has an empty status including untracked
+  files. `deskdispatch` passes the item's claim key, which it holds by then, so the earlier
+  run is over. Nothing is deleted or reset; a home that fails any clause keeps the original
+  refusal, which says which clause failed.
 
 - **`remove`** refuses a dirty TRACKED tree, unpushed commits, a no-upstream branch, an
   unregistered path, or anything resolving outside the prefixes; untracked build artifacts
@@ -5870,7 +5880,7 @@ trailers by hand, under the same review the trailer text is meant to receive. Th
 covers the routine path (tag current `main`, no waiver) and refuses to be the vehicle for
 the exceptional one.
 
-**The `workflow_dispatch` release path (2026-08-02, `4dfcac9`) closes the channel the
+**The `workflow_dispatch` release path (2026-08-02) closes the channel the
 same way.** All three release workflows now take a `version` input and cut the tag inside
 the publishing run. That tag *is* annotated (`git tag -a`), but the annotation is composed
 by the workflow — `<component> <version> (dispatched by <actor>)` — not supplied by the
@@ -7812,3 +7822,24 @@ validation reads=0, reuse=0 on cold startup. The production candidate is availab
 only within that process. No current shipped entrypoint repeats activation, and
 no cross-process reuse or speedup is claimed. The mandatory fresh validation before
 any future reused return remains exercised by the in-package owner tests.
+
+### Frozen review queue and local selection
+
+`deskboard review-queue --out FILE` saves the complete review-observation-v1
+artifact and prints a compact generation/cutoff summary. `reviewloop plan
+--snapshot FILE --selection JSON --now RFC3339` joins it with explicit approved
+priorities/capacity using shared `PlanCandidates`, with zero network calls. See
+[the operator contract](../../docs/deskboard.md) for inputs, failure behavior,
+compatibility and the separately gated live-adoption boundary.
+
+### Qualified review caller handoff
+
+The source-qualified review caller adapters reuse the existing `review-queue`,
+`reviewloop plan --snapshot ... --selection ... --now ...`, and
+`deskdispatch --kit review --observation FILE` interfaces. The optional
+`deskboard throughput --review-observation FILE` reports review depth from that same
+complete artifact with current scope/policy and a five-minute cutoff; an invalid
+artifact blinds review depth without provider recollection. Other stages retain their
+independent readers. See [caller compatibility](../../docs/review-efficiency-compatibility.md)
+for supported producer/plugin versions, explicit monitor selection, legacy rollback,
+coverage and qualification limits. This reader option does not activate an executor.
