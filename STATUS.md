@@ -116,9 +116,9 @@ _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. 
 | desk-tools | 50 — Bind verifier environment evidence to the run admission [exec:strong] | 1 | 6500 |
 | performance-collection | 01 — Local performance event contract, spool and offline report [exec:strong] | 0 | 5040 |
 | comms-core | 01 — Extract the comms contract and isolate Assay policy [exec:strong] | 0 | 4540 |
-| verification-handoff | 01 — Share the blocker disposition and routing contract [exec:strong] | 0 | 3500 |
+| verification-handoff | 01 — Share the blocker disposition and routing contract [exec:strong] | 0 | 3510 |
 | iso-9001 | 08 — Versioned source obligations and project applicability [exec:strong] | 0 | 2500 |
-| build-less-brittle | 14 — Bind consumer acceptance obligations to immutable delivery provenance before post-merge dispatch [exec:strong] | 0 | 3000 + 1500 (drive:build-less-brittle) |
+| build-less-brittle | 14 — Bind consumer acceptance obligations to immutable delivery provenance before post-merge dispatch [exec:strong] | 0 | 3010 + 1500 (drive:build-less-brittle) |
 | desktools-v2 | 30 — Port the GitLab fleet provisioner to a Go command [exec:strong] | 3 | 2000 + 1500 (drive:desktools-v2) |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3000 |
 | graph-execution | 11 — Optional pinned Laya provider with explicit CPU and GPU profiles [exec:strong] | 1 | 2500 |
@@ -131,7 +131,7 @@ _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 4aeecf716 2026-10-25T18:29:47Z_
+_last regen: 0c3b558ef 2026-10-25T19:20:51Z_
 
 **Progress:** 11/14 brief items done.
 
@@ -152,7 +152,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 4aeecf716 2026-10-25T18:29:47Z_
+_last regen: 0c3b558ef 2026-10-25T19:20:51Z_
 
 **Progress:** 34/91 brief items done.
 
@@ -246,11 +246,13 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 19 [exec:strong] | implemented | 2000 | 0 | — | driver | human action, cite medici-finance/assay#997 | — | — |
 | windows-port | 08 [exec:strong] | implemented | 2000 | 2 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#1795 — rows 3-14, 16, 17 mis-specified for the execution witness; row 18 vacuous on merged main; row 17 live human run and the NAMED, NOT DERIVED 365-day --pat-expiry-days ceiling (provision.go:88) await the human gate | — | — |
 | desktools-go-git | 05 | implemented | 1520 | 1 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#2371 | — | — |
+| forge-gitlab | 11 [exec:strong] | implemented | 1510 | 1 | — | driver | human action, cite medici-finance/assay#1794 | — | — |
 | desktools-v2 | 03 [exec:strong] | implemented | 1500 | 1 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 | desktools-v2 | 10 [exec:strong] | implemented | 1500 | 1 | — | driver | close the sign-off card | — | — |
-| forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | — | driver | human action, cite medici-finance/assay#1794 | — | — |
 | harness-portability | 09 [exec:strong] | implemented | 1020 | 0 | — | driver | human action, cite medici-finance/assay#1834 | — | — |
 | harness-portability | 10 [exec:strong] | implemented | 1020 | 0 | — | driver | human action, cite medici-finance/assay#1834 | — | — |
+| forge-gitlab | 05 [exec:strong] | implemented | 1010 | 0 | — | driver | human action, cite medici-finance/assay#1794 | — | — |
+| forge-gitlab | 12 [exec:strong] | implemented | 1010 | 0 | — | driver | human action, cite #1794 | — | — |
 | statusgen | 05 [exec:strong] | implemented | 1010 | 0 | — | driver | human action, cite medici-finance/assay#1785 | — | — |
 | statusgen | 09 | implemented | 1010 | 0 | — | driver | resolve the recorded blocker before sign-off: hold (no recognised kind), no blocker ref recorded | — | — |
 | statusgen | 16 [exec:strong] | implemented | 1010 | 0 | — | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3398 | — | — |
@@ -261,8 +263,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 18 [exec:strong] | implemented | 1000 | 0 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 | desk-tools | 29 [exec:strong] | implemented | 1000 | 0 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 | desktools-v2 | 11 [exec:strong] | implemented | 1000 | 0 | — | driver | close the sign-off card | — | — |
-| forge-gitlab | 05 [exec:strong] | implemented | 1000 | 0 | — | driver | human action, cite medici-finance/assay#1794 | — | — |
-| forge-gitlab | 12 [exec:strong] | implemented | 1000 | 0 | — | driver | human action, cite #1794 | — | — |
 | windows-port | 10 [exec:strong] | implemented | 1000 | 0 | — | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 
 ### Awaiting implementer rework (31)
@@ -286,10 +286,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 45 [exec:strong] | implemented | 2000 | 2 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | forge-neutral | 16 [exec:strong] | implemented | 2000 | 0 | — | worker | fix, cite #1281 | — | — |
 | composability | 01 | implemented | 1520 | 1 | — | worker | fix, cite #1843 | — | — |
+| forge-gitlab | 13 [exec:strong] | implemented | 1510 | 1 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
 | desk-supervision | 32 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | desktools-v2 | 20 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite medici-finance/assay#2111 | — | — |
 | desktools-v2 | 21 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite medici-finance/assay#1915 | — | — |
-| forge-gitlab | 13 [exec:strong] | implemented | 1500 | 1 | — | worker | fix, cite medici-finance/assay#1281 | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1020 | 0 | — | worker | fix, cite medici-finance/assay#1927 | — | — |
 | desk-supervision | 08 [exec:strong] | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#1363 | — | — |
 | desk-tools | 02 | implemented | 1000 | 0 | — | worker | fix, cite medici-finance/assay#1792 — row 5 is a prose PR-body check the witness cannot execute (check-definition); row 1 environment flake #612/#1232; row 4 vacuous post-merge self-diff (#1657 class) | — | — |
@@ -336,18 +336,18 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | graph-execution | 20 [exec:strong] | verified | 19000 | 34 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 3d29dd923ab7 (claude-opus-5-5) | — |
 | statusgen | 15 [exec:strong] | verified | 14510 | 27 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | desktools-v2 | 61 [exec:strong] | verified | 8500 | 15 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 0e661b6e15de (claude-opus-5-5) | — |
-| build-less-brittle | 02 [exec:strong] | verified | 6500 | 7 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
+| build-less-brittle | 02 [exec:strong] | verified | 6510 | 7 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | desktools-v2 | 09 [exec:strong] | verified | 6500 | 11 | — | CI auto-flip | none; stuck after one main run → file | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
-| build-less-brittle | 04 [exec:strong] | verified | 5500 | 5 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
+| build-less-brittle | 04 [exec:strong] | verified | 5510 | 5 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | windows-port | 00 | verified | 5000 | 8 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 8bc28e8edf84 (claude-opus-5-5) | — |
-| build-less-brittle | 05 [exec:strong] | verified | 4500 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
-| build-less-brittle | 06 [exec:strong] | verified | 4500 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
+| build-less-brittle | 05 [exec:strong] | verified | 4510 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
+| build-less-brittle | 06 [exec:strong] | verified | 4510 | 3 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
+| build-less-brittle | 09 [exec:strong] | verified | 4010 | 2 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
+| build-less-brittle | 10 [exec:strong] | verified | 4010 | 2 | — | CI auto-flip | none; stuck after one main run → file | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
+| build-less-brittle | 11 [exec:strong] | verified | 4010 | 2 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ ecb8c74a4ae8 (claude-opus-5-5) | — |
 | statusgen | 22 [exec:strong] | verified | 4010 | 6 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
-| build-less-brittle | 09 [exec:strong] | verified | 4000 | 2 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
-| build-less-brittle | 10 [exec:strong] | verified | 4000 | 2 | — | CI auto-flip | none; stuck after one main run → file | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
-| build-less-brittle | 11 [exec:strong] | verified | 4000 | 2 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ ecb8c74a4ae8 (claude-opus-5-5) | — |
 | harness-portability | 06 [exec:strong] | verified | 3520 | 5 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ bed1a31ba875 (claude-opus-5-5) | — |
-| build-less-brittle | 12 [exec:strong] | implemented | 3500 | 1 | — | verify runner | none | — | — |
+| build-less-brittle | 12 [exec:strong] | implemented | 3510 | 1 | — | verify runner | none | — | — |
 | statusgen | 19 [exec:strong] | verified | 3010 | 4 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | measured-status | 04 [exec:strong] | verified | 2020 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-22 assay-verifier-app[bot] @ 05dc9fbc88f2 (claude-opus-5-5) | — |
 | statusgen | 17 | verified | 1510 | 1 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 54c024fca36e (claude-opus-5-5) | — |
