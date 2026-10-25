@@ -103,16 +103,16 @@ func TargetProblem(present, isPR, authority bool, title, body, wantTitle, wantBo
 	case !authority:
 		return "run record author is not the dispatcher"
 	case title != wantTitle:
-		return "run record title differs from its binding"
+		return fmt.Sprintf("has title %q, not %q", title, wantTitle)
 	case body != wantBody:
-		return "run record body differs from its binding"
+		return "has a body that is not the exact rendering of its binding"
 	}
 	return ""
 }
 func HistoryProblem(known, complete, edited bool) string {
 	switch {
 	case !known:
-		return "body history was not reported"
+		return "body history was not reported (bodyHistoryKnown is false or absent)"
 	case !complete:
 		return "body history is incomplete"
 	case edited:
@@ -157,7 +157,7 @@ func Stamp(present []string, events []LabelEvent) (model, tier, why string) {
 			return "", "", fmt.Sprintf("the stamp label %s has no standing application in the label history", n)
 		}
 		if !auth {
-			return "", "", fmt.Sprintf("the stamp label %s was not applied by the dispatcher", n)
+			return "", "", fmt.Sprintf("the stamp label %s was applied by an actor that is not the dispatcher", n)
 		}
 		if v, ok := strings.CutPrefix(n, "dispatched-model:"); ok {
 			models[strings.TrimSpace(v)] = true
@@ -191,6 +191,10 @@ func ParseBody(body string) (Binding, error) {
 		return b, fmt.Errorf("body is not a binding")
 	}
 	if err := domain.DecodeStrict([]byte(raw), &b); err != nil {
+		// Keep the established CLI vocabulary while the strict decoder owns rejection.
+		if strings.Contains(err.Error(), "is not a field of this object") {
+			return b, fmt.Errorf("unknown field: %w", err)
+		}
 		return b, err
 	}
 	return b, nil

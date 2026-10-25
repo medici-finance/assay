@@ -7,7 +7,7 @@ import (
 
 func TestIdentityProfiles(t *testing.T) {
 	for _, bot := range []bool{false, true} {
-		for _, p := range []Profile{ObservedID, Content, NumericID} {
+		for _, p := range []Profile{LoginOnly, ObservedID, Content, NumericID} {
 			if Admit(true, true, 3003, 9999, bot, p) {
 				t.Fatalf("wrong supplied ID admitted: bot=%v profile=%v", bot, p)
 			}

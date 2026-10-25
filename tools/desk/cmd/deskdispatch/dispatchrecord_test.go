@@ -180,7 +180,7 @@ func TestDispatchRecordWrittenAtModelStamp(t *testing.T) {
 			}
 		})
 	}
-	t.Run("invalid UTF-8 brief id is null", func(t *testing.T) {
+	t.Run("invalid UTF-8 brief refuses before claim", func(t *testing.T) {
 		s := &stub{}
 		home, root := s.install(t)
 		plantScripts(t, root)
@@ -195,12 +195,16 @@ func TestDispatchRecordWrittenAtModelStamp(t *testing.T) {
 			rc = run([]string{"utf8--03", "--root", root, "--brief", "bad.md",
 				"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
 		})
-		if rc != deskkit.ExitOK {
-			t.Fatalf("dispatch rc = %d, want 0\n%s", rc, errOut)
+		// Invalid UTF-8 is unreadable YAML, so admission fails closed before
+		// minting a claim or writing a dispatch record.
+		if rc != deskkit.ExitRefused {
+			t.Fatalf("dispatch rc = %d, want refused\n%s", rc, errOut)
 		}
-		recs := recordLines(t, home)
-		if len(recs) != 1 || recs[0].Brief != nil {
-			t.Fatalf("want one line with a null brief, got %d lines\n%s", len(recs), errOut)
+		if len(claimCalls(s)) != 0 || s.ran("deskwt add") {
+			t.Fatal("unreadable brief acquired a claim or worktree")
+		}
+		if recs := recordLines(t, home); len(recs) != 0 {
+			t.Fatalf("refused dispatch wrote %d records", len(recs))
 		}
 	})
 	// Free text reaching the record from the two sources the dispatcher does not itself narrow —

@@ -27,11 +27,12 @@ func Admit(configured, trusted bool, pinned int64, observed int64, bot bool, pro
 	if !configured || !trusted {
 		return false
 	}
-	if profile == LoginOnly {
-		return true
-	}
+	// A profile can permit an absent ID; it cannot override an asserted ID.
 	if observed != 0 {
 		return pinned > 0 && observed == pinned
+	}
+	if profile == LoginOnly {
+		return true
 	}
 	switch profile {
 	case ObservedID:

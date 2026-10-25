@@ -308,21 +308,9 @@ func TestContributorLedgerRosterCoupling(t *testing.T) {
 		t.Fatal("statusgen/rosterconfig.go: scanKnownRosterKeys is gone — nothing declares the " +
 			"recognised roster schema on that side")
 	}
-	// Windowed: the new constant must actually be LISTED inside scanKnownRosterKeys's
-	// body, not merely declared and forgotten (the same class of gap #491 was).
-	fnIdx := strings.Index(src, "func scanKnownRosterKeys()")
-	if fnIdx < 0 {
-		t.Fatal("statusgen/rosterconfig.go: scanKnownRosterKeys function body not found")
-	}
-	closeIdx := strings.Index(src[fnIdx:], "\n}")
-	if closeIdx < 0 {
-		t.Fatal("statusgen/rosterconfig.go: scanKnownRosterKeys function body has no closing brace " +
-			"within scan range")
-	}
-	body := src[fnIdx : fnIdx+closeIdx]
-	if !strings.Contains(body, "scanEnvContributorLedger") {
-		t.Error("statusgen/rosterconfig.go: scanKnownRosterKeys() does not list scanEnvContributorLedger " +
-			"— declaring the constant without recognising it changes nothing")
+	// The twin must delegate to the shared schema rather than keep a second list.
+	if !strings.Contains(src, "return trustcore.KnownRosterKeys()") {
+		t.Error("statusgen/rosterconfig.go must use deskcore/trust.KnownRosterKeys")
 	}
 
 	// ---- (3) behavioural: this reader actually resolves a configured path ----
