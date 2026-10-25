@@ -294,20 +294,19 @@ func TestFlowWorld(t *testing.T) {
 		}
 	})
 
-	t.Run("the brief names siblings and runner-executed instruments", func(t *testing.T) {
+	t.Run("the brief names siblings and the caller's instruments", func(t *testing.T) {
 		root, _, _ := world50Root(t)
-		brief := "# B\n\nout-of-repo files: ../tracker/docs/x.md\n\n## Verify\n\n" +
-			"| # | Class | Command |\n|---|-------|---------|\n" +
-			"| 1 | check | `statusgen --lint` |\n" +
-			"| 2 | gate:model | `desk-tools --help` |\n" +
-			"| 3a | check | `desk-tools --help` |\n" +
-			"| 4 | check:ci | `go test ./x \\| statusgen -v` |\n\n## Evidence\n\nPending.\n"
-		spec := WorldSpecFromBrief(root, brief)
+		brief := "# B\n\nout-of-repo files: ../tracker/docs/x.md\n\n## Verify\n\n| # | Command |\n|---|---|\n| 1 | `statusgen --lint` |\n"
+		spec := WorldSpecFromBrief(root, brief, []string{"statusgen --lint", "go test ./x | desk-tools -v"})
 		if strings.Join(spec.Siblings, ",") != "../tracker" || strings.Join(spec.Instruments, ",") != "statusgen" || spec.Root != root {
 			t.Fatalf("spec = %+v", spec)
 		}
 	})
 }
+
+// world50Commands stands in for internal/runnercmds.Commands, which the hub does
+// not import: the brief's one runner command.
+func world50Commands(string) []string { return []string{"true"} }
 
 // worldPrepared prepares an attested run whose brief declares ../peer and
 // returns its home with a fake world in which the root and the peer are
@@ -336,14 +335,14 @@ func worldPrepared(t *testing.T) (root string, f *verifierForge, fake *world50Fa
 func TestFlowWorldBind(t *testing.T) {
 	t.Run("the prepared run is bound to the world its brief names", func(t *testing.T) {
 		root, f, fake, peer := worldPrepared(t)
-		got, err := AdmitAndBindVerifierWorld(root)
+		got, err := AdmitAndBindVerifierWorld(root, world50Commands)
 		if err != nil || got.World == nil {
 			t.Fatalf("prepare bound nothing: %+v %v", got.World, err)
 		}
 		if got.World.Inputs["sibling:../peer"] != world50Sib || got.World.Inputs[WorldSource] != got.Binding.Source {
 			t.Fatalf("record is not the run's own world: %+v", got.World.Inputs)
 		}
-		if again, err := AdmitAndBindVerifierWorld(root); err != nil || again.World.Digest() != got.World.Digest() {
+		if again, err := AdmitAndBindVerifierWorld(root, world50Commands); err != nil || again.World.Digest() != got.World.Digest() {
 			t.Fatalf("an unchanged world did not re-bind: %v", err)
 		}
 		if _, err = CheckVerifierAttestationWithForge(root, "brief.md", f); err != nil {
@@ -354,8 +353,19 @@ func TestFlowWorldBind(t *testing.T) {
 			!strings.Contains(err.Error(), "environment changed since admission: sibling:../peer") {
 			t.Fatalf("a moved sibling was admitted: %v", err)
 		}
-		if _, err = AdmitAndBindVerifierWorld(root); err == nil || !strings.Contains(err.Error(), "different prerequisite record") {
+		if _, err = AdmitAndBindVerifierWorld(root, world50Commands); err == nil || !strings.Contains(err.Error(), "different prerequisite record") {
 			t.Fatalf("a moved world re-bound silently: %v", err)
+		}
+	})
+
+	t.Run("no command reader binds nothing", func(t *testing.T) {
+		root, _, _, _ := worldPrepared(t)
+		var de *DeskError
+		if _, err := AdmitAndBindVerifierWorld(root, nil); !errors.As(err, &de) || de.Code != ExitUnverifiable {
+			t.Fatalf("a missing reader was not could-not-check: %v", err)
+		}
+		if r, err := verifierLoad(root); err != nil || r.World != nil {
+			t.Fatalf("a record was persisted without a reader: %+v %v", r.World, err)
 		}
 	})
 
@@ -363,7 +373,7 @@ func TestFlowWorldBind(t *testing.T) {
 		root, _, fake, peer := worldPrepared(t)
 		delete(fake.revs, peer)
 		var de *DeskError
-		if _, err := AdmitAndBindVerifierWorld(root); !errors.As(err, &de) || de.Code != ExitUnverifiable ||
+		if _, err := AdmitAndBindVerifierWorld(root, world50Commands); !errors.As(err, &de) || de.Code != ExitUnverifiable ||
 			!strings.Contains(err.Error(), "sibling:../peer") {
 			t.Fatalf("an unreadable declared sibling was not could-not-check: %v", err)
 		}

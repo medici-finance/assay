@@ -9,6 +9,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/runnercmds"
 )
 
 // Planning has a pass-local reader. Dispatch deliberately keeps the original
@@ -163,5 +164,5 @@ func itemWorldSpec(it loopengine.Item, root string) (deskkit.WorldSpec, error) {
 		return spec, fmt.Errorf("cannot read the brief's prerequisites: %w", err)
 	}
 	// One derivation, shared with the dispatcher's prepare step.
-	return deskkit.WorldSpecFromBrief(root, string(raw)), nil
+	return deskkit.WorldSpecFromBrief(root, string(raw), runnercmds.Commands(string(raw))), nil
 }

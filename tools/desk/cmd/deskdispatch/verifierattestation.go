@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/runnercmds"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,7 +54,7 @@ func executeVerifier(mode string, o dispatchOpts) (err error) {
 		if err == nil {
 			// Recovery finishes the same prepare step, so it binds the same
 			// prerequisite record; binding is idempotent for an unchanged world.
-			receipt, err = deskkit.AdmitAndBindVerifierWorld(o.root)
+			receipt, err = deskkit.AdmitAndBindVerifierWorld(o.root, runnercmds.Commands)
 		}
 	}
 	if err != nil {
@@ -133,7 +134,7 @@ func attestVerifierDispatch(o dispatchOpts, repo, home string) (string, error) {
 	}
 	// The prepare step ends by recording the world the run was admitted into;
 	// landing rechecks exactly this record (example-stream/50).
-	receipt, err := deskkit.AdmitAndBindVerifierWorld(home)
+	receipt, err := deskkit.AdmitAndBindVerifierWorld(home, runnercmds.Commands)
 	if err != nil {
 		return "", err
 	}
