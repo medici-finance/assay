@@ -9,12 +9,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -119,8 +121,33 @@ func TestUnreadableIssueState_NeverRetires(t *testing.T) {
 // Closure proves source state, not an accountable handoff. Preserve the title
 // and classification-needed row when no disposition has been recorded.
 func TestPositiveClosedRead_RetainsUnclassified(t *testing.T) {
+	testPositiveClosedRead(t, false)
+}
+
+// A classified source still needs a positive closed read before retirement.
+// Keep this named control for the cross-package fault-injection harness.
+func TestPositiveClosedRead_StillRetires(t *testing.T) {
+	testPositiveClosedRead(t, true)
+}
+
+func testPositiveClosedRead(t *testing.T, classified bool) {
+	t.Helper()
 	root := t.TempDir()
-	writeFile(t, filepath.Join(root, issueLoopDir, "issue-3.md"), placeholderFixture(homeRepo, "todo", ""))
+	body := placeholderFixture(homeRepo, "todo", "")
+	if classified {
+		const opened = "2026-10-25T12:00:00Z"
+		h := issueflow.IntakeHandoff{Schema: issueflow.IntakeHandoffSchema,
+			Item: homeRepo + "#3", Opened: opened, Revision: 1,
+			DecidingRole: "intake-desk", Disposition: issueflow.Repair,
+			Route: "repair", Successor: homeRepo + "#3", Evidence: homeRepo + "#3"}
+		raw, err := json.Marshal(h)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, filepath.Join(root, issueLoopDir, "handoff.json"), string(raw))
+		body = strings.Replace(body, "status: todo", "status: todo\nhandoff: handoff.json\nhandoff-opened: \""+opened+"\"", 1)
+	}
+	writeFile(t, filepath.Join(root, issueLoopDir, "issue-3.md"), body)
 	calls := installForge(t, map[string]*repoFixture{homeRepo: {
 		issues: []deskkit.IssueSummary{{Number: 1, Title: "open one", Author: deskkit.Account{Login: "shared-agent"}}},
 		titles: map[int]string{3: "genuinely closed"},
@@ -129,7 +156,12 @@ func TestPositiveClosedRead_RetainsUnclassified(t *testing.T) {
 	if code := run([]string{"--root", root, "issues"}, &out, &errb); code != 0 {
 		t.Fatalf("exit %d, want 0; stderr=%s", code, errb.String())
 	}
-	if got := retireRows(out.String()); len(got) != 0 || !strings.Contains(out.String(), "classification-needed") {
+	got := retireRows(out.String())
+	if classified {
+		if len(got) != 1 || got[0] != "tracker#3" {
+			t.Errorf("a classified positively closed source must retire; got %v:\n%s", got, out.String())
+		}
+	} else if len(got) != 0 || !strings.Contains(out.String(), "classification-needed") {
 		t.Errorf("a closed unclassified source must remain awaiting disposition; got %v:\n%s", got, out.String())
 	}
 	if !strings.Contains(out.String(), "genuinely closed") {

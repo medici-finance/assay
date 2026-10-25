@@ -49,6 +49,9 @@ consumers:
   - "statusgen/intakeexits.go: follow-up verification-handoff/03 (this delivery; existing owner or planned extension)"
   - "spec/intake-exit-v1.md: follow-up verification-handoff/03 (this delivery; existing owner or planned extension)"
   - "plugins/assay/skills/intake-desk/SKILL.md: follow-up verification-handoff/03 (this delivery; existing owner or planned extension)"
+  - ".cursor/skills/intake-desk/SKILL.md: follow-up verification-handoff/03 (generated harness copy of the canonical intake skill)"
+  - ".cursor/assay-managed.json: follow-up verification-handoff/03 (generated harness content digest)"
+  - "tools/desk/internal/reviewtest/issue_projection_test.go: follow-up verification-handoff/03 (named production fault controls)"
   - "statusgen/testdata/verification-handoff/03-mutations.json: follow-up verification-handoff/03 (this delivery; existing owner or planned extension)"
   - "changelog/verification-handoff-03.md: follow-up verification-handoff/03 (this delivery; existing owner or planned extension)"
 ---
@@ -57,7 +60,7 @@ consumers:
 
 ## Context
 
-files: deskcore/issueflow/intake.go, tools/desk/cmd/scanloop/run.go, tools/desk/cmd/scanloop/monitor.go, tools/desk/cmd/scanloop/observations.go, tools/desk/cmd/scanloop/landverb.go, tools/desk/cmd/scanloop/handoffrecord.go, statusgen/main.go, statusgen/model.go, statusgen/nextup.go, statusgen/placeholder.go, statusgen/registerentries.go, statusgen/intakehandoffs.go, spec/intake-handoff-v1.md, docs/contracts.md, statusgen/testdata/verification-handoff/mutate.py, tools/desk/cmd/scanloop/adapter.go, tools/desk/cmd/scanloop/lane.go, tools/desk/cmd/scanloop/exitrecord.go, tools/desk/cmd/issueboard/, statusgen/scanissues.go, statusgen/intakeexits.go, spec/intake-exit-v1.md, plugins/assay/skills/intake-desk/SKILL.md, statusgen/testdata/verification-handoff/03-mutations.json (planned), changelog/verification-handoff-03.md (planned)
+files: .cursor/skills/intake-desk/SKILL.md, .cursor/assay-managed.json, tools/desk/internal/reviewtest/issue_projection_test.go, deskcore/issueflow/intake.go, tools/desk/cmd/scanloop/run.go, tools/desk/cmd/scanloop/monitor.go, tools/desk/cmd/scanloop/observations.go, tools/desk/cmd/scanloop/landverb.go, tools/desk/cmd/scanloop/handoffrecord.go, statusgen/main.go, statusgen/model.go, statusgen/nextup.go, statusgen/placeholder.go, statusgen/registerentries.go, statusgen/intakehandoffs.go, spec/intake-handoff-v1.md, docs/contracts.md, statusgen/testdata/verification-handoff/mutate.py, tools/desk/cmd/scanloop/adapter.go, tools/desk/cmd/scanloop/lane.go, tools/desk/cmd/scanloop/exitrecord.go, tools/desk/cmd/issueboard/, statusgen/scanissues.go, statusgen/intakeexits.go, spec/intake-exit-v1.md, plugins/assay/skills/intake-desk/SKILL.md, statusgen/testdata/verification-handoff/03-mutations.json (planned), changelog/verification-handoff-03.md (planned)
 
 facts:
 - Baseline main fbe0331e2fc9f5c822c4edeafb8a18865c916828, inspected 23 October 2026; source was draft and stream was parked at authoring. Scope approval and stream activation take effect on the maintainer's merge of PR #4206; per-brief gates remain separate.
