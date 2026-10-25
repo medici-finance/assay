@@ -10,7 +10,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 4
+version: 5
 authored: 2026-10-17 by statusgen newbrief
 sources:
   - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
@@ -110,7 +110,7 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 |---|-------|---------|--------|
 | 1 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCommandKit$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCommandKit ' "$o")` | exit 0; named PASS. Real entrypoints record stable allowlisted subcommands/kit mappings, including aliases/help/error forms; unknown/private argv never leak. Existing perf-v1 fixtures decode unchanged. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfCoverageFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestPerfCoverageFlow ' "$o")` | exit 0; named PASS. Production runner and transport record planted child/HTTP attempts, retry and 304 exactly once on instrumented paths; consent-off and broken optional sinks preserve exit/stdout/work/audit/budget. Successful file-list, intake and stamp entrypoints preserve seeded history, append exactly one successful audit record and leave the same real budget/breaker decisions; skipped-work and erased-history production mutations fail these assertions. |
-| 3 | check:ci +dereference | `statusgen --root . --consumers --brief desk-tools/38` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
+| 3 | check:ci +dereference | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/38 --delivery eded7ba6e4461a3afac436ff7196987d83268bb3 --base da7a4be21e61acf2f8a2c09749f8cec7d60468f1 > "$o" && cat "$o" && grep -Fxq 'summary: 8 corroborated, 0 disproved, 7 unchecked, 0 brief(s) claiming nothing' "$o")` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
 
 ## Pre-mortem and detection
 
