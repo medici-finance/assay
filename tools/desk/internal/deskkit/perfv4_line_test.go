@@ -97,3 +97,35 @@ func TestV4HistoryContinuesAfterOversizedLine(t *testing.T) {
 		}
 	}
 }
+
+// regression: #4360 — keep the historical scanner's last unterminated line.
+func TestV4HistoryPreservesLegacyEOFBoundary(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("testdata", "perf", "2026-10-12.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := bytes.Split(fixture, []byte("\n"))[0]
+	record, err := perfrec.Decode(raw)
+	if err != nil || record.Schema != perfrec.Schema {
+		t.Fatalf("historical fixture: %v", err)
+	}
+	for _, size := range []int{perfrec.MaxV4LineBytes - 2, perfrec.MaxV4LineBytes - 1, perfrec.MaxV4LineBytes} {
+		for _, ending := range []string{"", "\n", "\r\n"} {
+			t.Run(fmt.Sprintf("%d/%q", size, ending), func(t *testing.T) {
+				wire := append(append(append([]byte{}, raw...), bytes.Repeat([]byte(" "), size-len(raw))...), []byte(ending)...)
+				path := filepath.Join(t.TempDir(), "day.jsonl")
+				if err := os.WriteFile(path, wire, 0600); err != nil {
+					t.Fatal(err)
+				}
+				records, skipped, err := readPerfDayFile(path)
+				want := 0
+				if size < perfrec.MaxV4LineBytes && (ending != "\r\n" || size+2 <= perfrec.MaxV4LineBytes) {
+					want = 1
+				}
+				if err != nil || len(records) != want || skipped != 1-want {
+					t.Fatalf("raw bytes=%d ending=%q records=%d skipped=%d err=%v; want records=%d", size, ending, len(records), skipped, err, want)
+				}
+			})
+		}
+	}
+}

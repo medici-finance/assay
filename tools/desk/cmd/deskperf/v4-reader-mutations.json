@@ -1,5 +1,5 @@
 {
-  "test": "go test -count=1 -run '^TestV4History(LineBounds|ContinuesAfterOversizedLine)$' ./internal/deskkit",
+  "test": "go test -count=1 -run '^TestV4History(LineBounds|ContinuesAfterOversizedLine|PreservesLegacyEOFBoundary)$' ./internal/deskkit",
   "control": {
     "name": "valid below-limit line duplicated",
     "file": "internal/deskkit/perfread.go",
@@ -22,8 +22,14 @@
     {
       "name": "oversized line stops the rest of the day",
       "file": "internal/deskkit/perfread.go",
-      "old": "if len(data) >= perfrec.MaxV4LineBytes-1 {",
+      "old": "if len(data) >= perfrec.MaxV4LineBytes {",
       "new": "if false {"
+    },
+    {
+      "name": "reject the historical unterminated line one byte early",
+      "file": "internal/deskkit/perfread.go",
+      "old": "if len(data) >= perfrec.MaxV4LineBytes {",
+      "new": "if len(data) >= perfrec.MaxV4LineBytes-1 {"
     }
   ]
 }

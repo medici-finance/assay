@@ -547,7 +547,7 @@ func scanPerfJSONL() bufio.SplitFunc {
 			}
 			return len(data), nil, nil
 		}
-		if len(data) >= perfrec.MaxV4LineBytes-1 {
+		if len(data) >= perfrec.MaxV4LineBytes {
 			if atEOF {
 				return len(data), []byte{0}, nil
 			}

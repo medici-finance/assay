@@ -49,7 +49,7 @@ can be composed with both source variants.
 - Shared reducer and per-record coverage reject integer overflow; exact maximum
   valid totals remain valid. Historical validator/control assertions remain.
 - Canonical local mutation baseline and distinct control are healthy: eleven new
-  codec/identity mutations, three raw-line adapter mutations, three overflow mutations,
+  codec/identity mutations, four raw-line adapter mutations, three overflow mutations,
   eight retained v3 mutations and six command-report mutations are caught. No survivors or
   could-not-mutate are counted as passing. This is local harness qualification,
   not an assertion that every spec is enforced by the CI truth matrix.
@@ -78,3 +78,10 @@ nonblocking review observations; this repair does not change their semantics.
 
 The earlier codec/reducer fixture remains scoped to its measured implementation;
 no new whole-tool or selected-producer performance sample is claimed here.
+
+A follow-up boundary regression checks the historical final line without LF:
+its largest accepted legacy record still reaches the legacy decoder. The drain
+threshold uses the scanner's full existing buffer, while the v4 decoder retains
+its strict byte limit including LF. The pre-split reader passes this regression;
+the initial drain threshold failed it and the corrected threshold passes it.
+No allocation, decoder, recorder or admission-control limit was increased.
