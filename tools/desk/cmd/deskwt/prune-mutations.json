@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskwt/ -count=1 -timeout 600s -run 'TestPrune|TestReap|TestDeadSession|TestMergeGateBeforeStatus|TestConcurrentPrunesCostOne|TestRemove|TestStaleLock|TestReclaim|TestUnattributedLock|TestDirtyHeld|TestUnmergedHeld|TestAdmission|TestAddLockSession|TestActivityGate|TestWorktreeAdminDirs'",
+  "test": "go test ./cmd/deskwt/ -count=1 -failfast -timeout 600s -run 'TestPrune|TestReap|TestDeadSession|TestMergeGateBeforeStatus|TestConcurrentPrunesCostOne|TestRemove|TestStaleLock|TestReclaim|TestUnattributedLock|TestDirtyHeld|TestUnmergedHeld|TestAdmission|TestAddLockSession|TestActivityGate|TestWorktreeAdminDirs'",
   "control": {
     "name": "CONTROL — invert the ancestor-set membership test (an unmerged worktree reads as merged and is deleted)",
     "file": "cmd/deskwt/prune.go",

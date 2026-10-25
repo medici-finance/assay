@@ -334,10 +334,11 @@ func strandedAfterDeregister(guard *pathGuard, dir string, paths []string) ([]st
 	if len(paths) == 0 {
 		return nil, nil
 	}
-	if _, prErr := runGit(dir, "worktree", "prune"); prErr != nil {
+	gitDir := survivingGitDir(guard, dir, paths)
+	if _, prErr := runGit(gitDir, "worktree", "prune"); prErr != nil {
 		return nil, deskkit.Unverifiable("git worktree prune failed after removing "+strings.Join(paths, ", "), prErr)
 	}
-	set, lerr := worktreePathsFn(guard, dir)
+	set, lerr := worktreePathsFn(guard, gitDir)
 	if lerr != nil {
 		return nil, lerr
 	}
@@ -348,6 +349,26 @@ func strandedAfterDeregister(guard *pathGuard, dir string, paths []string) ([]st
 		}
 	}
 	return stranded, nil
+}
+
+// survivingGitDir picks the directory the deregistration git calls run in. It is the
+// caller's dir, unless that dir is one of the trees just deleted or sits inside one: then
+// it is the shared git-common-dir, which a worktree removal never touches. A worker that
+// runs `deskwt remove` from inside its own home deletes its own working directory; git
+// started there cannot chdir, prints nothing, and the registration stayed `prunable`
+// until someone pruned by hand in the shared checkout (#4272). git works from inside the
+// common dir for both `worktree prune` and `worktree list`, bare or not.
+func survivingGitDir(guard *pathGuard, dir string, removed []string) string {
+	rd := resolvePath(dir)
+	for _, rt := range removed {
+		if rd == rt || strings.HasPrefix(rd, rt+string(filepath.Separator)) {
+			return guard.commonDir
+		}
+	}
+	if _, err := os.Stat(dir); err != nil {
+		return guard.commonDir
+	}
+	return dir
 }
 
 // cmdAdd implements `deskwt add <name> [--branch B | --detach] [--base origin/main]`: create a
@@ -379,6 +400,10 @@ func cmdAdd(args []string) (err error) {
 	// reason format role-init writes, so prune holds it from its first second and the
 	// lock-reclaim / dead-session passes can retire it once that session's beacon is stale.
 	lockSession := fs.String("lock-session", "", "lock the new worktree for this live session id, in role-init's lock-reason format")
+	// --adopt-run hands back a FINISHED home of this run key instead of refusing it
+	// (adoptfinished.go, #4272). Resume-only: it needs --upstream's pinned head as its proof.
+	adoptRun := fs.String("adopt-run", "", "with --upstream: adopt an existing home stamped with this run key when it is proven finished "+
+		"(registered, unlocked, clean incl. untracked, on --branch at the pinned --base) instead of refusing it")
 	// Usage puts <name> first, but Go's flag stops at the first positional;
 	// parse in a loop so flags may appear before OR after the name (a stray/unknown flag
 	// still errors → refused).
@@ -421,6 +446,9 @@ func cmdAdd(args []string) (err error) {
 		if *detach || !pinnedHeadRe.MatchString(*base) || !strings.HasPrefix(*upstream, "refs/remotes/") || !refRe.MatchString(*upstream) || strings.Contains(*upstream, "..") {
 			return deskkit.Refused("refused: --upstream requires a full commit --base and a fully qualified remote branch, without --detach")
 		}
+	}
+	if *adoptRun != "" && (*upstream == "" || !nameRe.MatchString(*adoptRun) || strings.Contains(*adoptRun, "..")) {
+		return deskkit.Refused("refused: --adopt-run requires --upstream and a single safe run key segment")
 	}
 
 	// Resolve the commit identity to STAMP now, BEFORE any worktree exists, so an unbound
@@ -516,11 +544,48 @@ func cmdAdd(args []string) (err error) {
 	if _, cerr := guard.check(target); cerr != nil {
 		return cerr
 	}
-	// Never reuse or clobber an existing target.
+	// adopt hands a proven-finished home back as this call's home (adoptfinished.go), or
+	// keeps the refusal it was offered and says which clause of the proof failed.
+	adopt := func(candidate, refusal string) error {
+		rt, why, aerr := adoptProof(guard, dir, candidate, br, *base, *adoptRun)
+		if aerr != nil {
+			return aerr
+		}
+		if why != "" {
+			return deskkit.Refused(refusal + " Not adopted as a finished home of run " + *adoptRun + ": " + why + ".")
+		}
+		detail, perr := adoptedHome{guard: guard, dir: dir, rt: rt, br: br, upstream: *upstream, runKey: *adoptRun,
+			roleKey: roleKey, name: botName, email: botEmail, repo: repo, lockSession: *lockSession}.provision()
+		if perr != nil {
+			return perr
+		}
+		note := "adopted finished home " + rt + " of run " + *adoptRun + " (branch " + br + " at " + *base + "; clean, unlocked)"
+		ac.detail = note + "; " + detail
+		fmt.Fprintln(os.Stderr, "deskwt: "+note)
+		fmt.Fprintln(os.Stderr, "deskwt: "+detail+" at "+rt)
+		fmt.Println(rt)
+		return nil
+	}
+
+	// Never clobber an existing target. Only --adopt-run's proof reuses one.
 	if _, serr := os.Lstat(target); serr == nil {
-		return deskkit.Refused("refused: target already exists (never clobbered): " + target)
+		refusal := "refused: target already exists (never clobbered): " + target
+		if *adoptRun != "" {
+			return adopt(target, refusal)
+		}
+		return deskkit.Refused(refusal)
 	} else if !os.IsNotExist(serr) {
 		return deskkit.Unverifiable("cannot stat target "+target, serr)
+	}
+	// A home of an EARLIER session holding the branch is the other shape a resume meets.
+	if *adoptRun != "" {
+		holders, herr := branchHolders(dir)
+		if herr != nil {
+			return herr
+		}
+		if wt, held := holders["refs/heads/"+br]; held {
+			return adopt(wt, heldBranchRefusal(br, wt))
+		}
 	}
 
 	// A local branch of this name may already exist in the SHARED refs store — worktrees
@@ -804,8 +869,10 @@ func cmdRemove(args []string) (err error) {
 	// before_remove — runs before deletion. LOGGED failure class: a hook failure is reported
 	// but the deletion PROCEEDS (a cleanup hook that fails must never strand a worktree the
 	// caller asked to remove). The hook runs with cwd = the worktree about to be removed.
+	// The repo is read BEFORE the delete: dir may be the home itself (#4272), gone after it.
+	ac.repo = repoOrEmpty(dir)
 	if _, herr := deskkit.RunHook(deskkit.HookBeforeRemove, deskkit.HookEnv{
-		RunKey: filepath.Base(rt), Worktree: rt, Repo: repoOrEmpty(dir),
+		RunKey: filepath.Base(rt), Worktree: rt, Repo: ac.repo,
 	}); herr != nil {
 		fmt.Fprintln(os.Stderr, "deskwt: before_remove hook failed (deletion proceeds): "+herr.Error())
 	}
@@ -813,7 +880,6 @@ func cmdRemove(args []string) (err error) {
 	if rmErr := removeWorktreeDir(guard, dir, rt); rmErr != nil {
 		return rmErr
 	}
-	ac.repo = repoOrEmpty(dir)
 	ac.detail = "removed " + rt
 	fmt.Println("removed " + path)
 	return nil
