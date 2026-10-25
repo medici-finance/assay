@@ -846,6 +846,42 @@
       "file": "heldscope.go",
       "old": "heldBaseCellRe.MatchString(strings.TrimSpace(cell))",
       "new": "heldBaseCellRe.MatchString(heldNorm(cell))"
+    },
+    {
+      "name": "#4294 prose pipe: the one-line exemption is off (a prose pipe line still blocks whole supersession)",
+      "file": "heldscope.go",
+      "old": "out[i].key == \"\" && !heldOneLineProse(lines, inFence, i) {",
+      "new": "out[i].key == \"\" {"
+    },
+    {
+      "name": "#4294 prose pipe: every pipe line is exempt (a table the scan cannot key no longer blocks)",
+      "file": "heldscope.go",
+      "old": "\tif i == 0 || i+1 >= len(lines) || inFence[i] {\n\t\treturn false\n\t}",
+      "new": "\tif true {\n\t\treturn true\n\t}"
+    },
+    {
+      "name": "#4294 prose pipe: a line joined to the line before it is exempt",
+      "file": "heldscope.go",
+      "old": "return strings.Trim(lines[i-1], \" \\t\") == \"\" && ",
+      "new": "return "
+    },
+    {
+      "name": "#4294 prose pipe: a line joined to the line after it is exempt",
+      "file": "heldscope.go",
+      "old": " && strings.Trim(lines[i+1], \" \\t\") == \"\"\n",
+      "new": "\n"
+    },
+    {
+      "name": "#4294 prose pipe: a line led by a pipe is exempt",
+      "file": "heldscope.go",
+      "old": " || l[0] == '|' || ",
+      "new": " || "
+    },
+    {
+      "name": "#4294 prose pipe: a line in a blockquote, a list item or indented is exempt",
+      "file": "heldscope.go",
+      "old": " || heldContainerStrip(l) != l {",
+      "new": " {"
     }
   ]
 }

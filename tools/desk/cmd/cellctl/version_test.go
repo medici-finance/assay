@@ -5,6 +5,8 @@ import (
 	"runtime/debug"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/hotfixreaders"
 )
 
 const testRevision = "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b"
@@ -80,5 +82,30 @@ func TestVersionVerbUsesBuildInfo(t *testing.T) {
 	os.Args = []string{"cellctl", "--version"}
 	if out := captureStdout(t, func() { run() }); out != "v9.9.9-test\n" {
 		t.Errorf("stamped cellctl --version = %q, want %q", out, "v9.9.9-test\n")
+	}
+}
+
+// regression: #4405
+// TestCellctlHotfixReaders: cellctl prints whatever tag it is stamped with, so a hotfix build
+// reports its hotfix tag (never dev-<sha>) and no stamped tag is rewritten, even with a dirty
+// VCS state available to tempt it.
+func TestCellctlHotfixReaders(t *testing.T) {
+	m, err := hotfixreaders.Load("cellctl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirty := fakeBuildInfo("vcs.revision", testRevision, "vcs.modified", "true")
+	for _, c := range m.Cases {
+		read := dirty
+		if c.Tag == unstampedVersion {
+			read = nil // an unstamped build with no build info prints dev as-is
+		}
+		got := "rewritten"
+		if versionString(c.Tag, read) == c.Tag {
+			got = "as-stamped"
+		}
+		if want := c.Verdicts["cellctl"]; got != want {
+			t.Errorf("cellctl prints stamped %q as %s, matrix says %s", c.Tag, got, want)
+		}
 	}
 }
