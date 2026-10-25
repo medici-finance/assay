@@ -493,6 +493,16 @@ func flipLatestPass(evidence string) (flipPass, error) {
 		return flipPass{}, refuseFlip("bad date: the latest PASS is dated %s, after today (%s UTC)", date, today)
 	}
 	m0 := flipRunnerRe.FindStringSubmatch(runner)
+	// One run, one sha (#4299): a container bracket records the receipt's
+	// 12-hex tree token while a host transition run records the 40-hex HEAD.
+	// The run's sha is its longest form; every row's sha must be that sha or
+	// an exact prefix of it at least treeSHALen long (flipSHAAgree).
+	sha := ""
+	for _, r := range rows {
+		if m := flipRunnerRe.FindStringSubmatch(r[1]); m != nil && len(m[2]) > len(sha) {
+			sha = m[2]
+		}
+	}
 	for _, r := range rows {
 		if r[0] == "" || normalizeMark(r[0]) == "" || r[1] == "" {
 			return flipPass{}, refuseFlip("runner mismatch: a row of the latest PASS has no Date or Runner")
@@ -507,20 +517,35 @@ func flipLatestPass(evidence string) (flipPass, error) {
 		if m[1] != m0[1] {
 			return flipPass{}, refuseFlip("runner mismatch: rows of the latest PASS name %q and %q", m0[1], m[1])
 		}
-		if !strings.EqualFold(m[2], m0[2]) {
-			return flipPass{}, refuseFlip("sha mismatch: rows of the latest PASS name %s and %s", m0[2], m[2])
+		if !flipSHAAgree(strings.ToLower(m[2]), strings.ToLower(sha)) {
+			return flipPass{}, refuseFlip("sha mismatch: rows of the latest PASS name %s and %s", sha, m[2])
 		}
-		if r[1] != runner {
+		// Login, sha form and every qualifier after it (+dirty, on-behalf-of,
+		// the identity source) must read the same; only the sha's length may
+		// differ, and only as an exact prefix.
+		if m[3] != m0[3] || !flipSHAAgree(m[2], sha) {
 			return flipPass{}, refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", runner, r[1])
 		}
 	}
-	p := flipPass{Runner: m0[1], SHA: m0[2], Run: strings.Join(lines[start:last.line], "\n"), RunStart: start}
-	p.Stamp, p.StampErr = flipStamp(date, m0)
+	p := flipPass{Runner: m0[1], SHA: sha, Run: strings.Join(lines[start:last.line], "\n"), RunStart: start}
+	p.Stamp, p.StampErr = flipStamp(date, []string{m0[0], m0[1], sha, m0[3]})
 	for _, i := range at {
 		p.Marks = append(p.Marks, start+i)
 	}
 	p.Marks = append(p.Marks, last.line)
 	return p, nil
+}
+
+// flipSHAAgree reports whether two Runner-cell shas name one commit: equal,
+// or the shorter is at least treeSHALen (the container receipt's tree token)
+// long and an exact prefix of the longer. A shorter abbreviation, a case
+// change or any other difference is a different sha. The closure audit
+// anchors the run's sha to the source separately (transitionWitnessTree).
+func flipSHAAgree(a, b string) bool {
+	if len(a) > len(b) {
+		a, b = b, a
+	}
+	return a == b || (len(a) >= treeSHALen && strings.HasPrefix(b, a))
 }
 
 // flipQualRe matches one trailing parenthetical qualifier of a Runner cell.
