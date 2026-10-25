@@ -31,6 +31,7 @@ runtime containment. Taxonomy membership describes components and grants no auth
 | Workflow progression | `workflow` store/controller, graph-execution/19 and /21 | Calls evaluation and loop-admin APIs; process exit is not work acceptance. |
 | Process supervision | `loopadmin`, graph-execution/26 | Standing desks and workflow stages; no dependency on workflow store, no effect credentials. |
 | Operator lifecycle | cellctl's operator libraries and typed service clients | Operator provisioning stays outside working sessions; library reuse does not merge authorities. |
+| Role credential lookup | `tools/desk/internal/credential` (desktools-v2/58): `GitHub`, `GitLab` over an explicit request snapshot and injected guard, audit, custody, lock, transport and clock adapters | Two adapters only: the `desktoken` CLI and `deskkit.RoleTokenForOwner`, in process. The package imports nothing from the desk module, launches no process and reads no ambient credential. It is internal: no SDK, service or new credential holder, and statusgen does not link it. |
 
 The existing semantic-owner index in `docs/contracts.md` remains the ownership register.
 Implementations update its rows and existing architecture checks; this table is a migration
@@ -218,6 +219,23 @@ Target-consumer clarification, 19 October 2026: graph-execution/22 directly cons
 parser port is withdrawn (medici-finance/assay#3409 merged, ruled at
 medici-finance/assay#3420), so /66 has no parser-port edge: writeguard keeps its current
 parser, routed exempt, and /66 owns the hook adapter. The guard controls are not retired.
+
+## Role-credential provider — desktools-v2/58
+
+The GitHub App token path (cache reuse, install-id resolution, JWT exchange, recorded
+expiry) and the GitLab custody read and rotation have one implementation,
+`tools/desk/internal/credential`. The `desktoken` CLI is an adapter over it, and so is
+`deskkit.RoleTokenForOwner`, which used to fork `desktoken` from `PATH` and now calls the
+provider in process. No credential moves into a process that did not already hold it: every
+caller of `RoleTokenForOwner` already minted the same role token through the child, and the
+CLI keeps its flags, exit classes, TTL and `--fresh` behavior.
+
+The provider cannot import `deskkit`, because `deskkit` imports it. The controls therefore
+arrive as adapters: `deskkit.CredentialAdapters` hands over the same guard, audit, custody and
+lock functions the CLI used, and a missing adapter refuses. The package stays internal and
+outside statusgen's reach; this is not an SDK. The verbs that still run `desktoken` as a
+child are listed in `tools/desk/README.md` and keep the CLI's rules. Moving them in process
+is deferred to their own changes.
 
 ## Shared work-reference core — milestone-support/01
 

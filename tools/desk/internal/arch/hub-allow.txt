@@ -9,5 +9,7 @@
 # is checked in review, not by the test. Every non-comment line is exactly one
 # entry: no blank lines, no trailing text, so the file compares byte-for-byte with `go list`.
 # Landing values: `go list -f '{{join .Imports "\n"}}' ./internal/deskkit` at this branch's head.
+# grow hub +1 PENDING: the driver's grow reply URL for the desktools-v2/58 PR replaces this text before approval
+credential
 gitcore
 topology
