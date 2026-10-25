@@ -297,7 +297,7 @@ func TestFlowWorld(t *testing.T) {
 	t.Run("the brief names siblings and the caller's instruments", func(t *testing.T) {
 		root, _, _ := world50Root(t)
 		brief := "# B\n\nout-of-repo files: ../tracker/docs/x.md\n\n## Verify\n\n| # | Command |\n|---|---|\n| 1 | `statusgen --lint` |\n"
-		spec := WorldSpecFromBrief(root, brief, []string{"statusgen --lint", "go test ./x | desk-tools -v"})
+		spec := WorldSpecFromBrief(root, brief, []string{"statusgen --lint", "go test ./x | statusgen -v", "true"})
 		if strings.Join(spec.Siblings, ",") != "../tracker" || strings.Join(spec.Instruments, ",") != "statusgen" || spec.Root != root {
 			t.Fatalf("spec = %+v", spec)
 		}

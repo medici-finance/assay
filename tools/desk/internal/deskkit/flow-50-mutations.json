@@ -60,6 +60,12 @@
       "file": "internal/deskkit/worldbrief.go",
       "old": "\tif !adm.Ready() {\n\t\treturn r.VerifierReceipt, adm.Err()\n\t}\n\treturn BindVerifierWorld",
       "new": "\treturn BindVerifierWorld"
+    },
+    {
+      "name": "prepare runs with no command reader",
+      "file": "internal/deskkit/worldbrief.go",
+      "old": "\tif commands == nil {\n",
+      "new": "\tif false && commands == nil {\n"
     }
   ]
 }
