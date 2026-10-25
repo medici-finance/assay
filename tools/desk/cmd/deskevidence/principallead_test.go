@@ -64,6 +64,7 @@ var leadRunners = []struct{ name, cell string }{
 	{"glyph-word-escaped", ":white\\_check\\_mark: example-app[bot]" + foldTail},
 	{"dropped-element", "<script>x</script> example-app[bot]" + foldTail},
 	{"dropped-element-style", "<style>p</style> example-app[bot]" + foldTail},
+	{"glyph-word-nbsp-end", ":robot: example-app[bot]" + foldTail + "&#160;"},
 }
 
 // regression: #4102
@@ -261,6 +262,13 @@ func TestShowsAppRunGlyphLead(t *testing.T) {
 			strings.ReplaceAll(word, ":", "&#58;"),
 		} {
 			if cell := lead + " example-app[bot]" + foldTail; !showsAppRun(cell) {
+				t.Errorf("%q not read as App-run", cell)
+			}
+		}
+		// White space other than an ASCII space at the end of the cell is trimmed before the
+		// glyph reading is compared with the text it reads past.
+		for _, end := range []string{"\u00a0", "&#160;", "\u3000", "&#x3000;"} {
+			if cell := word + " example-app[bot]" + foldTail + end; !showsAppRun(cell) {
 				t.Errorf("%q not read as App-run", cell)
 			}
 		}
