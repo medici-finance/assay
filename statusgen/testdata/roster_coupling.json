@@ -49,6 +49,7 @@
     "open-core build, and are outside the namespace whose unknown keys refuse."
   ],
   "knownRosterKeys": [
+    "ASSAY_USAGE_DIR",
     "ASSAY_ALLOWED_REPOS",
     "ASSAY_ALLOW_CLUSTER",
     "ASSAY_AUTHORIZED_AUTHORS",

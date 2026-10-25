@@ -43,22 +43,58 @@ import (
 //     there is no result cell to fall back on, so every occurrence in its
 //     prose is read. Any other prose occurrence — a verdict-line summary
 //     "row 4 HELD", a note — is read.
-//  3. Supersession, row by row. The Evidence body is split into entries at
-//     `### ` headings (level exactly three, column 0) that render as live
-//     headings (heldRender); text before the first such heading is the
-//     first entry. A held occurrence in an earlier entry is dropped only
-//     when ALL of these hold, and otherwise every entry is read:
-//     - the LAST entry carries a live strict **VERIFY: PASS** marker
-//     (heldEntryPass): at column 0, opening its own paragraph, rendered
-//     live, and with no VERIFY token after it anywhere in the entry, quoted
-//     or not;
-//     - every held occurrence in the earlier entries sits in the result cell
-//     of an aligned row of a results table (rule 1) with a non-empty row key
-//     (heldRowKey). One held occurrence anywhere else — prose, a misaligned
-//     row, a table of another shape — leaves every entry read;
-//     - the last entry has live results tables (heldCovered) with a row of
-//     the same key (heldRowKey: key-column name and key text) for every one
-//     of those rows, and EVERY row of that key in the last entry is clean:
+//  3. Supersession. The Evidence body is split into entries at `### `
+//     headings (level exactly three, column 0) that render as live headings
+//     (heldRender); text before the first such heading is the first entry.
+//     A held occurrence in an earlier entry is dropped in one of two ways,
+//     and otherwise every entry is read. Both need the LAST entry to carry a
+//     live strict **VERIFY: PASS** marker (heldEntryPass): at column 0,
+//     opening its own paragraph, rendered live, and with no VERIFY token
+//     after it anywhere in the entry, quoted or not.
+//     (a) Row by row: every held occurrence in the earlier entries sits in
+//     the result cell of an aligned row of a results table (rule 1) with a
+//     non-empty row key (heldRowKey), and the last entry covers that key
+//     (below).
+//     (b) Whole entries (#3841): the last entry covers EVERY row key of
+//     EVERY earlier entry's results tables — rows that held and rows that
+//     did not — there is at least one such key, every data row of those
+//     tables is aligned and keyed, no earlier entry records a row in a
+//     table the scan cannot key, and no HTML block leaves the page inside a
+//     tag, a quoted attribute value or a comment (heldHTMLUnclosed, which
+//     lets that state cross a line end only inside a block the page is sure
+//     to run on), which swallows what follows on the page. No line in a
+//     container (a blockquote or list-item marker, or any leading
+//     whitespace) holds a tag start or a fence (heldContainerDoubt): where
+//     such a block ends on the page is more than the scan models, so this
+//     over-refuses by design. Every element an entry opens outside fenced
+//     code (void elements aside) is closed later in that entry, in nesting
+//     order, by a close tag the page surely applies to it, and the last
+//     entry holds none open across a line end (heldElementDoubt): an element
+//     left open nests the later entries inside it, which may drop, collapse
+//     or flatten them on the page; this too over-refuses. Any carriage return left after the brief
+//     reader's single CRLF-to-LF rewrite ends a line on the page but not in
+//     the scan's split, so from such a line on nothing is live (heldRender)
+//     and no entry is superseded whole. Then the earlier entries are
+//     superseded as wholes: their prose, an entry-level verdict such as VERIFY:
+//     BLOCKED, a held or could-not-check note that names no row or names a
+//     row absent from every keyed table, and a hold in fenced code or wholly
+//     inside an HTML comment are all dropped. A hold on any other line of an
+//     HTML block (heldHTMLLines) is still read. A table the scan cannot key
+//     is any line of an earlier entry, outside fenced code (an HTML comment
+//     is no exemption: the page may not read it as one), that carries an
+//     HTML table tag (heldHTMLTableRe; a keyed row or its header included,
+//     since a cell renders one live) or, other than a keyed results row or
+//     its header, an unescaped "|" outside inline code — a table
+//     of another shape, with no separator row, with no leading pipe, inside
+//     a blockquote, or in HTML — or a non-blank line right after a results
+//     table, which GFM may read as one more row of it. One earlier key the
+//     last entry did not cover, one earlier row that cannot be aligned or
+//     keyed, one such table line, or earlier entries with no keyed row at all
+//     leave (a) as the only way, so a held occurrence anywhere else — prose,
+//     a misaligned row, a table of another shape — leaves every entry read.
+//     The last entry covers a key when it has live results tables
+//     (heldCovered) with a row of the same key (heldRowKey: key-column name
+//     and key text), and EVERY row of that key in the last entry is clean:
 //     its Exit and Result-type columns (heldCoverColumn) hold at least one
 //     cell that reads, as a whole, as a recognised clean outcome (heldOutcome:
 //     ok, PASS, exit 0 or the like, followed only by neutral details such as
@@ -88,6 +124,7 @@ type heldLineRead struct {
 	prose bool     // a line outside every table, in an entry with a results table (rule 2)
 	blank [][2]int // byte ranges of the line (cell contents) the scan must not read
 	key   string   // the row key of an aligned results-table data row; "" for any other line
+	whole bool     // a line of an entry that whole-entry supersession (rule 3b) may drop: any line outside a non-comment HTML block
 }
 
 // heldScope is heldScanScope's decision: what to read of each line, and
@@ -96,12 +133,15 @@ type heldScope struct {
 	lines   []heldLineRead
 	from    int             // the first line of the superseding last entry, or -1
 	covered map[string]bool // the row keys the superseding entry re-ran
+	whole   bool            // the superseding entry re-ran every row key of every earlier entry (rule 3b)
 }
 
 // supersedes reports whether the held occurrences found on the given lines
 // (the scan's hits, in any order) that lie before the last entry are all
-// replaced by it: every one is a keyed results-table row, and the last entry
-// re-ran that key. A single hit it cannot classify keeps every hit read.
+// replaced by it: every one is a keyed results-table row the last entry
+// re-ran (rule 3a), or the last entry re-ran every earlier row and the hit is
+// not in an HTML block other than a comment (rule 3b). A single hit it cannot classify
+// keeps every hit read.
 func (s heldScope) supersedes(hits []int) bool {
 	if s.from < 0 {
 		return false
@@ -110,11 +150,36 @@ func (s heldScope) supersedes(hits []int) bool {
 		if i >= s.from {
 			continue
 		}
-		if k := s.lines[i].key; k == "" || !s.covered[k] {
-			return false
+		read := s.lines[i]
+		if read.key != "" && s.covered[read.key] {
+			continue
 		}
+		if s.whole && read.whole {
+			continue
+		}
+		return false
 	}
 	return true
+}
+
+// heldWholeCovered reports whether the last entry re-ran every earlier entry
+// whole (rule 3b): every earlier entry's results-table rows are all aligned
+// and keyed and it records no row in a table the scan cannot key, there is at
+// least one such key, and covered holds every one.
+func heldWholeCovered(keys [][]string, aligned []bool, covered map[string]bool) bool {
+	n := 0
+	for e := range keys {
+		if !aligned[e] {
+			return false
+		}
+		for _, k := range keys[e] {
+			if !covered[k] {
+				return false
+			}
+			n++
+		}
+	}
+	return n > 0
 }
 
 // heldEntryHeading reports whether line opens an Evidence entry: an ATX
@@ -135,6 +200,557 @@ func heldFenceToggle(line string) bool {
 // heldTableLine reports whether line is a table line: it starts with "|".
 func heldTableLine(line string) bool {
 	return strings.HasPrefix(strings.TrimSpace(line), "|")
+}
+
+// heldHTMLTableRe is an HTML table tag anywhere on a line.
+var heldHTMLTableRe = regexp.MustCompile(`(?i)</?(?:table|thead|tbody|tfoot|tr|td|th)\b`)
+
+// heldHTMLUnclosed reports whether an HTML block of lines ends with the
+// page's HTML tokenizer still inside a tag, a quoted attribute value or a
+// comment. The page then swallows what follows, a later entry and its PASS
+// included, while the scan reads it live, so no entry is superseded whole.
+// The state may be open across a line end only inside a block the page is
+// sure to run on past that line: one whose opener sits on its own at the top
+// level and either names an end marker not yet met (heldHTMLOpenEnd) or a
+// tag that interrupts a paragraph (heldHTMLKind6), up to that marker or the
+// next blank line. Anywhere else (a block that starts as a paragraph or as a
+// tag that cannot interrupt one, a block whose opener meets its end on its
+// own line, a block the page may run on past a blank line to an end marker
+// opened inside it) the state is checked at the end of every line. Lines in
+// a container are left to heldContainerDoubt.
+func heldHTMLUnclosed(lines []string, inFence []bool) bool {
+	st, in, end, sure := 0, false, "", false
+	for i, l := range lines {
+		closed := false
+		switch {
+		case !in:
+			h, e, c := heldHTMLOpenEnd(l)
+			if inFence[i] || !h {
+				continue
+			}
+			in, end, closed = true, e, c
+			sure = e != "" || heldHTMLKind6(l) // a block closed on this line is checked here
+		case end != "":
+		case heldHTMLOpenEnds(l):
+			_, end, _ = heldHTMLOpenEnd(l)
+			sure = false // the page may run this block on to that end marker
+		case !sure && heldHTMLKind6(l):
+			sure = true // a block the page is sure of from here to the blank line
+		}
+		st = heldTagScan(st, l)
+		switch {
+		case closed:
+			in = false
+		case end != "":
+			in = !strings.Contains(strings.ToLower(l), end)
+		default:
+			in = !isBlankLine(l)
+		}
+		if (!in || !sure) && st != 0 {
+			return true
+		}
+	}
+	return st != 0
+}
+
+// heldHTMLOpenEnds reports whether line opens an HTML block that runs on to
+// an end marker it does not itself hold.
+func heldHTMLOpenEnds(line string) bool {
+	h, e, _ := heldHTMLOpenEnd(line)
+	return h && e != ""
+}
+
+// heldKind6Tags are the tag names that open an HTML block able to interrupt
+// a paragraph and running to the next blank line: the names CommonMark and
+// GFM both list (CommonMark's source and search are left out, GFM lacks them).
+var heldKind6Tags = map[string]bool{}
+
+func init() {
+	for _, t := range strings.Fields(`address article aside base basefont blockquote
+		body caption center col colgroup dd details dialog dir div dl dt fieldset
+		figcaption figure footer form frame frameset h1 h2 h3 h4 h5 h6 head header
+		hr html iframe legend li link main menu menuitem nav noframes ol optgroup
+		option p param section summary table tbody td tfoot th thead title tr
+		track ul`) {
+		heldKind6Tags[t] = true
+	}
+}
+
+// heldHTMLKind6 reports whether line, at column 0, opens or closes one of
+// heldKind6Tags, the name ended by a space, a tab, ">", "/>" or the line end.
+func heldHTMLKind6(line string) bool {
+	t, ok := strings.CutPrefix(line, "<")
+	if !ok {
+		return false
+	}
+	t = strings.TrimPrefix(t, "/")
+	n := 0
+	for n < len(t) && (isASCIILetter(t[n]) || t[n] >= '0' && t[n] <= '9') {
+		n++
+	}
+	if !heldKind6Tags[strings.ToLower(t[:n])] {
+		return false
+	}
+	r := t[n:]
+	return r == "" || r[0] == ' ' || r[0] == '\t' || r[0] == '>' || strings.HasPrefix(r, "/>")
+}
+
+// heldTagStartRe is where an HTML tag, comment, declaration or processing
+// instruction can start.
+var heldTagStartRe = regexp.MustCompile(`<[A-Za-z!?/]`)
+
+// heldContainerDoubt reports whether any line that carries a blockquote or
+// list-item marker or leading whitespace (heldContainerStrip) has a fence
+// after them or, outside top-level fenced code, a tag start. Where a container,
+// a lazy continuation or an indented block ends on the page is more than the
+// scan models, so an HTML block or fence there may end before the scan's
+// read of it and leave what follows swallowed or live: whole supersession is
+// off. This over-refuses (an inline tag in a list item, an indented code
+// sample that holds a tag) by design.
+func heldContainerDoubt(lines []string, inFence []bool) bool {
+	for i, l := range lines {
+		t := heldContainerStrip(l)
+		if t == l {
+			continue
+		}
+		if heldFenceToggle(t) || !inFence[i] && heldTagStartRe.MatchString(l) {
+			return true
+		}
+	}
+	return false
+}
+
+// heldContainerStrip drops the blockquote and list-item markers that open
+// line, so an HTML block inside them is seen.
+func heldContainerStrip(line string) string {
+	for {
+		t := strings.TrimLeft(line, " \t")
+		switch {
+		case strings.HasPrefix(t, ">"):
+			line = t[1:]
+			continue
+		case len(t) > 1 && strings.IndexByte("-*+", t[0]) >= 0 && (t[1] == ' ' || t[1] == '\t'):
+			line = t[2:]
+			continue
+		}
+		n := 0
+		for n < len(t) && n < 9 && t[n] >= '0' && t[n] <= '9' {
+			n++
+		}
+		if n > 0 && n+1 < len(t) && (t[n] == '.' || t[n] == ')') && (t[n+1] == ' ' || t[n+1] == '\t') {
+			line = t[n+2:]
+			continue
+		}
+		return t
+	}
+}
+
+// heldVoidTags are the elements the page never holds open: a start tag with
+// one of these names has no content and no end tag.
+var heldVoidTags = map[string]bool{}
+
+// heldRawTags are the elements whose content the page does not read as
+// ordinary HTML (raw text, escapable raw text, plaintext) or reads in a
+// foreign namespace: a close tag inside them is not one, so any opener of
+// one of these names refuses whole supersession, closed or not.
+var heldRawTags = map[string]bool{}
+
+func init() {
+	for _, t := range strings.Fields(`area base br col embed hr img input link meta
+		source track wbr`) {
+		heldVoidTags[t] = true
+	}
+	for _, t := range strings.Fields(`script style textarea title xmp iframe noembed
+		noframes noscript plaintext svg math`) {
+		heldRawTags[t] = true
+	}
+}
+
+// heldElement is an element an entry has opened and not yet closed: its
+// name and the run (the lines between blank lines) its opener sits in.
+type heldElement struct {
+	name string
+	run  int
+	raw  bool
+}
+
+// heldElementDoubt reports whether an entry leaves an element open on the
+// page (#3841). An earlier entry's element that is not closed in that entry
+// nests the entries after it, the last one and its PASS included, inside
+// that element, which may drop, collapse or flatten them while the scan
+// reads them live; so whole supersession is off unless, in every entry,
+// every element opened outside top-level fenced code is closed by a matching
+// close tag later in the same entry, in nesting order, and the last entry
+// holds no element open across a line end. Void elements are exempt. An
+// opener is counted wherever it appears (in a code span, a comment or an
+// attribute value too). A close tag counts only where the page surely reads
+// it as one: complete on its line, not backslash-escaped, outside a tag and a
+// comment (heldTagScan), in a run with no code span, link or image syntax,
+// math or table, and either in the opener's own run or, when both runs are
+// HTML blocks that run to a blank line (heldRawRun), in any later run; a
+// close tag in a paragraph cannot end an element opened outside it. Any
+// opener of heldRawTags, any close tag that does not match the innermost
+// open element, and any other doubt refuses. This over-refuses by design.
+func heldElementDoubt(lines []string, inFence []bool, starts []int) bool {
+	st := 0
+	for e, lo := range starts {
+		hi := len(lines)
+		if e+1 < len(starts) {
+			hi = starts[e+1]
+		}
+		lastEntry := e == len(starts)-1
+		var stack []heldElement
+		run, raw, noClose := -1, false, false
+		for i := lo; i < hi; i++ {
+			l := lines[i]
+			if isBlankLine(l) {
+				run = -1
+				continue
+			}
+			if run < 0 || i == lo {
+				run = i
+				raw = !inFence[i] && heldRawRun(l)
+				noClose = heldNoCloseRun(lines[i:hi])
+			}
+			if inFence[i] {
+				continue
+			}
+			p0, s0 := 0, st
+			for p := 0; p+1 < len(l); p++ {
+				if l[p] != '<' {
+					continue
+				}
+				if isASCIILetter(l[p+1]) {
+					n := heldElementName(l[p+1:])
+					switch {
+					case heldVoidTags[n]:
+					case heldRawTags[n]:
+						return true
+					default:
+						stack = append(stack, heldElement{n, run, raw})
+					}
+					continue
+				}
+				n, ok := heldCloseTag(l[p:])
+				if !ok || heldVoidTags[n] || noClose || p > 0 && l[p-1] == '\\' {
+					continue
+				}
+				s0, p0 = heldTagScan(s0, l[p0:p]), p
+				if s0 != 0 {
+					continue
+				}
+				if len(stack) == 0 {
+					return true // a stray close tag
+				}
+				top := stack[len(stack)-1]
+				if top.run != run && !(top.raw && raw) {
+					continue // a close the page may not apply to that element
+				}
+				if top.name != n {
+					return true
+				}
+				stack = stack[:len(stack)-1]
+			}
+			st = heldTagScan(st, l)
+			if lastEntry && len(stack) > 0 {
+				return true
+			}
+		}
+		if len(stack) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// heldElementCheck is heldElementDoubt as heldScanScope calls it. It is a
+// variable only so the tests can turn it off and show that every earlier
+// rule still refuses on its own: the rules are layers, not one check.
+var heldElementCheck = heldElementDoubt
+
+// heldElementName returns the tag name the page's HTML tokenizer reads at
+// the start of s (after "<"), ASCII-lowercased: up to whitespace, "/" or ">".
+func heldElementName(s string) string {
+	b := []byte{}
+	for i := 0; i < len(s) && strings.IndexByte(" \t\n\f\r/>", s[i]) < 0; i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		b = append(b, c)
+	}
+	return string(b)
+}
+
+// heldCloseTag reports whether s opens with a close tag CommonMark reads as
+// one, complete on the line: "</", a tag name (an ASCII letter, then letters,
+// digits and hyphens), optional spaces or tabs, then ">". It returns the
+// name, ASCII-lowercased.
+func heldCloseTag(s string) (string, bool) {
+	if len(s) < 4 || s[1] != '/' || !isASCIILetter(s[2]) {
+		return "", false
+	}
+	n := 3
+	for n < len(s) && (isASCIILetter(s[n]) || s[n] >= '0' && s[n] <= '9' || s[n] == '-') {
+		n++
+	}
+	r := strings.TrimLeft(s[n:], " \t")
+	if !strings.HasPrefix(r, ">") {
+		return "", false
+	}
+	return heldElementName(s[2:n]), true
+}
+
+// heldRawRun reports whether line, the first of a run, opens an HTML block
+// that runs to the next blank line, so the page emits the whole run as raw
+// HTML at the top level: a type 6 block (heldHTMLKind6), or a type 7 block
+// read strictly — one open tag with plain attributes, or one close tag,
+// alone on the line at column 0, its name not one that opens a type 1 block.
+func heldRawRun(line string) bool {
+	if heldHTMLKind6(line) {
+		return true
+	}
+	t := strings.TrimRight(line, " \t")
+	if n, ok := heldCloseTag(t); ok {
+		return len(t) == strings.IndexByte(t, '>')+1 && !heldType1Name(n)
+	}
+	if len(t) < 3 || t[0] != '<' || !isASCIILetter(t[1]) || t[len(t)-1] != '>' {
+		return false
+	}
+	n := 2
+	for n < len(t) && (isASCIILetter(t[n]) || t[n] >= '0' && t[n] <= '9' || t[n] == '-') {
+		n++
+	}
+	if heldType1Name(heldElementName(t[1:n])) {
+		return false
+	}
+	return heldPlainAttrsRe.MatchString(t[n : len(t)-1])
+}
+
+// heldPlainAttrsRe is a run of attributes in the narrow shape heldRawRun
+// accepts (a name, then optionally "=" and a value that is double-quoted
+// without a double quote, or a plain word), then an optional "/".
+var heldPlainAttrsRe = regexp.MustCompile(`^(?:[ \t]+[A-Za-z_:][A-Za-z0-9_.:-]*(?:="[^"<>]*"|=[A-Za-z0-9_.:/-]+)?)*[ \t]*/?$`)
+
+// heldType1Name reports whether name opens a type 1 HTML block, one that
+// runs to its own end marker rather than to a blank line.
+func heldType1Name(name string) bool {
+	return name == "pre" || name == "script" || name == "style" || name == "textarea"
+}
+
+// heldNoCloseRun reports whether the run that starts at lines[0] (up to the
+// next blank line) holds syntax that may carry a close tag the page does not
+// apply as one: a code span or fence, link or image syntax, a link
+// reference or footnote, math, or a table.
+func heldNoCloseRun(lines []string) bool {
+	for _, l := range lines {
+		if isBlankLine(l) {
+			return false
+		}
+		for _, m := range []string{"`", "](", "]:", "][", "![", "[^", "$", "|", "~"} {
+			if strings.Contains(l, m) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// heldTagScan advances the page's HTML tokenizer over line from state st:
+// 0 text, 1 in a tag, 2 and 3 in a double- or single-quoted attribute value,
+// 4 in a comment, 5 in a bogus comment ("<?", "<!x", "</ "). It returns the
+// state at the line's end; a line break ends none of them.
+func heldTagScan(st int, line string) int {
+	for i := 0; i < len(line); i++ {
+		c := line[i]
+		switch st {
+		case 0:
+			if c != '<' || i+1 >= len(line) {
+				continue
+			}
+			switch n := line[i+1]; {
+			case isASCIILetter(n) || n == '/' && i+2 < len(line) && isASCIILetter(line[i+2]):
+				st = 1
+			case strings.HasPrefix(line[i+1:], "!--"):
+				st, i = 4, i+3
+				if r := line[i+1:]; strings.HasPrefix(r, ">") || strings.HasPrefix(r, "->") {
+					st = 0 // "<!-->" and "<!--->" close at once
+				}
+			case n == '!' || n == '?' || n == '/':
+				st = 5
+			}
+		case 1:
+			switch c {
+			case '"':
+				st = 2
+			case '\'':
+				st = 3
+			case '>':
+				st = 0
+			}
+		case 2:
+			if c == '"' {
+				st = 1
+			}
+		case 3:
+			if c == '\'' {
+				st = 1
+			}
+		case 4:
+			if j, n := heldCommentEnd(line[i:]); j >= 0 {
+				st, i = 0, i+j+n-1
+			} else {
+				i = len(line)
+			}
+		case 5:
+			if c == '>' {
+				st = 0
+			}
+		}
+	}
+	return st
+}
+
+// heldPipeOutsideCode reports whether line holds a "|" that is neither
+// backslash-escaped nor inside a code span. A backtick run with no closing run
+// of the same length on the line is literal text, as CommonMark reads it.
+func heldPipeOutsideCode(line string) bool {
+	for i := 0; i < len(line); i++ {
+		switch line[i] {
+		case '\\':
+			i++
+		case '|':
+			return true
+		case '`':
+			n := 1
+			for i+n < len(line) && line[i+n] == '`' {
+				n++
+			}
+			if j := heldCloseRun(line, i+n, n); j >= 0 {
+				i = j + n - 1
+			} else {
+				i += n - 1
+			}
+		}
+	}
+	return false
+}
+
+// heldCloseRun returns where a backtick run of exactly n starts in line at or
+// after from, or -1.
+func heldCloseRun(line string, from, n int) int {
+	for i := from; i < len(line); {
+		if line[i] != '`' {
+			i++
+			continue
+		}
+		m := 1
+		for i+m < len(line) && line[i+m] == '`' {
+			m++
+		}
+		if m == n {
+			return i
+		}
+		i += m
+	}
+	return -1
+}
+
+// heldCommentEnd returns the index and length of the first comment end in s:
+// "-->", or "--!>", at which the page parser also ends a comment. It returns
+// -1 when s holds neither. Searched from the opener's first byte, it also
+// closes "<!--!>", which the page parser does not: the stricter choice.
+func heldCommentEnd(s string) (int, int) {
+	j, n := strings.Index(s, "-->"), 3
+	if k := strings.Index(s, "--!>"); k >= 0 && (j < 0 || k < j) {
+		j, n = k, 4
+	}
+	return j, n
+}
+
+// The kinds of line heldHTMLLines tells apart.
+const (
+	heldNotHTML     = iota
+	heldHTMLComment // a line wholly inside an HTML comment
+	heldHTMLOther   // any other line of an HTML block
+)
+
+// heldHTMLLines classifies each line by the HTML block it sits in (rule 3b):
+// a comment line is one whose every byte lies inside the comment; a line of
+// any other HTML block, or a comment's line with text after its end, is
+// heldHTMLOther. A comment's end is the first "-->" or "--!>" counted from
+// the opener's first byte (heldCommentEnd), so "<!-->" and "<!--->" close on
+// their own line. The HTML block itself runs to the first line holding "-->",
+// so the lines after a "--!>" end render live and are heldHTMLOther. An
+// indented "<!--" (indented code on the page) is read here as a comment too;
+// heldContainerDoubt turns whole supersession off for it. A block that ends
+// on its own line is read as running to the next blank line unless it is a
+// comment, and a block that ends at a blank line runs on to the end marker of
+// any block a line in it opens: the stricter choices.
+func heldHTMLLines(lines []string, inFence []bool) []int {
+	kind := make([]int, len(lines))
+	end, open, comment := "", false, false
+	for i, l := range lines {
+		lower := strings.ToLower(l)
+		switch {
+		case end != "":
+			kind[i] = heldHTMLOther
+			if comment {
+				kind[i] = heldHTMLComment
+				j, n := heldCommentEnd(lower)
+				if j < 0 {
+					continue
+				}
+				if strings.TrimSpace(lower[j+n:]) != "" {
+					kind[i] = heldHTMLOther
+				}
+				comment = false // a "--!>" end leaves the block open, read
+			}
+			if strings.Contains(lower, end) {
+				end = ""
+			}
+			continue
+		case open:
+			if isBlankLine(l) {
+				open = false
+				continue
+			}
+			kind[i] = heldHTMLOther
+			if heldHTMLOpenEnds(l) {
+				_, end = heldHTMLOpen(l)
+				open = false // the page may run on to the end marker
+			}
+			continue
+		case inFence[i]:
+			continue
+		}
+		h, e := heldHTMLOpen(l)
+		if !h {
+			continue
+		}
+		kind[i] = heldHTMLOther
+		if t := strings.TrimLeft(lower, " \t"); strings.HasPrefix(t, "<!--") {
+			kind[i] = heldHTMLComment
+			j, n := heldCommentEnd(t)
+			if j < 0 {
+				end, comment = "-->", true
+				continue
+			}
+			if strings.TrimSpace(t[j+n:]) != "" {
+				kind[i] = heldHTMLOther
+			}
+			if !strings.Contains(t, "-->") {
+				end = "-->" // closed by "--!>": the rest of the block is read
+			}
+			continue
+		}
+		if e != "" {
+			end = e
+		} else {
+			open = true
+		}
+	}
+	return kind
 }
 
 // heldFence is an open CommonMark fence: its character and run length.
@@ -182,9 +798,19 @@ func heldFenceOpens(line string) (heldFence, bool) {
 // (htmlBlockEnds, a declaration), the end marker still to come: "" when the
 // block ends at the next blank line or already ended on this line.
 func heldHTMLOpen(line string) (html bool, end string) {
+	html, end, _ = heldHTMLOpenEnd(line)
+	return html, end
+}
+
+// heldHTMLOpenEnd is heldHTMLOpen, also reporting closed: the block is of a
+// kind that runs to an end marker and the line already holds it, searched
+// from the opener's first byte as the page does ("<!-->" ends at once). The
+// page ends such a block on this line; heldHTMLOpen reads it as running on
+// to the next blank line, the stricter choice for what it reads.
+func heldHTMLOpenEnd(line string) (html bool, end string, closed bool) {
 	t := strings.TrimLeft(line, " \t")
 	if !strings.HasPrefix(t, "<") {
-		return false, ""
+		return false, "", false
 	}
 	lower := strings.ToLower(t)
 	for _, k := range htmlBlockEnds {
@@ -196,18 +822,19 @@ func heldHTMLOpen(line string) (html bool, end string) {
 				continue
 			}
 		}
+		closed = strings.Contains(lower, k.end)
 		if strings.Contains(lower[len(k.open):], k.end) {
-			return true, ""
+			return true, "", closed
 		}
-		return true, k.end
+		return true, k.end, closed
 	}
 	if len(t) > 2 && t[1] == '!' && isASCIILetter(t[2]) { // a declaration, type 4
 		if strings.Contains(t[2:], ">") {
-			return true, ""
+			return true, "", true
 		}
-		return true, ">"
+		return true, ">", false
 	}
-	return true, "" // types 6 and 7, or a paragraph that starts with "<": ends at a blank line
+	return true, "", false // types 6 and 7, or a paragraph that starts with "<": ends at a blank line
 }
 
 // heldRender classifies the lines of evidence for the structural reads rule 3
@@ -223,7 +850,15 @@ func heldHTMLOpen(line string) (html bool, end string) {
 //     after it up to the next blank line, is not live; a block that runs
 //     across blank lines (a comment, <pre>, …) is not live up to its end
 //     marker, and a fence line inside any HTML block is a disagreement;
-//   - a blank line is not live.
+//   - a blank line is not live;
+//   - a carriage return ends a line on the page that the scan's split on
+//     "\n" does not see. The brief reader has already rewritten each CRLF to
+//     LF exactly once, so any carriage return left, a trailing one included,
+//     stood with no line feed after it in the file: from the first such line
+//     no line is live;
+//   - a block that ends at a blank line may hold a line that opens a block
+//     running to an end marker (<pre>, a comment, …): the page may run on to
+//     that marker past the blank line, so the lines up to it are not live.
 //
 // Paragraph-level contexts (a blockquote's lazy continuation, a code span or
 // strike running across lines) are judged by the callers, which accept a
@@ -241,6 +876,9 @@ func heldRender(lines []string) []bool {
 		switch {
 		case doubt:
 			continue
+		case strings.IndexByte(l, '\r') >= 0:
+			doubt = true // the page ends a line here, the split does not
+			continue
 		case htmlEnd != "":
 			if toggle {
 				doubt = true
@@ -253,6 +891,9 @@ func heldRender(lines []string) []bool {
 				html = false
 			} else if toggle {
 				doubt = true
+			} else if heldHTMLOpenEnds(l) {
+				_, htmlEnd = heldHTMLOpen(l)
+				html = false // the page may run on to the end marker
 			}
 			continue
 		}
@@ -431,6 +1072,7 @@ func heldScanScope(evidence string) heldScope {
 		}
 		inFence[i] = fence
 	}
+	html := heldHTMLLines(lines, inFence)
 
 	// Entries, split at live level-3 headings.
 	starts := []int{0}
@@ -441,11 +1083,16 @@ func heldScanScope(evidence string) heldScope {
 	}
 
 	var tables []heldTable
+	// Per entry: its results tables' row keys, and whether every data row of
+	// them is aligned and keyed (rule 3b).
+	keys := make([][]string, len(starts))
+	aligned := make([]bool, len(starts))
 	for e := range starts {
 		lo, hi := starts[e], len(lines)
 		if e+1 < len(starts) {
 			hi = starts[e+1]
 		}
+		aligned[e] = true
 		// Table blocks: runs of table lines outside fenced code.
 		hasResults := false
 		for i := lo; i < hi; {
@@ -471,11 +1118,15 @@ func heldScanScope(evidence string) heldScope {
 				}
 				if tb.keyCol >= 0 && hasResult {
 					hasResults = true
+					if j < hi && !isBlankLine(lines[j]) {
+						aligned[e] = false // a line GFM may read as one more row of the table
+					}
 					tables = append(tables, tb)
 					out[i].skip, out[i+1].skip = true, true // header and separator
 					for r := i + 2; r < j; r++ {
 						cells := heldCellRanges(lines[r])
 						if len(cells) != len(header) {
+							aligned[e] = false
 							continue // cannot align: read whole, no key (fail closed)
 						}
 						for c, rg := range cells {
@@ -486,10 +1137,27 @@ func heldScanScope(evidence string) heldScope {
 						kc := cells[tb.keyCol]
 						hc := header[tb.keyCol]
 						out[r].key = heldRowKey(lines[i][hc[0]:hc[1]], lines[r][kc[0]:kc[1]])
+						if out[r].key == "" {
+							aligned[e] = false
+							continue
+						}
+						keys[e] = append(keys[e], out[r].key)
 					}
 				}
 			}
 			i = j
+		}
+		for i := lo; i < hi; i++ {
+			out[i].whole = html[i] != heldHTMLOther
+			// An HTML table renders live in any cell, header and keyed rows
+			// included; only a results table's own pipes are exempt.
+			tableish := heldHTMLTableRe.MatchString(lines[i])
+			if !out[i].skip && out[i].key == "" {
+				tableish = tableish || heldPipeOutsideCode(lines[i])
+			}
+			if !inFence[i] && tableish {
+				aligned[e] = false // a table the scan cannot key
+			}
 		}
 		if !hasResults {
 			continue
@@ -507,6 +1175,9 @@ func heldScanScope(evidence string) heldScope {
 		if heldEntryPass(lines, live, last, len(lines)) {
 			if covered := heldCovered(lines, live, out, tables, last); len(covered) > 0 {
 				scope.from, scope.covered = last, covered
+				scope.whole = heldWholeCovered(keys[:len(starts)-1], aligned[:len(starts)-1], covered) &&
+					!heldHTMLUnclosed(lines, inFence) && !heldContainerDoubt(lines, inFence) &&
+					!heldElementCheck(lines, inFence, starts)
 			}
 		}
 	}

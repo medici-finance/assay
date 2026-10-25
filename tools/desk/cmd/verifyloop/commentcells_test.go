@@ -9,17 +9,21 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
 )
 
 // commentCellsPath is the shared table statusgen and verifycmd are held to; its
-// "cells" section maps whole Command cells to a verdict (#2684 review S1, F2).
+// "cells" section maps whole Command cells to a verdict (#2684 review S1, F2;
+// #3147).
 var commentCellsPath = filepath.Join("..", "..", "..", "..", "statusgen", "testdata", "shell-comment-vectors.json")
 
 type commentCell struct {
 	Name   string `json:"name"`
 	Cell   string `json:"cell"`
 	Marked bool   `json:"marked"`
+	Lift   string `json:"lift"`
 	Desk   string `json:"desk"`
+	Passes bool   `json:"passes"`
 }
 
 // commentCellBrief loads the shared cells and renders them as one brief's
@@ -36,7 +40,7 @@ func commentCellBrief(t *testing.T) ([]commentCell, string) {
 	if err := json.Unmarshal(b, &doc); err != nil {
 		t.Fatal(err)
 	}
-	if len(doc.Cells) < 12 {
+	if len(doc.Cells) < 30 {
 		t.Fatalf("positive control: only %d cell vectors loaded", len(doc.Cells))
 	}
 	var sb strings.Builder
@@ -62,9 +66,10 @@ func writeCellBrief(t *testing.T, root, brief string) string {
 }
 
 // TestRunBriefRowsCommentCells — every shared cell through the real parse and
-// runBriefRows: a comment-refused cell never reaches the executor and records a
-// non-zero could-not-run with the reason that fits it (a marked comment is told
-// to replace the comment, never to add the marker it has); a runs cell does.
+// runBriefRows: a refused cell never reaches the executor and records a non-zero
+// could-not-run with the reason that fits it (a marked comment is told to replace
+// the comment, never to add the marker it has); a runs cell reaches it as
+// exactly statusgen's lift.
 // regression: #2684
 func TestRunBriefRowsCommentCells(t *testing.T) {
 	cells, brief := commentCellBrief(t)
@@ -81,11 +86,14 @@ func TestRunBriefRowsCommentCells(t *testing.T) {
 	}
 	for i, c := range cells {
 		r := res[i]
-		refused := r.Exit == commentOnlyExit && strings.HasPrefix(r.Output, "could-not-run: ") && !ran[r.Command]
-		if want := c.Desk == "comment-refused"; refused != want || (!want && (r.Exit != 0 || !ran[r.Command])) {
-			t.Errorf("%s: row %d exit=%d output=%q executed=%v; want %s", c.Name, r.Row, r.Exit, r.Output, ran[r.Command], c.Desk)
+		refused := r.Exit == couldNotRunExit && strings.HasPrefix(r.Output, "could-not-run: ") && !ran[r.Command]
+		if want := c.Desk != "runs"; refused != want || (!want && (r.Exit != 0 || !ran[r.Command] || r.Command != verifycmd.UnescapePipes(c.Lift))) {
+			t.Errorf("%s: row %d command=%q exit=%d output=%q executed=%v; want %s", c.Name, r.Row, r.Command, r.Exit, r.Output, ran[r.Command], c.Desk)
 		}
-		if c.Marked && refused && (!strings.Contains(r.Output, "replace it") || strings.Contains(r.Output, "mark the real command")) {
+		if c.Desk == "comment-refused" && !strings.Contains(r.Output, "shell comment") {
+			t.Errorf("%s: a comment-refused row must say it is a shell comment, got %q", c.Name, r.Output)
+		}
+		if c.Marked && c.Desk == "comment-refused" && (!strings.Contains(r.Output, "replace it") || strings.Contains(r.Output, "mark the real command")) {
 			t.Errorf("%s: a marked comment must be told to replace it, got %q", c.Name, r.Output)
 		}
 	}

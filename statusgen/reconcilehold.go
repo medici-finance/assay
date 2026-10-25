@@ -163,7 +163,7 @@ var statusKeyedLintRules = []statusKeyedLintRule{
 	// would carry a gate: human brief to implemented or later without a recorded
 	// ruling is HELD, not kept to red its own PR.
 	{"decisionGateHoldProblems", func(e *lintEnv) []string { p, _ := decisionGateHoldProblems(e.root); return p }, decisionGateIncremental},
-	{"driveRegionLintProblems", func(e *lintEnv) []string { p, _ := driveRegionLintProblems(e.root, nowFunc()); return p }, driveIncremental},
+	{"driveRegionLintProblems", func(e *lintEnv) []string { p, _ := driveRegionLintProblems(e.root, nil, nil, nowFunc()); return p }, driveIncremental},
 }
 
 // statusKeyedNotRows names run() callees the registry completeness test sees

@@ -714,8 +714,10 @@ func deriveContentSignalsRows(fm *briefFrontmatter, rows []verifyRow) {
 	runnable := 0
 	lane, blocked := "", ""
 	for _, r := range rows {
-		rl := deriveOnlineLane(r.Command)
-		rb := deriveBlockedUntil(r.Command)
+		// The whole cell, not the lift: the lane and window phrases are prose
+		// around the command, which the first-span lift drops (#3147).
+		rl := deriveOnlineLane(r.Cell)
+		rb := deriveBlockedUntil(r.Cell)
 		if rl == "" && rb == "" {
 			runnable++
 			continue

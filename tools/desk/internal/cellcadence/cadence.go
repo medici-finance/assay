@@ -32,8 +32,9 @@ var (
 type Config struct {
 	Cell, Role       string
 	Interval, Budget time.Duration
-	Heartbeat        time.Duration // default five seconds
-	Guard            func() error  // invoked before any launch and on every heartbeat
+	Heartbeat        time.Duration               // default five seconds
+	Guard            func() error                // invoked before any launch and on every heartbeat
+	BetweenPasses    func(context.Context) error // maintenance, never initial admission or child finalization
 }
 
 // Result must be classified by the caller against the published tick grammar.
@@ -47,22 +48,23 @@ type Result struct {
 }
 
 type State struct {
-	Schema     string        `json:"schema"`
-	Mode       string        `json:"mode,omitempty"` // empty is the original cadence schema
-	Cell       string        `json:"cell"`
-	Role       string        `json:"role"`
-	PID        int           `json:"pid"` // diagnostic only; never authorizes teardown/recovery
-	Interval   time.Duration `json:"interval"`
-	Budget     time.Duration `json:"budget"`
-	NextDue    time.Time     `json:"next_due"`
-	Heartbeat  time.Time     `json:"heartbeat"`
-	LastStart  time.Time     `json:"last_start"`
-	LastFinish time.Time     `json:"last_finish"`
-	Running    bool          `json:"running"`
-	Sequence   uint64        `json:"sequence"`
-	Outcome    string        `json:"outcome"`
-	Summary    string        `json:"summary,omitempty"`
-	ExitCode   int           `json:"exit_code"`
+	Schema      string        `json:"schema"`
+	Mode        string        `json:"mode,omitempty"` // empty is the original cadence schema
+	Cell        string        `json:"cell"`
+	Role        string        `json:"role"`
+	PID         int           `json:"pid"` // diagnostic only; never authorizes teardown/recovery
+	Interval    time.Duration `json:"interval"`
+	Budget      time.Duration `json:"budget"`
+	NextDue     time.Time     `json:"next_due"`
+	Heartbeat   time.Time     `json:"heartbeat"`
+	LastStart   time.Time     `json:"last_start"`
+	LastFinish  time.Time     `json:"last_finish"`
+	Running     bool          `json:"running"`
+	Sequence    uint64        `json:"sequence"`
+	Outcome     string        `json:"outcome"`
+	Summary     string        `json:"summary,omitempty"`
+	ExitCode    int           `json:"exit_code"`
+	Maintenance string        `json:"maintenance,omitempty"`
 }
 
 // Lease is also used by interactive launches so a scheduled and an interactive
@@ -242,6 +244,9 @@ func Read(dir string) (State, error) {
 	if s.Mode != "" && s.Mode != "interactive" || s.Mode == "" && (s.Interval <= 0 || s.Budget <= 0) || s.Mode == "interactive" && (s.Interval != 0 || s.Budget != 0 || s.Sequence == 0) {
 		return s, errors.New("invalid role owner mode or timing")
 	}
+	if s.Maintenance != "" && s.Maintenance != "checked-clean" && s.Maintenance != "could-not-check" {
+		return s, errors.New("invalid maintenance outcome")
+	}
 	if s.Sequence == 0 && (s.Running || !s.LastStart.IsZero() || !s.LastFinish.IsZero() || s.Outcome != "never-run") {
 		return s, errors.New("invalid unused cadence checkpoint")
 	}
@@ -318,6 +323,50 @@ func (l *Lease) Run(ctx context.Context, c Config, pass func(context.Context) Re
 	s.Budget = c.Budget
 	beat := time.NewTicker(c.Heartbeat)
 	defer beat.Stop()
+	maintain := func() error {
+		if c.BetweenPasses == nil || s.Sequence == 0 {
+			return nil
+		}
+		// The child has been reaped and its finish checkpoint persisted. Keep
+		// the existing role lease and heartbeat while the maintenance owner works.
+		maintenance, stop := context.WithCancel(ctx)
+		defer stop()
+		finished := make(chan error, 1)
+		go func() { finished <- c.BetweenPasses(maintenance) }()
+		var interrupted error
+		done := ctx.Done()
+		for {
+			select {
+			case err := <-finished:
+				s.Maintenance = "checked-clean"
+				if err != nil {
+					s.Maintenance = "could-not-check"
+				}
+				s.Heartbeat = time.Now().UTC()
+				return errors.Join(interrupted, write(l.dir, s))
+			case <-done:
+				interrupted = ctx.Err()
+				stop()
+				done = nil // retain custody until existing maintenance returns
+			case <-beat.C:
+				s.Heartbeat = time.Now().UTC()
+				if err := write(l.dir, s); err != nil {
+					interrupted = err
+					stop()
+				}
+				if c.Guard != nil {
+					if err := c.Guard(); err != nil {
+						interrupted = err
+						stop()
+					}
+				}
+			}
+		}
+	}
+	// A loaded checkpoint is not a maintenance receipt: the first launch keeps
+	// its ordinary bounded admission. Only this supervisor's completed passes
+	// enter the between-pass lifecycle.
+	completedHere := false
 	for {
 		if err = ctx.Err(); err != nil {
 			return err
@@ -344,6 +393,14 @@ func (l *Lease) Run(ctx context.Context, c Config, pass func(context.Context) Re
 			case <-due.C:
 			}
 			continue
+		}
+		// A heartbeat may win the select at the due instant. Put the boundary
+		// check here so every subsequent pass, not only the timer case, sees it.
+		if completedHere {
+			if err = maintain(); err != nil {
+				return err
+			}
+			now = time.Now().UTC()
 		}
 		s.Sequence++
 		s.Running = true
@@ -418,6 +475,10 @@ func (l *Lease) Run(ctx context.Context, c Config, pass func(context.Context) Re
 		}
 		if passErr != nil && !errors.Is(passErr, context.DeadlineExceeded) {
 			return passErr
+		}
+		completedHere = true
+		if err = maintain(); err != nil {
+			return err
 		}
 	}
 }

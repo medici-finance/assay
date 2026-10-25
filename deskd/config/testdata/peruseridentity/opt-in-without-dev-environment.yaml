@@ -1,0 +1,25 @@
+# Verify row 12b fixture (the service contract Task 9, the authorization contract): the
+# PROVING cell tries to enable the per-user identity path with no dev
+# environment declared. cellsvalidate must exit NON-ZERO on this file.
+#
+#   go run ./cmd/cellsvalidate config/testdata/peruseridentity/opt-in-without-dev-environment.yaml
+#
+# Being the proving cell lifts the private-cell refusal; it does NOT lift the
+# precondition. The dev environments: declaration is required before the
+# opt-in may be set at all (relayed direction, toolkit 1963, fork 1).
+cells:
+  - name: assay
+    repos:
+      - example-org/toolkit
+    streams_root: docs/streams
+    loops:
+      - role: review
+        schedule: "*/10 * * * *"
+        models: [glm-5.3, deepseek-chat]
+        app: assay-reviewer-app
+    silence_threshold: 48h
+    notification_tiers:
+      review: push
+      question: badge
+      notify: none
+    per_user_identity: enabled

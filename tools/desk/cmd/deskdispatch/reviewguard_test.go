@@ -244,6 +244,9 @@ func guardRelay(identity, call string) bool {
 		"dispatch.go::stepClaim":    {`runCmdEnv(o.root, auth.env, script, append(args, auth.args...)...)`, `runCmdEnv(o.root, auth.env, script, append([]string{"show", claimKey, "--repo", repo}, auth.args...)...)`},
 		"dispatch.go::releaseClaim": {`runCmdEnv(o.root, auth.env, script, append([]string{"release", claimKey, "--repo", repo}, auth.args...)...)`},
 		"dispatch.go::stepDecision": {`runCmdEnv(o.root, auth.scriptEnv, script, "ensure", briefArg(o), "--repo", repo, "--at", "start")`},
+		// #2079: the recorded-ruling check is a forge READ (statusgen's ruling-link resolver) under
+		// the same handed-over credential the decision script receives; it writes nothing.
+		"recordedruling.go::checkRecordedRuling":                     {`runCmdEnv(r.repoRoot, env, bin, "--root", r.repoRoot, "--corroborate", "--ruling-record", r.record, "--ruling-brief", r.brief)`},
 		"repairadmission.go:*claimToolAdmissionBackend:acquireLease": {`runCmdEnv(b.o.root, b.auth.env, b.plan.claimTool, append([]string{"acquire", key, "--repo", b.repo}, b.auth.args...)...)`},
 		"repairadmission.go:*claimToolAdmissionBackend:releaseLease": {`runCmdEnv(b.o.root, b.auth.env, b.plan.claimTool, append([]string{"release", key, "--repo", b.repo}, b.auth.args...)...)`},
 		"repairadmission.go:*claimToolAdmissionBackend:occupancy":    {`runCmdEnv(b.o.root, b.auth.env, b.plan.claimTool, append([]string{"list", "--repo", b.repo}, b.auth.args...)...)`},

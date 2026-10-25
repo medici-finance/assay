@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -109,7 +110,7 @@ func buildDeskverdict(t *testing.T) string {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "deskverdict")
 	cmd := exec.Command("go", "build", "-o", bin, "../deskverdict")
-	if b, err := cmd.CombinedOutput(); err != nil {
+	if b, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
 		t.Fatalf("go build deskverdict: %v\n%s", err, b)
 	}
 	return bin

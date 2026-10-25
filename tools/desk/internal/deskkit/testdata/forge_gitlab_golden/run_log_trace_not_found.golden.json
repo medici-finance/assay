@@ -1,0 +1,16 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/pipelines/9001/jobs",
+      "query": "page=1\u0026per_page=100"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v4/projects/medici-finance%2Fassay/jobs/70/trace"
+    }
+  ],
+  "result": null,
+  "err": "could-not-check: GET /projects/medici-finance%2Fassay/jobs/70/trace — not visible (HTTP 404): the object does not exist, or the token cannot see it: forge API GET /projects/medici-finance%2Fassay/jobs/70/trace returned HTTP 404",
+  "not_found": true
+}

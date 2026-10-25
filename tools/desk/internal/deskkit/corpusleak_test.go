@@ -84,6 +84,10 @@ var corpusOperationalStreams = map[string]string{
 	// and statusgen (its own copy) read it live. Genericising the name would break every one
 	// of them: it is the operational contract itself, not withheld process-management prose.
 	"verify-outcomes": "deskevidence writes it (--outcome-record); verifyloop + statusgen read it live",
+	// decisions (#2079): the decision-record register. deskdispatch's decision gate reads it live —
+	// a gate: human brief's recorded ruling must link a record there, which statusgen then
+	// corroborates — so its root is the operational contract, like the registers above.
+	"decisions": "deskdispatch reads a recorded ruling's decision record there at runtime; statusgen reads it live",
 }
 
 // corpusCopySetExempt is the set of tools/desk files this guard does NOT scan

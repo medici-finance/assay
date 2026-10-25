@@ -43,7 +43,7 @@ import (
 // release, where the namespaced ReleaseTag stamp supplies the version instead.
 var version string
 
-var perfVerbs = []string{"prs", "actions", "queue", "health", "awaiting", "nextup", "scope", "dispatch", "throughput", "policydrift", "stalled", "reviews", "diff", "files"}
+var perfVerbs = []string{"prs", "actions", "review-queue", "queue", "health", "awaiting", "nextup", "scope", "dispatch", "throughput", "policydrift", "stalled", "reviews", "diff", "files"}
 
 func main() {
 	args := os.Args[1:]
@@ -89,10 +89,10 @@ func boardCode(n int) error {
 }
 
 type boardOptions struct {
-	table, delta, quiet, json bool
-	out, tier                 string
-	minAge, floor             int
-	merge, unreviewed         time.Duration
+	table, delta, quiet, json    bool
+	out, tier, reviewObservation string
+	minAge, floor                int
+	merge, unreviewed            time.Duration
 }
 
 func versionLine() string {
@@ -106,6 +106,7 @@ func boardBindings() []cli.Binding {
 		{Key: "json", Kind: cli.Bool, Flag: "json", Persistent: true, Default: false, Usage: "JSON output (stalled otherwise defaults to a table)"},
 		{Key: "delta", Kind: cli.Bool, Flag: "delta", Persistent: true, Default: false, Usage: "only changed rows (prs/actions/queue/nextup)"},
 		{Key: "quiet", Kind: cli.Bool, Flag: "quiet", Persistent: true, Default: false, Usage: "summary line (prs/actions/queue/nextup)"},
+		{Key: "review-observation", Kind: cli.String, Flag: "review-observation", Persistent: true, Usage: "throughput only: reuse a complete fresh review observation; no review recollection on hold"},
 		{Key: "out", Kind: cli.String, Flag: "out", Persistent: true, Default: "", Usage: "write primary output to a caller-minted file"},
 		{Key: "min-age-hours", Kind: cli.String, Flag: "min-age-hours", Persistent: true, Default: "48", Usage: "stalled draft window in positive hours"},
 		{Key: "merge-now-threshold", Kind: cli.String, Flag: "merge-now-threshold", Persistent: true, Default: "20m", Usage: "MERGE-NOW approved-age decay duration"},
@@ -138,9 +139,15 @@ func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer
 					fmt.Fprintln(stderr, err)
 					return boardExit(deskkit.ExitRefused)
 				}
+				if o.reviewObservation != "" && sub != "throughput" {
+					return deskkit.Refused("deskboard: --review-observation is supported only by throughput")
+				}
 				if o.out != "" && (o.delta || o.quiet) {
 					fmt.Fprintln(stderr, "deskboard: --out is not supported together with --delta/--quiet")
 					return boardExit(deskkit.ExitRefused)
+				}
+				if sub == "review-queue" && o.table {
+					return deskkit.Refused("deskboard review-queue requires JSON output; --table cannot produce the complete artifact")
 				}
 				if sub == "stalled" && o.table && o.json {
 					fmt.Fprintln(stderr, "deskboard: stalled: --table and --json are contradictory; pass one")
@@ -185,6 +192,7 @@ func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer
 			name, short string
 			aliases     []string
 		}{
+			{"review-queue", "complete frozen review observation (offline planning bridge)", nil},
 			{"prs", "open PRs across watched repos", nil}, {"actions", "per-PR ACTION classification", nil},
 			{"queue", "open verify-gate issues", nil}, {"throughput", "queue depth versus pool slots", nil},
 			{"health", "default-branch health per watched repo", nil},
@@ -233,7 +241,7 @@ func resolveBoard(set *cli.Set) (boardOptions, error) {
 	if boardResolved != nil {
 		boardResolved(v)
 	}
-	o := boardOptions{table: v.Bool("table"), json: v.Bool("json"), delta: v.Bool("delta"), quiet: v.Bool("quiet"), out: v.String("out"), tier: v.String("tier")}
+	o := boardOptions{table: v.Bool("table"), json: v.Bool("json"), delta: v.Bool("delta"), quiet: v.Bool("quiet"), out: v.String("out"), tier: v.String("tier"), reviewObservation: v.String("review-observation")}
 	o.minAge, err = strconv.Atoi(v.String("min-age-hours"))
 	if err != nil || o.minAge <= 0 {
 		return o, deskkit.Refused("deskboard: --min-age-hours requires a positive integer")
@@ -281,7 +289,13 @@ func runBoard(sub string, rest, args []string, o boardOptions, stdout, stderr io
 	lastSweepCost = nil
 	hdr := boardHeader()
 
-	rep, err := boardDispatch(sub, rest, hdr, mergeNowThreshold, unreviewedThreshold, minAgeHours, o.tier)
+	var rep *Report
+	var err error
+	if sub == "throughput" && o.reviewObservation != "" {
+		rep, err = cmdThroughput(hdr, mergeNowThreshold, unreviewedThreshold, o.reviewObservation)
+	} else {
+		rep, err = boardDispatch(sub, rest, hdr, mergeNowThreshold, unreviewedThreshold, minAgeHours, o.tier)
+	}
 	// #2421: one read-cost line per actions sweep, on success and on refusal alike.
 	if sub == "actions" && lastSweepCost != nil {
 		fmt.Fprintln(stderr, lastSweepCost.line())
@@ -339,6 +353,16 @@ func runBoard(sub string, rest, args []string, o boardOptions, stdout, stderr io
 		}
 		wantTable = !jsonOut
 	}
+	if sub == "review-queue" && outPath != "" {
+		if err := writeReviewObservation(outPath, rep.value); err != nil {
+			logRun(sub, deskkit.ResultUnverifiable, "--out: "+err.Error())
+			fmt.Fprintln(stderr, "deskboard review-queue: cannot save artifact:", err)
+			return deskkit.ExitUnverifiable
+		}
+		fmt.Fprintln(stdout, rep.detail)
+		logRun(sub, deskkit.ResultOK, rep.detail)
+		return deskkit.ExitOK
+	}
 	// --out redirects the PRIMARY output (table or JSON) to a caller-minted scratch
 	// file instead of stdout — a portable substitute for a shell `>` redirect
 	// (desk-shell.md §Scratch files) that does not depend on the invoking shell.
@@ -390,7 +414,7 @@ func runBoard(sub string, rest, args []string, o boardOptions, stdout, stderr io
 // precedent already (TestStalled_RepoListFailureFailsClosed: "'no stalled drafts in
 // that repo' would be a claim nothing verified") and simply predates this map.
 var boardWideVerbs = map[string]bool{
-	"prs": true, "actions": true, "queue": true, "health": true, "policydrift": true,
+	"review-queue": true, "prs": true, "actions": true, "queue": true, "health": true, "policydrift": true,
 	"stalled": true,
 }
 
@@ -413,6 +437,8 @@ func dispatch(sub string, rest []string, hdr Header, mergeNowThreshold, unreview
 		}
 	}
 	switch sub {
+	case "review-queue":
+		return cmdReviewQueue()
 	case "prs":
 		return cmdPRs(hdr)
 	case "actions":

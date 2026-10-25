@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"net/http"
 	"os"
@@ -73,7 +74,7 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 	}
 	for _, model := range []string{"gpt-6-astra", "gpt-6.1-sol"} {
 		t.Run(model, func(t *testing.T) {
-			cache, err := exec.Command("go", "env", "GOMODCACHE").Output()
+			cache, err := goquiet.Cmd(exec.Command("go", "env", "GOMODCACHE")).Output()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -142,7 +143,7 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 			bin := filepath.Join(t.TempDir(), "statusgen")
 			build := exec.Command("go", "build", "-o", bin, ".")
 			build.Dir = "../../../../statusgen"
-			if out, err := build.CombinedOutput(); err != nil {
+			if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 				t.Fatalf("build statusgen: %s %v", out, err)
 			}
 			helperDir := t.TempDir()

@@ -147,6 +147,7 @@ output: a versioned JSON envelope on stdout
 
   {"schema": 1, "kind": "trust",
    "items":   [{"repo": "o/n", "number": 7, "trust": {"bodyEditedAt": "…", "complete": true,
+               "bodyHistoryKnown": true,
                "events": [{"authorLogin": …, "authorId": …, "createdAt": …, "editedAt": …}]}}],
    "partial": [{"repo": "o/n", "number": 7, "reason": "…"}]}
 
@@ -880,10 +881,16 @@ type PartialItem struct {
 // TrustJSON is deskkit.TrustPayload rendered for the wire. Times are RFC3339 with sub-second
 // precision kept (the blessing rule voids a blessing on a same-instant tie, so rounding here
 // could turn a void into a pass); a zero time renders as "".
+//
+// BodyHistoryKnown is TrustPayload.BodyHistoryKnown as the forge gave it: whether the forge
+// reported body-edit history at all. An absent bodyEditedAt cannot otherwise be told apart
+// from an unreported one, so a reader that needs "never edited" requires this true
+// (desktools-v2/71). It is additive and always rendered.
 type TrustJSON struct {
-	BodyEditedAt string      `json:"bodyEditedAt,omitempty"`
-	Complete     bool        `json:"complete"`
-	Events       []EventJSON `json:"events"`
+	BodyEditedAt     string      `json:"bodyEditedAt,omitempty"`
+	Complete         bool        `json:"complete"`
+	BodyHistoryKnown bool        `json:"bodyHistoryKnown"`
+	Events           []EventJSON `json:"events"`
 }
 
 // EventJSON is one deskkit.ContentEvent. AuthorLogin is the rendered form the trust set expects
@@ -1083,7 +1090,7 @@ func readItem(kind string, target deskkit.TargetKind, tgt issueTarget, o readOpt
 		if tp == nil {
 			return nil, deskkit.Unverifiable(fmt.Sprintf("the forge returned no trust payload for %s#%d", tgt.Repo, tgt.Number), nil)
 		}
-		tj := &TrustJSON{BodyEditedAt: wireTime(tp.BodyEdited), Complete: tp.Complete, Events: []EventJSON{}}
+		tj := &TrustJSON{BodyEditedAt: wireTime(tp.BodyEdited), Complete: tp.Complete, BodyHistoryKnown: tp.BodyHistoryKnown, Events: []EventJSON{}}
 		for _, e := range tp.Events {
 			tj.Events = append(tj.Events, EventJSON{
 				AuthorLogin: e.Author, AuthorID: e.AuthorID,

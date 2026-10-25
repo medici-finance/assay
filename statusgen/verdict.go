@@ -31,6 +31,10 @@ func finalVerdict(mode string, n int) {
 	}
 	switch mode {
 	case "lint":
+		if lintJSONMode {
+			emitLintJSONVerdict(n)
+			return
+		}
 		if n == 0 {
 			fmt.Println("LINT: PASS")
 		} else {

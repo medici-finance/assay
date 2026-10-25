@@ -224,7 +224,7 @@ func TestStepDecisionRefusesToRunTheScriptOnAmbientAuth(t *testing.T) {
 	record := installDecisionChild(t, s, root)
 	script := filepath.Join(root, filepath.FromSlash(decisionScriptRel))
 
-	_, err := stepDecision(dispatchOpts{root: root, brief: "spec.md"}, true, allowedRepo, script, claimAuth{})
+	_, err := stepDecision(dispatchOpts{root: root, brief: "spec.md"}, true, allowedRepo, script, nil, claimAuth{})
 	if err == nil {
 		t.Fatal("stepDecision ran the decision script with no credential handed over and none exported")
 	}

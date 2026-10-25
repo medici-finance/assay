@@ -1,1 +1,0 @@
-- Batch pending-Evidence verifier PR metadata and complete file-list observations per planning pass through the existing Forge transport, preserving trust and fresh-head checks; add bounded native fallbacks and a repeatable busy-PR request-budget benchmark.

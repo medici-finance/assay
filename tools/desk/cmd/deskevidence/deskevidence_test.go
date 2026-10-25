@@ -946,6 +946,39 @@ func TestMergeEvidenceIntoBrief(t *testing.T) {
 	}
 }
 
+// TestMergeEvidenceLocatesBodySection: --brief-path merges into the section the lint and the
+// on-behalf-of stamp read (evidenceSpan) — the first body line that trims to `## Evidence`,
+// after the frontmatter block, ending at the next `## ` heading. A `## Evidence` line inside the
+// frontmatter is not the section; a heading with trailing whitespace is the section (no second
+// one is appended); and an empty section followed straight by a heading takes the rows before
+// that heading. In each case exactly the merged row lands inside the body's Evidence section.
+//
+// regression: #4070
+func TestMergeEvidenceLocatesBodySection(t *testing.T) {
+	cases := []struct{ name, remote, want string }{
+		{"frontmatter-heading",
+			"---\nschema: brief-v1\n## Evidence\ngate: model\n---\n\n# Brief\n\n## Evidence\n| 1 | a | b |\n",
+			"---\nschema: brief-v1\n## Evidence\ngate: model\n---\n\n# Brief\n\n## Evidence\n| 1 | a | b |\n| 2 | c | d |\n"},
+		{"trailing-space-heading",
+			"# Brief\n\n## Evidence \n| 1 | a | b |\n",
+			"# Brief\n\n## Evidence \n| 1 | a | b |\n| 2 | c | d |\n"},
+		{"empty-section-then-heading",
+			"# Brief\n\n## Evidence\n## Notes\nx\n",
+			"# Brief\n\n## Evidence\n| 2 | c | d |\n## Notes\nx\n"},
+		{"heading-ends-file",
+			"# Brief\n\n## Evidence",
+			"# Brief\n\n## Evidence\n| 2 | c | d |\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, _ := mergeEvidenceContent([]byte(tc.remote), []byte("| 2 | c | d |\n"))
+			if string(got) != tc.want {
+				t.Fatalf("merged:\n%q\nwant:\n%q", got, tc.want)
+			}
+		})
+	}
+}
+
 // --- Block-level idempotency: an Evidence block equivalent to one already standing is a no-op ---
 
 // TestEquivalentEvidenceBlockIsNoop: a fresh block byte-equivalent to the block already standing

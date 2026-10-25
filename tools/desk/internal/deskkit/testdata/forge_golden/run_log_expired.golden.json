@@ -1,0 +1,11 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/repos/medici-finance/assay/actions/runs/501/logs"
+    }
+  ],
+  "result": null,
+  "err": "forge API GET /repos/medici-finance/assay/actions/runs/501/logs returned HTTP 404",
+  "not_found": true
+}

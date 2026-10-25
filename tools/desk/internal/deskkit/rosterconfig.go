@@ -455,6 +455,7 @@ const (
 	// Decides which store holds the fleet's mutual exclusion, so a malformed value is a
 	// refusal of the resolution, never a silent default. KEEP IN SYNC with
 	// statusgen/rosterconfig.go's scanEnvClaimStore and the coupling vector.
+	EnvUsageDir   = "ASSAY_USAGE_DIR" // Consumed only by the local usage store.
 	EnvClaimStore = "ASSAY_CLAIM_STORE"
 	// EnvClaimDir (ASSAY_CLAIM_DIR) is the `file` claim store's directory: ONE absolute
 	// path. Unset means `<config home>/dispatch-claims`. Consumed by the claim-store
@@ -655,7 +656,7 @@ func knownRosterKeys() []string {
 		// parseClaimStoreKeys; parseConfig only RECOGNISES them, so a roster that sets the
 		// claim store does not collapse the whole configuration on the unknown-ASSAY_-key
 		// refusal. statusgen recognises them too (the coupling vector binds the two).
-		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost,
+		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost, EnvUsageDir,
 		// The auto-approve lane keys are CONSUMED here (autolane.go, through cfg.AutoLaneRaw).
 		// statusgen recognises them only.
 		EnvAutoApproveAreas, EnvAutoApproveEjectLine, EnvAutoApproveFPYFloor, EnvAutoApproveDailyCap,
@@ -875,6 +876,9 @@ type Config struct {
 	// ParseAutoLaneConfig (autolane.go) is the one place they are read and judged. Nil or
 	// empty means every lane key is absent: the lane is CLOSED.
 	AutoLaneRaw map[string]string
+
+	// UsageDir is the optional local usage store directory, validated by UsageStoreDir.
+	UsageDir string
 
 	// UnknownKeys are keys present in the source that this version does not
 	// recognise, sorted. They are ECHOED, never applied — but only for a key
@@ -1143,7 +1147,7 @@ func readRawConfig(class ToolClass) (map[string]string, string, []string) {
 		EnvRiskCallout, EnvRepoAliases, EnvRepoForges, EnvReleaseRepo, EnvWriteguardCallout,
 		EnvOutboundCallout, EnvOutboundCalloutRequired, EnvOutboundCalloutTimeout,
 		EnvContributorLedger, EnvRosterSchema, EnvStampTrustedLogins,
-		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost,
+		EnvClaimStore, EnvClaimDir, EnvClaimSingleHost, EnvUsageDir,
 	}
 	fromEnv := func() map[string]string {
 		m := map[string]string{}
@@ -1320,6 +1324,7 @@ func looksLikeBot(login string) bool {
 
 func parseConfig(class ToolClass, source string, vals map[string]string) Config {
 	cfg := Config{
+		UsageDir:    vals[EnvUsageDir],
 		Class:       class,
 		Source:      source,
 		Humans:      map[string]int64{},

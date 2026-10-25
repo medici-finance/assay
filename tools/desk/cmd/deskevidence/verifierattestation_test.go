@@ -89,8 +89,10 @@ func TestVerifierEvidenceTargetBoundToAttestedBrief(t *testing.T) {
 		f, errBuf := setupFake(t)
 		verifierEvidenceAdmissionFn = stub
 		rec := `{"brief":"y/02","ts":"2026-10-06T00:00:00Z","verdict":"verified","digest":"0123456789abcdef"}`
-		root := rootWithFile(t, "record.json", rec)
-		if code := run([]string{"example-org/tracker", "main", "--outcome-record", "record.json", "--root", root}); code == 0 {
+		root := t.TempDir()
+		// The record sits OUTSIDE the home, where a --root landing requires it.
+		record := writeRepoFile(t, "record.json", rec)
+		if code := run([]string{"example-org/tracker", "main", "--outcome-record", record, "--root", root}); code == 0 {
 			t.Fatal("outcome record for an unattested brief landed")
 		}
 		if !strings.Contains(errBuf.String(), "not bound to the attested brief") {

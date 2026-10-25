@@ -44,8 +44,8 @@ func loadVectors(t *testing.T) []vector {
 }
 
 // TestMarkedSharedVectors — Marked and Lift satisfy the table statusgen is held
-// to: the honoured marker where there is one; the legacy wrapped-cell unwrap
-// where there is none.
+// to: the honoured marker where there is one; statusgen's first-span lift where
+// there is none (#3147).
 func TestMarkedSharedVectors(t *testing.T) {
 	for _, v := range loadVectors(t) {
 		t.Run(v.Name, func(t *testing.T) {
@@ -56,7 +56,7 @@ func TestMarkedSharedVectors(t *testing.T) {
 			case v.Marked != nil && (!ok || got != *v.Marked):
 				t.Errorf("Marked(%q) = %q,%v, want %q", v.Cell, got, ok, *v.Marked)
 			}
-			want := stripInlineCode(v.Cell)
+			want := firstSpan(v.Cell)
 			if v.Marked != nil {
 				want = *v.Marked
 			}
@@ -107,14 +107,17 @@ func TestCommentOnlySharedVectors(t *testing.T) {
 }
 
 // commentCell is one whole Command cell from the shared table's "cells" section
-// (#2684 review S1, F2), which statusgen's lint and witness are held to as well.
+// (#2684 review S1, F2; #3147), which statusgen's lint and witness are held to as
+// well.
 type commentCell struct {
 	Name      string `json:"name"`
 	Cell      string `json:"cell"`
 	FirstSpan string `json:"firstSpan"`
 	Marked    bool   `json:"marked"`
+	Lift      string `json:"lift"`
 	Statusgen string `json:"statusgen"`
 	Desk      string `json:"desk"`
+	Passes    bool   `json:"passes"`
 }
 
 // loadCommentCells reads the shared cell vectors (verifyloop's and
@@ -131,18 +134,28 @@ func loadCommentCells(t *testing.T) []commentCell {
 	if err := json.Unmarshal(b, &doc); err != nil {
 		t.Fatal(err)
 	}
-	if len(doc.Cells) < 12 {
+	if len(doc.Cells) < 30 {
 		t.Fatalf("positive control: only %d cell vectors loaded", len(doc.Cells))
 	}
 	return doc.Cells
 }
 
-// TestCommentCellSharedVectors — CommentLed's cell-to-verdict mapping matches
-// the shared table, the firstSpan port matches statusgen's lift on every cell,
-// and the executors are never looser than statusgen: a cell statusgen refuses is
-// refused here, and a cell refused only here is one whose own executed lift is
-// a comment (review S1: the predicate was shared, the string it judged was not).
-// regression: #2684
+// cellVerdict maps Refused's reason to the shared table's verdict words.
+func cellVerdict(why string) string {
+	switch why {
+	case "":
+		return "runs"
+	case MarkedCommentWhy, UnmarkedCommentWhy:
+		return "comment-refused"
+	}
+	return "refused"
+}
+
+// TestCommentCellSharedVectors — Refused's cell-to-verdict mapping and Lift
+// match the shared table on every cell, and the table holds the executors to
+// statusgen verdict for verdict: lift parity, so a cell statusgen runs is the
+// same command here and a cell statusgen refuses is never run here (#3147).
+// regression: #2684, #3147
 func TestCommentCellSharedVectors(t *testing.T) {
 	for _, v := range loadCommentCells(t) {
 		if got := firstSpan(v.Cell); got != v.FirstSpan {
@@ -151,38 +164,58 @@ func TestCommentCellSharedVectors(t *testing.T) {
 		if _, ok := Marked(v.Cell); ok != v.Marked {
 			t.Errorf("%s: Marked ok = %v, want %v", v.Name, ok, v.Marked)
 		}
-		why := CommentLed(v.Cell)
-		got := "runs"
-		if why != "" {
-			got = "comment-refused"
+		if got := Lift(v.Cell); got != v.Lift {
+			t.Errorf("%s: Lift(%q) = %q, want statusgen's lift %q", v.Name, v.Cell, got, v.Lift)
 		}
-		if got != v.Desk {
-			t.Errorf("%s: CommentLed(%q) = %q, want %s", v.Name, v.Cell, why, v.Desk)
+		why := Refused(v.Cell)
+		if got := cellVerdict(why); got != v.Desk {
+			t.Errorf("%s: Refused(%q) = %q, want %s", v.Name, v.Cell, why, v.Desk)
 		}
-		if v.Statusgen == "comment-refused" && got != "comment-refused" {
-			t.Errorf("%s: statusgen refuses the cell but the executors would run it", v.Name)
+		if v.Statusgen != v.Desk {
+			t.Errorf("%s: the table lets the executors (%s) differ from statusgen (%s)", v.Name, v.Desk, v.Statusgen)
 		}
-		if v.Statusgen != v.Desk && !CommentOnly(Lift(v.Cell)) {
-			t.Errorf("%s: the executors differ from statusgen without their own lift (%q) being a comment", v.Name, Lift(v.Cell))
-		}
-		if wantMarked := v.Marked && why != ""; wantMarked != (why == MarkedCommentWhy) {
+		if wantMarked := v.Marked && v.Desk == "comment-refused"; wantMarked != (why == MarkedCommentWhy) {
 			t.Errorf("%s: a marked comment needs the replace-it reason and only it, got %q", v.Name, why)
 		}
 	}
 }
 
-// TestLiftUnmarkedIsLegacy — a cell with no marker lifts byte-for-byte what the
-// executors lifted before the marker existed (the compatibility hinge).
-func TestLiftUnmarkedIsLegacy(t *testing.T) {
+// TestCommandRefusedBareLifts — a row built without a cell is judged on its
+// lifted command: blank, comment and no-op are refused, a real command is not.
+// regression: #3147
+func TestCommandRefusedBareLifts(t *testing.T) {
+	for cmd, want := range map[string]string{
+		"":                "refused",
+		"   ":             "refused",
+		"## Coverage":     "comment-refused",
+		":":               "refused",
+		": confirm it":    "refused",
+		"REM look":        "refused",
+		":: look":         "refused",
+		"true":            "runs",
+		": ; test -d .":   "runs",
+		"test -d . # why": "runs",
+	} {
+		if got := cellVerdict(CommandRefused(cmd)); got != want {
+			t.Errorf("CommandRefused(%q) = %s, want %s", cmd, got, want)
+		}
+	}
+}
+
+// TestLiftUnmarkedIsFirstSpan — a cell with no marker lifts its first code span,
+// byte for byte what statusgen's verifyCommand lifts, never the whole cell
+// (#3147: the whole-cell lift ran "`false`: confirm" as a passing `:`).
+func TestLiftUnmarkedIsFirstSpan(t *testing.T) {
 	for cell, want := range map[string]string{
 		"`go test ./...`":           "go test ./...",
 		"  `make test`  ":           "make test",
 		"go test ./...":             "go test ./...",
-		"run `x` then `y`":          "run `x` then `y`",
-		"`a` <!-- `cmd: true` -->`": "a` <!-- `cmd: true` -->",
+		"run `x` then `y`":          "x",
+		"`false`: confirm":          "false",
+		"`a` <!-- `cmd: true` -->`": "a",
 	} {
 		if got := Lift(cell); got != want {
-			t.Errorf("Lift(%q) = %q, want the legacy lift %q", cell, got, want)
+			t.Errorf("Lift(%q) = %q, want the first span %q", cell, got, want)
 		}
 	}
 }
@@ -266,9 +299,11 @@ func TestCommandColumnLiftsViaLift(t *testing.T) {
 		if !calls["Lift"] {
 			t.Errorf("%s reads a Verify table's Command column without verifycmd.Lift — lift the command through verifycmd.Lift so the `cmd:` marker is honoured (spec §4.4)", site)
 		}
-		// regression: #2684 — judge the raw cell as well as lifting its command.
-		if !calls["CommentLed"] {
-			t.Errorf("%s reads a Verify table's Command column without verifycmd.CommentLed — judge the RAW cell with verifycmd.CommentLed so a comment-led cell is never executed (#2684)", site)
+		// regression: #2684, #3147 — the class "an executor judges or runs a cell
+		// differently from statusgen" (review S1): the raw cell must be judged
+		// by verifycmd.Refused, never only the lift by CommentOnly.
+		if !calls["Refused"] {
+			t.Errorf("%s reads a Verify table's Command column without verifycmd.Refused — judge the RAW cell with verifycmd.Refused so a cell statusgen refuses is never executed (#2684, #3147)", site)
 		}
 		if !calls["SplitRow"] || !calls["UnescapePipes"] {
 			t.Errorf("%s reads a Verify table's Command column without verifycmd.SplitRow + verifycmd.UnescapePipes — an escaped `\\|` would cut or reach the command (#1953)", site)
@@ -277,7 +312,7 @@ func TestCommandColumnLiftsViaLift(t *testing.T) {
 	sort.Strings(sites)
 	// The integer execution and exact scheduling entrypoints now share this
 	// command-column reader. Keep the positive control on the actual leaf; the
-	// repo-wide Lift and raw CommentLed assertions above remain unchanged.
+	// repo-wide Lift and raw Refused assertions above remain unchanged.
 	for _, want := range []string{"cmd/verifyloop/verifyrows.go:parseVerifyRowsMode", "cmd/deskrebaseline/brief.go:parseVerifyRows"} {
 		if _, ok := found[want]; !ok {
 			t.Errorf("positive control: the walker no longer finds %s (found %v) — the guard is blind", want, sites)

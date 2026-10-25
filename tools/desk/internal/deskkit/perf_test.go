@@ -490,6 +490,7 @@ func BenchmarkPerfAppend(b *testing.B) {
 var launchStepNames = []string{
 	"launch-role-lease", "launch-storage-admission", "launch-plugin-enable",
 	"launch-fetch-main", "launch-worktree",
+	"launch-preparation", "launch-scratch-lock-wait", "launch-scratch-admission", "launch-cache-enrollment", "launch-child-start", "launch-first-start", "launch-all-starts",
 }
 
 // TestPerfLaunchStepsRecordNamed: each launch step is recorded as "step:<name>" under the

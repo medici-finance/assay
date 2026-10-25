@@ -1,0 +1,94 @@
+{
+  "test": "go test ./cmd/cellctl ./internal/cellcache ./internal/deskkit ./internal/cellscratch ./internal/cellprocess -run '^TestCellPrepBounded$/(walking_callers|cache_enrollment|history)|^TestCellPrepFences$|^TestCellLaunchTelemetry$|^TestCacheScanAdmission$|^TestMaintenanceScanBound$|^TestCacheEnrollmentTelemetry$|^TestCacheMaintenanceRecovery$' -count=1 -timeout=60s",
+  "control": {
+    "name": "remove preparation fence",
+    "file": "internal/cellscratch/prepare.go",
+    "old": "if err == nil && string(before) == string(want) {",
+    "new": "if err == nil && len(before) >= 0 {"
+  },
+  "mutations": [
+    {
+      "name": "restore startup history sweep",
+      "file": "cmd/cellctl/scratch_launch.go",
+      "old": "r, err := s.Begin(session, role, revision)",
+      "new": "s.Sweep(cellscratch.DefaultPolicy(),true)\n r, err := s.Begin(session, role, revision)"
+    },
+    {
+      "name": "restore finish history sweep",
+      "file": "cmd/cellctl/scratch_launch.go",
+      "old": "err = errors.Join(err, s.store.Close())",
+      "new": "s.store.Sweep(cellscratch.DefaultPolicy(),true)\n err = errors.Join(err, s.store.Close())"
+    },
+    {
+      "name": "restore walking cache enrollment",
+      "file": "internal/cellcache/cache.go",
+      "old": "if _, err = m.launchCheck(); err != nil {",
+      "new": "if _, err = finish(m,m.check(false)); err != nil {"
+    },
+    {
+      "name": "plant independent startup walker",
+      "file": "cmd/cellctl/scratch_launch.go",
+      "old": "type scratchLaunch struct {",
+      "new": "func secondStartupWalk(s *cellscratch.Store){s.Sweep(cellscratch.DefaultPolicy(),true)}\n\ntype scratchLaunch struct {"
+    },
+    {
+      "name": "reclaim unacknowledged tree",
+      "file": "internal/cellscratch/store.go",
+      "old": "case receiptErr != nil:",
+      "new": "case receiptErr != nil: _ = s.remove(r.ID+\"/work\")"
+    },
+    {
+      "name": "omit final cache telemetry",
+      "file": "internal/cellprocess/run.go",
+      "old": "deskkit.PerfStepEnabled(enabled, \"cellctl\", \"launch-cache-enrollment\", time.Since(began), phaseCode)",
+      "new": "deskkit.PerfStepEnabled(false && enabled, \"cellctl\", \"launch-cache-enrollment\", time.Since(began), phaseCode)"
+    },
+    {
+      "name": "ignore resolved telemetry consent",
+      "file": "internal/deskkit/perf.go",
+      "old": "if perfActive.Load() {\n\t\tif selected := perfSelectedConsent.Load(); selected != nil {",
+      "new": "if false && perfActive.Load() {\n\t\tif selected := perfSelectedConsent.Load(); selected != nil {"
+    },
+    {
+      "name": "forget consumer admitted during scan",
+      "file": "internal/cellcache/cache.go",
+      "old": "if err = m.writeMeta(\"enrollment\", []byte(name)); err != nil {",
+      "new": "if err = error(nil); err != nil {"
+    },
+    {
+      "name": "keep inventory admission locked",
+      "file": "internal/cellcache/cache.go",
+      "old": "if m.lock != nil {\n\t\tm.lock.Release()\n\t\tm.lock = nil\n\t}\n\tv := Measurement",
+      "new": "if m.lock != nil { m.lock = m.lock }\n\tv := Measurement"
+    },
+    {
+      "name": "plant independent cache admission walk",
+      "file": "internal/cellcache/admit.go",
+      "old": "const AdmitMaxAge =",
+      "new": "func secondCacheAdmission(m *manager) Report {return m.check(false)}\n\nconst AdmitMaxAge ="
+    },
+    {
+      "name": "ignore finite scan inventory budget",
+      "file": "internal/deskkit/boundedwalk.go",
+      "old": "if remaining <= 0 || depth >= maintenanceDepth {",
+      "new": "if false && (remaining <= 0 || depth >= maintenanceDepth) {"
+    },
+    {
+      "name": "reclaim from partial scratch inventory",
+      "file": "internal/cellscratch/store.go",
+      "old": "if len(errs) > 0 {\n\t\trep.Partial = true",
+      "new": "if false && len(errs) > 0 {\n\t\trep.Partial = true"
+    },
+    {
+      "name": "plant independent public cache walk caller",
+      "file": "cmd/cellctl/cache.go",
+      "old": "func (c *Cell) cacheAdmission() error {",
+      "new": "func secondPublicCacheWalk(){cellcache.Check(cellcache.Policy{},true)}\n\nfunc (c *Cell) cacheAdmission() error {"
+    }
+  ],
+  "timeout": {
+    "multiplier": 3,
+    "floor": "30s",
+    "baseline": "3m"
+  }
+}

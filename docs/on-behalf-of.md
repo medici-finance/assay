@@ -191,8 +191,72 @@ text, it inserts ` (on-behalf-of human:<who>)` before a trailing `(forge-identit
 `verifyrun` renders. `<who>` comes from the same roster resolution as the commit trailer
 (the neutral name on any target not stated `:private`, the login on one that is), never
 from a flag, an environment variable or the landed content; when it cannot be resolved
-the landing refuses (exit 5) and nothing is written. A row already on the branch, a
-`human:<name>` row and a cell that already carries an annotation are left byte-identical.
+the landing refuses (exit 5) and nothing is written. A row already on the branch and a
+`human:<name>` row are left byte-identical.
+
+An added App cell that already carries `on-behalf-of` text is read the way the lint reads
+it (the last `on-behalf-of human:<p>`, case-insensitive) and checked against `<who>` and the
+same roster's human set:
+
+- exactly one annotation, written exactly `(on-behalf-of human:<who>)` byte for byte, is
+  left byte-identical;
+- an annotation not in the `human:` form (a desk role, a bare word), one naming no
+  recognised roster human, more than one annotation, the same human in the other form
+  (the login on a public target, the neutral name on a private one), or `<who>` in any other
+  spelling (other case, extra words after the name) has every `on-behalf-of` fragment
+  stripped and `<who>` stamped — the trailer's strip-then-append rule, so a planted
+  annotation never survives and a login never stays on a public target. An unclosed
+  fragment (`(on-behalf-of desk` with no `)`) ends before the next `(`, so a source tag after
+  it is kept;
+- any `human:` annotation naming a *different* recognised roster human refuses the landing
+  (exit 5), naming the row; nothing is written. This is deliberately stricter than the lint,
+  which accepts any recognised human: one human's attribution is never overwritten with
+  another's automatically;
+- a Runner cell the tool cannot read the way the lint reads it refuses the landing (exit 5),
+  naming the row and the reason; nothing is written. That is an HTML comment inside the
+  cell, or one crossing a line break on the row's line (the lint removes comments, which
+  joins the lines around one into a single row); invalid UTF-8; an invisible format
+  character such as a zero-width space; a character whose lowercase form has a different
+  byte length (the lint matches in a lowercased copy and slices the original at the same
+  offsets); or any other non-ASCII character, such as a combining mark or a homoglyph in the
+  marker, which renders an annotation the lint does not read. An App Runner cell is an App
+  login, a commit and ASCII tags, so nothing legitimate is refused. Any line the landing adds
+  to the body's Evidence section is refused the same way when it holds a control character
+  other than a tab (C0, DEL or C1: a lone carriage return or a next-line character, say). That
+  covers every kind of line, App row or not: a data row, a header, a separator, or a line that
+  is not a table row at all. The lint splits lines on line feeds only, so a renderer could show
+  a row the lint never reads. A line is skipped only when the base's own Evidence section
+  already holds that exact line; a line copied in from elsewhere in the base is checked. The
+  check covers control characters only, not other characters a renderer may break a line on
+  (U+2028, U+2029). As a last check, the landed section is read the way the lint reads it,
+  and every added App row must carry exactly one annotation, in the exact written form,
+  naming `<who>`. A row counts as already on the branch there only when the base has the same
+  line with the same Runner cell, so a base line re-landed under a header that moves the
+  Runner column is checked like an added row.
+
+Like the lint, the tool looks for `## Evidence` only in the brief's body, after the
+frontmatter block: a `## Evidence` line inside the frontmatter is never taken as the section.
+The `--brief-path` merge places the new rows with the same rule: it takes the first body line
+that reads `## Evidence` once surrounding spaces are trimmed, so a heading with a trailing
+space is that section, not a reason to append a second one. A landing whose frontmatter opens but never closes has no body the lint can read, so if it
+carries an `## Evidence` heading anywhere it is refused (exit 5) and nothing is written.
+
+The stamp is always one `(on-behalf-of human:<who>)` parenthetical in the Runner cell. A
+restamp writes it where the last stripped fragment stood, with the whitespace byte that
+fragment carried (none, if it was glued to the text before it), and a strip removes each
+old fragment with that one byte, so the rest of the row is byte-identical. Fragments sitting
+back to back form one run, and the stamp takes the separator the run's first fragment carried.
+A fresh stamp goes before a trailing source tag (matched in any case), ahead of any spaces or
+tab between the text and the tag (a tag glued to the text gets the stamp glued too), or at
+the end of the cell. The written stamp is exactly `(on-behalf-of human:<who>)` and nothing
+broader, the one form a container witness bracket's digest drops from a Runner cell, so
+landing it or restamping one exact-form annotation to another never moves that digest. A
+non-exact annotation (a desk role, an empty principal) was inside the hash, so restamping it
+does move the digest and that bracket fails closed.
+
+So a verifier leaves Runner cells unannotated and pre-checks with `deskevidence … --dry-run`,
+which runs every refusing gate on the stamped content and prints each row it stamped; a
+lint of the verifier's own home reads App rows before the stamp, so it is not the pre-check.
 
 ## The lint
 

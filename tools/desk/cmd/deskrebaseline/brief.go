@@ -30,8 +30,11 @@ type verifyRow struct {
 	Command    string
 	Expect     string
 	ExpectCell string
-	// CommentLed judges the raw cell before command lifting (#2684).
-	CommentLed string
+	// Refused is verifycmd.Refused of the raw cell: why the row's command must not
+	// run (a shell comment, a no-op, a prose mention, a blank lift), or "".
+	// gatherRowFacts never probes such a row, neither as rename proof nor as
+	// behaviour (#2684, #3147).
+	Refused string
 }
 
 // loadedBrief is a brief resolved to a file, with its risk declaration and Verify rows.
@@ -198,16 +201,18 @@ func parseVerifyRows(content string) []verifyRow {
 				expect = stripInlineCode(expectCell)
 			}
 			// verifycmd.Lift honours the `cmd:` marker (spec §4.4, #1805) and
-			// otherwise unwraps a fully-backticked cell exactly as before. The
-			// split kept `\|` inside the cell, so the lifted command is un-escaped
-			// before anything runs it (#1953).
+			// otherwise lifts the first code span, exactly as statusgen does (#3147).
+			// The split kept `\|` inside the cell, so the lifted command is
+			// un-escaped before anything runs it (#1953). verifycmd.Refused judges
+			// the RAW cell: what statusgen refuses as a comment, a no-op, a prose
+			// mention or a blank lift is never probed.
 			rows = append(rows, verifyRow{
 				Num:        num,
 				Class:      class,
 				Command:    verifycmd.UnescapePipes(verifycmd.Lift(cell(cmdCol))),
 				Expect:     expect,
 				ExpectCell: expectCell,
-				CommentLed: verifycmd.CommentLed(cell(cmdCol)),
+				Refused:    verifycmd.Refused(cell(cmdCol)),
 			})
 		}
 		return rows

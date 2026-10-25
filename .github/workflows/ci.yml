@@ -12,22 +12,132 @@ name: ci
 #   are plain public HTTPS, so `go build`/`go test` fetch deps normally.
 
 on:
+  # push is limited to main: a PR branch is already built by its pull_request
+  # run, so a push trigger on every branch built each PR head twice. main keeps
+  # its push run (the post-merge build of record).
   push:
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
 
+# A new push to a pull request supersedes the run on its previous head, so that
+# run is cancelled instead of finishing a verdict nobody reads. Push runs (main
+# only) are grouped by commit SHA, so each main commit has its own group: a main
+# run is never cancelled and never queued behind, or replaced by, a later one.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   GO_VERSION: "1.27.2"
 
 jobs:
+  # Decides whether this run needs the skippable jobs below. The ONE case it
+  # skips is a pull request opened by the verifier App whose every changed file
+  # is under docs/ (an Evidence/status landing). Everything else, every push to
+  # main, and any change set this step cannot read, sets heavy=true.
+  #
+  # Only jobs that read nothing under docs/ may gate on it: desk-platform-compile,
+  # plugin-shell-suites, skillslint and cursor-generated; a docs-only change
+  # cannot alter their verdict. build-test-shard (and so the required build-test)
+  # and harnesslint read docs/ from the real tree, so they never gate on this job
+  # and run on every pull request. No required check is gated here.
+  # TestCIScopeSkipSparesDocsReaders (tools/desk/internal/deskkit) fails if a job
+  # that a CI-registry row says reads docs/, or whose own text names a docs/
+  # path, becomes skippable by this decision.
+  #
+  # Each skippable job gates on `needs.scope.outputs.heavy != 'false'` at JOB
+  # level. The comparison is fail-closed: if this job fails or is skipped, the
+  # output is empty, which is not 'false', so the jobs run.
+  #
+  # The PR author and file paths are compared as data and never interpolated
+  # into the script. GitHub-hosted, so the decision costs no self-hosted pool time.
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      heavy: ${{ steps.decide.outputs.heavy }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # pull_request checks out the PR merge commit; depth 2 also fetches its
+          # parents, so HEAD^1 is the base tip and HEAD^1..HEAD is the PR's change set.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+
+      - name: Decide — verifier-App docs-only PR?
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          # The one identity whose docs-only PRs skip the docs-blind jobs. Same
+          # constant changelog-check.yml and evidence-automerge.yml key on.
+          VERIFIER_AUTHOR: assay-verifier-app[bot]
+        run: |
+          set -euo pipefail
+          heavy=true
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "event '$EVENT': full run"
+          elif [ "$PR_AUTHOR" != "$VERIFIER_AUTHOR" ]; then
+            echo "author '$PR_AUTHOR' is not '$VERIFIER_AUTHOR': full run"
+          elif ! files="$(git diff --no-renames --name-only HEAD^1 HEAD)"; then
+            echo "could-not-check: the PR change set could not be read: full run"
+          elif [ -z "$files" ]; then
+            echo "empty change set: full run"
+          elif outside="$(printf '%s\n' "$files" | grep -v -E '^docs/' || true)"; [ -n "$outside" ]; then
+            echo "changed files outside docs/: full run"; printf '%s\n' "$outside" | sed 's/^/  /'
+          else
+            heavy=false
+            echo "verifier-App PR, every changed file under docs/: docs-blind jobs skipped"
+            printf '%s\n' "$files" | sed 's/^/  /'
+          fi
+          echo "heavy=${heavy}" >> "$GITHUB_OUTPUT"
+
+  # Cross-compiles tools/desk for windows/amd64 and darwin/arm64. Not a required
+  # check. On pull_request it runs only when the change set can alter what it
+  # compiles (the scope step below); on push to main it always runs. When the
+  # scope step skips the compile the job still concludes success, with the reason
+  # printed in its log.
   desk-platform-compile:
+    needs: scope
+    # Skipped only on a verifier-App docs-only PR (see the scope job); fail-closed.
+    if: ${{ !cancelled() && needs.scope.outputs.heavy != 'false' }}
     runs-on: medici-builder-public
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # pull_request checks out the PR merge commit; depth 2 also fetches its
+          # parents, so HEAD^1 is the base tip and HEAD^1..HEAD is the PR's change
+          # set. push keeps the default depth of 1.
+          fetch-depth: ${{ github.event_name == 'pull_request' && 2 || 1 }}
+
+      - name: Scope — does the change set touch what this job compiles?
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          # Default-run: every path that does not positively prove the change set
+          # misses the compiled surface leaves run=true.
+          run=true
+          # The compiled surface: the tools/desk module (its go.mod/go.sum
+          # included), the sibling modules it pulls in through replace directives
+          # in tools/desk/go.mod, any go.work, and this workflow.
+          scope_re='^(tools/desk|comms|forgeread|perfrec|gitquiet|deskcore)/|(^|/)go\.work(\.sum)?$|^\.github/workflows/ci\.yml$'
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "event '$EVENT': always compile"
+          elif ! files="$(git diff --no-renames --name-only HEAD^1 HEAD)"; then
+            echo "could-not-check: the PR change set could not be read; compiling"
+          elif printf '%s\n' "$files" | grep -q -E "$scope_re"; then
+            echo "change set touches the compiled surface; compiling"
+          else
+            run=false
+            echo "change set does not touch tools/desk, its replaced modules, go.work or ci.yml; compile skipped"
+          fi
+          echo "run=${run}" >> "$GITHUB_OUTPUT"
 
       - name: Install Go
+        if: steps.scope.outputs.run == 'true'
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
@@ -38,6 +148,7 @@ jobs:
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
 
       - name: Compile desk platform code and test binaries
+        if: steps.scope.outputs.run == 'true'
         run: |
           set -euo pipefail
           cd tools/desk
@@ -45,7 +156,31 @@ jobs:
           for p in $(go list ./...); do GOOS=windows GOARCH=amd64 go test -c -o /dev/null "$p" || exit 1; done
           GOOS=darwin GOARCH=arm64 go vet ./...
 
-  build-test:
+  # build-test, sharded. The suite that used to run serially in one job (~15
+  # min, ~11 of them the tools/desk `go test ./...`) runs as four legs:
+  #
+  #   rest    release-image contract, statusgen test+vet, build+vet of every
+  #           module plus each module's own suite EXCEPT tools/desk's, and the
+  #           role-bound claim transport regressions;
+  #   desk-K  `go test` on the K-th third of tools/desk's packages.
+  #
+  # The desk legs split `go list ./...` with .github/scripts/go-test-shard.py,
+  # which refuses unless the shards are pairwise disjoint, none is empty, and
+  # their union equals the `go list ./...` it was given: every tools/desk package
+  # is tested exactly once. The shard count is taken from the matrix itself
+  # (strategy.job-total), so adding or removing a desk-K entry re-partitions
+  # rather than dropping a third.
+  #
+  # The required check is NOT this job: it is the `build-test` aggregator below,
+  # which keeps the exact check name branch protection requires.
+  build-test-shard:
+    # Never gated on the scope job: tests in this suite read docs/ from the real
+    # tree (see the scope job), so it runs on every pull request and push.
+    strategy:
+      fail-fast: false
+      matrix:
+        # `rest` must stay first: desk-K's K is its strategy.job-index.
+        shard: [rest, desk-1, desk-2, desk-3]
     runs-on: medici-builder-public
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,11 +196,13 @@ jobs:
           echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
 
       - name: Test release image contract
+        if: matrix.shard == 'rest'
         run: python3 -B -m unittest discover -s tools/release -p images_test.py -v
 
       # Run before the all-module sweep: statusgen alone does not depend on the
       # desk child compiled by its offline bridge test. Match the release gate.
       - name: Test and vet statusgen
+        if: matrix.shard == 'rest'
         run: |
           set -euo pipefail
           go version
@@ -73,6 +210,7 @@ jobs:
           cd statusgen && go test ./... && go vet ./...
 
       - name: Build and vet every module
+        if: matrix.shard == 'rest'
         run: |
           set -euo pipefail
           go version
@@ -91,10 +229,12 @@ jobs:
           while IFS= read -r gomod; do
             dir="$(dirname "$gomod")"
             echo "::group::${dir}"
-            # tools/desk also runs its full suite here: the release workflow's
+            # tools/desk's full suite runs too — in the desk-K legs of this
+            # matrix, not here (see the shard step below): the release workflow's
             # desk-tools leg already runs `go test ./...` on this tree (the
             # structural-guard caveat above no longer applies to it), and two
             # guard tests went latent on main under build+vet alone (#547, #550).
+            # This leg still builds and vets tools/desk.
             #
             # tools/harnessgen, tools/harnesslint and tools/plugindrift run their
             # suites here too (harness-portability/15). They are safe in THIS repo
@@ -114,7 +254,9 @@ jobs:
               # do not reach the trace append path (review F-m2-ci).
               */qualgen|qualgen) extra="GOWORK=off go test -count=1 -timeout=60s -run '^(TestM2.*|TestCLILegacyForms)$' ." ;;
               */deskcore|deskcore) extra="GOWORK=off go test -count=1 ./..." ;;
-              */tools/desk|tools/desk) extra="go test ./..." ;;
+              */deskd|deskd) extra="GOWORK=off go test -count=1 -timeout=180s ./..." ;;
+              # tools/desk: build+vet here; `go test` in the desk-K legs.
+              */tools/desk|tools/desk) extra=true ;;
               */tools/harnessgen|tools/harnessgen) extra="go test ./..." ;;
               */tools/harnesslint|tools/harnesslint) extra="go test ./..." ;;
               */tools/plugindrift|tools/plugindrift) extra="go test ./..." ;;
@@ -136,10 +278,63 @@ jobs:
           done < <(git ls-files '*go.mod')
           exit "$fail"
 
+      # One third of tools/desk's packages per desk-K leg. The partition is
+      # computed from this commit's `go list ./...` and verified (disjoint, none
+      # empty, union == the list) before any test runs; see go-test-shard.py.
+      - name: Test tools/desk package shard
+        if: matrix.shard != 'rest'
+        env:
+          SHARD: ${{ matrix.shard }}
+          JOB_INDEX: ${{ strategy.job-index }}
+          JOB_TOTAL: ${{ strategy.job-total }}
+        run: |
+          set -euo pipefail
+          go version
+          # Legs after `rest` are the desk shards: K = job-index, N = job-total - 1.
+          shards=$(( JOB_TOTAL - 1 ))
+          if [ "$SHARD" != "desk-${JOB_INDEX}" ]; then
+            echo "::error::matrix leg '$SHARD' is at job-index ${JOB_INDEX}; desk legs must be desk-1..desk-${shards} in order after rest"
+            exit 1
+          fi
+          python3 -B .github/scripts/go-test-shard.py --self-test
+          list="${RUNNER_TEMP}/desk-packages.txt"
+          mine="${RUNNER_TEMP}/desk-shard.txt"
+          (cd tools/desk && go list ./...) > "$list"
+          python3 -B .github/scripts/go-test-shard.py --shards "$shards" --index "$JOB_INDEX" < "$list" > "$mine"
+          mapfile -t pkgs < "$mine"
+          test "${#pkgs[@]}" -gt 0
+          cd tools/desk && go test "${pkgs[@]}"
+
       # The preceding build/vet sweep warms both modules' dependency caches.
       # Tests run offline and cover the real cross-module child transport.
       - name: Role-bound claim transport regressions
+        if: matrix.shard == 'rest'
         run: bash statusgen/test-role-claims.sh
+
+  # The required check `build-test`. Branch protection requires a check of this
+  # exact name, so it stays a single job that reports one verdict for the whole
+  # sharded suite: success only when every build-test-shard leg succeeded. Any
+  # failed, cancelled or skipped leg fails it; there is no pass-without-running
+  # path. `always()` makes it report even when the run is cancelled, so a
+  # cancelled suite reads as a failure here, never as a skipped (passing) check.
+  # GitHub-hosted: it only reads the needs context.
+  build-test:
+    needs: [build-test-shard]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: All build-test shards passed
+        env:
+          SHARDS: ${{ needs.build-test-shard.result }}
+        run: |
+          set -euo pipefail
+          echo "build-test-shard: ${SHARDS}"
+          if [ "$SHARDS" = "success" ]; then
+            echo "every shard passed"
+          else
+            echo "::error::build-test shards concluded '${SHARDS}' — the suite did not pass"
+            exit 1
+          fi
 
   # The plugin SHELL suites. `assay-inbox.sh` / `inbound-monitor.sh` carry their
   # own regression suites (`*.test.sh`) but the build-test job above runs Go
@@ -152,6 +347,9 @@ jobs:
   # this job. New `plugins/assay/scripts/*.test.sh` files are picked up without
   # editing this workflow.
   plugin-shell-suites:
+    needs: scope
+    # Skipped only on a verifier-App docs-only PR (see the scope job); fail-closed.
+    if: ${{ !cancelled() && needs.scope.outputs.heavy != 'false' }}
     runs-on: medici-builder-public
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -184,6 +382,9 @@ jobs:
   # Needs the Go toolchain (the tool is `go run .` in tools/skillslint; the runner
   # ships no `make`), installed by hand from go.dev/dl as build-test documents.
   skillslint:
+    needs: scope
+    # Skipped only on a verifier-App docs-only PR (see the scope job); fail-closed.
+    if: ${{ !cancelled() && needs.scope.outputs.heavy != 'false' }}
     runs-on: medici-builder-public
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -228,6 +429,8 @@ jobs:
   # tree the tool cannot read is a failure here, never a quiet pass. A reference
   # file it skips by declaration is announced on stderr in the job log.
   harnesslint:
+    # Never gated on the scope job: it reads docs/streams/harness-portability/
+    # README.md, so a docs-only pull request can change its verdict.
     runs-on: medici-builder-public
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -253,6 +456,11 @@ jobs:
             bindings ../../plugins/assay/references
 
   cursor-generated:
+    needs: scope
+    # Skipped only on a verifier-App docs-only PR (see the scope job); fail-closed.
+    # Its harnessgen suite reads docs/codex-smoke-protocol.md, but the same suite
+    # also runs in build-test-shard (rest), which is never skipped.
+    if: ${{ !cancelled() && needs.scope.outputs.heavy != 'false' }}
     strategy:
       fail-fast: false
       matrix:

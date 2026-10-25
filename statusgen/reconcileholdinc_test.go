@@ -321,7 +321,7 @@ func driveBoard(t *testing.T, placeholders bool) (string, []BriefCell) {
 func TestHoldParityDriveRegion(t *testing.T) {
 	pinNow(t, driveTestNow)
 	root, _ := driveManyRowBoard(t)
-	if problems, _ := driveRegionLintProblems(root, driveTestNow); len(problems) != 0 {
+	if problems, _ := driveRegionLintProblems(root, nil, nil, driveTestNow); len(problems) != 0 {
 		t.Fatalf("fixture drift: the fresh region must lint clean, got %v", problems)
 	}
 	// Default (no --regenerate): a driven move drifts the region and is held;
@@ -362,7 +362,7 @@ func TestHoldParityDrivePlaceholders(t *testing.T) {
 			t.Fatalf("fixture drift: stream %s must carry one placeholder, got %d", s.Name, len(s.Placeholders))
 		}
 	}
-	if problems, _ := driveRegionLintProblems(root, driveTestNow); len(problems) != 0 {
+	if problems, _ := driveRegionLintProblems(root, nil, nil, driveTestNow); len(problems) != 0 {
 		t.Fatalf("fixture drift: the fresh region must lint clean, got %v", problems)
 	}
 	for _, regen := range []bool{false, true} {

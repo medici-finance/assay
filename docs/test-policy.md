@@ -77,9 +77,9 @@ the full set of mutation gates the release already runs, including the deskmerge
 highest-risk guard, since deskmerge is the only desk tool that can rewrite the head of somebody
 else's branch) — executed independently of whoever wrote the last brief. Release shards the
 deskmerge sweep across three legs because it is the long pole in a per-PR-blocking suite; the
-standing suite runs push+daily rather than gating a PR, so it runs the same sweep unsharded in a
-single leg — same coverage, no per-PR wall-time pressure to shard against. It runs on push to the
-default branch and on a daily schedule (`.github/workflows/truth-suite.yml`), so a regression is
+standing suite runs nightly rather than gating a PR, so it runs the same sweep unsharded in a
+single leg — same coverage, no per-PR wall-time pressure to shard against. It runs on a nightly
+schedule and on manual dispatch (`.github/workflows/truth-suite.yml`), so a regression is
 caught by a suite the change's author did not write and cannot narrow.
 
 **What it is not:** it is not a replacement for per-brief Verify rows. The two guard different

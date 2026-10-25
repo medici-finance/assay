@@ -879,15 +879,16 @@ const (
 // added to main.go and classified nowhere is the exact "classified nowhere" hole this
 // guard exists to catch.
 var verbScopeClass = map[string]scopeClass{
-	"prs":         sweepsRepos,
-	"actions":     sweepsRepos,
-	"queue":       sweepsRepos,
-	"health":      sweepsRepos,
-	"scope":       sweepsRepos,
-	"policydrift": sweepsRepos,
-	"awaiting":    sweepsRoots,
-	"nextup":      sweepsRoots,
-	"stalled":     sweepsRepos,
+	"review-queue": sweepsRepos,
+	"prs":          sweepsRepos,
+	"actions":      sweepsRepos,
+	"queue":        sweepsRepos,
+	"health":       sweepsRepos,
+	"scope":        sweepsRepos,
+	"policydrift":  sweepsRepos,
+	"awaiting":     sweepsRoots,
+	"nextup":       sweepsRoots,
+	"stalled":      sweepsRepos,
 	// throughput spans BOTH coverage axes: it sweeps the repo set for its review depth and
 	// the configured ROOTS for its dispatch/verify depths. It is declared repo-sweeping
 	// because that is the obligation with teeth — `scope` must be present and must agree
@@ -1015,6 +1016,9 @@ func TestDispatch_VerbInventory(t *testing.T) {
 				`[{"number":1,"title":"t","body":"","isDraft":true,"author":{"login":"shared-agent"},"createdAt":"`+
 					time.Now().UTC().Format(time.RFC3339)+`","labels":[],"headRefOid":"abc123",`+
 					`"headRefName":"b","mergeStateStatus":"CLEAN","statusCheckRollup":[]}]`)
+			if v == "review-queue" {
+				t.Setenv("DESKBOARD_GH_PRLIST_JSON", "[]")
+			}
 			if class == sweepsRoots {
 				twoRoots(t)
 			}
@@ -1041,6 +1045,16 @@ func TestDispatch_VerbInventory(t *testing.T) {
 				t.Fatalf("%v: %v\n%s", argv, err, out.String())
 			}
 			scope, hasScope := m["scope"].(map[string]any)
+			if v == "review-queue" {
+				inputs := m["inputs"].(map[string]any)
+				requested := inputs["requested"].([]any)
+				admitted := inputs["admitted"].([]any)
+				population := inputs["population"].([]any)
+				if len(requested) != len(deskkit.AllowedRepos()) || len(admitted) != len(requested) || len(population) != len(requested) {
+					t.Fatal("observation scope incomplete", inputs)
+				}
+				scope, hasScope = map[string]any{"count": float64(len(admitted))}, true
+			}
 
 			switch class {
 			case sweepsRepos:

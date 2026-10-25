@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/spf13/cobra"
@@ -199,7 +200,7 @@ func checkCurrentParser(t *testing.T, name, work string) {
 	bin := filepath.Join(t.TempDir(), name)
 	build := exec.Command("go", "build", "-o", bin, "./cmd/"+name)
 	build.Dir = filepath.Join("..", "..")
-	if out, err := build.CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
 	}
 	home := t.TempDir()

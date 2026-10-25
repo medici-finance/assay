@@ -64,8 +64,8 @@
     {
       "name": "the ancestor walk goes back inside the candidate loop (the whole fix, undone: one walk per candidate again)",
       "file": "cmd/deskwt/prune.go",
-      "old": "\tsc := newSweepCtx(dir)",
-      "new": "\tsc := newSweepCtx(dir)\n\tfor range roots {\n\t\tsc.mainAncestors = nil\n\t\tsc = newSweepCtx(dir)\n\t}"
+      "old": "\t// Per-sweep state: ONE object cache, one repo handle per worktree, and ONE walk of\n\t// refs/remotes/origin/main. See sweepCtx. Built before the reclaim pass for the same\n\t// reason the enumeration is: Step A1's content gate answers \"is this husk's detached\n\t// HEAD on the mainline\" from this set.\n\tsc := newSweepCtx(dir)",
+      "new": "\t// Per-sweep state: ONE object cache, one repo handle per worktree, and ONE walk of\n\t// refs/remotes/origin/main. See sweepCtx. Built before the reclaim pass for the same\n\t// reason the enumeration is: Step A1's content gate answers \"is this husk's detached\n\t// HEAD on the mainline\" from this set.\n\tsc := newSweepCtx(dir)\n\tfor range roots {\n\t\tsc.mainAncestors = nil\n\t\tsc = newSweepCtx(dir)\n\t}"
     },
     {
       "name": "the dead-session arm stops holding a LIVE session's worktree (the lock's whole purpose is gone and a working agent's tree is deleted under it)",
@@ -89,7 +89,7 @@
       "name": "the reap arm's pushed gate stops holding an unpushed worktree (commits that reached no remote are deleted)",
       "file": "cmd/deskwt/deadsession.go",
       "old": "\tif !pushed {\n\t\tv.reason += \"; \" + why\n\t\treturn v\n\t}",
-      "new": "\tif false {\n\t\tv.reason += \"; \" + why\n\t\treturn v\n\t}"
+      "new": "\tif false && !pushed {\n\t\tv.reason += \"; \" + why\n\t\treturn v\n\t}"
     },
     {
       "name": "the reap arm's --dry-run arm reaps for real (an inspection run deletes what it was asked to describe)",

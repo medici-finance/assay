@@ -21,9 +21,14 @@ type verifyRow struct {
 	ID      deskkit.VerifyRowID
 	Class   string // check | check:ci | gate:model | gate:human
 	Command string
-	// CommentLed is verifycmd.CommentLed of the raw cell: why the row's command is
-	// only a shell comment, or "". runBriefRows never executes such a row (#2684).
-	CommentLed string
+	// Cell is the raw trimmed Command cell. Command is only its lift (the marked
+	// command, else the first code span); a reader matching prose in the row, not
+	// the command, reads Cell.
+	Cell string
+	// Refused is verifycmd.Refused of the raw cell: why the row's command must not
+	// run (a shell comment, a no-op, a prose mention, a blank lift), or "".
+	// runBriefRows never executes such a row (#2684, #3147).
+	Refused string
 }
 
 // runnerExecuted reports whether this class is one the deterministic runner executes.
@@ -110,14 +115,18 @@ func parseVerifyRowsMode(section string, scheduling bool) []verifyRow {
 				}
 			}
 			// verifycmd.Lift honours the `cmd:` marker (spec §4.4, #1805) and
-			// otherwise unwraps a fully-backticked cell exactly as before. The split
-			// kept `\|` in the cell; the runner executes the un-escaped pipeline (#1953).
+			// otherwise lifts the first code span, exactly as statusgen does (#3147).
+			// The split kept `\|` in the cell; the runner executes the un-escaped
+			// pipeline (#1953). verifycmd.Refused judges the RAW cell: what statusgen
+			// refuses as a comment, a no-op, a prose mention or a blank lift never
+			// runs here.
 			rows = append(rows, verifyRow{
-				Num:        num,
-				ID:         id,
-				Class:      class,
-				Command:    verifycmd.UnescapePipes(verifycmd.Lift(cell(cmdCol))),
-				CommentLed: verifycmd.CommentLed(cell(cmdCol)),
+				Num:     num,
+				ID:      id,
+				Class:   class,
+				Command: verifycmd.UnescapePipes(verifycmd.Lift(cell(cmdCol))),
+				Cell:    cell(cmdCol),
+				Refused: verifycmd.Refused(cell(cmdCol)),
 			})
 		}
 		return rows

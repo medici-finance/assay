@@ -35,6 +35,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -118,7 +119,7 @@ func installFixtureRoster() (cleanup func(), err error) {
 var hostGoEnvKeys = []string{"GOMODCACHE", "GOPATH", "GOCACHE"}
 
 func pinHostGoEnv() error {
-	out, err := exec.Command("go", "env", hostGoEnvKeys[0], hostGoEnvKeys[1], hostGoEnvKeys[2]).Output()
+	out, err := goquiet.Cmd(exec.Command("go", "env", hostGoEnvKeys[0], hostGoEnvKeys[1], hostGoEnvKeys[2])).Output()
 	if err != nil {
 		return fmt.Errorf("go env %s: %w", strings.Join(hostGoEnvKeys, " "), err)
 	}

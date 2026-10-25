@@ -25,9 +25,10 @@ Unsupported schema/evaluator or mismatched policy revisions are schema errors.
 The library reads no environment, files, clocks, subprocesses, credentials or provider
 clients. `statusgen/evaluation` remains the owner of eligibility/coverage semantics.
 This package is internal to `tools/desk`; a different module cannot import it.
-Public serving extraction belongs to forge-neutral/39. Collection and the eventual
-CLI handoff belong to desk-tools/40; dispatcher adoption belongs to desk-tools/41.
-There are no new CLI flags in this change.
+Public serving extraction belongs to forge-neutral/39. The library extraction
+introduced no CLI flags. Desk-tools/40 now supplies collection and the direct-reader
+CLI handoff below; desk-tools/41 delivers dispatcher preparation and its `--observation`
+handoff, while desk-tools/43 owns live caller adoption.
 
 ## Scope, identity and population
 
@@ -144,3 +145,64 @@ Legacy command flags, wire payloads, output ordering, error wrapping and idle ca
 are retained. No generated command documentation changes are applicable. The existing
 `statusgen regen --readmes` generator owns stream board regions; this change does not
 branch-commit generated board state or alter verification/acceptance gates.
+
+## Candidate-plus-priority selection
+
+`PlanCandidates(observation, freshness, selectionPolicy, capacity)` is the review role's
+pure selection entrypoint added by desk-tools/39's merged candidate-plus-priority amendment.
+It first calls `PlanObservation`: source schema, complete requested/admitted population,
+per-input freshness, exact-head/body/review/check applicability and recomputed output remain
+mandatory. Classification, lane facts, action legality, coalescing and reviewer-idle semantics
+keep their existing owners. This is a Go-library extension; observation-v1 JSON and existing
+command behavior remain compatible. Collection/CLI and actual caller migration remain with
+/40 and /43; graph-execution/27 later proves the discrete/prose role bindings.
+
+`SelectionPolicy` names the approving owner, opaque approved revision, supported
+`review-selection-v1` evaluator, complete priority entries and an explicit unmapped policy.
+The caller establishes that the selected revision is approved; these values do not authenticate
+an owner or convey authority. Priority subjects are provider/host/repository plus change number;
+rank never authenticates a new head. The observed full head and each lane's applicability stay
+on the candidate decision. Higher existing-domain scores precede lower scores, with the same
+qualified identity tie-break as the observation; the coalescer's key order is not capacity
+priority. A nil priority list is unavailable; an explicit empty list is valid. Duplicate or
+noncanonical priority subjects, unsupported evaluator, absent owner/revision or negative
+capacity are schema errors. Policy changes need not alter the source's classification-policy
+revision or recollect unchanged applicable observations.
+
+Every observed candidate appears exactly once, including deferred, held and watch rows.
+Unmapped candidates explicitly retain the existing observed-score default (`observed-score`)
+or are held (`hold`); they never disappear in an inner join. Policy entries with no candidate
+are returned as `NotObserved` gaps, never fabricated work or proof that an out-of-scope
+repository is empty. Their reason distinguishes an absent subject in admitted scope from
+a priority subject outside that scope. Both remain visible; neither implies collection
+coverage beyond the admitted repositories. Domain holds/non-operation dispositions are
+independent of score. Capacity is a nonnegative aggregate limit on advisory proposals, not a
+reviewer-lane grant or permission to act. Zero capacity preserves every row and source depth;
+it does not make backlog idle. An otherwise idle source with not-observed priority entries
+becomes could-not-check until those gaps are reconciled. Selected decisions preserve the proposed verb, qualified exact
+head, independent lanes and existing holds. Downstream adapters retain their admission,
+claims, custody and final mutable-state checks.
+
+The plan binds role, evaluator, policy owner/revision, source schema/evaluator/policy,
+collection interval, requested/admitted coverage, explicit current time/cutoff and capacity.
+Selection order is separate from the immutable source row's stored score/rank. It performs
+zero provider, filesystem, process, credential or clock reads, including on policy/slot-only
+reselection. For R admitted repositories, P candidates and Q priorities, time is
+O(R + P log P + Q log Q) and memory O(R + P + Q), including legacy validation/coalescing and deterministic unobserved-entry ordering.
+No cross-window cache, universal score, TTL, service, priority register or telemetry is added.
+
+`TestReviewPriorityJoin` checks literal expected selections that disagree with identity order,
+source-score order and a reversed-comparator production mutation. An equal-priority,
+cross-host case with capacity one rejects removed/reversed identity tie-breaks even when
+the source/input ordering disagrees with the selected order. It covers changed priorities
+on the same source, zero capacity, 111 candidates, second-root-only work, host-qualified joins,
+unmapped and unobserved entries, high-ranked holds/watch rows, shuffled inputs, stale/partial
+and contradictory observations, repeated pure execution and the closed import boundary.
+
+## Direct-reader command adapters
+
+Desk-tools/40 delivers `deskboard review-queue --out FILE` and
+`reviewloop plan --snapshot FILE --selection JSON --now RFC3339` over this contract.
+The [operator contract](../docs/deskboard.md) specifies scope/source-policy binding,
+explicit freshness/capacity and compatibility. Both planning adapters reuse the
+shared library; no independent sorter or live consumer migration is introduced.

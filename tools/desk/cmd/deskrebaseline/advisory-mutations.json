@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskrebaseline ./cmd/verifyloop ./internal/verifycmd -count=1 -timeout=60s -run 'Test(RenameKeepsGuardPath|RenameWholePaths|NumericExitWinsProse|ExpectStaysFailClosed|CommentRenameNeverRuns|RenameJudgesRenamedExpect|EscapedPipeStaysInCommand|CommandColumnLiftsViaLift|RebaselineCommentCells|RunBriefRowsCommentCells|RunnerGetsWholePipeline|RenameRerunsAgainstTarget|ProbeCouldNotRunIsNotChanged|EvidenceKeepsPipedCommand|StreamTableHonoursEscapedPipe|RenameUndecidableExpectRefused)$'",
+  "test": "go test ./cmd/deskrebaseline ./cmd/verifyloop ./internal/verifycmd -count=1 -timeout=60s -run 'Test(RenameKeepsGuardPath|RenameWholePaths|NumericExitWinsProse|ExpectStaysFailClosed|CommentRenameNeverRuns|RenameJudgesRenamedExpect|EscapedPipeStaysInCommand|CommandColumnLiftsViaLift|RebaselineCommentCells|RunBriefRowsCommentCells|RunnerGetsWholePipeline|RenameRerunsAgainstTarget|ProbeCouldNotRunIsNotChanged|EvidenceKeepsPipedCommand|StreamTableHonoursEscapedPipe|RenameUndecidableExpectRefused|RefusedRenameNeverRuns)$'",
   "control": {
     "name": "CONTROL: exact path rewrite disabled",
     "file": "cmd/deskrebaseline/rename.go",
@@ -20,16 +20,34 @@
       "new": "spec.nonZero = expectNonZeroRe.MatchString(exitRest)"
     },
     {
-      "name": "raw comment-led cell is no longer gated",
+      "name": "rename-proof re-run is no longer gated",
       "file": "cmd/deskrebaseline/facts.go",
-      "old": "row.CommentLed != \"\" || verifycmd.CommentOnly(row.Command)",
-      "new": "verifycmd.CommentOnly(row.Command)"
+      "old": "if mayRun && f.PathRef != \"\" && !f.PathExists && f.RenameHop != \"\" {",
+      "new": "if f.PathRef != \"\" && !f.PathExists && f.RenameHop != \"\" {"
     },
     {
-      "name": "direct comment-only row is no longer gated for rename",
+      "name": "behaviour probe is no longer gated",
       "file": "cmd/deskrebaseline/facts.go",
-      "old": "row.CommentLed != \"\" || verifycmd.CommentOnly(row.Command)",
-      "new": "row.CommentLed != \"\""
+      "old": "if mayRun && (f.PathRef == \"\" || f.PathExists) {",
+      "new": "if f.PathRef == \"\" || f.PathExists {"
+    },
+    {
+      "name": "gate judges the lift only, not the raw cell",
+      "file": "cmd/deskrebaseline/facts.go",
+      "old": "mayRun := row.Refused == \"\" && verifycmd.CommandRefused(row.Command) == \"\"",
+      "new": "mayRun := verifycmd.CommandRefused(row.Command) == \"\""
+    },
+    {
+      "name": "direct row judged on the raw cell only",
+      "file": "cmd/deskrebaseline/facts.go",
+      "old": "mayRun := row.Refused == \"\" && verifycmd.CommandRefused(row.Command) == \"\"",
+      "new": "mayRun := row.Refused == \"\" && (verifycmd.CommandRefused(row.Command) == \"\" || true)"
+    },
+    {
+      "name": "rebaseline parser loses raw-cell refusal",
+      "file": "cmd/deskrebaseline/brief.go",
+      "old": "Refused:    verifycmd.Refused(cell(cmdCol))",
+      "new": "Refused:    \"\""
     },
     {
       "name": "overflowed expectation can pass its output check",
@@ -56,10 +74,10 @@
       "new": "verifycmd.Lift(cell(cmdCol))"
     },
     {
-      "name": "runner parser loses raw comment judgement",
+      "name": "runner parser loses raw-cell refusal",
       "file": "cmd/verifyloop/verifyrows.go",
-      "old": "CommentLed: verifycmd.CommentLed(cell(cmdCol))",
-      "new": "CommentLed: \"\""
+      "old": "Refused: verifycmd.Refused(cell(cmdCol))",
+      "new": "Refused: \"\""
     },
     {
       "name": "runner parser loses pipe unescaping",
