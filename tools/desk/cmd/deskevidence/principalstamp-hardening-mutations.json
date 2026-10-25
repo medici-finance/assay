@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunLeadWord|TestShowsTagBlankInside|TestStampBlankLeadAllowed|TestStampCodeSpanTagReading)$' -count=1 -timeout=300s",
+  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunLeadWord|TestShowsTagBlankInside|TestStampBlankLeadAllowed|TestStampCodeSpanTagReading|TestShowsAppRunGlyphLead)$' -count=1 -timeout=300s",
   "control": {
     "name": "unreadable-cell refusal not consulted",
     "file": "cmd/deskevidence/principalstamp.go",
@@ -708,6 +708,90 @@
       "file": "cmd/deskevidence/principalstamp.go",
       "old": "return r < utf8.RuneSelf && (unicode.IsLetter(r) || unicode.IsDigit(r))",
       "new": "return unicode.IsLetter(r) || unicode.IsDigit(r)"
+    },
+    {
+      "name": "the shown text trimmed of ASCII white space only",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "t := strings.TrimSpace(runnerMarkupRe.ReplaceAllString(d, \"\"))",
+      "new": "t := strings.Trim(runnerMarkupRe.ReplaceAllString(d, \"\"), \" \\t\")"
+    },
+    {
+      "name": "the reading past a leading word trimmed of ASCII white space only",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tt = strings.TrimSpace(t)\n\tfor i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {\n\t\tt = strings.TrimSpace(t[i:])\n",
+      "new": "\tt = strings.Trim(t, \" \\t\")\n\tfor i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {\n\t\tt = strings.Trim(t[i:], \" \\t\")\n"
+    },
+    {
+      "name": "the reading past a leading word trimmed of every white space but a tab",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tt = strings.TrimSpace(t)\n\tfor i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {\n\t\tt = strings.TrimSpace(t[i:])\n",
+      "new": "\tt = strings.Trim(t, \" \\u00a0\\u3000\")\n\tfor i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {\n\t\tt = strings.Trim(t[i:], \" \\u00a0\\u3000\")\n"
+    },
+    {
+      "name": "the reading past a leading word trimmed of ASCII white space only at its start",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tt = strings.TrimSpace(t)\n\tfor i := strings.IndexFunc",
+      "new": "\tt = strings.Trim(t, \" \\t\")\n\tfor i := strings.IndexFunc"
+    },
+    {
+      "name": "the word after a leading word trimmed of ASCII white space only",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tt = strings.TrimSpace(t[i:])\n",
+      "new": "\t\tt = strings.Trim(t[i:], \" \\t\")\n"
+    },
+    {
+      "name": "a word shown as a glyph not read as a symbol",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if g := glyphWordRe.ReplaceAllString(t, glyphPlaceholder); g != t {",
+      "new": "if g := t; g != t {"
+    },
+    {
+      "name": "the glyph reading not read past its leading words",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if seen := pastLead(strings.Map(dropBlank, g)); strings.HasSuffix(",
+      "new": "if seen := strings.Map(dropBlank, g); strings.HasSuffix("
+    },
+    {
+      "name": "the glyph reading taken where no glyph lead is read past",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "; strings.HasSuffix(strings.Map(dropBlank, t), seen) {",
+      "new": "; seen != \"\" {"
+    },
+    {
+      "name": "a word shown as a glyph read as an ASCII letter",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "glyphPlaceholder = \"\\u25a1\"",
+      "new": "glyphPlaceholder = \"x\""
+    },
+    {
+      "name": "a glyph word matched in lower case only",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "regexp.MustCompile(`(?i):[a-z0-9_+-]+:`)",
+      "new": "regexp.MustCompile(`:[a-z0-9_+-]+:`)"
+    },
+    {
+      "name": "a glyph word with a sign not matched",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "regexp.MustCompile(`(?i):[a-z0-9_+-]+:`)",
+      "new": "regexp.MustCompile(`(?i):[a-z0-9_]+:`)"
+    },
+    {
+      "name": "a glyph word with a digit not matched",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "regexp.MustCompile(`(?i):[a-z0-9_+-]+:`)",
+      "new": "regexp.MustCompile(`(?i):[a-z_+-]+:`)"
+    },
+    {
+      "name": "an element a sanitizer drops read only with its text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if e := droppedElementRe.ReplaceAllString(r, \"\"); e != r {",
+      "new": "if e := r; e != r {"
+    },
+    {
+      "name": "a style element not read as dropped",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "`(?is)<\\s*(?:script|style|template",
+      "new": "`(?is)<\\s*(?:script|template"
     },
     {
       "name": "a nonspacing mark not read as blank",

@@ -549,11 +549,13 @@ func linkReadings(s string) []string {
 
 // shownTexts returns the texts a renderer can show for s, for deciding what a reader sees: each
 // comment reading and each link reading, with HTML tags and emphasis, strikethrough, code and
-// escape characters removed, and entities decoded. Each is read once as it stands and once with
-// every character that renders as nothing dropped (see rendersBlank) and the words that lead it
-// and cannot be a login skipped (see pastLead), so a text's identity region (see
-// identityRegion) starts at the first word a reader can take for a name. A cell shows
-// something when any of these does.
+// escape characters removed, and entities decoded, read once with the text of each element a
+// sanitizer can drop kept and once with it dropped (see droppedElementRe). Each is read once as
+// it stands and once with every character that renders as nothing dropped (see rendersBlank)
+// and the words that lead it and cannot be a login skipped (see pastLead), so a text's identity
+// region (see identityRegion) starts at the first word a reader can take for a name. That last
+// reading is taken once more with each word a renderer shows as a glyph (see glyphWordRe) read
+// as one symbol. A cell shows something when any of these does.
 func shownTexts(s string) []string {
 	var out []string
 	for _, c := range commentReadings(s) {
@@ -562,13 +564,25 @@ func shownTexts(s string) []string {
 		// shows its text and not its brackets whenever a definition resolves; it is a reading
 		// of what could be shown, never of link syntax (see linkSyntax).
 		readings := append(linkReadings(c), reduceLinksMode(c, true, true))
-		for _, v := range readings {
-			v = htmlTagRe.ReplaceAllString(v, "")
-			for _, d := range decodings(v) {
-				t := strings.TrimSpace(runnerMarkupRe.ReplaceAllString(d, ""))
-				out = append(out, t)
-				if seen := pastLead(strings.Map(dropBlank, t)); seen != t {
-					out = append(out, seen)
+		for _, r := range readings {
+			tagless := []string{htmlTagRe.ReplaceAllString(r, "")}
+			if e := droppedElementRe.ReplaceAllString(r, ""); e != r {
+				tagless = append(tagless, htmlTagRe.ReplaceAllString(e, ""))
+			}
+			for _, v := range tagless {
+				for _, d := range decodings(v) {
+					t := strings.TrimSpace(runnerMarkupRe.ReplaceAllString(d, ""))
+					out = append(out, t)
+					if seen := pastLead(strings.Map(dropBlank, t)); seen != t {
+						out = append(out, seen)
+					}
+					// Only what reading past a glyph lead reveals is taken: a glyph later in the
+					// text is shown where its word stands, which the reading as written covers.
+					if g := glyphWordRe.ReplaceAllString(t, glyphPlaceholder); g != t {
+						if seen := pastLead(strings.Map(dropBlank, g)); strings.HasSuffix(strings.Map(dropBlank, t), seen) {
+							out = append(out, seen)
+						}
+					}
 				}
 			}
 		}
@@ -576,10 +590,24 @@ func shownTexts(s string) []string {
 	return out
 }
 
+var (
+	// glyphWordRe matches a word a renderer replaces with a glyph (`:name:`), in any case and
+	// after emphasis and escape characters are stripped, so it matches more than a renderer
+	// replaces. glyphPlaceholder is the one symbol it is read as, which holds no ASCII letter or
+	// digit, as the glyph shown does not.
+	glyphWordRe      = regexp.MustCompile(`(?i):[a-z0-9_+-]+:`)
+	glyphPlaceholder = "\u25a1"
+	// droppedElementRe matches a raw HTML element a sanitizer can remove with its text, and so
+	// show nothing for, from its opening tag to the next such closing tag or the end of the text.
+	droppedElementRe = regexp.MustCompile(`(?is)<\s*(?:script|style|template|textarea|title|iframe|noembed|noframes|noscript|plaintext|xmp|math|svg)\b[^>]*>.*?(?:<\s*/\s*(?:script|style|template|textarea|title|iframe|noembed|noframes|noscript|plaintext|xmp|math|svg)\s*>|$)`)
+)
+
 // pastLead returns t trimmed and without the words that lead it and hold no ASCII letter or
 // digit, a word ending at white space. Such a word cannot be a login, so a reader takes the word
 // after it for the name, whatever its characters are and whether or not they render. A word
 // that holds an ASCII letter or digit ends the skip, and its characters are read as they stand.
+// Every trim takes any Unicode white space, since a renderer shows a non-breaking or wide space
+// at the edge of a word as white space too.
 func pastLead(t string) string {
 	t = strings.TrimSpace(t)
 	for i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {

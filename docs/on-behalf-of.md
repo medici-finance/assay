@@ -287,6 +287,10 @@ same roster's human set:
     itself), and with every word that leads it and holds no ASCII letter or digit skipped
     (a word ends at white space), since such a word cannot be a login and a reader takes the
     word after it for the name, whatever its characters are and whether or not they render.
+    That reading is taken once more with each word a renderer replaces with a glyph (`:name:`)
+    read as one such symbol, and every reading is taken both with and without the text of a
+    raw HTML element a sanitizer can drop with its text (`<script>`, `<style>` and the like).
+    Every trim takes any Unicode white space, a non-breaking or wide space included.
     A cell's text so starts at the first word a reader can take for a name. A cell's
     identity region is its text up to the first ASCII space or `(`, where the lint cuts it,
     extended over spaces inside a tag that closes before any `(` or other tag bracket. A tag

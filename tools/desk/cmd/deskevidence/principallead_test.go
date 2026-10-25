@@ -10,10 +10,11 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// A renderer shows nothing for a character that renders as nothing and trims the white space
-// at either end of a cell, and a reader takes a leading word with no ASCII letter or digit for
-// something other than a name, so a cell that opens with such a character or word and then
-// white space shows a reader the login that follows. Every cell below shows a reader an App
+// A renderer shows nothing for a character that renders as nothing, or for an element a
+// sanitizer drops with its text, and trims the white space (of any kind) at either end of a
+// cell, and a reader takes a leading word with no ASCII letter or digit, or one a renderer shows
+// as a glyph, for something other than a name, so a cell that opens with such a character,
+// element or word and then white space shows a reader the login that follows. Every cell below shows a reader an App
 // login and then the annotation of a recognised human other than the resolved principal, and
 // is not App-run to the lint, so a landing that carries one is refused wherever the checks read
 // it.
@@ -45,6 +46,24 @@ var leadRunners = []struct{ name, cell string }{
 	{"blank-tab", "\u2063\texample-app[bot]" + foldTail},
 	{"nbsp-only", "\u00a0example-app[bot]" + foldTail},
 	{"wide-space-only", "\u3000example-app[bot]" + foldTail},
+	{"nbsp-space", "\u00a0 example-app[bot]" + foldTail},
+	{"wide-space-space", "\u3000 example-app[bot]" + foldTail},
+	{"nbsp-entity-space", "&nbsp; example-app[bot]" + foldTail},
+	{"wide-space-entity-space", "&#x3000; example-app[bot]" + foldTail},
+	{"tab-entity-space", "&#9; example-app[bot]" + foldTail},
+	{"blank-nbsp-space", "\u2063\u00a0 example-app[bot]" + foldTail},
+	{"blank-wide-space-space", "\u2063\u3000 example-app[bot]" + foldTail},
+	{"blank-tab-space", "\u2063\t example-app[bot]" + foldTail},
+	{"symbol-nbsp-space", "\u2713\u00a0 example-app[bot]" + foldTail},
+	{"symbol-tab-space", "\u2713\t example-app[bot]" + foldTail},
+	{"glyph-word", ":white_check_mark: example-app[bot]" + foldTail},
+	{"glyph-word-sign", ":+1: example-app[bot]" + foldTail},
+	{"glyph-word-plain", ":robot: example-app[bot]" + foldTail},
+	{"glyph-word-paren", "(:robot:) example-app[bot]" + foldTail},
+	{"glyph-word-entity", "&#58;robot&#58; example-app[bot]" + foldTail},
+	{"glyph-word-escaped", ":white\\_check\\_mark: example-app[bot]" + foldTail},
+	{"dropped-element", "<script>x</script> example-app[bot]" + foldTail},
+	{"dropped-element-style", "<style>p</style> example-app[bot]" + foldTail},
 }
 
 // regression: #4102
@@ -108,6 +127,15 @@ func TestShowsAppRunLeadWord(t *testing.T) {
 	for _, sp := range []string{" ", "\t", "\u00a0", "\u3000"} {
 		if cell := sp + "example-app[bot]" + foldTail; !showsAppRun(cell) {
 			t.Errorf("%q not read as App-run", cell)
+		}
+		// White space of any kind beside an ASCII space, alone, after a character that renders
+		// as nothing or after a symbol, is trimmed, so the login after it is read.
+		for _, lead := range []string{"", "\u2063", "\u2713"} {
+			for _, ws := range []string{sp + " ", " " + sp} {
+				if cell := lead + ws + "example-app[bot]" + foldTail; !showsAppRun(cell) {
+					t.Errorf("%q not read as App-run", cell)
+				}
+			}
 		}
 		// An ASCII lead that is no login ends at any white space, not only at a space.
 		if cell := "(" + sp + "example-app[bot]" + foldTail; !showsAppRun(cell) {
@@ -205,6 +233,9 @@ func TestStampBlankLeadAllowed(t *testing.T) {
 		"\ufe0f operator @ abc1234 (see example-app review)",
 		"\u2713 human:operator @ abc1234",
 		"- operator @ abc1234 (see example-app review)",
+		":tada: human:operator @ abc1234",
+		"<script>x</script> human:operator @ abc1234",
+		"human:operator @ abc1234 (rerun 10:30:00 by example-app review)",
 	} {
 		t.Run(strings.TrimSpace(runner[strings.IndexByte(runner, ' '):]), func(t *testing.T) {
 			f := setupStamp(t, true)
@@ -212,5 +243,35 @@ func TestStampBlankLeadAllowed(t *testing.T) {
 				t.Fatalf("exit = %d, want 0: %q", code, lastAudit(t).Detail)
 			}
 		})
+	}
+}
+
+// regression: #4102
+// TestShowsAppRunGlyphLead: a word a renderer shows as a glyph, before an App login with white
+// space between, alone, repeated, in parentheses, after a symbol or with its colons as entities,
+// is read as showing App-run text; one before a human runner, inside a word or later in the
+// text, where the reading as written already shows what stands there, is not.
+func TestShowsAppRunGlyphLead(t *testing.T) {
+	for _, word := range []string{":robot:", ":+1:", ":-1:", ":100:", ":white_check_mark:", ":Robot:"} {
+		for _, lead := range []string{
+			word,
+			word + " " + word,
+			"(" + word + ")",
+			"\u2713 " + word,
+			strings.ReplaceAll(word, ":", "&#58;"),
+		} {
+			if cell := lead + " example-app[bot]" + foldTail; !showsAppRun(cell) {
+				t.Errorf("%q not read as App-run", cell)
+			}
+		}
+		for _, cell := range []string{
+			word + " human:operator @ abc1234",
+			"x" + word + "x example-app[bot]" + foldTail,
+			"x" + word + "[abc] human:operator @ abc1234",
+		} {
+			if showsAppRun(cell) {
+				t.Errorf("%q read as App-run", cell)
+			}
+		}
 	}
 }
