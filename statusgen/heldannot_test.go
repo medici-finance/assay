@@ -1,0 +1,168 @@
+package main
+
+import (
+	"strings"
+	"testing"
+)
+
+// annHdr is the results-table header the #4294 annotated-key fixtures use.
+const annHdr = "| # | Command | Exit | Result | Date | Runner |\n" +
+	"|---|---------|------|--------|------|--------|\n"
+
+// annRow is one results row of annHdr: key, exit and result are its free cells.
+func annRow(key, exit, result string) string {
+	return "| " + key + " | `bash tests/stream-brief/07.sh` | " + exit + " | " + result + " | 2026-10-07 | fixture-verifier |\n"
+}
+
+// annEntry is one Evidence entry: a heading, a results table of the given
+// rows and a closing verdict line.
+func annEntry(title, verdict string, rows ...string) string {
+	return "### " + title + "\n\n" + annHdr + strings.Join(rows, "") + "\n" + verdict + "\n\n"
+}
+
+// annLater is the last entry: rows 1 to 3 re-ran clean under bare keys, closing
+// on a strict PASS.
+var annLater = annEntry("Verification — 2026-10-20", "**VERIFY: PASS**",
+	annRow("1", "0", "ok"), annRow("2", "0", "ok"), annRow("3", "0", "PASS"))
+
+// annHeld is an earlier entry whose annotated row 3 was HELD.
+func annHeld(key string) string {
+	return annEntry("Verification — 2026-10-07", "**VERIFY: BLOCKED**",
+		annRow("1", "0", "ok"), annRow(key, "—", "HELD — no runner online"))
+}
+
+// TestHeldScopeAnnotatedKey: an earlier row keyed "3 (Verify 3, negative)"
+// that a later strict PASS re-ran as the bare "3" is the same Verify row, so
+// the later run supersedes it (rule 3a): the annotation names the Verify row
+// it ran and nothing else. A second, planted instance under a Row header with
+// a different annotation is admitted the same way (defect class).
+// regression: #4294
+func TestHeldScopeAnnotatedKey(t *testing.T) {
+	rowHdr := "| Row | Command | Exit | Result |\n|---|---|---|---|\n"
+	planted := "### Run 1\n\n" + rowHdr + "| 2 (verify 2) | `x` | — | HELD — runner offline |\n\n" +
+		"### Run 2\n\n" + rowHdr + "| 2 | `x` | 0 | ok |\n\n**VERIFY: PASS**\n"
+	runHeldLayerCases(t, []heldScanCase{
+		{"annotated held row re-ran bare", annHeld("3 (Verify 3, negative)") + annLater, false},
+		{"annotation with no number", annHeld("3 (negative)") + annLater, false},
+		{"bold annotated key", annHeld("**3 (Verify 3, negative)**") + annLater, false},
+		{"planted second instance, Row header", planted, false},
+	})
+	if s := heldScanScope(annHeld("3 (Verify 3, negative)") + annLater); !s.whole {
+		t.Errorf("annotated key: whole=%v, want the last entry to cover every earlier row", s.whole)
+	}
+}
+
+// TestHeldScopeAnnotatedKeyRefuses: the key normalisation never merges rows
+// that may differ. Each case is a held row that must stay live.
+// regression: #4294
+func TestHeldScopeAnnotatedKeyRefuses(t *testing.T) {
+	subRows := annEntry("Verification — 2026-10-07", "**VERIFY: BLOCKED**",
+		annRow("3 (positive)", "0", "ok"), annRow("3 (negative)", "—", "HELD — no runner online"))
+	bareAndSub := annEntry("Verification — 2026-10-07", "**VERIFY: BLOCKED**",
+		annRow("3", "0", "ok"), annRow("3 (negative)", "—", "HELD — no runner online"))
+	twoEntries := annHeld("3 (negative)") +
+		annEntry("Verification — 2026-10-12", "**VERIFY: BLOCKED**", annRow("3 (positive)", "0", "ok")) + annLater
+	rowHdr := annEntry("Verification — 2026-10-07", "**VERIFY: BLOCKED**")
+	rowHdr = strings.Replace(rowHdr, "| # |", "| Row |", 1)
+	rowHdr = strings.Replace(rowHdr, "\n\n**VERIFY", "\n"+annRow("3 (Verify 3)", "—", "HELD — no runner online")+"\n**VERIFY", 1)
+	lastSub := annHeld("3 (Verify 3, negative)") + annEntry("Verification — 2026-10-20", "**VERIFY: PASS**",
+		annRow("1", "0", "ok"), annRow("2", "0", "ok"), annRow("3 (Verify 3, positive)", "0", "ok"))
+	runHeldLayerCases(t, []heldScanCase{
+		{"annotation names another row", annHeld("3 (Verify 4)") + annLater, true},
+		{"annotation names a date", annHeld("3 (2026-10-07)") + annLater, true},
+		{"two numbers, one other", annHeld("3 (Verify 3, row 4)") + annLater, true},
+		{"sub-rows of one key in an entry", subRows + annLater, true},
+		{"bare and annotated in one entry", bareAndSub + annLater, true},
+		{"two annotations across entries", twoEntries, true},
+		{"lettered sub-row", annHeld("3a (negative)") + annLater, true},
+		{"nested parentheses", annHeld("3 (Verify 3 (negative))") + annLater, true},
+		{"text after the annotation", annHeld("3 (Verify 3) negative") + annLater, true},
+		{"no leading number", annHeld("(Verify 3) 3") + annLater, true},
+		{"Row header against #", rowHdr + annLater, true},
+		{"later re-run not clean", annHeld("3 (Verify 3, negative)") + strings.Replace(annLater, "| 0 | PASS |", "| 0 | PASS (no re-run) |", 1), true},
+		{"last entry annotates differently", lastSub, true},
+	})
+}
+
+// annObs is a single strict-PASS entry whose row 3 has the given Exit and
+// Result cells.
+func annObs(exit, result string) string {
+	return annEntry("Verification — 2026-10-20", "**VERIFY: PASS**",
+		annRow("1", "0", "ok"), annRow("3", exit, result))
+}
+
+// annQuote is the shape of the #4294 row: a passing negative case whose
+// Result records that the product printed its could-not-check section.
+const annQuote = "\"PASS: negative\" — the planted brief yields its named diagnostic, a lint PROBLEM and a could-not-check mission section with no content"
+
+// TestHeldScopeObservedOutput: a row whose Exit cell is clean and whose
+// Result opens on PASS reads "a could-not-check mission section" as what the
+// product printed, not as the row's disposition. A second, planted instance
+// under other header spellings is admitted the same way (defect class).
+// regression: #4294
+func TestHeldScopeObservedOutput(t *testing.T) {
+	planted := "| Row | Command | Exit code | Observed |\n|---|---|---|---|\n" +
+		"| 5 | `x` | exit 0 | **passed** — prints the could-not-check banner once |\n\n**VERIFY: PASS**\n"
+	runHeldLayerCases(t, []heldScanCase{
+		{"the #4294 row, latest entry", annObs("0", annQuote), false},
+		{"the #4294 row, superseded entry", annEntry("Verification — 2026-10-07", "**VERIFY: PASS**",
+			annRow("1", "0", "ok"), annRow("3 (Verify 3, negative)", "0", annQuote)) + annLater, false},
+		{"ok lead, its section", annObs("exit 0", "ok — its could-not-check section lists both rows"), false},
+		{"planted second instance", planted, false},
+	})
+}
+
+// TestHeldScopeObservedOutputRefuses: the observed-output reading stays
+// narrow. Every case records a hold, or a shape the scan cannot tell from one.
+// regression: #4294
+func TestHeldScopeObservedOutputRefuses(t *testing.T) {
+	noExit := "| # | Command | Result |\n|---|---|---|\n| 3 | `x` | " + annQuote + " |\n\n**VERIFY: PASS**\n"
+	note := "| # | Command | Exit | Result | Note |\n|---|---|---|---|---|\n" +
+		"| 3 | `x` | 0 | PASS | a could-not-check mission section |\n\n**VERIFY: PASS**\n"
+	misaligned := "| # | Command | Exit | Result |\n|---|---|---|---|\n" +
+		"| 3 | a | b | 0 | " + annQuote + " |\n\n**VERIFY: PASS**\n"
+	runHeldLayerCases(t, []heldScanCase{
+		{"exit non-zero", annObs("1", annQuote), true},
+		{"exit placeholder", annObs("—", annQuote), true},
+		{"exit empty", annObs("", annQuote), true},
+		{"explicit HELD in the cell", annObs("0", annQuote+"; row HELD"), true},
+		{"BLOCKED in the cell", annObs("0", "PASS: a could-not-check mission section, BLOCKED on runner"), true},
+		{"BLOCKED lead", annObs("0", "BLOCKED — a could-not-check mission section"), true},
+		{"FAIL in the cell", annObs("0", "PASS: a could-not-check mission section, then FAIL on re-run"), true},
+		{"not run in the cell", annObs("0", "PASS: a could-not-check mission section; row 4 not run"), true},
+		{"no PASS lead", annObs("0", "yields a could-not-check mission section"), true},
+		{"lead not a word", annObs("0", "PASSWORD: a could-not-check mission section"), true},
+		{"not attributive", annObs("0", "PASS: could-not-check, no runner"), true},
+		{"no article", annObs("0", "PASS: then could-not-check mission"), true},
+		{"disposition noun", annObs("0", "PASS: a could-not-check result"), true},
+		{"row noun", annObs("0", "PASS: the could-not-check row"), true},
+		{"marker ends the cell", annObs("0", "PASS: a could-not-check"), true},
+		{"hold reason after", annObs("0", "PASS: a could-not-check pending runner"), true},
+		{"HELD attributive", annObs("0", "PASS: a HELD mission section"), true},
+		{"struck text on the row", annObs("0", "PASS ~~old~~: a could-not-check mission section"), true},
+		{"no Exit column", noExit, true},
+		{"note column", note, true},
+		{"misaligned row", misaligned, true},
+		{"live held row", annObs("—", "HELD — no runner online"), true},
+		{"prose line, not a cell", annObs("0", "ok") + "PASS: a could-not-check mission section\n", true},
+	})
+}
+
+// TestHeldScopeZeroRatio: a summary that counts every row passed and zero
+// could-not-check ("Rows: 2 of 2 required rows passed; 0 could-not-check.")
+// is a count, not a disposition; a ratio that did not pass every row, or a
+// zero count that gives a hold reason, still refuses.
+// regression: #4294
+func TestHeldScopeZeroRatio(t *testing.T) {
+	ev := func(line string) string { return annObs("0", "ok") + line + "\n" }
+	runHeldLayerCases(t, []heldScanCase{
+		{"the comment's line", ev("Rows: 2 of 2 required rows passed; 0 could-not-check."), false},
+		{"on the verdict line", ev("**VERIFY: PASS** — 7 of 7 rows passed, 0 HELD"), false},
+		{"checks ran", ev("3 of 3 checks ran; 0 could-not-check"), false},
+		{"ratio short", ev("Rows: 1 of 2 required rows passed; 0 could-not-check."), true},
+		{"zero ratio", ev("Rows: 0 of 0 rows passed; 0 could-not-check."), true},
+		{"reason after", ev("Rows: 2 of 2 rows passed; 0 could-not-check pending runner"), true},
+		{"two qualifiers", ev("Rows: 2 of 2 required verify rows passed; 0 could-not-check."), true},
+		{"not a count noun", ev("Rows: 2 of 2 required exits passed; 0 could-not-check."), true},
+	})
+}
