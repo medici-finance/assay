@@ -1577,11 +1577,11 @@
         "tools/desk/internal/deskkit/pushtransport-mutations.json",
         "docs/cellctl.md"
       ],
-      "parser": "Go flag: one FlagSet per verb with manual verb dispatch",
+      "parser": "Cobra via internal/cli; declared Viper bindings",
       "complexity": "complex",
       "basis": "4684 LOC, ~7 verbs, ~18 flags at 3ad1ad83c871",
       "owner": "desktools-v2/22",
-      "state": "pending"
+      "state": "migrated"
     },
     {
       "executable": "fanoutloop",
