@@ -30,11 +30,24 @@ on #4397.
 **Why there is no `ruling:` link.** The ruling comment names the brief by its board id. It
 does not name this record. The register's corroboration check requires the comment's own text
 to name the record's `DR-<slug>` id (`spec/registers-v1.md` §7.5, condition 5), so a link to
-that comment would fail as `record-not-named`. The real name in `decided-by` is therefore
-corroborated the other way §7.5 allows: through the driver's approval of the pull request that
-adds this record. The driver's merge of that pull request is what approves this record. If the
-driver later posts a comment on #4397 that names `DR-comms-core-extract`, a follow-up can add
-that comment as the `ruling:` link.
+that comment would fail as `record-not-named`.
+
+**What corroborates `decided-by`, and its state.** With no `ruling:` link, the corroboration
+check reads only these anchors on the pull request that adds this record: an APPROVED review
+by the driver's own login, or an explicit approval comment by the driver's own login on that
+pull request. A merge is not an anchor; the check never reads one. The closed decision issue
+#4397 does not count either: this record links no decision issue, the issue's decision-gate
+marker names the brief rather than this record, and the driver did not close it.
+The check also runs only on records a pull request adds or edits. A record that merges
+without an anchor therefore stays uncorroborated on main, and no later pull request re-gates it.
+
+**Acceptance of this record is pending that act.** When this record was written, no such
+approval existed on the pull request that adds it. The driver's ruling on #4397 decides the
+extraction. It does not yet corroborate this record's `decided-by`. Before merge, the driver
+must leave an APPROVED review, or an approval comment, on that pull request from the driver's
+own login. If the driver instead comments on #4397 naming `DR-comms-core-extract`, that comment
+goes in this record as the `ruling:` link before merge. Without one of those, the stamp cannot
+be corroborated, and the record should not merge.
 
 **The decision.** The cellmsg-v1 message contract is extracted into a standalone public Go
 module, and Assay's own message policy stays internal to desk-tools. That is the bounded
@@ -52,7 +65,9 @@ items.
 **The tree's present condition (an observation, not a ruling).** The extraction this record
 approves is already on main: #3061 delivered it before the ruling, and its description left the
 brief's board row at `todo` because a risk-gated brief cannot reach `implemented` without a
-cited design record. This record supplies that citation. It is not evidence that the work is
+cited design record. This record supplies that citation. The board row itself moves through
+the board's reconcile writer on the `board/reconcile` branch, not in the pull request that adds
+this record. This record is not evidence that the work is
 correct. That is the job of the brief's Verify table, run by an independent verifier on merged
 main.
 
