@@ -202,20 +202,20 @@
   {
    "name": "landing parent count not checked",
    "file": "evaluation/witness.go",
-   "old": "if len(add.Parents) != form.parents {",
-   "new": "if false && len(add.Parents) != form.parents {"
+   "old": "if len(land.Parents) != form.parents {",
+   "new": "if false && len(land.Parents) != form.parents {"
   },
   {
    "name": "merge landing: first parent already holding the record accepted",
    "file": "evaluation/witness.go",
-   "old": "if o, _ := x.object(revPath(add.Parents[0], recPath)); o != nil {",
-   "new": "if o, _ := x.object(revPath(add.Parents[0], recPath)); false && o != nil {"
+   "old": "if o, _ := x.object(revPath(land.Parents[0], recPath)); o != nil {",
+   "new": "if o, _ := x.object(revPath(land.Parents[0], recPath)); false && o != nil {"
   },
   {
    "name": "merge landing: record absent from the second parent accepted",
    "file": "evaluation/witness.go",
-   "old": "if o, _ := x.object(revPath(add.Parents[1], recPath)); o == nil {",
-   "new": "if o, _ := x.object(revPath(add.Parents[1], recPath)); false && o == nil {"
+   "old": "if o, _ := x.object(revPath(land.Parents[1], recPath)); o == nil {",
+   "new": "if o, _ := x.object(revPath(land.Parents[1], recPath)); false && o == nil {"
   },
   {
    "name": "unrecognised landing form accepted without the forge",
