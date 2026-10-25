@@ -353,10 +353,10 @@ func TestReviewCannotPostAnUnreadableBody(t *testing.T) {
 
 // TestFallbackRecipeCarriesTheHeadAssertion. `gh pr review` has no head-pinning flag, so
 // the sanctioned exit-4 fallback attaches a verdict to whatever the head is at post time.
-// Observed on #195: a CHANGES_REQUESTED written against 151ebe99 landed on 2bbf529c. The
+// Observed once: a CHANGES_REQUESTED written against one commit landed on a later one. The
 // tool must hand the caller the assertion, not assume a skill in another repo does.
 func TestFallbackRecipeCarriesTheHeadAssertion(t *testing.T) {
-	const head = "151ebe994c3d2b1a0f9e8d7c6b5a4938271605f4"
+	const head = "382caf744c3d2b1a0f9e8d7c6b5a4938271605f4"
 	got := fallbackRecipe("medici-finance", "assay", 195, "request-changes", head, "/tmp/body.md")
 
 	for _, want := range []string{

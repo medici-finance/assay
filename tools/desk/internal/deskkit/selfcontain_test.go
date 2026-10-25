@@ -167,7 +167,7 @@ func TestSelfContainAdmitsSelfContainedBodies(t *testing.T) {
 		},
 		{
 			"a git sha and a version tag",
-			"verified at 5d529c27e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b, released as v0.14.0.",
+			"verified at 4c418b16e3b1a04f9c2d8e7b6a1f0c3d4e5f6a7b, released as v0.14.0.",
 		},
 		{
 			"a relative tmp path that is not a machine root",
