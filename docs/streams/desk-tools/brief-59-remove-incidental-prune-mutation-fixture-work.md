@@ -1,5 +1,5 @@
 ---
-brief: assay:assay:desk-tools:54
+brief: assay:assay:desk-tools:59
 title: Remove incidental prune mutation fixture work
 why: "The prune mutation sweep repeats expensive performance fixtures for every mutation, including mutations they cannot detect. Move the correctness invariants into focused tests so verification measures the guards rather than fixture construction."
 wave: 1
@@ -18,7 +18,7 @@ sources:
   - freshness-checked 2026-10-24 @ 61eb62a4a (origin/main)
 domain: complicated
 consumers:
-  - "tools/desk/cmd/deskwt/prune-mutations.json: follow-up desk-tools/54 (this brief; flips to fixed-here when the implementation edits the manifest)"
+  - "tools/desk/cmd/deskwt/prune-mutations.json: follow-up desk-tools/59 (this brief; flips to fixed-here when the implementation edits the manifest)"
 ---
 
 # Brief 54 — Remove incidental prune mutation fixture work
@@ -49,16 +49,16 @@ design-fit:
 2. Keep `TestPruneSweepScalesAtN` and `TestConcurrentPrunesCostOne` unchanged in their ordinary performance rows. Add `-skip '^(TestPruneSweepScalesAtN|TestConcurrentPrunesCostOne)$'` to the prune mutation manifest so neither runs for unrelated mutations.
 3. Rework the singleton interval test as `TestPruneIntervalLockRelease`: use one immediate tick and a pre-closed stop channel, then prove the singleton can be reacquired. Remove the 300 ms sleep and extra sweeps without removing the lock-release assertion.
 4. Preserve every existing mutation anchor and the exact 55-caught gate. Run the complete manifest to prove the small walk test catches the ancestor-walk mutation and that no other mutation survives.
-5. Change this brief's consumer entry from `follow-up desk-tools/54` to `fixed-here` in the implementation PR. Do not leave a deferred routing claim after the manifest edit lands.
+5. Change this brief's consumer entry from `follow-up desk-tools/59` to `fixed-here` in the implementation PR. Do not leave a deferred routing claim after the manifest edit lands.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd tools/desk && go test ./cmd/deskwt -run '^TestPruneWalksMainOnce$' -count=1 -v > "${TMPDIR:-/tmp}/dt54-walk.log" 2>&1 && grep -F -- '--- PASS: TestPruneWalksMainOnce ' "${TMPDIR:-/tmp}/dt54-walk.log"` | exit 0; named PASS; the test reports exactly one mainline walk | check:ci +mutation |
-| 2 | `cd tools/desk && go test ./cmd/deskwt -run '^TestPruneIntervalLockRelease$' -count=1 -v > "${TMPDIR:-/tmp}/dt54-interval.log" 2>&1 && grep -F -- '--- PASS: TestPruneIntervalLockRelease ' "${TMPDIR:-/tmp}/dt54-interval.log"` | exit 0; named PASS with one tick and no interval sleep | check:ci |
-| 3 | `cd tools/desk && go test ./cmd/muhar -run '^TestSpecAnchorsLand$' -count=1 -v > "${TMPDIR:-/tmp}/dt54-anchors.log" 2>&1 && grep -F -- '--- PASS: TestSpecAnchorsLand ' "${TMPDIR:-/tmp}/dt54-anchors.log"` | exit 0; every manifest anchor still lands | check:ci |
+| 1 | `cd tools/desk && go test ./cmd/deskwt -run '^TestPruneWalksMainOnce$' -count=1 -v > "${TMPDIR:-/tmp}/dt59-walk.log" 2>&1 && grep -F -- '--- PASS: TestPruneWalksMainOnce ' "${TMPDIR:-/tmp}/dt59-walk.log"` | exit 0; named PASS; the test reports exactly one mainline walk | check:ci +mutation |
+| 2 | `cd tools/desk && go test ./cmd/deskwt -run '^TestPruneIntervalLockRelease$' -count=1 -v > "${TMPDIR:-/tmp}/dt59-interval.log" 2>&1 && grep -F -- '--- PASS: TestPruneIntervalLockRelease ' "${TMPDIR:-/tmp}/dt59-interval.log"` | exit 0; named PASS with one tick and no interval sleep | check:ci |
+| 3 | `cd tools/desk && go test ./cmd/muhar -run '^TestSpecAnchorsLand$' -count=1 -v > "${TMPDIR:-/tmp}/dt59-anchors.log" 2>&1 && grep -F -- '--- PASS: TestSpecAnchorsLand ' "${TMPDIR:-/tmp}/dt59-anchors.log"` | exit 0; every manifest anchor still lands | check:ci |
 | 4 | `cd tools/desk && report=$(go run ./cmd/muhar -spec cmd/deskwt/prune-mutations.json) && printf '%s\n' "$report" && case "$report" in *'Totals: 55 caught, 0 NOT CAUGHT, 0 could-not-mutate.'*) ;; *) exit 1;; esac` | exit 0; exact 55 caught, zero survivors and zero unapplied mutations | check +mutation +flow |
-| 5 | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-54-remove-incidental-prune-mutation-fixture-work.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/54 --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 1 corroborated, 0 disproved, 0 unchecked' "$o"` | exit 0; the implementation diff contains the manifest and its routing is corroborated | check +flow +dereference |
+| 5 | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-59-remove-incidental-prune-mutation-fixture-work.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/59 --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 1 corroborated, 0 disproved, 0 unchecked' "$o"` | exit 0; the implementation diff contains the manifest and its routing is corroborated | check +flow +dereference |
 
 ## Evidence
 <!-- Independent verifier appends exact commands, outputs, source/run identity, date and runner. This authoring PR claims no future implementation test executed. -->
