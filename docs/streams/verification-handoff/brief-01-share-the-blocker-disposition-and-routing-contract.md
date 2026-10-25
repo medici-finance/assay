@@ -11,7 +11,8 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Changes the deskcore/issueflow boundary used to schedule, preserve or resolve verification work; human review must confirm that trust, ownership, retention and independent acceptance cannot be inferred from routing."
 decision-trigger: start
 decision-issue: 4216
-ruling: "https://github.com/medici-finance/assay/issues/4216#issuecomment-6373774704"
+design: DR-handoff-shared
+ruling: "https://github.com/medici-finance/assay/issues/4216#issuecomment-6399186726"
 issues: []
 schema: brief-v2
 version: 1
@@ -118,6 +119,14 @@ local logs as assignment authority (loss of source and actor binding).
 The accepted cost is an additive versioned observation and source-module dependency;
 operational writer activation, release and consumer qualification remain separate.
 No design-approval stamp is asserted by this proposal.
+
+### Design confirmation — 2026-10-25
+
+**Ruling (2026-10-25): option 1.** The driver approved this brief and its bounded design, transcribed as [DR-handoff-shared](../decisions/DR-handoff-shared.md): https://github.com/medici-finance/assay/issues/4216#issuecomment-6399186726
+
+This resolves the missing design-record approval described in the dated
+2026-10-24 reconciliation above. The independent Evidence is unchanged; final
+human acceptance and lifecycle progression remain with their existing owners.
 
 ## Ground rules
 

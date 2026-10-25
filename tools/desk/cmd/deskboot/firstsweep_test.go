@@ -230,7 +230,7 @@ func TestBootPassesCompleteSetup(t *testing.T) {
 	if rc != deskkit.ExitOK {
 		t.Fatalf("complete setup rc = %d, want 0:\n%s", rc, stderr)
 	}
-	for _, want := range []string{"first-sweep-prereqs OK", "forge github", "v1.0.9", "BOOT COMPLETE", "9/9"} {
+	for _, want := range []string{"first-sweep-prereqs OK", "forge github", "v1.0.9", "BOOT COMPLETE", "10/10"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("boot output does not carry %q:\n%s", want, stdout)
 		}
