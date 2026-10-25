@@ -392,63 +392,20 @@ func renderBriefInfoText(w io.Writer, info *briefInfo) {
 // checkBriefInfoVerified checks only the closure facts used to authorize a new
 // verified outcome. It shares the stamp grammar and witness evaluator with lint
 // and verifyrun, and the fail-first validator with lint, without grandfathering
-// inherited closures. It does not run the
-// whole-tree lint: callers must retain their separate landing lint guard.
+// inherited closures. It does not run whole-tree lint: callers must retain
+// their separate landing lint guard.
 func checkBriefInfoVerified(root string, info *briefInfo) error {
 	if info.Row == nil {
 		return fmt.Errorf("verified outcome requires a board row")
 	}
-	if info.Row.Status != "verified" && info.Row.Status != "done" {
-		return fmt.Errorf("verified outcome requires status verified or done, got %q", info.Row.Status)
-	}
-	if !verifiedCellRe.MatchString(info.Row.Verified) {
-		return fmt.Errorf("verified outcome requires a dated runner in the Verified cell (YYYY-MM-DD <runner>)")
-	}
-	verify, evidence, err := briefSections(filepath.Join(root, filepath.FromSlash(info.File)))
+	path := filepath.Join(root, filepath.FromSlash(info.File))
+	verify, evidence, err := briefSections(path)
 	if err != nil {
 		return fmt.Errorf("cannot read execution witnesses: %w", err)
 	}
-	// This verb does not run the lint, so it refuses the #1939 case itself: a
-	// closure is never authorized over a section the parser and the rendered
-	// page may read differently.
-	findings, refusal := closureWitnesses(verify, evidence, filepath.Join(root, filepath.FromSlash(info.File)))
-	if refusal != "" {
-		return fmt.Errorf("verified outcome requires well-formed Verify and Evidence sections: %s", refusal)
-	}
-	if len(findings) == 0 {
-		return fmt.Errorf("verified outcome requires Verify rows with passing execution witnesses")
-	}
-	// A Verify row classed gate:human is decided by a person: its closure is
-	// valid only when the Verified cell names one. Read here from the written
-	// board row, after whatever wrote it — a flip path that skipped its own
-	// class check still stops at this one.
-	if !hasHumanReviewer(info.Row.Verified) {
-		for _, r := range briefVerifyRows(verify) {
-			if r.Class == classGateHuman {
-				return fmt.Errorf("verified outcome: Verify row %s is classed gate:human but the Verified cell %q names no human:<name>", r.ID, info.Row.Verified)
-			}
-		}
-	}
-	var failures []string
-	for _, finding := range findings {
-		if !closureSatisfied(finding) {
-			failures = append(failures, fmt.Sprintf("row %s: %s — %s", finding.ID, finding.State, finding.Detail))
-		}
-	}
-	if len(failures) > 0 {
-		return fmt.Errorf("verified outcome requires passing execution witnesses: %s", strings.Join(failures, "; "))
-	}
-	path := filepath.Join(root, filepath.FromSlash(info.File))
-	plan, refusal := protectedAcceptance(verify, evidence, path)
-	if refusal != "" {
-		return fmt.Errorf("verified outcome requires well-formed Verify and Evidence sections: %s", refusal)
-	}
-	problems, _ := failFirstClosureChecks(root, info.Key, info.Row.Status,
-		briefArtifacts{Risk: info.Risk, Verify: verify, Evidence: evidence, Path: path}, plan)
-	if len(problems) > 0 {
-		return fmt.Errorf("verified outcome requires fail-first witnesses: %s", strings.Join(problems, "; "))
-	}
-	return nil
+	_, err = checkSelectedClosure(root, info.Key, info.Row.Status, info.Row.Verified,
+		briefArtifacts{Risk: info.Risk, Verify: verify, Evidence: evidence, Path: path})
+	return err
 }
 
 // briefAttributionSchemas is the explicit set of brief schemas whose strict

@@ -1,2 +1,2 @@
 ### Fixed
-- Make `statusgen brief --check-verified` use the same fail-first validator as the lint gate invoked by `deskevidence flip`, refusing risk-bearing closures without a current, discriminating Base witness.
+- Make `statusgen brief --check-verified` and `statusgen verifyclosure` use one selected-closure validator, sharing the flip lint's fail-first rule and refusing empty Verify sections or model stamps over human rows.

@@ -387,7 +387,12 @@ supplemental rows use the immutable snapshot marker and receive no acceptance cr
 [recording closure after re-derivation](../docs/protected-paths.md#recording-closure-after-re-derivation).
 It returns exit 1 with no JSON when that closure check fails;
 resolution/usage failures remain exit 2. This check does not grandfather missing
-witnesses or fail-first requirements and does not replace `statusgen --lint`.
+witnesses or fail-first requirements and does not replace `statusgen --lint`. Both
+`brief --check-verified` and `verifyclosure` use `checkSelectedClosure`, including
+non-empty Verify rows and human stamps for `gate:human` rows. The sidecar check
+preserves its exit codes: 0 accepted, 1 refused, 2 could-not-check. Attribution
+remains the separate `--check-attribution` opt-in and landing authorization stays
+with the caller.
 
 Adding `--check-attribution` (requires `--check-verified`) also requires an accepted
 Evidence author under the same roster policy and Git blame judge as lint, without

@@ -66,6 +66,10 @@ func TestBriefInfoFailFirstMatchesFlipLint(t *testing.T) {
 			stampFFBoard(t, root)
 			problems, _ := failFirstGateChecks(root, streams)
 			code, out, diag := runBriefInfoCapture("--root", root, "--check-verified", "ff/01")
+			sideCode, sideOut, sideErr := captureVerifyclosure(t, []string{"--root", root, "--brief", "ff/01"})
+			if sideCode != code || (tc.want != "" && !strings.Contains(sideOut, tc.want)) {
+				t.Fatalf("closure adapters disagree: brief=%d %s; sidecar=%d %s %s", code, diag, sideCode, sideOut, sideErr)
+			}
 			if tc.want == "" {
 				if len(problems) != 0 || code != 0 {
 					t.Fatalf("lint=%v; brief exit=%d: %s", problems, code, diag)
