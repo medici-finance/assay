@@ -8,7 +8,7 @@ why: >-
   necessary, never sufficient. This brief owns the mechanical genericization of the residual
   origin-identity in the published `tools/desk` tree, ratchets the residue class into the
   leak-sweep token set so it cannot regress silently, and gates "done" on a FRESH independent
-  cold-read of the re-staged tree returning CLEAN — the mechanical sweep is not self-certifying,
+  cold-read of the committed tree returning CLEAN — the mechanical sweep is not self-certifying,
   and that is the whole lesson.
 wave: 1
 depends: []
@@ -31,7 +31,7 @@ exec-tier-why: >-
 gate-why: >-
   The human gate carries the anti-self-certification lesson: they confirm (1) the FRESH cold-read
   was run by an INDEPENDENT session — not the implementer, not this brief's author — against the
-  RE-STAGED tree, and returned CLEAN; and (2) fixture replacements preserved classifier-relevant
+  COMMITTED tree, and returned CLEAN; and (2) fixture replacements preserved classifier-relevant
   token SHAPES so the detection tests still exercise the branches they pinned (a weakened fixture
   is a silent detection regression no green suite reports). `sensitive-data: no` here: this
   re-homed brief carries the mechanism only — the enumerated residue set was the withheld value
@@ -108,9 +108,10 @@ facts:
    camel-cased survivor of a rename is still caught.
 4. Build/test/format green (Verify rows 1–2); residue greps empty with positive controls
    (rows 3–5); fixture-coverage neighbour check (row 6) shows no coverage thinned.
-5. Re-stage and sweep: staging STAGED, leaksweep certificate with zero could-not-check (rows
-   7–8), ratchet mutation red (row 9), token-file floors hold (row 10).
-6. Dispatch the FRESH INDEPENDENT COLD-READ of the re-staged `tools/desk` tree to a session that
+5. Sweep the committed tree: the published tree is present (row 7), leaksweep certificate on a
+   fresh export with zero could-not-check (row 8), ratchet mutation red (row 9), token-file
+   floors hold (row 10).
+6. Dispatch the FRESH INDEPENDENT COLD-READ of the committed `tools/desk` tree to a session that
    neither implemented nor authored this brief; its verbatim verdict goes in Evidence (row 11),
    headed by one line `- Cold-read verdict: <CLEAN or HAS-BLOCKERS>; runner: <identity>; tree: <commit>`.
    CLEAN is the terminal condition; HAS-BLOCKERS re-opens the residue set.
@@ -137,8 +138,10 @@ unreadable, so a missing kit is a red row, never a vacuous pass. The inputs, all
   `DT03_TOKENS_BASE` — that token set as it stood before this brief's ratchet.
 
 A row's capture files under `/tmp` and every sweep report can name withheld tokens: they stay on
-the verifying machine and never enter a public surface. A positive control runs in the same
-command as the check it guards, so a row cannot pass on a broken grep.
+the verifying machine and never enter a public surface. Every negative grep has a positive
+control at the pre-scrub baseline, so a row cannot pass on a broken grep. In rows 4 and 5 the
+controls run in the same command as the checks they guard. Row 3's controls are row 3a, a
+separate row that must also pass: row 3 is green only together with row 3a.
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
@@ -147,7 +150,7 @@ command as the check it guards, so a row cannot pass on a broken grep.
 | 3 | check | `cmd: test -r "$DT03_KIT/r3-sub.txt" && test -r "$DT03_KIT/r3-word.txt" && { git grep -nIiF -f "$DT03_KIT/r3-sub.txt" -- tools/desk > /tmp/dt03r3.txt; test $? -eq 1; } && { git grep -nIiwF -f "$DT03_KIT/r3-word.txt" -- tools/desk > /tmp/dt03r3b.txt; test $? -eq 1; }` | exit 0 — both greps find nothing (git grep exits 1 on no match, so an error exit is red): no origin-product residue anywhere in `tools/desk` |
 | 3a | check | `cmd: test -r "$DT03_KIT/base.txt" && git -C "$DT03_ORIGIN" grep -qIiF -f "$DT03_KIT/r3-sub.txt" "$(cat "$DT03_KIT/base.txt")" -- tools/desk && git -C "$DT03_ORIGIN" grep -qIiwF -f "$DT03_KIT/r3-word.txt" "$(cat "$DT03_KIT/base.txt")" -- tools/desk` | exit 0 — the same grep shapes hit at the pre-scrub baseline, so row 3's empty means absent, not broken |
 | 4 | check | `cmd: test -r "$DT03_KIT/r4.txt" && test -r "$DT03_KIT/r4a.txt" && { git grep -nIF -f "$DT03_KIT/r4.txt" -- tools/desk > /tmp/dt03r4.txt; test $? -eq 1; } && { git grep -nIF -f "$DT03_KIT/r4a.txt" -- tools/desk ':!tools/desk/internal/deskkit/riskpath*.go' > /tmp/dt03r4a.txt; test $? -eq 1; } && git grep -qF -e medici-finance/assay -- tools/desk/go.mod && git -C "$DT03_ORIGIN" grep -qIF -f "$DT03_KIT/r4.txt" "$(cat "$DT03_KIT/base.txt")" -- tools/desk && git -C "$DT03_ORIGIN" grep -qIF -f "$DT03_KIT/r4a.txt" "$(cat "$DT03_KIT/base.txt")" -- tools/desk` | exit 0 — both greps empty (case-sensitive fixed strings; the risk-path base and its ratified tests are excluded, being another brief's surface), the public module self-reference is still in `go.mod`, and both pattern sets hit at the baseline |
-| 5 | check | `cmd: test -r "$DT03_KIT/r5.txt" && test -r "$DT03_KIT/r5-re.txt" && { git grep -nIF -f "$DT03_KIT/r5.txt" -- tools/desk > /tmp/dt03r5.txt; test $? -eq 1; } && { git grep -nIE -f "$DT03_KIT/r5-re.txt" -- tools/desk > /tmp/dt03r5b.txt; test $? -eq 1; } && git -C "$DT03_ORIGIN" grep -qIF -f "$DT03_KIT/r5.txt" "$(cat "$DT03_KIT/base.txt")" -- tools/desk` | exit 0 — the operating record is gone (no real origin commit id, provenance id, dated ref or private-tracker alias), and the fixed-string set hits at the baseline |
+| 5 | check | `cmd: test -r "$DT03_KIT/r5.txt" && test -r "$DT03_KIT/r5-re.txt" && { git grep -nIF -f "$DT03_KIT/r5.txt" -- tools/desk > /tmp/dt03r5.txt; test $? -eq 1; } && { git grep -nIE -f "$DT03_KIT/r5-re.txt" -- tools/desk > /tmp/dt03r5b.txt; test $? -eq 1; } && git -C "$DT03_ORIGIN" grep -qIF -f "$DT03_KIT/r5.txt" "$(cat "$DT03_KIT/base.txt")" -- tools/desk && git -C "$DT03_ORIGIN" grep -qIE -f "$DT03_KIT/r5-re.txt" "$(cat "$DT03_KIT/base.txt")" -- tools/desk` | exit 0 — the operating record is gone (no real origin commit id, provenance id, dated ref or private-tracker alias), and both pattern sets, the fixed strings and the extended regular expressions, hit at the baseline, so neither empty grep passes on a pattern that cannot match |
 | 6 | check | `cmd: rm -rf /tmp/dt03base && git worktree prune && git worktree add --detach /tmp/dt03base 61eb62a4a61b && (cd /tmp/dt03base/tools/desk && go test ./internal/deskkit/ -v -count=1 -timeout 900s 2>&1) \| sed -n 's/^=== RUN *//p' \| sort -u > /tmp/dt03names-base.txt && (cd tools/desk && go test ./internal/deskkit/ -v -count=1 -timeout 900s 2>&1) \| sed -n 's/^=== RUN *//p' \| sort -u > /tmp/dt03names-head.txt && test -s /tmp/dt03names-base.txt && comm -23 /tmp/dt03names-base.txt /tmp/dt03names-head.txt > /tmp/dt03lost.txt && test ! -s /tmp/dt03lost.txt` | exit 0 — no deskkit test or subtest that ran at the pre-rework commit `61eb62a4a61b` is missing at HEAD (a rename must be justified 1:1 in the PR body); the base list is non-empty, so an empty diff is not two failed builds |
 | 7 | check | `cmd: git cat-file -e HEAD:tools/desk/go.mod && git cat-file -e HEAD:tools/desk/README.md` | exit 0 — the published tree is present in this repository. This repository has no staging step: the tree is published here as its end state, so the committed tree IS the swept surface for rows 8 and 9, exported fresh by each |
 | 8 | check | `cmd: test -x "$DT03_SWEEP" && test -r "$DT03_TOKENS" && rm -rf /tmp/dt03tree && mkdir /tmp/dt03tree && git archive HEAD tools/desk \| tar -x -C /tmp/dt03tree && "$DT03_SWEEP" run --tree /tmp/dt03tree --tokens "$DT03_TOKENS" --engines legacy > /tmp/dt03r8.out 2>&1 && test "$(grep -cF could-not-check /tmp/dt03r8.out)" -eq 0 && grep -qF checked-clean /tmp/dt03r8.out` | exit 0 — the sweep runs with `--engines legacy`, the merge gate's pinned engine set (driver ruling; the stock-detector engines are advisory for this row), exits 0 with zero `could-not-check` and a positive `checked-clean` count. NECESSARY, NOT SUFFICIENT; row 11 is the gate |
@@ -212,7 +215,7 @@ VERIFY: FAIL. Row 1's full-suite run is red on two load-sensitive timing package
 
 ## Review
 Gate: human. The reviewer confirms: (1) row 11's cold-read was run by a genuinely independent
-session against the RE-STAGED tree and returned CLEAN — a green row 8 with row 11 unevidenced is
+session against the COMMITTED tree and returned CLEAN — a green row 8 with row 11 unevidenced is
 indistinguishable from the failure mode this brief exists to close; (2) fixture replacements are
 shape-preserving and row 6 shows no coverage thinned; (3) the token-file diff is ADD-only under
 the floors; (4) the risk-path base and the live write-indicator were not touched; and (5) the
