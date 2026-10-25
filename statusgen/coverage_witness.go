@@ -17,8 +17,9 @@ import (
 
 // coverage_witness.go — the git-backed half of the witness-v2 port
 // (evaluation.WitnessRepo, statusgen/36). Every read is batched: one ls-tree,
-// one check-attr and one first-parent log per revision, and one cat-file
-// --batch reads the records, the pin file and the landing objects together.
+// one check-attr and one first-parent log per revision; one cat-file --batch
+// reads the records, the pin file and the adding commits together, and one
+// more reads the objects those commits' own parents name.
 // Every read runs with replace objects disabled twice over: --no-replace-objects on
 // the command line and GIT_NO_REPLACE_OBJECTS=1 in the environment, so a
 // `refs/replace/` ref can give no landing commit a parent shape it does not
@@ -128,25 +129,38 @@ func (r coverageRepo) CatObjects(specs []string) (map[string]evaluation.CatObjec
 	return got, true
 }
 
+// WitnessAdditions reads only which commit added which record: the log
+// prints each commit's id and the added paths, NUL-terminated, and no commit
+// text at all. The landing check reads the commit's parents and message from
+// the commit object (CatObjects).
 func (r coverageRepo) WitnessAdditions(rev string) ([]evaluation.WitnessAddition, bool) {
-	out, err := witnessGit(r.root, "log", "--first-parent", "--diff-merges=first-parent", "--diff-filter=A", "--no-renames",
-		"--format=%x1e%H%x1f%P%x1f%B%x1f", "--name-only", "--end-of-options", rev, "--", evaluation.WitnessRecordDir).Output()
+	out, err := witnessGit(r.root, "log", "-z", "--first-parent", "--diff-merges=first-parent", "--diff-filter=A", "--no-renames",
+		"--format=%H", "--name-only", "--end-of-options", rev, "--", evaluation.WitnessRecordDir).Output()
 	if err != nil {
 		return nil, false
 	}
+	return parseWitnessAdditions(out)
+}
+
+// parseWitnessAdditions reads `git log -z --format=%H --name-only` output:
+// NUL-terminated fields, each either a commit id or a path that commit added
+// (git starts a commit's first path with a newline). A field that is neither
+// a full object id nor a path under WitnessRecordDir, or a path before any
+// commit id, fails the whole read.
+func parseWitnessAdditions(out []byte) ([]evaluation.WitnessAddition, bool) {
 	var adds []evaluation.WitnessAddition
-	for _, chunk := range strings.Split(string(out), "\x1e") {
-		if strings.TrimSpace(chunk) == "" {
+	commit := ""
+	for _, field := range splitNUL(out) {
+		field = strings.TrimPrefix(field, "\n")
+		switch {
+		case field == "":
 			continue
-		}
-		f := strings.SplitN(chunk, "\x1f", 4)
-		if len(f) != 4 {
+		case evaluation.IsObjectID(field):
+			commit = field
+		case strings.HasPrefix(field, evaluation.WitnessRecordDir) && commit != "":
+			adds = append(adds, evaluation.WitnessAddition{Path: field, Commit: commit})
+		default:
 			return nil, false
-		}
-		for _, name := range strings.Split(f[3], "\n") {
-			if name = strings.TrimSpace(name); name != "" {
-				adds = append(adds, evaluation.WitnessAddition{Path: name, Commit: f[0], Parents: strings.Fields(f[1]), Message: f[2]})
-			}
 		}
 	}
 	return adds, true

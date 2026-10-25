@@ -979,6 +979,34 @@ var commandWrappers = map[string]wrapperSpec{
 	"caffeinate": {valueFlags: map[string]bool{"-t": true, "-w": true}},
 }
 
+// envSplitString returns the command string an `env` split-string flag at
+// words[i] names (`-S STRING`, `-SSTRING`, `--split-string STRING`,
+// `--split-string=STRING`), with any words after it appended; ok is false when
+// words[i] is no such flag.
+func envSplitString(words []shellWord, i int) (string, bool) {
+	t := words[i].text
+	var value string
+	next := i + 1
+	switch {
+	case t == "-S" || t == "--split-string":
+		if next >= len(words) {
+			return "", false
+		}
+		value, next = words[next].text, next+1
+	case strings.HasPrefix(t, "--split-string="):
+		value = strings.TrimPrefix(t, "--split-string=")
+	case strings.HasPrefix(t, "-S"):
+		value = t[2:]
+	default:
+		return "", false
+	}
+	parts := []string{value}
+	for _, w := range words[next:] {
+		parts = append(parts, "'"+strings.ReplaceAll(w.text, "'", `'\''`)+"'")
+	}
+	return strings.Join(parts, " "), true
+}
+
 func isEnvAssign(w string) bool {
 	i := strings.IndexByte(w, '=')
 	if i <= 0 {
@@ -1065,6 +1093,12 @@ func networkInSimple(words []shellWord, depth int) (network, readable bool) {
 				i++
 				continue
 			}
+			if name == "env" {
+				// `env -S STRING` splits STRING into the command it runs.
+				if split, ok := envSplitString(words, i); ok {
+					return networkInCommand(split, depth+1)
+				}
+			}
 			if strings.HasPrefix(t, "-") && t != "-" {
 				i++
 				if spec.valueFlags[t] && i < len(words) {
@@ -1108,7 +1142,12 @@ func networkInSimple(words []shellWord, depth int) (network, readable bool) {
 			}
 		}
 	case name == "go":
-		for k, a := range rest {
+		for k := 0; k < len(rest); k++ {
+			a := rest[k]
+			if a.text == "-C" { // `go -C dir <verb>`: the flag takes the next word
+				k++
+				continue
+			}
 			if strings.HasPrefix(a.text, "-") {
 				continue
 			}
@@ -1209,12 +1248,77 @@ type Forge interface {
 	LandedCommit(cr string) (commit string, merged, ok bool)
 }
 
-// WitnessAddition is one first-parent commit that added a witness record.
+// WitnessAddition is one first-parent commit that added a witness record: the
+// record's path and the adding commit's object id, nothing else. The landing
+// check reads that commit's parents and message from the commit object
+// (CatObjects), never from the log that located it.
 type WitnessAddition struct {
-	Path    string
+	Path   string
+	Commit string
+}
+
+// IsObjectID reports whether s is a full lowercase hex object id (sha1 or
+// sha256).
+func IsObjectID(s string) bool { return objectIDRe.MatchString(s) }
+
+// landingCommit is the adding commit as its own commit object states it.
+type landingCommit struct {
 	Commit  string
 	Parents []string
 	Message string
+}
+
+// parseCommitObject reads a raw commit object (`git cat-file commit`): its
+// `parent` header lines and the message after the first blank line. Only
+// top-level header lines count; a continuation line (a signature body, a
+// merge tag) starts with a space and is never a parent. ok is false when the
+// object is not a well-formed commit or a parent is not an object id.
+func parseCommitObject(content []byte) (parents []string, message string, ok bool) {
+	header, message, found := strings.Cut(string(content), "\n\n")
+	if !found {
+		header, message = strings.TrimSuffix(string(content), "\n"), ""
+	}
+	lines := strings.Split(header, "\n")
+	if len(lines) == 0 || !strings.HasPrefix(lines[0], "tree ") || !IsObjectID(strings.TrimPrefix(lines[0], "tree ")) {
+		return nil, "", false
+	}
+	for _, l := range lines[1:] {
+		if l == "" {
+			return nil, "", false
+		}
+		if strings.HasPrefix(l, " ") {
+			continue
+		}
+		key, val, _ := strings.Cut(l, " ")
+		if key != "parent" {
+			continue
+		}
+		if !IsObjectID(val) {
+			return nil, "", false
+		}
+		parents = append(parents, val)
+	}
+	return parents, message, true
+}
+
+// landingOf reads the adding commit's object and returns it as a
+// landingCommit; gap is "" when it reads.
+func (x *evalCtx) landingOf(add WitnessAddition) (landingCommit, string, string) {
+	if !IsObjectID(add.Commit) {
+		return landingCommit{}, GapUnestablished, gapf(GapUnestablished, "the commit that added the record is not an object id (%q)", add.Commit)
+	}
+	o, ok := x.object(add.Commit)
+	if !ok {
+		return landingCommit{}, GapUnestablished, gapf(GapUnestablished, "the landing commit %s could not be read", add.Commit)
+	}
+	if o == nil || o.Type != "commit" || o.OID != add.Commit {
+		return landingCommit{}, GapUnestablished, gapf(GapUnestablished, "shallow — the landing commit %s is not in the object store", add.Commit)
+	}
+	parents, msg, ok := parseCommitObject(o.Content)
+	if !ok {
+		return landingCommit{}, GapUnestablished, gapf(GapUnestablished, "the landing commit %s is not a well-formed commit object", add.Commit)
+	}
+	return landingCommit{Commit: add.Commit, Parents: parents, Message: msg}, "", ""
 }
 
 // WitnessRepo is the Repo port's v2 extension: batched, per-revision reads. A
@@ -1485,10 +1589,14 @@ func (x *evalCtx) checkLanding(sc witnessScope, cell RunnerCell, rec WitnessReco
 	if shallow[add.Commit] {
 		return GapUnestablished, gapf(GapUnestablished, "shallow — the landing commit %s is at the clone's shallow boundary; fetch the full history", add.Commit)
 	}
-	if !x.fetchObjects(landingSpecs(add, recPath, sc.briefRel)) {
+	land, gap, reason := x.landingOf(add)
+	if gap != "" {
+		return gap, reason
+	}
+	if !x.fetchObjects(landingSpecs(land, recPath, sc.briefRel)) {
 		return GapUnestablished, gapf(GapUnestablished, "the landing commit's objects could not be read")
 	}
-	for _, p := range add.Parents {
+	for _, p := range land.Parents {
 		if replaced[p] {
 			return GapUnestablished, gapf(GapUnestablished, "replace ref: a refs/replace/ ref names the landing commit's parent %s", p)
 		}
@@ -1496,7 +1604,7 @@ func (x *evalCtx) checkLanding(sc witnessScope, cell RunnerCell, rec WitnessReco
 			return GapUnestablished, gapf(GapUnestablished, "shallow — the landing commit's parent %s is not in the object store", p)
 		}
 	}
-	form, named, matched := matchLandingForm(add.Message)
+	form, named, matched := matchLandingForm(land.Message)
 	forgeConfirmed := false
 	if x.forge != nil {
 		landed, merged, ok := x.forge.LandedCommit(n)
@@ -1512,24 +1620,24 @@ func (x *evalCtx) checkLanding(sc witnessScope, cell RunnerCell, rec WitnessReco
 		if named != n {
 			return GapCRUnverified, gapf(GapCRUnverified, "the landing commit %s names change request %s, not %s", add.Commit, named, n)
 		}
-		if len(add.Parents) != form.parents {
-			return GapCRUnverified, gapf(GapCRUnverified, "the landing commit %s matches the %s form but has %d parent(s), not %d", add.Commit, form.name, len(add.Parents), form.parents)
+		if len(land.Parents) != form.parents {
+			return GapCRUnverified, gapf(GapCRUnverified, "the landing commit %s matches the %s form but has %d parent(s), not %d", add.Commit, form.name, len(land.Parents), form.parents)
 		}
 		if form.recordAtSecondParent {
-			if o, _ := x.object(revPath(add.Parents[0], recPath)); o != nil {
-				return GapCRUnverified, gapf(GapCRUnverified, "the merge commit's first parent %s already holds the record", add.Parents[0])
+			if o, _ := x.object(revPath(land.Parents[0], recPath)); o != nil {
+				return GapCRUnverified, gapf(GapCRUnverified, "the merge commit's first parent %s already holds the record", land.Parents[0])
 			}
-			if o, _ := x.object(revPath(add.Parents[1], recPath)); o == nil {
-				return GapCRUnverified, gapf(GapCRUnverified, "the merge commit's second parent %s does not hold the record (the merge itself added it)", add.Parents[1])
+			if o, _ := x.object(revPath(land.Parents[1], recPath)); o == nil {
+				return GapCRUnverified, gapf(GapCRUnverified, "the merge commit's second parent %s does not hold the record (the merge itself added it)", land.Parents[1])
 			}
 		}
 	} else if !forgeConfirmed {
 		return GapCRUnverified, gapf(GapCRUnverified, "the commit %s that added the record lands in no recognised form (a fast-forward or rebase landing is verifiable only with --forge)", add.Commit)
 	}
-	if len(add.Parents) == 0 {
+	if len(land.Parents) == 0 {
 		return GapCRUnverified, gapf(GapCRUnverified, "the landing commit %s has no parent", add.Commit)
 	}
-	before, _ := x.object(revPath(add.Parents[0], sc.briefRel))
+	before, _ := x.object(revPath(land.Parents[0], sc.briefRel))
 	after, _ := x.object(revPath(add.Commit, sc.briefRel))
 	if sc.briefRel == "" || before == after || (before != nil && after != nil && before.OID == after.OID) {
 		return GapCRUnverified, gapf(GapCRUnverified, "the landing commit %s does not change the citing brief %s", add.Commit, sc.briefRel)
@@ -1949,23 +2057,25 @@ func WitnessClaimSpec(declared []string, declaredFound bool, man *DependencyMani
 // the landing commit's parents (present in the object store), the record at
 // a merge commit's two parents, and the citing brief before and at the
 // landing commit (its diff changes the brief).
-func landingSpecs(add WitnessAddition, recPath, briefRel string) []string {
-	specs := append([]string(nil), add.Parents...)
-	if len(add.Parents) == 2 {
-		specs = append(specs, revPath(add.Parents[0], recPath), revPath(add.Parents[1], recPath))
+func landingSpecs(land landingCommit, recPath, briefRel string) []string {
+	specs := append([]string(nil), land.Parents...)
+	if len(land.Parents) == 2 {
+		specs = append(specs, revPath(land.Parents[0], recPath), revPath(land.Parents[1], recPath))
 	}
-	if len(add.Parents) > 0 && briefRel != "" {
-		specs = append(specs, revPath(add.Parents[0], briefRel), revPath(add.Commit, briefRel))
+	if len(land.Parents) > 0 && briefRel != "" {
+		specs = append(specs, revPath(land.Parents[0], briefRel), revPath(land.Commit, briefRel))
 	}
 	return specs
 }
 
 // prefetchV2Records reads, in one object batch, every record a latest v2
-// cell of the input cites, the pin file, and every object those records'
-// landing checks read, after one first-parent log of witness additions at the
-// item's revision. A corpus with no v2 cell makes no read at all; with v2
-// cells, the per-revision reads are one tree listing, one attribute batch and
-// one log, and none is per row (TestCoverageGitCallsBounded).
+// cell of the input cites, the pin file and the commits that added those
+// records, after one first-parent log of witness additions at the item's
+// revision; a second batch reads every object those records' landing checks
+// read. A corpus with no v2 cell makes no read at all; with v2 cells, the
+// per-revision reads are one tree listing, one attribute batch and one log,
+// the object batches are two, and none is per row
+// (TestCoverageGitCallsBounded).
 func (x *evalCtx) prefetchV2Records(in CoverageInput) {
 	if _, ok := x.witnessRepo(); !ok {
 		return
@@ -1992,10 +2102,27 @@ func (x *evalCtx) prefetchV2Records(in CoverageInput) {
 		return
 	}
 	specs := []string{revPath(R, WitnessPinFile)}
+	type added struct {
+		cited
+		add WitnessAddition
+	}
+	var adds []added
 	for _, c := range recs {
 		specs = append(specs, revPath(R, c.path))
-		if add, found, ok := x.additionOf(R, c.path); ok && found {
-			specs = append(specs, landingSpecs(add, c.path, c.briefRel)...)
+		if add, found, ok := x.additionOf(R, c.path); ok && found && IsObjectID(add.Commit) {
+			specs = append(specs, add.Commit)
+			adds = append(adds, added{c, add})
+		}
+	}
+	if !x.fetchObjects(specs) {
+		return
+	}
+	// The second batch: what each landing check reads, named by the parents
+	// the adding commit's own object states.
+	specs = specs[:0]
+	for _, a := range adds {
+		if land, gap, _ := x.landingOf(a.add); gap == "" {
+			specs = append(specs, landingSpecs(land, a.path, a.briefRel)...)
 		}
 	}
 	x.fetchObjects(specs)

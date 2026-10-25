@@ -427,14 +427,7 @@ func TestWitnessV2CRVerified(t *testing.T) {
 			// The adding commit keeps a merge subject and two parents, and both
 			// parents hold the record: only the first-parent test refuses it.
 			fx.refs = func(fx *v2fx) {
-				fx.repo.additions = func(adds []WitnessAddition) []WitnessAddition {
-					for i := range adds {
-						if adds[i].Commit == fx.landing {
-							adds[i].Parents = []string{fx.featureID, fx.featureID}
-						}
-					}
-					return adds
-				}
+				fx.repo.objectParents = map[string][]string{fx.landing: {fx.featureID, fx.featureID}}
 			}
 		}, gap: GapCRUnverified, has: []string{"first parent"}},
 		{name: "the default branch's first-parent history cannot be read", mut: func(fx *v2fx) {

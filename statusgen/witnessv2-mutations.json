@@ -384,6 +384,84 @@
    "file": "verifiedrunneragree.go",
    "old": "\ts = strings.ToLower(strings.TrimSpace(s))\n\tif i := strings.IndexByte(s, '(')",
    "new": "\ts = strings.ToLower(strings.TrimSpace(s))\n\ts = strings.TrimSpace(s[strings.Index(s, \"@\")+1:])\n\tif i := strings.IndexByte(s, '(')"
+  },
+  {
+   "name": "attribute digest no longer compared (review F9)",
+   "file": "evaluation/witness.go",
+   "old": "if AttributeDigest(attrs[p]) != rec.Attributes[p] {",
+   "new": "if false && AttributeDigest(attrs[p]) != rec.Attributes[p] {"
+  },
+  {
+   "name": "v2 policy/build dependency judged by the v1 fingerprint (depFingerprintSame), not the recorded digest (review F9)",
+   "file": "evaluation/witness.go",
+   "old": "\t\tcase DepPolicy, DepBuild:\n\t\t\tp := strings.TrimSuffix(",
+   "new": "\t\tcase DepPolicy, DepBuild:\n\t\t\tif same, _ := depFingerprintSame(x, d, R, R); same {\n\t\t\t\tcontinue\n\t\t\t}\n\t\t\tp := strings.TrimSuffix("
+  },
+  {
+   "name": "additions log: a commit field need not be a full object id (review SEC-1)",
+   "file": "coverage_witness.go",
+   "old": "\t\tcase evaluation.IsObjectID(field):",
+   "new": "\t\tcase !strings.Contains(field, \"/\"):"
+  },
+  {
+   "name": "additions log: a field outside the register is skipped, not refused (review SEC-1)",
+   "file": "coverage_witness.go",
+   "old": "\t\tdefault:\n\t\t\treturn nil, false\n\t\t}\n\t}\n\treturn adds, true",
+   "new": "\t\tdefault:\n\t\t\tcontinue\n\t\t}\n\t}\n\treturn adds, true"
+  },
+  {
+   "name": "commit object: an indented continuation line read as a parent header (review SEC-1)",
+   "file": "evaluation/witness.go",
+   "old": "\t\tif strings.HasPrefix(l, \" \") {\n\t\t\tcontinue\n\t\t}\n\t\tkey, val, _ := strings.Cut(l, \" \")",
+   "new": "\t\tkey, val, _ := strings.Cut(strings.TrimSpace(l), \" \")"
+  },
+  {
+   "name": "commit object: parent lines read past the header into the message (review SEC-1)",
+   "file": "evaluation/witness.go",
+   "old": "\tlines := strings.Split(header, \"\\n\")\n\tif len(lines) == 0",
+   "new": "\tlines := strings.Split(header+\"\\n\"+message, \"\\n\")\n\tif len(lines) == 0"
+  },
+  {
+   "name": "commit object: tree header not required (review SEC-1)",
+   "file": "evaluation/witness.go",
+   "old": "if len(lines) == 0 || !strings.HasPrefix(lines[0], \"tree \") || !IsObjectID(strings.TrimPrefix(lines[0], \"tree \")) {",
+   "new": "if len(lines) == 0 {"
+  },
+  {
+   "name": "commit object: a non-hex parent accepted (review SEC-1)",
+   "file": "evaluation/witness.go",
+   "old": "\t\tif !IsObjectID(val) {\n\t\t\treturn nil, \"\", false",
+   "new": "\t\tif false && !IsObjectID(val) {\n\t\t\treturn nil, \"\", false"
+  },
+  {
+   "name": "landing: an adding commit that is not an object id is read anyway (review SEC-1)",
+   "file": "evaluation/witness.go",
+   "old": "\tif !IsObjectID(add.Commit) {",
+   "new": "\tif false && !IsObjectID(add.Commit) {"
+  },
+  {
+   "name": "landing: a missing commit object read as a commit with no parents (review SEC-1)",
+   "file": "evaluation/witness.go",
+   "old": "\tif o == nil || o.Type != \"commit\" || o.OID != add.Commit {\n\t\treturn landingCommit{}",
+   "new": "\tif o == nil || o.Type != \"commit\" || o.OID != add.Commit {\n\t\treturn landingCommit{Commit: add.Commit}, \"\", \"\"\n\t}\n\tif false {\n\t\treturn landingCommit{}"
+  },
+  {
+   "name": "env split-string not looked through (review F13)",
+   "file": "evaluation/witness.go",
+   "old": "\t\t\t\tif split, ok := envSplitString(words, i); ok {",
+   "new": "\t\t\t\tif split, ok := envSplitString(words, i); false && ok {"
+  },
+  {
+   "name": "go -C value read as the go verb (review F13)",
+   "file": "evaluation/witness.go",
+   "old": "\t\t\tif a.text == \"-C\" { // `go -C dir <verb>`: the flag takes the next word\n\t\t\t\tk++",
+   "new": "\t\t\tif a.text == \"-C\" { // `go -C dir <verb>`: the flag takes the next word"
+  },
+  {
+   "name": "witnessdigest: the brief read from its working file when no --rev is given (review F14)",
+   "file": "witnessdigest.go",
+   "old": "\tbriefFile := briefArg\n\tif !*worktree {",
+   "new": "\tbriefFile := briefArg\n\tif *rev != \"\" {"
   }
  ]
 }

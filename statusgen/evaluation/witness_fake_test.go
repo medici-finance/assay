@@ -36,6 +36,9 @@ type fakeRepo struct {
 	expectAt map[string]string // VerifyExpectAt answers, keyed by revision
 	// additions, when set, replaces the computed WitnessAdditions answer.
 	additions func([]WitnessAddition) []WitnessAddition
+	// objectParents, when set for a commit id, is the parent list that
+	// commit's object states (CatObjects), apart from the graph the fake walks.
+	objectParents map[string][]string
 	// noFirstParents makes FirstParents report that it could not read.
 	noFirstParents bool
 	seq            int
@@ -212,7 +215,7 @@ func (f *fakeRepo) CatObjects(specs []string) (map[string]CatObject, bool) {
 			continue
 		}
 		if !isPath {
-			out[s] = CatObject{OID: c.id, Type: "commit", Content: []byte(c.msg)}
+			out[s] = CatObject{OID: c.id, Type: "commit", Content: f.commitObject(c)}
 			continue
 		}
 		if e, ok := c.tree[path]; ok {
@@ -220,6 +223,24 @@ func (f *fakeRepo) CatObjects(specs []string) (map[string]CatObject, bool) {
 		}
 	}
 	return out, true
+}
+
+// commitObject renders c as a raw commit object: tree, parent, author and
+// committer headers, a blank line, the message.
+func (f *fakeRepo) commitObject(c *fakeCommit) []byte {
+	parents := c.parents
+	if p, ok := f.objectParents[c.id]; ok {
+		parents = p
+	}
+	var b strings.Builder
+	sum := sha1.Sum([]byte("tree " + c.id))
+	b.WriteString("tree " + hex.EncodeToString(sum[:]) + "\n")
+	for _, p := range parents {
+		b.WriteString("parent " + p + "\n")
+	}
+	b.WriteString("author Fixture <fixture@example.test> 1700000000 +0000\ncommitter Fixture <fixture@example.test> 1700000000 +0000\n\n")
+	b.WriteString(c.msg)
+	return []byte(b.String())
 }
 
 func (f *fakeRepo) WitnessAdditions(rev string) ([]WitnessAddition, bool) {
@@ -239,7 +260,7 @@ func (f *fakeRepo) WitnessAdditions(rev string) ([]WitnessAddition, bool) {
 		}
 		for _, path := range f.TreeFiles(id) {
 			if _, had := parentTree[path]; !had && strings.HasPrefix(path, WitnessRecordDir) {
-				adds = append(adds, WitnessAddition{Path: path, Commit: id, Parents: append([]string(nil), c.parents...), Message: c.msg})
+				adds = append(adds, WitnessAddition{Path: path, Commit: id})
 			}
 		}
 		id = ""

@@ -2,6 +2,7 @@ package evaluation
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -89,6 +90,14 @@ func TestWitnessNetworkWrappers(t *testing.T) {
 		{"go get example.invalid/m", true, true},
 		{"go mod download", true, true},
 		{"go mod tidy", true, true},
+		// regression: #4409 review F13 — split strings and go -C
+		{"env -S 'curl x'", true, true},
+		{"env -S'curl x'", true, true},
+		{"env --split-string='wget x'", true, true},
+		{"env -S 'go test' ./pkg/", false, true},
+		{"env -S 'make' test", false, false},
+		{"go -C tools/x get example.invalid/m", true, true},
+		{"go -C tools/x test ./pkg/", false, true},
 		// find -exec
 		{"find tools -name x -exec curl {} ;", false, false}, // braces: the lexer refuses
 		{"find tools -name x -exec curl y ;", true, true},
@@ -140,4 +149,61 @@ func TestWitnessTreeDigestOrder(t *testing.T) {
 			t.Fatalf("worktree listing order varies: %v vs %v", first, l)
 		}
 	}
+}
+
+// regression: #4409 review SEC-1 — a commit object's parents are its
+// top-level `parent` headers; its message is everything after the first
+// blank line.
+func TestWitnessParseCommitObject(t *testing.T) {
+	tree, p1, p2 := strings.Repeat("1", 40), strings.Repeat("2", 40), strings.Repeat("3", 40)
+	who := "author A <a@example.test> 1700000000 +0000\ncommitter A <a@example.test> 1700000000 +0000\n"
+	obj := "tree " + tree + "\nparent " + p1 + "\nparent " + p2 + "\n" + who +
+		"gpgsig -----BEGIN SIGNATURE-----\n parent " + strings.Repeat("4", 40) + "\n -----END SIGNATURE-----\n" +
+		"\nMerge pull request #12 from example-org/feat\n\nparent " + strings.Repeat("5", 40) + "\n"
+	parents, msg, ok := parseCommitObject([]byte(obj))
+	if !ok || len(parents) != 2 || parents[0] != p1 || parents[1] != p2 {
+		t.Fatalf("parents %v ok=%v, want [%s %s]", parents, ok, p1, p2)
+	}
+	if !strings.HasPrefix(msg, "Merge pull request #12 from example-org/feat\n") || !strings.Contains(msg, "parent "+strings.Repeat("5", 40)) {
+		t.Errorf("message %q", msg)
+	}
+	for name, bad := range map[string]string{
+		"no tree header":    "parent " + p1 + "\n" + who + "\nmsg\n",
+		"a short parent id": "tree " + tree + "\nparent " + p1[:39] + "\n" + who + "\nmsg\n",
+		"a short tree id":   "tree " + tree[:39] + "\n" + who + "\nmsg\n",
+	} {
+		if _, _, ok := parseCommitObject([]byte(bad)); ok {
+			t.Errorf("%s: want a refusal", name)
+		}
+	}
+}
+
+// regression: #4409 review SEC-1 — an addition whose commit is not a full
+// object id, or whose commit object does not read as one, releases nothing.
+func TestWitnessLandingCommitObjectRequired(t *testing.T) {
+	runV2Cases(t, []v2case{
+		{name: "an adding commit that is not an object id", mut: func(fx *v2fx) {
+			fx.refs = func(fx *v2fx) {
+				fx.repo.additions = func(adds []WitnessAddition) []WitnessAddition {
+					for i := range adds {
+						adds[i].Commit = strings.ToUpper(adds[i].Commit)
+					}
+					return adds
+				}
+			}
+		}, gap: GapUnestablished, has: []string{"not an object id"}},
+		{name: "an adding commit missing from the object store", mut: func(fx *v2fx) {
+			fx.refs = func(fx *v2fx) {
+				fx.repo.additions = func(adds []WitnessAddition) []WitnessAddition {
+					for i := range adds {
+						adds[i].Commit = strings.Repeat("9", 40)
+					}
+					return adds
+				}
+			}
+		}, gap: GapUnestablished, has: []string{"not in the object store"}},
+		{name: "the commit object's parents decide, not the walked graph", mut: func(fx *v2fx) {
+			fx.refs = func(fx *v2fx) { fx.repo.objectParents = map[string][]string{fx.landing: {fx.base}} }
+		}, gap: GapCRUnverified, has: []string{"parent"}},
+	})
 }

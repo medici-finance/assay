@@ -48,6 +48,10 @@ func oldStatusgenBin(t *testing.T) string {
 	return bin
 }
 
+// witnessRegisterREADME is the witnesses register's README, relative to the
+// repository root.
+const witnessRegisterREADME = "docs/streams/witnesses/README.md"
+
 // skewClaim is the slice of a claim both binaries share.
 type skewClaim struct {
 	Claim    string `json:"claim"`
@@ -102,7 +106,15 @@ func coverageViaErr(t *testing.T, bin, root string) ([]skewBrief, error) {
 func TestWitnessSkewOldReader(t *testing.T) {
 	old := oldStatusgenBin(t)
 	cur := buildStatusgenBinary(t)
-	f := newGitV2Fixture(t).build()
+	f := newGitV2Fixture(t)
+	// The register README this repository ships: its self-declaration is what
+	// lets a reader that predates the reserved `witnesses` name read the tree.
+	readme, err := os.ReadFile(filepath.Join("..", filepath.FromSlash(witnessRegisterREADME)))
+	if err != nil {
+		t.Fatalf("the shipped register README: %v", err)
+	}
+	f.ExtraFiles = map[string]string{witnessRegisterREADME: string(readme)}
+	f.build()
 
 	newRows := coverageVia(t, cur, f.Root)
 	oldRows, oldErr := coverageViaErr(t, old, f.Root)
@@ -126,15 +138,15 @@ func TestWitnessSkewOldReader(t *testing.T) {
 		t.Fatalf("non-vacuity: the new binary must release every v2 claim of the fixture, released %d of %d: %+v", nNew, totalNew, newRows)
 	}
 	if oldErr != nil {
-		// The previous release does not read the tree at all: it refuses
-		// everything (exit 2), which releases nothing.
-		t.Logf("the previous release refuses the whole tree: %v", oldErr)
-		return
+		// A reader that cannot read the tree at all proves nothing about a v2
+		// cell: the per-claim refusal below is the guard, so this is a failure.
+		t.Fatalf("the previous release must read the fixture tree and refuse each v2 claim, but it exits non-zero: %v", oldErr)
 	}
 	nOld, totalOld := released(oldRows)
 	if totalOld == 0 {
 		t.Fatalf("the previous release produced no claims for the fixture: %+v", oldRows)
 	}
+	t.Logf("the previous release read the tree and released %d of %d v2 claims", nOld, totalOld)
 	if nOld != 0 {
 		t.Errorf("version skew: the previous release released %d of %d v2 claims; it must refuse every one: %+v", nOld, totalOld, oldRows)
 	}

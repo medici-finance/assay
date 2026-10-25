@@ -146,6 +146,34 @@ func TestWitnessDigestVerb(t *testing.T) {
 	if _, err := os.Stat(f.BriefPath); err != nil {
 		t.Fatal(err)
 	}
+
+	// regression: #4409 review F14 — with neither --rev nor --worktree the
+	// brief is read at HEAD, like the tree, and a relative --brief resolves
+	// against --root from any working directory.
+	committed, err := os.ReadFile(f.BriefPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gv2Write(t, f.Root, gv2BriefRel(), "an uncommitted edit that is no brief\n")
+	if fromHead, _ := run("--row", "1"); fromHead.CommandSHA != d.CommandSHA {
+		t.Errorf("the default run read the working brief, not HEAD's: %+v", fromHead)
+	}
+	cmd := exec.Command(bin, "witnessdigest", "--json", "--root", f.Root, "--brief", gv2BriefRel(), "--row", "1")
+	cmd.Dir = t.TempDir()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("default revision, relative --brief from another directory: %v\n%s", err, out)
+	}
+	var atHead witnessDigestOut
+	if err := json.Unmarshal(out, &atHead); err != nil {
+		t.Fatalf("decode: %v\n%s", err, out)
+	}
+	if fmt.Sprint(atHead.Inputs) != fmt.Sprint(clean.Inputs) || atHead.CommandSHA != d.CommandSHA {
+		t.Errorf("the default run did not read the brief at HEAD: %+v", atHead)
+	}
+	if err := os.WriteFile(f.BriefPath, committed, 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // --- row 11 --------------------------------------------------------------------------

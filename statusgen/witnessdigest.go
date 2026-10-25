@@ -18,7 +18,8 @@ import (
 // canonical v2 content fields of a brief at a revision — the same derivation
 // the reader compares with (evaluation.ComputeWitnessContent) — so a writer in
 // another module (statusgen/37) records the digests without reimplementing
-// them. It never prints a releasable record: no runner, result, date, change
+// them. A relative --brief resolves against --root, and the brief is read at
+// the same revision as the tree unless --worktree is given. It never prints a releasable record: no runner, result, date, change
 // request or record id, only content fields and the row's text digests.
 
 const (
@@ -47,10 +48,10 @@ type witnessDigestOut struct {
 func runWitnessDigest(args []string, stdout, stderr *os.File) int {
 	flags := flag.NewFlagSet("witnessdigest", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	briefPath := flags.String("brief", "", "brief file whose declared inputs are digested")
+	briefPath := flags.String("brief", "", "brief file whose declared inputs are digested (a relative path resolves against --root)")
 	root := flags.String("root", ".", "repository root")
 	rev := flags.String("rev", "", "revision to digest (default HEAD); the brief is read at the same revision")
-	worktree := flags.Bool("worktree", false, "digest the working tree (HEAD overlaid with working-tree blob ids) and report dirty_paths")
+	worktree := flags.Bool("worktree", false, "digest the working tree (HEAD overlaid with working-tree blob ids) and report dirty_paths; the brief is read from its working file")
 	row := flags.String("row", "", "Verify row id: also print that row's command/expect/class digests")
 	jsonMode := flags.Bool("json", false, "print the JSON document (required)")
 	if err := flags.Parse(args); err != nil {
@@ -79,9 +80,17 @@ func runWitnessDigest(args []string, stdout, stderr *os.File) int {
 	}
 	sha = strings.TrimSpace(sha)
 
-	briefFile := *briefPath
-	if *rev != "" {
-		abs, aerr := filepath.Abs(*briefPath)
+	// A relative --brief names a path under --root, wherever the verb runs.
+	// The brief is read at the digested revision (HEAD by default), so its
+	// Verify row and inputs: field match the tree; only --worktree reads the
+	// working file.
+	briefArg := *briefPath
+	if !filepath.IsAbs(briefArg) {
+		briefArg = filepath.Join(*root, briefArg)
+	}
+	briefFile := briefArg
+	if !*worktree {
+		abs, aerr := filepath.Abs(briefArg)
 		rootAbs, rerr := filepath.Abs(*root)
 		if aerr != nil || rerr != nil {
 			return fail("cannot resolve %s against %s", *briefPath, *root)
@@ -92,7 +101,7 @@ func runWitnessDigest(args []string, stdout, stderr *os.File) int {
 		}
 		text, gerr := gitOutput(*root, "show", "--end-of-options", sha+":"+filepath.ToSlash(rel))
 		if gerr != nil {
-			return fail("%s does not exist at %s", filepath.ToSlash(rel), *rev)
+			return fail("%s does not exist at %s", filepath.ToSlash(rel), base)
 		}
 		dir, derr := os.MkdirTemp("", "sg-witnessdigest-")
 		if derr != nil {
