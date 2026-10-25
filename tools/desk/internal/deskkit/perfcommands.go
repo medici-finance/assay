@@ -42,6 +42,9 @@ type PerfCommandSummary struct {
 	V3Duplicates int                `json:"v3Duplicates"`
 	V3Conflicts  int                `json:"v3Conflicts"`
 	V3Invalid    int                `json:"v3Invalid"`
+	V4Duplicates int                `json:"v4Duplicates,omitempty"`
+	V4Conflicts  int                `json:"v4Conflicts,omitempty"`
+	V4Invalid    int                `json:"v4Invalid,omitempty"`
 }
 
 // SummarisePerfCommands is the command-first overview. Input must be the whole
@@ -49,12 +52,19 @@ type PerfCommandSummary struct {
 // The old APIs remain intact for consumers of their detailed report sections.
 func SummarisePerfCommands(recs []PerfRecord, permission perfrec.Profile, filter perfrec.V3Filter, tool, role string) (PerfCommandSummary, error) {
 	var s PerfCommandSummary
+	recs, mixedConflicts := perfrec.ExcludeMixedSchemaIdentities(recs)
 	kept, sel, err := perfrec.SelectV3(recs, permission, filter)
 	if err != nil {
 		return s, err
 	}
 	s.V3Duplicates, s.V3Conflicts, s.V3Invalid = sel.Duplicates, sel.Conflicts, sel.Invalid
 
+	kept4, sel4, err := perfrec.SelectV4(recs, permission, filter)
+	if err != nil {
+		return s, err
+	}
+	s.V4Duplicates, s.V4Conflicts, s.V4Invalid = sel4.Duplicates, sel4.Conflicts+mixedConflicts, sel4.Invalid
+	kept = append(kept, kept4...)
 	type key struct{ schema, boundary, tool, verb string }
 	type bucket struct {
 		stats PerfCommandStats
@@ -66,10 +76,10 @@ func SummarisePerfCommands(recs []PerfRecord, permission perfrec.Profile, filter
 		if tool != "" && r.Tool != tool {
 			return
 		}
-		if role != "" && (r.Schema == perfrec.SchemaV3 || r.Role != role) {
+		if role != "" && (r.Schema == perfrec.SchemaV3 || r.Schema == perfrec.SchemaV4 || r.Role != role) {
 			return
 		}
-		if r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess {
+		if r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess || r.Schema == perfrec.SchemaV4 && r.V4.Kind != perfrec.ObservationProcess {
 			s.NonProcess++
 			return
 		}
@@ -77,7 +87,7 @@ func SummarisePerfCommands(recs []PerfRecord, permission perfrec.Profile, filter
 		switch schema {
 		case PerfSchema:
 			boundary = "legacy-wrapper"
-		case PerfSchemaV2, perfrec.SchemaV3:
+		case PerfSchemaV2, perfrec.SchemaV3, perfrec.SchemaV4:
 			if boundary != perfrec.BoundaryProcess && boundary != perfrec.BoundaryCaller {
 				return
 			}
@@ -125,7 +135,7 @@ func SummarisePerfCommands(recs []PerfRecord, permission perfrec.Profile, filter
 		add(r)
 	}
 	for _, r := range recs {
-		if r.Schema == perfrec.SchemaV3 || IsPerfStep(r) {
+		if r.Schema == perfrec.SchemaV3 || r.Schema == perfrec.SchemaV4 || IsPerfStep(r) {
 			continue
 		}
 		if (tool != "" && r.Tool != tool) || (role != "" && r.Role != role) {
