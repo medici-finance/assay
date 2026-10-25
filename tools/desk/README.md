@@ -2723,7 +2723,7 @@ parent), and there is **no `--force` flag anywhere**. It is a local-only verb cl
 takes the C-5 audit line and the C-6 kill switch but NOT the outward-write rate limit.
 
 ```bash
-deskwt add <name> [--branch B] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R] [--lock-session <id>]   # create tracker-<name> on a tracking branch
+deskwt add <name> [--branch B] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R] [--lock-session <id>] [--adopt-run <key>]   # create tracker-<name> on a tracking branch
 deskwt remove <path>                                   # remove ONE proven-safe worktree
 deskwt prune [--repo <path>] [--interval <dur>] [--min-idle 1h]   # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
@@ -2796,7 +2796,14 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
   `add` fails. `<id>` must be a plain name (no `/`, no `..`). The reason carries role-init's
   `session=<id>` form, so `--reclaim-stale-locks` and `--reap-dead-sessions` retire the lock
   only once that session's roster beacon is stale. Without the flag `add` locks nothing, as
-  before.
+  before. `--adopt-run <run key>` (resume only; it requires `--upstream`) is how a rework
+  dispatch reuses the home its earlier run left: instead of the never-clobbered or
+  checked-out refusal, `add` prints that home as the new one when it carries the
+  worktree-scoped `assay.runKey` the caller names, is registered and unlocked, is on
+  `--branch` at exactly the pinned `--base`, and has an empty status including untracked
+  files. `deskdispatch` passes the item's claim key, which it holds by then, so the earlier
+  run is over. Nothing is deleted or reset; a home that fails any clause keeps the original
+  refusal, which says which clause failed.
 
 - **`remove`** refuses a dirty TRACKED tree, unpushed commits, a no-upstream branch, an
   unregistered path, or anything resolving outside the prefixes; untracked build artifacts

@@ -115,10 +115,19 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 			die("role '%s' is not enabled in this container cell", role)
 		}
 	case "scrubbed":
-		// A scrubbed cell's own config home is what CLAUDE_CONFIG_DIR/CODEX_HOME resolve to
-		// below — a host config dir or a provider from the launching shell would defeat the
-		// whole point.
-		if cfgIn != "" || provider != "" || c.Env.Get("CELL_PROVIDER") != "" {
+		// Providers on this kind read only cell-owned private token files, never the shell.
+		selected := provider
+		if selected == "" {
+			selected = c.Env.Get("CELL_PROVIDER")
+		}
+		provisioned := selected == ""
+		if selected != "" && scrubbedProviderName.MatchString(selected) {
+			_, err := os.Lstat(c.scrubbedTokenPath(selected))
+			provisioned = err == nil
+		}
+		// Preserve the refusal contract for unprovisioned cells. A provisioned provider
+		// proceeds to the full custody check below; this presence check grants no access.
+		if cfgIn != "" || !provisioned {
 			die("scrubbed desks do not accept a host config directory or a provider — the cell composes its own")
 		}
 		if !valueIn(role, c.Roles) {
@@ -312,10 +321,15 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 	// --cockpit beats cell.env CELL_COCKPIT beats the `auto` default — and always to a CONCRETE
 	// value: `auto` never reaches the window, so the skill's PATH-order autodetect runs only where
 	// no cell launcher exported anything. An explicit cockpit that is not available is refused
-	// here, as `up` refuses it, never exported as some other value. A scrubbed cell composes its
-	// own environment and opens no cockpit, so it carries none.
+	// here, as `up` refuses it, never exported as some other value. A scrubbed cell retains
+	// private tmux as the process owner; Herdr is an optional display of that session.
 	var cockpit cockpitResolution
-	if c.Kind != "scrubbed" {
+	if c.Kind == "scrubbed" {
+		cockpit = c.scrubbedCockpit(cockpitFlag)
+		if cockpit.Err != "" {
+			die("desk: %s", cockpit.Err)
+		}
+	} else {
 		want, src := c.cockpitWant(cockpitFlag)
 		cockpit = c.resolveCockpit(want, src)
 		if cockpit.Err != "" {
@@ -348,7 +362,9 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 		if rav := c.repairAdmissionValue(); rav != "" {
 			fmt.Printf("[dry-run] env %s=%s (repair-admission dispatch gate opt-in)\n", deskkit.EnvRepairAdmission, rav)
 		}
-		if cockpit.Cockpit != "" {
+		if c.Kind == "scrubbed" && cockpit.Cockpit == "herdr" {
+			fmt.Printf("[dry-run] cockpit=%s (%s; process owner=private tmux)\n", cockpit.Cockpit, cockpit.Why)
+		} else if c.Kind != "scrubbed" && cockpit.Cockpit != "" {
 			fmt.Printf("[dry-run] env %s=%s (%s)\n", envAssayCockpit, cockpit.Cockpit, cockpit.Why)
 		}
 		if harness == "claude" && c.Kind != "scrubbed" {
@@ -363,8 +379,11 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 		if c.Kind == "scrubbed" {
 			// The [dry-run] line above stays — this ADDS the plan grammar the scrubbed-cell
 			// brief defines and the parity harness diffs against.
-			env := c.scrubbedComposeEnv(role, harness, session)
-			c.printPlan(env, wt, harnessArgv(harness, role, model, session, wt))
+			env := scrubbedDisplayEnv(c.scrubbedComposeEnv(role, harness, session), cockpit.Cockpit)
+			c.printPlan(env, wt, c.scrubbedLaunchArgv(role, harness, model, session, wt, provider))
+			if provider != "" {
+				fmt.Printf("[plan] provider token-file=%s (contents omitted)\n", c.scrubbedTokenPath(provider))
+			}
 		}
 		return
 	}

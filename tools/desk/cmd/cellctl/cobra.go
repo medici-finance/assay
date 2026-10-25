@@ -112,7 +112,7 @@ func rawVerb(args []string) bool {
 		return false
 	}
 	switch a[0] {
-	case "model-policy", "cache-run", "container-run", "defaults", "comms-reader":
+	case "model-policy", "cache-run", "container-run", "defaults", "comms-reader", "scrubbed-run":
 		return true
 	}
 	return false
@@ -483,7 +483,7 @@ func buildRoot() *cobra.Command {
 	root.AddCommand(
 		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(),
 		smokeCmd(), statusCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
-		providersCmd(), defaultsCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(),
+		providersCmd(), defaultsCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
 	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
 	cellopFixtureCommands(root)

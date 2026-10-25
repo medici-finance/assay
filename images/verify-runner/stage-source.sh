@@ -82,7 +82,7 @@ exp=$(cat "$cred/expires-at" 2>/dev/null) || exit 1
 now=$(date +%s)
 [ "$now" -lt "$exp" ] || exit 1
 tok=$(cat "$cred/token" 2>/dev/null) || exit 1
-[[ $tok =~ ^[A-Za-z0-9_]+$ ]] || exit 1
+[ "${#tok}" -le 2048 ] && [[ $tok =~ ^[A-Za-z0-9_.-]+$ ]] || exit 1
 printf 'username=x-access-token\npassword=%s\n' "$tok"
 HELPER
   chmod 755 "$dir/helper"
@@ -105,7 +105,7 @@ done
 TOK=$(cat "$CRED/token")
 IAT=$(cat "$CRED/issued-at")
 EXP=$(cat "$CRED/expires-at")
-[[ $TOK =~ ^[A-Za-z0-9_]+$ ]] || die "source custody is malformed (token): no clone was attempted"
+[ "${#TOK}" -le 2048 ] && [[ $TOK =~ ^[A-Za-z0-9_.-]+$ ]] || die "source custody is malformed (token): no clone was attempted"
 [[ $IAT =~ ^[0-9]{9,12}$ ]] || die "source custody is malformed (issued-at): no clone was attempted"
 [[ $EXP =~ ^[0-9]{9,12}$ ]] || die "source custody is malformed (expires-at): no clone was attempted"
 NOW=$(date +%s)
