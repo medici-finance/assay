@@ -93,7 +93,7 @@ changed or discarded.
 | `desksupervise` | `tick` (one classification sweep of every `state=dispatched` dispatch claim against `internal/loopengine`'s liveness taxonomy; `--claims-fixture`/`--observations-fixture` run it fully offline), `run --interval` (loop `tick` forever) — turns a wedged worker into a logged, minutes-scale reclaim (`RECLAIM-ELIGIBLE` / `BLOCKED-TIMEOUT`) instead of a silent hold on the 120-minute stale-claim backstop; fires the `after_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (logged, non-fatal) when it releases or lands a claim | read-mostly (probes read the audit trail, a branch's SHA, and a PR's `updated_at`) / outward write on a non-dry-run reclaim or blocked-timeout filing | no |
 | `opmetrics` | (no verbs) — operator-layer collector: reads transcripts/beacons/claims, writes one **aggregates-only** day-file | local-only (strictly read-only against every input) | no |
 | `deskusage` | `record` reported counts at worker completion; `summary --by item\|tier [--json]` aggregates only; never reads transcripts, prompts, stdin or tool output | local-only counts write, outside Git worktrees; no network | no |
-| `deskperf` | `report` (per-tool p50 / p90 / max / total wall, share of total wall, refusal ratio, top-N slowest; forge calls per tool and per release against the App rate-limit budget), `boot` (deskboot's per-step cost, per role) — reads the opt-in local perf history; see [Local performance history](#local-performance-history--deskperf) | read-only (local perf files; no network; the shared kill-switch guard still writes its audit row) | no |
+| `deskperf` | `report` (command costs ranked by accumulated invocation wall within separate timing cohorts, readable durations, outcomes and CPU/HTTP coverage; existing per-tool details, top-N slowest and forge-call views), `boot` (deskboot's per-step cost, per role) — reads the opt-in local perf history; see [Local performance history](#local-performance-history--deskperf) | read-only (local perf files; no network; the shared kill-switch guard still writes its audit row) | no |
 | `deskwt` | `add`, `remove`, `prune` under sanctioned prefixes; `maintain objects` inventories and compacts the common Git directory offline; `add` runs the `after_create` [lifecycle hook](../../docs/desk-tools/hooks.md) (fatal — a failure rolls the new worktree back), `remove`/`prune` run `before_remove` (logged, deletion proceeds); inspection takes `--dry-run` | local-only | no |
 | `deskgit` | `fetch` (bare / `--prune` / `--pr <N>` / `--branch <B>`) — the only git verb | local-only (inbound refs) | no |
 | `desktoken` | `<role>` — mint/reuse an App installation token | local-only (token cache) | no |
@@ -557,12 +557,16 @@ code or its output. Per-invocation agent usage (tokens, cost) is the agent runne
 
 `deskperf` reads it:
 
-- `deskperf report [--days N] [--tool X] [--role R] [--top N] [--json]` — per tool: count,
-  p50 / p90 / max wall ms (nearest-rank), total wall ms, share of total wall, and refusal ratio
-  (refused + unwritten + unverifiable over count); then the N slowest invocations (default
-  10) as ts / tool / verb / wall ms. Boot- and launch-step records are excluded (they
-  subdivide a `deskboot` or `cellctl` run already counted once). Legacy `perf-v1` records
-  render first, exactly as before; `perf-v2` records render as a SEPARATE group (JSON
+- `deskperf report [--days N] [--tool X] [--role R] [--top N] [--json]` — leads with command
+  costs (JSON `commands`): tool and verb, count, cumulative invocation wall, typical/tail
+  duration, exact outcomes, and measured CPU/HTTP coverage. Rows rank by cumulative wall;
+  timing cohorts stay separate, and their sums are invocation work rather than human elapsed
+  time or wasted CPU. Boot- and launch-step records are excluded (they subdivide a `deskboot`
+  or `cellctl` run already counted once), as are nested non-process observations.
+  The existing detail sections follow: per tool, count, p50 / p90 / max wall ms (nearest-rank),
+  total wall ms, share of total wall, and refusal ratio (refused + unwritten + unverifiable
+  over count); then the N slowest invocations (default 10) as ts / tool / verb / wall ms.
+  Legacy `perf-v1` details precede `perf-v2` details, which render as a SEPARATE group (JSON
   `perfV2`) whose total is labelled summed invocation wall, with boundary and CPU-state
   counts, the CPU distribution over measured records only, per-counter measured/unavailable
   coverage (totals over measured records only) and per-phase distributions. The two groups
