@@ -34,7 +34,7 @@ consumers:
   - "docs/lifecycle.md §Review gates (which pattern node a review gate is): fixed-here (the sentence is added in this change)"
   - "plugins/assay/skills/worker-desk/SKILL.md, pr-review-desk/SKILL.md, verify-desk/SKILL.md (the procedures the implementation pattern encodes): out-of-scope (the pattern file describes the existing procedure and changes none of it; a skill that later READS the pattern is graph-execution/05's report to propose)"
 version: 2
-id: ed7644f5-3b16-4050-955c-2e522e5dc257
+id: 00000000-0000-0000-0000-000000000000
 ---
 
 # Brief 02 — Workflow-pattern schema, node contract, and the implementation and research patterns
