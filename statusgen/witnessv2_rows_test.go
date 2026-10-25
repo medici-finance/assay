@@ -29,6 +29,7 @@ func gv2StreamOf(f *gitV2Fixture) []*Stream {
 // `inputs:` is a --lint PROBLEM and the reader refuses it as
 // witness-input-undeclared; the same row with the path declared passes lint
 // and releases. A command the library cannot read adds no bound.
+// regression: #2026
 func TestWitnessLiteralPathBound(t *testing.T) {
 	mk := func(inputs string) *gitV2Fixture {
 		f := newGitV2Fixture(t)
@@ -85,6 +86,7 @@ func TestWitnessLiteralPathBound(t *testing.T) {
 // derives (the fixture's record was written by the same library function), the
 // row's text digests, dirty_paths for --worktree, and never a releasable
 // record.
+// regression: #2026
 func TestWitnessDigestVerb(t *testing.T) {
 	f := newGitV2Fixture(t).build()
 	bin := buildStatusgenBinary(t)
@@ -262,6 +264,7 @@ func countCoverageGitCalls(t *testing.T, briefs, rows, groups int) (calls []stri
 // requests (three recorded commits, plus the item's revision), the git
 // invocations the coverage port makes are at most 3 per distinct revision plus
 // a constant, and do not grow with the row or brief count.
+// regression: #2026
 func TestCoverageGitCallsBounded(t *testing.T) {
 	const (
 		perRevision = 3

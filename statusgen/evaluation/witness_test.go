@@ -97,6 +97,7 @@ func TestWitnessV2DigestRelease(t *testing.T) {
 	})
 }
 
+// regression: #2026
 func TestWitnessV2ByteChange(t *testing.T) {
 	runV2Cases(t, []v2case{
 		{name: "unaltered"},
@@ -114,6 +115,7 @@ func TestWitnessV2ByteChange(t *testing.T) {
 	}
 }
 
+// regression: #2026
 func TestWitnessV2MissingDigest(t *testing.T) {
 	otherID := strings.Repeat("ab", 32)
 	runV2Cases(t, []v2case{
@@ -166,6 +168,7 @@ func TestWitnessV2MissingDigest(t *testing.T) {
 	})
 }
 
+// regression: #2026
 func TestWitnessSchemaUnknown(t *testing.T) {
 	for _, marker := range []string{"[w3]", "[w]", "[w2x]", "[W2]", "[]"} {
 		fx := newV2fx(t)
@@ -201,6 +204,7 @@ func TestWitnessSchemaUnknown(t *testing.T) {
 	}
 }
 
+// regression: #2026
 func TestWitnessImplicitInputs(t *testing.T) {
 	bump := func(old, new string) func(*v2fx) {
 		return func(fx *v2fx) {
@@ -230,6 +234,7 @@ func TestWitnessImplicitInputs(t *testing.T) {
 	})
 }
 
+// regression: #2026
 func TestWitnessEnvRerunOwed(t *testing.T) {
 	host := func(fx *v2fx) {
 		fx.rec = func(r *WitnessRecord) { r.RunnerClass, r.Network = "host", "host" }
@@ -300,6 +305,7 @@ func TestWitnessEnvRerunOwed(t *testing.T) {
 	wantGap(t, "a recorded tool with no pin at R", fx.claim(), GapRerunOwed, "desk-tools", "no pin")
 }
 
+// regression: #2026
 func TestWitnessV2Replay(t *testing.T) {
 	runV2Cases(t, []v2case{
 		{name: "the unaltered citation"},
@@ -327,6 +333,7 @@ func TestWitnessV2Replay(t *testing.T) {
 	wantGap(t, "the record cited from row 2", cs[1], GapRecordReplayed, "row #2")
 }
 
+// regression: #2026
 func TestWitnessV2AcceptanceChanged(t *testing.T) {
 	failRec := func(fx *v2fx) {
 		fx.rec = func(r *WitnessRecord) { r.Result, r.Exit = "FAIL", "1" }
@@ -379,6 +386,7 @@ func TestWitnessV2AcceptanceChanged(t *testing.T) {
 	}
 }
 
+// regression: #2026
 func TestWitnessV2CRVerified(t *testing.T) {
 	landedAs := func(fx *v2fx) fakeForge { return fakeForge{landed: map[string]string{"12": fx.landing}} }
 	withForge := func(f func(fx *v2fx) fakeForge) func(*v2fx) {
@@ -466,6 +474,7 @@ func TestWitnessV2CRVerified(t *testing.T) {
 	})
 }
 
+// regression: #2026
 func TestWitnessV2DirtyOutsideInputs(t *testing.T) {
 	dirtyContent := "package pkg\n\nfunc A() int { return 3 }\n"
 	dirtyInput := func(fx *v2fx) {
@@ -495,6 +504,7 @@ func TestWitnessV2DirtyOutsideInputs(t *testing.T) {
 	})
 }
 
+// regression: #2026
 func TestWitnessV2InputSetEqual(t *testing.T) {
 	declareFile := func(fx *v2fx) {
 		fx.files["tools/x/data.txt"] = fakeEntry{"100644", "data\n"}
@@ -554,6 +564,7 @@ func TestWitnessV2InputSetEqual(t *testing.T) {
 
 // TestWitnessV2Unreadable covers the target and port reads that precede the
 // record: each is could-not-check, never a release.
+// regression: #2026
 func TestWitnessV2Unreadable(t *testing.T) {
 	runV2Cases(t, []v2case{
 		{name: "a dirty item revision", mut: func(fx *v2fx) { fx.refs = func(fx *v2fx) { fx.revision = fx.R + "+dirty" } }, gap: GapUnestablished, has: []string{"uncommitted"}},
@@ -562,6 +573,7 @@ func TestWitnessV2Unreadable(t *testing.T) {
 	})
 }
 
+// regression: #2026
 func TestWitnessRecordCanonical(t *testing.T) {
 	fx := newV2fx(t)
 	rec := fx.defaultRecord(fx.row)

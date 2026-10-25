@@ -149,6 +149,7 @@ func repoWitnessSources(t *testing.T) map[string]string {
 
 // TestWitnessDigestOneOwner: every second-implementation signature outside
 // statusgen/evaluation is on the committed allow-list, with a reason.
+// regression: #2026
 func TestWitnessDigestOneOwner(t *testing.T) {
 	raw, err := os.ReadFile(witnessOwnerAllowlist)
 	if err != nil {
@@ -170,6 +171,7 @@ func TestWitnessDigestOneOwner(t *testing.T) {
 
 // TestWitnessOwnerFlagsPlant: the guard flags a planted second parser, and an
 // allow-list entry with a reason clears exactly that file and pattern.
+// regression: #2026
 func TestWitnessOwnerFlagsPlant(t *testing.T) {
 	plant := `package main
 

@@ -88,6 +88,7 @@ func parseReadersDoc(t *testing.T, text string) map[string]string {
 
 // TestWitnessReaderCensus: the doc lists exactly the files the census grep
 // finds, and each exists.
+// regression: #2026
 func TestWitnessReaderCensus(t *testing.T) {
 	raw, err := os.ReadFile(witnessReadersDoc)
 	if err != nil {
@@ -117,6 +118,7 @@ func TestWitnessReaderCensus(t *testing.T) {
 
 // TestWitnessReaderCensusFlagsPlant: a file with a Runner-cell reader that is
 // absent from the doc is reported.
+// regression: #2026
 func TestWitnessReaderCensusFlagsPlant(t *testing.T) {
 	files := map[string]string{
 		"statusgen/plant.go": "package main\n\nfunc f(er EvidenceRow) string { return er.Runner }\n",
