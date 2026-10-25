@@ -428,7 +428,7 @@ func goList(t *testing.T, dir string, args ...string) string {
 
 // --- external consumer ------------------------------------------------------------------------
 
-const publishedVersion = "v1.0.0"
+const publishedVersion = "v1.1.0"
 const forgereadPath = "github.com/medici-finance/assay/forgeread"
 
 // publishToProxy writes the forgeread module into root as a GOPROXY=file:// layout.
@@ -542,7 +542,7 @@ func TestReaderSDKExternalConsumer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("external consumer failed: %v\n%s", err, out)
 		}
-		if strings.TrimSpace(out) != "1 1 1 1.0.0" {
+		if strings.TrimSpace(out) != "1 1 1 1.1.0" {
 			t.Errorf("consumer output = %q", out)
 		}
 	})

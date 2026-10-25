@@ -160,3 +160,45 @@ legacy foreign-addressed board ordering, or arm successor discovery: that is
 verification-handoff/04. The versioned companion assessment is described in
 [verification-handoff-v1](../spec/verification-handoff-v1.md); ordinary bugs remain
 discoverable without a mandatory `to:intake` stamp.
+
+## Positive state reads for absent placeholders
+
+The full/intake collection still positively reads every absent active
+placeholder before proposing retirement. Listing absence is never closure.
+For an explicitly capable wrapped GitHub reader, up to twenty issue numbers
+share one fixed, read-only GraphQL document. Every alias must return its exact
+requested number, a known open/closed state and a present title. Missing/null
+aliases, changed identities, unknown states, transport errors and any GraphQL
+error beside otherwise valid data fail the sweep. No partial retirement table
+is published and a failed batch never retries through another identity/path.
+
+The credential-free positive-state adapter lives in `forgeread/adapters/github`;
+the desk composition supplies only its typed issue-state read through the
+original authenticated transport. Repository admission, outbound decorators,
+the CI read-only wrapper and invocation-owned request observers remain in place.
+Unknown decorators and other providers retain their original `GetIssue` reads;
+one remaining issue retains the original REST read. Duplicate local placeholder
+identities retain separate serial reads rather than borrowing one observation. No observation survives the
+repository's current invocation. A chunk may read up to twenty independent
+positive states before an open issue is detected; no later chunk is read after
+that refusal. This read batching grants no write, admission or lifecycle power.
+
+Trust, comment and label histories keep their original independent read plans,
+numeric actor/edit checks, completeness rules and hard bounds. Earlier projection
+selection and repository-scoped client reuse remain unchanged. The state adapter
+does not move authenticated adapters or credentials into statusgen; its online
+read boundary remains `deskread`, with pure/offline contracts linked in-process.
+
+`TestPositiveStateBatchNativeParity` exercises the actual wrapped native
+transport, including the CI read-only wrapper, across zero, one, twenty-one and
+ninety-five absent placeholders. It preserves exact output, re-observes the next
+invocation and rejects null/missing/changed/errored state data without a fallback
+or partial table. `TestPositiveIssueStatesScopeAndObserver` verifies admitted
+repository refusal before sends and native request-observer parity. Shared
+adapter tests cover bounded batches, positive identity and envelope failures.
+
+The canonical desk `positive-state-mutations.json` and shared adapter
+`issuestates-mutations.json` harnesses each have a distinct control, with seven
+mutants in total for envelope errors, identity, batch bounds, request regression,
+repository scope, unknown wrapper guards and live-issue misclassification. It is local qualification;
+it does not claim enforcement by an unmodified CI truth-suite matrix.
