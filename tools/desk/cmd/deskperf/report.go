@@ -119,7 +119,10 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 		}
 		recs = append(recs, r)
 	}
-	if len(recs) == 0 && (*tool != "" || *role != "") {
+	workflowFilter := *group != "tool" || *session != "" || *agent != "" || *deskRole != "" || *assigned != "" || *work != ""
+	// With a workflow selector, distinguish a source tool/role miss from
+	// a workflow miss after whole-window identity selection.
+	if len(recs) == 0 && (*tool != "" || *role != "") && (!workflowFilter || len(deskkit.FilterPerf(verbs, *tool, *role)) == 0) {
 		if selection.Conflicts+selection.Invalid > 0 {
 			return noMatch(fmt.Sprintf("%s (whole-window identity selection excluded %d conflicting identities and %d invalid records)", filterText(*tool, *role), selection.Conflicts, selection.Invalid))
 		}
@@ -133,7 +136,7 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 		return deskkit.Refused(err.Error())
 	}
 	v3.Duplicates, v3.Conflicts, v3.Invalid = selection.Duplicates, selection.Conflicts, selection.Invalid
-	if (*group != "tool" || *session != "" || *agent != "" || *deskRole != "" || *assigned != "" || *work != "") && v3.Records == 0 {
+	if workflowFilter && v3.Records == 0 {
 		return deskkit.Refused("no v3 record matches the workflow filter")
 	}
 	if *byDay {

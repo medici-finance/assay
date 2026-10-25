@@ -28,7 +28,7 @@
     {
       "name": "hide unfiltered conflict-only detail behind no-match",
       "file": "cmd/deskperf/report.go",
-      "old": "if len(recs) == 0 && (*tool != \"\" || *role != \"\") {",
+      "old": "if len(recs) == 0 && (*tool != \"\" || *role != \"\") && (!workflowFilter || len(deskkit.FilterPerf(verbs, *tool, *role)) == 0) {",
       "new": "if len(recs) == 0 {"
     },
     {
@@ -36,6 +36,12 @@
       "file": "internal/deskkit/perfcommands.go",
       "old": "if (tool != \"\" && r.Tool != tool) || (role != \"\" && r.Role != role) {",
       "new": "if false {"
+    },
+    {
+      "name": "hide workflow mismatch behind tool no-match",
+      "file": "cmd/deskperf/report.go",
+      "old": "if len(recs) == 0 && (*tool != \"\" || *role != \"\") && (!workflowFilter || len(deskkit.FilterPerf(verbs, *tool, *role)) == 0) {",
+      "new": "if len(recs) == 0 && (*tool != \"\" || *role != \"\") {"
     }
   ]
 }
