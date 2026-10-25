@@ -64,6 +64,13 @@ type verifierLocal struct {
 	Home         string
 	TrackingHome string `json:",omitempty"`
 	Attempted    bool
+	// WorldRequired marks a run whose prepare step admits and binds a
+	// prerequisite record (example-stream/50). It is set before the stamp is
+	// issued, so a run whose admission was held or could not check carries the
+	// mark and no World, and row and Evidence admission refuse it. A record
+	// without the mark (written by an earlier build) keeps the earlier
+	// behaviour: no record, nothing to recheck.
+	WorldRequired bool `json:",omitempty"`
 }
 
 func verifierDigest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
@@ -415,7 +422,9 @@ func IssueVerifierAttestation(root string, f Forge) (VerifierReceipt, error) {
 			return r.VerifierReceipt, Unverifiable("cannot close attestation record (not a verification result)", err)
 		}
 	}
-	return CheckVerifierAttestationWithForge(root, r.Binding.Brief, f)
+	// The stamp read-back runs before the prepare step binds its record, so it
+	// does not require one; row and Evidence admission do.
+	return checkVerifierRun(root, r.Binding.Brief, f, verifierExecution, false)
 }
 
 // CheckVerifierAttestationWithForge is pre-execution admission: every source
@@ -424,12 +433,23 @@ func CheckVerifierAttestationWithForge(root, brief string, f Forge) (VerifierRec
 	return checkVerifierAttestation(root, brief, f, verifierExecution)
 }
 func checkVerifierAttestation(root, brief string, f Forge, phase verifierPhase) (VerifierReceipt, error) {
+	return checkVerifierRun(root, brief, f, phase, true)
+}
+
+// checkVerifierRun is admission of one prepared run. requireWorld is false
+// only for the stamp read-back inside IssueVerifierAttestation; every
+// admission that lets rows execute or Evidence land requires the record a
+// marked run's prepare step bound.
+func checkVerifierRun(root, brief string, f Forge, phase verifierPhase, requireWorld bool) (VerifierReceipt, error) {
 	r, err := verifierLoad(root)
 	if err != nil {
 		return r.VerifierReceipt, err
 	}
 	if err = verifierLocalCheck(root, brief, r, phase); err != nil {
 		return r.VerifierReceipt, err
+	}
+	if requireWorld && r.WorldRequired && r.World == nil {
+		return r.VerifierReceipt, Refused("verifier run has no admitted prerequisite record (its prepare-step admission was held or could not check); no Verify rows or Evidence admitted; recover with deskdispatch --attest-verifier --root <home>, which re-admits it")
 	}
 	if r.World != nil {
 		if err = r.World.Recheck(worldRecheckProbes); err != nil {
@@ -760,6 +780,22 @@ func VerifierEvidenceBindings(content []byte) []string {
 // worldRecheckProbes is the probe set admission rechecks a bound RunWorld with.
 // Tests replace it; production reads local state only.
 var worldRecheckProbes PreflightProbes
+
+// RequireVerifierWorld marks a prepared run as one whose prepare step binds a
+// prerequisite record. The shipped prepare path calls it BEFORE the stamp is
+// issued, so no closed stamp from that path is admissible without a bound
+// record. It is idempotent.
+func RequireVerifierWorld(home string) error {
+	r, err := verifierLoad(home)
+	if err != nil {
+		return err
+	}
+	if r.WorldRequired {
+		return nil
+	}
+	r.WorldRequired = true
+	return verifierSave(home, r)
+}
 
 // BindVerifierWorld persists w as the prepared run's prerequisite record. A
 // run already bound to a different record refuses: the record is admitted

@@ -163,4 +163,61 @@ func TestFlowWorldPreparePath(t *testing.T) {
 			t.Fatal("a prompt was emitted for a world that could not be recorded")
 		}
 	})
+
+	// A prepare whose world admission refuses retains the home for recovery. That
+	// retained run must not be admitted for rows or for Evidence while it has no
+	// record: absence of a record the prepare required is a refusal, not "nothing
+	// to recheck".
+	for _, tc := range []struct {
+		name, reason string
+		breakWorld   func(home string) error
+	}{
+		{"a held prepare leaves no admissible run", "environment hold: ", func(home string) error {
+			// A desk-tools pin for another platform only: the host runtime is unsupported.
+			pin := "desk-tools-plan9-mips v9.9.9 " + strings.Repeat("ab", 32) + "\n"
+			return os.WriteFile(filepath.Join(filepath.Dir(home), deskkit.AssayVersionsFile), []byte(pin), 0o600)
+		}},
+		{"a could-not-check prepare leaves no admissible run", "environment could-not-check: ", func(home string) error {
+			return os.RemoveAll(filepath.Join(filepath.Dir(home), "peer"))
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var attestErr error
+			home, _, rc, prompt := world50Try(t, func(o dispatchOpts, repo, home string) (string, error) {
+				if err := tc.breakWorld(home); err != nil {
+					return "", err
+				}
+				out, err := attestVerifierDispatch(o, repo, home)
+				attestErr = err
+				return out, err
+			})
+			if rc != deskkit.ExitUnverifiable || attestErr == nil || !strings.Contains(attestErr.Error(), tc.reason) {
+				t.Fatalf("the prepare was not refused as %q: rc=%d err=%v", tc.reason, rc, attestErr)
+			}
+			if _, err := os.Stat(emittedPathFor(prompt)); err == nil {
+				t.Fatal("a prompt was emitted for a world that could not be recorded")
+			}
+			const refusal = "no admitted prerequisite record"
+			if r, err := deskkit.CheckVerifierEvidence(home, allowedRepo, "spec.md"); err == nil || !strings.Contains(err.Error(), refusal) {
+				t.Fatalf("Evidence admission accepted a run with no admitted record: world=%v err=%v", r.World, err)
+			}
+			if r, err := deskkit.CheckVerifierAttestation(home, "spec.md"); err == nil || !strings.Contains(err.Error(), refusal) {
+				t.Fatalf("row admission accepted a run with no admitted record: world=%v err=%v", r.World, err)
+			}
+			if tc.reason != "environment hold: " {
+				return
+			}
+			// Once the world conforms, recovery re-admits and binds the same run.
+			if err := os.Remove(filepath.Join(filepath.Dir(home), deskkit.AssayVersionsFile)); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("DESK_LOOP", "the-desk") // recovery runs under the coordinator desk's custody
+			if err := cmdVerifierAttestation("--attest-verifier", []string{"--root", home}); err != nil {
+				t.Fatalf("recovery: %v", err)
+			}
+			if r, err := deskkit.CheckVerifierEvidence(home, allowedRepo, "spec.md"); err != nil || r.World == nil {
+				t.Fatalf("recovered run is not admissible with its record: world=%v err=%v", r.World, err)
+			}
+		})
+	}
 }

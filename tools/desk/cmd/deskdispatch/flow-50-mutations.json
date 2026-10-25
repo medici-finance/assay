@@ -24,6 +24,18 @@
       "file": "cmd/deskdispatch/verifierattestation.go",
       "old": "\treceipt, err := deskkit.AdmitAndBindVerifierWorld(home, runnercmds.Commands)\n\tif err != nil {\n\t\treturn \"\", err\n\t}",
       "new": "\treceipt, _ := deskkit.AdmitAndBindVerifierWorld(home, runnercmds.Commands)\n\tvar err error\n\t_ = err"
+    },
+    {
+      "name": "the dispatch prepare step does not mark the run as requiring a record",
+      "file": "cmd/deskdispatch/verifierattestation.go",
+      "old": "\tif err := deskkit.RequireVerifierWorld(home); err != nil {",
+      "new": "\tif err := error(nil); err != nil {"
+    },
+    {
+      "name": "admission accepts a marked run with no record",
+      "file": "internal/deskkit/verifierattestation.go",
+      "old": "\tif requireWorld && r.WorldRequired && r.World == nil {",
+      "new": "\tif requireWorld && r.WorldRequired && r.World == nil && false {"
     }
   ]
 }

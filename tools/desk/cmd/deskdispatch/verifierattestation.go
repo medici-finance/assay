@@ -50,6 +50,11 @@ func executeVerifier(mode string, o dispatchOpts) (err error) {
 	if mode == "--check-verifier" {
 		receipt, err = deskkit.CheckVerifierAttestation(o.root, o.brief)
 	} else {
+		// Recovery binds a record, so the run requires one before its stamp can
+		// complete: a recovery whose admission refuses leaves no admissible run.
+		if err = deskkit.RequireVerifierWorld(o.root); err != nil {
+			return err
+		}
 		receipt, err = deskkit.RecoverVerifierAttestation(o.root)
 		if err == nil {
 			// Recovery finishes the same prepare step, so it binds the same
@@ -127,6 +132,12 @@ func attestVerifierDispatch(o dispatchOpts, repo, home string) (string, error) {
 		}
 	}
 	if err := deskkit.PrepareVerifierAttestation(home, repo, brief, o.model, o.tier); err != nil {
+		return "", err
+	}
+	// Marked BEFORE the stamp is issued: if the admission below is held or
+	// could not check, the retained run has a closed stamp and no record, and
+	// row and Evidence admission refuse it rather than skip the recheck.
+	if err := deskkit.RequireVerifierWorld(home); err != nil {
 		return "", err
 	}
 	if _, err := deskkit.RecoverVerifierAttestation(home); err != nil {
