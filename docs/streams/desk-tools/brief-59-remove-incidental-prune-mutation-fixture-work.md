@@ -21,7 +21,7 @@ consumers:
   - "tools/desk/cmd/deskwt/prune-mutations.json: follow-up desk-tools/59 (this brief; flips to fixed-here when the implementation edits the manifest)"
 ---
 
-# Brief 54 — Remove incidental prune mutation fixture work
+# Brief 59 — Remove incidental prune mutation fixture work
 
 ## Context
 files: tools/desk/cmd/deskwt/prune-mutations.json, tools/desk/cmd/deskwt/pruneperf_test.go, tools/desk/cmd/deskwt/prune_test.go, tools/desk/cmd/deskwt/prunesingleton_test.go, changelog/muhar-prune-fixtures.md
