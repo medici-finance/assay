@@ -40,18 +40,41 @@ can be composed with both source variants.
   and unavailable observation coverage remain distinct.
 - Internal review reproduced padded LF/CRLF equality-bound lines being admitted;
   the raw-byte public decoder and native file splitter now retain those bytes.
-  Below/equal/above-limit regressions and both adapter mutations catch the defect.
+  Below/equal/above-limit regressions retain this boundary. Multi-line regressions also
+  keep valid records after an oversized LF/CRLF line, including multi-buffer and
+  unterminated oversized tails; each oversized line contributes one skip.
 - Duplicate/case aliases, late schema downgrade, malformed known facets, bounded
   unknown optional facets, source identity conflict and cross-schema collisions
   fail closed without exposing discarded extension names or payloads.
 - Shared reducer and per-record coverage reject integer overflow; exact maximum
   valid totals remain valid. Historical validator/control assertions remain.
 - Canonical local mutation baseline and distinct control are healthy: eleven new
-  codec/identity mutations, two raw-line adapter mutations, three overflow mutations,
-  eight retained v3 mutations and three retained command-report mutations are caught. No survivors or
+  codec/identity mutations, three raw-line adapter mutations, three overflow mutations,
+  eight retained v3 mutations and six command-report mutations are caught. No survivors or
   could-not-mutate are counted as passing. This is local harness qualification,
   not an assertion that every spec is enforced by the CI truth matrix.
 - Full shared-library and actual deskperf suites, race/vet, relevant adapter and
   cross-module CI-trigger checks, mutation anchors, repository lint and the
   committed test ledger are required before publication. Independent correctness,
   security and postmerge verification remain separate; Evidence is unchanged.
+
+## Review follow-up
+
+Correctness review 5643845827 at the original reader head requested changes for
+multi-line truncation and omitted command-view v4 exclusion counts. Both were
+reproduced before repair. The bounded splitter now drains an oversized line and
+resumes at its next LF without increasing the allocation bound; command text
+prints v4 duplicate, conflict and invalid counts. The shared reader also retains
+the published command-report repair from PR #4352, including its four regressions
+and two added mutation controls. Main's canonical forge adapter row and this
+reader's performance ownership row both survive the actual documentation conflict.
+
+Decode refusals, including over-bound lines, contribute to the file reader's
+`skipped` count, rather than the reducer's `Invalid` count. V4 request counters
+appear in the separate perf-v4 projections; the existing pooled and by-day forge
+counts do not include v4. They must not be read as all-schema provider totals.
+Command-view saturation and unavailable attribution under workflow filters remain
+nonblocking review observations; this repair does not change their semantics.
+
+The earlier codec/reducer fixture remains scoped to its measured implementation;
+no new whole-tool or selected-producer performance sample is claimed here.
