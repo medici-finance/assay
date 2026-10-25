@@ -197,9 +197,10 @@ No implementation defect found. Rows 1/3/4/7 owe the hermetic Linux witness (all
 VERIFY: BLOCKED
 ### Verification — 2026-09-30 (assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian)) — 2026-09-30 claude-opus-5-5-verifier
 
-Non-implementer verification on merged main b0088804294b8b68ad8d06f341e6f0fd9dd2637d, gate: model, all four risk answers no. First table: the `statusgen verifyrun --dry-run` execution witness, landed verbatim; it ran on Linux (golang:1.25-bookworm pinned by digest, `--network none`, `unshare --net` available), statusgen built in-container from a clone pinned to this SHA. Second table: the hand run.
+Non-implementer verification on merged main b0088804294b8b68ad8d06f341e6f0fd9dd2637d, gate: model, all four risk answers no. First table: the `statusgen verifyrun --dry-run` execution witness, landed verbatim except for its header separator line, which was restored on 2026-10-24 (see the Correction entries below); it ran on Linux (golang:1.25-bookworm pinned by digest, `--network none`, `unshare --net` available), statusgen built in-container from a clone pinned to this SHA. Second table: the hand run.
 
 | # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
 | 1 | `cd statusgen && go test -run TestPatterns ./...` | pass exit=0 | sha256:8a2302a2bbe5 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
 | 2 | `statusgen patterns --lint --root .; echo rc=$?` | pass exit=0 | sha256:e86054a2ccc7 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
 | 3 | `cd statusgen && go test -run TestPatternsEffectExceedsRoleIsProblem ./...` | pass exit=0 | sha256:900b07966263 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
@@ -243,7 +244,7 @@ Notes:
 VERIFY: BLOCKED
 ### Correction: 2026-09-30, assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian). VERIFY: BLOCKED
 
-- The first execution-witness table in the re-run above was transcribed without its header separator line, so a Markdown parser reads the header as a data row and shifts every witness row down by one. The same table is restated below, verbatim and unchanged except for the separator line. The verdict is unchanged.
+- The first execution-witness table in the re-run above was transcribed without its header separator line, so a Markdown parser reads the header as a data row and shifts every witness row down by one. The same table is restated below, verbatim and unchanged except for the separator line. The verdict is unchanged. On 2026-10-24 the separator line was also restored in the original table above (see the 2026-10-24 Correction entry), so the restatement below now duplicates it; it is kept as the record of this correction.
 
 **Execution witness** (restated):
 | # | Command | Result | Output | Date | Runner |
@@ -274,7 +275,7 @@ Runner is not the implementer. Detached worktree pinned to the merged head above
 | 8 | `statusgen --root . --lint; echo rc=$?` | rc=0 | exit 0, LINT: PASS / rc=0; 0 PROBLEM lines; NOTICE gotest-run-vacuous still names this brief's rows 1, 3, 4, 7 | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
 | 10 | `statusgen --consumers --brief graph-execution/02 --root .; echo rc=$?` | rc=0 on the authoring branch; exit 2 (could-not-check) on a fully merged main is acceptable and must be recorded as such, never as pass | COULD-NOT-CHECK as written: statusgen printed COULD-NOT-CHECK: assay:assay:graph-execution:02 is not in the diff against cf31c32418ba, rc=2 (the shell itself exits 0 because of the trailing echo). Sanctioned recipe (squash merge 5b384e52c checked out, --base 060980aa0f1a): exit 0, summary: 3 corroborated, 0 disproved, 1 unchecked; the unchecked entry is the out-of-scope desk-skill claim | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
 
-Execution witness (`statusgen verifyrun --brief <this brief> --dry-run`, statusgen v1.0.31, darwin host, nothing written): exit 2; 4 of 9 rows witnessed pass, 4 could-not-run, 1 fail.
+Execution witness (`statusgen verifyrun --brief docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md --dry-run`, statusgen v1.0.31, darwin host, nothing written): exit 2; 4 of 9 rows witnessed pass, 4 could-not-run, 1 fail.
 
 - Row 1, 3, 4, 7 (check:ci): could-not-run, exit=-, sha256:e3b0c44298fc. Reason printed: check:ci hermetic execution requires a network-off sandbox, unavailable on this host (unshare --net is a Linux facility, this host is darwin).
 - Row 2: pass exit=0, sha256:e86054a2ccc7 (identical to the 2026-09-30 hash).
@@ -546,7 +547,7 @@ Admission: deskdispatch --check-verifier exit 0 before any row ran, and again af
 
 Delivered code since the prior pass: git diff --stat 1f0b54e745d8..HEAD over the brief's delivered paths (the two pattern files, the schema document and JSON schema, spec README, the patterns source and tests, its fixtures, the topology derivation, topology.yaml, the main entry point, lifecycle doc and changelog fragment) lists one file: statusgen/main.go, 9 insertions and 1 deletion. That change adds the unrelated `context` subcommand and its name in the unknown-subcommand list. The patterns code, fixtures, schema and pattern files are unchanged.
 
-Tools: statusgen (with its verifyrun subcommand) built from this commit's own statusgen package into a scratch directory outside the home (`go build -o <scratch>/bin/statusgen .`, go 1.27.2 darwin/arm64), first on PATH for every row. Row 5 ran with a scratch venv python3 (Python 3.15.0, PyYAML 6.0.3, jsonschema 4.26.0) first on PATH. Host: darwin, git 2.56.0. KUBECONFIG=/dev/null; no live endpoint contacted.
+Tools: statusgen (with its verifyrun subcommand) built from this commit's own statusgen package into a scratch directory outside the home (`go build -o "$SCRATCH/bin/statusgen" .` with `SCRATCH` that directory, go 1.27.2 darwin/arm64), first on PATH for every row. Row 5 ran with a scratch venv python3 (Python 3.15.0, PyYAML 6.0.3, jsonschema 4.26.0) first on PATH. Host: darwin, git 2.56.0. KUBECONFIG=/dev/null; no live endpoint contacted.
 
 Witness: `statusgen verifyrun --brief docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md` in write mode at the home root, exit 2. The table below is that run's own output, copied unchanged, Runner cells included. `statusgen verifyrun --check` on the written table: exit 2, "5 pass, 0 fail, 4 could-not-run/missing (of 9 Verify rows); 0 author-added with no acceptance credit".
 
@@ -694,10 +695,26 @@ RISK-VALUE: DERIVED — patternRoleEffectPermissions worker = push, pr-open, com
 RISK-VALUE: NAMED, NOT DERIVED — implementation risk-input elevated = [review, verify], human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:17-18 — Task 1's example maps these to security-review and human-signoff gates, and the shipped pattern has neither node. Deriving the value needs a design ruling, still open at #1933.
 RISK-VALUE: DERIVED — topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:73-78 — equals the four apps: roles in topology.yaml (lines 237-249). Row 7, witnessed in the bracket above, pins the two together at this commit.
 RISK-VALUE: DERIVED — patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100 — the stream's fixed risk-class vocabulary from the brief's Context.
-RISK-VALUE: DERIVED — patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70 — Task 4's stated exit contract (0 clean, 1 on any PROBLEM, 2 could-not-check).
+RISK-VALUE: DERIVED — patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70 — Task 4's stated exit contract (0 clean, 1 on any PROBLEM, 2 when it cannot check).
 RISK-VALUE: reversible knob, ranked last, no derivation owed — budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
 
 **VERIFY: PASS** — 9 of 9 rows witnessed passing on merged main 385cb29e5682, 0 fail, 0 could-not-run; the check:ci rows 1, 3, 4 and 7 ran in a closed container-netns admission bracket. The risk-input design question stays routed at #1933.
+
+#### Correction — 2026-10-24, assay-verifier-app[bot] (on-behalf-of human:ian)
+
+Four shape-only edits, three to earlier entries and one to this entry, made so the flip's Evidence scan can key them. The driver ruled the edits allowed (https://github.com/medici-finance/assay/pull/4344#issuecomment-6389131147), with the tool fix to follow. No recorded result, count, digest or verdict changed. Each original span and its replacement:
+
+1. 2026-09-30 entry, first execution-witness table. Original: the header row `| # | Command | Result | Output | Date | Runner |` was followed directly by row 1, with no separator line. Replacement: the separator line `|---|---------|--------|--------|------|--------|` was inserted after the header. The entry's preamble and its 2026-09-30 Correction entry now say so.
+2. 2026-10-02 entry, execution witness line. Original: statusgen verifyrun --brief &lt;this brief&gt; --dry-run (in inline code; the angle brackets are written here as character references so this entry opens no element). Replacement: `statusgen verifyrun --brief docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md --dry-run`. The original entry recorded only the placeholder, so the replacement names the brief the placeholder stood for; it is not a record of the argument spelling that run used.
+3. 2026-10-22 entry, Tools line. Original: go build -o &lt;scratch&gt;/bin/statusgen . (in inline code, angle brackets written as character references). Replacement: `go build -o "$SCRATCH/bin/statusgen" .` with `SCRATCH` that directory.
+4. This 2026-10-24 entry, the RISK-VALUE line for patternsExitClean (the second-to-last RISK-VALUE line before the verdict), which is outside the admission bracket's span (the bracket's witness digest is unchanged). Original, then replacement, quoted exactly in the block below.
+
+```text
+original:    Task 4's stated exit contract (0 clean, 1 on any PROBLEM, 2 could-not-check).
+replacement: Task 4's stated exit contract (0 clean, 1 on any PROBLEM, 2 when it cannot check).
+```
+
+The 2026-10-24 verdict above stands as recorded.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
