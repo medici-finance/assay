@@ -124,7 +124,10 @@ func runVerifyclosure(args []string, stdout, stderr *os.File) int {
 	}
 	findings, err := checkSelectedClosure(root, key, br.Status, br.Verified, art)
 	if err != nil {
-		fmt.Fprintf(stdout, "%s: NOT accepted — %v\n", key, err)
+		// Preserve this command's protected-table refusal vocabulary while the
+		// shared validator retains the explicit brief-check context.
+		detail := strings.TrimPrefix(err.Error(), "verified outcome requires well-formed Verify and Evidence sections: ")
+		fmt.Fprintf(stdout, "%s: NOT accepted — %s\n", key, detail)
 		return verifyclosureExitNotAccepted
 	}
 
