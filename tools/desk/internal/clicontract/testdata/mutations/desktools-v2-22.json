@@ -1,0 +1,53 @@
+{
+  "test": "go test -timeout 300s -count=1 ./cmd/deskwt -run '^(TestCLIHelpOffline|TestCLIConfigFlow|TestCLILegacyForms|TestCLILifecycleParity)$'",
+  "control": {
+    "name": "CONTROL: usage exit is wrong",
+    "file": "cmd/deskwt/cli.go",
+    "old": "VersionTemplate: \"{{.Version}}\\n\", GoFlagCompat: true,",
+    "new": "VersionTemplate: \"{{.Version}}\\n\", UsageExit: 1, GoFlagCompat: true,"
+  },
+  "mutations": [
+    {
+      "name": "help runs after a configuration read",
+      "file": "cmd/deskwt/cli.go",
+      "old": "b := wtBindings()",
+      "new": "if env.before != nil {\n\t\t_ = env.before()\n\t}\n\tb := wtBindings()"
+    },
+    {
+      "name": "undeclared environment key binds prune --repo",
+      "file": "cmd/deskwt/cli.go",
+      "old": "str(\"repo\", \"\", \"run against this repo root instead of the current directory\"),",
+      "new": "{Key: \"repo\", Flag: \"repo\", Kind: cli.String, Default: \"\", Env: []string{\"DESKWT_REPO\"}, Usage: \"run against this repo root instead of the current directory\"},"
+    },
+    {
+      "name": "single-dash legacy flag form dropped",
+      "file": "cmd/deskwt/cli.go",
+      "old": "GoFlagCompat: true,",
+      "new": "GoFlagCompat: false,"
+    },
+    {
+      "name": "maintain objects command removed",
+      "file": "cmd/deskwt/cli.go",
+      "old": "maintain.AddCommand(verb(\"objects\",",
+      "new": "_ = (verb(\"objects\","
+    },
+    {
+      "name": "maintain --apply opt-in implied",
+      "file": "cmd/deskwt/cli.go",
+      "old": "return wtCall{maintain: maintainOpts{repo: v.String(\"repo\"), apply: v.Bool(\"apply\"),",
+      "new": "return wtCall{maintain: maintainOpts{repo: v.String(\"repo\"), apply: true,"
+    },
+    {
+      "name": "maintenance lock taken at parse time",
+      "file": "cmd/deskwt/cli.go",
+      "old": "b := wtBindings()",
+      "new": "for i, a := range argv {\n\t\tif a == \"--repo\" && i+1 < len(argv) {\n\t\t\tif l, _, e := maintenanceLock(argv[i+1]+\"/.git\", time.Hour); e == nil && l != nil {\n\t\t\t\t_ = l.Close()\n\t\t\t}\n\t\t}\n\t}\n\tb := wtBindings()"
+    },
+    {
+      "name": "nested maintain objects shape guard dropped",
+      "file": "cmd/deskwt/cli.go",
+      "old": "if path == \"objects\" && !nestedObjects(argv) {",
+      "new": "if false {"
+    }
+  ]
+}
