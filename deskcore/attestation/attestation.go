@@ -101,7 +101,7 @@ func TargetProblem(present, isPR, authority bool, title, body, wantTitle, wantBo
 	case isPR:
 		return "run record is a pull request"
 	case !authority:
-		return "run record is not dispatcher-authored"
+		return "run record author is not the dispatcher"
 	case title != wantTitle:
 		return "run record title differs from its binding"
 	case body != wantBody:

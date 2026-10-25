@@ -187,15 +187,3 @@ var comments = regexp.MustCompile(`(?s)<!--.*?(?:-->|$)`)
 func HasContent(section string) bool {
 	return strings.TrimSpace(comments.ReplaceAllString(section, "")) != ""
 }
-
-// VerifiedStampRE is the canonical dated-runner grammar used by lint and explicit outcomes.
-var VerifiedStampRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \S`)
-
-func HasHumanReviewer(stamp string) bool {
-	for _, tok := range strings.Fields(stamp) {
-		if strings.HasPrefix(tok, "human:") {
-			return true
-		}
-	}
-	return false
-}

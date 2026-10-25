@@ -26,3 +26,12 @@ func TestSectionConsumers(t *testing.T) {
 		}
 	}
 }
+
+func TestCommentContentBoundary(t *testing.T) {
+	if HasContent("<!-- unfinished\nnot visible") {
+		t.Fatal("unterminated comment counted as content")
+	}
+	if !HasContent("<!-- closed -->\nvisible") {
+		t.Fatal("visible content lost")
+	}
+}

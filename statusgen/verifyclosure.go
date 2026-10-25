@@ -35,6 +35,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/medici-finance/assay/statusgen/evaluation"
 	"os"
 	"strings"
 )
@@ -124,7 +125,12 @@ func runVerifyclosure(args []string, stdout, stderr *os.File) int {
 	}
 	findings, err := checkSelectedClosure(root, key, br.Status, br.Verified, art)
 	if err != nil {
-		fmt.Fprintf(stdout, "%s: NOT accepted — %v\n", key, err)
+		var structural *evaluation.ClosureStructureError
+		if errors.As(err, &structural) {
+			fmt.Fprintf(stdout, "%s: NOT accepted — %s\n", key, structural.Detail)
+		} else {
+			fmt.Fprintf(stdout, "%s: NOT accepted — %v\n", key, err)
+		}
 		return verifyclosureExitNotAccepted
 	}
 

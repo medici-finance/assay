@@ -2,9 +2,30 @@ package evaluation
 
 import (
 	"fmt"
-	"github.com/medici-finance/assay/statusgen/briefdoc"
+	"regexp"
 	"strings"
 )
+
+// VerifiedStampPattern is the one dated-runner grammar used by all closure adapters.
+const VerifiedStampPattern = `^\d{4}-\d{2}-\d{2} \S`
+
+var verifiedStampRE = regexp.MustCompile(VerifiedStampPattern)
+
+func HasHumanReviewer(stamp string) bool {
+	for _, tok := range strings.Fields(stamp) {
+		if strings.HasPrefix(tok, "human:") {
+			return true
+		}
+	}
+	return false
+}
+
+// ClosureStructureError retains the underlying parser refusal for CLI projections.
+type ClosureStructureError struct{ Detail string }
+
+func (e *ClosureStructureError) Error() string {
+	return "verified outcome requires well-formed Verify and Evidence sections: " + e.Detail
+}
 
 // ClosureClaim is the supplied current witness judgment for one applicable row.
 type ClosureClaim struct{ ID, State, Detail string }
@@ -21,7 +42,7 @@ func ValidateSelectedStamp(status, stamp string) error {
 	if status != "verified" && status != "done" {
 		return fmt.Errorf("verified outcome requires status verified or done, got %q", status)
 	}
-	if !briefdoc.VerifiedStampRE.MatchString(stamp) {
+	if !verifiedStampRE.MatchString(stamp) {
 		return fmt.Errorf("verified outcome requires a dated runner in the Verified cell (YYYY-MM-DD <runner>)")
 	}
 	return nil
@@ -31,7 +52,7 @@ func ValidateSelectedClosure(s SelectedClosure) error {
 		return e
 	}
 	if s.Malformed != "" {
-		return fmt.Errorf("verified outcome requires well-formed Verify and Evidence sections: %s", s.Malformed)
+		return &ClosureStructureError{Detail: s.Malformed}
 	}
 	applicable := 0
 	for _, f := range s.Claims {
@@ -42,7 +63,7 @@ func ValidateSelectedClosure(s SelectedClosure) error {
 	if applicable == 0 {
 		return fmt.Errorf("verified outcome requires Verify rows with passing execution witnesses")
 	}
-	if !briefdoc.HasHumanReviewer(s.Stamp) && len(s.HumanRows) > 0 {
+	if !HasHumanReviewer(s.Stamp) && len(s.HumanRows) > 0 {
 		return fmt.Errorf("verified outcome: Verify row %s is classed gate:human but the Verified cell %q names no human:<name>", s.HumanRows[0], s.Stamp)
 	}
 	var failures []string

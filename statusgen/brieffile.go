@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/medici-finance/assay/statusgen/briefdoc"
+	"github.com/medici-finance/assay/statusgen/evaluation"
 
 	"crypto/sha256"
 	"fmt"
@@ -1326,7 +1327,7 @@ func evidenceHasContent(section string) bool { return briefdoc.HasContent(sectio
 // hasHumanReviewer reports whether a Reviewed-column value names a human — a
 // whitespace-separated token with the "human:" prefix (e.g. "human:alex"). A tag
 // that merely contains the substring (e.g. "superhuman:x") does NOT count.
-func hasHumanReviewer(reviewed string) bool { return briefdoc.HasHumanReviewer(reviewed) }
+func hasHumanReviewer(reviewed string) bool { return evaluation.HasHumanReviewer(reviewed) }
 
 // verifyTableHasRow reports whether a `## Verify` section body contains at least
 // one table data row whose Command and Expect cells are both non-empty. It
