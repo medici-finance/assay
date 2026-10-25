@@ -36,7 +36,9 @@ type fakeRepo struct {
 	expectAt map[string]string // VerifyExpectAt answers, keyed by revision
 	// additions, when set, replaces the computed WitnessAdditions answer.
 	additions func([]WitnessAddition) []WitnessAddition
-	seq       int
+	// noFirstParents makes FirstParents report that it could not read.
+	noFirstParents bool
+	seq            int
 	// reads counts the batched v2 port reads (CheckAttr, CatObjects).
 	reads int
 }
@@ -252,6 +254,9 @@ func (f *fakeRepo) WitnessAdditions(rev string) ([]WitnessAddition, bool) {
 }
 
 func (f *fakeRepo) FirstParents(tip string) ([]string, bool) {
+	if f.noFirstParents {
+		return nil, false
+	}
 	var out []string
 	for id := tip; id != ""; {
 		c, ok := f.commits[id]

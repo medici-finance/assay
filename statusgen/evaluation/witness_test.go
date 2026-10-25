@@ -423,6 +423,23 @@ func TestWitnessV2CRVerified(t *testing.T) {
 				c.parents = []string{fx.featureID, fx.base}
 			}
 		}, gap: GapCRUnverified},
+		{name: "a merge whose first parent already holds the record, and so does the second", mut: func(fx *v2fx) {
+			// The adding commit keeps a merge subject and two parents, and both
+			// parents hold the record: only the first-parent test refuses it.
+			fx.refs = func(fx *v2fx) {
+				fx.repo.additions = func(adds []WitnessAddition) []WitnessAddition {
+					for i := range adds {
+						if adds[i].Commit == fx.landing {
+							adds[i].Parents = []string{fx.featureID, fx.featureID}
+						}
+					}
+					return adds
+				}
+			}
+		}, gap: GapCRUnverified, has: []string{"first parent"}},
+		{name: "the default branch's first-parent history cannot be read", mut: func(fx *v2fx) {
+			fx.refs = func(fx *v2fx) { fx.repo.noFirstParents = true }
+		}, gap: GapUnestablished, has: []string{"first-parent history could not be read"}},
 		{name: "a merge whose second parent lacks the record", mut: func(fx *v2fx) { fx.evilMerge = true }, gap: GapCRUnverified, has: []string{"second parent"}},
 		{name: "a merge-style subject on a feature branch, not the default branch", mut: func(fx *v2fx) {
 			fx.refs = func(fx *v2fx) { fx.repo.refs["refs/remotes/origin/HEAD"] = fx.base }
@@ -525,6 +542,12 @@ func TestWitnessV2InputSetEqual(t *testing.T) {
 		{name: "an implicit key no longer required", mut: func(fx *v2fx) {
 			fx.rec = func(r *WitnessRecord) { r.Implicit["other/go.sum"] = fakeBlobID("x") }
 		}, gap: GapInputSetChanged, has: []string{"other/go.sum"}},
+		{name: "an attribute entry missing for a recorded input", mut: func(fx *v2fx) {
+			fx.rec = func(r *WitnessRecord) { delete(r.Attributes, "tools/x/pkg/a.go") }
+		}, gap: GapInputUndeclaredAtRecord, has: []string{"tools/x/pkg/a.go"}},
+		{name: "an attribute entry for a path that is no input", mut: func(fx *v2fx) {
+			fx.rec = func(r *WitnessRecord) { r.Attributes["tools/x/pkg/zzz.go"] = AttributeDigest(nil) }
+		}, gap: GapInputSetChanged, has: []string{"tools/x/pkg/zzz.go"}},
 		{name: "an input recorded absent", mut: func(fx *v2fx) {
 			fx.rec = func(r *WitnessRecord) { r.Inputs["tools/x/pkg/a.go"] = WitnessAbsent }
 		}, gap: GapInputAbsent, has: []string{"tools/x/pkg/a.go"}},

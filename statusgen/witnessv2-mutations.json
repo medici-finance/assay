@@ -1,0 +1,389 @@
+{
+ "test": "go test . ./evaluation -run 'Witness|GitV2|Coverage|TreeDiff' -skip 'WitnessSkewOldReader|WitnessV1Unchanged|WitnessKeyRefusals|WitnessDigestOneOwner|WitnessReaderCensus|FixtureBriefMissingWitness' -count=1 -timeout 280s",
+ "control": {
+  "name": "CONTROL \u2014 the v2 judge never compares a recorded blob digest (a changed input still releases)",
+  "file": "evaluation/witness.go",
+  "old": "if ix.byPath[p].OID != recorded(p) {",
+  "new": "if false && ix.byPath[p].OID != recorded(p) {"
+ },
+ "mutations": [
+  {
+   "name": "record id check dropped (a record under another canonical id is judged)",
+   "file": "evaluation/witness.go",
+   "old": "if id != cell.RecordID {",
+   "new": "if false && id != cell.RecordID {"
+  },
+  {
+   "name": "replay check dropped (another brief's or row's record releases this row)",
+   "file": "evaluation/witness.go",
+   "old": "if rec.Brief != sc.briefID || rec.Row != r.ID {",
+   "new": "if false && (rec.Brief != sc.briefID || rec.Row != r.ID) {"
+  },
+  {
+   "name": "citing row Result/output/Date no longer compared with the record",
+   "file": "evaluation/witness.go",
+   "old": "if strings.TrimSpace(w.Result) != rec.Result || strings.TrimSpace(w.Output) != rec.OutputSHA256 || strings.TrimSpace(w.Date) != rec.Date {",
+   "new": "if false {"
+  },
+  {
+   "name": "citing Evidence Command cell no longer bound to the record",
+   "file": "evaluation/witness.go",
+   "old": "if WitnessTextDigest(w.Command) != rec.CommandSHA256 {",
+   "new": "if false {"
+  },
+  {
+   "name": "runner identity no longer compared",
+   "file": "evaluation/witness.go",
+   "old": "if rec.Runner != cell.Identity {",
+   "new": "if false {"
+  },
+  {
+   "name": "Verify Command change no longer detected",
+   "file": "evaluation/witness.go",
+   "old": "if WitnessTextDigest(r.Command) != rec.CommandSHA256 {",
+   "new": "if false {"
+  },
+  {
+   "name": "Verify Expect change no longer detected",
+   "file": "evaluation/witness.go",
+   "old": "if WitnessTextDigest(r.Expect) != rec.ExpectSHA256 {",
+   "new": "if false {"
+  },
+  {
+   "name": "Verify Class change no longer detected",
+   "file": "evaluation/witness.go",
+   "old": "if WitnessTextDigest(r.ClassCell) != rec.ClassSHA256 {",
+   "new": "if false {"
+  },
+  {
+   "name": "acceptance-revision Expect comparison dropped",
+   "file": "evaluation/witness.go",
+   "old": "if NormalizeCommandText(histExpect) != NormalizeCommandText(r.Expect) {",
+   "new": "if false && NormalizeCommandText(histExpect) != NormalizeCommandText(r.Expect) {"
+  },
+  {
+   "name": "recorded failure releases",
+   "file": "evaluation/witness.go",
+   "old": "\tcase StateFail:\n\t\treturn fail(rev, GapOutcomeFail,",
+   "new": "\tcase StateFail:\n\t\treturn ResultPass, \"\", rev\n\t\treturn fail(rev, GapOutcomeFail,"
+  },
+  {
+   "name": "recorded could-not-run releases",
+   "file": "evaluation/witness.go",
+   "old": "\tcase StateCouldNotRun:\n\t\treturn fail(rev, GapOutcomeCouldNotRun,",
+   "new": "\tcase StateCouldNotRun:\n\t\treturn ResultPass, \"\", rev\n\t\treturn fail(rev, GapOutcomeCouldNotRun,"
+  },
+  {
+   "name": "prose-led row releases",
+   "file": "evaluation/witness.go",
+   "old": "if r.ProseLed != \"\" {",
+   "new": "if false && r.ProseLed != \"\" {"
+  },
+  {
+   "name": "+env row releases",
+   "file": "evaluation/witness.go",
+   "old": "if hasObligation(r, ObligationEnv) {",
+   "new": "if false && hasObligation(r, ObligationEnv) {"
+  },
+  {
+   "name": "host run whose command names a network tool releases",
+   "file": "evaluation/witness.go",
+   "old": "\t\t\tif network {\n\t\t\t\treturn fail(rev, GapRerunOwed, \"a host or back-filled run whose command names a network tool\")",
+   "new": "\t\t\tif false && network {\n\t\t\t\treturn fail(rev, GapRerunOwed, \"a host or back-filled run whose command names a network tool\")"
+  },
+  {
+   "name": "unreadable host command releases",
+   "file": "evaluation/witness.go",
+   "old": "\t\t\tif !readable {\n\t\t\t\treturn fail(rev, GapRerunOwed, \"a host or back-filled run whose command the library cannot read\")",
+   "new": "\t\t\tif false && !readable {\n\t\t\t\treturn fail(rev, GapRerunOwed, \"a host or back-filled run whose command the library cannot read\")"
+  },
+  {
+   "name": "container-only policy admits a host run",
+   "file": "evaluation/witness.go",
+   "old": "\tcase WitnessPolicyContainerOnly, WitnessPolicyWholeTreeOnly:\n\t\tif !container {",
+   "new": "\tcase WitnessPolicyContainerOnly, WitnessPolicyWholeTreeOnly:\n\t\tif false && !container {"
+  },
+  {
+   "name": "environment dependency drift ignored",
+   "file": "evaluation/witness.go",
+   "old": "if d.Recorded != d.Current {",
+   "new": "if false && d.Recorded != d.Current {"
+  },
+  {
+   "name": "scope mismatch (declared vs whole-tree) ignored",
+   "file": "evaluation/witness.go",
+   "old": "if rec.Scope != wantScope {",
+   "new": "if false && rec.Scope != wantScope {"
+  },
+  {
+   "name": "input key set no longer compared",
+   "file": "evaluation/witness.go",
+   "old": "if gap, p := compareKeySets(rs.inputs, rec.Inputs); gap != \"\" {",
+   "new": "if gap, p := \"\", \"\"; gap != \"\" {"
+  },
+  {
+   "name": "implicit key set no longer compared",
+   "file": "evaluation/witness.go",
+   "old": "if gap, p := compareKeySets(rs.implicit, rec.Implicit); gap != \"\" {",
+   "new": "if gap, p := \"\", \"\"; gap != \"\" {"
+  },
+  {
+   "name": "attribute key set no longer compared",
+   "file": "evaluation/witness.go",
+   "old": "if gap, p := compareKeySets(sortedKeysOf(rec.Inputs), rec.Attributes); gap != \"\" {",
+   "new": "if gap, p := \"\", \"\"; gap != \"\" {"
+  },
+  {
+   "name": "key sets compared as a subset (a key that left the required set is not seen)",
+   "file": "evaluation/witness.go",
+   "old": "\tfor _, p := range sortedKeysOf(recorded) {\n\t\tif !containsSorted(required, p) {\n\t\t\treturn GapInputSetChanged, p\n\t\t}\n\t}\n",
+   "new": ""
+  },
+  {
+   "name": "literal-path bound dropped (a Command may read outside inputs:)",
+   "file": "evaluation/witness.go",
+   "old": "\t\tif len(viol) > 0 {\n\t\t\treturn fail(rev, GapInputUndeclared,",
+   "new": "\t\tif false && len(viol) > 0 {\n\t\t\treturn fail(rev, GapInputUndeclared,"
+  },
+  {
+   "name": "dirty path outside the required set ignored",
+   "file": "evaluation/witness.go",
+   "old": "if !rs.contains(p) {",
+   "new": "if false && !rs.contains(p) {"
+  },
+  {
+   "name": "recorded-absent input ignored",
+   "file": "evaluation/witness.go",
+   "old": "if recorded(p) == WitnessAbsent {",
+   "new": "if false && recorded(p) == WitnessAbsent {"
+  },
+  {
+   "name": "input missing at the item's revision ignored",
+   "file": "evaluation/witness.go",
+   "old": "if _, ok := ix.byPath[p]; !ok {\n\t\t\treturn fail(rev, GapInputAbsent, \"%s (missing at the item's revision)\", p)",
+   "new": "if false {\n\t\t\treturn fail(rev, GapInputAbsent, \"%s (missing at the item's revision)\", p)"
+  },
+  {
+   "name": "symlink input read through",
+   "file": "evaluation/witness.go",
+   "old": "if ix.byPath[p].Mode == \"120000\" {",
+   "new": "if false && ix.byPath[p].Mode == \"120000\" {"
+  },
+  {
+   "name": "submodule input treated as content",
+   "file": "evaluation/witness.go",
+   "old": "if ix.byPath[p].Mode == \"160000\" {",
+   "new": "if false && ix.byPath[p].Mode == \"160000\" {"
+  },
+  {
+   "name": "input blob digest no longer compared",
+   "file": "evaluation/witness.go",
+   "old": "if ix.byPath[p].OID != recorded(p) {",
+   "new": "if false && ix.byPath[p].OID != recorded(p) {"
+  },
+  {
+   "name": "tool pin drift ignored",
+   "file": "evaluation/witness.go",
+   "old": "if pin != got {",
+   "new": "if false && pin != got {"
+  },
+  {
+   "name": "missing recorded tool ignored",
+   "file": "evaluation/witness.go",
+   "old": "if !ok || got == \"\" {\n\t\t\treturn fail(rev, GapRerunOwed, \"the record does not name its %s\", k)",
+   "new": "if false {\n\t\t\treturn fail(rev, GapRerunOwed, \"the record does not name its %s\", k)"
+  },
+  {
+   "name": "change request naming mismatch ignored",
+   "file": "evaluation/witness.go",
+   "old": "if named != n {",
+   "new": "if false && named != n {"
+  },
+  {
+   "name": "landing parent count not checked",
+   "file": "evaluation/witness.go",
+   "old": "if len(add.Parents) != form.parents {",
+   "new": "if false && len(add.Parents) != form.parents {"
+  },
+  {
+   "name": "merge landing: first parent already holding the record accepted",
+   "file": "evaluation/witness.go",
+   "old": "if o, _ := x.object(revPath(add.Parents[0], recPath)); o != nil {",
+   "new": "if o, _ := x.object(revPath(add.Parents[0], recPath)); false && o != nil {"
+  },
+  {
+   "name": "merge landing: record absent from the second parent accepted",
+   "file": "evaluation/witness.go",
+   "old": "if o, _ := x.object(revPath(add.Parents[1], recPath)); o == nil {",
+   "new": "if o, _ := x.object(revPath(add.Parents[1], recPath)); false && o == nil {"
+  },
+  {
+   "name": "unrecognised landing form accepted without the forge",
+   "file": "evaluation/witness.go",
+   "old": "} else if !forgeConfirmed {",
+   "new": "} else if false && !forgeConfirmed {"
+  },
+  {
+   "name": "forge-reported landing commit not compared",
+   "file": "evaluation/witness.go",
+   "old": "if !merged || landed != add.Commit {",
+   "new": "if !merged {"
+  },
+  {
+   "name": "citing brief change not required of the landing commit",
+   "file": "evaluation/witness.go",
+   "old": "if sc.briefRel == \"\" || before == after || (before != nil && after != nil && before.OID == after.OID) {",
+   "new": "if false && (sc.briefRel == \"\" || before == after || (before != nil && after != nil && before.OID == after.OID)) {"
+  },
+  {
+   "name": "landing commit need not be on the default branch's first-parent history",
+   "file": "evaluation/witness.go",
+   "old": "\tif !on {\n\t\treturn GapCRUnverified,",
+   "new": "\tif false && !on {\n\t\treturn GapCRUnverified,"
+  },
+  {
+   "name": "unreadable default-branch history treated as established",
+   "file": "evaluation/witness.go",
+   "old": "\tif !ok {\n\t\treturn GapUnestablished, gapf(GapUnestablished, \"the default branch's first-parent history could not be read\")",
+   "new": "\tif false && !ok {\n\t\treturn GapUnestablished, gapf(GapUnestablished, \"the default branch's first-parent history could not be read\")"
+  },
+  {
+   "name": "shallow landing parent accepted",
+   "file": "evaluation/witness.go",
+   "old": "if o, _ := x.object(p); o == nil || o.Type != \"commit\" {",
+   "new": "if o, _ := x.object(p); false && (o == nil || o.Type != \"commit\") {"
+  },
+  {
+   "name": "malformed informational.commit reported as the revision",
+   "file": "evaluation/witness.go",
+   "old": "\tif objectIDRe.MatchString(rec.Informational.Commit) {\n\t\treturn rec.Informational.Commit",
+   "new": "\tif true {\n\t\treturn rec.Informational.Commit"
+  },
+  {
+   "name": "inputs: list-item prefix test reversed",
+   "file": "evaluation/witness.go",
+   "old": "if !strings.HasPrefix(t, \"- \") && !strings.HasPrefix(t, \"* \") {",
+   "new": "if !strings.HasPrefix(\"- \", t) && !strings.HasPrefix(\"* \", t) {"
+  },
+  {
+   "name": "inputs: bookkeeping filter reads the reversed prefix (review F2)",
+   "file": "evaluation/witness.go",
+   "old": "if isBoardBookkeepingPath(tok) || isBoardBookkeepingPath(strings.TrimSuffix(tok, \"/\")) {",
+   "new": "if strings.HasPrefix(\"docs/streams/\", tok) || isBoardBookkeepingPath(tok) || isBoardBookkeepingPath(strings.TrimSuffix(tok, \"/\")) {"
+  },
+  {
+   "name": "inputs: unclosed backtick accepted",
+   "file": "evaluation/witness.go",
+   "old": "if strings.Count(v, \"`\")%2 != 0 {",
+   "new": "if false {"
+  },
+  {
+   "name": "inputs: bookkeeping entry kept in the set",
+   "file": "evaluation/witness.go",
+   "old": "if isBoardBookkeepingPath(tok) || isBoardBookkeepingPath(strings.TrimSuffix(tok, \"/\")) {",
+   "new": "if false {"
+  },
+  {
+   "name": "network tool judged on the first word only (F3)",
+   "file": "evaluation/witness.go",
+   "old": "\tfor _, w := range words {\n\t\tif strings.Contains(w.text, \"://\") {",
+   "new": "\tfor _, w := range words[:1] {\n\t\tif strings.Contains(w.text, \"://\") {"
+  },
+  {
+   "name": "network wrapper not looked through",
+   "file": "evaluation/witness.go",
+   "old": "\t\tspec, wrapped := commandWrappers[name]\n\t\tif !wrapped {\n\t\t\tbreak",
+   "new": "\t\tspec, wrapped := commandWrappers[name]\n\t\tif true || !wrapped {\n\t\t\tbreak"
+  },
+  {
+   "name": "literal path: a path climbing out of its cd directory is skipped",
+   "file": "evaluation/witness.go",
+   "old": "if p == \".\" || p == \"..\" || strings.HasPrefix(p, \"../\") ||",
+   "new": "if p == \".\" || p == \"..\" || strings.Contains(w, \"..\") || strings.HasPrefix(p, \"../\") ||"
+  },
+  {
+   "name": "declared directory does not cover a path under it",
+   "file": "evaluation/witness.go",
+   "old": "if strings.HasPrefix(p+\"/\", d) || (isDir && strings.HasPrefix(d, p+\"/\")) {",
+   "new": "if p+\"/\" == d || (isDir && strings.HasPrefix(d, p+\"/\")) {"
+  },
+  {
+   "name": "module files beside a declared input are not implicit inputs",
+   "file": "evaluation/witness.go",
+   "old": "\t\t\t\timplicit[prefix+name] = true\n\t\t\t}\n\t\t}\n\t\tfor _, p := range ix.under(prefix) {",
+   "new": "\t\t\t}\n\t\t}\n\t\tfor _, p := range ix.under(prefix) {"
+  },
+  {
+   "name": "path clean check dropped (a non-canonical path is accepted)",
+   "file": "evaluation/witness.go",
+   "old": "case pathpkg.Clean(p) != p || p == \".\" || p == \"..\" || strings.HasPrefix(p, \"../\"):",
+   "new": "case false:"
+  },
+  {
+   "name": "backslash path accepted",
+   "file": "evaluation/witness.go",
+   "old": "case p == \"\" || strings.HasPrefix(p, \"/\") || strings.Contains(p, \"\\\\\"):",
+   "new": "case p == \"\" || strings.HasPrefix(p, \"/\"):"
+  },
+  {
+   "name": "v2 dispatch placed after the v1 Command check",
+   "file": "evaluation/coverage.go",
+   "old": "\tswitch cell := witnessSchemaOf(latest); cell.Schema {\n\tcase WitnessSchemaV2:\n\t\treturn x.judgeWitnessV2(scope, r, latest, cell, targetRevision, acceptanceRevision)",
+   "new": "\tswitch cell := witnessSchemaOf(latest); cell.Schema {\n\tcase WitnessSchemaV2:\n\t\tif NormalizeCommandText(latest.Command) != NormalizeCommandText(r.Command) {\n\t\t\treturn ResultError, \"v1 check reached a v2 cell\", \"\"\n\t\t}\n\t\treturn x.judgeWitnessV2(scope, r, latest, cell, targetRevision, acceptanceRevision)"
+  },
+  {
+   "name": "unknown witness schema treated as v1",
+   "file": "evaluation/coverage.go",
+   "old": "\tcase WitnessSchemaUnknown:\n\t\treturn ResultCouldNotCheck, gapf(GapSchemaUnknown,",
+   "new": "\tcase WitnessSchemaUnknown + 100:\n\t\treturn ResultCouldNotCheck, gapf(GapSchemaUnknown,"
+  },
+  {
+   "name": "replace objects honoured on the witness reads (both layers removed)",
+   "file": "coverage_witness.go",
+   "old": "\tcmd := coverageGit(root, append([]string{\"-c\", \"core.attributesFile=\" + os.DevNull, \"-c\", \"core.quotePath=false\"}, args...)...)\n\tcmd.Env = append(cmd.Env, \"GIT_NO_REPLACE_OBJECTS=1\", \"GIT_ATTR_NOSYSTEM=1\")",
+   "new": "\tcmd := historyGitEnv(exec.Command(\"git\", append([]string{\"-C\", root, \"-c\", \"core.attributesFile=\" + os.DevNull, \"-c\", \"core.quotePath=false\"}, args...)...))\n\tcmd.Env = append(cmd.Env, \"GIT_ATTR_NOSYSTEM=1\")"
+  },
+  {
+   "name": "replace-ref listing failure read as an empty listing",
+   "file": "coverage_witness.go",
+   "old": "out, err := witnessGit(r.root, \"for-each-ref\", \"--format=%(refname)\", \"refs/replace/\").Output()\n\tif err != nil {\n\t\treturn nil, false\n\t}",
+   "new": "out, err := witnessGit(r.root, \"for-each-ref\", \"--format=%(refname)\", \"refs/replace/\").Output()\n\tif err != nil {\n\t\treturn map[string]bool{}, true\n\t}"
+  },
+  {
+   "name": "tree listing failure read as an empty listing",
+   "file": "coverage_witness.go",
+   "old": "out, err := witnessGit(r.root, \"ls-tree\", \"-r\", \"-z\", \"--full-tree\", \"--end-of-options\", rev).Output()\n\tif err != nil {\n\t\treturn nil, false\n\t}",
+   "new": "out, err := witnessGit(r.root, \"ls-tree\", \"-r\", \"-z\", \"--full-tree\", \"--end-of-options\", rev).Output()\n\tif err != nil {\n\t\treturn nil, true\n\t}"
+  },
+  {
+   "name": "implementerAttributed reads the text after the @ marker",
+   "file": "attribution.go",
+   "old": "\treturn strings.Contains(strings.ToLower(runnerCell), \"implementer\")",
+   "new": "\treturn strings.Contains(strings.ToLower(runnerCell[strings.Index(runnerCell, \"@\")+1:]), \"implementer\")"
+  },
+  {
+   "name": "evidenceHasIndependentRow reads the text after the @ marker",
+   "file": "attribution.go",
+   "old": "\t\trunner := strings.ToLower(strings.TrimSpace(cells[idx]))\n\t\tif runner == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\tif !implementerAttributed(runner) {",
+   "new": "\t\trunner := strings.ToLower(strings.TrimSpace(cells[idx]))\n\t\tif runner == \"\" {\n\t\t\tcontinue\n\t\t}\n\t\tif !implementerAttributed(runner[strings.Index(runner, \"@\")+1:]) {"
+  },
+  {
+   "name": "belowFloorRunner reads the text after the @ marker",
+   "file": "attribution.go",
+   "old": "\tsegs := strings.FieldsFunc(strings.ToLower(token), func(r rune) bool {",
+   "new": "\tsegs := strings.FieldsFunc(strings.ToLower(token[strings.Index(token, \"@\")+1:]), func(r rune) bool {"
+  },
+  {
+   "name": "humanRunnerName reads the text after the @ marker",
+   "file": "attribution.go",
+   "old": "\tif !strings.HasPrefix(strings.ToLower(token), prefix) {\n\t\treturn \"\", false\n\t}\n\trest := token[len(prefix):]",
+   "new": "\ttoken = token[strings.Index(token, \"@\")+1:]\n\tif !strings.HasPrefix(strings.ToLower(token), prefix) {\n\t\treturn \"\", false\n\t}\n\trest := token[len(prefix):]"
+  },
+  {
+   "name": "runnerKey reads the text after the @ marker",
+   "file": "verifiedrunneragree.go",
+   "old": "\ts = strings.ToLower(strings.TrimSpace(s))\n\tif i := strings.IndexByte(s, '(')",
+   "new": "\ts = strings.ToLower(strings.TrimSpace(s))\n\ts = strings.TrimSpace(s[strings.Index(s, \"@\")+1:])\n\tif i := strings.IndexByte(s, '(')"
+  }
+ ]
+}

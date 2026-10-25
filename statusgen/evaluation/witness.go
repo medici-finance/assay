@@ -442,7 +442,7 @@ func witnessPathOK(p string) error {
 	switch {
 	case p == "" || strings.HasPrefix(p, "/") || strings.Contains(p, "\\"):
 		return fmt.Errorf("the path %q is not repo-relative and slash-separated", p)
-	case pathpkg.Clean(p) != p || p == "." || strings.HasPrefix(p, "../"):
+	case pathpkg.Clean(p) != p || p == "." || p == ".." || strings.HasPrefix(p, "../"):
 		return fmt.Errorf("the path %q is not a clean repo-relative path", p)
 	}
 	return nil
