@@ -843,7 +843,7 @@ func deskToolsPinReal() (root, tag, artifact string, found bool) {
 // deskToolsArtifact is the bare artifact name, tried first so a consumer that already
 // carries it keeps exactly today's verdict. The lookup itself is deskkit's, shared with
 // deskboot's first-sweep check (#2986), so the boot and the board read one pin the same way.
-const deskToolsArtifact = deskkit.DeskToolsArtifact
+var deskToolsArtifact = deskkit.DeskToolsArtifact
 
 // deskPlatform is the host's `<os>-<arch>` token. It is a var for the same reason isPinned
 // and gitTree are: the per-platform fallback has to be exercisable for a platform the test

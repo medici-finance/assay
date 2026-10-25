@@ -148,10 +148,23 @@ func TestHotfixSelfCheck(t *testing.T) {
 	built := now.Add(-24 * time.Hour).Format(time.RFC3339)
 	live := now.Add(48 * time.Hour).Format(time.RFC3339)
 	f := newSelfFixture(t, "v1.0.41")
+	// The manifest entry the running file is checked against: its own digest and stamp.
+	exe := filepath.Join(f.overlay, "bin", "deskpr")
+	for _, p := range []string{f.overlay, filepath.Join(f.overlay, "bin"), exe} {
+		_ = os.Chmod(p, 0o755)
+	}
+	sum, err := FileSHA256(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := HotfixEntry{Tool: "deskpr", SHA256: sum, SourceSHA: "0123456789ab" + strings.Repeat("0", 28),
+		BasePin: "v1.0.41", BuiltAt: built, Expires: live, SourceRule: HotfixSourceRule}
+	hfWriteManifest(t, f.overlay, entry)
+	owner := HotfixOwnedBy(uint32(os.Getuid()))
 	base := func() hotfixSelfInput {
 		return hotfixSelfInput{
 			Tag: "v1.0.41+hotfix-0123456789ab", Expires: live, BuiltAt: built,
-			Exe: filepath.Join(f.overlay, "bin", "deskpr"), Overlay: f.overlay, PinnedBin: f.pinned,
+			Exe: exe, Overlay: f.overlay, PinnedBin: f.pinned, Owner: owner,
 			Cwd: f.checkout, Now: now, Platform: "linux-amd64",
 			PinnedVersion: func(string) (string, error) { return "", os.ErrNotExist },
 		}
@@ -256,6 +269,106 @@ func TestHotfixSelfCheck(t *testing.T) {
 		in.Expires = now.Add(5 * 24 * time.Hour).Format(time.RFC3339)
 		if v := evaluateHotfixSelf(in); !strings.Contains(v.Reason, HotfixReasonCeiling) {
 			t.Fatalf("10-day lifetime: %+v", v)
+		}
+	})
+	// Layer 2 on its own: ValidateHotfix, ChooseHotfixShim and the boot are not called, and
+	// each fault is one the upper layers also catch — this layer refuses it by its own check.
+	t.Run("own-integrity-checks", func(t *testing.T) {
+		for name, c := range map[string]struct {
+			mutate func(t *testing.T, g selfFixture, in *hotfixSelfInput)
+			reason string
+		}{
+			"wrong-owner": {func(_ *testing.T, _ selfFixture, in *hotfixSelfInput) {
+				in.Owner = HotfixOwnedBy(uint32(os.Getuid()) + 1)
+			}, HotfixReasonNotRootOwned},
+			"no-owner-check": {func(_ *testing.T, _ selfFixture, in *hotfixSelfInput) { in.Owner = nil }, HotfixReasonNotRootOwned},
+			"writable-by-group": {func(t *testing.T, _ selfFixture, in *hotfixSelfInput) {
+				if err := os.Chmod(in.Exe, 0o775); err != nil {
+					t.Fatal(err)
+				}
+			}, HotfixReasonNotRootOwned},
+			"wrong-sha256": {func(t *testing.T, _ selfFixture, in *hotfixSelfInput) {
+				hfWriteFile(t, in.Exe, "#!/bin/sh\necho swapped\n")
+			}, HotfixReasonTampered},
+			"no-manifest-entry": {func(t *testing.T, g selfFixture, _ *hotfixSelfInput) {
+				e := entry
+				e.Tool = "deskboard"
+				hfWriteManifest(t, g.overlay, e)
+			}, HotfixReasonTampered},
+			"manifest-missing": {func(t *testing.T, g selfFixture, _ *hotfixSelfInput) {
+				if err := os.Remove(HotfixManifestPath(g.overlay)); err != nil {
+					t.Fatal(err)
+				}
+			}, HotfixReasonNotRootOwned},
+			"stamp-not-the-manifest-one": {func(_ *testing.T, _ selfFixture, in *hotfixSelfInput) {
+				in.Tag = "v1.0.41+hotfix-ffffffffffff"
+			}, HotfixReasonTampered},
+			"source-rule": {func(t *testing.T, g selfFixture, _ *hotfixSelfInput) {
+				e := entry
+				e.SourceRule = "approved-pr"
+				hfWriteManifest(t, g.overlay, e)
+			}, HotfixReasonSourceRule},
+		} {
+			t.Run(name, func(t *testing.T) {
+				g := newSelfFixture(t, "v1.0.41")
+				gexe := filepath.Join(g.overlay, "bin", "deskpr")
+				for _, p := range []string{g.overlay, filepath.Join(g.overlay, "bin"), gexe} {
+					_ = os.Chmod(p, 0o755)
+				}
+				gsum, _ := FileSHA256(gexe)
+				ge := entry
+				ge.SHA256 = gsum
+				hfWriteManifest(t, g.overlay, ge)
+				in := base()
+				in.Exe, in.Overlay, in.PinnedBin, in.Cwd = gexe, g.overlay, g.pinned, g.checkout
+				in.Fallback = filepath.Join(g.pinned, "deskpr")
+				if v := evaluateHotfixSelf(in); v.Reason != "" {
+					t.Fatalf("control: the unmutated fixture is refused: %+v", v)
+				}
+				c.mutate(t, g, &in)
+				v := evaluateHotfixSelf(in)
+				if !strings.Contains(v.Reason, c.reason) {
+					t.Fatalf("reason %q, want %q", v.Reason, c.reason)
+				}
+				if v.Fallback != in.Fallback {
+					t.Fatalf("fallback %q, want the pinned %q", v.Fallback, in.Fallback)
+				}
+			})
+		}
+	})
+	// The install's own probe: its staged file runs --version before any manifest entry
+	// exists, so that exact name is checked for expiry, ceiling and pin only.
+	t.Run("install-staging-file-exempt-only-by-exact-name", func(t *testing.T) {
+		g := newSelfFixture(t, "v1.0.41")
+		stage := filepath.Join(g.overlay, "bin", ".deskpr.staging-123456")
+		hfWriteFile(t, stage, "#!/bin/sh\n")
+		in := base()
+		in.Exe, in.Overlay, in.PinnedBin, in.Cwd = stage, g.overlay, g.pinned, g.checkout
+		in.Owner = HotfixOwnedBy(uint32(os.Getuid()) + 1)
+		if v := evaluateHotfixSelf(in); v.Reason != "" {
+			t.Fatalf("staged install probe refused: %+v", v)
+		}
+		in.Now = now.Add(72 * time.Hour)
+		if v := evaluateHotfixSelf(in); !strings.Contains(v.Reason, HotfixReasonExpired) {
+			t.Fatalf("staged probe skips expiry too: %+v", v)
+		}
+		in.Now = now
+		for _, name := range []string{"deskpr.staging-123456", ".deskpr.staging-x", ".deskpr.staging-1.sh", "deskpr"} {
+			other := filepath.Join(g.overlay, "bin", name)
+			hfWriteFile(t, other, "#!/bin/sh\n")
+			in.Exe = other
+			if v := evaluateHotfixSelf(in); !strings.Contains(v.Reason, HotfixReasonNotRootOwned) {
+				t.Fatalf("%s exempt from the integrity check: %+v", name, v)
+			}
+		}
+		nested := filepath.Join(g.overlay, "bin", "sub", ".deskpr.staging-1")
+		if err := os.MkdirAll(filepath.Dir(nested), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		hfWriteFile(t, nested, "#!/bin/sh\n")
+		in.Exe = nested
+		if v := evaluateHotfixSelf(in); !strings.Contains(v.Reason, HotfixReasonNotRootOwned) {
+			t.Fatalf("nested staging name exempt: %+v", v)
 		}
 	})
 	t.Run("release-build-outside-overlay-skipped", func(t *testing.T) {

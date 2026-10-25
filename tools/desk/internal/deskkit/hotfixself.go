@@ -2,11 +2,14 @@ package deskkit
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -16,7 +19,12 @@ import (
 // main does anything else. A release build outside the overlay directory skips it entirely
 // (no `+hotfix-` stamp, not under the overlay), so every pinned binary behaves exactly as
 // before. A hotfix build, or ANY binary resolving under the overlay directory, is checked:
-// its own expiry, its lifetime against the ruled ceiling, and its base against the pin. On a
+// its own root ownership and sha256 against the manifest, the source rule the manifest
+// records, its own expiry, its lifetime against the ruled ceiling, and its base against the pin.
+// It shares no check call with the shim (ChooseHotfixShim) or the boot (ValidateHotfix): it
+// hashes and owner-checks the running file itself. It makes no network call: the forge
+// decision is the install's and the boot's (layer 3), so an offline tool start never depends
+// on it. On a
 // failure it execs DESK_HOTFIX_FALLBACK (the pinned binary its shim named) with a NOTICE;
 // with no usable fallback it exits 6 naming the reason. It never proceeds on its expiry alone:
 // a pin that does not resolve is could-not-check.
@@ -28,10 +36,13 @@ type hotfixSelfInput struct {
 	Exe                   string // the running executable, symlinks resolved
 	Overlay               string // the overlay directory
 	PinnedBin             string // the pinned install directory
-	Cwd                   string
-	Fallback              string // DESK_HOTFIX_FALLBACK
-	Now                   time.Time
-	Platform              string
+	// Owner is the ownership check layer 2 applies to the running file, the manifest and the
+	// overlay. Nil is a refusal, never a pass.
+	Owner    HotfixOwnerCheck
+	Cwd      string
+	Fallback string // DESK_HOTFIX_FALLBACK
+	Now      time.Time
+	Platform string
 	// PinnedVersion reads a pinned install's release tag (its --version); a test fakes it.
 	PinnedVersion func(path string) (string, error)
 }
@@ -68,6 +79,11 @@ func evaluateHotfixSelf(in hotfixSelfInput) hotfixSelfVerdict {
 	if !hot || strings.TrimSpace(in.Expires) == "" {
 		return fail(HotfixReasonUnstamped + ": " + in.Exe + " carries tag " + quoteOrDev(in.Tag) + " and no hotfix expiry")
 	}
+	if inOverlay && !isHotfixStagingFile(in) {
+		if reason := selfIntegrity(in, tool); reason != "" {
+			return fail(reason)
+		}
+	}
 	expires, err := time.Parse(time.RFC3339, in.Expires)
 	if err != nil {
 		return fail(HotfixReasonUnstamped + ": expiry " + in.Expires + " is not RFC 3339")
@@ -96,6 +112,69 @@ func evaluateHotfixSelf(in hotfixSelfInput) hotfixSelfVerdict {
 		return fail(HotfixReasonOutlived + " (built over " + base + ", the pin is " + pin + ")")
 	}
 	return v
+}
+
+// stagingNameRE is the name `cellctl hotfix install` gives the file it stages in the overlay's
+// bin directory (os.CreateTemp of "."+tool+".staging-"): a dot, the tool, ".staging-" and
+// digits. Install runs that file's --version once, as the invoking user, BEFORE its manifest
+// entry exists (the manifest is written last), so no digest or entry can exist to check. The
+// file is created by the root install step, removed on every exit path, and no shim, boot
+// classification or manifest entry ever names it; layers 1 and 3 refuse any path that is
+// not exactly the overlay's tool binary. Expiry, ceiling and pin are still checked.
+var stagingNameRE = regexp.MustCompile(`^\.[A-Za-z0-9_-]+\.staging-[0-9]+$`)
+
+func isHotfixStagingFile(in hotfixSelfInput) bool {
+	return filepath.Dir(in.Exe) == filepath.Join(in.Overlay, "bin") && stagingNameRE.MatchString(filepath.Base(in.Exe))
+}
+
+// selfIntegrity is layer 2's own ownership, sha256 and source-rule decision for a binary under
+// the overlay directory; "" means it holds. Its own code, not ValidateHotfix: a fault in the
+// boot's or the shim's check leaves this one standing.
+func selfIntegrity(in hotfixSelfInput, tool string) string {
+	if in.Owner == nil {
+		return HotfixReasonNotRootOwned + ": no owner check supplied"
+	}
+	manifest := HotfixManifestPath(in.Overlay)
+	for _, p := range []string{in.Overlay, manifest, in.Exe} {
+		if err := in.Owner(p); err != nil {
+			return HotfixReasonNotRootOwned + ": " + err.Error()
+		}
+	}
+	m, err := ReadHotfixManifest(in.Overlay)
+	if err != nil {
+		return HotfixReasonTampered + ": " + err.Error()
+	}
+	e, ok := m.Entry(tool)
+	if !ok {
+		return HotfixReasonTampered + ": " + in.Exe + " has no manifest entry"
+	}
+	got, err := selfDigest(in.Exe)
+	if err != nil {
+		return HotfixReasonTampered + ": sha256 of " + in.Exe + " unreadable: " + err.Error()
+	}
+	if got != e.SHA256 {
+		return HotfixReasonTampered + ": sha256 of " + in.Exe + " is " + got + ", manifest says " + e.SHA256
+	}
+	if e.Tag() != in.Tag {
+		return HotfixReasonTampered + ": " + in.Exe + " is stamped " + quoteOrDev(in.Tag) + ", manifest says " + e.Tag()
+	}
+	if e.SourceRule != HotfixSourceRule {
+		return HotfixReasonSourceRule + ": manifest source_rule " + e.SourceRule + ", the ruled rule is " + HotfixSourceRule
+	}
+	return ""
+}
+
+func selfDigest(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func quoteOrDev(tag string) string {
@@ -139,7 +218,7 @@ func runHotfixSelfCheck() {
 	cwd, _ := os.Getwd()
 	in := hotfixSelfInput{
 		Tag: ReleaseTag, Expires: HotfixExpires, BuiltAt: BuiltAt,
-		Exe: exe, Overlay: HotfixOverlayDir(), PinnedBin: DeskToolsBinDir(),
+		Exe: exe, Overlay: HotfixOverlayDir(), PinnedBin: DeskToolsBinDir(), Owner: ActiveHotfixOwner(),
 		Cwd: cwd, Fallback: os.Getenv(HotfixFallbackEnv), Now: time.Now(),
 		Platform: runtime.GOOS + "-" + runtime.GOARCH, PinnedVersion: pinnedVersionReal,
 	}
