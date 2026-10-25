@@ -558,7 +558,8 @@ func mintedExpiry(tokenPath, expiresAt string, now time.Time) time.Time {
 		_ = os.Remove(ExpirySidecarPath(tokenPath))
 		return now.Add(ReuseWindow)
 	}
-	_ = os.WriteFile(ExpirySidecarPath(tokenPath), []byte(t.UTC().Format(time.RFC3339)+"\n"), 0o600)
+	// Atomic like the token itself: a racing reader sees the old sidecar or the new one, never a partial.
+	_ = WriteTokenCache(ExpirySidecarPath(tokenPath), t.UTC().Format(time.RFC3339)+"\n", nil)
 	return t
 }
 

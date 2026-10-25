@@ -44,9 +44,9 @@ func TestResumeRealAllocator(t *testing.T) {
 
 // realResume is a verified worker resume wired to the SHIPPED allocator binary.
 type realResume struct {
-	o                                dispatchOpts
-	plan                             dispatchPlan
-	git                              func(dir string, args ...string) string
+	o                                 dispatchOpts
+	plan                              dispatchPlan
+	git                               func(dir string, args ...string) string
 	root, adopted, branch, head, main string
 }
 
