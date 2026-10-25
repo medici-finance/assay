@@ -3619,6 +3619,72 @@ lists them for exits 3/5/6). Consumer repos that grant `Bash(/opt/desk-tools/bin
 rules keep those rules; with nothing installed at the path they are inert, and they are
 managed in the consumer repo, not here.
 
+### Hotfix overlay — a local, expiring, root-owned override of one pinned tool
+
+A pinned install is the only supported way to run desk tools. When a fix has merged to
+`main` but the next release is not cut yet, an operator can run that one commit's build of a
+tool locally, for a few days, without touching the pinned install or the release path:
+
+```bash
+cellctl hotfix install deskboard --source <40-hex sha> --dry-run   # no sudo: only decides the source rule
+sudo cellctl hotfix install deskboard --source <40-hex sha> [--ttl 72h] [--ack "<why>"]
+cellctl hotfix status                                              # each entry and whether it is valid
+sudo cellctl hotfix clear [<tool>...]
+```
+
+Per the driver's ruling, four things are compiled in and settable by no flag, environment
+variable or file: install needs `sudo`; the hotfix files are root-owned and every layer
+refuses one that is not; only a commit already on `main` qualifies (source rule
+`merged-main`, decided against the forge, never against a local ref); and a hotfix lives
+3 days by default and never more than 7 (`--ttl` above the ceiling is refused).
+
+**What install does.** It clones the one compiled-in public repository at the given commit,
+builds as the invoking user (never as root) with a build environment set from scratch (nothing
+the caller exports reaches it: a fresh module cache, `GOFLAGS=-mod=readonly`, the default
+proxy and checksum database, local toolchain only, the Go version the commit's release
+workflow declares), checks the staged binary prints exactly the stamp
+`<pin>+hotfix-<sha12>`, and installs it root-owned into the overlay directory
+(`/opt/desk-tools/hotfix`, beside the pinned `/opt/desk-tools/bin`) with a manifest entry
+recording the source, the base pin, build and expiry times, the source rule, the Go version,
+`go.sum`'s digest, the installer and the binary's sha256. A commit whose diff against the pin
+touches a schema or migration directory, a permission or role-binding definition, an on-disk
+record format, or the hotfix machinery itself is refused as `hotfix-ineligible`. `cellctl` and
+`deskboot` are never hotfix targets: they install, select and refuse hotfixes, so they always
+run the pinned release's code. The overlay is not supported on Windows.
+
+**Four layers, each deciding on its own signal.**
+
+| Layer | Where | What it does |
+|---|---|---|
+| 1 | `cellctl` shim generation (`cellctl desk`, `cellctl up`) | points a tool's shim at the overlay only for a valid entry: root-owned, sha256 matches, base pin equals the worktree's `desk-tools` pin, unexpired, within the ceiling, the ruled source rule; otherwise the shim names the pinned binary and prints a `NOTICE` saying why |
+| 2 | the hotfix binary's own start-up check | a binary stamped `+hotfix-` re-checks the same facts and the forge against the shim's pinned fallback, and runs that pinned binary instead when any fails |
+| 3 | `deskboot` step 10, `binary-pin` | classifies every shim in the cell by the path it execs (never by what the binary prints), prints `running hotfix <tag> over pin <pin> (source <sha>, expires <time>)` even under `--quiet`, and refuses with exit 6 (`hotfix outlived its pin`, `hotfix expired`, `hotfix overlay not root-owned`, `hotfix exceeds the ruled ceiling`, `hotfix source not on main`, `shim target outside the pinned and hotfix dirs`) when any hotfix cannot be proven; with none it prints `all pinned (<pin>)` |
+| 4 | `deskboard`'s header, and `statusgen`'s version gate | the board header carries `HOTFIX: desk-tools <tag> over pin <pin> (expires <time>)` on every read, so a hotfix is never a silent pin; a hotfix whose base is not the checkout's pin, or that has expired, reads as drift and leaves the board blind exactly as any other drift. `statusgen` gates a `vX.Y.Z+hotfix-<sha12>` tag exactly as its base `vX.Y.Z`, so a hotfix of an old release never passes as the latest |
+
+**What retires a hotfix.** Any of: the worktree's `desk-tools` pin moves off the hotfix's base
+(a release carried the fix, or the repo re-pinned), the expiry passes, the forge no longer
+reports the source on `main`, the files stop being root-owned or stop matching the manifest,
+or `sudo cellctl hotfix clear`. A retired entry is inert at once (layers 2 and 3 refuse it)
+and its shim returns to the pinned binary at the next shim generation (`cellctl desk` or
+`cellctl up`); `deskboot` keeps refusing until then. The release pipeline, `make desk-install`
+and its sha256 refusal, and `.assay-versions` are unchanged: an overlay never enters the pinned
+install, a release, or CI.
+
+**Residual risks (stated, not closed).**
+
+- The shim files and `PATH` are operator-writable. An operator who rewrites a shim, or puts a
+  binary of their own earlier on `PATH`, is not prevented: the next `deskboot` run detects a
+  shim aimed outside the pinned and hotfix directories, and anything stamped `+hotfix-` is
+  named on the board, but a binary outside both directories is not a hotfix and is only as
+  trustworthy as the operator who placed it.
+- The build runs as the invoking operator account, so a compromised operator account can
+  influence the build inputs it controls (the Go toolchain on its `PATH`, `--go <path>`); the
+  Go version and `go.sum` digest are recorded in the manifest for review, not re-derived by a
+  second builder.
+- A writer with root is out of scope: root can edit the manifest and binary together.
+- CI and `make` targets never see an overlay and are not checked by it; a gate that must refuse
+  a hotfix refuses the stamp itself (the `statusgen` version gate reads it as its base release).
+
 ### Guard, the two meters, and repo scope
 
 Every tool in the [Tool reference](#tool-reference) table calls `deskkit.Guard()` first

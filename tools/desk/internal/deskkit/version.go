@@ -80,6 +80,14 @@ var hotfixIneligiblePaths = []string{
 	"tools/desk/internal/deskkit/pins.go",
 	"tools/desk/internal/deskkit/version.go",
 	"tools/desk/internal/deskkit/hotfix.go",
+	"tools/desk/internal/deskkit/hotfixself.go",
+	"tools/desk/internal/deskkit/hotfixseam.go",
+	"tools/desk/internal/deskkit/hotfixseam_off.go",
+	"tools/desk/internal/deskkit/hotfixseam_on.go",
+	"tools/desk/internal/deskkit/hotfixowner_unix.go",
+	"tools/desk/internal/deskkit/hotfixowner_windows.go",
+	"tools/desk/internal/deskkit/hotfixexec_unix.go",
+	"tools/desk/internal/deskkit/hotfixexec_windows.go",
 }
 
 // HotfixIneligiblePaths returns a copy of the compiled ineligible-path list.

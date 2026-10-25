@@ -93,8 +93,8 @@ func TestDeskkitHotfixReaders(t *testing.T) {
 
 func TestHotfixIneligibleMatch(t *testing.T) {
 	for p, want := range map[string]string{
-		"migrations/0003-x.md":                    "migrations/",
-		"schemas/brief-v2.json":                   "schemas/",
+		"migrations/0003-x.md":                     "migrations/",
+		"schemas/brief-v2.json":                    "schemas/",
 		"tools/desk/internal/deskkit/rosteracl.go": "tools/desk/internal/deskkit/rosteracl.go",
 		"tools/desk/internal/deskkit/version.go":   "tools/desk/internal/deskkit/version.go",
 		"tools/desk/cmd/deskpr/main.go":            "",

@@ -480,3 +480,58 @@ func (f HotfixForge) CheckEligible(pin, sha string) error {
 	}
 	return nil
 }
+
+// hotfixNeverTargets are the tools no hotfix may replace: cellctl installs and selects
+// hotfixes and deskboot is the boot marker that refuses a bad one, so both always run the
+// pinned release's code.
+var hotfixNeverTargets = []string{"cellctl", "deskboot"}
+
+// HotfixNeverTarget reports whether tool may never be hotfixed.
+func HotfixNeverTarget(tool string) bool {
+	for _, t := range hotfixNeverTargets {
+		if tool == t {
+			return true
+		}
+	}
+	return false
+}
+
+// HotfixShimChoice is layer 1's decision for one tool's shim.
+type HotfixShimChoice struct {
+	// Hotfix is true when the shim points at the overlay binary.
+	Hotfix bool
+	Entry  HotfixEntry
+	// Bin is the binary the shim execs: the overlay binary when Hotfix, else pinned.
+	Bin string
+	// Pinned is the pinned binary (the shim's fallback past expiry, and DESK_HOTFIX_FALLBACK).
+	Pinned string
+	// Notice is non-empty when a hotfix exists for the tool and is retired: it names the
+	// hotfix and why. The shim then points at the pinned binary.
+	Notice string
+}
+
+// ChooseHotfixShim is shim generation's selection for tool: the overlay binary only when its
+// manifest entry passes every ValidateHotfix check against pin at now; otherwise the pinned
+// binary at pinnedDir/tool, with a Notice naming a retired hotfix. cellctl's genShims calls
+// it, and deskboot's tests call it to show what a regenerated shim would select.
+func ChooseHotfixShim(overlay, pinnedDir, tool, pin string, now time.Time, owner HotfixOwnerCheck) HotfixShimChoice {
+	pinned := filepath.Join(pinnedDir, tool)
+	c := HotfixShimChoice{Bin: pinned, Pinned: pinned}
+	e, err := ValidateHotfix(overlay, tool, pin, now, owner)
+	if errors.Is(err, ErrNoHotfix) {
+		return c
+	}
+	name := tool
+	if e.SourceSHA != "" {
+		name = tool + " " + e.Tag()
+	}
+	if err == nil && HotfixNeverTarget(tool) {
+		err = hotfixErr(1, HotfixReasonTampered, "%s is never a hotfix target", tool)
+	}
+	if err != nil {
+		c.Notice = "hotfix " + name + " retired (" + err.Error() + "); the shim runs pinned " + pinned
+		return c
+	}
+	c.Hotfix, c.Entry, c.Bin = true, e, HotfixBinaryPath(overlay, tool)
+	return c
+}
