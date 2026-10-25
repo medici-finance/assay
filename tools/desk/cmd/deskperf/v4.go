@@ -8,6 +8,19 @@ import (
 
 func v4Table(out io.Writer, s perfrec.V4Summary) {
 	fmt.Fprintf(out, "perf-v4 — %d records; %d duplicates; %d conflicting identities excluded; %d invalid\n", s.Records, s.Duplicates, s.Conflicts, s.Invalid)
+	v4Detail(out, s)
+}
+
+// v4DayTable renders one --by-day bucket. Identity selection runs once over the
+// whole window before bucketing, so a bucket has no exclusions of its own; the
+// window-wide counts are printed once by dayTable and are never restated as
+// per-bucket zeros here.
+func v4DayTable(out io.Writer, s perfrec.V4Summary) {
+	fmt.Fprintf(out, "perf-v4 — %d records in this bucket (exclusions are counted once for the whole window, above)\n", s.Records)
+	v4Detail(out, s)
+}
+
+func v4Detail(out io.Writer, s perfrec.V4Summary) {
 	fmt.Fprintf(out, "logical service queries %d; service transport attempts %d; handlers %d (separate boundaries)\n", s.LogicalQueries, s.ServiceTransports, s.Handlers)
 	for _, g := range s.Groups {
 		fmt.Fprintf(out, "%s: %d records; summed own-process wall %s; measured own CPU %s (%d records)\n", g.Key, g.Records, commandDuration(g.SumOwnProcessWallMs), commandDuration(g.SumOwnCPUMs), g.CPURecords)

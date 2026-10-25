@@ -466,6 +466,49 @@ func TestCommandOverviewV4ExclusionsVisible(t *testing.T) {
 	}
 }
 
+// regression: #4360 (review 2 F2)
+func TestCommandOverviewByDayV4ExclusionsVisible(t *testing.T) {
+	a, err := perfrec.ToV4(commandProcess(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := a
+	b.Tool = "issueboard"
+	c, err := perfrec.ToV4(commandProcess(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, dir := seedHome(t)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writePerfDay(t, dir, time.Now().UTC().Format("2006-01-02"), []perfrec.Record{a, b, c})
+	rc, out, errOut := runDeskperf("report", "--by-day")
+	if rc != 0 || errOut != "" {
+		t.Fatalf("by-day report failed: rc%d stdout%q stderr%q", rc, out, errOut)
+	}
+	if !strings.Contains(out, "perf-v4 — 1 record(s) kept; 0 duplicate(s); 1 conflicting identities excluded; 0 invalid (selected over the whole window before any day bucket)") {
+		t.Errorf("window-wide v4 exclusion hidden in by-day text: %q", out)
+	}
+	if strings.Contains(out, "0 conflicting identities excluded") {
+		t.Errorf("by-day text restates an exclusion as an affirmative per-bucket zero: %q", out)
+	}
+	if !strings.Contains(out, "perf-v4 — 1 records in this bucket (exclusions are counted once for the whole window, above)") {
+		t.Errorf("per-day v4 bucket line missing: %q", out)
+	}
+	rc, out, errOut = runDeskperf("report", "--by-day", "--json")
+	if rc != 0 || errOut != "" {
+		t.Fatalf("by-day json failed: rc%d stdout%q stderr%q", rc, out, errOut)
+	}
+	var got reportDayJSON
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.PerfV4 == nil || got.PerfV4.Records != 1 || got.PerfV4.Conflicts != 1 {
+		t.Errorf("window-wide v4 exclusion missing from by-day json: %+v", got.PerfV4)
+	}
+}
+
 // regression: #4360 (parent c4352-f1)
 func TestCommandWorkflowV4(t *testing.T) {
 	a, err := perfrec.ToV4(commandProcess(t, strings.Repeat("a", 32)))

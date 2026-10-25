@@ -89,3 +89,15 @@ No allocation, decoder, recorder or admission-control limit was increased.
 The parent report correction at `f69e2e79d5a727119b22513cdb6b74687a0b22e8` is retained with its expanded tool/workflow regression and additional mutation. Reader integration distinguishes absent source tools from unmatched workflows for v3 and v4, across pooled/per-day text and JSON, while preserving whole-window identity exclusions. Diagnostic comparisons using the exact previous report file reproduce the absent-tool regression; they do not measure whole-build performance.
 
 Current parent-integration qualification retains shared-suite failures of the unchanged append timing assertion: normal p50 2.923167 ms and race p50 1.157166 ms against the existing <1 ms limit. The exact retained published reader source also fails the isolated assertion at 1.479667 ms. All 48 recorder/shared-performance source files are byte-identical between published source and candidate. These are failed checks, not passing qualification or speedup evidence; the assertion and recorder remain unchanged.
+
+Correctness review 5645677977 (second round) found the same exclusion-reporting
+gap in the by-day text: whole-window v4 duplicates, conflicts and invalid counts
+reached JSON only, and each day line re-selected already-selected records and so
+printed affirmative zeros. The by-day text now prints one whole-window v4 line
+beside the v3 one, and each day line reports only its bucket's kept records. The
+by-day JSON shape is unchanged: top-level `perfV4` carries the whole-window
+counts, and per-day summaries are post-selection buckets whose exclusion fields
+are zero by construction. A by-day text and JSON regression with one conflicting
+v4 identity covers this, and two added command-map mutations confirm it fails
+when either half is reverted. Command-view saturation and unattributed workflow
+records under a workflow filter remain the nonblocking observations above.

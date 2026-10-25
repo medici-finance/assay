@@ -278,12 +278,12 @@ func reportByDay(recs []deskkit.PerfRecord, permission perfrec.Profile, filter p
 		enc.SetIndent("", "  ")
 		return encodeErr(enc.Encode(reportDayJSON{Days: days, Tool: tool, Role: role, Skipped: skipped, ByDay: s, PerfV4: v4, PerfV4ByDay: v4Days}))
 	}
-	if err := dayTable(stdout, s, days, tool, role, skipped); err != nil {
+	if err := dayTable(stdout, s, v4, days, tool, role, skipped); err != nil {
 		return err
 	}
 	for _, day := range v4Days {
 		fmt.Fprintf(stdout, "\n%s %s — ", day.Day, day.Tool)
-		v4Table(stdout, day.Summary)
+		v4DayTable(stdout, day.Summary)
 	}
 	return nil
 }
@@ -291,7 +291,7 @@ func reportByDay(recs []deskkit.PerfRecord, permission perfrec.Profile, filter p
 // dayTable renders the --by-day timeseries: a header with the undated count, one wall table
 // (a row per tool × day × schema group), one forge table (a row per tool × day, pooling
 // every schema), and the perf-v3 request rollup under each tool × day that has one.
-func dayTable(stdout io.Writer, s deskkit.PerfDaySummary, days int, tool, role string, skipped int) error {
+func dayTable(stdout io.Writer, s deskkit.PerfDaySummary, v4 *perfrec.V4Summary, days int, tool, role string, skipped int) error {
 	fmt.Fprintf(stdout, "deskperf report --by-day — %d invocation record(s) over the last %d UTC day(s)%s",
 		s.Records, days, filterSuffix(tool, role))
 	if s.Undated > 0 {
@@ -302,6 +302,10 @@ func dayTable(stdout io.Writer, s deskkit.PerfDaySummary, days int, tool, role s
 	if s.V3Records > 0 || s.V3Duplicates > 0 || s.V3Conflicts > 0 || s.V3Invalid > 0 {
 		fmt.Fprintf(stdout, "perf-v3 — %d record(s) kept; %d duplicate(s); %d conflicting identities excluded; %d invalid "+
 			"(selected over the whole window before any day bucket)\n", s.V3Records, s.V3Duplicates, s.V3Conflicts, s.V3Invalid)
+	}
+	if v4 != nil {
+		fmt.Fprintf(stdout, "perf-v4 — %d record(s) kept; %d duplicate(s); %d conflicting identities excluded; %d invalid "+
+			"(selected over the whole window before any day bucket)\n", v4.Records, v4.Duplicates, v4.Conflicts, v4.Invalid)
 	}
 	if s.Unattributed > 0 {
 		fmt.Fprintf(stdout, "%d legacy/perf-v2 record(s) left out: the workflow filter matches perf-v3 attribution, which they do not carry\n",

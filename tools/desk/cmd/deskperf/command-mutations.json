@@ -48,6 +48,18 @@
       "file": "cmd/deskperf/report.go",
       "old": "if len(recs) == 0 && (*tool != \"\" || *role != \"\") && (!workflowFilter || len(deskkit.FilterPerf(verbs, *tool, *role)) == 0) {",
       "new": "if len(recs) == 0 && (*tool != \"\" || *role != \"\") {"
+    },
+    {
+      "name": "hide window-wide v4 exclusions in by-day text",
+      "file": "cmd/deskperf/report.go",
+      "old": "if v4 != nil {",
+      "new": "if false && v4 != nil {"
+    },
+    {
+      "name": "restate by-day v4 exclusions as per-bucket zeros",
+      "file": "cmd/deskperf/report.go",
+      "old": "v4DayTable(stdout, day.Summary)",
+      "new": "v4Table(stdout, day.Summary)"
     }
   ]
 }

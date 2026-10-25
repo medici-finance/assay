@@ -11,3 +11,4 @@ cutover. No collection, consent, identity, permission or release change.
   decoding and restore logical service query/transport/handler text counters.
 - Continue after oversized history lines without growing the read bound, and expose v4 duplicate/conflict/invalid counters in the command overview.
 - Preserve the historical final-line limit without LF while leaving strict perf-v4 wire validation unchanged.
+- Print the whole-window perf-v4 duplicate/conflict/invalid line in `deskperf report --by-day` text, and stop restating those exclusions as per-bucket zeros on each day line.
