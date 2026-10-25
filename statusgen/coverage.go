@@ -115,6 +115,23 @@ type coverageOptions struct {
 // streams. root anchors the observation of the checked-out revision and of git
 // history (coverageRepo); the verdicts are evaluation.EvaluateCoverage's.
 func evaluateCoverage(root string, streams []*Stream, opts coverageOptions) map[string]Coverage {
+	cov, _ := evaluateCoverageObserved(root, streams, opts)
+	return cov
+}
+
+// observedBrief is one brief's coverage observation plus, per Verify row id,
+// the raw text of each witness row in the order observed — what the
+// `--coverage --json` witness field (coverage_json.go) reports from.
+type observedBrief struct {
+	Path         string
+	Obs          evaluation.BriefObservation
+	WitnessTexts map[string][]string
+}
+
+// evaluateCoverageObserved is evaluateCoverage that also returns the
+// observations it judged, keyed by brief id.
+func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptions) (map[string]Coverage, map[string]observedBrief) {
+	observed := map[string]observedBrief{}
 	revision := opts.Revision
 	if revision == "" {
 		revision = currentTreeRevision(root)
@@ -130,7 +147,9 @@ func evaluateCoverage(root string, streams []*Stream, opts coverageOptions) map[
 			if !okName {
 				continue
 			}
-			in.Briefs = append(in.Briefs, observeBrief(root, path, s.Name+"/"+num, bf))
+			obs, texts := observeBriefTexts(root, path, s.Name+"/"+num, bf)
+			observed[obs.ID] = observedBrief{Path: path, Obs: obs, WitnessTexts: texts}
+			in.Briefs = append(in.Briefs, obs)
 		}
 	}
 	if len(opts.Bindings) > 0 {
@@ -155,13 +174,21 @@ func evaluateCoverage(root string, streams []*Stream, opts coverageOptions) map[
 	if root != "" {
 		repo = newMemoRepo(newCoverageRepo(root))
 	}
-	return evaluation.EvaluateCoverage(in, repo)
+	return evaluation.EvaluateCoverage(in, repo), observed
 }
 
 // observeBrief reads one brief file's coverage-relevant observations: its
 // Verify rows, its Evidence witnesses (genuine verifyrun execution rows only —
 // prose never qualifies, isWitnessRow) and its declared `files:` entries.
 func observeBrief(root, path, id string, bf *BriefFile) evaluation.BriefObservation {
+	obs, _ := observeBriefTexts(root, path, id, bf)
+	return obs
+}
+
+// observeBriefTexts is observeBrief plus each witness row's raw text, index
+// for index with obs.Witnesses.
+func observeBriefTexts(root, path, id string, bf *BriefFile) (evaluation.BriefObservation, map[string][]string) {
+	texts := map[string][]string{}
 	obs := evaluation.BriefObservation{ID: id, Witnesses: map[string][]evaluation.Witness{}}
 	if root != "" && path != "" {
 		if rel, err := filepath.Rel(root, path); err == nil {
@@ -211,9 +238,10 @@ func observeBrief(root, path, id string, bf *BriefFile) evaluation.BriefObservat
 				Output:  strings.TrimSpace(cells[witnessCellOutput]),
 				Date:    strings.TrimSpace(cells[witnessCellDate]),
 			})
+			texts[rowID] = append(texts[rowID], er.Text)
 		}
 	}
-	return obs
+	return obs, texts
 }
 
 // evaluationPatterns maps the parsed pattern documents onto the library's
@@ -328,7 +356,7 @@ func runCoverage(root string, jsonMode bool) int {
 		return coverageExitCouldNot
 	}
 	patterns, _ := loadPatternDocs(root)
-	cov := evaluateCoverage(root, streams, coverageOptions{Patterns: patterns})
+	cov, observed := evaluateCoverageObserved(root, streams, coverageOptions{Patterns: patterns})
 
 	ids := make([]string, 0, len(cov))
 	for id := range cov {
@@ -337,11 +365,7 @@ func runCoverage(root string, jsonMode bool) int {
 	sort.Strings(ids)
 
 	if jsonMode {
-		rows := make([]Coverage, 0, len(ids))
-		for _, id := range ids {
-			rows = append(rows, cov[id])
-		}
-		out, err := json.Marshal(rows)
+		out, err := json.Marshal(coverageJSONRows(root, ids, cov, observed))
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "statusgen:", err)
 			return 1

@@ -265,7 +265,14 @@ func TestEvaluationLibraryCLIParity(t *testing.T) {
 		}
 		// And the binary, for the scenarios the command line can express.
 		if sc.Options == nil {
-			cli := runCLIJSON(t, bin, b.Root, "--coverage")
+			// The verdict fields are compared byte for byte; the CLI's added
+			// witness reporting (coverage_json.go) is not part of the verdict
+			// and is checked by its own tests, so it is decoded away here.
+			var cliRows []evaluation.Coverage
+			if err := json.Unmarshal([]byte(runCLIJSON(t, bin, b.Root, "--coverage")), &cliRows); err != nil {
+				t.Fatalf("coverage %s: %v", sc.Name, err)
+			}
+			cli := mustJSON(t, cliRows)
 			if got := mustJSON(t, asCoverageRows(lib)); got != cli {
 				t.Errorf("coverage %s: library and CLI binary disagree\nlibrary: %s\n    cli: %s", sc.Name, got, cli)
 			}
