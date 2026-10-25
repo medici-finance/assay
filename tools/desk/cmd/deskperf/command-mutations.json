@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskperf -count=1 -run '^TestCommandOverview'",
+  "test": "go test ./cmd/deskperf -count=1 -run '^TestCommand(Overview|WorkflowV4)'",
   "control": {
     "name": "command invocation count conserves observations",
     "file": "internal/deskkit/perfcommands.go",
@@ -28,7 +28,7 @@
     {
       "name": "hide unfiltered conflict-only detail behind no-match",
       "file": "cmd/deskperf/report.go",
-      "old": "if len(recs) == 0 && (*tool != \"\" || *role != \"\") {",
+      "old": "if len(recs) == 0 && (*tool != \"\" || *role != \"\") && (!workflowFilter || len(deskkit.FilterPerf(verbs, *tool, *role)) == 0) {",
       "new": "if len(recs) == 0 {"
     },
     {
@@ -42,6 +42,12 @@
       "file": "cmd/deskperf/report.go",
       "old": "if s.V4Duplicates+s.V4Conflicts+s.V4Invalid > 0 {",
       "new": "if false {"
+    },
+    {
+      "name": "hide workflow mismatch behind tool no-match",
+      "file": "cmd/deskperf/report.go",
+      "old": "if len(recs) == 0 && (*tool != \"\" || *role != \"\") && (!workflowFilter || len(deskkit.FilterPerf(verbs, *tool, *role)) == 0) {",
+      "new": "if len(recs) == 0 && (*tool != \"\" || *role != \"\") {"
     }
   ]
 }

@@ -134,17 +134,11 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 		} // historical records have no supported workflow attribution
 		recs = append(recs, r)
 	}
-	if len(recs) == 0 && (*tool != "" || *role != "") {
+	workflowFilter := *group != "tool" || *session != "" || *agent != "" || *deskRole != "" || *assigned != "" || *work != ""
+	// Keep absent tool/role and workflow misses distinct after identity selection.
+	if len(recs) == 0 && (*tool != "" || *role != "") && (!workflowFilter || len(deskkit.FilterPerf(verbs, *tool, *role)) == 0) {
 		if selection.Conflicts+selection.Invalid+selection4.Conflicts+selection4.Invalid+mixedConflicts > 0 {
 			return noMatch(fmt.Sprintf("%s (whole-window identity selection excluded %d conflicting identities and %d invalid records)", filterText(*tool, *role), selection.Conflicts+selection4.Conflicts+mixedConflicts, selection.Invalid+selection4.Invalid))
-		}
-		if filter.Used() {
-			for _, r := range verbs {
-				if r.Schema == perfrec.SchemaV4 {
-					return deskkit.Refused("no v3/v4 record matches the workflow filter")
-				}
-			}
-			return deskkit.Refused("no v3 record matches the workflow filter")
 		}
 		return noMatch(filterText(*tool, *role))
 	}
@@ -161,7 +155,7 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 		return deskkit.Refused(err.Error())
 	}
 	v4.Duplicates, v4.Conflicts, v4.Invalid = selection4.Duplicates, selection4.Conflicts+mixedConflicts, selection4.Invalid
-	if (*group != "tool" || *session != "" || *agent != "" || *deskRole != "" || *assigned != "" || *work != "") && v3.Records+v4.Records == 0 {
+	if workflowFilter && v3.Records+v4.Records == 0 {
 		// Preserve the historical diagnostic when the window contains no v4.
 		for _, r := range verbs {
 			if r.Schema == perfrec.SchemaV4 {

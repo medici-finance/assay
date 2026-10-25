@@ -50,7 +50,7 @@ can be composed with both source variants.
   valid totals remain valid. Historical validator/control assertions remain.
 - Canonical local mutation baseline and distinct control are healthy: eleven new
   codec/identity mutations, four raw-line adapter mutations, three overflow mutations,
-  eight retained v3 mutations and six command-report mutations are caught. No survivors or
+  eight retained v3 mutations and seven command-report mutations are caught. No survivors or
   could-not-mutate are counted as passing. This is local harness qualification,
   not an assertion that every spec is enforced by the CI truth matrix.
 - Full shared-library and actual deskperf suites, race/vet, relevant adapter and
@@ -85,3 +85,5 @@ threshold uses the scanner's full existing buffer, while the v4 decoder retains
 its strict byte limit including LF. The pre-split reader passes this regression;
 the initial drain threshold failed it and the corrected threshold passes it.
 No allocation, decoder, recorder or admission-control limit was increased.
+
+The parent report correction at `f69e2e79d5a727119b22513cdb6b74687a0b22e8` is retained with its expanded tool/workflow regression and additional mutation. Reader integration distinguishes absent source tools from unmatched workflows for v3 and v4, across pooled/per-day text and JSON, while preserving whole-window identity exclusions. Diagnostic comparisons using the exact previous report file reproduce the absent-tool regression; they do not measure whole-build performance.

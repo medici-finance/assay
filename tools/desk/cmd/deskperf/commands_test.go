@@ -367,9 +367,41 @@ func TestCommandOverviewV3OnlyWorkflowMissKeepsReason(t *testing.T) {
 		t.Fatal(err)
 	}
 	writePerfDay(t, dir, time.Now().UTC().Format("2006-01-02"), []perfrec.Record{a})
-	rc, out, errOut := runDeskperf("report", "--perf-profile", "workflow", "--session-id", strings.Repeat("b", 32))
-	if rc != deskkit.ExitRefused || out != "" || !strings.Contains(errOut, "no v3 record matches the workflow filter") {
-		t.Fatalf("workflow refusal changed: rc%d stdout%q stderr%q", rc, out, errOut)
+	for _, tool := range []string{"", a.Tool} {
+		for _, byDay := range []bool{false, true} {
+			for _, asJSON := range []bool{false, true} {
+				args := []string{"report", "--perf-profile", "workflow", "--session-id", strings.Repeat("b", 32)}
+				if tool != "" {
+					args = append(args, "--tool", tool)
+				}
+				if byDay {
+					args = append(args, "--by-day")
+				}
+				if asJSON {
+					args = append(args, "--json")
+				}
+				rc, out, errOut := runDeskperf(args...)
+				if rc != deskkit.ExitRefused || out != "" || !strings.Contains(errOut, "no v3 record matches the workflow filter") {
+					t.Errorf("tool=%q byDay=%v json=%v: workflow refusal changed: rc%d stdout%q stderr%q", tool, byDay, asJSON, rc, out, errOut)
+				}
+			}
+		}
+	}
+	for _, byDay := range []bool{false, true} {
+		args := []string{"report", "--perf-profile", "workflow", "--session-id", strings.Repeat("b", 32), "--tool", "other-tool"}
+		if byDay {
+			args = append(args, "--by-day")
+		}
+		rc, out, errOut := runDeskperf(args...)
+		if rc != deskkit.ExitRefused || out != "" || !strings.Contains(errOut, "no record matches --tool other-tool") {
+			t.Errorf("byDay=%v: missing-tool refusal changed: rc%d stdout%q stderr%q", byDay, rc, out, errOut)
+		}
+		args[4] = strings.Repeat("a", 32)
+		args[6] = a.Tool
+		rc, out, errOut = runDeskperf(args...)
+		if rc != 0 || out == "" || errOut != "" {
+			t.Errorf("byDay=%v: matching workflow failed: rc%d stdout%q stderr%q", byDay, rc, out, errOut)
+		}
 	}
 }
 
@@ -431,5 +463,39 @@ func TestCommandOverviewV4ExclusionsVisible(t *testing.T) {
 				t.Fatalf("v4 exclusions missing: %q", out.String())
 			}
 		})
+	}
+}
+
+// regression: #4360 (parent c4352-f1)
+func TestCommandWorkflowV4(t *testing.T) {
+	a, err := perfrec.ToV4(commandProcess(t, strings.Repeat("a", 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, dir := seedHome(t)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writePerfDay(t, dir, time.Now().UTC().Format("2006-01-02"), []perfrec.Record{a})
+	for _, byDay := range []bool{false, true} {
+		for _, asJSON := range []bool{false, true} {
+			for _, tool := range []string{a.Tool, "other-tool"} {
+				args := []string{"report", "--perf-profile", "workflow", "--session-id", strings.Repeat("b", 32), "--tool", tool}
+				if byDay {
+					args = append(args, "--by-day")
+				}
+				if asJSON {
+					args = append(args, "--json")
+				}
+				want := "no v3/v4 record matches the workflow filter"
+				if tool != a.Tool {
+					want = "no record matches --tool other-tool"
+				}
+				rc, out, diag := runDeskperf(args...)
+				if rc != deskkit.ExitRefused || out != "" || !strings.Contains(diag, want) {
+					t.Errorf("tool=%q day=%v json=%v: rc%d out%q diag%q; want %q", tool, byDay, asJSON, rc, out, diag, want)
+				}
+			}
+		}
 	}
 }
