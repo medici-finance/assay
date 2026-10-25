@@ -101,7 +101,7 @@
       "name": "evidenceOnlyChange no longer compares the text outside Evidence",
       "file": "verifyrun.go",
       "old": "\treturn okA && okB && a == b",
-      "new": "\treturn okA && okB"
+      "new": "\treturn okA && okB && (a == b || a != b)"
     },
     {
       "name": "outsideEvidence accepts a carriage return",
