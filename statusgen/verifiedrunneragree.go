@@ -93,6 +93,12 @@ func runnersAgree(cell, evidence string) bool {
 	if a == "" || b == "" {
 		return true
 	}
+	// Two labels that each LEAD with a forge login name two actors when the
+	// logins differ. Neither containment nor a later alias can override that:
+	// "assay-worker-app (for assay-verifier-app[bot])" leads with the worker.
+	if x, y := leadingLogin(cell), leadingLogin(evidence); x != "" && y != "" && x != y {
+		return false
+	}
 	if a == b || strings.Contains(a, b) || strings.Contains(b, a) {
 		return true
 	}
@@ -118,7 +124,32 @@ func runnersAgree(cell, evidence string) bool {
 	return false
 }
 
-var runnerBotAliasRe = regexp.MustCompile(`[A-Za-z0-9][A-Za-z0-9-]*\[bot\]`)
+var (
+	runnerBotAliasRe = regexp.MustCompile(`[A-Za-z0-9][A-Za-z0-9-]*\[bot\]`)
+	runnerLoginRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*-(app|bot)$`)
+)
+
+// leadingLogin returns the forge login a label's first word names, keyed like
+// runnerKey, or "" when that word is not login-shaped (a model or role label).
+// Login-shaped means a `[bot]` suffix, or an `-app`/`-bot` slug written without
+// one. A word that only might be a login reads as "" here; the alias rule below
+// then still refuses two distinct `[bot]` actors.
+func leadingLogin(label string) string {
+	f := strings.Fields(strings.ToLower(label))
+	if len(f) == 0 {
+		return ""
+	}
+	w := strings.TrimRight(f[0], ",;:")
+	if i := strings.IndexByte(w, '('); i >= 0 {
+		w = w[:i]
+	}
+	bot := strings.HasSuffix(w, "[bot]")
+	w = strings.TrimSuffix(w, "[bot]")
+	if w == "" || !bot && !runnerLoginRe.MatchString(w) {
+		return ""
+	}
+	return w
+}
 
 func runnerBotAliases(label string) []string {
 	connector := func(b byte) bool {
@@ -159,6 +190,7 @@ func evidenceRunnerTally(evidence string) (dominantRaw string, dominantCount, to
 	raw := map[string]string{}
 	for _, ers := range rows {
 		var best evidenceRow
+		var sameDay []evidenceRow // every entry on best.Date
 		have := false
 		ambiguous := false
 		for _, er := range ers {
@@ -167,11 +199,18 @@ func evidenceRunnerTally(evidence string) (dominantRaw string, dominantCount, to
 			}
 			if !have || er.Date > best.Date {
 				best, have = er, true
+				sameDay = []evidenceRow{er}
 				ambiguous = false
-			} else if er.Date == best.Date && !runnersAgree(er.Runner, best.Runner) {
+			} else if er.Date == best.Date {
 				// Day-resolution dates cannot establish which actor ran last.
-				// Table position is not execution chronology.
-				ambiguous = true
+				// Table position is not execution chronology. Compare with EVERY
+				// same-day entry: containment is not transitive.
+				for _, o := range sameDay {
+					if !runnersAgree(er.Runner, o.Runner) {
+						ambiguous = true
+					}
+				}
+				sameDay = append(sameDay, er)
 			}
 		}
 		if !have {
