@@ -1,6 +1,8 @@
 package main
 
 import (
+	trustcore "github.com/medici-finance/assay/deskcore/trust"
+
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -28,13 +30,8 @@ import (
 // nobody and blesses nobody (P1), which makes --scan-issues refuse rather than
 // scan ungated.
 //
-// KEEP IN SYNC with the desk-tools deskkit trust reader — the desk-tools module
-// deliberately does NOT share code with statusgen (the documented-duplicate
-// pattern: issueboard's ownedRepos mirrors scanRepos the same way), so the trust
-// reader, the GraphQL query, and the blessing rule below are a cross-tree
-// duplicate of deskkit's. A change to either copy must be made in both, and a
-// behavioural coupling test binds the two READERS over a shared vector file so
-// the duplication cannot drift.
+// Numeric identity and bless-then-edit evaluation are shared through deskcore/trust.
+// Forge observation and the scanner's unavailable/error contract remain here.
 
 // trustedAuthor reports whether a login is a trusted desk identity. Login-only
 // (gh issue list JSON carries no numeric id); empty/unknown → untrusted (fail
@@ -75,33 +72,15 @@ func trustedAuthor(login string) bool {
 // too. The BLESSING authority is never in that position: its id is mandatory at
 // load.
 func trustedAuthorID(login string, id int64) bool {
-	if login == "" {
-		return false
-	}
 	c := scanEffectiveConfig()
-	if !c.Configured() {
-		return false
+	bare := map[string]int64{}
+	for l, b := range c.BotIdents {
+		if b.Forge == forgeGitLab {
+			bare[l] = b.ID
+		}
 	}
-	lower := strings.ToLower(login)
-	// Bot accounts: trusted by login alone (Apps cannot be recycled).
-	if strings.HasSuffix(lower, "[bot]") || strings.HasPrefix(lower, "app/") {
-		return c.Logins[lower]
-	}
-	// Human accounts: require numeric id match against the configured pin.
-	want, ok := c.Humans[lower]
-	if !ok {
-		return false
-	}
-	// want == 0 (configured, never pinned) is NOT a match on this surface. This is
-	// the STRICT path — the GraphQL databaseId is always present here — so an
-	// unpinned login has no recycling defence and cannot be trusted content.
-	//
-	// It used to answer `id != 0`: an unpinned human was trusted carrying ANY id,
-	// while deskkit's twin (post-review) answers false. That divergence survived
-	// because the shared coupling vector listed `unpinned-human` in the roster and
-	// then carried no CASE for it. It does now.
-	// KEEP IN SYNC with deskkit's TrustedAuthorID / trustedContentAuthor.
-	return want != 0 && id == want
+	pin, _ := trustcore.ExpectedID(login, c.Humans, c.Bots, bare)
+	return trustcore.Admit(c.Configured(), trustedAuthor(login), pin, id, trustcore.IsBot(strings.ToLower(login)), trustcore.Content)
 }
 
 // authorizedAuthorSet returns the effective AUTHORIZED-AUTHOR set for the
@@ -162,7 +141,7 @@ func authorizedByIdentity(login string, id int64, typ string) bool {
 	// Desk App identity: type Bot, or a login rendering as a bot/App. Trusted by
 	// login alone, but only if it is a REGISTERED bot rendering.
 	if typ == "Bot" || scanLooksLikeBot(lower) {
-		return c.Logins[lower]
+		return trustedAuthorID(login, id)
 	}
 	// Human authorized author: login in the set AND id-pinned match.
 	want, ok := authorizedAuthorSet()[lower]
@@ -177,10 +156,7 @@ func authorizedByIdentity(login string, id int64, typ string) bool {
 // roster unconfigured there is no authority and this is false for every input.
 func isBlessAuthorityID(login string, id int64) bool {
 	c := scanEffectiveConfig()
-	if !c.Configured() {
-		return false
-	}
-	return strings.EqualFold(login, c.Bless.Login) && id != 0 && id == c.Bless.ID
+	return trustcore.Admit(c.Configured(), strings.EqualFold(login, c.Bless.Login), c.Bless.ID, id, false, trustcore.NumericID)
 }
 
 // issueBlessChecker evaluates the blessing for one untrusted-author issue.
@@ -351,40 +327,11 @@ func evalBlessingEvents(bodyEdited time.Time, events []blessEvent, complete bool
 		return false, err
 	}
 	if !complete {
-		return false, nil // overflowed thread — fail closed to quarantine
-	}
-	var bless time.Time
-	for _, e := range events {
-		// T10: the selection is STRICT (login + numeric id) — trustedAuthorID (used
-		// in the untrusted-content loop below) returns false for a human login with
-		// id==0, so an id-less blessing comment accepted here would then void itself
-		// as untrusted content. Keeping the selection strict avoids that
-		// contradiction. The configured bless id is mandatory at load, so there is
-		// never a "configured without a pin" case to fall back to here.
-		if isBlessAuthorityID(e.login, e.id) && e.created.After(bless) {
-			bless = e.created
-		}
-	}
-	if bless.IsZero() {
 		return false, nil
 	}
-	// T3: use !Before rather than After so a tie (same-second edit) voids
-	// the blessing — fail-closed on ties.
-	if !bodyEdited.Before(bless) {
-		return false, nil // body edited at/after the blessing — void
-	}
+	facts := make([]trustcore.Event, 0, len(events))
 	for _, e := range events {
-		if trustedAuthorID(e.login, e.id) {
-			continue // trusted content (numeric-id-verified) is trusted in its own right
-		}
-		last := e.created
-		if e.edited.After(last) {
-			last = e.edited
-		}
-		// T3: tie voids the blessing — fail-closed on same-second edits.
-		if !last.Before(bless) {
-			return false, nil // untrusted content added/edited at/after the blessing
-		}
+		facts = append(facts, trustcore.Event{Authority: isBlessAuthorityID(e.login, e.id), Trusted: trustedAuthorID(e.login, e.id), Created: e.created, Edited: e.edited})
 	}
-	return true, nil
+	return trustcore.Blessed(bodyEdited, facts), nil
 }

@@ -1,7 +1,8 @@
 # Shared policy consolidation plan
 
-Status: proposed implementation scopes, 2026-10-25. Follow-up tracker: #4439. This plan does not dispatch
-work or change the acceptance authority of existing briefs.
+Status: implementation candidate, 2026-10-25. Follow-up tracker: #4439.
+The original scope and audit below are retained as the baseline. This candidate
+implements the selected behaviors without changing acceptance authority.
 
 Source baseline: main `4aeecf71626f485c4938dec3165e887a2f74e20d`, refreshed
 2026-10-25; closure implementation in PR #4435, issues #4431 and #4437.
@@ -108,16 +109,34 @@ codes and time limits. The original full statusgen invocation hit its default
 must use an explicit sufficient budget or bounded test partitions, with every
 partition accounted for. This plan adds no performance claim or invented budget.
 
-## Completion and remaining decisions
+## Completion and selected behavior
 
 Completion means the real consumers use one owner per meaning, obsolete bodies
 are deleted, intentional profiles remain explicit, compatible artifacts/pins are
 qualified and independent verification has supplied the evidence. A plan, helper
 addition or green unit test alone does not establish that migration.
 
-Before trust cutover, the trust owner must settle numeric IDs for bot observations
-that carry an ID. Before parser/trailer cutover, settle canonical valid YAML and
-fence/heading interpretation plus historical compatibility. Preserve the stricter
-live boundary while these decisions are unresolved; do not widen acceptance by
-assuming that all extant copies are authoritative. These are bounded implementation
-contract decisions, not a request to grant new authority or merge the draft PR.
+The selected behavior is now explicit in the shared functions and regression
+fixtures: supplied numeric IDs must match pins, valid quoted YAML risk answers
+retain their meaning, and fenced work-link examples grant no delivery credit.
+Container-v1 versus general-v1/v2, login-only versus numeric-ID observations,
+historical-read versus strict new-write trailers and inherited lint versus new
+selected outcomes remain explicit profiles. No additional policy choice is left
+for a caller to reconstruct from a copied implementation.
+
+## Implementation inventory
+
+| Original unit | Candidate disposition |
+|---|---|
+| A | Wrong-bot-ID, quoted-risk, fenced-link, capability-profile and negative evidence cases are exercised through actual library/caller tests; the shared roster vectors now include the omitted wrong-bot-ID case. |
+| B | `deskcore/riskpath` owns base values, additive union and matching; lint/deskkit functions forward. |
+| C | `deskcore/verdict` owns canonical bytes, envelope, role and public-key verification; custody/source adapters stay local. |
+| D | `statusgen/briefdoc` owns the shared frontmatter/section grammar; all nominated command/admission adapters consume it, including packet and rebaseline section boundaries. |
+| E | `deskcore/trust` owns the shared key schema, lexical/forge identity parsing, rendering, strict/profiled identity and edit-aware blessing judgments. Config field projection, source transport/permission/echo and forge reads remain adapters. |
+| F | `statusgen/workref/trailers` owns scanning and new-write cardinality/errors; historical projections retain their existing attribution responsibilities. |
+| G | `deskcore/attestation` owns binding types/decoding/rendering/validation, immutable-record/target judgments and standing-stamp judgments. Record reads and current-state rechecks remain separate. |
+| H | `statusgen/evaluation/selectedclosure.go` exposes frozen-input selected-closure and fail-first row decisions; command-local code collects parser/Git observations and renders diagnostics. |
+| I | Both modules already pin/replace the existing shared modules and image builds already copy them; no new module or credential packaging is needed. Builds and tests use `GOWORK=off`. Actual release/tag/pin publication remains the existing release owner's operation. |
+
+Independent review/verification still decides acceptance. The implementation
+candidate does not assert a completed release or rewrite historical Evidence.

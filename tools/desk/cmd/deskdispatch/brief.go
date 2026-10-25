@@ -20,6 +20,8 @@ package main
 // keys on (strings.EqualFold(Gate, "human")).
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"os"
 	"path/filepath"
 	"regexp"
@@ -53,15 +55,15 @@ func briefFrontmatterGate(root, brief string) string {
 	if err != nil {
 		return ""
 	}
-	body := briefFrontmatterBlock(string(raw))
-	if body == "" {
-		return ""
+	block, _, err := briefdoc.Split(string(raw))
+	if err != nil {
+		return "human"
 	}
-	m := briefGateRe.FindStringSubmatch(body)
-	if m == nil {
-		return ""
+	f, err := briefdoc.ParseFields(block)
+	if err != nil {
+		return "human"
 	}
-	return strings.Trim(strings.TrimSpace(m[1]), `"'`)
+	return f.Values["gate"]
 }
 
 // briefExecTierRe / briefEffortRe match the top-level `exec-tier:` and `effort:` frontmatter
@@ -109,15 +111,4 @@ func readBriefRecordFields(root, brief string) briefRecordFields {
 
 // briefFrontmatterBlock returns the text between the leading `---` fences, or "" if the
 // content does not open with one. Mirrors verifyloop.frontmatterBlock.
-func briefFrontmatterBlock(content string) string {
-	lines := strings.Split(content, "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
-		return ""
-	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			return strings.Join(lines[1:i], "\n")
-		}
-	}
-	return ""
-}
+func briefFrontmatterBlock(content string) string { return briefdoc.Frontmatter(content) }

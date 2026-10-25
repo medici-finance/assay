@@ -23,6 +23,8 @@ package deskkit
 // slot, while a false hold on a read failure would stop every human-gated brief.
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"fmt"
 	"regexp"
 	"sort"
@@ -74,36 +76,18 @@ type BriefAdmission struct {
 // GatesHuman reports whether the brief declares `gate: human`.
 func (b BriefAdmission) GatesHuman() bool { return b.Gate == "human" }
 
-var (
-	admissionIDRe       = regexp.MustCompile(`(?m)^brief:[ \t]*(.*)$`)
-	admissionExecTierRe = regexp.MustCompile(`(?m)^exec-tier:[ \t]*(.*)$`)
-	admissionDecisionRe = regexp.MustCompile(`(?m)^decision-issue:[ \t]*(.*)$`)
-)
-
 // ParseBriefAdmission reads the admission fields from a brief file's content.
 func ParseBriefAdmission(content string) BriefAdmission {
-	front := briefFrontmatterFence(content)
-	if front == "" {
+	front, _, err := briefdoc.Split(content)
+	if err != nil {
 		return BriefAdmission{}
 	}
-	field := func(re *regexp.Regexp) string {
-		m := re.FindStringSubmatch(front)
-		if m == nil {
-			return ""
-		}
-		v := m[1]
-		if i := strings.Index(v, " #"); i >= 0 {
-			v = v[:i]
-		}
-		return strings.Trim(strings.TrimSpace(v), `"'`)
+	f, err := briefdoc.ParseFields(front)
+	if err != nil {
+		return BriefAdmission{Gate: "human", ExecTier: "strong"}
 	}
-	b := BriefAdmission{
-		Frontmatter: true,
-		ID:          field(admissionIDRe),
-		ExecTier:    field(admissionExecTierRe),
-		Gate:        strings.ToLower(field(briefGateLine)),
-	}
-	if n, err := strconv.Atoi(strings.TrimPrefix(field(admissionDecisionRe), "#")); err == nil && n > 0 {
+	b := BriefAdmission{Frontmatter: true, ID: f.Values["brief"], ExecTier: f.Values["exec-tier"], Gate: strings.ToLower(f.Values["gate"])}
+	if n, err := strconv.Atoi(strings.TrimPrefix(f.Values["decision-issue"], "#")); err == nil && n > 0 {
 		b.DecisionIssue = n
 	}
 	return b

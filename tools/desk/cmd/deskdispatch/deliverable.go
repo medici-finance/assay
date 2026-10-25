@@ -60,6 +60,8 @@ package main
 // deliverable repo's own checkout (--root) stays the worktree source.
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -265,15 +267,16 @@ func briefV2Alias(id string) string {
 
 // briefField returns a trimmed, unquoted frontmatter scalar (an inline `# comment` dropped).
 func briefField(front string, re *regexp.Regexp) string {
-	m := re.FindStringSubmatch(front)
-	if m == nil {
+	f, err := briefdoc.ParseFields(front)
+	if err != nil {
 		return ""
 	}
-	v := m[1]
-	if i := strings.Index(v, " #"); i >= 0 {
-		v = v[:i]
+	for key, value := range f.Values {
+		if re.MatchString(key + ": " + value) {
+			return value
+		}
 	}
-	return strings.Trim(strings.TrimSpace(v), `"'`)
+	return ""
 }
 
 // resolveBriefPath locates --brief: absolute as given; relative under --root first (the base the

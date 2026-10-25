@@ -54,10 +54,11 @@ func TestBriefFrontmatterRisk(t *testing.T) {
 		},
 		{
 			name:         "regulatory yes per-line",
-			content:      "---\ngate: model\nregulatory: yes\n---\nbody",
+			content:      "---\ngate: model\nrisk:\n  regulatory: yes\n---\nbody",
 			want:         true,
 			wantHasFence: true,
 		},
+		{name: "misplaced risk is unreadable and risk-classed", content: "---\ngate: model\nregulatory: yes\n---\nbody", want: true, wantHasFence: false},
 		{
 			name:         "no gate no risk",
 			content:      "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n---\nbody",

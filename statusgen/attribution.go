@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -12,7 +14,7 @@ import (
 )
 
 // verifiedCellRe matches a dated runner in a Verified column: "YYYY-MM-DD <token...>".
-var verifiedCellRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2} \S`)
+var verifiedCellRe = briefdoc.VerifiedStampRE
 
 // verifiedTokenRe captures the first whitespace-token immediately after the
 // leading date in a Verified cell (e.g. "2026-07-08 sonnet-verifier" -> "sonnet-verifier").

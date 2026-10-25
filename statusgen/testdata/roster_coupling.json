@@ -1,7 +1,7 @@
 {
   "_comment": [
-    "ONE roster, fed through BOTH config readers — the desk-tools deskkit reader",
-    "and statusgen — with identical expected verdicts. This file is the cross-tree",
+    "ONE roster, fed through BOTH config readers \u2014 the desk-tools deskkit reader",
+    "and statusgen \u2014 with identical expected verdicts. This file is the cross-tree",
     "binding that replaced the textual KEEP-IN-SYNC grep when the trust roster",
     "became configuration (assay-selfcontain/05, Task 2).",
     "",
@@ -9,13 +9,13 @@
     "The two modules deliberately share no code, so a shared VECTOR file is what",
     "keeps their duplicated readers honest: a drift in either reader fails here.",
     "",
-    "The identities are deliberately NOT this house's — the roster is adopter",
+    "The identities are deliberately NOT this house's \u2014 the roster is adopter",
     "configuration now, and a fixture that only works with one organisation's",
     "logins would not prove that.",
     "",
     "EXTENDED at review (correctness finding 3). The vector originally carried",
     "only the three TRUST variables, so the repo-policy parse sat structurally outside the",
-    "binding that is supposed to keep the duplicated readers honest — and the two copies had",
+    "binding that is supposed to keep the duplicated readers honest \u2014 and the two copies had",
     "in fact diverged on it: deskkit validated the ci|no-ci / public|private tokens and",
     "collapsed the whole configuration on a bad one, while statusgen stored the token",
     "unvalidated and reported configured=true. One file, one typo, opposite verdicts.",
@@ -27,7 +27,7 @@
   "_knownRosterKeysComment": [
     "knownRosterKeys is the DECLARED roster schema: every key in the ASSAY_",
     "namespace that either binary must RECOGNISE. It is a single list because both",
-    "readers fail CLOSED on an unrecognised ASSAY_ key — a key one binary knows and",
+    "readers fail CLOSED on an unrecognised ASSAY_ key \u2014 a key one binary knows and",
     "the other does not turns a roster that is valid and REQUIRED for one tool into a",
     "whole-configuration refusal for the other. That is not a theoretical drift: it",
     "took the intake scan lane down fleet-wide when the desk tools grew",
@@ -148,7 +148,7 @@
       "whyAuthorID": "the ONE delta from trustedContent: a human with no numeric id is login-only on the GENERAL-PURPOSE path, which exists for surfaces (gh CLI list JSON) that structurally carry no id. The strict content path fails closed on the same input"
     },
     {
-      "why": "a configured App in the REST rendering — trusted author and trusted content, never a blessing authority",
+      "why": "a configured App in the REST rendering \u2014 trusted author and trusted content, never a blessing authority",
       "login": "example-reviewer-app[bot]",
       "id": 3003,
       "trustedAuthor": true,
@@ -157,7 +157,7 @@
       "trustedAuthorID": true
     },
     {
-      "why": "the same App in the gh CLI rendering — both renderings are accepted",
+      "why": "the same App in the gh CLI rendering \u2014 both renderings are accepted",
       "login": "app/example-reviewer-app",
       "id": 3003,
       "trustedAuthor": true,
@@ -184,7 +184,7 @@
       "trustedAuthorID": false
     },
     {
-      "why": "case is insignificant — GitHub logins are case-insensitively unique, so a case variant is the same account",
+      "why": "case is insignificant \u2014 GitHub logins are case-insensitively unique, so a case variant is the same account",
       "login": "ADA",
       "id": 1001,
       "trustedAuthor": true,
@@ -229,14 +229,14 @@
       "trustedAuthorID": false
     },
     {
-      "why": "an UNPINNED configured human on a surface that HAS an id: trusted author, but untrusted content — nothing to check the id against, so pinning is what buys trust on an id-bearing surface (this case was missing, which is how the two readers diverged on it)",
+      "why": "an UNPINNED configured human on a surface that HAS an id: trusted author, but untrusted content \u2014 nothing to check the id against, so pinning is what buys trust on an id-bearing surface (this case was missing, which is how the two readers diverged on it)",
       "login": "unpinned-human",
       "id": 7007,
       "trustedAuthor": true,
       "trustedContent": false,
       "mayBless": false,
       "trustedAuthorID": false,
-      "whyAuthorID": "MUTATION A. An UNPINNED configured human on an id-bearing surface: there is nothing to compare the id against, so pinning is what buys trust. The conversion briefly made this `want == 0 => trusted`, i.e. trusted carrying ANY id — the exact login-recycling exposure P4 closes, and a WIDENING against the pre-conversion `return ok && want == id`. This case is the one that reddens on it"
+      "whyAuthorID": "MUTATION A. An UNPINNED configured human on an id-bearing surface: there is nothing to compare the id against, so pinning is what buys trust. The conversion briefly made this `want == 0 => trusted`, i.e. trusted carrying ANY id \u2014 the exact login-recycling exposure P4 closes, and a WIDENING against the pre-conversion `return ok && want == id`. This case is the one that reddens on it"
     },
     {
       "why": "the same unpinned human on a surface with NO id: login-only, as before the conversion",
@@ -246,7 +246,16 @@
       "trustedContent": false,
       "mayBless": false,
       "trustedAuthorID": true,
-      "whyAuthorID": "the same unpinned human on a surface with NO id: login-only, as before the conversion — the general-purpose path must NOT be tightened here either, or gh-CLI-sourced surfaces stop trusting a configured identity"
+      "whyAuthorID": "the same unpinned human on a surface with NO id: login-only, as before the conversion \u2014 the general-purpose path must NOT be tightened here either, or gh-CLI-sourced surfaces stop trusting a configured identity"
+    },
+    {
+      "why": "A rostered bot with a supplied numeric ID must match its pin; the same strict rule applies in both modules.",
+      "login": "example-reviewer-app[bot]",
+      "id": 9999,
+      "trustedAuthorID": false,
+      "trustedAuthor": true,
+      "trustedContent": false,
+      "mayBless": false
     }
   ],
   "repoCases": [
@@ -279,7 +288,7 @@
       "visibility": "unknown"
     },
     {
-      "why": "a repo outside the configured set is refused — the write boundary is a whitelist",
+      "why": "a repo outside the configured set is refused \u2014 the write boundary is a whitelist",
       "repo": "example-org/not-listed",
       "allowed": false,
       "ciRequired": true,
@@ -321,7 +330,7 @@
   ],
   "rejectedRosters": [
     {
-      "why": "a one-character typo in a repo POLICY token. deskkit refused the whole configuration; statusgen accepted it — the divergence this list exists to bind",
+      "why": "a one-character typo in a repo POLICY token. deskkit refused the whole configuration; statusgen accepted it \u2014 the divergence this list exists to bind",
       "roster": {
         "ASSAY_BLESS_LOGIN": "ada:1001",
         "ASSAY_TRUSTED_LOGINS": "ada:1001",
@@ -349,7 +358,7 @@
       "problemContains": "unknown key in the ASSAY_ namespace"
     },
     {
-      "why": "the blessing authority carrying no numeric id — mandatory on this surface alone",
+      "why": "the blessing authority carrying no numeric id \u2014 mandatory on this surface alone",
       "roster": {
         "ASSAY_BLESS_LOGIN": "ada",
         "ASSAY_TRUSTED_LOGINS": "ada:1001"
@@ -357,7 +366,7 @@
       "problemContains": "carries no numeric id"
     },
     {
-      "why": "the blessing authority given as a LIST — never the first entry, never every entry",
+      "why": "the blessing authority given as a LIST \u2014 never the first entry, never every entry",
       "roster": {
         "ASSAY_BLESS_LOGIN": "ada:1001,mallory:9",
         "ASSAY_TRUSTED_LOGINS": "ada:1001"
@@ -374,7 +383,7 @@
       "problemContains": "schema version"
     },
     {
-      "why": "the blessing authority is ALSO a configured App. The looksLikeBot arm does NOT catch this slug — 'helios' carries no [bot]/app/ affix and no -app/-bot suffix — so the inBotSet arm is the only thing standing between an App and the authority that admits external text into the desks' own queues. Both readers carry that arm; a mutation disabling it in either survived the whole suite before this case existed.",
+      "why": "the blessing authority is ALSO a configured App. The looksLikeBot arm does NOT catch this slug \u2014 'helios' carries no [bot]/app/ affix and no -app/-bot suffix \u2014 so the inBotSet arm is the only thing standing between an App and the authority that admits external text into the desks' own queues. Both readers carry that arm; a mutation disabling it in either survived the whole suite before this case existed.",
       "roster": {
         "ASSAY_BLESS_LOGIN": "helios:1001",
         "ASSAY_TRUSTED_LOGINS": "ada:1001",

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"crypto/sha256"
 	"fmt"
 	"path/filepath"
@@ -1308,57 +1310,23 @@ func extractEvidence(body string) string {
 // section's boundaries are decided; extractEvidence and the auto-flip's
 // Evidence-only classifier (evidenceshape.go) both read them from here, so a
 // line the parser does not read as Evidence is never classified as Evidence.
-func evidenceSectionSpan(lines []string) (start, end int, ok bool) {
-	start = -1
-	for i, l := range lines {
-		if strings.TrimSpace(l) == "## Evidence" {
-			start = i + 1
-			break
-		}
-	}
-	if start < 0 {
-		return 0, 0, false
-	}
-	end = len(lines)
-	for i := start; i < len(lines); i++ {
-		if isSectionHeading(lines[i]) {
-			end = i
-			break
-		}
-	}
-	return start, end, true
+func evidenceSectionSpan(lines []string) (int, int, bool) {
+	return briefdoc.SectionBounds(lines, "Evidence", false)
 }
 
 // isSectionHeading reports whether a brief line is a `## ` section heading as
 // the parser reads one: leading and trailing whitespace ignored.
-func isSectionHeading(l string) bool {
-	return strings.HasPrefix(strings.TrimSpace(l), "## ")
-}
+func isSectionHeading(l string) bool { return briefdoc.IsSection(l) }
 
 // evidenceHasContent reports whether an Evidence section has at least one
 // content row: a non-empty line outside HTML comments (the contract comment
 // alone does not count).
-func evidenceHasContent(section string) bool {
-	stripped := htmlCommentRe.ReplaceAllString(section, "")
-	for _, l := range strings.Split(stripped, "\n") {
-		if strings.TrimSpace(l) != "" {
-			return true
-		}
-	}
-	return false
-}
+func evidenceHasContent(section string) bool { return briefdoc.HasContent(section) }
 
 // hasHumanReviewer reports whether a Reviewed-column value names a human — a
 // whitespace-separated token with the "human:" prefix (e.g. "human:alex"). A tag
 // that merely contains the substring (e.g. "superhuman:x") does NOT count.
-func hasHumanReviewer(reviewed string) bool {
-	for _, tok := range strings.Fields(reviewed) {
-		if strings.HasPrefix(tok, "human:") {
-			return true
-		}
-	}
-	return false
-}
+func hasHumanReviewer(reviewed string) bool { return briefdoc.HasHumanReviewer(reviewed) }
 
 // verifyTableHasRow reports whether a `## Verify` section body contains at least
 // one table data row whose Command and Expect cells are both non-empty. It
