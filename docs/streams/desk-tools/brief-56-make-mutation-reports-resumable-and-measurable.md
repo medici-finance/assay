@@ -48,11 +48,11 @@ design-fit:
 - Never cache infrastructure errors, an incomplete record, or a result from a different source/test/toolchain identity.
 
 ## Task
-1. Add optional `-state PATH`. When supplied, write a versioned JSONL header and one atomically appended record per completed mutation with its stable spec index, verdict, build duration, test duration, timeout classification, and selection description. Keep ordinary stdout/stderr report behaviour unchanged.
-2. Bind the header to a canonical identity covering the spec bytes, relevant source and test files, dependency metadata, Go toolchain, build/test flags, and runner schema version. A resume with any identity mismatch refuses before planting a mutation.
+1. Add optional `-state PATH`. When supplied, write a versioned JSONL header and one atomically appended record per completed mutation with its stable spec index, verdict, build duration, test duration, timeout classification, and selection description, alongside the pristine-baseline and positive-control durations so optimisation sees phase timing, not only per-mutation timing. Keep ordinary stdout/stderr report behaviour unchanged.
+2. Bind the header to a canonical identity covering the spec bytes, the relevant source and test files (the package set the spec's test command compiles), dependency metadata, Go toolchain, build/test flags, the run mode — `-select` on/off and the `-shard i/n` selection, since a narrowed run can report CAUGHT where the full command survives, so verdicts do not transfer across modes — and runner schema version. `-j` needs no binding: it changes scheduling, not verdicts. A resume with any identity mismatch refuses before planting a mutation.
 3. On a same-identity retry, rerun the pristine baseline and positive control, then skip only mutations with complete definitive records. Do not reuse HARNESS BROKEN, interrupted, infrastructure-error, or partially written records. The final report must include resumed and freshly executed results in the original spec order.
-4. Serialize writers to one state file with the existing cross-platform lock owner. Flush each record before reporting the mutation complete. On SIGINT/SIGTERM, kill child process groups, restore the source tree, and leave a syntactically valid state file that a later invocation can resume.
-5. Add `TestStateResume`, `TestStateRejectsNewTree`, `TestStateSkipsNoErrors`, and `TestStateEndToEnd`. Cover interruption after a completed record, changed source/tests/toolchain identity, corrupt trailing data, concurrent writers, and exact final-report parity with an uninterrupted run.
+4. Serialize writers to one state file with the existing cross-platform lock owner (`deskkit.TryLockExclusive`/`UnlockFile` in `tools/desk/internal/deskkit`; muhar is in the same `tools/desk` module, so the import adds no release dependency). Flush each record before reporting the mutation complete. On SIGINT/SIGTERM, kill child process groups (Unix process groups as today; on Windows the existing top-process-only kill remains, as `process_windows.go` documents), restore the source tree, and leave a syntactically valid state file that a later invocation can resume.
+5. Add `TestStateResume`, `TestStateRejectsNewTree`, `TestStateSkipsNoErrors`, and `TestStateEndToEnd`. `TestStateResume` covers interruption after a completed record and corrupt trailing data (truncate or refuse on a partial trailing record, never resume past it); `TestStateRejectsNewTree` covers changed source/tests/toolchain identity and changed run mode (`-select` off→on, `-shard i/n` changed or removed); `TestStateSkipsNoErrors` covers non-reuse of HARNESS BROKEN, interrupted and infrastructure-error records; `TestStateEndToEnd` covers concurrent writers (the lock holder writes, the second writer refuses without writing) and exact final-report parity with an uninterrupted run.
 6. Document the state schema, identity, cleanup, and operator-owned path contract. Change the consumer entry to `fixed-here` in the implementation PR.
 
 ## Verify (executable — no prose-only DoD items)
@@ -69,7 +69,8 @@ design-fit:
 - A changed tree reuses an old verdict: TestStateRejectsNewTree fails.
 - An interrupted or failed run becomes a completed result: TestStateSkipsNoErrors fails.
 - Resume changes verdict order or content: TestStateEndToEnd's uninterrupted comparison fails.
-- Two callers race one state file: the concurrent-writer case in row 1 refuses before either writes.
+- Two callers race one state file: the concurrent-writer case in row 1's `TestStateEndToEnd` refuses — the lock holder writes, the second writer refuses without writing.
+- A changed run mode reuses another mode's verdicts: `TestStateRejectsNewTree`'s `-select`/`-shard` case fails.
 - The state option is documented without its delivery: row 3 fails.
 
 ## Review
