@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit -run '^TestFlowWorld$' -count=1 -timeout 300s",
+  "test": "go test ./internal/deskkit -run '^TestFlowWorld(Bind)?$' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL - a moved input no longer invalidates the record",
     "file": "internal/deskkit/preflight.go",
@@ -42,6 +42,30 @@
       "file": "internal/deskkit/verifierattestation.go",
       "old": "\tif r.World != nil {\n\t\tif err = r.World.Recheck(worldRecheckProbes); err != nil {",
       "new": "\tif r.World != nil && false {\n\t\tif err = r.World.Recheck(worldRecheckProbes); err != nil {"
+    },
+    {
+      "name": "an instrument change is not rechecked",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\t\t_, digest, err := p.Instrument(strings.TrimPrefix(key, worldInstrument))\n\t\t\tcompare(key, \"sha256:\"+digest, err)",
+      "new": "\t\t\t_, _, err := p.Instrument(strings.TrimPrefix(key, worldInstrument))\n\t\t\tcompare(key, w.Inputs[key], err)"
+    },
+    {
+      "name": "a gate row's program becomes an instrument",
+      "file": "internal/deskkit/worldbrief.go",
+      "old": "\t\t\tif class != \"check\" && class != \"check:ci\" {",
+      "new": "\t\t\tif false {"
+    },
+    {
+      "name": "prepare admits an empty brief",
+      "file": "internal/deskkit/worldbrief.go",
+      "old": "\tspec := WorldSpecFromBrief(r.Home, raw)",
+      "new": "\tspec := WorldSpecFromBrief(r.Home, \"\")"
+    },
+    {
+      "name": "prepare binds an unready admission",
+      "file": "internal/deskkit/worldbrief.go",
+      "old": "\tif !adm.Ready() {\n\t\treturn r.VerifierReceipt, adm.Err()\n\t}\n\treturn BindVerifierWorld",
+      "new": "\treturn BindVerifierWorld"
     }
   ]
 }

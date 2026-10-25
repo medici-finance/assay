@@ -2098,8 +2098,9 @@ type RunWorld struct {
 	Root    string
 	// Inputs maps each input key to the value observed at admission.
 	Inputs map[string]string
-	// Paths maps sibling and instrument keys to the local path observed, so a
-	// recheck re-reads exactly what admission read.
+	// Paths maps sibling keys to the checkout path observed, so a recheck
+	// re-reads exactly what admission read. Instruments are bound by the digest
+	// of their bytes and carry no path.
 	Paths map[string]string `json:",omitempty"`
 	// Scanned counts the declared siblings and pinned instruments admitted. Zero
 	// is a successful empty scan, never could-not-check.
@@ -2307,10 +2308,9 @@ func AdmitWorld(spec WorldSpec, probes PreflightProbes) WorldAdmission {
 	}
 	for _, name := range dedupe(spec.Instruments) {
 		key := worldInstrument + name
-		value, path, c := admitInstrument(p, pinRoot, name, host)
-		if path != "" {
-			a.World.Paths[key] = path
-		}
+		// An instrument is recorded by the digest of its bytes, never by where
+		// PATH found it: the same pinned bytes at another path are the same world.
+		value, _, c := admitInstrument(p, pinRoot, name, host)
 		record(key, value, c)
 		if c.State.Passing() {
 			a.World.Scanned++
@@ -2518,11 +2518,7 @@ func (w RunWorld) Recheck(probes PreflightProbes) error {
 			rev, err := p.Revision(w.Paths[key])
 			compare(key, rev, err)
 		case strings.HasPrefix(key, worldInstrument):
-			path, digest, err := p.Instrument(strings.TrimPrefix(key, worldInstrument))
-			if err == nil && path != w.Paths[key] {
-				changed = append(changed, key)
-				continue
-			}
+			_, digest, err := p.Instrument(strings.TrimPrefix(key, worldInstrument))
 			compare(key, "sha256:"+digest, err)
 		default:
 			unread = append(unread, key+": unknown prerequisite key")

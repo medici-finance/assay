@@ -5,6 +5,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 	"path/filepath"
+	"regexp"
 	"sync"
 )
 
@@ -183,6 +184,11 @@ func (g *worldGate) admitItems(v *VerifyLoop, items []loopengine.Item) {
 			continue
 		}
 		spec.Repo, spec.Base = repo, base
+		// The loop's own root is checked out at the plan's --sha; another root
+		// has its own revision, so the target applies to this root only.
+		if absRoot(root) == absRoot(v.Root) && fullSHA.MatchString(v.TargetSHA) {
+			spec.Source = v.TargetSHA
+		}
 		adm := deskkit.AdmitWorld(spec, g.probes)
 		if !adm.Ready() {
 			it.Payload["could_not_check"] = adm.Reason()
@@ -219,3 +225,5 @@ func (v *VerifyLoop) landWorld(dispatched, now deskkit.VerifierReceipt) error {
 	}
 	return dispatched.World.Recheck(probes)
 }
+
+var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)

@@ -157,6 +157,18 @@ func TestFlowWorld(t *testing.T) {
 		}
 	})
 
+	t.Run("the record is admitted at the plan's target sha", func(t *testing.T) {
+		v, _, items := world50SelectedAt(t, world50RevA)
+		if rec, ok := v.World.item("fixture/01"); !ok || rec.Inputs[deskkit.WorldSource] != world50RevA {
+			t.Fatalf("record not at the target: %+v", rec)
+		}
+		_, _, items = world50SelectedAt(t, "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
+		held, _ := world50Item(items, "fixture/01")
+		if why := payloadValue(held, "could_not_check"); !strings.Contains(why, "differs from the admitted eeeeeeeeeeee") {
+			t.Fatalf("a root off the plan's target was admitted: %q", why)
+		}
+	})
+
 	t.Run("a gated loop refuses a result with no record", func(t *testing.T) {
 		v, _, _ := world50Selected(t)
 		it := loopengine.Item{ID: "fixture/09"}
@@ -171,6 +183,11 @@ func TestFlowWorld(t *testing.T) {
 // world50Selected builds one root with two briefs — 01 declares a materialized sibling, 02 one
 // that is absent — admits the root as the boot would, and runs the gated selection.
 func world50Selected(t *testing.T) (*VerifyLoop, *world50Probes, []loopengine.Item) {
+	t.Helper()
+	return world50SelectedAt(t, "abc123")
+}
+
+func world50SelectedAt(t *testing.T, target string) (*VerifyLoop, *world50Probes, []loopengine.Item) {
 	t.Helper()
 	parent := t.TempDir()
 	root := filepath.Join(parent, "home")
@@ -188,7 +205,7 @@ func world50Selected(t *testing.T) (*VerifyLoop, *world50Probes, []loopengine.It
 		t.Fatalf("root not admitted: %v", err)
 	}
 	var out bytes.Buffer
-	v := &VerifyLoop{Root: root, TargetSHA: "abc123", Emit: &out, DurableSink: newRec(), Now: fixedNow,
+	v := &VerifyLoop{Root: root, TargetSHA: target, Emit: &out, DurableSink: newRec(), Now: fixedNow,
 		World: world50Gate(w), Attest: fixtureAttestation,
 		Feeder: func(it loopengine.Item, _ loopengine.Tier, _ string) (loopengine.Result, error) {
 			return loopengine.Result{Item: it, Verdict: loopengine.VerdictPass, RunnerID: "local:glm",

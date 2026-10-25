@@ -50,6 +50,11 @@ func executeVerifier(mode string, o dispatchOpts) (err error) {
 		receipt, err = deskkit.CheckVerifierAttestation(o.root, o.brief)
 	} else {
 		receipt, err = deskkit.RecoverVerifierAttestation(o.root)
+		if err == nil {
+			// Recovery finishes the same prepare step, so it binds the same
+			// prerequisite record; binding is idempotent for an unchanged world.
+			receipt, err = deskkit.AdmitAndBindVerifierWorld(o.root)
+		}
 	}
 	if err != nil {
 		return err
@@ -123,7 +128,12 @@ func attestVerifierDispatch(o dispatchOpts, repo, home string) (string, error) {
 	if err := deskkit.PrepareVerifierAttestation(home, repo, brief, o.model, o.tier); err != nil {
 		return "", err
 	}
-	receipt, err := deskkit.RecoverVerifierAttestation(home)
+	if _, err := deskkit.RecoverVerifierAttestation(home); err != nil {
+		return "", err
+	}
+	// The prepare step ends by recording the world the run was admitted into;
+	// landing rechecks exactly this record (example-stream/50).
+	receipt, err := deskkit.AdmitAndBindVerifierWorld(home)
 	if err != nil {
 		return "", err
 	}

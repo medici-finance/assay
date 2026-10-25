@@ -277,4 +277,98 @@ func TestFlowWorld(t *testing.T) {
 			t.Fatalf("no pin file still named instruments: %v", got)
 		}
 	})
+
+	t.Run("an instrument is bound by its bytes, not by where PATH found it", func(t *testing.T) {
+		root, _, fake := world50Root(t)
+		w := AdmitWorld(world50Spec(root), fake.probes()).World
+		if _, kept := w.Paths[worldInstrument+"statusgen"]; kept {
+			t.Fatalf("an instrument path is part of the record: %v", w.Paths)
+		}
+		fake.inst["statusgen"] = [2]string{"/usr/local/bin/statusgen", world50Digest}
+		if err := w.Recheck(fake.probes()); err != nil {
+			t.Fatalf("the same bytes at another path were refused: %v", err)
+		}
+		fake.inst["statusgen"] = [2]string{"/opt/bin/statusgen", world50Drifted}
+		if err := w.Recheck(fake.probes()); err == nil || !strings.Contains(err.Error(), "instrument:statusgen") {
+			t.Fatalf("changed instrument bytes were not refused: %v", err)
+		}
+	})
+
+	t.Run("the brief names siblings and runner-executed instruments", func(t *testing.T) {
+		root, _, _ := world50Root(t)
+		brief := "# B\n\nout-of-repo files: ../tracker/docs/x.md\n\n## Verify\n\n" +
+			"| # | Class | Command |\n|---|-------|---------|\n" +
+			"| 1 | check | `statusgen --lint` |\n" +
+			"| 2 | gate:model | `desk-tools --help` |\n" +
+			"| 3a | check | `desk-tools --help` |\n" +
+			"| 4 | check:ci | `go test ./x \\| statusgen -v` |\n\n## Evidence\n\nPending.\n"
+		spec := WorldSpecFromBrief(root, brief)
+		if strings.Join(spec.Siblings, ",") != "../tracker" || strings.Join(spec.Instruments, ",") != "statusgen" || spec.Root != root {
+			t.Fatalf("spec = %+v", spec)
+		}
+	})
+}
+
+// worldPrepared prepares an attested run whose brief declares ../peer and
+// returns its home with a fake world in which the root and the peer are
+// materialized at known revisions.
+func worldPrepared(t *testing.T) (root string, f *verifierForge, fake *world50Fake, peer string) {
+	t.Helper()
+	brief := "# Fixture\n\nout-of-repo files: ../peer/data.txt\n\n## Verify\n\n| # | Command |\n|---|---|\n| 1 | `true` |\n\n## Evidence\n\nPending.\n"
+	root, f = verifierFixtureWith(t, "gpt-6-astra", "brief.md", map[string]string{"brief.md": brief})
+	if _, err := IssueVerifierAttestation(root, f); err != nil {
+		t.Fatal(err)
+	}
+	r, err := verifierLoad(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer = filepath.Join(filepath.Dir(root), "peer")
+	fake = &world50Fake{revs: map[string]string{root: r.Binding.Source, peer: world50Sib}, tool: "v", host: "linux-amd64"}
+	saved := worldRecheckProbes
+	worldRecheckProbes = fake.probes()
+	t.Cleanup(func() { worldRecheckProbes = saved })
+	return root, f, fake, peer
+}
+
+// regression: example-stream/50 — only a test could bind a record, so the
+// shipped prepare path left every real run without one.
+func TestFlowWorldBind(t *testing.T) {
+	t.Run("the prepared run is bound to the world its brief names", func(t *testing.T) {
+		root, f, fake, peer := worldPrepared(t)
+		got, err := AdmitAndBindVerifierWorld(root)
+		if err != nil || got.World == nil {
+			t.Fatalf("prepare bound nothing: %+v %v", got.World, err)
+		}
+		if got.World.Inputs["sibling:../peer"] != world50Sib || got.World.Inputs[WorldSource] != got.Binding.Source {
+			t.Fatalf("record is not the run's own world: %+v", got.World.Inputs)
+		}
+		if again, err := AdmitAndBindVerifierWorld(root); err != nil || again.World.Digest() != got.World.Digest() {
+			t.Fatalf("an unchanged world did not re-bind: %v", err)
+		}
+		if _, err = CheckVerifierAttestationWithForge(root, "brief.md", f); err != nil {
+			t.Fatalf("an unmoved world was refused: %v", err)
+		}
+		fake.revs[peer] = "3333333333333333333333333333333333333333"
+		if _, err = CheckVerifierAttestationWithForge(root, "brief.md", f); err == nil ||
+			!strings.Contains(err.Error(), "environment changed since admission: sibling:../peer") {
+			t.Fatalf("a moved sibling was admitted: %v", err)
+		}
+		if _, err = AdmitAndBindVerifierWorld(root); err == nil || !strings.Contains(err.Error(), "different prerequisite record") {
+			t.Fatalf("a moved world re-bound silently: %v", err)
+		}
+	})
+
+	t.Run("a world that cannot be read binds nothing", func(t *testing.T) {
+		root, _, fake, peer := worldPrepared(t)
+		delete(fake.revs, peer)
+		var de *DeskError
+		if _, err := AdmitAndBindVerifierWorld(root); !errors.As(err, &de) || de.Code != ExitUnverifiable ||
+			!strings.Contains(err.Error(), "sibling:../peer") {
+			t.Fatalf("an unreadable declared sibling was not could-not-check: %v", err)
+		}
+		if r, err := verifierLoad(root); err != nil || r.World != nil {
+			t.Fatalf("a record was persisted for an unreadable world: %+v %v", r.World, err)
+		}
+	})
 }

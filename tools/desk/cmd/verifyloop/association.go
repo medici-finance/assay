@@ -162,13 +162,6 @@ func itemWorldSpec(it loopengine.Item, root string) (deskkit.WorldSpec, error) {
 	if err != nil {
 		return spec, fmt.Errorf("cannot read the brief's prerequisites: %w", err)
 	}
-	var commands []string
-	for _, row := range parseVerifyRows(string(raw)) {
-		if row.runnerExecuted() {
-			commands = append(commands, row.Command)
-		}
-	}
-	spec.Siblings = deskkit.DeclaredSiblings(string(raw))
-	spec.Instruments = deskkit.WorldInstruments(root, commands)
-	return spec, nil
+	// One derivation, shared with the dispatcher's prepare step.
+	return deskkit.WorldSpecFromBrief(root, string(raw)), nil
 }
