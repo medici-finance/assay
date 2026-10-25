@@ -87,3 +87,5 @@ the initial drain threshold failed it and the corrected threshold passes it.
 No allocation, decoder, recorder or admission-control limit was increased.
 
 The parent report correction at `f69e2e79d5a727119b22513cdb6b74687a0b22e8` is retained with its expanded tool/workflow regression and additional mutation. Reader integration distinguishes absent source tools from unmatched workflows for v3 and v4, across pooled/per-day text and JSON, while preserving whole-window identity exclusions. Diagnostic comparisons using the exact previous report file reproduce the absent-tool regression; they do not measure whole-build performance.
+
+Current parent-integration qualification retains shared-suite failures of the unchanged append timing assertion: normal p50 2.923167 ms and race p50 1.157166 ms against the existing <1 ms limit. The exact retained published reader source also fails the isolated assertion at 1.479667 ms. All 48 recorder/shared-performance source files are byte-identical between published source and candidate. These are failed checks, not passing qualification or speedup evidence; the assertion and recorder remain unchanged.
