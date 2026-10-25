@@ -209,7 +209,9 @@ func (w *witnessFieldReads) citingLines(path string) (map[string]int, map[int]bl
 	if err != nil {
 		return lines, authors
 	}
-	blamed, err := blameRawLines(w.root, string(out), true)
+	// Strict: an ambiguous author header is an error here, and the field
+	// reads every author as unknown (could-not-check), never as an identity.
+	blamed, err := blameRawLines(w.root, string(out), false)
 	if err != nil || len(blamed) != end-start+1 {
 		return lines, authors
 	}
