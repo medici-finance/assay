@@ -225,6 +225,68 @@ RISK-VALUE: DERIVED — min-age-hours "48", merge-now-threshold "20m", unreviewe
 
 **VERIFY: FAIL** — row 10: TestCLIHelpDoesNotDiscoverManifests is still absent from ./cmd/deskboard at 0e661b6e15de (exit=1, no PASS line); rows 1-9 pass.
 
+### Re-verification — 2026-10-21
+
+Runner: rows 1-8 and 10 in the local container image assay-verify:go1.27-py (id sha256:9951b77a257f, go1.27.2 linux/arm64, git 2.47.3) with `--network none`, GOPROXY=off, GOTOOLCHAIN=local, GOFLAGS=-mod=readonly, the source and module cache mounted read-only and the commands run in a tmpfs copy. Row 8 was also run on the darwin host in a scratch clone at the source (GOPROXY=off), because the container result is environmental (see below). Row 9 ran on the darwin host (statusgen v1.0.54). Source c82a8c5f807bbaadfc7dd6a0f0f82bc388ab0c0a; independent verifier claude-opus-5-5 / strong.
+
+Verification-Attestation: medici-finance/assay#3966 run=ce10944622256969b914901b9cdbb210bf6c769756569680e932c250ee128f83 source=c82a8c5f807bbaadfc7dd6a0f0f82bc388ab0c0a brief=docs/streams/desktools-v2/brief-20-migrate-deskboard-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskboard -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | exit 0; one TestCLIHelpOffline PASS line | pass exit=0 (container, network none) | 2026-10-21 | assay-verifier-app[bot] @ c82a8c5f807b (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskboard -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | exit 0; one TestCLIConfigFlow PASS line | pass exit=0 (container, network none) | 2026-10-21 | assay-verifier-app[bot] @ c82a8c5f807b (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskboard -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | exit 0; one TestCLILegacyForms PASS line | pass exit=0 (container, network none) | 2026-10-21 | assay-verifier-app[bot] @ c82a8c5f807b (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-20.json` | exit 0; Totals N caught, 0 NOT CAUGHT, 0 could-not-mutate, N = spec count | pass exit=0; "Harness healthy: baseline GREEN, positive control CAUGHT."; "Totals: 7 caught, 0 NOT CAUGHT, 0 could-not-mutate."; spec lists 7 mutations | 2026-10-21 | assay-verifier-app[bot] @ c82a8c5f807b (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskboard/...` | exit 0 | pass exit=0; ok .../tools/desk/cmd/deskboard 9.010s | 2026-10-21 | assay-verifier-app[bot] @ c82a8c5f807b (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskboard` | exit 0 | pass exit=0, no output | 2026-10-21 | assay-verifier-app[bot] @ c82a8c5f807b (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/20 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | exit 0; TestCLIOwnerMigrated PASS | pass exit=0; --- PASS: TestCLIOwnerMigrated (5.16s) | 2026-10-21 | assay-verifier-app[bot] @ c82a8c5f807b (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every floor seed passes | pass exit=0 on the darwin host clone at the source; "seed passes=26", zero FAIL lines. In the container the same command exited 1 on one fixture (TestReg1145ShimCredential, no-gh case expects GH_CALL_RC=127 under PATH=/usr/bin:/bin, but that image ships gh in /usr/bin): an environment assumption of the fixture, not a deskboard change | 2026-10-21 | assay-verifier-app[bot] @ c82a8c5f807b (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 9 | `statusgen --root . --consumers` | exit 0 | pass exit=0; "consumers: no brief files in the diff against c82a8c5f807b — nothing to corroborate" | 2026-10-21 | assay-verifier-app[bot] @ c82a8c5f807b (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 10 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCLIHelpDoesNotDiscoverManifests$' ./cmd/deskboard/ > "$out" && grep -F -- '--- PASS: TestCLIHelpDoesNotDiscoverManifests ' "$out")` | exit 0; named PASS | fail exit=1 (container, network none); go test alone reports "testing: warning: no tests to run" and "ok .../cmd/deskboard [no tests to run]", so no PASS line; the only function of that name is in tools/desk/cmd/deskdispatch | 2026-10-21 | assay-verifier-app[bot] @ c82a8c5f807b (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+Row 10 stays a real deliverable defect, the same as the 2026-10-18 and 2026-10-19 passes: the performance amendment's compiled-command help-before-discovery test was never written for deskboard. Recent deskboard commits (the token-classification fixes and their tests) add no test of that name.
+
+RISK-VALUE: DERIVED — UsageExit = deskkit.ExitRefused (5) @ tools/desk/cmd/deskboard/main.go:225, constant at tools/desk/internal/deskkit/exitcodes.go:51 — the CLI contract maps unknown flags and bad values to the shared refused exit, the code the hand-rolled parser returned, so callers that branch on exit 5 keep working.
+RISK-VALUE: DERIVED — min-age-hours Default "48", merge-now-threshold Default "20m", unreviewed-threshold Default "30m" @ tools/desk/cmd/deskboard/main.go:110-112 — equal to the pre-migration values (stalledMinAgeDefault = 48 at tools/desk/cmd/deskboard/stalled.go:50, 20 and 30 minutes); reversible operational knobs.
+
+**VERIFY: FAIL** — row 10: TestCLIHelpDoesNotDiscoverManifests is still absent from ./cmd/deskboard at c82a8c5f807b (exit=1, no PASS line); rows 1-9 pass (row 8 on host; its container red is the fixture's environment assumption). (blocker: #2111)
+
+Outcome record: no outcome record was written for this 2026-10-21 pass, and none is written for it now, because its source c82a8c5f807b is superseded. The verify-fail outcome record on this branch, landed through #4181 with `deskevidence --outcome-record`, belongs to the 2026-10-25 re-verification below and attests source 61eb62a4a61b.
+
+### Re-verification — 2026-10-25
+
+Runner: rows 1-9 ran on the darwin arm64 host with statusgen v1.0.59 (`statusgen verifyrun --rows 1,2,3,4,5,6,7,8,9`). Row 10 is `check:ci`; the host cannot provide the `unshare --net` sandbox, so it ran inside the closed admission bracket (host `--open-bracket`, then `statusgen verifyrun --sandbox=container-netns --rows 10` in a `--network none` container with the engine's default seccomp profile, then host `--close-bracket`; `--bracket-digest` reports verdict=match). The container image is linux/amd64 (go1.27.2, git 2.39.5), digest below; GOPROXY=off, GOTOOLCHAIN=local, GOFLAGS=-mod=readonly, with the source tree and module cache mounted read-only; statusgen inside is the v1.0.59 linux-amd64 release binary. Source 61eb62a4a61bce0f2e0c69b98f1906de80400316; independent verifier claude-opus-5-5 / strong.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskboard -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-25 | assay-verifier-app[bot] @ 61eb62a4a61b (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskboard -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-25 | assay-verifier-app[bot] @ 61eb62a4a61b (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./cmd/deskboard -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-25 | assay-verifier-app[bot] @ 61eb62a4a61b (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go run ./cmd/muhar -j 1 -spec internal/clicontract/testdata/mutations/desktools-v2-20.json` | pass exit=0 | sha256:bb5a62a87bff | 2026-10-25 | assay-verifier-app[bot] @ 61eb62a4a61b (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test -count=1 ./cmd/deskboard/...` | pass exit=0 | sha256:b4438e8fe686 | 2026-10-25 | assay-verifier-app[bot] @ 61eb62a4a61b (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && GOOS=windows go vet ./cmd/deskboard` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-25 | assay-verifier-app[bot] @ 61eb62a4a61b (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/20 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:63395c6765c4 | 2026-10-25 | assay-verifier-app[bot] @ 61eb62a4a61b (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:3e55fa8bbab4 | 2026-10-25 | assay-verifier-app[bot] @ 61eb62a4a61b (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:6a4e4a3eb588 | 2026-10-25 | assay-verifier-app[bot] @ 61eb62a4a61b (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4374 run=6f15409856f46df1aa0f2527584e5794b71eb03048910faaa36e170c0fc40f80 source=61eb62a4a61bce0f2e0c69b98f1906de80400316 brief=docs/streams/desktools-v2/brief-20-migrate-deskboard-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 10 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCLIHelpDoesNotDiscoverManifests$' ./cmd/deskboard/ > "$out" && grep -F -- '--- PASS: TestCLIHelpDoesNotDiscoverManifests ' "$out")` | fail exit=1 sandbox=container-netns | sha256:e3b0c44298fc | 2026-10-25 | assay-verifier-app[bot] @ 61eb62a4a61b (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:e24b2cf936ec7be8af97daf9fb0cc0cc29fc93e9f3d69d4d4954ed564d950de9
+Container-Image: sha256:840101ee78c4f508da9d7e035a553fa0c1e5e4f73bf3dd4859091d55dd7687f4
+Verification-Attestation: medici-finance/assay#4374 run=6f15409856f46df1aa0f2527584e5794b71eb03048910faaa36e170c0fc40f80 source=61eb62a4a61bce0f2e0c69b98f1906de80400316 brief=docs/streams/desktools-v2/brief-20-migrate-deskboard-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=6f15409856f46df1aa0f2527584e5794b71eb03048910faaa36e170c0fc40f80 source=61eb62a4a61bce0f2e0c69b98f1906de80400316 tree=sha256:e24b2cf936ec7be8af97daf9fb0cc0cc29fc93e9f3d69d4d4954ed564d950de9 witness=sha256:b63600bf3a7fa1a7031e31d2b80c561c4992141613375c4fb80df6819352d647 opened=2026-10-25T13:36:24Z closed=2026-10-25T13:43:06Z before=receipt after=check-verifier
+
+Supplemental observation, no acceptance credit: in the same container image, `go test -count=1 -v -run '^TestCLIHelpDoesNotDiscoverManifests$' ./cmd/deskboard/` prints "testing: warning: no tests to run" and "ok .../tools/desk/cmd/deskboard [no tests to run]" (exit 0), so row 10's grep finds no PASS line. Under tools/desk, the only `func TestCLIHelpDoesNotDiscoverManifests` is at ./cmd/deskdispatch/cli_test.go:47. This is the same defect the 2026-10-18, 2026-10-19 and 2026-10-21 passes found: the performance amendment's help-before-discovery test was never written for deskboard.
+
+RISK-VALUE: DERIVED — UsageExit = deskkit.ExitRefused (5) @ tools/desk/cmd/deskboard/main.go:233, constant at tools/desk/internal/deskkit/exitcodes.go:51 — unknown flags and bad values map to the shared refused exit, the code the hand-rolled parser returned, so callers that branch on exit 5 keep working.
+RISK-VALUE: DERIVED — min-age-hours Default "48", merge-now-threshold Default "20m", unreviewed-threshold Default "30m" @ tools/desk/cmd/deskboard/main.go:111-113 — equal to the pre-migration values (stalledMinAgeDefault = 48 at tools/desk/cmd/deskboard/stalled.go:50, 20 and 30 minutes); reversible operational knobs.
+
+**VERIFY: FAIL** — row 10: TestCLIHelpDoesNotDiscoverManifests is still absent from ./cmd/deskboard at 61eb62a4a61b (exit=1 in the network-off container, no PASS line); rows 1-9 pass on the host. (blocker: #2111)
+
+Outcome record: this pass's verify-fail outcome record (9 of 10 rows passed, blocker #2111, source 61eb62a4a61b) is written with `deskevidence --outcome-record` under docs/streams/verify-outcomes/desktools-v2/ on this Evidence branch.
+
 
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.

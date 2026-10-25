@@ -1,2 +1,0 @@
-- Add qualified review watcher handoff to the shared candidate-plus-priority planner, with complete-cycle holds and the supported legacy rollback path.
-- Reuse applicable review observations for coordinator and inbox depth without another review-provider scan; preserve scope, policy, freshness and execution checks.
