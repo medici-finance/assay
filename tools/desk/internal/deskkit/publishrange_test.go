@@ -262,3 +262,24 @@ func TestPubSourceSnapshot(t *testing.T) {
 		}
 	}
 }
+
+// regression: #4434
+func TestPublishTrackingTip(t *testing.T) {
+	r := newRangeRepo(t)
+	r.git("config", "branch.feat.remote", "origin")
+	r.git("config", "branch.feat.merge", "refs/heads/main")
+	if got := PublishTrackingTip(r.dir, "feat"); got != r.remote {
+		t.Fatalf("branch tip = %q, want %s", got, r.remote)
+	}
+	for _, branch := range []string{"", "missing", "HEAD", "feat~0", "feat..main", "feat@{0}"} {
+		if got := PublishTrackingTip(r.dir, branch); got != "" {
+			t.Errorf("invalid/missing branch %q yielded %q", branch, got)
+		}
+	}
+	tip := PublishTrackingTip(r.dir, "feat")
+	r.commitAs(workerEmail, "Assay Worker", "new.txt", "new work")
+	r.git("update-ref", "refs/remotes/origin/feat", "HEAD")
+	if tip != r.remote {
+		t.Fatal("tracking tip did not retain the snapshot")
+	}
+}

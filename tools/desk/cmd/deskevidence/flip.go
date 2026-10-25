@@ -41,8 +41,10 @@ Runs ` + "`statusgen verifyflip`" + ` (the stamp is derived from the recorded st
 irreversible), refuses if the flip introduces a statusgen PROBLEM or the tree does not
 then present a verified closure, and commits the README alone as the verifier App's bot
 identity on the current branch. Refused on main/master, a detached HEAD, staged changes,
-a README that differs from HEAD, or a branch whose commits the publish-identity gate
-would refuse. Nothing is pushed: open the draft PR from the worktree with deskpr.
+a README that differs from HEAD, or unpublished commits the publish-identity gate
+would refuse. The offline range uses origin's tracking ref for this branch (never
+its upstream); missing or divergent tips judge the whole branch. Publication
+rechecks the live destination. Nothing is pushed: open the draft PR from the worktree with deskpr.
 
 The after-lint judges the COMMITTED flip (some checks read history, not the tree), so a
 refusal there — and --dry-run — makes the commit and then takes it back off the branch
@@ -96,8 +98,11 @@ func runFlip(args []string) error {
 	if _, err := gitOut(abs, "diff", "--cached", "--quiet"); err != nil {
 		return deskkit.Refused("flip: the index has staged changes — the flip commit carries the README alone")
 	}
-	// Every commit already on the branch must pass the gate the PR will meet.
-	if err := publishIdentityGate(abs, *base); err != nil {
+	// Freeze the explicit branch's offline tip across both checks. Already-landed
+	// Evidence is not published again; every new commit must still match. deskpr
+	// confirms the live destination before publishing this local result.
+	remoteTip := deskkit.PublishTrackingTip(abs, branch)
+	if err := publishIdentityGate(abs, *base, remoteTip); err != nil {
 		return err
 	}
 
@@ -185,7 +190,7 @@ func runFlip(args []string) error {
 		}
 		return deskkit.Unverifiable(fmt.Sprintf("flip: the commit did not carry the verifier identity (%q) — taken back", got), nil)
 	}
-	if err := publishIdentityGate(abs, *base); err != nil {
+	if err := publishIdentityGate(abs, *base, remoteTip); err != nil {
 		if uerr := uncommit(); uerr != nil {
 			return uerr
 		}

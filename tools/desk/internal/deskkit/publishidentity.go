@@ -216,6 +216,29 @@ func resolvePublishRange(dir, base, tip, source string) PublishRange {
 	return rng
 }
 
+// PublishTrackingTip snapshots origin's tracking ref for the explicit destination
+// branch. It is the shared OFFLINE estimate used by local flip and PR update:
+// never use the worktree's upstream (a fresh feature branch may track main),
+// origin/HEAD, or a caller's revision expression. Missing/invalid refs return no
+// tip, so PublishIdentityMatchesRole checks the whole base-to-source range.
+// The gate also proves ancestry. A publisher must recheck the live destination
+// before writing; a tracking ref alone is never proof of remote state.
+func PublishTrackingTip(dir, branch string) string {
+	if branch == "" || branch == "HEAD" {
+		return ""
+	}
+	ref := remoteTipRefPrefix + branch
+	if tipSpellingProblem(ref) != "" {
+		return ""
+	}
+	out, err := gitOut(dir, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+	tip := strings.TrimSpace(out)
+	if err != nil || !isFullHexObjectName(tip) {
+		return ""
+	}
+	return tip
+}
+
 // PublishIdentityMatchesRole refuses (exit 5) when any commit the push would publish is not
 // authored AND committed by the session role's bound identity. It is the ONE shared gate the
 // pushing verbs (deskpr create/update) and the Evidence-landing verb (deskevidence) call

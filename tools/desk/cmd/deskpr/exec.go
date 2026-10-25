@@ -60,11 +60,6 @@ func publishIdentityGate(dir, base, remoteTip, source string) error {
 	return publishIdentityGateFn(deskkit.PublishIdentityInput{Dir: dir, Base: base, RemoteTip: remoteTip, Source: source, Role: role})
 }
 
-// remoteTrackingTip is the offline stand-in for the remote PR head: the fully-qualified
-// remote-tracking ref for branch, as this checkout last saw it. It is only an estimate —
-// update re-runs the gate against the forge's live PR head before it pushes.
-func remoteTrackingTip(branch string) string { return "refs/remotes/origin/" + branch }
-
 // ghToken holds the App installation token value set by mintWorkerToken. It is handed to the
 // resolved forge backend by the GitHub custody minter (github.go) and to the public-repo gate's
 // HTTPRepoInfoFetcher. An EMPTY value is a HARD REFUSAL at the custody step — deskpr never falls

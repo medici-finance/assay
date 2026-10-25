@@ -602,7 +602,7 @@ func cmdUpdate(args []string) (err error) {
 	// the push, against the head the forge reports, which HEAD must descend from and the push
 	// destination must hold. Under --check there is no live stage, so the whole range is
 	// judged here (fail closed) and a refusal names the offline way to the narrow judgement.
-	offlineTip := remoteTrackingTip(facts.branch)
+	offlineTip := deskkit.PublishTrackingTip(facts.dir, facts.branch)
 	if *prNum > 0 {
 		offlineTip = "" // head ref unknown offline: judge the whole range, fail closed
 	}

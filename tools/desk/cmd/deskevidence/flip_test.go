@@ -275,3 +275,48 @@ func TestFlipHelpExitsZero(t *testing.T) {
 		}
 	}
 }
+
+// regression: #4434
+func TestFlipRemoteEvidence(t *testing.T) {
+	for _, state := range []string{"published", "dry-run", "missing", "divergent", "new foreign", "new provider"} {
+		t.Run(state, func(t *testing.T) {
+			flSetup(t)
+			root := flRoot(t)
+			flGit(t, root, "-c", "user.name=GitHub", "-c", "user.email=noreply@github.com", "commit", "--allow-empty", "--author=Assay Verifier <"+verifierBotEmail+">", "-m", "Evidence: verification row")
+			evidence := flGit(t, root, "rev-parse", "HEAD")
+			flGit(t, root, "update-ref", "refs/remotes/origin/verify-flip", evidence)
+			flGit(t, root, "config", "branch.verify-flip.remote", "origin")
+			flGit(t, root, "config", "branch.verify-flip.merge", "refs/heads/main")
+			switch state {
+			case "missing":
+				flGit(t, root, "update-ref", "-d", "refs/remotes/origin/verify-flip")
+			case "divergent":
+				flGit(t, root, "checkout", "-b", "other", "refs/remotes/origin/main")
+				flGit(t, root, "commit", "--allow-empty", "-m", "diverged")
+				flGit(t, root, "update-ref", "refs/remotes/origin/verify-flip", "HEAD")
+				flGit(t, root, "checkout", "verify-flip")
+			case "new foreign":
+				flGit(t, root, "commit", "--allow-empty", "-m", "foreign")
+			case "new provider":
+				flGit(t, root, "-c", "user.email=noreply@github.com", "commit", "--allow-empty", "--author=Assay Verifier <"+verifierBotEmail+">", "-m", "unpublished provider")
+			}
+			before := flGit(t, root, "rev-parse", "HEAD")
+			extra, want := []string{}, deskkit.ExitRefused
+			if state == "published" || state == "dry-run" {
+				want = deskkit.ExitOK
+			}
+			if state == "dry-run" {
+				extra = append(extra, "--dry-run")
+			}
+			if rc := flRun(root, extra...); rc != want {
+				t.Fatalf("flip rc=%d, want %d", rc, want)
+			}
+			if state != "published" && flGit(t, root, "rev-parse", "HEAD") != before {
+				t.Fatal("refusal/dry-run changed HEAD")
+			}
+			if flGit(t, root, "status", "--porcelain") != "" {
+				t.Fatal("flip left dirty state")
+			}
+		})
+	}
+}

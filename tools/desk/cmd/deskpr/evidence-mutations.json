@@ -17,7 +17,7 @@
       "name": "local tracking ref hides a new foreign commit",
       "file": "cmd/deskpr/createpublish.go",
       "old": "publishIdentityGate(s.dir, base, tip, head.String())",
-      "new": "publishIdentityGate(s.dir, base, remoteTrackingTip(s.dstBranch), head.String())"
+      "new": "publishIdentityGate(s.dir, base, deskkit.PublishTrackingTip(s.dir, s.dstBranch), head.String())"
     },
     {
       "name": "remote-read failure admitted",
@@ -52,7 +52,7 @@
     {
       "name": "second caller offers an unreviewed exclusion",
       "file": "cmd/deskevidence/github.go",
-      "old": "RemoteTip: \"\", Role: \"verifier\",",
+      "old": "RemoteTip: remoteTip, Role: \"verifier\",",
       "new": "RemoteTip: \"refs/remotes/origin/\" + base, Role: \"verifier\","
     },
     {
