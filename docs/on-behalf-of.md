@@ -300,9 +300,9 @@ same roster's human set:
     its region holds a tag of exactly three letters or digits, as `[bot]` does, or a tag of
     three or more letters, digits or symbols while any character in the region is outside the
     ASCII login alphabet (letters, digits, `.`, `_`, `-`, `[`, `]`). A character in the region
-    that no rule names therefore fails closed, and a leading word that cannot be a login is
-    read past: `name[bot]\u00a0@ …`, `name[bo\u200bt]`, `name[bot]:`,
-    `[name\[bot\]]` and an ASCII-only `name[abc]` are refused. A region whose letters are all
+    that no rule names therefore fails closed: `name[bot]\u00a0@ …`, `name[bo\u200bt]`,
+    `name[bot]:`, `[name\[bot\]]` and an ASCII-only `name[abc]` are refused. A region whose
+    letters are all
     CJK text (`東京【東京都】`) cannot spell a login and lands, as do `[bot]` later in a cell
     (`human:operator (via name[bot] review)`), a model tag (`[1m]`), brackets that open no tag
     (`[21:24Z][ok-all]`), a tag of only login characters (`release[draft]`) and a human
