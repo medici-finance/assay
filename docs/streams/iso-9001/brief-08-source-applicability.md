@@ -16,6 +16,8 @@ risk:
 gate-why: The accountable owner reviews applicability, evidence boundaries and permitted source use; an automated preparation result must not become a conformity or authorization claim.
 decision-trigger: spec
 decision-issue: 4400
+ruling: "https://github.com/medici-finance/assay/issues/4400#issuecomment-6399479447"
+design: DR-iso-9001-08
 issues: []
 schema: brief-v2
 authored: 2026-10-03 by Codex (author-brief)
@@ -110,6 +112,12 @@ Options:
    upstream.
 
 Default if no answer: none — blocks until answered. No response authorizes activation.
+
+**Ruling (2026-10-25): option 1** — approve the contract as the design; keep it a library, not
+activated. Recorded as [DR-iso-9001-08](../decisions/DR-iso-9001-08.md). No activation and no
+lint wiring follow from this ruling; activation needs a separate, later decision.
+
+https://github.com/medici-finance/assay/issues/4400#issuecomment-6399479447
 
 ## Ground rules
 
