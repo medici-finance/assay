@@ -1,0 +1,3 @@
+### Changed
+- The published `tools/desk` tree drops more operating-record residue from its comments and test fixtures: commit ids that resolve only outside this repository, a private tracker alias, product-specific path and manifest wording, and a real App id in a disclosure fixture. Each one is replaced by neutral prose or by a synthetic value of the same shape, so the classifier tests still exercise the same branches.
+- The desk-tools residual-scrub brief's Verify rows 2 to 11 are now literal commands that `statusgen verifyrun` executes. The withheld patterns come from a private witness kit named by environment variables, and a missing kit fails the row instead of passing it.
