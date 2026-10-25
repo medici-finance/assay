@@ -53,7 +53,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 17 | [`--scan-issues`: a `risk:high` label derives `gate: human` on the issue's placeholder (`risk:med` does not)](brief-17-risk-high-label-gate.md) | 1 | S | verified | 2026-10-19 assay-verifier-app[bot] @ 54c024fca36e (claude-opus-5-5) | — |
 | 18 | [`--scan-issues`: print a notice when an open issue derives `gate: human` and its placeholder reads `gate: model` (detect only, no write)](brief-18-gate-mismatch-notice.md) | 2 | S | todo | — | — |
 | 19 | [Context handoff contracts and synthetic fixtures](brief-19-context-handoff-contracts.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
-| 20 | [Offline future-state resolver with receipt and amendment validation](brief-20-offline-context-resolver.md) | 2 | L | todo | — | — |
+| 20 | [Offline future-state resolver with receipt and amendment validation](brief-20-offline-context-resolver.md) | 2 | L | implemented | — | — |
 | 21 | [Author skills consume the shared context handoff](brief-21-author-skill-handoff.md) | 4 | L | todo | — | — |
 | 22 | [Product target records and compatible requirement parsing](brief-22-product-target-records-and-compatible-requirement-parsing.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | 23 | [Product target binding and context drift assessment](brief-23-product-target-binding-and-context-drift-assessment.md) | 3 | M | todo | — | — |
@@ -72,6 +72,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 36 | [Content-bound witness schema v2: the reader and the one digest owner](brief-36-content-bound-witness-schema-v2-reader.md) | 1 | L | todo | — | — |
 | 37 | [Content-bound witness schema v2: the writers and the desk readers](brief-37-content-bound-witness-schema-v2-writers.md) | 2 | L | todo | — | — |
 | 38 | [One-time v1-to-v2 witness backfill where the witnessed content is still fetchable](brief-38-one-time-v1-to-v2-witness-backfill.md) | 3 | M | todo | — | — |
+| 39 | [Multi-root objective reader: prerequisite graph, critical path and ranked moves](brief-39-multi-root-objective-reader.md) | 1 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -100,13 +101,16 @@ statusgen/36 (witness schema v2 reader and the one digest owner) → statusgen/3
 writers and the desk readers) → statusgen/38 (one-time v1-to-v2 backfill). The writers may
 emit v2 only in a release whose reader understands it, and the backfill needs both, so 36
 leads 37 and 37 leads 38 (medici-finance/assay#2026, medici-finance/assay#3658).
+statusgen/39 (multi-root objective reader) has no in-repo `depends:`; its one prerequisite is
+the v1 objective skill of #4107, carried as a `feathers:` ordering edge (a notice, never a
+hold) because only the final skill-swap step needs it.
 Every other brief is independent and self-contained.
 
 ## Dependency waves
 - **Wave 1** — statusgen/01, statusgen/02, statusgen/04, statusgen/05, statusgen/06,
   statusgen/07, statusgen/09, statusgen/10, statusgen/11, statusgen/12, statusgen/13,
-  statusgen/14, statusgen/15, statusgen/19, statusgen/22, statusgen/36 (all independent;
-  parallelizable).
+  statusgen/14, statusgen/15, statusgen/19, statusgen/22, statusgen/36, statusgen/39 (all
+  independent; parallelizable).
 - **Wave 2** — statusgen/03 (depends on statusgen/02), statusgen/08 (depends on statusgen/07),
   statusgen/18 (depends on statusgen/17), statusgen/20 (depends on statusgen/19),
   statusgen/24 (depends on statusgen/22; cross-stream: continuing-operations/01 is also wave 2),

@@ -9,9 +9,10 @@ import (
 )
 
 // AdmitMaxAge bounds how old the recorded measurement may be for the lock-free
-// pre-check to lean on it. A locked pass (and every consumer enrollment)
-// records a fresh report, so a cache in regular use refreshes itself; an older
-// or future-dated estimate is not trusted and the full check runs.
+// pre-check to lean on it. Explicit maintenance records a fresh report;
+// launch enrollment never refreshes a historical measurement. An older or
+// future-dated estimate is not trusted. Admit may run a full check; bounded
+// launch Prepare/Acquire refuse and request explicit maintenance instead.
 const AdmitMaxAge = 5 * time.Minute
 
 // AdmitMtimeSlack is how far before the recorded measurement a top-level

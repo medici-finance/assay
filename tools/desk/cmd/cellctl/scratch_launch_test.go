@@ -80,6 +80,7 @@ func TestScratchLaunchRoles(t *testing.T) {
 					if result.Err != nil || result.ExitCode != 0 || result.Outcome != "ok" {
 						t.Fatalf("result: %+v", result)
 					}
+					maintainScratch(t, c)
 					entries, err := os.ReadDir(filepath.Join(c.Dir, "run", "scratch"))
 					if err != nil {
 						t.Fatal(err)
@@ -114,6 +115,7 @@ func TestScratchLaunchFailure(t *testing.T) {
 			if !noAck && (result.ExitCode != 17 || result.Err == nil) {
 				t.Fatal("failure result lost", result)
 			}
+			maintainScratch(t, c)
 			root := filepath.Join(c.Dir, "run", "scratch")
 			entries, _ := os.ReadDir(root)
 			var found bool
@@ -168,6 +170,7 @@ func TestScratchLaunchBudget(t *testing.T) {
 	if result.ExitCode != 17 {
 		t.Fatal("retention changed task result", result)
 	}
+	maintainScratch(t, c)
 	entries, err := os.ReadDir(filepath.Join(c.Dir, "run", "scratch"))
 	if err != nil {
 		t.Fatal(err)
@@ -187,6 +190,7 @@ func TestScratchLaunchCancel(t *testing.T) {
 	if result.Err == nil || result.ExitCode == 0 || result.Uncertain {
 		t.Fatal("cancellation result/cleanup", result)
 	}
+	maintainScratch(t, c)
 	root := filepath.Join(c.Dir, "run", "scratch")
 	entries, err := os.ReadDir(root)
 	if err != nil {
@@ -205,4 +209,17 @@ func TestScratchLaunchCancel(t *testing.T) {
 	if !found {
 		t.Fatal("cancelled failure diagnostics missing")
 	}
+}
+
+// Lifecycle finalization never performs maintenance. The original retention
+// assertions still exercise the same store via its explicit maintenance API.
+func maintainScratch(t *testing.T, c *Cell) {
+	t.Helper()
+	s, err := cellscratch.Open(filepath.Join(c.Dir, "run", "scratch"))
+	must(t, err)
+	defer s.Close()
+	p, err := c.scratchPolicy()
+	must(t, err)
+	_, err = s.Sweep(p, true)
+	must(t, err)
 }

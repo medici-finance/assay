@@ -10,7 +10,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 6
+version: 7
 authored: 2026-10-13 by worker-desk (author-brief), non-CI architecture reconciliation
 sources:
   - docs/proposals/non-ci-architecture/16-delivery-sequence.md — package R1 (domain contracts and regression floor)
@@ -155,6 +155,61 @@ the candidate and acceptance-binding types instead of defining its own. graph-ex
 the same fixtures through old and new adapters. Unsupported mandatory fields and stale generations
 are refused, never ignored.
 
+### Consumer routing and acceptance boundary
+
+Acceptance-boundary amendment — 2026-10-23. This separates the existing pure contract
+from required downstream integration; it grants no acceptance, activation or effect authority.
+
+The boundary is approved through the acceptance-transition route, per the driver's ruling:
+https://github.com/medici-finance/assay/issues/4452#issuecomment-6403449344
+
+That ruling selected option A: local /28 acceptance is original rows 1–9, row 10 stays
+present and uncredited, and the /19, /23 and /29 consumer-use holds attach to those briefs.
+
+The existing independent Evidence PR #3921 owner recorded its checkpoint on the proposed
+boundary and the preservation of historical Evidence (preserved: yes):
+https://github.com/medici-finance/assay/pull/3921#issuecomment-6403147264
+
+That checkpoint answers the request at
+https://github.com/medici-finance/assay/pull/3921#issuecomment-6367743364 . It is a
+readiness record, not acceptance of these semantics or merge permission; its reconciliation
+conditions for the Evidence branch still apply. Independent review and the existing human
+gates remain required.
+
+The original acceptance definition is the nine rows at
+0580e0a02df8dce18bd2d65359225e49d525bcd6. The implementation delivery is
+3ced448e5ff83c6fbbd2a7c08d6d4b9dc6e2fdaf, whose actual first parent is that same
+0580e0a02df8dce18bd2d65359225e49d525bcd6. PR #4174 restored the delivered table;
+it is not a replacement implementation delivery. The entire Verify section and Evidence
+below remain unchanged.
+
+Local /28 acceptance requires every original row 1–9: qualified identity, required-fact
+completeness, exact candidate/acceptance binding, separate execution/acceptance/retirement,
+current reevaluation generation, the real evaluator seam, pure imports, schema fixtures
+and separate component/publication states. Each behavioral, mutation, schema and flow
+assertion remains owed with its exact immutable subject, qualified environment and
+independent machine witness. Handwritten results or missing facts cannot pass.
+
+Delivery-added row 10 remains a supplemental, uncredited consumer-routing disposition.
+Run its unchanged command against the actual immutable delivery and first parent and
+record exact corroborated/disproved/unchecked counts; do not mark it passed as an original
+acceptance row. Owning-brief corroboration is not actual contract use. Its required
+candidate-workspace, regression-adapter and durable-store consumption holds belong to
+their consumer acceptance below, rather than being prerequisites of local /28 acceptance.
+
+| Required actual use | Acceptance owner and existing checks |
+|---|---|
+| Old/new production adapters use the shared records and real assessment seam on identical frozen facts with independent expected results | /29 Task 3 and Verify 2; all six regression-floor rows and baseline/mutation controls remain mandatory |
+| Durable qualified identity, candidate/acceptance/fact/generation records survive recovery and drive the real evaluator without accepting missing facts or a wrong subject | /19 Tasks 3–4 and Verify 1–2; all PostgreSQL, transaction/outbox, reconstruction and fencing rows remain mandatory |
+| Frozen candidate and acceptance bindings reach independent reviewer input and survive valid restore while foreign, changed or incomplete inputs are refused | /23 Tasks 1–4 and Verify 1–3 |
+
+These are required downstream integration holds until independently proved in their owning
+deliveries; local /28 acceptance discharges none of them. /18 retains the connected
+production journey and recovery proof. The unchanged evaluator and deferred runtime
+controller exclusions remain reviewer judgments, and omitted consumers remain a review
+obligation. No dependency edge, generated status, recorded result or existing activation
+gate changes; /26–27 acquire no new /19 or /23 prerequisite from this amendment.
+
 ## Verify
 
 The named tests are deliverables of this brief and do not exist at a435badbd. Each must run
@@ -166,14 +221,9 @@ merged PR, records its full immutable SHA in `ASSAY_DELIVERY_SHA`, and records t
 commit's actual first-parent SHA in `ASSAY_DELIVERY_BASE_SHA`. Neither value defaults to
 HEAD, origin/main or a branch tip. Both commits must be available in the verification
 checkout; absent or unknown provenance fails closed. Record exact consumer result counts
-and distinguish follow-up ownership corroboration from actual contract consumption.
-Required candidate-workspace (/23), regression-adapter (/29) and durable-store (/19)
-consumption stays held until separately proved, even when their owning briefs are
-corroborated; zero disproofs alone is not complete flow coverage. A pre-merge PR-range
-check can leave follow-up entries unchecked; delivery mode can corroborate their owning
-briefs without proving consumption. PR-range results are local sanity only and are not
-row-10 delivery evidence. The writer of this brief does not assert post-merge verification
-here.
+and resolve unchecked required consumers separately; zero disproofs alone is not complete
+flow coverage. A pre-merge PR-range check is local sanity only and is not row-10 delivery
+evidence. The writer of this brief does not assert post-merge verification here.
 
 | # | Class | Command | Expect |
 |---|---|---|---|
@@ -186,7 +236,7 @@ here.
 | 7 | check:ci +mutation | `(cd statusgen && name=$(GOWORK=off go list -f '{{.Name}}' ./domain/) && test "$name" = domain && bad=$(GOWORK=off go list -f '{{range .Imports}}{{if or (eq . "os") (eq . "os/exec") (eq . "net") (eq . "net/http") (eq . "syscall") (eq . "io/ioutil") (eq . "path/filepath")}}{{.}} {{end}}{{end}}' ./domain/) && test -z "$bad")` | exit 0; the package exists and imports no filesystem, process or network package; mutation: add an `os` import to the package — the row must fail |
 | 8 | check:ci +dereference | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainSchemaFixtures$" ./domain/ > "$out" && grep -F -- "--- PASS: TestDomainSchemaFixtures " "$out")` | exit 0; named PASS; every fixture under `statusgen/testdata/domain/` (planned) validates (positive) or is refused (negative) against `schemas/verification-domain-v1.json` (planned), and the spec names each schema record |
 | 9 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainStageSeparation$" ./domain/ > "$out" && grep -Fq -- "--- PASS: TestDomainStageSeparation " "$out")` | exit 0; named PASS; the three stage combinations remain distinct; mutation: map execution success directly to accepted — the test fails |
-| 10 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief graph-execution/28 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed delivery and its actual first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; delivery-mode corroboration of follow-up graph-execution/23, /29 and /19 establishes owning-brief existence and routing only, not contract use; their required candidate-workspace, regression-adapter and durable-store consumption stays held until separately proved, regardless of corroborated ownership; the unchanged evaluator and deferred runtime-controller exclusions remain reviewer judgments, and omitted consumers remain a review obligation |
+| 10 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief graph-execution/28 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed delivery and its actual first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required candidate-workspace, regression-adapter and durable-store consumers stay held; the unchanged evaluator and deferred runtime-controller exclusions remain reviewer judgments, and omitted consumers remain a review obligation |
 
 ## Pre-mortem
 

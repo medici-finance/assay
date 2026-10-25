@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -223,7 +224,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// path RecordName derives from its bytes, retiring the shared appended
 	// docs/streams/verify-outcomes.jsonl log this flag replaces. Mutually exclusive with
 	// --evidence-file/--brief-path.
-	outcomeRecord := fs.String("outcome-record", "", "local JSON file holding ONE new verify-outcome record to commit at the path RecordName derives (mutually exclusive with --evidence-file/--brief-path)")
+	outcomeRecord := fs.String("outcome-record", "", "local JSON file holding ONE new verify-outcome record to commit at the path RecordName derives; with --root, an absolute file outside --root (mutually exclusive with --evidence-file/--brief-path)")
 	// --root binds the LOCAL read of a repo-relative --evidence-file to an explicit
 	// checkout, instead of the current working directory. #1709: a writeguard can reset a
 	// session's cwd to a SHARED checkout between shell calls, so a deskevidence run that did
@@ -433,19 +434,25 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	var commitContent []byte
 	blockAlready := false
 	// The on-behalf-of principal is stamped into every App-run Evidence row this landing ADDS
-	// that carries none (principalstamp.go), from the roster — never from argv or the content —
-	// or the landing refuses here, before any write. On --brief-path the stamp is decided on the
+	// that does not already name the roster's principal — a planted non-principal annotation is
+	// stripped and restamped, one naming a different recognised human refuses (principalstamp.go)
+	// — from the roster, never from argv or the content, or the landing refuses here, before any
+	// write. On --brief-path the stamp is decided on the
 	// merged brief (so a headerless fragment reads under the brief's own table header, as the
 	// lint will read it) and then applied to the fragment, which is what is merged: the block-
 	// level idempotency check then compares the stamped block with what a stamped earlier
 	// landing left standing.
 	resolveSubject := func() (string, error) { return principalSubjectFn(repoSlug) }
+	// stampedRows records every Runner cell the stamp wrote (original row → stamped row), so a
+	// --dry-run shows the rows exactly as they will land, restamps included.
+	var stampedRows map[string]string
 	if *briefPath != "" {
 		merged, present := mergeEvidenceContent(remoteContent, localContent)
 		stampedMerged, stamped, serr := stampEvidencePrincipal(merged, remoteContent, resolveSubject)
 		if serr != nil {
 			return serr
 		}
+		stampedRows = stamped
 		if len(stamped) > 0 {
 			merged, present = mergeEvidenceContent(remoteContent, stampFragment(localContent, stamped))
 			if !bytes.Equal(merged, stampedMerged) {
@@ -456,11 +463,16 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		commitContent = merged
 		blockAlready = present
 	} else {
-		stampedContent, _, serr := stampEvidencePrincipal(localContent, remoteContent, resolveSubject)
+		stampedContent, stamped, serr := stampEvidencePrincipal(localContent, remoteContent, resolveSubject)
 		if serr != nil {
 			return serr
 		}
+		stampedRows = stamped
 		commitContent = stampedContent
+	}
+
+	if err := checkAddedRowAttribution(commitContent, remoteContent); err != nil {
+		return err
 	}
 
 	// Row-scoped README landings. A direct-write target (never
@@ -692,6 +704,14 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		fmt.Fprintf(stdout, "dry-run plan: conditional forge write to %s — %s %s on branch %s, "+
 			"authenticated as the verifier App (%s); sha256 %s; no local `git commit` in this plan\n",
 			repoSlug, verb, targetRepoPath, branch, deskkit.RoleAppLoginOrEmpty("verifier"), bodyDig)
+		rows := make([]string, 0, len(stampedRows))
+		for _, to := range stampedRows {
+			rows = append(rows, to)
+		}
+		sort.Strings(rows)
+		for _, row := range rows {
+			fmt.Fprintf(stdout, "dry-run: on-behalf-of principal stamped by this tool (lands as): %s\n", row)
+		}
 		return nil
 	}
 
@@ -1068,13 +1088,29 @@ func mergeEvidenceContent(remoteContent, evidence []byte) (merged []byte, alread
 	// Clean up evidence: remove leading/trailing whitespace but keep internal newlines
 	evidenceStr = strings.TrimSpace(evidenceStr)
 
-	// If the remote has a "## Evidence" section, append to it.
-	evidenceMarker := "\n## Evidence\n"
-	idx := strings.Index(remoteStr, evidenceMarker)
-	if idx < 0 {
-		// Also try "## Evidence\r\n"
-		evidenceMarker = "\n## Evidence\r\n"
-		idx = strings.Index(remoteStr, evidenceMarker)
+	// If the remote has a "## Evidence" section, append to it. The section is located the way
+	// the lint and the on-behalf-of stamp locate it (evidenceSpan): in the body only, after the
+	// frontmatter block, on the first line that trims to `## Evidence`, ending at the next line
+	// that trims to a `## ` heading. A `## Evidence` line inside the frontmatter is not the
+	// section, so the merged rows never land where the stamp does not read them.
+	lines := strings.Split(remoteStr, "\n")
+	idx, evidenceMarker, evidenceEnd := -1, "", -1
+	if from, closed := briefBodyStart(lines); closed {
+		off := 0
+		for i := 0; i < len(lines); i++ {
+			if idx < 0 && i >= from && strings.TrimSpace(lines[i]) == "## Evidence" {
+				if i == len(lines)-1 { // the heading ends the file with no newline
+					remoteStr += "\n"
+				}
+				idx, evidenceMarker = off, lines[i]+"\n"
+			} else if idx >= 0 && strings.HasPrefix(strings.TrimSpace(lines[i]), "## ") {
+				// The "\n" ahead of the next heading; a heading right after `## Evidence` (an
+				// empty section) ends it at the heading line itself.
+				evidenceEnd = max(off-1, idx+len(evidenceMarker))
+				break
+			}
+			off += len(lines[i]) + 1
+		}
 	}
 	if idx < 0 {
 		// No Evidence section found — append one at the end. This CREATES the section, so it is
@@ -1083,12 +1119,8 @@ func mergeEvidenceContent(remoteContent, evidence []byte) (merged []byte, alread
 		return []byte(out), false
 	}
 
-	// Find the end of the Evidence section (next ## heading or EOF).
-	afterMarker := remoteStr[idx+len(evidenceMarker):]
-	nextHeading := strings.Index(afterMarker, "\n## ")
-	evidenceEnd := len(remoteStr)
-	if nextHeading >= 0 {
-		evidenceEnd = idx + len(evidenceMarker) + nextHeading
+	if evidenceEnd < 0 { // no later heading: the section runs to EOF
+		evidenceEnd = len(remoteStr)
 	}
 
 	// Build the merged content: before Evidence + Evidence header + existing + new + after.

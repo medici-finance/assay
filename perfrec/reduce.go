@@ -59,21 +59,33 @@ func filterUsed(f V3Filter) bool {
 }
 func workEqual(a, b WorkRef) bool { a.Primary = false; b.Primary = false; return a == b }
 
-// ReduceV3 deduplicates the complete input BEFORE filters, so a conflicting duplicate cannot
-// disappear by choosing a dimension. The source identity is install + fresh invocation ID.
-func ReduceV3(records []Record, permission Profile, dimension string, f V3Filter) (V3Summary, error) {
-	s := V3Summary{Kinds: map[ObservationKind]int{}, RequestCoverage: map[Coverage]int64{}, HandlerUpstreamCoverage: map[Coverage]int64{}, CacheSources: map[string]int64{}, Coalescing: map[string]int64{}, ContextCoverage: map[ContextField]map[Coverage]int64{}}
-	if dimension == "" {
-		dimension = "tool"
-	}
-	if dimension != "tool" && !workflowDimension(dimension) {
-		return s, errors.New("perfrec: unknown grouping dimension")
-	}
-	if (workflowDimension(dimension) || filterUsed(f)) && permission != ProfileWorkflow {
-		return s, errors.New("perfrec: workflow permission required")
+// Used reports whether the filter narrows anything: a filter in use needs workflow
+// permission and keeps only workflow-profile records.
+func (f V3Filter) Used() bool { return filterUsed(f) }
+
+// V3Selection counts the perf-v3 records SelectV3 left out before any filter: Duplicates are
+// exact replays of a kept identity (counted once), Conflicts are identities seen with
+// different contents (every copy excluded), Invalid are records with no usable identity.
+type V3Selection struct {
+	Duplicates int
+	Conflicts  int
+	Invalid    int
+}
+
+// SelectV3 is the ONE definition of which perf-v3 records a v3 figure may count — the set
+// ReduceV3 aggregates. It deduplicates the complete input BEFORE filters, so a conflicting
+// duplicate cannot disappear by choosing a filter; the source identity is install + fresh
+// invocation ID. It then applies the workflow filter. Records of any other schema are
+// ignored. The kept records come back in identity order. A reader that buckets perf-v3
+// records (by day, by tool) selects over the WHOLE input first and buckets the result, so a
+// conflict whose copies would land in different buckets is still seen.
+func SelectV3(records []Record, permission Profile, f V3Filter) ([]Record, V3Selection, error) {
+	var sel V3Selection
+	if filterUsed(f) && permission != ProfileWorkflow {
+		return nil, sel, errors.New("perfrec: workflow permission required")
 	}
 	if f.Work != nil && !validWork([]WorkRef{*f.Work}) {
-		return s, errors.New("perfrec: invalid work filter")
+		return nil, sel, errors.New("perfrec: invalid work filter")
 	}
 	unique := map[string]Record{}
 	enc := map[string]string{}
@@ -84,15 +96,15 @@ func ReduceV3(records []Record, permission Profile, dimension string, f V3Filter
 		}
 		b, e := json.Marshal(r)
 		if e != nil || !InstallIDPattern.MatchString(r.Install) {
-			s.Invalid++
+			sel.Invalid++
 			continue
 		}
 		key := r.Install + ":" + r.V3.Attribution.InvocationID
 		if old, ok := enc[key]; ok {
 			if old == string(b) {
-				s.Duplicates++
+				sel.Duplicates++
 			} else if !conflict[key] {
-				s.Conflicts++
+				sel.Conflicts++
 				conflict[key] = true
 			}
 			continue
@@ -100,12 +112,12 @@ func ReduceV3(records []Record, permission Profile, dimension string, f V3Filter
 		unique[key] = r
 		enc[key] = string(b)
 	}
-	groups := map[string]*V3Group{}
 	var keys []string
 	for key := range unique {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
+	var kept []Record
 	for _, key := range keys {
 		if conflict[key] {
 			continue
@@ -130,6 +142,33 @@ func ReduceV3(records []Record, permission Profile, dimension string, f V3Filter
 				continue
 			}
 		}
+		kept = append(kept, r)
+	}
+	return kept, sel, nil
+}
+
+// ReduceV3 aggregates the records SelectV3 keeps (deduplicated before filters, conflicting
+// identities excluded, the workflow filter applied) under one grouping dimension.
+func ReduceV3(records []Record, permission Profile, dimension string, f V3Filter) (V3Summary, error) {
+	s := V3Summary{Kinds: map[ObservationKind]int{}, RequestCoverage: map[Coverage]int64{}, HandlerUpstreamCoverage: map[Coverage]int64{}, CacheSources: map[string]int64{}, Coalescing: map[string]int64{}, ContextCoverage: map[ContextField]map[Coverage]int64{}}
+	if dimension == "" {
+		dimension = "tool"
+	}
+	if dimension != "tool" && !workflowDimension(dimension) {
+		return s, errors.New("perfrec: unknown grouping dimension")
+	}
+	if workflowDimension(dimension) && permission != ProfileWorkflow {
+		return s, errors.New("perfrec: workflow permission required")
+	}
+	kept, sel, err := SelectV3(records, permission, f)
+	if err != nil {
+		return s, err
+	}
+	s.Duplicates, s.Conflicts, s.Invalid = sel.Duplicates, sel.Conflicts, sel.Invalid
+	groups := map[string]*V3Group{}
+	for _, r := range kept {
+		v := r.V3
+		d := v.Attribution
 		gkey := r.Tool
 		switch dimension {
 		case "session":

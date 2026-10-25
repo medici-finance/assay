@@ -84,6 +84,42 @@ def safe_file(path, home=HERE):
     need(path.resolve().is_relative_to(home.resolve()), 'manifest escapes the package')
 
 
+RECORD = HERE / 'release-images.json'
+# The sha256 the selected release's checksums.txt lists for release-images.json.
+# README.md "Image provenance" states the same value; both move together with
+# the record, so a record edit cannot pass without changing this line too.
+RECORD_SHA256 = 'ff9237178e5bbf9523012a83e2366b99d2ff3cd0092c6116ad4c0dee08afdd64'
+RECORD_PIN_MISMATCH = 'release image record is not the pinned release asset'
+
+
+def recorded_images(raw=None):
+    # The release build's own image record (release-images-v1), kept verbatim.
+    # The release's checksums.txt lists the sha256 of these exact bytes, so the
+    # file binds each role digest to the release and source revision that built
+    # it. Its contract validator is reused rather than restated here.
+    if raw is None:
+        safe_file(RECORD)
+        raw = RECORD.read_bytes()
+    need(hashlib.sha256(raw).hexdigest() == RECORD_SHA256, RECORD_PIN_MISMATCH)
+    readme = HERE / 'README.md'
+    safe_file(readme)
+    need(RECORD_SHA256 in readme.read_text(encoding='utf-8'),
+         'README.md does not state the pinned release image record sha256')
+    sys.dont_write_bytecode = True
+    sys.path.insert(0, str(ROOT / 'tools/release'))
+    try:
+        from images_contract import validate
+    finally:
+        sys.path.pop(0)
+    try:
+        record = json.loads(raw)
+        refs = {i['name']: i['ref'] for i in record['images']}
+        return validate(record, record['version'], record['source_revision'],
+                        refs['verify-runner'] + '\n', 'medici-finance/assay')
+    except (ValueError, KeyError, TypeError) as err:
+        raise Invalid('release image record is not a valid release-images-v1 record') from err
+
+
 def render():
     # Admit a deliberately small Kustomize base BEFORE invoking its renderer.
     # Remote bases, generators, plugins and Helm cannot perform hidden I/O.
@@ -145,8 +181,9 @@ def schema_check(docs):
     return len(docs)
 
 
-def structured(docs):
+def structured(docs, record=None):
     expected = set(roles())
+    recorded = recorded_images(record)
     need(docs, 'empty render')
     allowed = {'Namespace', 'ServiceAccount', 'StatefulSet', 'NetworkPolicy'}
     seen, workloads, namespaces, accounts, policies = set(), {}, [], [], []
@@ -195,8 +232,8 @@ def structured(docs):
                   'shareProcessNamespace', 'initContainers', 'ephemeralContainers']),
              'host namespaces and additional containers forbidden')
         sec = pod.get('securityContext', {})
-        # The published v1.0.52 images resolve desk as 999:999. Recheck the actual
-        # pinned artifacts per README when updating images, not just a rebuild.
+        # containers/base/Dockerfile pins desk to 999:999 and asserts it at build
+        # time; the v1.0.52 images predate that pin and were checked per README.
         need(sec.get('runAsNonRoot') is True
              and all(sec.get(k) == 999 for k in ['runAsUser', 'runAsGroup', 'fsGroup'])
              and sec.get('seccompProfile') == {'type': 'RuntimeDefault'},
@@ -210,6 +247,7 @@ def structured(docs):
         image = container.get('image', '')
         need(re.fullmatch(r'ghcr\.io/medici-finance/assay/' + re.escape(role)
                           + r':v[0-9.]+@sha256:[a-f0-9]{64}', image), 'immutable role image required')
+        need(image == recorded.get(role), 'role image is not the reference its release build recorded')
         need(not container.get('command') and not container.get('args'), 'preserve role image boot')
         need(not container.get('ports'), 'terminal port exposure forbidden')
         csec = container.get('securityContext', {})
@@ -317,6 +355,18 @@ def main():
                 try:
                     structured(mutant)
                 except Invalid:
+                    print(f'rejected: {name}')
+                    rejected += 1
+                else:
+                    raise Invalid(f'hostile fixture escaped: {name}')
+            # A fabricated digest written into the record AND the manifest agrees
+            # with itself; only the record pin may reject it.
+            from testdata.mutations import record_cases
+            for name, mutant, record in record_cases(docs, RECORD.read_bytes()):
+                try:
+                    structured(mutant, record)
+                except Invalid as err:
+                    need(str(err) == RECORD_PIN_MISMATCH, f'{name} rejected for another reason: {err}')
                     print(f'rejected: {name}')
                     rejected += 1
                 else:

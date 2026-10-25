@@ -59,6 +59,7 @@ component list, build/run topology, and open questions.
 | 27 | [PostgreSQL on Kubernetes with CloudNativePG — a Kustomize component with one Cluster, a database and role per cell, out-of-band Secrets, object-store backups, and the explicit local-to-CNPG migration procedure](brief-27-cnpg-kubernetes-postgres.md) | 4 | L | todo | — | — |
 | 28 | [Package in-cluster cellctl and bind the interactive desk profile](brief-28-package-in-cluster-cellctl-and-bind-the-interactive-desk-profile.md) | 10 | M | todo | — | — |
 | 29 | [Qualify the Kubernetes desk cell and operator recovery end to end](brief-29-qualify-the-kubernetes-desk-cell-and-operator-recovery-end-to-end.md) | 11 | M | todo | — | — |
+| 30 | [Role instructions for Codex windows and dispatched agents](brief-30-role-instructions-for-codex-windows-and-dispatched-agents.md) | 0 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -236,6 +237,25 @@ listener is added for external callers: comms stays desk-to-desk plus the contai
 Tempting-but-wrong first step: building `restart` straight on `down`/`up`. Without 16's
 aimed stop and 18's wait for in-flight work, a restart is today's hand-close with extra
 steps, and it leaves the same unfinished checkpoints behind.
+
+### Role instructions beyond Claude windows — `30` (added 2026-10-24)
+
+A standalone brief in the host launcher, outside every chain above. `CELL_ROLE_CONTEXT`
+(issue #2438) gives each Claude Code role window its own instruction file. It refuses a Codex
+role, and it never reaches the agents a window dispatches. `desk-containers/30` closes both
+gaps: an argv-only Codex binding for `instructions`, and a `dispatch_instructions` key that
+deskdispatch quotes verbatim, digest-checked, into every prompt of the named kit. It depends
+on nothing here; a project that moves role rules out of its shared instruction file needs it
+first.
+
+- **Wave 0** — `desk-containers/30` (no dependencies; exec-tier strong). The Codex half
+  probes the installed Codex at pickup; the dispatch half needs no probe.
+
+The head was checked: on `main` the role-context binding exists for Claude Code only, and
+deskdispatch reads no role-context value, so nothing else has to land first.
+Harness facts for the Codex half come from the `harness-portability` stream's capability
+survey; that stream's resident-rules fragment is not reused, because it writes into a
+session-writable worktree file.
 
 ## Shared conventions
 

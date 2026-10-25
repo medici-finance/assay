@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // TestVersionFlag pins the pin-checkability contract:
@@ -25,7 +27,7 @@ func TestVersionFlag(t *testing.T) {
 
 	t.Run("unstamped build reports dev", func(t *testing.T) {
 		build := exec.Command("go", "build", "-o", bin, ".")
-		if out, err := build.CombinedOutput(); err != nil {
+		if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 			t.Fatalf("build: %v\n%s", err, out)
 		}
 		out, err := exec.Command(bin, "--version").Output()
@@ -40,7 +42,7 @@ func TestVersionFlag(t *testing.T) {
 	t.Run("stamped build reports the tag", func(t *testing.T) {
 		const tag = "v9.9.9"
 		build := exec.Command("go", "build", "-ldflags", "-X main.statusgenVersion="+tag, "-o", bin, ".")
-		if out, err := build.CombinedOutput(); err != nil {
+		if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 			t.Fatalf("build: %v\n%s", err, out)
 		}
 		out, err := exec.Command(bin, "--version").Output()

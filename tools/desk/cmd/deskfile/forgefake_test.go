@@ -170,6 +170,9 @@ func (f *dfForge) ApplyLabels(repo deskkit.ForgeRepo, number int, change deskkit
 }
 
 func (f *dfForge) PostComment(repo deskkit.ForgeRepo, number int, body string) (*deskkit.CommentRef, error) {
+	if prFake != nil && prFake.commentErr != nil { // bound_test.go: the back-link fails alone
+		return nil, prFake.commentErr
+	}
 	if os.Getenv("FAKEGH_CREATE_FAIL") != "" {
 		return nil, deskkit.Unverifiable("HTTP 500: comment failed", nil)
 	}

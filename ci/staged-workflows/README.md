@@ -55,8 +55,8 @@ reviewable artifact, not a run.
   in a separate maintainer-credentialled commit. Until that copy lands, the merged change
   is inert: the running workflow is still the old file.
 - `truth-suite.yml` — the standing truth suite (`docs/test-policy.md` § "Standing truth
-  suite"): the test corpus plus the release mutation gate, on push to the default branch and
-  on a daily schedule, reporting three-state. **Already live** — promoted to
+  suite"): the test corpus plus the release mutation gate, on a nightly schedule and on manual
+  dispatch, reporting three-state. **Already live** — promoted to
   `.github/workflows/truth-suite.yml` on 2026-09-10; a change to it is authored here first
   and re-promoted by a maintainer commit. **Pending promotion (#3292):** the staged twin adds
   `internal/cellop/mutations.json` (the `cellctl` plan/apply guards) to the `mutation-gate`

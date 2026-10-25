@@ -585,7 +585,10 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 	if strings.TrimSpace(first) != "---" {
 		return nil, false, nil // legacy (no frontmatter) → exempt
 	}
-	fmRaw, body, err := splitFrontmatter(content)
+	// splitFrontmatter rewrites CRLF itself: hand it the raw text so the
+	// rewrite runs once. Run twice, it erases a carriage return the page
+	// reads as a line ending, which the held scan must still see (heldRender).
+	fmRaw, body, err := splitFrontmatter(string(raw))
 	if err != nil {
 		// A leading `---` means the file intends frontmatter; a split failure
 		// (unterminated fence) is a real error, not an exemption.

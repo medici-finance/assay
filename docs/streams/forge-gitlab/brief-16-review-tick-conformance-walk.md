@@ -16,6 +16,12 @@ depends: ["forge-gitlab/13", "forge-gitlab/14", "forge-gitlab/15"]
 unblocks: []
 effort: M
 gate: human
+decision-issue: 1150
+ruling: "https://github.com/medici-finance/assay/issues/1150#issuecomment-5690170338"
+delivery:
+  - in: "assay#1155"
+    covers: partial
+    note: "Offline refusal goldens and conformance scaffold only; the live review tick and signed verdict remain owed (PR #1155)."
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: >-
   The walk needs a live GitLab project, live per-role service-account credentials, and it performs

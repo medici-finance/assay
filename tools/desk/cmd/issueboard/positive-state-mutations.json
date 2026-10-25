@@ -1,0 +1,35 @@
+{
+  "test": "go test ./cmd/issueboard ./internal/deskkit -run '^(TestPositiveStateBatchNativeParity|TestPositiveStateDuplicatePlaceholdersKeepSerialReads|TestPositiveIssueStatesScopeAndObserver|TestPartialListing_NeverRetires|TestUnreadableIssueState_NeverRetires|TestPositiveClosedRead_StillRetires)$' -count=1",
+  "control": {
+    "name": "discard successful wrapped positive observations",
+    "file": "internal/deskkit/issuestates.go",
+    "old": "return batch.positiveIssueStates(repo, numbers)",
+    "new": "_ = batch; return nil, nil"
+  },
+  "mutations": [
+    {
+      "name": "revert to one native request per placeholder",
+      "file": "internal/deskkit/issuestates.go",
+      "old": "ok && len(numbers) > 1",
+      "new": "ok && false"
+    },
+    {
+      "name": "drop the admitted repository restriction",
+      "file": "internal/deskkit/issuestates.go",
+      "old": "a.forge.onlyRepo != \"\" && !strings.EqualFold(a.forge.onlyRepo, slug)",
+      "new": "false"
+    },
+    {
+      "name": "treat an absent live issue as closed",
+      "file": "cmd/issueboard/board.go",
+      "old": "if state == \"open\" {",
+      "new": "_ = state; if false {"
+    },
+    {
+      "name": "allow an inherited optional method to bypass an unknown decorator",
+      "file": "internal/deskkit/issuestates.go",
+      "old": "default:\n\t\treturn false",
+      "new": "default:\n\t\treturn true"
+    }
+  ]
+}

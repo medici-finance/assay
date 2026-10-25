@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -284,7 +285,7 @@ func realGateFixture(t *testing.T, marked bool) realGate {
 	bin := t.TempDir()
 	build := exec.Command("go", "build", "-o", filepath.Join(bin, "statusgen"), ".")
 	build.Dir = src
-	if out, berr := build.CombinedOutput(); berr != nil {
+	if out, berr := goquiet.Cmd(build).CombinedOutput(); berr != nil {
 		t.Fatalf("build statusgen: %v\n%s", berr, out)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))

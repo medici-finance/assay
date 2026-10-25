@@ -229,7 +229,16 @@ func TestPerfRunnerCI(t *testing.T) {
 // read outside their own Go module. Both tests in this file consume it: the
 // trigger/reachability guard above, and the staleness scanner below.
 func ciCrossModuleRegistry() []ciEntry {
-	floorJob := ciJobRef{id: "build-test", check: "build-test"}
+	// ci.yml's build-test is sharded: the suite runs in the build-test-shard
+	// matrix and `build-test` is only the aggregator that carries the required
+	// check name. Each row points at the leg that RUNS its command: `rest` for
+	// statusgen, the module sweep and the role-claims regressions; a desk-K leg
+	// for tools/desk's `go test`. desk-1 stands for every desk leg — they run one
+	// shared step, and the partition script refuses a split that drops or
+	// repeats a package (.github/scripts/go-test-shard.py).
+	floorJob := ciJobRef{id: "build-test-shard", matrixValue: "rest", check: "build-test-shard (rest)"}
+	deskFloorJob := ciJobRef{id: "build-test-shard", matrixValue: "desk-1", check: "build-test-shard (desk-1)"}
+	deskShardInvokes := []string{"go-test-shard.py --shards", `cd tools/desk && go test "${pkgs[@]}"`}
 
 	toolsDeskJob := ciJobRef{
 		id:          "test",
@@ -263,6 +272,13 @@ func ciCrossModuleRegistry() []ciEntry {
 
 	registry := []ciEntry{
 		{
+			test: "statusgen/regressionfloor_test.go", module: "statusgen",
+			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"docs/contracts.md", "loopadmin/runner/conformance/conformance_test.go", "tools/desk/cmd/deskclaim-ref/deskclaimref_test.go"},
+			runInvokes: []string{"cd statusgen && go test ./... && go vet ./..."},
+			why:        "the repository regression floor resolves contract rows and retained sibling-module test bodies; unconditional PR/main statusgen tests cover documentation-only and sibling-only edits",
+		},
+		{
 			test: "statusgen/boardcohort_test.go", module: "statusgen",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"docs/streams", "statusgen/testdata/witness-admission"},
@@ -270,18 +286,25 @@ func ciCrossModuleRegistry() []ciEntry {
 			why:        "the source-bound board cohort reads current delivery declarations and alias registry; unfiltered push and pull_request run the statusgen suite even on metadata-only changes",
 		},
 
-		{test: "tools/desk/cmd/writeguard/policy_consumers_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+		{test: "tools/desk/cmd/writeguard/policy_consumers_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"deskcore/", "docs/write-policy-consumers.md", "docs/contracts.md", "tools/desk/internal/arch/markers.txt", "Dockerfile", "images/assay-harness/Dockerfile", "**/*.go"},
-			runInvokes: []string{`*/tools/desk|tools/desk) extra="go test ./..."`, `eval "$extra"`},
+			runInvokes: deskShardInvokes,
 			why:        "the write-policy census scans production Go declarations across the source tree and packages deskcore for an offline external consumer; the source workflow is unfiltered"},
-		{test: "tools/desk/cmd/writeguard/policy_parity_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+		{test: "tools/desk/cmd/writeguard/policy_parity_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"deskcore/"},
-			runInvokes: []string{`*/tools/desk|tools/desk) extra="go test ./..."`, `eval "$extra"`},
+			runInvokes: deskShardInvokes,
 			why:        "the actual built writeguard hook is compared with the core, then uses disposable mutated copies of that producer; deskcore-only edits must rerun parity"},
 
-		{test: "tools/desk/internal/reviewtest/observation_boundary_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+		{test: "tools/desk/internal/deskkit/reviewcallers_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{"plugins/assay/scripts/pr-monitor.sh", "plugins/assay/scripts/pr-monitor.test.sh"},
+			runInvokes: deskShardInvokes,
+			why:        "caller qualification executes shipped shell monitor and compatibility tests; the source workflow is unfiltered"},
+		{test: "tools/desk/internal/reviewtest/callers_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads: []string{"plugins/assay/scripts/pr-monitor.sh"}, runInvokes: deskShardInvokes,
+			why: "prose/discrete parity executes the actual monitor against a production collector fixture and built planner; unfiltered desk CI runs after shell-only edits"},
+		{test: "tools/desk/internal/reviewtest/observation_boundary_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"schemas/review-observation-v1.json"},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "the review observation wire schema must qualify against its actual internal Go decoder and planner; the unconditional desk module test job runs on schema-only changes"},
 		{
 			test: "loopadmin/runner/request_test.go", module: "loopadmin",
@@ -292,19 +315,19 @@ func ciCrossModuleRegistry() []ciEntry {
 		},
 		{
 			test: "tools/desk/cmd/deskboard/flow_45_test.go", module: "tools/desk",
-			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"statusgen/testdata/flowqueue/gate-scores.golden.json"},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "deskboard reads the verification-queue rows statusgen printed for the shared fixture, so a statusgen-only change to the queue classification is checked against its consumer on every PR",
 		},
 		{
 			test: "tools/desk/cmd/verifyloop/flow_45_test.go", module: "tools/desk",
-			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads: []string{
 				"statusgen/testdata/flowqueue/gate-scores.golden.json",
 				"statusgen/testdata/flowqueue/docs/streams",
 			},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "verifyloop plans the shared fixture tree under the canonical queue rows statusgen printed for it, so a statusgen-only change to the classification or the fixture is checked against its consumer on every PR",
 		},
 		{
@@ -334,97 +357,105 @@ func ciCrossModuleRegistry() []ciEntry {
 		},
 		{
 			test: "tools/desk/cmd/deskpushguard/hookentrypoints_test.go", module: "tools/desk",
-			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"Makefile", "scripts/build-windows.ps1", "tools/desk/hooks/pre-push"},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "the unconditional build-test floor checks both hook installer entrypoints (the Makefile recipe under /bin/sh, as the runner has no make) and the published anchored hook",
 		},
 		{
 			test: "tools/desk/internal/regression/mirrorimports_test.go", module: "tools/desk",
-			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads: []string{
 				"tools/forge-import-check/check_env_imports.go",
 				"tools/forge-import-check/check_env_imports_test.go",
 				"docs/streams",
 			},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "the unconditional build-test floor executes both authored import-check commands against compiler-valid syntax fixtures",
 		},
 		{
 			test: "tools/desk/internal/regression/releasecache_test.go", module: "tools/desk",
-			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"tools/release", ".github/workflows/release.yml", "ci/staged-workflows/release.yml"},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "the unconditional build-test floor executes release cache provenance, image artifact contracts, archive, and workflow fixtures",
 		},
 		{
 			test: "tools/desk/cmd/deskinstall/cursor_sync_test.go", module: "tools/desk",
-			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"plugins/assay", ".cursor", "AGENTS.md"},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "the committed Cursor placement is checked against canonical source on every PR and push",
 		},
 		{
 			test:   "tools/desk/internal/regression/changelog_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
-			prJob: floorJob, pushJob: floorJob,
+			prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"tools/changelog"},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "the unconditional build-test floor executes the real-Git changelog and board classification suites",
 		},
 		{
 			test:   "tools/desk/internal/regression/evidenceautomerge_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
-			prJob: floorJob, pushJob: floorJob,
+			prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"tools/evidence-automerge", "ci/staged-workflows", "ci/board-writer-migration", "tools/ci-load/activation", ".github/workflows"},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "the live build-test floor executes all three offline Evidence suites, including every board-writer Environment fence",
 		},
-		{test: "tools/desk/cmd/deskdispatch/verifierattestation_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob, reads: []string{"statusgen/verifyrun.go", "statusgen/verifieradmission.go"}, runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""}, why: "the verifier dispatch fixture builds the actual statusgen executor and proves that two Verify rows require the shared pre-work admission"},
-		{test: "tools/desk/cmd/deskdispatch/verifiercrossrepo_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob, reads: []string{"statusgen/verifyrun.go", "statusgen/verifieradmission.go"}, runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""}, why: "the cross-repository dispatch fixture builds the actual statusgen executor and checks isolated tracking Evidence and deliverable row execution"},
-		{test: "tools/desk/cmd/deskevidence/landed_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob, reads: []string{"statusgen/briefinfo.go", "statusgen/evidenceactor.go", "statusgen/attribution.go", "statusgen/verifyclosure.go"}, runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""}, why: "the landed outcome regression builds actual statusgen and checks attribution and closure against genuine committed verifier history"},
-		{test: "tools/desk/cmd/deskevidence/outcome_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob, reads: []string{"statusgen/briefinfo.go", "statusgen/evidenceactor.go", "statusgen/attribution.go", "statusgen/verifyclosure.go"}, runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""}, why: "the outcome command regression builds actual statusgen and checks attribution and closure against genuine committed verifier history"},
+		{test: "tools/desk/cmd/deskdispatch/verifierattestation_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"statusgen/verifyrun.go", "statusgen/verifieradmission.go"}, runInvokes: deskShardInvokes, why: "the verifier dispatch fixture builds the actual statusgen executor and proves that two Verify rows require the shared pre-work admission"},
+		{test: "tools/desk/cmd/deskdispatch/verifiercrossrepo_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"statusgen/verifyrun.go", "statusgen/verifieradmission.go"}, runInvokes: deskShardInvokes, why: "the cross-repository dispatch fixture builds the actual statusgen executor and checks isolated tracking Evidence and deliverable row execution"},
+		{test: "tools/desk/cmd/deskevidence/landed_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"statusgen/briefinfo.go", "statusgen/evidenceactor.go", "statusgen/attribution.go", "statusgen/verifyclosure.go"}, runInvokes: deskShardInvokes, why: "the landed outcome regression builds actual statusgen and checks attribution and closure against genuine committed verifier history"},
+		{test: "tools/desk/cmd/deskevidence/outcome_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"statusgen/briefinfo.go", "statusgen/evidenceactor.go", "statusgen/attribution.go", "statusgen/verifyclosure.go"}, runInvokes: deskShardInvokes, why: "the outcome command regression builds actual statusgen and checks attribution and closure against genuine committed verifier history"},
 		{
 			test:   "tools/desk/internal/deskkit/release_authorizer_api_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
-			prJob: floorJob, pushJob: floorJob,
+			prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"ci/staged-workflows/release.yml", ".github/workflows/release.yml"},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "the offline API fixture executes both release resolve shells and must run when either workflow changes",
 		},
 		{
 			test:   "tools/desk/internal/deskkit/stageddrift_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
-			prJob: floorJob, pushJob: floorJob,
+			prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"ci/staged-workflows", ".github/workflows"},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "every staged workflow and live base must trigger the undeclared drift guard",
+		},
+		{
+			test:   "tools/desk/internal/deskkit/ciscope_test.go",
+			module: "tools/desk", workflow: ".github/workflows/ci.yml",
+			prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{".github/workflows/ci.yml"},
+			runInvokes: deskShardInvokes,
+			why:        "the scope-skip and matrix-leg guards read ci.yml, so every ci.yml change must run them",
 		},
 		{
 			test:   "tools/desk/internal/regression/manifest_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
-			prJob: floorJob, pushJob: floorJob,
+			prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"tools/desk", "statusgen"},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "the manifest dereferences test declarations in both modules; edits in either must run the desk manifest guard",
 		},
 		{
 			test:   "tools/desk/internal/regression/shell_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
-			prJob: floorJob, pushJob: floorJob,
+			prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads:      []string{"tools/create-fleet-gitlab.sh", "tools/create-fleet-gitlab_test.sh", "tools/cellctl"},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "the floor runs offline shell fixtures outside the desk module; script changes must run the entry points",
 		},
 		{
 			test:   "tools/desk/internal/clicontract/inventory_test.go",
 			module: "tools/desk", workflow: ".github/workflows/ci.yml",
-			prJob: floorJob, pushJob: floorJob,
+			prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads: []string{
 				"docs/streams/desktools-v2/cli-migration.json", "docs/streams", "docs/research",
 				".github/workflows/release.yml", "Makefile", "plugins", "tools", "statusgen",
 			},
-			runInvokes: []string{"*/tools/desk|tools/desk) extra=\"go test ./...\"", "eval \"$extra\""},
+			runInvokes: deskShardInvokes,
 			why:        "the CLI routing inventory discovers every entrypoint in the tree and checks owner briefs; a new command or brief edit anywhere must run it (desktools-v2/15)",
 		},
 
@@ -773,8 +804,8 @@ func ciCrossModuleRegistry() []ciEntry {
 			test:     "tools/harnessgen/redaction_test.go",
 			module:   "tools/harnessgen",
 			workflow: ".github/workflows/ci.yml",
-			prJob:    ciJobRef{id: "build-test", check: "build-test"},
-			pushJob:  ciJobRef{id: "build-test", check: "build-test"},
+			prJob:    floorJob,
+			pushJob:  floorJob,
 			reads: []string{
 				"plugins/assay/resident-rules.md",
 				"plugins/assay/skills/the-desk/SKILL.md",
@@ -1249,8 +1280,8 @@ func ciCrossModuleRegistry() []ciEntry {
 			test:     "tools/desk/cmd/deskdispatch/triagecontract_test.go",
 			module:   "tools/desk",
 			workflow: ".github/workflows/ci.yml",
-			prJob:    ciJobRef{id: "build-test", check: "build-test"},
-			pushJob:  ciJobRef{id: "build-test", check: "build-test"},
+			prJob:    deskFloorJob,
+			pushJob:  deskFloorJob,
 			reads: []string{
 				"plugins/assay/skills/worker-desk/SKILL.md",
 				"plugins/assay/skills/worker-desk/references/dispatch-runbook.md",
@@ -2266,6 +2297,7 @@ func globToRegexp(g string) (*regexp.Regexp, error) {
 var ciRegistryOptOut = map[string]string{
 	"tools/desk/internal/reviewtest/perf_test.go":                 `moduleRoot is tools/desk; command probe binaries, own-module legacy perf fixtures, and disposable homes only. No source from another module is read; CI runs the desk module on every PR`,
 	"tools/desk/internal/reviewtest/observation_contract_test.go": `Own-module production source overlays, fixtures and command probes only; all other reads are disposable fixtures. No sibling-module source is read.`,
+	"tools/desk/internal/reviewtest/prepare_test.go":              `Own-module preparation source overlays and command tests only; all other files are disposable Git fixtures. No sibling-module source is read.`,
 	"tools/desk/internal/reviewtest/qualification_test.go":        `filepath.Join("..", "..") from internal/reviewtest resolves to tools/desk, its own module. The test compiles command test binaries and reads its own testdata; all other files are disposable fixtures. It reads Git revision/status metadata but no sibling-module source. ci.yml runs go test ./... for tools/desk on every PR`,
 	"tools/desk/internal/deskkit/appisolation_test.go":            `WalkDir("../..") from internal/deskkit reads only tools/desk test sources, within its own module; tools/** already covers every observed edit`,
 	"tools/desk/internal/gitcore/ackguard_test.go":                `filepath.Join("..", "..") from internal/gitcore resolves to tools/desk. The receive-pack reference inventory reads only non-test Go files in this same module; tools/** already triggers its CI job`,

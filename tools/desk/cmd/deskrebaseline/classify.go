@@ -100,12 +100,15 @@ type RowFacts struct {
 	// moved to, or "" when there is no hop, more than one hop (a chain, not a single hop),
 	// or the target does not exist. Only ever set when PathRef is missing.
 	RenameHop string
+	// RenameProbe is the judgement of the row re-run with PathRef rewritten to RenameHop,
+	// against its Expect rewritten the same way; "" when it was not re-run (#1953).
+	RenameProbe judgement
 
 	// Behaviour probe. CommandProbed is true when facts.go actually ran the row's command.
 	// CommandRan distinguishes "the command executed and produced a result" (a real
 	// behaviour signal) from "the command could not run at all" (e.g. exit 127 / a missing
 	// file — a stale-path signal, not a behaviour change). RCDiffers is true when a probed,
-	// runnable command's result no longer matches what the row pinned.
+	// runnable command's result fails the row's own Expect (exit, output line, count floor).
 	CommandProbed bool
 	CommandRan    bool
 	RCDiffers     bool
@@ -140,8 +143,9 @@ type Classification struct {
 // satisfying that class's proof. The order encodes the precedence the brief's facts set out:
 //
 //  1. A risk-bearing row is refused regardless of shape — the absolute gate.
-//  2. A stale PINNED PATH is decided next: a single rename hop is safe:rename, no hop is
-//     refused:gone. This precedes the behaviour probe because a command that fails only
+//  2. A stale PINNED PATH is decided next: a single rename hop whose re-run row passes its
+//     Expect is safe:rename (a failing re-run is refused:behaviour-changed, an undecided one
+//     refused:unclassified), no hop is refused:gone. This precedes the behaviour probe because a command that fails only
 //     because its pinned path moved must not be read as a behaviour change.
 //  3. A command that still RUNS and returns a different result is refused:behaviour-changed
 //     — a real regression, not a stale oracle.
@@ -162,7 +166,13 @@ func Classify(f RowFacts) Classification {
 	// because its target moved is not misread as a behaviour change.
 	if f.PathRef != "" && !f.PathExists {
 		if f.RenameHop != "" {
-			return Classification{SafeRename, "pinned path " + f.PathRef + " moved by a single rename hop to " + f.RenameHop + " — work intact, path stale"}
+			switch f.RenameProbe {
+			case judgePass:
+				return Classification{SafeRename, "pinned path " + f.PathRef + " moved by a single rename hop to " + f.RenameHop + " and the re-run row passes its Expect — work intact, path stale"}
+			case judgeFail:
+				return Classification{RefusedBehaviourChanged, "pinned path " + f.PathRef + " moved to " + f.RenameHop + " but the row re-run against it fails its Expect — file it"}
+			}
+			return Classification{RefusedUnclassified, "pinned path " + f.PathRef + " moved to " + f.RenameHop + " but the re-run row produced no verdict — unproven; file it"}
 		}
 		return Classification{RefusedGone, "pinned deliverable " + f.PathRef + " is gone with no single rename hop — cannot prove the work survived; file it"}
 	}

@@ -180,9 +180,9 @@ func TestCacheLaunchAdmissionNoLock(t *testing.T) {
 	}
 }
 
-// Near the budget, or with nothing recorded to lean on, launch admission falls
-// through to the locked check; a busy lock then defers the launch. It is never
-// admitted without the lock.
+// Near the budget or with missing accounting, launch admission refuses.
+// Explicit maintenance owns full measurement; a free lock cannot authorize
+// the launch when its accounting is unavailable.
 //
 // regression: #3045
 func TestCacheLaunchAdmissionLocks(t *testing.T) {
@@ -213,16 +213,22 @@ func TestCacheLaunchAdmissionLocks(t *testing.T) {
 			t.Fatal("unreadable estimate admitted without taking the lock")
 		}
 	})
-	t.Run("lock free: full check runs", func(t *testing.T) {
+	t.Run("lock free: missing accounting refuses", func(t *testing.T) {
 		c, p := admissionCell(t)
 		if err := os.Remove(p.ReportPath()); err != nil {
 			t.Fatal(err)
 		}
-		if err := c.cacheAdmission(); err != nil {
-			t.Fatalf("locked fall-through failed on an idle cache: %v", err)
+		if err := c.cacheAdmission(); err == nil {
+			t.Fatal("missing accounting admitted an idle cache")
 		}
-		if _, err := os.Stat(p.ReportPath()); err != nil {
-			t.Fatalf("fall-through did not run the locked pass: %v", err)
+		if _, err := os.Stat(p.ReportPath()); !os.IsNotExist(err) {
+			t.Fatalf("launch performed full accounting: %v", err)
+		}
+		if _, err := cellcache.Check(p, false); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.cacheAdmission(); err != nil {
+			t.Fatalf("explicit maintenance did not recover admission: %v", err)
 		}
 	})
 }

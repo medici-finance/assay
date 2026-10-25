@@ -13,10 +13,13 @@ decision-trigger: spec
 issues: []
 outcome: none
 schema: brief-v2
-version: 4
+version: 5
 id: 702efe9f-7a6c-4079-95cd-0ef3c82f9e69
 authored: 2026-10-14 by forge-service authoring
 sources:
+  - "docs/research/2026-10-22-git-ai-cache-and-source-control.md — requested git-ai techniques amendment, 2026-10-22"
+  - "https://github.com/feder-cr/git-ai/tree/ecf3ed5e31b2bb148c501451bd09a32d080f2af1 — inspected cachetier and derived/storage documentation; reference implementation only"
+  - "freshness-checked 2026-10-22 @ 49d6511daca94a978fff49c00bceea3a0d8af9e6; existing Tasks, Verify, performance amendments and authority gates preserved"
   - "docs/performance-attribution-spec.md — requested perf-v3 amendment, 2026-10-19 @ 2e02111ed"
   - https://github.com/medici-finance/assay/blob/b59a1dc90ce9f383ba350eca8398fe2f6d934152/docs/proposals/non-ci-architecture/21-forge-service-and-source-queries.md
   - docs/proposals/non-ci-architecture/14-storage-forge-graph.md
@@ -76,6 +79,10 @@ brief are restated here. The architecture draft is not activation approval; refr
 source paths, active claims and existing decisions before dispatch. Missing required contracts
 mean NEEDS_CONTEXT, not an invented substitute or a narrowed acceptance test.
 
+Read the [git-ai research report](../../research/2026-10-22-git-ai-cache-and-source-control.md)
+for pinned upstream code, concept mapping and limits. The requirements below are self-contained;
+the reference does not authorize adopting Graft or adding a service.
+
 ## Human decision
 
 Confirm the query bounds and source-access profile from exact-SHA and denied-cache evidence. A warm object cache is never evidence that a caller may read a private repository; a missing historical object remains unavailable.
@@ -127,6 +134,47 @@ This is an amendment to unfinished implementation acceptance. Preserve every pri
 obligation, risk decision and Evidence entry. All tests named here are planned deliverables; this
 authoring change claims no implementation or operational adoption.
 
+### Requested git-ai techniques amendment — 22 October 2026
+
+Apply these techniques within the existing source-query/Git composition and /40 serving boundary.
+Keep GitHub/GitLab authoritative for forge facts and existing owners for candidate workspaces,
+maintenance, credentials, evidence and publication. No Graft server/client, new cache daemon,
+source-control backend, forge operation or dependency edge is introduced by this amendment.
+
+1. Coalesce concurrent immutable reads only after each caller passes current admission and exact
+   repository/object membership checks. Scope in-flight keys by repository/instance, immutable
+   inputs, options and representation/derivation version just like cached answers. One caller's
+   cancellation or failed/denied fill must not cancel another admitted caller, transfer credentials,
+   become a cached denial for other readers or create an unbounded retry loop. Bound shared fill
+   lifetime, waiters and aggregate concurrency through existing owners; keep mutable head resolution
+   separate. Recheck admission at delivery when it can expire/revoke during the fill.
+2. Batch remaining object reads under explicit count/byte/walk bounds using existing native/go-git
+   readers. Bound memory for cached entries AND concurrent in-flight buffers, with explicit
+   unavailable/limited coverage or an admitted bounded fallback on oversize. Preserve exact ordering,
+   completeness and missing-object semantics. An object batch is local work unless an actual remote
+   send occurs; /44 measures whether coalescing/batching beats existing shared-cache readers.
+3. Validate cached object type, size and content against its Git OID; bind derived answers to their
+   complete source/version key. A matching digest proves integrity, not source membership or current
+   permission. Isolate unpublished/quarantine/alternate views: ordinary reads cannot receive their
+   private objects. Reuse the admitted alternate-store reader where its view can be identified and
+   validated; otherwise bypass reuse or return unavailable. Do not disable existing alternate support
+   merely to emulate Graft's different request model.
+4. Record hits, misses, coalesced waits, batch work, evictions, integrity failures, bounded fallbacks
+   and directly measured object/index work through the existing performance seam. Include access-
+   check latency and dependency failure on warm hits; never infer offline availability or zero
+   provider cost from a hit. Use bounded labels and exclude raw keys/paths/content/credentials.
+   Memory-only reuse is the first candidate; a persistent/tiered cache or preseeded snapshot requires
+   /44 evidence and separately scoped production approval, with retention and recovery ownership.
+
+Extend existing Verify row 2 with simultaneous identical and differently keyed requests, corrupt
+entries and independent literal answers; row 3 with revocation during a shared fill, denied waiters,
+credential separation and quarantine/private-alternate isolation; row 4 with aggregate memory/count/
+byte limits, oversized requests, canceled owner, failed fill and bounded retry. Row 6 must retain
+assigned-head correctness through the coalesced review consumer. A removed admission/key/bound check
+must fail the corresponding negative fixture. These extend the existing named selectors, not a
+claim that the planned tests already exist. Technique selection and end-to-end benefit are measured
+by /44; no cache hit ratio or upstream landing benchmark substitutes for that trial.
+
 ## Interface contract
 
 Use forge-service-v1 from 39, mirror admission/freshness from 37, event hints/demand from 38,
@@ -146,9 +194,9 @@ boundary and independent expectation, not another implementation of the same che
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 1 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestExactSourceQueryFlow$' ./internal/forgesource/... > "$r" && grep -F -- '--- PASS: TestExactSourceQueryFlow ' "$r")` | exit 0; named PASS. Real disposable bare Git -> served authenticated FileAt/Diff/MergeBase -> fixture client. Literal independently selected commits/content/merge bases match; no client checkout is created and unsupported shallow history is explicit. |
-| 2 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestImmutableCacheAndMutableHeads$' ./internal/forgesource/... > "$r" && grep -F -- '--- PASS: TestImmutableCacheAndMutableHeads ' "$r")` | exit 0; named PASS. Repeat exact query warms cache; changing branch tip leaves old-SHA bytes stable, while mutable-head resolution refreshes. Query options and derivation versions change keys; corrupt cached bytes fail integrity and do not leak another repository. |
-| 3 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestPrivateSourceCacheRefusal$' ./internal/forgesource/... > "$r" && grep -F -- '--- PASS: TestPrivateSourceCacheRefusal ' "$r")` | exit 0; named PASS. Warm private canary under reader A; denied/revoked reader B and another repository/host using the same SHA get no content/existence/counts. Bypassing the upper route still fails source admission/membership. |
-| 4 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestSourceQueryBoundsAndParity$' ./internal/forgesource/... > "$r" && grep -F -- '--- PASS: TestSourceQueryBoundsAndParity ' "$r")` | exit 0; named PASS. Native Git and go-git answer the same declared complete fixtures, multiple merge bases and alternate-store cases; missing objects, excessive bytes/cost and unsupported history fail visibly. Record cold/warm measurements without claiming a fleet latency target. |
+| 2 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestImmutableCacheAndMutableHeads$' ./internal/forgesource/... > "$r" && grep -F -- '--- PASS: TestImmutableCacheAndMutableHeads ' "$r")` | exit 0; named PASS. Concurrent fills preserve independent exact-source answers, key isolation, cancellation and bounded retries; corrupt objects fail. Repeat exact query warms cache; changing branch tip leaves old-SHA bytes stable, while mutable-head resolution refreshes. Query options and derivation versions change keys; corrupt cached bytes fail integrity and do not leak another repository. |
+| 3 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestPrivateSourceCacheRefusal$' ./internal/forgesource/... > "$r" && grep -F -- '--- PASS: TestPrivateSourceCacheRefusal ' "$r")` | exit 0; named PASS. Revocation during fill and denied/coalesced readers remain isolated, including quarantine/private alternate views and credentials. Warm private canary under reader A; denied/revoked reader B and another repository/host using the same SHA get no content/existence/counts. Bypassing the upper route still fails source admission/membership. |
+| 4 | check:ci +flow +mutation | `(cd tools/desk && r=$(mktemp) && trap 'rm -f "$r"' 0 && GOWORK=off go test -count=1 -v -run '^TestSourceQueryBoundsAndParity$' ./internal/forgesource/... > "$r" && grep -F -- '--- PASS: TestSourceQueryBoundsAndParity ' "$r")` | exit 0; named PASS. Count/byte/waiter and aggregate in-flight memory bounds hold under oversize and canceled/failed-fill cases; record access-check overhead. Native Git and go-git answer the same declared complete fixtures, multiple merge bases and alternate-store cases; missing objects, excessive bytes/cost and unsupported history fail visibly. Record cold/warm measurements without claiming a fleet latency target. |
 | 5 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/42` | exit 0; implementation diff corroborates routing claims. Out-of-scope claims remain reviewer judgments, not gate-certified passes. |
 | 6 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewSourceContext$' ./internal/forgesource/... > "$o" && grep -F -- '--- PASS: TestReviewSourceContext ' "$o")` | exit 0; named PASS. Round and packet use assigned exact-source bytes including when allocated HEAD differs; base/head/options/access changes invalidate applicable results and planted wrong content fails. |
 

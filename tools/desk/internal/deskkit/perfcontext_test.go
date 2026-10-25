@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/perfrec"
 )
 
@@ -20,7 +21,7 @@ func TestPerfV3LauncherChildFlow(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "deskclaim")
 	build := exec.Command("go", "build", "-o", bin, "./cmd/deskclaim")
 	build.Dir = filepath.Join("..", "..")
-	if out, err := build.CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
 	}
 	parent := perfrec.ResolveContext(perfrec.ContextInput{LookupEnv: func(k string) (string, bool) {
@@ -41,7 +42,7 @@ func TestPerfV3LauncherChildFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := filepath.Join(probeHome, "role-probe")
-	if out, err := exec.Command("go", "build", "-o", probe, probeSource).CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(exec.Command("go", "build", "-o", probe, probeSource)).CombinedOutput(); err != nil {
 		t.Fatalf("probe build: %v %s", err, out)
 	}
 	authority := Run(ToolCall{Name: probe, Env: env, Context: WithPerfContext(context.Background(), contexts[0])})

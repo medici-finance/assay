@@ -166,6 +166,69 @@ artifacts; executable results and report stay together.
 
 <!-- Independent verifier records each row, exact source revision, command, exit and observed result. -->
 
+Verification-Attestation: medici-finance/assay#3862 run=524386b83e92546447a90179cf2476d1a138bd8c320f7209d646166240913a69 source=e16c3ed49c1ea518b5c131335dc5d926505410a2 brief=docs/streams/graph-execution/brief-32-investigate-criterion-level-evidence-freshness.md model=claude-opus-5-5 tier=strong
+
+Run against merged main at the attested source, offline (KUBECONFIG=/dev/null), go1.27.2 darwin/arm64, python3; replay scratch under the runner's TMPDIR, outside the worktree.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | `python3 docs/research/criterion-evidence-freshness/replay.py --check` | exit 0; fresh actual baseline replay matches committed results for every declared case; report-only predictions distinguishable | exit 0; "CLI JSON byte commitments: 17/42 identical; semantic replay matches"; "14 declared cases executed; original witnesses retain their subjects"; validate() enforces source revision, one executed verifyrun witness per case and kind=report-only for every experimental_prediction; unavailable case reports numeric=could-not-check | 2026-10-21 | assay-verifier-app[bot] @ e16c3ed49c1ea518b5c131335dc5d926505410a2 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 2 | `python3 docs/research/criterion-evidence-freshness/replay.py --self-test` | exit 0; nonzero rejection of tampered observations, skipped cases and fabricated execution; unavailable source stays unknown | exit 0; "identical-observations: accepted exit=0"; 8 planted controls each "rejected exit=1": tampered-observation, skipped-case, duplicate-case, fabricated-execution, unknown-as-pass ("unavailable governing source is not current acceptance"), prediction-as-measured, wrong-raw-commitment, changed-decoded-value | 2026-10-21 | assay-verifier-app[bot] @ e16c3ed49c1ea518b5c131335dc5d926505410a2 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCoverageAcceptanceDigestChanged$' . > "$out" && GOWORK=off go test -count=1 -v -run '^TestCoverageExpectChangedSinceWitnessRan$' . >> "$out" && grep -F -- '--- PASS: TestCoverageAcceptanceDigestChanged ' "$out" && grep -F -- '--- PASS: TestCoverageExpectChangedSinceWitnessRan ' "$out")` | exit 0; both baseline controls run and pass; report credits existing protection | exit 0; "--- PASS: TestCoverageAcceptanceDigestChanged (0.02s)"; "--- PASS: TestCoverageExpectChangedSinceWitnessRan (0.45s)"; research README section "Source inventory and the actual chain" credits these as the brief's row-3 existing controls, not a new mechanism | 2026-10-21 | assay-verifier-app[bot] @ e16c3ed49c1ea518b5c131335dc5d926505410a2 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+Rows: 3/3 passed, 0 could-not-check.
+
+Risk-bearing value enumeration (delivering change: the research commit for this brief, merged via PR #3307; scope = the five research/changelog files it added). Literals introduced: minimum case count 12 (replay.py line 473); JSON captures per case 3 (replay.py line 363); subprocess timeouts 60 / 30 / 120 / 10 seconds (replay.py lines 126, 332, 338, 447 and 455); pinned study source commit (cases.json line 3, an ancestor of the verified head). Ranked: all are reversible research-harness knobs; no runtime code, schema, gate or authority is changed (design-fit weight 0, risk all "no", not irreversible). Top entry derived:
+
+RISK-VALUE: DERIVED — minimum declared cases = 12 @ docs/research/criterion-evidence-freshness/replay.py:473 — Task 2 of this brief enumerates exactly twelve mandatory case kinds (tightening, new, wording, reorder, split/merge, retirement, inherited, Command, Expect, weakened test, unrelated, unavailable), so 12 is the contract floor; the frozen set has 14 distinct ids, and 3 captures per case at line 363 matches the three statusgen --json calls each case issues (42 = 3 x 14 observed in row 1).
+
+**VERIFY: PASS** — 3/3 rows at the attested source
+
+### 2026-10-22 verify pass (source 05dc9fbc88f2, witnessed)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `python3 docs/research/criterion-evidence-freshness/replay.py --check` | pass exit=0 | sha256:b688f1510c3a | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `python3 docs/research/criterion-evidence-freshness/replay.py --self-test` | pass exit=0 | sha256:0e10d12bd0ad | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCoverageAcceptanceDigestChanged$' . > "$out" && GOWORK=off go test -count=1 -v -run '^TestCoverageExpectChangedSinceWitnessRan$' . >> "$out" && grep -F -- '--- PASS: TestCoverageAcceptanceDigestChanged ' "$out" && grep -F -- '--- PASS: TestCoverageExpectChangedSinceWitnessRan ' "$out")` | pass exit=0 | sha256:d3d75f410e8f | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4031 run=0501d7379d0d35ebed3798c61a787a7dd2064c1e4e82b487ecc182b8e40ec085 source=05dc9fbc88f2b1b23cd78bebc8634c564327eca4 brief=docs/streams/graph-execution/brief-32-investigate-criterion-level-evidence-freshness.md model=claude-opus-5-5 tier=strong
+
+The table above is the `statusgen verifyrun` execution witness (write mode, statusgen
+v1.0.54), run once from the admitted detached home at source
+05dc9fbc88f2b1b23cd78bebc8634c564327eca4 on a clean tree; all three rows ran on the
+host under the witness and none was could-not-run, so every row rests on the witness.
+The verifier then re-ran the same three commands by hand at the same source, only to
+read the output the witness hashes, and compared it with each Expect cell:
+
+- Row 1 (exit 0): the driver printed 14 declared case lines (unchanged, tighten, add,
+  wording, reorder, split-duplicates, retire, inherited, command, expect, weaken-test,
+  unrelated, unavailable, declared-tighten), each with a measured baseline result kept
+  separate from a `prediction=` field, then "14 declared cases executed; original
+  witnesses retain their subjects" and "semantic replay matches". The saved
+  source_commit in results.json (2f56cf2892af) is an ancestor of the verified source.
+  The unavailable case reports numeric=could-not-check with prediction=unknown.
+- Row 2 (exit 0): identical observations accepted; tampered-observation, skipped-case,
+  duplicate-case, fabricated-execution, unknown-as-pass, prediction-as-measured,
+  wrong-raw-commitment and changed-decoded-value were each rejected with exit 1 and a
+  named reason.
+- Row 3 (exit 0): "--- PASS: TestCoverageAcceptanceDigestChanged" and
+  "--- PASS: TestCoverageExpectChangedSinceWitnessRan" from the statusgen package.
+
+Rows 1-3: 3/3 pass on the witness; the hand runs add no row credit and only confirm
+the Expect wording.
+
+Risk-bearing value. The risk frontmatter is all no and nothing is irreversible. The
+enumeration covered the delivering change's diff (the five research files, the changelog
+line, one CLI-migration exclusion entry and two desk-tool test files). Literals found: the
+minimum case count 12 in the driver's case guard (replay.py line 473), and the subprocess
+timeouts 60, 30, 120 and 10 seconds plus the witness `--timeout 10s` (replay.py lines 126,
+332, 338, 447, 455, 297). The timeouts are reversible operational knobs, ranked last and
+not derived.
+
+RISK-VALUE: DERIVED — len(ids) < 12 minimum = 12 @ docs/research/criterion-evidence-freshness/replay.py:473 — Task 2 of this brief requires at least twelve explicit cases and lists exactly twelve required categories; the guard refuses fewer and refuses duplicates, and cases.json declares 14.
+
+**VERIFY: PASS** — 3/3 rows pass on the `statusgen verifyrun` witness at 05dc9fbc88f2; no row rests only on a hand run.
+
 ## Review
 
 Gate: model; synthetic research and a recommendation only. Prioritize contradictions and

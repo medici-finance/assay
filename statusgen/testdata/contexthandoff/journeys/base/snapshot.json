@@ -1,0 +1,48 @@
+{
+  "declared_by": "example:repo-a:alpha:03",
+  "target": {
+    "state": "approved",
+    "revision": "1111111",
+    "approval": {
+      "revision": "1111111",
+      "reference": "https://example.invalid/reviews/ledger-export-v2"
+    },
+    "intent": "Move the nightly ledger export to the v2 record layout.",
+    "contracts": [
+      {
+        "name": "ledger-export",
+        "from": "v1",
+        "to": "v2"
+      }
+    ],
+    "transition": "Readers accept both layouts for one release; v1 is refused after that.",
+    "acceptance_source": "spec/ledger-export-v2.md"
+  },
+  "terms": ["ledger-export"],
+  "deciding_role": "brief-author",
+  "sources": [
+    {"id": "repo-a", "cell": "example", "repo": "repo-a", "role": "plan", "required": true},
+    {"id": "repo-b", "cell": "example", "repo": "repo-b", "role": "plan", "required": false},
+    {"id": "guides", "cell": "example", "repo": "repo-a", "role": "guideline", "required": true}
+  ],
+  "edges": [
+    {
+      "subject": "example:repo-b:beta:01",
+      "edge": "owns",
+      "term": "ledger-export",
+      "locator": "repo-b:docs/streams/beta/brief-01-ledger-owner.md",
+      "version": "v1"
+    }
+  ],
+  "claims": [
+    {
+      "subject": "alpha:04",
+      "claim": "refs/dispatch/alpha-04",
+      "brief_revision": "0123abc",
+      "observed_at": "2026-10-01T00:00:00Z",
+      "owner": "worker-desk",
+      "checkpoint": "reader skeleton pushed; layout parsing not started"
+    }
+  ],
+  "proposals": []
+}

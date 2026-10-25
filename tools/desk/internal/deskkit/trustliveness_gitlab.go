@@ -82,9 +82,13 @@ func (f *HTTPGitLabAccountFetcher) baseURL() string {
 	return GitLabAPIBase
 }
 
+// client is the injected Client with redirects refused (a copy — the caller's client is left
+// as it is), or the no-redirect default. An injected client used as given followed redirects
+// with PRIVATE-TOKEN on (review finding SEC-1); outboundforge.go hands this fetcher the
+// binding's Client, so the refusal cannot depend on the client being nil.
 func (f *HTTPGitLabAccountFetcher) client() *http.Client {
 	if f.Client != nil {
-		return f.Client
+		return gitlabNoRedirectClient(f.Client)
 	}
 	return gitlabAccountFetcherDefaultClient
 }

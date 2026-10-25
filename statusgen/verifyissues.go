@@ -949,8 +949,10 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 // trackers, so the markdown state the read lines are judged in is the
 // document's own. Every held line is collected; the earlier-entry ones are
 // dropped only when scope.supersedes them all — each a keyed results row the
-// last entry, closing on its own live strict PASS, re-ran to a clean outcome
-// — and otherwise the first held line in the whole section refuses, as before.
+// last entry, closing on its own live strict PASS, re-ran to a clean outcome,
+// or, once that entry re-ran EVERY row key of EVERY earlier entry so, any
+// held line of an earlier entry but a table line it cannot key (#3841) — and
+// otherwise the first held line in the whole section refuses, as before.
 func unroutedHeldLine(evidence string) (bool, string) {
 	inFence := false
 	var codeScan inlineCodeScan
@@ -1212,20 +1214,47 @@ func renderVerifyBody(root string, bf *BriefFile) string {
 	fmt.Fprintf(&b, "**Brief:** [%s](https://github.com/%s/blob/main/%s)\n\n",
 		bf.Brief, verifyRepoSlug(), filepath.ToSlash(rel))
 
-	if verify := strings.TrimSpace(extractSectionByPrefix(body, "Verify")); verify != "" {
-		fmt.Fprintf(&b, "### Verify\n\n%s\n\n", verify)
-	}
-	if ev := strings.TrimSpace(bf.Evidence); ev != "" {
-		fmt.Fprintf(&b, "### Recorded results (Evidence)\n\n%s\n\n", ev)
-	}
+	// The lifted sections are unbounded; capIssueBody holds the whole body
+	// under the forge limit without touching the header above or the
+	// checklist below (#4091).
+	sections := verifySections(body, bf.Evidence)
 
-	b.WriteString("### Before you close\n\n")
-	b.WriteString("- [ ] Verify results reproduce / acceptable\n")
-	b.WriteString("- [ ] no unresolved findings against this brief\n")
-	b.WriteString("- [ ] I accept this brief as done\n\n")
-	b.WriteString("Closing this issue marks the brief `done` (Reviewed: `" + verifyReviewer +
+	var tail strings.Builder
+	tail.WriteString("### Before you close\n\n")
+	tail.WriteString("- [ ] Verify results reproduce / acceptable\n")
+	tail.WriteString("- [ ] no unresolved findings against this brief\n")
+	tail.WriteString("- [ ] I accept this brief as done\n\n")
+	tail.WriteString("Closing this issue marks the brief `done` (Reviewed: `" + verifyReviewer +
 		"`). Only a human closer is honored.\n")
-	return b.String()
+	return capIssueBody(b.String(), sections, tail.String(), briefLinkAtCommit(root, rel))
+}
+
+// verifySections renders the Verify and Evidence sections a verify-gate card
+// lifts from the brief, each as its own cuttable unit; an empty one is left out.
+func verifySections(body, evidence string) []string {
+	var out []string
+	if verify := strings.TrimSpace(extractSectionByPrefix(body, "Verify")); verify != "" {
+		out = append(out, fmt.Sprintf("### Verify\n\n%s\n\n", verify))
+	}
+	if ev := strings.TrimSpace(evidence); ev != "" {
+		out = append(out, fmt.Sprintf("### Recorded results (Evidence)\n\n%s\n\n", ev))
+	}
+	return out
+}
+
+// briefLinkAtCommit returns the full-text link a cut notice carries: the brief
+// file at the commit the card was rendered from, so the reader sees exactly
+// the text that was cut even after the brief changes on main. Without a
+// readable commit (a tree with no git history) it links main instead.
+func briefLinkAtCommit(root, rel string) func() string {
+	return func() string {
+		ref := gitCurrentSHA(root)
+		if ref == "" {
+			ref = "main"
+		}
+		rel = filepath.ToSlash(rel)
+		return fmt.Sprintf("[%s](https://github.com/%s/blob/%s/%s)", rel, verifyRepoSlug(), ref, rel)
+	}
 }
 
 // renderImplementedGateBody builds the self-contained markdown issue body for a
@@ -1281,44 +1310,49 @@ func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) st
 	}
 	fmt.Fprintf(&b, "**Brief:** [%s](https://github.com/%s/blob/main/%s)\n\n",
 		bf.Brief, verifyRepoSlug(), filepath.ToSlash(rel))
+	head := b.String()
 
-	if verify := strings.TrimSpace(extractSectionByPrefix(body, "Verify")); verify != "" {
-		fmt.Fprintf(&b, "### Verify\n\n%s\n\n", verify)
-	}
-	if ev := strings.TrimSpace(bf.Evidence); ev != "" {
-		fmt.Fprintf(&b, "### Recorded results (Evidence)\n\n%s\n\n", ev)
-	}
+	// Every section below is lifted from the brief and unbounded; each is a
+	// cuttable unit for capIssueBody, which keeps the header above and the
+	// generated prompts and checklist below whole (#4091).
+	sections := verifySections(body, bf.Evidence)
 
 	// UNRUN/deferred rows — surfaced prominently.
 	if ur := unrunRowsText(bf.Evidence); ur != "" {
-		b.WriteString("### Deferred / UNRUN rows\n\n")
-		b.WriteString("> Closing accepts these as deferred, or run them first:\n\n")
-		fmt.Fprintf(&b, "%s\n\n", ur)
+		sections = append(sections, "### Deferred / UNRUN rows\n\n"+
+			"> Closing accepts these as deferred, or run them first:\n\n"+ur+"\n\n")
 	}
 
 	// Trade-offs section
-	b.WriteString("### Trade-offs\n\n")
 	tradeoffs := strings.TrimSpace(extractSectionByPrefix(body, "Trade-offs"))
+	// The prompts statusgen itself generates (nothing lifted from the brief)
+	// are warnings the human must see, so they go in the tail, which a cut
+	// never touches; only the lifted Trade-offs text is a cuttable section.
+	var generated strings.Builder
 	if tradeoffs != "" {
-		fmt.Fprintf(&b, "%s\n\n", tradeoffs)
+		sections = append(sections, "### Trade-offs\n\n"+tradeoffs+"\n\n")
 	} else {
-		b.WriteString("> **TRADE-OFFS: not provided** — the brief has no `## Trade-offs` section. A gate:human card should carry a \"Why we want it / What it limits\" analysis.\n\n")
+		generated.WriteString("### Trade-offs\n\n" +
+			"> **TRADE-OFFS: not provided** — the brief has no `## Trade-offs` section. A gate:human card should carry a \"Why we want it / What it limits\" analysis.\n\n")
 	}
 
 	// Prior-state remediation prompt for risk-classed (money-path) briefs.
 	if bf.Gate == "human" || anyRiskYes(bf.Risk) {
-		b.WriteString("### Prior-state remediation\n\n")
-		b.WriteString("**Does this fix leave prior corrupted state that needs remediation?**\n\n")
+		prior := "### Prior-state remediation\n\n" +
+			"**Does this fix leave prior corrupted state that needs remediation?**\n\n"
 		// Check if trade-offs section addresses prior state.
 		if strings.Contains(strings.ToLower(tradeoffs), "prior") ||
 			strings.Contains(strings.ToLower(tradeoffs), "remediation") ||
 			strings.Contains(strings.ToLower(tradeoffs), "corrupt") {
-			b.WriteString("(See Trade-offs section above for the prior-state assessment.)\n\n")
+			prior += "(See Trade-offs section above for the prior-state assessment.)\n\n"
 		} else {
-			b.WriteString("> **PRIOR-STATE: unassessed** — the `## Trade-offs` section does not address whether this fix leaves prior corrupted state. Every money-path gate card must answer this question (yes+what / no+why).\n\n")
+			prior += "> **PRIOR-STATE: unassessed** — the `## Trade-offs` section does not address whether this fix leaves prior corrupted state. Every money-path gate card must answer this question (yes+what / no+why).\n\n"
 		}
+		generated.WriteString(prior)
 	}
 
+	b.Reset()
+	b.WriteString(generated.String())
 	b.WriteString("### Before you close\n\n")
 	b.WriteString("- [ ] Model verify pass is acceptable (Evidence reviewed above)\n")
 	if unrunRowsText(bf.Evidence) != "" {
@@ -1331,7 +1365,7 @@ func renderImplementedGateBody(root string, bf *BriefFile, irreversible bool) st
 	b.WriteString("- [ ] I accept this brief as done (implemented → verified → done)\n\n")
 	b.WriteString("Closing this issue marks the brief `done` (Verified: model verifier; Reviewed: `" +
 		verifyReviewer + "`). Only a human closer is honored.\n")
-	return b.String()
+	return capIssueBody(head, sections, b.String(), briefLinkAtCommit(root, rel))
 }
 
 // verifyIssues computes the newly-eligible verify-gate issues: briefs that are
@@ -1729,8 +1763,11 @@ func closeVerifyFlipPlan(root, briefID string, now time.Time) (readme string, up
 // earlier hold is such a row too. A later entry that re-ran nothing, re-ran
 // other rows, or wrote anything but a clean outcome for the held row (a
 // placeholder, a carry-forward, a note after the outcome, a zero count, an
-// expectation in place of a result) replaces nothing; an earlier hold in
-// prose keeps every entry read.
+// expectation in place of a result) replaces nothing. An earlier hold in
+// prose, an entry-level verdict or a note that names no row is dropped only
+// when the last entry re-ran EVERY row key of EVERY earlier entry clean and
+// every earlier results row is aligned and keyed: the earlier entries are then
+// superseded as wholes (#3841). Partial coverage keeps every entry read.
 // Inside one entry it is NOT inferred: a
 // HELD/could-not-check row under the same heading stays live after a later
 // table runs that row green, because nothing ties the later row to the earlier

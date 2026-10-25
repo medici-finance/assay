@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/perfrec"
 )
 
@@ -142,7 +143,7 @@ func TestPerfPrivateHandoff(t *testing.T) {
 func TestPerfUntypedClaimChildParent(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "deskclaim")
 	build := exec.Command("go", "build", "-o", bin, "../deskclaim")
-	if out, err := build.CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
 	}
 	home := t.TempDir()

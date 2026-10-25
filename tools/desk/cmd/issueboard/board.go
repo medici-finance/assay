@@ -183,11 +183,8 @@ type ghIssue struct {
 // querying the forge for closed issues). It reaches the forge through deskkit.ForgeFor's
 // ListOpenIssues (never the `gh` CLI), which returns ISSUES only — a forge that serves
 // issues and changes from one number sequence filters the changes out itself.
-func fetchOpenIssues(repo string, observers ...deskkit.RequestObserver) ([]ghIssue, error) {
-	f, fr, err := forgeFor(repo, observers...)
-	if err != nil {
-		return nil, err
-	}
+func (r *issueReader) fetchOpenIssues() ([]ghIssue, error) {
+	f, fr, repo := r.forge, r.repo, r.repo.Slug()
 	summaries, lerr := f.ListOpenIssues(fr)
 	if lerr != nil {
 		return nil, deskkit.Unverifiable("cannot read open issues for "+repo, lerr)
@@ -221,11 +218,8 @@ func fetchOpenIssues(repo string, observers ...deskkit.RequestObserver) ([]ghIss
 // limit, a timeout) retired every live placeholder it omitted. A read that fails, or that
 // reports a state other than open/closed, is could-not-check for the whole board (this
 // tool's contract: never a partial board), naming the issue.
-func fetchIssueState(repo string, num int, observers ...deskkit.RequestObserver) (state, title string, err error) {
-	f, fr, err := forgeFor(repo, observers...)
-	if err != nil {
-		return "", "", err
-	}
+func (r *issueReader) fetchIssueState(num int) (state, title string, err error) {
+	f, fr, repo := r.forge, r.repo, r.repo.Slug()
 	iss, gerr := f.GetIssue(fr, num)
 	if gerr != nil {
 		return "", "", deskkit.Unverifiable(fmt.Sprintf(
@@ -250,8 +244,8 @@ func fetchIssueState(repo string, num int, observers ...deskkit.RequestObserver)
 // databaseIds (recycled-login defense). An incomplete payload (any connection past
 // first:100) is NOT blessed — fail closed to quarantine. A fetch/parse error is
 // Unverifiable (exit 6): a blessing we cannot verify is never guessed either way.
-func fetchIssueBlessed(repo string, num int, observers ...deskkit.RequestObserver) (bool, error) {
-	bodyEdited, events, complete, err := fetchIssueTrustPayload(repo, num, observers...)
+func (r *issueReader) fetchIssueBlessed(num int) (bool, error) {
+	bodyEdited, events, complete, err := r.fetchIssueTrustPayload(num)
 	if err != nil {
 		return false, err
 	}
@@ -268,11 +262,8 @@ func fetchIssueBlessed(repo string, num int, observers ...deskkit.RequestObserve
 // clock does NOT route through here: it reads the WHOLE thread (fetchIssueEvents →
 // Forge.IssueContentEvents, paginated) rather than the trust gate's deliberately-bounded
 // single page.
-func fetchIssueTrustPayload(repo string, num int, observers ...deskkit.RequestObserver) (bodyEdited time.Time, events []deskkit.ContentEvent, complete bool, err error) {
-	f, fr, ferr := forgeFor(repo, observers...)
-	if ferr != nil {
-		return time.Time{}, nil, false, ferr
-	}
+func (r *issueReader) fetchIssueTrustPayload(num int) (bodyEdited time.Time, events []deskkit.ContentEvent, complete bool, err error) {
+	f, fr, repo := r.forge, r.repo, r.repo.Slug()
 	tp, terr := f.IssueTrustEvents(fr, num)
 	if terr != nil {
 		return time.Time{}, nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read events for %s#%d", repo, num), terr)
@@ -297,11 +288,8 @@ func fetchIssueTrustPayload(repo string, num int, observers ...deskkit.RequestOb
 // thread. The caller then degrades THAT ONE row conservatively (escalate, could-not-check) and
 // renders the rest of the board — an overflowed thread is never read as "no escalation owed",
 // and one long thread never fails the whole board again.
-func fetchIssueEvents(repo string, num int, observers ...deskkit.RequestObserver) (events []deskkit.ContentEvent, complete bool, err error) {
-	f, fr, ferr := forgeFor(repo, observers...)
-	if ferr != nil {
-		return nil, false, ferr
-	}
+func (r *issueReader) fetchIssueEvents(num int) (events []deskkit.ContentEvent, complete bool, err error) {
+	f, fr, repo := r.forge, r.repo, r.repo.Slug()
 	tp, terr := f.IssueContentEvents(fr, num)
 	if terr != nil {
 		return nil, false, deskkit.Unverifiable(fmt.Sprintf("cannot read events for %s#%d", repo, num), terr)
@@ -342,11 +330,8 @@ func labelHistoryHold(h *deskkit.LabelHistory) (held, unverifiable bool, reason 
 // paid ONLY for an issue that would otherwise classify CREATE-PLACEHOLDER. A read error is
 // returned as could-not-check and fails the board as fetchIssueEvents's does; an incomplete
 // history is NOT an error — the caller degrades that one row.
-func fetchLabelHistory(repo string, num int, observers ...deskkit.RequestObserver) (*deskkit.LabelHistory, error) {
-	f, fr, ferr := forgeFor(repo, observers...)
-	if ferr != nil {
-		return nil, ferr
-	}
+func (r *issueReader) fetchLabelHistory(num int) (*deskkit.LabelHistory, error) {
+	f, fr, repo := r.forge, r.repo, r.repo.Slug()
 	h, herr := f.IssueLabelHistory(fr, num)
 	if herr != nil {
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot read the label history for %s#%d", repo, num), herr)
@@ -581,6 +566,8 @@ type issueClassifyInput struct {
 	// work item, not free work: it is EXCLUDED from CREATE-PLACEHOLDER and rendered
 	// ADDRESSED→<role> so the addressee's own sweep leads with it.
 	addressed bool
+	// addressUnknown holds malformed or conflicting to: labels without guessing a role.
+	addressUnknown bool
 	// addresseeResponded is whether the addressed role's App has commented on the issue.
 	// It is the SECOND, independent layer behind the inbox: an addressed item aged past
 	// the SLA with no response from that role's App becomes visible (ESCALATE) without the
@@ -620,6 +607,9 @@ func classifyIssue(in issueClassifyInput) string {
 			return actEscalate
 		}
 		return actAddressed
+	}
+	if in.open && in.addressUnknown {
+		return actAwait
 	}
 	if in.hasPlaceholder {
 		if !in.open {
@@ -732,7 +722,11 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 	var rows []issueBoardRow
 	var external []externalRow
 	for _, repo := range ownedRepos() {
-		issues, err := fetchOpenIssues(repo, observers...)
+		reader, err := newIssueReader(repo, observers...)
+		if err != nil {
+			return nil, nil, err
+		}
+		issues, err := reader.fetchOpenIssues()
 		if err != nil {
 			return nil, nil, err
 		}
@@ -758,7 +752,8 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 			if projection != issueflow.Full && !issueflow.Select(projection, issueflow.Candidate{
 				HasPlaceholder: hasPh, Excluded: hasExcludedLabel(names),
 				DecisionOwed: decisionOwed, Addressed: addressed, Role: addrRole,
-				HelpWanted: helpWanted,
+				AddressUnknown: addrState == deskkit.RaisedByIndeterminate,
+				HelpWanted:     helpWanted,
 			}, toFilter) {
 				continue
 			}
@@ -767,7 +762,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 			// CURRENT blessing (bless-then-edit aware) → quarantine (visible,
 			// not actionable).
 			if !deskkit.TrustedAuthor(iss.Author.Login) {
-				blessed, cerr := fetchIssueBlessed(repo, iss.Number, observers...)
+				blessed, cerr := reader.fetchIssueBlessed(iss.Number)
 				if cerr != nil {
 					return nil, nil, cerr
 				}
@@ -782,7 +777,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 			}
 
 			// Desk-inbox addressee (`to:<role>`), ONE valid role only (a conflicting pair
-			// is malformed and falls through to ordinary classification, never a guess).
+			// is malformed and held as AWAIT, never offered as ordinary work).
 
 			// The --to view shows ONLY that role's inbox: an issue addressed to a different
 			// role (or to nobody) is not part of it and is dropped before any extra read.
@@ -795,7 +790,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 			var ageDays int
 			var agedPastSLA, addresseeResponded, escalationUnverifiable bool
 			if decisionOwed || addressed {
-				events, complete, everr := fetchIssueEvents(repo, iss.Number, observers...)
+				events, complete, everr := reader.fetchIssueEvents(iss.Number)
 				if everr != nil {
 					// A genuine read failure (transport, permission, a missing issue) is a
 					// real could-not-check for the whole sweep, unchanged.
@@ -831,6 +826,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 				decisionOwed:       decisionOwed,
 				agedPastSLA:        agedPastSLA,
 				addressed:          addressed,
+				addressUnknown:     addrState == deskkit.RaisedByIndeterminate,
 				addresseeResponded: addresseeResponded,
 			})
 			row := issueBoardRow{Repo: repo, Number: iss.Number, Title: iss.Title, Action: action, AgeDays: ageDays, EscalationUnverifiable: escalationUnverifiable}
@@ -839,7 +835,7 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 			// row into AWAIT. An issue with a placeholder, or already NONE/ESCALATE/ADDRESSED,
 			// pays nothing. A read error fails the board; an incomplete history degrades this row.
 			if action == actCreatePlaceholder {
-				hist, herr := fetchLabelHistory(repo, iss.Number, observers...)
+				hist, herr := reader.fetchLabelHistory(iss.Number)
 				if herr != nil {
 					return nil, nil, herr
 				}
@@ -863,6 +859,28 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 		// could-not-check as a whole, because a listing that omitted a live issue has also
 		// silently omitted CREATE-PLACEHOLDER / ESCALATE work this board cannot see. Rows
 		// are walked in placeholder order so the refusal names the same issue every run.
+		// Gather only the same positive reads the serial loop needs. Observations
+		// are held in this repository/invocation only; no closure is cached. The
+		// wrapped capability batches bounded positive reads where supported and
+		// preserves each original GetIssue read everywhere else.
+		var absent []int
+		uniqueAbsent := map[int]bool{}
+		groupPositive := true
+		if toFilter == "" && projection != issueflow.Inbox {
+			for _, ph := range placeholders {
+				if ph.Repo == repo && ph.Status != "done" && !seen[repo+"#"+strconv.Itoa(ph.Issue)] {
+					if uniqueAbsent[ph.Issue] {
+						groupPositive = false
+					}
+					uniqueAbsent[ph.Issue] = true
+					absent = append(absent, ph.Issue)
+				}
+			}
+		}
+		positive := map[int]deskkit.PositiveIssueState{}
+		// Load at most the next bounded page when needed. A partial-listing or
+		// failed read still stops the sweep before later pages are requested.
+		absentOffset := 0
 		for _, ph := range placeholders {
 			if ph.Repo != repo || seen[repo+"#"+strconv.Itoa(ph.Issue)] {
 				continue
@@ -884,10 +902,36 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 				rows = append(rows, issueBoardRow{Repo: repo, Number: ph.Issue, Title: "(placeholder already retired)", Action: actNone})
 				continue
 			}
-			state, title, serr := fetchIssueState(repo, ph.Issue, observers...)
-			if serr != nil {
-				return nil, nil, serr
+			if _, ok := positive[ph.Issue]; !ok || !groupPositive {
+				end := min(absentOffset+deskkit.PositiveIssueStateBatchSize, len(absent))
+				if !groupPositive {
+					end = absentOffset + 1
+				}
+				var observed []deskkit.PositiveIssueState
+				var serr error
+				if end-absentOffset == 1 {
+					n := absent[absentOffset]
+					state, title, err := reader.fetchIssueState(n)
+					serr = err
+					if err == nil {
+						observed = []deskkit.PositiveIssueState{{Number: n, State: state, Title: title}}
+					}
+				} else {
+					observed, serr = deskkit.ReadPositiveIssueStates(reader.forge, reader.repo, absent[absentOffset:end])
+				}
+				if serr != nil {
+					return nil, nil, deskkit.Unverifiable(fmt.Sprintf("could-not-check: positive issue states for %s could not be read (RETIRE needs a positive closed read, never listing absence)", repo), serr)
+				}
+				for _, observation := range observed {
+					positive[observation.Number] = observation
+				}
+				absentOffset = end
 			}
+			observation, ok := positive[ph.Issue]
+			if !ok || (observation.State != "open" && observation.State != "closed") {
+				return nil, nil, deskkit.Unverifiable(fmt.Sprintf("could-not-check: positive issue state for %s#%d was not returned", repo, ph.Issue), nil)
+			}
+			state, title := observation.State, observation.Title
 			if state == "open" {
 				return nil, nil, deskkit.Unverifiable(fmt.Sprintf(
 					"could-not-check: the open-issue listing for %s is partial — %s#%d reads open but was absent "+

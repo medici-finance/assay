@@ -29,6 +29,22 @@ type reportJSON struct {
 	PerfV3  *perfrec.V3Summary        `json:"perfV3,omitempty"`
 	PerfV2  *deskkit.PerfV2Summary    `json:"perfV2,omitempty"`
 	Forge   *deskkit.PerfForgeSummary `json:"forge,omitempty"`
+	// RequestsByTool is the perf-v3 request rollup split per tool (the PerfV3 section's
+	// requests are merged over the whole window): per tool, request attempts by
+	// protocol/resource class, histogram-estimated latency p50/p90, and rate-limit
+	// points summed where measured.
+	RequestsByTool []deskkit.PerfToolRequests `json:"requestsByTool,omitempty"`
+}
+
+// reportDayJSON is `deskperf report --by-day --json`: one object holding the per-day
+// timeseries — a separate top-level shape from reportJSON, so the day view never reads as
+// a pooled window.
+type reportDayJSON struct {
+	Days    int                    `json:"days"`
+	Tool    string                 `json:"tool,omitempty"`
+	Role    string                 `json:"role,omitempty"`
+	Skipped int                    `json:"skipped"`
+	ByDay   deskkit.PerfDaySummary `json:"byDay"`
 }
 
 func cmdReport(args []string, stdout, stderr io.Writer) error {
@@ -37,8 +53,9 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 	tool := fs.String("tool", "", "only this tool (canonical key, e.g. deskpr)")
 	role := fs.String("role", "", "only this desk role ($DESK_LOOP canonical name)")
 	top := fs.Int("top", 10, "how many of the slowest invocations to list")
+	byDay := fs.Bool("by-day", false, "report a per-tool timeseries bucketed by UTC day instead of the pooled window")
 	profile := fs.String("perf-profile", os.Getenv("ASSAY_PERF_PROFILE"), "workflow permits local attribution grouping and filtering")
-	group := fs.String("group-by", "tool", "v3 group: tool, work, session, agent, deskRole, role")
+	group := fs.String("group-by", "tool", "v3 group: tool, work, session, agent, deskRole, role (--by-day groups by tool only)")
 	session := fs.String("session-id", "", "v3 workflow session filter")
 	agent := fs.String("agent-id", "", "v3 workflow agent filter")
 	deskRole := fs.String("desk-role", "", "v3 workflow originating desk filter")
@@ -53,6 +70,9 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 	}
 	if *top < 0 {
 		return deskkit.Refused(fmt.Sprintf("--top %d: must be 0 or more", *top))
+	}
+	if *byDay && *group != "tool" {
+		return deskkit.Refused(fmt.Sprintf("--group-by %s: --by-day rows are tool × UTC day, so --by-day takes no other grouping", *group))
 	}
 	filter := perfrec.V3Filter{SessionID: *session, AgentID: *agent, DeskRole: *deskRole, Role: *assigned}
 	if *work != "" {
@@ -99,6 +119,13 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 	if (*group != "tool" || *session != "" || *agent != "" || *deskRole != "" || *assigned != "" || *work != "") && v3.Records == 0 {
 		return deskkit.Refused("no v3 record matches the workflow filter")
 	}
+	if *byDay {
+		return reportByDay(recs, permission, filter, *days, *tool, *role, h.Skipped, *asJSON, stdout)
+	}
+	byTool, err := deskkit.SummarisePerfV3RequestsByTool(recs, permission, filter)
+	if err != nil {
+		return deskkit.Refused(err.Error())
+	}
 
 	if *asJSON {
 		enc := json.NewEncoder(stdout)
@@ -112,6 +139,9 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 		}
 		if forge.Runs > 0 {
 			rep.Forge = &forge
+		}
+		if len(byTool) > 0 {
+			rep.RequestsByTool = byTool
 		}
 		return encodeErr(enc.Encode(rep))
 	}
@@ -135,6 +165,10 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 		if err := forgeTable(stdout, forge); err != nil {
 			return err
 		}
+		if v3.Records > 0 {
+			fmt.Fprintln(stdout, "(the pooled forge section above leaves out perf-v3 http counters, which report their requests "+
+				"in the perf-v3 section; --by-day pools them into its per-day forge count, so its totals can be higher)")
+		}
 	}
 	if v3.Records > 0 || v3.Conflicts > 0 || v3.Invalid > 0 {
 		if sum.Records > 0 || v2.Records > 0 {
@@ -153,6 +187,144 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 			fmt.Fprintf(stdout, "%s %s %s %s/%s: %d own attempts; measured request work %d ms; points %s %s (%s, %d samples)\n", r.Kind, r.Class, r.Origin, r.Protocol, r.Resource, r.Attempts, r.DurationSumMs, points, r.Points.Unit, r.Points.Coverage, r.PointSamples)
 		}
 		fmt.Fprintln(stdout, "Intervals overlap; request/child/handler time is never added to process elapsed time. Missing measurements remain coverage gaps.")
+	}
+	if len(byTool) > 0 {
+		fmt.Fprintln(stdout)
+		if err := requestRollupTable(stdout, byTool); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// reportByDay is the `deskperf report --by-day` view: one row per tool × UTC day instead of
+// the pooled window. Walls stay per schema group; the forge count pools every schema as one
+// budget; each row carries its perf-v3 request rollup.
+func reportByDay(recs []deskkit.PerfRecord, permission perfrec.Profile, filter perfrec.V3Filter,
+	days int, tool, role string, skipped int, asJSON bool, stdout io.Writer) error {
+	s, err := deskkit.SummarisePerfDays(recs, permission, filter)
+	if err != nil {
+		return deskkit.Refused(err.Error())
+	}
+	if asJSON {
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		return encodeErr(enc.Encode(reportDayJSON{Days: days, Tool: tool, Role: role, Skipped: skipped, ByDay: s}))
+	}
+	return dayTable(stdout, s, days, tool, role, skipped)
+}
+
+// dayTable renders the --by-day timeseries: a header with the undated count, one wall table
+// (a row per tool × day × schema group), one forge table (a row per tool × day, pooling
+// every schema), and the perf-v3 request rollup under each tool × day that has one.
+func dayTable(stdout io.Writer, s deskkit.PerfDaySummary, days int, tool, role string, skipped int) error {
+	fmt.Fprintf(stdout, "deskperf report --by-day — %d invocation record(s) over the last %d UTC day(s)%s",
+		s.Records, days, filterSuffix(tool, role))
+	if s.Undated > 0 {
+		fmt.Fprintf(stdout, ", %d undated (timestamp did not parse: counted, never assigned a day)", s.Undated)
+	}
+	fmt.Fprintln(stdout)
+	skippedLine(stdout, skipped)
+	if s.V3Records > 0 || s.V3Duplicates > 0 || s.V3Conflicts > 0 || s.V3Invalid > 0 {
+		fmt.Fprintf(stdout, "perf-v3 — %d record(s) kept; %d duplicate(s); %d conflicting identities excluded; %d invalid "+
+			"(selected over the whole window before any day bucket)\n", s.V3Records, s.V3Duplicates, s.V3Conflicts, s.V3Invalid)
+	}
+	if s.Unattributed > 0 {
+		fmt.Fprintf(stdout, "%d legacy/perf-v2 record(s) left out: the workflow filter matches perf-v3 attribution, which they do not carry\n",
+			s.Unattributed)
+	}
+	fmt.Fprintln(stdout, "walls stay per schema group (each schema measures over its own boundary — legacy, perf-v2 and "+
+		"perf-v3 walls are never mixed); the forge count pools legacy forgeCalls and the perf-v2/perf-v3 http counter as one budget")
+
+	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "DAY\tTOOL\tSCHEMA\tRECORDS\tP50 MS\tP90 MS\tMAX MS\tSUM MS")
+	for _, row := range s.Rows {
+		for _, g := range []struct {
+			name string
+			w    *deskkit.PerfDayWall
+		}{{perfrec.Schema, row.PerfV1}, {perfrec.SchemaV2, row.PerfV2}, {perfrec.SchemaV3, row.PerfV3}} {
+			if g.w == nil {
+				continue
+			}
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%d\t%d\n",
+				row.Day, row.Tool, g.name, g.w.Records, g.w.P50Ms, g.w.P90Ms, g.w.MaxMs, g.w.SumMs)
+		}
+	}
+	if err := tw.Flush(); err != nil {
+		return deskkit.Unverifiable("cannot write the report", err)
+	}
+
+	fmt.Fprintln(stdout, "\nforge calls by UTC day (pooled over every schema; unavailable = not observed, never zero):")
+	if s.V3Records > 0 {
+		fmt.Fprintln(stdout, "(the pooled report's forge section leaves out perf-v3 http counters, so these totals can be higher than it)")
+	}
+	tw = tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "DAY\tTOOL\tCALLS\tMEASURED RUNS\tUNAVAILABLE RUNS")
+	for _, row := range s.Rows {
+		calls := "-"
+		if row.ForgeMeasured > 0 {
+			calls = fmt.Sprint(row.ForgeCalls)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\n", row.Day, row.Tool, calls, row.ForgeMeasured, row.ForgeUnavailable)
+	}
+	if err := tw.Flush(); err != nil {
+		return deskkit.Unverifiable("cannot write the report", err)
+	}
+
+	anyRequests := false
+	for _, row := range s.Rows {
+		if len(row.Requests) == 0 {
+			continue
+		}
+		anyRequests = true
+		fmt.Fprintf(stdout, "\n%s %s — perf-v3 requests:\n", row.Day, row.Tool)
+		if err := requestRows(stdout, row.Requests); err != nil {
+			return err
+		}
+	}
+	if anyRequests {
+		fmt.Fprintln(stdout, "request-latency p50/p90 are estimated from the durationBins histogram — an estimate names no "+
+			"observed duration; points are summed where measured only")
+	}
+	return nil
+}
+
+// requestRollupTable renders the pooled per-tool perf-v3 request rollup.
+func requestRollupTable(stdout io.Writer, byTool []deskkit.PerfToolRequests) error {
+	fmt.Fprintln(stdout, "perf-v3 requests by tool (latency p50/p90 estimated from the durationBins histogram — an "+
+		"estimate names no observed duration; points summed where measured only):")
+	for _, t := range byTool {
+		fmt.Fprintf(stdout, "\n%s (%d records):\n", t.Tool, t.Records)
+		if err := requestRows(stdout, t.Requests); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// requestRows renders one request rollup block: attempts by protocol/resource class, the
+// estimated latency percentiles, the observed max and summed measured work, and the
+// measured points sum.
+func requestRows(stdout io.Writer, rows []deskkit.PerfRequestRollup) error {
+	tw := tabwriter.NewWriter(stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "KIND\tCLASS\tORIGIN\tPROTOCOL/RESOURCE\tOUTCOME\tATTEMPTS\tP50 MS~\tP90 MS~\tMAX MS\tSUM MS\tPOINTS")
+	for _, q := range rows {
+		p50, p90 := "-", "-"
+		if q.P50Ms != nil {
+			p50 = fmt.Sprint(*q.P50Ms)
+		}
+		if q.P90Ms != nil {
+			p90 = fmt.Sprint(*q.P90Ms)
+		}
+		points := "unavailable"
+		if q.Points != nil {
+			points = fmt.Sprintf("%d %s", *q.Points, q.PointsUnit)
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s/%s\t%s\t%d\t%s\t%s\t%d\t%d\t%s\n",
+			q.Kind, q.Class, q.Origin, q.Protocol, q.Resource, q.Outcome, q.Attempts, p50, p90, q.MaxMs, q.DurationSumMs, points)
+	}
+	if err := tw.Flush(); err != nil {
+		return deskkit.Unverifiable("cannot write the report", err)
 	}
 	return nil
 }

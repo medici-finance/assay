@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/arch"
 	"go/ast"
 	"go/parser"
@@ -273,7 +274,7 @@ func main() {
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOENV=off", "GOFLAGS=", "GOVCS=off", "GOTOOLCHAIN=local", "GOPROXY=file://"+filepath.ToSlash(proxy), "GOSUMDB=off", "GOPRIVATE=", "GONOPROXY=", "GONOSUMDB=", "GOMODCACHE="+filepath.Join(base, "modcache"))
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	out, err := goquiet.Cmd(cmd).Output()
 	if err != nil {
 		t.Fatalf("external consumer: %v\n%s", err, stderr.String())
 	}

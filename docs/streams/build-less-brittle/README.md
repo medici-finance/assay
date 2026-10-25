@@ -87,8 +87,9 @@ M1–M6/C1–C4 and implemented-brief status remain unchanged.
 | 09 | [Brittle investigation: a strong-tier task template that reads the original intent and the issues found, and recommends reconcile, redesign or accept](brief-09-brittle-investigation.md) | 3 | M | verified | 2026-10-07 assay-verifier-app[bot] @ fe2217521989 (claude-opus-5-5) | — |
 | 10 | [Architectural fitness functions in CI: dependency direction, the hub's import allow-list, and one implementation per registered meaning](brief-10-fitness-functions.md) | 2 | M | verified | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | 11 | [Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge](brief-11-regression-test-ratchet.md) | 4 | M | verified | 2026-10-19 assay-verifier-app[bot] @ ecb8c74a4ae8 (claude-opus-5-5) | — |
-| 12 | [The refactor oracle: what a redesign is coded against — intent, failure modes, triaged characterization tests, invariants, and an acceptance rule](brief-12-refactor-oracle.md) | 5 | M | todo | — | — |
+| 12 | [The refactor oracle: what a redesign is coded against — intent, failure modes, triaged characterization tests, invariants, and an acceptance rule](brief-12-refactor-oracle.md) | 5 | M | implemented | — | — |
 | 13 | [Incident-time refactor by an agent, with one human residue: the strong-tier session runs the investigation, assembles the oracle, drafts the refactor PR, and asks the driver exactly one typed decision, only for what the record does not settle](brief-13-incident-refactor-by-agent.md) | 6 | L | todo | — | — |
+| 14 | [Bind consumer acceptance obligations to immutable delivery provenance before post-merge dispatch](brief-14-bind-consumer-acceptance-obligations-to-immutable-delivery-provenance-before-post-merge-dispatch.md) | 0 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -102,6 +103,7 @@ M1–M6/C1–C4 and implemented-brief status remain unchanged.
         │                                                └──► 09 brittle investigation ──────────────────────────────┴──────────────┘
         └──► 08 hotspot metric + brittle mark ───────────────┘
 03 weight ratchet ──────────────────► 06, 07 ──────────────────────────────────┘
+14 delivery-binding design (independent of 01–13; its implementation briefs follow its owed decisions)
 ```
 
 **Longest chain:** `01 → 02 → 04 → 05 → 11 → 12 → 13` (seven briefs). Before the
@@ -138,7 +140,7 @@ scanner fix becomes the real head of the 04 → 05 chain.
 
 | Wave | Briefs | Starts when |
 |---|---|---|
-| 0 | 01, 03 | this stream merged (the spec approval) |
+| 0 | 01, 03, 14 | this stream merged (the spec approval); 14 starts now, independent of 01–13 |
 | 1 | 02, 07, 08 | 01 merged (07 also after 03) |
 | 2 | 04, 06, 10 | 02 merged (06 also after 03 and 07; 10 after 01 and 07) |
 | 3 | 05, 09 | 03 and 04 merged (09 after 04 and 08) |

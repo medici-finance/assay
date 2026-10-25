@@ -182,6 +182,9 @@ func (s *forgeIssueSource) PendingEvidence(root, slug string, it loopengine.Item
 	}
 	if !cache.prepared {
 		cache.prepared = true
+		if batch := deskkit.PendingChangeBatchReader(f); batch != nil {
+			preparePendingChangeReads(cache, repo, verifier, batch)
+		}
 		if batch := deskkit.VerifierAttestationBatchReader(f); batch != nil && len(s.pendingTargets[slug]) > 0 {
 			s.preparePendingRepository(f, repo, verifier, s.pendingTargets[slug], batch)
 		}
@@ -686,5 +689,27 @@ func (s *forgeIssueSource) preparePendingRepository(f deskkit.Forge, repo deskki
 			result.Err = fmt.Errorf("attestation batch returned no observation for target")
 		}
 		cache.receipts[pendingAttestationKey{repo.Slug(), number}] = pendingAttestation{receipt: result.Receipt, err: result.Err}
+	}
+}
+
+// Seed the existing per-pass cache, including failures. Evaluation still proves
+// source/author/brief bindings and freshly reconciles every proposed hold.
+func preparePendingChangeReads(cache *pendingChanges, repo deskkit.ForgeRepo, verifier string, batch func(deskkit.ForgeRepo, []int) map[int]deskkit.PendingChangeObservation) {
+	var numbers []int
+	for _, change := range cache.list.Changes {
+		if deskkit.SameActor(change.Author.Login, verifier) && cache.reads[change.Number] == nil {
+			numbers = append(numbers, change.Number)
+		}
+	}
+	if len(numbers) == 0 {
+		return
+	}
+	results := batch(repo, numbers)
+	for _, number := range numbers {
+		result, ok := results[number]
+		if !ok {
+			result.Err = fmt.Errorf("pending-change batch returned no observation")
+		}
+		cache.reads[number] = &pendingRead{pr: result.PR, files: result.Files, err: result.Err}
 	}
 }

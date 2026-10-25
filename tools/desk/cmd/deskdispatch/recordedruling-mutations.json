@@ -1,0 +1,95 @@
+{
+  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 300s -run 'TestRecordedRuling'",
+  "control": {
+    "name": "CONTROL — the decision gate ignores a recorded ruling (the pre-#2079 behaviour: the decision script always runs); TestRecordedRulingDispatches must go red",
+    "file": "cmd/deskdispatch/dispatch.go",
+    "old": "\tif ruling != nil {\n\t\treturn checkRecordedRuling(o, ruling, auth.scriptEnv)",
+    "new": "\tif false && ruling != nil {\n\t\treturn checkRecordedRuling(o, ruling, auth.scriptEnv)"
+  },
+  "mutations": [
+    {
+      "name": "PLANTED SECOND INSTANCE (defect class) — the pre-claim plan, a site the fix does not touch, trusts the brief's recorded ruling and drops the human gate without corroborating it; TestRecordedRulingDispatches must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\tplan.ruling = ruling\n\t}",
+      "new": "\t\tplan.ruling = ruling\n\t\tif ruling != nil {\n\t\t\tplan.gateHuman = false\n\t\t}\n\t}"
+    },
+    {
+      "name": "a refused Ruling line no longer stops the dispatch before the claim; TestRecordedRulingRefusesPreClaim must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\tif rerr != nil {\n\t\t\treturn plan, rerr",
+      "new": "\t\tif false && rerr != nil {\n\t\t\treturn plan, rerr"
+    },
+    {
+      "name": "statusgen's absence is discovered only after the claim; TestRecordedRulingNoStatusgen must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\t\t\tif _, lerr := lookPath(statusgenBinary); lerr != nil {",
+      "new": "\t\t\tif _, lerr := lookPath(statusgenBinary); false && lerr != nil {"
+    },
+    {
+      "name": "any statusgen exit passes the gate; TestRecordedRulingRefusesUncorroborated must go red",
+      "file": "cmd/deskdispatch/recordedruling.go",
+      "old": "\tif res.err == nil {",
+      "new": "\tif true {"
+    },
+    {
+      "name": "an uncorroborated ruling reads as could-not-check, not refused; TestRecordedRulingRefusesUncorroborated must go red",
+      "file": "cmd/deskdispatch/recordedruling.go",
+      "old": "\tif exitCodeOf(res.err) == 1 {",
+      "new": "\tif exitCodeOf(res.err) == 99 {"
+    },
+    {
+      "name": "the Ruling-line grammar is not enforced; TestRecordedRulingRefusesBadLine/malformed-shape must go red",
+      "file": "cmd/deskdispatch/recordedruling.go",
+      "old": "\t\tcase !rulingLineRe.MatchString(body):",
+      "new": "\t\tcase false:"
+    },
+    {
+      "name": "the ruling date is not checked as a calendar date; TestRecordedRulingRefusesBadLine/bad-date must go red",
+      "file": "cmd/deskdispatch/recordedruling.go",
+      "old": "\t\t\tif _, derr := time.Parse(\"2006-01-02\", m[1]); derr != nil {",
+      "new": "\t\t\tif _, derr := time.Parse(\"2006-01-02\", m[1]); false && derr != nil {"
+    },
+    {
+      "name": "a linked record that does not exist is accepted; TestRecordedRulingRefusesBadLine/missing-record must go red",
+      "file": "cmd/deskdispatch/recordedruling.go",
+      "old": "\t\t\tif fi, serr := os.Stat(full); serr != nil || !fi.Mode().IsRegular() {",
+      "new": "\t\t\tif fi, serr := os.Stat(full); false && (serr != nil || !fi.Mode().IsRegular()) {"
+    },
+    {
+      "name": "a line linking two records is accepted; TestRecordedRulingRefusesBadLine/two-records must go red",
+      "file": "cmd/deskdispatch/recordedruling.go",
+      "old": "\t\tcase len(records) > 1:",
+      "new": "\t\tcase false:"
+    },
+    {
+      "name": "a record linked by URL is silently skipped; TestRecordedRulingRefusesBadLine/url-link must go red",
+      "file": "cmd/deskdispatch/recordedruling.go",
+      "old": "\t\t\tif strings.Contains(u.Path, \"/\"+decisionsDirRel+\"/\") {",
+      "new": "\t\t\tif false {"
+    },
+    {
+      "name": "a link resolving outside the register of the brief's checkout is skipped instead of refused; TestRecordedRulingRefusesBadLine/escapes-checkout must go red",
+      "file": "cmd/deskdispatch/recordedruling.go",
+      "old": "\t\tif err != nil || filepath.Dir(rel) != decisionsDirRel || strings.EqualFold(filepath.Base(rel), \"README.md\") {",
+      "new": "\t\tif false && (err != nil || filepath.Dir(rel) != decisionsDirRel || strings.EqualFold(filepath.Base(rel), \"README.md\")) {"
+    },
+    {
+      "name": "fenced code is read as brief text; TestRecordedRulingAbsentLeavesGate/fenced must go red",
+      "file": "cmd/deskdispatch/recordedruling.go",
+      "old": "\t\tif inFence {\n\t\t\tcontinue",
+      "new": "\t\tif false {\n\t\t\tcontinue"
+    },
+    {
+      "name": "two recorded rulings: the first silently wins; TestRecordedRulingRefusesBadLine/two-rulings must go red",
+      "file": "cmd/deskdispatch/recordedruling.go",
+      "old": "\tvar ws []string\n\tfor _, r := range found {",
+      "new": "\tif len(found) > 0 {\n\t\treturn found[0], nil\n\t}\n\tvar ws []string\n\tfor _, r := range found {"
+    },
+    {
+      "name": "F1 — the dispatched brief is not passed to statusgen, so a record ruled for another brief would corroborate; TestRecordedRulingPassesBrief must go red",
+      "file": "cmd/deskdispatch/recordedruling.go",
+      "old": "\"--ruling-record\", r.record, \"--ruling-brief\", r.brief)",
+      "new": "\"--ruling-record\", r.record)"
+    }
+  ]
+}

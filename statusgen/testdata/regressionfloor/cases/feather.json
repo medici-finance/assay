@@ -1,0 +1,15 @@
+{
+  "id": "feather",
+  "verify": "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |",
+  "evidence": "| # | Command | Result | Output | Date | Runner |\n|---|---------|--------|--------|------|--------|\n| 1 | `true` | pass exit=0 | sha256:abc123def456 | 2026-09-25 | fixture-verifier @ 4444444444444444444444444444444444444444 |",
+  "edge": "feather",
+  "expected": {
+    "released": true,
+    "claim": "pass",
+    "eligibility": "eligible-with-notice",
+    "hold_states": [],
+    "notice_states": [
+      "could-not-check"
+    ]
+  }
+}

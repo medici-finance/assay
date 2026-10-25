@@ -502,7 +502,9 @@ var bareWordRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 // whatever surrounds it, including as the cell's only span and as the command a
 // `cmd:` marker names: a marker names the command to run, and a comment runs
 // nothing, so a marked comment is refused exactly as the tools/desk executors
-// (verifyloop, deskrebaseline) refuse it (#2684 review F2).
+// (verifyloop, deskrebaseline) refuse it (#2684 review F2). A lift that is a
+// shell no-op (`:`, or a cmd.exe `REM` / `::` remark) is refused the same way and
+// at the same point, marked or not (#3147 A2; see shellNoOp).
 //
 // Otherwise a single-token first span is flagged when it is: a dotted extension
 // or dotfile (`.exe`); a file with a source/doc/data extension (`repovis.go`); a
@@ -524,10 +526,20 @@ func proseLedCommandWhy(cell string) (span, why string) {
 		if shellCommentOnly(m[0]) {
 			return m[0], shellCommentMarkedWhy
 		}
+		if shellNoOp(m[0]) {
+			return m[0], shellNoOpMarkedWhy
+		}
 		return "", "" // a marked real command: the author named it
 	}
-	if lifted := verifyCommand(cell); shellCommentOnly(lifted) {
+	lifted := verifyCommand(cell)
+	if shellCommentOnly(lifted) {
 		return lifted, shellCommentWhy
+	}
+	// A lift that is a shell no-op runs nothing for the same reason (#3147 A2):
+	// `:` exits 0 whatever its arguments, and a cmd.exe `REM` / `::` remark is
+	// that shell's comment. Judged like the comment arm, ahead of the exemptions.
+	if shellNoOp(lifted) {
+		return lifted, shellNoOpWhy
 	}
 	spans := codeSpans(cell)
 	if len(spans) == 0 {
@@ -555,12 +567,43 @@ const (
 	shellCommentMarkedWhy = "a `cmd:`-marked shell comment " + shellCommentDetail
 )
 
+// shellNoOpWhy is the reason proseLedCommandWhy gives a lift that is a shell
+// no-op (#3147 A2); shellNoOpMarkedWhy is the same reason for a `cmd:`-marked one.
+const (
+	shellNoOpDetail    = "(`:` exits 0 whatever its arguments, and a cmd.exe `REM` / `::` remark is that shell's comment: it runs nothing and measures nothing)"
+	shellNoOpWhy       = "a shell no-op " + shellNoOpDetail
+	shellNoOpMarkedWhy = "a `cmd:`-marked shell no-op " + shellNoOpDetail
+)
+
+// shellNoOp reports whether a lifted command is a shell no-op: a cmd.exe `::`
+// remark, a `REM` / `@rem` remark (any case), or `:` as the first word with no
+// `;`, `&`, `|` or newline after it (`: ; test -d .` still runs its test). Bare
+// `true` and `exit 0` are deliberately left to the cmd-marker-vacuous notice: a
+// fixture command of `true` is a common, intended pass. Kept identical to
+// tools/desk's verifycmd.NoOp; the shared cells vectors hold both to it.
+func shellNoOp(cmd string) bool {
+	c := strings.TrimSpace(cmd)
+	if strings.HasPrefix(c, "::") {
+		return true
+	}
+	f := strings.Fields(c)
+	if len(f) == 0 {
+		return false
+	}
+	if strings.ToLower(strings.TrimPrefix(f[0], "@")) == "rem" {
+		return true
+	}
+	return f[0] == ":" && !strings.ContainsAny(c, ";&|\n")
+}
+
 // proseLedRemedy is the fix a prose-led NOTICE, could-not-run note or check:ci
 // refusal names for its reason: a comment-led cell needs the real command marked
 // (or stays a manual procedure); a marked comment needs the comment REPLACED, since
 // the row is already marked; any other mention needs the marker.
 func proseLedRemedy(why string) string {
 	switch {
+	case strings.HasSuffix(why, shellNoOpDetail):
+		return "Replace the no-op with the command that performs the check"
 	case strings.HasSuffix(why, shellCommentMarkedWhy):
 		return "Replace the cmd:-marked comment with the command that performs the check"
 	case strings.HasSuffix(why, shellCommentWhy):
@@ -1772,21 +1815,15 @@ func verifyRowTable(section string, fn func(verifyRowCells)) {
 // Correcting a CLOSED brief's row is not in scope for the backfill: the row is a
 // historical record of what was actually run. Note the defect in Evidence instead.
 //
-// CLOSED-BRIEF SCOPING — `gotest-run-vacuous` (statusgen/14) and `prose-led-command`. Measured
-// 2026-09-23: 233 of the 684 rows this rule's shape can hit already sit in 62
-// `done` briefs. Emitting one NOTICE per such row would swamp every real run
-// with historical rows nobody is about to rewrite (the same falsification the
-// paragraph above already rules out) and would drown the per-row notices on the
-// OPEN briefs this rule exists to catch before they close. So a brief whose
-// README status is `done` or `verified` emits NO per-row `gotest-run-vacuous`
-// notice; instead the whole run emits exactly ONE summary NOTICE counting the
-// rows and briefs it suppressed, so the class stays visible without being
-// unreadable. A brief absent from its stream's README table (no row at all)
-// counts as open — silence about a brief's status is never grounds to suppress
-// its notices. `prose-led-command` (#1805) is scoped the same way, for the same
-// reason (#1808 review: its advice to mark the command is not actionable on a
-// closed record). Every OTHER rule is unscoped by brief status; this scoping
-// applies to these two tags only.
+// CLOSED-BRIEF SCOPING (statusgen/28). A pre-existing closed record's findings are
+// emitted here like any other — one line per row, per rule, never summarised or
+// dropped by this function. WHICH of them are historical, and how their totals
+// are reported, is decided in ONE place, notice_report.go (the shared reporter
+// that `--lint`, `--lint --json` and the differential all use). This function
+// used to keep its own private aggregates for gotest-run-vacuous,
+// prose-led-command and the strength tags — a second, independent
+// classification — and so could not be counted, listed (`--all`) or compared
+// consistently with the other rule families.
 //
 // This is the R1–R10 family's (and the two scoped tags') NOTICE surface, with no
 // merge-base and without the R11–R13 strength heuristics, which are
@@ -1799,18 +1836,12 @@ func unfailableRowNotices(streams []*Stream) []string {
 // unfailableRowAudit applies every row rule (rowFindingsCtx) and the per-table
 // R13 check to every brief. With baseOK, a brief whose README status is
 // verified/done and which is NOT in grandfathered is a closure THIS branch made
-// (post-base): its R1–R10 findings are PROBLEMs (verify-integrity/03), and it
-// is exempt from the closed-brief scoping above — the branch closing it is the
-// moment its rows can still be fixed. Every other finding is a NOTICE. With
+// (post-base): its R1–R10 findings are PROBLEMs (verify-integrity/03) — the
+// branch closing it is the moment its rows can still be fixed. Every other
+// finding is a NOTICE (the shared reporter marks a pre-existing closed record's
+// as historical). With
 // strength false the R11–R13 heuristics are skipped.
 func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK, strength bool) (problems, notices []string) {
-	closedRows := 0
-	closedBriefs := map[string]bool{}
-	closedProseRows := 0
-	closedProseBriefs := map[string]bool{}
-	closedStrength := 0
-	closedStrengthBriefs := map[string]bool{}
-
 	for _, s := range streams {
 		statusByNum := map[string]string{}
 		for _, b := range s.Briefs {
@@ -1830,7 +1861,6 @@ func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK
 				closed = status == "done" || status == "verified"
 			}
 			postBase := closed && okName && baseOK && !grandfathered[briefID]
-			scoped := closed && !postBase // a pre-existing closed record
 			verify := bf.Verify
 			if closed {
 				if plan, refusal := protectedAcceptance(bf.Verify, bf.Evidence, path); refusal == "" {
@@ -1850,21 +1880,6 @@ func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK
 					if !strength && (f.rule == ruleTriviallyGreen || f.rule == ruleNoOutputAssert) {
 						continue
 					}
-					if scoped && f.rule == ruleGoTestRunVacuous {
-						closedRows++
-						closedBriefs[briefID] = true
-						continue
-					}
-					if scoped && f.rule == ruleProseLedCommand {
-						closedProseRows++
-						closedProseBriefs[briefID] = true
-						continue
-					}
-					if scoped && (f.rule == ruleTriviallyGreen || f.rule == ruleNoOutputAssert) {
-						closedStrength++
-						closedStrengthBriefs[briefID] = true
-						continue
-					}
 					line := fmt.Sprintf("%s: %s [%s] %s", path, where, f.rule, f.msg)
 					if postBase && promotedRowRules[f.rule] {
 						problems = append(problems, line+" — a PROBLEM because this branch closes the brief (it was not verified/done at the merge-base): an unfailable row cannot be the basis of a new closure. Fix the row and re-run it before closing")
@@ -1876,24 +1891,12 @@ func unfailableRowAudit(streams []*Stream, grandfathered map[string]bool, baseOK
 			msg, cnc := tableFilesCheck(cmds, bf.DeclaredPaths, filesLabelPresent(bf.Body))
 			switch {
 			case !strength, msg == "" && !cnc:
-			case scoped:
-				closedStrength++
-				closedStrengthBriefs[briefID] = true
 			case cnc:
 				notices = append(notices, fmt.Sprintf("%s: [%s] COULD-NOT-CHECK — the `files:` line is present but yields no path, so whether the Verify table touches the deliverable cannot be read (never a pass)", path, ruleTableNoFiles))
 			default:
 				notices = append(notices, fmt.Sprintf("%s: [%s] %s", path, ruleTableNoFiles, msg))
 			}
 		}
-	}
-	if closedStrength > 0 {
-		notices = append(notices, fmt.Sprintf("[%s/%s/%s] %d strength finding(s) in %d closed brief(s) — closed records are not rewritten; the per-row notice covers open briefs and closures this branch makes (docs/verify-row-strength.md)", ruleTriviallyGreen, ruleNoOutputAssert, ruleTableNoFiles, closedStrength, len(closedStrengthBriefs)))
-	}
-	if closedRows > 0 {
-		notices = append(notices, fmt.Sprintf("[%s] %d Verify row(s) in %d closed brief(s) carry an unasserted go test -run selector — closed records are not rewritten; the per-row notice covers open briefs only", ruleGoTestRunVacuous, closedRows, len(closedBriefs)))
-	}
-	if closedProseRows > 0 {
-		notices = append(notices, fmt.Sprintf("[%s] %d Verify row(s) in %d closed brief(s) have a prose mention as their first code span — closed records are not rewritten, and verifyrun records such a row could-not-run; the per-row notice covers open briefs only", ruleProseLedCommand, closedProseRows, len(closedProseBriefs)))
 	}
 	sort.Strings(problems)
 	sort.Strings(notices)
@@ -1998,7 +2001,7 @@ func rowFindings(cmdCell, expect string) []rowFinding {
 	// Judged on the CELL, before the lift, because the defect is in which span
 	// gets lifted — every rule below judges whatever the lift returned.
 	if first, why := proseLedCommandWhy(cmdCell); why != "" {
-		if why == shellCommentWhy || why == shellCommentMarkedWhy {
+		if why == shellCommentWhy || why == shellCommentMarkedWhy || why == shellNoOpWhy || why == shellNoOpMarkedWhy {
 			add(ruleProseLedCommand, "lifts `%s` as its command, which is %s, not a command — `statusgen verifyrun`, the check:ci lane, `verifyloop` and `deskrebaseline` all record the row could-not-run without executing it, so the check this row describes is never witnessed. %s", first, why, proseLedRemedy(why))
 		} else {
 			add(ruleProseLedCommand, "is a prose cell whose FIRST code span `%s` is %s, not a command — `statusgen verifyrun` executes the first code span of a Command cell, so verifyrun records the row could-not-run without executing `%s`, and the check this row describes is never witnessed. Mark the real command with the explicit marker: write it as a code span starting `cmd:` (e.g. `cmd: cd tools/desk && go test ./pkg/ -count=1`), which verifyrun prefers over the first span — or make the Command cell exactly one code span and move the prose to Expect. A row that names no command at all (a cold read, a human judgment) cannot be fixed with the marker; it stays could-not-run until it is re-authored with a command", first, why, first)

@@ -118,6 +118,10 @@ func frontierRefs(frontier []FrontierItem, state string) []string {
 	return out
 }
 
+// driveInFlightHeading heads a drive section's In-flight list; the region lint
+// reads that list back (driveRegionInFlight), so both sides share one spelling.
+const driveInFlightHeading = "**In-flight:**"
+
 // bulletList renders refs as a markdown bullet list, or _none_ when empty.
 func bulletList(refs []string) string {
 	if len(refs) == 0 {
@@ -142,7 +146,7 @@ func driveDashboardSection(st DriveStatus, heartbeat string) string {
 	if total > 0 {
 		fmt.Fprintf(&b, "**Progress:** %d/%d brief items done.\n\n", done, total)
 	}
-	fmt.Fprintf(&b, "**In-flight:**\n\n%s\n", bulletList(frontierRefs(st.Frontier, fsInFlight)))
+	fmt.Fprintf(&b, "%s\n\n%s\n", driveInFlightHeading, bulletList(frontierRefs(st.Frontier, fsInFlight)))
 	fmt.Fprintf(&b, "**Blocked on review:**\n\n%s\n", bulletList(frontierRefs(st.Frontier, fsBlockedReview)))
 	fmt.Fprintf(&b, "**Frontier next:**\n\n%s\n", bulletList(frontierRefs(st.Frontier, fsReady)))
 	return b.String()

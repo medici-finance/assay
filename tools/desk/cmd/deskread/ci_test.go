@@ -23,6 +23,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
@@ -617,7 +618,7 @@ func TestCITransportActivatesWithEnvRoster(t *testing.T) {
 	}
 	binToken := "gh" + "p_not_an_install_tok"
 	bin := filepath.Join(t.TempDir(), "deskread")
-	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(exec.Command("go", "build", "-o", bin, ".")).CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	home := t.TempDir()
@@ -714,14 +715,20 @@ func tokenLeakUnchecked(fset *token.FileSet, f *ast.File) []string {
 	return out
 }
 
-// isGoToolchainCall reports whether x is exec.Command("go", ...): building the binary under test
-// runs the toolchain, not the verb, and is the one exec call the guard does not count.
+// isGoToolchainCall reports whether x is exec.Command("go", ...), bare or wrapped in
+// goquiet.Cmd (which only turns go telemetry off first): building the binary under test runs the
+// toolchain, not the verb, and is the one exec call the guard does not count.
 func isGoToolchainCall(x ast.Expr) bool {
 	call, ok := x.(*ast.CallExpr)
 	if !ok || len(call.Args) == 0 {
 		return false
 	}
 	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if ok && sel.Sel.Name == "Cmd" && len(call.Args) == 1 {
+		if pkg, isID := sel.X.(*ast.Ident); isID && pkg.Name == "goquiet" {
+			return isGoToolchainCall(call.Args[0])
+		}
+	}
 	if !ok || sel.Sel.Name != "Command" {
 		return false
 	}

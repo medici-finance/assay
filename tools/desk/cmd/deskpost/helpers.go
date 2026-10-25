@@ -85,7 +85,7 @@ func withDigest(wr writeResult, dig string) writeResult {
 // compares --head to the resolved head at FULL length, and the form gate below
 // guarantees both sides are full SHAs before that comparison happens. Before #214 they
 // were not — an 8-char --head reached the comparison, failed it, and short() then
-// rendered the two sides as `f24818a2` versus `f24818a22037`, a "mismatch" report whose
+// rendered the two sides as `c73905e6` versus `c73905e61482`, a "mismatch" report whose
 // two SHAs differ only in length. That reads as a head race (re-review the new head)
 // when the actual problem is the argument's form (pass the full SHA). The form gate is
 // what keeps this helper from being asked to explain something it cannot.
