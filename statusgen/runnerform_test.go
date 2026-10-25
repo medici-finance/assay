@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -43,6 +44,8 @@ func TestFlipShaFormAgree(t *testing.T) {
 		{"upper-prefix", []string{at(strings.ToUpper(vfSHA)), at(rfLong)}, false},
 		{"diverging-long", []string{at(vfSHA), at(rfLong), at(vfSHA + "ffff")}, false},
 		{"two-long", []string{at(rfLong), at(vfSHA + strings.Repeat("f", 28))}, false},
+		{"substring", []string{at(rfLong[1:13]), at(rfLong)}, false},
+		{"suffix", []string{at(rfLong[28:]), at(rfLong)}, false},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -272,5 +275,58 @@ func TestTransitionThenBracket(t *testing.T) {
 	}
 	if res, diag := captureVerifyrun(t, []string{"--check", "--brief", f.path, "--acceptance-forge"}); res.code != 0 {
 		t.Fatalf("verifyrun --check: %d %s", res.code, diag)
+	}
+}
+
+// regression: #4299
+// TestTransitionWitnessTree: the closure audit maps a short tree token to the
+// run's full sha only when it is an exact >=12-hex prefix that git resolves to
+// exactly that sha; every other token comes back unchanged and refuses.
+func TestTransitionWitnessTree(t *testing.T) {
+	f := transitionFixtureAt(t)
+	absent := strings.Repeat("d", 40)
+	cases := []struct{ name, tree, run, want string }{
+		{"short-token", f.amendment[:12], f.amendment, f.amendment},
+		{"full", f.amendment, f.amendment, f.amendment},
+		{"eleven-hex", f.amendment[:11], f.amendment, f.amendment[:11]},
+		{"other-commit", f.delivery[:12], f.amendment, f.delivery[:12]},
+		{"not-resolved", absent[:12], absent, absent[:12]},
+		{"dirty", f.amendment[:12] + "+dirty", f.amendment, f.amendment[:12] + "+dirty"},
+		{"upper", strings.ToUpper(f.amendment[:12]), f.amendment, strings.ToUpper(f.amendment[:12])},
+		{"short-run", f.amendment[:12], f.amendment[:12], f.amendment[:12]},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := transitionWitnessTree(f.root, c.tree, c.run); got != c.want {
+				t.Fatalf("transitionWitnessTree(%q) = %q, want %q", c.tree, got, c.want)
+			}
+		})
+	}
+}
+
+// regression: #4299
+// TestEvidenceConflictDirty: an unmerged brief whose conflict sits inside
+// Evidence is not an Evidence-only edit; it keeps +dirty.
+func TestEvidenceConflictDirty(t *testing.T) {
+	pinClock(t)
+	f := newRowsFixture(t, "")
+	edit := func(text string) {
+		raw := getFile(t, f.brief)
+		putFile(t, f.brief, strings.Replace(raw, "## Evidence\n", "## Evidence\n\n"+text+"\n", 1))
+		runGit(t, f.root, "commit", "-q", "-am", text)
+	}
+	runGit(t, f.root, "checkout", "-q", "-b", "side")
+	edit("side witness")
+	runGit(t, f.root, "checkout", "-q", "-")
+	edit("main witness")
+	cmd := exec.Command("git", "merge", "-q", "side")
+	cmd.Dir = f.root
+	cmd.Env = fixtureGitEnv(os.Environ())
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("merge did not conflict: %s", out)
+	}
+	want := gitCurrentSHA(f.root)[:treeSHALen] + "+dirty"
+	if got := briefTreeSHA(f.root, f.brief); got != want {
+		t.Fatalf("unmerged brief tree %q, want %q", got, want)
 	}
 }
