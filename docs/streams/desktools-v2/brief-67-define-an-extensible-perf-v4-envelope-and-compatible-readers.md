@@ -25,7 +25,7 @@ consumers:
   - "schemas/perf-v4.json: follow-up desktools-v2/67"
   - "tools/desk/cmd/deskperf/ and tools/desk/internal/deskkit/perfread.go: follow-up desktools-v2/67"
   - "writer profile selection and all producer wrappers: follow-up desktools-v2/68"
-  - "performance-collection reader: out-of-scope (parked; explicit v4 reader amendment required before import)"
+  - "performance-collection reader: out-of-scope (explicit v4 reader amendment required before import)"
 ---
 
 # Brief 67 — Define an extensible perf-v4 envelope and compatible readers

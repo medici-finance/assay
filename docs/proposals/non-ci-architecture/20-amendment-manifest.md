@@ -265,7 +265,7 @@ schema/readers, desk/agent/CLI propagation and own-request timing/points. Unfini
 statusgen/26 and performance-collection/01–09 are amended; completed /61 stays intact.
 The target, future-state bindings, storage/recovery and runtime handoff carry the same
 context/consent/coverage contract. This supersedes earlier v2-only future measurement intent,
-not historical v1/v2 facts, Evidence or the collection stream's parked state.
+not historical v1/v2 facts, Evidence or the collection stream's admission state.
 
 ## Write-policy and pickup amendment — 18 October 2026
 
@@ -314,3 +314,22 @@ all other families; their next contract-changing briefs must carry the reader-fi
 compatibility matrix and consumer dispositions before implementation. This amendment
 changes no existing Verify/Evidence section or active owner's implementation. The
 earlier whole-target ratification does not certify these later codec changes.
+
+## Candidate-plus-priority amendment routing — requested 23 October 2026
+
+Source pickup: App-fetched public main `9c4307a19`; release v1.0.57 call-path audit.
+The operator requested one candidate-plus-current-priority planner for prose and discrete
+desks and ranked GH reductions. This row set routes the delta within existing owners;
+prior approval, active assignments, completed Evidence and enrollment remain unchanged.
+
+| Obligation | Existing owner / actual amendment | Remaining adoption |
+|---|---|---|
+| Complete observation + explicit policy/time/capacity -> explainable ordered plan | desk-workflow-efficiency-spec; desk-tools/39–40 | graph-execution/27 uses tools/desk-local role bindings; no cross-module internal imports |
+| Candidate coverage and priority parity for every role | desk-tools/42,45,51 and graph-execution/27 | Existing prose/discrete role cutovers prove A11; held/unknown/unmapped and repair populations remain |
+| Ranked network request reductions and matched growth curves | desk-tools/44 and current measurement owners | A12 counts producer, HTTP attempts/points, fallbacks and final checks without double-counting |
+| Shared refresh/invalidation and immutable source reuse | forge-neutral/37–43; 14-storage-forge-graph and 22-forge-service-and-source-queries | Qualified R6 path later; direct-reader bridge first; no per-caller outage poller |
+| Custody/query/CLI compatibility | Existing desktools-v2 /09, /20–21 | No rerun of completed query work, new ranker, credential pooling or premature command deletion |
+
+Reuse [the existing change map](../../desk-workflow-efficiency-change-map.md#candidate-plus-priority-ownership-reconciliation--23-october-2026)
+for exact scope and sequencing. Recheck active work before dispatch/publication; material
+assignment changes require its existing owner checkpoint/acknowledgment, not silent rebinding.

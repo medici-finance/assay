@@ -197,9 +197,10 @@ No implementation defect found. Rows 1/3/4/7 owe the hermetic Linux witness (all
 VERIFY: BLOCKED
 ### Verification — 2026-09-30 (assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian)) — 2026-09-30 claude-opus-5-5-verifier
 
-Non-implementer verification on merged main b0088804294b8b68ad8d06f341e6f0fd9dd2637d, gate: model, all four risk answers no. First table: the `statusgen verifyrun --dry-run` execution witness, landed verbatim; it ran on Linux (golang:1.25-bookworm pinned by digest, `--network none`, `unshare --net` available), statusgen built in-container from a clone pinned to this SHA. Second table: the hand run.
+Non-implementer verification on merged main b0088804294b8b68ad8d06f341e6f0fd9dd2637d, gate: model, all four risk answers no. First table: the `statusgen verifyrun --dry-run` execution witness, landed verbatim except for its header separator line, which was restored on 2026-10-24 (see the Correction entries below); it ran on Linux (golang:1.25-bookworm pinned by digest, `--network none`, `unshare --net` available), statusgen built in-container from a clone pinned to this SHA. Second table: the hand run.
 
 | # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
 | 1 | `cd statusgen && go test -run TestPatterns ./...` | pass exit=0 | sha256:8a2302a2bbe5 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
 | 2 | `statusgen patterns --lint --root .; echo rc=$?` | pass exit=0 | sha256:e86054a2ccc7 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
 | 3 | `cd statusgen && go test -run TestPatternsEffectExceedsRoleIsProblem ./...` | pass exit=0 | sha256:900b07966263 | 2026-09-30 | assay-verifier-app[bot] @ b0088804294b (on-behalf-of human:ian) (forge-identity) |
@@ -243,7 +244,7 @@ Notes:
 VERIFY: BLOCKED
 ### Correction: 2026-09-30, assay-verifier-app[bot] @ b0088804294b (claude-opus-5-5) (on-behalf-of human:ian). VERIFY: BLOCKED
 
-- The first execution-witness table in the re-run above was transcribed without its header separator line, so a Markdown parser reads the header as a data row and shifts every witness row down by one. The same table is restated below, verbatim and unchanged except for the separator line. The verdict is unchanged.
+- The first execution-witness table in the re-run above was transcribed without its header separator line, so a Markdown parser reads the header as a data row and shifts every witness row down by one. The same table is restated below, verbatim and unchanged except for the separator line. The verdict is unchanged. On 2026-10-24 the separator line was also restored in the original table above (see the 2026-10-24 Correction entry), so the restatement below now duplicates it; it is kept as the record of this correction.
 
 **Execution witness** (restated):
 | # | Command | Result | Output | Date | Runner |
@@ -274,7 +275,7 @@ Runner is not the implementer. Detached worktree pinned to the merged head above
 | 8 | `statusgen --root . --lint; echo rc=$?` | rc=0 | exit 0, LINT: PASS / rc=0; 0 PROBLEM lines; NOTICE gotest-run-vacuous still names this brief's rows 1, 3, 4, 7 | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
 | 10 | `statusgen --consumers --brief graph-execution/02 --root .; echo rc=$?` | rc=0 on the authoring branch; exit 2 (could-not-check) on a fully merged main is acceptable and must be recorded as such, never as pass | COULD-NOT-CHECK as written: statusgen printed COULD-NOT-CHECK: assay:assay:graph-execution:02 is not in the diff against cf31c32418ba, rc=2 (the shell itself exits 0 because of the trailing echo). Sanctioned recipe (squash merge 5b384e52c checked out, --base 060980aa0f1a): exit 0, summary: 3 corroborated, 0 disproved, 1 unchecked; the unchecked entry is the out-of-scope desk-skill claim | 2026-10-02 assay-verifier-app[bot] (on-behalf-of human:ian) |
 
-Execution witness (`statusgen verifyrun --brief <this brief> --dry-run`, statusgen v1.0.31, darwin host, nothing written): exit 2; 4 of 9 rows witnessed pass, 4 could-not-run, 1 fail.
+Execution witness (`statusgen verifyrun --brief docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md --dry-run`, statusgen v1.0.31, darwin host, nothing written): exit 2; 4 of 9 rows witnessed pass, 4 could-not-run, 1 fail.
 
 - Row 1, 3, 4, 7 (check:ci): could-not-run, exit=-, sha256:e3b0c44298fc. Reason printed: check:ci hermetic execution requires a network-off sandbox, unavailable on this host (unshare --net is a Linux facility, this host is darwin).
 - Row 2: pass exit=0, sha256:e86054a2ccc7 (identical to the 2026-09-30 hash).
@@ -497,6 +498,223 @@ RISK-VALUE: DERIVED — patternsExitClean = 0, patternsExitFailed = 1, patternsE
 RISK-VALUE: reversible knob, ranked last, no derivation owed — budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
 
 **VERIFY: BLOCKED** — rows 1-8 pass by hand, 8 of 9. Row 10 is could-not-check as written and fails the witness by check definition. It needs a Verify-row re-author (class #1281; tracked at #1927). Status stays implemented.
+
+### Non-implementer verifier re-run — 2026-10-21, merged main 1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1
+
+Verification-Attestation: medici-finance/assay#3903 run=3fe3cf01d83d359e6df82f4f3a4ee1022aaf4a6097eaf75edc3b699f3ec7f9a7 source=1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 brief=docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md model=claude-opus-5-5 tier=strong
+
+Admission: deskdispatch --check-verifier exit 0 before any row ran. Every row ran exactly as written in the Verify table at this head. Rows 2, 8 and 10 ran the installed statusgen v1.0.54 on PATH; a supplemental repeat with a statusgen built from this commit's own statusgen package (output kept outside the home) gave the same key lines for all three. Row 5 needs a python3 with PyYAML and jsonschema: the host's default python3 has no PyYAML (ModuleNotFoundError, exit 1), so the row ran with the system python 3.9.6 (PyYAML 6.0.3, jsonschema 4.21.1) first on PATH. This is an environment fact, not a property of the tree. Host: darwin, go 1.27.2, git 2.56.0. KUBECONFIG=/dev/null; no live endpoint contacted.
+
+| # | Command | Expect | Observed | Date | Runner |
+|---|---------|--------|----------|------|--------|
+| 1 | `cd statusgen && go test -run TestPatterns ./...` | exit 0 | exit 0; ok github.com/medici-finance/assay/statusgen. A -count=1 -v repeat lists 11 --- PASS lines for TestPatterns tests and 0 FAIL, so the selector matches real tests | 2026-10-21 | assay-verifier-app[bot] @ 1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 2 | `statusgen patterns --lint --root .; echo rc=$?` | rc=0 over the two shipped patterns | patterns: 2 checked-clean, 0 checked-failed, 0 could-not-check (2 file(s) scanned) / rc=0 | 2026-10-21 | assay-verifier-app[bot] @ 1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 3 | `cd statusgen && go test -run TestPatternsEffectExceedsRoleIsProblem ./...` | exit 0; a reviewer node with push makes the lint exit 1 naming pattern-effect-exceeds-role | exit 0; ok github.com/medici-finance/assay/statusgen; --- PASS: TestPatternsEffectExceedsRoleIsProblem. Supplemental mutation in a fresh mktemp -d root: the shipped implementation pattern with its review node's comment effect changed to push (line 44) gives rc=1, [pattern-effect-exceeds-role]: node "review" has role "reviewer", which is not permitted to perform effect kind "push" | 2026-10-21 | assay-verifier-app[bot] @ 1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 4 | `cd statusgen && go test -run TestPatternsReviewSameRoleIsProblem ./...` | exit 0; a review node sharing its input producer's role is refused | exit 0; ok github.com/medici-finance/assay/statusgen; --- PASS: TestPatternsReviewSameRoleIsProblem. Supplemental mutation in a fresh mktemp -d root: the shipped implementation pattern with the review role changed to worker (line 37) gives rc=1, [pattern-review-same-role]: review node "review" has role "worker", the same role as "implement", which produced its input "draft-pr" | 2026-10-21 | assay-verifier-app[bot] @ 1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 5 | `python3 -c 'import json,yaml;s=json.load(open("schemas/workflow-pattern-v1.json"));import jsonschema;[jsonschema.validate(yaml.safe_load(open(p)),s) for p in ["spec/workflow-patterns/implementation-v1.yaml","spec/workflow-patterns/research-v1.yaml"]];print("ok")'` | prints ok | exit 0; ok (system python 3.9.6, jsonschema 4.21.1). Supplemental discrimination probe: the same schema rejects the implementation pattern with nodes[0].kind set to bogus ('bogus' is not one of ['artifact', 'check', 'decision', 'effect']) | 2026-10-21 | assay-verifier-app[bot] @ 1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 6 | `grep -c 'workflow-pattern-v1' spec/README.md` | count >= 1 | exit 0; 1 | 2026-10-21 | assay-verifier-app[bot] @ 1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 7 | `cd statusgen && go test -run TestTopologyValuesMatchSource ./...` | exit 0 | exit 0; ok github.com/medici-finance/assay/statusgen; --- PASS: TestTopologyValuesMatchSource | 2026-10-21 | assay-verifier-app[bot] @ 1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 8 | `statusgen --root . --lint; echo rc=$?` | rc=0 | LINT: PASS / rc=0 (NOTICE lines only, from other streams) | 2026-10-21 | assay-verifier-app[bot] @ 1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+| 10 | `o=$(statusgen --root . --consumers --brief graph-execution/02 --delivery 5b384e52c684be71b1447949a9403250640b66a7 --base 060980aa0f1a34035b4ce47e9d4c932c0e829662); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | exit 0; exact summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing | exit 0; base 060980aa0f1a..5b384e52c684 (immutable delivered snapshot); CORROBORATED spec/README.md, statusgen/main.go, docs/lifecycle.md; UNCHECKED the out-of-scope desk-skill claim; summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing | 2026-10-21 | assay-verifier-app[bot] @ 1f0b54e745d84a9f58d15f5d4bb2f9e84a5b52a1 (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+Row accounting: 9 of 9 rows pass; 0 fail; 0 could-not-check. Row 10, re-authored to the delivery-check contract since the 2026-10-16 pass, now runs green on merged main. The one UNCHECKED consumer entry is the out-of-scope skill-procedure routing; the reviewer's call per the Expect, and the out-of-scope reason holds (the delivery diff changes none of the three desk skills).
+
+Risk-bearing value enumeration, re-read at 1f0b54e7 (the enumerated files are byte-identical to 1948dc08):
+
+1. patternRoleEffectPermissions: worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:92-95. Mirrored at spec/workflow-pattern-v1.md:155-158.
+2. Implementation risk-input: low = [review]; standard = [review, verify]; elevated = [review, verify]; human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:15-18. Research risk-input: all four = [review-artifact] @ spec/workflow-patterns/research-v1.yaml:13-16.
+3. topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:74-77.
+4. patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100.
+5. patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70.
+6. budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31, and research-v1.yaml:26, 37 and 50.
+
+Ranked by irreversibility, none is irreversible (frontmatter irreversible: no). Each is undone by a spec, pattern or lint edit plus a version bump, and a node naming a role mints no token. By consequence: entry 1 (the declared single point of failure for permission safety), then entry 2, then entries 3 and 4 (vocabulary), then entry 5 (instrument contract), last entry 6 (a retry knob).
+
+RISK-VALUE: DERIVED — patternRoleEffectPermissions worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:92-95 — equals Task 2's table exactly; only the reviewer reviews and only the verifier commits evidence (the writer-certifier separation of the enforcement model), and no role holds a merge effect (the shipped merge node is a desk dispatch, merge staying human). The lint reads this table: a push effect on the shipped reviewer node exits 1 in this pass.
+RISK-VALUE: NAMED, NOT DERIVED — implementation risk-input elevated = [review, verify], human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:17-18 — Task 1's example maps elevated and human to security-review and human-signoff gates; Task 3's fixed node list has neither node, so both verdicts collapse onto the standard set and a human-class instance declares no human node. Deriving the value needs a design ruling, still open at #1933 (0 comments, re-read 2026-10-21). It is not a failed obligation: the MUST rule (all four verdicts mapped) holds.
+RISK-VALUE: DERIVED — topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:74-77 — equals the four apps: roles in topology.yaml; row 7 pins the two together and passed.
+RISK-VALUE: DERIVED — patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100 — the stream's fixed risk-class vocabulary from the brief's Context vocabulary fact.
+RISK-VALUE: DERIVED — patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70 — Task 4's stated contract; observed rc=0 on the shipped patterns and rc=1 on each mutated copy in this pass.
+RISK-VALUE: reversible knob, ranked last, no derivation owed — budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
+
+**VERIFY: PASS** — 9 of 9 rows pass on merged main 1f0b54e7; the risk-input design question stays routed at #1933.
+
+### Corrective re-pass — 2026-10-22, merged main 05dc9fbc88f2b1b23cd78bebc8634c564327eca4
+
+This section supersedes the statements of the 2026-10-21 section named below. It does not edit that section. It answers the review findings F-no-witness and F-ci-red on #3913.
+
+Admission: deskdispatch --check-verifier exit 0 before any row ran, and again after the run. Fresh dispatch; the home is detached at merged main 05dc9fbc88f2, which is the attested source.
+
+Delivered code since the prior pass: git diff --stat 1f0b54e745d8..HEAD over the brief's delivered paths (the two pattern files, the schema document and JSON schema, spec README, the patterns source and tests, its fixtures, the topology derivation, topology.yaml, the main entry point, lifecycle doc and changelog fragment) lists one file: statusgen/main.go, 9 insertions and 1 deletion. That change adds the unrelated `context` subcommand and its name in the unknown-subcommand list. The patterns code, fixtures, schema and pattern files are unchanged.
+
+Tools: statusgen (with its verifyrun subcommand) built from this commit's own statusgen package into a scratch directory outside the home (`go build -o "$SCRATCH/bin/statusgen" .` with `SCRATCH` that directory, go 1.27.2 darwin/arm64), first on PATH for every row. Row 5 ran with a scratch venv python3 (Python 3.15.0, PyYAML 6.0.3, jsonschema 4.26.0) first on PATH. Host: darwin, git 2.56.0. KUBECONFIG=/dev/null; no live endpoint contacted.
+
+Witness: `statusgen verifyrun --brief docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md` in write mode at the home root, exit 2. The table below is that run's own output, copied unchanged, Runner cells included. `statusgen verifyrun --check` on the written table: exit 2, "5 pass, 0 fail, 4 could-not-run/missing (of 9 Verify rows); 0 author-added with no acceptance credit".
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test -run TestPatterns ./...` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `statusgen patterns --lint --root .; echo rc=$?` | pass exit=0 | sha256:e86054a2ccc7 | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test -run TestPatternsEffectExceedsRoleIsProblem ./...` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test -run TestPatternsReviewSameRoleIsProblem ./...` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `python3 -c 'import json,yaml;s=json.load(open("schemas/workflow-pattern-v1.json"));import jsonschema;[jsonschema.validate(yaml.safe_load(open(p)),s) for p in ["spec/workflow-patterns/implementation-v1.yaml","spec/workflow-patterns/research-v1.yaml"]];print("ok")'` | pass exit=0 | sha256:dc51b8c96c2d | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -c 'workflow-pattern-v1' spec/README.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test -run TestTopologyValuesMatchSource ./...` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --lint; echo rc=$?` | pass exit=0 | sha256:1afe40cf07e0 | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `o=$(statusgen --root . --consumers --brief graph-execution/02 --delivery 5b384e52c684be71b1447949a9403250640b66a7 --base 060980aa0f1a34035b4ce47e9d4c932c0e829662); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | pass exit=0 | sha256:d44e0281b75b | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4017 run=f8a7d689cac3722d3452aa508728be372f218a0bf1ff1570db1c72f5fbf96574 source=05dc9fbc88f2b1b23cd78bebc8634c564327eca4 brief=docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md model=claude-opus-5-5 tier=strong
+
+Linux lane for rows 1, 3, 4 and 7: the local verify image (go1.27-py, linux/arm64, run with --network none and --sandbox container-netns, statusgen and deskdispatch cross-built from this commit) could not produce an admitted witness. verifyrun's pre-work verifier admission runs deskdispatch --check-verifier before any row. Inside the image that check refuses, with "REFUSED — no roster configured" and "deskdispatch activation could not be established". Admission needs the roster and a forge read, and a --network none container has neither. No row ran under that lane, and the four rows stay could-not-run in the witness above. This is the verify-image blocker #4010; it adds this cause to the ones that issue lists.
+
+Supplemental, no acceptance credit: plain `go test -count=1` runs of the four check:ci row selectors in the same image with --network none each exit 0. A -v run of the statusgen package shows 12 --- PASS lines, TestPatternsEffectExceedsRoleIsProblem, TestPatternsReviewSameRoleIsProblem and TestTopologyValuesMatchSource among them, and no FAIL. Host repeats of rows 2, 8 and 10 with the same built statusgen print "patterns: 2 checked-clean, 0 checked-failed, 0 could-not-check (2 file(s) scanned)" / rc=0, "LINT: PASS" / rc=0, and "summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing" with exit 0. Row 6's grep prints 1. These lines are diagnostics only: rows 2 and 8 end in echo rc=$?, so the witness checks exit status only, and these repeats show the rc= lines.
+
+Row accounting from the witness: 9 required rows. 5 pass (rows 2, 5, 6, 8, 10). 0 fail. 4 could-not-run (rows 1, 3, 4, 7: check:ci rows need the Linux network-off sandbox, and the only local Linux lane cannot admit the run, #4010).
+
+Superseded statements in the 2026-10-21 section:
+
+- Line 505 (the admission and environment paragraph): rows 2, 8 and 10 ran the installed statusgen v1.0.54. Correction: in this pass every row ran a statusgen built from merged main 05dc9fbc, and row 5 ran with a scratch python3 that has PyYAML.
+- Lines 507-517 (the hand-written row table): no verifyrun witness backs that table. Correction: the witness table above replaces it as the record of row results.
+- Line 519 (row accounting, "9 of 9 rows pass; 0 fail; 0 could-not-check"): Correction: 5 pass, 0 fail, 4 could-not-run, per the witness.
+- Line 539 (the verdict line, PASS, 9 of 9 rows): Correction: BLOCKED, below. The same "9 of 9 rows pass" claim in the PR body and in the 2026-10-21 comment on #1933 is superseded too.
+
+CI on the Evidence PR head: the push-event run 39654124652 failed build-test in the cellcache mutate-gate SIGTERM subtest. That is the known intermittent #3698, and this docs-only change cannot cause it. This pass re-ran no workflow. Re-running the failed job is for the driver only.
+
+Risk-bearing value enumeration, re-read at 05dc9fbc. None of the enumerated files changed since 1f0b54e7.
+
+1. patternRoleEffectPermissions: worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:92-95. Mirrored at spec/workflow-pattern-v1.md:155-158.
+2. Implementation risk-input: low = [review]; standard = [review, verify]; elevated = [review, verify]; human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:15-18. Research risk-input: all four = [review-artifact] @ spec/workflow-patterns/research-v1.yaml:13-16.
+3. topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:74-77.
+4. patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100.
+5. patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70.
+6. budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
+
+Ranking is unchanged from the 2026-10-21 section. None of these values is irreversible (frontmatter irreversible: no). Entry 6 is a retry knob and ranks last.
+
+RISK-VALUE: DERIVED — patternRoleEffectPermissions worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:92-95 — equals Task 2's table exactly. Only the reviewer reviews and only the verifier commits evidence, which is the writer-certifier separation. No role holds a merge effect.
+RISK-VALUE: NAMED, NOT DERIVED — implementation risk-input elevated = [review, verify], human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:17-18 — Task 1's example maps these to security-review and human-signoff gates, and the shipped pattern has neither node. Deriving the value needs a design ruling, still open at #1933.
+RISK-VALUE: DERIVED — topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:74-77 — equals the four apps: roles in topology.yaml. Row 7 pins the two together; in this pass that is shown only by the supplemental network-off run.
+RISK-VALUE: DERIVED — patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100 — the stream's fixed risk-class vocabulary from the brief's Context.
+RISK-VALUE: DERIVED — patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70 — Task 4's stated exit contract.
+RISK-VALUE: reversible knob, ranked last, no derivation owed — budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
+
+**VERIFY: BLOCKED** — 5 of 9 rows witnessed passing, 0 fail. Rows 1, 3, 4 and 7 are could-not-run: the check:ci rows need a Linux network-off runner that can complete verifier admission (#4010). Status stays where it is.
+
+### Non-implementer verifier re-run — 2026-10-22, merged main b87d9f502cff0e426a221d93ce826e4f10d47e9f
+
+Run by a fresh, non-implementer verifier (claude-opus-5-5, strong tier) under attestation medici-finance/assay#4155. Admission: `deskdispatch --check-verifier` re-admitted the run at the source above, with the home clean, before the run and again before this landing. The witness below comes from the installed `statusgen verifyrun` (v1.0.56) on the host (darwin). Every row ran against this commit.
+
+- The check:ci rows (1, 3, 4 and 7) are could-not-run again. The host has no network-off sandbox: `unshare --net` is Linux-only. The container admission bracket (brief-rule 45, desktools-v2/71), which would give these rows a sanctioned network-off lane, landed on main on 2026-10-22 in 3989f898e but is in no release yet, and the installed v1.0.56 has no `--open-bracket`. This pass does not use a locally built statusgen in place of the installed instrument. A container run made with a source-built binary earlier in this dispatch is NOT recorded here and claims no credit. Cause: #4010. Rows 1, 3, 4 and 7 need a release that contains 3989f898e.
+- Row 5 (`check`, env-bound) needs PyYAML and jsonschema. The verifier's desk launcher swaps HOME, so the interpreter's per-user site-packages became invisible. An earlier invocation in this pass therefore recorded row 5 as `fail exit=1` (`ModuleNotFoundError: No module named 'yaml'`). The cause was the runner environment, not the tree. That table was discarded before landing, and the run below sets PYTHONPATH to the same interpreter's site-packages. The row 5 output hash (dc51b8c96c2d) equals the earlier passing witnesses of this row.
+- The `echo rc=$?` rows were read directly at this commit, because their exit cell cannot fail. Row 2 printed `patterns: 2 checked-clean, 0 checked-failed, 0 could-not-check (2 file(s) scanned)`, then `rc=0`. Row 8 printed `LINT: PASS`, then `rc=0`; it emitted NOTICE lines only and no PROBLEM. Row 10 read base 060980aa0 against the immutable delivered snapshot 5b384e52c (#1259). It CORROBORATED spec/README.md, statusgen/main.go and docs/lifecycle.md §Review gates, left the desk-skill entry UNCHECKED, and printed the exact `summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing` with s=0.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test -run TestPatterns ./...` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 2 | `statusgen patterns --lint --root .; echo rc=$?` | pass exit=0 | sha256:e86054a2ccc7 | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test -run TestPatternsEffectExceedsRoleIsProblem ./...` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test -run TestPatternsReviewSameRoleIsProblem ./...` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 5 | `python3 -c 'import json,yaml;s=json.load(open("schemas/workflow-pattern-v1.json"));import jsonschema;[jsonschema.validate(yaml.safe_load(open(p)),s) for p in ["spec/workflow-patterns/implementation-v1.yaml","spec/workflow-patterns/research-v1.yaml"]];print("ok")'` | pass exit=0 | sha256:dc51b8c96c2d | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -c 'workflow-pattern-v1' spec/README.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test -run TestTopologyValuesMatchSource ./...` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --lint; echo rc=$?` | pass exit=0 | sha256:c816b5c89433 | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+| 10 | `o=$(statusgen --root . --consumers --brief graph-execution/02 --delivery 5b384e52c684be71b1447949a9403250640b66a7 --base 060980aa0f1a34035b4ce47e9d4c932c0e829662); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | pass exit=0 | sha256:57f9f3c09f54 | 2026-10-22 | assay-verifier-app[bot] @ b87d9f502cff (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4155 run=01602a76c346503338e0fa4bb43609ea0593f3429385ba102add252b90f3d149 source=b87d9f502cff0e426a221d93ce826e4f10d47e9f brief=docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md model=claude-opus-5-5 tier=strong
+
+Risk-value enumeration, re-read at b87d9f502cff:
+
+1. patternRoleEffectPermissions: worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:92-95.
+2. Implementation risk-input: elevated = [review, verify], human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:17-18.
+3. topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:74-77.
+4. patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100.
+5. patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70.
+6. budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
+
+The ranking is unchanged from the 2026-10-21 section. None of these values is irreversible (frontmatter irreversible: no). Entry 6 is a retry knob, so it ranks last.
+
+RISK-VALUE: DERIVED — patternRoleEffectPermissions worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:92-95 — these are the effects each topology.yaml apps: role performs today (spec/workflow-pattern-v1.md §7).
+RISK-VALUE: NAMED, NOT DERIVED — implementation risk-input elevated = [review, verify], human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:17-18 — Task 1's example maps these to the same pair as standard. The mapping ruling is still open at #1933, unchanged by this pass.
+RISK-VALUE: DERIVED — topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:74-77 — equals the four apps: roles in topology.yaml. Row 7 pins the two together; in this pass row 7 is could-not-run, so the pin is unwitnessed at this commit.
+RISK-VALUE: DERIVED — patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100 — the stream's fixed risk-class vocabulary from the brief's Context.
+RISK-VALUE: DERIVED — patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70 — Task 4's stated exit contract.
+RISK-VALUE: reversible knob, ranked last, no derivation owed — budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
+
+**VERIFY: BLOCKED** — 5 of 9 rows witnessed passing (2, 5, 6, 8, 10) and 0 fail. Rows 1, 3, 4 and 7 are could-not-run because the check:ci rows have no admitted network-off lane in the installed tools (#4010). The admission-bracket lane awaits a release that contains 3989f898e. Status stays where it is.
+
+### Non-implementer verifier re-run — 2026-10-24, merged main 385cb29e5682dcb9a886b298076f722b4823ec1b — container-netns admission bracket
+
+Prior attempts: the two 2026-10-22 passes (sources 05dc9fbc and b87d9f50) closed at VERIFY: BLOCKED with rows 1, 3, 4 and 7 could-not-run for want of an admitted network-off lane (#4010); this run is a fresh dispatch under its own admission and credits nothing from them.
+
+Run by a fresh, non-implementer verifier (claude-opus-5-5, strong tier) under attestation medici-finance/assay#4304. Admission: deskdispatch --check-verifier exit 0 at the home root before any row, with the home clean and detached at the attested source above; the open and close bracket steps each re-ran the check. Installed host tools: statusgen v1.0.59; git 2.56.0; host darwin. Container lane: release-pinned runner ghcr.io/medici-finance/verify-runner:v1.0.59@sha256:c2e32c7ff99f67951174e8ff835d928d8999b1bb2ecdc7c63d3775528178640e (image Id sha256:756b81ba91a8627b30524316a3baabed654a0369f9331a31e77546ead69c19ad, linux/amd64), run with --network none, a read-only root filesystem, all capabilities dropped and the home mounted read-only at a fixed container path; the rows ran under the image's own released statusgen. No locally built binary, gitdir mount or identity injection was used. KUBECONFIG=/dev/null; no live endpoint was contacted.
+
+Rows 1, 3, 4 and 7 (check:ci) ran in ONE closed admission bracket, opened 2026-10-24T17:34:17Z and closed 2026-10-24T17:42:31Z. The table below is the closed witness file's bytes, unchanged. statusgen verifyrun --bracket-digest on that file printed bracket=L10 header=L1 verdict=match span-lines=tree-digest:1,container-image:1,attestation:1 (exit 0).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd statusgen && go test -run TestPatterns ./...` | pass exit=0 sandbox=container-netns | sha256:051655273936 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test -run TestPatternsEffectExceedsRoleIsProblem ./...` | pass exit=0 sandbox=container-netns | sha256:b4a860f0cc6d | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go test -run TestPatternsReviewSameRoleIsProblem ./...` | pass exit=0 sandbox=container-netns | sha256:47f816e40eb4 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test -run TestTopologyValuesMatchSource ./...` | pass exit=0 sandbox=container-netns | sha256:a7adfdc293f9 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:98685d6717c495aecd71bc3b8cb782aa9cc7dc0ac1332b029f60eb2c3a1c1104
+Container-Image: sha256:c2e32c7ff99f67951174e8ff835d928d8999b1bb2ecdc7c63d3775528178640e
+Verification-Attestation: medici-finance/assay#4304 run=58880a5cb8e83dcf0024929427bdb73a5ccb7a3d3ae4aec5f121a7d26a4f862f source=385cb29e5682dcb9a886b298076f722b4823ec1b brief=docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=58880a5cb8e83dcf0024929427bdb73a5ccb7a3d3ae4aec5f121a7d26a4f862f source=385cb29e5682dcb9a886b298076f722b4823ec1b tree=sha256:98685d6717c495aecd71bc3b8cb782aa9cc7dc0ac1332b029f60eb2c3a1c1104 witness=sha256:4a15d113e59e8afb30e7e8a926eb1733cfc98fdbcebeb4880bbba262e7f79cc6 opened=2026-10-24T17:34:17Z closed=2026-10-24T17:42:31Z before=receipt after=check-verifier
+
+Rows 2, 5, 6, 8 and 10 ran on the host with the installed statusgen verifyrun --rows 2,5,6,8,10 --dry-run, while the home was still clean and before the bracket closed; the table below is that run's own output, unchanged. Row 5 ran with a python3 3.14 that has PyYAML 6.0.3 and jsonschema first on PATH (the default interpreter lacks PyYAML; that is a runner-environment fact, not a tree result).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 2 | `statusgen patterns --lint --root .; echo rc=$?` | pass exit=0 | sha256:e86054a2ccc7 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `python3 -c 'import json,yaml;s=json.load(open("schemas/workflow-pattern-v1.json"));import jsonschema;[jsonschema.validate(yaml.safe_load(open(p)),s) for p in ["spec/workflow-patterns/implementation-v1.yaml","spec/workflow-patterns/research-v1.yaml"]];print("ok")'` | pass exit=0 | sha256:dc51b8c96c2d | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -c 'workflow-pattern-v1' spec/README.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --lint; echo rc=$?` | pass exit=0 | sha256:b0218a0e1b5a | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `o=$(statusgen --root . --consumers --brief graph-execution/02 --delivery 5b384e52c684be71b1447949a9403250640b66a7 --base 060980aa0f1a34035b4ce47e9d4c932c0e829662); s=$?; printf '%s\n' "$o"; test "$s" -eq 0 && case "$o" in *'summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing'*) ;; *) exit 1;; esac` | pass exit=0 | sha256:57f9f3c09f54 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4304 run=58880a5cb8e83dcf0024929427bdb73a5ccb7a3d3ae4aec5f121a7d26a4f862f source=385cb29e5682dcb9a886b298076f722b4823ec1b brief=docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md model=claude-opus-5-5 tier=strong
+
+Rows 2 and 8 end in echo rc=$?, so the witness checks exit status only; the lines they print were read directly at this commit, as diagnostics with no separate credit. Row 2 printed "patterns: 2 checked-clean, 0 checked-failed, 0 could-not-check (2 file(s) scanned)" then rc=0. Row 8 printed LINT: PASS then rc=0, with NOTICE lines only and no PROBLEM line. Row 10 corroborated spec/README.md, statusgen/main.go and docs/lifecycle.md §Review gates against the delivered snapshot 5b384e52c and its first-parent diff, left the desk-skill entry UNCHECKED (out-of-scope, the reviewer's call), and printed the exact "summary: 3 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing" with s=0. Row 6's grep printed 1.
+
+Supplemental, no acceptance credit: the installed statusgen patterns --lint, run over scratch roots outside the home that each hold one shipped fixture, exits 1 on bad-effect-exceeds-role.yaml naming [pattern-effect-exceeds-role] (node "review" has role "reviewer", which is not permitted to perform effect kind "push"), and exits 1 on bad-review-same-role.yaml naming [pattern-review-same-role] (review node "review" has role "worker", the same role as "implement"). This matches the second clause of the Expect cells of rows 3 and 4.
+
+The lint reports the [gotest-run-vacuous] NOTICE on rows 1, 3, 4 and 7 (go test -run carries no named PASS assertion, so a missing test would also exit 0). Supplemental, no acceptance credit: a verbose network-off run in the same pinned image with the home mounted read-only, go test -count=1 -v -run "TestPatterns|TestTopologyValuesMatchSource" ./... in statusgen, exited 0 with 12 --- PASS lines and no FAIL: TestPatternsRoleEffectPermissionsCoversTopologyRoles, TestPatternsEmbeddedSchemaMatchesCommitted, TestPatternsGoodFixturesLintClean, TestPatternsShippedPatternsLintClean, TestPatternsEffectExceedsRoleIsProblem, TestPatternsEffectTargetNotOwnedIsProblem, TestPatternsReviewSameRoleIsProblem, TestPatternsJoinNotCheckIsProblem, TestPatternsRiskInputMissingVerdictIsProblem, TestPatternsLintReportsCouldNotCheckOnMissingRoot, TestPatternsNoVerbIsUsageRefusal and TestTopologyValuesMatchSource. So each named test exists and passes at this commit; the selectors are not vacuous here. Adding the named PASS assertion to these rows is a Verify-row re-author, out of this pass's scope.
+
+Delivered code since the previous pass (b87d9f50): git diff --stat over the brief's delivered paths lists only spec/README.md (two proposed milestone and stream spec rows and a section about them; the workflow-pattern-v1 row is unchanged) and statusgen/main.go (lint notice reporting, --all and --json lint flags, register-link reporting). Neither touches the patterns code, fixtures, schema, pattern files or topology derivation.
+
+Row accounting: 9 required rows. 9 pass (rows 1, 3, 4 and 7 in the container bracket; rows 2, 5, 6, 8 and 10 on the host). 0 fail. 0 could-not-run.
+
+Risk-bearing value enumeration, re-read at 385cb29e5682 (frontmatter irreversible: no; all values reversible by edit and redeploy):
+
+1. patternRoleEffectPermissions: worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:91-96. Mirrored at spec/workflow-pattern-v1.md:155-158.
+2. Implementation risk-input: low = [review]; standard = [review, verify]; elevated = [review, verify]; human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:15-18. Research risk-input: all four = [review-artifact] @ spec/workflow-patterns/research-v1.yaml:13-16.
+3. topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:73-78.
+4. patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100.
+5. patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70.
+6. budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
+
+Ranking: entry 1 first (a wrong permission lets a pattern grant a role an effect it does not hold), then 2 (gate nodes per risk class), then 3, 4 and 5; entry 6 is a retry knob and ranks last.
+
+RISK-VALUE: DERIVED — patternRoleEffectPermissions worker = push, pr-open, comment; reviewer = review, comment; verifier = evidence-commit, comment; desk = file-issue, comment, dispatch @ statusgen/patterns.go:91-96 — equals Task 2's table exactly. Only the reviewer reviews and only the verifier commits evidence, which is the writer-certifier separation; no role holds a merge effect.
+RISK-VALUE: NAMED, NOT DERIVED — implementation risk-input elevated = [review, verify], human = [review, verify] @ spec/workflow-patterns/implementation-v1.yaml:17-18 — Task 1's example maps these to security-review and human-signoff gates, and the shipped pattern has neither node. Deriving the value needs a design ruling, still open at #1933.
+RISK-VALUE: DERIVED — topologyAppRoles = desk, reviewer, verifier, worker @ statusgen/topologyvalues.go:73-78 — equals the four apps: roles in topology.yaml (lines 237-249). Row 7, witnessed in the bracket above, pins the two together at this commit.
+RISK-VALUE: DERIVED — patternRiskVerdicts = low, standard, elevated, human @ statusgen/patterns.go:100 — the stream's fixed risk-class vocabulary from the brief's Context.
+RISK-VALUE: DERIVED — patternsExitClean = 0, patternsExitFailed = 1, patternsExitCouldNot = 2, patternsExitUsageError = 2 @ statusgen/patterns.go:67-70 — Task 4's stated exit contract (0 clean, 1 on any PROBLEM, 2 when it cannot check).
+RISK-VALUE: reversible knob, ranked last, no derivation owed — budget.attempts = 2 @ spec/workflow-patterns/implementation-v1.yaml:31.
+
+**VERIFY: PASS** — 9 of 9 rows witnessed passing on merged main 385cb29e5682, 0 fail, 0 could-not-run; the check:ci rows 1, 3, 4 and 7 ran in a closed container-netns admission bracket. The risk-input design question stays routed at #1933.
+
+#### Correction — 2026-10-24, assay-verifier-app[bot] (on-behalf-of human:ian)
+
+Four shape-only edits, three to earlier entries and one to this entry, made so the flip's Evidence scan can key them. The driver ruled the edits allowed (https://github.com/medici-finance/assay/pull/4344#issuecomment-6389131147), with the tool fix to follow. No recorded result, count, digest or verdict changed. Each original span and its replacement:
+
+1. 2026-09-30 entry, first execution-witness table. Original: the header row `| # | Command | Result | Output | Date | Runner |` was followed directly by row 1, with no separator line. Replacement: the separator line `|---|---------|--------|--------|------|--------|` was inserted after the header. The entry's preamble and its 2026-09-30 Correction entry now say so.
+2. 2026-10-02 entry, execution witness line. Original: statusgen verifyrun --brief &lt;this brief&gt; --dry-run (in inline code; the angle brackets are written here as character references so this entry opens no element). Replacement: `statusgen verifyrun --brief docs/streams/graph-execution/brief-02-pattern-schema-and-node-contract.md --dry-run`. The original entry recorded only the placeholder, so the replacement names the brief the placeholder stood for; it is not a record of the argument spelling that run used.
+3. 2026-10-22 entry, Tools line. Original: go build -o &lt;scratch&gt;/bin/statusgen . (in inline code, angle brackets written as character references). Replacement: `go build -o "$SCRATCH/bin/statusgen" .` with `SCRATCH` that directory.
+4. This 2026-10-24 entry, the RISK-VALUE line for patternsExitClean (the second-to-last RISK-VALUE line before the verdict), which is outside the admission bracket's span (the bracket's witness digest is unchanged). Original, then replacement, quoted exactly in the block below.
+
+```text
+original:    Task 4's stated exit contract (0 clean, 1 on any PROBLEM, 2 could-not-check).
+replacement: Task 4's stated exit contract (0 clean, 1 on any PROBLEM, 2 when it cannot check).
+```
+
+The 2026-10-24 verdict above stands as recorded.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

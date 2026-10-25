@@ -154,6 +154,11 @@ func cmdCheck(cell, cfgArg string) {
 			continue
 		}
 		rm := c.resolveRoleModel(role, c.Harness)
+		if c.Kind == "scrubbed" && c.Harness == "claude" && c.Env.Get("CELL_PROVIDER") != "" && rm.Src != "DESK_MODEL_"+underscore(role) {
+			if model, _ := c.providerValue(c.Env.Get("CELL_PROVIDER"), "MODEL"); model != "" {
+				rm.Model, rm.Src, rm.OK = model, "provider:"+c.Env.Get("CELL_PROVIDER"), true
+			}
+		}
 		switch {
 		case !rm.OK:
 			k.chk(false, "model pin: role=%s harness=%s — %s", role, c.Harness, rm.Src)
@@ -194,6 +199,10 @@ func cmdCheck(cell, cfgArg string) {
 			k.chk(base != "", "provider %s endpoint: %s", route.Provider, base)
 			k.chk(tokenVar != "" && c.Env.Get(tokenVar) != "", "provider %s: token environment variable %s is set", route.Provider, tokenVar)
 		}
+	} else if p := c.Env.Get("CELL_PROVIDER"); p != "" && c.Kind == "scrubbed" {
+		_, err := c.providerCredential(p)
+		k.chk(c.Harness == "claude", "scrubbed provider requires the claude harness")
+		k.chk(err == nil, "scrubbed provider %s: cell-owned token file (%v)", p, err)
 	} else if p := c.Env.Get("CELL_PROVIDER"); p != "" {
 		baseVar, tokVar := providerVar(p, "BASE_URL"), providerVar(p, "TOKEN_ENV")
 		baseVal, baseSrc := c.providerValue(p, "BASE_URL")
@@ -273,7 +282,13 @@ func cmdCheck(cell, cfgArg string) {
 	// windows appear in" is answerable before booting. An explicit CELL_COCKPIT that is not
 	// available is a MISS (it is what `up` would refuse on); `auto` can never MISS.
 	want, src := c.cockpitWant("")
-	if res := c.resolveCockpit(want, src); res.Err == "" {
+	var res cockpitResolution
+	if c.Kind == "scrubbed" {
+		res = c.scrubbedCockpit("")
+	} else {
+		res = c.resolveCockpit(want, src)
+	}
+	if res.Err == "" {
 		if c.Kind == "house" {
 			if res.Cockpit == "tmux" {
 				k.chk(onPath("tmux"), "tmux (the selected cockpit)")
@@ -298,7 +313,9 @@ func cmdCheck(cell, cfgArg string) {
 	}
 	// Orca reachability is stated whenever orca is installed, whichever cockpit won: its CLI is
 	// a thin client of the desktop app, and an unreachable app is why `auto` passed it over.
-	if onPath("orca") {
+	if c.Kind == "scrubbed" && onPath("orca") {
+		k.na("orca — not used by scrubbed cells (reachability not probed)")
+	} else if onPath("orca") {
 		if c.orcaReachable() {
 			fmt.Println("  ok    orca desktop app reachable (its CLI is a thin client)")
 		} else {

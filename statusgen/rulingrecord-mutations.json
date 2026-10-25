@@ -1,0 +1,65 @@
+{
+  "test": "go test . -run 'TestRulingRecord_' -count=1 -timeout 120s",
+  "control": {
+    "name": "CONTROL — every resolved outcome reads as corroborated; TestRulingRecord_RefusesWrongAuthor must go red",
+    "file": "rulingrecord.go",
+    "old": "\tcase o.Present && o.Reason == rulingOK:",
+    "new": "\tcase true:"
+  },
+  "mutations": [
+    {
+      "name": "a forge read that failed is reported as a refusal, not a could-not-check; TestRulingRecord_ForgeErrorCouldNotCheck must go red",
+      "file": "rulingrecord.go",
+      "old": "\tcase o.Reason == rulingUnresolvable:",
+      "new": "\tcase false:"
+    },
+    {
+      "name": "the decision-record path check is dropped; TestRulingRecord_UsageAndRepo must go red",
+      "file": "rulingrecord.go",
+      "old": "\tif !isDecisionRecordPath(rel) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "an undeterminable repository is no longer a could-not-check; TestRulingRecord_UsageAndRepo must go red",
+      "file": "rulingrecord.go",
+      "old": "\tif repo == \"\" {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "the forge client seam is bypassed (no client); TestRulingRecord_Corroborates must go red",
+      "file": "rulingrecord.go",
+      "old": "resolveRecordForBrief(rulingRecordClientFn(), root,",
+      "new": "resolveRecordForBrief(nil, root,"
+    },
+    {
+      "name": "F1 — the brief binding is dropped: a decision issue for the record alone opens any brief's gate; TestRulingRecord_OtherBrief/named-only must go red",
+      "file": "rulingrecord.go",
+      "old": "\t\t\treturn issueRulesOnRecord(iss.Body, rec.ID, link.Repo, aliases, citing) &&\n\t\t\t\tbriefIssueRulesOn(iss.Body, repo, b.boardIDs, b.fmIDs, aliases)",
+      "new": "\t\t\treturn issueRulesOnRecord(iss.Body, rec.ID, link.Repo, aliases, citing)"
+    },
+    {
+      "name": "the record binding is dropped: the brief's issue alone stands in for the record's; TestRulingRecord_OtherBrief/brief-issue must go red",
+      "file": "rulingrecord.go",
+      "old": "\t\t\treturn issueRulesOnRecord(iss.Body, rec.ID, link.Repo, aliases, citing) &&\n\t\t\t\tbriefIssueRulesOn(",
+      "new": "\t\t\treturn (citing == nil || citing != nil) &&\n\t\t\t\tbriefIssueRulesOn("
+    },
+    {
+      "name": "the comment need not name the brief (an editable issue marker alone binds it); TestRulingRecord_OtherBrief/marker-only must go red",
+      "file": "rulingrecord.go",
+      "old": "\t\tif commentNamesRecord(o.Body, n) {",
+      "new": "\t\tif commentNamesRecord(o.Body, n) || true {"
+    },
+    {
+      "name": "an invalid --ruling-brief is not a usage error; TestRulingRecord_BriefUsage must go red",
+      "file": "rulingrecord.go",
+      "old": "\tbrief, why := loadRulingBrief(root, briefRel)\n\tif why != \"\" {",
+      "new": "\tbrief, why := loadRulingBrief(root, briefRel)\n\tif false && why != \"\" {"
+    },
+    {
+      "name": "the unpadded board-id spelling is dropped; TestRulingRecord_BriefSpelling must go red",
+      "file": "rulingrecord.go",
+      "old": "\tif n := normBriefNum(num); n != num {",
+      "new": "\tif n := normBriefNum(num); false && n != num {"
+    }
+  ]
+}

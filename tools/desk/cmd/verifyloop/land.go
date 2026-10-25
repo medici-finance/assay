@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
 )
 
 // Durable is the sink that makes a verify Result durable. It is an interface so the default
@@ -93,14 +94,14 @@ func (v *VerifyLoop) Land(r loopengine.Result) error {
 		// A change failure is durable worker work: create/reconcile the repair obligation beside
 		// the bug (example-stream/17). Additive to FileBug, never a replacement for it.
 		v.recordRepairObligation(r)
-		_, err := d.FileBug(r.Item, "VERIFY FAIL (change failure): "+failSummary(r))
+		_, err := v.fileBug(d, r, "VERIFY FAIL (change failure): "+failSummary(r))
 		return err
 
 	default: // BLOCKED / NEEDS_CONTEXT / unknown
 		// An unlandable verify also owes a durable obligation — left UNKNOWN (explicit triage,
 		// never an invented implementation bug) so a verifier classifies it, not a worker.
 		v.recordRepairObligation(r)
-		_, err := d.FileBug(r.Item, "verify could not complete ("+r.Verdict+")")
+		_, err := v.fileBug(d, r, "verify could not complete ("+r.Verdict+")")
 		return err
 	}
 }
@@ -115,13 +116,13 @@ func renderEvidence(r loopengine.Result, date string) string {
 		runner = "unknown-runner"
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "| # | Command | Exit | Output | When | Runner |\n")
+	fmt.Fprintf(&b, "| # | Command | Exit | Output | Date | Runner |\n")
 	fmt.Fprintf(&b, "|---|---------|------|--------|------|--------|\n")
 	for i, row := range r.Rows {
 		out := strings.ReplaceAll(strings.TrimSpace(row.Output), "|", `\|`)
 		out = strings.ReplaceAll(out, "\n", " ")
 		fmt.Fprintf(&b, "| %d | `%s` | %d | %s | %s | %s |\n",
-			i+1, row.Command, row.Exit, out, date, runner)
+			i+1, verifycmd.EscapePipes(row.Command), row.Exit, out, date, runner)
 	}
 	fmt.Fprintf(&b, "\nVerdict: %s — %s %s\n", r.Verdict, date, runner)
 	return b.String()

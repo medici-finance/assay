@@ -138,6 +138,10 @@ func (c ClaimSource) DecayBanner() string {
 // but the --forge flag sets it.
 var forgeReadsOptedIn bool
 
+// claimReader is the shape of resolveClaims and of run()'s lintClaims for its
+// mode: a renderer handed one cannot reach the forge unless the run may (#3323).
+type claimReader func(root string, streams []*Stream) (map[string]bool, ClaimSource)
+
 // offlineLintClaimReason is the could-not-check a plain --lint's claim set wears.
 const offlineLintClaimReason = "could-not-check: --lint ran offline (no --forge), so origin's branch heads were " +
 	"not read (`git ls-remote`) and dead claims were not decayed; pass --forge to read them"

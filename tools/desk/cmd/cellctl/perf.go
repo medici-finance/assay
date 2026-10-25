@@ -9,14 +9,11 @@ import (
 // perfVerbs is the verb roster main hands deskkit.PerfRun, so a perf record carries the verb's
 // real name (desk, cache, show, model-policy ...) instead of "other". It is DERIVED from the
 // command tree rather than listed by hand, so a verb added to buildRoot is recorded under its
-// own name with no second edit to forget. Off (no ASSAY_TELEMETRY=1) it returns nil without
-// building anything: PerfRun then never reads it.
+// own name with no second edit to forget. The fixed roster also exists before
+// effective cell configuration is loaded, for config-only telemetry opt-in.
 //
 // The two flag spellings are the introspection forms the tree answers without a verb.
 func perfVerbs() []string {
-	if !deskkit.PerfEnabled() {
-		return nil
-	}
 	verbs := []string{"--version", "--help", "-h"}
 	for _, c := range buildRoot().Commands() {
 		verbs = append(verbs, c.Name())
@@ -56,4 +53,13 @@ func launchStep(step string, f func() error) (err error) {
 // launchStepV is launchStep for a phase that reports no error (it dies instead).
 func launchStepV(step string, f func()) {
 	_ = launchStep(step, func() error { f(); return nil })
+}
+
+func (c *Cell) recordLaunchStep(step string, d time.Duration, err error) {
+	code := deskkit.ExitOK
+	if err != nil {
+		code = deskkit.ExitCodeOf(err)
+	}
+	enabled := c.Env != nil && c.telemetryValue() == "1"
+	deskkit.PerfStepEnabled(enabled, "cellctl", step, d, code)
 }

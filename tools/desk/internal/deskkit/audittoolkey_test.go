@@ -33,6 +33,9 @@ func TestCanonicalToolKey(t *testing.T) {
 		// The synthetic verdict-issue key is its OWN bucket, matched only exactly — it must
 		// never collapse into "verifyloop" (a deliberately separate budget, ratelimit.go).
 		{VerdictIssueTool, VerdictIssueTool, true},
+		// deskrun's read bucket likewise: it must never fold into "deskrun", whose lines the
+		// write verbs' budget and breaker read.
+		{DeskrunReadTool, DeskrunReadTool, true},
 		// Unknown: an abbreviation that is no tool's token, and empty.
 		{"dt", "", false},
 		{"", "", false},

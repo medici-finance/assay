@@ -14,7 +14,7 @@ import (
 // Defect class: a mutation spec's `old` anchor goes stale. A refactor rewrites the
 // guard a mutation targets (moves it, re-indents it, wraps it), the spec still names
 // the old text, and muhar can no longer plant the mutation — COULD_NOT_MUTATE. The
-// guard is then silently untested. truth-suite only runs on push to main and on a
+// guard is then silently untested. truth-suite only runs on a nightly
 // cron, and most specs are in no workflow matrix at all, so nothing on a PR sees it:
 // the deskkit spec went red on main this way, ten more anchors across six other specs
 // had already gone stale unseen, and one spec had no control at all.

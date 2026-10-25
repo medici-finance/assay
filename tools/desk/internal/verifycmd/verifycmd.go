@@ -30,6 +30,7 @@
 package verifycmd
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -70,16 +71,18 @@ func Marked(cell string) (string, bool) {
 	return first, found
 }
 
-// Lift returns the command a Verify Command cell names: the first honoured
-// `cmd:` span when there is one, otherwise the tools/desk legacy lift — the
-// cell with one wrapping pair of backticks removed, or the cell unchanged when it
-// is not wrapped. A cell with no marker therefore lifts exactly what these
-// executors lifted before the marker existed.
+// Lift returns the command a Verify Command cell names, exactly as statusgen's
+// verifyCommand lifts it: the first honoured `cmd:` span when there is one,
+// otherwise the content of the cell's first code span (firstSpan), or the trimmed
+// cell when it has no backtick. The executors run this string and nothing else.
+// They once ran the whole unwrapped cell instead, where "`false`: confirm" ran as
+// a command substitution and then the `:` builtin, so the zero exit recorded a
+// pass for a check that failed (#3147).
 func Lift(cell string) string {
 	if c, ok := Marked(cell); ok {
 		return c
 	}
-	return stripInlineCode(cell)
+	return firstSpan(cell)
 }
 
 // CommentOnly reports whether a lifted command is a shell comment: its first
@@ -93,21 +96,35 @@ func CommentOnly(cmd string) bool {
 	return strings.HasPrefix(strings.TrimSpace(cmd), "#")
 }
 
+// NoOp reports whether a lifted command is a shell no-op that measures nothing:
+// the `:` builtin with no command after it (`:` or `: confirm it`), or a cmd.exe
+// remark (`REM …`, `@rem …`, `:: …`). Like a comment it exits 0 having checked
+// nothing, so a zero exit is no evidence (#3147 A2). The rule does not depend on
+// the shell a row names: none of these forms is a check under any shell. A `:`
+// followed by a separator (`: ; test -d .`) leaves a real command, and bare
+// `true` / `exit 0` are not judged here. statusgen's shellNoOp is the same rule.
+func NoOp(cmd string) bool {
+	c := strings.TrimSpace(cmd)
+	if strings.HasPrefix(c, "::") {
+		return true
+	}
+	f := strings.Fields(c)
+	if len(f) == 0 {
+		return false
+	}
+	if strings.ToLower(strings.TrimPrefix(f[0], "@")) == "rem" {
+		return true
+	}
+	return f[0] == ":" && !strings.ContainsAny(c, ";&|\n")
+}
+
 // CommentLed returns why the command a Verify Command cell names is only a shell
-// comment, or "" when it names a real one. An executor MUST NOT run a comment-led
-// cell: the shell ignores the comment, and what is left exits 0 with no output (a
-// whole raw cell such as "`## Coverage`: confirm it" runs as the `:` no-op once the
-// comment-only substitution expands to nothing), so the zero exit would record a
-// pass for a check that never looked (#2684, review S1).
-//
-// A marked cell is judged on its marked command, and a marked comment is refused
-// too: the marker names the command to run, and a comment runs nothing (review
-// F2; statusgen refuses it the same way). An unmarked cell is judged on BOTH
-// lifts: statusgen's (the first code span, firstSpan) and this package's legacy
-// Lift (the whole unwrapped cell, which is what runs). Either one comment-only
-// refuses the cell, so a cell statusgen records could-not-run is never one these
-// executors run. Both modules are held to the "cells" section of
-// statusgen/testdata/shell-comment-vectors.json.
+// comment, or "" when it is not. A marked cell is judged on its marked command,
+// and a marked comment is refused too: the marker names the command to run, and
+// a comment runs nothing (#2684 review F2). An unmarked cell is judged on its
+// first code span, which is both statusgen's lift and the string these executors
+// run (#3147), so the predicate and the executed string can no longer differ
+// (#2684 review S1).
 func CommentLed(cell string) string {
 	if c, ok := Marked(cell); ok {
 		if CommentOnly(c) {
@@ -115,24 +132,68 @@ func CommentLed(cell string) string {
 		}
 		return ""
 	}
-	if CommentOnly(firstSpan(cell)) || CommentOnly(stripInlineCode(cell)) {
+	if CommentOnly(firstSpan(cell)) {
 		return UnmarkedCommentWhy
 	}
 	return ""
 }
 
-// The could-not-run reasons CommentLed returns. Each names the remedy that fits:
+// Refused returns why the command a Verify Command cell names must not run, or ""
+// when Lift(cell) may run. It refuses what statusgen refuses, in statusgen's
+// order: a shell comment (CommentLed); a shell no-op (NoOp), marked or not; for
+// an unmarked cell, a first span that is a prose mention rather than a command
+// (statusgen's proseLedCommandWhy, ported); and a lift that is blank. An executor
+// records a refused row could-not-run and never executes it. The executors and
+// statusgen are held to the "cells" section of
+// statusgen/testdata/shell-comment-vectors.json, verdict for verdict (#3147).
+func Refused(cell string) string {
+	if why := CommentLed(cell); why != "" {
+		return why
+	}
+	lift := Lift(cell)
+	if NoOp(lift) {
+		return NoOpWhy
+	}
+	if _, ok := Marked(cell); !ok {
+		if why := proseLed(cell); why != "" {
+			return "the first code span is " + why + ", not a command; " + proseLedFix
+		}
+	}
+	if strings.TrimSpace(lift) == "" {
+		return NoCommandWhy
+	}
+	return ""
+}
+
+// CommandRefused judges an already-lifted command for a row that carries no
+// cell: why it must not run (blank, a shell comment, or a no-op), or "".
+func CommandRefused(cmd string) string {
+	switch {
+	case strings.TrimSpace(cmd) == "":
+		return NoCommandWhy
+	case CommentOnly(cmd):
+		return UnmarkedCommentWhy
+	case NoOp(cmd):
+		return NoOpWhy
+	}
+	return ""
+}
+
+// The could-not-run reasons Refused returns. Each names the remedy that fits:
 // a marked row is already marked, so it needs the comment replaced.
 const (
 	MarkedCommentWhy   = "the `cmd:`-marked command is only a shell comment, so it runs nothing; replace it with the command that performs the check"
 	UnmarkedCommentWhy = "the Verify command is a shell comment (an inline heading such as `## Coverage` lifts as one), so it runs nothing; mark the real command with a `cmd:` code span, or keep the row a manual procedure with its evidence"
+	NoOpWhy            = "the Verify command is a shell no-op (`:` or a cmd.exe REM / `::` remark), so it exits 0 having checked nothing; replace the no-op with the command that performs the check"
+	NoCommandWhy       = "the Verify command cell names no command (its first code span is blank)"
+	proseLedFix        = "mark the command with a `cmd:` code span"
 )
 
 // firstSpan is statusgen's unmarked lift (statusgen/verifyrows.go codeSpan),
-// ported so CommentLed judges the string statusgen judges: the content of the
+// ported so these executors run the string statusgen runs: the content of the
 // cell's first code span — a run of N backticks closing at the next run of N, an
 // unclosed run taking the rest of the cell — or the trimmed cell when it has no
-// backtick. It is a judging lift only; Lift stays the executed one.
+// backtick.
 func firstSpan(cell string) string {
 	s := strings.TrimSpace(cell)
 	start := strings.Index(s, "`")
@@ -148,15 +209,114 @@ func firstSpan(cell string) string {
 	return strings.TrimSpace(rest[:end])
 }
 
-// stripInlineCode unwraps a `…` inline-code span that wraps the whole cell; a
-// cell with no wrapping backticks passes through unchanged.
-func stripInlineCode(s string) string {
-	s = strings.TrimSpace(s)
-	if len(s) >= 2 && strings.HasPrefix(s, "`") && strings.HasSuffix(s, "`") {
-		return strings.TrimSpace(strings.Trim(s, "`"))
+// codeSpans is statusgen's codeSpans, ported: the content of every terminated
+// code span in cell, in order, each trimmed. An unterminated span ends the scan.
+func codeSpans(cell string) []string {
+	var out []string
+	s := cell
+	for {
+		start := strings.Index(s, "`")
+		if start < 0 {
+			return out
+		}
+		fence := strings.Repeat("`", backtickRun(s, start))
+		rest := s[start+len(fence):]
+		end := strings.Index(rest, fence)
+		if end < 0 {
+			return out
+		}
+		out = append(out, strings.TrimSpace(rest[:end]))
+		s = rest[end+len(fence):]
 	}
-	return s
 }
+
+// proseOutsideSpans is statusgen's proseOutsideSpans, ported: the cell with every
+// terminated code span removed, trimmed.
+func proseOutsideSpans(cell string) string {
+	var b strings.Builder
+	s := cell
+	for {
+		start := strings.Index(s, "`")
+		if start < 0 {
+			b.WriteString(s)
+			break
+		}
+		b.WriteString(s[:start])
+		fence := strings.Repeat("`", backtickRun(s, start))
+		rest := s[start+len(fence):]
+		end := strings.Index(rest, fence)
+		if end < 0 {
+			b.WriteString(s[start:])
+			break
+		}
+		s = rest[end+len(fence):]
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// proseLed is statusgen's proseLedCommandWhy for an unmarked cell whose lift is
+// neither a comment nor a no-op, ported: why the first code span is a prose
+// MENTION rather than a command, or "". A cell that is one span and nothing else,
+// and a first span with whitespace in it, are never flagged.
+func proseLed(cell string) string {
+	spans := codeSpans(cell)
+	if len(spans) == 0 {
+		return ""
+	}
+	if len(spans) == 1 && proseOutsideSpans(cell) == "" {
+		return ""
+	}
+	first := spans[0]
+	if first == "" || strings.ContainsAny(first, " \t") {
+		return ""
+	}
+	return proseLedShape(first, spans[1:])
+}
+
+// proseLedShape is statusgen's proseLedShape, ported verbatim in behaviour.
+func proseLedShape(first string, later []string) string {
+	ext := strings.ToLower(filepath.Ext(first))
+	switch {
+	case first == Marker:
+		return "a bare mention of the `cmd:` marker (a marker needs a command after it)"
+	case strings.HasPrefix(first, ".") && !strings.HasPrefix(first, "./") && !strings.HasPrefix(first, "../") && first != ".":
+		return "a file extension or dotfile name"
+	case nonExecExtensions[ext]:
+		return "a " + ext + " file name"
+	case strings.Contains(first, "/") && !scriptExtensions[ext] &&
+		!strings.HasPrefix(first, "./") && !strings.HasPrefix(first, "../") &&
+		!strings.HasPrefix(first, "/") && !strings.HasPrefix(first, "~") && !strings.HasPrefix(first, "$"):
+		return "a path or `owner/repo` / `stream/NN` reference"
+	case codeIdentRe.MatchString(first) && (strings.ToLower(first) != first || strings.HasSuffix(first, "()")):
+		return "a code identifier"
+	case bareWordRe.MatchString(first):
+		for _, sp := range later {
+			if strings.ContainsAny(strings.TrimSpace(sp), " \t") {
+				return "a lone word mentioned ahead of the command span"
+			}
+		}
+	}
+	return ""
+}
+
+// nonExecExtensions, scriptExtensions, codeIdentRe and bareWordRe are statusgen's
+// (statusgen/verifyrows.go), ported for proseLedShape.
+var nonExecExtensions = map[string]bool{
+	".go": true, ".md": true, ".yaml": true, ".yml": true, ".json": true, ".jsonl": true,
+	".toml": true, ".txt": true, ".mod": true, ".sum": true, ".ts": true,
+	".tsx": true, ".js": true, ".html": true, ".css": true, ".csv": true, ".lock": true,
+	".xml": true, ".proto": true, ".rs": true, ".tf": true, ".svg": true, ".png": true,
+	".pdf": true,
+}
+
+var scriptExtensions = map[string]bool{
+	".sh": true, ".bash": true, ".py": true, ".ps1": true, ".exe": true, ".rb": true, ".pl": true,
+}
+
+var (
+	codeIdentRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*(\(\))?$`)
+	bareWordRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+)
 
 // renderedCodeSpans returns every code span a renderer displays in cell, trimmed
 // and with how it sits in the cell, and plain=false when the cell's prose

@@ -309,6 +309,10 @@ worktree, the shims, the pinned model and the `/assay:<role>` first prompt are t
 
 ## Scrubbed cells — `--kind scrubbed`
 
+Cell-owned Kimi/provider credentials and an optional Herdr display are described in
+[cellctl-scrubbed-providers.md](cellctl-scrubbed-providers.md). These opt-in paths retain
+the private session and composed environment described below.
+
 A house cell keeps the operator's real `HOME` on purpose (*Why the session keeps the real `HOME`*
 above) — the desks ARE the operator's desks. A **scrubbed** cell is the opposite case: a harness
 that must run on THIS laptop but must NOT inherit anything of the launching shell — no real
@@ -370,8 +374,13 @@ live launch all trace back to; the shell oracle's `SCRUBBED_ENV_KEYS` declares t
 | TERM | passed through from the parent — a TUI harness needs it |
 | LANG | passed through from the parent |
 
+A configured cell-owned provider adds its endpoint, token and model aliases to the final
+harness environment only, after the secret-free launch plan. Herdr/provider launches
+set `ASSAY_COCKPIT=tmux` for child worktree handling. These additions never import host
+credentials; see the linked provisioning and lifecycle contract above.
+
 `CODEX_HOME` and `CLAUDE_CONFIG_DIR` are mutually exclusive — only the active harness's variable
-is ever exported. No `SSH_AUTH_SOCK`, no `GH_TOKEN`, no `ANTHROPIC_*`, no `AWS_*`, and no
+is ever exported. No `SSH_AUTH_SOCK`, no `GH_TOKEN`, no inherited `ANTHROPIC_*`, no `AWS_*`, and no
 wholesale parent `PATH` — the harness's own directory is the ONE parent-derived `PATH` element,
 resolved once (`command -v`) before the launch switches to `env -i`, and named rather than
 inherited wholesale.
@@ -769,8 +778,10 @@ cockpit in its environment as `ASSAY_COCKPIT`:
 - The cell's value always wins over an `ASSAY_COCKPIT` the launching shell happened to carry.
 - `cellctl check <cell>` prints the value and the arm it selects on the line after the cockpit row:
   `ok    ASSAY_COCKPIT=tmux exported into every role window (worker-desk worktree arm: plain git worktree add, no cockpit CLI needed)`.
-- A scrubbed cell composes its own environment and opens no cockpit, so its windows carry none. Nor
-  does an `--automate` run (below), which the cockpit launches, not `cellctl`.
+- A scrubbed cell retains private tmux as process owner; an explicit Herdr setting
+  displays that session. Its child worktree handler uses tmux (plain git), as described
+  in the scrubbed provider/display contract.
+- An `--automate` run (below) carries no cockpit value; the cockpit launches it.
 
 With no cell at all, nothing exports `ASSAY_COCKPIT`, and the worker-desk step keeps its own
 presence-on-PATH order. That skill also accepts `supacode` and `plain` as values an operator may

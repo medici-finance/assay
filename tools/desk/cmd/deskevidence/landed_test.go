@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -72,7 +73,7 @@ func landedStatusgenOnPath(t *testing.T) {
 	}
 	build := exec.Command("go", "build", "-o", filepath.Join(bin, name), ".")
 	build.Dir = "../../../../statusgen"
-	if out, err := build.CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 		t.Fatalf("build statusgen: %v %s", err, out)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))

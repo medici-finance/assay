@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
 )
 
 // open.go — the --open orchestration: rewrite the ONE proven-stale Verify row, commit it on a
@@ -70,8 +71,7 @@ func computeNewRow(root string, row verifyRow, f RowFacts, cls Classification) (
 		if f.PathRef == "" || f.RenameHop == "" {
 			return "", "", false
 		}
-		newCommand = strings.ReplaceAll(newCommand, f.PathRef, f.RenameHop)
-		newExpect = strings.ReplaceAll(newExpect, f.PathRef, f.RenameHop)
+		newCommand, newExpect = renamed(newCommand, f), renamed(newExpect, f)
 		return newCommand, newExpect, newCommand != row.Command || newExpect != row.Expect
 	case SafeIdiom:
 		repl, ok := idiomReplacement[f.RetiredIdiom]
@@ -135,7 +135,7 @@ func applyRebaseline(content string, row verifyRow, newCommand, newExpect string
 		if !strings.HasPrefix(strings.TrimSpace(line), "|") {
 			continue
 		}
-		cells := splitRow(line)
+		cells := verifycmd.SplitRow(line)
 		if len(cells) == 0 {
 			continue
 		}
@@ -143,10 +143,11 @@ func applyRebaseline(content string, row verifyRow, newCommand, newExpect string
 			continue
 		}
 		// Substitute within the raw line so column layout and any surrounding backticks are
-		// preserved: replace the old command/expect text where it appears.
+		// preserved: replace the old command/expect text where it appears. row.Command is
+		// un-escaped, so it is matched (and written) in the line's own `\|` form (#1953).
 		updated := line
 		if newCommand != row.Command {
-			updated = strings.Replace(updated, row.Command, newCommand, 1)
+			updated = strings.Replace(updated, verifycmd.EscapePipes(row.Command), verifycmd.EscapePipes(newCommand), 1)
 		}
 		if newExpect != "" && newExpect != row.Expect {
 			updated = strings.Replace(updated, row.Expect, newExpect, 1)

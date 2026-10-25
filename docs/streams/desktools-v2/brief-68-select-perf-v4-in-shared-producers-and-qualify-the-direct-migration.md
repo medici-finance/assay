@@ -26,7 +26,7 @@ consumers:
   - "docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md: follow-up desktools-v2/68"
   - "docs/streams/desktools-v2/brief-62-instrument-desk-hot-paths-and-qualify-credential-and-startup-savings.md: follow-up desktools-v2/68"
   - "consumer binary pins: out-of-scope (ordinary published release/checksum rollout after implementation)"
-  - "performance-collection/: out-of-scope (parked; no activation)"
+  - "performance-collection/: out-of-scope (no activation in this brief)"
 ---
 
 # Brief 68 — Select perf-v4 in shared producers and qualify the direct migration
@@ -58,7 +58,7 @@ owners and completed evidence. Stop at implemented; independent verification own
 2. Qualify compiled desktoken and verifyloop plus statusgen through success, refusal and early-exit paths. Use fixture/offline provider seams only. Prove invocation identity is fresh, child/context isolation holds, tool profile carries no workflow linkage, and underlying command results remain unchanged on recorder errors.
 3. Exercise the file reader/reporter with new and historical records; record a truthful producer capability census, not an installed-fleet claim. Preserve unsupported/missing coverage and immutable v1-v3 history.
 4. Add dated amendments to unfinished statusgen/26 and desktools-v2/62 future format tasks, reader dependencies and relevant Verify cases while retaining their original snapshot/benchmark/phase requirements and prerequisites. Re-read active owners first; stop and hand off an owned conflict. Do not alter completed /63–65 Verify/Evidence or manufacture verification.
-5. Document ordinary release/checksum reader-before-writer consumer sequencing and reversible profile selection. Do not tag, install local builds, repin unpublished artifacts or activate parked performance-collection. Measure matched cold/warm overhead honestly, including full membership-validation cost; no cross-process startup-savings inference.
+5. Document ordinary release/checksum reader-before-writer consumer sequencing and reversible profile selection. Do not tag, install local builds, repin unpublished artifacts or activate performance-collection. Measure matched cold/warm overhead honestly, including full membership-validation cost; no cross-process startup-savings inference.
 
 ## Verify
 

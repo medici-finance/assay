@@ -427,6 +427,7 @@ const (
 	// whole trust configuration. Recognised, not applied. KEEP IN SYNC with
 	// deskkit/rosterconfig.go's EnvClaimStore / EnvClaimDir / EnvClaimSingleHost.
 	scanEnvClaimStore      = "ASSAY_CLAIM_STORE"
+	scanEnvUsageDir        = "ASSAY_USAGE_DIR" // Recognized; only deskusage consumes it.
 	scanEnvClaimDir        = "ASSAY_CLAIM_DIR"
 	scanEnvClaimSingleHost = "ASSAY_CLAIM_SINGLE_HOST"
 
@@ -510,7 +511,7 @@ func scanKnownRosterKeys() []string {
 		scanEnvRunCredentials,
 		// DESK-only, recognised-not-applied (the claim-store seam): the claim-store keys the
 		// desk tools' resolver consumes — see their declarations above.
-		scanEnvClaimStore, scanEnvClaimDir, scanEnvClaimSingleHost,
+		scanEnvClaimStore, scanEnvClaimDir, scanEnvClaimSingleHost, scanEnvUsageDir,
 		// DESK-only, recognised-not-applied (the auto-approve lane): the lane config keys the
 		// desk tools' lane parser consumes — see their declarations above.
 		scanEnvAutoApproveAreas, scanEnvAutoApproveEjectLine,

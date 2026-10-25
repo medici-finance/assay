@@ -476,7 +476,7 @@ prerequisite for local v3. Required audit, quota enforcement and custody are una
 Deliver through new /63 (schema/resolver/readers), /64 (launch and CLI/env context), /65
 (provider timing/cost), then unfinished /62 and statusgen/26. CLI migrations/new tools adopt
 this shared seam through cli-contract.md rather than duplicating parsers or stopping at v2
-collection. Preserve completed /61's implementation/Evidence; collection stays parked. The
+collection. Preserve completed /61's implementation/Evidence; collection's admission state is unchanged. The
 new implementation briefs carry their own disclosure gates; this authoring revision does
 not claim those gates passed or activate deployment.
 
@@ -505,3 +505,18 @@ Target-consumer clarification, 19 October 2026: graph-execution/22 directly cons
 parser port is withdrawn (medici-finance/assay#3409 merged, ruled at
 medici-finance/assay#3420), so /66 has no parser-port edge: writeguard keeps its current
 parser, routed exempt, and /66 owns the hook adapter. The guard controls are not retired.
+
+## Candidate-plus-priority integration — requested 23 October 2026
+
+Reuse [the efficiency contract](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+and its [owner reconciliation](../../desk-workflow-efficiency-change-map.md#candidate-plus-priority-ownership-reconciliation--23-october-2026).
+v2 supplies admitted typed access-pattern reads and custody, not a second queue policy or
+scheduler. /09's completed ReviewQueueSnapshot is reused unchanged until a measured missing
+input warrants a bounded backend extension. /20–21 coordinate CLI compatibility with
+existing desk-tools/39–43; parser work must not recreate classification or priority joins.
+
+Prose and discrete clients pass the same qualified observations to the existing pure role
+planner with explicit policy/time/capacity. Provider query count, points, pages and retained
+freshness are measured under the ranked model; claims/effects stay with their role executor.
+The public direct-reader bridge remains independent of R6. Do not modify completed /09
+Evidence, add an authenticated read to an offline library or revive withdrawn core plans.

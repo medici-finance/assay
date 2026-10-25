@@ -610,6 +610,69 @@ rows_passed=15 rows_total=15 by direct run. No row failed. The execution witness
 
 **The board row is not changed by this run and stays `implemented`.**
 
+### Non-implementer verifier re-run — 2026-10-24 assay-verifier-app[bot] @ 385cb29e5682 (claude-opus-5-5)
+
+Sixth verify pass, on merged main 385cb29e5682dcb9a886b298076f722b4823ec1b, in a clean detached worktree cut at that commit. The verifier did not implement this item. Prior attempts: 2026-09-19/20 FAIL (row 1 shellcheck), 2026-09-23 FAIL (row 1; check:ci rows could-not-check), 2026-10-01, 2026-10-09 and 2026-10-11 BLOCKED (no check:ci witness), and 2026-10-15 BLOCKED at 44054ca37568 (15/15 exit 0 by direct run on darwin, no check:ci witness). This run is the first to produce that witness, and it is the first to run the rows on Linux.
+
+Expected values, taken from the brief before any row ran: every row exits 0, and row 13 prints 1.
+
+How the rows ran. Admission (`deskdispatch --check-verifier`) passed first. The whole table was split into two disjoint selections that together cover all 15 rows:
+- Rows 1 to 10 and 15 ran inside one admission bracket. The host opened it with `statusgen verifyrun --open-bracket`. The container then ran `statusgen verifyrun --sandbox=container-netns --rows 1,2,3,4,5,6,7,8,9,10,15` in the pinned verify-runner v1.0.59 image (linux/amd64, `--network none`, read-only root, all capabilities dropped, uid 501). The worktree was bind-mounted read-only at /work with no gitdir. The host closed the bracket with `--close-bracket`, and `--bracket-digest` on the witness file reports `verdict=match`.
+- Rows 11 to 14 ran on the host with `statusgen verifyrun --rows 11,12,13,14 --dry-run`. Its output was captured outside the worktree, so the worktree stayed clean through every run and through the bracket close.
+
+The bracket's witness is below, as the tool wrote it, unchanged.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `shellcheck tools/cellctl/testdata/cellctl-shell-oracle.sh` | could-not-run exit=127 sandbox=container-netns — the shell could not execute the command (exit 127) | sha256:ffe102138d8c | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-pass` | fail exit=1 sandbox=container-netns | sha256:0a1529f2d106 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case env-scrub` | fail exit=3 sandbox=container-netns | sha256:fa8cd772e0d2 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case plan-grammar` | fail exit=1 sandbox=container-netns | sha256:364ee6d8863b | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case smoke-ready` | pass exit=0 sandbox=container-netns | sha256:ffe0fc02199a | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case smoke-not-ready` | pass exit=0 sandbox=container-netns | sha256:75434b257259 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case lock` | fail exit=3 sandbox=container-netns | sha256:c5164e6d02c5 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-pem` | fail exit=1 sandbox=container-netns | sha256:9e2de1430e83 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `bash tools/cellctl/tests/house-cell.test.sh` | pass exit=0 sandbox=container-netns | sha256:42357ffdc08e | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-roster` | pass exit=0 sandbox=container-netns | sha256:98f07031cd37 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 15 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-home-mode` | fail exit=1 sandbox=container-netns | sha256:30695d9a04b1 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:98685d6717c495aecd71bc3b8cb782aa9cc7dc0ac1332b029f60eb2c3a1c1104
+Container-Image: sha256:c2e32c7ff99f67951174e8ff835d928d8999b1bb2ecdc7c63d3775528178640e
+Verification-Attestation: medici-finance/assay#4313 run=f66c23f8034e17f522fb96c077f305e7ea7493aa1d97538f9b0a47423433a685 source=385cb29e5682dcb9a886b298076f722b4823ec1b brief=docs/streams/desk-containers/brief-09-scrubbed-host-cell.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=f66c23f8034e17f522fb96c077f305e7ea7493aa1d97538f9b0a47423433a685 source=385cb29e5682dcb9a886b298076f722b4823ec1b tree=sha256:98685d6717c495aecd71bc3b8cb782aa9cc7dc0ac1332b029f60eb2c3a1c1104 witness=sha256:30e873cfdb6d88a38e89d98c9859b77c721d96e79c7a5de69a03fc0adc586d44 opened=2026-10-24T18:18:39Z closed=2026-10-24T18:20:55Z before=receipt after=check-verifier
+
+The host run's own table follows, unchanged. Row 14 needs git history (`git merge-base`). It cannot run in the container, which has no gitdir, and on this darwin host the check:ci sandbox (`unshare --net`) does not exist.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 11 | `d=$(mktemp -d); mkdir -p "$d/x"; printf 'CELL_KIND=scrubbed\nCELL_REPO=%s\nCELL_REPO_SLUG=example-org/example-repo\nCELL_HARNESS=codex\n' "$PWD" > "$d/x/cell.env"; b="$(mktemp -d)/cellctl"; (cd tools/desk && go build -o "$b" ./cmd/cellctl); CELLS_ROOT="$d" "$b" check x; test $? -eq 1` | pass exit=0 | sha256:1a4064018ed5 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `for k in HOME ZDOTDIR PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR DESK_LOOP DESK_SESSION DESK_ROOTS; do grep -qF "\| $k \|" docs/cellctl.md \|\| { echo "missing env row: $k"; exit 1; }; done` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 13 | `grep -c '^## Scrubbed cells' docs/cellctl.md` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+| 14 | `statusgen --consumers --root . --base $(git merge-base origin/main HEAD)` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-10-24 | assay-verifier-app[bot] @ 385cb29e5682 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4313 run=f66c23f8034e17f522fb96c077f305e7ea7493aa1d97538f9b0a47423433a685 source=385cb29e5682dcb9a886b298076f722b4823ec1b brief=docs/streams/desk-containers/brief-09-scrubbed-host-cell.md model=claude-opus-5-5 tier=strong
+
+What each non-pass means. Diagnostic re-runs were made in the same image against a `git archive` copy of the tree at 385cb29e5682, outside the worktree. They are not credited.
+- **Row 4 is a real failure, on every platform.** Its last assertion fails in a clean environment: `plan-grammar: [plan] env KEY set equals SCRUBBED_ENV_KEYS minus the inactive harness var`. The plan prints 18 keys. The expected set has 19, and the missing key is `ASSAY_TELEMETRY`. #3050 (c893a16f2, merged 2026-10-15, after the last pass) added `ASSAY_TELEMETRY` to `SCRUBBED_ENV_KEYS` at tools/cellctl/testdata/cellctl-shell-oracle.sh:2023. But the oracle prints that key only when the launching shell exports it (:1355, :2051), and the case still demands the whole allowlist. In the same image with `ASSAY_TELEMETRY=1` exported, the case passes. On the darwin host with `ASSAY_TELEMETRY` unset, it fails the same way. So the earlier darwin passes depended on the operator's environment.
+- **Rows 2, 8 and 15 are real failures on Linux.** These are the custody mode checks. Row 2 has 4 FAIL lines: exits 0, all preconditions met, PEM row ok, config home mode 0700 row ok. Row 8 fails `a regular 0600 PEM is ok`. Row 15 fails `0700 config home is ok`. The cause is `scrubbed_mode_is` (oracle :1678-1682), which runs `stat -f '%Lp' "$p" || stat -c '%a' "$p"`. With GNU coreutils 9.1, `-f` means `--file-system`. stat treats `%Lp` as a missing file, prints the file-system block for `$p`, and exits 1. The fallback then appends `700`. The captured value is 6 lines long and never equals `700` or `600`, so every correctly-moded file is reported MISS. On darwin (BSD stat), the same three cases exit 0. The Go launcher's `modeIs` (tools/desk/cmd/cellctl/check.go:430, :470) uses os.Stat and is not affected.
+- **Rows 3 and 7 are an instrument limit, not a deliverable verdict.** Both exit 3 with `cellctl: desk: tmux is required for a scrubbed cell (the private-socket session) and is not on PATH` (oracle :2136). The suite needs a real tmux, and the pinned image has none.
+- **Row 1 is an instrument limit.** It is could-not-run, exit 127, because shellcheck is not in the pinned image.
+- **Row 14 is an instrument limit.** It is could-not-run, per the host table above.
+- Rows 5, 6, 9 and 10 pass in the container. Rows 11, 12 and 13 pass on the host, and row 13 printed `1` (its output digest sha256:4355a46b19d3 is the sha256 of `1` plus a newline).
+
+Findings carried from 2026-10-15 were not re-examined in this run. They are: 1, row 3 asserts less than its Expect; 2, the Go launcher fails check-pass (#2465); 3, a parent-exported CELL_PATH replaces the PATH tail; 4, the sources cite the removed tools/cellctl/cellctl (#1968).
+
+RISK-BEARING VALUE. The brief's four risk answers are all no, and the gate is model. The literals were enumerated again at 385cb29e5682. Their values have not changed; only the oracle line numbers moved.
+- RISK-VALUE: DERIVED — pem-mode = 0o600 @ tools/desk/cmd/cellctl/check.go:470 (oracle :1719) — owner-only read and write is the narrowest mode that still lets the owning user's desk tools read an App private key. Note that on Linux the oracle's probe for this value is broken (rows 2 and 8 above).
+- RISK-VALUE: DERIVED — config-home-mode = 0o700 @ tools/desk/cmd/cellctl/check.go:430 (oracle :1695) — owner-only list and traverse is the minimum the owner needs on the directory holding the keys. The oracle's probe for it is broken on Linux in the same way (rows 2 and 15).
+- RISK-VALUE: DERIVED — scrubbedPathTail = "/usr/bin:/bin:/usr/sbin:/sbin" @ tools/desk/cmd/cellctl/envkeys.go:89 (oracle :2079) — the four standard system directories, with no parent PATH inherited.
+- Lower-ranked and unchanged: the env allowlist (tools/desk/cmd/cellctl/env.go:19-23, oracle :2023, now 20 keys including ASSAY_TELEMETRY), the lock-refusal exit code 4 (tools/desk/cmd/cellctl/lock.go:28), and the smoke prompt (tools/desk/cmd/cellctl/smoke.go:47, oracle :2599). These are reversible by an edit and a redeploy.
+
+Accounting: one container attempt was refused before any row ran. That attempt used a `-v` mount, and the tool reported `container admission refused; no Verify rows executed: the mounted root ... digests to sha256:e3b0c442...`. It produced no witness. The run was repeated under the same receipt with `--mount type=bind`, and that repeat produced the witness above. No other run was discarded.
+
+rows_passed=7 rows_total=15. The witnessed results are: rows 5, 6, 9 and 10 pass in the container; rows 11, 12 and 13 pass on the host; rows 2, 4, 8 and 15 fail on deliverable defects; rows 3 and 7 are blocked by the missing tmux; rows 1 and 14 are could-not-run.
+
+**VERIFY: FAIL** — witnessed under container-netns at 385cb29e5682. Row 4 fails on every platform: #3050 put `ASSAY_TELEMETRY` in the allowlist, but the oracle prints the key only when the launching shell exports it. Rows 2, 8 and 15 fail on Linux: the oracle's `stat -f || stat -c` mode probe misreads GNU stat. Rows 1, 3, 7 and 14 are instrument limits (no shellcheck or tmux in the pinned image, and row 14 needs git and unshare).
+
+**The board row is not changed by this run and stays `implemented`.**
 
 ## Review
 Gate: model (all four risk answers no — a new cell kind plus three verbs on a host launcher;

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/deskcore/writepolicy"
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 func buildHook(t *testing.T) string {
@@ -21,7 +22,7 @@ func buildHook(t *testing.T) string {
 	bin := filepath.Join(t.TempDir(), "writeguard")
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local")
-	if out, err := cmd.CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
 		t.Fatalf("build hook: %v\n%s", err, out)
 	}
 	return bin
@@ -65,7 +66,7 @@ func pinHookBuildCaches(t *testing.T) {
 	t.Helper()
 	cmd := exec.Command("go", "env", "-json", "GOMODCACHE", "GOCACHE")
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local")
-	out, err := cmd.CombinedOutput()
+	out, err := goquiet.Cmd(cmd).CombinedOutput()
 	if err != nil {
 		t.Fatalf("resolve source build caches: %v\n%s", err, out)
 	}
@@ -357,7 +358,7 @@ func hookPolicyMutations(t *testing.T) {
 			run := func(childEnv []string) ([]byte, error) {
 				cmd := exec.Command("go", "test", "-v", "-count=1", "-timeout=45s", "-run", m.test, pkg)
 				cmd.Dir, cmd.Env = dir, childEnv
-				return cmd.CombinedOutput()
+				return goquiet.Cmd(cmd).CombinedOutput()
 			}
 			fixture := strings.Trim(m.test, "^$")
 			out, err := run(env)
@@ -421,7 +422,7 @@ func hookUnknownOutcomeMutation(t *testing.T) {
 		cmd := exec.Command("go", "test", "-overlay", overlayPath, "-v", "-count=1", "-timeout=45s", "-run", "^TestHookOutcomeMapping$", "./cmd/writeguard")
 		cmd.Dir = filepath.Join(root, "tools", "desk")
 		cmd.Env = append(os.Environ(), "GOFLAGS=", "WRITEPOLICY_BASELINE_BIN=")
-		return cmd.CombinedOutput()
+		return goquiet.Cmd(cmd).CombinedOutput()
 	}
 	if out, err := run(); err != nil || !strings.Contains(string(out), "--- PASS: TestHookOutcomeMapping ") {
 		t.Fatalf("unmutated adapter fixture did not pass: %v\n%s", err, out)

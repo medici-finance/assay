@@ -12,6 +12,7 @@ require (
 	github.com/medici-finance/assay/deskcore v0.0.0-00010101000000-000000000000
 	github.com/medici-finance/assay/forgeread v0.0.0-00010101000000-000000000000
 	github.com/medici-finance/assay/gitquiet v0.0.0-00010101000000-000000000000
+	github.com/medici-finance/assay/statusgen v0.0.0-00010101000000-000000000000
 	github.com/medici-finance/assay/perfrec v0.0.0-00010101000000-000000000000
 	github.com/spf13/cast v1.7.1
 	github.com/spf13/cobra v1.10.2
@@ -81,3 +82,5 @@ replace github.com/medici-finance/assay/perfrec => ../../perfrec
 replace github.com/medici-finance/assay/gitquiet => ../../gitquiet
 
 replace github.com/medici-finance/assay/deskcore => ../../deskcore
+
+replace github.com/medici-finance/assay/statusgen => ../../statusgen

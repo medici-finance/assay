@@ -263,10 +263,13 @@ func printPlan(w io.Writer, lb loadedBrief, row verifyRow, f RowFacts, cls Class
 		if f.RenameHop != "" {
 			fmt.Fprintf(w, " rename-hop=%s", f.RenameHop)
 		}
+		if f.RenameProbe != "" {
+			fmt.Fprintf(w, " rename-rerun=%s", f.RenameProbe)
+		}
 		fmt.Fprintln(w)
 	}
 	if f.CommandProbed {
-		fmt.Fprintf(w, "evidence: command-probed ran=%t result-differs=%t\n", f.CommandRan, f.RCDiffers)
+		fmt.Fprintf(w, "evidence: command-probed ran=%t fails-expect=%t\n", f.CommandRan, f.RCDiffers)
 	}
 	if cls.Verdict.IsSafe() {
 		branch := rebaselineBranch(lb.Path, row.Num)

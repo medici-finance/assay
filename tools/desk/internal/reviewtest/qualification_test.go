@@ -12,11 +12,13 @@ import (
 	"reflect"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 	q "github.com/medici-finance/assay/tools/desk/internal/reviewtest"
@@ -57,7 +59,7 @@ func build(t *testing.T) string {
 			cmd := exec.CommandContext(ctx, "go", "test", "-c", "-o", filepath.Join(binaries.dir, tool+".test"), "./cmd/"+tool)
 			cmd.Dir = moduleRoot(t)
 			cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOSUMDB=off")
-			b, e := cmd.CombinedOutput()
+			b, e := goquiet.Cmd(cmd).CombinedOutput()
 			cancel()
 			if e != nil {
 				binaries.err = fmt.Errorf("build %s: %w\n%s", tool, e, b)
@@ -107,7 +109,11 @@ func probe(t *testing.T, bin, tool string, request q.Request, root string) (q.Re
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, filepath.Join(bin, tool+".test"), "-test.run=^TestQualificationProbe$", "-test.v")
+	probeName := "TestQualificationProbe"
+	if strings.HasPrefix(request.Case, "queue-") {
+		probeName = "TestQueueBridgeProbe"
+	}
+	cmd := exec.CommandContext(ctx, filepath.Join(bin, tool+".test"), "-test.run=^"+probeName+"$", "-test.v")
 	cmd.Dir = dir
 	cmd.Env = append(isolatedEnv(dir), q.RequestEnv+"="+in, q.ResponseEnv+"="+out)
 	v := invocation{Tool: tool, Start: time.Now()}
@@ -118,7 +124,7 @@ func probe(t *testing.T, bin, tool string, request q.Request, root string) (q.Re
 		v.OwnCPUMs = &cpu
 		v.Exit = cmd.ProcessState.ExitCode()
 	}
-	if e != nil || !strings.Contains(string(log), "--- PASS: TestQualificationProbe ") {
+	if e != nil || !strings.Contains(string(log), "--- PASS: "+probeName+" ") {
 		t.Fatalf("%s/%s probe: %v\n%s", tool, request.Case, e, log)
 	}
 	b, e = os.ReadFile(out)
@@ -366,7 +372,7 @@ func buildMutant(t *testing.T, tool, relative, old, replacement string) string {
 	cmd := exec.CommandContext(ctx, "go", "test", "-overlay", path, "-c", "-o", filepath.Join(dir, tool+".test"), "./cmd/"+tool)
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOSUMDB=off")
-	if b, err := cmd.CombinedOutput(); err != nil {
+	if b, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
 		t.Fatalf("build production mutation: %v\n%s", err, b)
 	}
 	return dir
@@ -382,10 +388,51 @@ func withoutPrintedRow(output, id string) string {
 	return strings.Join(kept, "\n")
 }
 
+// Expect is the literal, separately authored result for the whole cohort.
 type cohort struct {
-	Name, Cache, BoardCase, IssueCase string
-	Size, Concurrency, Cycles         int
+	Name, Cache, BoardCase, IssueCase, Expect string
+	Size, Concurrency, Cycles                 int
 }
+
+const partialResult = "failed-or-partial"
+
+// cohortResult reads every invocation's own exit and, for board observations,
+// both partial-population signals. A board observation that omits either signal
+// is an error, never a clean read; any nonzero count is partial, not only one.
+func cohortResult(events []invocation) (string, error) {
+	result := "ok"
+	for i, v := range events {
+		if v.Exit != 0 {
+			result = partialResult
+		}
+		o := v.Observation
+		if o == nil {
+			continue
+		}
+		if o.Exit != 0 {
+			result = partialResult
+		}
+		if v.Tool != "deskboard" {
+			continue
+		}
+		degraded, err := strconv.Atoi(o.Facts["degradedRows"])
+		if err != nil || degraded < 0 {
+			return "", fmt.Errorf("invocation %d (deskboard): degradedRows unreadable: %q", i, o.Facts["degradedRows"])
+		}
+		if degraded > 0 {
+			result = partialResult
+		}
+		switch o.Facts["truncated"] {
+		case "true":
+			result = partialResult
+		case "false":
+		default:
+			return "", fmt.Errorf("invocation %d (deskboard): truncated unreadable: %q", i, o.Facts["truncated"])
+		}
+	}
+	return result, nil
+}
+
 type manifest struct {
 	Schema         string            `json:"schema"`
 	Revision       string            `json:"revision"`
@@ -460,7 +507,7 @@ func gitFixture(t *testing.T, root string) (string, string, string) {
 	return dir, git("rev-parse", "HEAD^"), git("rev-parse", "HEAD")
 }
 
-// regression: #3768
+// regression: #3768, #3871
 func TestCostCohort(t *testing.T) {
 	bin := build(t)
 	var cohorts []cohort
@@ -490,16 +537,17 @@ func TestCostCohort(t *testing.T) {
 		binaryHashes[tool] = fmt.Sprintf("%x", sha256.Sum256(b))
 	}
 	var reports []manifest
+	var partialRuns [][]invocation
 	for _, c := range cohorts {
 		t.Run(c.Name, func(t *testing.T) {
-			if c.Size < 1 || c.Concurrency < 1 || c.Cycles < c.Concurrency {
+			if c.Size < 1 || c.Concurrency < 1 || c.Cycles < c.Concurrency || (c.Expect != "ok" && c.Expect != partialResult) {
 				t.Fatal("invalid cohort")
 			}
 			fixtureRoot := t.TempDir()
 			gitDir, base, head := gitFixture(t, fixtureRoot)
 			before, beforeOK := perfrec.CPUMillis()
 			m := manifest{Schema: "review-cost-fixture-v1", Revision: revision, Dirty: dirty, FixtureSHA256: digest, ToolVersion: "source test binaries; " + runtime.Version(), BinarySHA256: binaryHashes, PluginVersion: "not invoked; caller-only/combined arm unqualified", Host: fmt.Sprintf("%s/%s CPUs=%d GOMAXPROCS=%d", runtime.GOOS, runtime.GOARCH, runtime.NumCPU(), runtime.GOMAXPROCS(0)),
-				Method: "prebuilt command test adapters; literal oracle; local transport; fixture setup/build excluded", Seed: 37, Arm: "tool-only", Supervision: "fixed: board + plan + dispatch for each review candidate + local git agent + issue scan", Cohort: c, Result: "ok", Start: time.Now(), Coverage: map[string]string{
+				Method: "prebuilt command test adapters; literal oracle; local transport; fixture setup/build excluded", Seed: 37, Arm: "tool-only", Supervision: "fixed: board + plan + dispatch for each review candidate + local git agent + issue scan", Cohort: c, Start: time.Now(), Coverage: map[string]string{
 					"ownCpu":        "OS ProcessState user+system for direct subprocesses; parent RUSAGE_SELF where supported",
 					"descendantCpu": "unknown; direct-child measurements are not an inclusive process tree",
 					"http":          "issue enumeration: actual production HTTP attempts at transport; other typed fixtures bypass HTTP, coverage partial",
@@ -615,10 +663,11 @@ func TestCostCohort(t *testing.T) {
 				t.Fatal("missing cycle invocations")
 			}
 			attempts := 0
-			for _, v := range m.Invocations {
+			for i, v := range m.Invocations {
 				if v.Observation != nil {
-					if v.Observation.Exit != 0 || v.Observation.Facts["degradedRows"] == "1" {
-						m.Result = "failed-or-partial"
+					// Each enumeration records its own attempts; another cycle's cannot stand in.
+					if v.Tool == "issueboard" && len(v.Observation.Attempts) == 0 {
+						t.Fatalf("invocation %d: issue enumeration recorded no HTTP attempt", i)
 					}
 					for _, a := range v.Observation.Attempts {
 						attempts++
@@ -631,8 +680,16 @@ func TestCostCohort(t *testing.T) {
 			if attempts == 0 {
 				t.Fatal("production HTTP boundary was never exercised")
 			}
-			if c.Name == "failed" && m.Result != "failed-or-partial" {
-				t.Fatal("failed cohort read as success")
+			result, err := cohortResult(m.Invocations)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.Result = result
+			if m.Result != c.Expect {
+				t.Fatalf("cohort result=%s; want %s", m.Result, c.Expect)
+			}
+			if c.Expect == partialResult {
+				partialRuns = append(partialRuns, m.Invocations)
 			}
 			if unionWall(m.Invocations) > m.End.Sub(m.Start) {
 				t.Fatal("overlapping child wall double-counted")
@@ -640,6 +697,50 @@ func TestCostCohort(t *testing.T) {
 			reports = append(reports, m)
 			t.Logf("%s: cycles=%d invocations=%d HTTP attempts=%d result=%s; CPU/HTTP coverage partial", c.Name, c.Cycles, len(m.Invocations), attempts, m.Result)
 		})
+	}
+	// Plant partial signals on a real degraded run, reusing the classifier above.
+	// The zeroed control proves the count is that run's only partial signal.
+	var degradedRun []invocation
+	for _, run := range partialRuns {
+		for _, v := range run {
+			if v.Tool == "deskboard" && v.Observation.Facts["degradedRows"] != "0" {
+				degradedRun = run
+			}
+		}
+	}
+	if degradedRun == nil {
+		t.Fatal("no cohort observed a degraded board row")
+	}
+	for _, plant := range []struct{ degraded, truncated, want string }{
+		{"0", "false", "ok"},
+		{"2", "false", partialResult},
+		{"0", "true", partialResult},
+		{"", "false", ""},
+		{"0", "", ""},
+	} {
+		changed := append([]invocation(nil), degradedRun...)
+		for i, v := range changed {
+			if v.Tool != "deskboard" {
+				continue
+			}
+			o := *v.Observation
+			o.Facts = map[string]string{}
+			for k, x := range v.Observation.Facts {
+				o.Facts[k] = x
+			}
+			for k, x := range map[string]string{"degradedRows": plant.degraded, "truncated": plant.truncated} {
+				if x == "" {
+					delete(o.Facts, k)
+				} else {
+					o.Facts[k] = x
+				}
+			}
+			changed[i].Observation = &o
+		}
+		got, err := cohortResult(changed)
+		if (plant.want == "") != (err != nil) || got != plant.want {
+			t.Fatalf("planted degradedRows=%q truncated=%q: result=%q err=%v; want %q", plant.degraded, plant.truncated, got, err, plant.want)
+		}
 	}
 	// A null measurement must survive serialization; unknown is never encoded as 0.
 	b, e := json.MarshalIndent(reports, "", "  ")

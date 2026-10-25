@@ -13,6 +13,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
 )
 
 // briefRow is one parsed stream-README table row plus its resolved brief file.
@@ -393,9 +394,8 @@ func headerIndex(line string) map[string]int {
 	return idx
 }
 
-func splitRow(line string) []string {
-	return strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
-}
+// splitRow is verifycmd.SplitRow: an escaped `\|` stays inside its cell (#1953).
+func splitRow(line string) []string { return verifycmd.SplitRow(line) }
 
 func normalizeMark(s string) string {
 	switch strings.TrimSpace(s) {
@@ -714,8 +714,10 @@ func deriveContentSignalsRows(fm *briefFrontmatter, rows []verifyRow) {
 	runnable := 0
 	lane, blocked := "", ""
 	for _, r := range rows {
-		rl := deriveOnlineLane(r.Command)
-		rb := deriveBlockedUntil(r.Command)
+		// The whole cell, not the lift: the lane and window phrases are prose
+		// around the command, which the first-span lift drops (#3147).
+		rl := deriveOnlineLane(r.Cell)
+		rb := deriveBlockedUntil(r.Cell)
 		if rl == "" && rb == "" {
 			runnable++
 			continue

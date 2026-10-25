@@ -25,6 +25,7 @@ const usage = `deskfile — filing gate: mandatory dedupe, class-issue attach, p
 USAGE:
   deskfile new    -R <owner/repo> --title <t> --body-file <f> [--label ...] [--raised-by <role>]
                   [--to <role>] [--force-new --reason <r>]
+                  [--for-pr <owner/repo>#<N> [--brief <id>]]
   deskfile attach -R <owner/repo> --to <N> --body-file <f> [--kind issue|mr]
   deskfile check  -R <owner/repo> --title <t>
   deskfile --version
@@ -38,6 +39,34 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
          (exit 4 over); attach comments are never budgeted. The budget is charged to the
          FILING agent's own session tag ($DESK_SESSION ahead of the harness session id a
          dispatched agent inherits), so each agent in a fan-out has its own 3.
+
+         WORKFLOW-BOUND FILINGS: --for-pr <owner/repo>#<N> [--brief <id>] files an issue
+         that a review or verification of open change request N requires. It is NOT counted
+         against the per-session budget above. The PR must be open, and --brief (or, when
+         omitted, the PR's own brief, if any) must resolve to a brief file that is the PR's
+         brief; otherwise the filing is REFUSED (exit 5; an unreadable PR or brief exits 6).
+         --brief without --for-pr, --force-file with --for-pr, and a -R other than the PR's
+         own repository are refused (exit 5). A PR with an Authors: trailer needs --brief
+         naming a brief whose file its diff touches; a qualified --brief needs the brief file
+         to carry a frontmatter brief: id, and a malformed frontmatter id is refused.
+         --for-pr does NOT bind the filer to the PR — any session may name any open PR. The
+         bound is the counting instead: a per-role, per-PR cap (knob
+         issue.file.bound_per_pr over issue.file.window; 0 = off, the default), where the
+         role is the one whose App token the session mints (selected by its desk loop,
+         DESK_LOOP), never --raised-by, --to or a per-role cap override; an unresolvable role
+         exits 6. The cap is read from the environment
+         (ASSAY_DESK_ISSUE_FILE_BOUND_PER_PR[__<ROLE>]) and the defaults only, and every
+         bound audit line records the cap in force and its source. The per-PR outward-write
+         tier still charges every bound filing, twice (the filing and its back-link). The
+         fixed repo-wide ceiling (20 writes per hour) does NOT count them: bound filings,
+         their back-links and attach --kind mr replies (audit verb attach-pr) are counted
+         by their own larger runaway backstop, the write.bound.repo_hour knob
+         (ASSAY_DESK_WRITE_BOUND_REPO_HOUR; default 60 per repo per hour; never off), whose
+         value and source are on every such audit line. Unbound filings keep the fixed
+         ceiling. Each bound filing is its own audit verb (new-bound) naming
+         the PR, role and brief. Over the cap: exit 4 with a retry-after. After filing, a
+         back-link comment is posted on the PR; if it cannot be confirmed the issue still
+         stands and the command exits 6 naming the URL — do not re-file.
 
          --raised-by <role> stamps the provenance label raised-by:<role> so the by-desk
          issue metric can attribute the filing. The role vocabulary is DERIVED from the
@@ -93,7 +122,8 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
          nothing to correct is not a skill-bug.
 
 attach — post an observation as a comment on issue N (a class issue or duplicate target).
-         Never budgeted. Refuses (exit 5) if N is CLOSED, with reopen-or-new guidance.
+         Never budgeted by the per-session rate; an attach to a change request (--kind mr) is
+         held by the PR-bound backstop above (exit 4 over), never by the fixed ceiling. Refuses (exit 5) if N is CLOSED, with reopen-or-new guidance.
          --kind states WHICH object N names: issue (the default — attach is an observation
          on an issue) or mr (pr is accepted as an alias). It matters on GitLab, where
          issues and merge requests are numbered in SEPARATE sequences and #N and !N

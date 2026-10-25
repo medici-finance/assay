@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -89,7 +90,7 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "statusgen")
 	build := exec.Command("go", "build", "-o", bin, ".")
 	build.Dir = "../../../../statusgen"
-	if out, err := build.CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 		t.Fatalf("build statusgen: %v %s", err, out)
 	}
 	for _, visibility := range []string{"public", "private"} {

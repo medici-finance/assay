@@ -517,6 +517,7 @@ func writeVerifierAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPl
 		"branch for implementation changes. An Evidence-only draft follows the deskevidence lane after verification. Do not adopt the implementer's `DESK_LOOP=worker-desk` identity — those belong to the "+
 		"worker kit, not this one. A verifier never sets verified/done itself and never flips a PR ready "+
 		"(per the standing verifier clauses below).\n\n", o.item, repo)
+	writeOutcomeRecordLine(b, plan, repo, home)
 	b.WriteString("Release the dispatch claim once your verdict has LANDED — Evidence recorded and the item " +
 		"advanced or routed to the human gate — not on a branch push, which is not this class's output:\n\n")
 	writeReleaseClaim(b, o, plan, repo)

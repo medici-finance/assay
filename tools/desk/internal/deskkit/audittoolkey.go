@@ -90,6 +90,7 @@ var canonicalToolKeys = map[string]struct{}{
 	"deskmonitor":       {},
 	"deskpathguard":     {},
 	"deskperf":          {},
+	"deskusage":         {},
 	"deskpins":          {},
 	"deskpost":          {},
 	"deskpr":            {},
@@ -131,6 +132,10 @@ var canonicalToolKeys = map[string]struct{}{
 	// VerdictIssueTool ("verifyloop-verdict") is metered separately from "verifyloop" on
 	// purpose (see VerdictIssueTool in ratelimit.go), so it must never collapse into it.
 	VerdictIssueTool: {},
+	// DeskrunReadTool ("deskrun-read") is deskrun's read verbs' ledger bucket, kept apart from
+	// "deskrun" so a read never reaches the write verbs' budget or breaker (ratelimit.go). An
+	// unregistered "deskrun-read" would token-match onto "deskrun" and defeat exactly that.
+	DeskrunReadTool: {},
 }
 
 // CanonicalToolKey resolves raw — a compiled-in tool constant, a binary basename, or a

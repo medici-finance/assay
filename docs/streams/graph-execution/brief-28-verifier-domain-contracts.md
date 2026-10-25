@@ -155,7 +155,11 @@ the candidate and acceptance-binding types instead of defining its own. graph-ex
 the same fixtures through old and new adapters. Unsupported mandatory fields and stale generations
 are refused, never ignored.
 
-## Verify
+### Consumer routing and acceptance boundary
+
+The immutable Verify section below retains the delivered acceptance definition.
+The following clarification retains its normative force for independent review;
+consumer ownership corroboration does not discharge required contract use.
 
 The named tests are deliverables of this brief and do not exist at a435badbd. Each must run
 production code with independent expected results; each +mutation row names a mutation that must
@@ -175,6 +179,25 @@ briefs without proving consumption. PR-range results are local sanity only and a
 row-10 delivery evidence. The writer of this brief does not assert post-merge verification
 here.
 
+Row 10 consumer expectation:
+
+exit 0 only for the named landed delivery and its actual first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; delivery-mode corroboration of follow-up graph-execution/23, /29 and /19 establishes owning-brief existence and routing only, not contract use; their required candidate-workspace, regression-adapter and durable-store consumption stays held until separately proved, regardless of corroborated ownership; the unchanged evaluator and deferred runtime-controller exclusions remain reviewer judgments, and omitted consumers remain a review obligation
+
+## Verify
+
+The named tests are deliverables of this brief and do not exist at a435badbd. Each must run
+production code with independent expected results; each +mutation row names a mutation that must
+turn its test red.
+
+For row 10, the independent verifier obtains the actual implementation delivery from the
+merged PR, records its full immutable SHA in `ASSAY_DELIVERY_SHA`, and records that
+commit's actual first-parent SHA in `ASSAY_DELIVERY_BASE_SHA`. Neither value defaults to
+HEAD, origin/main or a branch tip. Both commits must be available in the verification
+checkout; absent or unknown provenance fails closed. Record exact consumer result counts
+and resolve unchecked required consumers separately; zero disproofs alone is not complete
+flow coverage. A pre-merge PR-range check is local sanity only and is not row-10 delivery
+evidence. The writer of this brief does not assert post-merge verification here.
+
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 1 | check:ci +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainPathIsNotIdentity$" ./domain/ > "$out" && grep -F -- "--- PASS: TestDomainPathIsNotIdentity " "$out")` | exit 0; named PASS; a renamed brief file keeps its qualified identity and two files claiming one identity are refused; mutation: derive identity from the file path — the test must fail |
@@ -186,7 +209,7 @@ here.
 | 7 | check:ci +mutation | `(cd statusgen && name=$(GOWORK=off go list -f '{{.Name}}' ./domain/) && test "$name" = domain && bad=$(GOWORK=off go list -f '{{range .Imports}}{{if or (eq . "os") (eq . "os/exec") (eq . "net") (eq . "net/http") (eq . "syscall") (eq . "io/ioutil") (eq . "path/filepath")}}{{.}} {{end}}{{end}}' ./domain/) && test -z "$bad")` | exit 0; the package exists and imports no filesystem, process or network package; mutation: add an `os` import to the package — the row must fail |
 | 8 | check:ci +dereference | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainSchemaFixtures$" ./domain/ > "$out" && grep -F -- "--- PASS: TestDomainSchemaFixtures " "$out")` | exit 0; named PASS; every fixture under `statusgen/testdata/domain/` (planned) validates (positive) or is refused (negative) against `schemas/verification-domain-v1.json` (planned), and the spec names each schema record |
 | 9 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestDomainStageSeparation$" ./domain/ > "$out" && grep -Fq -- "--- PASS: TestDomainStageSeparation " "$out")` | exit 0; named PASS; the three stage combinations remain distinct; mutation: map execution success directly to accepted — the test fails |
-| 10 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief graph-execution/28 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed delivery and its actual first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; delivery-mode corroboration of follow-up graph-execution/23, /29 and /19 establishes owning-brief existence and routing only, not contract use; their required candidate-workspace, regression-adapter and durable-store consumption stays held until separately proved, regardless of corroborated ownership; the unchanged evaluator and deferred runtime-controller exclusions remain reviewer judgments, and omitted consumers remain a review obligation |
+| 10 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief graph-execution/28 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed delivery and its actual first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required candidate-workspace, regression-adapter and durable-store consumers stay held; the unchanged evaluator and deferred runtime-controller exclusions remain reviewer judgments, and omitted consumers remain a review obligation |
 
 ## Pre-mortem
 

@@ -76,7 +76,7 @@ milestone or authorize activation.
 | desk-tools/39 and /42 | Importable review policy and role-specific issue projections | Existing extraction owners; /27 consumes them from tools/desk-local bindings, never imports cmd/main or duplicates classifiers. |
 | /27 | Deterministic standing-desk clients, bounded jobs and one-owner transfer | Existing queues/claims remain work owners. Remove model-managed mechanical loops only when the replacement behavior is proven. No workflow store/controller required. |
 | desk-supervision/34 | Usage compatibility for non-enrolled workers | /27 preserves the existing skip for enrolled workers; do not count one invocation in two stores. |
-| desk-tools/37, /43–44 | Matched baseline, caller migration and complete-workflow qualification | Reuse its oracle/cohorts and qualification record. Minimal local counters are sufficient initially; parked performance collection is not an activation prerequisite or a second measurement pipeline. |
+| desk-tools/37, /43–44 | Matched baseline, caller migration and complete-workflow qualification | Reuse its oracle/cohorts and qualification record. Minimal local counters are sufficient initially; performance collection is not an activation prerequisite or a second measurement pipeline. |
 
 ### Priority, blockers and dependency waves
 
@@ -211,3 +211,22 @@ actual native emission and cross-mode replay. Offline retained-input cards can p
 runtime; a claim of native measurement requires its producer/build/profile evidence. The
 [future-state amendment](../../proposals/non-ci-architecture/22-desk-improvement.md) keeps
 policy adoption and real enrollment under their existing separate gates.
+
+## Candidate-plus-priority selection integration — requested 23 October 2026
+
+The [existing efficiency contract](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+separates candidate observations, current approved selection policy and pure ordered plans.
+/27 owns the tools/desk-local composition binding for prose/skill and discrete clients of
+all five roles, reusing reviewflow from desk-tools/39, issueflow from /42 and the canonical
+verification queue from /45. The outer /26 supervisor and existing drain/reactor mechanics
+do not acquire another priority engine, source collector or credential. The frozen Loop
+interface remains unchanged; SelectQueue adapts the plan rather than reparsing human text.
+
+A completion or local policy change can rerun selection without GH requests; refresh only
+invalidated/due observations through the current collector or later R6. Keep idle coverage,
+STOP, current claims and final consequential rechecks. /27's five-role parity and no-refetch
+fixtures plus /44's matched provider-cost qualification establish this; a shorter prompt or
+successful process exit is insufficient. /45, /43 and /51 are reciprocal dependencies of /27: base verification queue and the actual
+review/verifier prose adapters must qualify before all-five-role parity. This retains /51’s
+existing human decision and does not make the early review bridge depend on /27. Existing
+adoption/rollback and private adopter role cutovers remain separately controlled.

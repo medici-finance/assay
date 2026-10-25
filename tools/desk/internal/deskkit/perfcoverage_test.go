@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // All paths read stay in tools/desk. No cross-module fixture is required.
@@ -47,14 +49,14 @@ func TestEveryDeskCommandRecordsPerformance(t *testing.T) {
 					return true
 				}
 				sel, ok := call.Fun.(*ast.SelectorExpr)
-				if !ok || (sel.Sel.Name != "PerfRun" && sel.Sel.Name != "PerfRunResolved" && sel.Sel.Name != "PerfRunMeasured" && sel.Sel.Name != "PerfRunSelected") {
+				if !ok || (sel.Sel.Name != "PerfRun" && sel.Sel.Name != "PerfRunResolved" && sel.Sel.Name != "PerfRunMeasured" && sel.Sel.Name != "PerfRunMeasuredConfig" && sel.Sel.Name != "PerfRunSelected") {
 					return true
 				}
 				wantArgs := 4
 				if sel.Sel.Name == "PerfRunSelected" {
 					wantArgs = 5
 				}
-				if len(call.Args) != wantArgs && !(sel.Sel.Name == "PerfRunMeasured" && len(call.Args) == 5 && call.Ellipsis.IsValid()) {
+				if len(call.Args) != wantArgs && !((sel.Sel.Name == "PerfRunMeasured" || sel.Sel.Name == "PerfRunMeasuredConfig") && len(call.Args) == 5 && call.Ellipsis.IsValid()) {
 					t.Errorf("%s: wrong performance entrypoint", name)
 					return true
 				}
@@ -97,7 +99,7 @@ func TestNewDeskCommandsAppendPerformance(t *testing.T) {
 		}
 		build := exec.Command("go", "build", "-o", exe, "./cmd/"+name)
 		build.Dir = filepath.Join("..", "..")
-		if out, err := build.CombinedOutput(); err != nil {
+		if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 			t.Fatalf("build %s: %v %s", name, err, out)
 		}
 		var optedInOutput []byte

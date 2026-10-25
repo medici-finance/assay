@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // ---------------------------------------------------------------------------
@@ -720,6 +722,9 @@ func run(t *testing.T, dir, name string, args ...string) string {
 		"GIT_COMMITTER_NAME="+fixtureBotName, "GIT_COMMITTER_EMAIL="+fixtureBotEmail,
 		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
 	)
+	if name == "go" {
+		goquiet.Cmd(cmd)
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s %s (in %s): %v\n%s", name, strings.Join(args, " "), dir, err, out)

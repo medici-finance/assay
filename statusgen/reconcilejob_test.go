@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // The scheduled reconcile tick — the reconcile job's own clone, compute and
@@ -804,7 +806,7 @@ func TestReconcileJobBuildIgnoresGoWork(t *testing.T) {
 		cmd := exec.Command("go", "env", "GOWORK")
 		cmd.Dir = build
 		cmd.Env = env
-		out, err := cmd.CombinedOutput()
+		out, err := goquiet.Cmd(cmd).CombinedOutput()
 		if err != nil {
 			t.Fatalf("go env GOWORK: %v\n%s", err, out)
 		}
