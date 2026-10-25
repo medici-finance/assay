@@ -80,13 +80,13 @@ func b02Coded(t *testing.T) string {
 		"prints `COULD-NOT-CHECK: delivery must be an ancestor of the checkout's HEAD`")
 }
 
-// TestHeldBrief02Flips: the last entry, a strict PASS that re-ran all nine
+// TestHeldScopeB02Flips: the last entry, a strict PASS that re-ran all nine
 // rows in witness tables with Date and Runner, supersedes every earlier entry
 // whole. The real Evidence then refuses only on the last entry's own quoted
 // diagnostic, never on a superseded entry; with that quote in a code span it
 // passes, read through both brief readers.
 // regression: #4294
-func TestHeldBrief02Flips(t *testing.T) {
+func TestHeldScopeB02Flips(t *testing.T) {
 	ev := b02Evidence(t)
 	if s := heldScanScope(ev); !s.whole || s.from < 0 {
 		t.Fatalf("heldScanScope: whole=%v from=%d, want the last entry to supersede every earlier one", s.whole, s.from)
@@ -117,13 +117,13 @@ func TestHeldBrief02Flips(t *testing.T) {
 	}
 }
 
-// TestHeldBrief02Prose: a prose paragraph of one line, at column 0 and
+// TestHeldScopeB02Prose: a prose paragraph of one line, at column 0 and
 // between blank lines, is no table on the page (GFM needs a header and a
 // delimiter row on adjacent lines and ends a table at a blank line), so its
 // pipe no longer turns whole supersession off. A second, planted instance in
 // another earlier entry is admitted the same way (defect class).
 // regression: #4294
-func TestHeldBrief02Prose(t *testing.T) {
+func TestHeldScopeB02Prose(t *testing.T) {
 	ev := b02Coded(t)
 	planted := b02Edit(t, ev, true, "\n\nVERIFY: BLOCKED\n### Correction: 2026-09-30",
 		"\n\nRe-ran `grep` by hand as grep -E \"a|b\" spec/README.md; it printed 1.\n\nVERIFY: BLOCKED\n### Correction: 2026-09-30")
@@ -134,10 +134,10 @@ func TestHeldBrief02Prose(t *testing.T) {
 	})
 }
 
-// TestHeldBrief02Refuses: the supersession the fix admits stays narrow. Each
+// TestHeldScopeB02Refuses: the supersession the fix admits stays narrow. Each
 // case is b02Coded, which passes, with one change that must keep a hold live.
 // regression: #4294
-func TestHeldBrief02Refuses(t *testing.T) {
+func TestHeldScopeB02Refuses(t *testing.T) {
 	ev := b02Coded(t)
 	hold := func(heading string) string {
 		return "\n### " + heading + "\n\n- Row 3: BLOCKED — could-not-check, no Linux runner online.\n\n**VERIFY: BLOCKED**\n"
@@ -162,6 +162,7 @@ func TestHeldBrief02Refuses(t *testing.T) {
 			ev + "\n### Non-implementer verifier run — VERIFY: BLOCKED — 4/9 pass, 5 could-not-check, 0 fail — 2026-09-23\n", true},
 		// The prose exemption covers a one-line paragraph only.
 		{"delimiter row under it", b02Edit(t, ev, true, b02Pipe, "| a | b |\n|---|---|\n"+b02Pipe), true},
+		{"delimiter row after it", b02Edit(t, ev, true, b02Pipe, "| a | b |\n"+b02Pipe), true},
 		{"joined to the line above", b02Edit(t, ev, true, "\n\n"+b02Pipe, "\n"+b02Pipe), true},
 		{"joined to the line below", b02Edit(t, ev, true, "\n\nDelivered code since the previous pass (b87d9f50)",
 			"\nDelivered code since the previous pass (b87d9f50)"), true},
@@ -174,10 +175,10 @@ func TestHeldBrief02Refuses(t *testing.T) {
 	runHeldLayerCases(t, cases)
 }
 
-// TestHeldPipeProseCases: the exemption on synthetic Evidence beside the
+// TestHeldScopePipeProse: the exemption on synthetic Evidence beside the
 // whole-supersession cases it must not change (TestHeldScopeWholeSuperseded).
 // regression: #4294
-func TestHeldPipeProseCases(t *testing.T) {
+func TestHeldScopePipeProse(t *testing.T) {
 	blocked := "**VERIFY: BLOCKED** — could-not-check, see the note above."
 	final := proseRun("Run 2", 8, allOK, "", "**VERIFY: PASS**")
 	eight := func(extra string) string { return proseRun("Run 1", 8, allOK, extra, blocked) }
