@@ -15,6 +15,7 @@ risk:
   sensitive-data: 'no'
 gate-why: The accountable owner reviews applicability, evidence boundaries and permitted source use; an automated preparation result must not become a conformity or authorization claim.
 decision-trigger: spec
+decision-issue: 4400
 issues: []
 schema: brief-v2
 authored: 2026-10-03 by Codex (author-brief)
