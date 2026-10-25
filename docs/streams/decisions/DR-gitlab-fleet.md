@@ -29,8 +29,8 @@ own login, in the
 
 The driver supplied no further rationale; none is attributed here. This record transcribes that
 ruling into the register; it does not mint a new one. The brief records the ruling in its own
-frontmatter (`decision-issue: 4398` and a `ruling:` link to the comment above) and cites this
-record as its `design:`.
+frontmatter (`decision-issue: 4398` and a `ruling:` link to the comment above). The brief does
+not yet cite this record as its `design:`; see the approval state below.
 
 **Approval state: placeholder-unratified. This is not an approved design record.** The
 `decided-by` stamp above is the public placeholder, and the record carries no `ruling:` link of
@@ -38,10 +38,16 @@ its own. The ruling comment names the brief by its board id, not this record by 
 `DR-gitlab-fleet` id, so linking it here would fail the corroboration check as `record-not-named`
 (`spec/registers-v1.md` §7.5); and `statusgen --corroborate` reports this record
 `placeholder-unratified` until a driver comment on the decision issue names `DR-gitlab-fleet`. The
-`ruling:` key is added by a later push, only after that unedited comment exists. Until then the
-brief's `design:` link points at a record that is not yet approved, and this record does not
-clear the design-approval gate (`spec/lifecycle-v1.md` §4.4). What the ruling does establish is
-limited to the report approval stated in the `accepted` list above.
+`ruling:` key is added by a later push, only after that unedited comment exists.
+
+The brief's `design:` key is deliberately absent. The design-gate lint
+(`spec/lifecycle-v1.md` §4.4) checks only that a cited record exists, never that it is approved,
+so citing this record now would satisfy that lint and release the reconcile hold on brief 30
+before the record is ratified. With `design:` absent, the gate keeps holding the brief at `todo`:
+the gate holds because the key is absent, not because a ruling is pending. The key is added in the
+same push that adds this record's `ruling:` link, once a driver comment on #4398 names
+`DR-gitlab-fleet`. What the ruling does establish is limited to the report approval stated in the
+`accepted` list above.
 
 The implementation that the report describes is
 https://github.com/medici-finance/assay/pull/3155 (merged 2026-10-16). The ownership decision
@@ -81,9 +87,10 @@ role obligations, not an assignment to an unnamed individual.
 
 ## Approval boundaries and follow-up
 
-The ruling approves the compatibility report exactly as listed in #3155 — token scope,
-custody-file permissions, idempotency and secret-free surfaces included as that report states
-them — and nothing beyond it. Independent verification of brief 30's Verify table and final
+The ruling approves the compatibility report exactly as listed in #3155 — custody-file
+permissions, idempotency and secret-free surfaces included as that report states them — and
+nothing beyond it. The report does not address token scope, so the ruling does not confirm it;
+token scope is left to independent verification and final human acceptance. Independent verification of brief 30's Verify table and final
 human acceptance remain separate and are not claimed here. The review follow-ups recorded on
 #2987 (the out-dir mode-mask test covers group-write modes only; the writer-identity file's
 0600 mode has no test) remain work to inspect; this record does not declare those tests

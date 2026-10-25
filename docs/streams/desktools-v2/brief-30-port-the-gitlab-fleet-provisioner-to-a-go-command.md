@@ -44,7 +44,6 @@ gate-why: >-
 decision-trigger: "spec"
 decision-issue: 4398
 ruling: "https://github.com/medici-finance/assay/issues/4398#issuecomment-6399372132"
-design: DR-gitlab-fleet
 ---
 
 # Brief 30 — Port the GitLab fleet provisioner to a Go command
