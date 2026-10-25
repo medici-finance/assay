@@ -222,3 +222,55 @@ func TestEvidenceOnlyNeedsEvidence(t *testing.T) {
 		t.Fatalf("tree %q reads clean with the brief deleted", cell.RunnerTree)
 	}
 }
+
+// regression: #4299
+// TestTransitionThenBracket: the second instance's assembly. A host
+// transition run records the author-added row at the full HEAD; a container
+// bracket opened afterwards on the same home (its only change the
+// transition run's Evidence) records the original rows at the 12-hex tree
+// token. The latest PASS reads one run and --check closes the table.
+func TestTransitionThenBracket(t *testing.T) {
+	pinClock(t)
+	f := transitionFixtureAt(t)
+	vfGit(t, f.root, vfMailVerifier, "config", "user.name", vfRunner)
+	vfGit(t, f.root, vfMailVerifier, "config", "user.email", vfMailVerifier)
+	descriptor := filepath.Join(t.TempDir(), "transition.txt")
+	if err := os.WriteFile(descriptor, []byte(f.descriptor), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resetReadMemo()
+	res, out := captureVerifyrunOut(t, []string{"--brief", f.path, "--root", f.root, "--acceptance-record", descriptor, "--acceptance-forge", "--rows", "3"})
+	if res.code != verifyrunExitPass {
+		t.Fatalf("host transition --rows 3: exit %d %s", res.code, out)
+	}
+	host := parseEvidenceRows(evidenceOf(t, f.path))["3"]
+	if len(host) != 1 || witnessTreeOf(host[0].Text) != f.amendment {
+		t.Fatalf("host row 3: %+v", host)
+	}
+	cell, ok := hostRunnerCell(f.root, f.path)
+	if !ok || cell.RunnerTree != f.amendment[:treeSHALen] {
+		t.Fatalf("bracket open tree %q (ok=%v), want %q", cell.RunnerTree, ok, f.amendment[:treeSHALen])
+	}
+	runner := receiptRunnerCell(cell)
+	container := witnessTableFor(
+		"| 1 | `true` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-22 | "+runner+" |",
+		"| 2 | `sh check.sh --no-pull` | pass exit=1 | sha256:e3b0c44298fc | 2026-10-22 | "+runner+" |")
+	vfAppend(t, f.root, "\n\n"+container+"\n\n"+vfPass)
+	vfCommit(t, f.root, vfMailVerifier)
+	resetReadMemo()
+	verify, evidence, err := briefSections(f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	findings, why := closureWitnesses(verify, evidence, f.path)
+	pass := why == "" && len(findings) == 3
+	for _, v := range findings {
+		pass = pass && closureSatisfied(v)
+	}
+	if !pass {
+		t.Fatalf("mixed transition + bracket table did not close: %s %+v", why, findings)
+	}
+	if res, diag := captureVerifyrun(t, []string{"--check", "--brief", f.path, "--acceptance-forge"}); res.code != 0 {
+		t.Fatalf("verifyrun --check: %d %s", res.code, diag)
+	}
+}
