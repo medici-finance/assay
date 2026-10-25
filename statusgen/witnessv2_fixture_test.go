@@ -65,6 +65,8 @@ type gitV2Fixture struct {
 	// AfterMerge edits files on main after the merge (committed as one more
 	// first-parent commit) — the Verify row changing after the run.
 	AfterMerge map[string]string
+	// ExtraFiles are written into the base commit besides the defaults.
+	ExtraFiles map[string]string
 
 	Base, Feature, Merge string
 	RecordIDs            map[string]string // row id → record id (v2 rows)
@@ -218,6 +220,9 @@ func (f *gitV2Fixture) build() *gitV2Fixture {
 	gv2Write(t, root, "tools/x/pkg/a.go", "package pkg\n\nfunc A() int { return 1 }\n")
 	gv2Write(t, root, "tools/x/pkg/b.go", "package pkg\n\n// B\nfunc B() int { return 2 }\n")
 	gv2Write(t, root, "README.md", "fixture\n")
+	for rel, content := range f.ExtraFiles {
+		gv2Write(t, root, rel, content)
+	}
 	f.BriefPath = filepath.Join(root, filepath.FromSlash(gv2BriefRel()))
 	gv2Write(t, root, gv2BriefRel(), gv2Brief(f.Inputs, f.Rows, ""))
 	gv2Git(t, root, "add", "-A")
