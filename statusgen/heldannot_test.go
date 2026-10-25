@@ -31,6 +31,12 @@ func annHeld(key string) string {
 		annRow("1", "0", "ok"), annRow(key, "—", "HELD — no runner online"))
 }
 
+// annHeldMisaligned is annHeld for the exact #4294 row id plus a row that
+// cannot be aligned, so whole-entry supersession (rule 3b) is off and only
+// the row-by-row rule (3a) can drop the hold.
+var annHeldMisaligned = strings.Replace(annHeld("3 (Verify 3, negative)"), "\n\n**VERIFY: BLOCKED**",
+	"\n| 4 | `a | b` | 0 | ok | 2026-10-07 | fixture-verifier |\n\n**VERIFY: BLOCKED**", 1)
+
 // TestHeldScopeAnnotatedKey: an earlier row keyed "3 (Verify 3, negative)"
 // that a later strict PASS re-ran as the bare "3" is the same Verify row, so
 // the later run supersedes it (rule 3a): the annotation names the Verify row
@@ -46,9 +52,13 @@ func TestHeldScopeAnnotatedKey(t *testing.T) {
 		{"annotation with no number", annHeld("3 (negative)") + annLater, false},
 		{"bold annotated key", annHeld("**3 (Verify 3, negative)**") + annLater, false},
 		{"planted second instance, Row header", planted, false},
+		{"row by row only (an earlier row cannot be aligned)", annHeldMisaligned + annLater, false},
 	})
 	if s := heldScanScope(annHeld("3 (Verify 3, negative)") + annLater); !s.whole {
 		t.Errorf("annotated key: whole=%v, want the last entry to cover every earlier row", s.whole)
+	}
+	if s := heldScanScope(annHeldMisaligned + annLater); s.whole || s.from < 0 {
+		t.Errorf("misaligned earlier row: whole=%v from=%d, want row-by-row supersession only", s.whole, s.from)
 	}
 }
 
@@ -81,6 +91,12 @@ func TestHeldScopeAnnotatedKeyRefuses(t *testing.T) {
 		{"Row header against #", rowHdr + annLater, true},
 		{"later re-run not clean", annHeld("3 (Verify 3, negative)") + strings.Replace(annLater, "| 0 | PASS |", "| 0 | PASS (no re-run) |", 1), true},
 		{"last entry annotates differently", lastSub, true},
+		{"exact #4294 id, later run skipped row 3", annHeld("3 (Verify 3, negative)") + annEntry("Verification — 2026-10-20",
+			"**VERIFY: PASS**", annRow("1", "0", "ok"), annRow("2", "0", "ok")), true},
+		{"exact #4294 id, held in the last entry", annLater + annHeld("3 (Verify 3, negative)") +
+			annEntry("Verification — 2026-10-21", "**VERIFY: PASS**", annRow("3 (Verify 3, negative)", "—", "HELD — no runner online")), true},
+		{"exact #4294 id, later bare row held", annHeld("3 (Verify 3, negative)") + strings.Replace(annLater, "| 0 | PASS |", "| — | HELD — no runner online |", 1), true},
+		{"exact #4294 id, row by row only, later not clean", annHeldMisaligned + strings.Replace(annLater, "| 0 | PASS |", "| 0 | same as Run 1 |", 1), true},
 	})
 }
 
@@ -118,7 +134,7 @@ func TestHeldScopeObservedOutput(t *testing.T) {
 func TestHeldScopeObservedOutputRefuses(t *testing.T) {
 	noExit := "| # | Command | Result |\n|---|---|---|\n| 3 | `x` | " + annQuote + " |\n\n**VERIFY: PASS**\n"
 	note := "| # | Command | Exit | Result | Note |\n|---|---|---|---|---|\n" +
-		"| 3 | `x` | 0 | PASS | a could-not-check mission section |\n\n**VERIFY: PASS**\n"
+		"| 3 | `x` | 0 | PASS | passed — a could-not-check mission section |\n\n**VERIFY: PASS**\n"
 	misaligned := "| # | Command | Exit | Result |\n|---|---|---|---|\n" +
 		"| 3 | a | b | 0 | " + annQuote + " |\n\n**VERIFY: PASS**\n"
 	runHeldLayerCases(t, []heldScanCase{
@@ -130,6 +146,14 @@ func TestHeldScopeObservedOutputRefuses(t *testing.T) {
 		{"BLOCKED lead", annObs("0", "BLOCKED — a could-not-check mission section"), true},
 		{"FAIL in the cell", annObs("0", "PASS: a could-not-check mission section, then FAIL on re-run"), true},
 		{"not run in the cell", annObs("0", "PASS: a could-not-check mission section; row 4 not run"), true},
+		{"skipped in the cell", annObs("0", annQuote+"; row 4 skipped"), true},
+		{"unrun in the cell", annObs("0", annQuote+"; 1 unrun"), true},
+		{"deferred in the cell", annObs("0", annQuote+"; deferred"), true},
+		{"pending in the cell", annObs("0", annQuote+"; review pending"), true},
+		{"awaiting in the cell", annObs("0", annQuote+"; awaiting a runner"), true},
+		{"waiting in the cell", annObs("0", annQuote+"; waiting on a runner"), true},
+		{"not re-run in the cell", annObs("0", annQuote+"; row 4 not re-run"), true},
+		{"no runner in the cell", annObs("0", annQuote+"; no runner for row 4"), true},
 		{"no PASS lead", annObs("0", "yields a could-not-check mission section"), true},
 		{"lead not a word", annObs("0", "PASSWORD: a could-not-check mission section"), true},
 		{"not attributive", annObs("0", "PASS: could-not-check, no runner"), true},
@@ -137,7 +161,7 @@ func TestHeldScopeObservedOutputRefuses(t *testing.T) {
 		{"disposition noun", annObs("0", "PASS: a could-not-check result"), true},
 		{"row noun", annObs("0", "PASS: the could-not-check row"), true},
 		{"marker ends the cell", annObs("0", "PASS: a could-not-check"), true},
-		{"hold reason after", annObs("0", "PASS: a could-not-check pending runner"), true},
+		{"hold reason after", annObs("0", "PASS: a could-not-check because the runner was offline"), true},
 		{"HELD attributive", annObs("0", "PASS: a HELD mission section"), true},
 		{"struck text on the row", annObs("0", "PASS ~~old~~: a could-not-check mission section"), true},
 		{"no Exit column", noExit, true},

@@ -882,6 +882,192 @@
       "file": "heldscope.go",
       "old": " || heldContainerStrip(l) != l {",
       "new": " {"
+    },
+    {
+      "name": "#4294 key: an annotation naming another number still shortens the key",
+      "file": "heldscope.go",
+      "old": "if n != m[1] {",
+      "new": "if n != m[1] && false {"
+    },
+    {
+      "name": "#4294 key: two forms of one number in an entry still merge",
+      "file": "heldscope.go",
+      "old": "if prev, dup := seen[base]; dup && prev != ann {",
+      "new": "if prev, dup := seen[base]; false && dup && prev != ann {"
+    },
+    {
+      "name": "#4294 key: two annotations across entries still merge",
+      "file": "heldscope.go",
+      "old": "if !ok || split[base] || len(forms[base]) > 1 {",
+      "new": "if !ok || split[base] {"
+    },
+    {
+      "name": "#4294 key: text after the annotation is admitted",
+      "file": "heldscope.go",
+      "old": "heldAnnotatedKeyRe = regexp.MustCompile(`^(\\d+)[ \\t]*\\(([^()]*)\\)$`)",
+      "new": "heldAnnotatedKeyRe = regexp.MustCompile(`^(\\d+)[ \\t]*\\(([^()]*)\\)`)"
+    },
+    {
+      "name": "#4294 key: nested parentheses are admitted",
+      "file": "heldscope.go",
+      "old": "heldAnnotatedKeyRe = regexp.MustCompile(`^(\\d+)[ \\t]*\\(([^()]*)\\)$`)",
+      "new": "heldAnnotatedKeyRe = regexp.MustCompile(`^(\\d+)[ \\t]*\\((.*)\\)$`)"
+    },
+    {
+      "name": "#4294 key: shortened keys are not applied to the rows",
+      "file": "heldscope.go",
+      "old": "\t\t\tout[r].key = canon(out[r].key)\n",
+      "new": "\t\t\tout[r].key = out[r].key\n"
+    },
+    {
+      "name": "#4294 observe: a non-clean Exit cell still admits the row",
+      "file": "heldscope.go",
+      "old": "if heldOutcome(line[rg[0]:rg[1]], true) != heldCellPass {\n\t\t\t\treturn nil",
+      "new": "if false {\n\t\t\t\treturn nil"
+    },
+    {
+      "name": "#4294 observe: a table with no Exit column admits the row",
+      "file": "heldscope.go",
+      "old": "\tif !exit {\n\t\treturn nil\n\t}\n\treturn res",
+      "new": "\tif !exit && false {\n\t\treturn nil\n\t}\n\treturn res"
+    },
+    {
+      "name": "#4294 observe: a note column is read as a Result cell",
+      "file": "heldscope.go",
+      "old": "\t\tcase heldColResult:\n\t\t\tres = append(res, rg)",
+      "new": "\t\tdefault:\n\t\t\tres = append(res, rg)"
+    },
+    {
+      "name": "#4294 observe: the cell need not open on a pass",
+      "file": "heldscope.go",
+      "old": "\t\t\theldObserveLeadRe.MatchString(line[rg[0]:rg[1]]) && ",
+      "new": "\t\t\t"
+    },
+    {
+      "name": "#4294 observe: the pass lead need not end a word",
+      "file": "heldscope.go",
+      "old": "(?:pass(?:ed)?|ok)\\\\b\")",
+      "new": "(?:pass(?:ed)?|ok)\")"
+    },
+    {
+      "name": "#4294 observe: no article is needed before the marker",
+      "file": "heldscope.go",
+      "old": " && heldObserveBeforeRe.MatchString(clean[rg[0]:h[0]])",
+      "new": ""
+    },
+    {
+      "name": "#4294 observe: a disposition noun after the marker is admitted",
+      "file": "heldscope.go",
+      "old": "!heldObserveNouns[strings.ToLower(m[1])] && ",
+      "new": ""
+    },
+    {
+      "name": "#4294 observe: nothing need follow the marker",
+      "file": "heldscope.go",
+      "old": "heldObserveAfterRe = regexp.MustCompile(`^[ \\t]+(\\pL[\\pL-]*)`)",
+      "new": "heldObserveAfterRe = regexp.MustCompile(`^[ \\t]*(\\pL*)`)"
+    },
+    {
+      "name": "#4294 observe: a hold reason after the marker is admitted",
+      "file": "heldscope.go",
+      "old": " && !heldReasonAfterRe.MatchString(after) &&",
+      "new": " &&"
+    },
+    {
+      "name": "#4294 observe: hold words in the row are ignored",
+      "file": "heldscope.go",
+      "old": " || heldObserveHoldRe.MatchString(line) {",
+      "new": " {"
+    },
+    {
+      "name": "#4294 observe: BLOCKED in the row is ignored",
+      "file": "heldscope.go",
+      "old": "(?i)\\b(?:blocked|fail",
+      "new": "(?i)\\b(?:fail"
+    },
+    {
+      "name": "#4294 observe: FAIL in the row is ignored",
+      "file": "heldscope.go",
+      "old": "(?:blocked|fail\\w*|skip",
+      "new": "(?:blocked|skip"
+    },
+    {
+      "name": "#4294 observe: SKIP in the row is ignored",
+      "file": "heldscope.go",
+      "old": "|skip\\w*|unrun",
+      "new": "|unrun"
+    },
+    {
+      "name": "#4294 observe: UNRUN in the row is ignored",
+      "file": "heldscope.go",
+      "old": "|unrun|deferred",
+      "new": "|deferred"
+    },
+    {
+      "name": "#4294 observe: deferred in the row is ignored",
+      "file": "heldscope.go",
+      "old": "|deferred|pending",
+      "new": "|pending"
+    },
+    {
+      "name": "#4294 observe: pending in the row is ignored",
+      "file": "heldscope.go",
+      "old": "|pending|awaiting",
+      "new": "|awaiting"
+    },
+    {
+      "name": "#4294 observe: awaiting in the row is ignored",
+      "file": "heldscope.go",
+      "old": "|awaiting|waiting",
+      "new": "|waiting"
+    },
+    {
+      "name": "#4294 observe: waiting in the row is ignored",
+      "file": "heldscope.go",
+      "old": "|waiting|not[ \\t]+",
+      "new": "|not[ \\t]+"
+    },
+    {
+      "name": "#4294 observe: not run in the row is ignored",
+      "file": "heldscope.go",
+      "old": "|not[ \\t]+(?:re-?)?run|no",
+      "new": "|no"
+    },
+    {
+      "name": "#4294 observe: no runner in the row is ignored",
+      "file": "heldscope.go",
+      "old": "|no[ \\t]+runner)\\b`)",
+      "new": ")\\b`)"
+    },
+    {
+      "name": "#4294 observe: a HELD occurrence is excused like could-not-check",
+      "file": "heldscope.go",
+      "old": "!strings.EqualFold(clean[h[0]:h[1]], \"could-not-check\") || ",
+      "new": ""
+    },
+    {
+      "name": "#4294 observe: a line with a struck span is excused",
+      "file": "verifyissues.go",
+      "old": "if cuts == nil && heldObservedOutput(",
+      "new": "if heldObservedOutput("
+    },
+    {
+      "name": "#4294 zero ratio: the two counts need not agree",
+      "file": "verifyissues.go",
+      "old": "m != nil && heldDetailCounts(m[1:])",
+      "new": "m != nil"
+    },
+    {
+      "name": "#4294 zero ratio: any number of qualifiers",
+      "file": "verifyissues.go",
+      "old": "[ \\t]+(?:[a-z]+[ \\t]+)?(?:rows?|checks?)[ \\t]+(?:pass(?:ed)?|ran|green)[,;]$`)",
+      "new": "[ \\t]+(?:[a-z]+[ \\t]+)*(?:rows?|checks?)[ \\t]+(?:pass(?:ed)?|ran|green)[,;]$`)"
+    },
+    {
+      "name": "#4294 zero ratio: any noun is counted",
+      "file": "verifyissues.go",
+      "old": "(?:[a-z]+[ \\t]+)?(?:rows?|checks?)[ \\t]+(?:pass(?:ed)?|ran|green)[,;]$`)",
+      "new": "(?:[a-z]+[ \\t]+)?[a-z]+[ \\t]+(?:pass(?:ed)?|ran|green)[,;]$`)"
     }
   ]
 }

@@ -119,6 +119,33 @@ import (
 //     latest, whatever date its heading carries, because Evidence is
 //     appended and a heading's date is free text the scan does not trust.
 //     The held occurrences of the last entry itself are always read.
+//     A key cell that is a Verify row number with one parenthetical
+//     annotation ("3 (Verify 3, negative)") keys as the bare number
+//     (heldCanonKeys, #4294) when every number in the annotation is that
+//     number, and only when, across the whole Evidence, the bare number under
+//     that header never appears with two different annotations and no entry
+//     records it in two forms ("3" beside "3 (negative)", "3 (positive)"
+//     beside "3 (negative)"): those may be sub-rows of one Verify row, so they
+//     keep their written keys and a bare later "3" covers neither. A lettered
+//     key ("3a"), nested parentheses, text after the annotation or a number
+//     in it that names another row ("3 (Verify 4)", a date) is never
+//     shortened. Stated residual: an annotated row in one entry and the bare
+//     number in another are one row, so a later bare "3" that ran only one
+//     sub-case covers an earlier lone "3 (negative)"; the format records no
+//     sub-case on a bare key that could tell them apart.
+//  4. Observed output (#4294). An occurrence of "could-not-check" (never
+//     HELD) in a Result-type cell (heldColResult) of an aligned, keyed row is
+//     what the verified product printed, not the row's disposition, when
+//     every one of: the row's table has an Exit column and every Exit cell of
+//     the row reads clean (heldOutcome); the cell opens on PASS, passed or ok
+//     (heldObserveLeadRe); the marker is attributive — an article or
+//     possessive right before it and, right after it, a word that is not a
+//     disposition noun, a conjunction or a hold reason ("a could-not-check
+//     mission section", not "a could-not-check result" or "could-not-check,
+//     no runner"); the line has no struck span; and no read cell of the row
+//     holds a hold or fail word (heldObserveHoldRe: BLOCKED, FAIL, SKIP,
+//     PENDING, not run, …; a HELD there is read as its own occurrence).
+//     Anything else is read as before.
 //
 // The hygiene (fences, blockquotes, struck and inline code), the routing rule
 // and the negation rule in unroutedHeldLine apply unchanged to what is read.
@@ -128,6 +155,9 @@ type heldLineRead struct {
 	blank [][2]int // byte ranges of the line (cell contents) the scan must not read
 	key   string   // the row key of an aligned results-table data row; "" for any other line
 	whole bool     // a line of an entry that whole-entry supersession (rule 3b) may drop: any line outside a non-comment HTML block
+	// observe are the byte ranges of the Result-type cells of an aligned
+	// results row whose Exit cells all read clean (rule 4); nil otherwise.
+	observe [][2]int
 }
 
 // heldScope is heldScanScope's decision: what to read of each line, and
@@ -1065,6 +1095,150 @@ func heldRowKey(header, cell string) string {
 	return ""
 }
 
+var (
+	// heldAnnotatedKeyRe is a key cell (heldNorm) that is a Verify row number
+	// with one parenthetical annotation and nothing after it:
+	// "3 (verify 3, negative)".
+	heldAnnotatedKeyRe = regexp.MustCompile(`^(\d+)[ \t]*\(([^()]*)\)$`)
+	heldNumberRe       = regexp.MustCompile(`\d+`)
+)
+
+// heldKeyBase splits a row key (heldRowKey) into the key of its bare row
+// number and its annotation (rule 3, #4294). ok is false — and base is the key
+// itself — unless the key cell is a row number with an annotation in which
+// every number is that row number.
+func heldKeyBase(key string) (base, ann string, ok bool) {
+	i := strings.IndexByte(key, '\x1f')
+	if i < 0 {
+		return key, "", false
+	}
+	m := heldAnnotatedKeyRe.FindStringSubmatch(key[i+1:])
+	if m == nil {
+		return key, "", false
+	}
+	for _, n := range heldNumberRe.FindAllString(m[2], -1) {
+		if n != m[1] {
+			return key, "", false
+		}
+	}
+	return key[:i+1] + m[1], strings.TrimSpace(m[2]), true
+}
+
+// heldCanonKeys rewrites each annotated row key to the key of its bare row
+// number (rule 3, #4294), in out and in keys alike, unless that number may
+// have sub-rows: the bare number appears, anywhere in the Evidence, with two
+// different annotations, or one entry records it in two forms (bare and
+// annotated, or two annotations). Such keys stay as written.
+func heldCanonKeys(out []heldLineRead, keys [][]string) {
+	forms := map[string]map[string]bool{} // bare key → the non-empty annotations seen
+	split := map[string]bool{}            // bare key → two forms in one entry
+	for e := range keys {
+		seen := map[string]string{}
+		for _, k := range keys[e] {
+			base, ann, ok := heldKeyBase(k)
+			if !ok {
+				base, ann = k, ""
+			}
+			if prev, dup := seen[base]; dup && prev != ann {
+				split[base] = true
+			}
+			seen[base] = ann
+			if ann != "" {
+				if forms[base] == nil {
+					forms[base] = map[string]bool{}
+				}
+				forms[base][ann] = true
+			}
+		}
+	}
+	canon := func(k string) string {
+		base, _, ok := heldKeyBase(k)
+		if !ok || split[base] || len(forms[base]) > 1 {
+			return k
+		}
+		return base
+	}
+	for r := range out {
+		if out[r].key != "" {
+			out[r].key = canon(out[r].key)
+		}
+	}
+	for e := range keys {
+		for j, k := range keys[e] {
+			keys[e][j] = canon(k)
+		}
+	}
+}
+
+// heldObserveCells returns the Result-type cells (heldColResult) of an aligned
+// results row, line, whose table, with header line hline, has an Exit column
+// and whose every Exit cell reads clean (rule 4, #4294); nil otherwise.
+func heldObserveCells(hline string, header [][2]int, line string, cells [][2]int, notResult []bool) [][2]int {
+	exit := false
+	var res [][2]int
+	for c, rg := range cells {
+		if notResult[c] {
+			continue
+		}
+		switch heldCoverColumn(hline[header[c][0]:header[c][1]]) {
+		case heldColExit:
+			if heldOutcome(line[rg[0]:rg[1]], true) != heldCellPass {
+				return nil
+			}
+			exit = true
+		case heldColResult:
+			res = append(res, rg)
+		}
+	}
+	if !exit {
+		return nil
+	}
+	return res
+}
+
+var (
+	// heldObserveLeadRe is a Result cell that opens on a passing outcome,
+	// past space, quotes, emphasis and backticks: `"PASS: negative" …`.
+	heldObserveLeadRe = regexp.MustCompile("(?i)^[\\s\"'“”‘’*_`]*(?:pass(?:ed)?|ok)\\b")
+	// heldObserveBeforeRe is an article or possessive right before the marker.
+	heldObserveBeforeRe = regexp.MustCompile(`(?i)(?:^|[^\pL\pN-])(?:a|an|the|its|their)[ \t]+$`)
+	// heldObserveAfterRe is the word right after the marker, past a space.
+	heldObserveAfterRe = regexp.MustCompile(`^[ \t]+(\pL[\pL-]*)`)
+	// heldObserveHoldRe is a hold or fail word anywhere in a row's read cells.
+	// HELD is not among them: every HELD occurrence is read on its own, and
+	// rule 4 never excuses one.
+	heldObserveHoldRe = regexp.MustCompile(`(?i)\b(?:blocked|fail\w*|skip\w*|unrun|deferred|pending|awaiting|waiting|not[ \t]+(?:re-?)?run|no[ \t]+runner)\b`)
+	// heldObserveNouns are the words after the marker that make it the row's
+	// own disposition ("a could-not-check result"), and conjunctions that
+	// join it to one.
+	heldObserveNouns = map[string]bool{"result": true, "results": true, "outcome": true, "outcomes": true,
+		"verdict": true, "verdicts": true, "status": true, "disposition": true, "row": true, "rows": true,
+		"run": true, "runs": true, "state": true, "case": true, "cases": true, "entry": true, "mark": true,
+		"marker": true, "item": true, "check": true, "checks": true, "and": true, "or": true, "but": true,
+		"nor": true, "then": true}
+)
+
+// heldObservedOutput reports whether the occurrence at clean[h[0]:h[1]] is a
+// row's record of what the product printed rather than its disposition (rule
+// 4, #4294). line is the row with its non-result cells blanked, clean the same
+// row as the scan reads it; the caller passes only a line with no struck span,
+// so the offsets of both agree.
+func heldObservedOutput(line, clean string, read heldLineRead, h []int) bool {
+	if read.key == "" || !strings.EqualFold(clean[h[0]:h[1]], "could-not-check") || heldObserveHoldRe.MatchString(line) {
+		return false
+	}
+	for _, rg := range read.observe {
+		if h[0] < rg[0] || h[1] > rg[1] {
+			continue
+		}
+		after := clean[h[1]:rg[1]]
+		m := heldObserveAfterRe.FindStringSubmatch(after)
+		return m != nil && !heldObserveNouns[strings.ToLower(m[1])] && !heldReasonAfterRe.MatchString(after) &&
+			heldObserveLeadRe.MatchString(line[rg[0]:rg[1]]) && heldObserveBeforeRe.MatchString(clean[rg[0]:h[0]])
+	}
+	return false
+}
+
 // heldSeparatorRow reports whether line is a table's header separator.
 func heldSeparatorRow(line string) bool {
 	t := strings.Trim(strings.TrimSpace(line), "|")
@@ -1222,6 +1396,7 @@ func heldScanScope(evidence string) heldScope {
 							continue
 						}
 						keys[e] = append(keys[e], out[r].key)
+						out[r].observe = heldObserveCells(lines[i], header, lines[r], cells, tb.notResult)
 					}
 				}
 			}
@@ -1248,6 +1423,8 @@ func heldScanScope(evidence string) heldScope {
 			}
 		}
 	}
+
+	heldCanonKeys(out, keys)
 
 	scope := heldScope{lines: out, from: -1}
 	if len(starts) > 1 {
