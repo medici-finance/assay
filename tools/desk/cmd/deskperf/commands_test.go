@@ -292,6 +292,109 @@ func TestCommandOverviewConflictOnlyExplainsExclusion(t *testing.T) {
 	}
 }
 
+// regression: #4346 (review c4352-f1)
+func TestCommandOverviewUnfilteredConflictOnlyKeepsDetail(t *testing.T) {
+	a := commandProcess(t, "")
+	b := a
+	b.Tool = "issueboard"
+	_, dir := seedHome(t)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writePerfDay(t, dir, time.Now().UTC().Format("2006-01-02"), []perfrec.Record{a, b})
+	for _, asJSON := range []bool{false, true} {
+		args := []string{"report"}
+		if asJSON {
+			args = append(args, "--json")
+		}
+		rc, out, errOut := runDeskperf(args...)
+		if rc != 0 || errOut != "" {
+			t.Errorf("json=%v: conflict-only detail lost: rc%d stdout%q stderr%q", asJSON, rc, out, errOut)
+			continue
+		}
+		if asJSON {
+			var got reportJSON
+			if err := json.Unmarshal([]byte(out), &got); err != nil {
+				t.Fatal(err)
+			}
+			if got.PerfV3 == nil || got.PerfV3.Records != 0 || got.PerfV3.Conflicts != 1 {
+				t.Errorf("conflict-only perfV3 counters missing: %+v", got.PerfV3)
+			}
+		} else if !strings.Contains(out, "perf-v3 — 0 records; 0 duplicates; 1 conflicting identities excluded; 0 invalid") {
+			t.Errorf("conflict-only detail missing: %q", out)
+		}
+	}
+}
+
+// regression: #4346 (review c4352-f1)
+func TestCommandOverviewUnfilteredInvalidOnlyKeepsDetail(t *testing.T) {
+	a := commandProcess(t, "")
+	// The real loader retains a missing-install record as an invalid source.
+	a.Install = ""
+	_, dir := seedHome(t)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writePerfDay(t, dir, time.Now().UTC().Format("2006-01-02"), []perfrec.Record{a})
+	for _, asJSON := range []bool{false, true} {
+		args := []string{"report"}
+		if asJSON {
+			args = append(args, "--json")
+		}
+		rc, out, errOut := runDeskperf(args...)
+		if rc != 0 || errOut != "" {
+			t.Fatalf("json=%v: invalid-only detail lost: rc%d stdout%q stderr%q", asJSON, rc, out, errOut)
+		}
+		if asJSON {
+			var got reportJSON
+			if err := json.Unmarshal([]byte(out), &got); err != nil {
+				t.Fatal(err)
+			}
+			if got.PerfV3 == nil || got.PerfV3.Records != 0 || got.PerfV3.Invalid != 1 {
+				t.Errorf("invalid-only perfV3 counters missing: %+v", got.PerfV3)
+			}
+		} else if !strings.Contains(out, "perf-v3 — 0 records; 0 duplicates; 0 conflicting identities excluded; 1 invalid") {
+			t.Errorf("invalid-only detail missing: %q", out)
+		}
+	}
+}
+
+// regression: #4346 (review c4352-f1)
+func TestCommandOverviewV3OnlyWorkflowMissKeepsReason(t *testing.T) {
+	a := commandProcess(t, strings.Repeat("a", 32))
+	_, dir := seedHome(t)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writePerfDay(t, dir, time.Now().UTC().Format("2006-01-02"), []perfrec.Record{a})
+	rc, out, errOut := runDeskperf("report", "--perf-profile", "workflow", "--session-id", strings.Repeat("b", 32))
+	if rc != deskkit.ExitRefused || out != "" || !strings.Contains(errOut, "no v3 record matches the workflow filter") {
+		t.Fatalf("workflow refusal changed: rc%d stdout%q stderr%q", rc, out, errOut)
+	}
+}
+
+// regression: #4346 (review A1)
+func TestCommandOverviewUnattributedUsesCommandFilters(t *testing.T) {
+	session := strings.Repeat("a", 32)
+	selected := commandProcess(t, session)
+	old := mixedRecords(t)[0]
+	old.Tool, old.Role = "statusgen", "worker-desk"
+	otherTool := old
+	otherTool.Tool = "issueboard"
+	otherRole := old
+	otherRole.Role = "reviewer"
+	for _, role := range []string{"", "worker-desk"} {
+		got, err := deskkit.SummarisePerfCommands([]perfrec.Record{selected, old, otherTool, otherRole}, perfrec.ProfileWorkflow, perfrec.V3Filter{SessionID: session}, "statusgen", role)
+		want := 2
+		if role != "" {
+			want = 1
+		}
+		if err != nil || got.Unattributed != want {
+			t.Errorf("role=%q: got %d unattributed, want %d: %v", role, got.Unattributed, want, err)
+		}
+	}
+}
+
 // regression: #4346
 func TestCommandOverviewReadableDurations(t *testing.T) {
 	for _, c := range []struct {

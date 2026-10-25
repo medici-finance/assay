@@ -33,7 +33,8 @@ type PerfCommandStats struct {
 
 // PerfCommandSummary selects v3 identities once across the full input before
 // command filters or buckets. Service observations and legacy boot steps are not
-// invocations. Unattributed counts old records excluded by a workflow filter.
+// invocations. Unattributed counts old records matching the tool/role filters
+// but excluded by a workflow filter. Identity counts still describe the whole window.
 type PerfCommandSummary struct {
 	Rows         []PerfCommandStats `json:"rows"`
 	Unattributed int                `json:"unattributed"`
@@ -135,6 +136,9 @@ func SummarisePerfCommands(recs []PerfRecord, permission perfrec.Profile, filter
 	}
 	for _, r := range recs {
 		if r.Schema == perfrec.SchemaV3 || r.Schema == perfrec.SchemaV4 || IsPerfStep(r) {
+			continue
+		}
+		if (tool != "" && r.Tool != tool) || (role != "" && r.Role != role) {
 			continue
 		}
 		if filter.Used() {

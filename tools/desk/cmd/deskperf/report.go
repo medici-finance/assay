@@ -134,7 +134,7 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 		} // historical records have no supported workflow attribution
 		recs = append(recs, r)
 	}
-	if len(recs) == 0 {
+	if len(recs) == 0 && (*tool != "" || *role != "") {
 		if selection.Conflicts+selection.Invalid+selection4.Conflicts+selection4.Invalid+mixedConflicts > 0 {
 			return noMatch(fmt.Sprintf("%s (whole-window identity selection excluded %d conflicting identities and %d invalid records)", filterText(*tool, *role), selection.Conflicts+selection4.Conflicts+mixedConflicts, selection.Invalid+selection4.Invalid))
 		}
