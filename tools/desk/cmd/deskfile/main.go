@@ -56,10 +56,14 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
          DESK_LOOP), never --raised-by, --to or a per-role cap override; an unresolvable role
          exits 6. The cap is read from the environment
          (ASSAY_DESK_ISSUE_FILE_BOUND_PER_PR[__<ROLE>]) and the defaults only, and every
-         bound audit line records the cap in force and its source. The per-PR and repo-wide
-         outward-write tiers still charge every bound filing, twice (the filing and its
-         back-link), so with the cap off they admit about half their write figure in
-         bound filings per hour. Each bound filing is its own audit verb (new-bound) naming
+         bound audit line records the cap in force and its source. The per-PR outward-write
+         tier still charges every bound filing, twice (the filing and its back-link). The
+         fixed repo-wide ceiling (20 writes per hour) does NOT count them: bound filings,
+         their back-links and attach --kind mr replies (audit verb attach-pr) are counted
+         by their own larger runaway backstop, the write.bound.repo_hour knob
+         (ASSAY_DESK_WRITE_BOUND_REPO_HOUR; default 60 per repo per hour; never off), whose
+         value and source are on every such audit line. Unbound filings keep the fixed
+         ceiling. Each bound filing is its own audit verb (new-bound) naming
          the PR, role and brief. Over the cap: exit 4 with a retry-after. After filing, a
          back-link comment is posted on the PR; if it cannot be confirmed the issue still
          stands and the command exits 6 naming the URL — do not re-file.
@@ -118,7 +122,8 @@ new    — file a new issue. Runs a dedupe search against the repo's OPEN issues
          nothing to correct is not a skill-bug.
 
 attach — post an observation as a comment on issue N (a class issue or duplicate target).
-         Never budgeted. Refuses (exit 5) if N is CLOSED, with reopen-or-new guidance.
+         Never budgeted by the per-session rate; an attach to a change request (--kind mr) is
+         held by the PR-bound backstop above (exit 4 over), never by the fixed ceiling. Refuses (exit 5) if N is CLOSED, with reopen-or-new guidance.
          --kind states WHICH object N names: issue (the default — attach is an observation
          on an issue) or mr (pr is accepted as an alias). It matters on GitLab, where
          issues and merge requests are numbered in SEPARATE sequences and #N and !N

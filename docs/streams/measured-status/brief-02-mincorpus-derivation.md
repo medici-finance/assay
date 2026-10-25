@@ -322,5 +322,50 @@ Verification-Attestation: medici-finance/assay#3962 run=601383e826e9a6a1d84e10d9
 
 **VERIFY: BLOCKED** — rows 1 to 4 pass network-off; row 5 is could-not-check (exit 2): no committed Verification-Table marker at this sha (class medici-finance/assay#1915). 4 of 5 rows passed.
 
+### Non-implementer verifier re-run — 2026-10-23 claude-opus-5-5
+
+Witness (installed `statusgen verifyrun` v1.0.56, host, admitted home detached at 4b7568de01248b514f48493efea7734ce0149823; throwaway HOME carrying a roster copy, real Go caches). Runner is not the implementer.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusDerivedFromFeatureCount$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusDerivedFromFeatureCount'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd qualgen && go test ./riskscore/ -run '^TestMinCorpusGovernsLearnedSwitch$' -count=1 -v 2>&1 \| grep -c '^--- PASS: TestMinCorpusGovernsLearnedSwitch'` | pass exit=0 | sha256:4355a46b19d3 | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd qualgen && go build ./riskscore/` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `grep -q 'Derivation:' qualgen/riskscore/learned.go` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `statusgen --root . --consumers --brief assay:assay:measured-status:02` | pass exit=0 | sha256:f32c3af8eb1f | 2026-10-23 | assay-verifier-app[bot] @ 4b7568de0124 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4196 run=2f1aba480d397201dad557e9ac5729c6b6074ce2ed6970eccc43083c9500ab56 source=4b7568de01248b514f48493efea7734ce0149823 brief=docs/streams/measured-status/brief-02-mincorpus-derivation.md model=claude-opus-5-5 tier=strong
+
+Observed per row (all five rows executed by the witness above, each exit 0): row 1 printed 1 (the test's own `--- PASS:` line); row 2 printed 1; row 3 no output; row 4 matched; row 5 output hash sha256:f32c3af8eb1f, which is byte-identical to a hand capture on a clean clone at this sha: `base a7b4bed48f30..a11ac41674c0 (immutable delivered snapshot)`, `CORROBORATED  qualgen/riskscore/learned.go (Train under-corpus gate, len(examples) < cfg.MinCorpus): fixed-here`, `summary: 1 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing`. No DISPROVED. The instrument pins to the delivery named by the committed 2026-10-21 marker above. The same command on a tree with an uncommitted Evidence edit reads base 4b7568de0124 with the working tree and reports `UNCHECKED` (0 corroborated, exit 0). That is the unfailable shape the closure lint below refuses.
+
+Supersedes: the 2026-10-22 run recorded on Evidence PR medici-finance/assay#4063 (PASS 5/5 at source 05dc9fbc88f2, head b4292b5d75dc) is superseded by this run per medici-finance/assay#4163. Its witness is not credited here. Its two blocking review findings (f-closure-1, f-row5-closure-1) are what this run re-checks.
+
+Closure probes (read-only, no acceptance credit). They ran in a throwaway clone at this sha, outside the admitted home, with this brief plus a probe-only PASS marker and the marker line below. That README row 02 was flipped to verified only in the clone. The admitted home's stream index is unchanged.
+- Home, unflipped, as recorded above: `statusgen verifyrun --check` exit 2, `refused — protected table: refusing: verdict mismatch: the latest recorded verdict is VERIFY: BLOCKED, not PASS`.
+- Clone, unflipped, with a probe PASS marker: `verifyrun --check` reports rows 3 to 5 `pass — witness matches the row and passed`. It reports rows 1 and 2 `could-not-run — the witness records a different command than the Verify row now carries`. Summary: `3 pass, 0 fail, 2 could-not-run/missing (of 5 Verify rows)`. `statusgen --lint` exits 0, with row 5 `[consumer-delivery-range]` only a NOTICE.
+- Clone, flipped (closing tree): `statusgen --lint` exits 1 with three PROBLEMs for this brief. The first is `Verify row 5 [consumer-delivery-range] consumer command has no explicit --base ... a PROBLEM because this branch closes the brief ...: an unfailable row cannot be the basis of a new closure`. The other two are `measured-status/02: protected acceptance row 1: could-not-run` and the same for row 2.
+
+Blockers:
+1. Row 5 (check-definition class, medici-finance/assay#1915, open at 2026-10-23). Re-pinning the row with `--delivery/--base` needs a ruling, because medici-finance/assay#3508 restored this text. It is not a verifier edit.
+2. Protected original rows 1 and 2. The table at base a7b4bed48f30 carries the pre-delivery commands. Delivery a11ac4167 re-authored them (the implementer record above). The installed witness runs only the current table, so the original commands have no witness and closure refuses. Supplemental probe on this host under `bash -o pipefail`, no acceptance credit: original row 1 (`go test ./riskscore/ -run TestMinCorpusDerivedFromFeatureCount -count=1`) exits 0 with `ok`. Original row 2 (`... -v 2>&1 | grep -q 'PASS'`) exits 141 on 3 of 3 runs. That is SIGPIPE from `grep -q`, the defect the implementer recorded, not a test failure. A passing witness of the original row 2 command therefore needs an acceptance-transition path or a ruling (next actor: the driver, or the medici-finance/assay#1915 owner, for the check-definition class).
+
+qualgen/riskscore is unchanged between delivery a11ac41674c09aadb2a940bc7d1edbcd5e4c1402 and this sha (empty diff).
+
+Verification-Table: delivery=a11ac41674c09aadb2a940bc7d1edbcd5e4c1402 base=a7b4bed48f3075336958b812617964306274f188 original=a7b4bed48f3075336958b812617964306274f188
+
+Risk-bearing value. The frontmatter risk answers are all present and all `no`, and the brief is not irreversible. Enumeration over the a7b4bed48f30..a11ac4167 qualgen diff, plus the Deliverables:
+- `EventsPerVariable = 10` @ qualgen/riskscore/learned.go:46
+- floor `EventsPerVariable * len(FeatureNames())` @ qualgen/riskscore/learned.go:60 (15 names, so 150)
+- `MinCorpus: DerivedMinCorpus()` @ qualgen/riskscore/learned.go:81, replacing the removed literal `MinCorpus: 40`
+- gate `len(examples) < cfg.MinCorpus` @ qualgen/riskscore/learned.go:185
+- `documentedEPV = 10` @ qualgen/riskscore/learned_test.go:328
+- test-only corpus sizing `floor+5`, seed `11`, `floor-1` in the flow test
+
+Ranked: EventsPerVariable is first, because it sets when the learned model is trusted over the heuristic. It is reversible by a one-constant edit and a redeploy. The test literals rank last.
+
+RISK-VALUE: DERIVED — EventsPerVariable = 10 @ qualgen/riskscore/learned.go:46 — the learned layer is a logistic regression, and 10 per predictor is the conventional logistic EPV floor (Peduzzi et al. 1996). It is also the value the brief's own fact names. 10 x 15 features = 150 total labeled rows. It counts total rows, not rarer-outcome events, which the code documents as a weaker condition (medici-finance/assay#1171).
+
+**VERIFY: BLOCKED** — (blocker: medici-finance/assay#1915) all 5 current-table commands exit 0 in the witness, and row 5 corroborates. Acceptance accounting: rows 3 and 4 pass. Rows 1 and 2 are could-not-run as protected original obligations, because the original command has no witness. Row 5 is held: it is uncreditable for a closure, since it trips `[consumer-delivery-range]` on a closing tree. 2 of 5 acceptance obligations are credited.
+
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

@@ -19,6 +19,37 @@ import (
 // are real. An argv-only stub cannot catch a producer/allocator contract mismatch.
 // regression: #3327
 func TestResumeRealAllocator(t *testing.T) {
+	r := newRealResume(t)
+	result := createDispatchWorktree(r.o, r.plan)
+	if result.err != nil {
+		t.Fatalf("real allocator rejected verified resume: %v; %s", result.err, result.stderr)
+	}
+	if got, err := os.ReadFile(r.record); err != nil || string(got) != "worker --repo medici-finance" {
+		t.Fatalf("allocator child did not resolve its worker custody: %q %v", got, err)
+	}
+	target := strings.TrimSpace(result.stdout)
+	t.Cleanup(func() { r.git(r.root, "worktree", "remove", target) })
+	if got := r.git(target, "rev-parse", "HEAD"); got != r.head || got == r.main {
+		t.Fatalf("HEAD=%s want source=%s main=%s", got, r.head, r.main)
+	}
+	if got := r.git(target, "rev-parse", "--abbrev-ref", "HEAD"); got != r.branch {
+		t.Fatalf("branch=%s", got)
+	}
+	if got := r.git(target, "rev-parse", "--symbolic-full-name", "@{upstream}"); got != "refs/remotes/origin/"+r.branch {
+		t.Fatalf("upstream=%s", got)
+	}
+}
+
+// realResume is a verified worker resume wired to the SHIPPED allocator binary.
+type realResume struct {
+	o                                dispatchOpts
+	plan                             dispatchPlan
+	git                              func(dir string, args ...string) string
+	root, record, branch, head, main string
+}
+
+func newRealResume(t *testing.T) realResume {
+	t.Helper()
 	binary := filepath.Join(t.TempDir(), "deskwt")
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
@@ -88,7 +119,7 @@ func main() {
 		err := os.WriteFile(path, []byte("resume-role-fixture"), 0600)
 		return path, "", err
 	})
-	defer restore()
+	t.Cleanup(restore)
 	refreshResume = liveRefreshResume
 	// All allocator calls execute the shipped command, never a substituted success.
 	execCommand = func(name string, args ...string) *exec.Cmd {
@@ -104,26 +135,10 @@ func main() {
 		return deskkit.PullRequest{State: "open", HeadRef: branch, HeadSHA: head, CrossRepo: deskkit.CrossRepoSame}, nil
 	}
 	o := dispatchOpts{root: root, pr: 42, kit: "worker"}
-	plan := dispatchPlan{repo: allowedRepo, wtName: fmt.Sprintf("resume-%d", time.Now().UnixNano()), identityRole: "worker"}
+	plan := dispatchPlan{repo: allowedRepo, wtName: fmt.Sprintf("resume-%d", time.Now().UnixNano()), identityRole: "worker",
+		claimKey: "assay--issue-42"}
 	if err := resolveResume(o, &plan); err != nil {
 		t.Fatal(err)
 	}
-	result := createDispatchWorktree(o, plan)
-	if result.err != nil {
-		t.Fatalf("real allocator rejected verified resume: %v; %s", result.err, result.stderr)
-	}
-	if got, err := os.ReadFile(record); err != nil || string(got) != "worker --repo medici-finance" {
-		t.Fatalf("allocator child did not resolve its worker custody: %q %v", got, err)
-	}
-	target := strings.TrimSpace(result.stdout)
-	t.Cleanup(func() { git(root, "worktree", "remove", target) })
-	if got := git(target, "rev-parse", "HEAD"); got != head || got == main {
-		t.Fatalf("HEAD=%s want source=%s main=%s", got, head, main)
-	}
-	if got := git(target, "rev-parse", "--abbrev-ref", "HEAD"); got != branch {
-		t.Fatalf("branch=%s", got)
-	}
-	if got := git(target, "rev-parse", "--symbolic-full-name", "@{upstream}"); got != "refs/remotes/origin/"+branch {
-		t.Fatalf("upstream=%s", got)
-	}
+	return realResume{o: o, plan: plan, git: git, root: root, record: record, branch: branch, head: head, main: main}
 }

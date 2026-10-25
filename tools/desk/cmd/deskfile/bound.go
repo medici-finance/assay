@@ -4,23 +4,27 @@ package main
 //
 // A blocker or question issue that a change request's own review requires is part of that
 // work, not a process-error report, so it is not counted by the per-session new-issue rate
-// (checkSessionBudget). It is bounded instead by three counts, each of which stands without
-// the others:
+// (checkSessionBudget), nor by the fixed 20-an-hour repo-wide ceiling that guards unbound
+// filings. It is bounded instead by three counts, each of which stands without the others:
 //
 //  1. a per-role, per-PR cap on bound filings (the issue.file.bound_per_pr knob, counted over
 //     issue.file.window; 0 = off), counted here by checkBoundBudget;
 //  2. the per-PR outward-write tier, deskkit.AllowWrite("deskfile", <PR repo>, N);
-//  3. the repo-wide outward-write ceiling, deskkit.AllowWriteRepoWide("deskfile", <repo>).
+//  3. the PR-bound repo-wide backstop, deskkit.AllowPRBoundWrite(<repo>, limit), a larger tier
+//     whose limit is the write.bound.repo_hour knob (default 60, never off) and which counts
+//     only deskfile's PR-bound writes: bound filings, their back-links and `attach --kind mr`
+//     replies (audit verbs new-bound and attach-pr).
 //
-// The last two are always on, so they are the only bound while the cap is off.
+// The last two are always on, so they are the only bound while the cap is off. Unbound filings
+// keep the fixed ceiling (deskkit.AllowWriteRepoWide) and do not see the bound class in it.
 //
 // The counted role is the one whose App token performs the write — deskkit.SessionTokenRole,
 // which maps the session's desk loop (DESK_LOOP) to a role, the same custody that mints the
 // token. It is never taken from --raised-by, --to or a per-role cap override. It is the first
 // field after the PR in the audit line's Detail prefix and is read back from there.
 //
-// The cap's resolved value and its source layer are recorded on every bound line
-// (boundConfigNote), so a cap raised or switched off from the environment stays visible.
+// The cap's resolved value and its source layer, and the backstop's, are recorded on every bound
+// line (boundConfigNote), so a limit raised or switched off from the environment stays visible.
 //
 // What the binding does NOT do: --for-pr does not bind the filer to the PR's author, its
 // reviewer or the holder of its dispatch claim. Any role may bind a filing to any open PR in
@@ -44,12 +48,18 @@ import (
 
 // boundVerb is the audit verb of a bound filing. checkSessionBudget counts Verb "new" only,
 // so a bound filing never consumes the per-session rate.
-const boundVerb = "new-bound"
+const boundVerb = deskkit.PRBoundVerbNew
+
+// attachPRVerb is the audit verb of an attach to a change request, and of a bound filing's
+// back-link. It is counted by the PR-bound backstop, not the fixed repo-wide ceiling.
+const attachPRVerb = deskkit.PRBoundVerbAttach
 
 // boundCapKnob and boundWindowKnob are the deskcore/config knobs the per-PR cap reads.
 const (
 	boundCapKnob    = "issue.file.bound_per_pr"
 	boundWindowKnob = "issue.file.window"
+	// boundTierKnob is the PR-bound repo-wide backstop (deskkit.AllowPRBoundWrite).
+	boundTierKnob = "write.bound.repo_hour"
 )
 
 // briefNone is the brief id recorded for a filing bound to a PR that carries no brief.
@@ -145,12 +155,47 @@ func boundLimits(role string) (config.Value, config.Value, error) {
 	return c, w, nil
 }
 
+// boundTier resolves the PR-bound repo-wide backstop limit from deskcore/config (environment
+// and default only, like boundLimits). The knob is not per role and its minimum is 1, so a
+// resolution error or a value that is not a positive count holds (exit 6): the backstop is
+// never read as off.
+func boundTier() (config.Value, error) {
+	r, err := config.Resolve(config.EnvFromList(os.Environ()), config.KnobFile{}, config.Table())
+	if err != nil {
+		return config.Value{}, deskkit.Unverifiable("deskfile: cannot resolve "+boundTierKnob, err)
+	}
+	v, err := r.Get(boundTierKnob, "")
+	if err != nil {
+		return config.Value{}, deskkit.Unverifiable("deskfile: cannot resolve "+boundTierKnob, err)
+	}
+	if v.Value < 1 {
+		return config.Value{}, deskkit.Unverifiable(fmt.Sprintf("deskfile: %s resolved to %d — the backstop is never off", boundTierKnob, v.Value), nil)
+	}
+	return v, nil
+}
+
+// allowBoundTier resolves the backstop and applies it to repo. It returns the resolved value so
+// the caller can record it, and the gate's refusal (exit 4) when the repo is at the limit.
+func allowBoundTier(repo string) (config.Value, error) {
+	v, err := boundTier()
+	if err != nil {
+		return config.Value{}, err
+	}
+	return v, deskkit.AllowPRBoundWrite(repo, int(v.Value))
+}
+
 // boundConfigNote is the cap's provenance, recorded on every bound audit line once the cap
 // resolves: the value in force and the layer it came from (the environment variable that set
-// it, or the default), for the cap and its window. An override, including one that turns the
-// cap off, is therefore always on the line it governs.
-func boundConfigNote(c, w config.Value) string {
-	return "bound-config: " + c.String() + "; " + w.String()
+// it, or the default), for the cap and its window, then the PR-bound backstop. An override,
+// including one that turns the cap off, is therefore always on the line it governs.
+func boundConfigNote(c, w, tier config.Value) string {
+	return "bound-config: " + c.String() + "; " + w.String() + "; " + tier.String()
+}
+
+// tierConfigNote is the provenance of the PR-bound backstop alone, recorded on an
+// attach-to-a-change line, which has no per-PR cap.
+func tierConfigNote(tier config.Value) string {
+	return "bound-config: " + tier.String()
 }
 
 // boundCharged reports whether a bound audit entry charges the per-PR cap, and which PR and
@@ -228,6 +273,9 @@ func checkBoundBudget(pr prRef, role string, now time.Time, limit int64, window 
 type boundBinding struct {
 	pr    prRef
 	brief string // canonical qualified brief id, or briefNone
+	// cfg is the bound-config note the filing's own line carries; the back-link repeats it, so
+	// the backstop's value and source sit on the line of every write it counted.
+	cfg string
 }
 
 // verifyBinding checks, through the forge, that pr is open and that briefArg (empty when
@@ -518,7 +566,7 @@ func resolveAlias(fg deskkit.Forge, fr deskkit.ForgeRepo, ref, alias string) (st
 // returned for the caller to report as unverifiable; the issue is never deleted and the create
 // is never retried.
 func backLink(b boundBinding, issueURL string) error {
-	ac := &auditCtx{verb: "attach", repo: b.pr.Repo}
+	ac := &auditCtx{verb: attachPRVerb, repo: b.pr.Repo, boundCfg: b.cfg}
 	n := b.pr.N
 	ac.target = &n
 	var err error

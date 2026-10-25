@@ -672,7 +672,7 @@ func awaitInputs(s *Stream, br *Brief) (awaitBrief, awaitRows, awaitEvidence, aw
 			content := strings.ReplaceAll(string(raw), "\r\n", "\n")
 			body := content
 			if first, _, _ := strings.Cut(content, "\n"); strings.TrimSpace(first) == "---" {
-				if _, bd, ferr := splitFrontmatter(content); ferr == nil {
+				if _, bd, ferr := splitFrontmatter(string(raw)); ferr == nil { // one CRLF rewrite, as parseBriefFileBytes
 					body = bd
 				}
 				if bf, ok, perr := parseBriefFile(path); perr == nil && ok {

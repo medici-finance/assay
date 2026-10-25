@@ -65,6 +65,31 @@ func enrichment(calls []forgeCall) []string {
 
 // regression: class issue-projection
 func TestProjectionJourney(t *testing.T) {
+	t.Run("unknown addresses stay held", func(t *testing.T) {
+		for _, labels := range [][]string{{"to:"}, {"to:worker", "to:intake"}} {
+			for _, projection := range []string{"full", "intake", "work-ready"} {
+				t.Run(strings.Join(labels, "+")+"/"+projection, func(t *testing.T) {
+					calls := installForge(t, map[string]*repoFixture{homeRepo: {
+						issues: []deskkit.IssueSummary{{Number: 81, Title: "unknown-address", Author: deskkit.Account{Login: "shared-agent"}, Labels: labels}},
+					}})
+					code, out := projectionRun(t, t.TempDir(), "--projection", projection)
+					if code != 0 {
+						t.Fatalf("exit=%d %s", code, out)
+					}
+					if projection == "work-ready" {
+						if strings.Contains(out, "unknown-address") {
+							t.Fatalf("unknown address offered for work: %s", out)
+						}
+					} else if !strings.Contains(out, "unknown-address") || !strings.Contains(out, "AWAIT") || strings.Contains(out, "CREATE-PLACEHOLDER") {
+						t.Fatalf("unknown address not held: %s", out)
+					}
+					if got := enrichment(*calls); len(got) != 0 {
+						t.Fatalf("unknown address paid unnecessary reads: %v", got)
+					}
+				})
+			}
+		}
+	})
 	for _, c := range []struct {
 		p, to               string
 		want, absent, reads []string
@@ -107,7 +132,7 @@ func TestProjectionJourney(t *testing.T) {
 
 // regression: class issue-projection
 func TestProjectionFailures(t *testing.T) {
-	for _, args := range [][]string{{"--projection", "unknown"}, {"--projection", "inbox"}, {"--projection", "work-ready", "--to", "worker"}} {
+	for _, args := range [][]string{{"--projection", "unknown"}, {"--projection", "scanner"}, {"--projection", "inbox"}, {"--projection", "work-ready", "--to", "worker"}} {
 		root, calls := projectionFixture(t)
 		code, _ := projectionRun(t, root, args...)
 		if code != 5 || len(*calls) != 0 {

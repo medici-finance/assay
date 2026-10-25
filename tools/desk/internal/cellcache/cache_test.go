@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func fixture(t *testing.T) Policy {
@@ -458,6 +459,15 @@ func TestCacheBuildReuse(t *testing.T) {
 		cmd.Env = env
 		out, buildErr := cmd.CombinedOutput()
 		finishErr := l.Finish(true)
+		if i == 0 {
+			// First build creates the cache's top-level shards. Explicit
+			// maintenance refreshes accounting outside enrollment, retaining
+			// the existing timestamp slack instead of waiving its guard.
+			time.Sleep(AdmitMtimeSlack)
+			if _, err := Check(p, false); err != nil {
+				t.Fatal(err)
+			}
+		}
 		if buildErr != nil || finishErr != nil {
 			t.Fatalf("build: %s %v %v", out, buildErr, finishErr)
 		}

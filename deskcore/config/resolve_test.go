@@ -259,7 +259,7 @@ func TestTableIsWellFormed(t *testing.T) {
 	}
 	want := []string{
 		"issue.file.rate", "issue.file.window", "issue.file.bound_per_pr", "write.rate.per_pr_hour",
-		"write.rate.per_repo_hour", "evidence.unnumbered_cap", "autolane.daily_cap", "write.breaker.trip", "write.breaker.cooldown",
+		"write.rate.per_repo_hour", "write.bound.repo_hour", "evidence.unnumbered_cap", "autolane.daily_cap", "write.breaker.trip", "write.breaker.cooldown",
 		"review.round_cap", "pool.width", "token.github.refresh_margin", "key.github.max_age",
 		"token.gitlab.pat_days", "token.gitlab.expiry_warn", "token.gitlab.in_use_window", "lease.ttl",
 		"lease.renew_every", "records.retention", "forge.page_size", "timeout.forge", "timeout.callout",
@@ -288,11 +288,11 @@ func TestTableIsWellFormed(t *testing.T) {
 
 func TestValuesForDisplay(t *testing.T) {
 	r := resolve(t, nil, KnobFile{})
-	if n := len(r.Values("")); n != 18 {
-		t.Errorf("Values(\"\") = %d knobs, want the 18 that are not per role", n)
+	if n := len(r.Values("")); n != 19 {
+		t.Errorf("Values(\"\") = %d knobs, want the 19 that are not per role", n)
 	}
-	if n := len(r.Values("worker")); n != 26 {
-		t.Errorf("Values(worker) = %d knobs, want 26", n)
+	if n := len(r.Values("worker")); n != 27 {
+		t.Errorf("Values(worker) = %d knobs, want 27", n)
 	}
 }
 

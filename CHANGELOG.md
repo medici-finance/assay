@@ -23,6 +23,153 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.59 — 2026-10-24
+
+### Added
+- Design-decision record `DR-composability-02` for the install ledger, paired inverses and `deskdisable` (brief composability/02). It states the delivered design: only three components can be reversed, no outside compensation ever runs, and nothing writes the ledger yet. It answers the brief's two review questions from the code and awaits the driver's explicit design approval.
+- The write, check and record runs use the same report: they reach the same Verify-row audit, so a closed brief's findings are counted per rule there too (default bounded text, no `--all` or `--json`) instead of printing one line each. `statusgen --lint --all` restores every historical finding as its own NOTICE line, and `statusgen --lint --json` prints a deterministic report (per-rule and per-status counts, actionable and historical partitions, could-not-check states) in place of the `LINT:` line.
+- `statusgen --lint --diff-base` now also compares the NOTICEs of the briefs the diff adds, edits
+  or renames. An actionable finding (structural Verify-row rules, row strength, identifier
+  dereference, risk and `why:` metadata, `consumers:` routing) that the merge-base copy of the
+  brief did not carry is reported as `PROBLEM: [notice-ratchet] ...` and fails the run; findings
+  already at the base, `COULD-NOT-CHECK` lines, heuristic prompts, historical summaries and every
+  brief the diff does not touch stay NOTICEs. Findings are compared by rule, repository-relative
+  path and row identity, so rewording a message or moving the checkout root creates none. When the
+  base or the changed-brief list cannot be read, the run prints an explicit could-not-check
+  instead of a clean comparison. See `docs/verify-row-strength.md`.
+- `statusgen --lint` now separates frozen historical findings from actionable ones through one shared notice report. A finding from any included check (structural and strength Verify-row rules, identifier dereference, risk-files cross-read, why / exec-tier-why metadata, ordering gate, consumers routing) on a brief already `done` or `verified` at the merge-base is counted per rule instead of printed one by one. A notice belongs to the file named in the emitter's leading slot, so a README notice that merely quotes a closed brief's path stays actionable. Active, newly closed, unknown-status and non-brief findings stay individual NOTICEs, and PROBLEMs and the exit code are unchanged. `security-review-absent` is counted per rule but never demoted: no corroborated closure-date boundary exists yet, so a closure after the rule took effect would otherwise read as frozen history.
+- added `statusgen verifyrun --rows <id>[,<id>...]`, which runs and records only
+- added a complete `deskboard review-queue` observation artifact and offline
+- the verify-runner image now ships the cluster backend's three fixed entrypoints,
+
+### Fixed
+- A verifier's failed or blocked verification is now filed once per case. `deskfile new` accepts `--filing-brief` and `--filing-case` (with `--raised-by`), derives an exact filing key from the repository, canonical brief, raising role and case id, and stamps it into the filed issue. Before the title matcher runs it looks that key up among open issues in the same repository raised by the same role: a hit refuses the filing and names the existing issue (only when that issue was written by an identity the trust gate admits; a marker planted by anyone else is reported by number and ignored, never obeyed), so a repeat observation under a different title no longer files a second issue. A search that fails or is truncated files nothing, and an ambiguous create is reconciled by the same lookup before any further create. Filings without an identity keep the title matcher, and `--force-new --reason` stays the audited override.
+- Require separate per-row dates and runner identities for new command Evidence submissions, including blocked and supplemental observations, before `deskevidence` writes or passes its dry-run. Preserve historical evidence and require retained run records or reruns for missing attribution. Align the verifier kit and native dispatch guidance with this preflight; no lifecycle advancement is granted (#4201, regression #4114).
+- The Laya advisor deadline tests no longer fail on a loaded runner: the fixture now hangs far past a wider completion envelope, so the result proves the deadline kill without depending on scheduling speed.
+- The `deskwt` prune mutation spec's pushed-gate and ancestor-walk entries now produce compiling mutants, so a muhar run can actually prove the unpushed-hold and one-walk-per-sweep behaviours instead of reporting could-not-mutate. — thanks @Nitjsefnie
+- The verification loop reconciles a re-landed failure to the issue already filed for its case before filing, using the forge read it already owns and the same trusted-author confirmation. The case identity is derived from the item as the scanners actually produce it (a multi-root `<owner>/<repo>:<stream>/<NN>` id, or a bare id in a single-root plan whose repository is the plan's own).
+- `statusgen --verify-issues` caps each verify-gate card body below the forge's 65,536-character issue-body limit. An oversize Verify or Evidence section is cut at a line boundary, largest first; the marker, the card header and the closing checklist stay whole, and the cut is stated with a link to the brief file at the rendering commit. One oversize brief no longer stops `verify-gate-open` and the cards for every brief after it.
+
+### Changed
+- Design-decision record `DR-composability-02` now lists, under its accepted limits, a further limit on the fixed-path claim recorded in internal review notes, as asked when the first approval request was answered "revise first". The record is still awaiting the driver's explicit design approval.
+- Pair plugin 1.0.59 with the published v1.0.58 statusgen and desk-tools binaries, and pin the base container and the harness image to the matching desk-tools image digest.
+- Preserve separate round/packet/terminal deadlines and GitLab exact bases; qualify dispatch abort/release and preflight loose blob and diff sizes before content loading.
+- Preserve small diffs in large files with a separate local input budget and reuse collected per-file patches when local construction is skipped.
+- Require canonical commit objects at local preparation boundaries, preserving provider fallback when an assigned object is unavailable.
+- Share one exact-source review preparation context between dispatch round and packet builders; accept an advisory observation handoff, reuse exact local objects, and preserve fresh mutable admission and publisher boundaries.
+- The `verified-runner-attribution` notice names the cell the accepted run record derives, so a historical mismatch points at the record rather than the caller.
+- The three private closed-brief aggregates in the Verify-row audit (`gotest-run-vacuous`, `prose-led-command`, row strength) are gone: each finding on a closed brief is now one ordinary per-record line that the shared report counts, so text and JSON totals agree. `docs/archive` is excluded from live lifecycle classification only; link checks still cover it. The report's could-not-check states (unresolved merge-base, missing record standing) print as `NOTICE: [notice-report-could-not-check]` lines so `--diff-base` and the lint audit, which keep only `PROBLEM:`/`NOTICE:` lines, carry them. `difflint` forwards `--all` to its inner lint only when the caller passed it; the lint audit always runs its inner lint with `--all`. Neither classifies notices: the report in `notice_report.go` is the only classification table.
+- `statusgen --register-links` repairs a typed `[F-NN]`/`[I-NN]` link to the generated view when exactly one register entry carries the id, and lists ambiguous or unmapped links as author-owed without changing them. Recorded Evidence (both the link repair and the bare-id linking skip it), Verify table rows (any header carrying Command and Expect cells, including the Class-first shapes) and fenced text (backtick or tilde fences) are never rewritten.
+- `statusgen` board-drift notices now reach the transition that acts on them: a todo row delivered by a merged `Brief:`-trailer PR, or re-homed by a pointer row, is held out of the Next-up and dispatch queues instead of being re-dispatched. A two-parent merge reads its `Brief:` trailers from the branch commits whatever the branch is called. The history read takes its commit graph from `git rev-list` and its messages from one length-prefixed `git cat-file --batch`, so no byte in a commit message can forge a merge record or reach git as an option. An `Authors:` trailer never counts as delivery, a merge read or branch-commit read that fails stays could-not-check, and text-heuristic classes (a brief that merely discusses de-housing) stay notice-only.
+
+## v1.0.58 — 2026-10-23
+
+### Added
+- Add a pure public work-reference resolver in statusgen, with typed identities, exact selectors and copied supplied aliases; route existing qualified-ID and desk trailer readers through separate compatibility profiles without enabling operational prefixed references.
+- Author 14 implementation briefs in an active stream for shared in-process reference/capability libraries, milestone/schema/graph support, desk-tools integration, reporting and candidate release qualification. Scope approval and stream activation take effect on the maintainer's merge of PR #4182; existing brief states, root-contract approvals, pins and operational declarations remain unchanged.
+- Author six parked briefs for durable verifier blocker handoff, accountable intake disposition, shared routing, worker pickup, independent recheck and rollout qualification; reuse existing filing and acceptance owners.
+- Shared pure issue selection and advisory verification handoff contract in deskcore, with legacy observations retained as unknown.
+
+### Fixed
+- Addressed issues no longer enter ordinary scanner creation/reactivation or worker-ready discovery; receiving inboxes and independent gates retain authority.
+- Amend the command of desktools-v2/65 Verify row 4 (command only, version 2 to 3; Expect, class and order unchanged) so the consumer-routes check pins the delivering merge and its first parent and can be discharged on merged main. This is the bounded acceptance-transition amendment; it is not in effect until a mapped human approves the exact payload.
+- Amend the command of desktools-v2/71 Verify row 8 (command only, version 1 to 2; Expect, class and order unchanged) so the consumer-routes check pins the delivering merge and its first parent and can be discharged on merged main. This is the bounded acceptance-transition amendment; it is not in effect until a mapped human approves the exact payload.
+- Include deskcore and gitquiet when archiving the trusted base commit for the corroboration guard, so its build has every local sibling module.
+- Routing labels preserve excluded-label retirement and completed-placeholder cleanup; malformed addresses stay held across full and work-ready views without extra history reads.
+- The `deskcore/issueflow` consumer-build check now passes from a cold module cache, so the release workflow's `test (desk-tools)` leg no longer depends on another leg having fetched statusgen's dependencies first. Consumer modules (statusgen, tools/desk) build with workspace resolution still disabled, the job's module proxy inherited, and `-mod=readonly` holding each to its own `go.sum`; runs inside deskcore itself stay fully offline (#4234).
+- The bounded handoff mutation runner uses its own schema and verifies unmodified named tests before applying any of its eighteen production mutations.
+- The verify-runner image now ships git 2.56.0 at `/usr/bin/git`, built from the same pinned tarball and sha256 as the base image, instead of the Debian bookworm git 2.39.5. The admitted runner calls `git --attr-source` (git 2.41 or later) through its fixed `PATH`, so briefs with an eol-converted file were refused on the old git. The build now runs the git-floor check as its last step, and a unit test holds the two images to one pinned git.
+- `statusgen verifyrun --sandbox=container-netns` no longer refuses `could-not-attribute` on a home cut as a linked worktree. `--open-bracket` derives every part of the witness Runner cell on the host and records it in the receipt (`runner`, `runner_source`, `runner_tree`, `on_behalf_of`). The container run writes that cell into every row and derives no part of it itself; a receipt with no runner still refuses `could-not-attribute`, and a malformed runner, source, tree token or annotation refuses before any row. `--close-bracket` re-derives the cell on the host and refuses unless the receipt carries it and every row's Runner cell is exactly it.
+
+### Changed
+- Add pure review candidate-plus-priority selection to the existing observation contract, retaining complete coverage and holds while applying explicit policy and capacity without recollection.
+- Approve the verification-handoff implementation scope and activate its stream on the maintainer's merge of PR #4206 after publication of v1.0.57. Preserve individual decision, verification and live-cutover requirements.
+- Pair plugin 1.0.58 with the published v1.0.57 statusgen and desk-tools binaries, and pin the base container and the harness image to the matching desk-tools image digest.
+- Route prose and discrete desk selection through the same candidate-plus-priority planner in the existing efficiency, loop-admin and forge-mirror work; add parity and ranked GitHub-request qualification without creating parallel plans or changing live authority.
+- `deskfile`: change-bound filings (`new --for-pr`), their back-links and `attach --kind mr` replies no longer count toward the fixed 20-an-hour repo-wide write ceiling. They are held by their own larger runaway backstop, knob `write.bound.repo_hour` (default 60 per repository per hour, never off), and the value in force and its source are recorded on each audit line. Unbound filings and every other tool keep the fixed ceiling.
+
+## v1.0.57 — 2026-10-23
+
+### Added
+- A standalone Apache-2.0 `deskd` Go module: the command, adapters, index, contract generator, offline schema validator, authorization controls, embedded web view and tests. Existing deployments are unchanged; no runtime activation, release, image or consumer retirement is included.
+- Brief desk-supervision/37 plans an optional `attempts` list on verification outcome records. Each entry marks a run of the Verify table as credited, uncredited or discarded, with a closed reason. A read-only `deskperf reruns` report then answers "brief N needed X verification runs, Y uncredited" and joins each attempt to the cost and time already in the local perf history, without adding a new cost measure (#4163).
+- Design brief statusgen/39 plans `statusgen --objective`: one read-only, offline reader that joins every configured stream root and emits an objective's prerequisite graph, critical path and per-role next moves as a single JSON document, so the objective skill of #4107 can become a thin renderer.
+- Draft delivery milestone and stream contracts define supported outcomes, versioned capability dependencies, criterion coverage and evidence-bound acceptance. Canonical IDs use `cell:repo:stream:m-NN` for milestones and `cell:repo:stream:b-NN` for briefs; shorter colon forms are context-based reference elisions.
+- Plan the outcome-record fix that keys declared directories with a trailing slash, so the secret pattern sweep stops flagging honest verification records while every existing record keeps reading.
+- The driver's ruling of 2026-10-22 that bracketed container runs count as Linux witnesses, for ratification at merge: #4069
+- `assay:trace-path-to-live` skill: turns an objective (a brief id, a drive slug or a plain-language goal, confirmed before walking) into its prerequisite brief graph across every stream root — live status, gate, open PR, claim, eligibility and the critical path — plus a ranked move list per owning role, rendered as one self-contained page outside any repository. It orchestrates the existing `statusgen` and `deskboard` readers and adds no reader of its own.
+- `deskread trust` carries `bodyHistoryKnown`, always rendered, so a reader can tell a body the
+  forge reported as never edited from one whose history it did not report.
+- `statusgen verifyrun --bracket-digest --witness <brief> --credit --source <40 hex>` checks
+  those three conditions, read-only. Each bracket's line ends `credit=credited`,
+  `credit=not-credited` or `credit=could-not-check`, with the reason on standard error; it
+  exits 0 only when every bracket is credited, 1 on any not-credited, else 2. It reads the
+  record through `deskread issue`, `trust` and `label-events` and applies
+  `ReadVerifierAttestation`'s rules; a login-only verifier match, a shallow clone, a missing
+  roster or a failed read is could-not-check. Rule 45, verify-desk and pr-review-desk credit a
+  row only on `credit=credited`. Without `--credit` the verb is unchanged.
+- `statusgen verifyrun` brackets a `--sandbox=container-netns` run with host verifier
+  admission: `--open-bracket` writes a receipt (check JSON, home tree digest, opened time)
+  outside the home; the container run needs `--admission-receipt`, `--container-image-digest`
+  and `--witness`, never runs admission itself, and refuses unless its mounted root digests to
+  the receipt's tree before and after the rows; `--close-bracket` re-checks on the host and
+  appends one `Admission-Bracket:` line only when the run and the tree digest still match.
+  The line's `witness=` value is the digest of the span from the nearest witness table header
+  above it, which the Evidence landing's `(on-behalf-of human:<subject>)` stamp does not
+  change. The new read-only `verifyrun --bracket-digest --witness <file>` prints one line per
+  bracket with `verdict=match|mismatch|no-table|shared` and the span's line counts, and exits 0 only when all match and no
+  `sandbox=container-netns` row lies outside every bracket's span; a
+  bracket is a match only when its span holds one `Tree-Digest`, `Container-Image` and
+  attestation line, its `tree=` equals that span's `Tree-Digest`, its `run=` and `source=` equal
+  that span's attestation, its `opened=` is strictly before `closed=` and the span's digests are
+  `sha256:<64 hex>`. An escaped `\|` is never a
+  cell delimiter, as in the Evidence landing. The close step reads the run and tree only from
+  that span and refuses one holding a second `Tree-Digest`, `Container-Image` or attestation line,
+  and replaces the witness by temp file and rename, never in place.
+  Rule 45, verify-desk and pr-review-desk now credit a container row only inside exactly one
+  closed bracket whose verdict is `match`, and state that `verdict=match` shows only that the
+  bracket is consistent with its span, not who wrote it: a row is credited only when the
+  bracket line and every span line were landed by the verifier's landing step (per-line
+  `author-mail` with the pinned id, never the display name), the span's whole attestation line
+  (run, source, brief, model and tier) matches the verifier's attestation record for that run
+  (the closed, never-edited `[verification-attestation] <run>` issue authored by the dispatcher
+  identity), and that attestation names the brief that contains it and the source under
+  verification. Per-line provenance is author-asserted attribution, not authorization; the
+  forge-attributed record is the anchor.
+
+### Fixed
+- Cell launches and completion no longer recursively sweep retained task history; explicit maintenance retains ownership, evidence and Git protections.
+- Correct desk-tools/42’s obsolete perf-v2 acceptance hold to reflect its merged perf-v3 integration while preserving independent qualification and later perf-v4 measurement obligations.
+- Keep domain mutation snapshots limited to the production identity API, check the unmutated baseline first, and reject setup failures as behavioral kills.
+- Link brief desktools-v2/66 to its approved design record so board reconciliation can record the merged implementation.
+- Link desktools-v2/70 to its existing human-decision issue without changing its status or claiming approval.
+- Link desktools-v2/73 to its existing human-decision issue without changing its status or claiming approval.
+- Link measured-status/06 to its existing human-decision issue without changing its status or claiming approval.
+- Managed cache enrollment uses bounded accounting admission, with maintenance inventory outside launch custody and stale concurrent inventory refused.
+- Record local provider validation preparation as partial and link the still-open owner policy decision.
+- Record the offline GitLab conformance delivery as partial, retain the outstanding live walk, and link its existing human authorization.
+- Resolved cell telemetry records preparation, scratch admission, final enrollment and confirmed child startup phases.
+- Restore the verifier-domain brief's immutable acceptance table while retaining all downstream consumer holds and the complete consumer-routing clarification.
+- `statusgen --graph dot|jsonl` now emits the `depends`, `unblocks`, `sources` and `issues`
+  edges of brief files whose `brief:` id is the qualified `<cell>:<alias>:<stream>:<NN>` form.
+  The export keyed each brief file on that raw id, which never matched a `<stream>/<NN>` node,
+  so every brief-v2 brief's edges were dropped without an error; it now keys on the
+  filename-derived `<stream>/<NN>` id, the same one `--eligibility` uses. The brief-id class
+  guard now also follows a local copy of the raw id, the shape this defect took.
+
+### Changed
+- Add a source-pinned verifier regression inventory and frozen old/domain adapter comparisons that reject missing cases and unreviewed or stale differences.
+- Add local counts-only worker usage records and aggregate summaries, with strict schemas, explicit unknown counts, dispatch-run joins and refusal to store inside Git worktrees. No transcripts, prompts or tool output are read.
+- Define `stream:b-NN` as the preferred new brief label after negotiated reader support, deprecating unprefixed labels for new authoring while preserving canonical identities, legacy reads and history. Authoring skills select the supported identifier/schema pair.
+- Every MCP tool call is authorized against the cell it names: the caller must be a configured loop of that cell, and a filing repository must belong to it.
+- Human operations require an explicit `--human-login` at startup. A missing or empty value disables them, an invalid one refuses startup, and the login is matched case-insensitively. Existing deployments must select their prior principal explicitly.
+- State-changing HTTP routes refuse cross-site and foreign-Host requests, and JSON endpoints require a JSON content type.
+- The verifier dispatch kit (and verifyloop's template) now tells a dispatched verifier to run a `check:ci` row the host cannot sandbox through the `--sandbox=container-netns` admission bracket (`--open-bracket` / `--admission-receipt` / `--close-bracket`) instead of recording it could-not-run.
+- Three adopter-configuration guards stay at their original home; every generic control is included. Consumer migration and the cell-api refactor remain separate.
+- Use colon-only prefixed references (`cell:repo:stream:m-NN@version` and `cell:repo:stream:b-NN[@version]`), with context-based elisions, exact optional brief revision pins, and legacy alias compatibility. Existing reader support remains unchanged.
+- `/v1` reads are filtered to the cells the viewer may see, and the local terminal child no longer inherits configured chat key variables.
+- `author-spec` captures milestone promises and acceptance criteria; `author-brief` maps contributing work and separates start requirements from final acceptance prerequisites. Shared guidance keeps unsupported declarations as scoping proposals until coordinated reader support exists.
+
 ## v1.0.56 — 2026-10-22
 
 ### Fixed

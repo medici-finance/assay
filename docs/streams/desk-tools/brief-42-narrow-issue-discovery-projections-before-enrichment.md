@@ -127,14 +127,19 @@ writer/custody/equivalence and collection consent gates remain separate.
 
 ## Implementation acceptance hold
 
-This draft includes the actual deskinbox consumer and preserves the inbox script's
-positive ruling screen, cards and flow. Both readers use the current shared
-perfrec integration; its producer currently emits perf-v2. Completion is held until
-the canonical perf-v3 schema/context/provider owners (desktools-v2/63–65, as
-applicable) deliver their shared seam and both readers are integrated and qualified.
-The independent desk-tools/38 verification prerequisite remains outstanding. Source
-qualification here neither certifies that prerequisite nor activates any deployment,
-writer, credential, pin, release or collection policy.
+The actual deskinbox consumer preserves the inbox script's positive ruling screen,
+cards and flow. The merged [perf-v3 integration](https://github.com/medici-finance/assay/pull/3584)
+now connects both readers to the canonical schema/context/provider seam from
+desktools-v2/63–65. The [qualification report](../../issue-projection-qualification.md)
+records the actual selected-profile writer/reader/reducer qualification; this is
+source qualification, not an independent verification claim.
+
+Shared delivery/acceptance and the independent desk-tools/38 verification prerequisite
+remain completion holds. The later [reader-reuse follow-up](https://github.com/medici-finance/assay/pull/3931)
+also leaves its requested perf-v4 before/after measurement pending the canonical codec
+and producer, as documented in [issue projections](../../issue-projections.md). Its resolver
+counts do not satisfy that measurement. None of these source qualifications activates
+any deployment, writer, credential, pin, release or collection policy.
 
 ## Standing-desk consumer routing — 2026-10-18
 
@@ -143,3 +148,13 @@ tools/desk-local binding. It does not import cmd/main across modules, duplicate 
 classifier, change this brief's acceptance or add a process supervisor here. Preserve
 the current oracle, authority boundary and planned library home. This is a forward
 consumer, not a dependency on future workflow/controller delivery.
+
+## Prospective planner consumer checkpoint — 23 October 2026
+
+The efficiency spec §2.1/A11–A12 nominates the existing issueflow projection as a
+candidate input to graph-execution/27's shared role planner. Preserve the currently
+assigned Task/Verify/revision until its owner acknowledges any material amendment.
+At pickup, retain all work-ready/intake/inbox populations and projection-before-enrichment;
+qualify per-operation batching only through this owner and existing forge-neutral/37–38.
+No hidden global scan per root, parallel issue classifier or status/acceptance claim is added.
+This checkpoint records requested integration, not new execution Evidence or activation.

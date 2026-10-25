@@ -394,7 +394,7 @@ func TestDispatchPrompt_NoSharedCheckoutMarker(t *testing.T) {
 // regression: #3461
 func TestLoopCarriesAcceptanceClauses(t *testing.T) {
 	prompt := strings.Join(strings.Fields(renderDispatchPrompt(loopengine.Item{}, loopengine.TierLocal)), " ")
-	for _, anchor := range []string{"Preflight the exact acceptance commands", "Account for the original row inventory"} {
+	for _, anchor := range []string{"Preflight the exact acceptance commands", "Account for the original row inventory", "runs in the container lane"} {
 		matched := false
 		for _, clause := range kitPromptClauses(t) {
 			if strings.Contains(clause, anchor) {
