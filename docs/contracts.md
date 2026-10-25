@@ -437,6 +437,11 @@ It consumes observed facts and caller-owned policy booleans. Issueboard retains
 classification, trust, escalation and closure;
 deskkit retains provider reads, custody and identity. Deskinbox and the shell
 adapter consume the same human-inbox ordering without moving the ruling screen.
+The separately negotiated [intake-handoff-v1](../spec/intake-handoff-v1.md) companion
+is decoded and assessed by the same public owner. Scanloop records judgments and
+retains observations; statusgen exports committed companions and holds raw
+placeholders; issueboard shares the assessment. Existing trust, successor reads,
+claims and independent acceptance stay with their effect owners.
 See [projection and compatibility contracts](issue-projections.md).
 
 ## Review observation and planning

@@ -339,6 +339,9 @@ func splitByScope(items []Inbound, scope []string) (in, out []Inbound) {
 // boundary does not become writable by being retried) it repeats on every pass forever. A lane the
 // classifier never selects costs nothing.
 func (s *ScanLoop) classify(a Admission) (LaneName, string) {
+	if a.Item.Replayed {
+		return LaneRouting, kindUpdate
+	}
 	// (1) Can the mechanical lane write at all? The scan's write destination is the SCAN TARGET,
 	// one repo — not the inbound item's repo. An inbound issue on a repo that is in the intake READ
 	// scope but outside the write boundary is perfectly ordinary work: its placeholder lands in the
@@ -381,13 +384,16 @@ func (s *ScanLoop) judgmentItem(a Admission, kind string) loopengine.Item {
 		Gate:     "model",
 		ExecTier: "strong",
 		Payload: map[string]string{
-			"repo":    a.Item.Repo,
-			"number":  strconv.Itoa(a.Item.Number),
-			"lane":    string(LaneRouting),
-			"kind":    kind,
-			"author":  a.Author,
-			"trust":   string(a.State),
-			"updated": renderTime(a.Item.UpdatedAt),
+			"repo":          a.Item.Repo,
+			"number":        strconv.Itoa(a.Item.Number),
+			"lane":          string(LaneRouting),
+			"kind":          kind,
+			"author":        a.Author,
+			"trust":         string(a.State),
+			"updated":       renderTime(a.Item.UpdatedAt),
+			"handoff-state": a.Item.HandoffState,
+			"handoff-route": a.Item.HandoffRoute,
+			"successor":     a.Item.HandoffSuccessor,
 		},
 	}
 }

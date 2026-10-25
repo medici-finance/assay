@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"strings"
 	"testing"
 	"time"
@@ -75,6 +76,10 @@ func TestNextUpStreamFindingNotDispatchGate(t *testing.T) {
 		Brief{Num: "02", Wave: 0, Status: "todo", Schema: "placeholder-v1"},
 		Brief{Num: "03", Wave: 0, Status: "todo", Schema: "placeholder-v1"},
 	)
+	for i := range s.Briefs {
+		s.Briefs[i].IntakeAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair"}
+	}
+
 	s.LastTouch = day(0)
 	findings := []Finding{
 		{ID: "F-guardrails-dup", Affects: []string{"issue-loop"}},     // stream-level: gates nothing

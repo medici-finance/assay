@@ -179,10 +179,15 @@ func ReadMonitorState(dir string, scope []string) (*MonitorState, error) {
 // Inbound is one event the poller reported: an issue that is new, or whose updatedAt moved (a new
 // comment — a parked worker resuming, or a human answering a decision request).
 type Inbound struct {
-	Repo      string
-	Number    int
-	UpdatedAt time.Time
-	Raw       string
+	// Replayed observations require judgment, never another mechanical scan.
+	HandoffState     string
+	HandoffRoute     string
+	HandoffSuccessor string
+	Replayed         bool
+	Repo             string
+	Number           int
+	UpdatedAt        time.Time
+	Raw              string
 }
 
 // ID is the stable claim key. It carries the repo prefix because two repos routinely own issue

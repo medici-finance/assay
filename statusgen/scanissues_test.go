@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -147,6 +149,19 @@ func scanFixtureRepo(t *testing.T, placeholders map[string]string) ([]*Stream, s
 		t.Fatal(err)
 	}
 	attachPlaceholders(streams)
+	// These retirement/reactivation fixtures model already classified work.
+	// Raw scanner output is exercised without this fixture in TestScanHandoffAdmission.
+	for _, stream := range streams {
+		for i := range stream.Placeholders {
+			stream.Placeholders[i].HandoffAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair"}
+		}
+		for i := range stream.Briefs {
+			if stream.Briefs[i].Schema == "placeholder-v1" {
+				stream.Briefs[i].IntakeAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair"}
+			}
+		}
+	}
+
 	return streams, root
 }
 
@@ -734,7 +749,15 @@ func TestBlockedPlaceholderNextUpExclusion(t *testing.T) {
 		),
 	})
 
-	// Unblocked placeholder appears in Next-up.
+	for _, stream := range streams {
+		for i := range stream.Briefs {
+			if stream.Briefs[i].Schema == "placeholder-v1" {
+				stream.Briefs[i].IntakeAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair"}
+			}
+		}
+	}
+
+	// Unblocked, classified placeholder appears in Next-up.
 	picks := nextUp(streams, ClaimView{}, nil).Picks
 	found77 := false
 	found88 := false
@@ -1201,6 +1224,8 @@ func TestCloseOutFileModificationRetire(t *testing.T) {
 	rootPath := filepath.Join(issueLoopDir, "issue-620.md")
 	writeTemp(t, issueLoopDir, "issue-620.md", placeholderFile("issue-loop", 620, "bug"))
 
+	settlePlaceholderFixture(t, rootPath)
+
 	// Run scan with issue 620 NOT open → retire.
 	data := map[string][]ghIssue{
 		scanHomeRepo(): {},
@@ -1531,6 +1556,8 @@ func TestCloseOutFileModificationRetireLabel(t *testing.T) {
 	writeTemp(t, issueLoopDir, "README.md", scanStreamREADME)
 	rootPath := filepath.Join(issueLoopDir, "issue-643.md")
 	writeTemp(t, issueLoopDir, "issue-643.md", placeholderFile("issue-loop", 643, "bug"))
+
+	settlePlaceholderFixture(t, rootPath)
 
 	// Issue 643 is open but now carries review-request.
 	data := map[string][]ghIssue{
@@ -1972,5 +1999,24 @@ func TestScanRiskHighPlaceholderGate(t *testing.T) {
 	ph405, ok, err := parsePlaceholderFile(noGate)
 	if err != nil || !ok || ph405.Gate != "human" {
 		t.Errorf("gate-less risk:high file should read human, got ok=%v err=%v gate=%q", ok, err, ph405.Gate)
+	}
+}
+
+func settlePlaceholderFixture(t *testing.T, path string) {
+	t.Helper()
+	ph, ok, err := parsePlaceholderFile(path)
+	if err != nil || !ok {
+		t.Fatalf("placeholder fixture: %v %v", ok, err)
+	}
+	h := issueflow.IntakeHandoff{Schema: issueflow.IntakeHandoffSchema, Item: fmt.Sprintf("%s#%d", ph.Repo, ph.Issue), Opened: "2026-10-25T12:00:00Z", Revision: 1, DecidingRole: "intake-desk", Disposition: issueflow.Repair, Route: "repair", Successor: fmt.Sprintf("%s#%d", ph.Repo, ph.Issue), Evidence: fmt.Sprintf("%s#%d", ph.Repo, ph.Issue)}
+	raw, _ := json.Marshal(h)
+	writeTemp(t, filepath.Dir(path), "handoff.json", string(raw))
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = []byte(strings.Replace(string(body), "status: todo", "status: todo\nhandoff: handoff.json\nhandoff-opened: \"2026-10-25T12:00:00Z\"", 1))
+	if err := os.WriteFile(path, body, 0600); err != nil {
+		t.Fatal(err)
 	}
 }

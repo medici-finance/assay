@@ -1,0 +1,119 @@
+{
+  "schema": "verification-handoff-mutations-v2",
+  "snapshot_budget": {
+    "files": 16000,
+    "bytes": 100663296
+  },
+  "cases": [
+    {
+      "id": "production-retention",
+      "target": "tools/desk/cmd/scanloop/run.go",
+      "old": "source = retainingMonitor(pollDir, scope, source)",
+      "new": "// mutation: delta-only poll",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "production quiet work lost",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case production-retention"
+    },
+    {
+      "id": "pre-poll-retention",
+      "target": "tools/desk/cmd/scanloop/observations.go",
+      "old": "retainObservations(dir, before)",
+      "new": "retainObservations(dir, before[:0])",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "restart 0:",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case pre-poll-retention"
+    },
+    {
+      "id": "partial-write-retry",
+      "target": "tools/desk/cmd/scanloop/handoffrecord.go",
+      "old": "return appendHandoffRecord(h)",
+      "new": "if exists { return nil }; return appendHandoffRecord(h)",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "retry:",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case partial-write-retry"
+    },
+    {
+      "id": "strong-author",
+      "target": "deskcore/issueflow/intake.go",
+      "old": "h.Route != \"authoring\" || h.AuthorTier != \"strong\"",
+      "new": "h.Route != \"authoring\"",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "scoping_requires_strong_author",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case strong-author"
+    },
+    {
+      "id": "external-wake",
+      "target": "deskcore/issueflow/intake.go",
+      "old": " || strings.TrimSpace(h.WakeCondition) == \"\"",
+      "new": "",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "external_wake_missing",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case external-wake"
+    },
+    {
+      "id": "successor-existence",
+      "target": "tools/desk/cmd/scanloop/handoffrecord.go",
+      "old": "if err := checkHandoffSuccessor(h, rec.Repo); err != nil {",
+      "new": "if err := error(nil); err != nil {",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "missing_successor_file",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case successor-existence"
+    },
+    {
+      "id": "placeholder-readiness",
+      "target": "statusgen/nextup.go",
+      "old": " || !issueflow.RepairDispositionSettled(b.IntakeAssessment)",
+      "new": " || false && !issueflow.RepairDispositionSettled(b.IntakeAssessment)",
+      "test": "TestScanHandoffAdmission",
+      "expect": "raw scanner representation became work",
+      "module": "statusgen",
+      "package": ".",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case placeholder-readiness"
+    },
+    {
+      "id": "addressed-admission",
+      "target": "deskcore/issueflow/intake.go",
+      "old": "if !Select(WorkReady, c, \"\") {",
+      "new": "if false && !Select(WorkReady, c, \"\") {",
+      "test": "TestScanHandoffAdmission",
+      "expect": "entered ordinary work",
+      "module": "statusgen",
+      "package": ".",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case addressed-admission"
+    },
+    {
+      "id": "closed-raw-retention",
+      "target": "statusgen/scanissues.go",
+      "old": "if ph.Status != \"done\" && ph.HandoffAssessment.State != \"observed\" && (!openSet[ph.Issue] || openExcluded[ph.Issue]) {",
+      "new": "if false && ph.Status != \"done\" && ph.HandoffAssessment.State != \"observed\" && (!openSet[ph.Issue] || openExcluded[ph.Issue]) {",
+      "test": "TestScanHandoffAdmission",
+      "expect": "closed raw intake disappeared",
+      "module": "statusgen",
+      "package": ".",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case closed-raw-retention"
+    },
+    {
+      "id": "reopened-event",
+      "target": "statusgen/scanissues.go",
+      "old": "if reactivate && (key == \"handoff\" || key == \"handoff-opened\") {",
+      "new": "if false && reactivate && (key == \"handoff\" || key == \"handoff-opened\") {",
+      "test": "TestScanHandoffAdmission",
+      "expect": "reactivation reused an old disposition",
+      "module": "statusgen",
+      "package": ".",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case reopened-event"
+    }
+  ]
+}

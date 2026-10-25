@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	handoff "github.com/medici-finance/assay/deskcore/issueflow"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/issueflow"
 	"github.com/medici-finance/assay/tools/desk/internal/topology"
@@ -419,11 +420,13 @@ func parseFrontmatter(path string) (map[string]string, error) {
 // placeholderRow is the parsed frontmatter of one docs/streams/issue-loop placeholder
 // file this tool cares about.
 type placeholderRow struct {
-	Path    string
-	Issue   int
-	Repo    string
-	Status  string
-	Blocked string
+	Handoff       string
+	HandoffOpened string
+	Path          string
+	Issue         int
+	Repo          string
+	Status        string
+	Blocked       string
 }
 
 // loadPlaceholders scans root/docs/streams/issue-loop for placeholder-named files and
@@ -458,11 +461,13 @@ func loadPlaceholders(root string) ([]placeholderRow, error) {
 			return nil, deskkit.Unverifiable("cannot parse placeholder "+path, err)
 		}
 		out = append(out, placeholderRow{
-			Path:    path,
-			Issue:   num,
-			Repo:    fields["repo"],
-			Status:  strings.ToLower(fields["status"]),
-			Blocked: fields["blocked"],
+			Path:          path,
+			Handoff:       fields["handoff"],
+			HandoffOpened: fields["handoff-opened"],
+			Issue:         num,
+			Repo:          fields["repo"],
+			Status:        strings.ToLower(fields["status"]),
+			Blocked:       fields["blocked"],
 		})
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -847,6 +852,15 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 					row.HistoryHold, row.HistoryUnverifiable = reason, unver
 				}
 			}
+			intake := assessIssueHandoff(ph, key, names, now)
+			if projection == issueflow.WorkReady && !handoff.RepairDispositionSettled(intake) {
+				continue
+			}
+			// Keep classification visible in the ordinary intake/full board. A scan
+			// placeholder and a routing comment cannot make this judgment disappear.
+			if row.Action == actNone || row.Action == actCreatePlaceholder {
+				row.Title = "[intake:" + intake.State + "] " + row.Title
+			}
 			if addressed {
 				row.AddrRole = addrRole
 			}
@@ -894,6 +908,12 @@ func computeProjection(root string, now time.Time, slaDays int, toFilter string,
 				continue
 			}
 			action := classifyIssue(issueClassifyInput{open: false, hasPlaceholder: true})
+			intake := assessIssueHandoff(ph, fmt.Sprintf("%s#%d", repo, ph.Issue), nil, now)
+			if intake.State != "observed" {
+				action = actAwait
+				title = "[intake:" + intake.State + "] " + title
+			}
+
 			if title == "" {
 				title = "(title unavailable — issue closed)"
 			}

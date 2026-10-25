@@ -120,6 +120,7 @@ func cmdRun(args []string, stdout io.Writer) error {
 			renderMonitorIdentity(stdout, id)
 			return RunMonitor(script, pollDir, scope, id.TokenFiles, nil)
 		}
+		source = retainingMonitor(pollDir, scope, source)
 	}
 
 	probe := TrustProbe(nil)
@@ -340,6 +341,11 @@ func renderPassReport(w io.Writer, loop *ScanLoop) {
 		for _, id := range parked {
 			kind, opened := loop.ParkedEvent(id)
 			fmt.Fprintf(w, "  %-28s route to exactly one of: %s\n", id, strings.Join(exitNames(), " · "))
+			for _, a := range loop.Admissions() {
+				if a.Item.ID() == id && a.Item.HandoffState != "" {
+					fmt.Fprintf(w, "    intake: %s route=%s successor=%s (observation; admission remains independent)\n", a.Item.HandoffState, a.Item.HandoffRoute, a.Item.HandoffSuccessor)
+				}
+			}
 			// The land command for THIS event. --opened is the event half of the record key: an
 			// issue that already left once (say as a new issue) and is now parked as an update is
 			// a second event, and it is recorded against this time, not the first one's.

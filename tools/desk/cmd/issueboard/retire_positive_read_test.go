@@ -116,9 +116,9 @@ func TestUnreadableIssueState_NeverRetires(t *testing.T) {
 	}
 }
 
-// TestPositiveClosedRead_StillRetires pins the unchanged semantics: a placeholder whose
-// issue positively reads CLOSED is RETIRE, with the title from that same read, exit 0.
-func TestPositiveClosedRead_StillRetires(t *testing.T) {
+// Closure proves source state, not an accountable handoff. Preserve the title
+// and classification-needed row when no disposition has been recorded.
+func TestPositiveClosedRead_RetainsUnclassified(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, issueLoopDir, "issue-3.md"), placeholderFixture(homeRepo, "todo", ""))
 	calls := installForge(t, map[string]*repoFixture{homeRepo: {
@@ -129,11 +129,11 @@ func TestPositiveClosedRead_StillRetires(t *testing.T) {
 	if code := run([]string{"--root", root, "issues"}, &out, &errb); code != 0 {
 		t.Fatalf("exit %d, want 0; stderr=%s", code, errb.String())
 	}
-	if got := retireRows(out.String()); len(got) != 1 || got[0] != "tracker#3" {
-		t.Errorf("a positively-closed placeholder issue must be the ONE RETIRE row; got %v:\n%s", got, out.String())
+	if got := retireRows(out.String()); len(got) != 0 || !strings.Contains(out.String(), "classification-needed") {
+		t.Errorf("a closed unclassified source must remain awaiting disposition; got %v:\n%s", got, out.String())
 	}
 	if !strings.Contains(out.String(), "genuinely closed") {
-		t.Errorf("the RETIRE row must carry the title from the positive read; got:\n%s", out.String())
+		t.Errorf("the retained row must carry the title from the positive read; got:\n%s", out.String())
 	}
 	reads := 0
 	for _, c := range *calls {
