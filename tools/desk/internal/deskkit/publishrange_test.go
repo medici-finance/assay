@@ -277,9 +277,7 @@ func TestPublishTrackingTip(t *testing.T) {
 		}
 	}
 	tip := PublishTrackingTip(r.dir, "feat")
-	r.commitAs(workerEmail, "Assay Worker", "new.txt", "new work")
+	r.commitAs(verifierEmail, "Assay Verifier", "new.txt", "new foreign work")
 	r.git("update-ref", "refs/remotes/origin/feat", "HEAD")
-	if tip != r.remote {
-		t.Fatal("tracking tip did not retain the snapshot")
-	}
+	wantRefusedNaming(t, r.gate(tip), "new foreign work")
 }
