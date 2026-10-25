@@ -557,12 +557,16 @@ code or its output. Per-invocation agent usage (tokens, cost) is the agent runne
 
 `deskperf` reads it:
 
-- `deskperf report [--days N] [--tool X] [--role R] [--top N] [--json]` — per tool: count,
-  p50 / p90 / max wall ms (nearest-rank), total wall ms, share of total wall, and refusal ratio
-  (refused + unwritten + unverifiable over count); then the N slowest invocations (default
-  10) as ts / tool / verb / wall ms. Boot- and launch-step records are excluded (they
-  subdivide a `deskboot` or `cellctl` run already counted once). Legacy `perf-v1` records
-  render first, exactly as before; `perf-v2` records render as a SEPARATE group (JSON
+- `deskperf report [--days N] [--tool X] [--role R] [--top N] [--json]` — leads with command
+  costs (JSON `commands`): tool and verb, count, cumulative invocation wall, typical/tail
+  duration, exact outcomes, and measured CPU/HTTP coverage. Rows rank by cumulative wall;
+  timing cohorts stay separate, and their sums are invocation work rather than human elapsed
+  time or wasted CPU. Boot- and launch-step records are excluded (they subdivide a `deskboot`
+  or `cellctl` run already counted once), as are nested non-process observations.
+  The existing detail sections follow: per tool, count, p50 / p90 / max wall ms (nearest-rank),
+  total wall ms, share of total wall, and refusal ratio (refused + unwritten + unverifiable
+  over count); then the N slowest invocations (default 10) as ts / tool / verb / wall ms.
+  Legacy `perf-v1` details precede `perf-v2` details, which render as a SEPARATE group (JSON
   `perfV2`) whose total is labelled summed invocation wall, with boundary and CPU-state
   counts, the CPU distribution over measured records only, per-counter measured/unavailable
   coverage (totals over measured records only) and per-phase distributions. The two groups

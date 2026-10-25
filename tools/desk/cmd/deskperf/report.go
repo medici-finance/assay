@@ -119,7 +119,7 @@ func cmdReport(args []string, stdout, stderr io.Writer) error {
 		}
 		recs = append(recs, r)
 	}
-	if len(recs) == 0 {
+	if len(recs) == 0 && (*tool != "" || *role != "") {
 		if selection.Conflicts+selection.Invalid > 0 {
 			return noMatch(fmt.Sprintf("%s (whole-window identity selection excluded %d conflicting identities and %d invalid records)", filterText(*tool, *role), selection.Conflicts, selection.Invalid))
 		}

@@ -256,8 +256,9 @@ individual slowest list; the overview is independent of that list. `--by-day` re
 existing tool-by-day view. The committed command-summary fail-first map is
 `tools/desk/cmd/deskperf/command-mutations.json`; from `tools/desk`, run
 `go run ./cmd/muhar -j 1 -spec cmd/deskperf/command-mutations.json`. It uses a distinct
-count-conservation control and checks verb separation, whole-window identity selection
-and exclusion of nested service observations. This is local qualification, not a claim
+count-conservation control and checks verb separation, whole-window identity selection,
+exclusion of nested service observations, unfiltered conflict-only detail retention and
+filtered unattributed counts. This is local qualification, not a claim
 that the map is wired into the truth-suite CI matrix.
 
 The detailed legacy perf-v1 group follows (unchanged lines and JSON `summary`), then a perf-v2 group (JSON `perfV2`) with its boundary and CPU-state counts,
