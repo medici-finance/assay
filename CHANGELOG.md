@@ -23,6 +23,38 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.60 — 2026-10-25
+
+### Added
+- Author a brief for parity-checked coverage selection and two-worker execution in the local prune mutation lane.
+- Scrubbed cells can use cell-owned provider credentials through the Claude harness and display their private tmux session in a cell-owned Herdr workspace, without importing host model credentials.
+- `statusgen/portfolio`: the draft portfolio-measurement-v1 contract (`spec/portfolio-measurement-v1.md`, `schemas/portfolio-measurement-v1.json`) — a versioned allocation policy with independent agent and human targets and an explicit weight table, and a read-only capacity ledger that dedupes reports, counts retries separately, keeps unknown time, weight and cost visible as coverage, leaves zero-total shares undefined, keeps every sum and product exact (a value that would overflow is unknown, never wrapped), leaves a segment straddling the window unknown in every agent measure, checks overlaps in n log n, decodes runner reports strictly without echoing their content, and reports target divergence without changing the target or dispatching anything.
+
+### Fixed
+- A rework dispatch of an open PR no longer refuses the clean home its earlier run left. `deskwt add --adopt-run <run key>` hands that home back when it carries the item's run key and is provably finished (registered, unlocked, on the branch at the pinned head, empty status including untracked files, no merge or rebase in progress). Any other home keeps the original refusal, which now names the clause that failed. (#4272)
+- Record the existing verification-handoff/01 decision and independently credited verification evidence, with the remaining design-record and final acceptance gates explicit.
+- The prune mutation gate now rejects surviving or unapplied mutations and stops starting new tests after the first kill.
+- The verify-runner image's `stage-source.sh` now accepts real GitHub App installation tokens, which carry `.` and `-`, at both the custody check and the credential helper; each site still refuses any other character and any token longer than 2048 characters (#4353). The fix takes effect once a release rebuilds the image.
+- `deskwt remove` run from inside the worktree it removes (or a subdirectory of it) now finishes the job: it deregisters the worktree from the shared checkout's git directory instead of failing with "git worktree prune failed" and leaving a prunable registration behind. (#4272)
+
+### Changed
+- A timed-out Verify row now uses statusgen's existing Unix process-group cancellation
+- Add qualified review watcher handoff to the shared candidate-plus-priority planner, with complete-cycle holds and the supported legacy rollback path.
+- Dependency graphs omit fully done briefs while retaining verified work awaiting final approval. Complete dependencies remain available to readiness calculations and provenance.
+- Each Verify row now runs in its own process group, so a stop signal sent to
+- Issueboard groups positive closure observations for absent active placeholders
+  through a bounded read-only state adapter, preserving positive open/closed proof,
+  titles, complete-list refusals and all trust/history checks. Singleton and other
+  provider paths retain their existing reads; partial/error results still refuse
+  the sweep. The shared adapter carries no credential or arbitrary query API and
+  does not move statusgen's online reads across its existing deskread boundary.
+- Path-to-live reports use plain-language titles and put a six-line progress chart first: total work, all work remaining, not started, being implemented, awaiting verification, and awaiting final approval. Three weekly readings precede seven daily readings, with recorded history and missing-data coverage.
+- Prepare verification-handoff/03 against the shipped shared contract, recording its missing design approval and the intake collection and placeholder scheduling boundaries that require regression coverage.
+- Reduce repeated ordering-gate regex work in statusgen lint with conservative literal-prefix rejection. The original ordered matcher, Unicode behavior, negations, waivers, source-edit detection and every other lint control remain authoritative. Fixture parity, focused race/vet and a healthy five-caught local mutation sweep qualify the change.
+- Regression and mutation controls cover request counts, strict response identity,
+  partial data, GraphQL errors, repository scope and original fail-closed behavior.
+- Reuse applicable review observations for coordinator and inbox depth without another review-provider scan; preserve scope, policy, freshness and execution checks.
+
 ## v1.0.59 — 2026-10-24
 
 ### Added
