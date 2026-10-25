@@ -11,7 +11,8 @@ package main
 //
 // With --check-verified, every resolved key must additionally have a verified/done
 // board row, a dated verifier stamp, and passing execution witnesses for every
-// Verify row. Failure emits no JSON. This scoped check does not replace --lint.
+// Verify row, plus fail-first witnesses for risk-bearing rows. Failure emits no
+// JSON. This scoped check does not replace --lint.
 //
 // It is READ-ONLY: it never writes STATUS.md or any generated file, touches no
 // network; optional closure checks may read local Git history. Attribution opt-in
@@ -390,7 +391,8 @@ func renderBriefInfoText(w io.Writer, info *briefInfo) {
 
 // checkBriefInfoVerified checks only the closure facts used to authorize a new
 // verified outcome. It shares the stamp grammar and witness evaluator with lint
-// and verifyrun, without grandfathering inherited closures. It does not run the
+// and verifyrun, and the fail-first validator with lint, without grandfathering
+// inherited closures. It does not run the
 // whole-tree lint: callers must retain their separate landing lint guard.
 func checkBriefInfoVerified(root string, info *briefInfo) error {
 	if info.Row == nil {
@@ -435,6 +437,16 @@ func checkBriefInfoVerified(root string, info *briefInfo) error {
 	}
 	if len(failures) > 0 {
 		return fmt.Errorf("verified outcome requires passing execution witnesses: %s", strings.Join(failures, "; "))
+	}
+	path := filepath.Join(root, filepath.FromSlash(info.File))
+	plan, refusal := protectedAcceptance(verify, evidence, path)
+	if refusal != "" {
+		return fmt.Errorf("verified outcome requires well-formed Verify and Evidence sections: %s", refusal)
+	}
+	problems, _ := failFirstClosureChecks(root, info.Key, info.Row.Status,
+		briefArtifacts{Risk: info.Risk, Verify: verify, Evidence: evidence, Path: path}, plan)
+	if len(problems) > 0 {
+		return fmt.Errorf("verified outcome requires fail-first witnesses: %s", strings.Join(problems, "; "))
 	}
 	return nil
 }

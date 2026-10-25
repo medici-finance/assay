@@ -379,12 +379,15 @@ RELATIVE to `--root`, so the output carries no machine path.
 
 `statusgen brief --root . --check-verified <stream>/<NN>` additionally requires
 `verified` or `done`, a dated Verified stamp, and a passing execution witness for
-every applicable original Verify row. Protected-table supplemental rows use the
-immutable snapshot marker and receive no acceptance credit; see
+every applicable original Verify row. Risk-bearing rows must also carry a current
+fail-first witness that reds at an acceptable base, using the same per-brief
+validator as the flip lint gate. Missing Base cells, unproven or green base runs,
+stale witnesses and invalid base provenance refuse the closure. Protected-table
+supplemental rows use the immutable snapshot marker and receive no acceptance credit; see
 [recording closure after re-derivation](../docs/protected-paths.md#recording-closure-after-re-derivation).
 It returns exit 1 with no JSON when that closure check fails;
 resolution/usage failures remain exit 2. This check does not grandfather missing
-witnesses and does not replace `statusgen --lint`.
+witnesses or fail-first requirements and does not replace `statusgen --lint`.
 
 Adding `--check-attribution` (requires `--check-verified`) also requires an accepted
 Evidence author under the same roster policy and Git blame judge as lint, without
