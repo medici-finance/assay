@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -277,7 +278,12 @@ func TestUpdateSourceSnapshot(t *testing.T) {
 // cross-tool identity/range boundary, not verdict or stamp derivation.
 func TestCreateEvidenceFlipWorkflow(t *testing.T) {
 	bin := t.TempDir()
-	build := exec.Command("go", "build", "-o", filepath.Join(bin, "deskevidence"), "../deskevidence")
+	suffix := ""
+	if runtime.GOOS == "windows" {
+		suffix = ".exe"
+	}
+	flipBinary := filepath.Join(bin, "deskevidence"+suffix)
+	build := exec.Command("go", "build", "-o", flipBinary, "../deskevidence")
 	build.Env = fakeBuildEnv()
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build deskevidence: %v\n%s", err, out)
@@ -303,29 +309,41 @@ func TestCreateEvidenceFlipWorkflow(t *testing.T) {
 	original := mustGit(t, work, "cat-file", "commit", evidence)
 	mustGit(t, work, "push", "origin", "HEAD:refs/heads/feature/test-branch")
 	mustGit(t, work, "branch", "--set-upstream-to=origin/main")
-	script := `#!/bin/sh
-case "$1" in
- verifyflip)
-  case " $* " in
-   *" --dry-run "*) ;;
-   *) printf '| 01 | verified | fixture-stamp |\n' > "$WORKFLOW_ROOT/docs/streams/fixture/README.md" ;;
-  esac
-  printf 'readme: docs/streams/fixture/README.md\nverified-stamp: fixture-stamp\n'
-  ;;
- brief) printf '{"key":"fixture/01","file":"docs/streams/fixture/brief-01-test.md"}\n' ;;
- --root) exit 0 ;;
- *) exit 2 ;;
-esac
+
+	// A Go fixture keeps the subprocess workflow runnable on native Windows too.
+	script := `package main
+import ("fmt"; "os"; "path/filepath")
+func main() {
+ switch os.Args[1] {
+ case "verifyflip":
+  dry := false
+  for _, arg := range os.Args[2:] { if arg == "--dry-run" { dry = true } }
+  if !dry {
+   if err := os.WriteFile(filepath.Join(os.Getenv("WORKFLOW_ROOT"), "docs/streams/fixture/README.md"), []byte("| 01 | verified | fixture-stamp |\n"), 0644); err != nil { panic(err) }
+  }
+  fmt.Print("readme: docs/streams/fixture/README.md\nverified-stamp: fixture-stamp\n")
+ case "brief": fmt.Println("{\"key\":\"fixture/01\",\"file\":\"docs/streams/fixture/brief-01-test.md\"}")
+ case "--root":
+ default: os.Exit(2)
+ }
+}
 `
-	if err := os.WriteFile(filepath.Join(bin, "statusgen"), []byte(script), 0755); err != nil {
+	source := filepath.Join(bin, "statusgen.go")
+	if err := os.WriteFile(source, []byte(script), 0600); err != nil {
 		t.Fatal(err)
 	}
+	stubBuild := exec.Command("go", "build", "-o", filepath.Join(bin, "statusgen"+suffix), source)
+	stubBuild.Env = fakeBuildEnv()
+	if out, err := stubBuild.CombinedOutput(); err != nil {
+		t.Fatalf("build statusgen fixture: %v\n%s", err, out)
+	}
+
 	for _, dry := range []bool{true, false} {
 		args := []string{"flip", "--root", work, "--brief", "fixture/01", "--sha", evidence}
 		if dry {
 			args = append(args, "--dry-run")
 		}
-		flip := exec.Command(filepath.Join(bin, "deskevidence"), args...)
+		flip := exec.Command(flipBinary, args...)
 		flip.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "WORKFLOW_ROOT="+work)
 		if out, err := flip.CombinedOutput(); err != nil {
 			t.Fatalf("flip dry=%v: %v\n%s", dry, err, out)

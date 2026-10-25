@@ -221,8 +221,8 @@ func TestUpdateNoTrackRefWide(t *testing.T) {
 	addTwoWorkerCommits(t, work)
 	var rc int
 	stderr := captureStderr(t, func() { rc = run([]string{"update"}) })
-	if rc != deskkit.ExitRefused || !strings.Contains(stderr, "does not resolve") {
-		t.Fatalf("update with no tracking ref rc = %d, want 5 naming the unresolved tip\n%s", rc, stderr)
+	if rc != deskkit.ExitRefused || !strings.Contains(stderr, "Range judged: refs/remotes/origin/main..") || strings.Contains(stderr, "excluding the remote tip") {
+		t.Fatalf("update with no tracking snapshot rc = %d, want 5 judging the whole range\n%s", rc, stderr)
 	}
 	if anyPush(*calls) {
 		t.Fatal("pushed")
