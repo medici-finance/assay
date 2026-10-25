@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"math"
 	"os"
@@ -303,5 +304,29 @@ func TestCommandOverviewReadableDurations(t *testing.T) {
 		if got := commandDuration(c.ms); got != c.want {
 			t.Errorf("%dms: %s, want %s", c.ms, got, c.want)
 		}
+	}
+}
+
+// regression: #4360 (review F2)
+func TestCommandOverviewV4ExclusionsVisible(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		summary deskkit.PerfCommandSummary
+		want    string
+	}{
+		{"duplicates", deskkit.PerfCommandSummary{V4Duplicates: 2}, "excluded perf-v4: 2 duplicates; 0 conflicting identities; 0 invalid"},
+		{"conflicts", deskkit.PerfCommandSummary{V4Conflicts: 3}, "excluded perf-v4: 0 duplicates; 3 conflicting identities; 0 invalid"},
+		{"invalid", deskkit.PerfCommandSummary{V4Invalid: 1}, "excluded perf-v4: 0 duplicates; 0 conflicting identities; 1 invalid"},
+		{"mixed", deskkit.PerfCommandSummary{V3Conflicts: 1, V4Duplicates: 2, V4Conflicts: 3, V4Invalid: 1}, "excluded perf-v4: 2 duplicates; 3 conflicting identities; 1 invalid"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			if err := commandTable(&out, tc.summary, 7); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out.String(), tc.want) {
+				t.Fatalf("v4 exclusions missing: %q", out.String())
+			}
+		})
 	}
 }

@@ -1,5 +1,5 @@
 {
-  "test": "go test -count=1 -run '^TestV4HistoryLineBounds$' ./internal/deskkit",
+  "test": "go test -count=1 -run '^TestV4History(LineBounds|ContinuesAfterOversizedLine)$' ./internal/deskkit",
   "control": {
     "name": "valid below-limit line duplicated",
     "file": "internal/deskkit/perfread.go",
@@ -16,8 +16,14 @@
     {
       "name": "CRLF loses a wire byte before validation",
       "file": "internal/deskkit/perfread.go",
-      "old": "sc.Split(scanPerfJSONL)",
+      "old": "sc.Split(scanPerfJSONL())",
       "new": "sc.Split(bufio.ScanLines)"
+    },
+    {
+      "name": "oversized line stops the rest of the day",
+      "file": "internal/deskkit/perfread.go",
+      "old": "if len(data) >= perfrec.MaxV4LineBytes-1 {",
+      "new": "if false {"
     }
   ]
 }

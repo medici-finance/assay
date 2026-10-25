@@ -588,6 +588,9 @@ func commandTable(stdout io.Writer, s deskkit.PerfCommandSummary, days int) erro
 	if s.Unattributed+s.NonProcess+s.V3Duplicates+s.V3Conflicts+s.V3Invalid > 0 {
 		fmt.Fprintf(stdout, "excluded: %d unattributed; %d non-process observations; %d v3 duplicates; %d conflicting identities; %d invalid\n", s.Unattributed, s.NonProcess, s.V3Duplicates, s.V3Conflicts, s.V3Invalid)
 	}
+	if s.V4Duplicates+s.V4Conflicts+s.V4Invalid > 0 {
+		fmt.Fprintf(stdout, "excluded perf-v4: %d duplicates; %d conflicting identities; %d invalid\n", s.V4Duplicates, s.V4Conflicts, s.V4Invalid)
+	}
 	return commandRows(stdout, s.Rows)
 }
 

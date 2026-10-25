@@ -9,3 +9,4 @@ cutover. No collection, consent, identity, permission or release change.
 
 - Count raw padding and CRLF bytes before v4 validation; preserve historical
   decoding and restore logical service query/transport/handler text counters.
+- Continue after oversized history lines without growing the read bound, and expose v4 duplicate/conflict/invalid counters in the command overview.

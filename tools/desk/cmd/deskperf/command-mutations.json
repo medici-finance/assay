@@ -24,6 +24,12 @@
       "file": "internal/deskkit/perfcommands.go",
       "old": "if r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess || r.Schema == perfrec.SchemaV4 && r.V4.Kind != perfrec.ObservationProcess {",
       "new": "if false && (r.Schema == perfrec.SchemaV3 && r.V3.Kind != perfrec.ObservationProcess || r.Schema == perfrec.SchemaV4 && r.V4.Kind != perfrec.ObservationProcess) {"
+    },
+    {
+      "name": "hide v4 exclusions in the command overview",
+      "file": "cmd/deskperf/report.go",
+      "old": "if s.V4Duplicates+s.V4Conflicts+s.V4Invalid > 0 {",
+      "new": "if false {"
     }
   ]
 }
