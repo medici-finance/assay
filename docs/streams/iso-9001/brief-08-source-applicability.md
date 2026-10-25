@@ -65,7 +65,50 @@ single-point-of-failure: the applicability-decision validator, the one place a f
 
 ## Human decision
 
-Decision-trigger: spec. At pickup, prepare the concrete contract and negative-path evidence, then record the owner decision before activating the behavior for an adopting project. No response authorizes activation. Synthetic implementation and review may proceed within this brief.
+What is being decided: whether the source-applicability contract is the approved design, and
+whether it becomes a control for adopting projects. The contract exists as a tested, offline
+library. It records which edition of a source (a standard, regulation, contract or policy) an
+obligation comes from and what use of its text is permitted, a mapping from one clause of that
+edition to the project's existing requirement entries, and an applicability decision
+(applicable, not applicable with a reason, or unresolved). A decision counts as accepted only
+when it links to an existing decision record whose body carries a digest of the exact source,
+mapping, project profile and proposal; the linked decision issue was closed by the named
+reviewer; the disposition is "approved"; the reviewer is not the proposer; and a separate
+review record is referenced. Anything short of that stays unresolved, and the library never
+fetches from the forge. Nothing calls the library today, so an adopter's obligations file,
+even one with a forged acceptance, fails nothing.
+
+Negative-path evidence prepared at pickup, all passing on current main: source text whose use
+is denied, unknown or absent never reaches model input (metadata only); a forged reviewer, a
+forged corroboration reference, self-approval, a widened scope, a moved source, mapping or
+profile revision, a typed name in place of the digest, replay of another subject's record, a
+supplied receipt object and a bypassed shape validator are each refused or held unresolved; a
+dangling or withdrawn requirement reference rejects the mapping; the existing requirement lint
+is unchanged.
+
+Limits accepted with option 1 or 2, none checked mechanically: a digest added to a decision
+record after its issue closed is caught only by review of the change that adds it; one closed
+issue corroborates every digest its record carries; the review reference is neither digested
+nor corroborated, so it shows a review was claimed, not which review covered this subject; and
+nothing checks that an interpretation is semantically right.
+
+Options:
+1. **Approve the contract as the design; keep it a library** — an approved design decision is
+   recorded for it; this brief then moves to implemented and independent verification, and
+   later review-packet work may build on the contract. No adopter project is gated by it until
+   a separate, later decision activates it.
+2. **Approve the contract and activate it** — as option 1, plus a follow-up brief wires the
+   library into the lint so a supplied obligations file with a forged, stale or unresolved
+   acceptance fails a check. The documentation calls it enforced only once that wiring is
+   verified.
+3. **Revise before approval** — name the limit or rule that must change; the contract is
+   reworked in a new change and this decision is asked again on the revised contract. Nothing
+   advances meanwhile.
+4. **Decline** — the contract is not wanted; this brief is withdrawn, the library stays
+   unwired, and the planned review-packet, change-impact and qualification work loses its
+   upstream.
+
+Default if no answer: none — blocks until answered. No response authorizes activation.
 
 ## Ground rules
 
