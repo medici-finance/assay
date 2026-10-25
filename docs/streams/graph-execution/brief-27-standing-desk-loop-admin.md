@@ -16,6 +16,7 @@ depends:
 unblocks:
 - agent-execution/05
 - "agent-execution/09"
+- "desk-containers/31"
 effort: L
 gate: human
 risk:
@@ -45,11 +46,14 @@ consumers:
 - 'workflow/controller: out-of-scope (separate caller delivered by graph-execution/21)'
 - 'plugins/assay/skills/worker-desk/SKILL.md desk-supervision/34 usage-record step: follow-up graph-execution/27 (this brief; for an enrolled worker role the step is skipped because the /26 journal records that run''s usage; flips to fixed-here when the implementation edits the path)'
 - 'tools/desk/cmd/deskusage/ record path (desk-supervision/34''s verb; the enrolled-worker skip): follow-up graph-execution/27 (this brief; `deskusage record` writes nothing for an enrolled worker role, Verify row 5; flips to fixed-here when the implementation edits the path)'
-version: 9
+version: 10
 id: af7e88a8-b411-40f9-b205-6b93f04ebed8
 ---
 
 # Brief 27 — Standing desk clients for the shared loop-admin
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -101,6 +105,10 @@ mocks. /45 is a real prerequisite and its reciprocal edge is added with this ame
 Add the named case in the already-declared internal/deskclient test scope. Use /44's ranked
 cost cohorts; no new scheduler, service, credential store or graph-instance prerequisite.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+
 ## Task
 
 1. Bind the five configured desk roles (coordinator, intake, worker, review and verify) as independent standing-desk clients of the shared /26 supervisor. Preserve each existing queue, claim, prompt/skill, model profile, review boundary and next-item policy. The existing desk skills and queues remain work owners. For engine-backed consumers, loopengine/engine.go, journal.go and recover.go retain that ownership; add a runner bridge rather than a second queue engine. The frozen loopengine.Loop interface (SelectQueue/TierPolicy/Dispatch/Land/OnIdle) is unchanged: adapt Dispatch/Handle, never add hooks. Skill-driven coordinator/intake/review desks use the same client without pretending they are engine-backed. No workflow store, pattern instance or workflow controller is required.
@@ -108,6 +116,8 @@ cost cohorts; no new scheduler, service, credential store or graph-instance prer
 3. For an enrolled role, use one launch path — cellctl hands the role's resolved approved profile to the shared /26 supervisor through the /22 adapter — for both the standing role process and its delegated specialist children. Map existing desk claim/reservation/stop controls into the common envelope; reject role/profile mismatch and unsupported capability. Carry canonical work references for child tasks when available without fabricating graph instances. Per-run usage for an enrolled role is the /26 journal's `runner.Usage` record: where the worker-desk skill carries desk-supervision/34's `deskusage record` step (amended 2026-10-13), the record is skipped for an enrolled worker role and kept for a non-enrolled one, so one run never has two usage records. The skip is code, not skill prose: `deskusage record` reads the worker role's enrollment from the binding that `loopadminprofile.go` resolves and, for an enrolled role, writes nothing to `usage.jsonl`, prints `skipped: worker role enrolled on loop-admin` and exits 0, so the skill step carries no condition and the refill is not blocked; an unreadable binding refuses the record (exit 5, nothing written) rather than guessing either way. Verify row 5 needs desk-supervision/34's `tools/desk/cmd/deskusage`, so this brief depends on desk-supervision/34: while that verb is absent there is no record step to skip, and the row fails rather than passing vacuously. Preserve independent review/verification actors and existing effect executors; launch completion never declares work done. Fail closed: an unrecognised role binding, an unreadable profile or binding configuration and an absent budget refuse the launch, and an existing desk stop control set for an enrolled role holds every launch for that role.
 4. Implement explicit profile-selected opt-in with the legacy desk launch path (cellctl's `deskLaunch` → `runInteractiveHarness`/`runCadencedHarness`) retained unchanged for non-enrolled roles. For a given desk binding, only one launcher owns each generation: an enrolled role holds the same `cellcadence` per-role lease while the shared supervisor runs it, so a legacy launch of that role is refused, and an unfinished checkpoint maps to a held unknown stop rather than a relaunch. Transfer and rollback stop admission, reconcile old attempts/effects and fence before replacement; unknown stop cannot be treated as successful handback. Migrating the launcher does not itself authorize a credential-custody change.
 5. Run an offline five-role fixture through the actual loopengine bridge and common supervisor/adapter, including child work, next-item progress, idle behavior, cancellation and restart. Enroll no live desk. Document source/consumer CI paths and the separately qualified per-role adoption procedure.
+
+- **Instance amendment:** Bind worker/review clients per instance rather than one client per role; other role cardinalities stay singleton. Preserve one canonical shared queue/claim owner: workers divide items and review clients divide repository/PR/lane/head selections with existing claim keys/current-head checks. Map instance stops plus stronger role/cell stops and existing enrollment through the shared owner. Legacy and managed launchers cannot independently own one instance or bypass shared capacity. Instruction/docs changes must retire the one-window-per-role assumption without copying queue policy.
 
 ## Token containment and role migration amendment — 2026-10-18
 
@@ -198,6 +208,7 @@ Existing custody, rollout, legacy rollback and human gates remain unchanged.
 | 9 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStandingDeskQualifiedLoopRetirement$' ./... > "$o" && grep -F -- '--- PASS: TestStandingDeskQualifiedLoopRetirement ' "$o")` | exit 0; named PASS. Enrolled review mode uses code-owned progression and exactly one routine watcher while non-enrolled mode remains compatible; independent final reads and held unknown-stop rollback remain. Mutation: leave the legacy model conductor active beside the enrolled client; the named test fails. |
 | 10 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestDeskPlannerParity$' ./... > "$o" && grep -F -- '--- PASS: TestDeskPlannerParity ' "$o")` | exit 0; named PASS. all five actual role bindings give equal ranked/selected/held results to prose and discrete clients on identical observations and policy; pure refill/reprioritization adds zero GH attempts. Second-root, capped, unmapped, duplicate, key-order and denied fixtures plus moved-head admission discriminate a copied ranker, repeated collection or omitted source. |
 
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd tools/desk && GOWORK=off go test -count=1 -v ./cmd/cellctl/... -run '^TestStandingDeskInstances$' > "$o" 2>&1 && grep -F -- '--- PASS: TestStandingDeskInstances ' "$o")` | Named test executes (zero matching tests is not a pass); Two workers and three reviewers with mixed qualified profiles divide tasks/lanes, preserve a paused peer and produce one usage record per invocation; singleton duplicate role still refuses. Bypass upper selection: conflicting claim cannot launch. Mutation: prefix work claims with instance or retain a legacy conductor makes the test fail. |
 ## Pre-mortem and dispatch checks
 
 The plausible wrong implementations are the negative cases named in Verify: stale acceptance, missing durable data, or a bypass that still returns success. An enrolled worker that still writes desk-supervision/34's `usage.jsonl` record gives one run two usage records; row 5 counts both stores. Each row must exercise production code and an independent expected outcome, not only serialization. Bypass the upper controller in at least one authority test. Each +mutation row names its mutation, and that mutation must turn the row's named test red. Facts, declared files, risks, consumers and sizing were re-checked against main at 307fe16992caef53fa46c52622753dd400c7b42a on 2026-10-02, after merging main; final implementation design adequacy remains review-only.

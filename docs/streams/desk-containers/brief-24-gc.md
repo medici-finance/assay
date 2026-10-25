@@ -7,7 +7,7 @@ why: >-
   that outlived their session, and old operation plans. Each has its own cleanup command today,
   and the operator has to know all of them. `gc` measures all of it, shows one plan with the
   bytes and items it would reclaim, and runs only what the operator confirms at the terminal.
-wave: 13
+wave: 14
 depends: ["desk-containers/15", "desk-containers/21"]
 unblocks: []
 effort: M
@@ -15,7 +15,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "docs/proposals/non-ci-architecture/21-cell-operator-surface.md (added by this PR) — classifies this verb as an interim bridge and names its target owner"
@@ -35,6 +35,9 @@ consumers:
 ---
 
 # Brief 24 — `cellctl gc <cell>`
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 files:
@@ -62,10 +65,16 @@ facts:
 - gc calls the existing instruments; it adds no deletion logic of its own beyond plan pruning.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+
 ## Task
 1. Implement plan collection over the instruments' dry-run modes and `cellop.Inventory`.
 2. Implement `--run` / plan-apply with per-item re-classification.
 3. Docs; changelog fragment.
+
+- **Instance amendment:** Inventory and retire resources by instance/generation, retaining names/workspaces/claims for paused, draining and unknown members and replacement history. A missing desired entry is not proof of safe retirement. Reuse the existing retirement authority and exact plan preconditions; never reclaim a shared role workspace while a peer uses it.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
@@ -79,6 +88,7 @@ facts:
 | 5 | check | `statusgen --root . --lint` | exit 0 |
 | 5a | check | `statusgen --root . --consumers --brief desk-containers/24` | exit 0 — the `consumers:` routing holds against the branch diff |
 
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestGCDeskInstances$' > "$o" 2>&1 && grep -F -- '--- PASS: TestGCDeskInstances ' "$o")` | Named test executes (zero matching tests is not a pass); Paused/draining/unknown predecessor resources survive GC, while proven retired resources become eligible without affecting peers. Mutation: classify removal from desired population as stopped makes the test fail. |
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->

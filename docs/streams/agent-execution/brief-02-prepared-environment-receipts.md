@@ -17,11 +17,14 @@ exec-tier-why: "Cross-component protocol, recovery and authority boundaries requ
 domain: "complicated"
 outcome: "none"
 consumers: ["loopadmin/workspace: follow-up agent-execution/02 (this brief; flips to fixed-here when the implementation edits the path)", "loopadmin/supervisor: follow-up agent-execution/03", "workflow/executionqualification: follow-up agent-execution/04", "loopadmin/adapters/axcompat: follow-up agent-execution/06", "workflow/workspace: out-of-scope (candidate freeze and acceptance remain graph-execution/23 and /28)"]
-version: 1
+version: 2
 id: "d3782f80-bb6f-4b7d-9ed5-36994224e9d9"
 ---
 
 # Brief 02 — Prepared-environment receipts and reusable workspace port
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -46,12 +49,18 @@ facts: As inspected on 2026-10-16 at main `ec8d77e56627a7c2269f3d143ef6a31f3e41b
 - Preserve existing work identity, coordination/effect owners, historical Evidence and independent acceptance. Stop at implemented; a non-implementer owns verification.
 - Refresh source, claims and active PRs at pickup. Missing prerequisites or contradictory contracts require a recorded hold, not a replacement implementation.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+
 ## Task
 
 1. Define the prepared-environment receipt schema and pure Go types: caller/invocation, owner incarnation/generation reference, allocation/repository/exact revisions, recipe/tool/skill versions and harness-component bundle digest, optional image digest, approved writable paths, effective tool/network policy references, outcome, validation provenance and artifacts. Keep secrets out. Candidate/acceptance identities are opaque references validated by their existing caller owner, not new domain types.
 2. Implement a small preparation/reconcile/validate port and deterministic orchestration over injected resource/Git adapters. No direct subprocess, network, new store, Git engine or maintenance scheduler. Ready requires effective configuration to match every mandatory input; fake adapters exercise the same production validator. Keep schemas and code covered by positive and drift-negative tests.
 3. Persist/recover receipt references through caller-owned storage interfaces. Rebinding a cached environment to a new invocation requires current authorization, policy, identity and actual revision checks. Partial/unknown preparation is reconciled before retry. File restoration must not re-clone over unpublished changes.
 4. Preserve existing retention/release ownership. A missing receipt, expired TTL or unknown allocation never authorizes deletion; this port emits a typed hold or delegates to the existing retirement owner. Add named flow and negative tests with executable mutations and document compatibility and changelog.
+
+- **Instance amendment:** Bind reusable preparation and workspace readiness to instance/generation where execution-specific; one compatible shared cell preparation may be reused but writable instance workspaces stay separate. A successor gets its own retained workspace binding, and any allowed file/session restoration preserves the source subject and explicit capabilities.
 
 ## Interface contract
 
@@ -68,6 +77,7 @@ These named tests, fixtures and mutations are deliverables of this brief; they h
 | 3 | check:ci +flow +mutation | `(cd loopadmin && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPreparedEnvironmentSchemaAndSecrets$" ./... > "$execution_out" && grep -q -- "--- PASS: TestPreparedEnvironmentSchemaAndSecrets " "$execution_out")` | exit 0; named PASS; schema drift, wrong invocation/allocation and credential-bearing receipt data fail with sanitized errors; mutation: omit credential exclusion on a nested receipt field — the named test must fail |
 | 4 | check:ci | `statusgen --consumers --brief agent-execution/02 --base $(git merge-base origin/main HEAD)` | exit 0; declared implementation sites and follow-up references corroborate; out-of-scope judgments remain UNCHECKED and reviewer-owned; completeness is not proved |
 
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd loopadmin && GOWORK=off go test -count=1 -v ./runner/... -run '^TestDeskWorkspaceBinding$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskWorkspaceBinding ' "$o")` | Named test executes (zero matching tests is not a pass); Two same-role instances reuse compatible cell preparation without sharing writable workspaces; swapped instance readiness and unsupported continuity refuse. Mutation: use the role workspace for both instances makes the test fail. |
 ## Pre-mortem and dispatch checks
 
 The plausible wrong deliveries are precisely the mutations listed in Verify. Each must turn its named row red and the unmodified production flow green. The implementation records its executable mutation command/map entry beside the test so a non-implementer can repeat it. In particular, bypass the upper validation layer where the row names an independent lower control. Source baseline, declared consumers, module visibility, risk answers and M sizing were checked at authoring; design adequacy and report interpretation remain review-only. Recheck them at pickup rather than treating this dated inventory as current runtime proof.

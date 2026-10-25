@@ -17,11 +17,14 @@ exec-tier-why: "Cross-component protocol, recovery and authority boundaries requ
 domain: "complicated"
 outcome: "none"
 consumers: ["workflow/executionqualification: follow-up agent-execution/04 (this brief; flips to fixed-here when the implementation edits the path)", "workflow/controller: out-of-scope (implementation remains graph-execution/21; exercised through its public interface)", "workflow/publication: out-of-scope (implementation remains graph-execution/25; exercised through its public interface)", "loopadmin/supervisor: out-of-scope (implementation remains graph-execution/26; exercised through its public interface)", "tools/desk/internal/cellop: follow-up agent-execution/05"]
-version: 1
+version: 2
 id: "6edf4528-9b57-4291-82ac-098d25c57c1a"
 ---
 
 # Brief 04 — Qualify restored execution against ownership and external effects
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -48,12 +51,18 @@ Contract-consumption: agent-execution/02 supplies prepared-environment receipt a
 - Preserve existing work identity, coordination/effect owners, historical Evidence and independent acceptance. Stop at implemented; a non-implementer owns verification.
 - Refresh source, claims and active PRs at pickup. Missing prerequisites or contradictory contracts require a recorded hold, not a replacement implementation.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+
 ## Task
 
 1. Build a bounded integration fixture around the implemented controller, supervisor and publication code with disposable PostgreSQL and an injected fake forge. Test setup provisions only its own synthetic database; ignore ambient DSNs and provider credentials, refuse non-fixture endpoints, and require no cluster or model network access. Do not substitute hand-built scheduling logic.
 2. Inject faults after effect intent, after fake-provider commit but before acknowledgment, during cancellation, and during workspace/process restoration. Assert one stable logical operation with reconciliation or explicit hold; delivery retries cannot mint a second effect. Count calls at the fake-provider boundary, not by reading only a local success row.
 3. Restore an old generation/incarnation and preserve paused/waiting state and cumulative usage. Bypass the upper controller, then require the role executor to reject a stale external action. Test missing workspace/session state, unsupported process continuity and unconfirmed stop; no new admission, replacement or budget reset is inferred.
 4. Add executable mutations for each named failure, run the inherited recovery/conformance suites and retain a scrubbed report with exact subject, DB/profile versions, command results and limitations. This proves the fixture backend only; provider fencing and live profile activation stay separately qualified.
+
+- **Instance amendment:** Add overlapping replacement to existing real supervisor/executor recovery fixtures. A durable predecessor admission barrier permits a distinct successor to start unrelated claimed work while the old assignment drains; unknown old attempt/effect retains its claim/reservation. Same-instance restart and fencing remain strict. Conversation/process continuity is never inferred from files.
 
 ## Interface contract
 
@@ -70,6 +79,7 @@ These named tests, fixtures and mutations are deliverables of this brief; they h
 | 3 | check:ci +flow +mutation | `(cd workflow && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestExecutionRestoreStopBudgetAndMissingState$" ./... > "$execution_out" && grep -q -- "--- PASS: TestExecutionRestoreStopBudgetAndMissingState " "$execution_out")` | exit 0; named PASS; unconfirmed stop, paused work and missing preserved state hold; known spend remains charged and unknown usage remains unknown; mutation: reset cumulative spend when the process is recreated — the named test must fail |
 | 4 | check:ci | `statusgen --consumers --brief agent-execution/04 --base $(git merge-base origin/main HEAD)` | exit 0; declared implementation sites and follow-up references corroborate; out-of-scope judgments remain UNCHECKED and reviewer-owned; completeness is not proved |
 
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd loopadmin && GOWORK=off go test -count=1 -v ./... -run '^TestDeskReplaceRecovery$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskReplaceRecovery ' "$o")` | Named test executes (zero matching tests is not a pass); Faults before/after successor start, lost external acknowledgment and backup rollback produce at most one successor and no duplicated effect, slot reset or implicit resume. Mutation: release unknown predecessor ownership makes the test fail at the fake provider boundary. |
 ## Pre-mortem and dispatch checks
 
 The plausible wrong deliveries are precisely the mutations listed in Verify. Each must turn its named row red and the unmodified production flow green. The implementation records its executable mutation command/map entry beside the test so a non-implementer can repeat it. In particular, bypass the upper validation layer where the row names an independent lower control. Source baseline, declared consumers, module visibility, risk answers and M sizing were checked at authoring; design adequacy and report interpretation remain review-only. Recheck them at pickup rather than treating this dated inventory as current runtime proof.

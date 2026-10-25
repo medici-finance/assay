@@ -201,3 +201,8 @@ Risk-bearing value. Frontmatter risk is all `no` and the item is not irreversibl
 
 ## Review
 Gate: model. All four risk answers are no: `up` only adds windows and only clears state through a desk-containers/15 plan applied by interactive confirm. The reviewer checks rows 2, 3 and 7.
+
+
+## Desk-instance follow-on — 25 October 2026
+
+The [instance amendment](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) adds new configuration/result/convergence behaviour through **desk-containers/31**, consuming this completed singleton delivery. Existing Task, Verify, version and Evidence are unchanged; they do not establish multi-instance qualification. /31 owns required reader negotiation, desired paused-population preservation and per-instance identity. This is routing only, not a reopening or delivery claim.

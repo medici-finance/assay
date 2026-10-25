@@ -196,3 +196,8 @@ the default is no remote activation. The useful first move is /01 over implement
 whose conformance suite passed offline during authoring. Full integration also depends on
 existing graph-execution/02 independent verification and /28–29, R2/R3, publication /25;
 an AX installation cannot unblock those prerequisites.
+
+
+## Desk instances amendment — requested 25 October 2026
+
+Bind qualified harness/model/provider/backend and preparation references to a desk instance/generation. Different worker/review instances may select different supported tuples. Replacing an instance is a fresh successor; conversation, file and process preservation remain separately declared capabilities. Preparation/restore cannot transfer live claims, renew budgets or replay uncertain effects. Named tests in agent-execution/01–05 and /09 cover the new binding. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.

@@ -22,7 +22,7 @@ ruling: "https://github.com/medici-finance/assay/issues/4401#issuecomment-639933
 design: DR-cell-stop-flags
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "Driver request 2026-10-14: a `drain <cell>` that drains the loops first and then shuts down; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): drain/pause/resume/restart/handoff are runner-lifecycle states and transitions, with today's STOP-flag/cadence mechanism labelled interim"
@@ -56,6 +56,9 @@ consumers:
 ---
 
 # Brief 16 — Cell-scoped stop flags
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 files:
@@ -101,11 +104,17 @@ The ruling keeps the implementation already on main, delivered by medici-finance
 - Do not change the semantics of any existing flag.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+
 ## Task
 1. Extend the deskkit stop reader and `Guard()` with the two cell-scoped flags and the precedence above.
 2. Add the cell-flag line to the three skill bodies that have an iteration-boundary check; regenerate the `.cursor/skills/` mirror.
 3. Show cell flags in `deskboard`, with the inert marking.
 4. Document the flags in `tools/desk/README.md` §Runtime state; write the changelog fragment.
+
+- **Instance amendment:** Preserve existing machine/cell/role STOP meanings and add the instance-targeted stop mapping through the common lifecycle owner. An instance pause holds only its new assignments; role/cell stops hold every matching instance. Resume removes only the stop it owns, and up never removes a pause to satisfy population. Desired paused and runtime persistent stops are both respected.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
@@ -121,6 +130,7 @@ The ruling keeps the implementation already on main, delivered by medici-finance
 | 6a | check | `statusgen --root . --consumers --brief desk-containers/16` | exit 0 — the `consumers:` routing holds against the branch diff |
 | 6b | check +mutation | `go -C tools/desk run ./cmd/muhar -spec cmd/deskboard/cellstopbanner-mutations.json` | exit 0 — baseline GREEN, positive control CAUGHT, `Totals: 3 caught, 0 NOT CAUGHT, 0 could-not-mutate`. The three mutants are planted in `tools/desk/cmd/deskboard/main.go`'s stop banner and each reddens `TestBannerShowsCellStopFlags` (`go -C tools/desk test ./cmd/deskboard/ -run '^TestBannerShowsCellStopFlags$' -count=1 -v` is `--- PASS` unmutated): the INERT tag dropped (a flag that halts nothing reads as armed), the INERT tag inverted (a live `STOP.cell.<cell>[.<loop>]` flag reads as inert), and the banner's read of active flags switched off (a cell-scoped drain is invisible on every board read) |
 
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDeskInstanceStops$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceStops ' "$o")` | Named test executes (zero matching tests is not a pass); Pause one of two workers, verify the peer can work, then role-stop both; resume cannot lift a foreign stop and repeated up preserves the paused member. Mutation: use only the role stop path for an instance makes the test fail. |
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->

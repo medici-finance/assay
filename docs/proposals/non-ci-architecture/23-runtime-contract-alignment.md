@@ -206,3 +206,8 @@ at unmanaged boundaries. Use explicit profiles and typed context; optional sink 
 cannot change required process receipts, custody, budget accounting or recovery. Collection
 import aliases local qualified work before its separate storage/export. The /63–65 library
 and adapters precede optional remote collection, not operational runtime availability.
+
+
+## Desk instances amendment — requested 25 October 2026
+
+Multiple desk instances extend the one public runtime. R2 owns transactional claims/reservations and replacement history; R3 executes instance generations; R4 checks existing role authority; R7 projects individual and aggregate state. No new scheduler, authoritative queue, per-instance database or credential broker. Distinct instance overlap is allowed only after predecessor admission stops; duplicate ownership of one instance or work item remains forbidden. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.

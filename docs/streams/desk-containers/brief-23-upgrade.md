@@ -7,7 +7,7 @@ why: >-
   launch-lock fix sat unreleased while four desks failed on exactly that bug. `upgrade` does
   the install and the restart as one verified operation, so moving a cell onto a release is
   one command and a running pipeline never fully stops.
-wave: 11
+wave: 12
 depends: ["desk-containers/19", "desk-containers/20"]
 unblocks: ["desk-containers/21"]
 effort: M
@@ -15,7 +15,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "Incident 2026-10-14: installed v1.0.41 lacked the #2709 launch-lock fix (6d576a565, merged after the tag); four of five desks failed at launch on that bug"
@@ -37,6 +37,9 @@ consumers:
 ---
 
 # Brief 23 — `cellctl upgrade <cell>`
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 files:
@@ -66,8 +69,14 @@ facts:
 - Never install an unpinned or unverified asset.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+
 ## Task
 1. Implement `upgrade` as above; register; docs; changelog fragment.
+
+- **Instance amendment:** Apply upgrade to desired population through the qualified lifecycle owner, preserving intentionally paused peers and draining predecessors. Reuse /19 overlap only when the execution/profile and binary installation permit it; keep refusal of unsafe shared-binary swaps under live desks and existing migration/rollback gates. Track partial instance progress rather than one success per role.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
@@ -90,6 +99,7 @@ facts:
 | 5 | check | `statusgen --root . --lint` | exit 0 |
 | 5a | check | `statusgen --root . --consumers --brief desk-containers/23` | exit 0 — the `consumers:` routing holds against the branch diff |
 
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestUpgradeDeskInstances$' > "$o" 2>&1 && grep -F -- '--- PASS: TestUpgradeDeskInstances ' "$o")` | Named test executes (zero matching tests is not a pass); Upgrade preserves paused instance and partial replacement history and refuses a shared-binary swap beneath a draining predecessor. Mutation: restart every role member or ignore the draining old binary makes the test fail. |
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->

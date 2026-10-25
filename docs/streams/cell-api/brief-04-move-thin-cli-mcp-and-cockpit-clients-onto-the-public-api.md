@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Confirm the supported client matrix and selected read/status workflow, including explicit retained legacy consumers. Agent interfaces must not gain human acts or new ambient credentials."
 issues: []
 schema: brief-v2
-version: 3
+version: 4
 id: 9ca7f67b-e213-452c-93b3-1e86eb234144
 authored: 2026-10-20 by cell-api authoring
 decision-trigger: spec
@@ -44,6 +44,9 @@ consumers:
 ---
 
 # Brief 04 — Move thin CLI MCP and cockpit clients onto the public API
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -101,6 +104,10 @@ keeps acceptance pending; it grants no time-based default or activation authorit
 - Preserve the single R2 PostgreSQL runtime, R3 isolation, R4 role authority and R6 forge mirror. A service, terminal, restored file or cached result grants no authority.
 - Keep this stream parked until admitted. Stop at implemented; independent verification, human acceptance and operational cutover remain distinct.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+
 ## Task
 
 1. Move the reusable CLI and MCP query adapters onto the public client package. Reuse existing contract meanings, explicit trusted endpoint/transport and qualified caller identity; do not import private service internals or discover credentials/endpoints from arbitrary requests. Preserve unsupported version and could-not-check behavior.
@@ -110,6 +117,8 @@ keeps acceptance pending; it grants no time-based default or activation authorit
 3. Keep the agent tool set closed: enumerate actual MCP discovery and dispatch; neither the legacy human-answer tool nor the adopt tool exists, including aliases/raw forwarding. Human named actions cannot be exposed through CLI query or MCP convenience wrappers. A direct call outside discovery must still fail at server authority.
 
 4. Prove CLI, MCP and the thin cockpit example display the same independent fixture results, distinguish execution/effects/acceptance and retain null coverage. Put the parity and end-to-end reconnect harness in the separate desk-module `internal/cellapi/integration/` test package: it starts the mounted server and invokes CLI/MCP/TypeScript consumers without adding those dependencies to the public `cellapi` package. Keep 01's external-import test on that public package. Reconnecting cannot launch a model request, repeat an effect or grant a new lease. Mark migrated consumer receipts without retiring the old service; 07 owns that last-consumer decision. Update client/compatibility docs and generated artifacts.
+
+- **Instance amendment:** Thin CLI/MCP/cockpit consumers render shared role capacity and individual desired/paused/draining/replacement state from the same contract. Resolve short names unambiguously; no local queue, status collapse, inferred human approval or lifecycle apply. Keep profile/usage provenance and zero-work reconnect behavior.
 
 ## Interface and acceptance contract
 
@@ -152,6 +161,7 @@ and omitted consumers remain a review obligation. These are future delivery inpu
 | 4 | check:ci +dereference | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && statusgen --root . --consumers --brief cell-api/04 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed implementation delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required consumers stay held and omitted consumers require review. |
 | 5 | check | `statusgen --root . --lint` | exit 0; no PROBLEM; no generated lifecycle cell or historical Evidence hand-edited. |
 
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./internal/cellapi/integration/... -run '^TestDeskInstanceClients$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceClients ' "$o")` | Named test executes (zero matching tests is not a pass); Actual served CLI/MCP/TypeScript consumers agree on mixed population and ambiguous selector/unknown state; reconnect produces zero model calls. Mutation: one client renders only the first role member makes the test fail. |
 ## Threat model and detection
 
 | Failure mode | Caught by |

@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: yes}
 gate-why: "Confirm one scoped handover and its independently demonstrated rollback, including complete consumer and credential inventory and preserved evidence. Actual source closure, capability retirement and durable-data disposition require the responsible human owner; no inventory entry authorizes deletion by itself."
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 id: f53b3589-27a7-4af6-ba9b-953e01597197
 authored: 2026-10-20 by cell-api authoring
 decision-trigger: spec
@@ -43,6 +43,9 @@ consumers:
 ---
 
 # Brief 07 — Qualify handover rollback and last-consumer retirement
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -100,6 +103,10 @@ keeps acceptance pending; it grants no time-based default or activation authorit
 - Preserve the single R2 PostgreSQL runtime, R3 isolation, R4 role authority and R6 forge mirror. A service, terminal, restored file or cached result grants no authority.
 - Keep this stream parked until admitted. Stop at implemented; independent verification, human acceptance and operational cutover remain distinct.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+
 ## Task
 
 1. Extend composability/03 migration planning and receipts with the deskd service/client/profile tuple and 01 inventory. Reconcile every source module, build/image pin, CLI/MCP/cockpit consumer, deployment/credential binding and unfinished task/dependency/open PR/claim/evidence obligation. Publish sanitized dispositions and owner receipts only; the source owner updates its private crosswalk/board separately. This public brief cannot close private work or silently adopt an active claim.
@@ -113,6 +120,8 @@ keeps acceptance pending; it grants no time-based default or activation authorit
 5. Emit last-consumer retirement eligibility only when inventory is complete, every required source-owner receipt and acceptance is current, no active consumer/claim/effect is unresolved, retained history is readable and rollback is proven. Separate eligibility from the human retirement act. Publish removal conditions and test-ledger departure report; no blanket deletion and no weakened security gate. Source owner performs its explicitly authorized reconciliation later.
 
 6. Update migration notices and handoff/retirement docs with exact qualification revisions, limits and operator acts. Keep all independent Evidence and historical rulings; plans are not deployment or retirement receipts.
+
+- **Instance amendment:** Inventory every managed/legacy instance, paused/draining predecessor and shared reservation during cutover/rollback. Retire only after all applicable owners/effects and required instance-capability consumers reconcile. Preserve one mutating cell per repo; within-cell replacement overlap is not permission for simultaneous legacy/new writers outside shared admission.
 
 ## Interface and acceptance contract
 
@@ -155,6 +164,7 @@ and omitted consumers remain a review obligation. These are future delivery inpu
 | 4 | check:ci +dereference | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && statusgen --root . --consumers --brief cell-api/07 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed implementation delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required consumers stay held and omitted consumers require review. |
 | 5 | check | `statusgen --root . --lint` | exit 0; no PROBLEM; no generated lifecycle cell or historical Evidence hand-edited. |
 
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./internal/cellapi/integration/... -run '^TestDeskInstanceCutover$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceCutover ' "$o")` | Named test executes (zero matching tests is not a pass); Paused/draining/unknown legacy instance or unsupported required consumer holds retirement; rollback preserves reservations and operator incarnation. Mutation: inventory only one member per role makes the test fail. |
 ## Threat model and detection
 
 | Failure mode | Caught by |

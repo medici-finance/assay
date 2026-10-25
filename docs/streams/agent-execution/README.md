@@ -136,3 +136,7 @@ verifier Job restrictions and controller/publication prerequisites. /09 -> desk-
 Windows dependency or second runtime owner. Current optimization, custody and unknown-stop
 contracts remain. The stream stays parked pending its controlling amendment's admission;
 authoring /09 does not activate a profile.
+
+## Desk-instance amendment — 25 October 2026
+
+The [requested instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) amends unfinished owner briefs without changing lifecycle status or completed Evidence. Shared R2/R3 instance ownership/capacity → standing clients (graph-execution/27) → desired-population adapter (desk-containers/31) → lifecycle/Kubernetes consumers. API contract work can proceed against the declared versioned shape; runtime activation still requires its actual dependencies and independent qualification. Paused instances and draining predecessors remain part of pickup/retirement inventory.

@@ -17,7 +17,7 @@ sources:
   - "docs/proposals/non-ci-architecture/28-interactive-kubernetes-desks.md — Linux operator cohort"
   - "freshness-checked 2026-10-20 @ 65f16f4a6b94 (fetched main; layout remains planned)"
 why: A single Linux operator terminal should expose five independent desk sessions without requiring native Windows or adding another launcher.
-version: 4
+version: 5
 id: cbf80c98-0c5e-4309-836b-89bced9ffae5
 exec-tier: strong
 exec-tier-why: Terminal presentation must preserve remote session and lifecycle ownership.
@@ -59,6 +59,10 @@ and [operator profile](brief-28-package-in-cluster-cellctl-and-bind-the-interact
 Branch/draft PR only; no live API, model call, deployment or workflow. No credentials in
 layout or output. Independent verification owns Evidence.
 
+## Desk-instance scope — 25 October 2026
+
+Consume the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) through desk-containers/28. Layout entries enumerate configured instance identities, including paused/draining peers; a role is a grouping, not one terminal. Reconnect is presentation and starts no model or replacement. Existing singleton layouts remain supported.
+
 ## Task
 
 1. Evaluate the smallest supported Linux terminal layout inside the operator image. Record
@@ -74,6 +78,8 @@ layout or output. Independent verification owns Evidence.
 3. Add an offline fixture that replays actual layout calls against /28's fake stream backend,
    counting launches and owners. Update docs/docker.md with direct and optional layout use,
    checked versions and the distinction between disconnect and explicit lifecycle stop.
+
+- **Instance amendment:** enumerate exact instance/generation attach bindings and label role groups; ambiguous role shortcuts refuse rather than select the first peer. Preserve detached or paused peers and reuse the shared runner attach path.
 
 ## Verify
 
@@ -92,6 +98,7 @@ coverage. These inputs are future implementation-verification evidence, not clai
 | 3 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief desk-containers/07 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required consumers stay held and omitted consumers remain a review obligation |
 | 4 | check +dereference +mutation | `sh containers/control/check.sh --version-evidence --self-test` | exit 0; real selected tool version and local capabilities match EVALUATION.md; changed recorded version/capability fails; missing tool is could-not-check |
 
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDeskInstanceLayout$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceLayout ' "$o")` | Two worker and three reviewer bindings remain distinct; paused/draining views and reconnect start zero model calls. Mutation: attach first role match makes the named test fail. |
 ## Pre-mortem
 
 Terminal becomes launch/lifetime owner: rows 1–2. A credentials-owning parallel launcher:

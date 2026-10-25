@@ -1,5 +1,8 @@
 # Cell operator surface
 
+> **Proposed delta, 25 October 2026:** [desk instances and rolling replacement](30-desk-instances-and-rolling-replacement.md) amends worker/review singleton assumptions below. Historical approval and deployment claims are unchanged; the delta requires its own review.
+
+
 **Status:** approved
 **Routes-to:** docs/streams/cell-api/
 
@@ -197,3 +200,8 @@ The decision to ratify:
 3. **Reject:** keep the verbs as cellctl features with no architectural standing.
 
 Proposed in medici-finance/assay#2890; ratified when that PR is merged by the maintainer, and the merge is the ratification record. Interim-bridge briefs may still be dispatched under their own gates. Nothing here grants authority, changes a lifecycle in force, or activates a runtime.
+
+
+## Desk instances amendment — requested 25 October 2026
+
+For the amended managed worker/review profile, lifecycle state and selectors address instances; role/cell selectors expand explicitly. up consumes desired cell.env population and preserves paused/draining instances. Replacement uses stop-admission → start successor while predecessor drains → verified predecessor stop, under shared role capacity. The earlier sequential restart remains for singleton/non-overlap profiles. Existing plan/TTY restrictions, recorded-transition allowlist and foreign-stop rules remain; an instance record is never start authority. New cell-op fields/reader negotiation are delivered by desk-containers/31 and cell-api/01; completed /15 and /17 Evidence is not reopened. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.

@@ -218,3 +218,8 @@ a zero-GH client query is not zero fleet cost. A mirror outage holds stale/unkno
 dependent work rather than starting one full poller per desk. Preserve role custody and
 consequential rechecks. forge-neutral/37–43 own the existing implementation; no additional
 cache daemon or SQL authority is introduced.
+
+
+## Desk instances amendment — requested 25 October 2026
+
+Persist desk-instance bindings, desired revisions, replacement intent, per-instance generations and aggregate role reservations through existing R2 PostgreSQL owners. Supervisor journaling is independent of workflow instance tables. Restore retains paused/draining/unknown state and occupancy, starts passive under existing incarnation rules, and cannot infer a free slot from a missing or ambiguous process acknowledgment. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.

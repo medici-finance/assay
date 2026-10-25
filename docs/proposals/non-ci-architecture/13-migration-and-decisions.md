@@ -152,3 +152,8 @@ Before dispatch, settle the first-slice owners, exact implementation and affecte
 Measure the legacy flow before cutover using comparable work classes. Prioritize operator repair effort; report holds, repeated runs, latency and cost. Stop the pilot on incorrect acceptance, unauthorized publication or loss of required evidence. Select a real-obligation sample and observation window before activation; do not infer reliability or savings from an arbitrary sample or exclude failures to improve the denominator.
 
 This proposal sets no numerical budget, promises no net effort saving and closes no issues or briefs. Complete the affected-plan amendment bundle and executable verifier briefs through the [delivery sequence](16-delivery-sequence.md), using a bounded manual context packet until the automated path is qualified.
+
+
+## Desk instances amendment — requested 25 October 2026
+
+Map legacy ROLES to one instance per role; refuse ambiguous mixed configuration and unsupported required instance contracts. Preserve completed singleton Evidence. Managed enrollment and rollback must account for every paused/draining instance, legacy launcher and active reservation; no overlapping legacy writer may escape shared capacity. Instance replacement inside one cell does not relax whole-repository cross-cell transfer or unknown-effect reconciliation. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.

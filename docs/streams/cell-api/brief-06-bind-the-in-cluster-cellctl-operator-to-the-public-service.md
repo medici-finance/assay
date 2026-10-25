@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Confirm the demonstrated in-cluster operator binding and exact managed workload access. A working terminal or API plan must not grant apply authority, compatibility credential access or permission to replace an unknown running owner."
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 id: a97eaf30-7338-45eb-8f3a-832a07f4de84
 authored: 2026-10-20 by cell-api authoring
 decision-trigger: spec
@@ -42,6 +42,9 @@ consumers:
 ---
 
 # Brief 06 — Bind the in-cluster cellctl operator to the public service
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -99,6 +102,10 @@ keeps acceptance pending; it grants no time-based default or activation authorit
 - Preserve the single R2 PostgreSQL runtime, R3 isolation, R4 role authority and R6 forge mirror. A service, terminal, restored file or cached result grants no authority.
 - Keep this stream parked until admitted. Stop at implemented; independent verification, human acceptance and operational cutover remain distinct.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+
 ## Task
 
 1. Bind existing cellctl status/plan/diagnostic views to the public service/client and existing cell-op-v1 results. Endpoint, trust, namespace and profile come only from operator-owned configuration. Use the component path desk-containers/28 actually delivers; if its contract changes, reconcile this declared path before implementation. Do not create a second operator image or runtime.
@@ -110,6 +117,8 @@ keeps acceptance pending; it grants no time-based default or activation authorit
 4. Keep API apply absent and R2/R3 recorded-transition allowlist intact while approvals are deferred. Terminal confirmation remains the existing operator convenience, never a new security authorization. Wrong cell, stale plan/generation, operator credential presented by an agent and unavailable service must fail without ambient local/legacy fallback.
 
 5. Preserve perf-v3 invocation/caller context with explicit protocol consent and unknown coverage; optional telemetry cannot change control. Document operator/service/runner flow and recovery, regenerate examples and retain full legacy bindings until 07.
+
+- **Instance amendment:** Bind in-cluster operator projections and attach plans to declared instance/generation and exact managed Pod UID. Preserve cell.env desired population, paused peers and predecessor/successor display; route process lifecycle through the existing runner. Distinct replacement overlap cannot become same-instance unknown-stop relaunch or arbitrary Pod creation, API apply or compatibility credential access.
 
 ## Interface and acceptance contract
 
@@ -152,6 +161,7 @@ and omitted consumers remain a review obligation. These are future delivery inpu
 | 4 | check:ci +dereference | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && statusgen --root . --consumers --brief cell-api/06 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed implementation delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required consumers stay held and omitted consumers require review. |
 | 5 | check | `statusgen --root . --lint` | exit 0; no PROBLEM; no generated lifecycle cell or historical Evidence hand-edited. |
 
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./internal/cellapi/integration/... -run '^TestDeskInstanceOperator$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceOperator ' "$o")` | Named test executes (zero matching tests is not a pass); Operator/service/runner fake-API flow selects the correct peer and preserves paused/draining state; same-named changed UID or stale plan refuses. Mutation: attach by role/name alone makes the test fail. |
 ## Threat model and detection
 
 | Failure mode | Caught by |

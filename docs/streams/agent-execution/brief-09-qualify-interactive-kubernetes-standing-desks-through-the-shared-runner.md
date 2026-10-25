@@ -10,7 +10,7 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: yes}
 issues: []
 schema: brief-v2
-version: 3
+version: 4
 authored: 2026-10-20 by Assay architecture authoring session
 sources:
   - https://github.com/medici-finance/assay/issues/3669
@@ -36,6 +36,9 @@ outcome: none
 ---
 
 # Brief 09 — Interactive Kubernetes standing desks through the shared runner
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -96,6 +99,10 @@ contact. Fake Kubernetes API/streams and disposable local storage only. Preserve
 stream's admission gate. Independent verification owns Evidence. Existing budgets, effect
 and human gates remain in force. Refresh claims/active PRs before implementation.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+
 ## Task
 
 1. Add the standing profile to the existing runner/supervisor API. Bind cell, role, namespace,
@@ -137,6 +144,8 @@ and human gates remain in force. Refresh claims/active PRs before implementation
    extra model calls. Regenerate the owning profile documentation and image compatibility
    matrix. Add path triggers for every module/container file the checks read.
 
+- **Instance amendment:** Change the managed standing Kubernetes binding from one Pod/workspace/lease per role to one per configured instance/generation for worker/review. Reuse role images/authority, separate instance workspaces and validate cell/role/instance labels plus namespace/Pod UID/container/current generation. Use operator pre-provisioned desired workloads; normal desk launch never gains arbitrary Pod creation. Distinct replacement instances may overlap after the admission barrier; same-instance unknown-stop/partition remains held. Add instances to all hostile fake API/profile paths.
+
 ## Interface contract
 
 Standing mode carries a desk binding, not fabricated workflow/node fields. Immutable
@@ -165,6 +174,7 @@ coverage. These inputs are future implementation-verification evidence, not clai
 | 4 | check +flow +neighbour +dereference | `(cd loopadmin && GOWORK=off go test -count=1 ./runner/conformance/... ./adapters/kubernetes/...)` | exit 0, no skipped required profile cases; shared runner negotiation, existing local behavior and legacy image preflight preserved; actual image compatibility checks included by adapter tests |
 | 5 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief agent-execution/09 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required consumers stay held and omitted consumers remain a review obligation |
 
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd loopadmin && GOWORK=off go test -count=1 -v ./adapters/kubernetes/... -run '^TestKubeDeskInstances$' > "$o" 2>&1 && grep -F -- '--- PASS: TestKubeDeskInstances ' "$o")` | Named test executes (zero matching tests is not a pass); Two mixed-profile worker Pods and three reviewer Pods have separate workspaces; concurrent up/attach and same-named changed UID cannot duplicate an instance. A successor starts while its predecessor drains without inheriting claims; mutation: key by role, share PVC or accept name without UID makes the test fail. |
 ## Pre-mortem
 
 Wrong Pod or duplicate role owner: row 1. Lost stop mistaken for cancellation: row 2.

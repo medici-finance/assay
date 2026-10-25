@@ -46,11 +46,14 @@ consumers:
 - 'loopadmin execution journal: follow-up graph-execution/26 (same engine, own schema; no Go dependency on workflow)'
 - 'tools/desk/cmd/deskclaim-ref claim tests: out-of-scope (their intent is carried here as TestPGClaimHolderSemantics per graph-execution/29 inventory; the command is unchanged)'
 - 'forge-neutral file/served claim store (forge-neutral/22-32): out-of-scope (supported legacy desk-tools claim path; applicability note in the forge-neutral README; retirement is the non-CI R8 decision)'
-version: 7
+version: 8
 id: ead4e747-4d61-4ec6-abaf-332873c79b21
 ---
 
 # Brief 19 — Durable instance store and production coverage binding
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -175,6 +178,10 @@ transactional and fail closed as already specified. Qualify against target doc 1
 §Operation-count qualification cases; row 13 below carries that obligation and is red until
 the named test exists. Existing Task/Verify rows and Evidence are preserved.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+
 ## Task
 
 1. Create the workflow Go module and a single-controller SQLite store (engine superseded 2026-10-13: PostgreSQL per the R2 amendment above) with transactions, versioned migrations and content-addressed artifact references. Select and pin a maintained driver; document supported filesystem/durability assumptions. Persist canonical instance/node/attempt IDs, revisions, wait/stop state and artifact manifests. No second work identity or claim authority.
@@ -184,6 +191,8 @@ the named test exists. Existing Task/Verify rows and Evidence are preserved.
 5. (R2, 2026-10-13) Write `spec/coordination-store-v1.md` (planned) and implement the store on PostgreSQL with versioned migrations, one transaction for admission, claim generation and effect intent, an outbox with stable operation identities that implements graph-execution/04's handoff seam, and the activation record graph-execution/16's incarnation check reads. Add a static guard that the runtime store imports no SQLite or other embedded engine. Provide the disposable PostgreSQL service in the module's CI job. Add a test that resolves the contract's named tables and columns against the migrations in both directions.
 6. (R2) Implement whole-database reconstruction over supplied Git-definition, published-evidence and forge-read fixtures, and backup rollback that starts paused under a mismatched incarnation. Mark lost attempts unknown, hold unknown resources and never replay stale outbox entries blindly.
 7. (R2) Carry the claim-test intent (holder/role/lane/attempt/generation compare, malformed claims, transport uncertainty, stale-generation release/publication) and persist pending feedback and decisions per generation plus retirement progress per completed step.
+
+- **Instance amendment:** Extend the existing coordination contract/migrations with enduring desk identities, desired-entry binding/revision, replacement predecessor/successor and persistent paused/draining state. Desk/supervisor records are usable without workflow instances. Preserve atomic capacity/claim semantics through their existing owner; retain no separate per-instance store. Restore unknown reservations and replacement intent passively under the existing incarnation rule.
 
 ## Interface contract
 
@@ -207,6 +216,7 @@ Pinned instance/attempt/subject and actor capability enter; typed state, evidenc
 | 12 | check:ci +flow +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGContextRestore$" ./store/ > "$out" && grep -F -- "--- PASS: TestPGContextRestore " "$out")` | exit 0; named PASS; real PostgreSQL reload/restore retains old cutoff and expiry; binding flow holds stale context and accepts current context; mutation: replace expiry with restore time |
 | 13 | check:ci +flow +mutation | `(cd workflow && test -n "$ASSAY_TEST_POSTGRES_DSN" && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPGOperationCountSeedAndBrake$" ./... > "$routing_out" && grep -q -- "--- PASS: TestPGOperationCountSeedAndBrake " "$routing_out")` | exit 0; named PASS against a real disposable PostgreSQL; with at least two processes and a seed at most half the cap, after the pacing counter rows are dropped mid-window, the estimate is re-derived from the window's effect intents and receipts before each admission, and restarts and concurrent processes admit no more than cap + C; with intents committed but every pacing-row update skipped, admissions still stay within cap + C; after whole-database loss one reset is recorded, admissions stay within 2 × (cap + C), and a second reset, or a reset record deleted while the activation record survives, treats the window as exhausted; an unknown brake count holds; mutation: seed the lost estimate at zero, keep a per-process estimate, or admit against the cached pacing row instead of the re-derived estimate — the named test must fail |
 
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd workflow && GOWORK=off go test -count=1 -v ./store/... -run '^TestDeskInstanceRestore$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceRestore ' "$o")` | Named test executes (zero matching tests is not a pass); Real disposable PostgreSQL restores a two-worker/three-reviewer population, paused peer and partial replacement without manufacturing workflow rows, a second successor, free slots or authority. Mutation: drop replacement/paused/unknown occupancy on restore makes the test fail. |
 ## Pre-mortem and dispatch checks
 
 The plausible wrong implementations are the negative cases named in Verify: stale acceptance, missing durable data, or a bypass that still returns success. Each row must exercise production code and an independent expected outcome, not only serialization. Bypass the upper controller in at least one authority test. Each +mutation row names its mutation, and that mutation must turn the row's named test red. Facts, declared files, risks, consumers and sizing were re-checked against main at 307fe16992caef53fa46c52622753dd400c7b42a on 2026-10-02, after merging main; final implementation design adequacy remains review-only. R2 amendment facts, declared files, edges, consumers and sizing were re-checked against main at 4696d598e on 2026-10-13; rows 5–11 were run at that head and are red because the workflow module and the named tests do not exist yet.
