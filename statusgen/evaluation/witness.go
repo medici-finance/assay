@@ -1059,13 +1059,14 @@ type WitnessRepo interface {
 	// ListTree lists every entry of rev's tree with mode and object id
 	// (`git ls-tree -r`).
 	ListTree(rev string) ([]TreeBlob, bool)
-	// CheckAttr resolves every attribute of every file in rev's tree
-	// (`git check-attr -a --source=<rev> --stdin`): path → `<attr>: <value>`
-	// lines; a path with no attribute is absent from the map.
-	CheckAttr(rev string) (map[string][]string, bool)
-	// ReadBlobs reads the named paths' contents at rev in one batch; a path
-	// absent at rev is absent from the map.
-	ReadBlobs(rev string, paths []string) (map[string][]byte, bool)
+	// CheckAttr resolves every attribute of the given paths at rev in one
+	// batch (`git check-attr -a --source=<rev> --stdin`): path → `<attr>:
+	// <value>` lines; a path with no attribute is absent from the map.
+	CheckAttr(rev string, paths []string) (map[string][]string, bool)
+	// CatObjects reads the named objects in one batch (`git cat-file
+	// --batch`). A spec is a commit id or `<rev>:<path>`; a spec that names no
+	// object is absent from the map.
+	CatObjects(specs []string) (map[string]CatObject, bool)
 	// WitnessAdditions lists, newest first, every first-parent commit on rev's
 	// history that added a file under WitnessRecordDir
 	// (`git log --first-parent --diff-filter=A`).
@@ -1082,12 +1083,19 @@ type WitnessRepo interface {
 	HashWorktree(paths []string) (map[string]string, bool)
 }
 
+// CatObject is one object CatObjects read: its id, type and content.
+type CatObject struct {
+	OID     string
+	Type    string
+	Content []byte
+}
+
 // v2Ctx is one EvaluateCoverage call's v2 read cache, alongside evalCtx.
 type v2Ctx struct {
 	listings   map[string]*treeIndex
 	listingRaw map[string][]TreeBlob
 	attrs      map[string]map[string][]string
-	records    map[string]map[string][]byte // rev → path → bytes (prefetched)
+	objects    map[string]*CatObject // spec → object, nil when the spec names none
 	additions  map[string]map[string]WitnessAddition
 	firstPar   map[string]map[string]bool
 	pins       map[string]map[string]string
@@ -1096,7 +1104,7 @@ type v2Ctx struct {
 func newV2Ctx() *v2Ctx {
 	return &v2Ctx{
 		listings: map[string]*treeIndex{}, listingRaw: map[string][]TreeBlob{}, attrs: map[string]map[string][]string{},
-		records: map[string]map[string][]byte{}, additions: map[string]map[string]WitnessAddition{},
+		objects: map[string]*CatObject{}, additions: map[string]map[string]WitnessAddition{},
 		firstPar: map[string]map[string]bool{}, pins: map[string]map[string]string{},
 	}
 }
@@ -1125,8 +1133,17 @@ func (x *evalCtx) attrsAt(rev string) (map[string][]string, bool) {
 	if a, ok := x.v2.attrs[rev]; ok {
 		return a, a != nil
 	}
+	_, raw, ok := x.listing(rev)
+	if !ok {
+		x.v2.attrs[rev] = nil
+		return nil, false
+	}
+	paths := make([]string, len(raw))
+	for i, e := range raw {
+		paths[i] = e.Path
+	}
 	wr, _ := x.witnessRepo()
-	a, ok := wr.CheckAttr(rev)
+	a, ok := wr.CheckAttr(rev, paths)
 	if !ok {
 		x.v2.attrs[rev] = nil
 		return nil, false
@@ -1138,44 +1155,62 @@ func (x *evalCtx) attrsAt(rev string) (map[string][]string, bool) {
 	return a, true
 }
 
-// prefetchRecords reads every record the given paths name at rev in one batch.
-func (x *evalCtx) prefetchRecords(rev string, paths []string) {
+// fetchObjects reads every spec not yet cached in one batch. A failed read
+// caches nothing, so the caller reports it as unestablished.
+func (x *evalCtx) fetchObjects(specs []string) bool {
 	wr, ok := x.witnessRepo()
-	if !ok || len(paths) == 0 {
-		return
-	}
-	got, ok := wr.ReadBlobs(rev, paths)
 	if !ok {
-		return
+		return false
 	}
-	m := x.v2.records[rev]
-	if m == nil {
-		m = map[string][]byte{}
-		x.v2.records[rev] = m
-	}
-	for _, p := range paths {
-		if b, ok := got[p]; ok {
-			m[p] = b
-		} else {
-			m[p] = nil
+	var want []string
+	seen := map[string]bool{}
+	for _, s := range specs {
+		if _, cached := x.v2.objects[s]; !cached && !seen[s] {
+			seen[s] = true
+			want = append(want, s)
 		}
 	}
+	if len(want) == 0 {
+		return true
+	}
+	got, ok := wr.CatObjects(want)
+	if !ok {
+		return false
+	}
+	for _, s := range want {
+		if o, has := got[s]; has {
+			o := o
+			x.v2.objects[s] = &o
+		} else {
+			x.v2.objects[s] = nil
+		}
+	}
+	return true
 }
 
-// recordAt reads one record at rev: from the prefetch, else one read.
-func (x *evalCtx) recordAt(rev, path string) (raw []byte, found, ok bool) {
-	if m, has := x.v2.records[rev]; has {
-		if b, has := m[path]; has {
-			return b, b != nil, true
-		}
+// object reads one spec: from the cache, else one read.
+func (x *evalCtx) object(spec string) (obj *CatObject, ok bool) {
+	if o, cached := x.v2.objects[spec]; cached {
+		return o, true
 	}
-	wr, _ := x.witnessRepo()
-	got, ok := wr.ReadBlobs(rev, []string{path})
+	if !x.fetchObjects([]string{spec}) {
+		return nil, false
+	}
+	return x.v2.objects[spec], true
+}
+
+func revPath(rev, path string) string { return rev + ":" + path }
+
+// recordAt reads one file's content at rev.
+func (x *evalCtx) recordAt(rev, path string) (raw []byte, found, ok bool) {
+	o, ok := x.object(revPath(rev, path))
 	if !ok {
 		return nil, false, false
 	}
-	b, found := got[path]
-	return b, found, true
+	if o == nil || o.Type != "blob" {
+		return nil, false, true
+	}
+	return o.Content, true, true
 }
 
 func (x *evalCtx) additionOf(rev, path string) (WitnessAddition, bool, bool) {
@@ -1285,11 +1320,14 @@ func (x *evalCtx) checkLanding(sc witnessScope, cell RunnerCell, rec WitnessReco
 	if shallow[add.Commit] {
 		return GapUnestablished, gapf(GapUnestablished, "shallow — the landing commit %s is at the clone's shallow boundary; fetch the full history", add.Commit)
 	}
+	if !x.fetchObjects(landingSpecs(add, recPath, sc.briefRel)) {
+		return GapUnestablished, gapf(GapUnestablished, "the landing commit's objects could not be read")
+	}
 	for _, p := range add.Parents {
 		if replaced[p] {
 			return GapUnestablished, gapf(GapUnestablished, "replace ref: a refs/replace/ ref names the landing commit's parent %s", p)
 		}
-		if _, _, ok := x.listing(p); !ok {
+		if o, _ := x.object(p); o == nil || o.Type != "commit" {
 			return GapUnestablished, gapf(GapUnestablished, "shallow — the landing commit's parent %s is not in the object store", p)
 		}
 	}
@@ -1313,12 +1351,10 @@ func (x *evalCtx) checkLanding(sc witnessScope, cell RunnerCell, rec WitnessReco
 			return GapCRUnverified, gapf(GapCRUnverified, "the landing commit %s matches the %s form but has %d parent(s), not %d", add.Commit, form.name, len(add.Parents), form.parents)
 		}
 		if form.recordAtSecondParent {
-			ix1, _, _ := x.listing(add.Parents[0])
-			ix2, _, _ := x.listing(add.Parents[1])
-			if _, at1 := ix1.byPath[recPath]; at1 {
+			if o, _ := x.object(revPath(add.Parents[0], recPath)); o != nil {
 				return GapCRUnverified, gapf(GapCRUnverified, "the merge commit's first parent %s already holds the record", add.Parents[0])
 			}
-			if _, at2 := ix2.byPath[recPath]; !at2 {
+			if o, _ := x.object(revPath(add.Parents[1], recPath)); o == nil {
 				return GapCRUnverified, gapf(GapCRUnverified, "the merge commit's second parent %s does not hold the record (the merge itself added it)", add.Parents[1])
 			}
 		}
@@ -1328,18 +1364,9 @@ func (x *evalCtx) checkLanding(sc witnessScope, cell RunnerCell, rec WitnessReco
 	if len(add.Parents) == 0 {
 		return GapCRUnverified, gapf(GapCRUnverified, "the landing commit %s has no parent", add.Commit)
 	}
-	changed, ok := x.repo.DiffNames(add.Parents[0], add.Commit)
-	if !ok {
-		return GapUnestablished, gapf(GapUnestablished, "the landing commit's diff could not be read")
-	}
-	briefChanged := false
-	for _, p := range changed {
-		if p == sc.briefRel {
-			briefChanged = true
-			break
-		}
-	}
-	if !briefChanged {
+	before, _ := x.object(revPath(add.Parents[0], sc.briefRel))
+	after, _ := x.object(revPath(add.Commit, sc.briefRel))
+	if sc.briefRel == "" || before == after || (before != nil && after != nil && before.OID == after.OID) {
 		return GapCRUnverified, gapf(GapCRUnverified, "the landing commit %s does not change the citing brief %s", add.Commit, sc.briefRel)
 	}
 	if forgeConfirmed {
@@ -1753,14 +1780,33 @@ func WitnessClaimSpec(declared []string, declaredFound bool, man *DependencyMani
 	return spec
 }
 
-// prefetchV2Records reads, in one batch, every record a latest v2 cell of the
-// input cites, plus the pin file, at the item's revision. A corpus with no v2
-// cell makes no read at all.
+// landingSpecs names every object the landing check of one record reads:
+// the landing commit's parents (present in the object store), the record at
+// a merge commit's two parents, and the citing brief before and at the
+// landing commit (its diff changes the brief).
+func landingSpecs(add WitnessAddition, recPath, briefRel string) []string {
+	specs := append([]string(nil), add.Parents...)
+	if len(add.Parents) == 2 {
+		specs = append(specs, revPath(add.Parents[0], recPath), revPath(add.Parents[1], recPath))
+	}
+	if len(add.Parents) > 0 && briefRel != "" {
+		specs = append(specs, revPath(add.Parents[0], briefRel), revPath(add.Commit, briefRel))
+	}
+	return specs
+}
+
+// prefetchV2Records reads, in one object batch, every record a latest v2
+// cell of the input cites, the pin file, and every object those records'
+// landing checks read, after one first-parent log of witness additions at the
+// item's revision. A corpus with no v2 cell makes no read at all; with v2
+// cells, the per-revision reads are one tree listing, one attribute batch and
+// one log, and none is per row (TestCoverageGitCallsBounded).
 func (x *evalCtx) prefetchV2Records(in CoverageInput) {
 	if _, ok := x.witnessRepo(); !ok {
 		return
 	}
-	var paths []string
+	type cited struct{ path, briefRel string }
+	var recs []cited
 	for _, b := range in.Briefs {
 		for _, r := range b.VerifyRows {
 			ws := b.Witnesses[r.ID]
@@ -1769,18 +1815,25 @@ func (x *evalCtx) prefetchV2Records(in CoverageInput) {
 			}
 			cell := witnessSchemaOf(ws[len(ws)-1])
 			if cell.Schema == WitnessSchemaV2 && hex64Re.MatchString(cell.RecordID) {
-				paths = append(paths, WitnessRecordPath(b.ID, cell.RecordID))
+				recs = append(recs, cited{WitnessRecordPath(b.ID, cell.RecordID), b.BriefRel})
 			}
 		}
 	}
-	if len(paths) == 0 {
+	if len(recs) == 0 {
 		return
 	}
 	R, why := x.v2Target(in.Revision)
 	if why != "" {
 		return
 	}
-	x.prefetchRecords(R, append(paths, WitnessPinFile))
+	specs := []string{revPath(R, WitnessPinFile)}
+	for _, c := range recs {
+		specs = append(specs, revPath(R, c.path))
+		if add, found, ok := x.additionOf(R, c.path); ok && found {
+			specs = append(specs, landingSpecs(add, c.path, c.briefRel)...)
+		}
+	}
+	x.fetchObjects(specs)
 }
 
 // landingFormsText renders the landing-form table for the policy digest.

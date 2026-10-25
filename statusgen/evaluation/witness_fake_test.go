@@ -37,6 +37,8 @@ type fakeRepo struct {
 	// additions, when set, replaces the computed WitnessAdditions answer.
 	additions func([]WitnessAddition) []WitnessAddition
 	seq       int
+	// reads counts the batched v2 port reads (CheckAttr, CatObjects).
+	reads int
 }
 
 func newFakeRepo() *fakeRepo {
@@ -183,23 +185,36 @@ func (f *fakeRepo) ListTree(rev string) ([]TreeBlob, bool) {
 	return out, true
 }
 
-func (f *fakeRepo) CheckAttr(rev string) (map[string][]string, bool) {
+func (f *fakeRepo) CheckAttr(rev string, paths []string) (map[string][]string, bool) {
 	c, ok := f.commits[rev]
 	if !ok {
 		return nil, false
 	}
-	return cloneAttrs(c.attrs), true
+	f.reads++
+	out := map[string][]string{}
+	for _, p := range paths {
+		if a, ok := c.attrs[p]; ok {
+			out[p] = append([]string(nil), a...)
+		}
+	}
+	return out, true
 }
 
-func (f *fakeRepo) ReadBlobs(rev string, paths []string) (map[string][]byte, bool) {
-	c, ok := f.commits[rev]
-	if !ok {
-		return nil, false
-	}
-	out := map[string][]byte{}
-	for _, p := range paths {
-		if e, ok := c.tree[p]; ok {
-			out[p] = []byte(e.content)
+func (f *fakeRepo) CatObjects(specs []string) (map[string]CatObject, bool) {
+	f.reads++
+	out := map[string]CatObject{}
+	for _, s := range specs {
+		rev, path, isPath := strings.Cut(s, ":")
+		c, ok := f.commits[rev]
+		if !ok {
+			continue
+		}
+		if !isPath {
+			out[s] = CatObject{OID: c.id, Type: "commit", Content: []byte(c.msg)}
+			continue
+		}
+		if e, ok := c.tree[path]; ok {
+			out[s] = CatObject{OID: fakeBlobID(e.content), Type: "blob", Content: []byte(e.content)}
 		}
 	}
 	return out, true

@@ -16,9 +16,10 @@ import (
 )
 
 // coverage_witness.go — the git-backed half of the witness-v2 port
-// (evaluation.WitnessRepo, statusgen/36). Every read is batched per revision
-// (one ls-tree, one check-attr, one cat-file --batch, one first-parent log)
-// and runs with replace objects disabled twice over: --no-replace-objects on
+// (evaluation.WitnessRepo, statusgen/36). Every read is batched: one ls-tree,
+// one check-attr and one first-parent log per revision, and one cat-file
+// --batch reads the records, the pin file and the landing objects together.
+// Every read runs with replace objects disabled twice over: --no-replace-objects on
 // the command line and GIT_NO_REPLACE_OBJECTS=1 in the environment, so a
 // `refs/replace/` ref can give no landing commit a parent shape it does not
 // have. A corpus with no v2 cell makes none of these reads.
@@ -49,14 +50,17 @@ func (r coverageRepo) ListTree(rev string) ([]evaluation.TreeBlob, bool) {
 	return entries, true
 }
 
-func (r coverageRepo) CheckAttr(rev string) (map[string][]string, bool) {
-	files, ok := r.ListTree(rev)
-	if !ok {
-		return nil, false
+func (r coverageRepo) CheckAttr(rev string, paths []string) (map[string][]string, bool) {
+	attrs := map[string][]string{}
+	if len(paths) == 0 {
+		return attrs, true
 	}
 	var in bytes.Buffer
-	for _, e := range files {
-		in.WriteString(e.Path)
+	for _, p := range paths {
+		if strings.ContainsRune(p, 0) {
+			return nil, false
+		}
+		in.WriteString(p)
 		in.WriteByte(0)
 	}
 	cmd := witnessGit(r.root, "check-attr", "-a", "-z", "--stdin", "--source="+rev)
@@ -69,20 +73,23 @@ func (r coverageRepo) CheckAttr(rev string) (map[string][]string, bool) {
 	if len(fields)%3 != 0 {
 		return nil, false
 	}
-	attrs := map[string][]string{}
 	for i := 0; i < len(fields); i += 3 {
 		attrs[fields[i]] = append(attrs[fields[i]], fields[i+1]+": "+fields[i+2])
 	}
 	return attrs, true
 }
 
-func (r coverageRepo) ReadBlobs(rev string, paths []string) (map[string][]byte, bool) {
+func (r coverageRepo) CatObjects(specs []string) (map[string]evaluation.CatObject, bool) {
+	got := map[string]evaluation.CatObject{}
+	if len(specs) == 0 {
+		return got, true
+	}
 	var in bytes.Buffer
-	for _, p := range paths {
-		if strings.ContainsAny(p, "\n\x00") {
+	for _, s := range specs {
+		if strings.ContainsAny(s, "\n\x00") {
 			return nil, false
 		}
-		in.WriteString(rev + ":" + p + "\n")
+		in.WriteString(s + "\n")
 	}
 	cmd := witnessGit(r.root, "cat-file", "--batch")
 	cmd.Stdin = &in
@@ -90,15 +97,14 @@ func (r coverageRepo) ReadBlobs(rev string, paths []string) (map[string][]byte, 
 	if err != nil {
 		return nil, false
 	}
-	got := map[string][]byte{}
 	br := bufio.NewReader(bytes.NewReader(out))
-	for _, p := range paths {
+	for _, s := range specs {
 		header, err := br.ReadString('\n')
 		if err != nil {
 			return nil, false
 		}
 		f := strings.Fields(header)
-		if len(f) == 2 && f[1] == "missing" {
+		if len(f) >= 2 && (f[len(f)-1] == "missing" || f[len(f)-1] == "ambiguous") {
 			continue
 		}
 		if len(f) != 3 {
@@ -112,9 +118,7 @@ func (r coverageRepo) ReadBlobs(rev string, paths []string) (map[string][]byte, 
 		if _, err := io.ReadFull(br, body); err != nil || body[size] != '\n' {
 			return nil, false
 		}
-		if f[1] == "blob" {
-			got[p] = body[:size]
-		}
+		got[s] = evaluation.CatObject{OID: f[0], Type: f[1], Content: body[:size]}
 	}
 	return got, true
 }
@@ -253,13 +257,15 @@ func (m *memoRepo) ListTree(rev string) ([]evaluation.TreeBlob, bool) {
 	return slices.Clone(v), ok
 }
 
-func (m *memoRepo) CheckAttr(rev string) (map[string][]string, bool) {
-	return memoV2(m, memoKey("check-attr", rev), func(w evaluation.WitnessRepo) (map[string][]string, bool) { return w.CheckAttr(rev) })
+func (m *memoRepo) CheckAttr(rev string, paths []string) (map[string][]string, bool) {
+	return memoV2(m, memoKey("check-attr", append([]string{rev}, paths...)...), func(w evaluation.WitnessRepo) (map[string][]string, bool) {
+		return w.CheckAttr(rev, paths)
+	})
 }
 
-func (m *memoRepo) ReadBlobs(rev string, paths []string) (map[string][]byte, bool) {
-	return memoV2(m, memoKey("cat-file", append([]string{rev}, paths...)...), func(w evaluation.WitnessRepo) (map[string][]byte, bool) {
-		return w.ReadBlobs(rev, paths)
+func (m *memoRepo) CatObjects(specs []string) (map[string]evaluation.CatObject, bool) {
+	return memoV2(m, memoKey("cat-objects", specs...), func(w evaluation.WitnessRepo) (map[string]evaluation.CatObject, bool) {
+		return w.CatObjects(specs)
 	})
 }
 
