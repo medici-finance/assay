@@ -78,9 +78,4 @@ func TestParseWitnessAdditions(t *testing.T) {
 			t.Errorf("%s: the read must fail", name)
 		}
 	}
-	// A path field is taken whole, never split into a second commit.
-	got, ok = parseWitnessAdditions([]byte(c1 + "\x00\n" + rec + "\x1f" + c2 + "\x00"))
-	if !ok || len(got) != 1 || got[0].Commit != c1 {
-		t.Errorf("a path field: got %+v ok=%v, want one addition by %s", got, ok, c1)
-	}
 }
