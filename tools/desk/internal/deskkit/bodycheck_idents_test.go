@@ -17,7 +17,7 @@ var (
 	identIDs    = "TestListsPullRequest" + "IDsAcrossEveryRepo"  // 38, plural IDs mid-run
 	identI18n   = "TestRendersEveryPage" + "WithI18nFallback"    // 36, numeronym I18n
 	argDigest   = "HEX=" + strings.Repeat("e5496277be5d09bc", 4) // 68, ARG default = sha256 hex
-	argDigest40 = "SHA=" + strings.Repeat("5d529c27", 5)         // 44, key + 40-hex sha1
+	argDigest40 = "SHA=" + strings.Repeat("4c418b16", 5)         // 44, key + 40-hex sha1
 
 	// Refused: each new shape wearing real-secret material of a similar length.
 	k8sDebris    = "Qx7pLk2wZtK8sNc4bYf6Rh" + "Vs8Ju3XoAeG5"          // numeronym inside base62
@@ -28,7 +28,7 @@ var (
 	twoPlurals   = "TestListsIDsAndPRs" + "TogetherInOneNameNow"      // budget: two mid acronyms
 	capsKeyAWS   = "KEY=" + awsExampleSecretKey                       // caps key, AWS secret value
 	capsKeyB62   = "TOKEN=" + scanSecret40                            // caps key, 40 base62 value
-	capsKeyLong  = "ABCDEFGH" + "IJKLMNOPQ" + "=" + "5d529c27e3b1a04f9c2d8e7b" + "6a1f0c3d4e5f6a7b"
+	capsKeyLong  = "ABCDEFGH" + "IJKLMNOPQ" + "=" + "4c418b16e3b1a04f9c2d8e7b" + "6a1f0c3d4e5f6a7b"
 	capsKeyMixed = "HEXa=" + strings.Repeat("e5496277be5d09bc", 4)
 	glToken      = "glpat-" + "xq7Rk2PzLw9vNc4bYf6H"
 
@@ -36,7 +36,7 @@ var (
 	// admits standalone. The key is the only context that tells `openssl rand -hex` output
 	// from a digest, so none of these may be admitted. Hex values are repeated fragments.
 	fixHex64 = strings.Repeat("e5496277be5d09bc", 4)
-	fixHex40 = strings.Repeat("5d529c27", 5)
+	fixHex40 = strings.Repeat("4c418b16", 5)
 	pass     = "CorrectHorse" + "BatteryStaple" + "Mount" // CamelCase passphrase, 30
 	// Numeronym anchor (1643-F2): `K8s` then a digit or lowercase is not a word.
 	k8sDigit = "TestEveryImageUnder" + "K8s9IsDigestPinned"
