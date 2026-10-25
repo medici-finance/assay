@@ -109,6 +109,10 @@ func TestShowsAppRunLeadWord(t *testing.T) {
 		if cell := sp + "example-app[bot]" + foldTail; !showsAppRun(cell) {
 			t.Errorf("%q not read as App-run", cell)
 		}
+		// An ASCII lead that is no login ends at any white space, not only at a space.
+		if cell := "(" + sp + "example-app[bot]" + foldTail; !showsAppRun(cell) {
+			t.Errorf("%q not read as App-run", cell)
+		}
 	}
 	type span struct{ lo, hi rune }
 	var spans []span

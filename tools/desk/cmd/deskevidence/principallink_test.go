@@ -73,6 +73,10 @@ func TestStampRefusesLinkedLayout(t *testing.T) {
 			humanRunner + " |\n", "cell 2 shows as an App-run", "line 10"},
 		{"multibyte-comment-before-cell", restampHead, appHeader + "| 3 <!-- — — --> | `<!--` " + renderOther +
 			" `-->` | 2026-10-14 | " + humanRunner + " |\n", "cell 2 shows as an App-run", "line 10"},
+		{"multibyte-comment-before-split-cell", restampHead, appHeader + "| 3 <!-- — — --> | x<!-- y -->example-app[bot] | " +
+			"2026-10-14 | " + humanRunner + " |\n", "cell 2 shows as an App-run", "line 10"},
+		{"multibyte-comment-before-unclosed-tag", restampHead, appHeader + "| 3 <!-- — — --> | <!-- example-app[b -->ot] | " +
+			"2026-10-14 | " + humanRunner + " |\n", "cell 2 shows as an App-run", "line 10"},
 		{"linked-row-after-section", restampHead + renderHuman, "\n## Notes\n\n| 3 | " + linkedLogin + " |\n",
 			"outside the Evidence section the lint reads", "line 11"},
 		{"comment-split-row-after-section", restampHead + renderHuman, "\n## Notes\n\n| 3 | example-app[b<!-- x -->ot] @ abc1234 |\n",
@@ -104,6 +108,36 @@ func TestStampLinkShapesAllowed(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			f := setupStamp(t, true)
 			if code := landRendered(t, f, restampHead, restampHead+tc.added); code != deskkit.ExitOK {
+				t.Fatalf("exit = %d, want 0: %q", code, lastAudit(t).Detail)
+			}
+		})
+	}
+}
+
+// regression: #4075
+// TestStampCodeSpanTagReading: a code span's backticks are not part of the text a reader takes
+// for a login or tag. A tag a code span closes or wraps (`example-app` plus `[bot]` in code) is
+// read as App-run, and a bracketed word that a span follows or sits inside is not read as a
+// wider tag beside a character outside the login alphabet, so a plain human cell still lands.
+func TestStampCodeSpanTagReading(t *testing.T) {
+	for _, runner := range []string{
+		"example-app`[bot]`",
+		"example-app`[bot]` @ abc1234",
+		"op`x`[abc]",
+	} {
+		t.Run("refused/"+runner, func(t *testing.T) {
+			f := setupStamp(t, true)
+			code := landRendered(t, f, restampHead, restampHead+restampRow("2026-10-14", runner))
+			wantRenderRefusal(t, f, code, "line 7")
+		})
+	}
+	for _, runner := range []string{
+		"op[abcd]`x`",
+		"op`x[abcd]` @ abc1234",
+	} {
+		t.Run("allowed/"+runner, func(t *testing.T) {
+			f := setupStamp(t, true)
+			if code := landRendered(t, f, restampHead, restampHead+restampRow("2026-10-14", runner)); code != deskkit.ExitOK {
 				t.Fatalf("exit = %d, want 0: %q", code, lastAudit(t).Detail)
 			}
 		})
