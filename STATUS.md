@@ -26,7 +26,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/58 | 2026-10-25 | 15 withdrawn |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-10-24 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/43 | 2026-10-25 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/32 | 2026-10-24 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/32 | 2026-10-25 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-10-23 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-10-25 |  |
 | [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-23 |  |
@@ -114,7 +114,7 @@ _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. 
 | desk-tools | 42 — Narrow issue discovery projections before enrichment [exec:strong] | 3 | 7000 |
 | desk-containers | 16 — Interim mechanism for the runner-lifecycle `pause` transition — cell-scoped stop flags `STOP.cell.<cell>[.<loop>]`, honoured by the Guard for any session carrying the cell marker [exec:strong] | 7 | 6500 |
 | desk-tools | 50 — Bind verifier environment evidence to the run admission [exec:strong] | 1 | 6500 |
-| performance-collection | 01 — Local performance event contract, spool and offline report [exec:strong] | 0 | 5030 |
+| performance-collection | 01 — Local performance event contract, spool and offline report [exec:strong] | 0 | 5040 |
 | comms-core | 01 — Extract the comms contract and isolate Assay policy [exec:strong] | 0 | 4540 |
 | verification-handoff | 01 — Share the blocker disposition and routing contract [exec:strong] | 0 | 3500 |
 | iso-9001 | 08 — Versioned source obligations and project applicability [exec:strong] | 0 | 2500 |
@@ -131,7 +131,7 @@ _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 7cdb30666 2026-10-25T17:46:07Z_
+_last regen: 57196d5da 2026-10-25T17:47:38Z_
 
 **Progress:** 11/14 brief items done.
 
@@ -152,7 +152,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 7cdb30666 2026-10-25T17:46:07Z_
+_last regen: 57196d5da 2026-10-25T17:47:38Z_
 
 **Progress:** 34/91 brief items done.
 
