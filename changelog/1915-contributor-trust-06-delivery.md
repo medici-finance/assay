@@ -1,0 +1,1 @@
+Contributor-trust/06 consumer verification now checks its actual immutable delivery and exact first-parent range after merge, asserting the complete corroborated/disproved/unchecked summary while preserving all original acceptance assertions and independent review obligations.
