@@ -6,13 +6,8 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
-// parseFrontmatter extracts the brief-v1 fields the verify adapter needs from a brief file.
-// It is a deliberately small line/regex extractor (no YAML dep — the desk module stays
-// self-contained). It handles both the inline flow form
-//
-//	risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
-//
-// and per-line `key: value` forms for gate / effort / exec-tier / implementer.
+// parseFrontmatter projects the shared YAML parser into the verify adapter's
+// fields. Unreadable metadata takes the conservative human/strong/risk profile.
 func parseFrontmatter(content string) briefFrontmatter {
 	fm := briefFrontmatter{}
 	body, _, err := briefdoc.Split(content)

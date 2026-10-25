@@ -34,16 +34,14 @@ var briefGateRe = regexp.MustCompile(`(?m)^gate:\s*(.*)$`)
 // briefGatesHuman reports whether the brief's own frontmatter gates on a human
 // (`gate: human`, case-insensitive) — the metadata half of the human-decision gate contract.
 //
-// It is best-effort by design: a brief that cannot be read, carries no frontmatter fence, or
-// names no gate yields FALSE, and the caller falls back to the explicit `--gate-human` flag,
-// which stays the guaranteed path. It never returns a false POSITIVE that would file a
-// spurious decision issue, and its miss on an unreadable file is covered by the explicit flag.
+// Existing files with unreadable metadata take the conservative human-gate
+// profile. File resolution and the explicit --gate-human flag remain caller concerns.
 func briefGatesHuman(root, brief string) bool {
 	return strings.EqualFold(briefFrontmatterGate(root, brief), "human")
 }
 
 // briefFrontmatterGate returns the trimmed value of the brief's top-level `gate:` frontmatter
-// field, or "" when the file cannot be read, opens with no `---` fence, or names no gate. The
+// field, "human" for unreadable metadata, or "" for an absent gate/file. The
 // brief path is resolved against --root when relative — the same base the decision script is
 // invoked from, so the file this reads is the file that script derives the issue from.
 func briefFrontmatterGate(root, brief string) string {

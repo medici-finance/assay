@@ -6,9 +6,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
-// briefFrontmatter is the subset of brief-v1 frontmatter the batch adapter needs. As in
-// verifyloop it is parsed with a small line/regex extractor rather than a YAML dep, so the desk
-// module stays self-contained (statusgen is package main and unimportable anyway).
+// briefFrontmatter is the batch adapter's projection of shared brief syntax.
 type briefFrontmatter struct {
 	ParseError  string
 	Gate        string

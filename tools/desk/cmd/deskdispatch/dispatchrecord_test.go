@@ -621,32 +621,48 @@ func TestRecordRepoBranchAgree(t *testing.T) {
 }
 
 // regression: F2-repo-grammar-drops-record (second instance of the class: frontmatter fields)
-// TestOutOfSetBriefFieldsNull: an exec-tier or effort outside the record's closed set is
-// recorded null and the line is still written with the brief id, never refused whole.
+// Unknown execution tiers fail closed at admission. Optional reporting fields
+// retain their historical null projection and cannot discard an admitted record.
 func TestOutOfSetBriefFieldsNull(t *testing.T) {
-	s := &stub{}
-	home, root := s.install(t)
-	plantScripts(t, root)
-	fixEntropy(t)
-	s.replies = happyReplies(t.TempDir())
-	body := "---\nbrief: example-stream/28\ngate: model\nexec-tier: fast\neffort: XL\n---\n\n# fixture\n"
-	if err := os.WriteFile(filepath.Join(root, "oos.md"), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	var rc int
-	errOut := captureStderr(t, func() {
-		rc = run([]string{"oos--03", "--root", root, "--brief", "oos.md",
-			"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
-	})
-	if rc != deskkit.ExitOK {
-		t.Fatalf("dispatch rc = %d, want 0\n%s", rc, errOut)
-	}
-	recs := recordLines(t, home)
-	if len(recs) != 1 {
-		t.Fatalf("want exactly one line, got %d\n%s", len(recs), errOut)
-	}
-	r := recs[0]
-	if r.BriefExec != nil || r.BriefEffort != nil || r.Brief == nil || *r.Brief != "example-stream/28" {
-		t.Errorf("brief %s exec %s effort %s: want example-stream/28 / null / null", sv(r.Brief), sv(r.BriefExec), sv(r.BriefEffort))
+	for _, tc := range []struct {
+		name, tier string
+		want       int
+	}{
+		{"unknown execution tier refuses", "fast", deskkit.ExitRefused},
+		{"unknown optional effort records null", "any", deskkit.ExitOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &stub{}
+			home, root := s.install(t)
+			plantScripts(t, root)
+			fixEntropy(t)
+			s.replies = happyReplies(t.TempDir())
+			body := "---\nbrief: example-stream/28\ngate: model\nexec-tier: " + tc.tier + "\neffort: XL\n---\n\n# fixture\n"
+			if err := os.WriteFile(filepath.Join(root, "oos.md"), []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var rc int
+			errOut := captureStderr(t, func() {
+				rc = run([]string{"oos--03", "--root", root, "--brief", "oos.md",
+					"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+			})
+			if rc != tc.want {
+				t.Fatalf("dispatch rc = %d, want %d\n%s", rc, tc.want, errOut)
+			}
+			recs := recordLines(t, home)
+			if tc.want == deskkit.ExitRefused {
+				if len(recs) != 0 || len(claimCalls(s)) != 0 || s.ran("deskwt add") {
+					t.Fatal("invalid execution tier acquired work or wrote a dispatch record")
+				}
+				return
+			}
+			if len(recs) != 1 {
+				t.Fatalf("want exactly one line, got %d\n%s", len(recs), errOut)
+			}
+			r := recs[0]
+			if r.BriefExec == nil || *r.BriefExec != "any" || r.BriefEffort != nil || r.Brief == nil || *r.Brief != "example-stream/28" {
+				t.Errorf("brief %s exec %s effort %s: want example-stream/28 / any / null", sv(r.Brief), sv(r.BriefExec), sv(r.BriefEffort))
+			}
+		})
 	}
 }
