@@ -152,6 +152,11 @@ func ffRepo(t *testing.T) (root, older, base, branch, head, stray string) {
 	t.Helper()
 	root = t.TempDir()
 	gitRun(t, root, "init", "-q")
+	// The ancestry fixture must actually hold the same brief at every commit.
+	// Its real path also resolves temporary-directory symlinks on macOS.
+	briefDir := filepath.Join(root, "docs", "streams", "ff")
+	mustMkdirAll(t, briefDir)
+	writeTemp(t, briefDir, "brief-01-ff.md", ffBrief(""))
 	writeTemp(t, root, "other.txt", "x\n")
 	writeTemp(t, root, "flag.txt", "old\n")
 	gitRun(t, root, "add", "-A")
@@ -210,6 +215,7 @@ func TestFailFirstBaseAncestry(t *testing.T) {
 // TestFailFirstBaseFlagRefusesNonAncestor — the runner refuses at the source
 // what the gate would refuse later: --base HEAD records a red that proves
 // nothing about the change.
+// regression: #4360
 func TestFailFirstBaseFlagRefusesNonAncestor(t *testing.T) {
 	root, older, base, branch, head, _ := ffRepo(t)
 	withBriefHeld(t, base, older)
@@ -571,12 +577,15 @@ func TestVerifyrunFailFirstRefusesAncestorBaseOfBranchBornBrief(t *testing.T) {
 
 // TestPathHeldAtReadsTheTree — the default probe asks git: a file in the
 // tree is held, a file added later (or never) is not.
+// regression: #4360
 func TestPathHeldAtReadsTheTree(t *testing.T) {
 	root, older, _, _, _, _ := ffRepo(t)
 	if !pathHeldAt(root, older, "flag.txt") {
 		t.Errorf("flag.txt is in the older commit's tree")
 	}
-	if pathHeldAt(root, older, "docs/streams/ff/brief-01-ff.md") {
+	// ffRepo now deliberately holds brief-01; this negative still needs a path
+	// that no commit holds, with the same production probe and assertion.
+	if pathHeldAt(root, older, "docs/streams/ff/brief-99-never-held.md") {
 		t.Errorf("a file no commit holds must not read as held")
 	}
 }
