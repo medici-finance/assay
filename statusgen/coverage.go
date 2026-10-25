@@ -183,10 +183,13 @@ func observeBrief(root, path, id string, bf *BriefFile) evaluation.BriefObservat
 	}
 	obs.AcceptanceRevision = plan.Original
 	obs.AcceptanceRevisions = plan.Revisions
-	for _, r := range briefVerifyRows(plan.Verify) {
+	obs.DeclaredInputs, obs.DeclaredInputsFound, obs.DeclaredInputsProblem = evaluation.ParseInputsDeclaration(extractSectionByPrefix(bf.Body, "Context"))
+	rows, classCells := briefVerifyRowsWithClassCells(plan.Verify)
+	for i, r := range rows {
 		row := evaluation.VerifyRow{
 			ID: r.ID, Command: r.Command, Expect: r.Expect,
 			Shell: r.Shell, Obligations: r.Obligations, ProseLed: r.ProseLed,
+			ClassCell: classCells[i],
 		}
 		if r.ProseLed != "" {
 			row.ProseLedNote = proseLedNote(r.ProseLed)
@@ -198,10 +201,15 @@ func observeBrief(root, path, id string, bf *BriefFile) evaluation.BriefObservat
 			if !isWitnessRow(er.Text) {
 				continue
 			}
+			cells := witnessCells(er.Text)
 			obs.Witnesses[rowID] = append(obs.Witnesses[rowID], evaluation.Witness{
 				Command: witnessCommandOf(er.Text),
 				State:   witnessStateOf(er.Text),
 				Tree:    witnessTreeOf(er.Text),
+				Runner:  strings.TrimSpace(cells[witnessCellRunner]),
+				Result:  strings.TrimSpace(cells[witnessCellResult]),
+				Output:  strings.TrimSpace(cells[witnessCellOutput]),
+				Date:    strings.TrimSpace(cells[witnessCellDate]),
 			})
 		}
 	}
