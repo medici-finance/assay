@@ -283,6 +283,52 @@ func TestBudgetAndGuard(t *testing.T) {
 	}
 }
 
+// The guard trips only while a pass is running, so only the heartbeat-time
+// call inside the running-pass loop can stop the run. The loop-top call always
+// sees a checkpoint that is not running and returns nil.
+//
+// regression: #3383
+func TestCadenceHeartbeatGuard(t *testing.T) {
+	dir := t.TempDir()
+	l := take(t, dir)
+	cfg := testConfig()
+	cfg.Interval = time.Hour
+	cfg.Budget = time.Hour // the budget must not be what ends the pass
+	cfg.Guard = func() error {
+		if s, err := Read(dir); err == nil && s.Running {
+			return errStop
+		}
+		return nil
+	}
+	// Bound a missing heartbeat guard; the healthy path returns in a few beats.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	var launches atomic.Int32
+	passErr := make(chan error, 1)
+	err := l.Run(ctx, cfg, func(pass context.Context) Result {
+		launches.Add(1)
+		<-pass.Done()
+		passErr <- pass.Err()
+		return Result{Err: pass.Err()}
+	})
+	if !errors.Is(err, errStop) {
+		t.Fatalf("heartbeat guard did not stop the run: %v", err)
+	}
+	if got := <-passErr; !errors.Is(got, context.Canceled) {
+		t.Fatalf("pass context was not cancelled by the guard: %v", got)
+	}
+	if launches.Load() != 1 {
+		t.Fatalf("launches=%d", launches.Load())
+	}
+	s, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Running || s.Sequence != 1 || s.Outcome != "could-not-check" || s.Summary != "" {
+		t.Fatalf("guard-stopped pass recorded healthy %#v", s)
+	}
+}
+
 func TestMissingSummaryDegrades(t *testing.T) {
 	for _, result := range []Result{{Outcome: "ok"}, {Outcome: "noop", Summary: good().Summary, ExitCode: 1}, {Outcome: "ok", Summary: good().Summary, Err: errors.New("secret-must-not-persist")}} {
 		dir := t.TempDir()
