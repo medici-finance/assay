@@ -21,7 +21,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/11 | 2026-10-24 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 2/30 | 2026-10-25 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 8/37 | 2026-10-24 |  |
-| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/53 | 2026-10-25 |  |
+| [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/54 | 2026-10-25 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-10-23 |  |
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/58 | 2026-10-25 | 15 withdrawn |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-10-24 |  |
@@ -100,7 +100,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **Already delivered or re-homed — held out of dispatch (9):** composability/02 → already-merged-unflipped (merged PR #4278, Brief: trailer), desk-supervision/34 → already-merged-unflipped (merged PR #4135, Brief: trailer), desktools-v2/30 → already-merged-unflipped (merged PR #4410, Brief: trailer), desktools-v2/70 → already-merged-unflipped (merged PR #4074, Brief: trailer), desktools-v2/74 → already-merged-unflipped (merged PR #4260, Brief: trailer), statusgen/24 → already-merged-unflipped (merged PR #4337, Brief: trailer), statusgen/27 → already-merged-unflipped (merged PR #4134, Brief: trailer), statusgen/28 → already-merged-unflipped (merged PR #4140, Brief: trailer), statusgen/32 → already-merged-unflipped (merged PR #4137, Brief: trailer). Each is a board-honesty finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose brief file is gone); reconcile or retire the row to clear it.
 
-_Next-up: 20 of 55 eligible — 35 held back (18 by per-stream caps, 17 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 20 of 56 eligible — 36 held back (18 by per-stream caps, 18 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
 _Held by per-stream caps: 18 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (17), desk-tools (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
@@ -131,7 +131,7 @@ _Held by per-stream caps: 18 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: fb5080ef4 2026-10-25T22:25:55Z_
+_last regen: 560065be4 2026-10-25T22:39:36Z_
 
 **Progress:** 11/14 brief items done.
 
@@ -152,7 +152,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: fb5080ef4 2026-10-25T22:25:55Z_
+_last regen: 560065be4 2026-10-25T22:39:36Z_
 
 **Progress:** 34/91 brief items done.
 
@@ -641,7 +641,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 36 Directory scope keys in outcome records carry a trailing slash; readers accept both forms — todo (wave 0)
 - 37 Verification re-runs as waste — every attempt on the outcome record, joined to measured cost — todo (wave 0)
 
-### desk-tools (39 open)
+### desk-tools (40 open)
 
 - 01 Binary channel sealed — publish the `.assay-versions` contract, validate it, stamp desk-tools with its release tag — implemented (wave 1)
 - 02 Generalize — batch-fanout as the second drain-engine consumer (contract validation) — implemented (wave 1)
@@ -682,6 +682,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 52 Link decision and verification cards without conflating their authority — todo (wave 1)
 - 53 Rename pr-review-desk to review-desk without breaking live windows or adopters — todo (wave 1)
 - 55 Adopt parity-checked prune mutation selection — todo (wave 1)
+- 59 Remove incidental prune mutation fixture work — todo (wave 1)
 
 ### desktools-go-git (3 open)
 
@@ -1165,4 +1166,4 @@ _Terminal: retired by a later decision or merged into a successor. Not counted i
 
 ## Totals
 
-**35** streams (**25** active, **0** paused, **10** parked) · **107/546** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`
+**35** streams (**25** active, **0** paused, **10** parked) · **107/547** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`

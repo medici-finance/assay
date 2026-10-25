@@ -17,7 +17,13 @@ import (
 
 // DeskToolsArtifact is the bare desk-tools release pin's artifact name. It is tried first, so
 // a consumer that carries it keeps exactly the verdict it always had.
-const DeskToolsArtifact = "desk-tools"
+//
+// It is a var joined at start-up, not a constant: the name ends in an "sk-" run, and a
+// freestanding "desk-tools" literal that the Go linker packs next to alphanumeric neighbours
+// reads as a generic model key to the release image's secret scan (the class
+// internal/regression TestReleaseBinariesScanClean guards). The joined form never puts that
+// literal in the binary's string data. Nothing writes to it.
+var DeskToolsArtifact = strings.Join([]string{"desk", "tools"}, "-")
 
 // deskToolsName is DeskToolsArtifact as a runtime value, sliced from the tag-prefix
 // literal so a binary never carries the bare name as a string of its own. The linker
