@@ -34,10 +34,10 @@ after the table, in table order.
 | # | Brief, row | Delivery (first parent) | How the coordinate was missing or wrong | Recovered by, route |
 |---|---|---|---|---|
 | 1 | build-less-brittle/02 row 9 | `274ece128099` (`def62cbf50bc`) | Bare `--consumers --brief`, judged against the PR head only; on merged main the brief is not in the diff | Worker PR #1908 (`0f62549b1e25`) pinned the row to a clone at the delivery against its parent, with a mid-flight `version:` bump. This predates the acceptance-transition route |
-| 2 | build-less-brittle 05, 09, 11, 12, 13 consumer rows | resolved per row at run time | Unpinned rows read COULD-NOT-CHECK on merged main | #2300 (`24886d98ad2a`) re-authored each row to find its delivery in shell from the `Brief:` trailer on first-parent main. This is option C below, done by hand in every row |
-| 3 | measured-status/02 | `a11ac41674c0` (#2054) | Bare form. The delivering commit carries **no** `Brief:` trailer, so a trailer search cannot find it | The definition-row migration in #3428 (`c24f792beac4`), which also added delivery mode and the `consumer-delivery-range` lint |
+| 2 | build-less-brittle 05, 09, 11, 12, 13 consumer rows | resolved per row at run time | Unpinned rows read COULD-NOT-CHECK on merged main | #2300 (`24886d98ad2a`) re-authored each row to find its delivery in shell from the `Brief:` trailer in commit messages on first-parent main. This is option C below, done by hand in every row |
+| 3 | measured-status/02 | `a11ac41674c0` (#2054) | Bare form. The delivering squash commit's **message** carries **no** `Brief:` trailer, so a commit-message search cannot find it. The PR body of #2054 does carry `Brief: measured-status/02` | The definition-row migration in #3428 (`c24f792beac4`), which also added delivery mode and the `consumer-delivery-range` lint |
 | 4 | desk-tools/37 row 3 | `e28201023c74` (#3331) | Bare form, exit 2 on merged main (reported on #1915) | The same #3428 migration: the delivery was identified by hand |
-| 5 | desk-tools/38 row 3 | `eded7ba6e446` (#3332) | Bare form. The delivering commit's trailer reads `Brief: desk-tools/37`, which **names the wrong brief** | The same #3428 migration: identified by hand, against the trailer |
+| 5 | desk-tools/38 row 3 | `eded7ba6e446` (#3332) | Bare form. The delivering squash commit's **message** carries `Brief: desk-tools/37`, which **names the wrong brief**. The PR body of #3332 correctly carries `Brief: desk-tools/38` | The same #3428 migration: identified by hand, against the commit-message trailer |
 | 6 | desk-supervision/27 row 8 | `6df93b442c5a` (`4696d598e588`) | Bare `--consumers --root .`, no brief, no base | Worker PR #3516 (`ecb8c74a4ae8`) pinned an explicit delivery and base |
 | 7 | desktools-v2/63 row 4 | `3937f39ae2d0` (`b787e831d0be`) | Bare form. The derived path from #3574 (`70cce9547cf2`) needs a committed `Verification-Table:` marker, and there was none until the verifier wrote one | The verifier landed its own marker in Evidence PR #3773 (`8c656759ef3b`) and re-ran at the landing commit. The verifier chose the delivery, which is the limit of option D |
 | 8 | desktools-v2/65 row 4 (#3826) | `578a9f39d73e` (`1b00388fb9c5`) | Bare form, exit 2 after merge. Recognized as strike two in this class | A protected acceptance transition, #4228 (`e2b00ebe0f49`): Command only, `version:` incremented, with the driver's approval of the exact payload, under the ruling recorded on #1915 |
@@ -86,8 +86,12 @@ shown in the table.
 
 What the census shows: every recovery was done by hand, by an author, a worker or the
 verifier, once per row. The two most recent recoveries each needed a human approval of an
-exact payload. Two deliveries (rows 3 and 5) defeat a trailer-based search, and one
-(row 7) could pass only after the verifier had chosen the delivery itself.
+exact payload. Two deliveries (rows 3 and 5) defeat a search of commit-message trailers in
+the git graph, and one (row 7) could pass only after the verifier had chosen the delivery
+itself. Neither row 3 nor row 5 defeats the delivering-PR resolver that the recommended
+design reuses. That resolver reads `Brief:` trailers from merged PR bodies, never from
+commit messages, and both PR bodies name the right brief. The defect in both is that the
+squash commit message does not carry the PR body's trailer.
 
 ## Alternatives
 
@@ -101,17 +105,21 @@ after it lands? And what does it cost?
 |---|---|---|---|---|---|
 | A. Status quo: per-row pins, the lint, protected command correction | no: the author, or the implementer, writes the SHA into the Command | yes | yes (delivery mode) | yes | **no**: the delivery does not exist at authoring time, so a correct post-merge row always needs an amendment |
 | B. A delivery-binding record written at merge by an identity that is neither author nor checker, referenced symbolically from the row | yes, if the writer is a separate identity and the store is write-restricted on the server | yes | yes, if a missing record means could-not-check | yes: evaluation stays in delivery mode | **yes**: the Command text is final when authored |
-| C. Derive the delivery from the git graph alone (the first mainline first-parent commit that adds the declared files or carries the trailer) | partly: the trailer is text the author writes | **no**: the checker would choose the delivery at check time | only on ambiguity, and ambiguity is common | yes | yes, when the derivation is unambiguous |
+| C. Derive the delivery from the git graph alone (the first mainline first-parent commit that adds the declared files or carries the trailer in its commit message) | partly: the trailer is text the author writes | **no**: the checker would choose the delivery at check time | only on ambiguity, and ambiguity is common | yes | yes, when the derivation is unambiguous |
 | D. The committed `Verification-Table:` marker as the sole source (today's derived path) | yes | **no**: the verifier who runs the checker writes the marker, and a marker naming a later mainline commit is accepted | yes (pinned by Verify row 5) | yes | yes for bare-form rows, but the identity remains a reviewed claim, and the row passes only after the marker lands (census row 7) |
 
-**Option C in detail.** The census shows where trailers fail. The measured-status/02
-delivery has no trailer. Both the desk-tools/37 delivery and the desk-tools/38 delivery
-carry `Brief: desk-tools/37`, so a trailer search for /38 finds nothing, and a search for
-/37 finds two candidates. "The first commit that adds the declared files" fails for most
-briefs, because they modify files that already exist. "The newest commit that touches them"
-picks up later follow-ups. #2300 is option C done in shell, row by row. It works only where
-the trailer is present and correct. If option C is computed inside the checker, the checker
-picks the delivery it then judges, and nothing independent stands behind that choice.
+**Option C in detail.** The git graph holds commit messages, not PR bodies, so option C can
+only search commit-message trailers. The census shows where those fail. The measured-status/02
+delivery's commit message has no trailer. The commit messages of both the desk-tools/37
+delivery and the desk-tools/38 delivery carry `Brief: desk-tools/37`, so a commit-message
+search for /38 finds nothing, and a search for /37 finds two candidates. (The PR bodies of
+#2054, #3331 and #3332 each name the right brief; the forge-side resolver in the recommended
+design reads those, which is one reason it reads forge records rather than the graph.) "The
+first commit that adds the declared files" fails for most briefs, because they modify files
+that already exist. "The newest commit that touches them" picks up later follow-ups. #2300 is
+option C done in shell, row by row. It works only where the commit message's trailer is
+present and correct. If option C is computed inside the checker, the checker picks the
+delivery it then judges, and nothing independent stands behind that choice.
 
 **Option D in detail.** This path is shipped and safe for what it claims: the base is bound
 and the delivery is not. The derived-path test that pins the recorded delivery's own first
@@ -132,15 +140,22 @@ rather than the source. Option A remains the route for rows that are already mer
    delivering PR now resolves, the verb records one binding. It finds the delivering PR with
    the resolver statusgen already uses for model auto-flip: the `Brief:`-trailer resolver,
    then the newest-first walk of the brief file's history, the `files:`-overlap rule, the
-   App approval at the merged head, and the brief's `delivery:` partial declarations. The
-   binding records:
+   App approval at the merged head, and the brief's `delivery:` partial declarations. Both
+   resolver paths attribute a PR by the `Brief:` trailers in its **PR body**, read from the
+   forge; no path reads a commit message. The trailer resolver is a forge search of merged
+   PR bodies for the literal trailer, used as a prefilter only: each hit is re-read and its
+   body trailers parsed, and a body last edited after the merge is could-not-check. The
+   history walk maps each commit that touched the brief file to its merged PR and judges
+   that PR's body the same way. A PR whose body names a different brief is walked past and
+   never credited; the `files:`-overlap rule only demotes a PR that is already credited, and
+   never promotes one. The binding records:
    - the brief id and its `version:`;
    - the PR number;
    - the mainline first-parent commit that landed the PR (a merge commit or a squash
      commit);
    - that commit's first parent;
-   - the resolver's grounds: whether a trailer matched, the declared files the PR touched,
-     and the approving review's head.
+   - the resolver's grounds: whether the PR body's trailer matched, the declared files the
+     PR touched, and the approving review's head.
 
    No binding is written when:
    - the resolver returns could-not-check;
@@ -222,7 +237,7 @@ different signal.
 
 | Layer | Component | Failure signal | What it catches | What stands behind it |
 |---|---|---|---|---|
-| L1. The binder | Main-branch CI job, reading the forge's merge, review and PR records | Resolver attribution: trailer match, declared-files overlap, App approval at the merged head, partial declarations | A delivery chosen by the brief's author or by the verifier. A follow-up that merges later (the binding is frozen first). A wrong trailer: for desk-tools/38, the trailer resolver finds no PR naming /38, and the history walk with the files-overlap rule credits #3332, which touched /38's brief and declared files | L2, then L3 |
+| L1. The binder | Main-branch CI job, reading the forge's merge, review and PR records | Resolver attribution: PR-body trailer match, declared-files overlap, App approval at the merged head, partial declarations | A delivery chosen by the brief's author or by the verifier. A follow-up that merges later (the binding is frozen first). A wrong commit-message trailer: the desk-tools/38 squash commit's message carries `Brief: desk-tools/37`, but the resolver never reads commit messages, and #3332's body names /38, so the trailer resolver credits #3332 directly. A PR body that names another brief is walked past and never credited, because files overlap only demotes a credited PR; no binding is written, and the row reads could-not-check. A PR body edited after its merge is could-not-check | L2, then L3 |
 | L2. The checker's offline graph cross-check | statusgen consumer checker, in the verifier's checkout | Git topology, the declared-files overlap of the delivery diff, and agreement with the committed marker | A binding that names a commit off main's first-parent chain, a commit that has not landed, a commit whose diff touches none of the declared files, or a commit that contradicts the verifier's own recorded marker | L3 and review |
 | L3. A server-side ruleset on the binding namespace | Forge rules | The identity of the ref writer | An author, worker or verifier who creates, moves or deletes a binding. The checker cannot repeat this check offline | Review |
 
@@ -234,9 +249,11 @@ The following are not layers:
 **Single point of failure, answered honestly.** The one control between a delivery identity
 that is wrong but consistent and a false pass is **L1's attribution rule**. Suppose the
 resolver credits a PR that is real, approved, on the mainline, touches the declared files
-and carries the right trailer, but is not the implementation. Two examples are a follow-up
-that merged before the actual delivery, and a partial slice that was not declared partial.
-L2 and L3 both pass such a PR. Two things own that residue. The first is review of the
+and carries the right trailer in its PR body, but is not the implementation. Three examples
+are a follow-up that merged before the actual delivery, a partial slice that was not
+declared partial, and a follow-up whose body names the brief correctly when the actual
+delivering PR's body names another brief (the delivery is walked past, so the follow-up is
+credited instead). L2 and L3 both pass such a PR. Two things own that residue. The first is review of the
 Evidence: the brief's reviewer answers which single control stands between a wrong identity
 and a false pass. The second is the `delivery:` `covers: partial` declaration, which the
 resolver already honours.
@@ -265,7 +282,7 @@ above are settled.
 
 | # | Title | Owning module | Depends | Effort | Risk (regulatory / customer / irreversible / sensitive-data) | Verify row proving the lower layer with the upper one bypassed |
 |---|---|---|---|---|---|---|
-| I-1 | Record a delivery binding at merge from the delivering-PR resolver | `statusgen` (the resolver in `autoflip.go`/`deliveryfiles.go`, new binder verb) | decisions 1, 2 | M | no / no / no / no | A fixture whose delivering commit carries a trailer naming another brief (the desk-tools/38 shape) is bound to the files-overlap PR. A fixture with the forge read unavailable writes no binding, and the verb exits could-not-check |
+| I-1 | Record a delivery binding at merge from the delivering-PR resolver | `statusgen` (the resolver in `autoflip.go`/`deliveryfiles.go`, new binder verb) | decisions 1, 2 | M | no / no / no / no | A fixture in the desk-tools/38 shape (the squash commit's message carries a trailer naming another brief; the PR body names this brief) is bound to that PR, which pins that the binder attributes by the PR body and never by a commit-message search. A fixture whose PR body names another brief writes no binding, even though the PR touches the declared files: it is walked past, never credited on files overlap alone, and I-1 does not change that attribution rule. A fixture with the forge read unavailable writes no binding, and the verb exits could-not-check |
 | I-2 | Accept `--delivery bound` in the consumer checker and the range lint, with the graph and marker cross-checks | `statusgen/consumerdelivery.go`, `statusgen/verifyrows.go` | I-1, decisions 1, 3 | M | no / no / no / no | With the binder bypassed, a hand-made fixture tag that names a side-branch commit, a commit touching none of the declared files, or a commit that contradicts the committed marker reads exit 2 COULD-NOT-CHECK |
 | I-3 | Staged CI job and tag ruleset for delivery bindings | `ci/staged-workflows/`, forge configuration (documented; activation is the maintainer's) | I-1, decision 2 | S | no / no / no / no | With the CI writer bypassed, a binding tag pushed by a non-CI identity is refused by the forge. This is a human-run row: it is could-not-check offline |
 | I-4 | Author new post-merge consumer rows with `--delivery bound` | author-brief kit, `docs/consumer-delivery-checks.md` | I-2 | S | no / no / no / no | A planted bare `--base` row in a new brief is still a `consumer-delivery-range` finding with the kit's guidance in place |
