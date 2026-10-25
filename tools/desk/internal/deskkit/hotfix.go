@@ -513,7 +513,7 @@ type HotfixShimChoice struct {
 // ChooseHotfixShim is shim generation's selection for tool: the overlay binary only when its
 // manifest entry passes every ValidateHotfix check against pin at now; otherwise the pinned
 // binary at pinnedDir/tool, with a Notice naming a retired hotfix. cellctl's genShims calls
-// it, and deskboot's tests call it to show what a regenerated shim would select.
+// it; layer 1's tests are cellctl's shim tests.
 func ChooseHotfixShim(overlay, pinnedDir, tool, pin string, now time.Time, owner HotfixOwnerCheck) HotfixShimChoice {
 	pinned := filepath.Join(pinnedDir, tool)
 	c := HotfixShimChoice{Bin: pinned, Pinned: pinned}

@@ -651,6 +651,14 @@ func stagedReleaseTag(inv hotfixInvoker, path string) (string, error) {
 	if v := os.Getenv("DESK_TOOLS_BIN"); v != "" {
 		env = append(env, "DESK_TOOLS_BIN="+v)
 	}
+	// The staged binary's own self-check owner-checks the overlay, its bin and the file. Only a
+	// test-only seam build (whose hotfix is built with the same tag) names a non-root owner for
+	// that check; the release build's constant is false and passes nothing.
+	if deskkit.HotfixSeamBuild {
+		if v := deskkit.HotfixSeamValue(deskkit.HotfixSeamRootUID); v != "" {
+			env = append(env, deskkit.HotfixSeamRootUID+"="+v)
+		}
+	}
 	out, err := hotfixRunTimeout(inv, 30*time.Second, "", env, path, "--version")
 	if err != nil {
 		return "", fmt.Errorf("%v: %s", err, strings.TrimSpace(string(out)))

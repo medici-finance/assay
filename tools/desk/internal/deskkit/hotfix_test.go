@@ -336,23 +336,112 @@ func TestHotfixSelfCheck(t *testing.T) {
 			})
 		}
 	})
+	// Where the environment names the overlay, it never decides whether the integrity pass
+	// runs: every `+hotfix-` stamped binary is checked against the overlay it is told of, and a
+	// binary under the compiled-in overlay is an overlay binary whatever the environment says.
+	t.Run("integrity-not-gated-by-the-named-overlay", func(t *testing.T) {
+		g := newSelfFixture(t, "v1.0.41")
+		gexe := filepath.Join(g.overlay, "bin", "deskpr")
+		for _, p := range []string{g.overlay, filepath.Join(g.overlay, "bin"), gexe} {
+			_ = os.Chmod(p, 0o755)
+		}
+		gsum, _ := FileSHA256(gexe)
+		ge := entry
+		ge.SHA256 = gsum
+		hfWriteManifest(t, g.overlay, ge)
+		elsewhere := t.TempDir()
+		_ = os.Chmod(elsewhere, 0o755)
+		strayDir := t.TempDir()
+		_ = os.Chmod(strayDir, 0o755)
+		stray := filepath.Join(strayDir, "deskpr")
+		hfWriteFile(t, stray, "#!/bin/sh\necho stray\n")
+		_ = os.Chmod(stray, 0o755)
+		mk := func() hotfixSelfInput {
+			in := base()
+			in.Exe, in.Overlay, in.DefaultOverlay, in.PinnedBin, in.Cwd = gexe, g.overlay, g.overlay, g.pinned, g.checkout
+			return in
+		}
+		if v := evaluateHotfixSelf(mk()); v.Reason != "" {
+			t.Fatalf("control: the unmutated fixture is refused: %+v", v)
+		}
+		for name, c := range map[string]struct {
+			mutate func(in *hotfixSelfInput)
+			reason string
+		}{
+			// A: a stamped copy outside the overlay, whose owner check owns nothing.
+			"stamped-outside-overlay-wrong-owner": {func(in *hotfixSelfInput) {
+				in.Exe = stray
+				in.Owner = HotfixOwnedBy(uint32(os.Getuid()) + 1)
+			}, HotfixReasonNotRootOwned},
+			// A: the same copy, the overlay holding no manifest at all.
+			"stamped-outside-overlay-no-manifest": {func(in *hotfixSelfInput) {
+				in.Exe, in.Overlay = stray, elsewhere
+			}, HotfixReasonNotRootOwned},
+			// A: the copy's bytes are not the manifest's.
+			"stamped-outside-overlay-wrong-sha256": {func(in *hotfixSelfInput) {
+				in.Exe = stray
+			}, HotfixReasonTampered},
+			// B: the overlay's own binary, the environment naming another directory.
+			"overlay-binary-redirected-overlay": {func(in *hotfixSelfInput) {
+				in.Overlay = elsewhere
+			}, HotfixReasonNotRootOwned},
+			// B, unstamped: a binary under the compiled-in overlay is never skipped.
+			"unstamped-under-default-overlay-redirected": {func(in *hotfixSelfInput) {
+				in.Tag, in.Expires, in.Overlay = "v1.0.41", "", elsewhere
+			}, HotfixReasonUnstamped},
+		} {
+			t.Run(name, func(t *testing.T) {
+				in := mk()
+				c.mutate(&in)
+				v := evaluateHotfixSelf(in)
+				if v.Skip || !strings.Contains(v.Reason, c.reason) {
+					t.Fatalf("verdict %+v, want reason %q", v, c.reason)
+				}
+			})
+		}
+	})
 	// The install's own probe: its staged file runs --version before any manifest entry
-	// exists, so that exact name is checked for expiry, ceiling and pin only.
+	// exists, so that exact name skips the manifest, entry, digest, stamp and source-rule
+	// checks. The owner checks on the overlay, its bin and the file itself still apply.
 	t.Run("install-staging-file-exempt-only-by-exact-name", func(t *testing.T) {
 		g := newSelfFixture(t, "v1.0.41")
+		for _, p := range []string{g.overlay, filepath.Join(g.overlay, "bin")} {
+			_ = os.Chmod(p, 0o755)
+		}
 		stage := filepath.Join(g.overlay, "bin", ".deskpr.staging-123456")
 		hfWriteFile(t, stage, "#!/bin/sh\n")
+		_ = os.Chmod(stage, 0o755)
 		in := base()
 		in.Exe, in.Overlay, in.PinnedBin, in.Cwd = stage, g.overlay, g.pinned, g.checkout
-		in.Owner = HotfixOwnedBy(uint32(os.Getuid()) + 1)
+		if err := os.Remove(HotfixManifestPath(g.overlay)); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
 		if v := evaluateHotfixSelf(in); v.Reason != "" {
 			t.Fatalf("staged install probe refused: %+v", v)
 		}
+		// D: a staging-named file whose owner check fails is refused, in the overlay or under
+		// a directory the environment names as one.
+		in.Owner = HotfixOwnedBy(uint32(os.Getuid()) + 1)
+		if v := evaluateHotfixSelf(in); !strings.Contains(v.Reason, HotfixReasonNotRootOwned) {
+			t.Fatalf("staged probe skips the owner check: %+v", v)
+		}
+		in.Owner = owner
+		_ = os.Chmod(stage, 0o775)
+		if v := evaluateHotfixSelf(in); !strings.Contains(v.Reason, HotfixReasonNotRootOwned) {
+			t.Fatalf("group-writable staged probe accepted: %+v", v)
+		}
+		_ = os.Chmod(stage, 0o755)
+		_ = os.Chmod(filepath.Join(g.overlay, "bin"), 0o775)
+		if v := evaluateHotfixSelf(in); !strings.Contains(v.Reason, HotfixReasonNotRootOwned) {
+			t.Fatalf("staged probe in a group-writable bin accepted: %+v", v)
+		}
+		_ = os.Chmod(filepath.Join(g.overlay, "bin"), 0o755)
 		in.Now = now.Add(72 * time.Hour)
 		if v := evaluateHotfixSelf(in); !strings.Contains(v.Reason, HotfixReasonExpired) {
 			t.Fatalf("staged probe skips expiry too: %+v", v)
 		}
 		in.Now = now
+		// A near-miss name gets the full pass, and with no manifest it is refused.
 		for _, name := range []string{"deskpr.staging-123456", ".deskpr.staging-x", ".deskpr.staging-1.sh", "deskpr"} {
 			other := filepath.Join(g.overlay, "bin", name)
 			hfWriteFile(t, other, "#!/bin/sh\n")
@@ -375,9 +464,50 @@ func TestHotfixSelfCheck(t *testing.T) {
 		in := base()
 		in.Tag, in.Expires = "v1.0.41", ""
 		in.Exe = filepath.Join(f.pinned, "deskpr")
+		in.DefaultOverlay = f.overlay
+		in.Cwd = f.outside
+		if v := evaluateHotfixSelf(in); !v.Skip {
+			t.Fatalf("release build outside both overlays checked: %+v", v)
+		}
+	})
+	t.Run("release-build-outside-overlay-skipped-no-default", func(t *testing.T) {
+		in := base()
+		in.Tag, in.Expires = "v1.0.41", ""
+		in.Exe = filepath.Join(f.pinned, "deskpr")
 		in.Cwd = f.outside
 		if v := evaluateHotfixSelf(in); !v.Skip {
 			t.Fatalf("release build outside the overlay checked: %+v", v)
+		}
+	})
+}
+
+// regression: #4405
+// TestHotfixSelfGate: whether layer 2 runs at all is never decided by the environment's overlay
+// name alone. A stamped binary is checked anywhere, and an unstamped binary under the compiled-in
+// overlay is checked with the overlay variable set to another directory or unset.
+func TestHotfixSelfGate(t *testing.T) {
+	def := t.TempDir()
+	other := t.TempDir()
+	inDef := filepath.Join(def, "bin", "deskpr")
+	outside := filepath.Join(t.TempDir(), "deskpr")
+	for _, env := range []string{"", other, def} {
+		t.Run("overlay-env="+map[string]string{"": "unset", other: "other", def: "default"}[env], func(t *testing.T) {
+			t.Setenv(HotfixOverlayEnv, env)
+			if !hotfixSelfApplies("v1.0.41+hotfix-0123456789ab", outside, def) {
+				t.Error("a stamped binary outside every overlay skips the self-check")
+			}
+			if !hotfixSelfApplies("v1.0.41", inDef, def) {
+				t.Error("an unstamped binary under the compiled-in overlay skips the self-check")
+			}
+			if hotfixSelfApplies("v1.0.41", outside, def) {
+				t.Error("a release build outside every overlay is checked")
+			}
+		})
+	}
+	t.Run("overlay-env=other, binary under it", func(t *testing.T) {
+		t.Setenv(HotfixOverlayEnv, other)
+		if !hotfixSelfApplies("v1.0.41", filepath.Join(other, "bin", "deskpr"), def) {
+			t.Error("an unstamped binary under the named overlay skips the self-check")
 		}
 	})
 }

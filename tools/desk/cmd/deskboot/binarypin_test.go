@@ -190,8 +190,7 @@ func TestBinaryPinOutlived(t *testing.T) {
 }
 
 // Row 21: the owner seam is NOT set — the real uid-0 check runs. A user-owned overlay with a
-// consistently rewritten manifest and binary is refused, and a regenerated shim selects the
-// pinned binary.
+// consistently rewritten manifest and binary is refused.
 func TestBinaryPinOverlayOwner(t *testing.T) {
 	if os.Getuid() == 0 {
 		t.Skip("the test user is root, so a user-owned overlay cannot be built")
@@ -201,11 +200,8 @@ func TestBinaryPinOverlayOwner(t *testing.T) {
 	f.hotfixShim(t, "deskboard", nil)
 	_, _, err := f.check()
 	wantPinRefusal(t, err, deskkit.HotfixReasonNotRootOwned)
-
-	c := deskkit.ChooseHotfixShim(f.overlay, f.pinned, "deskboard", pinBase, binaryPinClock(), deskkit.HotfixRootOwned())
-	if c.Hotfix || c.Bin != filepath.Join(f.pinned, "deskboard") {
-		t.Errorf("a regenerated shim chose %+v, want the pinned binary", c)
-	}
+	// Shim generation's own refusal of the same overlay is layer 1's test, in cellctl
+	// (TestHotfixShimOverlayOwner), so each layer's test exercises that layer alone.
 }
 
 // Row 22: with the upper layers bypassed, each bypass is refused by this layer on its own.
@@ -282,6 +278,49 @@ func TestBinaryPinBypass(t *testing.T) {
 		}
 		_, _, err := f.check()
 		wantPinRefusal(t, err, deskkit.HotfixReasonTampered)
+	})
+}
+
+// regression: #4405
+// TestBinaryPinCellConfigBin: a cell whose pinned directory is set only in its config. cellctl
+// exports the directory it generated the shims against into the window (cellctl's
+// TestLaunchExportsDeskToolsBin), so an ordinary shim aimed there is pinned. A window that does
+// not carry it reads the default directory and refuses, but a cell with no hotfix is never told
+// to clear one: the remedy names the pinned directory and regenerating the shims.
+func TestBinaryPinCellConfigBin(t *testing.T) {
+	ordinary := func(t *testing.T, f *pinFixture, dir string) {
+		t.Helper()
+		bin := filepath.Join(dir, "deskboard")
+		if err := os.WriteFile(bin, []byte("pinned\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := fmt.Sprintf("#!/bin/sh\nexec \"%s\" \"$@\"\n", bin)
+		if err := os.WriteFile(filepath.Join(f.shimDir, "deskboard"), []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Run("window carries the cell's directory", func(t *testing.T) {
+		f := newPinFixture(t, pinNow)
+		custom := filepath.Join(t.TempDir(), "custom", "bin")
+		if err := os.MkdirAll(custom, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv(deskkit.DeskToolsBinEnv, custom)
+		ordinary(t, f, custom)
+		lines, hot, err := f.check()
+		if err != nil || hot || len(lines) != 1 || lines[0] != "all pinned (v1.0.42)" {
+			t.Fatalf("lines=%q hot=%v err=%v", lines, hot, err)
+		}
+	})
+	t.Run("window without it is refused without a hotfix remedy", func(t *testing.T) {
+		f := newPinFixture(t, pinNow)
+		t.Setenv(deskkit.DeskToolsBinEnv, "")
+		ordinary(t, f, t.TempDir())
+		_, _, err := f.check()
+		wantPinRefusal(t, err, "shim target outside the pinned and hotfix dirs", deskkit.DeskToolsBinEnv, "regenerate")
+		if err != nil && strings.Contains(err.Error(), "hotfix clear") {
+			t.Errorf("a refusal with no hotfix in use points at `hotfix clear`:\n%v", err)
+		}
 	})
 }
 

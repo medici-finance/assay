@@ -16,11 +16,15 @@ import (
 )
 
 // Layer 2: the binary's own self-check, run from this package's init — before any tool's
-// main does anything else. A release build outside the overlay directory skips it entirely
-// (no `+hotfix-` stamp, not under the overlay), so every pinned binary behaves exactly as
-// before. A hotfix build, or ANY binary resolving under the overlay directory, is checked:
-// its own root ownership and sha256 against the manifest, the source rule the manifest
-// records, its own expiry, its lifetime against the ruled ceiling, and its base against the pin.
+// main does anything else. A release build outside the overlay directories skips it entirely
+// (no `+hotfix-` stamp, not under the overlay the environment names nor the compiled-in one),
+// so every pinned binary behaves exactly as before. ANY binary under either overlay directory
+// must carry a hotfix stamp, and EVERY stamped binary, wherever it runs from, is checked: the
+// root ownership of the overlay, its bin, its manifest and the running file, the running file's
+// sha256 and stamp against the manifest entry, the source rule the entry records, its own
+// expiry, its lifetime against the ruled ceiling, and its base against the pin. A stamped binary
+// outside the overlay, or an overlay the environment redirects elsewhere, has no root-owned
+// entry matching it and is refused.
 // It shares no check call with the shim (ChooseHotfixShim) or the boot (ValidateHotfix): it
 // hashes and owner-checks the running file itself. It makes no network call: the forge
 // decision is the install's and the boot's (layer 3), so an offline tool start never depends
@@ -35,7 +39,10 @@ type hotfixSelfInput struct {
 	Tag, Expires, BuiltAt string
 	Exe                   string // the running executable, symlinks resolved
 	Overlay               string // the overlay directory
-	PinnedBin             string // the pinned install directory
+	// DefaultOverlay is the compiled-in overlay directory. A binary resolving under it is a
+	// hotfix-overlay binary whatever the environment names as the overlay.
+	DefaultOverlay string
+	PinnedBin      string // the pinned install directory
 	// Owner is the ownership check layer 2 applies to the running file, the manifest and the
 	// overlay. Nil is a refusal, never a pass.
 	Owner    HotfixOwnerCheck
@@ -57,7 +64,7 @@ type hotfixSelfVerdict struct {
 }
 
 func evaluateHotfixSelf(in hotfixSelfInput) hotfixSelfVerdict {
-	inOverlay := WithinDir(in.Exe, in.Overlay)
+	inOverlay := WithinDir(in.Exe, in.Overlay) || WithinDir(in.Exe, in.DefaultOverlay)
 	hot := IsHotfix(in.Tag)
 	if !hot && !inOverlay {
 		return hotfixSelfVerdict{Skip: true}
@@ -79,10 +86,11 @@ func evaluateHotfixSelf(in hotfixSelfInput) hotfixSelfVerdict {
 	if !hot || strings.TrimSpace(in.Expires) == "" {
 		return fail(HotfixReasonUnstamped + ": " + in.Exe + " carries tag " + quoteOrDev(in.Tag) + " and no hotfix expiry")
 	}
-	if inOverlay && !isHotfixStagingFile(in) {
-		if reason := selfIntegrity(in, tool); reason != "" {
-			return fail(reason)
-		}
+	// Every stamped binary is integrity-checked, wherever it runs from and whatever the
+	// environment names as the overlay: a stamped copy outside the overlay, or an overlay the
+	// environment redirects, has no root-owned manifest entry matching it and is refused.
+	if reason := selfIntegrity(in, tool); reason != "" {
+		return fail(reason)
 	}
 	expires, err := time.Parse(time.RFC3339, in.Expires)
 	if err != nil {
@@ -118,27 +126,34 @@ func evaluateHotfixSelf(in hotfixSelfInput) hotfixSelfVerdict {
 // bin directory (os.CreateTemp of "."+tool+".staging-"): a dot, the tool, ".staging-" and
 // digits. Install runs that file's --version once, as the invoking user, BEFORE its manifest
 // entry exists (the manifest is written last), so no digest or entry can exist to check. The
-// file is created by the root install step, removed on every exit path, and no shim, boot
-// classification or manifest entry ever names it; layers 1 and 3 refuse any path that is
-// not exactly the overlay's tool binary. Expiry, ceiling and pin are still checked.
+// file is created by the root install step, chowned to root before the probe, removed on every
+// exit path, and no shim, boot classification or manifest entry ever names it; layers 1 and 3
+// refuse any path that is not exactly the overlay's tool binary. Only the manifest, entry,
+// digest, stamp and source-rule checks are skipped for it: the owner checks on the overlay, its
+// bin and the file itself, and expiry, ceiling and pin, still apply.
 var stagingNameRE = regexp.MustCompile(`^\.[A-Za-z0-9_-]+\.staging-[0-9]+$`)
 
 func isHotfixStagingFile(in hotfixSelfInput) bool {
 	return filepath.Dir(in.Exe) == filepath.Join(in.Overlay, "bin") && stagingNameRE.MatchString(filepath.Base(in.Exe))
 }
 
-// selfIntegrity is layer 2's own ownership, sha256 and source-rule decision for a binary under
-// the overlay directory; "" means it holds. Its own code, not ValidateHotfix: a fault in the
-// boot's or the shim's check leaves this one standing.
+// selfIntegrity is layer 2's own ownership, sha256 and source-rule decision for every stamped
+// binary, checked against the overlay it is told of; "" means it holds. Its own code, not
+// ValidateHotfix: a fault in the boot's or the shim's check leaves this one standing.
 func selfIntegrity(in hotfixSelfInput, tool string) string {
 	if in.Owner == nil {
 		return HotfixReasonNotRootOwned + ": no owner check supplied"
 	}
-	manifest := HotfixManifestPath(in.Overlay)
-	for _, p := range []string{in.Overlay, manifest, in.Exe} {
+	for _, p := range []string{in.Overlay, filepath.Join(in.Overlay, "bin"), in.Exe} {
 		if err := in.Owner(p); err != nil {
 			return HotfixReasonNotRootOwned + ": " + err.Error()
 		}
+	}
+	if isHotfixStagingFile(in) {
+		return ""
+	}
+	if err := in.Owner(HotfixManifestPath(in.Overlay)); err != nil {
+		return HotfixReasonNotRootOwned + ": " + err.Error()
 	}
 	m, err := ReadHotfixManifest(in.Overlay)
 	if err != nil {
@@ -210,15 +225,22 @@ func hotfixEnvWithout(env []string, key string) []string {
 
 func init() { runHotfixSelfCheck() }
 
+// hotfixSelfApplies is the self-check's gate: a stamped binary anywhere, or any binary under
+// the overlay the environment names OR the compiled-in one, so the environment alone never
+// turns the check off.
+func hotfixSelfApplies(tag, exe, defaultOverlay string) bool {
+	return IsHotfix(tag) || WithinDir(exe, HotfixOverlayDir()) || WithinDir(exe, defaultOverlay)
+}
+
 func runHotfixSelfCheck() {
 	exe := executablePath()
-	if !IsHotfix(ReleaseTag) && !WithinDir(exe, HotfixOverlayDir()) {
+	if !hotfixSelfApplies(ReleaseTag, exe, DefaultHotfixOverlay) {
 		return // a release build outside the overlay: the check is skipped entirely
 	}
 	cwd, _ := os.Getwd()
 	in := hotfixSelfInput{
 		Tag: ReleaseTag, Expires: HotfixExpires, BuiltAt: BuiltAt,
-		Exe: exe, Overlay: HotfixOverlayDir(), PinnedBin: DeskToolsBinDir(), Owner: ActiveHotfixOwner(),
+		Exe: exe, Overlay: HotfixOverlayDir(), DefaultOverlay: DefaultHotfixOverlay, PinnedBin: DeskToolsBinDir(), Owner: ActiveHotfixOwner(),
 		Cwd: cwd, Fallback: os.Getenv(HotfixFallbackEnv), Now: time.Now(),
 		Platform: runtime.GOOS + "-" + runtime.GOARCH, PinnedVersion: pinnedVersionReal,
 	}

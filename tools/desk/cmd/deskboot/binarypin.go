@@ -130,7 +130,7 @@ func binaryPinCheck(o bootOpts) (lines []string, hotfix bool, err error) {
 			if os.IsNotExist(rerr) {
 				continue
 			}
-			return nil, false, binaryPinRefusal("", "shim directory %s unreadable: %v", dir, rerr)
+			return nil, false, binaryPinShimRefusal("", pinDir, "shim directory %s unreadable: %v", dir, rerr)
 		}
 		for _, en := range es {
 			if en.IsDir() || strings.HasPrefix(en.Name(), ".") {
@@ -139,7 +139,7 @@ func binaryPinCheck(o bootOpts) (lines []string, hotfix bool, err error) {
 			tool, shim := en.Name(), filepath.Join(dir, en.Name())
 			paths, terr := shimTargets(shim)
 			if terr != nil {
-				return nil, false, binaryPinRefusal(tool, "shim target outside the pinned and hotfix dirs: %v", terr)
+				return nil, false, binaryPinShimRefusal(tool, pinDir, "shim target outside the pinned and hotfix dirs: %v", terr)
 			}
 			isHot := false
 			for _, p := range paths {
@@ -152,7 +152,7 @@ func binaryPinCheck(o bootOpts) (lines []string, hotfix bool, err error) {
 					}
 				case deskkit.WithinDir(p, pinDir):
 				default:
-					return nil, false, binaryPinRefusal(tool, "shim target outside the pinned and hotfix dirs: %s targets %s (pinned dir %s, hotfix dir %s)",
+					return nil, false, binaryPinShimRefusal(tool, pinDir, "shim target outside the pinned and hotfix dirs: %s targets %s (pinned dir %s, hotfix dir %s)",
 						shim, p, pinDir, overlay)
 				}
 			}
@@ -162,7 +162,8 @@ func binaryPinCheck(o bootOpts) (lines []string, hotfix bool, err error) {
 		}
 	}
 	if own := deskkit.ReleaseTag; own != "" && ownTagVerdict(own, pin) == "refuse" {
-		return nil, false, binaryPinRefusal("deskboot", "%s: this deskboot is stamped %s, a hotfix tag; deskboot is never a hotfix target", deskkit.HotfixReasonTampered, own)
+		return nil, false, deskkit.Unverifiable(fmt.Sprintf("step %s: %s: this deskboot is stamped %s, a hotfix tag; deskboot is never a hotfix target (tool deskboot). "+
+			"Install the pinned desk-tools release's deskboot and re-run it.", stepBinaryPin, deskkit.HotfixReasonTampered, own), nil)
 	}
 	binaryPinWarnLag(pin)
 	if len(hots) == 0 {
@@ -225,6 +226,22 @@ func binaryPinRefusal(tool, format string, a ...any) error {
 	return deskkit.Unverifiable(fmt.Sprintf("step %s: %s%s. A hotfix that cannot be proven is not run: "+
 		"retire it with `sudo cellctl hotfix clear` and relaunch the desk so the shims point at the pinned release, then re-run deskboot.",
 		stepBinaryPin, fmt.Sprintf(format, a...), who), nil)
+}
+
+// binaryPinShimRefusal is the exit-6 refusal for a shim that is not one cellctl generated for
+// this window: a directory that cannot be read, or a target in neither the pinned nor the hotfix
+// directory. No hotfix is in use for that tool, so the remedy never points at `hotfix clear`: the
+// usual cause is a window whose DESK_TOOLS_BIN differs from the one the shims were generated
+// against, and relaunching the desk regenerates them against this window's value.
+func binaryPinShimRefusal(tool, pinDir, format string, a ...any) error {
+	who := ""
+	if tool != "" {
+		who = " (tool " + tool + ")"
+	}
+	return deskkit.Unverifiable(fmt.Sprintf("step %s: %s%s. A shim aimed outside the pinned directory is not run: "+
+		"this window's %s resolves to %s; relaunch the desk with `cellctl desk` so the shims regenerate against it "+
+		"(set %s in one place, the cell config or the launching shell, not both), then re-run deskboot.",
+		stepBinaryPin, fmt.Sprintf(format, a...), who, deskkit.DeskToolsBinEnv, pinDir, deskkit.DeskToolsBinEnv), nil)
 }
 
 // ownTagVerdict classifies this deskboot's own release tag against the worktree's pin:

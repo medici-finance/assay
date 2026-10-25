@@ -340,6 +340,28 @@ func TestHotfixShimExpired(t *testing.T) {
 	}
 }
 
+// regression: #4405
+// Layer 1 on its own: shim generation refuses an overlay its owner check does not accept and
+// names the pinned binary with a NOTICE, whatever the other layers decide.
+func TestHotfixShimOverlayOwner(t *testing.T) {
+	w := newHotfixWorld(t, hfBase)
+	w.install("deskboard")
+	c, shim := w.cell(t)
+	c.genShims()
+	if !strings.Contains(readFile(t, shim, "deskboard"), "hotfix_bin") {
+		t.Fatal("control: a valid hotfix is not in the shim")
+	}
+	hotfixOwner = func() deskkit.HotfixOwnerCheck { return deskkit.HotfixOwnedBy(uint32(os.Getuid()) + 1) }
+	stderr := captureStderrOf(t, func() { c.genShims() })
+	body := readFile(t, shim, "deskboard")
+	if strings.Contains(body, "hotfix_bin") || !strings.Contains(body, filepath.Join(w.pinned, "deskboard")) {
+		t.Errorf("an overlay the owner check refuses is still selected:\n%s", body)
+	}
+	if !strings.Contains(stderr, deskkit.HotfixReasonNotRootOwned) {
+		t.Errorf("no NOTICE naming %q:\n%s", deskkit.HotfixReasonNotRootOwned, stderr)
+	}
+}
+
 // Row 10: one changed byte in the overlay binary retires the hotfix at every layer.
 func TestHotfixTampered(t *testing.T) {
 	w := newHotfixWorld(t, hfBase)
