@@ -532,7 +532,35 @@ const (
 	staleStateDrift         = "drift"          // checked: they differ
 	staleStateNotApplicable = "not-applicable" // unpinned build: there is no install to drift
 	staleStateUnknown       = "unknown"        // COULD-NOT-CHECK: no pin found AND no in-tree ref
+	// staleStateHotfix: checked — the running binary is a valid local hotfix over this
+	// checkout's pin (its base == the pin, unexpired). Not stale, but never silent: the
+	// header names it on every board read.
+	staleStateHotfix = "hotfix"
 )
+
+// hotfixNow is the clock the hotfix arm reads expiry against; a seam for tests only.
+var hotfixNow = time.Now
+
+// hotfixStaleState classifies a running hotfix tag against the checkout's pin: base == pin
+// and unexpired is `hotfix` (stale=false, a HOTFIX: header); anything else is drift naming
+// the hotfix, which leaves the board BLIND exactly as any other drift does.
+func hotfixStaleState(running, base, pinTag, pinArtifact, pinFile string) (string, bool, string) {
+	expires, err := time.Parse(time.RFC3339, deskkit.HotfixExpires)
+	if err != nil {
+		return staleStateDrift, true, "desk-tools hotfix " + running + " carries no readable expiry (" +
+			deskkit.HotfixExpires + ") — run `cellctl hotfix status`; the pin is " + pinTag + " in " + pinFile
+	}
+	exp := expires.UTC().Format(time.RFC3339)
+	if !hotfixNow().Before(expires) {
+		return staleStateDrift, true, "desk-tools hotfix " + running + " expired " + exp +
+			" — regenerate the shims (`cellctl up`) to fall back to pin " + pinTag + " (" + pinFile + ")"
+	}
+	if normalizeTag(base) != normalizeTag(pinTag) {
+		return staleStateDrift, true, "desk-tools hotfix " + running + " outlived its pin: built over " + base +
+			", " + pinFile + " pins " + pinArtifact + " " + pinTag + " — regenerate the shims (`cellctl up`)"
+	}
+	return staleStateHotfix, false, "HOTFIX: desk-tools " + running + " over pin " + pinTag + " (expires " + exp + ")"
+}
 
 // staleState reports installed-vs-tracked drift as a three-state verdict plus the
 // authoritative boolean.
@@ -584,6 +612,9 @@ func staleState() (state string, stale bool, detail string) {
 		running := deskkit.ReleaseTag
 		if running != "" {
 			pinFile := filepath.Join(pinRoot, deskkit.AssayVersionsFile)
+			if base, ok := deskkit.HotfixBase(running); ok {
+				return hotfixStaleState(running, base, pinTag, pinArtifact, pinFile)
+			}
 			if normalizeTag(running) == normalizeTag(pinTag) {
 				return staleStateInSync, false,
 					"in sync with " + pinFile + " (" + pinArtifact + " " + pinTag + ")"
@@ -939,6 +970,8 @@ func printBanners(w io.Writer, h Header) {
 		fmt.Fprintln(w, "STALE-UNKNOWN: "+h.StaleDetail)
 	case staleStateDrift:
 		fmt.Fprintln(w, "STALE: "+h.StaleDetail)
+	case staleStateHotfix:
+		fmt.Fprintln(w, h.StaleDetail) // the detail opens with `HOTFIX:`
 	default:
 		fmt.Fprintln(w, "desk-tools: "+h.StaleDetail)
 	}
