@@ -23,6 +23,24 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.61 — 2026-10-25
+
+### Added
+- Author a brief to remove unrelated performance-fixture work from the prune mutation sweep while preserving its full 55-mutation gate.
+- Four independent layers decide whether a hotfix runs: shim generation, the hotfix binary's own start-up check (run for every `+hotfix-` stamped binary wherever it runs from, owner-checking the overlay, its manifest and the file and matching the file's digest to the manifest entry, with no network call), a new `deskboot` boot step `binary-pin` (now 10 steps) that classifies every shim by the path it execs and re-checks root ownership, digest, pin, expiry, ceiling and the forge, and a `HOTFIX:` line on every `deskboard` header. A hotfix whose pin moved or whose expiry passed falls back to the pinned binary with a notice, and `deskboot` refuses with exit 6 until the shims are regenerated.
+- `cellctl hotfix install|status|clear`: a local, expiring override of one pinned desk tool for a fix that has merged to `main` before the next release. `sudo cellctl hotfix install <tool> --source <sha>` builds the commit as the invoking user with a from-scratch build environment, stamps it `<pin>+hotfix-<sha12>`, and installs it root-owned in an overlay directory beside the pinned install with a manifest entry. By the driver's ruling, install needs sudo, only commits already on `main` qualify, and a hotfix lives 3 days by default and at most 7; all four rules are compiled in and settable by no flag, variable or file. `cellctl` and `deskboot` are never hotfix targets, and a source touching schema, migration, permission or hotfix-machinery paths is refused as `hotfix-ineligible`.
+
+### Fixed
+- Pair the plugin and desk base image with the published v1.0.60 binaries and image digest.
+
+### Changed
+- Lead deskperf reports with command costs: count, cumulative invocation wall, typical/tail latency, exact outcomes, and measured CPU/HTTP coverage. Keep timing cohorts separate, preserve existing detailed JSON fields, and select replay/conflict identities before tool filters.
+- Preserve unfiltered conflict-only detail reports and workflow no-match diagnostics; scope unattributed exclusions to the selected tool and role.
+- Preserve workflow-specific no-match diagnostics with a matching tool filter in pooled and per-day reports, while retaining absent-tool and conflict exclusions.
+- Separate verifier-domain contract acceptance from required downstream integration, preserving delivered checks and strengthening store and workspace flow obligations.
+- `cellctl desk` now exports the `DESK_TOOLS_BIN` it generated the shims against into the window it launches, so a cell that sets the pinned directory only in its own config passes `deskboot`'s `binary-pin` step. A shim aimed outside the pinned and hotfix directories in a cell with no hotfix is refused with a remedy that names the window's `DESK_TOOLS_BIN` and asks for a relaunch, not `hotfix clear`.
+- `statusgen`'s version gate treats a `vX.Y.Z+hotfix-<sha12>` tag exactly as its base release `vX.Y.Z`, so a hotfix of an old release never passes as the latest. The release pipeline, the pinned-install digest check and the `.assay-versions` grammar are unchanged.
+
 ## v1.0.60 — 2026-10-25
 
 ### Added
