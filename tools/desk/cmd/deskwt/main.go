@@ -31,7 +31,7 @@ const usage = `deskwt — safe worktree lifecycle and coordinated offline Git ma
 
 USAGE:
   deskwt add <name> [--branch B | --detach] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R]
-             [--lock-session <id>]
+             [--lock-session <id>] [--adopt-run <run key>]
   deskwt remove <path>
   deskwt maintain [--repo <path>] [--apply] [--min-interval <dur>] [--timeout <dur>]
   deskwt prune [--repo <path>] [--interval <dur>] [--reclaim-stale-locks]
@@ -125,6 +125,12 @@ add --lock-session <id> LOCKS the new worktree for that live session, in role-in
 reason format (` + "`session=<id>`" + `), so prune holds it from its first second and
 --reclaim-stale-locks / --reap-dead-sessions retire it only once that session's roster beacon
 is stale. A lock that cannot be taken and verified rolls the worktree back.
+
+add --adopt-run <run key> (resume only: needs --upstream) hands back a FINISHED home instead
+of refusing it — the existing target, or the worktree holding --branch — when it carries that
+worktree-scoped assay.runKey, is registered and unlocked, sits on --branch at exactly the
+pinned --base, and has an empty status including untracked files. Nothing is deleted or reset;
+a home failing any clause keeps the original refusal, which names the clause.
 
 add resolves a LOCAL BRANCH COLLISION by name rather than dying on git's. Worktrees share
 one refs store, so a branch left behind by an abandoned dispatch blocks every later add that
