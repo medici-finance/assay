@@ -91,6 +91,14 @@ tear a cell's session down
   --keep-deskd                        leave the cell's deskd running
 ```
 
+## `cellctl hotfix install|status|clear`
+
+install, inspect or clear a local desk-tools hotfix (install and clear need sudo)
+
+```
+  (no flags)
+```
+
 ## `cellctl ls`
 
 list the cells under the registry

@@ -1,3 +1,0 @@
-### Fixed
-- `deskwt remove` run from inside the worktree it removes (or a subdirectory of it) now finishes the job: it deregisters the worktree from the shared checkout's git directory instead of failing with "git worktree prune failed" and leaving a prunable registration behind. (#4272)
-- A rework dispatch of an open PR no longer refuses the clean home its earlier run left. `deskwt add --adopt-run <run key>` hands that home back when it carries the item's run key and is provably finished (registered, unlocked, on the branch at the pinned head, empty status including untracked files, no merge or rebase in progress). Any other home keeps the original refusal, which now names the clause that failed. (#4272)
