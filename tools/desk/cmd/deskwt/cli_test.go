@@ -527,6 +527,15 @@ func TestCLILegacyForms(t *testing.T) {
 		{[]string{"maintain", "objects", "--json", "--dry-run"}, 0, want{"objects", map[string]any{"json": true, "dry-run": true, "apply": false}, ""}},
 		{[]string{"maintain", "objects", "--apply", "--min-interval", "48h"}, 0,
 			want{"objects", map[string]any{"apply": true, "min-interval": 48 * time.Hour}, ""}},
+		// The global --trace (and the root's other persistent flags) may sit between
+		// `maintain` and `objects`: the pre-port parser stripped --trace wherever it was.
+		{[]string{"maintain", "--trace", "objects"}, 0, want{"objects", map[string]any{"apply": false}, ""}},
+		{[]string{"maintain", "-trace", "objects", "--apply"}, 0, want{"objects", map[string]any{"apply": true}, ""}},
+		{[]string{"maintain", "--trace=false", "objects", "--json"}, 0, want{"objects", map[string]any{"json": true}, ""}},
+		{[]string{"maintain", "--perf-role", "worker", "objects"}, 0, want{"objects", map[string]any{"apply": false}, ""}},
+		// A verb flag there is still a refusal, with or without a --trace beside it.
+		{[]string{"maintain", "--trace", "--apply", "objects"}, 2, want{}},
+		{[]string{"-trace", "maintain", "-apply", "objects"}, 2, want{}},
 		{[]string{"role-init", "worker", "--session", "s-1"}, 0, want{"role-init", map[string]any{"session": "s-1"}, "worker"}},
 		{[]string{"role-init", "--role", "worker", "--no-fetch"}, 0, want{"role-init", map[string]any{"role": "worker", "no-fetch": true}, ""}},
 		{[]string{"role-clean", "--session", "s-1", "worker"}, 0, want{"role-clean", map[string]any{"session": "s-1"}, "worker"}},
@@ -596,6 +605,41 @@ func TestCLILegacyForms(t *testing.T) {
 			}
 		})
 	}
+	// --version takes no words. The pre-port parser answered it only as the sole argument and
+	// refused anything beside it as an unknown verb; that is the usage code now, with nothing
+	// printed on stdout. With only --trace beside it, it still prints the version.
+	for _, c := range []struct {
+		args []string
+		code int
+	}{
+		{[]string{"--version", "extra"}, 2},
+		{[]string{"extra", "--version"}, 2},
+		{[]string{"-version", "add", "x"}, 2},
+		{[]string{"add", "x", "--version"}, 2},
+		{[]string{"--version"}, 0},
+		{[]string{"-version"}, 0},
+		{[]string{"--trace", "--version"}, 0},
+		{[]string{"--version", "--trace"}, 0},
+	} {
+		t.Run("version_"+strings.Join(c.args, "_"), func(t *testing.T) {
+			defer deskkit.ResetTrace()
+			calls := 0
+			env := wtCLI{before: func() error { calls++; return nil }, handle: func(wtCall) error { calls++; return nil }}
+			var out, errs bytes.Buffer
+			code := parseWT(c.args, env, cli.IO{Out: &out, Err: &errs})
+			if code != c.code || calls != 0 {
+				t.Fatalf("code %d calls %d, want %d/0: %s%s", code, calls, c.code, &out, &errs)
+			}
+			printed := strings.HasPrefix(out.String(), "deskwt sourceSHA=")
+			if printed != (c.code == 0) {
+				t.Errorf("version printed=%v for code %d: stdout %q", printed, code, &out)
+			}
+			if c.code == 2 && strings.Count(errs.String(), "Run 'deskwt --help'") != 1 {
+				t.Errorf("usage error not printed once: %s", &errs)
+			}
+		})
+	}
+
 	// A domain error keeps its own code and is reported once by the shared exit path.
 	for _, code := range []int{3, 4, 5, 6} {
 		var out bytes.Buffer

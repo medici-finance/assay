@@ -3,8 +3,8 @@
   "control": {
     "name": "CONTROL: usage exit is wrong",
     "file": "cmd/deskwt/cli.go",
-    "old": "VersionTemplate: \"{{.Version}}\\n\", GoFlagCompat: true,",
-    "new": "VersionTemplate: \"{{.Version}}\\n\", UsageExit: 1, GoFlagCompat: true,"
+    "old": "IO: streams, GoFlagCompat: true,",
+    "new": "IO: streams, UsageExit: 1, GoFlagCompat: true,"
   },
   "mutations": [
     {
@@ -46,8 +46,20 @@
     {
       "name": "nested maintain objects shape guard dropped",
       "file": "cmd/deskwt/cli.go",
-      "old": "if path == \"objects\" && !nestedObjects(argv) {",
+      "old": "if path == \"objects\" && !nestedObjects(root, argv) {",
       "new": "if false {"
+    },
+    {
+      "name": "nested shape guard counts the global --trace as a maintain flag",
+      "file": "cmd/deskwt/cli.go",
+      "old": "\t\t\tif f == nil {\n\t\t\t\treturn false\n\t\t\t}",
+      "new": "\t\t\tif f == nil || f.Name == \"trace\" {\n\t\t\t\treturn false\n\t\t\t}"
+    },
+    {
+      "name": "version answered before argument validation",
+      "file": "cmd/deskwt/cli.go",
+      "old": "IO: streams, GoFlagCompat: true,",
+      "new": "IO: streams, Version: cliVersion(), VersionTemplate: \"{{.Version}}\\n\", GoFlagCompat: true,"
     }
   ]
 }

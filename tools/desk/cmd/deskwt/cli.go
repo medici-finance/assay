@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/perfrec"
@@ -161,7 +162,16 @@ func newWtCLI(env wtCLI, argv []string) *cobra.Command {
 	root.Long = rootLong
 	rootSet := cli.Declare(root, b[""]...)
 	root.Args = cobra.NoArgs
+	// --version is the root's own flag, not Cobra's built-in one: Cobra answers its version
+	// flag before argument validation, so `deskwt --version extra` printed the version and
+	// exited 0. Here the root's NoArgs refuses any word beside it (exit 2, nothing on stdout),
+	// and the root's RunE prints it before anything is read, guarded or audited.
+	root.Flags().Bool("version", false, "print the version and exit")
 	root.RunE = func(cmd *cobra.Command, _ []string) error {
+		if v, _ := cmd.Flags().GetBool("version"); v {
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), cliVersion())
+			return err
+		}
 		// No verb is a refusal, as it always was: the help screen on stderr, exit 5, and
 		// nothing read, guarded or audited.
 		cmd.SetOut(cmd.ErrOrStderr())
@@ -177,7 +187,7 @@ func newWtCLI(env wtCLI, argv []string) *cobra.Command {
 		c := &cobra.Command{Use: use, Short: short, Long: long, Args: args}
 		set := cli.Declare(c, b[path]...)
 		c.RunE = func(cmd *cobra.Command, args []string) error {
-			if path == "objects" && !nestedObjects(argv) {
+			if path == "objects" && !nestedObjects(root, argv) {
 				return &deskkit.DeskError{Code: cli.ExitUsage, Msg: "deskwt: `maintain objects` takes its flags after objects, never between the two words\n" +
 					"Run 'deskwt --help' for usage."}
 			}
@@ -261,11 +271,33 @@ func indexSpace(s string) int {
 // nestedObjects reports whether the command line names `maintain objects` as two adjacent
 // words. Before the port, `maintain --apply objects` was a refusal (objects was a stray
 // positional of maintain); the tree would otherwise route it to the object pass with --apply.
-func nestedObjects(argv []string) bool {
+// The root's persistent flags (the global --trace, which the pre-port parser stripped
+// wherever it stood, and the performance-context selectors) are not maintain's flags, so
+// they are skipped, with the value a non-boolean one takes as its next word.
+func nestedObjects(root *cobra.Command, argv []string) bool {
 	for i, a := range argv {
-		if a == "maintain" {
-			return i+1 < len(argv) && argv[i+1] == "objects"
+		if a != "maintain" {
+			continue
 		}
+		for j := i + 1; j < len(argv); j++ {
+			w := argv[j]
+			if w == "objects" {
+				return true
+			}
+			name := strings.TrimPrefix(strings.TrimPrefix(w, "-"), "-")
+			if name == w || name == "" || strings.HasPrefix(name, "-") {
+				return false
+			}
+			name, _, inline := strings.Cut(name, "=")
+			f := root.PersistentFlags().Lookup(name)
+			if f == nil {
+				return false
+			}
+			if !inline && f.NoOptDefVal == "" {
+				j++
+			}
+		}
+		return false
 	}
 	return false
 }
@@ -298,7 +330,7 @@ func cliVersion() string {
 
 func parseWT(args []string, env wtCLI, streams cli.IO) int {
 	return cli.Run(func() *cobra.Command { return newWtCLI(env, args) }, args, cli.Options{
-		Performance: env.performance, IO: streams, Version: cliVersion(), VersionTemplate: "{{.Version}}\n", GoFlagCompat: true,
+		Performance: env.performance, IO: streams, GoFlagCompat: true,
 		ExitCode: func(err error) int { deskkit.ReportError(streams.Err, err); return deskkit.ExitCodeOf(err) },
 	})
 }
@@ -311,31 +343,6 @@ func guardedExecute(c wtCall) error {
 	}
 	deskkit.WarnIfUnpinned(os.Stderr)
 	return execute(c)
-}
-
-// Compatibility entrypoints for direct-domain regression tests. Each enters the same Cobra
-// tree; none keeps a Go FlagSet or a second parser.
-func cmdVerb(argv []string) error {
-	var result error
-	env := wtCLI{handle: func(c wtCall) error { result = execute(c); return result }}
-	code := parseWT(argv, env, cli.IO{In: os.Stdin, Out: os.Stdout, Err: os.Stderr})
-	if result != nil {
-		return result
-	}
-	if code != 0 {
-		return &deskkit.DeskError{Code: code, Msg: "deskwt: invalid command line"}
-	}
-	return nil
-}
-
-func cmdAdd(args []string) error       { return cmdVerb(append([]string{"add"}, args...)) }
-func cmdRemove(args []string) error    { return cmdVerb(append([]string{"remove"}, args...)) }
-func cmdPrune(args []string) error     { return cmdVerb(append([]string{"prune"}, args...)) }
-func cmdMaintain(args []string) error  { return cmdVerb(append([]string{"maintain"}, args...)) }
-func cmdRoleInit(args []string) error  { return cmdVerb(append([]string{"role-init"}, args...)) }
-func cmdRoleClean(args []string) error { return cmdVerb(append([]string{"role-clean"}, args...)) }
-func cmdObjectMaintenance(args []string) error {
-	return cmdVerb(append([]string{"maintain", "objects"}, args...))
 }
 
 // Help prose, one verb per command. It is the text the retired single usage screen carried,

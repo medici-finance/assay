@@ -35,7 +35,7 @@ parse time).
 | `deskwt remove <path>` | exactly 1 | `runRemove` |
 | `deskwt prune` | none | `runPrune` |
 | `deskwt maintain` | none | `runMaintain` |
-| `deskwt maintain objects` | none (`objects` must be the first word after `maintain`) | `runObjectMaintenance` |
+| `deskwt maintain objects` | none (`objects` must be the first word after `maintain`; only the root's persistent flags, such as `--trace`, may stand between them) | `runObjectMaintenance` |
 | `deskwt role-init [<role>]` | 0 or 1 | `runRoleInit` |
 | `deskwt role-clean [<role>]` | 0 or 1 | `runRoleClean` |
 
@@ -122,7 +122,8 @@ handler:
   --base <base> --role <role>`.
 - Documented forms in `tools/desk/README.md` and the desk skills: every flag above in
   `--f v`, `--f=v` and single-dash Go-flag spellings (`-repo /r`, `-branch=b1`), `--`
-  termination, repeated flags, and `--trace` before or after the verb.
+  termination, repeated flags, and `--trace` before or after the verb, including between
+  `maintain` and `objects` (`maintain --trace objects`).
 - Path values are passed through untouched, so Windows and POSIX paths reach the handler
   as given (`GOOS=windows go vet ./cmd/deskwt` keeps the package compiling there).
 
@@ -134,7 +135,7 @@ Each row is a CLI-contract change, not a lifecycle change.
 |---|---|---|
 | Unknown flag, malformed value, missing value, wrong positional count (`add`, `add a b`, `add a --detach=maybe`, `remove --force x`, `prune stray`, `maintain --timeout bogus`, `role-init a b`) | exit 5 after the kill switch, one `refused: bad flags` audit row | exit 2 before the kill switch and before any audit row, read or child process |
 | Unknown verb (`deskwt frobnicate`) | exit 5, usage on stderr | exit 2, Cobra's unknown-command message |
-| `maintain --apply objects` (the word after a flag) | exit 5 (`maintain requires no positional args …`) | exit 2: `objects` is a sub-verb only as the first word after `maintain` |
+| `maintain --apply objects` (the word after a flag) | exit 5 (`maintain requires no positional args …`) | exit 2: `objects` is a sub-verb only as the first word after `maintain`, not counting the root's persistent flags (`maintain --trace objects` runs the object pass, as before) |
 | `deskwt <verb> --help`, `-h`, `-help`, `deskwt help <verb>` | the whole usage text on stderr, exit 0 | that verb's generated help on stdout, exit 0 |
 | `deskwt --help`, `-h`, `help` | usage on stderr, exit 0 | generated root help on stdout, exit 0 |
 | Help and version | ran after the roster echo and verb-activation check | run before either, with no config, roster, credential or network read, lock, worktree or child process |
@@ -143,6 +144,7 @@ Each row is a CLI-contract change, not a lifecycle change.
 | `--` | the Go flag package stopped at it per verb | ends flag parsing for every verb; `add -- -name` reaches the handler, which refuses the name (exit 5) |
 | `add -x` (a dash-leading name without `--`) | exit 5 | exit 2 (unknown flag) |
 | Bare `deskwt` | usage on stderr, exit 5 | root help on stderr, exit 5 (unchanged code) |
+| A word beside `--version` (`deskwt --version extra`, `deskwt extra --version`) | exit 5 (`--version` answered only as the sole argument; otherwise an unknown verb) | exit 2 (unknown command), nothing on stdout; `--trace` beside it still prints the version |
 
 ## Left to the lifecycle owner
 
