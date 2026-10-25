@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // repoRoot is the checkout root relative to this package.
@@ -491,7 +493,7 @@ func runOwnerTests(t *testing.T, pkg string) {
 	cmd := exec.CommandContext(ctx, "go", "test", "-count=1", "-v",
 		"-run", "^("+strings.Join(ownerTests, "|")+")$", target)
 	cmd.Dir = filepath.Join(repoRoot, filepath.FromSlash(mod))
-	out, err := cmd.CombinedOutput()
+	out, err := goquiet.Cmd(cmd).CombinedOutput()
 	if err != nil {
 		t.Errorf("go test %s in %s: %v\n%s", target, mod, err, out)
 		return

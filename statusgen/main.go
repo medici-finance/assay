@@ -81,6 +81,19 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// eligibility/scoring, emit — treats them as first-class rows.
 	// Malformed placeholder files are surfaced by checkPlaceholderFiles below.
 	attachPlaceholders(streams)
+	// Standing of every brief file, for the shared notice reporter
+	// (notice_report.go): which findings are about a record already closed at the
+	// merge-base. Same closedAtBase predicate the closure gates use. Rebuilt per
+	// root; cleared first so a failed root never lends its index to the next.
+	// Built in EVERY mode: the write, check and record runs print the same
+	// notices (the unfailable-row audit runs in all of them), and a closed
+	// record's findings must be counted and bounded there too, not printed one
+	// line each.
+	activeRecordIndex = nil
+	{
+		grandfathered, baseOK := closedAtBase(root, streams)
+		activeRecordIndex = buildRecordIndex(streams, grandfathered, baseOK)
+	}
 	// Product-scoping: per-stream checks may be
 	// restricted to a single product (serves:) so one product's PR is not
 	// red-gated by another product's stream. An explicit --scope wins; otherwise
@@ -343,6 +356,13 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// hard-gated, and the git-derived class 1 reuses the same merge read.
 	// Declared source: statusgen/boardhonesty.go.
 	notices = append(notices, boardHonestyNotices(checkStreams, mergedPRs, mergedErr)...)
+	// The same classifier, applied to dispatch: a todo row caught on STRONG evidence
+	// (a merged `Brief:`-trailer PR, a re-homed pointer row) is held out of Next-up
+	// via Brief.PhantomHeld before nextUp() below. Full `streams`, like the
+	// sibling-merge mutation, so an out-of-scope stream's row is held on the board
+	// that renders it. A failed merge read holds no merged-delivery row (re-homed
+	// pointer rows, which need no git, are still held).
+	applyPhantomHolds(streams, mergedPRs, mergedErr)
 	// Sibling-merge-unreconciled (siblingmerge.go): the
 	// SEVENTH board-honesty phantom class, wired right after class 1 like the
 	// package comment describes, but through its OWN driver rather than
@@ -491,15 +511,19 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		}
 		// Drive-plan honesty: PROBLEM a drive-plan .md whose
 		// snapshot region has drifted from a fresh render, or that has no manifest
-		// beside it. --lint only (the PR gate); STATUS.md-free and offline. Absent
-		// docs/roadmap/drives ⇒ inert.
+		// beside it. --lint only (the PR gate); STATUS.md-free. Its claim read is
+		// this run's own (lintClaims), so without --forge it reads none and stays
+		// offline (#3323). Absent docs/roadmap/drives ⇒ inert.
+		lintClaimRead := func(r string, s []*Stream) (map[string]bool, ClaimSource) {
+			return lintClaims(r, mode, s)
+		}
 		var dp, dn []string
 		if effScope == "" {
-			dp, dn = driveRegionLintFromBoard(root, streams, nowFunc())
+			dp, dn = driveRegionLintProblems(root, streams, lintClaimRead, nowFunc())
 		} else {
 			// Snapshot frontiers use the full board, including rows outside
 			// the product-scoped checks above. Hydrate those once per sweep.
-			dp, dn = driveRegionLintProblems(root, nowFunc())
+			dp, dn = driveRegionLintProblems(root, nil, lintClaimRead, nowFunc())
 		}
 		problems = append(problems, dp...)
 		notices = append(notices, dn...)
@@ -766,7 +790,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// problems are reported here too, so a run that stops early still lists
 	// everything it found (the "which checks ran" property).
 	if len(problems) > 0 {
-		emitNotices(notices)
+		emitLintNotices(mode, notices)
 		for _, p := range problems {
 			fmt.Fprintln(os.Stderr, "PROBLEM:", p)
 		}
@@ -855,7 +879,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// path (a malformed manifest applies zero boost and so has no boosted pick to
 	// gate).
 	if dp := driveBannerProblems(nu); len(dp) > 0 {
-		emitNotices(notices)
+		emitLintNotices(mode, notices)
 		for _, p := range dp {
 			fmt.Fprintln(os.Stderr, "PROBLEM:", p)
 		}
@@ -869,7 +893,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	if n := claimSource.Notice(nu.Eligible); n != "" {
 		notices = append(notices, n)
 		if requireClaims {
-			emitNotices(notices)
+			emitLintNotices(mode, notices)
 			fmt.Fprintln(os.Stderr, "PROBLEM:", "claim filtering could not be established and --require-claims is set: "+claimSource.Reason)
 			fmt.Fprintln(os.Stderr, boardProvenanceLine(1))
 			finalVerdict(mode, 1)
@@ -918,7 +942,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	// todo backlog) so the register is not flooded (review); dispatched/
 	// awaiting statuses are covered status-wide in checkBriefFiles.
 	notices = append(notices, nextUpDecisionNotices(nu)...)
-	emitNotices(notices)
+	emitLintNotices(mode, notices)
 	// Off-board problems: reported in full, byte-identical to the
 	// blocking path, and they still set the exit code below. Generation is NOT
 	// suppressed by them — the banner says so out loud so nobody reads a written
@@ -1649,7 +1673,8 @@ func main() {
 	instrumentAuditMode := flag.Bool("instrument-audit", false, "instrument-liveness audit: for every flag declared in statusgen/main.go, report the consumers found by grepping the roots (default: <root>/{.github/workflows,plugins/assay/skills,plugins/assay/scripts,Makefile,tools/desk/cmd}) — WIRED (>=1), COLD (0), or DARK (0 AND declared >30d ago). Read-only, advisory; --lint NOTICEs each DARK flag, nothing is retired. With --json emits {flags:[...]}. --roots overrides the grep roots")
 	instrumentRootsFlag := flag.String("roots", "", "--instrument-audit: comma-separated directories to grep for flag consumers (default: the day-one consumer surface under --root); a house root adds its own workflows/skills/tools")
 	allowEmptyRootFlag := flag.Bool("allow-empty-root", false, "allow a root whose docs/streams exists but resolves to 0 streams (default: hard PROBLEM, same class as a missing/unreadable docs/streams); with this flag it downgrades to a NOTICE, for a root that has genuinely adopted the methodology but has not authored a stream yet")
-	diffBaseFlag := flag.String("diff-base", "", "--lint only: make the lint DIFFERENTIAL against this base ref (e.g. refs/remotes/origin/main). Evaluates the register at the merge-base of HEAD and <ref> AND at the working tree, fires PROBLEM only for problems the diff INTRODUCES, and demotes pre-existing base-side problems to NOTICE; always prints a base-vs-diff summary line. Fails safe to a full-strength lint (nothing demoted) when the base cannot be resolved or materialised")
+	allNoticesFlag := flag.Bool("all", false, "--lint only: list every historical notice (a finding about a record already verified/done at the merge-base) as its own line. By default --lint prints actionable findings plus one bounded per-rule historical total; nothing is removed either way and no PROBLEM or exit code changes")
+	diffBaseFlag := flag.String("diff-base", "", "--lint only: make the lint DIFFERENTIAL against this base ref (e.g. refs/remotes/origin/main). Evaluates the register at the merge-base of HEAD and <ref> AND at the working tree, fires PROBLEM only for problems the diff INTRODUCES, demotes pre-existing base-side problems to NOTICE, and promotes an actionable NOTICE the diff introduces on an added or edited brief to PROBLEM (notice ratchet; docs/verify-row-strength.md); always prints a base-vs-diff summary line. Fails safe to a full-strength lint (nothing demoted, ratchet reported could-not-check) when the base cannot be resolved or materialised")
 	var budget budgetFlags
 	flag.Var(&budget, "budget", "word-budget check: relpath:maxwords (repeatable); overrides --lint's default of "+defaultBudgetSpec)
 	// --sibling-root (siblingmerge.go): overrides where a
@@ -1780,7 +1805,7 @@ func main() {
 	staleIssueDays := flag.Int("stale-issue-days", defaultStaleIssueDays, "--issues/--lint: age in days past which an open issue trips the stale-issue alarm (default 7)")
 	teamLogins := flag.String("team-logins", "", "--issues/--self-improvement: extra comma-separated team/internal logins beyond the roster trusted logins + bots")
 	cynefinMode := flag.Bool("cynefin", false, "classify active work by Cynefin domain (clear/complicated/complex/chaotic): distribution, drift, and a Disorder list of untagged briefs; reuses --json / --weekly / --daily (does not read/write STATUS.md)")
-	doraJSON := flag.Bool("json", false, "machine-readable JSON output. Used with --issues / --autonomy / --ladder / --cynefin / --bottleneck / --intake-debt / --intake-exits / --eligibility / --coverage")
+	doraJSON := flag.Bool("json", false, "machine-readable JSON output. With --lint it prints the deterministic notice report (per-rule and per-status counts, actionable and historical partitions, could-not-check states) on stdout in place of the LINT: line. Also used with --issues / --autonomy / --ladder / --cynefin / --bottleneck / --intake-debt / --intake-exits / --eligibility / --coverage")
 	doraSeries := flag.Bool("series", false, "time series (per-period buckets) instead of a single aggregate. Used with --issues")
 	since := flag.String("since", "", "period start (YYYY-MM-DD) for --verif-backlog / --autonomy / --ladder / --issues")
 	weekly := flag.Bool("weekly", false, "bucket by ISO week (default) for --verif-backlog / --cynefin")
@@ -1828,6 +1853,8 @@ func main() {
 	consumersBrief := flag.String("brief", "", "--consumers: check only this brief (<stream>/<NN>); default = every brief file in the diff")
 	corroborateMode := flag.Bool("corroborate", false, "check human:<name> stamps against PR reviews/comments for corroboration (requires --pr)")
 	corroboratePRs := flag.String("pr", "", "comma-separated PR numbers (required with --corroborate; with --decision-gate, the PRs to judge)")
+	corroborateRecord := flag.String("ruling-record", "", "with --corroborate instead of --pr: corroborate ONE decision record (repo-relative docs/streams/decisions/<name>.md) through its ruling: link, outside any PR (exit 0 = corroborated, 1 = not, 2 = could-not-check)")
+	rulingBrief := flag.String("ruling-brief", "", "with --ruling-record (required there): the repo-relative gate: human brief the ruling must rule on — the ruling comment's decision issue must carry the brief's decision-gate marker and the comment must name the brief")
 	decisionGateMode := flag.Bool("decision-gate", false, "the decision-gate hold, both layers (lifecycle-v1 §4.5): refuse a gate: human brief moved to implemented/verified/done, relabelled, or dropped without a human ruling on its decision issue. Needs --pr <N> or --decision-gate-base <rev>")
 	decisionGateBase := flag.String("decision-gate-base", "", "with --decision-gate: judge the working tree against this local revision (e.g. HEAD, for an uncommitted landing) instead of a PR's merge-base")
 	// Daily factory-floor bottleneck report: per-stage
@@ -1950,6 +1977,19 @@ func main() {
 	resolvedRoots, rootErr := resolveRoots(roots)
 	if rootErr != nil {
 		fmt.Fprintln(os.Stderr, "statusgen:", rootErr)
+		exitProcess(2)
+	}
+	// Notice-report switches (notice_report.go). --all and the lint form of --json
+	// mean something only for a plain single-root --lint; refuse the rest rather
+	// than accept a flag that silently does nothing.
+	lintDetailAll = *allNoticesFlag
+	lintJSONMode = *lintMode && *doraJSON
+	if *allNoticesFlag && !*lintMode {
+		fmt.Fprintln(os.Stderr, "statusgen: --all is only valid with --lint")
+		exitProcess(2)
+	}
+	if lintJSONMode && (len(resolvedRoots) > 1 || *diffBaseFlag != "") {
+		fmt.Fprintln(os.Stderr, "statusgen: --lint --json reports one root's findings; it does not combine with --diff-base or multiple roots")
 		exitProcess(2)
 	}
 	// `root` is the SINGLE-root view, used by every self-contained sub-command
@@ -2247,6 +2287,17 @@ func main() {
 	if *decisionGateMode {
 		exitProcess(runDecisionGate(*root, *corroboratePRs, *decisionGateBase))
 	}
+	if *rulingBrief != "" && *corroborateRecord == "" {
+		fmt.Fprintln(os.Stderr, "statusgen: --ruling-brief needs --ruling-record")
+		exitProcess(2)
+	}
+	if *corroborateRecord != "" {
+		if !*corroborateMode || strings.TrimSpace(*corroboratePRs) != "" {
+			fmt.Fprintln(os.Stderr, "statusgen: --ruling-record needs --corroborate and no --pr (it corroborates one record outside any PR)")
+			exitProcess(2)
+		}
+		exitProcess(runCorroborateRecord(*root, *corroborateRecord, *rulingBrief))
+	}
 	if *corroborateMode {
 		exitProcess(runCorroborate(*corroboratePRs))
 	}
@@ -2459,12 +2510,16 @@ func main() {
 		exitProcess(runAuditPackExport(*root, *auditPackRelease, *auditPackOutput, generated))
 	}
 	if *registerLinksFlag {
-		n, err := backfillRegisterRefs(*root)
+		rep, err := backfillRegisterRefsReport(*root)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "register-links:", err)
 			exitProcess(1)
 		}
-		fmt.Printf("register-links: %d bare references linked across brief files\n", n)
+		fmt.Printf("register-links: %d bare references linked across brief files\n", rep.Linked)
+		fmt.Printf("register-links: %d generated-view links repaired to their unique durable entry\n", rep.Repaired)
+		for _, u := range rep.Unresolved {
+			fmt.Printf("register-links: author-owed, left unchanged: %s\n", u)
+		}
 		exitProcess(0)
 	}
 	// Lint-audit (statusgen/01) — read-only advisory sub-command: sample daily commits

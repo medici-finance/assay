@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gittest"
 )
@@ -24,7 +25,7 @@ func TestResumeRealAllocator(t *testing.T) {
 	}
 	// Use the allocator's existing test-only prefix seam for portable isolation.
 	build := exec.Command("go", "build", "-ldflags", fmt.Sprintf("-X %q", "main.tmpBaseDir="+t.TempDir()), "-o", binary, "../deskwt")
-	if out, err := build.CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
 		t.Fatalf("build allocator: %v %s", err, out)
 	}
 	// The allocator is another process: the parent's in-memory minter seam
@@ -45,7 +46,7 @@ func main() {
 `), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := exec.Command("go", "build", "-o", minter, source).CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(exec.Command("go", "build", "-o", minter, source)).CombinedOutput(); err != nil {
 		t.Fatalf("build fixture minter: %v %s", err, out)
 	}
 	s := &stub{}

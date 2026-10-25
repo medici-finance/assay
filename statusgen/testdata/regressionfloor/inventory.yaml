@@ -1,0 +1,326 @@
+{
+  "added_cases": [
+    "passing"
+  ],
+  "entries": [
+    {
+      "body_sha256": "4dadc2ac40dc1eecbe9a188c42a2e92947b72dccad97aca719330f4c722a89d9",
+      "cases": [
+        "unavailable"
+      ],
+      "contract": "S-evidence-coverage",
+      "disposition": "adapt harness",
+      "file": "statusgen/coverage_test.go",
+      "reason": "Frozen raw facts exercise package-main adapter and domain.Assess; original test retained.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestCoverageCouldNotCheckIsNotPass"
+    },
+    {
+      "body_sha256": "c4df043bf315cc07dbea618a5e18cbcf9c0430c17bd77adf4cee4babf85a4dfe",
+      "cases": [
+        "advice"
+      ],
+      "contract": "S-evidence-coverage",
+      "disposition": "adapt harness",
+      "file": "statusgen/coverage_test.go",
+      "reason": "Frozen raw facts exercise package-main adapter and domain.Assess; original test retained.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestCoverageAdviceCannotSupplyWitness"
+    },
+    {
+      "body_sha256": "b6b0873cce51e3dc6676a9ab17fb040a0248129b23d0612460d3f7d13e8f24da",
+      "cases": [
+        "changed"
+      ],
+      "contract": "S-evidence-coverage",
+      "disposition": "adapt harness",
+      "file": "statusgen/coverage_test.go",
+      "reason": "Frozen raw facts exercise package-main adapter and domain.Assess; original test retained.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestCoverageAcceptanceDigestChanged"
+    },
+    {
+      "body_sha256": "bdb99cacee85cf12ede9908993a57fe57a2ed815ca5f752547cc6a2db12ae859",
+      "cases": [
+        "gate",
+        "feather"
+      ],
+      "contract": "S-eligibility",
+      "disposition": "adapt harness",
+      "file": "statusgen/eligibility_test.go",
+      "reason": "Frozen raw facts exercise package-main adapter and domain.Assess; original test retained.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestEligibilityCouldNotCheckHolds"
+    },
+    {
+      "body_sha256": "6a6e7f968f1e6ab4cf312aaff0d4e2beff1984b2114496e162ca3745fb4af553",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "statusgen/forgeread_test.go",
+      "reason": "No replacement provider or graph serializer in domain; original fixtures and assertions remain the runnable subject.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestOfflineReaderNeverAnswersEmpty"
+    },
+    {
+      "body_sha256": "b02da551adcff97991e7b1603b04625629969af3f99a59eddbbbc18c7ea86881",
+      "cases": [],
+      "contract": "S-status-derivation",
+      "disposition": "reuse unchanged",
+      "file": "statusgen/graph_test.go",
+      "reason": "No replacement provider or graph serializer in domain; original fixtures and assertions remain the runnable subject.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestGraphJSONLDeterministic"
+    },
+    {
+      "body_sha256": "bbe2eedffe1c7fbe06048472fd5e75cefe4d68ddcfc3822946d72e988fb438f9",
+      "cases": [],
+      "contract": "S-claim",
+      "disposition": "replace",
+      "file": "tools/desk/cmd/deskclaim-ref/deskclaimref_test.go",
+      "reason": "Claim intent transfers to graph-execution/19 row 8; storage-specific test remains unchanged.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestAcquireLiveHolderRefusesAndNeverSteals"
+    },
+    {
+      "body_sha256": "39b49408c59079b20d55e1c0406b411d8220e069b250d9d5e46f8a1850662d3f",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerConformanceUnknownLaunch"
+    },
+    {
+      "body_sha256": "51e7ab29eea51ffd0325b83bc94ff597a7f68c9e1a75a88165916bc78d25a052",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerConformanceLateResultDenied"
+    },
+    {
+      "body_sha256": "640095b3d0dcf22452ba630fbad413053ae023579ada0c172b05eb016c844eec",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerConformanceCredentialAndUsage"
+    },
+    {
+      "body_sha256": "0bf5e241e810465aea638de1985a79fe7dccc2b645e5d7ed91566a3c1eb765be",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerBothModesWithoutGraph"
+    },
+    {
+      "body_sha256": "247970b5ff382eb72456056d1ae646acfaea6584c036c0b12b8f3650378583e8",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerCallerRecheck"
+    },
+    {
+      "body_sha256": "075d4028dbed7d782001867f8956abc85355bf9026f6fb0981da9453a4c71bde",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerConformanceMalformedResult"
+    },
+    {
+      "body_sha256": "1fcbb5c6fcd5fed7cdd3d7bcc8c548cc29a06d3d350699d26da6dd7c8a7f2761",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerConformanceUnauthorizedTool"
+    },
+    {
+      "body_sha256": "94ea23914f71527bcfd0611a8266a90dd974dcdd566eedb9a539a484c1b65759",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerConformanceCancelStillRunning"
+    },
+    {
+      "body_sha256": "0f26269af23c534808bad3e2210c554478d8b6d0d6a9063ca97e3adb92a3fa0e",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerConformanceResumeUnsupported"
+    },
+    {
+      "body_sha256": "8b015e7960a278a454e96da853af94abbb788c258abf1d4eb54a32c8212d87c8",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerConformanceModelFallback"
+    },
+    {
+      "body_sha256": "dbf35deee1670e727942fbf5d97b5b6f6798c049c4e494cc3cc5e4a9b0187102",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerKitRunAll"
+    },
+    {
+      "body_sha256": "be3ec1b478fa5f7a1bb12083a05c3f0c12d0ba8b14ce6c6a3616ac9dc4a5dc15",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerTerminalAbsorbs"
+    },
+    {
+      "body_sha256": "2c043fea470d276c27c75b56a022dfc7c75b6a15cee1b7f3da50e3e129bf5737",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerRevivalNoFence"
+    },
+    {
+      "body_sha256": "e53da83802356a35ea71aecfbfda99b6ffaa17b055cddf1fa41aad51b3fad02a",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerCredentialShapes"
+    },
+    {
+      "body_sha256": "9abe2a7ff3a7d1a850172e7d9eeb9bdbc33712b3ec8ffcf01717433e1be934f6",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerNoPayloadEcho"
+    },
+    {
+      "body_sha256": "e4a53e66f49507a313f6be1a5ed00e6cdfc9d3f12d60bf1f3a481024f74cc271",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerStrictDecode"
+    },
+    {
+      "body_sha256": "803df2df5cf4110ded949294559edc9a692dc3fd0d254d07652b599f7d17b4c5",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerModelUnreported"
+    },
+    {
+      "body_sha256": "e67fcc5621b6ae94bbb4813f0307416b9879e7f884c55ae05183234e24bb41b4",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerResultIdentity"
+    },
+    {
+      "body_sha256": "5f9921a86d7d2c02831feb10de9656e0ffb2bbc5b1b0b3672c2f7801f814247c",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerRequestRules"
+    },
+    {
+      "body_sha256": "3e2846135862747f8ed911484eaf5adccb32a3ce3dc5f5ee4bd07ea27ec34272",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerReconcileRules"
+    },
+    {
+      "body_sha256": "367ba0062b82397667be25cfc00ca4f8c68ec8375f7fcd394503344be153f5d5",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerNegativeUsage"
+    },
+    {
+      "body_sha256": "f6912f78e1534f70b3740811477da217891c36fdc3ddde463d588816b0557e4c",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerNoAdapterEcho"
+    },
+    {
+      "body_sha256": "a519f78d5eb47f7d737bf4efc4661b25f6887cf85b01781ebabb63f53f8c8c97",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerNoAliasing"
+    },
+    {
+      "body_sha256": "342695c7908c7a62cb3899b678f7cecf17181e2ad6f40a3b5b37eb82188aaa1c",
+      "cases": [],
+      "contract": "S-verification-domain",
+      "disposition": "reuse unchanged",
+      "file": "loopadmin/runner/conformance/conformance_test.go",
+      "reason": "Runner kit remains unchanged; fake conformance is protocol evidence only, not isolation or recovery.",
+      "source": "51bf925475920eee9db259e9c00c4a518d88b61f",
+      "test": "TestRunnerNoAliasingRecord"
+    }
+  ]
+}

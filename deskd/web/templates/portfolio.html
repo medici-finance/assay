@@ -1,0 +1,54 @@
+{{define "portfolio.html"}}{{template "panehead" "portfolio"}}
+<body class="pane portfolio">
+<div id="live" aria-live="polite" class="visually-hidden"></div>
+{{template "panenav" "portfolio"}}
+{{template "ambient" .Ambient}}
+<main class="pane-body">
+  <h1 class="pane-title">Portfolio <span class="pane-sub">every cell at once (§7.3, §3.4)</span></h1>
+
+  {{if .Cells}}
+  {{range .Cells}}
+  <section class="cell-strip" aria-label="running automations, cell {{.Cell}}">
+    <h2>Running automations <span class="group-sub">cell {{.Cell}}</span></h2>
+    <table class="automations" data-cell="{{.Cell}}">
+      <thead>
+        <tr>
+          <th>automation</th><th>state</th><th>working on</th><th>age in state</th>
+          <th>oldest open escalation</th><th>model</th><th>last artifact</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .Automations}}
+        <tr class="automation-row{{if .Silent}} silent{{end}}"
+            data-automation="{{.Automation}}" data-state="{{.StateKey}}" data-palette="{{.Palette}}">
+          <td class="col-automation">{{.Automation}}</td>
+          <td class="col-state pal-{{.Palette}}"><span class="glyph">{{.Glyph}}</span> {{.State}}</td>
+          <td class="col-working">{{template "cell-tile" .WorkingOn}}</td>
+          <td class="col-agestate">{{template "cell-tile" .AgeInState}}</td>
+          <td class="col-oldest">
+            {{if .OldestEscLink}}<a href="{{.OldestEscLink}}">{{.OldestEscAge}}</a>{{else}}{{.OldestEscAge}}{{end}}
+          </td>
+          <td class="col-model">{{template "cell-tile" .Model}}</td>
+          <td class="col-lastartifact">{{template "cell-tile" .LastArtifactAge}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+    <p class="note">Every column is derived — no self-reported field — and there is deliberately
+      <strong>no context-burn column</strong> (rejected for v1, §3.4/D2: no genuinely derived source
+      exists). "Live" is live-from-the-index (the 60s poll); the "as of" chip greys past 2× it and
+      <code>silent</code> rows render amber-as-a-question, never green (§10).</p>
+  </section>
+  {{end}}
+  {{else}}
+  <p class="note">No cell config is wired into this console, so the running-automations strip has no
+    automations to derive from — this is an explicit "no config", not an empty cell.</p>
+  {{end}}
+</main>
+<script src="/static/app.js"></script>
+</body></html>{{end}}
+
+{{/* a compact cell-tile for a table cell: value when checked-clean, else an
+     explicit could-not-check marker carrying its reason — never blank. */}}
+{{define "cell-tile"}}<span class="cell-tile{{if not .OK}} unchecked{{end}}"
+  data-query="{{.Query}}" data-hardness="{{.Hardness}}" title="{{if .OK}}{{.Query}}{{else}}could-not-check — {{.Reason}}{{end}}">{{if .OK}}{{.Value}}{{else}}<span aria-label="could not check">— cnc</span>{{end}}</span>{{end}}

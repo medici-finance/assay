@@ -250,12 +250,84 @@ func classifyPhantom(briefID, body, rowCell string, mergedIDs map[string]bool, b
 // (one aggregate NOTICE); the text detectors, which need no git, still run — a
 // git failure must not blind the five classes that do not depend on it.
 func boardHonestyNotices(streams []*Stream, merged []mergedPR, mergedErr error) []string {
+	finds, notices := phantomFindings(streams, merged, mergedErr)
+	for _, f := range finds {
+		notices = append(notices, fmt.Sprintf("NON-DISPATCHABLE (%s): %s — %s. This todo row passes the freshness gate but is not "+
+			"dispatchable from here; it inflates the Next-up count. Fix: %s. (board-honesty)",
+			f.Class, f.ID, f.Reason, phantomRemediation[f.Class]))
+	}
+	sort.Strings(notices)
+	return notices
+}
+
+// phantomFinding is one classified todo row: the pure classifier's verdict plus
+// where the row lives and whether the evidence is STRONG enough to hold it out of
+// dispatch (applyPhantomHolds), or only enough to surface a NOTICE.
+type phantomFinding struct {
+	Stream *Stream
+	Index  int // index of the row in Stream.Briefs
+	ID     string
+	Class  string
+	Reason string
+	// Hold is the dispatch-exclusion label ("<class> (<evidence>)") when the
+	// evidence is strong, "" when the finding is notice-only.
+	Hold string
+}
+
+// strongPhantom decides whether a classified row may be HELD from dispatch, or is
+// notice-only. The text classes are HEURISTIC mentions — a brief ABOUT de-housing,
+// or one that quotes "deliverable lands in" while explaining a design, matches
+// them — and a mention is not an ownership declaration (the explicit declaration
+// is `homed-in:`, which eligibleBase already honours). So only two kinds of
+// evidence hold a row:
+//
+//   - already-merged-unflipped, when a merged PR's `Brief:` trailer names the brief
+//     (pr.deliveryOf == mergeDelivered) and the brief declares no partial delivery;
+//     a subject/branch-only match is unconfirmed and an Authors: trailer is not
+//     delivery;
+//   - re-homed, which is already row-scoped (the row's own cell carries the marker
+//     AND its brief file is gone).
+func strongPhantom(class, id string, delivering map[string]mergedPR, partial bool) string {
+	switch class {
+	case phantomMergedUnflipped:
+		if pr, ok := delivering[id]; ok && !partial {
+			if pr.Number > 0 {
+				return fmt.Sprintf("%s (merged PR #%d, Brief: trailer)", class, pr.Number)
+			}
+			return fmt.Sprintf("%s (merged PR, Brief: trailer)", class)
+		}
+	case phantomReHomed:
+		return fmt.Sprintf("%s (pointer row, brief file gone)", class)
+	}
+	return ""
+}
+
+// applyPhantomHolds runs the board-honesty classifier and stamps Brief.PhantomHeld
+// on every TODO row it caught on strong evidence, so eligibleBase excludes it in
+// every path that builds Next-up. One classifier, no separate allowlist. A failed
+// merge read (mergedErr != nil) holds no merged-delivery row: absent forge/history
+// state is could-not-check, never "delivered". A re-homed pointer row is still held,
+// because its evidence is the row and its missing brief file, not the history.
+func applyPhantomHolds(streams []*Stream, merged []mergedPR, mergedErr error) {
+	finds, _ := phantomFindings(streams, merged, mergedErr)
+	for _, f := range finds {
+		if f.Hold != "" {
+			f.Stream.Briefs[f.Index].PhantomHeld = f.Hold
+		}
+	}
+}
+
+// phantomFindings is the walk boardHonestyNotices always did, returning structured
+// findings next to the could-not-check notices.
+func phantomFindings(streams []*Stream, merged []mergedPR, mergedErr error) ([]phantomFinding, []string) {
 	var notices []string
+	var finds []phantomFinding
 	add := func(format string, a ...any) { notices = append(notices, fmt.Sprintf(format, a...)) }
 
 	// Build the merged-id set from the same signal #270 uses. A read error leaves
 	// the set nil and records that class 1 could not be checked.
 	var mergedIDs map[string]bool
+	delivering := map[string]mergedPR{}
 	if mergedErr != nil {
 		add("could-not-check: board-honesty could not read the merge history (%v), so the "+
 			"already-merged-unflipped class was NOT checked — no conclusion is drawn about it. The "+
@@ -264,6 +336,14 @@ func boardHonestyNotices(streams []*Stream, merged []mergedPR, mergedErr error) 
 		mergedIDs = map[string]bool{}
 		for _, pr := range merged {
 			for _, id := range pr.Briefs {
+				switch pr.deliveryOf(id) {
+				case mergeAuthoring:
+					continue // an Authors:-only PR WROTE the brief; it delivered nothing
+				case mergeDelivered:
+					if _, dup := delivering[id]; !dup {
+						delivering[id] = pr
+					}
+				}
 				mergedIDs[id] = true
 			}
 		}
@@ -279,8 +359,16 @@ func boardHonestyNotices(streams []*Stream, merged []mergedPR, mergedErr error) 
 		// cellByNum records each todo row's OWN brief-table cell, the only
 		// row-scoped signal the re-homed class may key on (statusgen #709).
 		cellByNum := map[string]string{}
-		for _, b := range s.Briefs {
+		idxByNum := map[string]int{}
+		partialByNum := map[string]bool{}
+		for i, b := range s.Briefs {
 			if b.Status == "todo" {
+				idxByNum[b.Num] = i
+				for _, d := range b.Delivery {
+					if d.Covers == "partial" {
+						partialByNum[b.Num] = true
+					}
+				}
 				todo[b.Num] = true
 				cellByNum[b.Num] = b.RawCell
 				if b.HomedIn != "" {
@@ -341,12 +429,13 @@ func boardHonestyNotices(streams []*Stream, merged []mergedPR, mergedErr error) 
 			if homedIn[num] && homedInSupersedes[class] {
 				continue
 			}
-			add("NON-DISPATCHABLE (%s): %s — %s. This todo row passes the freshness gate but is not "+
-				"dispatchable from here; it inflates the Next-up count. Fix: %s. (board-honesty)",
-				class, id, reason, phantomRemediation[class])
+			finds = append(finds, phantomFinding{
+				Stream: s, Index: idxByNum[num], ID: id, Class: class, Reason: reason,
+				Hold: strongPhantom(class, id, delivering, partialByNum[num]),
+			})
 		}
 	}
 
 	sort.Strings(notices)
-	return notices
+	return finds, notices
 }

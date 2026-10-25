@@ -1,0 +1,19 @@
+# Verify row 2 fixture (the service contract): a cell WITH a per-loop write_app on
+# one loop must validate. The review loop reads as the reviewer App but writes
+# as the write-issues App — the service contract read/write split, per loop.
+cells:
+  - name: writeapp-fixture
+    repos:
+      - example-org/toolkit
+    streams_root: docs/streams
+    loops:
+      - role: review
+        schedule: "*/10 * * * *"
+        models: [deepseek-chat, glm-5.2]
+        app: assay-reviewer-app
+        write_app: assay-cell-issues
+    silence_threshold: 48h
+    notification_tiers:
+      review: push
+      question: badge
+      notify: none

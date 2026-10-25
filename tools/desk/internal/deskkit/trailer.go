@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/medici-finance/assay/statusgen/workref"
 )
 
 // trailer is the PR-body link grammar (example-stream/02). A PR body must carry
@@ -53,11 +55,8 @@ var (
 	reTrailerIssue = regexp.MustCompile(`^[ \t]*Issue:[ \t]*#?[ \t]*([0-9]+)[ \t]*$`)
 	reTrailerAuth  = regexp.MustCompile(`^[ \t]*Authors:[ \t]*(\S.*?)[ \t]*$`)
 	reTrailerXR    = regexp.MustCompile(`^[ \t]*Cross-repo-brief:[ \t]*(\S.*?)[ \t]*$`)
-	// reCrossRepoBriefValue is the one accepted Cross-repo-brief: value: the registry alias grammar,
-	// one colon, then the slash-form brief id — exactly the `<alias>:<stream>/<NN>` item key
-	// deskdispatch accepts, so a lane can hand the value straight back to it.
-	reCrossRepoBriefValue = regexp.MustCompile(`^([a-z][a-z0-9_-]{0,31}):([^:/\s]+)/([0-9]+)$`)
-	reFenceOpen           = regexp.MustCompile("^[ \t]*```")
+
+	reFenceOpen = regexp.MustCompile("^[ \t]*```")
 )
 
 // ErrTrailerDuplicate reports a second Brief: (or second Issue:, or second Authors:) trailer.
@@ -139,11 +138,11 @@ func trailerKeyword(k TrailerKind) string {
 // brief id with a numeric NN — and ok is false for anything else. The alias resolves through
 // graph-repos.yaml elsewhere (deskpr checks it is registered and is not the registry's own self).
 func SplitCrossRepoBriefTrailer(v string) (alias, stream, nn string, ok bool) {
-	m := reCrossRepoBriefValue.FindStringSubmatch(strings.TrimSpace(v))
-	if m == nil {
+	parsed, err := workref.Parse(v, workref.LegacyCrossRepo)
+	if err != nil {
 		return "", "", "", false
 	}
-	return m[1], m[2], m[3], true
+	return parsed.Repo, parsed.Stream, parsed.Number, true
 }
 
 // SplitAuthorsTrailer reduces an `Authors:` trailer value — one or more brief ids
@@ -186,30 +185,11 @@ func SplitAuthorsTrailer(v string) ([]string, error) {
 // graph-repos.yaml elsewhere and are not needed for the reduction here. NN must be
 // numeric. ok is false when v is not a well-formed brief trailer value.
 func SplitBriefTrailer(v string) (stream, nn string, ok bool) {
-	v = strings.TrimSpace(v)
-	var parts []string
-	if strings.Contains(v, ":") {
-		parts = strings.Split(v, ":")
-		if len(parts) < 2 {
-			return "", "", false
-		}
-		stream, nn = parts[len(parts)-2], parts[len(parts)-1]
-	} else {
-		parts = strings.Split(v, "/")
-		if len(parts) != 2 {
-			return "", "", false
-		}
-		stream, nn = parts[0], parts[1]
-	}
-	if stream == "" || nn == "" {
+	parsed, err := workref.Parse(v, workref.LegacyTrailer)
+	if err != nil {
 		return "", "", false
 	}
-	for _, c := range nn {
-		if c < '0' || c > '9' {
-			return "", "", false
-		}
-	}
-	return stream, nn, true
+	return parsed.Stream, parsed.Number, true
 }
 
 // CanonicalBriefID reduces a `Brief:` trailer value to the canonical brief id
@@ -286,4 +266,10 @@ func ParseTrailers(body []byte) ([]Trailer, error) {
 		return nil, &ErrTrailerBoth{BriefLine: firstBrief, IssueLine: firstIssue}
 	}
 	return trs, nil
+}
+
+// ResolveWorkTrailer is the explicit typed adapter for negotiated callers. It
+// retains exact selectors; existing operational trailer readers remain legacy.
+func ResolveWorkTrailer(v string, declaring *workref.Context, registry workref.Registry) (workref.Result, error) {
+	return workref.Resolve(v, declaring, registry, workref.TypedBrief)
 }

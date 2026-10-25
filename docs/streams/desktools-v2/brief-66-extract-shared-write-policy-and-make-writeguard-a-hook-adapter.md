@@ -12,6 +12,7 @@ gate-why: Local write-isolation and exemption behavior are security controls; re
 decision-trigger: spec
 issues: [3752]
 decision-issue: 3752
+design: DR-write-policy-core
 ruling: "https://github.com/medici-finance/assay/issues/3752#issuecomment-6299695731"
 schema: brief-v2
 version: 1

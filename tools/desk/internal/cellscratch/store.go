@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -45,17 +46,20 @@ type Store struct {
 	// its holder; lockWait bounds how long a sibling's sweep may delay this one.
 	cell, role string
 	lockWait   time.Duration
+	waited     time.Duration
+	walks      uint64
+	scanLimit  int
 	// Tests inject deletion failure at this single destruction boundary.
 	remove func(string) error
 }
 
 // sweepLockName is the cell-wide lock that serialises Open, Begin, Acknowledge
-// and Sweep across every role sharing one scratch root.
+// and the short metadata transactions of Sweep across roles sharing one root.
 const sweepLockName = "sweep.lock"
+const maintenanceLockName = "maintenance.lock"
 
 // SweepLockWait bounds how long one launch waits for a sibling launch's scratch
-// transaction. A sweep walks every retained task tree under this lock, so a
-// routine multi-desk boot needs minutes of headroom, not seconds.
+// metadata transaction. Recursive maintenance never holds this lock.
 var SweepLockWait = 2 * time.Minute
 
 func Open(path string) (*Store, error) {
@@ -104,7 +108,11 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
-func (s *Store) Close() error { return s.root.Close() }
+func (s *Store) Close() error            { return s.root.Close() }
+func (s *Store) LockWait() time.Duration { return s.waited }
+
+// Traversals reports this handle's explicit maintenance walks; admission stays zero.
+func (s *Store) Traversals() uint64 { return s.walks }
 
 // Label names the cell and role this store serves; they go into the sweep lock's
 // owner record so a sibling that waits on it can name the holder.
@@ -128,7 +136,10 @@ func (s *Store) sweepLock() (*deskkit.HeldLock, error) {
 	if err != nil {
 		return nil, err
 	}
-	return deskkit.AcquireHeld(s.root, sweepLockName, f, deskkit.LockSpec{Name: "cell scratch sweep", Cell: s.cell, Role: s.role, Wait: s.lockWait, Log: os.Stderr})
+	began := time.Now()
+	held, err := deskkit.AcquireHeld(s.root, sweepLockName, f, deskkit.LockSpec{Name: "cell scratch sweep", Cell: s.cell, Role: s.role, Wait: s.lockWait, Log: os.Stderr})
+	s.waited += time.Since(began)
+	return held, err
 }
 
 func (s *Store) openLock(name string) (*os.File, error) {
@@ -205,10 +216,11 @@ func (s *Store) atomic(name string, b []byte) error {
 	return s.root.Rename(tmp, name)
 }
 func validID(id string) bool {
-	if !strings.HasPrefix(id, "task-") || len(id) != 21 {
+	kind, nonce, ok := strings.Cut(id, "-")
+	if !ok || kind != "task" || len(nonce) != 16 {
 		return false
 	}
-	_, err := hex.DecodeString(id[5:])
+	_, err := hex.DecodeString(nonce)
 	return err == nil
 }
 func (s *Store) record(id string) (Record, error) {
@@ -273,7 +285,7 @@ func (s *Store) Begin(session, task, revision string) (*Run, error) {
 	if _, err = rand.Read(nonce); err != nil {
 		return nil, err
 	}
-	id := "task-" + hex.EncodeToString(nonce)
+	id := fmt.Sprintf("task-%s", hex.EncodeToString(nonce))
 	if err = s.root.Mkdir(id, 0700); err != nil {
 		return nil, err
 	}
@@ -389,17 +401,40 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 	if p.MaxAge < 0 || p.MaxBytes < 0 {
 		return rep, errors.New("negative scratch budget")
 	}
+	if s.scanLimit == 0 {
+		limit, err := deskkit.MaintenanceEntryLimit()
+		if err != nil {
+			rep.Partial = true
+			return rep, err
+		}
+		s.scanLimit = limit
+		defer func() { s.scanLimit = 0 }()
+	}
+	// Maintenance serializes other maintenance, never admission. Task leases
+	// protect candidates while recursive accounting runs outside the root lock.
+	maintenance, err := s.lock(maintenanceLockName)
+	if err != nil {
+		return rep, err
+	}
+	defer maintenance.Close()
 	lock, err := s.sweepLock()
 	if err != nil {
 		return rep, err
 	}
-	defer lock.Release()
-	entries, err := fs.ReadDir(s.root.FS(), ".")
+	f, err := s.root.Open(".")
+	var entries []fs.DirEntry
+	if err == nil {
+		entries, err = deskkit.ReadDirBounded(f, s.inventoryLimit())
+		f.Close()
+	}
+	lock.Release()
 	if err != nil {
+		rep.Partial = true
 		return rep, err
 	}
 	type candidate struct {
 		r          Record
+		observed   Record
 		entry      int
 		size, work int64
 		growth     int64
@@ -408,7 +443,7 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 	var candidates []candidate
 	var errs []error
 	for _, e := range entries {
-		if e.Name() == "owner" || e.Name() == sweepLockName || strings.HasPrefix(e.Name(), sweepLockName+".holder") {
+		if e.Name() == "owner" || e.Name() == "preparation.json" || e.Name() == maintenanceLockName || e.Name() == sweepLockName || strings.HasPrefix(e.Name(), sweepLockName+".holder") {
 			continue
 		}
 		size, allGit, sizeErr := s.measure(e.Name())
@@ -426,7 +461,14 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 			if lockErr != nil {
 				row.Reason = "live or unavailable execution lease"
 			} else {
-				work, git, walkErr := s.measure(e.Name() + "/work")
+				var work int64
+				var git bool
+				var walkErr error
+				if r.State != "resumable" {
+					if _, e := s.receipt(r.ID); e == nil && !allGit && sizeErr == nil {
+						work, git, walkErr = s.measure(r.ID + "/work")
+					}
+				}
 				_, receiptErr := s.receipt(e.Name())
 				switch {
 				case sizeErr != nil || walkErr != nil:
@@ -451,6 +493,7 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 							row.Reason = "child inactivity unproved"
 						}
 					} else {
+						observed := r
 						before, _ := json.Marshal(r)
 						r.Reaped = true
 						r.Evidence = "acknowledged"
@@ -459,7 +502,7 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 							r.Finished = time.Now().UTC().Truncate(time.Second)
 						}
 						after, _ := json.Marshal(r)
-						candidates = append(candidates, candidate{r: r, entry: len(rep.Entries), size: size, work: work, growth: int64(len(after) - len(before)), lease: lease})
+						candidates = append(candidates, candidate{r: r, observed: observed, entry: len(rep.Entries), size: size, work: work, growth: int64(len(after) - len(before)), lease: lease})
 						rep.Entries = append(rep.Entries, row)
 						continue
 					}
@@ -474,6 +517,12 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 			c.lease.Close()
 		}
 	}()
+	// Incomplete accounting grants no reclamation authority, even for earlier
+	// fully observed candidates. Their leases close through the defer above.
+	if len(errs) > 0 {
+		rep.Partial = true
+		return rep, errors.Join(errs...)
+	}
 	// Oldest retained diagnostics leave first. Successful acknowledged tasks need no
 	// local evidence; failed/recovered records retain exit status, receipt and bounded tail.
 	sort.Slice(candidates, func(i, j int) bool { return candidates[i].r.Created.Before(candidates[j].r.Created) })
@@ -507,15 +556,42 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 		if !apply {
 			continue
 		}
+		// Revalidate Git retention under the task lease, outside admission's
+		// root lock. No legitimate writer can acquire this task meanwhile.
+		_, git, checkErr := s.measure(c.r.ID)
+		if checkErr != nil || git {
+			row.Action, row.Reason = "keep", "Git retention or unknown tree at deletion"
+			if checkErr != nil {
+				errs = append(errs, checkErr)
+			}
+			continue
+		}
+		lock, lockErr := s.sweepLock()
+		if lockErr != nil {
+			errs = append(errs, lockErr)
+			row.Action = "error"
+			row.Reason = lockErr.Error()
+			continue
+		}
+		current, readErr := s.record(c.r.ID)
+		_, receiptErr := s.receipt(c.r.ID)
+		owner, ownerErr := s.read("owner", 128)
+		if readErr != nil || current != c.observed || current.State == "resumable" || receiptErr != nil || ownerErr != nil || string(owner) != s.owner {
+			lock.Release()
+			row.Action, row.Reason = "keep", "ownership or evidence changed during maintenance"
+			continue
+		}
 		if !entire {
 			if err = s.save(c.r); err != nil {
 				row.Action = "error"
 				row.Reason = err.Error()
 				errs = append(errs, err)
+				lock.Release()
 				continue
 			}
 			growthWritten += c.growth
 		}
+		lock.Release()
 		// Remove the workspace before retiring its ownership record and receipt.
 		// RemoveAll(task) may otherwise unlink record.json first and fail on a
 		// workspace file, leaving a large tree that no later sweep may authorize.
@@ -553,6 +629,7 @@ func (s *Store) Sweep(p Policy, apply bool) (Report, error) {
 	return rep, errors.Join(errs...)
 }
 func (s *Store) measure(name string) (int64, bool, error) {
+	s.walks++
 	st, err := s.root.Lstat(name)
 	if os.IsNotExist(err) {
 		return 0, false, nil
@@ -565,7 +642,7 @@ func (s *Store) measure(name string) (int64, bool, error) {
 	}
 	var n int64
 	git := false
-	err = fs.WalkDir(s.root.FS(), name, func(p string, d fs.DirEntry, err error) error {
+	err = deskkit.BoundedWalkDir(s.root.FS(), name, s.inventoryLimit(), func(p string, d fs.DirEntry, err error) error {
 		if os.IsNotExist(err) && p == name {
 			return nil
 		}
@@ -618,7 +695,16 @@ func (s *Store) gitMarker(path, name string) (bool, error) {
 // Inventory is intentionally read-only and has no adoption or deletion flag. Legacy
 // directories have no enrollment proof and cannot be promoted by age or a matching name.
 func Inventory(path string) ([]Entry, error) {
-	entries, err := os.ReadDir(path)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	limit, err := deskkit.MaintenanceEntryLimit()
+	if err != nil {
+		return nil, err
+	}
+	entries, err := deskkit.ReadDirBounded(f, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -627,4 +713,11 @@ func Inventory(path string) ([]Entry, error) {
 		out = append(out, Entry{ID: e.Name(), Action: "keep", Reason: "legacy/unmarked; verified ownership required"})
 	}
 	return out, nil
+}
+
+func (s *Store) inventoryLimit() int {
+	if s.scanLimit > 0 {
+		return s.scanLimit
+	}
+	return deskkit.MaintenanceEntries
 }

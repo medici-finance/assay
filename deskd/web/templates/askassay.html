@@ -1,0 +1,114 @@
+{{define "askassay.html"}}{{template "panehead" "ask assay"}}
+<body class="pane askassay">
+<div id="live" aria-live="polite" class="visually-hidden"></div>
+{{template "panenav" "ask assay"}}
+{{template "ambient" .Ambient}}
+<main class="pane-body">
+  <h1 class="pane-title">Ask Assay
+    <span class="pane-sub">embedded Q&amp;A over read-only tools — every figure is a cited query (§7.5)</span></h1>
+
+  {{/* The question form is a GET. It carries no action, no hidden state, and no
+       target but this pane: a chat answer can never become a POST, and there is
+       no pre-filled answer form anywhere on this page (§6.6, gate-why 4). */}}
+  <form class="ask-form" method="get" action="/askassay" role="search"
+        aria-label="ask a question about this desk">
+    <label class="visually-hidden" for="q">your question</label>
+    <input id="q" name="q" type="text" class="ask-input" autocomplete="off"
+           placeholder="what's blocked and why?" value="{{.Question}}"
+           aria-describedby="ask-help">
+    <button type="submit" class="ask-submit">Ask</button>
+  </form>
+  <p id="ask-help" class="note">
+    <kbd>/</kbd> focus · <kbd>Enter</kbd> ask · <kbd>Esc</kbd> clear.
+    This pane answers only from read tools. A number with no query behind it is not shown —
+    it renders <span class="unchecked-token">could-not-check</span>, never a zero.
+  </p>
+
+  {{/* THREE DISTINCT RENDERS (§7.6). Not one template with a value that might be
+       blank: loading, unknown and zero say different things and an operator must
+       be able to tell them apart at a glance. */}}
+  {{if eq .State "resting"}}
+  <section class="ask-state ask-resting" data-state="resting" aria-label="nothing asked yet">
+    <p class="note">Ask a question to begin. Nothing is sent anywhere until you do.</p>
+  </section>
+  {{end}}
+
+  {{if eq .State "loading"}}
+  <section class="ask-state ask-loading" data-state="loading" aria-label="working" aria-busy="true">
+    <p class="note">◐ reading the index…</p>
+  </section>
+  {{end}}
+
+  {{if eq .State "unknown"}}
+  <section class="ask-state ask-unknown" data-state="unknown" aria-label="could not check">
+    <p class="unchecked-token">could-not-check</p>
+    <p class="note">{{.Reason}}</p>
+  </section>
+  {{end}}
+
+  {{if eq .State "answered"}}
+  <section class="transcript" data-state="answered" aria-label="transcript">
+    {{range .Transcript}}
+    {{/* .Text is the MODEL'S OWN WORDS and is interpolated as a plain string:
+         html/template escapes it, and there is no template.HTML anywhere on this
+         path, so markup in a model reply renders as the characters it is made
+         of. This is control (b) of the four — it fails on an output-encoding
+         signal, in the template layer, independently of the numbers rule. */}}
+    <article class="turn" data-role="{{.Role}}">
+      <h2 class="turn-role">{{.Role}}</h2>
+      <p class="turn-text">{{.Text}}</p>
+
+      {{if .Figures}}
+      <div class="figures" aria-label="cited figures">
+        {{/* A CHIP IS THE ONLY LINK ON THIS PAGE THAT COMES OUT OF AN ANSWER, and
+             it is built from the tool result's own query key — never from
+             anything in .Text. A figure with no query key does not render as a
+             chip (§5.2), so a link that decomposes to nothing cannot exist. */}}
+        {{range .Figures}}
+          {{if .QueryKey}}
+        <a class="figure-chip{{if not .OK}} unchecked{{end}}" href="{{.Href}}"
+           data-key="{{.QueryKey}}" data-state="{{.StateToken}}" title="{{.Render}}">
+          <span class="figure-key">{{.QueryKey}}</span>
+          {{if .OK}}<span class="figure-value">{{.Value}}</span>
+          {{else}}<span class="figure-value unchecked">could-not-check</span>{{end}}
+        </a>
+          {{else}}
+        <span class="figure-nochip unchecked" data-state="{{.StateToken}}" title="{{.Render}}">
+          <span class="figure-value unchecked">could-not-check</span>
+          <span class="figure-key">no query key — not decomposable, so not a chip</span>
+        </span>
+          {{end}}
+        {{end}}
+      </div>
+      {{else if eq .Role "assay"}}
+      {{/* THE ZERO RENDER (§7.6), and it is deliberately not blank. An answer
+           that cited nothing must say so: silence here would read as "there is
+           nothing to report" when what happened is "nothing was measured". */}}
+      <p class="no-figures unchecked-token" data-state="zero">
+        no cited figures — nothing in this answer is a measured number
+      </p>
+      {{end}}
+
+      {{if .ToolCalls}}
+      <details class="tool-calls">
+        <summary>reads performed ({{len .ToolCalls}})</summary>
+        <ul class="tool-call-list">
+          {{range .ToolCalls}}
+          <li data-ok="{{.OK}}"><code>{{.Tool}}</code>{{if .Refused}} — refused: {{.Refused}}{{end}}</li>
+          {{end}}
+        </ul>
+      </details>
+      {{end}}
+    </article>
+    {{end}}
+  </section>
+
+  <p class="note backend-note">
+    answered by <code>{{.Backend}}</code> / <code>{{.Model}}</code>{{if .Escalated}}
+    (escalated from {{range .Escalated}}<code>{{.}}</code> {{end}}on the client's own signal){{end}}.
+    The model narrates; the index computes.
+  </p>
+  {{end}}
+</main>
+<script src="/static/askassay.js"></script>
+</body></html>{{end}}

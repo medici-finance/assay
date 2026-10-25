@@ -110,7 +110,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 53 | [Port the CI and regression floor scripts](brief-53-port-the-ci-and-regression-floor-scripts.md) | 3 | M | todo | — | — |
 | 54 | [Port the security control scripts](brief-54-port-the-security-control-scripts.md) | 4 | M | todo | — | — |
 | 55 | [Port the go-analysis adapter entrypoints](brief-55-port-the-go-analysis-adapter-entrypoints.md) | 3 | M | todo | — | — |
-| 56 | [Migrate deskperf to Cobra and Viper](brief-56-migrate-deskperf-to-cobra-and-viper.md) | 3 | S | todo | — | — |
+| 56 | [Migrate deskperf and qualify deskusage on the shared CLI](brief-56-migrate-deskperf-to-cobra-and-viper.md) | 3 | M | todo | — | — |
 | 57 | [Migrate intake-eval to Cobra and Viper](brief-57-migrate-intake-eval-to-cobra-and-viper.md) | 3 | S | todo | — | — |
 | 58 | [Extract the role credential provider and retire internal desktoken callouts](brief-58-extract-the-role-credential-provider-and-retire-internal-desktoken-callouts.md) | 1 | L | todo | — | — |
 | 59 | [Share concurrent credential lookups and bound reuse by credential expiry](brief-59-share-concurrent-credential-lookups-and-bound-reuse-by-credential-expiry.md) | 2 | M | todo | — | — |
@@ -124,6 +124,11 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 67 | [Define an extensible perf-v4 envelope and compatible readers](brief-67-define-an-extensible-perf-v4-envelope-and-compatible-readers.md) | 3 | M | todo | — | — |
 | 68 | [Select perf-v4 in shared producers and qualify the direct migration](brief-68-select-perf-v4-in-shared-producers-and-qualify-the-direct-migration.md) | 4 | M | todo | — | — |
 | 69 | [Specify extensible JSON contracts and migration targets](brief-69-specify-extensible-json-contracts-and-migration-targets.md) | 1 | M | implemented | — | — |
+| 70 | [Exempt workflow-bound issue filings from the filing budget](brief-70-exempt-workflow-bound-issue-filings-from-the-filing-budget.md) | 1 | M | todo | — | — |
+| 71 | [Credit container witness rows bracketed by host verifier admission](brief-71-credit-container-witness-rows-bracketed-by-host-verifier-admission.md) | 1 | M | implemented | — | — |
+| 72 | [Land verifier outcome records from a dispatcher-named path outside the home](brief-72-land-verifier-outcome-records-from-a-dispatcher-named-path-outside-the-home.md) | 1 | M | todo | — | — |
+| 73 | [Make deskevidence own the on-behalf-of principal on Runner cells](brief-73-make-deskevidence-own-the-on-behalf-of-principal-on-runner-cells.md) | 1 | M | todo | — | — |
+| 74 | [Add a verifyrun row selector that records only the named Verify rows](brief-74-add-a-verifyrun-row-selector-that-records-only-the-named-verify-rows.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -353,3 +358,28 @@ selection). /67 also needs /63; /68 also needs /64 and /65 verification. Authori
 these briefs does not claim their implementation. Existing /26 and /62 work retains
 its snapshot, phase, benchmark and verification obligations; future format tasks
 migrate to v4 through dated amendments rather than editing completed evidence.
+
+## Workflow filings and witness records — 22 October 2026
+
+Four independent wave-1 briefs carry driver rulings of 22 October 2026 for ratification at merge: the public record of those rulings is the driver's merge of the PR that adds these briefs, #4069, merged 2026-10-22.
+/70 binds
+workflow issue filings to their PR (and brief), outside the process-error filing
+budget, with a per-role per-PR cap, its own audit class and the unchanged repo-wide
+ceiling as the compensating bound (proposal 11 brakes). /71 credits Linux container
+witness rows only when host verifier admission brackets the run and a tree digest
+binds the bytes the container ran to the admitted home, and makes
+`verifyrun --sandbox=container-netns` fail closed without that bracket. /72 has the
+dispatcher name an outcome-record path outside the verifier home, which `deskevidence`
+lands; admission and the record format are unchanged. /73 makes `deskevidence` restamp
+or refuse an on-behalf-of annotation that is not the roster principal, with a lint
+parity test. /71, /72 and /73 each edit the verify-desk skill, so whichever lands later
+merges the others' text. Authoring these briefs does not claim their implementation.
+
+## Shared planner consumers — requested 23 October 2026
+
+[The efficiency amendment](../../desk-workflow-efficiency-spec.md#21-candidate-plus-priority-planner--requested-amendment-23-october-2026)
+uses v2's existing typed/custody/query boundary. Reuse /09's completed snapshot and batches;
+coordinate /20–21 CLI surfaces with desk-tools/39–43. graph-execution/27 owns the five-role
+planner binding and existing runtime owners handle claims/refill. Neither parser migration
+nor transport optimization creates a new priority engine. Ranked GH savings and parity
+qualification stay with desk-tools/44 and R6; completed Evidence is preserved.

@@ -783,3 +783,17 @@ A conforming implementation that models deployment:
    statement: a release rollback and a deployment rollback are different operations
    (`docs/deploy-model.md` § "Rollback"), and this section reconciles the vocabulary rather
    than reversing either claim.
+
+## 10. Proposed delivery milestone boundary (not shipped)
+
+The draft [`milestone-v1.md`](./milestone-v1.md) and
+[`stream-v1.md`](./stream-v1.md) describe an optional future outcome layer. They do not
+add a brief lifecycle state, approve a source document, change spec routing, or relax
+any design, review, deployment or human decision gate in this specification.
+
+Contributing briefs being `done` is necessary for the declared completion work but does
+not prove the outcome is accepted, deployed or currently available. Acceptance must bind
+the exact milestone promise, subject and evidence through existing authorized mechanisms;
+missing acceptance remains outstanding even with no briefs left. Milestone record edits
+must not rewrite past brief Evidence or historical acceptance. Existing non-opted-in
+streams retain all current behavior; a draft milestone does not veto approved work.

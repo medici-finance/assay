@@ -1,2 +1,0 @@
-### Changed
-- derived-board/10 brief amended (version 6) for the two holds found at pickup on #2703. Amendment A: the candidate cohort is committed as a hash-bound inventory, and the exact matcher bytes stay in a private replay checked against it. Amendment B: a PR that only mentions brief 07, under a trailer naming another brief or an issue, is never its backfill witness. Planning only; no code changes.

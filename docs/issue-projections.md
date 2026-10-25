@@ -3,7 +3,7 @@
 The issue reader selects a population from the complete typed open-issue listing
 before paying trust, comment and label-history reads. Collection stays in the
 existing role-bound forge adapter; pure selection lives in
-`tools/desk/internal/issueflow`. No cache, service, new credential or pool is added.
+`deskcore/issueflow` through the internal compatibility facade. No cache, service, new credential or pool is added.
 
 | Caller | Producer | Population and required enrichment |
 |---|---|---|
@@ -142,3 +142,21 @@ include empty repositories and depend on the fixture's population. They do not
 measure elapsed time, process startup, token-mint subprocesses, provider latency,
 GraphQL points or production savings. Credential resolution may itself reuse an
 existing custody token; fewer resolutions do not imply fewer minted credentials.
+
+## Shared addressed policy and handoff observations
+
+Ordinary statusgen scanning now calls the same public candidate owner as the
+reader projections. An intentional `to:<role>` stamp stays in the receiving
+inbox; it creates or reactivates no ordinary scan placeholder. Existing
+projections are retained without manufacturing closure or resolution. Conflicting
+or empty addressees are explicitly held out of ordinary scan/work-ready selection.
+Historical role spelling remains case-insensitive and independent of today's
+roster; current write-side roster and trust gates are unchanged. Full/intake
+remain the supported broad views, including their legacy classifications.
+
+The worker's addressed-board ordering also uses this owner. This extraction
+does not make the label-less STATUS.md board into a live issue inbox, change
+legacy foreign-addressed board ordering, or arm successor discovery: that is
+verification-handoff/04. The versioned companion assessment is described in
+[verification-handoff-v1](../spec/verification-handoff-v1.md); ordinary bugs remain
+discoverable without a mandatory `to:intake` stamp.

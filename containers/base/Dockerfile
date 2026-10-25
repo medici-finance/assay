@@ -62,7 +62,7 @@
 # ---- Reused binary suite --------------------------------------------------
 # Pin the already-published desk-tools image; its static binaries (desk-tools
 # suite + statusgen) are copied into the final stage rather than recompiled.
-ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v1.0.52@sha256:64f131ec208def087b50565a4ddd407b95bd89ac418a86597ad1bac1d29047d3
+ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v1.0.58@sha256:b48f4f178e1085cb6dbbf859caca7b2ea997226c2639688679e8ab01d4188c4f
 FROM ${DESK_TOOLS_IMAGE} AS desktools
 
 # ---- git, built from a pinned upstream release ---------------------------
@@ -74,7 +74,8 @@ FROM ${DESK_TOOLS_IMAGE} AS desktools
 # (made over the uncompressed tar, by the git maintainer's release key), BEFORE
 # copying anything from it. Then set both ARGs from the release's entry and add
 # the same pair to knownGitTarballs in
-# tools/desk/internal/deskkit/gitfloor_test.go.
+# tools/desk/internal/deskkit/gitfloor_test.go, and set the same two ARGs in
+# images/verify-runner/Dockerfile (a test requires the two pairs to match).
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS gitbuild
 ARG GIT_VERSION=2.56.0
 ARG GIT_TARBALL_SHA256=26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3

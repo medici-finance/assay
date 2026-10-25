@@ -12,10 +12,12 @@ specification for the Assay methodology — the brief format, the register syste
 and the lifecycle and status board. These documents define what a conforming
 implementation MUST do.
 
-The specification covers three domains:
+The specification covers the following contracts:
 
 | Document | Domain |
 |----------|--------|
+| [`milestone-v1.md`](./milestone-v1.md) | **Proposed, unimplemented:** delivery outcomes, scope and acceptance, versioned capability dependencies, contribution ownership, change propagation and report history. |
+| [`stream-v1.md`](./stream-v1.md) | **Proposed, unimplemented:** stream ownership and integration of milestone records and generated views; preserves existing stream behavior. |
 | [`brief-v1.md`](./brief-v1.md) | The brief-v1 schema: frontmatter fields, body structure, dependency rules, Verify tables, execution tiering, mid-flight change routing, and conformance requirements. |
 | [`registers-v1.md`](./registers-v1.md) | The append-only registers (FINDINGS, INTAKE; RETRO informative): per-entry-file storage and generated views, slug IDs, append-only and tombstone rules, deletion detection, and linter conformance. |
 | [`lifecycle-v1.md`](./lifecycle-v1.md) | The brief lifecycle (`todo` through `done`), the single-writer STATUS.md board, the Next-up work-queue semantics, review gates, and what the board does and does not measure. |
@@ -27,6 +29,7 @@ The specification covers three domains:
 | [`cell-workspaces-v1.md`](./cell-workspaces-v1.md) | The shared workspace contract: cell, repository, collision-resistant repository key, kind, owner scope, attempt, request and allocation identity; strict decoding and the canonical payload digest; idempotent allocation that refuses a reused key with a changed payload; the generation-checked lifecycle; typed refused, conflict and unknown outcomes; effect ports; and the caller dispositions the workspace caller census records. |
 | [`project-obligations-v1.md`](./project-obligations-v1.md) | Versioned source revisions with permitted use, obligation mappings that reference existing REQ ids, and project applicability decisions whose acceptance is a link to an existing DECISIONS record bound by an exact-subject digest; the model-input gate and the three-way split between source identity, permitted use and semantic correctness. |
 | [`context-handoff-v1.md`](./context-handoff-v1.md) | The context handoff a spec author gives a brief author when a change moves the plan: seven records (target and intent, discovery receipt, impact obligation, amendment obligation, preserved history, active-work binding, decisions and readiness), the revision-bound amendment manifest, qualified brief IDs and their two elisions, the refusal rules, and the canonical digest. |
+| [`portfolio-measurement-v1.md`](./portfolio-measurement-v1.md) | **Draft, advisory:** a versioned allocation policy (qualified REQ buckets, independent agent and human targets, an explicit weight table, optional authorized limits) and the read-only capacity ledger over runner segments and human decisions: dedupe and reconciliation, unknown coverage, undefined shares and divergence without effect. |
 | [`cell-op-v1.md`](./cell-op-v1.md) | The cell-operation result and plan: the result document and its outcomes, reasons and exit codes, the plan with its JCS digest, fixed expiry and confirm code, batch plans, the state-changing invocations, the interactive apply order (confirm, re-measure, atomic consume, run), and the confirm's stated limit; approvals are deferred. |
 
 This specification does not state which repository or licence the Assay artifacts ship
@@ -89,6 +92,16 @@ implementation's conformance statement is **self-asserted and unaudited**: anyth
 declare itself conforming, and nothing in this specification checks that it is. A
 machine-checkable conformance fixture set is the intended remedy; until one exists, a
 conformance claim carries exactly the weight of its author's reputation.
+
+## Proposed delivery milestone contracts
+
+The milestone and stream integration drafts, and the explicitly proposed sections in
+the brief and lifecycle contracts, are not claims of reference-implementation support.
+The proposed prefixed brief labels and deprecation in brief §3.8 likewise require
+coordinated reader support; canonical internal brief IDs remain unchanged. These drafts
+do not add supported YAML fields, require existing streams to migrate, or authorize
+implementation. Their capability negotiation and rollout requirements must be implemented
+before use; they are excluded from current reference-implementation conformance claims.
 
 ## Reference implementation
 

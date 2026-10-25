@@ -394,8 +394,8 @@
     {
       "name": "stamp after the trailing runner-source tag (the source tag is no longer the cell's last parenthetical)",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "\t\t\tpos -= len(tag)",
-      "new": "\t\t\tpos -= 0 * len(tag)"
+      "old": "\tpos := tagAt\n",
+      "new": "\tpos := len(text)\n"
     },
     {
       "name": "the landing takes a target the forge served without proof as the branch's copy (an over-limit brief or board arrives empty: the merge strips the frontmatter and the judge compares against nothing) — S-2266-8",

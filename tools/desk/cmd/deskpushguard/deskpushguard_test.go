@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 )
@@ -75,7 +76,7 @@ func runTests(m *testing.M) int {
 	build := exec.Command("go", "build", "-o", filepath.Join(dir, "gh"), ".")
 	build.Dir = dir
 	build.Env = fakeBuildEnv()
-	if out, berr := build.CombinedOutput(); berr != nil {
+	if out, berr := goquiet.Cmd(build).CombinedOutput(); berr != nil {
 		fmt.Fprintf(os.Stderr, "build fake gh: %v\n%s\n", berr, out)
 		return 1
 	}

@@ -347,6 +347,40 @@ RISK-VALUE: DERIVED — effectivenessBoundary = "2026-10-08" @ statusgen/effecti
 
 Verification-Attestation: medici-finance/assay#3920 run=26e4d03ad813386cff89b62e291f8f50c5846def5961624efd979433b0ba6570 source=836aa874936cfdb5dc292e634f7fe57212df1057 brief=docs/streams/iso-9001/brief-03-corrective-action-effectiveness.md model=claude-opus-5-5 tier=strong
 
+### Non-implementer verifier run — 2026-10-22 assay-verifier-app[bot] @ 05dc9fbc88f2 (claude-opus-5-5)
+
+Input-changed re-verify on merged main. Subject: main 05dc9fbc88f2 (the dispatcher's attested source, equal to the forge's main by an API read at run time; the home is a detached worktree of it). The implementing commit is still 62c570391240 (#2374). Between the prior subject 836aa874936c and this one, statusgen/effectiveness.go, statusgen/effectiveness_test.go, statusgen/findingcontrol.go, statusgen/registerentries.go, statusgen/load.go and docs/registers.md are unchanged; statusgen/main.go changed (+9/-1, a new context subcommand intercept and its name in the known-subcommands list), and the two closure-rule calls in run() that row 12 guards (the effP and fcP appends to problems) are intact. Admission: `deskdispatch --check-verifier` exit 0 before any row. Instruments: go1.27.2 darwin/arm64, git 2.56.0, KUBECONFIG=/dev/null, no cluster contact.
+
+The acceptance evidence is the statusgen verifyrun witness below, written by the tool in write mode on the clean home (installed statusgen v1.0.54; exit 0; 12 of 12 rows pass exit=0, row 9 included). No row carries a check:ci class, so the network-off sandbox (and the container-netns mode) did not apply to any row; the witness ran every row on the host as written.
+
+- **Mutation claims of rows 6 and 12 re-checked** on a scratch clone at this sha outside the home. With the fatal case in effectivenessRoute (statusgen/effectiveness.go:137) appending to the notices, `go test . -count=1 -run '^TestEffectivenessMissingOnResolvedIsAProblem$' -v` exits 1 on `--- FAIL: TestEffectivenessMissingOnResolvedIsAProblem`. With both closure-rule appends in run() (statusgen/main.go:715 and :718) sent to the notices, `go test . -count=1 -run '^TestEffClosureLintEntryPoint$' -v` exits 1 on `--- FAIL: TestEffClosureLintEntryPoint`, the post-boundary and recurring subtests failing; the partial-record subtest stays green under that mutation, as on the earlier runs (row 5 covers that rule directly).
+- **Row 9 passed inside the witness this time.** The admitted-environment test defect tracked in #2715 (still open) did not show at this sha; no row result here depends on it.
+
+RISK-VALUE scope: all four risk answers are no. Enumeration covered the non-test Go diff of 62c570391240, the changes since 836aa874936c to the files that deliver this brief (statusgen/main.go only, outside this brief's scope and not touching its calls), and the brief's Deliverables. One bound was found, the boundary date. The date layout "2006-01-02" (statusgen/effectiveness.go:55 and :102) and the three rule tags at statusgen/effectiveness.go:47 to 49 are identifiers, not bounds.
+
+RISK-VALUE: DERIVED — effectivenessBoundary = "2026-10-08" @ statusgen/effectiveness.go:42 — the brief fixes the boundary as the date the field is introduced; 62c570391240 introduced the field and was committed 2026-10-08 10:08:24 -0500 (also 2026-10-08 in UTC). effectivenessOwed compares with !opened.Before(boundary) at statusgen/effectiveness.go:128, which is inclusive and matches the brief's "on or after".
+
+**VERIFY: PASS** — 12 of 12 rows pass in the statusgen verifyrun witness at 05dc9fbc88f2 (exit 0), with mutation rows 6 and 12 re-checked RED under their stated mutations.
+
+The table below is the statusgen verifyrun witness for this run, verbatim (exit 0); the Verification-Attestation line under it is this run's admission binding.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `git grep -n 'effectiveness' -- statusgen/registerentries.go` | pass exit=0 | sha256:c549cd5bbd63 | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `git grep -nF 'yaml:"resolved"' -- statusgen/registerentries.go` | pass exit=0 | sha256:9b57fdb55d78 | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `git grep -n 'recurringClass' -- statusgen/findingcontrol.go` | pass exit=0 | sha256:4b4d06347113 | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `git grep -n 'effectiveness' -- docs/registers.md` | pass exit=0 | sha256:64d2ae4bbc2b | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd statusgen && go test . -count=1 -run '^TestEffectivenessTripleRequiredTogether$' -v > "${TMPDIR:-/tmp}/iso9001-03-row5.out" 2>&1 && grep -F -e '--- PASS: TestEffectivenessTripleRequiredTogether' "${TMPDIR:-/tmp}/iso9001-03-row5.out"` | pass exit=0 | sha256:efff63f657df | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd statusgen && go test . -count=1 -run '^TestEffectivenessMissingOnResolvedIsAProblem$' -v > "${TMPDIR:-/tmp}/iso9001-03-row6.out" 2>&1 && grep -F -e '--- PASS: TestEffectivenessMissingOnResolvedIsAProblem' "${TMPDIR:-/tmp}/iso9001-03-row6.out"` | pass exit=0 | sha256:eb8d6fa7d56e | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd statusgen && go test . -count=1 -run '^TestEffectivenessInheritedCorpusStaysAdvisory$' -v > "${TMPDIR:-/tmp}/iso9001-03-row7.out" 2>&1 && grep -F -e '--- PASS: TestEffectivenessInheritedCorpusStaysAdvisory' "${TMPDIR:-/tmp}/iso9001-03-row7.out"` | pass exit=0 | sha256:4e51958d1d80 | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd statusgen && go test . -count=1 -run '^TestFindingControlOneOffUnchanged$' -v > "${TMPDIR:-/tmp}/iso9001-03-row8.out" 2>&1 && grep -F -e '--- PASS: TestFindingControlOneOffUnchanged' "${TMPDIR:-/tmp}/iso9001-03-row8.out"` | pass exit=0 | sha256:4c778e2452ec | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd statusgen && go test ./... -count=1` | pass exit=0 | sha256:237280d924ca | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 10 | `git grep -cE -e 'presence' -e 'adequacy' -- statusgen/findingcontrol.go statusgen/registerentries.go statusgen/effectiveness.go` | pass exit=0 | sha256:3ba23beddc6a | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd statusgen && go run . --root .. --lint` | pass exit=0 | sha256:17f264b6d9ff | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd statusgen && go test . -count=1 -run '^TestEffClosureLintEntryPoint$' -v > "${TMPDIR:-/tmp}/iso9001-03-row12.out" 2>&1 && grep -F -e '--- PASS: TestEffClosureLintEntryPoint' "${TMPDIR:-/tmp}/iso9001-03-row12.out"` | pass exit=0 | sha256:f610a416d1fb | 2026-10-22 | assay-verifier-app[bot] @ 05dc9fbc88f2 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4053 run=ea78e0f9952f79f1603b73517c293feaf267350245b8cbe3e68132c276eb1427 source=05dc9fbc88f2b1b23cd78bebc8634c564327eca4 brief=docs/streams/iso-9001/brief-03-corrective-action-effectiveness.md model=claude-opus-5-5 tier=strong
+
+
 
 
 ## Review

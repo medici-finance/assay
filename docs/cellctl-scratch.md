@@ -29,7 +29,7 @@ depends on scratch. Do not generate further required output after acknowledgment
 A missing receipt preserves the entire tree, including after successful exit.
 An acknowledgment alone never overrides a live execution lease or surviving child.
 
-Successful acknowledged tasks are reclaimed after child-tree cleanup. Failed or
+Successful acknowledged tasks become eligible for explicit maintenance after child-tree cleanup. Failed or
 interrupted acknowledged tasks keep their result record, receipt and the last
 64 KiB of captured output; their disposable workspace is reclaimed. Interactive
 terminal descriptors pass through directly to preserve terminal behavior. The
@@ -85,7 +85,9 @@ cellctl scratch <cell> sweep --apply --max-age 168h --max-bytes 268435456
 cellctl scratch <cell> inventory --path <legacy-temp-root>
 ```
 
-Startup and completion run the same sweep; existing desk cadence supplies scheduling.
+Startup and completion only register/finalize ownership. They never inventory historical
+payloads or reclaim data. Run the explicit sweep above for recursive accounting and
+reclamation; interrupted completion conservatively leaves the task protected.
 The default retention policy is seven days and 256 MiB for retained diagnostics,
 oldest first. Set `CELL_SCRATCH_MAX_AGE` (a Go duration, such as `168h`) and
 `CELL_SCRATCH_MAX_BYTES` (integer bytes) in the existing `cell.env` to persist
@@ -99,7 +101,7 @@ and actual reclaimed bytes. Dry-run and apply use the same decision function.
 Logical bytes are not allocated blocks or filesystem free-space measurements.
 Directory entries and filesystem metadata are not counted.
 
-Every sweep takes an OS advisory root lock and each run's execution lock. Live,
+Maintenance serializes other sweeps with a maintenance lease. Recursive inventory runs outside the root admission lock; each eligible run's execution lease remains held through revalidation and deletion. Short root transactions cover enrollment and lifecycle metadata. Live,
 resumable, unacknowledged, unverified, and Git-containing trees stay intact, with a
 reason in the report. The root and destructive operations use Go's confined
 `os.Root`; symlinks cannot redirect deletion outside it. A failed inspection is
@@ -166,3 +168,11 @@ Fixtures own all trees and subprocesses. They cover handoff, failure, SIGKILL,
 surviving children, pending/resumable/foreign/Git paths, path escapes, competing
 sweeps, partial deletion and retry, snapshot completeness and bounds, and repeated
 worker/reviewer/verifier passes across the supported host harnesses.
+
+Maintenance streams directory entries and retains at most 262,144 inventory entries per walk/list and 64 directory levels. Exceeding either limit reports partial accounting and performs no reclamation from that incomplete sweep. A wider legacy inventory returns an error rather than presenting a prefix as complete. These are reversible local safety defaults, not latency objectives.
+
+For an inventory wider than the default, explicitly raise the maintenance-only budget, for example `ASSAY_MAINTENANCE_ENTRY_LIMIT=524288 cellctl cache house clean` (or the existing scratch sweep command). Values must be 1 through 1,048,576. Invalid values and exhausted budgets fail closed; there is no unlimited fallback. This setting does not change retained-data protections, per-role authority or launch pressure policy. Trees beyond the finite ceiling or depth limit remain incomplete and require owner-assisted layout correction.
+
+No background job schedules this maintenance. Retention max-age and diagnostic reclamation take effect only when the operator runs the explicit sweep/clean command; retained diagnostics otherwise remain on disk.
+
+The default entry budget covers the representative fixture with 150,000 compiler-cache entries and 75,000 module-cache entries. The override remains finite; it is a maintenance resource budget, not a launch-policy or retention override.

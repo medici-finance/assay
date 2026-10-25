@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/perfrec"
 )
 
@@ -96,7 +97,7 @@ func buildPerfBinaryWith(t *testing.T, flags ...string) string {
 	}
 	bin := filepath.Join(t.TempDir(), "statusgen")
 	args := append(append([]string{"build"}, flags...), "-o", bin, ".")
-	if out, err := exec.Command("go", args...).CombinedOutput(); err != nil {
+	if out, err := goquiet.Cmd(exec.Command("go", args...)).CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	return bin

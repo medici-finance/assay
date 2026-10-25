@@ -32,14 +32,19 @@ MUTATIONS = [
 ]
 
 def snapshot(dest):
-    for package in ("domain", "contexthandoff", "evaluation", "internal/testschema"):
+    for package in ("domain", "evaluation", "workref", "internal/testschema"):
         source = ROOT / "statusgen" / package
         for f in source.glob("*.go"):
-            if package in ("contexthandoff", "evaluation") and f.name.endswith("_test.go"):
+            if package in ("evaluation", "workref") and f.name.endswith("_test.go"):
                 continue
             out = dest / f.relative_to(ROOT)
             out.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(f, out)
+    # Domain consumes only the qualified-identity API. Copy its real production
+    # owner, not unrelated resolver code (and that code's dependency closure).
+    identity = Path("statusgen/contexthandoff/ids.go")
+    (dest / identity).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(ROOT / identity, dest / identity)
     for name in ("verification-domain-v1.json", "workflow-instance-v1.json"):
         out = dest / "schemas" / name
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -54,8 +59,28 @@ def snapshot(dest):
     (dest / "statusgen/go.mod").write_text("module github.com/medici-finance/assay/statusgen\n\ngo 1.27.0\n")
 
 
+def offline_env():
+    return dict(os.environ, GOWORK="off", GOPROXY="off", GOTOOLCHAIN="local", KUBECONFIG="/dev/null")
+
+
+def is_kill(run, test):
+    return (run.returncode != 0 and "--- FAIL: " + test in run.stdout
+            and "[build failed]" not in run.stdout and "[setup failed]" not in run.stdout)
+
+
 def main():
-    env = dict(os.environ, GOWORK="off", GOPROXY="off", GOTOOLCHAIN="local", KUBECONFIG="/dev/null")
+    env = offline_env()
+    # A broken snapshot must fail before any mutation can claim a behavior kill.
+    with tempfile.TemporaryDirectory(prefix="domain-baseline-") as scratch:
+        dest = Path(scratch)
+        snapshot(dest)
+        baseline = subprocess.run(["go", "test", "-count=1", "-timeout=30s", "./domain"],
+                                  cwd=dest / "statusgen", env=env, text=True,
+                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
+        if baseline.returncode != 0:
+            print(baseline.stdout)
+            raise SystemExit("unmutated snapshot did not pass")
+        print("PASS unmutated snapshot")
     for label, test, replacements in MUTATIONS:
         with tempfile.TemporaryDirectory(prefix="domain-mutation-") as scratch:
             dest = Path(scratch)
@@ -69,7 +94,7 @@ def main():
             if label == "effect-import":
                 (dest / "statusgen/domain/planted.go").write_text('package domain\nimport _ "os"\n')
             run = subprocess.run(["go", "test", "-count=1", "-timeout=30s", "-run=^" + test + "$", "./domain"], cwd=dest / "statusgen", env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
-            if run.returncode == 0 or "--- FAIL: " + test not in run.stdout or "[build failed]" in run.stdout:
+            if not is_kill(run, test):
                 print(run.stdout)
                 raise SystemExit("mutation did not fail its behavior test: " + label)
             print("KILLED " + label + ": --- FAIL: " + test)

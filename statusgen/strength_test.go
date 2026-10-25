@@ -254,7 +254,16 @@ func TestUnfailablePostBase(t *testing.T) {
 
 	root = ufpbRepo(t, true)
 	stderr = captureStderr(t, func() { code = run(root, "lint", nil, nil, "") })
-	if code != 0 || strings.Contains(stderr, "this branch closes the brief") || !strings.Contains(stderr, "[bre-alternation]") {
-		t.Errorf("closure at base: exit %d, want 0 with the R7 NOTICE only; stderr:\n%s", code, stderr)
+	// statusgen/28: a finding on a record already closed at the merge-base is
+	// counted in the shared historical report; --all restores the per-row line.
+	if code != 0 || strings.Contains(stderr, "this branch closes the brief") || !strings.Contains(stderr, "[historical-notices] bre-alternation: 1 finding(s)") {
+		t.Errorf("closure at base: exit %d, want 0 with the R7 finding in the historical totals only; stderr:\n%s", code, stderr)
+	}
+	prev := lintDetailAll
+	lintDetailAll = true
+	t.Cleanup(func() { lintDetailAll = prev })
+	stderr = captureStderr(t, func() { code = run(root, "lint", nil, nil, "") })
+	if code != 0 || strings.Contains(stderr, "this branch closes the brief") || !strings.Contains(stderr, "Verify row 1 [bre-alternation]") {
+		t.Errorf("closure at base, --all: exit %d, want 0 with the R7 NOTICE line restored; stderr:\n%s", code, stderr)
 	}
 }

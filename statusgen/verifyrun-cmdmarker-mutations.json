@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'CmdMarker|NoMarkerUnchanged|ProseLedCommand|MarkedRowRoundTrips|ReexecutesLiftedCommand|RefusesProseLedCheckCI|ProseLedPassIsNotPass|OneChokePoint|HiddenMarker|RowLintJudges|ProseLedRow|WitnessRowRoundTrips|CommentLed|CommentCell|ShellComment|CommentOnly' -count=1 -timeout 300s",
+  "test": "go test . -run 'CmdMarker|NoMarkerUnchanged|ProseLedCommand|MarkedRowRoundTrips|ReexecutesLiftedCommand|RefusesProseLedCheckCI|ProseLedPassIsNotPass|OneChokePoint|HiddenMarker|RowLintJudges|ProseLedRow|WitnessRowRoundTrips|CommentLed|CommentCell|ShellComment|CommentOnly|ShellNoOp' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — verifyCommand ignores the marker (the pre-#1805 first-span lift)",
     "file": "verifyrows.go",
@@ -182,10 +182,10 @@
       "new": "\tif false {"
     },
     {
-      "name": "closed-brief prose-led collapse dropped",
-      "file": "verifyrows.go",
-      "old": "\t\t\t\t\tif scoped && f.rule == ruleProseLedCommand {",
-      "new": "\t\t\t\t\tif false && scoped && f.rule == ruleProseLedCommand {"
+      "name": "closed-brief prose-led demotion dropped (shared notice classifier never demotes)",
+      "file": "notice_report.go",
+      "old": "\thistorical = included && !held && (",
+      "new": "\thistorical = false && included && !held && ("
     },
     {
       "name": "CR-1808-3: transcribe-verdict re-executes a prose-led check:ci row (prose-led gate dropped)",
@@ -256,8 +256,8 @@
     {
       "name": "#2684: the comment-only arm is dropped (an inline `## Coverage` heading lifts as the command and passes empty)",
       "file": "verifyrows.go",
-      "old": "\tif lifted := verifyCommand(cell); shellCommentOnly(lifted) {",
-      "new": "\tif lifted := verifyCommand(cell); false && shellCommentOnly(lifted) {"
+      "old": "\tif shellCommentOnly(lifted) {",
+      "new": "\tif false && shellCommentOnly(lifted) {"
     },
     {
       "name": "#2684: shellCommentOnly never matches (the shared comment vectors stop holding)",
@@ -276,6 +276,54 @@
       "file": "verifyrows.go",
       "old": "\tcase strings.HasSuffix(why, shellCommentMarkedWhy):",
       "new": "\tcase false:"
+    },
+    {
+      "name": "#3147 A2: an unmarked no-op lift (`:`, REM, ::) is no longer refused",
+      "file": "verifyrows.go",
+      "old": "\tif shellNoOp(lifted) {",
+      "new": "\tif false && shellNoOp(lifted) {"
+    },
+    {
+      "name": "#3147 A2: a `cmd:`-marked no-op is accepted as the author's command",
+      "file": "verifyrows.go",
+      "old": "\t\tif shellNoOp(m[0]) {",
+      "new": "\t\tif false && shellNoOp(m[0]) {"
+    },
+    {
+      "name": "#3147 A2: a cmd.exe REM remark is not a no-op",
+      "file": "verifyrows.go",
+      "old": "== \"rem\" {",
+      "new": "== \"rem-never\" {"
+    },
+    {
+      "name": "#3147 A2: a cmd.exe :: remark is not a no-op",
+      "file": "verifyrows.go",
+      "old": "strings.HasPrefix(c, \"::\")",
+      "new": "false"
+    },
+    {
+      "name": "#3147 A2: a colon followed by a real command (`: ; test -d .`) is refused as a no-op",
+      "file": "verifyrows.go",
+      "old": "!strings.ContainsAny(c, \";&|\\n\")",
+      "new": "true"
+    },
+    {
+      "name": "#3147 A2: a no-op's remedy is the generic marker remedy",
+      "file": "verifyrows.go",
+      "old": "\tcase strings.HasSuffix(why, shellNoOpDetail):",
+      "new": "\tcase false:"
+    },
+    {
+      "name": "#3147 A2: the row finding for a no-op gives the prose-mention (marker) text",
+      "file": "verifyrows.go",
+      "old": "|| why == shellNoOpWhy || why == shellNoOpMarkedWhy {",
+      "new": "{"
+    },
+    {
+      "name": "#3147 A2: a marked no-op is reported as the first span",
+      "file": "verifyrun.go",
+      "old": "why == shellCommentMarkedWhy || why == shellNoOpMarkedWhy {",
+      "new": "why == shellCommentMarkedWhy {"
     }
   ]
 }

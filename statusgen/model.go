@@ -228,6 +228,15 @@ type Brief struct {
 	// (nextup.go) as an eligibility exclusion in the same shape as HomedIn;
 	// NEVER a Next-up score input.
 	MergedInSibling string
+	// PhantomHeld is set by applyPhantomHolds (boardhonesty.go), NOT from
+	// frontmatter: "<class> (<evidence>)" for a TODO row the board-honesty
+	// classifier caught on STRONG evidence only — a merge whose `Brief:` trailer
+	// names this brief, or a pointer row whose own cell carries a re-home marker
+	// and whose brief file is gone. A text mention in a brief body (de-housed,
+	// deliverable lands in, deferred) is never strong. "" otherwise. Read by
+	// eligibleBase (nextup.go) in the same shape as HomedIn/MergedInSibling and
+	// NAMED in NextUp.PhantomElsewhere; NEVER a score input.
+	PhantomHeld string
 	// WithdrawnDate, WithdrawnReason and SupersededBy are the brief-v3
 	// `withdrawn-date:` / `withdrawn-reason:` / `superseded-by:` frontmatter keys,
 	// wired from BriefFile by checkBriefFiles (withdrawn.go). They describe a

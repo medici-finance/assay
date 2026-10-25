@@ -1,0 +1,137 @@
+{
+  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection)$' -count=1 -timeout=300s",
+  "control": {
+    "name": "unreadable-cell refusal not consulted",
+    "file": "cmd/deskevidence/principalstamp.go",
+    "old": "if why := unreadableRunnerCell(cell, orig[sp[0]:sp[1]], joined[i]); why != \"\" {",
+    "new": "if why := unreadableRunnerCell(cell, orig[sp[0]:sp[1]], joined[i]); false && why != \"\" {"
+  },
+  "mutations": [
+    {
+      "name": "a comment crossing a line break is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tif joined {\n",
+      "new": "\tif false && joined {\n"
+    },
+    {
+      "name": "a comment inside the cell is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tif view != orig {\n",
+      "new": "\tif false && view != orig {\n"
+    },
+    {
+      "name": "invalid UTF-8 is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if r == utf8.RuneError && size == 1 {",
+      "new": "if false && r == utf8.RuneError && size == 1 {"
+    },
+    {
+      "name": "a format character is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if unicode.Is(unicode.Cf, r) {",
+      "new": "if false && unicode.Is(unicode.Cf, r) {"
+    },
+    {
+      "name": "a lowercase length change is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if utf8.RuneLen(unicode.ToLower(r)) != size {",
+      "new": "if false && utf8.RuneLen(unicode.ToLower(r)) != size {"
+    },
+    {
+      "name": "the backstop accepts any recognised-looking principal",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tcase p != strings.ToLower(subject):\n",
+      "new": "\tcase false && p != strings.ToLower(subject):\n"
+    },
+    {
+      "name": "the backstop accepts a second or non-exact annotation",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "strings.Count(strings.ToLower(runner), onBehalfOfCellMarker) != 1 || strings.Count(runner, canonicalStamp(subject)) != 1:",
+      "new": "false:"
+    },
+    {
+      "name": "the lint-way read keeps closed comments instead of removing them",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "lines := strings.Split(evidenceCommentRe.ReplaceAllString(section, \"\"), \"\\n\")",
+      "new": "lines := strings.Split(section, \"\\n\")"
+    },
+    {
+      "name": "a non-ASCII character in the Runner cell is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if r > unicode.MaxASCII {",
+      "new": "if false && r > unicode.MaxASCII {"
+    },
+    {
+      "name": "a control character in an added Evidence line is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if r, ok := rowControlCharacter(lines[i]); ok {",
+      "new": "if r, ok := rowControlCharacter(lines[i]); false && ok {"
+    },
+    {
+      "name": "the Evidence section is located in the whole file, frontmatter included",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tfrom, closed := briefBodyStart(lines)\n\tif !closed {\n",
+      "new": "\tfrom, closed := 0, true\n\tif !closed {\n"
+    },
+    {
+      "name": "a frontmatter block that never closes is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "!closed && hasEvidenceHeading(lines) {",
+      "new": "false && !closed && hasEvidenceHeading(lines) {"
+    },
+    {
+      "name": "a base line re-landed under another header is matched by its text alone",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tonBranchRows[[2]string{r.line, r.runner}] = true\n\t}\n\tfor _, r := range lintEvidenceRunners(landed) {\n\t\tif onBranchRows[[2]string{r.line, r.runner}]",
+      "new": "\t\tonBranchRows[[2]string{r.line, \"\"}] = true\n\t}\n\tfor _, r := range lintEvidenceRunners(landed) {\n\t\tif onBranchRows[[2]string{r.line, \"\"}]"
+    },
+    {
+      "name": "the control-character check skips lines that are not table rows",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tif onBranchEvidence[lines[i]] {\n",
+      "new": "\t\tif onBranchEvidence[lines[i]] || !strings.HasPrefix(strings.TrimSpace(lines[i]), \"|\") {\n"
+    },
+    {
+      "name": "the control-character check skips separator lines",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tif onBranchEvidence[lines[i]] {\n",
+      "new": "\t\tif onBranchEvidence[lines[i]] || strings.HasPrefix(strings.TrimSpace(lines[i]), \"|---\") {\n"
+    },
+    {
+      "name": "the control-character check skips header lines",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tif onBranchEvidence[lines[i]] {\n",
+      "new": "\t\tif onBranchEvidence[lines[i]] || strings.Contains(lines[i], \"Runner\") {\n"
+    },
+    {
+      "name": "a C1 control character is not refused",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if r != '\\t' && unicode.IsControl(r) {",
+      "new": "if r != '\\t' && (r < 0x20 || r == 0x7f) {"
+    },
+    {
+      "name": "a line anywhere in the base file counts as already on the branch",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\t\tif onBranchEvidence[lines[i]] {\n",
+      "new": "\t\tif onBranch[lines[i]] {\n"
+    },
+    {
+      "name": "the --brief-path merge locator reads the frontmatter",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "if from, closed := briefBodyStart(lines); closed {",
+      "new": "if from, closed := 0, true; closed {"
+    },
+    {
+      "name": "the --brief-path merge locator needs the heading exactly, untrimmed",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "i >= from && strings.TrimSpace(lines[i]) == \"## Evidence\" {",
+      "new": "i >= from && lines[i] == \"## Evidence\" {"
+    },
+    {
+      "name": "an empty section's rows land after the heading that follows it",
+      "file": "cmd/deskevidence/deskevidence.go",
+      "old": "evidenceEnd = max(off-1, idx+len(evidenceMarker))",
+      "new": "evidenceEnd = -1\n\t\t\t\tcontinue"
+    }
+  ]
+}

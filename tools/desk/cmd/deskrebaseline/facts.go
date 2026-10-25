@@ -84,15 +84,17 @@ func gatherRowFacts(repoRoot string, row verifyRow, riskBearing bool, riskReason
 
 	f.PathRef, f.PathExists, f.RenameHop = resolvePinnedPath(repoRoot, row.Command)
 
-	// Both execution paths share the comment gate. Neither a raw comment-led cell nor
-	// a directly constructed comment-only command can establish rename proof (#2684).
-	if row.Command == "" || row.CommentLed != "" || verifycmd.CommentOnly(row.Command) {
-		return f
-	}
+	// mayRun is the ONE gate both execution paths below test, the rename-proof re-run
+	// and the behaviour probe: a row whose raw cell statusgen refuses (a shell comment,
+	// a no-op, a prose mention, a blank lift) is never executed, nor is a lifted command
+	// that is itself blank, a comment or a no-op (a row built without a cell). Each exits
+	// 0 having checked nothing, and either probe would read that zero as proof: a rename
+	// proven safe, or a row that still passes (#2684, #3147).
+	mayRun := row.Refused == "" && verifycmd.CommandRefused(row.Command) == ""
 
 	// A rename hop is only proof once the row, rewritten to the hop, passes its own Expect
 	// against the renamed file (#1953). This runs the rewritten command, even in dry-run.
-	if f.PathRef != "" && !f.PathExists && f.RenameHop != "" && row.Command != "" {
+	if mayRun && f.PathRef != "" && !f.PathExists && f.RenameHop != "" {
 		_, f.RenameProbe = probeRow(repoRoot, renamed(row.Command, f), renamed(row.ExpectCell, f))
 	}
 
@@ -103,13 +105,11 @@ func gatherRowFacts(repoRoot string, row verifyRow, riskBearing bool, riskReason
 	// docs/rebaseline.md marks safe:count/safe:idiom not-yet-implemented for that reason.
 
 	// Behaviour probe only when there is no stale-path question to answer first.
-	if f.PathRef == "" || f.PathExists {
-		if row.Command != "" && row.CommentLed == "" && !verifycmd.CommentOnly(row.Command) {
-			ran, j := probeRow(repoRoot, row.Command, row.ExpectCell)
-			f.CommandProbed = true
-			f.CommandRan = ran
-			f.RCDiffers = j == judgeFail // judged against the row's Expect, not rc != 0 (#1953)
-		}
+	if mayRun && (f.PathRef == "" || f.PathExists) {
+		ran, j := probeRow(repoRoot, row.Command, row.ExpectCell)
+		f.CommandProbed = true
+		f.CommandRan = ran
+		f.RCDiffers = j == judgeFail // judged against the row's Expect, not rc != 0 (#1953)
 	}
 	return f
 }

@@ -266,3 +266,4 @@ argv verbatim (no flag parsing by the command layer) and are not part of the ope
 - `comms-reader`
 - `container-run`
 - `model-policy`
+- `scrubbed-run`
