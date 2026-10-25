@@ -73,7 +73,7 @@ func preflightRunnerTable(getenv func(string) string) error {
 // test seam (a fixture root has no App credential to mint); production is the real
 // deskkit preflight, unchanged from what the single-root boot has always run.
 //
-// The same run admits the root's run-bound prerequisite record (desk-tools/50) as a
+// The same run admits the root's run-bound prerequisite record (example-stream/50) as a
 // seventh check: a root whose source, desk-tools pin, runtime or App capability
 // evidence cannot be read or contradicts its pin is skipped with that exact reason, and
 // a green root's record is kept so every item queued from it is admitted on top of it.

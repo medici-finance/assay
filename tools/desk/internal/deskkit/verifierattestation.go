@@ -55,7 +55,7 @@ type VerifierReceipt struct {
 	// the rows against a tree the attestation does not name.
 	SourceHome string `json:",omitempty"`
 	// World is the run-bound prerequisite record admitted with this run
-	// (desk-tools/50), local-only like BriefRoot and never part of the issue
+	// (example-stream/50), local-only like BriefRoot and never part of the issue
 	// body. Admission rechecks it before rows execute, and landing consumes it.
 	World *RunWorld `json:",omitempty"`
 }

@@ -248,6 +248,11 @@ var UnresolvedArgv = []Allowance{
 		Reason: "exec.LookPath of a tool name held in a variable; presence probe, launches nothing.",
 	},
 	{
+		Key: "internal/deskkit/preflight.go::instrumentProbe::<unresolved>",
+		Reason: "exec.LookPath of a pinned instrument name extracted from a Verify row, so its bytes can be " +
+			"hashed against the pin file; presence-and-digest probe, launches nothing.",
+	},
+	{
 		Key:    "cmd/deskboard/board.go::execGateScores::<unresolved>",
 		Reason: "runs the resolved statusgen binary path; the binary is resolved by deskboard's own resolver.",
 	},

@@ -94,7 +94,7 @@ func (v *VerifyLoop) takeRun(it loopengine.Item) (verifierRun, bool) {
 	return r, ok
 }
 
-// worldGate binds each queued run to its prerequisite record (desk-tools/50).
+// worldGate binds each queued run to its prerequisite record (example-stream/50).
 // The root's record comes from that root's envelope preflight; each item's is
 // admitted on top of it at selection, rechecked at dispatch, bound into the
 // receipt, and rechecked again at landing. A nil gate on the loop is the

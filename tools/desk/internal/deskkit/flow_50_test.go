@@ -1,6 +1,6 @@
 package deskkit
 
-// Flow tests for the run-bound prerequisite record (desk-tools/50): what one
+// Flow tests for the run-bound prerequisite record (example-stream/50): what one
 // verifier run executes against is admitted as a record, a missing input is
 // could-not-check, a contradicted pin is a hold, neither is a code FAIL, an
 // empty declaration is a successful empty scan, and the record admitted with a
@@ -92,7 +92,7 @@ func world50State(t *testing.T, a WorldAdmission, key string) CheckState {
 	return CouldNotCheck
 }
 
-// regression: desk-tools/50 — a run's prerequisites were never recorded, so a
+// regression: example-stream/50 — a run's prerequisites were never recorded, so a
 // missing instrument, drifted pin, moved sibling or denied capability spent a
 // Verify row and read as the code's result.
 func TestFlowWorld(t *testing.T) {

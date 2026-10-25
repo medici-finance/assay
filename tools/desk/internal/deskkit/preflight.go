@@ -126,7 +126,7 @@ const (
 	CheckCommitIdentity = "commit-identity"
 	CheckSiblings       = "sibling-checkouts"
 	CheckAmbientID      = "ambient-identity"
-	// CheckRunWorld is the run-bound prerequisite record (desk-tools/50). It is
+	// CheckRunWorld is the run-bound prerequisite record (example-stream/50). It is
 	// appended only when a caller asks for one (PreflightRequest.World), so the
 	// six boot checks above keep their meaning for every other desk.
 	CheckRunWorld = "run-prerequisites"
@@ -2058,7 +2058,7 @@ func orCurrent(s string) string {
 	return s
 }
 
-// --- check 7: the run-bound prerequisite record (desk-tools/50) -------------
+// --- check 7: the run-bound prerequisite record (example-stream/50) -------------
 //
 // The six boot checks answer "can this desk operate at all". They do not say
 // whether the world ONE run will execute in is the one the run was admitted
@@ -2197,7 +2197,7 @@ func (a WorldAdmission) Err() error {
 // Check folds the admission into the one CheckRunWorld result a preflight
 // report carries.
 func (a WorldAdmission) Check() Check {
-	const refs = "desk-tools/50"
+	const refs = "example-stream/50"
 	var failedAny, unreadAny bool
 	var fix []string
 	for _, c := range a.Checks {

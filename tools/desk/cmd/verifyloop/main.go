@@ -114,7 +114,7 @@ func runMeasured(args []string, performance verifyPerformance) int {
 			return deskkit.ExitCodeOf(err)
 		}
 		// The boot just admitted each root's prerequisite record, so this pass binds every
-		// run to one (desk-tools/50). A plan entered without the boot has no record to bind.
+		// run to one (example-stream/50). A plan entered without the boot has no record to bind.
 		return loopengine.ExitCodeOf(cmdPlanWorld(args[1:], performance, planWorldGate()))
 	default:
 		fmt.Fprintf(os.Stderr, "verifyloop: unknown subcommand %q\n\n%s", args[0], usage)

@@ -371,7 +371,7 @@ func assertNoSharedCheckout(prompt string) error {
 }
 
 // bindDispatchWorld is the dispatch half of the run-bound prerequisite record
-// (desk-tools/50). After admission and BEFORE any prompt is emitted or child
+// (example-stream/50). After admission and BEFORE any prompt is emitted or child
 // launched, the item's admitted record must exist and still hold; it is then
 // bound into the receipt (and, for a run in its own home, persisted with the
 // run record so the executor's own --check-verifier recheck consumes it). A

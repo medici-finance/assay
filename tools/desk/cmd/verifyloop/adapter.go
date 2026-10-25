@@ -29,7 +29,7 @@ type VerifyLoop struct {
 	attested    verifierRuns
 	Attest      func(loopengine.Item, string, string) (deskkit.VerifierReceipt, error)
 	// World, when set, binds every run to its admitted prerequisite record
-	// (desk-tools/50). nil keeps the legacy path, which neither requires nor
+	// (example-stream/50). nil keeps the legacy path, which neither requires nor
 	// consumes one.
 	World *worldGate
 

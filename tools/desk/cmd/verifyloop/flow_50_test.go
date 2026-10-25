@@ -1,6 +1,6 @@
 package main
 
-// flow_50_test.go — the verifyloop half of the run-bound prerequisite record (desk-tools/50).
+// flow_50_test.go — the verifyloop half of the run-bound prerequisite record (example-stream/50).
 //
 // A root's envelope preflight admits the root's record; every item queued from it is admitted on
 // top of it at selection (siblings its brief declares, pinned instruments its rows call). An item
@@ -65,7 +65,7 @@ func world50Gate(w *world50Probes) *worldGate {
 	return &worldGate{root: admittedRootWorld, probes: w.probes()}
 }
 
-// regression: desk-tools/50 — the loop dispatched and landed runs whose environment was never
+// regression: example-stream/50 — the loop dispatched and landed runs whose environment was never
 // recorded, so a moved sibling or an unreadable second root read as the code's result.
 func TestFlowWorld(t *testing.T) {
 	t.Run("second root with unreadable prerequisites is skipped with the exact reason", func(t *testing.T) {
