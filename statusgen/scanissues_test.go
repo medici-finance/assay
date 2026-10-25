@@ -153,11 +153,11 @@ func scanFixtureRepo(t *testing.T, placeholders map[string]string) ([]*Stream, s
 	// Raw scanner output is exercised without this fixture in TestScanHandoffAdmission.
 	for _, stream := range streams {
 		for i := range stream.Placeholders {
-			stream.Placeholders[i].HandoffAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair"}
+			stream.Placeholders[i].HandoffAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair", DirectRepair: true}
 		}
 		for i := range stream.Briefs {
 			if stream.Briefs[i].Schema == "placeholder-v1" {
-				stream.Briefs[i].IntakeAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair"}
+				stream.Briefs[i].IntakeAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair", DirectRepair: true}
 			}
 		}
 	}
@@ -752,7 +752,7 @@ func TestBlockedPlaceholderNextUpExclusion(t *testing.T) {
 	for _, stream := range streams {
 		for i := range stream.Briefs {
 			if stream.Briefs[i].Schema == "placeholder-v1" {
-				stream.Briefs[i].IntakeAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair"}
+				stream.Briefs[i].IntakeAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair", DirectRepair: true}
 			}
 		}
 	}

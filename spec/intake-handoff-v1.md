@@ -83,8 +83,9 @@ from labels, closure, a scan PR or a v1 exit. Current companion assessments are
 shown beside the routing work; the owning records remain authoritative.
 
 Raw placeholders remain representations. Ordinary scheduling requires a recorded
-repair disposition plus existing trust, history, decision, addressee and claim
-checks. Scoping, qualification and external prerequisites stay out of ordinary
+repair disposition naming that same issue as the repair target, plus existing
+trust, history, decision, addressee and claim checks. A different successor has its
+own admission and claim; its source placeholder must not schedule a second repair. Scoping, qualification and external prerequisites stay out of ordinary
 repair scheduling. Legacy records remain classification-needed without bulk edits. Closure or an
 excluded label cannot archive an unclassified source. Classified archive moves
 preserve the companion; reactivation removes the old pointer so a new source

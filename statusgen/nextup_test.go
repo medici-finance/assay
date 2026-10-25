@@ -77,7 +77,7 @@ func TestNextUpStreamFindingNotDispatchGate(t *testing.T) {
 		Brief{Num: "03", Wave: 0, Status: "todo", Schema: "placeholder-v1"},
 	)
 	for i := range s.Briefs {
-		s.Briefs[i].IntakeAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair"}
+		s.Briefs[i].IntakeAssessment = issueflow.IntakeAssessment{State: "observed", Route: "repair", DirectRepair: true}
 	}
 
 	s.LastTouch = day(0)

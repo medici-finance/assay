@@ -39,9 +39,10 @@ type IntakeFacts struct {
 }
 
 type IntakeAssessment struct {
-	State  string // classification-needed, held, successor-owed, observed, external-wait
-	Route  string
-	Reason string
+	DirectRepair bool   // the source issue itself is the scoped repair target
+	State        string // classification-needed, held, successor-owed, observed, external-wait
+	Route        string
+	Reason       string
 }
 
 func SupportsIntakeHandoff(schema string) bool { return schema == IntakeHandoffSchema }
@@ -62,7 +63,9 @@ func DecodeIntakeHandoff(raw []byte) (IntakeHandoff, error) {
 // existence, scope, trust, freshness, claims and acceptance must still be checked
 // at their effect owners; an observed judgment is not a completed transfer.
 func AssessIntakeHandoff(h IntakeHandoff, f IntakeFacts) IntakeAssessment {
-	result := func(state, why string) IntakeAssessment { return IntakeAssessment{state, h.Route, why} }
+	result := func(state, why string) IntakeAssessment {
+		return IntakeAssessment{State: state, Route: h.Route, Reason: why}
+	}
 	if !SupportsIntakeHandoff(h.Schema) || !f.Complete {
 		return result("classification-needed", "legacy or unreadable disposition")
 	}
@@ -127,11 +130,19 @@ func AssessIntakeHandoff(h IntakeHandoff, f IntakeFacts) IntakeAssessment {
 	default:
 		return result("classification-needed", "accountable disposition owed")
 	}
-	return result("observed", "judgment recorded; successor admission and completion remain independent")
+	a := result("observed", "judgment recorded; successor admission and completion remain independent")
+	// A routed successor owns its own admission and claim. Do not also offer
+	// the source placeholder as a second implementation of the same repair.
+	successor := h.Successor
+	if repo, _, ok := strings.Cut(h.Item, "#"); ok && strings.HasPrefix(successor, "#") {
+		successor = repo + successor
+	}
+	a.DirectRepair = h.Disposition == Repair && h.Route == "repair" && strings.EqualFold(h.Item, successor)
+	return a
 }
 
 // RepairDispositionSettled permits consideration by the ordinary work reader.
 // It is one prerequisite, never a substitute for its other admission checks.
 func RepairDispositionSettled(a IntakeAssessment) bool {
-	return a.State == "observed" && a.Route == "repair"
+	return a.State == "observed" && a.Route == "repair" && a.DirectRepair
 }

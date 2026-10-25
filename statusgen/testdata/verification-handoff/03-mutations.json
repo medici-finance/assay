@@ -114,6 +114,17 @@
       "module": "statusgen",
       "package": ".",
       "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case reopened-event"
+    },
+    {
+      "id": "direct-repair-target",
+      "target": "deskcore/issueflow/intake.go",
+      "old": " && a.DirectRepair",
+      "new": "",
+      "test": "TestScanHandoffAdmission",
+      "expect": "source placeholder dispatched for successor",
+      "module": "statusgen",
+      "package": ".",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case direct-repair-target"
     }
   ]
 }

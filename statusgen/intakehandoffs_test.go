@@ -54,6 +54,22 @@ func TestScanHandoffAdmission(t *testing.T) {
 	if !eligible(parse()) {
 		t.Fatal("recorded repair disposition not considered")
 	}
+	for _, tc := range []struct {
+		target string
+		ready  bool
+	}{{"repair/01", false}, {"example/repo#78", false}, {"other/repo#77", false}, {"#77", true}, {"EXAMPLE/REPO#77", true}} {
+		routed := h
+		routed.Successor = tc.target
+		data, err := json.Marshal(routed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(filepath.Join(dir, "handoff.json"), string(data))
+		if got := eligible(parse()); got != tc.ready {
+			t.Fatalf("source placeholder dispatched for successor %s: ready=%v want=%v", tc.target, got, tc.ready)
+		}
+	}
+	write(filepath.Join(dir, "handoff.json"), string(raw))
 	for _, label := range []string{"to:worker", "to:", "needs-decision", "question", "help wanted", "review-request"} {
 		write(path, strings.Replace(body, "status: todo", "status: todo\nlabels: [\""+label+"\"]", 1))
 		if eligible(parse()) {
