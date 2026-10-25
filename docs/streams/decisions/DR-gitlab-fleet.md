@@ -1,16 +1,16 @@
 ---
 id: DR-gitlab-fleet
 date: "2026-10-25"
-title: "GitLab fleet provisioner ported to its own Go command (deskgitlab): the brief 30 compatibility report is approved as listed, and the landed command carries explicit maintenance ownership and cross-command parity obligations"
+title: "GitLab fleet provisioner ported to its own Go command (deskgitlab): the brief 30 compatibility report is approved as listed; ownership and parity direction is proposed, not ruled"
 consequence: major
 decided-by: "human:<name>"
 alternatives:
   - "Reject or narrow the compatibility report (option 2 on the brief's decision issue) — not taken: the driver chose option 1, approving the report as listed in #3155."
-  - "Consolidate into deskfleet through a separately reviewed compatibility-preserving migration, then retire deskgitlab and reroute the shell adapter — not chosen here: it stays the reopening path named in obligation 5, and the ownership question it belongs to is still open on #2987."
+  - "Consolidate into deskfleet through a separately reviewed compatibility-preserving migration, then retire deskgitlab and reroute the shell adapter — not decided here: it belongs to the ownership question that is still open on #2987, and is named as a reopening path in the proposed obligations below."
   - "Retire the shell script before porting it, the option that predates the merged implementation — not available: the port has landed, and this record cannot silently delete or retire the landed command."
 accepted:
   - "The migration lands with exactly the compatibility changes listed in the \"Compatibility report\" section of #3155's description: the legacy flag forms kept, the deliberate help changes, the one environment credential source, and the refusal-side changes listed there. Approval covers only those listed changes; nothing unlisted is authorised, and silence never authorises a weaker check."
-  - "The landed `tools/desk/cmd/deskgitlab` command and the `tools/create-fleet-gitlab.sh` adapter onto it are kept, under the maintenance and parity obligations below."
+  - "The landed `tools/desk/cmd/deskgitlab` command and the `tools/create-fleet-gitlab.sh` adapter onto it stand as the implementation that report describes. No maintenance, ownership or parity obligation is accepted by this record; the proposal below is not part of what is accepted."
   - "This record is separate from the ownership question on #2987, from independent verification of brief 30 and from final human acceptance; none of those is decided here."
 ---
 
@@ -32,11 +32,16 @@ ruling into the register; it does not mint a new one. The brief records the ruli
 frontmatter (`decision-issue: 4398` and a `ruling:` link to the comment above) and cites this
 record as its `design:`.
 
-The ruling comment names the brief by its board id, not this record by its `DR-gitlab-fleet`
-id, so this record carries no `ruling:` link of its own: one would fail the corroboration check
-as `record-not-named` (`spec/registers-v1.md` §7.5). Corroborating this record's own stamp needs
-a ruling comment that names `DR-gitlab-fleet`; until one exists, this record claims only what
-the ruling above says.
+**Approval state: placeholder-unratified. This is not an approved design record.** The
+`decided-by` stamp above is the public placeholder, and the record carries no `ruling:` link of
+its own. The ruling comment names the brief by its board id, not this record by its
+`DR-gitlab-fleet` id, so linking it here would fail the corroboration check as `record-not-named`
+(`spec/registers-v1.md` §7.5); and `statusgen --corroborate` reports this record
+`placeholder-unratified` until a driver comment on the decision issue names `DR-gitlab-fleet`. The
+`ruling:` key is added by a later push, only after that unedited comment exists. Until then the
+brief's `design:` link points at a record that is not yet approved, and this record does not
+clear the design-approval gate (`spec/lifecycle-v1.md` §4.4). What the ruling does establish is
+limited to the report approval stated in the `accepted` list above.
 
 The implementation that the report describes is
 https://github.com/medici-finance/assay/pull/3155 (merged 2026-10-16). The ownership decision
@@ -44,10 +49,20 @@ between this separate command and the existing `deskfleet` remains open on
 https://github.com/medici-finance/assay/issues/2987; this record does not rule it, and it does
 not retrospectively authorise the earlier dispatch or merge while that issue was unruled.
 
-## Bounded direction
+## Proposed, not ruled: ownership direction and obligations
+
+Everything in this section is a proposal. It is not covered by the ruling above, which approved
+only the compatibility report in #3155, and it is not accepted by this record. Its provenance is
+the draft in #4151, which carried the same text as a relay of a conversational answer from the
+driver, not as an own-login GitHub ruling. Ratification of the ownership direction is still to be
+asked for on https://github.com/medici-finance/assay/issues/2987, which is open with no ruling.
+Do not read any item below as a standing rule until that ratification exists and this record is
+updated to cite it.
+
+### Proposed bounded direction
 
 Keep `tools/desk/cmd/deskgitlab` as a supported provisioner and preserve the shell create
-adapter, under the provisional maintenance contract below, until the ownership question on
+adapter, under the proposed maintenance contract below, until the ownership question on
 #2987 is ruled.
 
 The desk-tools component maintainer owns the command, adapter and parity contract together. The
@@ -56,7 +71,7 @@ cross-command contract; independent verification remains with the verify desk. A
 implementer cannot declare cross-command parity by inspecting only its own handler. These are
 role obligations, not an assignment to an unnamed individual.
 
-## Maintenance and parity obligations
+### Proposed maintenance and parity obligations
 
 1. Keep the provisioner and renewal role tables aligned with their canonical shared definitions. Any edit to a shared role, membership, scope or renewal table must enumerate both `deskgitlab` and `deskfleet` consumers, update parity controls and show both consumers' results.
 2. Preserve the shell create adapter's declared flags, help, output and exit ordering, host defaults, paid-tier/avatar settings, generated-token modes and safe output-directory behavior. Enumerate adopter docs and install/adopt skill references whenever that contract changes.
