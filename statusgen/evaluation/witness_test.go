@@ -63,7 +63,7 @@ func TestWitnessV2DigestRelease(t *testing.T) {
 			t.Error("the claim's revision is the cell's [w2] marker")
 		}
 	})
-	for _, commit := range []string{"0123abc", "zz23456789abcdef0123456789abcdef01234567", ""} {
+	for _, commit := range []string{"0123abc", "zz" + strings.Repeat("0", 38), ""} {
 		fx := newV2fx(t)
 		fx.rec = func(r *WitnessRecord) { r.Informational.Commit = commit }
 		c := fx.claim()
