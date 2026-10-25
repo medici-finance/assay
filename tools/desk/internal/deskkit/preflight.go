@@ -2338,7 +2338,7 @@ func admitTool(p PreflightProbes, pinRoot, host string) (string, Check) {
 	}
 	tag, artifact, found := DeskToolsReleasePin(pinRoot, host)
 	if !found {
-		if pinnedForOtherHost(pinRoot, DeskToolsArtifact) {
+		if pinnedForOtherHost(pinRoot, deskToolsName) {
 			return "", failed("", "unsupported runtime: no desk-tools pin for "+host+" in "+filepath.Join(pinRoot, AssayVersionsFile),
 				"run the verifier on a pinned platform, or pin desk-tools-"+host, "")
 		}

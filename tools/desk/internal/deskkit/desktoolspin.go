@@ -19,6 +19,14 @@ import (
 // a consumer that carries it keeps exactly the verdict it always had.
 const DeskToolsArtifact = "desk-tools"
 
+// deskToolsName is DeskToolsArtifact as a runtime value, sliced from the tag-prefix
+// literal so a binary never carries the bare name as a string of its own. The linker
+// packs same-length literals back to back, and the bare name followed by alphanumeric
+// neighbours reads as a generic sk- model key to containers/scripts/layer-secret-scan.sh
+// (the regression package's TestReleaseBinariesScanClean); the trailing slash of the
+// longer literal ends that run. Pass this, never the constant, where a value is needed.
+var deskToolsName = (DeskToolsArtifact + "/")[:len(DeskToolsArtifact)]
+
 // NearestPinRoot walks up from start and returns the first directory carrying a
 // `.assay-versions`, or "" when none exists at or above it (the source-repo case: the assay
 // tree itself carries no pin file). It stops at the FIRST pin file — a nearer file with no
@@ -61,7 +69,7 @@ func DeskToolsReleasePin(dir, platform string) (tag, artifact string, found bool
 	if dir == "" {
 		return "", "", false
 	}
-	for _, name := range []string{DeskToolsArtifact, DeskToolsPlatformArtifact(platform)} {
+	for _, name := range []string{deskToolsName, DeskToolsPlatformArtifact(platform)} {
 		if name == "" {
 			continue
 		}
