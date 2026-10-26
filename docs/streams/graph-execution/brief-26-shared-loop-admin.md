@@ -55,11 +55,14 @@ consumers:
 - 'operator lifecycle and cockpit: out-of-scope (adopter qualification)'
 - 'loopadmin/journal PostgreSQL schema and migrations: follow-up graph-execution/26 (this brief; flips to fixed-here when the implementation edits the path)'
 - 'spec/operator-incarnation-v1.md (read before each launch): follow-up graph-execution/16'
-version: 10
+version: 12
 id: bcbee0b0-8f12-4e7a-b028-0637b2bab0c3
 ---
 
 # Brief 26 — Shared loop-admin launch supervision for desks and workflows
+
+> **Requested amendment — 25 October 2026:** the [desk-instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and the Task/Verify additions below amend this unfinished delivery. Earlier singleton/sequential source accounts remain history; unchanged acceptance and gates remain.
+
 
 ## Context
 
@@ -161,6 +164,10 @@ the brake obligation and is red until the named test exists. Relaxing a brake is
 human decision; this amendment relaxes none. Existing Task/Verify rows and Evidence are
 preserved.
 
+## Desk-instance scope — 25 October 2026
+
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
+
 ## Task
 
 1. Move `tools/desk/internal/cellprocess` into `loopadmin/process` as the module's one process runner, without copying it: keep its process-tree containment and uncertain-cleanup result unchanged, delete the old package, and re-point cellctl's cadence path at the moved package through a `require` plus relative `replace` of the loopadmin module in `tools/desk/go.mod` (the pattern `tools/loopresolve/go.mod` uses for `cellconfig`); cellctl's existing cadence tests stay green unchanged, and the tools/desk release build must resolve the relative `replace`. Extend the process-launch audit so it also scans `loopadmin/` and re-key the runner's exec-site entry to the moved path; the audit must not lose sight of that exec site. Implement one shared process/session supervisor over /20 and that runner. Accept only authenticated caller-scoped, operator-approved launch profiles and validated assignment/reservation references. Support standing-desk and workflow-stage modes with identical adapter and lifecycle semantics. An operator may run separate per-role processes of the same binary; reuse does not imply a privileged all-role daemon.
@@ -169,6 +176,8 @@ preserved.
 4. Keep runtime launch authority separate from operator profile/install/credential administration. A desk client may request an allowed child invocation through a bounded, capability-scoped endpoint, but cannot choose arbitrary argv, escalate role, raise limits or recursively create unconstrained agents. Effect credentials and operator admin are absent; any inference credential stays confined to its approved adapter boundary and is excluded from packets, artifacts and logs. Fail closed: an unrecognised caller, an unreadable or missing profile or role-binding configuration, and an absent or unreadable budget each refuse the launch; none falls back to a default profile, role or limit.
 5. Export sanitized process/session status with mode, caller binding and optional canonical workflow references. Viewer attach/detach never starts a process. The default command uses offline fixtures; live profile activation is separate. Provide backup/restore of the execution journal with referenced artifacts, preserving pause/spend/unknowns; restore is passive. Document state ownership and refusal behavior.
 6. (R2, 2026-10-13) Implement the journal on the cell's PostgreSQL coordination database with loopadmin's own schema and versioned migrations; commit launch intent and journal receipt in one transaction; check the operator incarnation before every launch and receipt delivery and start paused on mismatch. Add a static guard that loopadmin imports no SQLite or other embedded database engine.
+
+- **Instance amendment:** Key standing invocation ownership/journal/profile/preparation and process control by instance plus execution generation, preserving the independent role binding, exact work-ownership owner and best-effort role pacing. Existing Task 3 shared concurrency reservations apply to explicitly classified hard resource/recursive-launch safety budgets, not the approximate role work target; do not implement that target as a central mutex or slot semaphore. Concurrent operations on one instance are idempotent; distinct worker/review instances may overlap. Reject same-instance unknown-stop relaunch; a separately admitted successor may do unrelated work while predecessor reservations remain. Preserve bounded startup and zero-model idle/attach.
 
 ## Deterministic waiting amendment — 2026-10-18
 
@@ -269,6 +278,7 @@ All new rows are implementation deliverables and must demonstrate the named nega
 | 11 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellPrepFences$' ./... > "$o" && grep -F -- '--- PASS: TestCellPrepFences ' "$o")` | exit 0; named PASS. Concurrent starts, stale preparation, changed profiles, missing accounting and interrupted down preserve per-role leases, stop/authority gates and protected hashes. Mutation: accept a stale preparation receipt as a current role lease or reclaim unacknowledged work; test fails. |
 | 12 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestCellLaunchTelemetry$' ./... > "$o" && grep -F -- '--- PASS: TestCellLaunchTelemetry ' "$o")` | exit 0; named PASS. Config-only opt-in records preparation through confirmed child start; missing/unknown child starts remain incomplete, shared work counted once, no-opt-in writes nothing and slow/failed sink changes no launch result. Mutation: gate parent recording only on ambient environment or omit final enrollment; test fails. |
 | 13 | check:ci +flow +mutation | `(cd loopadmin && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestLoopAdminWaitDoesNotInvokeModel$' ./... > "$o" && grep -F -- '--- PASS: TestLoopAdminWaitDoesNotInvokeModel ' "$o")` | exit 0; named PASS. Production supervisor timers, unchanged observations and repeated receipts do not call adapter Start; one admitted invocation starts once and completion is delivered without a model waiter. Mutation: start a model on each observe timeout; the named test fails. |
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd loopadmin && GOWORK=off go test -count=1 -v ./supervisor/... -run '^TestDeskInstanceOwners$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceOwners ' "$o")` | Named test executes (zero matching tests is not a pass); Distinct mixed-profile peers run, duplicate same-instance starts produce one owner, wrong generation/profile refuses below the caller, and predecessor child usage remains counted during successor start. Mutation: key ownership only by role or treat unknown stop as released makes the test fail. |
 
 ## Pre-mortem and dispatch checks
 

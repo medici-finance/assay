@@ -79,3 +79,8 @@ The plausible wrong deliveries are precisely the mutations listed in Verify. Eac
 ## Review
 
 Gate: model. Review exact-subject evidence, compatibility, independent failure controls and cross-component flow. Implementation verification grants no live activation or merge authority.
+
+
+## Desk-instance follow-on — 26 October 2026
+
+The [instance amendment](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) consumes this delivered profile contract. Its prospective instance/generation extension and negative qualification are routed to agent-execution/03, without reopening this delivery or changing its Task, Verify, version or Evidence. Different supported tuples remain independently qualified; names never grant authority or continuity.
