@@ -27,9 +27,9 @@
     },
     {
       "name": "log a --no-rotate lookup as a rotation (the audit trail records rotations that never happened)",
-      "file": "cmd/desktoken/gitlab.go",
-      "old": "\tac.verb = \"rotate\"\n\tif !rotate {\n\t\tac.verb = \"custody-read\"\n\t}",
-      "new": "\tac.verb = \"rotate\""
+      "file": "internal/credential/gitlab.go",
+      "old": "\tverb := \"rotate\"\n\tif !req.Rotate {\n\t\tverb = \"custody-read\"\n\t}",
+      "new": "\tverb := \"rotate\""
     },
     {
       "name": "print the rotated token beside the path on the success route (the leak assertion must fire, with --forge still wired)",
