@@ -14,11 +14,10 @@ spec: docs/proposals/non-ci-architecture/27-agent-execution-environments.md
 
 Deliver portable, qualified execution through the existing runner, workspace, coordination
 and effect owners. The [future-state amendment](../../proposals/non-ci-architecture/27-agent-execution-environments.md)
-is the controlling specification. The maintainer approved amendment 27 for implementation
-and requested stream activation on 24 October 2026, recorded by
-[the approval and reconciliation change](https://github.com/medici-finance/assay/pull/4349).
-Scope approval and active-stream admission take effect on the maintainer's merge of that
-ruling-bearing PR under lifecycle §8.4. The existing nine briefs retain their statuses,
+is the controlling specification. Approval of amendment 27 for implementation and activation
+of this stream are proposed by [PR #4349](https://github.com/medici-finance/assay/pull/4349)
+and take effect on the maintainer's merge of it, the ruling record under lifecycle §8.4.
+The existing nine briefs retain their statuses,
 dependencies, individual human decisions and independent verification requirements.
 Stream admission does not activate a runtime or approve a concrete custody or deployment
 profile. Later adoption, profile qualification and activation gates remain separate.
@@ -125,8 +124,10 @@ can be modified by a generated composition. Core /01–05 remain independent of 
 [Brief 08](brief-08-qualify-a-kubernetes-verification-runner-through-the-existing-supervisor.md)
 adds one executor profile through the existing supervisor after /03 and graph-execution/21,
 /25 (wave 12). It does not block the interim local evidence pilot. Offline adapter proof
-and later disposable-cluster qualification are distinct. That authoring did not activate the stream or a cluster profile. The 24 October amendment-27
-approval now admits implementation; separate profile and deployment gates remain.
+and later disposable-cluster qualification are distinct. That authoring did not activate the stream or a cluster profile.
+Stream admission under amendment 27 takes effect on the maintainer's merge of
+[PR #4349](https://github.com/medici-finance/assay/pull/4349); it activates no cluster
+profile, and separate profile and deployment gates remain.
 
 ## Interactive Kubernetes standing profile — 20 October 2026
 
@@ -136,6 +137,7 @@ Existing /08 additionally follows /09 for shared transport, retaining its distin
 verifier Job restrictions and controller/publication prerequisites. /09 -> desk-containers/28
 -> /29 supplies the in-cluster operator and complete five-role qualification. No native
 Windows dependency or second runtime owner. Current optimization, custody and unknown-stop
-contracts remain. Amendment 27's implementation admission was approved on 24 October. Authoring /09 and
-stream activation do not activate a profile; its individual human decision and qualification
-requirements remain.
+contracts remain. Authoring /09 did not activate a profile, and neither does stream
+activation under amendment 27, which takes effect on the maintainer's merge of
+[PR #4349](https://github.com/medici-finance/assay/pull/4349); /09's individual human
+decision and qualification requirements remain.

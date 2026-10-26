@@ -214,9 +214,9 @@ resource limit changes in this documentation PR.
 
 Controlling delta: [agent execution environments](27-agent-execution-environments.md).
 The agent-execution stream authors the seven bounded extensions of existing owners below.
-Amendment 27 and implementation admission are approved by the 24 October
-[approval and reconciliation change](https://github.com/medici-finance/assay/pull/4349),
-effective on the maintainer's merge of its ruling-bearing PR. Later /08–09 profile
+Approval of amendment 27 and implementation admission of the stream are proposed by
+[PR #4349](https://github.com/medici-finance/assay/pull/4349) and take effect on the
+maintainer's merge of it. Later /08–09 profile
 qualification and all deployment/custody gates remain separate:
 
 | Gap | Owning brief | Existing prerequisite/consumer | Change made in this authoring PR |
@@ -306,7 +306,9 @@ and no competing proposal is treated as approved. Dispatch refs were not read.
 
 New tests are future implementation obligations. Existing completed Evidence is unchanged.
 Active PostgreSQL/image-scan/performance PRs are recorded in amendment 28 and reconciled at
-pickup. The parked execution stream is not silently admitted by this routing note.
+pickup. Historical note: when this routing note was written the execution stream was
+parked, and the note did not admit it. Stream admission is carried only by amendment 27's
+status line (see the portable execution environments section above).
 
 ## Extensible JSON amendment — 21 October 2026
 

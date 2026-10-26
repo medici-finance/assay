@@ -1,2 +1,2 @@
 ### Changed
-- Record amendment 27's bounded implementation approval and activate the agent-execution stream, retaining individual decisions and independent profile/deployment gates.
+- Approve amendment 27's bounded implementation scope and activate the agent-execution stream, both effective on the maintainer's merge of this change; amendment 27 lands `routed`, and individual decisions and independent profile/deployment gates are retained.

@@ -47,8 +47,9 @@ preflight requires an App PEM and model credentials. /08 is a distinct candidate
 profile requiring the workflow controller/publication bridge. Standing roles must not
 inherit that requirement or its execution identity. Consume /03 readiness/profile and
 /27 standing-desk outputs as actual importable APIs, never cmd/main or tools/desk/internal
-from this external module. The stream was parked at authoring; amendment 27 and stream admission are approved
-for implementation by the 24 October change, with individual human/profile gates retained.
+from this external module. The stream was parked at authoring; admission of amendment 27 and the stream for
+implementation is proposed by [PR #4349](https://github.com/medici-finance/assay/pull/4349)
+and takes effect on the maintainer's merge of it, with individual human/profile gates retained.
 
 single-point-of-failure: adapter maps the wrong Pod or credential profile; independent
 supervisor generation/stop checks and the existing executor's current-authority checks
@@ -93,7 +94,7 @@ Default if no answer: none — blocks until answered
 ## Ground rules
 
 Isolated branch and draft PR only. No deployment, workflow dispatch, live cluster or model
-contact. Fake Kubernetes API/streams and disposable local storage only. Follow the approved stream's scope and each brief's remaining admission/profile gates. Independent verification owns Evidence. Existing budgets, effect
+contact. Fake Kubernetes API/streams and disposable local storage only. Implement only within the stream's admitted scope (amendment 27, in effect from the maintainer's merge of its ruling PR) and each brief's remaining admission/profile gates. Independent verification owns Evidence. Existing budgets, effect
 and human gates remain in force. Refresh claims/active PRs before implementation.
 
 ## Task

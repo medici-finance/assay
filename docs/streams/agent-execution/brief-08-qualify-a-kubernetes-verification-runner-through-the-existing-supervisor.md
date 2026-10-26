@@ -37,8 +37,9 @@ files: `loopadmin/adapters/kubernetes/` (planned), `loopadmin/adapters/kubernete
 
 facts: `loopadmin/runner` and its conformance kit exist at main `2b2383f8e`; the production
 supervisor/controller prerequisites are not qualified by this brief. At that authoring revision, the execution stream
-was parked. Amendment 27 and the stream are admitted for implementation by the 24 October
-approval; this supplies no profile activation or deployment approval. Before implementation, /03 must provide qualified-profile/readiness enforcement, /21 the durable controller and /25 the current-authority publication boundary. These outputs are required, not merely file names.
+was parked. Admission of amendment 27 and the stream for implementation is proposed by
+[PR #4349](https://github.com/medici-finance/assay/pull/4349) and takes effect on the
+maintainer's merge of it; this supplies no profile activation or deployment approval. Before implementation, /03 must provide qualified-profile/readiness enforcement, /21 the durable controller and /25 the current-authority publication boundary. These outputs are required, not merely file names.
 
 This new profile does not replace /22's local
 harness adapter, create another process runner or require Kubernetes for interim verification.
