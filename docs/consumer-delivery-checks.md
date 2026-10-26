@@ -53,12 +53,16 @@ the protected-table closure reads only the current run's marker. Evidence that h
 could-not-check. The `consumer-delivery-range` lint below is unchanged and still asks for
 explicit pins in authored rows.
 
-A row re-authored under the immutable-delivery rule asserts its exact summary, including
-unchecked count. A row amended under an explicit command-only acceptance transition
+A row re-authored under the
+[immutable-delivery rule](protected-paths.md#explicit-human-approved-acceptance-transitions)
+asserts its exact summary, including unchecked count. A row amended under an explicit
+command-only acceptance transition
 ([protected paths](protected-paths.md#explicit-human-approved-acceptance-transitions))
 changes only its Command and keeps its original Expect, class, shell and order, so its
-Expect might not name the exact summary; the exact summary, including unchecked count, is
-then a review obligation, not a changed Expect. Exit 0 means no disproved claim; a
+Expect might not name the exact summary. The amended Command can assert the exact summary
+itself, exiting non-zero on any other summary, which an unchanged exit-0 Expect still
+accepts. Where it does not, the exact summary, including unchecked count, is a review
+obligation, not a changed Expect. Exit 0 means no disproved claim; a
 delivery with no corroborated claim returns 2. Unchecked exclusions remain review
 obligations. Neither a successful path-touch check nor this mode establishes
 that the consumer list is complete or that a consumer's behavior is correct.
