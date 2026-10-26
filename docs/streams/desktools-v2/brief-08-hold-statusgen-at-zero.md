@@ -117,19 +117,28 @@ desktools-v2/77 moves statusgen onto it), and the library holds the credential p
 changes here, and what does not:
 
 - **Row 1 (zero `"gh"` lines in statusgen) and rows 2 and 3 stand.** They are compatible with the
-  ruling's at most 7 gh/glab launch sites across desk-tools and statusgen; desktools-v2/75 owns
-  that combined ratchet.
+  ruling's at most 7 gh/glab launch sites across desk-tools and statusgen; desktools-v2/75 adds
+  that combined ratchet and desktools-v2/77 lowers it to 7. The two `"gh"` lines of the
+  claim-decay `gh auth token` fallback (`statusgen/claimdecay_github.go`) are retired by
+  forge-neutral/18, which this brief already follows, so rows 1 and 2 can reach `0` without
+  /77.
 - **Row 5 stands.** The library is a separate root module, so statusgen's manifest still names
   nothing under `tools/desk`.
-- **Row 10's allowed set widens by exactly one package**: the shared forge library's caller
-  package. It still fails on any desk-tools package and on a direct import of any `forgeread`
-  adapter package; reaching an adapter through the library is the library's own composition.
-  If /08 lands before /77, the widened set is unused and the row is unchanged in effect.
+- **Row 10's allowed set widens by exactly one package, and only when desktools-v2/77 lands**:
+  the shared forge library's caller package. /08 authors `TestReaderCapabilityBoundary` with
+  the narrower set (the `forgeread` root package only), so until /77 the library is refused
+  like any other forge package, not merely unused. /77 widens the set in the diff that adds the
+  first statusgen import of the library, and its own import-graph row holds the library to
+  statusgen's adapter layer. After the widening the test still fails on any desk-tools package
+  and on a direct import of any `forgeread` adapter package; reaching an adapter through the
+  library is the library's own composition.
 - **Rows 4, 6 and 7** prove the scan with no `gh` on `PATH`. While statusgen reads through
   `deskread` the positive leg uses a stub `deskread`; desktools-v2/77 owns re-pointing that leg
   at the library client over a fake provider, with neither `gh` nor `deskread` on `PATH`. The
   test names and PASS lines do not change.
-- No dependency is added: /08 still follows `forge-neutral/18` and `/35` only.
+- No dependency is added: /08 still follows `forge-neutral/18` and `/35` only. Nothing /08's
+  rows need gone is owned by a later brief: /18 retires the claim-decay fallback, /35 the
+  resolver fallbacks, and /77 owns only the row 4, 6, 7 and 10 re-pointing named here.
 
 ## Task
 1. Confirm the precondition (Verify rows 1 and 8). Stop with NEEDS_CONTEXT if either fails.
@@ -162,7 +171,7 @@ Statusgen receives a dedicated bounded CLI migration owner from desktools-v2/15.
 | 7 | `cd statusgen && go test -run '^TestScanNeverEmptyWithoutForgeBinary/windows$' -v .` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); named Windows PATH/PATHEXT subtest PASS; brief 08 creates it using an .exe stub (desktools-v2/12 Windows row) |
 | 8 | `grep -cE -e '^[\|] 18 [\|].*[\|] implemented [\|]' -e '^[\|] 18 [\|].*[\|] verified [\|]' -e '^[\|] 18 [\|].*[\|] done [\|]' -e '^[\|] 35 [\|].*[\|] implemented [\|]' -e '^[\|] 35 [\|].*[\|] verified [\|]' -e '^[\|] 35 [\|].*[\|] done [\|]' docs/streams/forge-neutral/README.md` | prints `2`: both forge-neutral/18 and /35 are at least implemented on the board. The board half of the precondition. `0` or `1` means this brief is not startable |
 | 9 | `grep -c -F '"statusgen/**"' .github/workflows/forge-surface-control.yml` | prints `2`: the `pull_request` and `push` path lists both carry `statusgen/**`, so a statusgen-only change runs the gate rows 2 and 3 make. Measured at this amendment: `0` |
-| 10 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestReaderCapabilityBoundary$" ./... > "$result" && grep -F -- "--- PASS: TestReaderCapabilityBoundary " "$result")` | exit 0; named PASS. `TestReaderCapabilityBoundary` (planned) resolves statusgen's non-test import graph and fails on any package under the desk-tools module and on any direct import of an authenticated read-adapter package of the `forgeread` module; only the `forgeread` root package and the shared forge library's caller package (`DR-forge-library`, desktools-v2/75) may appear as statusgen imports, and an adapter package may appear only as a dependency of that library package. **+mutation**: each of three planted violations must fail it — a direct import of a desk-tools package, an indirect import of an adapter package through a statusgen helper, and an adapter import added by a build-tagged file. Row 5 and this row are independent: one reads the manifest, the other the resolved graph |
+| 10 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestReaderCapabilityBoundary$" ./... > "$result" && grep -F -- "--- PASS: TestReaderCapabilityBoundary " "$result")` | exit 0; named PASS. `TestReaderCapabilityBoundary` (planned) resolves statusgen's non-test import graph and fails on any package under the desk-tools module and on any direct import of an authenticated read-adapter package of the `forgeread` module; only the `forgeread` root package may appear as a statusgen import until desktools-v2/77 lands; /77 then adds the shared forge library's caller package (`DR-forge-library`, desktools-v2/75) to the allowed set, and an adapter package may appear only as a dependency of that library package. **+mutation**: each of three planted violations must fail it — a direct import of a desk-tools package, an indirect import of an adapter package through a statusgen helper, and an adapter import added by a build-tagged file. Row 5 and this row are independent: one reads the manifest, the other the resolved graph |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->

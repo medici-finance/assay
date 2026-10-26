@@ -55,19 +55,27 @@ without demonstrated parity stays on git.
 
 facts (d6a2ff244, 2026-10-25):
 - statusgen non-test code, by `count-git-exec.sh`'s two patterns run over `statusgen/`: 87 direct
-  `exec.Command("git", …)` spawns and 11 calls through the named seam helpers, 98 in all. statusgen
+  `exec.Command("git", …)` spawns and 11 calls through the named seam helpers, 98 in all
+  (re-measured at `e07782de2`: 90 direct and 11 seam, 101 in all; the three new spawns are in
+  `statusgen/verifyrun.go`). statusgen
   also has its own helpers (`historyGit`, `coverageGit`, `gitShowObject`, `gitMergeBaseOut`) that
   those patterns do not name; the ratchet here counts spawns, not helper calls.
-- desk-tools: `git-exec sites: 204 (direct spawns: 54, seam call sites: 150)`. Its counter is
+- desk-tools: `git-exec sites: 204 (direct spawns: 54, seam call sites: 150)` (unchanged at
+  `e07782de2`). Its counter is
   advisory until desktools-go-git/08 flips it.
 - `tools/desk/go.mod` pins `github.com/go-git/go-git/v5 v5.19.3`; `statusgen/go.mod` has no go-git.
 - `gitcore` is internal to the desk module and imports `internal/gitquiet` and `internal/gittest`;
-  50 non-test desk files import it. statusgen cannot import it where it is.
-- `statusgen/verifyflip.go`: `flipJudgeHistory` (line 922) walks
-  `rev-list --full-history <c>..HEAD -- <base>` at line 955; `flipMergeBases` (line 1060) runs
-  `merge-base --all` with `--no-replace-objects`, held by `TestMergeBaseChokePoint`
-  (`statusgen/registercorroborate_test.go:821`, SEC-2013-4).
-- Other work is open in the verified-flip provenance code; rebase nothing, merge main, and
+  47 non-test desk Go files import it (`grep -rlE 'internal/gitcore(/[^"]*)?"' tools/desk
+  --include='*.go' | grep -v '_test\.go$' | wc -l`, re-measured at `e07782de2`). statusgen
+  cannot import it where it is.
+- `statusgen/verifyflip.go` at `e07782de2`: `flipJudgeHistory` (line 947) walks
+  `rev-list --full-history <c>..HEAD -- <base>` at line 980; `flipMergeBases` (line 1115) runs
+  `merge-base --all` with `--no-replace-objects` (line 1119), held by `TestMergeBaseChokePoint`
+  (`statusgen/registercorroborate_test.go:826`, SEC-2013-4).
+- The criss-cross merge fix now on main added `flipSideBroughtNothing`
+  (line 1088), which judges a merge against EVERY best base `flipMergeBases` returns: a go-git
+  merge-base that returns a single base, or a different set, changes that verdict. The
+  every-best-base parity in Task 4 and row 3 is therefore load-bearing. Line numbers move;
   re-read these functions at pickup.
 
 design-fit:

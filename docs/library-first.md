@@ -79,6 +79,14 @@ belong to a maintainer with the workflows scope.
 - Caller-facing SDK packages must not transitively import custody, credential minting,
   role executors or write adapters. Authenticated read adapters are effectful packages,
   composed only where the existing identity policy permits that process to hold access.
+  *(Amended 2026-10-25 by `DR-forge-library`.)* The one exception is the shared forge library
+  itself (desktools-v2/75): it composes the role credential provider and the desk write
+  operations and holds the minted token in its client's private field. It is an effectful
+  package, not a caller-facing SDK in this bullet's sense, and only its named consumers link
+  it: the desk verbs, and statusgen's forge adapter layer (desktools-v2/77). Every other
+  caller-facing package keeps this rule unchanged: the `forgeread` root package and
+  `statusgen/evaluation` stay free of custody, credential minting, role executors and write
+  adapters (desktools-v2/75 row 8, desktools-v2/77 rows 4 and 7).
 - *(Superseded 2026-10-25 by `DR-forge-library`.)* Until then this bullet kept every online
   statusgen forge read on the `deskread` process adapter and kept credentials out of statusgen.
   Now statusgen links the shared forge library for its forge calls, and a credential exists

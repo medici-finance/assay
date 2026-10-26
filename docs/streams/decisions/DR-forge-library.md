@@ -20,7 +20,8 @@ accepted:
 ---
 
 **Ruling recorded (2026-10-25): one shared forge library for reads and writes.** The driver's
-ruling, posted under the driver's own login on #2395 and not edited since, reads in full:
+ruling, posted under the driver's own login on #2395 and not edited since, reads in full
+(verbatim; the record only wraps its lines):
 
 > Supersedes DR-forge-neutral-36.
 > 1. One shared forge library for reads and writes. desktools-v2 builds it. deskread and the
@@ -29,8 +30,10 @@ ruling, posted under the driver's own login on #2395 and not edited since, reads
 > 2. statusgen links the library for its forge calls, instead of running a desk-tools command.
 > 3. The library owns the credential. Each client is set up for one role and one repo. The
 >    token is held in a private field that no caller can read, and there is never a fallback to
->    an ambient token. These rules move into the library unchanged: DR-desktools-v2-03,
->    DR-forge-neutral-34, DR-forge-neutral-14 and -17, DR-forge-gitlab-11.
+>    an ambient token. These rules move into the library unchanged: DR-desktools-v2-03 (an App
+>    token minted for the repo), DR-forge-neutral-34 (the CI read-only workflow-token opt-in),
+>    DR-forge-neutral-14 and -17 (run and retry credentials refuse a human-bound entry), and
+>    DR-forge-gitlab-11 (the read-only auditor identity for the hardening guard).
 > 4. gh/glab: at most 7 launch sites across desk-tools and statusgen, held by a ratchet that
 >    only goes down. Every other forge call goes through the library.
 > 5. git: use go-git. A git launch is allowed only where go-git cannot do the operation, on its

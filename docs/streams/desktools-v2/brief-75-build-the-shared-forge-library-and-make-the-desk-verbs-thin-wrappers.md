@@ -137,9 +137,11 @@ explicit, read-only constructor. Verb CLIs keep their flags, outputs and exit cl
 4. Carry the five custody records: each existing test that pins one keeps passing against the
    library, and each gets a lower-layer twin that bypasses the verb.
 5. Add the combined gh/glab ratchet: one counter over desk-tools and statusgen non-test code,
-   starting at the count measured at pickup, failing on any rise. Once statusgen reaches 0
-   (desktools-v2/77 and forge-neutral/18), the ceiling asserts at most 7. Report the skill
-   scripts separately until the gate decides whether they count.
+   starting at the count measured at pickup, failing on any rise. This brief does not reach 7:
+   statusgen's launches are still counted. desktools-v2/77, which runs after statusgen reaches
+   0 (forge-neutral/18 and /35), lowers the ceiling to 7 and asserts it (its Task 4 and row 8).
+   Report the skill scripts separately; this brief's gate decides whether they count, and /77's
+   row takes that answer as its parameter.
 6. Update the library-first table, contracts and the tool README; add the fragment.
 
 ## Verify
