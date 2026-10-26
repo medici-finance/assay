@@ -18,7 +18,7 @@ why: >-
   those refusals on.
 wave: 6
 depends: ["forge-neutral/18", "forge-neutral/33"]
-unblocks: ["desktools-v2/08"]
+unblocks: ["desktools-v2/08", "desktools-v2/77"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
@@ -293,6 +293,22 @@ adapter from the shared module, so the resolvers neither hold a credential nor b
 queries. Every author-type, edit-history, subject-binding and sign-off refusal and the human
 gate stay as written. A later move of these reads into the shared module would be its own
 human-gated brief.
+
+## Shared forge library amendment — 2026-10-25 (ruled: `DR-forge-library`)
+
+The driver's ruling of 2026-10-25 on #2395 supersedes `DR-forge-neutral-36`
+(`docs/streams/decisions/DR-forge-library.md`): statusgen links one shared forge library for
+its forge calls, and that library alone holds the role-and-repo credential. **This amendment
+adds no deliverable here and changes no row.** The ruling resolvers' reads still move onto
+statusgen's `forgeReader` seam as Task 1 says, with `deskread` as the online reader behind it.
+desktools-v2/77 later replaces that reader with a library-backed one; that is the "later move"
+the paragraph above names, and it is human-gated. What stays here regardless of transport:
+
+- the author-type, edit-history, subject-binding and sign-off mappings stay in statusgen and
+  are never pushed into the library or the verb;
+- the resolvers hold no credential of their own, and the `gh auth token` fallback and the direct
+  HTTP client still retire in this brief;
+- the human gate stays as written.
 
 ## Task
 
