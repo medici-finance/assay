@@ -105,7 +105,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **Already delivered or re-homed — held out of dispatch (9):** composability/02 → already-merged-unflipped (merged PR #4278, Brief: trailer), desk-supervision/34 → already-merged-unflipped (merged PR #4135, Brief: trailer), desktools-v2/30 → already-merged-unflipped (merged PR #4410, Brief: trailer), desktools-v2/70 → already-merged-unflipped (merged PR #4074, Brief: trailer), desktools-v2/74 → already-merged-unflipped (merged PR #4260, Brief: trailer), statusgen/24 → already-merged-unflipped (merged PR #4337, Brief: trailer), statusgen/27 → already-merged-unflipped (merged PR #4134, Brief: trailer), statusgen/28 → already-merged-unflipped (merged PR #4140, Brief: trailer), statusgen/32 → already-merged-unflipped (merged PR #4137, Brief: trailer). Each is a board-honesty finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose brief file is gone); reconcile or retire the row to clear it.
 
-_Next-up: 20 of 61 eligible — 41 held back (19 by per-stream caps, 22 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 20 of 60 eligible — 40 held back (19 by per-stream caps, 21 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
 _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (18), desk-tools (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
@@ -114,7 +114,6 @@ _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. 
 | desktools-v2 | 58 — Extract the role credential provider and retire internal desktoken callouts [exec:strong] | 1 | 9000 + 1500 (drive:desktools-v2) |
 | desktools-v2 | 66 — Extract shared write policy and make writeguard a hook adapter [exec:strong] | 1 | 7500 + 1500 (drive:desktools-v2) |
 | desk-tools | 49 — Deduplicate verifier filings by their canonical work identity [exec:strong] | 1 | 8500 |
-| agent-execution | 01 — Qualified harness, model and backend capability contract [exec:strong] | 1 | 8000 |
 | desk-tools | 45 — Expose the canonical verification queue to its consumers [exec:strong] | 1 | 8000 |
 | desk-tools | 42 — Narrow issue discovery projections before enrichment [exec:strong] | 3 | 7000 |
 | milestone-support | 02 — Negotiate reader capabilities through one shared contract [exec:strong] | 1 | 7000 |
@@ -131,12 +130,13 @@ _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. 
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | derived-board | 10 — Complete candidate coverage for partial-delivery reconciliation [exec:strong] | 0 | 2000 |
 | graph-execution | 08 — Signal-triggered pattern — incident and regression [exec:strong] | 1 | 2000 |
+| statusgen | 23 — Product target binding and context drift assessment [exec:strong] | 3 | 2000 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 9ab9fa76a 2026-10-26T14:56:49Z_
+_last regen: e9066ca14 2026-10-26T15:35:47Z_
 
 **Progress:** 12/14 brief items done.
 
@@ -157,7 +157,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 9ab9fa76a 2026-10-26T14:56:49Z_
+_last regen: e9066ca14 2026-10-26T15:35:47Z_
 
 **Progress:** 35/94 brief items done.
 
@@ -221,7 +221,7 @@ _last regen: 9ab9fa76a 2026-10-26T14:56:49Z_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (18 for the desk · 40 for the driver · 30 for workers · 21 for an operator · 34 runner-pending — of 150 total; 6 could-not-check)
+## Awaiting verification / review (18 for the desk · 40 for the driver · 30 for workers · 21 for an operator · 35 runner-pending — of 151 total; 6 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -333,7 +333,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 26 [exec:strong] | implemented | 1000 | 0 | — | operator | environment blocker, cite medici-finance/assay#4179 | — | — |
 | desktools-v2 | 13 [exec:strong] | implemented | 1000 | 0 | — | operator | environment blocker, cite #1631 | — | — |
 
-### Runner-pending (34)
+### Runner-pending (35)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -343,6 +343,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | graph-execution | 20 [exec:strong] | verified | 19000 | 34 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 3d29dd923ab7 (claude-opus-5-5) | — |
 | statusgen | 15 [exec:strong] | verified | 14500 | 27 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
 | desktools-v2 | 61 [exec:strong] | verified | 8500 | 15 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 0e661b6e15de (claude-opus-5-5) | — |
+| agent-execution | 01 [exec:strong] | implemented | 8000 | 14 | — | verify runner | none | — | — |
 | build-less-brittle | 02 [exec:strong] | verified | 6500 | 7 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | desktools-v2 | 09 [exec:strong] | verified | 6500 | 11 | — | CI auto-flip | none; stuck after one main run → file | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | build-less-brittle | 04 [exec:strong] | verified | 5500 | 5 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
@@ -447,7 +448,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 ### agent-execution (9 open)
 
-- 01 Qualified harness, model and backend capability contract — todo (wave 1)
+- 01 Qualified harness, model and backend capability contract — implemented (wave 1)
 - 02 Prepared-environment receipts and reusable workspace port — todo (wave 2)
 - 03 Enforce qualified profiles and workspace readiness in local execution — todo (wave 8)
 - 04 Qualify restored execution against ownership and external effects — todo (wave 12)
