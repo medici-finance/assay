@@ -131,7 +131,7 @@ func (fx containerFixture) writeReceiptRunner(t *testing.T, check, runner string
 		t.Fatal(err)
 	}
 	if runner != "" && !strings.Contains(runner, `"runner_tree"`) {
-		runner += `,"runner_tree":"` + treeSHA(fx.home) + `"`
+		runner += `,"runner_tree":"` + briefTreeSHA(fx.home, fx.brief) + `"`
 	}
 	if runner != "" {
 		runner = "," + runner
