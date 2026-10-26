@@ -8,7 +8,7 @@
   },
   "mutations": [
     {
-      "name": "self-serve check disabled (the excused identity records its own override)",
+      "name": "self-serve check disabled (an override committed under the excused identity's own author email is honored)",
       "file": "attribution.go",
       "old": "if recID == excusedID {",
       "new": "if false && recID == excusedID {"
@@ -74,16 +74,52 @@
       "new": "_ = s"
     },
     {
-      "name": "blame reads the committer-of-record wrongly (identity always empty: provenance never resolves)",
-      "file": "gitinfo.go",
-      "old": "identity = strings.ToLower(strings.Trim(strings.TrimSpace(mail), \"<>\"))",
-      "new": "identity = \"\"; _ = mail"
-    },
-    {
       "name": "staleness reads the wrong version (the current Evidence is compared with itself)",
       "file": "attribution.go",
       "old": "seen, ok := evidenceSectionAtCommit(root, recSHA, rel)",
       "new": "seen, ok := evidenceSectionAtCommit(root, \"HEAD\", rel)"
+    },
+    {
+      "name": "recorder identity read through the repository mailmap (blame's own author-mail view), so a mailmap entry decides who recorded the override",
+      "file": "gitinfo.go",
+      "old": "\"--no-use-mailmap\",\n\t\t\"--format=%ae%x00%cs\"",
+      "new": "\"--use-mailmap\",\n\t\t\"--format=%aE%x00%cs\""
+    },
+    {
+      "name": "recorder identity never resolves (provenance always unknown)",
+      "file": "gitinfo.go",
+      "old": "identity = strings.ToLower(strings.TrimSpace(mail))",
+      "new": "identity = \"\"; _ = mail"
+    },
+    {
+      "name": "recording-commit date misread (a postdated override reads as on time)",
+      "file": "gitinfo.go",
+      "old": "day = strings.TrimSpace(date)",
+      "new": "day = \"2999-12-31\"; _ = date"
+    },
+    {
+      "name": "fixture-corpus check disabled (an override no online lane would corroborate is honored)",
+      "file": "attribution.go",
+      "old": "if isExcludedFixturePath(root, filepath.ToSlash(rel)) {",
+      "new": "if false && isExcludedFixturePath(root, filepath.ToSlash(rel)) {"
+    },
+    {
+      "name": "postdated check disabled (an override dated after its recording commit is honored)",
+      "file": "attribution.go",
+      "old": "if authorizedOn.After(recordedOn.AddDate(0, 0, 1)) {",
+      "new": "if false && authorizedOn.After(recordedOn.AddDate(0, 0, 1)) {"
+    },
+    {
+      "name": "calendar-date check disabled (a date that does not exist parses)",
+      "file": "attribution.go",
+      "old": "if _, err := time.Parse(\"2006-01-02\", m[2]); err != nil {",
+      "new": "if _, err := time.Parse(\"2006-01-02\", m[2]); false && err != nil {"
+    },
+    {
+      "name": "forced-in briefs with unreadable Evidence history reported under the same-identity notice",
+      "file": "attribution.go",
+      "old": "if p.forced {",
+      "new": "if false && p.forced {"
     }
   ]
 }

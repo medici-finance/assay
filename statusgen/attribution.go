@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 )
 
@@ -390,8 +391,8 @@ func evidenceFloorFailure(evidence string) (reason string, failed bool) {
 // The one sanctioned way through it for a legitimate same-identity re-touch is a
 // recorded, human-authorized `independence-override:` frontmatter value that
 // independenceOverrideRefusal accepts — a current human, not the author, committed
-// by an identity other than the one excused, and not older than the Evidence it
-// covers. An accepted override is reported as a NOTICE, never silently; a refused
+// under a git author identity other than the one excused, and still covering the
+// Evidence as it stands. An accepted override is reported as a NOTICE, never silently; a refused
 // one leaves the PROBLEM standing and says why. It excuses this committer-identity
 // PROBLEM only: the token-level checks above are untouched by it.
 //
@@ -428,6 +429,10 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 		// `authored:` values for the recorded-override pass (measured-status/05),
 		// consulted ONLY for a confirmed same-identity PROBLEM.
 		override, authored string
+		// forced is true when the brief is in the precise pass ONLY because it
+		// carries an override: its whole-file authoring and most-recent commit are
+		// under DIFFERENT identities, so it is not a same-identity candidate itself.
+		forced bool
 	}
 	var sameIdentity []identPair
 	idents := map[string]bool{}
@@ -524,7 +529,7 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 			// refused, never silently moot (measured-status/05).
 			if authoringID == evidenceID || (bf.IndependenceOverride != "" && selfLabeledIndependent) {
 				sameIdentity = append(sameIdentity, identPair{label, authoringID, selfLabeledIndependent, s.Root, rel,
-					bf.IndependenceOverride, bf.Authored})
+					bf.IndependenceOverride, bf.Authored, authoringID != evidenceID})
 			}
 		}
 	}
@@ -595,7 +600,7 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 			// reading as distinct-identity from the fast index is unaffected either
 			// way, and a brief the token layer already flagged (the `corroborating`
 			// bucket below) is already a hard PROBLEM regardless of this refinement.
-			var confirmed, unconfirmed []identPair
+			var confirmed, unconfirmed, unjudgedOverride []identPair
 			history := evidenceHistoryChecks(len(escalated), func(i int) (bool, bool) {
 				p := escalated[i]
 				return evidenceSectionTouchedByOtherIdentity(p.root, p.rel, p.id)
@@ -607,8 +612,15 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 					// Could not determine the Evidence section's own history (no
 					// "## Evidence" heading found, unreadable history, git
 					// unavailable) — fail OPEN to advisory here: never turn an
-					// undetermined case into a false hard PROBLEM.
-					unconfirmed = append(unconfirmed, p)
+					// undetermined case into a false hard PROBLEM. A brief that is
+					// here only because it carries an override is not a same-identity
+					// whole-file candidate, so it is reported as an override that could
+					// not be judged, not under the same-identity notice below.
+					if p.forced {
+						unjudgedOverride = append(unjudgedOverride, p)
+					} else {
+						unconfirmed = append(unconfirmed, p)
+					}
 				case touchedByOther:
 					// An identity other than the author touched the Evidence section at
 					// some point in its history — independence was genuinely
@@ -631,7 +643,8 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 					if why == "" {
 						addNotice("%s: committer-identity cross-check FAILS (authoring and every Evidence commit "+
 							"share one git identity, %q) but is OVERRIDDEN by a recorded human authorization — "+
-							"independence-override: human:%s on %s, committed by a different identity in %s; reason: %s",
+							"independence-override: human:%s on %s, committed under a different git author identity "+
+							"in %s; reason: %s",
 							p.label, p.id, ov.name, ov.date, shortSHA(sha), ov.reason)
 						continue
 					}
@@ -657,6 +670,20 @@ func attributionProblems(streams []*Stream) (problems, notices []string) {
 					"authoring and most-recent commit share one identity (no \"## Evidence\" heading found, or "+
 					"its history was unreadable); token-level attribution is the only independence signal for "+
 					"these until that resolves: %s", len(unconfirmed), strings.Join(labels, ", "))
+			}
+			if len(unjudgedOverride) > 0 {
+				labels := make([]string, 0, len(unjudgedOverride))
+				for _, p := range unjudgedOverride {
+					labels = append(labels, p.label)
+				}
+				sort.Strings(labels)
+				addNotice("verification-independence: committer-identity cross-check — the recorded "+
+					"independence-override of %d brief(s) could not be judged: each is in the precise "+
+					"Evidence-section pass only because it carries an override (its whole-file authoring and "+
+					"most-recent commit are under different identities), and its Evidence section's own history "+
+					"could not be read (no \"## Evidence\" heading found, or its history was unreadable); the "+
+					"override is neither honored nor refused until that resolves: %s",
+					len(unjudgedOverride), strings.Join(labels, ", "))
 			}
 			if len(corroborating) > 0 {
 				labels := make([]string, 0, len(corroborating))
@@ -697,13 +724,17 @@ type independenceOverride struct {
 }
 
 // parseIndependenceOverride parses raw against independenceOverrideRe. why is ""
-// on success, else the reason the value is malformed. The reason must say
+// on success, else the reason the value is malformed. The date must be a real
+// calendar date (2026-02-30 is malformed). The reason must say
 // something: leading separators ("—", "-", ":") are trimmed and an empty
 // remainder is malformed, so a bare `human:<name> <date>` authorizes nothing.
 func parseIndependenceOverride(raw string) (ov independenceOverride, why string) {
 	m := independenceOverrideRe.FindStringSubmatch(strings.TrimSpace(raw))
 	if m == nil {
 		return ov, fmt.Sprintf("the value %q does not read as \"human:<name> YYYY-MM-DD <reason>\"", raw)
+	}
+	if _, err := time.Parse("2006-01-02", m[2]); err != nil {
+		return ov, fmt.Sprintf("the date %q is not a calendar date", m[2])
 	}
 	reason := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(m[3]), "—–-: "))
 	if reason == "" {
@@ -718,29 +749,45 @@ func parseIndependenceOverride(raw string) (ov independenceOverride, why string)
 // but also an explicit override path). It returns the parsed override and the
 // commit that recorded it, and why == "" ONLY when every condition holds:
 //
-//  1. GRAMMAR — the value is `human:<name> YYYY-MM-DD <reason>` with a non-empty
-//     reason (parseIndependenceOverride).
+//  1. GRAMMAR — the value is `human:<name> YYYY-MM-DD <reason>` with a real
+//     calendar date and a non-empty reason (parseIndependenceOverride).
 //  2. A CURRENT HUMAN — <name> resolves through the CURRENT human-login map
 //     (HumanLogin), the same map the approval gates use. A name in the
 //     former-humans map only, or in neither, authorizes nothing: a departed human
 //     cannot authorize today, and an unconfigured map honors no override at all.
 //  3. NOT THE AUTHOR — <name> is not the brief's own `authored:` token: the human
 //     who wrote the work does not excuse its verification.
-//  4. NOT SELF-SERVE — the frontmatter line carrying the override, as committed at
-//     HEAD, was last written by a git identity OTHER than the one the PROBLEM
-//     names. The identity whose same-identity pair is being excused cannot record
-//     (or later edit) its own excuse; an uncommitted override has no committer and
-//     is not honored either.
-//  5. NOT STALE — the brief's current Evidence section (working tree) says exactly
+//  4. NOT IN A FIXTURE CORPUS — the brief does not lie in a declared fixture corpus
+//     (isExcludedFixturePath). `--corroborate` skips the human:<name> stamps there,
+//     so an override in one could never be corroborated online.
+//  5. A DIFFERENT RECORDING IDENTITY — the frontmatter line carrying the override,
+//     as committed at HEAD, was last written by a commit whose git AUTHOR identity
+//     (the commit object's own email, mailmap off — frontmatterKeyLineProvenance)
+//     differs from the identity the PROBLEM names. An uncommitted override, or a
+//     working-tree value that differs from the committed line, has no recorder and
+//     is refused.
+//  6. NOT POSTDATED — the override's date is not later than the committer date of
+//     the commit that recorded it (one day of slack for timezones). There is no
+//     lower bound: a human may rule days before the line is committed.
+//  7. NOT STALE — the brief's current Evidence section (working tree) says exactly
 //     what it said in the commit that recorded the override. The override covers
 //     the Evidence the human saw; any later Evidence edit, committed or not,
 //     re-opens the PROBLEM until a human records the override again. This is
 //     judged by CONTENT, never by commit ancestry (#2026).
 //
-// Every git read that cannot answer is a refusal, never a pass. The ONLINE half
-// is not here: `--corroborate` treats the `human:<name>` token on an ADDED
-// override line like every other added human stamp (stampsInDiff), so the PR that
-// records it needs that human's own approval on the PR to corroborate.
+// WHAT THIS DOES NOT PROVE. Conditions 5 and 6 read commit metadata, and a git
+// author identity and committer date are whatever the committer set. So this
+// check stops the excused identity recording an override under its OWN author
+// email; it does not stop an actor who commits under a second email or as
+// another automation identity, and nothing here ties <name> to the person who
+// made the commit. The control that would bind <name> to that human is ONLINE:
+// `--corroborate` treats the `human:<name>` token on an ADDED override line like
+// every other added human stamp (stampsInDiff), so on a PR it is corroborated only
+// by that human's own approval on the PR. That control binds only where
+// `--corroborate` actually runs on the PR that adds the override; it is not part
+// of this offline check.
+//
+// Every git read that cannot answer is a refusal, never a pass.
 func independenceOverrideRefusal(root, rel, excusedID, raw, authored string) (ov independenceOverride, sha, why string) {
 	ov, why = parseIndependenceOverride(raw)
 	if why != "" {
@@ -755,7 +802,10 @@ func independenceOverrideRefusal(root, rel, excusedID, raw, authored string) (ov
 	if tok, ok := authorToken(authored); ok && tok == ov.name {
 		return ov, "", fmt.Sprintf("human:%s is the brief's own author — the author does not excuse the verification of their own work", ov.name)
 	}
-	value, recSHA, recID, ok := frontmatterKeyLineProvenance(root, rel, "independence-override")
+	if isExcludedFixturePath(root, filepath.ToSlash(rel)) {
+		return ov, "", "the brief lies in a declared fixture corpus, whose human:<name> stamps --corroborate skips, so the override could never be corroborated online"
+	}
+	value, recSHA, recID, recDay, ok := frontmatterKeyLineProvenance(root, rel, "independence-override")
 	if !ok {
 		return ov, "", "the override line is not committed at HEAD (or git cannot attribute it), so who recorded it is unknown"
 	}
@@ -763,7 +813,15 @@ func independenceOverrideRefusal(root, rel, excusedID, raw, authored string) (ov
 		return ov, "", "the committed override is not a single-line value matching the working tree, so the line git attributes is not the override being judged"
 	}
 	if recID == excusedID {
-		return ov, "", fmt.Sprintf("it was recorded by the same git identity it would excuse (%q) — an identity cannot authorize its own independence override", recID)
+		return ov, "", fmt.Sprintf("it was recorded by the same git identity it would excuse (%q) — the override line must be committed under a different git author identity", recID)
+	}
+	authorizedOn, _ := time.Parse("2006-01-02", ov.date) // validated by parseIndependenceOverride
+	recordedOn, err := time.Parse("2006-01-02", recDay)
+	if err != nil {
+		return ov, "", fmt.Sprintf("the date of the commit that recorded the override (%s) could not be read", shortSHA(recSHA))
+	}
+	if authorizedOn.After(recordedOn.AddDate(0, 0, 1)) {
+		return ov, "", fmt.Sprintf("it is dated %s, later than the commit that recorded it (%s, %s) — an authorization cannot postdate its own record", ov.date, shortSHA(recSHA), recDay)
 	}
 	seen, ok := evidenceSectionAtCommit(root, recSHA, rel)
 	if !ok {

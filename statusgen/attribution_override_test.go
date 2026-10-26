@@ -80,8 +80,8 @@ func validOverride() string {
 }
 
 // TestAttributionIdentityOverrideHonored: a valid override — a current human, not the
-// author, recorded by a git identity OTHER than the one excused, no newer than the
-// Evidence it covers — turns the hard PROBLEM into a visible NOTICE. A later same-
+// author, committed under a git author identity OTHER than the one excused, and the
+// Evidence unchanged since it was recorded — turns the hard PROBLEM into a visible NOTICE. A later same-
 // identity commit OUTSIDE the Evidence section (a mechanical title touch, which would
 // otherwise re-arm the whole-file same-identity signal) does not invalidate it.
 func TestAttributionIdentityOverrideHonored(t *testing.T) {
@@ -128,8 +128,9 @@ func TestAttributionIdentityOverrideVisibleWhenRecorderClearsWholeFileSignal(t *
 	}
 }
 
-// TestAttributionIdentityOverrideSelfServeRefused: the identity whose same-identity pair
-// is being excused cannot record its own override — even naming a real current human.
+// TestAttributionIdentityOverrideSelfServeRefused: an override committed under the same
+// git author identity as the one being excused is refused — even naming a real current
+// human.
 // The hard PROBLEM stands, and says why the override was not honored.
 func TestAttributionIdentityOverrideSelfServeRefused(t *testing.T) {
 	root, b1 := overrideRepo(t)
@@ -178,7 +179,7 @@ func TestAttributionIdentityOverrideStaleRefused(t *testing.T) {
 	problems, _ := attrProblemsAndNotices(t, root)
 	p := problemFor(problems, "gitattr/brief-01")
 	if !strings.Contains(p, "NOT honored") || !strings.Contains(p, "stale") {
-		t.Fatalf("an override older than the Evidence section's newest commit must be refused as stale; got:\n%s", strings.Join(problems, "\n"))
+		t.Fatalf("an override whose Evidence section changed after it was recorded must be refused as stale; got:\n%s", strings.Join(problems, "\n"))
 	}
 }
 
@@ -255,6 +256,7 @@ func TestIndependenceOverrideRefusalNonGit(t *testing.T) {
 	}{
 		{"no-date", "human:alex because", authored, "does not read as"},
 		{"no-reason", "human:alex 2026-10-25", authored, "does not read as"},
+		{"not-a-calendar-date", "human:alex 2026-02-30 no such day", authored, "not a calendar date"},
 		{"separator-only-reason", "human:alex 2026-10-25 — ", authored, "gives no reason"},
 		{"relay-is-not-authorization", "on-behalf-of human:alex 2026-10-25 relayed", authored, "does not read as"},
 		{"prose-mention", "per human:alex 2026-10-25 ok", authored, "does not read as"},
@@ -276,10 +278,11 @@ func TestIndependenceOverrideRefusalNonGit(t *testing.T) {
 	}
 }
 
-// TestIndependenceOverrideIsCorroboratedOnline: the online half. The `human:<name>` on an
-// ADDED override line is a stamp `--corroborate` must corroborate against that human's
-// own act on the PR — it is not on a board row, so it can never be exempted as
-// pre-existing.
+// TestIndependenceOverrideIsCorroboratedOnline: the online half, as a unit test of the
+// stamp scanner only. The `human:<name>` on an ADDED override line is a stamp that
+// `--corroborate`, when it runs on the PR, must corroborate against that human's own act
+// on the PR — it is not on a board row, so it can never be exempted as pre-existing.
+// This test does not show that any CI lane runs `--corroborate` on such a PR.
 func TestIndependenceOverrideIsCorroboratedOnline(t *testing.T) {
 	diff := "diff --git a/docs/streams/s/brief-01-x.md b/docs/streams/s/brief-01-x.md\n" +
 		"--- a/docs/streams/s/brief-01-x.md\n" +
@@ -299,4 +302,117 @@ func TestIndependenceOverrideIsCorroboratedOnline(t *testing.T) {
 		}
 	}
 	t.Fatalf("the added override's human:alex must be a stamp --corroborate checks; got %+v", stamps)
+}
+
+// writeOverrideFixtureFile is a small fixture helper: it writes content to root/rel, creating parents.
+func writeOverrideFixtureFile(t *testing.T, root, rel, content string) {
+	t.Helper()
+	p := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestAttributionIdentityOverrideRecorderIsCommitAuthor: the recorder of the override line
+// is the author recorded in the commit object that last wrote it, read the same way as the
+// identity it would excuse. A repository .mailmap changes neither side: an override the
+// excused identity committed stays refused, and an override a distinct identity committed
+// stays honored, whatever the mailmap folds together.
+func TestAttributionIdentityOverrideRecorderIsCommitAuthor(t *testing.T) {
+	t.Run("excused-identity-commit-stays-refused", func(t *testing.T) {
+		root, b1 := overrideRepo(t)
+		setOverride(t, b1, validOverride())
+		writeOverrideFixtureFile(t, root, ".mailmap", "Carol <carol@example.com> <alice@example.com>\n")
+		gitCommitAs(t, root, "Alice", "alice@example.com", "alice records an override and a mailmap entry")
+
+		problems, notices := attrProblemsAndNotices(t, root)
+		p := problemFor(problems, "gitattr/brief-01")
+		if !strings.Contains(p, "NOT honored") || !strings.Contains(p, "same git identity") {
+			t.Fatalf("an override committed by the excused identity must stay refused under a .mailmap; problems:\n%s\nnotices:\n%s",
+				strings.Join(problems, "\n"), strings.Join(notices, "\n"))
+		}
+		if strings.Contains(strings.Join(notices, "\n"), "OVERRIDDEN") {
+			t.Fatalf("a refused override must not also read as honored; notices:\n%s", strings.Join(notices, "\n"))
+		}
+	})
+	t.Run("distinct-identity-commit-stays-honored", func(t *testing.T) {
+		root, b1 := overrideRepo(t)
+		setOverride(t, b1, validOverride())
+		writeOverrideFixtureFile(t, root, ".mailmap", "Alice <alice@example.com> <carol@example.com>\n")
+		gitCommitAs(t, root, "Carol", "carol@example.com", "carol records the override and a mailmap entry")
+
+		problems, notices := attrProblemsAndNotices(t, root)
+		if p := problemFor(problems, "gitattr/brief-01"); p != "" {
+			t.Fatalf("an override committed by a distinct identity must be honored whatever the .mailmap says; got:\n%s", p)
+		}
+		if !strings.Contains(strings.Join(notices, "\n"), "OVERRIDDEN") {
+			t.Fatalf("the honored override must be reported; notices:\n%s", strings.Join(notices, "\n"))
+		}
+	})
+}
+
+// TestAttributionIdentityOverrideInFixtureCorpusRefused: a brief inside a declared fixture
+// corpus has its human:<name> stamps skipped by --corroborate, so an override there could
+// never be corroborated online. It is refused, and the refusal says why.
+func TestAttributionIdentityOverrideInFixtureCorpusRefused(t *testing.T) {
+	root, b1 := overrideRepo(t)
+	setOverride(t, b1, validOverride())
+	writeOverrideFixtureFile(t, root, "docs/streams/gitattr/"+fixtureCorpusMarkerName, "")
+	gitCommitAs(t, root, "Carol", "carol@example.com", "carol records the override; the stream declares a fixture corpus")
+
+	problems, notices := attrProblemsAndNotices(t, root)
+	p := problemFor(problems, "gitattr/brief-01")
+	if !strings.Contains(p, "NOT honored") || !strings.Contains(p, "fixture corpus") {
+		t.Fatalf("an override inside a declared fixture corpus must be refused; problems:\n%s\nnotices:\n%s",
+			strings.Join(problems, "\n"), strings.Join(notices, "\n"))
+	}
+}
+
+// TestAttributionIdentityOverrideDateAfterRecordingRefused: the override's date is when the
+// human authorized it, so it cannot be later than the commit that recorded it.
+func TestAttributionIdentityOverrideDateAfterRecordingRefused(t *testing.T) {
+	root, b1 := overrideRepo(t)
+	setOverride(t, b1, `"human:`+overrideHuman+` 2999-01-01 dated after the commit that records it"`)
+	gitCommitAs(t, root, "Carol", "carol@example.com", "carol records an override dated in the future")
+
+	problems, _ := attrProblemsAndNotices(t, root)
+	p := problemFor(problems, "gitattr/brief-01")
+	if !strings.Contains(p, "NOT honored") || !strings.Contains(p, "later than the commit") {
+		t.Fatalf("an override dated after its recording commit must be refused; got:\n%s", strings.Join(problems, "\n"))
+	}
+}
+
+// TestAttributionIdentityOverrideForcedInUnreadableEvidenceNotice: a brief that reaches the
+// precise pass only because it carries an override (its whole-file authoring and newest
+// commit are under different identities) and whose Evidence history cannot be read is
+// reported as an override that could not be judged. It is not described as a brief whose
+// whole-file authoring and most-recent commit share one identity.
+func TestAttributionIdentityOverrideForcedInUnreadableEvidenceNotice(t *testing.T) {
+	root, b1 := overrideRepo(t)
+	body, err := os.ReadFile(b1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A heading the brief parser reads as Evidence but the line-range history walk
+	// does not locate, so the Evidence section's history is unreadable.
+	if err := os.WriteFile(b1, []byte(strings.Replace(string(body), "## Evidence\n", "## Evidence \n", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCommitAs(t, root, "Alice", "alice@example.com", "alice touches the Evidence heading")
+	setOverride(t, b1, validOverride())
+	gitCommitAs(t, root, "Carol", "carol@example.com", "carol records the override")
+
+	_, notices := attrProblemsAndNotices(t, root)
+	joined := strings.Join(notices, "\n")
+	for _, n := range notices {
+		if strings.Contains(n, "gitattr/brief-01") && strings.Contains(n, "whose whole-file authoring and most-recent commit share one identity") {
+			t.Fatalf("a brief in the precise pass only because of its override must not be described as same-identity whole-file; got:\n%s", n)
+		}
+	}
+	if !strings.Contains(joined, "gitattr/brief-01") || !strings.Contains(joined, "could not be judged") {
+		t.Fatalf("the unjudged override must be reported by name; notices:\n%s", joined)
+	}
 }

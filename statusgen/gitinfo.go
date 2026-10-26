@@ -401,20 +401,30 @@ func evidenceSectionAtCommit(root, sha, relPath string) (section string, ok bool
 
 // frontmatterKeyLineProvenance finds the single line `<key>: <value>` in the
 // YAML frontmatter of relPath as COMMITTED at HEAD and returns that line's value
-// (quotes stripped) together with the commit that last wrote the line and that
-// commit's author identity (email, lowercased — the same identity key as
-// gitPathLastAuthorIdentity). ok is false when HEAD has no such frontmatter line
-// (the key is absent or uncommitted) or git cannot attribute it; callers MUST
-// treat !ok as "provenance unknown", never as a pass.
-func frontmatterKeyLineProvenance(root, relPath, key string) (value, sha, identity string, ok bool) {
+// (quotes stripped) together with the commit that last wrote the line, that
+// commit's author identity and its committer date (YYYY-MM-DD, in the committer's
+// own timezone).
+//
+// git blame is consulted for the commit sha ONLY. The identity is read from that
+// commit object itself with `%ae` and mailmap use explicitly off: blame's own
+// author-mail applies the repository's .mailmap, while every other identity in the
+// committer-identity cross-check (buildPathAuthorIndex, gitPathLastAuthorIdentity,
+// evidenceSectionTouchedByOtherIdentity) is the commit object's unmapped `%ae`. Both
+// sides of the not-self-serve comparison are therefore the same identity key —
+// email, lowercased — and a committed .mailmap cannot fold one into the other.
+//
+// ok is false when HEAD has no such frontmatter line (the key is absent or
+// uncommitted) or git cannot attribute it; callers MUST treat !ok as "provenance
+// unknown", never as a pass.
+func frontmatterKeyLineProvenance(root, relPath, key string) (value, sha, identity, day string, ok bool) {
 	slashPath := filepath.ToSlash(relPath)
 	content, err := gitShowObject(root, "HEAD", slashPath)
 	if err != nil {
-		return "", "", "", false
+		return "", "", "", "", false
 	}
 	lines := strings.Split(string(content), "\n")
 	if len(lines) == 0 || strings.TrimRight(lines[0], "\r") != "---" {
-		return "", "", "", false
+		return "", "", "", "", false
 	}
 	lineNo := 0
 	for i := 1; i < len(lines); i++ {
@@ -432,27 +442,33 @@ func frontmatterKeyLineProvenance(root, relPath, key string) (value, sha, identi
 		}
 	}
 	if lineNo == 0 {
-		return "", "", "", false
+		return "", "", "", "", false
 	}
 	out, err := exec.Command("git", "-C", root, "blame", "--porcelain",
 		"-L", fmt.Sprintf("%d,%d", lineNo, lineNo), "HEAD", "--", slashPath).Output()
 	if err != nil {
-		return "", "", "", false
+		return "", "", "", "", false
 	}
-	for i, ln := range strings.Split(string(out), "\n") {
-		if i == 0 {
-			if f := strings.Fields(ln); len(f) > 0 {
-				sha = f[0]
-			}
-			continue
-		}
-		if mail, found := strings.CutPrefix(ln, "author-mail "); found {
-			identity = strings.ToLower(strings.Trim(strings.TrimSpace(mail), "<>"))
-			break
+	// The porcelain header's first field is the blamed commit's sha; nothing else
+	// in blame's output is read (its author-mail is mailmap-applied).
+	if first, _, _ := strings.Cut(string(out), "\n"); first != "" {
+		if f := strings.Fields(first); len(f) > 0 {
+			sha = f[0]
 		}
 	}
-	if sha == "" || identity == "" {
-		return "", "", "", false
+	if sha == "" {
+		return "", "", "", "", false
 	}
-	return value, sha, identity, true
+	meta, err := exec.Command("git", "-C", root, "log", "-1", "--no-use-mailmap",
+		"--format=%ae%x00%cs", sha, "--").Output()
+	if err != nil {
+		return "", "", "", "", false
+	}
+	mail, date, _ := strings.Cut(strings.TrimSpace(string(meta)), "\x00")
+	identity = strings.ToLower(strings.TrimSpace(mail))
+	day = strings.TrimSpace(date)
+	if identity == "" || day == "" {
+		return "", "", "", "", false
+	}
+	return value, sha, identity, day, true
 }
