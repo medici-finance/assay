@@ -670,14 +670,14 @@
     {
       "name": "a leading word that cannot be a login not read past",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "seen := pastLead(blank)\n\t\t\t\t\tif seen != t {\n\t\t\t\t\t\tout = append(out, seen)\n\t\t\t\t\t}\n\t\t\t\t\t// Only the leading words are read as a renderer shows them; what follows them\n\t\t\t\t\t// is taken as written, so nothing later in the text decides this reading.\n\t\t\t\t\tif lead := pastShownLead(blank);",
-      "new": "seen := strings.TrimSpace(blank)\n\t\t\t\t\tif seen != t {\n\t\t\t\t\t\tout = append(out, seen)\n\t\t\t\t\t}\n\t\t\t\t\t// Only the leading words are read as a renderer shows them; what follows them\n\t\t\t\t\t// is taken as written, so nothing later in the text decides this reading.\n\t\t\t\t\tif lead := strings.TrimSpace(blank);"
+      "old": "seen := pastLead(blank)\n\t\t\t\t\tif seen != t {\n\t\t\t\t\t\tout = append(out, seen)\n\t\t\t\t\t}\n\t\t\t\t\t// Only the leading words are read as a renderer shows them, each by itself, and\n\t\t\t\t\t// what follows them is taken as written.\n\t\t\t\t\tif lead := pastShownLead(blank);",
+      "new": "seen := strings.TrimSpace(blank)\n\t\t\t\t\tif seen != t {\n\t\t\t\t\t\tout = append(out, seen)\n\t\t\t\t\t}\n\t\t\t\t\t// Only the leading words are read as a renderer shows them, each by itself, and\n\t\t\t\t\t// what follows them is taken as written.\n\t\t\t\t\tif lead := strings.TrimSpace(blank);"
     },
     {
       "name": "the reading past a leading word not trimmed",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := wordEnd(t, shown)",
-      "new": "\tfor {\n\t\tend := wordEnd(t, shown)"
+      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)",
+      "new": "\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)"
     },
     {
       "name": "only the first leading word read past",
@@ -694,8 +694,8 @@
     {
       "name": "a leading word read past only when it ends at a space",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "\t\tif unicode.IsSpace(r) {\n\t\t\treturn i\n",
-      "new": "\t\tif r == ' ' {\n\t\t\treturn i\n"
+      "old": "end := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif end <= 0 {",
+      "new": "end := strings.IndexByte(t, ' ')\n\t\tif end <= 0 {"
     },
     {
       "name": "an ASCII punctuation word taken for a name",
@@ -718,20 +718,20 @@
     {
       "name": "the reading past a leading word trimmed of ASCII white space only",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := wordEnd(t, shown)\n\t\tif end == 0 || end == len(t) {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = shownWord(word)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.TrimSpace(t[end:])\n",
-      "new": "\tt = strings.Trim(t, \" \\t\")\n\tfor {\n\t\tend := wordEnd(t, shown)\n\t\tif end == 0 || end == len(t) {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = shownWord(word)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.Trim(t[end:], \" \\t\")\n"
+      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif end <= 0 {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = glyphWordRe.ReplaceAllString(word, glyphPlaceholder)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.TrimSpace(t[end:])\n",
+      "new": "\tt = strings.Trim(t, \" \\t\")\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif end <= 0 {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = glyphWordRe.ReplaceAllString(word, glyphPlaceholder)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.Trim(t[end:], \" \\t\")\n"
     },
     {
       "name": "the reading past a leading word trimmed of every white space but a tab",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := wordEnd(t, shown)\n\t\tif end == 0 || end == len(t) {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = shownWord(word)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.TrimSpace(t[end:])\n",
-      "new": "\tt = strings.Trim(t, \" \"+string(rune(0xa0))+string(rune(0x3000)))\n\tfor {\n\t\tend := wordEnd(t, shown)\n\t\tif end == 0 || end == len(t) {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = shownWord(word)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.Trim(t[end:], \" \"+string(rune(0xa0))+string(rune(0x3000)))\n"
+      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif end <= 0 {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = glyphWordRe.ReplaceAllString(word, glyphPlaceholder)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.TrimSpace(t[end:])\n",
+      "new": "\tt = strings.Trim(t, \" \"+string(rune(0xa0))+string(rune(0x3000)))\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif end <= 0 {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = glyphWordRe.ReplaceAllString(word, glyphPlaceholder)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.Trim(t[end:], \" \"+string(rune(0xa0))+string(rune(0x3000)))\n"
     },
     {
       "name": "the reading past a leading word trimmed of ASCII white space only at its start",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := wordEnd(t, shown)",
-      "new": "\tt = strings.Trim(t, \" \\t\")\n\tfor {\n\t\tend := wordEnd(t, shown)"
+      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)",
+      "new": "\tt = strings.Trim(t, \" \\t\")\n\tfor {\n\t\tend := strings.IndexFunc(t, unicode.IsSpace)"
     },
     {
       "name": "the word after a leading word trimmed of ASCII white space only",
@@ -742,8 +742,8 @@
     {
       "name": "a word shown as a glyph not read as a symbol",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "return glyphWordRe.ReplaceAllString(mathSpanRe.ReplaceAllString(w, glyphPlaceholder), glyphPlaceholder)",
-      "new": "return mathSpanRe.ReplaceAllString(w, glyphPlaceholder)"
+      "old": "word = glyphWordRe.ReplaceAllString(word, glyphPlaceholder)",
+      "new": "word = strings.TrimSpace(word)"
     },
     {
       "name": "the shown-lead reading not read past its leading words",
@@ -776,16 +776,16 @@
       "new": "if g := glyphWordRe.ReplaceAllString(t, glyphPlaceholder); g != t {\n\t\t\t\t\t\tif seen := pastLead(strings.Map(dropBlank, g)); strings.HasSuffix(blank, seen) {\n\t\t\t\t\t\t\tout = append(out, seen)\n\t\t\t\t\t\t}\n\t\t\t\t\t}"
     },
     {
-      "name": "a span typeset as math not read as a symbol",
+      "name": "the reading with every math span dropped not taken",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "return glyphWordRe.ReplaceAllString(mathSpanRe.ReplaceAllString(w, glyphPlaceholder), glyphPlaceholder)",
-      "new": "return glyphWordRe.ReplaceAllString(w, glyphPlaceholder)"
+      "old": "before.WriteString(d[last:])\n\tadd(before.String())",
+      "new": "before.WriteString(d[last:])"
     },
     {
-      "name": "a math span with white space inside it ended at that white space",
+      "name": "a math span's text read only from its start",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if m := mathLeadRe.FindString(t[i:]); m != \"\" {",
-      "new": "if m := \"\"; m != \"\" {"
+      "old": "for _, at := range starts {",
+      "new": "for _, at := range starts[:1] {"
     },
     {
       "name": "the text after a line break or block element not read",
@@ -838,8 +838,8 @@
     {
       "name": "an element a sanitizer drops read only with its text",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if e := droppedElementRe.ReplaceAllString(r, \"\"); e != r {",
-      "new": "if e := r; e != r {"
+      "old": "sanitized := droppedElementRe.ReplaceAllString(r, \"\")",
+      "new": "sanitized := r"
     },
     {
       "name": "a style element not read as dropped",
@@ -888,6 +888,78 @@
       "file": "cmd/deskevidence/principalstamp.go",
       "old": "t[i-1] == '\\t' || t[i-1] == '(') && identityShowsTag",
       "new": "t[i-1] == '\\t') && identityShowsTag"
+    },
+    {
+      "name": "a math span's text not read",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "add(before.String() + mathMarkupRe.ReplaceAllString(body[at:], \"\") + d[sp[1]:])",
+      "new": "_ = at"
+    },
+    {
+      "name": "a math span's markup not removed from its text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "add(before.String() + mathMarkupRe.ReplaceAllString(body[at:], \"\") + d[sp[1]:])",
+      "new": "add(before.String() + body[at:] + d[sp[1]:])"
+    },
+    {
+      "name": "a math span's text not read from after white space in it",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for i, r := range body {\n\t\t\tif unicode.IsSpace(r) {",
+      "new": "for i, r := range body {\n\t\t\tif r == 0 {"
+    },
+    {
+      "name": "a math span's text not read from after a control word in it",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, m := range mathMarkupRe.FindAllStringIndex(body, -1) {",
+      "new": "for _, m := range mathMarkupRe.FindAllStringIndex(body, 0) {"
+    },
+    {
+      "name": "a math span before the one read kept as written",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "before.WriteString(d[last:sp[0]])",
+      "new": "before.WriteString(d[last:sp[1]])"
+    },
+    {
+      "name": "the math readings not taken",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, d := range mathDecodings(v) {",
+      "new": "for _, d := range decodings(v) {"
+    },
+    {
+      "name": "the shown lead read with a math span joined into one word across white space",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "end := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif end <= 0 {\n\t\t\treturn t\n\t\t}",
+      "new": "end := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif m := regexp.MustCompile(\"^\" + mathSpanRe.String()).FindString(t); shown && m != \"\" {\n\t\t\tend = len(m) + strings.IndexFunc(t[len(m):], unicode.IsSpace)\n\t\t\tif end < len(m) {\n\t\t\t\tend = -1\n\t\t\t}\n\t\t}\n\t\tif end <= 0 {\n\t\t\treturn t\n\t\t}"
+    },
+    {
+      "name": "an element a renderer hides by default read only with its text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "hiddenElementRe.ReplaceAllString(r, \"\"), hiddenElementRe.ReplaceAllString(sanitized, \"\")}",
+      "new": "r, sanitized}"
+    },
+    {
+      "name": "a ruby fallback not read as hidden",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "(?is)<\\s*(?:rp|datalist|dialog)\\b",
+      "new": "(?is)<\\s*(?:datalist|dialog)\\b"
+    },
+    {
+      "name": "the hidden attribute not read as hiding its element",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "[^>]*\\shidden\\b[^>]*>",
+      "new": "[^>]*\\shiddenx\\b[^>]*>"
+    },
+    {
+      "name": "elements a sanitizer drops and elements a renderer hides read dropped only together",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "[]string{sanitized, hiddenElementRe.ReplaceAllString(r, \"\"), hiddenElementRe",
+      "new": "[]string{hiddenElementRe"
+    },
+    {
+      "name": "elements a renderer hides not read dropped beside dropped elements",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": ", hiddenElementRe.ReplaceAllString(sanitized, \"\")} {",
+      "new": "} {"
     }
   ]
 }
