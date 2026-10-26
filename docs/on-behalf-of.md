@@ -291,23 +291,32 @@ same roster's human set:
     word a renderer replaces with a glyph (`:name:`) is read as one symbol with no ASCII
     letter or digit. Each leading word still ends at white space and is read by itself, and
     the rest of the text stays as written, so a glyph word, a dollar sign or a clock time
-    later in a cell can add a reading but never removes one. A span a renderer can typeset as
-    math (a run of `$`, text on one line, and the next run of `$`; the tool pairs any two runs
-    rather than holding a renderer's delimiter rules) is read beside the text as written:
-    once with every such span dropped, as when each shows only a symbol or blank space, and
-    once for each span and each place in its text where a control word, a brace or white
-    space ends, with that span's text read from there on with its markup (control words,
-    braces, backticks and sub- or superscript signs) removed, every span before it dropped and
-    the text after it as written, since a renderer can typeset a span's text as text and show
-    what comes before such a place as blank space or as nothing. The text after each raw line
-    break or block element tag (a paragraph, list, table or disclosure element and the like)
-    is also read as a text of its own, since a renderer starts a new line there. Every reading
-    is taken both with and without the text of a raw HTML element a sanitizer can drop with
-    its text (`<script>`, `<style>` and the like), and apart from that, both with and without
-    the text of an element a renderer hides by default (a ruby fallback `<rp>`, a `<datalist>`
-    or `<dialog>`, or any element with a `hidden` attribute). These readings are rules the
-    tool holds, not a renderer's own behaviour; each only adds a reading, so they can refuse a
-    cell a renderer shows plainly, and a renderer can show a cell in a way none of them names.
+    later in a cell can add a reading but never removes one. When a text holds two or more runs
+    of `$` a renderer can take as math delimiters (an escaped dollar sign, one written as an
+    entity and one inside a code span are not, since a renderer shows each as text, and the runs
+    are found before entities are decoded), it is read beside the text as written, always with
+    the text before the first run as written: once for each run, with everything from the first
+    run up to and including it dropped, as when the spans there show only a symbol or blank
+    space; once with every run dropped and the text between them read as math; and once for
+    each two adjacent runs and each place in the text between them where a control word, a
+    brace or white space ends, with everything from the first run up to that place dropped, the
+    text from there to the second run read as math and the text after it as written. Text read
+    as math has its markup (control words, braces, backticks and sub- or superscript signs)
+    removed, a control word for a bracket, brace, bar or escaped sign read as that character,
+    and is read both with its white space and with it dropped, as math typesets the symbols in
+    it without the white space between them. No reading depends on which runs before a span a
+    renderer pairs. The text after each raw line break or block element tag (a paragraph, list,
+    table or disclosure element and the like) is also read as a text of its own, since a
+    renderer starts a new line there. Every reading is taken both with and without the text of
+    a raw HTML element a sanitizer can drop with its text (`<script>`, `<style>` and the like),
+    and apart from that, both with and without the text of an element a renderer hides by
+    default (a ruby fallback `<rp>`, a `<datalist>` or `<dialog>`, or any element with a
+    `hidden` attribute, which may follow white space, a slash or a closing quote). Such an
+    element is read dropped two ways: to the first closing tag after it, and to the closing tag
+    that matches it, counting the elements of the same name opened inside it. These readings
+    are rules the tool holds, not a renderer's own behaviour; each only adds a reading, so they
+    can refuse a cell a renderer shows plainly, and a renderer can pair, typeset or hide text in
+    a way none of them names.
     Every trim takes any Unicode white space, a non-breaking or wide space included.
     A cell's text so starts at the first word a reader can take for a name. A cell's
     identity region is its text up to the first ASCII space or `(`, where the lint cuts it,

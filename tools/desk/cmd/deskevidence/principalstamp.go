@@ -551,13 +551,14 @@ func linkReadings(s string) []string {
 // comment reading and each link reading, with HTML tags and emphasis, strikethrough, code and
 // escape characters removed, and entities decoded, read once with the text of each element a
 // sanitizer can drop kept and dropped, and apart from those, of each element a renderer hides
-// by default kept and dropped (see droppedElementRe and hiddenElementRe), each of those once more from each place a renderer
-// starts a new line at (see lineBreakRe), and each of those once more for each way a renderer
-// can typeset its math spans (see mathReadings). Each is read once as it stands and once with
-// every character that renders as nothing dropped (see rendersBlank) and the words that lead it
-// and cannot be a login skipped (see pastLead), so a text's identity region (see
-// identityRegion) starts at the first word a reader can take for a name. That last reading is
-// taken once more with its leading words read as a renderer shows them (see pastShownLead).
+// by default kept and dropped two ways (see droppedElementRe, hiddenElementRe and dropHidden),
+// each of those once more from each place a renderer starts a new line at (see lineBreakRe),
+// and each of those once more for each math reading the tool takes (see mathReadings). Each is
+// read once as it stands and once with every character that renders as nothing dropped (see
+// rendersBlank) and the words that lead it and cannot be a login skipped (see pastLead), so a
+// text's identity region (see identityRegion) starts at the first word a reader can take for a
+// name. That last reading is taken once more with its leading words read as a renderer shows
+// them (see pastShownLead).
 // Every reading is added beside the others and none replaces one, so text later in a cell can
 // add a reading but never take one away. A cell shows something when any of these does.
 func shownTexts(s string) []string {
@@ -570,12 +571,16 @@ func shownTexts(s string) []string {
 		readings := append(linkReadings(c), reduceLinksMode(c, true, true))
 		for _, r := range readings {
 			// Elements a sanitizer drops and elements a renderer hides are read kept and dropped
-			// apart from each other, since either can show while the other does not.
+			// apart from each other, since either can show while the other does not. A hidden
+			// element is read dropped both to the first closing tag after it and to the closing
+			// tag that matches it.
 			sanitized := droppedElementRe.ReplaceAllString(r, "")
 			shown := []string{r}
-			for _, e := range []string{sanitized, hiddenElementRe.ReplaceAllString(r, ""), hiddenElementRe.ReplaceAllString(sanitized, "")} {
-				if !slices.Contains(shown, e) {
-					shown = append(shown, e)
+			for _, base := range []string{r, sanitized} {
+				for _, e := range []string{base, hiddenElementRe.ReplaceAllString(base, ""), dropHidden(base)} {
+					if !slices.Contains(shown, e) {
+						shown = append(shown, e)
+					}
 				}
 			}
 			for i, n := 0, len(shown); i < n; i++ {
@@ -612,15 +617,16 @@ var (
 	// digit, as the glyph shown does not.
 	glyphWordRe      = regexp.MustCompile(`(?i):[a-z0-9_+-]+:`)
 	glyphPlaceholder = "\u25a1"
-	// mathSpanRe matches a span a renderer can typeset as inline or display math: a run of `$`,
-	// text on one line, and the next run of `$`. It pairs any two runs, so it matches more than a
-	// renderer typesets; mathReadings only adds readings from it, and the text as written is
-	// always read too, so a span it takes that a renderer shows as written is read as written.
-	mathSpanRe = regexp.MustCompile(`\$+[^$\n]+\$+`)
-	// mathMarkupRe matches what a renderer typesets inside a math span as no text of its own: a
-	// control word or symbol (a backslash and a name or one character), a brace, a backtick, or a
-	// sub- or superscript sign. A control word can typeset its argument as text, as blank space or
-	// as nothing, so mathReadings reads the span's text from each place one ends.
+	// mathDelimRe matches a run of `$`, which a renderer can take as a math delimiter. Which runs
+	// a renderer pairs is its own rule, which the tool does not hold: mathDelimiters leaves out
+	// only the dollar signs a renderer shows as text, and mathReadings reads the text between
+	// every two adjacent runs that are left.
+	mathDelimRe = regexp.MustCompile(`\$+`)
+	// mathMarkupRe matches a control word or symbol (a backslash and a name or one character), a
+	// brace, a backtick or a sub- or superscript sign. In a math span a renderer typesets each as
+	// no text of its own, except those mathGlyphs names. A control word can typeset its argument
+	// as text, as blank space or as nothing, so mathReadings reads a span's text from each place
+	// one ends.
 	mathMarkupRe = regexp.MustCompile("\\\\(?:[A-Za-z]+|.)|[{}`^_]")
 	// lineBreakRe matches a raw HTML line break or the opening or closing tag of an element a
 	// renderer shows as a block of its own (a disclosure element among them), after which the
@@ -629,12 +635,59 @@ var (
 	// droppedElementRe matches a raw HTML element a sanitizer can remove with its text, and so
 	// show nothing for, from its opening tag to the next such closing tag or the end of the text.
 	droppedElementRe = regexp.MustCompile(`(?is)<\s*(?:script|style|template|textarea|title|iframe|noembed|noframes|noscript|plaintext|xmp|math|svg)\b[^>]*>.*?(?:<\s*/\s*(?:script|style|template|textarea|title|iframe|noembed|noframes|noscript|plaintext|xmp|math|svg)\s*>|$)`)
-	// hiddenElementRe matches a raw HTML element a renderer hides by default with its text (a
-	// ruby fallback, a data list or a dialog element), or any element that carries the hidden
-	// attribute, from its opening tag to the next closing tag of that kind (any closing tag for
-	// the attribute) or the end of the text. Its text is read both kept and dropped.
-	hiddenElementRe = regexp.MustCompile(`(?is)<\s*(?:rp|datalist|dialog)\b[^>]*>.*?(?:<\s*/\s*(?:rp|datalist|dialog)\s*>|$)|<\s*[a-z][a-z0-9-]*\b[^>]*\shidden\b[^>]*>.*?(?:<\s*/[^>]*>|$)`)
+	// hiddenOpenRe matches the opening tag of a raw HTML element a renderer hides by default with
+	// its text: a ruby fallback, a data list or a dialog element (group 1 names it), or any
+	// element that carries the hidden attribute (group 2 names it).
+	hiddenOpenRe = regexp.MustCompile(`(?is)` + hiddenOpen)
+	// hiddenElementRe matches such an element from its opening tag to the first closing tag of
+	// any kind after it, or the end of the text, which is where a parser can end a ruby fallback
+	// that the next one closes. dropHidden reads it to the closing tag that matches it.
+	hiddenElementRe = regexp.MustCompile(`(?is)(?:` + hiddenOpen + `).*?(?:<\s*/[^>]*>|$)`)
+	// elementTagRe matches an opening or closing HTML tag: group 1 holds a closing tag's slash,
+	// and group 2 the element's name.
+	elementTagRe = regexp.MustCompile(`(?i)<\s*(/?)\s*([a-z][a-z0-9-]*)\b[^>]*>`)
 )
+
+// hiddenOpen is hiddenOpenRe's pattern without its flags. A parser reads an attribute after
+// white space, a slash or a closing quote.
+const hiddenOpen = `<\s*(rp|datalist|dialog)\b[^>]*>|<\s*([a-z][a-z0-9-]*)\b[^>]*?[\s/"']hidden\b[^>]*>`
+
+// dropHidden returns s without each element a renderer hides by default (see hiddenOpenRe),
+// taken from its opening tag to the closing tag that matches it, counting the elements of the
+// same name opened inside it, or to the end of the text.
+func dropHidden(s string) string {
+	var b strings.Builder
+	for {
+		m := hiddenOpenRe.FindStringSubmatchIndex(s)
+		if m == nil {
+			b.WriteString(s)
+			return b.String()
+		}
+		g := 2
+		if m[2] < 0 {
+			g = 4
+		}
+		name := s[m[g]:m[g+1]]
+		b.WriteString(s[:m[0]])
+		s = s[m[1]:]
+		end, depth := len(s), 1
+		for _, t := range elementTagRe.FindAllStringSubmatchIndex(s, -1) {
+			if !strings.EqualFold(s[t[4]:t[5]], name) {
+				continue
+			}
+			if t[3] > t[2] {
+				depth--
+			} else {
+				depth++
+			}
+			if depth == 0 {
+				end = t[1]
+				break
+			}
+		}
+		s = s[end:]
+	}
+}
 
 // pastLead returns t trimmed and without the words that lead it and hold no ASCII letter or
 // digit, a word ending at white space. Such a word cannot be a login, so a reader takes the word
@@ -672,28 +725,58 @@ func skipLead(t string, shown bool) string {
 	}
 }
 
-// mathDecodings returns each decoding of s (see decodings), and for each, the readings of its
-// math spans (see mathReadings).
+// mathDecodings returns each math reading of s (see mathReadings), each in each decoding of it
+// (see decodings). The math readings are taken before entities are decoded, so a dollar sign
+// written as an entity, which a renderer shows as text, is never read as a delimiter.
 func mathDecodings(s string) []string {
 	var out []string
-	for _, d := range decodings(s) {
-		out = append(out, mathReadings(d)...)
+	for _, m := range mathReadings(s) {
+		out = append(out, decodings(m)...)
 	}
 	return out
 }
 
-// mathReadings returns d, and when d holds a span a renderer can typeset as math (see
-// mathSpanRe), d read the ways a renderer can show its spans: once with every span dropped, as
-// one that shows only a symbol or blank space, and once for each span and each place in its
-// text where a control word, a brace or white space ends, with that span read from there on
-// (its markup removed, see mathMarkupRe), every span before it dropped and the text after it
-// as written.
-// A renderer can typeset a span's text as text, so a name inside a span is read where a reader
-// sees it, and a control word can show the text before such a place as blank space or as
-// nothing, so each place is read as the start of what is shown.
+// mathDelimiters returns the runs of `$` in s a renderer can take as math delimiters: each run
+// without a dollar sign a backslash escapes, and none inside a code span.
+func mathDelimiters(s string) [][]int {
+	code := codeSpanRe.FindAllStringIndex(s, -1)
+	var out [][]int
+	for _, m := range mathDelimRe.FindAllStringIndex(s, -1) {
+		n := 0
+		for i := m[0] - 1; i >= 0 && s[i] == '\\'; i-- {
+			n++
+		}
+		if n%2 == 1 {
+			m[0]++
+		}
+		if m[0] == m[1] || slices.ContainsFunc(code, func(c []int) bool { return c[0] <= m[0] && m[0] < c[1] }) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// mathReadings returns d, and when d holds two or more runs a renderer can take as math
+// delimiters (see mathDelimiters), d read by these rules, each beside the others and each with
+// the text before the first run as written:
+//   - once for each run, with everything from the first run up to and including it dropped, as
+//     spans that show only a symbol or blank space;
+//   - once with every run dropped and the text between the first and the last read as math
+//     (see mathText), with its white space and without;
+//   - once for each two adjacent runs and each place in the text between them where a control
+//     word, a brace or white space ends, with everything from the first run up to that place
+//     dropped, the text from there to the second run read as math, with its white space and
+//     without, and the text after the second run as written.
+//
+// No reading depends on which runs before a span a renderer pairs. A renderer can typeset a
+// span's text as text, so a name inside a span is read where a reader sees it, and a control
+// word can show the text before such a place as blank space or as nothing, so each place is read
+// as the start of what is shown. These are rules the tool holds, not a renderer's: a renderer
+// can pair or typeset runs in a way none of them names.
 func mathReadings(d string) []string {
-	spans := mathSpanRe.FindAllStringIndex(d, -1)
-	if len(spans) == 0 {
+	runs := mathDelimiters(d)
+	if len(runs) < 2 {
 		return []string{d}
 	}
 	out := []string{d}
@@ -704,28 +787,62 @@ func mathReadings(d string) []string {
 			out = append(out, r)
 		}
 	}
-	var before strings.Builder
-	last := 0
-	for _, sp := range spans {
-		before.WriteString(d[last:sp[0]])
-		last = sp[1]
-		body := strings.Trim(d[sp[0]:sp[1]], "$")
+	lead := d[:runs[0][0]]
+	var all strings.Builder
+	for i, r := range runs {
+		add(lead + d[r[1]:])
+		if i+1 < len(runs) {
+			all.WriteString(d[r[1]:runs[i+1][0]])
+		}
+	}
+	for _, collapse := range []bool{false, true} {
+		add(lead + mathText(all.String(), collapse) + d[runs[len(runs)-1][1]:])
+	}
+	for i := 0; i+1 < len(runs); i++ {
+		body, after := d[runs[i][1]:runs[i+1][0]], d[runs[i+1][1]:]
 		starts := []int{0}
-		for i, r := range body {
+		for j, r := range body {
 			if unicode.IsSpace(r) {
-				starts = append(starts, i+utf8.RuneLen(r))
+				starts = append(starts, j+utf8.RuneLen(r))
 			}
 		}
 		for _, m := range mathMarkupRe.FindAllStringIndex(body, -1) {
 			starts = append(starts, m[1])
 		}
 		for _, at := range starts {
-			add(before.String() + mathMarkupRe.ReplaceAllString(body[at:], "") + d[sp[1]:])
+			add(lead + mathText(body[at:], false) + after)
+			add(lead + mathText(body[at:], true) + after)
 		}
 	}
-	before.WriteString(d[last:])
-	add(before.String())
 	return out
+}
+
+// mathGlyphs are the control words and symbols a renderer typesets in math as a character a
+// login or its tag can hold, each with that character.
+var mathGlyphs = map[string]string{
+	`\lbrack`: "[", `\rbrack`: "]", `\lbrace`: "{", `\rbrace`: "}", `\{`: "{", `\}`: "}",
+	`\_`: "_", `\$`: "$", `\#`: "#", `\&`: "&", `\%`: "%",
+	`\vert`: "|", `\lvert`: "|", `\rvert`: "|",
+}
+
+// mathText returns s as a renderer typesets it in math: each control word or symbol mathGlyphs
+// names as its character, and every other match of mathMarkupRe as nothing. With collapse set,
+// its entities are decoded and its white space dropped, as math drops the white space between
+// the symbols it typesets.
+func mathText(s string, collapse bool) string {
+	if collapse {
+		s = html.UnescapeString(s)
+	}
+	s = mathMarkupRe.ReplaceAllStringFunc(s, func(m string) string { return mathGlyphs[m] })
+	if collapse {
+		s = strings.Map(func(r rune) rune {
+			if unicode.IsSpace(r) {
+				return -1
+			}
+			return r
+		}, s)
+	}
+	return s
 }
 
 // asciiAlnum reports whether r is an ASCII letter or digit.

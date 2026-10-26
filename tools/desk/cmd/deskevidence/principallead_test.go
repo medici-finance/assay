@@ -13,10 +13,13 @@ import (
 // A renderer shows nothing for a character that renders as nothing, for an element a sanitizer
 // drops with its text, or for one it hides by default; it trims the white space (of any kind)
 // at either end of a cell; and it can typeset a math span as a symbol, as blank space or as the
-// text inside it. A reader takes a leading word with no ASCII letter or digit, or one a renderer
-// shows as a glyph, for something other than a name. So a cell that opens with such a
-// character, element, word or span and then white space, or whose math span holds a login,
-// shows a reader that login. Every cell below shows a reader an App login and then the
+// text inside it, with the white space in it dropped and a bracket control word shown as the
+// bracket. It shows a dollar sign that is escaped, written as an entity or inside a code span
+// as text, never as a math delimiter, and it can hide an element whose text holds nested
+// elements, or whose hidden attribute follows a slash or a quote. A reader takes a leading word
+// with no ASCII letter or digit, or one a renderer shows as a glyph, for something other than a
+// name. So a cell that opens with such a character, element, word or span and then white
+// space, or whose math span holds a login, shows a reader that login. Every cell below shows a reader an App login and then the
 // annotation of a recognised human other than the resolved principal, and is not App-run to
 // the lint, so a landing that carries one is refused wherever the checks read it.
 
@@ -108,6 +111,31 @@ var leadRunners = []struct{ name, cell string }{
 	{"hidden-then-dropped", "<rp>(y)</rp> <style>example-app[bot]</style>" + foldTail},
 	{"dropped-then-hidden", "<style>(y)</style> <span hidden>example-app[bot]</span>" + foldTail},
 	{"hidden-and-dropped", "<rp>(y)</rp> <style>z</style> example-app[bot]" + foldTail},
+	// An element a renderer hides by default, holding a nested element, or with its attribute
+	// after a separator other than white space.
+	{"hidden-attribute-nested", "<small hidden><u>y</u> z</small> example-app[bot]" + foldTail},
+	{"hidden-attribute-nested-empty", "<small hidden><em></em>y z</small> example-app[bot]" + foldTail},
+	{"hidden-attribute-slash", "<abbr/hidden>y z</abbr> example-app[bot]" + foldTail},
+	{"hidden-attribute-after-quote", "<abbr title=\"t\"hidden>y z</abbr> example-app[bot]" + foldTail},
+	{"hidden-ruby-fallback-nested", "<rp>(<rp>y</rp>) z</rp> example-app[bot]" + foldTail},
+	{"hidden-data-list-nested", "<datalist><datalist>y</datalist> z</datalist> example-app[bot]" + foldTail},
+	// A math span after a dollar sign a renderer does not pair with it or shows as text: one
+	// written alone, escaped, as an entity or inside a code span.
+	{"typeset-after-lone-dollar", "$ $\\enspace \\textsf{example-app[bot]}$" + foldTail},
+	{"typeset-after-glyph-lone-dollar", ":robot: $ $\\qquad \\textrm{example-app[bot]}$" + foldTail},
+	{"symbol-span-after-lone-dollar", "$ $\\star$ example-app[bot]" + foldTail},
+	{"typeset-after-escaped-dollar", "\\$ $\\enspace \\textrm{example-app[bot]}$" + foldTail},
+	{"symbol-span-after-escaped-dollar", "\\$ $\\diamond$ example-app[bot]" + foldTail},
+	{"typeset-after-entity-dollar", "&#x24; $\\qquad \\textsf{example-app[bot]}$" + foldTail},
+	{"typeset-after-padded-entity-dollar", "&#0036; $\\enspace \\mathrm{example-app[bot]}$" + foldTail},
+	{"typeset-after-code-dollar", "`$$` $\\enspace \\mathrm{example-app[bot]}$" + foldTail},
+	{"symbol-span-after-code-dollar", "`` $ `` $\\star$ example-app[bot]" + foldTail},
+	// A math span whose text a renderer typesets without the white space in it, or with a
+	// bracket it names by a control word.
+	{"typeset-letters-spaced", "$\\enspace \\mathrm{e x a m p l e - a p p [ b o t ]}$" + foldTail},
+	{"typeset-bracket-words", "$\\enspace \\mathrm{example-app\\lbrack bot\\rbrack}$" + foldTail},
+	{"typeset-letters-spaced-after-span", "$\\hphantom{y(}$ $\\enspace \\mathrm{e x a m p l e - a p p [ b o t ]}$" + foldTail},
+	{"typeset-bracket-words-spaced", "$\\qquad example-app \\lbrack bot \\rbrack$" + foldTail},
 	// A lead read past and a lone dollar sign, with a later dollar sign the lead's reading must
 	// not pair it with.
 	{"glyph-dollar-later-dollar", ":robot: $ example-app[bot]" + foldTail + " $"},
@@ -296,6 +324,9 @@ func TestStampBlankLeadAllowed(t *testing.T) {
 		"$\\qquad \\textrm{human:operator}$ @ abc1234",
 		"<rp>(</rp> human:operator @ abc1234",
 		"<span hidden>y</span> human:operator @ abc1234 (cost $5, then $6)",
+		"\\$5 $\\circ$ human:operator @ abc1234",
+		"`$$` $\\qquad \\textrm{human:operator}$ @ abc1234",
+		"<small hidden><u>y</u> z</small> human:operator @ abc1234",
 	} {
 		t.Run(strings.TrimSpace(runner[strings.IndexByte(runner, ' '):]), func(t *testing.T) {
 			f := setupStamp(t, true)
@@ -373,6 +404,8 @@ func TestShowsAppRunShownLead(t *testing.T) {
 		"<details><summary>y</summary>z</details>",
 		"$\\qquad \\textrm{y}$", "$\\hphantom{y}$", "<rp>y</rp>", "<span hidden>y z</span>", "<dialog>y</dialog>",
 		":robot: $", ":robot:$", "$\\circ$ $",
+		"$ $\\star$", "\\$ $\\star$", "&#x24; $\\star$", "`` $ `` $\\star$", "$ $\\qquad \\mathrm{y}$",
+		"<small hidden><u>y</u> z</small>", "<abbr/hidden>y</abbr>", "<rp>(<rp>y</rp>) z</rp>",
 	} {
 		if cell := lead + " example-app[bot]" + foldTail; !showsAppRun(cell) {
 			t.Errorf("%q not read as App-run", cell)
@@ -389,6 +422,8 @@ func TestShowsAppRunShownLead(t *testing.T) {
 		"y <b>z</b> example-app[bot]" + foldTail,
 		"y $\\textrm{example-app[bot]}$" + foldTail,
 		"<rt>y</rt> example-app[bot]" + foldTail,
+		"y \\$ $\\star$ example-app[bot]" + foldTail,
+		"y <small hidden><u>z</u></small> example-app[bot]" + foldTail,
 	} {
 		if showsAppRun(cell) {
 			t.Errorf("%q read as App-run", cell)

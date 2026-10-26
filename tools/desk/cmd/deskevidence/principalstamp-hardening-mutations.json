@@ -776,10 +776,10 @@
       "new": "if g := glyphWordRe.ReplaceAllString(t, glyphPlaceholder); g != t {\n\t\t\t\t\t\tif seen := pastLead(strings.Map(dropBlank, g)); strings.HasSuffix(blank, seen) {\n\t\t\t\t\t\t\tout = append(out, seen)\n\t\t\t\t\t\t}\n\t\t\t\t\t}"
     },
     {
-      "name": "the reading with every math span dropped not taken",
+      "name": "the reading with each run and every run before it dropped not taken",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "before.WriteString(d[last:])\n\tadd(before.String())",
-      "new": "before.WriteString(d[last:])"
+      "old": "add(lead + d[r[1]:])",
+      "new": "_ = r"
     },
     {
       "name": "a math span's text read only from its start",
@@ -892,20 +892,14 @@
     {
       "name": "a math span's text not read",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "add(before.String() + mathMarkupRe.ReplaceAllString(body[at:], \"\") + d[sp[1]:])",
-      "new": "_ = at"
+      "old": "add(lead + mathText(body[at:], false) + after)\n\t\t\tadd(lead + mathText(body[at:], true) + after)",
+      "new": "_, _ = at, after"
     },
     {
       "name": "a math span's markup not removed from its text",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "add(before.String() + mathMarkupRe.ReplaceAllString(body[at:], \"\") + d[sp[1]:])",
-      "new": "add(before.String() + body[at:] + d[sp[1]:])"
-    },
-    {
-      "name": "a math span's text not read from after white space in it",
-      "file": "cmd/deskevidence/principalstamp.go",
-      "old": "for i, r := range body {\n\t\t\tif unicode.IsSpace(r) {",
-      "new": "for i, r := range body {\n\t\t\tif r == 0 {"
+      "old": "s = mathMarkupRe.ReplaceAllStringFunc(s, func(m string) string { return mathGlyphs[m] })",
+      "new": "_ = mathGlyphs"
     },
     {
       "name": "a math span's text not read from after a control word in it",
@@ -914,52 +908,82 @@
       "new": "for _, m := range mathMarkupRe.FindAllStringIndex(body, 0) {"
     },
     {
-      "name": "a math span before the one read kept as written",
-      "file": "cmd/deskevidence/principalstamp.go",
-      "old": "before.WriteString(d[last:sp[0]])",
-      "new": "before.WriteString(d[last:sp[1]])"
-    },
-    {
       "name": "the math readings not taken",
       "file": "cmd/deskevidence/principalstamp.go",
       "old": "for _, d := range mathDecodings(v) {",
       "new": "for _, d := range decodings(v) {"
     },
     {
-      "name": "the shown lead read with a math span joined into one word across white space",
-      "file": "cmd/deskevidence/principalstamp.go",
-      "old": "end := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif end <= 0 {\n\t\t\treturn t\n\t\t}",
-      "new": "end := strings.IndexFunc(t, unicode.IsSpace)\n\t\tif m := regexp.MustCompile(\"^\" + mathSpanRe.String()).FindString(t); shown && m != \"\" {\n\t\t\tend = len(m) + strings.IndexFunc(t[len(m):], unicode.IsSpace)\n\t\t\tif end < len(m) {\n\t\t\t\tend = -1\n\t\t\t}\n\t\t}\n\t\tif end <= 0 {\n\t\t\treturn t\n\t\t}"
-    },
-    {
       "name": "an element a renderer hides by default read only with its text",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "hiddenElementRe.ReplaceAllString(r, \"\"), hiddenElementRe.ReplaceAllString(sanitized, \"\")}",
-      "new": "r, sanitized}"
+      "old": "[]string{base, hiddenElementRe.ReplaceAllString(base, \"\"), dropHidden(base)}",
+      "new": "[]string{base}"
     },
     {
       "name": "a ruby fallback not read as hidden",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "(?is)<\\s*(?:rp|datalist|dialog)\\b",
-      "new": "(?is)<\\s*(?:datalist|dialog)\\b"
+      "old": "<\\s*(rp|datalist|dialog)\\b",
+      "new": "<\\s*(datalist|dialog)\\b"
     },
     {
       "name": "the hidden attribute not read as hiding its element",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "[^>]*\\shidden\\b[^>]*>",
-      "new": "[^>]*\\shiddenx\\b[^>]*>"
+      "old": "hidden\\b[^>]*>`",
+      "new": "hiddenx\\b[^>]*>`"
     },
     {
       "name": "elements a sanitizer drops and elements a renderer hides read dropped only together",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "[]string{sanitized, hiddenElementRe.ReplaceAllString(r, \"\"), hiddenElementRe",
-      "new": "[]string{hiddenElementRe"
+      "old": "for _, base := range []string{r, sanitized} {",
+      "new": "for _, base := range []string{sanitized} {"
     },
     {
       "name": "elements a renderer hides not read dropped beside dropped elements",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": ", hiddenElementRe.ReplaceAllString(sanitized, \"\")} {",
+      "old": "for _, base := range []string{r, sanitized} {",
+      "new": "for _, base := range []string{r, sanitized[:0] + r} {"
+    },
+    {
+      "name": "leftmost pairing restored: runs paired two by two from the first, with no reading of all the text between them",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, collapse := range []bool{false, true} {\n\t\tadd(lead + mathText(all.String(), collapse) + d[runs[len(runs)-1][1]:])\n\t}\n\tfor i := 0; i+1 < len(runs); i++ {",
+      "new": "_ = all.String()\n\tfor i := 0; i+1 < len(runs); i += 2 {"
+    },
+    {
+      "name": "a math span's text not read with its white space dropped",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "add(lead + mathText(body[at:], true) + after)",
+      "new": "add(lead + mathText(body[at:], false) + after)"
+    },
+    {
+      "name": "a bracket control word not read as its glyph",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "`\\lbrack`: \"[\", `\\rbrack`: \"]\",",
+      "new": "`\\lbrack`: \"\", `\\rbrack`: \"\","
+    },
+    {
+      "name": "a hidden element not read to the closing tag that matches it",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": ", dropHidden(base)} {",
       "new": "} {"
+    },
+    {
+      "name": "a hidden element read to its first closing tag of the same name only",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "} else {\n\t\t\t\tdepth++\n\t\t\t}",
+      "new": "} else {\n\t\t\t\tdepth += 0\n\t\t\t}"
+    },
+    {
+      "name": "the hidden attribute not read after a slash",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "[\\s/\"']hidden\\b",
+      "new": "[\\s\"']hidden\\b"
+    },
+    {
+      "name": "the hidden attribute not read after a quote",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "[\\s/\"']hidden\\b",
+      "new": "[\\s/]hidden\\b"
     }
   ]
 }
