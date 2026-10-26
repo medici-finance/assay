@@ -65,6 +65,25 @@ var leadRunners = []struct{ name, cell string }{
 	{"dropped-element", "<script>x</script> example-app[bot]" + foldTail},
 	{"dropped-element-style", "<style>p</style> example-app[bot]" + foldTail},
 	{"glyph-word-nbsp-end", ":robot: example-app[bot]" + foldTail + "&#160;"},
+	// A lead read past, followed by later text the lead's reading must not depend on.
+	{"glyph-word-later-word", ":robot: example-app[bot]" + foldTail + " :sparkles:"},
+	{"glyph-word-later-glued", ":robot: example-app[bot]" + foldTail + ":sparkles:"},
+	{"glyph-word-later-inner", ":robot: example-app[bot] :sparkles:" + foldTail},
+	{"glyph-word-later-numbers", ":robot: example-app[bot] @ abc1234 (on-behalf-of human:colleague, 09:15:30)"},
+	{"glyph-word-sign-later-numbers", ":+1: example-app[bot]" + foldTail + " 23:59:59Z"},
+	// A lead read past, in a cell whose end is white space and then a character that renders
+	// as nothing.
+	{"glyph-word-space-blank-end", ":robot: example-app[bot]" + foldTail + " \u2063"},
+	{"glyph-word-nbsp-blank-end-entity", ":robot: example-app[bot]" + foldTail + "&#160;&#8291;"},
+	{"glyph-word-wide-space-blank-end", ":white_check_mark: example-app[bot]" + foldTail + "\u3000\u200b"},
+	{"typeset-symbol", "$\\bullet$ example-app[bot]" + foldTail},
+	{"typeset-blank", "$\\;$ example-app[bot]" + foldTail},
+	{"typeset-spaced", "$\\cdot \\cdot$ example-app[bot]" + foldTail},
+	{"typeset-display", "$$\\ast$$ example-app[bot]" + foldTail},
+	{"disclosure-summary", "<details><summary>&#x2714;</summary>y</details> example-app[bot]" + foldTail},
+	{"disclosure-bare", "<details>y</details> example-app[bot]" + foldTail},
+	{"line-break", "y <br> example-app[bot]" + foldTail},
+	{"block-element", "<div>y</div> example-app[bot]" + foldTail},
 }
 
 // regression: #4102
@@ -237,6 +256,11 @@ func TestStampBlankLeadAllowed(t *testing.T) {
 		":tada: human:operator @ abc1234",
 		"<script>x</script> human:operator @ abc1234",
 		"human:operator @ abc1234 (rerun 10:30:00 by example-app review)",
+		":tada: human:operator @ abc1234 (rerun 10:30:00 by example-app review) :sparkles:",
+		"$\\bullet$ human:operator @ abc1234",
+		"$5 human:operator @ abc1234 (cost $6)",
+		"<details><summary>&#x2714;</summary>y</details> human:operator @ abc1234",
+		"y <br> human:operator @ abc1234 (see example-app review)",
 	} {
 		t.Run(strings.TrimSpace(runner[strings.IndexByte(runner, ' '):]), func(t *testing.T) {
 			f := setupStamp(t, true)
@@ -265,21 +289,69 @@ func TestShowsAppRunGlyphLead(t *testing.T) {
 				t.Errorf("%q not read as App-run", cell)
 			}
 		}
-		// White space other than an ASCII space at the end of the cell is trimmed before the
-		// glyph reading is compared with the text it reads past.
-		for _, end := range []string{"\u00a0", "&#160;", "\u3000", "&#x3000;"} {
+		// White space other than an ASCII space at the end of the cell, or white space and then
+		// a character that renders as nothing, leaves the reading past the glyph lead as it is.
+		for _, end := range []string{"\u00a0", "&#160;", "\u3000", "&#x3000;",
+			" \u2063", "\u00a0\u2063", "&#160;&#8291;", "\u3000\u200b", " &#8203;"} {
 			if cell := word + " example-app[bot]" + foldTail + end; !showsAppRun(cell) {
+				t.Errorf("%q not read as App-run", cell)
+			}
+		}
+		// What follows the lead is read as written, so a later word of the same shape, or later
+		// digits that hold one, leaves the reading past the lead as it is.
+		for _, later := range []string{" " + word, word, " :sparkles:", " 09:15:30", ", 23:59:59Z"} {
+			if cell := word + " example-app[bot]" + foldTail + later; !showsAppRun(cell) {
+				t.Errorf("%q not read as App-run", cell)
+			}
+			if cell := word + " example-app[bot]" + later + foldTail; !showsAppRun(cell) {
 				t.Errorf("%q not read as App-run", cell)
 			}
 		}
 		for _, cell := range []string{
 			word + " human:operator @ abc1234",
+			word + " human:operator @ abc1234 " + word,
+			word + " human:operator @ abc1234 (rerun 09:15:30)",
 			"x" + word + "x example-app[bot]" + foldTail,
+			"x" + word + "x example-app[bot]" + foldTail + " " + word,
 			"x" + word + "[abc] human:operator @ abc1234",
 		} {
 			if showsAppRun(cell) {
 				t.Errorf("%q read as App-run", cell)
 			}
+		}
+	}
+}
+
+// regression: #4102
+// TestShowsAppRunShownLead: a leading span a renderer typesets as math, which shows a symbol or
+// blank space whatever letters its source holds, before an App login with white space between,
+// and an App login after a line break or a block element (a disclosure element among them),
+// where the text a reader sees starts a new line, are read as showing App-run text; before a
+// human runner, or with a letter or digit glued to the span, they are not.
+func TestShowsAppRunShownLead(t *testing.T) {
+	for _, lead := range []string{
+		"$\\bullet$", "$\\;$", "$\\cdot \\cdot$", "$$\\ast$$", "$x$", "($\\star$)", "\u2713 $\\bullet$",
+		"$\\bullet$ $\\bullet$",
+		"<details><summary>&#x2714;</summary>y</details>", "<details>y</details>",
+		"<details open><summary>-</summary>y z</details>", "y <br>", "y<br/>", "<p>y</p>", "<div>y z</div>",
+		"<details><summary>y</summary>z</details>",
+	} {
+		if cell := lead + " example-app[bot]" + foldTail; !showsAppRun(cell) {
+			t.Errorf("%q not read as App-run", cell)
+		}
+		if cell := lead + " human:operator @ abc1234"; showsAppRun(cell) {
+			t.Errorf("%q read as App-run", cell)
+		}
+	}
+	for _, cell := range []string{
+		"$x$y example-app[bot]" + foldTail,
+		"y$x$ example-app[bot]" + foldTail,
+		"$5 operator @ abc1234 (cost $6)",
+		"<details><summary>y</summary>z example-app[bot]" + foldTail + "</details>",
+		"y <b>z</b> example-app[bot]" + foldTail,
+	} {
+		if showsAppRun(cell) {
+			t.Errorf("%q read as App-run", cell)
 		}
 	}
 }

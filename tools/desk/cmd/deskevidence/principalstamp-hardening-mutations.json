@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunLeadWord|TestShowsTagBlankInside|TestStampBlankLeadAllowed|TestStampCodeSpanTagReading|TestShowsAppRunGlyphLead)$' -count=1 -timeout=300s",
+  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunLeadWord|TestShowsTagBlankInside|TestStampBlankLeadAllowed|TestStampCodeSpanTagReading|TestShowsAppRunGlyphLead|TestShowsAppRunShownLead)$' -count=1 -timeout=300s",
   "control": {
     "name": "unreadable-cell refusal not consulted",
     "file": "cmd/deskevidence/principalstamp.go",
@@ -664,14 +664,14 @@
     {
       "name": "the reading with blank characters dropped not taken",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if seen := pastLead(strings.Map(dropBlank, t)); seen != t {",
-      "new": "if seen := pastLead(t); seen != t {"
+      "old": "blank := strings.Map(dropBlank, t)",
+      "new": "blank := t"
     },
     {
       "name": "a leading word that cannot be a login not read past",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if seen := pastLead(strings.Map(dropBlank, t)); seen != t {",
-      "new": "if seen := strings.TrimSpace(strings.Map(dropBlank, t)); seen != t {"
+      "old": "seen := pastLead(blank)\n\t\t\t\t\tif seen != t {\n\t\t\t\t\t\tout = append(out, seen)\n\t\t\t\t\t}\n\t\t\t\t\t// Only the leading words are read as a renderer shows them; what follows them\n\t\t\t\t\t// is taken as written, so nothing later in the text decides this reading.\n\t\t\t\t\tif lead := pastShownLead(blank);",
+      "new": "seen := strings.TrimSpace(blank)\n\t\t\t\t\tif seen != t {\n\t\t\t\t\t\tout = append(out, seen)\n\t\t\t\t\t}\n\t\t\t\t\t// Only the leading words are read as a renderer shows them; what follows them\n\t\t\t\t\t// is taken as written, so nothing later in the text decides this reading.\n\t\t\t\t\tif lead := strings.TrimSpace(blank);"
     },
     {
       "name": "the reading past a leading word not trimmed",
@@ -742,20 +742,74 @@
     {
       "name": "a word shown as a glyph not read as a symbol",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if g := glyphWordRe.ReplaceAllString(t, glyphPlaceholder); g != t {",
-      "new": "if g := t; g != t {"
+      "old": "return glyphWordRe.ReplaceAllString(mathSpanRe.ReplaceAllString(w, glyphPlaceholder), glyphPlaceholder)",
+      "new": "return mathSpanRe.ReplaceAllString(w, glyphPlaceholder)"
     },
     {
-      "name": "the glyph reading not read past its leading words",
+      "name": "the shown-lead reading not read past its leading words",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if seen := pastLead(strings.Map(dropBlank, g)); strings.HasSuffix(",
-      "new": "if seen := strings.Map(dropBlank, g); strings.HasSuffix("
+      "old": "if lead := pastShownLead(blank); lead != seen && lead != t {",
+      "new": "if lead := blank; lead != seen && lead != t {"
     },
     {
-      "name": "the glyph reading taken where no glyph lead is read past",
+      "name": "the shown-lead reading not taken",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "; strings.HasSuffix(strings.Map(dropBlank, t), seen) {",
-      "new": "; seen != \"\" {"
+      "old": "if lead := pastShownLead(blank); lead != seen && lead != t {",
+      "new": "if lead := pastShownLead(blank); false && lead != seen && lead != t {"
+    },
+    {
+      "name": "the shown-lead reading kept only when it ends the untrimmed text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if lead := pastShownLead(blank); lead != seen && lead != t {",
+      "new": "if lead := pastShownLead(blank); lead != seen && lead != t && strings.HasSuffix(blank, lead) {"
+    },
+    {
+      "name": "the shown-lead reading kept only when it ends the text read with every glyph word as a symbol",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if lead := pastShownLead(blank); lead != seen && lead != t {",
+      "new": "if lead := pastShownLead(blank); lead != seen && lead != t && strings.HasSuffix(strings.TrimSpace(glyphWordRe.ReplaceAllString(blank, glyphPlaceholder)), lead) {"
+    },
+    {
+      "name": "the glyph reading taken from the whole text and kept only when it ends the untrimmed text",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if lead := pastShownLead(blank); lead != seen && lead != t {\n\t\t\t\t\t\tout = append(out, lead)\n\t\t\t\t\t}",
+      "new": "if g := glyphWordRe.ReplaceAllString(t, glyphPlaceholder); g != t {\n\t\t\t\t\t\tif seen := pastLead(strings.Map(dropBlank, g)); strings.HasSuffix(blank, seen) {\n\t\t\t\t\t\t\tout = append(out, seen)\n\t\t\t\t\t\t}\n\t\t\t\t\t}"
+    },
+    {
+      "name": "a span typeset as math not read as a symbol",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return glyphWordRe.ReplaceAllString(mathSpanRe.ReplaceAllString(w, glyphPlaceholder), glyphPlaceholder)",
+      "new": "return glyphWordRe.ReplaceAllString(w, glyphPlaceholder)"
+    },
+    {
+      "name": "a math span with white space inside it ended at that white space",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if m := mathLeadRe.FindString(t[i:]); m != \"\" {",
+      "new": "if m := \"\"; m != \"\" {"
+    },
+    {
+      "name": "the text after a line break or block element not read",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, m := range lineBreakRe.FindAllStringIndex(shown[i], -1) {",
+      "new": "for _, m := range lineBreakRe.FindAllStringIndex(shown[i], 0) {"
+    },
+    {
+      "name": "a closing block tag not read as a line break",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "lineBreakRe = regexp.MustCompile(`(?i)<\\s*/?\\s*(?:br|",
+      "new": "lineBreakRe = regexp.MustCompile(`(?i)<\\s*(?:br|"
+    },
+    {
+      "name": "a line break element not read as a line break",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "(?:br|hr|p|div|details|",
+      "new": "(?:hr|p|div|details|"
+    },
+    {
+      "name": "a disclosure element not read as a block",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "(?:br|hr|p|div|details|summary|",
+      "new": "(?:br|hr|p|div|"
     },
     {
       "name": "a word shown as a glyph read as an ASCII letter",

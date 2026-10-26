@@ -550,12 +550,13 @@ func linkReadings(s string) []string {
 // shownTexts returns the texts a renderer can show for s, for deciding what a reader sees: each
 // comment reading and each link reading, with HTML tags and emphasis, strikethrough, code and
 // escape characters removed, and entities decoded, read once with the text of each element a
-// sanitizer can drop kept and once with it dropped (see droppedElementRe). Each is read once as
-// it stands and once with every character that renders as nothing dropped (see rendersBlank)
-// and the words that lead it and cannot be a login skipped (see pastLead), so a text's identity
+// sanitizer can drop kept and once with it dropped (see droppedElementRe), and each of those once
+// more from each place a renderer starts a new line at (see lineBreakRe). Each is read once as it
+// stands and once with every character that renders as nothing dropped (see rendersBlank) and
+// the words that lead it and cannot be a login skipped (see pastLead), so a text's identity
 // region (see identityRegion) starts at the first word a reader can take for a name. That last
-// reading is taken once more with each word a renderer shows as a glyph (see glyphWordRe) read
-// as one symbol. A cell shows something when any of these does.
+// reading is taken once more with its leading words read as a renderer shows them (see
+// pastShownLead). A cell shows something when any of these does.
 func shownTexts(s string) []string {
 	var out []string
 	for _, c := range commentReadings(s) {
@@ -565,23 +566,29 @@ func shownTexts(s string) []string {
 		// of what could be shown, never of link syntax (see linkSyntax).
 		readings := append(linkReadings(c), reduceLinksMode(c, true, true))
 		for _, r := range readings {
-			tagless := []string{htmlTagRe.ReplaceAllString(r, "")}
+			shown := []string{r}
 			if e := droppedElementRe.ReplaceAllString(r, ""); e != r {
-				tagless = append(tagless, htmlTagRe.ReplaceAllString(e, ""))
+				shown = append(shown, e)
 			}
-			for _, v := range tagless {
+			for i, n := 0, len(shown); i < n; i++ {
+				for _, m := range lineBreakRe.FindAllStringIndex(shown[i], -1) {
+					shown = append(shown, shown[i][m[1]:])
+				}
+			}
+			for _, v := range shown {
+				v = htmlTagRe.ReplaceAllString(v, "")
 				for _, d := range decodings(v) {
 					t := strings.TrimSpace(runnerMarkupRe.ReplaceAllString(d, ""))
 					out = append(out, t)
-					if seen := pastLead(strings.Map(dropBlank, t)); seen != t {
+					blank := strings.Map(dropBlank, t)
+					seen := pastLead(blank)
+					if seen != t {
 						out = append(out, seen)
 					}
-					// Only what reading past a glyph lead reveals is taken: a glyph later in the
-					// text is shown where its word stands, which the reading as written covers.
-					if g := glyphWordRe.ReplaceAllString(t, glyphPlaceholder); g != t {
-						if seen := pastLead(strings.Map(dropBlank, g)); strings.HasSuffix(strings.Map(dropBlank, t), seen) {
-							out = append(out, seen)
-						}
+					// Only the leading words are read as a renderer shows them; what follows them
+					// is taken as written, so nothing later in the text decides this reading.
+					if lead := pastShownLead(blank); lead != seen && lead != t {
+						out = append(out, lead)
 					}
 				}
 			}
@@ -597,6 +604,16 @@ var (
 	// digit, as the glyph shown does not.
 	glyphWordRe      = regexp.MustCompile(`(?i):[a-z0-9_+-]+:`)
 	glyphPlaceholder = "\u25a1"
+	// mathSpanRe matches a span a renderer can typeset as inline or display math, which shows a
+	// symbol or blank space whatever letters its source holds, after escape characters are
+	// stripped, so it matches more than a renderer typesets; mathLeadRe is the same span at the
+	// start of a text. Each is read as one glyphPlaceholder.
+	mathSpanRe = regexp.MustCompile(`\$+[^$\n]+\$+`)
+	mathLeadRe = regexp.MustCompile(`^\$+[^$\n]+\$+`)
+	// lineBreakRe matches a raw HTML line break or the opening or closing tag of an element a
+	// renderer shows as a block of its own (a disclosure element among them), after which the
+	// text a reader sees starts a new line.
+	lineBreakRe = regexp.MustCompile(`(?i)<\s*/?\s*(?:br|hr|p|div|details|summary|blockquote|pre|ul|ol|li|dl|dt|dd|table|thead|tbody|tfoot|tr|td|th|caption|h[1-6]|section|article|aside|header|footer|nav|main|figure|figcaption|address|center|fieldset|legend|form)\b[^>]*>`)
 	// droppedElementRe matches a raw HTML element a sanitizer can remove with its text, and so
 	// show nothing for, from its opening tag to the next such closing tag or the end of the text.
 	droppedElementRe = regexp.MustCompile(`(?is)<\s*(?:script|style|template|textarea|title|iframe|noembed|noframes|noscript|plaintext|xmp|math|svg)\b[^>]*>.*?(?:<\s*/\s*(?:script|style|template|textarea|title|iframe|noembed|noframes|noscript|plaintext|xmp|math|svg)\s*>|$)`)
@@ -614,6 +631,45 @@ func pastLead(t string) string {
 		t = strings.TrimSpace(t[i:])
 	}
 	return t
+}
+
+// pastShownLead returns t as pastLead does, except that each leading word is read as a renderer
+// shows it: a word a renderer shows as a glyph (see glyphWordRe) and a span it typesets as math
+// (see mathSpanRe) are each read as one symbol, and a math span with white space inside it is
+// read as part of one word. A word that, read so, holds no ASCII letter or digit is skipped. The
+// word that ends the skip and everything after it are taken as written, so a glyph, a math span
+// or anything else later in the text is read where it stands and cannot change what is skipped.
+func pastShownLead(t string) string {
+	t = strings.TrimSpace(t)
+	for {
+		end := shownWordEnd(t)
+		if end == len(t) || strings.IndexFunc(shownWord(t[:end]), asciiAlnum) >= 0 {
+			return t
+		}
+		t = strings.TrimSpace(t[end:])
+	}
+}
+
+// shownWordEnd returns the end of t's first word: the first white space that is not inside a
+// math span (see mathLeadRe), or the end of t.
+func shownWordEnd(t string) int {
+	for i := 0; i < len(t); {
+		if m := mathLeadRe.FindString(t[i:]); m != "" {
+			i += len(m)
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(t[i:])
+		if unicode.IsSpace(r) {
+			return i
+		}
+		i += size
+	}
+	return len(t)
+}
+
+// shownWord returns a word with each math span and each glyph word in it read as one symbol.
+func shownWord(w string) string {
+	return glyphWordRe.ReplaceAllString(mathSpanRe.ReplaceAllString(w, glyphPlaceholder), glyphPlaceholder)
 }
 
 // asciiAlnum reports whether r is an ASCII letter or digit.
