@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
@@ -89,4 +92,93 @@ var continuationLines = []string{
 	"title: \"first\ngate: human\n  end\"\ngate: model",
 	"title: 'first\nexec-tier: strong\n  end'",
 	"meta: {a: 1,\ndecision-issue: 12\n}",
+}
+
+// verifyLoopScalar is this loop's frontmatter reader before the shared parser:
+// the first column-0 `key:` line, the gap "\s*", the inline comment kept,
+// then space and quotes trimmed and space trimmed again.
+func verifyLoopScalar(block, key string) string {
+	re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(key) + `:\s*(.*)$`)
+	if m := re.FindStringSubmatch(block); m != nil {
+		return strings.TrimSpace(strings.Trim(strings.TrimSpace(m[1]), `"'`))
+	}
+	return ""
+}
+
+// TestCommentedMarkersReadAsBefore pins that the queue markers read exactly as
+// this loop's earlier reader read them, inline comment included, so a marker
+// that held a brief before still holds it: "in-repair: no # x" stays in
+// repair and `blocked-until: "" # x` stays deferred, while the plain values
+// still dispatch.
+func TestCommentedMarkersReadAsBefore(t *testing.T) {
+	cases := []struct {
+		marker string
+		want   disposition
+	}{
+		{"in-repair: no # x", dispInRepair},
+		{`blocked-until: "" # x`, dispDeferred},
+		{"in-repair: no", dispDispatch},
+		{`blocked-until: ""`, dispDispatch},
+		{"verify-lane: online", dispAwaitingOnlineLane},
+	}
+	root := t.TempDir()
+	table := "| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n" +
+		"|---|-------|------|--------|--------|----------|----------|\n"
+	briefs := map[string]string{}
+	for i, c := range cases {
+		id := fmt.Sprintf("%02d", i+1)
+		table += "| " + id + " | X | 0 | S | implemented | — | — |\n"
+		briefs[id] = briefBodyMarkers(c.marker + "\n")
+		fm := parseFrontmatter(briefs[id])
+		block := frontmatterBlock(briefs[id])
+		for key, got := range map[string]string{"in-repair": fm.InRepair, "blocked-until": fm.BlockedUntil, "verify-lane": fm.VerifyLane, "implementer": fm.Implementer} {
+			if want := verifyLoopScalar(block, key); fm.ParseError != "" || got != want {
+				t.Errorf("%q: %s read %q (parse error %q); the earlier reader read %q", c.marker, key, got, fm.ParseError, want)
+			}
+		}
+	}
+	writeFixtureStream(t, root, "fixture", table, briefs)
+	items, err := (&VerifyLoop{Root: root, TargetSHA: "abc"}).SelectQueue()
+	if err != nil {
+		t.Fatalf("SelectQueue: %v", err)
+	}
+	byID := map[string]loopengine.Item{}
+	for _, it := range items {
+		byID[it.ID] = it
+	}
+	for i, c := range cases {
+		it, ok := byID[fmt.Sprintf("fixture/%02d", i+1)]
+		if !ok {
+			t.Fatalf("%q: brief missing from the queue", c.marker)
+		}
+		tier, _ := (&VerifyLoop{}).TierPolicy(it)
+		if disp, why := classifyItem(it, tier); disp != c.want {
+			t.Errorf("%q: classified %v (%s); want %v", c.marker, disp, why, c.want)
+		}
+	}
+}
+
+// TestAuthorRunnerGuardMatchesParsedImplementer pins that the author != runner
+// guard refuses every implementer line whose parsed value names the runner,
+// whatever quoting or inline comment the line carries.
+func TestAuthorRunnerGuardMatchesParsedImplementer(t *testing.T) {
+	for _, line := range authorRunnerLines {
+		fm := parseFrontmatter("---\ngate: model\n" + line + "\n---\n")
+		if fm.ParseError == "" && loopengine.CheckAuthorRunner(loopengine.Item{ID: "a", Implementer: fm.Implementer}, "runner-a") == nil {
+			t.Errorf("%q read as %q and was not refused for runner-a", line, fm.Implementer)
+		}
+	}
+}
+
+// authorRunnerLines are implementer lines whose parsed value is runner-a.
+var authorRunnerLines = []string{
+	"implementer: runner-a",
+	"implementer: runner-a # note",
+	`implementer: "runner-a"`,
+	`implementer: "runner-a" # note`,
+	`implementer: 'runner-a' # note`,
+	`implementer: "runner-a"  #`,
+	`implementer: "runner-a"  #note`,
+	"implementer:\n  \"runner-a\" # note",
+	"implementer:\n  'runner-a' # note",
 }
