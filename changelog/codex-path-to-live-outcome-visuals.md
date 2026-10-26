@@ -1,0 +1,1 @@
+- Path-to-live skill reports show outcome stage bars, sourced delivery and execution evidence, changes since a comparable previous report, and blocker categories while preserving canonical lifecycle and acceptance distinctions.

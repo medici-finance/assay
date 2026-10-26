@@ -66,12 +66,75 @@ make both total and remaining rise. This is not a historical reconstruction of t
 Disclose other lifecycle states; include them in remaining when not `done`, and do not silently
 assign them to one of the four named stages. No projection or ideal burn line is required.
 
+### Progress toward each outcome
+
+After the monthly chart, show an **Outcome progress** view for each confirmed target and
+any useful intermediate outcome. Use operational milestone records and their exact versions
+when supported. Otherwise use clearly labelled **proposed outcome** packages derived from
+named target briefs; record their membership/source and never imply that the proposals are
+operational milestones. Packages may overlap: do not add their counts.
+
+Use one stacked bar per outcome with mutually exclusive recorded stages: **Not started**,
+**Being implemented**, **Delivered / awaiting verification**, **Verified / awaiting closure**,
+and **Done**. Render blocked, withdrawn or unknown states explicitly when present; do not
+quietly force them into a stage. Provide exact counts and a text/table equivalent, a labelled
+legend and a stable denominator. Segment widths describe briefs, not effort or elapsed time.
+Do not call this an accepted outcome merely because all contributing briefs are done. Show
+outcome acceptance separately, with its exact contract/evidence; without that observation say
+**Acceptance not established** (or **No operational milestone record** for proposals).
+
+Beside the bar, show supporting evidence that the lifecycle alone hides. Examples are
+**Merged delivery; board reconciliation pending**, **Checks passed; closure tooling blocked**,
+and **Approval recorded; reconciliation PR open**. Every badge links to its source and states
+whether the evidence is on captured main or only on an open PR's captured head. Preserve
+recorded status in the bar and monthly chart: do not move a `todo` into delivered based on an
+inference, count an open reconciliation PR as merged, or promote a passing execution to
+verified. Delivery observations must identify the actual delivering change/retained artifact;
+a record-only reconciliation is not a second implementation. Historical failing runs remain
+history when a sourced later repair or result supersedes them; an open tracker alone does
+not prove its original failure still exists.
+
+### What changed since the previous report
+
+Show this section near outcome progress, before the detailed action list. Name the exact
+baseline report/capture, root revisions, comparison scope and observation limits. Compare
+stable work identities. Show **scope added/removed** separately from changes among shared
+briefs; do not infer progress by subtracting totals for different scopes.
+
+Distinguish **newly observed merged deliveries**, **verification/execution results**,
+**recorded lifecycle changes**, **approval/reconciliation activity**, and **dependencies now
+ready or newly held**. Link each event to its brief and immutable source, PR head or ruling.
+Readiness changes require comparable canonical verdicts, not downstream-reach scores. PR and
+commit counts describe activity, never completed briefs. Do not call a newly discovered old
+delivery new work: show its landing date and label it newly observed. Open-branch evidence
+belongs in an in-flight lane, not the merged-delivery lane. A green CI rerun is not independent
+verification. If the baseline lacks a fact or reader coverage, show **Not comparable** and
+explain the gap; no baseline means this is the first measured capture, not zero changes.
+
+### What is holding progress
+
+Add an evidence-backed blocker view with **Implementation**, **Verification tooling**,
+**Decisions**, and **Review** categories. Keep prerequisite waiting and unknown coverage
+visible too; neither means that unstarted code is defective. Classify concrete obligations,
+not all unfinished briefs. One brief can have multiple blockers: deduplicate each category
+by brief for display, say category totals overlap, and never sum them as remaining work.
+Every entry names the affected brief/outcome, cause, owning role, source and next act.
+
+Keep product/test failures distinct from runner/admission/closure-tool failures. A missing
+approval must identify its actual subject; an already recorded design approval is not a new
+acceptance request. Use the latest relevant current-head review evidence; a fixed prerequisite
+may await review-desk reassessment without becoming a fresh code defect. Unsupported or
+unreadable causes stay **Unknown**. Use concise text labels alongside colors, and make the
+category view filterable when useful. These views explain the evidence; they do not dispatch,
+review, accept or change a lifecycle.
+
 ### Remaining-work graph and coverage
 
 Write ONE self-contained HTML page: inline CSS and JS, no external fetch, no CDN. In addition
 to the progress chart and plain-language counts above, it contains:
 
 - the objective and the confirmed targets;
+- outcome progress, a comparable previous-report change view and classified blockers as above;
 - the critical path, overall and per target;
 - the ranked moves;
 - the graph, rendered from only nodes whose status is **not `done`**:
