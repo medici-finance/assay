@@ -1,11 +1,12 @@
 # Portable agent execution environments
 
-**Status:** routed — approval of this bounded implementation scope and activation of the
+**Status:** approved — approval of this bounded implementation scope and activation of the
 agent-execution stream are proposed by
 [PR #4349](https://github.com/medici-finance/assay/pull/4349) and take effect on the
-maintainer's merge of it, the ruling record under lifecycle §8.4. Agent-execution briefs
-01–08 and graph-execution briefs 20–22 and 25–27 already cite this path in their `sources:`,
-so the document lands `routed`, not `approved` (§8.2).
+maintainer's merge of it, the ruling record under lifecycle §8.4. From that merge this
+document is the approved plan of record for the stream. Its routing edge is already closed:
+agent-execution briefs 01–08 and graph-execution briefs 20–22 and 25–27 already cite this
+path in their `sources:`, so no brief-authoring is owed.
 
 **Routes-to:** docs/streams/agent-execution/
 
