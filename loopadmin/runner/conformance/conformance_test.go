@@ -225,3 +225,10 @@ func TestRunnerProfileBeforeStart(t *testing.T) {
 	conformance.CaseProfileRefusedBeforeStart(t, minimal)
 	conformance.CaseProfileRefusedBeforeStart(t, qualified)
 }
+
+// TestRunnerProfileAdmittedByAdapter runs the adapter-side admission case
+// against an adapter that declares a qualified profile.
+// regression: agent-execution/01
+func TestRunnerProfileAdmittedByAdapter(t *testing.T) {
+	conformance.CaseProfileAdmittedByAdapter(t, qualified)
+}

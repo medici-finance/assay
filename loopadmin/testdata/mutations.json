@@ -1440,5 +1440,75 @@
     "file": "runner/client.go",
     "old": "need, err := req.checkExecutionProfile(c.caps, c.profiles)",
     "new": "need, err := (*ProfileRequirement)(nil), error(nil)"
+  },
+  {
+    "test": "TestExecutionReportScreened",
+    "why": "agent-execution/01: the adapter-reported extension check stops screening values for credential material",
+    "file": "runner/executionprofile.go",
+    "old": "\t\tif extensionCarriesCredential(k, v) {\n\t\t\treturn extCredential",
+    "new": "\t\tif extensionCarriesCredential(k, v) && false {\n\t\t\treturn extCredential"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: the client accepts an adapter-reported extension the request did not carry or the adapter does not declare",
+    "file": "runner/executionprofile.go",
+    "old": "if _, carried := req.Extensions[k]; !carried || !caps.hasExtension(k) {",
+    "new": "if _, carried := req.Extensions[k]; false && (!carried || !caps.hasExtension(k)) {"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: the client accepts an adapter-reported extension the adapter does not declare",
+    "file": "runner/executionprofile.go",
+    "old": "!carried || !caps.hasExtension(k) {",
+    "new": "!carried {"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: the client stops checking the receipt's extensions",
+    "file": "runner/client.go",
+    "old": "if r := checkAdapterExtensions(req, c.caps, rec.Extensions); r != extClean {",
+    "new": "if r := extClean; r != extClean {"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: the client stops checking an observation's extensions",
+    "file": "runner/client.go",
+    "old": "if r := checkAdapterExtensions(in.req, c.caps, obs.Extensions); r != extClean {",
+    "new": "if r := extClean; r != extClean {"
+  },
+  {
+    "test": "TestRunnerAdapterExtensionsScreened",
+    "why": "agent-execution/01: acceptance forgets an earlier refusal of the invocation's extensions",
+    "file": "runner/client.go",
+    "old": "\tif extRefused != extClean {\n\t\treturn Accepted{}, extRefused.err()",
+    "new": "\tif false {\n\t\treturn Accepted{}, extRefused.err()"
+  },
+  {
+    "test": "TestExecutionProfileEvidenceRequired",
+    "why": "agent-execution/01: a qualified profile with no qualification evidence validates",
+    "file": "runner/executionprofile.go",
+    "old": "if len(p.Qualification.Evidence) == 0 {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestRunnerDocumentSizeCap",
+    "why": "agent-execution/01: a launch request longer than the size cap decodes",
+    "file": "runner/request.go",
+    "old": "\tif len(b) > MaxDocumentBytes {",
+    "new": "\tif false {"
+  },
+  {
+    "test": "TestRunnerDocumentSizeCap",
+    "why": "agent-execution/01: an extension value longer than the size cap decodes",
+    "file": "runner/executionprofile.go",
+    "old": "\tif len(raw) > MaxDocumentBytes {",
+    "new": "\tif false {"
+  },
+  {
+    "test": "TestRunnerProfileAdmittedByAdapter",
+    "why": "agent-execution/01: the adapter trusts the client's admission and runs its own check no longer",
+    "file": "runner/fake/fake.go",
+    "old": "need, err := runner.AdmitExecutionProfile(req, a.profiles)\n\tif err != nil {\n\t\treturn nil, err\n\t}",
+    "new": "need, _ := runner.DecodeProfileRequirement(req.Extensions[runner.ExecutionProfileExt])"
   }
 ]

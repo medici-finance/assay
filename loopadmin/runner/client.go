@@ -44,6 +44,10 @@ type invocation struct {
 	// adapter reported a harness, backend or profile other than that one.
 	profile     *ProfileRequirement
 	substituted bool
+	// extRefused is the verdict on a receipt's or an observation's ext map
+	// (checkAdapterExtensions). It is sticky: an invocation whose adapter
+	// reported an extension value the contract refuses is never accepted.
+	extRefused extRefusal
 }
 
 // NewClient wraps an adapter. The fence reads the caller's current authority
@@ -128,6 +132,12 @@ func (c *Client) Start(ctx context.Context, req LaunchRequest) (Ref, State, erro
 	}
 	c.performanceRemember(rec, identity)
 	in.state = StateRunning
+	// The launch happened, so the invocation runs and holds its authority;
+	// only the receipt's ext is refused, and with it the invocation's result.
+	if r := checkAdapterExtensions(req, c.caps, rec.Extensions); r != extClean {
+		in.extRefused = r
+		return ref, in.state, r.err()
+	}
 	if in.profile != nil {
 		if rep, ok, rerr := executionReport(rec.Extensions); rerr == nil && ok && rep.substituted(*in.profile) {
 			in.substituted = true
@@ -169,6 +179,12 @@ func (c *Client) look(ctx context.Context, ref Ref, q func(context.Context, Ref)
 		return Observation{}, &opaque{sentinel: ErrReconcileRequired, cause: aerr}
 	}
 	obs = obs.clone() // the adapter keeps no handle on what is recorded
+	// An observation whose ext the contract refuses is neither returned nor
+	// recorded, and the invocation's result is never accepted.
+	if r := checkAdapterExtensions(in.req, c.caps, obs.Extensions); r != extClean {
+		in.extRefused = r
+		return Observation{}, r.err()
+	}
 	if obs.State == StateAbsent {
 		if c.caps.LaunchDedupe && in.state == StateUnknown {
 			in.state = StateFailed
@@ -266,7 +282,9 @@ func (c *Client) get(ref Ref) (*invocation, error) {
 
 // AcceptResult applies the contract's acceptance checks to a finished
 // invocation. The generation fence comes first: an attempt whose generation is
-// no longer current is refused however well formed its result is.
+// no longer current is refused however well formed its result is. An
+// invocation whose adapter reported an ext value the contract refused is
+// refused before any of them.
 func (c *Client) AcceptResult(ctx context.Context, ref Ref) (Accepted, error) {
 	in, err := c.get(ref)
 	if err != nil {
@@ -274,12 +292,17 @@ func (c *Client) AcceptResult(ctx context.Context, ref Ref) (Accepted, error) {
 	}
 	c.mu.Lock()
 	state, obs, req, fellBack := in.state, in.obs, in.req, in.fellBack
-	profile, substituted := in.profile, in.substituted
+	profile, substituted, extRefused := in.profile, in.substituted, in.extRefused
 	if obs != nil {
 		kept := obs.clone() // the Accepted below shares nothing with the record
 		obs = &kept
 	}
 	c.mu.Unlock()
+	// The adapter reported an ext value the contract refused: nothing it
+	// reported for this invocation is accepted, whatever its state.
+	if extRefused != extClean {
+		return Accepted{}, extRefused.err()
+	}
 	if state != StateFinished || obs == nil || obs.Result == nil {
 		return Accepted{}, ErrNotFinished
 	}

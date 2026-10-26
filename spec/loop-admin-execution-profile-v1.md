@@ -40,6 +40,8 @@ What an adapter declares it is qualified to run. Every field is required.
 | `telemetry` | `none`, `partial`, `complete` or `unknown`. |
 | `qualification` | `evidence`: references to the qualification it rests on (at least one). `limits`: the versions, platforms or conditions that qualification holds within. |
 
+A declaration, a requirement and a report are each decoded as strictly as a runner v1 request (runner v1 section 3), the 1 MiB size limit included. A declaration with no `qualification.evidence` reference is refused.
+
 **Support values.** Every promise is `supported`, `unsupported` (checked, and it does not) or `unknown` (could not check). Unknown and unsupported stay distinct. Both refuse a need: unsupported as an unsupported mandatory capability, unknown as an unknown capability. Neither is ever read as the other, or as supported.
 
 ## 4. Requirement
@@ -98,7 +100,7 @@ The report is adapter-reported and untrusted. The model is not repeated here: th
 **Acceptance** of a governed invocation adds to runner v1 section 7, after the model check:
 
 1. A receipt or observation that reports another digest, harness or backend than the pinned one is refused, and the invocation can no longer be accepted.
-2. The finished observation MUST carry a report. A missing report is refused as unreported, never read as the pinned tuple. A report that does not decode, or carries credential material, is a malformed result.
+2. The finished observation MUST carry a report. A missing report is refused as unreported, never read as the pinned tuple. A report that does not decode is a malformed result. A report that carries credential material is refused as credential material before it is read, under runner v1 section 7, and the invocation can no longer be accepted.
 3. For a resumed launch whose requirement names `needs.resume`, the report MUST carry `restored`, and every needed dimension MUST be observed `supported`. A profile may declare more than one run restores; a run that restored only files is refused for a need of conversation or process memory, and an unreported restoration is unknown.
 
 The accepted result carries the checked report.
@@ -116,7 +118,7 @@ Admission and acceptance are the contract's checks. They do not know whether the
 
 ## 9. Conformance
 
-The conformance kit's `ProfileRefusedBeforeStart` case runs against any adapter: a request requiring a profile the adapter does not declare is refused before Start in both modes, and the same launch without the extension runs. The reference implementation's tests cover:
+The conformance kit's `ProfileRefusedBeforeStart` case runs against any adapter: a request requiring a profile the adapter does not declare is refused before Start in both modes, and the same launch without the extension runs. Its `ProfileAdmittedByAdapter` case runs against any adapter that declares qualified profiles: with the client's check bypassed, the adapter itself refuses a request pinning a profile it does not declare, in both modes, and runs one pinning its own. The reference implementation's tests cover:
 
 - v1 compatibility on old and new adapters;
 - preservation per dimension in both modes, unknown kept distinct from unsupported, and partial restoration refused at acceptance;
@@ -124,6 +126,9 @@ The conformance kit's `ProfileRefusedBeforeStart` case runs against any adapter:
 - a substituted backend at run time and a report naming another profile;
 - the adapter's own admission with the client check bypassed;
 - the caller's own check with the contract bypassed;
+- a report carrying credential material, on a receipt or an observation, refused, and the invocation never accepted afterwards;
+- a declaration with no qualification evidence refused;
+- the size limit on a declaration and a requirement;
 - schema-to-source coverage, with planted drift detected;
 - the malformed fixtures under `loopadmin/testdata/executionprofile/`.
 

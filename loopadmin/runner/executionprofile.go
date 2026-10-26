@@ -306,9 +306,13 @@ func (r ProfileRequirement) Validate() error {
 	return nil
 }
 
-// decodeExtension decodes one extension value as strictly as a request: exact
-// keys, no repeated key, no null for a defined field, nothing trailing.
+// decodeExtension decodes one extension value as strictly as a request: no
+// longer than MaxDocumentBytes, exact keys, no repeated key, no null for a
+// defined field, nothing trailing.
 func decodeExtension(raw json.RawMessage, into any, path fieldPath) error {
+	if len(raw) > MaxDocumentBytes {
+		return fmt.Errorf("%w: %s is longer than %d bytes", ErrInvalidRequest, path, MaxDocumentBytes)
+	}
 	if err := scanStrict(raw); err != nil {
 		return fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
@@ -480,16 +484,56 @@ func ReportExtension(rep ExecutionReport) map[string]json.RawMessage {
 	return map[string]json.RawMessage{ExecutionProfileExt: b}
 }
 
+// extRefusal is the verdict of checkAdapterExtensions. The Client keeps it on
+// the invocation, so an invocation whose adapter reported an ext map the
+// contract refuses is refused again at acceptance.
+type extRefusal uint8
+
+const (
+	extClean      extRefusal = iota
+	extUnlisted              // a key the request did not carry or the adapter does not declare
+	extCredential            // credential material in a key or a value
+)
+
+// err is the refusal a verdict carries, nil for a clean map. It names neither
+// the key nor the value.
+func (r extRefusal) err() error {
+	switch r {
+	case extCredential:
+		return fmt.Errorf("%w: in an adapter-reported extension", ErrCredential)
+	case extUnlisted:
+		return fmt.Errorf("%w: an adapter-reported extension the request did not carry or the adapter does not declare", ErrMalformedResult)
+	}
+	return nil
+}
+
+// checkAdapterExtensions is the one check every receipt's and observation's
+// ext map passes before the Client returns or records any of it (runner v1
+// sections 7 and 9). Every key and value is screened for credential material
+// first, and then every key must name an extension the request carried and the
+// adapter declares: a result carries only what the request asked for.
+func checkAdapterExtensions(req LaunchRequest, caps Capabilities, ext map[string]json.RawMessage) extRefusal {
+	for k, v := range ext {
+		if extensionCarriesCredential(k, v) {
+			return extCredential
+		}
+	}
+	for k := range ext {
+		if _, carried := req.Extensions[k]; !carried || !caps.hasExtension(k) {
+			return extUnlisted
+		}
+	}
+	return extClean
+}
+
 // executionReport reads the report an adapter put under ext. It reports false
-// when there is none; a report that does not decode, or that carries credential
-// material, is malformed.
+// when there is none; a report that does not decode is malformed. The ext map
+// it reads has already passed checkAdapterExtensions, which screens the report
+// for credential material with every other value.
 func executionReport(ext map[string]json.RawMessage) (ExecutionReport, bool, error) {
 	raw, ok := ext[ExecutionProfileExt]
 	if !ok {
 		return ExecutionReport{}, false, nil
-	}
-	if extensionCarriesCredential(ExecutionProfileExt, raw) {
-		return ExecutionReport{}, true, fmt.Errorf("%w: in the execution report", ErrCredential)
 	}
 	var rep ExecutionReport
 	if err := decodeExtension(raw, &rep, "ext.execution-profile/v1"); err != nil {

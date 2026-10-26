@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"testing"
 
@@ -177,6 +178,45 @@ func CaseProfileRefusedBeforeStart(t *testing.T, f Factory) {
 		}
 		if _, _, err := c.Start(ctx, base); err != nil {
 			t.Fatalf("%s: the same launch without the extension must still run: %v", base.Mode, err)
+		}
+	}
+}
+
+// CaseProfileAdmittedByAdapter: an adapter that declares qualified profiles
+// runs the execution-profile admission itself in Start, not only through the
+// Client. With the Client's check bypassed (ForgedProfiles), a request pinning
+// a profile the adapter does not declare is refused by the adapter, in both
+// modes, and nothing is launched; the same launch pinning the adapter's own
+// profile still runs. An adapter that does not declare the extension and a
+// profile has no admission of its own to prove: its requests are refused
+// before Start (CaseProfileRefusedBeforeStart).
+func CaseProfileAdmittedByAdapter(t *testing.T, f Factory) {
+	ctx := context.Background()
+	for _, base := range []runner.LaunchRequest{StandingRequest("profile-admitted"), WorkflowRequest("profile-admitted")} {
+		s := f(t)
+		pd, ok := s.Adapter.(runner.ProfileDeclarer)
+		if !ok || !slices.Contains(s.Adapter.Capabilities().Extensions, runner.ExecutionProfileExt) || len(pd.QualifiedProfiles()) == 0 {
+			return
+		}
+		own := pd.QualifiedProfiles()[0]
+		other := own
+		other.Qualification.Limits = append(append([]string(nil), other.Qualification.Limits...), "conformance kit only: declared by no adapter")
+		other = Seal(other)
+		claims := NewClaims()
+		c := runner.NewClient(ForgedProfiles{Adapter: s.Adapter, Declared: []runner.QualifiedProfile{other}}, claims)
+		req := ProfileRequest(base, Requirement(other, runner.Needs{}))
+		claims.Set(req.Authority.Key, req.Authority.Generation)
+		_, _, err := c.Start(ctx, req)
+		wantErr(t, string(base.Mode)+": profile the adapter does not declare", err, runner.ErrUnsupportedMandatory)
+		if !errors.Is(err, runner.ErrDefiniteFailure) {
+			t.Fatalf("%s: the refusal must be the adapter's own definite failure: %v", base.Mode, err)
+		}
+		if obs, err := s.Adapter.Observe(ctx, req.Ref()); err == nil && obs.State != runner.StateAbsent {
+			t.Fatalf("%s: the adapter launched a request it does not admit: %q", base.Mode, obs.State)
+		}
+		c = runner.NewClient(s.Adapter, claims)
+		if _, _, err := c.Start(ctx, ProfileRequest(base, Requirement(own, runner.Needs{}))); err != nil {
+			t.Fatalf("%s: a launch pinning the adapter's own profile must run: %v", base.Mode, err)
 		}
 	}
 }

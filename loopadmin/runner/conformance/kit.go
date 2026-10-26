@@ -10,7 +10,8 @@
 // or fence's error never reaches an error's text, nothing the caller or the
 // adapter keeps a handle on can rewrite the Client's record, and a required
 // qualified execution profile the adapter does not declare refuses before
-// Start.
+// Start, and an adapter that declares qualified profiles refuses one it does
+// not declare on its own, with the Client's check bypassed.
 package conformance
 
 import (
@@ -77,6 +78,7 @@ var Cases = []struct {
 	{"NoAliasing", CaseNoAliasing},
 	{"NoAliasingRecord", CaseNoAliasingRecord},
 	{"ProfileRefusedBeforeStart", CaseProfileRefusedBeforeStart},
+	{"ProfileAdmittedByAdapter", CaseProfileAdmittedByAdapter},
 }
 
 // RunAll runs every case as a subtest against fresh subjects.
