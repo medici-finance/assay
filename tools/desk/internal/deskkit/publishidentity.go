@@ -51,9 +51,12 @@ package deskkit
 // branch that was force-moved, or a tip this branch diverged from, cannot be fast-forwarded
 // by deskpr's plain (never forced) push, so nothing about it is trusted to shrink the range.
 // Any failure falls back to the whole `origin/<base>..<source>`, and the refusal (if any) says the
-// tip was offered and why it was not used. A STALE tracking ref that lags the remote is safe
-// by construction: it is an ancestor of the real remote head, so the range it yields is a
-// superset of what the push adds.
+// tip was offered and why it was not used. A caller whose tracking snapshot yields no tip at all
+// (PublishTrackingTip: a missing or badly spelled ref) passes that reason as RemoteTipWhy, so its
+// refusal says the same. A widened refusal never offers to rewrite the commit it names — the
+// remote may already hold it — and leads with making the narrower range usable. A STALE
+// tracking ref that lags the remote is safe by construction: it is an ancestor of the real
+// remote head, so the range it yields is a superset of what the push adds.
 
 import (
 	"fmt"
@@ -100,6 +103,10 @@ type PublishIdentityInput struct {
 	// otherwise — and when it is empty — the whole base-to-source range is judged.
 	// Every caller states it explicitly (TestPubIdentityCallersTip).
 	RemoteTip string
+	// RemoteTipWhy, when RemoteTip is empty, is why the caller's tracking snapshot supplied no
+	// tip (the second result of PublishTrackingTip). It becomes the range's Widened reason, so
+	// a refusal names the unused tip and its remedy. It never narrows the range.
+	RemoteTipWhy string
 	// Role is the session role the commits must be attributed to (worker, verifier, …).
 	Role string
 	// Commits, when non-nil, replaces the default git reader (test seam). It receives the
@@ -186,6 +193,15 @@ func isFullHexObjectName(s string) bool {
 	return true
 }
 
+// unusedTip renders why an offered remote tip was not used, the one shape every widening
+// reason takes (resolvePublishRange and PublishTrackingTip alike).
+func unusedTip(tip, why string) string {
+	return "the offered remote tip " + fmt.Sprintf("%q", tip) + " was not used: " + why
+}
+
+// tipUnresolved is the reason for a well-spelled tip that names no commit here.
+const tipUnresolved = "it does not resolve to a commit here (a first push, or a remote head not fetched yet — `git fetch origin` and retry)"
+
 // resolvePublishRange applies the fail-closed narrowing rules (file header) to an offered
 // remote tip. It never errors: every reason the tip cannot be used widens the range to the
 // whole Base..Source and is recorded in Widened. A base ref that does not resolve is left for
@@ -197,19 +213,18 @@ func resolvePublishRange(dir, base, tip, source string) PublishRange {
 		return rng
 	}
 	if why := tipSpellingProblem(tip); why != "" {
-		rng.Widened = "the offered remote tip " + fmt.Sprintf("%q", tip) + " was not used: " + why
+		rng.Widened = unusedTip(tip, why)
 		return rng
 	}
 	out, err := gitOut(dir, "rev-parse", "--verify", "--quiet", tip+"^{commit}")
 	sha := strings.TrimSpace(out)
 	if err != nil || !isFullHexObjectName(sha) {
-		rng.Widened = "the offered remote tip " + fmt.Sprintf("%q", tip) + " was not used: it does not resolve to a " +
-			"commit here (a first push, or a remote head not fetched yet — `git fetch origin` and retry)"
+		rng.Widened = unusedTip(tip, tipUnresolved)
 		return rng
 	}
 	if _, aerr := gitOut(dir, "merge-base", "--is-ancestor", sha, source); aerr != nil {
-		rng.Widened = "the offered remote tip " + fmt.Sprintf("%q", tip) + " was not used: it is not an ancestor of the checked source " +
-			"(the remote branch was force-moved, or this branch diverged from it)"
+		rng.Widened = unusedTip(tip, "it is not an ancestor of the checked source "+
+			"(the remote branch was force-moved, or this branch diverged from it)")
 		return rng
 	}
 	rng.Tip = strings.ToLower(sha)
@@ -219,24 +234,25 @@ func resolvePublishRange(dir, base, tip, source string) PublishRange {
 // PublishTrackingTip snapshots origin's tracking ref for the explicit destination
 // branch. It is the shared OFFLINE estimate used by local flip and PR update:
 // never use the worktree's upstream (a fresh feature branch may track main),
-// origin/HEAD, or a caller's revision expression. Missing/invalid refs return no
-// tip, so PublishIdentityMatchesRole checks the whole base-to-source range.
+// origin/HEAD, or a caller's revision expression. A missing or invalid ref returns
+// no tip and the reason why, which the caller passes as RemoteTipWhy: the gate then
+// checks the whole base-to-source range and its refusal names the unused tip.
 // The gate also proves ancestry. A publisher must recheck the live destination
 // before writing; a tracking ref alone is never proof of remote state.
-func PublishTrackingTip(dir, branch string) string {
-	if branch == "" || branch == "HEAD" {
-		return ""
-	}
+func PublishTrackingTip(dir, branch string) (tip, why string) {
 	ref := remoteTipRefPrefix + branch
-	if tipSpellingProblem(ref) != "" {
-		return ""
+	if branch == "" || branch == "HEAD" {
+		return "", unusedTip(ref, "it names no branch (an empty or detached HEAD)")
+	}
+	if problem := tipSpellingProblem(ref); problem != "" {
+		return "", unusedTip(ref, problem)
 	}
 	out, err := gitOut(dir, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
-	tip := strings.TrimSpace(out)
+	tip = strings.TrimSpace(out)
 	if err != nil || !isFullHexObjectName(tip) {
-		return ""
+		return "", unusedTip(ref, tipUnresolved)
 	}
-	return tip
+	return tip, ""
 }
 
 // PublishIdentityMatchesRole refuses (exit 5) when any commit the push would publish is not
@@ -299,6 +315,9 @@ func PublishIdentityMatchesRole(in PublishIdentityInput) error {
 		source = "HEAD"
 	}
 	rng := resolvePublishRange(in.Dir, in.Base, in.RemoteTip, source)
+	if strings.TrimSpace(in.RemoteTip) == "" {
+		rng.Widened = strings.TrimSpace(in.RemoteTipWhy)
+	}
 	commits, err := read(in.Dir, rng)
 	if err != nil {
 		return Unverifiable(fmt.Sprintf(
@@ -343,17 +362,21 @@ func emailMatchesRole(ident BotIdentity, email string) bool {
 func publishIdentityRefusal(ident BotIdentity, role string, c PublishCommit, rng PublishRange, verb, foundName, foundEmail string) error {
 	msg := fmt.Sprintf(
 		"publish-identity: commit %s (%q) is %s by %s, but role %q publishes as %s — a commit carrying "+
-			"another identity would be published under the wrong actor. Fix this worktree's identity and "+
-			"re-author: `git commit --amend --reset-author` after correcting user.name/user.email, or "+
-			"re-create the worktree with `deskwt role-init --role %s`. There is no override. Range judged: %s.",
-		shortPublishSHA(c.SHA), c.Subject, verb, foundIdentity(foundName, foundEmail), role, expectedIdentity(ident), role,
-		rng.String())
+			"another identity would be published under the wrong actor. ",
+		shortPublishSHA(c.SHA), c.Subject, verb, foundIdentity(foundName, foundEmail), role, expectedIdentity(ident))
 	if rng.Widened != "" {
 		// Name why the narrower range was not used: a commit the remote branch already holds is
-		// only re-judged here because its tip could not be trusted, and the remedy differs.
-		msg += " Note: " + rng.Widened + ", so the whole range was judged."
+		// only re-judged here because its tip could not be trusted, and the remedy differs — a
+		// published commit is never rewritten, so no amend is offered.
+		return Refused(msg + fmt.Sprintf("Note: %s, so the whole range was judged. The remote may already hold "+
+			"this commit, and a published commit is never rewritten: make the narrower range usable (as the note "+
+			"says) and retry. Only a commit the remote does not hold is fixed by correcting this worktree's identity "+
+			"(`deskwt role-init --role %s`) and committing it again. There is no override. Range judged: %s.",
+			rng.Widened, role, rng.String()))
 	}
-	return Refused(msg)
+	return Refused(msg + fmt.Sprintf("Fix this worktree's identity and re-author: `git commit --amend --reset-author` "+
+		"after correcting user.name/user.email, or re-create the worktree with `deskwt role-init --role %s`. "+
+		"There is no override. Range judged: %s.", role, rng.String()))
 }
 
 // foundIdentity renders the offending "<name> <email>" pair, tolerating an empty half so a

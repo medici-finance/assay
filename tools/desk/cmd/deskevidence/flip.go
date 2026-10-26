@@ -43,7 +43,8 @@ then present a verified closure, and commits the README alone as the verifier Ap
 identity on the current branch. Refused on main/master, a detached HEAD, staged changes,
 a README that differs from HEAD, or unpublished commits the publish-identity gate
 would refuse. The offline range uses origin's tracking ref for this branch (never
-its upstream); missing or divergent tips judge the whole branch. Publication
+its upstream); missing or divergent tips judge the whole branch, and a refusal
+says why the tip was not used. Publication
 rechecks the live destination. Nothing is pushed: open the draft PR from the worktree with deskpr.
 
 The after-lint judges the COMMITTED flip (some checks read history, not the tree), so a
@@ -101,8 +102,8 @@ func runFlip(args []string) error {
 	// Freeze the explicit branch's offline tip across both checks. Already-landed
 	// Evidence is not published again; every new commit must still match. deskpr
 	// confirms the live destination before publishing this local result.
-	remoteTip := deskkit.PublishTrackingTip(abs, branch)
-	if err := publishIdentityGate(abs, *base, remoteTip); err != nil {
+	remoteTip, tipWhy := deskkit.PublishTrackingTip(abs, branch)
+	if err := publishIdentityGate(abs, *base, remoteTip, tipWhy); err != nil {
 		return err
 	}
 
@@ -190,7 +191,7 @@ func runFlip(args []string) error {
 		}
 		return deskkit.Unverifiable(fmt.Sprintf("flip: the commit did not carry the verifier identity (%q) — taken back", got), nil)
 	}
-	if err := publishIdentityGate(abs, *base, remoteTip); err != nil {
+	if err := publishIdentityGate(abs, *base, remoteTip, tipWhy); err != nil {
 		if uerr := uncommit(); uerr != nil {
 			return uerr
 		}

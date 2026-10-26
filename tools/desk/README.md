@@ -1245,7 +1245,12 @@ Boundaries mirror the push-transport gate's:
   confirmed history, and pins the existing ref during its plain push. An absent branch
   keeps the whole range; unreadable or divergent state refuses. `create --check` judges
   the whole range and explicitly reports that it cannot confirm the remote head.
-  `deskevidence` offers no tip (its base already is the branch it writes). Every caller's tip choice is pinned
+  `deskevidence flip` offers a snapshot of `refs/remotes/origin/<branch>` for the branch it
+  commits on, as an offline estimate only: it pushes nothing, and `deskpr` re-judges the range
+  against live state when the branch is published. A snapshot that yields no tip still names
+  why, and a widened refusal never offers to amend a commit the remote may already hold. The
+  conditional-write Evidence landing offers no tip (it judges its admitted source against
+  `main`, and pushes no source commit). Every caller's tip choice is pinned
   by `TestPubIdentityCallersTip`; the fail-first evidence is
   `internal/deskkit/publishidentity-mutations.json`.
 - **`deskevidence` commits as the verifier App via the Contents API**, so its own landing is

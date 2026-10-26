@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -301,6 +302,10 @@ func TestFlipRemoteEvidence(t *testing.T) {
 				flGit(t, root, "-c", "user.email=noreply@github.com", "commit", "--allow-empty", "--author=Assay Verifier <"+verifierBotEmail+">", "-m", "unpublished provider")
 			}
 			before := flGit(t, root, "rev-parse", "HEAD")
+			tracked := ""
+			if state != "missing" {
+				tracked = flGit(t, root, "rev-parse", "refs/remotes/origin/verify-flip")
+			}
 			extra, want := []string{}, deskkit.ExitRefused
 			if state == "published" || state == "dry-run" {
 				want = deskkit.ExitOK
@@ -310,6 +315,23 @@ func TestFlipRemoteEvidence(t *testing.T) {
 			}
 			if rc := flRun(root, extra...); rc != want {
 				t.Fatalf("flip rc=%d, want %d", rc, want)
+			}
+			// Each refusal is the publish-identity one, naming the commit it judged and,
+			// when the snapshot could not narrow, why — never an amend of published Evidence.
+			msg := stderr.(*bytes.Buffer).String()
+			named := map[string][]string{
+				"missing":      {"commit " + evidence[:12], `"refs/remotes/origin/verify-flip" was not used`, "does not resolve", "`git fetch origin` and retry"},
+				"divergent":    {"commit " + evidence[:12], `"` + tracked + `" was not used`, "not an ancestor"},
+				"new foreign":  {"commit " + before[:12], `("foreign")`, "excluding the remote tip " + evidence[:12], "--reset-author"},
+				"new provider": {"commit " + before[:12], `("unpublished provider")`, "excluding the remote tip " + evidence[:12], "--reset-author"},
+			}[state]
+			for _, w := range named {
+				if !strings.Contains(msg, "publish-identity: ") || !strings.Contains(msg, w) {
+					t.Errorf("refusal does not name %q:\n%s", w, msg)
+				}
+			}
+			if (state == "missing" || state == "divergent") && strings.Contains(msg, "--reset-author") {
+				t.Errorf("refusal offers to rewrite Evidence the remote may already hold:\n%s", msg)
 			}
 			if state != "published" && flGit(t, root, "rev-parse", "HEAD") != before {
 				t.Fatal("refusal/dry-run changed HEAD")

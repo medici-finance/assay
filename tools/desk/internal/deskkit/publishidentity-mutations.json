@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ ./cmd/deskpr/ -count=1 -timeout 300s -run 'PubRange|PubClass|PubIdentity|PublishIdentity|DefaultPublishCommits|UpdateCheckAcceptsMixedPR|UpdatePushesMixedPR|UpdateRefusesNewForeign|UpdateLiveHeadOverrulesRef|UpdateNoLiveHeadFailsClosed|CreateJudgesWholeRange|CreateEvidenceOffline|UpdatePR|UpdateDivergedLive|UpdateNoTrackRefWide'",
+  "test": "go test ./internal/deskkit/ ./cmd/deskpr/ ./cmd/deskevidence/ -count=1 -timeout 300s -run 'PubRange|PubClass|PubIdentity|PublishIdentity|DefaultPublishCommits|UpdateCheckAcceptsMixedPR|UpdatePushesMixedPR|UpdateRefusesNewForeign|UpdateLiveHeadOverrulesRef|UpdateNoLiveHeadFailsClosed|CreateJudgesWholeRange|CreateEvidenceOffline|UpdatePR|UpdateDivergedLive|UpdateNoTrackRefWide|PublishTrackingTip|PublishTipWhyNote|FlipRemoteEvidence'",
   "control": {
     "name": "CONTROL \u2014 the gate stops checking authors at all (any identity is published)",
     "file": "internal/deskkit/publishidentity.go",
@@ -28,8 +28,8 @@
     {
       "name": "fail-open: an unresolvable tip (first push / not fetched) narrows to an empty range instead of widening",
       "file": "internal/deskkit/publishidentity.go",
-      "old": "commit here (a first push, or a remote head not fetched yet \u2014 `git fetch origin` and retry)\"\n\t\treturn rng\n",
-      "new": "commit here (a first push, or a remote head not fetched yet \u2014 `git fetch origin` and retry)\"\n\t\trng.Tip = \"HEAD\"\n\t\treturn rng\n"
+      "old": "\t\trng.Widened = unusedTip(tip, tipUnresolved)\n\t\treturn rng\n",
+      "new": "\t\trng.Widened = unusedTip(tip, tipUnresolved)\n\t\trng.Tip = \"HEAD\"\n\t\treturn rng\n"
     },
     {
       "name": "accept any ref namespace (refs/heads/<branch>, another remote) as the remote tip",
@@ -52,20 +52,20 @@
     {
       "name": "update drops the LIVE stage (a stale-ahead tracking ref decides what is pushed)",
       "file": "cmd/deskpr/deskpr.go",
-      "old": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, facts.head); ierr != nil {",
-      "new": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, facts.head); false && ierr != nil {"
+      "old": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, \"\", facts.head); ierr != nil {",
+      "new": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, \"\", facts.head); false && ierr != nil {"
     },
     {
       "name": "update's live stage anchors on the local tracking ref instead of the forge's PR head",
       "file": "cmd/deskpr/deskpr.go",
-      "old": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, facts.head); ierr != nil {",
-      "new": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, deskkit.PublishTrackingTip(facts.dir, facts.branch), facts.head); ierr != nil {"
+      "old": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, full.HeadSHA, \"\", facts.head); ierr != nil {",
+      "new": "\tif ierr := publishIdentityGate(facts.dir, facts.defaultBranch, func() string { t, _ := deskkit.PublishTrackingTip(facts.dir, facts.branch); return t }(), \"\", facts.head); ierr != nil {"
     },
     {
       "name": "offline create narrows on an unconfirmed local tracking ref",
       "file": "cmd/deskpr/deskpr.go",
-      "old": "\tif ierr := publishIdentityGate(facts.dir, *base, \"\", facts.head); ierr != nil {",
-      "new": "\tif ierr := publishIdentityGate(facts.dir, *base, deskkit.PublishTrackingTip(facts.dir, facts.branch), facts.head); ierr != nil {"
+      "old": "\tif ierr := publishIdentityGate(facts.dir, *base, \"\", \"\", facts.head); ierr != nil {",
+      "new": "\tif ierr := publishIdentityGate(facts.dir, *base, func() string { t, _ := deskkit.PublishTrackingTip(facts.dir, facts.branch); return t }(), \"\", facts.head); ierr != nil {"
     },
     {
       "name": "deskevidence flip offers the base instead of the reviewed branch snapshot",
@@ -102,6 +102,36 @@
       "file": "cmd/deskpr/deskpr.go",
       "old": "\t\tif rerr := requireRemoteHoldsHead(facts.dir, pushDest, full.HeadSHA, pr.Number); rerr != nil {",
       "new": "\t\tif rerr := requireRemoteHoldsHead(facts.dir, pushDest, full.HeadSHA, pr.Number); false && rerr != nil {"
+    },
+    {
+      "name": "diagnostic lost: the tracking snapshot drops why an unresolved ref supplied no tip",
+      "file": "internal/deskkit/publishidentity.go",
+      "old": "\t\treturn \"\", unusedTip(ref, tipUnresolved)\n",
+      "new": "\t\treturn \"\", \"\"\n"
+    },
+    {
+      "name": "diagnostic lost: the gate ignores the caller's RemoteTipWhy",
+      "file": "internal/deskkit/publishidentity.go",
+      "old": "\t\trng.Widened = strings.TrimSpace(in.RemoteTipWhy)\n",
+      "new": "\t\trng.Widened = \"\"\n"
+    },
+    {
+      "name": "widened refusal offers to rewrite a commit the remote may already hold",
+      "file": "internal/deskkit/publishidentity.go",
+      "old": "\tif rng.Widened != \"\" {\n\t\t// Name why",
+      "new": "\tif false && rng.Widened != \"\" {\n\t\t// Name why"
+    },
+    {
+      "name": "deskpr update drops the offline snapshot's reason",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "publishIdentityGate(facts.dir, facts.defaultBranch, offlineTip, offlineWhy, facts.head)",
+      "new": "publishIdentityGate(facts.dir, facts.defaultBranch, offlineTip, offlineWhy[:0], facts.head)"
+    },
+    {
+      "name": "deskevidence flip drops the snapshot's reason",
+      "file": "cmd/deskevidence/github.go",
+      "old": "\t\tRemoteTipWhy: tipWhy,\n",
+      "new": "\t\tRemoteTipWhy: \"\",\n"
     }
   ]
 }

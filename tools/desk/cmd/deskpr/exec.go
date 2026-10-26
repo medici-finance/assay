@@ -50,14 +50,16 @@ var productionPublishIdentityGateFn = publishIdentityGateFn
 // remoteTip (#1967) is the commit the remote branch this push updates already holds, so the
 // gate judges only the commits the push ADDS; "" judges the whole range. deskkit uses it only
 // when it passes the gate's fail-closed rules, and widens to the whole range otherwise. Each
-// caller's choice is pinned by TestPubIdentityCallersTip. Source is the immutable
-// hash used by both the identity walk and the eventual push.
-func publishIdentityGate(dir, base, remoteTip, source string) error {
+// caller's choice is pinned by TestPubIdentityCallersTip. tipWhy is why an offline
+// tracking snapshot supplied no tip (deskkit.PublishTrackingTip), so a refusal names it;
+// "" everywhere else. Source is the immutable hash used by both the identity walk and
+// the eventual push.
+func publishIdentityGate(dir, base, remoteTip, tipWhy, source string) error {
 	role, _, rerr := deskkit.SessionTokenRole("deskpr")
 	if rerr != nil {
 		return rerr
 	}
-	return publishIdentityGateFn(deskkit.PublishIdentityInput{Dir: dir, Base: base, RemoteTip: remoteTip, Source: source, Role: role})
+	return publishIdentityGateFn(deskkit.PublishIdentityInput{Dir: dir, Base: base, RemoteTip: remoteTip, RemoteTipWhy: tipWhy, Source: source, Role: role})
 }
 
 // ghToken holds the App installation token value set by mintWorkerToken. It is handed to the

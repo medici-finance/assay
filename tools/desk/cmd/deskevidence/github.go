@@ -89,14 +89,16 @@ var productionPublishIdentityGateFn = publishIdentityGateFn
 
 // publishIdentityGate judges unpublished branch commits before and after flip's
 // local commit. Publication rechecks the live destination; conditional forge-file writes
-// use the separate admitted-source boundary below instead.
-func publishIdentityGate(dir, base, remoteTip string) error {
+// use the separate admitted-source boundary below instead. tipWhy is why the
+// snapshot supplied no tip, so a refusal names it (deskkit.PublishTrackingTip).
+func publishIdentityGate(dir, base, remoteTip, tipWhy string) error {
 	if strings.TrimSpace(dir) == "" {
 		dir = "."
 	}
 	// Flip pins the shared offline estimate before making its local commit.
 	return publishIdentityGateFn(deskkit.PublishIdentityInput{
 		Dir: dir, Base: strings.TrimPrefix(base, "refs/heads/"), RemoteTip: remoteTip, Role: "verifier",
+		RemoteTipWhy: tipWhy,
 	})
 }
 
