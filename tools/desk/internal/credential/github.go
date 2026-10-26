@@ -601,7 +601,8 @@ func WriteTokenCache(path, token string, beforeRename func()) error {
 	return nil
 }
 
-// writePerms records the granted permission map next to the token cache, 0600. Not fatal:
+// writePerms records the granted permission map next to the token cache, 0600, through the
+// same atomic writer as the token (no torn read, no write through a link). Not fatal:
 // preflight reads a missing sidecar as could-not-check rather than as a pass.
 func writePerms(tokenPath string, perms map[string]string) {
 	if len(perms) == 0 {
@@ -621,7 +622,7 @@ func writePerms(tokenPath string, perms map[string]string) {
 		fmt.Fprintf(&b, "%q:%q", k, perms[k])
 	}
 	b.WriteString("}")
-	_ = os.WriteFile(PermsPath(tokenPath), []byte(b.String()), 0o600)
+	_ = WriteTokenCache(PermsPath(tokenPath), b.String(), nil)
 }
 
 // SyncDir best-effort fsyncs a directory so a rename into it is durable.

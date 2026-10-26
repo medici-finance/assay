@@ -74,11 +74,13 @@ func OwnerSidecarPath(tokenPath string) string { return tokenPath + ".owner" }
 
 // writeOwnerSidecar records "<appName> <owner>" beside the token cache, 0600. Not fatal:
 // a missing sidecar costs one installations call next time rather than a wrong answer.
+// Atomic like the token itself: a racing reader sees the old sidecar or the new one, never a
+// torn one, and a link at the path is replaced rather than written through.
 func writeOwnerSidecar(tokenPath, appName, owner string) {
 	if !cacheNameOK(appName) || !cacheNameOK(owner) {
 		return
 	}
-	_ = os.WriteFile(OwnerSidecarPath(tokenPath), []byte(appName+" "+owner+"\n"), 0o600)
+	_ = WriteTokenCache(OwnerSidecarPath(tokenPath), appName+" "+owner+"\n", nil)
 }
 
 // readOwnerSidecar returns the App name and account a sidecar records; ok=false covers

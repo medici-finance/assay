@@ -252,6 +252,18 @@
       "file": "internal/credential/github.go",
       "old": "\t\tif age < ReuseWindow && (!recorded || now.Before(expires)) {",
       "new": "\t\tif age < ReuseWindow && (recorded || !recorded) {"
+    },
+    {
+      "name": "write the owner sidecar in place (a link at .owner is written through, a wider existing mode is kept)",
+      "file": "internal/credential/installid.go",
+      "old": "\t_ = WriteTokenCache(OwnerSidecarPath(tokenPath), appName+\" \"+owner+\"\\n\", nil)",
+      "new": "\t_ = os.WriteFile(OwnerSidecarPath(tokenPath), []byte(appName+\" \"+owner+\"\\n\"), 0o600)"
+    },
+    {
+      "name": "write the perms sidecar in place (a link at .perms is written through, a wider existing mode is kept)",
+      "file": "internal/credential/github.go",
+      "old": "\t_ = WriteTokenCache(PermsPath(tokenPath), b.String(), nil)",
+      "new": "\t_ = os.WriteFile(PermsPath(tokenPath), []byte(b.String()), 0o600)"
     }
   ]
 }
