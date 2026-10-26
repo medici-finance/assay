@@ -155,10 +155,9 @@ func misplacedRiskKey(v interface{}) (string, bool) {
 }
 
 // invisibleRune reports a rune that does not print: a format character
-// (category Cf, such as a zero-width space, word joiner or byte-order mark),
-// another non-graphic rune, a variation selector or another default-ignorable
-// code point. A key holding one can look identical on screen to a key it does
-// not equal.
+// (category Cf), another non-graphic rune, a variation selector, another
+// default-ignorable code point, or a blank-rendering rune. A key holding one
+// can look identical on screen to a key it does not equal.
 func invisibleRune(r rune) bool {
 	return unicode.Is(unicode.Cf, r) || !unicode.IsGraphic(r) ||
 		unicode.In(r, unicode.Variation_Selector, unicode.Other_Default_Ignorable_Code_Point) ||
@@ -166,7 +165,7 @@ func invisibleRune(r rune) bool {
 }
 
 // blankRune reports a printing rune that renders as empty space: a space
-// separator other than the ASCII space, or the braille blank pattern.
+// separator other than the ASCII space, or a blank-rendering symbol.
 func blankRune(r rune) bool {
 	return r != ' ' && unicode.Is(unicode.Zs, r) || r == '\u2800'
 }

@@ -128,7 +128,7 @@
       "new": "\treturn r == '\\u2800'"
     },
     {
-      "name": "blank runes: the braille blank pattern is no longer treated as invisible",
+      "name": "blank runes: a blank-rendering symbol is no longer treated as invisible",
       "file": "briefdoc/document.go",
       "old": "\treturn r != ' ' && unicode.Is(unicode.Zs, r) || r == '\\u2800'",
       "new": "\treturn r != ' ' && unicode.Is(unicode.Zs, r)"
