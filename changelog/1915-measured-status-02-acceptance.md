@@ -1,0 +1,1 @@
+- Pin measured-status/02 consumer verification to its actual immutable delivery even though that commit has no Brief trailer; preserve original assertions, historical Evidence, exact human amendment approval and independent reverification.

@@ -105,6 +105,80 @@ func TestVflipEveryMergeBase(t *testing.T) {
 	}
 }
 
+// vfBlob is the blob id of the fixture brief at rev.
+func vfBlob(t *testing.T, root, rev string) string {
+	t.Helper()
+	return vfRev(t, root, rev+":"+vfBriefRel)
+}
+
+// vfCrissCross builds the criss-cross shape of issue #4466. From the PASS, a
+// side y leaves Evidence alone (base A) and a side x carries a verifier note
+// (base B). Each side merges the other's tip, so x and y have TWO merge bases,
+// and y's merge keeps B's Evidence. x then moves on with a second verifier
+// note; with yFail the verifier also records a later FAIL on y. Finally another
+// App merges x into y (y first parent, as a main-into-branch merge is) keeping
+// x's Evidence, and main fast-forwards to that merge. Positive controls pin the
+// blob relations the issue reports: merge = parent 2; parent 2 differs from
+// both bases; parent 1 = base B (without yFail) or neither base (with it).
+func vfCrissCross(t *testing.T, yFail bool) (root, readme string) {
+	t.Helper()
+	root, readme = vfFixture(t, vfDefaults())
+	pass := vfRev(t, root, "HEAD")
+	runGitEnv(t, root, nil, "checkout", "-q", "-b", "y", pass)
+	vfOther(t, root, "a.txt", vfMailWorker)
+	baseA := vfRev(t, root, "HEAD")
+	runGitEnv(t, root, nil, "checkout", "-q", "-b", "x", pass)
+	vfAppend(t, root, "\n\nverifier note: re-read at "+vfSHA+", nothing changed.")
+	vfCommit(t, root, vfMailVerifier)
+	baseB := vfRev(t, root, "HEAD")
+	vfGit(t, root, vfMailWorker, "merge", "-q", "--no-ff", "--no-edit", baseA)
+	runGitEnv(t, root, nil, "checkout", "-q", "y")
+	vfGit(t, root, vfMailWorker, "merge", "-q", "--no-ff", "--no-edit", baseB)
+	if yFail {
+		vfAppend(t, root, "\n\n"+vfLaterFail)
+		vfCommit(t, root, vfMailVerifier)
+	}
+	runGitEnv(t, root, nil, "checkout", "-q", "x")
+	vfAppend(t, root, "\n\nverifier note: re-read again at "+vfSHA+".")
+	vfCommit(t, root, vfMailVerifier)
+	runGitEnv(t, root, nil, "checkout", "-q", "y")
+	vfGit(t, root, vfMailWorker, "merge", "-q", "-s", "ours", "--no-commit", "x")
+	runGitEnv(t, root, nil, "checkout", "x", "--", vfBriefRel)
+	vfGit(t, root, vfMailWorker, "commit", "-q", "-m", "merge x into y")
+	runGitEnv(t, root, nil, "checkout", "-q", "main")
+	runGitEnv(t, root, nil, "merge", "-q", "--ff-only", "y")
+
+	out, err := vfGitCommand(root, "merge-base", "--all", "HEAD^1", "HEAD^2").Output()
+	bases := strings.Fields(string(out))
+	if err != nil || len(bases) != 2 || !(bases[0] == baseA && bases[1] == baseB || bases[0] == baseB && bases[1] == baseA) {
+		t.Fatalf("positive control: the final merge's parents must have the two merge bases A and B; got %q (err %v)", out, err)
+	}
+	m, p1, p2, a, b := vfBlob(t, root, "HEAD"), vfBlob(t, root, "HEAD^1"), vfBlob(t, root, "HEAD^2"), vfBlob(t, root, baseA), vfBlob(t, root, baseB)
+	if m != p2 || p2 == a || p2 == b || a == b || (p1 == b) == yFail || p1 == a {
+		t.Fatalf("positive control: blob relations merge=%.12s p1=%.12s p2=%.12s A=%.12s B=%.12s do not match the issue's shape (yFail=%v)", m, p1, p2, a, b, yFail)
+	}
+	return root, readme
+}
+
+// regression: #4466
+// TestVflipCrissCrossNoNet: the main-into-branch merge keeps main's Evidence,
+// and the branch side made no net change since base B — though it differs
+// from the older base A. The merge is the trivial result, so its author is not
+// judged and the flip passes.
+func TestVflipCrissCrossNoNet(t *testing.T) {
+	root, readme := vfCrissCross(t, false)
+	vfExpect(t, root, readme, verifyflipExitOK, "flipped")
+}
+
+// TestVflipCrissCrossDropsFail: the same criss-cross, but the verifier recorded
+// a FAIL on the branch side after the PASS, and the merge keeps main's Evidence,
+// dropping it. No merge base holds the branch's Evidence, so the merge is
+// judged and another App's merge refuses.
+func TestVflipCrissCrossDropsFail(t *testing.T) {
+	root, readme := vfCrissCross(t, true)
+	vfExpect(t, root, readme, verifyflipExitRefused, "provenance")
+}
+
 // TestFlipMergeBasesObjectIDs: the allow-listed merge-base caller refuses any
 // operand that is not a commit object id, so a name never reaches git.
 func TestFlipMergeBasesObjectIDs(t *testing.T) {

@@ -31,6 +31,15 @@ is kept honest by `TestBriefV1SchemaCoverage` and `statusgen conform`.
   bash tools/release/check-spec-header-version.test.sh
   ```
 
+- `bundles.py` / `bundles_test.py` — the provenance-bundle lane of the release
+  job (#3094), unrelated to the spec stamp. The release attests every published
+  asset in one step; `bundles.py` refuses unless the bundle has the shape
+  `deskinstall` verifies and names the sha256 of every listed asset (and every
+  `checksums.txt` file is listed with its recorded bytes), writes it beside each
+  asset as `<asset>.sigstore.json`, and refuses to publish a release on which
+  any asset or bundle is missing. It verifies no signature; `deskinstall` and
+  `gh attestation verify` do. Offline fixtures:
+  `python3 -B -m unittest discover -s tools/release -p bundles_test.py -v`.
 - `release.yml.patch` — the exact delta to `.github/workflows/release.yml`.
 - `release.yml.proposed` — the whole intended `release.yml` (the patch applied
   to the live file as it stood at staging, plus a banner). Kept for review;
