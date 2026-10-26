@@ -1,0 +1,89 @@
+{
+  "test": "go test . -run 'TestAttributionIdentity|TestIndependenceOverride' -count=1 -timeout 120s",
+  "control": {
+    "name": "CONTROL — the committer-identity cross-check's hard PROBLEM demoted back to a NOTICE (measured-status/05 Option 1 undone)",
+    "file": "attribution.go",
+    "old": "\t\t\t\tadd(\"%s: verification independence FAILS the committer-identity cross-check",
+    "new": "\t\t\t\taddNotice(\"%s: verification independence FAILS the committer-identity cross-check"
+  },
+  "mutations": [
+    {
+      "name": "self-serve check disabled (the excused identity records its own override)",
+      "file": "attribution.go",
+      "old": "if recID == excusedID {",
+      "new": "if false && recID == excusedID {"
+    },
+    {
+      "name": "staleness check disabled (an override whose Evidence changed since it was recorded is honored)",
+      "file": "attribution.go",
+      "old": "if now, found := evidenceSectionText(cur); !found || now != seen {",
+      "new": "if now, found := evidenceSectionText(cur); false && (!found || now != seen) {"
+    },
+    {
+      "name": "current-human check disabled (a former or unmapped name authorizes)",
+      "file": "attribution.go",
+      "old": "if _, current := HumanLogin(ov.name); !current {",
+      "new": "if _, current := HumanLogin(ov.name); false && !current {"
+    },
+    {
+      "name": "not-the-author check disabled (the brief's own author excuses its verification)",
+      "file": "attribution.go",
+      "old": "if tok, ok := authorToken(authored); ok && tok == ov.name {",
+      "new": "if tok, ok := authorToken(authored); false && ok && tok == ov.name {"
+    },
+    {
+      "name": "committed-provenance check disabled (an uncommitted override is judged with no recorder)",
+      "file": "attribution.go",
+      "old": "if !ok {\n\t\treturn ov, \"\", \"the override line is not committed",
+      "new": "if false && !ok {\n\t\treturn ov, \"\", \"the override line is not committed"
+    },
+    {
+      "name": "working-tree-matches-commit check disabled (an uncommitted edit rides the committed line's provenance)",
+      "file": "attribution.go",
+      "old": "if value != strings.TrimSpace(raw) {",
+      "new": "if false && value != strings.TrimSpace(raw) {"
+    },
+    {
+      "name": "empty-reason check disabled (a bare human:<name> <date> authorizes)",
+      "file": "attribution.go",
+      "old": "if reason == \"\" {",
+      "new": "if false && reason == \"\" {"
+    },
+    {
+      "name": "grammar unanchored (an on-behalf-of relay or prose mention parses as the human's own authorization)",
+      "file": "attribution.go",
+      "old": "regexp.MustCompile(`^human:([0-9A-Za-z_]+)",
+      "new": "regexp.MustCompile(`human:([0-9A-Za-z_]+)"
+    },
+    {
+      "name": "honored override still also emits the hard PROBLEM (continue dropped)",
+      "file": "attribution.go",
+      "old": "p.label, p.id, ov.name, ov.date, shortSHA(sha), ov.reason)\n\t\t\t\t\t\tcontinue",
+      "new": "p.label, p.id, ov.name, ov.date, shortSHA(sha), ov.reason)"
+    },
+    {
+      "name": "override-carrying briefs no longer forced through the precise pass (an override is silently moot)",
+      "file": "attribution.go",
+      "old": "if authoringID == evidenceID || (bf.IndependenceOverride != \"\" && selfLabeledIndependent) {",
+      "new": "if authoringID == evidenceID {"
+    },
+    {
+      "name": "independence-override key no longer parsed",
+      "file": "brieffile.go",
+      "old": "bf.IndependenceOverride = strings.TrimSpace(s)",
+      "new": "_ = s"
+    },
+    {
+      "name": "blame reads the committer-of-record wrongly (identity always empty: provenance never resolves)",
+      "file": "gitinfo.go",
+      "old": "identity = strings.ToLower(strings.Trim(strings.TrimSpace(mail), \"<>\"))",
+      "new": "identity = \"\"; _ = mail"
+    },
+    {
+      "name": "staleness reads the wrong version (the current Evidence is compared with itself)",
+      "file": "attribution.go",
+      "old": "seen, ok := evidenceSectionAtCommit(root, recSHA, rel)",
+      "new": "seen, ok := evidenceSectionAtCommit(root, \"HEAD\", rel)"
+    }
+  ]
+}

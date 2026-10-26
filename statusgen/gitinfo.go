@@ -373,3 +373,86 @@ func evidenceSectionTouchedByOtherIdentity(root, relPath, authoringID string) (t
 	}
 	return false, true
 }
+
+// evidenceSectionText returns the "## Evidence" section of a brief's content —
+// the heading's body up to the next "## " heading, or EOF — with line endings
+// normalized, so two versions of one brief can be compared by WHAT their
+// Evidence says. ok is false when the content carries no "## Evidence" heading.
+func evidenceSectionText(content []byte) (section string, ok bool) {
+	lines := strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n")
+	start, end, found := evidenceSectionSpan(lines)
+	if !found {
+		return "", false
+	}
+	return strings.TrimRight(strings.Join(lines[start:end], "\n"), "\n"), true
+}
+
+// evidenceSectionAtCommit returns relPath's Evidence section as committed in sha
+// (evidenceSectionText over `git show <sha>:<path>`). ok is false when that
+// version is unreadable or has no Evidence heading — callers treat it as
+// could-not-check, never as a match.
+func evidenceSectionAtCommit(root, sha, relPath string) (section string, ok bool) {
+	content, err := gitShowObject(root, sha, filepath.ToSlash(relPath))
+	if err != nil {
+		return "", false
+	}
+	return evidenceSectionText(content)
+}
+
+// frontmatterKeyLineProvenance finds the single line `<key>: <value>` in the
+// YAML frontmatter of relPath as COMMITTED at HEAD and returns that line's value
+// (quotes stripped) together with the commit that last wrote the line and that
+// commit's author identity (email, lowercased — the same identity key as
+// gitPathLastAuthorIdentity). ok is false when HEAD has no such frontmatter line
+// (the key is absent or uncommitted) or git cannot attribute it; callers MUST
+// treat !ok as "provenance unknown", never as a pass.
+func frontmatterKeyLineProvenance(root, relPath, key string) (value, sha, identity string, ok bool) {
+	slashPath := filepath.ToSlash(relPath)
+	content, err := gitShowObject(root, "HEAD", slashPath)
+	if err != nil {
+		return "", "", "", false
+	}
+	lines := strings.Split(string(content), "\n")
+	if len(lines) == 0 || strings.TrimRight(lines[0], "\r") != "---" {
+		return "", "", "", false
+	}
+	lineNo := 0
+	for i := 1; i < len(lines); i++ {
+		ln := strings.TrimRight(lines[i], "\r")
+		if ln == "---" {
+			break
+		}
+		if rest, found := strings.CutPrefix(ln, key+":"); found {
+			lineNo = i + 1
+			value = strings.TrimSpace(rest)
+			if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+				value = value[1 : len(value)-1]
+			}
+			break
+		}
+	}
+	if lineNo == 0 {
+		return "", "", "", false
+	}
+	out, err := exec.Command("git", "-C", root, "blame", "--porcelain",
+		"-L", fmt.Sprintf("%d,%d", lineNo, lineNo), "HEAD", "--", slashPath).Output()
+	if err != nil {
+		return "", "", "", false
+	}
+	for i, ln := range strings.Split(string(out), "\n") {
+		if i == 0 {
+			if f := strings.Fields(ln); len(f) > 0 {
+				sha = f[0]
+			}
+			continue
+		}
+		if mail, found := strings.CutPrefix(ln, "author-mail "); found {
+			identity = strings.ToLower(strings.Trim(strings.TrimSpace(mail), "<>"))
+			break
+		}
+	}
+	if sha == "" || identity == "" {
+		return "", "", "", false
+	}
+	return value, sha, identity, true
+}
