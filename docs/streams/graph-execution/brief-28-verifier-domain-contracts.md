@@ -495,6 +495,23 @@ RISK-VALUE: DERIVED — schema additionalProperties = false @ schemas/verificati
 The new witness supersedes the execution and closure limitations of earlier runs for local /28 acceptance. Historical execution rows and observation text are preserved; three consumer-accounting prose lines now carry explicit dated deferral annotations to their already-approved owners, so an old local hold is not mistaken for an unrecorded local acceptance obligation. This run supplies no acceptance credit for the supplemental row and closes none of the separately owned consumer obligations.
 
 **VERIFY: PASS** — all 9 original obligations have fresh execution witnesses at 8663d6ae05797bb259dd6af3535b15e8111c67b1 in the pinned v1.0.63 network-off runner, 11/11 mutation controls killed, and supplemental row 10 is machine-recorded author-added with no acceptance credit. The admission bracket is closed with a matching digest. Protected-table closure and landing checks are performed against this exact assembled Evidence.
+**Run 4 closure disposition — 2026-10-26.** The original execution accounting remains 9 pass, 0 fail, 0 could-not-run, plus supplemental row 10 with no acceptance credit; all 11 mutation controls were killed. The protected-table witness audit reports those exact counts and the run-4 bracket is credited. The independent installed-v1.0.63 execution therefore observed no failed original domain-contract obligation.
+
+The canonical implemented-to-verified preflight nevertheless refuses the inherited RISK-VALUE definition below as a live unresolved hold. The exact transition was attempted at Evidence head 3f71c626d237e48a073a1605f7e8e83935f40f19:
+
+```text
+statusgen --version
+v1.0.63
+deskevidence flip --brief graph-execution/28 --sha 8663d6ae05797bb259dd6af3535b15e8111c67b1 --dry-run
+exit=5
+refusing: brief graph-execution/28 carries **VERIFY: PASS** but Evidence also reads "RISK-VALUE: DERIVED — Present = \"present\" @ statusgen/domain/records.go:171 — Task1/2 names present as the sole complete required-fact state; missing and could-not-check cannot release assessment." on a row not marked deferred — a PASS marker is not a flip signal while a non-deferred row still says HELD/could-not-check
+```
+
+The quoted line defines a completeness state; it records no unexecuted row. The verifier did not rewrite that historical semantic explanation to evade the guard. This new disposition supersedes run 4's earlier closing PASS marker, while preserving every observed row result, witness and mutation result. The board remains implemented. No verified outcome, done transition, ready flip or merge is claimed.
+
+The closure-classification defect is filed as medici-finance/assay#4536 for intake and the statusgen owner. PR medici-finance/assay#4150 was checked and concerns attribution/NOTICE handling, not this scan. After the reviewed repair is released and adopted, fresh independent qualification and the ordinary closure gates remain required. The separately approved downstream /19, /23 and /29 integration deferrals remain unchanged.
+
+**VERIFY: BLOCKED** — original rows 1–9 passed and supplemental row 10 is uncredited; native lifecycle closure is refused by the RISK-VALUE/hold-scan classification recorded on medici-finance/assay#4536. No acceptance obligation was observed to fail, and no lifecycle cell was advanced.
 
 ## Review
 
