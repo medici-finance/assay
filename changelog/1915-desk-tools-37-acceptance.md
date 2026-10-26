@@ -1,1 +1,0 @@
-- Pin desk-tools/37 consumer verification to its immutable implementation and exact first parent; retain original assertions, historical Evidence, exact human amendment approval and independent reverification.
