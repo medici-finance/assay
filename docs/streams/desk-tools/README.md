@@ -235,7 +235,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 55 | [Adopt parity-checked prune mutation selection](brief-55-adopt-parity-checked-prune-mutation-selection.md) | 1 | M | todo | — | — |
 | 56 | [Make mutation reports resumable and measurable](brief-56-make-mutation-reports-resumable-and-measurable.md) | 1 | M | todo | — | — |
 | 57 | [Budget concurrent mutation work across the host](brief-57-budget-concurrent-mutation-work-across-the-host.md) | 1 | M | todo | — | — |
-| 58 | [Benchmark compile-once mutation execution](brief-58-benchmark-compile-once-mutation-execution.md) | 1 | M | todo | — | — |
+| 58 | [Benchmark compile-once mutation execution](brief-58-benchmark-compile-once-mutation-execution.md) | 1 | M | implemented | — | — |
 | 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 

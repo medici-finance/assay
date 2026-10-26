@@ -72,6 +72,7 @@ var githubMinterNames = map[string]bool{
 	"githubAppRoleToken":  true,
 	"mintRoleToken":       true,
 	"tokenMinter":         true,
+	"providerMint":        true,
 	"lookupRoleTokenMemo": true,
 	"roleTokenMemo":       true,
 }
@@ -115,6 +116,8 @@ var githubMinterAllow = map[string]string{
 		"token RoleTokenForOwner already minted, and hands nothing back",
 	"internal/deskkit/roletoken.go:resetRoleTokenMemo:roleTokenMemo": "the test reset: it drops every " +
 		"entry and hands nothing back",
+	"internal/deskkit/roletoken.go::providerMint": "the primitive's production body: the package-level " +
+		"tokenMinter seam runs the in-process credential provider; tokenMinter's own callers are confined above",
 	"internal/deskkit/roletoken.go:SetRoleTokenMinter:tokenMinter": "the test seam: it swaps the " +
 		"minter and restores it, and never calls it",
 	"cmd/cellctl/deskd.go:Cell.deskdMintGitHub:RoleTokenForRepo": "forge-switched: cmdDeskd calls " +
@@ -344,6 +347,7 @@ func TestGitHubMinterGuardCatchesPlantedCallers(t *testing.T) {
 		"inpackage.go:plantedMemoMap:roleTokenMemo",
 		"inpackage.go:plantedMemoRead:lookupRoleTokenMemo",
 		"inpackage.go:plantedPrimitive:mintRoleToken",
+		"inpackage.go:plantedProviderCall:providerMint",
 		"inpackage.go:plantedSeamCall:tokenMinter",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
