@@ -725,7 +725,7 @@
       "name": "the reading past a leading word trimmed of every white space but a tab",
       "file": "cmd/deskevidence/principalstamp.go",
       "old": "\tt = strings.TrimSpace(t)\n\tfor i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {\n\t\tt = strings.TrimSpace(t[i:])\n",
-      "new": "\tt = strings.Trim(t, \" \\u00a0\\u3000\")\n\tfor i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {\n\t\tt = strings.Trim(t[i:], \" \\u00a0\\u3000\")\n"
+      "new": "\tt = strings.Trim(t, \" \"+string(rune(0xa0))+string(rune(0x3000)))\n\tfor i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {\n\t\tt = strings.Trim(t[i:], \" \"+string(rune(0xa0))+string(rune(0x3000)))\n"
     },
     {
       "name": "the reading past a leading word trimmed of ASCII white space only at its start",
