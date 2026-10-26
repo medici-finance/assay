@@ -61,7 +61,8 @@ change".
 **Option labels.** The issue body does not label its readings A and B. This record
 therefore relies on the ruling's own words, "Require explicit design approval", and not on the
 letter. In those words, the #1023 closure does not satisfy §4.4 for composability/02, and the
-brief needs an explicitly approved design record. This file is that record's draft.
+brief needed an explicitly approved design record. This file was drafted for that approval;
+the later approving comment is recorded above.
 
 **Approval provenance.** `decided-by` remains the public placeholder `human:<name>`.
 Under spec/registers-v1.md §7.5 it is corroborated through the `ruling:` link, rather than a
@@ -202,8 +203,8 @@ also fixes the ledger and compensation model that later briefs build unattended 
 The delivered build itself takes no forge-side action, and its tree-side damage is
 recoverable from git only for committed content. Uncommitted register history and a local
 `core.hooksPath` value are not recoverable. Because no forge-side action is taken, the driver
-may judge `major` instead. The driver can
-correct the level before the record's approval is linked.
+may judge `major` instead. The transcriber's classification is preserved here; the approval comment records no separate
+consequence-level ruling.
 
 ## Decision history and remaining obligations
 
