@@ -1,0 +1,287 @@
+{
+  "test": "go test ./briefdoc -count=1 -timeout 120s",
+  "control": {
+    "name": "CONTROL: the frontmatter decode stops refusing a second YAML document, so a risk answer or human gate after a document marker is dropped; TestMultipleDocumentsRefused must go red",
+    "file": "briefdoc/document.go",
+    "old": "\tif err := dec.Decode(&extra); !errors.Is(err, io.EOF) {",
+    "new": "\tif err := dec.Decode(&extra); false && !errors.Is(err, io.EOF) {"
+  },
+  "mutations": [
+    {
+      "name": "multi-document: a parse error in the second document is ignored instead of refused",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\treturn nil, fmt.Errorf(\"frontmatter holds more than one YAML document\")",
+      "new": "\t\tif err != nil {\n\t\t\treturn values, nil\n\t\t}\n\t\treturn nil, fmt.Errorf(\"frontmatter holds more than one YAML document\")"
+    },
+    {
+      "name": "multi-document: the block is decoded as the first document only (single-document Unmarshal)",
+      "file": "briefdoc/document.go",
+      "old": "\tvalues, err := decodeSingle(block)\n",
+      "new": "\tvar values map[string]interface{}\n\terr := yaml.Unmarshal([]byte(block), &values)\n"
+    },
+    {
+      "name": "misplaced risk: a risk answer nested under another key is no longer refused",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif found, ok := misplacedRiskKey(v); ok {",
+      "new": "\t\tif found, ok := misplacedRiskKey(v); false && ok {"
+    },
+    {
+      "name": "misplaced risk: the nested walk skips sequences",
+      "file": "briefdoc/document.go",
+      "old": "\tcase []interface{}:\n\t\tfor _, child := range x {\n\t\t\tif found, ok := misplacedRiskKey(child); ok {",
+      "new": "\tcase []string:\n\t\tfor _, child := range x {\n\t\t\tif found, ok := misplacedRiskKey(child); ok {"
+    },
+    {
+      "name": "misplaced risk: risk-key matching becomes case-sensitive",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif strings.EqualFold(k, r) {",
+      "new": "\t\tif k == r {"
+    },
+    {
+      "name": "misplaced risk: a top-level risk answer outside the risk mapping is no longer refused",
+      "file": "briefdoc/document.go",
+      "old": "if isRiskKey(k) {\n\t\t\treturn f, fmt.Errorf(\"risk answer %s must be under the risk mapping\", k)",
+      "new": "if false && isRiskKey(k) {\n\t\t\treturn f, fmt.Errorf(\"risk answer %s must be under the risk mapping\", k)"
+    },
+    {
+      "name": "risk map: an unknown risk answer inside the risk mapping is admitted",
+      "file": "briefdoc/document.go",
+      "old": "if _, known := answers[k]; !known {",
+      "new": "if _, known := answers[k]; false && !known {"
+    },
+    {
+      "name": "date markers: an unquoted blocked-until or in-repair date is refused again",
+      "file": "briefdoc/document.go",
+      "old": "if src, ok := sourceScalar(block, k); ok && textMarkers[k] {",
+      "new": "if src, ok := sourceScalar(block, k); false && ok && textMarkers[k] {"
+    },
+    {
+      "name": "date markers: every strict key accepts a date as text",
+      "file": "briefdoc/document.go",
+      "old": "} else if scalarKeys[k] {",
+      "new": "} else if false && scalarKeys[k] {"
+    },
+    {
+      "name": "invisible key: a key containing a non-printing character is no longer refused",
+      "file": "briefdoc/document.go",
+      "old": "\tif found, ok := invisibleKey(map[string]interface{}(values)); ok {",
+      "new": "\tif found, ok := invisibleKey(map[string]interface{}(values)); false && ok {"
+    },
+    {
+      "name": "invisible key: format and other non-graphic characters are no longer treated as invisible",
+      "file": "briefdoc/document.go",
+      "old": "\treturn unicode.Is(unicode.Cf, r) || !unicode.IsGraphic(r) ||",
+      "new": "\treturn false ||"
+    },
+    {
+      "name": "invisible key: only format characters are treated as invisible, not other non-graphic runes",
+      "file": "briefdoc/document.go",
+      "old": "\treturn unicode.Is(unicode.Cf, r) || !unicode.IsGraphic(r) ||",
+      "new": "\treturn unicode.Is(unicode.Cf, r) ||"
+    },
+    {
+      "name": "invisible key: variation selectors are no longer treated as invisible",
+      "file": "briefdoc/document.go",
+      "old": "unicode.In(r, unicode.Variation_Selector, unicode.Other_Default_Ignorable_Code_Point)",
+      "new": "unicode.In(r, unicode.Other_Default_Ignorable_Code_Point)"
+    },
+    {
+      "name": "invisible key: the walk does not descend into nested string-keyed mappings",
+      "file": "briefdoc/document.go",
+      "old": "\t\t\tif hasInvisible(k) {\n\t\t\t\treturn k, true\n\t\t\t}\n\t\t\tif found, ok := invisibleKey(child); ok {",
+      "new": "\t\t\tif hasInvisible(k) {\n\t\t\t\treturn k, true\n\t\t\t}\n\t\t\tif found, ok := invisibleKey(child); false && ok {"
+    },
+    {
+      "name": "invisible key: keys of a mapping with non-string keys are not checked",
+      "file": "briefdoc/document.go",
+      "old": "if s, ok := k.(string); ok && hasInvisible(s) {",
+      "new": "if s, ok := k.(string); false && ok && hasInvisible(s) {"
+    },
+    {
+      "name": "invisible key: the walk skips sequences",
+      "file": "briefdoc/document.go",
+      "old": "\tcase []interface{}:\n\t\tfor _, child := range x {\n\t\t\tif found, ok := invisibleKey(child); ok {",
+      "new": "\tcase []string:\n\t\tfor _, child := range x {\n\t\t\tif found, ok := invisibleKey(child); ok {"
+    },
+    {
+      "name": "key folding: risk-key matching lower-cases instead of case folding",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif strings.EqualFold(k, r) {",
+      "new": "\t\tif strings.ToLower(k) == r {"
+    },
+    {
+      "name": "key folding: risk keys are compared with their decoration kept",
+      "file": "briefdoc/document.go",
+      "old": "\tk = keyLetters(k)\n",
+      "new": "\tk = strings.TrimSpace(k)\n"
+    },
+    {
+      "name": "policy keys: a decorated gate or exec-tier key is ignored instead of refused",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif decoratedPolicyKey(k) {",
+      "new": "\t\tif false && decoratedPolicyKey(k) {"
+    },
+    {
+      "name": "blank runes: non-ASCII space separators are no longer treated as invisible",
+      "file": "briefdoc/document.go",
+      "old": "\treturn r != ' ' && unicode.Is(unicode.Zs, r) || r == '\\u2800'",
+      "new": "\treturn r == '\\u2800'"
+    },
+    {
+      "name": "blank runes: a blank-rendering symbol is no longer treated as invisible",
+      "file": "briefdoc/document.go",
+      "old": "\treturn r != ' ' && unicode.Is(unicode.Zs, r) || r == '\\u2800'",
+      "new": "\treturn r != ' ' && unicode.Is(unicode.Zs, r)"
+    },
+    {
+      "name": "blank runes: a key led by a combining mark is accepted",
+      "file": "briefdoc/document.go",
+      "old": "\tif r, _ := utf8.DecodeRuneInString(k); unicode.Is(unicode.M, r) {",
+      "new": "\tif r, _ := utf8.DecodeRuneInString(k); false && unicode.Is(unicode.M, r) {"
+    },
+    {
+      "name": "text backstop: a text risk answer the parse does not give is accepted",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif textRiskAnswer[k].MatchString(block) && !*answers[k] {",
+      "new": "\t\tif false && textRiskAnswer[k].MatchString(block) && !*answers[k] {"
+    },
+    {
+      "name": "backstops: skipped when the block has no risk mapping",
+      "file": "briefdoc/document.go",
+      "old": "\t\treturn f, backstop(block, f)\n\t}",
+      "new": "\t\treturn f, nil\n\t}"
+    },
+    {
+      "name": "backstops: skipped when the block has a risk mapping",
+      "file": "briefdoc/document.go",
+      "old": "\t}\n\treturn f, backstop(block, f)\n}",
+      "new": "\t}\n\treturn f, nil\n}"
+    },
+    {
+      "name": "text backstop: matching becomes case-sensitive",
+      "file": "briefdoc/document.go",
+      "old": "regexp.MustCompile(`(?i)` + regexp.QuoteMeta(k)",
+      "new": "regexp.MustCompile(regexp.QuoteMeta(k)"
+    },
+    {
+      "name": "backstops: the text risk backstop is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tif err := textRiskBackstop(block, f.Risk); err != nil {",
+      "new": "\tif err := error(nil); err != nil {"
+    },
+    {
+      "name": "line backstop: a line the parsed mapping reads differently is accepted",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif got != values[r.key] {",
+      "new": "\t\tif false && got != values[r.key] {"
+    },
+    {
+      "name": "line backstop: only lines the readers find are compared",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif got != values[r.key] {",
+      "new": "\t\tif got != \"\" && got != values[r.key] {"
+    },
+    {
+      "name": "line backstop: the backstop is not run",
+      "file": "briefdoc/document.go",
+      "old": "\treturn lineBackstop(block, f.Values)\n}",
+      "new": "\treturn nil\n}"
+    },
+    {
+      "name": "line backstop: values are compared without lower-casing gate and exec-tier",
+      "file": "briefdoc/document.go",
+      "old": "\tif key == \"gate\" || key == \"exec-tier\" {\n\t\tv = strings.ToLower(v)",
+      "new": "\tif false {\n\t\tv = strings.ToLower(v)"
+    },
+    {
+      "name": "line backstop: a trailing comment stays in the line reading",
+      "file": "briefdoc/document.go",
+      "old": "\tif i := strings.Index(v, \" #\"); i >= 0 {\n\t\tv = v[:i]\n\t}\n\tv = strings.Trim(strings.TrimSpace(v), `\"'`)\n\tif key",
+      "new": "\tif i := strings.Index(v, \" #\"); false && i >= 0 {\n\t\tv = v[:i]\n\t}\n\tv = strings.Trim(strings.TrimSpace(v), `\"'`)\n\tif key"
+    },
+    {
+      "name": "line backstop: quotes stay in the line reading",
+      "file": "briefdoc/document.go",
+      "old": "\tv = strings.Trim(strings.TrimSpace(v), `\"'`)\n\tif key",
+      "new": "\tv = strings.TrimSpace(v)\n\tif key"
+    },
+    {
+      "name": "line backstop: the gate reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"gate\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the exec-tier reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"exec-tier\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the exec-tier reader with gap [ \\t]* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"exec-tier\", `[ \\t]*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the effort reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"effort\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the effort reader with gap [ \\t]* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"effort\", `[ \\t]*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the implementer reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"implementer\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the blocked-until reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"blocked-until\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the verify-lane reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"verify-lane\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the in-repair reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"in-repair\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the decision-issue reader with gap [ \\t]* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"decision-issue\", `[ \\t]*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the brief reader with gap [ \\t]* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"brief\", `[ \\t]*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the deliverable_repo reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"deliverable_repo\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the homed-in reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"homed-in\", `\\s*`),\n",
+      "new": ""
+    }
+  ]
+}

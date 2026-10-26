@@ -46,6 +46,8 @@ package main
 // asserted again, one level up.
 
 import (
+	"github.com/medici-finance/assay/statusgen/evaluation"
+
 	"fmt"
 	"sort"
 	"strings"
@@ -291,26 +293,35 @@ func failFirstClosureChecks(root, id, status string, art briefArtifacts, plan pr
 			}
 			continue
 		}
-		switch {
-		case stale:
-			problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its latest witness records a different command than the row now carries, so any fail-first record before it is about an earlier command. Re-run `statusgen verifyrun --fail-first --brief %s` and commit the witness table (its Base cell) before closing", id, status, r.ID, relDisplayPath(root, art.Path)))
-		case !found:
-			problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s has no fail-first witness: its latest witness carries no Base cell, so nothing shows it reds without the change. Run `statusgen verifyrun --fail-first --brief %s` and commit the witness table (its Base cell) before closing", id, status, r.ID, relDisplayPath(root, art.Path)))
-		case ff.State == baseUnproven:
-			problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s could not run at base %s, so it was never shown to fail. Make the row runnable on the base tree, or re-author it, and re-run `statusgen verifyrun --fail-first`", id, status, r.ID, ff.Base))
-		default:
+		fact := evaluation.FailFirst{Required: true, Found: found, Stale: stale, State: ff.State}
+		if found && !stale && ff.State != baseUnproven {
 			if !mergeBaseDone {
 				mergeBase, mergeBaseDone = failFirstMergeBase(root), true
 			}
 			if ok, why := commitIsAncestor(root, ff.Base, mergeBase); !ok {
+				fact.AncestryProblem = why
+			} else {
+				fact.HeldProblem = briefHeldAtBase(root, art.Path, ff.Base, mergeBase)
+			}
+		}
+		problem := evaluation.FailFirstProblem(fact)
+		switch {
+		case problem == "stale":
+			problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its latest witness records a different command than the row now carries, so any fail-first record before it is about an earlier command. Re-run `statusgen verifyrun --fail-first --brief %s` and commit the witness table (its Base cell) before closing", id, status, r.ID, relDisplayPath(root, art.Path)))
+		case problem == "missing":
+			problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s has no fail-first witness: its latest witness carries no Base cell, so nothing shows it reds without the change. Run `statusgen verifyrun --fail-first --brief %s` and commit the witness table (its Base cell) before closing", id, status, r.ID, relDisplayPath(root, art.Path)))
+		case problem == "unproven":
+			problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s could not run at base %s, so it was never shown to fail. Make the row runnable on the base tree, or re-author it, and re-run `statusgen verifyrun --fail-first`", id, status, r.ID, ff.Base))
+		default:
+			if why := fact.AncestryProblem; problem == "ancestry" {
 				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base is not the merge-base or an ancestor of it (base %s: %s), so its %s is not about the tree without this change. Re-run `statusgen verifyrun --fail-first` (default base, or --base <an ancestor of the merge-base>)", id, status, r.ID, ff.Base, why, ff.State))
 				continue
 			}
-			if why := briefHeldAtBase(root, art.Path, ff.Base, mergeBase); why != "" {
+			if why := fact.HeldProblem; problem == "held" {
 				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s: its fail-first base %s is not about this change (%s). Re-run `statusgen verifyrun --fail-first --base <a later ancestor of the merge-base>`", id, status, r.ID, ff.Base, why))
 				continue
 			}
-			if ff.State == baseGreen {
+			if problem == "green" {
 				problems = append(problems, fmt.Sprintf("%s: cannot close as %s — risk-bearing Verify row #%s is non-discriminating: green at base %s and at head, so it passes with or without the change. Strengthen the row until it reds on the base (docs/verify-row-strength.md), then re-run `statusgen verifyrun --fail-first`", id, status, r.ID, ff.Base))
 			}
 		}

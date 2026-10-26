@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"encoding/json"
 	"fmt"
 	"os"
@@ -175,28 +177,7 @@ func briefBody(path string) string {
 // heading and the next `## ` heading (or EOF). Unlike extractEvidence (which
 // requires an exact heading), this matches a decorated heading such as
 // `## Verify (executable — no prose-only DoD items)` via its prefix.
-func extractSectionByPrefix(body, prefix string) string {
-	lines := strings.Split(body, "\n")
-	start := -1
-	for i, l := range lines {
-		t := strings.TrimSpace(l)
-		if rest, ok := strings.CutPrefix(t, "## "); ok && strings.HasPrefix(rest, prefix) {
-			start = i + 1
-			break
-		}
-	}
-	if start < 0 {
-		return ""
-	}
-	var out []string
-	for _, l := range lines[start:] {
-		if strings.HasPrefix(strings.TrimSpace(l), "## ") {
-			break
-		}
-		out = append(out, l)
-	}
-	return strings.Join(out, "\n")
-}
+func extractSectionByPrefix(body, prefix string) string { return briefdoc.Section(body, prefix, true) }
 
 // verifyVerdictBoldRe is the ratified regex for a BOLD VERIFY verdict marker:
 // `**VERIFY: PASS**` or `**VERIFY: FAIL**`, with

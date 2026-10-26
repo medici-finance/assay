@@ -1,6 +1,9 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+	"github.com/medici-finance/assay/statusgen/evaluation"
+
 	"crypto/sha256"
 	"fmt"
 	"path/filepath"
@@ -276,8 +279,9 @@ var (
 		"brief", "title", "wave", "depends", "unblocks", "effort",
 		"gate", "risk", "issues", "authored", "sources",
 	}
-	canonicalRiskKeys = []string{"regulatory", "customer", "irreversible", "sensitive-data"}
-	canonicalRiskSet  = map[string]bool{"regulatory": true, "customer": true, "irreversible": true, "sensitive-data": true}
+	// The risk questions are owned by briefdoc; these are projections of that one list.
+	canonicalRiskKeys = briefdoc.RiskKeys()
+	canonicalRiskSet  = riskKeySet(canonicalRiskKeys)
 	validEffort       = map[string]bool{"S": true, "M": true, "L": true}
 	validGate         = map[string]bool{"model": true, "human": true}
 	// validExecTier is the allowed set for the optional brief-v1 `exec-tier:` field.
@@ -1308,57 +1312,23 @@ func extractEvidence(body string) string {
 // section's boundaries are decided; extractEvidence and the auto-flip's
 // Evidence-only classifier (evidenceshape.go) both read them from here, so a
 // line the parser does not read as Evidence is never classified as Evidence.
-func evidenceSectionSpan(lines []string) (start, end int, ok bool) {
-	start = -1
-	for i, l := range lines {
-		if strings.TrimSpace(l) == "## Evidence" {
-			start = i + 1
-			break
-		}
-	}
-	if start < 0 {
-		return 0, 0, false
-	}
-	end = len(lines)
-	for i := start; i < len(lines); i++ {
-		if isSectionHeading(lines[i]) {
-			end = i
-			break
-		}
-	}
-	return start, end, true
+func evidenceSectionSpan(lines []string) (int, int, bool) {
+	return briefdoc.SectionBounds(lines, "Evidence", false)
 }
 
 // isSectionHeading reports whether a brief line is a `## ` section heading as
 // the parser reads one: leading and trailing whitespace ignored.
-func isSectionHeading(l string) bool {
-	return strings.HasPrefix(strings.TrimSpace(l), "## ")
-}
+func isSectionHeading(l string) bool { return briefdoc.IsSection(l) }
 
 // evidenceHasContent reports whether an Evidence section has at least one
 // content row: a non-empty line outside HTML comments (the contract comment
 // alone does not count).
-func evidenceHasContent(section string) bool {
-	stripped := htmlCommentRe.ReplaceAllString(section, "")
-	for _, l := range strings.Split(stripped, "\n") {
-		if strings.TrimSpace(l) != "" {
-			return true
-		}
-	}
-	return false
-}
+func evidenceHasContent(section string) bool { return briefdoc.HasContent(section) }
 
 // hasHumanReviewer reports whether a Reviewed-column value names a human — a
 // whitespace-separated token with the "human:" prefix (e.g. "human:alex"). A tag
 // that merely contains the substring (e.g. "superhuman:x") does NOT count.
-func hasHumanReviewer(reviewed string) bool {
-	for _, tok := range strings.Fields(reviewed) {
-		if strings.HasPrefix(tok, "human:") {
-			return true
-		}
-	}
-	return false
-}
+func hasHumanReviewer(reviewed string) bool { return evaluation.HasHumanReviewer(reviewed) }
 
 // verifyTableHasRow reports whether a `## Verify` section body contains at least
 // one table data row whose Command and Expect cells are both non-empty. It
@@ -2168,4 +2138,13 @@ func checkRef(add func(string, ...any), path, kind, ref, selfID string, byName m
 		}
 	}
 	add("%s: %s %q references unknown brief %q in stream %s", path, kind, ref, parts[1], parts[0])
+}
+
+// riskKeySet returns keys as a membership set.
+func riskKeySet(keys []string) map[string]bool {
+	set := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		set[k] = true
+	}
+	return set
 }

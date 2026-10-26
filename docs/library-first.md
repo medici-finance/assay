@@ -33,6 +33,19 @@ runtime containment. Taxonomy membership describes components and grants no auth
 | Process supervision | `loopadmin`, graph-execution/26 | Standing desks and workflow stages; no dependency on workflow store, no effect credentials. |
 | Operator lifecycle | cellctl's operator libraries and typed service clients | Operator provisioning stays outside working sessions; library reuse does not merge authorities. |
 
+The shared-policy consolidation adds offline implementations within these existing
+owners (consumer changes are recorded in `docs/shared-policy-consolidation-plan.md`):
+
+| Shared implementation | Inputs and profiles | Production consumers |
+|---|---|---|
+| `deskcore/trust` | Supplied configuration/identity/event facts; login-only, legacy-list, legacy-bot-content and numeric-ID profiles. Any nonzero supplied ID must match its configured pin. | Statusgen scanner/roster and deskkit roster/trust/blessing adapters. Files, environment, permissions, echo and credentials remain in adapters. |
+| `statusgen/briefdoc` | YAML frontmatter and section syntax, with errors for unreadable declarations (a misplaced or decorated risk answer, more than one YAML document in the frontmatter, a key containing a non-printing or blank-rendering character, a decorated `gate` or `exec-tier` key, text the earlier `<risk question>: yes` classifier reads as a yes the parse does not give, or a policy or routing key line the earlier first-match line readers read differently from the parsed mapping). | Frontmatter fields and risk answers (`ParseFields`): verifyloop, fanoutloop, dispatch/admission and the deskkit risk and admission readers. Section splitting and the risk-key list: statusgen readers, packet, path guard and rebaseline projections. Statusgen still decodes brief frontmatter with its own reader. Invalid loop input is explicitly held/human-gated. |
+| `statusgen/workref/trailers` | Shared backtick/tilde fence interpretation; historical `Scan` and new-write `ParseStrict`. | Statusgen link/fetch/autoflip/merge readers and deskkit PR validation. Existing identifier/revision profiles stay in `workref`. |
+| `deskcore/verdict` | Canonical JSON, envelope parsing and supplied public-key verification with explicit role. | Desk signer/verification adapters and statusgen verdict/scan-delta readers. Private-key custody and public-key source resolution remain in adapters. Cryptographic stdlib dependencies are kept separate from the data-only purity packages. |
+| `deskcore/riskpath` | Explicit trigger values, additive union, segment matching. | Lint cross-read and deskkit classifier; visibility and missing-observation rules remain in their caller policy. |
+| `deskcore/attestation` | Binding/current-label/history facts; `ContainerV1` and `GeneralV1V2` capability profiles. | Statusgen container credit and desk admission. Both retain independent current-state/history reads at their existing authority boundaries. |
+| `statusgen/evaluation` selected closure | Frozen stamp, witness, human-row and fail-first observations. | `brief --check-verified`, `verifyclosure` and the lint's shared fail-first row adapter. Git provenance, attribution and landing permission remain outside the evaluator. |
+
 The existing semantic-owner index in `docs/contracts.md` remains the ownership register.
 Implementations update its rows and existing architecture checks; this table is a migration
 map, not a competing register. Module placement is not a new semantic owner.
