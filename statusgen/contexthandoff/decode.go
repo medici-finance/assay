@@ -376,9 +376,9 @@ func (r *reader) patch(v any, path string) *Patch {
 	return p
 }
 
-// DecodeHandoff strictly decodes, expands and validates a context-handoff-v1/v2
-// record. The returned record carries every brief reference in the canonical
-// four-segment form.
+// DecodeHandoff strictly decodes, expands and validates a
+// context-handoff-v1/v2/v3 record. The returned record carries every brief
+// reference in the canonical four-segment form.
 //
 // semantic: S-context-handoff
 func DecodeHandoff(data []byte) (*Handoff, error) {
@@ -399,9 +399,15 @@ func DecodeHandoff(data []byte) (*Handoff, error) {
 
 func (r *reader) handoff(v any) *Handoff {
 	const p = "$"
-	m := r.object(v, p, "schema", "declared_by", "target", "discovery", "impacts", "amendments", "history", "active_work", "readiness")
+	keys := []string{"schema", "declared_by", "target", "discovery", "impacts", "amendments", "history", "active_work", "readiness"}
+	if vm, ok := v.(map[string]any); ok && vm["schema"] == HandoffSchemaV3 {
+		// v3 adds exactly one required section; v1 and v2 refuse it as an
+		// unknown field, so a product binding is never silently dropped.
+		keys = append(keys, "product")
+	}
+	m := r.object(v, p, keys...)
 	h := &Handoff{}
-	h.Schema = r.enum(m, p, "schema", HandoffSchema, HandoffSchemaV2)
+	h.Schema = r.enum(m, p, "schema", HandoffSchema, HandoffSchemaV2, HandoffSchemaV3)
 	if r.err != nil && r.err.Path == "$.schema" && r.err.Rule == RuleBadValue {
 		r.err.Rule = RuleSchemaVersion
 	}
@@ -430,6 +436,9 @@ func (r *reader) handoff(v any) *Handoff {
 		h.ActiveWork = append(h.ActiveWork, r.activeWork(it, paths[i]))
 	}
 	h.Readiness = r.readiness(m["readiness"], p+".readiness")
+	if h.Schema == HandoffSchemaV3 && r.err == nil {
+		h.Product = r.product(m["product"], p+".product")
+	}
 	return h
 }
 
@@ -546,7 +555,7 @@ func (r *reader) discovery(v any, p string) Discovery {
 func (r *reader) impact(v any, p, schema string) Impact {
 	m := r.object(v, p, "subject", "lifecycle", "evidence", "relationship", "disposition", "reason")
 	lifecycles := []string{"todo", "in-progress", "implemented", "verified", "done", "blocked", "unknown"}
-	if schema == HandoffSchemaV2 {
+	if schema == HandoffSchemaV2 || schema == HandoffSchemaV3 {
 		lifecycles = append(lifecycles, "withdrawn")
 	}
 	im := Impact{
