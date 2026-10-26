@@ -89,7 +89,7 @@ M1–M6/C1–C4 and implemented-brief status remain unchanged.
 | 11 | [Regression tests are a ratchet: every fix ships a tagged bug-reproducing test, a tagged test leaves only with a Retires-test: trailer, and a report lists what left untagged for review to judge](brief-11-regression-test-ratchet.md) | 4 | M | verified | 2026-10-19 assay-verifier-app[bot] @ ecb8c74a4ae8 (claude-opus-5-5) | — |
 | 12 | [The refactor oracle: what a redesign is coded against — intent, failure modes, triaged characterization tests, invariants, and an acceptance rule](brief-12-refactor-oracle.md) | 5 | M | implemented | — | — |
 | 13 | [Incident-time refactor by an agent, with one human residue: the strong-tier session runs the investigation, assembles the oracle, drafts the refactor PR, and asks the driver exactly one typed decision, only for what the record does not settle](brief-13-incident-refactor-by-agent.md) | 6 | L | todo | — | — |
-| 14 | [Bind consumer acceptance obligations to immutable delivery provenance before post-merge dispatch](brief-14-bind-consumer-acceptance-obligations-to-immutable-delivery-provenance-before-post-merge-dispatch.md) | 0 | M | todo | — | — |
+| 14 | [Bind consumer acceptance obligations to immutable delivery provenance before post-merge dispatch](brief-14-bind-consumer-acceptance-obligations-to-immutable-delivery-provenance-before-post-merge-dispatch.md) | 0 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
