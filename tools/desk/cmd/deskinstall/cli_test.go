@@ -354,8 +354,8 @@ func TestCLILegacyForms(t *testing.T) {
 			args []string
 			want options
 		}{
-			{[]string{"--manifest", "plugins/assay/paired-versions.yaml", "--dest", `C:\Users\op\AppData\Local\Assay\bin`},
-				options{manifest: "plugins/assay/paired-versions.yaml", dest: `C:\Users\op\AppData\Local\Assay\bin`}},
+			{[]string{"--manifest", "plugins/assay/paired-versions.yaml", "--dest", `C:\Tools\Assay\bin`},
+				options{manifest: "plugins/assay/paired-versions.yaml", dest: `C:\Tools\Assay\bin`}},
 			{[]string{"--manifest", "m.yaml", "--dest", "d", "--platform", "windows-arm64"},
 				options{manifest: "m.yaml", dest: "d", platform: "windows-arm64"}},
 			{[]string{"--harness", "cursor", "--forge", "github", "--repo", "../..", "--bundle", "../../plugins/assay", "--check"},
