@@ -28,7 +28,7 @@ Existing work and evidence remain authoritative.
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Share the blocker disposition and routing contract](brief-01-share-the-blocker-disposition-and-routing-contract.md) | 0 | M | todo | — | — |
+| 01 | [Share the blocker disposition and routing contract](brief-01-share-the-blocker-disposition-and-routing-contract.md) | 0 | M | implemented | — | — |
 | 02 | [Persist verifier blockers without losing the handoff](brief-02-persist-verifier-blockers-without-losing-the-handoff.md) | 2 | M | todo | — | — |
 | 03 | [Require an accountable intake disposition before repair scheduling](brief-03-require-an-accountable-intake-disposition-before-repair-scheduling.md) | 1 | M | todo | — | — |
 | 04 | [Discover and claim the successor repair work](brief-04-discover-and-claim-the-successor-repair-work.md) | 3 | M | todo | — | — |
