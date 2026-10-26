@@ -1,9 +1,10 @@
 ---
 id: DR-composability-02
-date: "2026-10-24"
+date: "2026-10-26"
 title: "Install ledger, paired inverses and the `disable` verb, as delivered: `deskdisable` reverses a component's apply steps LIFO, runs only inside reverses from a closed compiled allowlist of three components, never executes an outside compensation, and refuses before any write on an unknown component, a stranded dependent or an unregistered inside step; the `.assay/ledger.jsonl` writer/reader ships, but nothing outside tests writes the ledger yet"
 consequence: critical
 decided-by: "human:<name>"
+ruling: "https://github.com/medici-finance/assay/issues/4285#issuecomment-6425251325"
 alternatives:
   - "Treat decision issue #1023's \"not planned, already merged\" closure as the design approval (the first reading put on #1139) — not chosen: the driver ruled on #1139, \"A-Require explicit design approval\" (https://github.com/medici-finance/assay/issues/1139#issuecomment-6353072853). No further rationale was recorded, and none is supplied here."
   - "Execute a reverse by interpreting the manifest's free-text `inverse:` line — not delivered: the manifest text is documentation for a human, and `deskdisable` reverses an inside step only through a compiled executor registered for that exact component and step id (`insideExecutors` in tools/desk/cmd/deskdisable/executors.go)."
@@ -22,12 +23,13 @@ accepted:
   - "A further limit on the fixed-path claim is recorded in internal review notes; maintainer follow-up required. It is listed here so that an approval of this record covers it explicitly, as it covers the entries above."
 ---
 
-**This record transcribes a recorded human ruling and states the delivered design. It is
-NOT approved.** The ruling below says the composability/02 design needs an explicit design
-approval, and that a decision issue closed "not planned, already merged" is not one. This file
-is the record that approval would cite. The approval itself is pending on its own decision
-issue, which carries this record's decision-gate marker. Until the driver's comment approving
-this record exists there, nothing here claims the design was approved.
+**The driver approved this design record on 2026-10-26**, after the requested revision
+landed in #4288. The unedited human comment on this record's decision issue names
+`DR-composability-02`:
+https://github.com/medici-finance/assay/issues/4285#issuecomment-6425251325.
+This records design approval of the delivered behavior and accepted limits below. It does
+not certify the implementation, discharge independent verification, approve a live removal,
+or itself move the brief's lifecycle status.
 
 ## The ruling recorded
 
@@ -61,23 +63,17 @@ therefore relies on the ruling's own words, "Require explicit design approval", 
 letter. In those words, the #1023 closure does not satisfy §4.4 for composability/02, and the
 brief needs an explicitly approved design record. This file is that record's draft.
 
-**Why this record carries no `ruling:` key yet.** `decided-by` is the public placeholder
-`human:<name>`. Under `spec/registers-v1.md` §7.5's placeholder rule, a placeholder names
-nobody: it is never looked up in a login map and never corroborated by a pull-request approval.
-Its only route is a `ruling:` link to an unedited human comment whose own text names this
-record by its id, on a decision issue carrying this record's decision-gate marker. Neither
-comment above qualifies. The #1139 ruling names no record (condition 5) and sits on an issue
-with no decision-gate marker (condition 6). The #1023 comment names no record either. The
-approval decision issue for this record carries `<!-- decision-gate: DR-composability-02 -->`
-and asks the driver for a new comment naming the record. The `ruling:` key is added by a later
-push, only after that unedited comment exists. It links only the driver's own comment
-approving this record and naming it. A comment from any other login, or one that requests
-changes or rejects the design, never qualifies. That is a procedural rule for whoever reviews
-the `ruling:` push, not one the corroboration check enforces (see "What happens after merge").
-Until then this record is not approved, and the corroboration check correctly reports
-`decided-by` as `placeholder-unratified`.
+**Approval provenance.** `decided-by` remains the public placeholder `human:<name>`.
+Under spec/registers-v1.md §7.5 it is corroborated through the `ruling:` link, rather than a
+pull-request approval or a worker relay. Decision issue #4285 carries both the record marker
+`<!-- decision-gate: DR-composability-02 -->` and the brief marker
+`<!-- decision-gate: composability/02 -->`. Its 2026-10-26 human comment reads
+`Approve DR-composability-02 for composability/02`, with identical creation and update timestamps. The earlier
+#1023 and #1139 comments remain historical context; neither is substituted for this approval.
+The earlier B answer requested a revision, not approval. #4288 incorporated that revision
+before the new approving comment was posted.
 
-## The design stated for approval
+## The approved delivered design
 
 The delivery is #953 (merged 2026-09-12T23:23:58Z at head `c9cf4d71`, merge commit `1cbd5bc4`),
 plus the manifest follow-up #1024 (merged 2026-09-16T18:18:56Z at head `74e34027`, merge commit
@@ -209,15 +205,13 @@ recoverable from git only for committed content. Uncommitted register history an
 may judge `major` instead. The driver can
 correct the level before the record's approval is linked.
 
-## Open / not decided
+## Decision history and remaining obligations
 
-- **The design approval.** It is the driver's, and it is pending on this record's own decision
-  issue. The first ask there was answered B, "revise first" (https://github.com/medici-finance/assay/issues/4285#issuecomment-6384825452), which asked for
-  the limit recorded in internal review notes to join the `accepted` list; this revision adds it,
-  and the approval is asked again on the same issue. It counts only as the driver's own unedited comment there naming
-  `DR-composability-02`, linked from this record's `ruling:` key. A pull-request approval, a
-  desk relay or a reviewer verdict does not stand in for it. The #1023 and #1139 comments do not
-  either.
+- **Design approval recorded.** The first answer on #4285 was B, "revise first"
+  (https://github.com/medici-finance/assay/issues/4285#issuecomment-6384825452), requesting
+  the neutral limit in the `accepted` list. #4288 merged it; the desk re-asked on the same
+  issue. The new unedited 2026-10-26 comment linked by `ruling:` approves this record.
+  A pull-request approval, desk relay or reviewer verdict was not used as its substitute.
 - **Ownership proof for inside reverses.** Whether the three executors should refuse, or list
   for a human, when they cannot show Assay created their target is not decided here.
 - **Ledger writes at creation.** These are composability/03's work (the brief's own consumer
@@ -226,29 +220,12 @@ correct the level before the record's approval is linked.
   non-implementer, and composability/02 is `gate: human`, so its `verified` and `done` flips
   need the human sign-off on that run. This record attests none of it.
 
-## What happens after merge
+## Lifecycle reconciliation
 
-composability/02 stays at `todo` in the stream README. The brief's frontmatter carries no
-`design:` key and no `decision-issue:` key, and this record's pull request adds neither.
-**Merging this record alone authorizes no flip.** A new follow-up pull request moves
-composability/02 to `implemented` and adds `design: DR-composability-02` to the brief, along
-with whatever `decision-issue:` the lifecycle-v1 §4.5 hold requires. That pull request waits for
-ALL of:
-
-1. the driver's own unedited comment on this record's decision issue approving
-   `DR-composability-02`, naming the record;
-2. a push adding this record's `ruling:` key, linking that comment;
-3. a clean `statusgen --corroborate` read of this record.
-
-No tool enforces these three conditions or their order. The corroboration check's ruling lane
-establishes who wrote the linked comment and where, not what it says. For a record whose
-`decided-by` is the placeholder, it accepts a comment by any login that the check's human-login
-map resolves to a human. It counts an approval and a rejection alike as a ruling. Whoever
-reviews the `ruling:` push confirms by hand that the linked comment is the driver's own
-unedited approval.
-
-A passing `lint` on that follow-up is not evidence of approval, for two separate reasons. The
-design gate checks that the record exists, not that it is ratified; that gap is tracked at
-https://github.com/medici-finance/assay/issues/2704. The corroboration job reports success
-without running `statusgen --corroborate` on a change that touches only a decision record; that
-gap is tracked at https://github.com/medici-finance/assay/issues/2669.
+The delivered code already exists on main through #953 and #1024. Recording this approval
+is not new implementation and grants no live removal authority. The brief cites this record
+through `design: DR-composability-02`; any `todo` to `implemented` correction must be emitted
+by the canonical reconciliation writer and pass the independent brief decision-gate checks.
+The board's verification/review stamps and the brief's historical Evidence remain unchanged.
+A design approval is not final verification acceptance. The original Verify obligations,
+accepted residuals above, and human sign-off remain owed.
