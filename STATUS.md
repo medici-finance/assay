@@ -38,7 +38,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [verification-handoff](docs/streams/verification-handoff/README.md) | P2 | active | 0/6 | 2026-10-26 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 9/18 | 2026-10-24 |  |
 
-### Stuck auto-flips (35)
+### Stuck auto-flips (36)
 
 _gate:model briefs at `verified` that the model auto-flip has not moved to `done`. See docs/board-stuck-autoflips.md._
 
@@ -66,6 +66,7 @@ _gate:model briefs at `verified` that the model auto-flip has not moved to `done
 | [desktools-v2/15](docs/streams/desktools-v2/README.md) | Cobra and Viper foundation and complete CLI migration routing | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [desktools-v2/61](docs/streams/desktools-v2/README.md) | Version shared performance boundaries and keep legacy reports comparable | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [desktools-v2/69](docs/streams/desktools-v2/README.md) | Specify extensible JSON contracts and migration targets | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
+| [graph-execution/02](docs/streams/graph-execution/README.md) | Workflow-pattern schema, node contract, and the implementation and research patterns | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [graph-execution/09](docs/streams/graph-execution/README.md) | Versioned workflow instances and shared identity | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [graph-execution/20](docs/streams/graph-execution/README.md) | Shared loop-admin runner protocol and offline conformance kit | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [harness-portability/06](docs/streams/harness-portability/README.md) | Codex packaging — generated manifest, coverage rule, install path | — | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
@@ -104,7 +105,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **Already delivered or re-homed — held out of dispatch (9):** composability/02 → already-merged-unflipped (merged PR #4278, Brief: trailer), desk-supervision/34 → already-merged-unflipped (merged PR #4135, Brief: trailer), desktools-v2/30 → already-merged-unflipped (merged PR #4410, Brief: trailer), desktools-v2/70 → already-merged-unflipped (merged PR #4074, Brief: trailer), desktools-v2/74 → already-merged-unflipped (merged PR #4260, Brief: trailer), statusgen/24 → already-merged-unflipped (merged PR #4337, Brief: trailer), statusgen/27 → already-merged-unflipped (merged PR #4134, Brief: trailer), statusgen/28 → already-merged-unflipped (merged PR #4140, Brief: trailer), statusgen/32 → already-merged-unflipped (merged PR #4137, Brief: trailer). Each is a board-honesty finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose brief file is gone); reconcile or retire the row to clear it.
 
-_Next-up: 20 of 60 eligible — 40 held back (19 by per-stream caps, 21 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 20 of 61 eligible — 41 held back (19 by per-stream caps, 22 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
 _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (18), desk-tools (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
@@ -129,13 +130,13 @@ _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. 
 | measured-status | 06 — model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login [exec:strong] | 1 | 2200 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | derived-board | 10 — Complete candidate coverage for partial-delivery reconciliation [exec:strong] | 0 | 2000 |
-| statusgen | 23 — Product target binding and context drift assessment [exec:strong] | 3 | 2000 |
+| graph-execution | 08 — Signal-triggered pattern — incident and regression [exec:strong] | 1 | 2000 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 870d0201c 2026-10-26T13:56:37Z_
+_last regen: 9ab9fa76a 2026-10-26T14:56:49Z_
 
 **Progress:** 12/14 brief items done.
 
@@ -156,7 +157,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 870d0201c 2026-10-26T13:56:37Z_
+_last regen: 9ab9fa76a 2026-10-26T14:56:49Z_
 
 **Progress:** 35/94 brief items done.
 
@@ -310,7 +311,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| graph-execution | 02 [exec:strong] | implemented | 26500 | 49 | — | operator | environment blocker, cite #4010 | — | — |
+| graph-execution | 02 [exec:strong] | verified | 26500 | 49 | — | operator | environment blocker, cite #4010 | 2026-10-25 assay-verifier-app[bot] @ 4aeecf71626f (forge-identity) | — |
 | graph-execution | 13 [exec:strong] | implemented | 13000 | 22 | — | operator | environment blocker, cite #1800 | — | — |
 | forge-neutral | 33 [exec:strong] | implemented | 9500 | 15 | — | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | cellctl-windows | 00 [exec:strong] | implemented | 5540 | 7 | — | operator | `$log = New-TemporaryFile; go test ./internal/celllaunch -run '^TestLaunchSpecRoundTrip$' -count=1 -v *> $log; if ($LASTEXITCODE -ne 0) { Get-Content $log; exit 1 }; if (-not (Select-String -Path $log -SimpleMatch '--- PASS: TestLaunchSpecRoundTrip ')) { exit 1 }; if (Select-String -Path $log -SimpleMatch '--- SKIP:') { exit 1 }` | — | — |
@@ -362,7 +363,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 17 [exec:strong] | verified | 1510 | 1 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 2f44050f8a70 (claude-opus-5-5) | — |
 | desk-supervision | 19 [exec:strong] | verified | 1510 | 1 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ 70deba75a577 (claude-opus-5-5) | — |
 | statusgen | 17 | verified | 1500 | 1 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 54c024fca36e (claude-opus-5-5) | — |
-| quality | 19 [exec:strong] | verified | 1050 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 3add8a9ae315 (claude-opus-5-5) | — |
+| quality | 19 [exec:strong] | verified | 1060 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 3add8a9ae315 (claude-opus-5-5) | — |
 | desk-supervision | 18 [exec:strong] | verified | 1010 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-20 assay-verifier-app[bot] @ b73d90d774fc (claude-opus-5-5) | — |
 | desk-supervision | 27 [exec:strong] | verified | 1010 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 8eb028b49bc5 (claude-opus-5-5) | — |
 | desk-tools | 15 | verified | 1000 | 0 | — | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 810a5edf064b (claude-opus-5-5) | — |
@@ -826,7 +827,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 
 ### graph-execution (30 open)
 
-- 02 Workflow-pattern schema, node contract, and the implementation and research patterns — implemented (wave 0)
+- 02 Workflow-pattern schema, node contract, and the implementation and research patterns — verified (wave 0)
 - 03 Evidence coverage rule and the observe evidence kind — implemented (wave 1)
 - 04 Recovery contract for effect-bearing nodes in drainloop — todo (wave 4)
 - 05 Offline two-pattern experiment on frozen fixtures — todo (wave 8)
