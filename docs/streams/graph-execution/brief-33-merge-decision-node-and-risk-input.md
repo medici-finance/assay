@@ -57,25 +57,34 @@ files: `spec/workflow-patterns/implementation-v1.yaml`, `statusgen/testdata/patt
 `statusgen/testdata/instances/root/spec/workflow-patterns/implementation-v1.yaml`, `spec/workflow-pattern-v1.md`,
 `schemas/workflow-pattern-v1.json`, `statusgen/schemas/workflow-pattern-v1.json`, `statusgen/patterns.go`,
 `statusgen/patterns_test.go`, `statusgen/testdata/patterns/bad-merge-behind-dispatch.yaml` (planned),
-`statusgen/testdata/patterns/bad-human-role-not-decision.yaml` (planned), `spec/workflow-instance-v1.md`,
+`statusgen/testdata/patterns/bad-human-role-not-decision.yaml` (planned),
+`statusgen/testdata/patterns/bad-floor-effect-target.yaml` (planned), `spec/workflow-instance-v1.md`,
 `schemas/workflow-instance-v1.json` and the embedded copy `TestInstanceSchemaParity` pins, `statusgen/instance.go`,
 `statusgen/instance_test.go`, `statusgen/testdata/instances/*.yaml` (every fixture that pins the pattern digest),
 `statusgen/testdata/instances/human-node-actor.yaml` (planned), `statusgen/testdata/instances/merge-desk-actor.yaml` (planned),
 `docs/lifecycle.md`, `changelog/graph-execution-33-merge-decision-node.md` (planned).
 
-single-point-of-failure: the external authenticated human act that closes the `merge` decision —
-behind it: (1) the pattern schema refuses `role: human` on anything but an effect-free decision node,
-checked by an independent JSON Schema validator; (2) the pattern lint refuses any node outputting a
-human-floor artifact unless it is a `human` decision node, whatever its effect is labelled;
-(3) the instance validator refuses an actor, a capability or an effect on a `human` node and
-refuses a desk-role merge instance; (4) admission's human-floor refusal once /14 binds it at
-dispatch; (5) out of band, the forge binding grants no role a merge permission.
+single-point-of-failure: who performs the merge is guarded by one control today, the forge binding,
+which grants no role a merge permission — behind it, admission's human-floor refusal at dispatch once
+graph-execution/14 binds it (/14 depends on this brief and owns that second layer). This brief adds <!-- graph: encoded graph-execution/33→graph-execution/14 -->
+no control on the act itself. Its three layers guard the DECLARED shape only: (1) the pattern schema
+refuses `role: human` on anything but an effect-free decision node, checked by an independent JSON
+Schema validator; (2) the pattern lint refuses any node outputting or targeting a human-floor
+artifact unless it is a `human` decision node, whatever its effect is labelled; (3) the instance
+validator refuses an actor, a capability or an effect on a `human` node and refuses a desk-role
+merge instance. None of the three can tell who merged: a decision record is
+`{id, node, outcome, act: {kind, ref}}` (`instanceDecision` in `statusgen/instance.go`), the
+validator only checks that a decision names a known node instance, and the instance schema fixes
+`act.kind` to `external-authenticated-act` but leaves `act.ref` a free string. An agent that merged
+and wrote a well-formed decision record would pass all three.
 
 facts (b1a7e4233, 2026-10-26):
 - Ruling, per the driver's ruling (https://github.com/medici-finance/assay/issues/1933#issuecomment-6419943765):
   merge becomes a `kind: decision` node closed by an external authenticated human act; `human`
   is allowed as an owner only on decision nodes; the pattern and its testdata twin are re-pinned;
-  graph-execution/02 stays held until this brief lands.
+  graph-execution/02 stays held until this brief lands. This brief reads "lands" as reaching
+  `verified` (implementation merged and its Verify rows evidenced by a non-implementer); the
+  hold note sits in brief 02's `## Review` section.
 - Today `merge` is `kind: effect, role: desk`, outputs `[merge-commit]`, effect
   `{kind: dispatch, target: merge-commit}`. Every check passes: `dispatch` is in the desk row of the
   §7 role-effect table, and the vocabulary has no `merge` effect kind, so nothing ties the output
@@ -83,7 +92,10 @@ facts (b1a7e4233, 2026-10-26):
   0 checked-failed, 0 could-not-check (2 file(s) scanned)` and exits 0.
 - The instance validator reuses the same table (`statusgen/instance.go`, `perm :=
   patternRoleEffectPermissions[n.Role]`), and `statusgen/testdata/instances/valid.yaml` gives the
-  merge node a desk actor holding `dispatch`. All 12 instance fixtures that bind the pattern pin
+  merge node a desk actor holding `dispatch`. All 11 instance fixtures that bind the pattern
+  (`capability-minted`, `cross-cell`, `duplicate-dependency`, `missing-pattern`,
+  `reporter-trust-promoted`, `rewrite-same-id`, `silent-truncation`, `stale-acceptance`,
+  `superseding`, `unknown-mandatory-field`, `valid`; `grep -rl` over `statusgen/testdata`) pin
   `digest: sha256:edcf96e1eed65dc4a7a09cd2ed0e55fd8c0dba018a0452b959b7e71ffe13af94`, version 1.
 - `risk-input` today: `low: [review]`, `standard/elevated/human: [review, verify]` — named, not
   derived; `elevated` and `human` are indistinguishable from `standard`.
@@ -97,8 +109,9 @@ facts (b1a7e4233, 2026-10-26):
 
 layering: no new component. The pattern schema owns the shape (`human` only on effect-free decision
 nodes); the pattern lint owns the cross-field rule (human-floor outputs); the instance validator owns
-the actor rule. Each check runs in a different component on a different signal, so a fault in one is
-caught by the next. Admission and the forge stay the enforcing layers they are today.
+the actor rule. Each check runs in a different component on a different signal, so a declared-shape
+fault in one is caught by the next. None of them sees the merge act; admission (from
+graph-execution/14) and the forge binding stay the only layers that do.
 
 design-fit:
   owner: statusgen/patterns.go (pattern contract) and statusgen/instance.go (instance contract)
@@ -137,6 +150,8 @@ Default if no answer: option 1 after 2026-11-02.
 - Stop at `implemented`; you do not set verified or done.
 - Do not widen the §7 role-effect table or `patternRoleEffectPermissions`; `human` never enters it.
 - Do not add a `merge` effect kind. A human node carries no effects at all.
+- Do not edit brief 02. Its hold (the note in its `## Review` section) releases when this brief
+  reaches `verified`, which is not the implementer's act.
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, do not guess.
 
 ## Task
@@ -169,9 +184,10 @@ Default if no answer: option 1 after 2026-11-02.
      step 10, `humanFloorOperations` in `admission.go`), and a `gate: human` brief carries a human
      Review gate.
    - The merge floor itself holds for every class by node shape, not by `risk-input`: the node is a
-     `human` decision whichever class runs it. Where the human gate is enforced: the external
-     authenticated act (`spec/workflow-instance-v1.md` §8), admission's human-floor refusal (bound at
-     dispatch by graph-execution/14), and the forge binding, which grants no role a merge.
+     `human` decision whichever class runs it. The node shape only declares the floor. The act is
+     enforced by the forge binding, which grants no role a merge, and, once graph-execution/14
+     binds it at dispatch, by admission's human-floor refusal. The §8 decision record
+     (`spec/workflow-instance-v1.md`) states that a human act happened. It does not prove who did it.
 3. **Schema: `human` on effect-free decision nodes only.** In `schemas/workflow-pattern-v1.json`, add
    `human` to the node `role` enum and an `if {role: const human} then {kind: const decision, and
    effects absent or maxItems 0}` clause. Copy the file byte-for-byte to
@@ -188,7 +204,15 @@ Default if no answer: option 1 after 2026-11-02.
      list `merge-commit`, `release`, `deployment` — MUST be `kind: decision` with `role: human`; and
      any node with an effect, of any kind (`dispatch` included), whose `target` is a human-floor
      artifact is a finding. The list is a named constant beside the rules, matching the three
-     operations `docs/enforcement-model.md` names.
+     operations `docs/enforcement-model.md` names. It is a deny-list, so the spec text (§4.2 rule 6)
+     states its one-to-one correspondence with admission's `humanFloorOperations`
+     (`tools/desk/internal/deskkit/admission.go`, `merge`, `release`, `deploy`): `merge-commit` ↔
+     `merge`, `release` ↔ `release`, `deployment` ↔ `deploy`. A floor operation added on either side
+     needs its artifact added on the other in the same change. The constant's doc comment says the same.
+     The lint's output check alone does not see the effect-target branch: the existing
+     effect-ownership rule (`pattern-effect-target-not-owned`) skips `kind: effect` nodes, so a
+     desk effect node that outputs a non-floor artifact and dispatches at `merge-commit` lints clean
+     today.
    - `pattern-human-role-not-decision`: a node with `role: human` MUST be `kind: decision` and MUST
      declare no effects. (The schema refuses the same shape independently; the lint holds it if the
      schema is ever loosened.)
@@ -196,16 +220,21 @@ Default if no answer: option 1 after 2026-11-02.
    loosened. `role: human` is accepted by the existing role check only on such a node and only for this
    purpose; it never resolves through `patternRoleEffectPermissions`. New fixtures:
    `statusgen/testdata/patterns/bad-merge-behind-dispatch.yaml` (planned), which is today's version 1
-   file verbatim and must fail `pattern-human-floor-output` and not `pattern-effect-exceeds-role`; and
-   `bad-human-role-not-decision.yaml`, a `role: human, kind: effect` node with a `comment` effect.
-   Tests: `TestPatternsHumanFloorOutput` (planned), `TestPatternsHumanRoleDecision` (planned).
+   file verbatim and must fail `pattern-human-floor-output` and not `pattern-effect-exceeds-role`;
+   `bad-human-role-not-decision.yaml`, a `role: human, kind: effect` node with a `comment` effect; and
+   `statusgen/testdata/patterns/bad-floor-effect-target.yaml` (planned), today's version 1 file with
+   only the merge node's output renamed to `merge-request` (and `verify`'s input renamed to match),
+   so the node stays `kind: effect, role: desk` with `{kind: dispatch, target: merge-commit}` and
+   outputs no floor artifact. It must fail `pattern-human-floor-output` through the effect-target
+   branch alone. Tests: `TestPatternsHumanFloorOutput` (planned), covering both the output fixture
+   and the effect-target fixture, and `TestPatternsHumanRoleDecision` (planned).
 5. **Re-pin the twins.** Copy the new pattern byte-for-byte to
    `statusgen/testdata/patterns/good-implementation-v1.yaml`, and to
    `statusgen/testdata/instances/root/spec/workflow-patterns/implementation-v1.yaml` keeping its
    existing two-line FIXTURE header (so `tail -n +3` of the instance twin equals the spec file).
    Re-pin every instance fixture that binds the pattern: compute the new digest with
    `shasum -a 256` over the instance-root twin (the file the validator resolves), set `version: 2`,
-   and replace the old digest in all 12 fixtures. Re-derive `superseding.yaml`'s
+   and replace the old digest in all 11 fixtures named in Context. Re-derive `superseding.yaml`'s
    `supersedes.contract-digest` from `statusgen instance validate --file testdata/instances/valid.yaml
    --root testdata/instances/root --json` (`contract-digest`). The old digest must not remain anywhere.
 6. **Instance contract.** In `spec/workflow-instance-v1.md` §5 add rule 9: a node instance whose
@@ -214,7 +243,15 @@ Default if no answer: option 1 after 2026-11-02.
    `schemas/workflow-instance-v1.json` (and its embedded copy) allow `role: human` with `actor`
    absent and `effects` empty for that role only. In `statusgen/instance.go` add the rule constant,
    skip the §7 capability lookup only for a `human` node, and refuse an actor, capability or effect on
-   one. Reshape the merge node in every instance fixture to `role: human`, no actor, `effects: []`, the
+   one. Two existing code paths assume every node has an actor and must change with it:
+   - `instanceNode.Actor` is a value struct (`Actor instanceActor`), and the one-Cell check compares
+     `n.Actor.Cell` with `inst.Work.Cell` for every node. Make the actor optional (a pointer, or
+     omitted when empty) and skip the one-Cell check for a `human` node, so a human node with no
+     actor is not reported as `instance-cross-cell`.
+   - `instantiate` refuses a pattern node whose role has no resolved actor ("no resolved actor for
+     role"), and `TestInstanceRoundTripIdentity` re-instantiates `valid.yaml`. Skip actor resolution
+     for the `human` role there, so the round trip produces a merge node with no actor.
+   Reshape the merge node in every instance fixture to `role: human`, no actor, `effects: []`, the
    new evidence claim. Add to `valid.yaml` a decision `dec-example-07-merge` on
    `inst-example-07-a.merge`, outcome `merged`, act `{kind: external-authenticated-act,
    ref: example-org/example-app/pull/42#merge}`. New fixtures: `human-node-actor.yaml` (merge node
@@ -250,22 +287,27 @@ one appeared. Neither is a pass.
 | 3 | check | `(f=spec/workflow-patterns/implementation-v1.yaml; grep -Fxq '  low: [review]' "$f" && grep -Fxq '  standard: [review, verify]' "$f" && grep -Fxq '  elevated: [review, merge, verify]' "$f" && grep -Fxq '  human: [review, merge, verify]' "$f")` | exit 0 (option 1 mapping; if the human decision selects option 2, the reviewer re-states these four lines before implementation) |
 | 4 | check | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-merge-behind-dispatch.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-human-floor-output]' "$T/out" \|\| exit 4; grep -Fq '[pattern-effect-exceeds-role]' "$T/out" && exit 5; exit $e)` | exit 1 (fail-first: on b1a7e4233 the same file lints clean, exit 0, so this row cannot pass there) |
 | 5 | check | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-human-role-not-decision.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-human-role-not-decision]' "$T/out" \|\| exit 4; exit $e)` | exit 1 |
-| 6 | check | `python3 -c 'import importlib.util,sys; sys.exit(3) if not all(importlib.util.find_spec(m) for m in ("yaml","jsonschema")) else None; import json,yaml,jsonschema; s=json.load(open("schemas/workflow-pattern-v1.json")); d=yaml.safe_load(open("statusgen/testdata/patterns/bad-human-role-not-decision.yaml")); v=jsonschema.Draft202012Validator(s); sys.exit(1 if list(v.iter_errors(d)) else 0)'` | exit 1 (the schema alone refuses a non-decision `human` node; exit 3 = could-not-check) |
+| 6 | check | `python3 -c 'import importlib.util as u,sys,os; sys.excepthook=lambda *a: os._exit(3); sys.exit(3) if not (u.find_spec("yaml") and u.find_spec("jsonschema") and os.path.isfile("statusgen/testdata/patterns/bad-human-role-not-decision.yaml")) else None; import json,yaml,jsonschema; v=jsonschema.Draft202012Validator(json.load(open("schemas/workflow-pattern-v1.json"))); g=yaml.safe_load(open("spec/workflow-patterns/implementation-v1.yaml")); sys.exit(3) if not any(n.get("role")=="human" and n.get("kind")=="decision" and not n.get("effects") for n in g["nodes"]) else None; sys.exit(6) if list(v.iter_errors(g)) else None; e=list(v.iter_errors(yaml.safe_load(open("statusgen/testdata/patterns/bad-human-role-not-decision.yaml")))); sys.exit(4) if not e else None; sys.exit(5) if any(x.validator=="enum" and list(x.absolute_path)[-1:]==["role"] for x in e) else None; sys.exit(1 if any(list(x.absolute_path)[-1:] in (["kind"],["effects"]) for x in e) else 7)'` | exit 1: the positive control (the shipped `merge` node, `role: human, kind: decision`, no effects) validates, and the bad fixture is refused on its `kind` or `effects`, not on the `role` enum. Exit 3 = could-not-check (`yaml`/`jsonschema` absent, a file missing or unparsable, or no human decision node yet); 4 = fixture accepted; 5 = refused by the role enum; 6 = positive control refused. On 36665f2b0 this row exits 3 (no human decision node; fixture absent), and with both files present but the schema unchanged it exits 6 |
 | 7 | check | `python3 -c 'import importlib.util,sys; sys.exit(3) if not all(importlib.util.find_spec(m) for m in ("yaml","jsonschema")) else None; import json,yaml,jsonschema; jsonschema.validate(yaml.safe_load(open("spec/workflow-patterns/implementation-v1.yaml")), json.load(open("schemas/workflow-pattern-v1.json"))); print("schema-valid")'` | exit 0; output is "schema-valid" |
 | 8 | check +flow | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; "$T/sg" instance validate --file statusgen/testdata/instances/valid.yaml --root statusgen/testdata/instances/root)` | exit 0; output contains "checked-clean" |
 | 9 | check | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; "$T/sg" instance validate --file statusgen/testdata/instances/human-node-actor.yaml --root statusgen/testdata/instances/root > "$T/out" 2>&1; e=$?; grep -Fq '[instance-human-node-actor]' "$T/out" \|\| exit 4; exit $e)` | exit 1 |
 | 10 | check +flow | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; "$T/sg" instance validate --file statusgen/testdata/instances/merge-desk-actor.yaml --root statusgen/testdata/instances/root > "$T/out" 2>&1; e=$?; grep -Fq '[instance-node-mismatch]' "$T/out" && grep -Fq '[instance-effect-not-declared]' "$T/out" \|\| exit 4; exit $e)` | exit 1 (lower layer: a desk-owned merge instance is refused with no human act present) |
 | 11 | check | `(cmp spec/workflow-patterns/implementation-v1.yaml statusgen/testdata/patterns/good-implementation-v1.yaml && tail -n +3 statusgen/testdata/instances/root/spec/workflow-patterns/implementation-v1.yaml \| cmp - spec/workflow-patterns/implementation-v1.yaml && cmp schemas/workflow-pattern-v1.json statusgen/schemas/workflow-pattern-v1.json && ! grep -rFq edcf96e1eed65dc4a7a09cd2ed0e55fd8c0dba018a0452b959b7e71ffe13af94 statusgen/testdata)` | exit 0 |
-| 12 | check | `(cd statusgen && GOWORK=off go test -count=1 -run '^(TestPatterns\|TestInstance)' .)` | exit 0; output contains "ok" |
+| 12 | check | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go test -count=1 -v -run '^(TestPatterns\|TestInstance)' .) > "$T/out" 2>&1; e=$?; [ "$e" -eq 0 ] \|\| exit "$e"; for t in TestPatternsHumanFloorOutput TestPatternsHumanRoleDecision TestInstanceHumanNodeActor; do grep -Fq -- "--- PASS: $t (" "$T/out" \|\| exit 4; done)` | exit 0 (exit 4 = a named test did not run and pass) |
 | 13 | check | `(cd tools/desk && GOWORK=off go test -count=1 -run '^TestAgenticAdmissionRiskInputUnion$' ./internal/deskkit/)` | exit 0; output contains "ok" |
+| 14 | check | `(T=$(mktemp -d); (cd statusgen && GOWORK=off go build -o "$T/sg" .) \|\| exit 3; mkdir -p "$T/r/spec/workflow-patterns" && cp statusgen/testdata/patterns/bad-floor-effect-target.yaml "$T/r/spec/workflow-patterns/" \|\| exit 3; grep -Fq 'target: merge-commit' "$T/r/spec/workflow-patterns/bad-floor-effect-target.yaml" \|\| exit 3; grep -Fq 'outputs: [merge-commit]' "$T/r/spec/workflow-patterns/bad-floor-effect-target.yaml" && exit 3; "$T/sg" patterns --lint --root "$T/r" > "$T/out" 2>&1; e=$?; grep -Fq '[pattern-human-floor-output]' "$T/out" \|\| exit 4; exit $e)` | exit 1 (effect-target branch alone: the fixture outputs no floor artifact. Fail-first: on 36665f2b0 the same file lints clean, `patterns: 1 checked-clean`, exit 0) |
 
 ## Pre-mortem
 
-- A merge hides behind another label (`comment`, `file-issue`) or a renamed output: rule 4's lint
-  keys on the output and on any effect targeting a human-floor artifact, whatever the effect kind.
+- A merge hides behind another label (`comment`, `file-issue`) or a renamed output: Task 4's lint
+  keys on the output (row 4) and on any effect targeting a human-floor artifact, whatever the effect
+  kind (row 14).
+- An agent performs the merge and writes a well-formed `decisions[]` record: nothing in this brief
+  catches it, because the record is not bound to an identity. The forge binding is the control, and
+  admission's human-floor refusal joins it at graph-execution/14.
 - A new output name (`merged-head`) escapes the closed list: the list is a named constant with the
-  three floor operations; a pattern adding a new floor-shaped output is a pattern review question,
-  stated in the spec text.
+  three floor operations, and the spec text ties it one-to-one to admission's `humanFloorOperations`;
+  a pattern adding a new floor-shaped output is a pattern review question.
 - The instance validator still resolves `human` through the §7 table and refuses every shipped
   instance, or accepts a human node with an actor: rows 8 and 9 hold both directions.
 - A twin or digest is left stale and the instance fixtures fail for `instance-pattern-drift`
@@ -273,10 +315,10 @@ one appeared. Neither is a pass.
 
 ## Definition of done
 
-- Rows 1-13 pass as stated (rows 6 and 7 may report could-not-check only where `yaml`/`jsonschema`
+- Rows 1-14 pass as stated (rows 6 and 7 may report could-not-check only where `yaml`/`jsonschema`
   are absent, and the verifier says so).
-- No agent role holds an effect targeting `merge-commit`; the §7 table is unchanged.
-- graph-execution/02's hold is released by this brief landing (stream README note).
+- No agent role holds an effect targeting `merge-commit` (rows 4 and 14); the §7 table is unchanged
+  (row 12, `TestPatternsRoleEffectPermissionsCoversTopologyRoles`).
 
 ## Evidence
 
@@ -285,8 +327,14 @@ one appeared. Neither is a pass.
 ## Review
 
 Gate: human (frontmatter). The reviewer answers both rule-10 questions in the verdict:
-(1) the single control between an agent merge and the damage is the external authenticated human
-act closing `merge`, with schema, lint, instance validator, admission and forge binding behind it —
-is that acceptable? (2) do rows 4, 5, 6, 9 and 10 prove a lower layer refuses the fault with the
-upper layer bypassed? They do by construction: each feeds a fault directly to one validator with no
-human act and no other layer present.
+(1) the single control between an agent merge and the damage is the forge binding, which grants no
+role a merge permission. Schema, lint and instance validator sit behind it only for the declared
+shape (a pattern or instance that names an agent merge); none of them sees the act, because a
+decision record carries no verified identity. Admission's human-floor refusal becomes the second
+layer on the act when graph-execution/14 binds it at dispatch; /14 depends on this brief, and the <!-- graph: encoded graph-execution/33→graph-execution/14 -->
+runtime record of a human act belongs to /14 and /21. Is one layer on the act until /14 acceptable?
+(2) do any rows prove a lower layer catches the fault with the upper layer bypassed? For the
+declared shape, yes: rows 4, 5, 6, 9, 10 and 14 each feed one fault straight to one validator with
+no other layer present. For the act, no: no row here proves a lower layer catches an agent that
+performs a merge and records it as a human decision. That proof is owed by graph-execution/14's
+admission rows, not claimed here.

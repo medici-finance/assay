@@ -397,6 +397,7 @@ https://github.com/medici-finance/assay/issues/1933#issuecomment-6419943765
 Its `merge` node becomes a `human` decision closed by an external authenticated act, `human`
 is allowed as an owner only on effect-free decision nodes, the pattern and its testdata twins
 are re-pinned, and the `risk-input` mapping is derived rather than named. The role-effect table
-is not widened. graph-execution/02 stays held until /33 lands. /33 is a Wave 0 item with no open
+is not widened. graph-execution/02 stays held until /33 lands, read as /33 reaching `verified`;
+the hold note is in brief 02's `## Review` section. /33 is a Wave 0 item with no open
 dependency, because /02 and /09's deliverables are already on main; it is a new prerequisite of
 /14, which binds the re-pinned pattern at dispatch.
