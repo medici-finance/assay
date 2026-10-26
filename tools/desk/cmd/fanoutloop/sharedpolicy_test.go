@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+)
 
 func TestSharedFrontmatter(t *testing.T) {
 	fm := parseFrontmatter("---\nrisk: {regulatory: \"yes\"}\ngate: human\n---\n")
@@ -56,6 +60,28 @@ func TestCommentedImplementerReadsAsBefore(t *testing.T) {
 		fm := parseFrontmatter("---\ngate: model\n" + line + "\n---\n")
 		if fm.ParseError != "" || fm.Implementer != want {
 			t.Errorf("%q: read %q (parse error %q); the earlier reader read %q", line, fm.Implementer, fm.ParseError, want)
+		}
+	}
+}
+
+// TestAuthorRunnerGuardMatchesParsedImplementer pins that the author != runner
+// guard refuses every implementer line whose parsed value names the runner,
+// whatever quoting or inline comment the line carries.
+func TestAuthorRunnerGuardMatchesParsedImplementer(t *testing.T) {
+	for _, line := range []string{
+		"implementer: runner-a",
+		"implementer: runner-a # note",
+		`implementer: "runner-a"`,
+		`implementer: "runner-a" # note`,
+		`implementer: 'runner-a' # note`,
+		`implementer: "runner-a"  #`,
+		`implementer: "runner-a"  #note`,
+		"implementer:\n  \"runner-a\" # note",
+		"implementer:\n  'runner-a' # note",
+	} {
+		fm := parseFrontmatter("---\ngate: model\n" + line + "\n---\n")
+		if fm.ParseError == "" && loopengine.CheckAuthorRunner(loopengine.Item{ID: "a", Implementer: fm.Implementer}, "runner-a") == nil {
+			t.Errorf("%q read as %q and was not refused for runner-a", line, fm.Implementer)
 		}
 	}
 }

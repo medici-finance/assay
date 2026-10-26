@@ -149,13 +149,18 @@ func TestCheckAuthorRunner_AllowsDifferentAndEmpty(t *testing.T) {
 // carrying an inline comment still names its author: the guard refuses when
 // either the value as read or the value with the comment cut is the runner.
 func TestCheckAuthorRunner_RefusesAnnotatedSelf(t *testing.T) {
-	for _, impl := range []string{"runner-a # note", "runner-a\t# note", "runner-a  #note"} {
+	for _, impl := range []string{
+		"runner-a # note", "runner-a\t# note", "runner-a  #note",
+		"runner-a\" # note", "runner-a' # note", "runner-a\"  #", "runner-a\"  #note", "runner-a\" # x # y",
+	} {
 		if err := CheckAuthorRunner(Item{ID: "a", Implementer: impl}, "runner-a"); err == nil {
 			t.Errorf("implementer %q not refused for runner-a", impl)
 		}
 	}
-	if err := CheckAuthorRunner(Item{ID: "a", Implementer: "runner-b # runner-a"}, "runner-a"); err != nil {
-		t.Errorf("a runner named only in the comment was refused: %v", err)
+	for _, impl := range []string{"runner-b # runner-a", "runner-b\" # 'runner-a'", "runner-ab\" # x"} {
+		if err := CheckAuthorRunner(Item{ID: "a", Implementer: impl}, "runner-a"); err != nil {
+			t.Errorf("implementer %q naming another author was refused: %v", impl, err)
+		}
 	}
 }
 

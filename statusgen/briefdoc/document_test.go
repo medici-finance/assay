@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestQuotedRiskAndMalformed(t *testing.T) {
@@ -435,6 +437,37 @@ func TestCommentKeepingKeysRefuseValuesSpanningLines(t *testing.T) {
 			input := key + ": " + value
 			if f, e := ParseFields(input); e == nil {
 				t.Errorf("%q was admitted as %+v; a value spanning lines does not match the line reading", input, f.Values)
+			}
+		}
+	}
+}
+
+// TestCommentKeptReadingCutsBackToParsedValue pins the reading the
+// author != runner guard relies on: for every comment-keeping key, a quoted
+// or unquoted value with an inline comment is either refused or read so that
+// the text before its first whitespace-led "#", with surrounding space and
+// quotes trimmed, is exactly the value YAML parsed.
+func TestCommentKeptReadingCutsBackToParsedValue(t *testing.T) {
+	cutRe := regexp.MustCompile(`\s#`)
+	for _, key := range []string{"implementer", "blocked-until", "verify-lane", "in-repair"} {
+		for _, value := range []string{
+			"v # x", `"v" # x`, "'v' # x", `"v"  #`, `"v"  #x`, `"v" # x # y`, "\n  \"v\" # x", "\n  'v' # x",
+		} {
+			input := key + ": " + value
+			var parsed map[string]string
+			if err := yaml.Unmarshal([]byte(input), &parsed); err != nil {
+				t.Fatalf("%q: %v", input, err)
+			}
+			f, e := ParseFields(input)
+			if e != nil {
+				continue
+			}
+			got := f.Values[key]
+			if loc := cutRe.FindStringIndex(got); loc != nil {
+				got = got[:loc[0]]
+			}
+			if got = strings.TrimSpace(strings.Trim(strings.TrimSpace(got), `"'`)); got != parsed[key] {
+				t.Errorf("%q read as %q; cut back to %q, not the parsed %q", input, f.Values[key], got, parsed[key])
 			}
 		}
 	}

@@ -37,7 +37,7 @@ func (e *AuthorIsRunnerError) Error() string {
 func (e *AuthorIsRunnerError) ExitCode() int { return ExitAuthorIsRunner }
 
 // CheckAuthorRunner is the structural author != runner guard: a pure comparison between the
-// item's recorded implementer (as read, and with any inline comment cut; see ImplementerIs)
+// item's recorded implementer (as read, and with any inline comment and quotes cut; see ImplementerIs)
 // and the identity the engine would dispatch as (runnerID).
 // Returns *AuthorIsRunnerError (exit 7) when they match; nil otherwise. An empty runnerID
 // or empty Implementer disables the check (the adapter owns attribution in that case).
@@ -53,17 +53,25 @@ func CheckAuthorRunner(it Item, runnerID string) error {
 
 // ImplementerIs reports whether a declared implementer names actor under same.
 // A brief's implementer can be read with an inline comment kept ("a # note"),
-// so it compares both the value as read and the value cut at the first
-// whitespace-led "#"; either one naming actor counts as the author.
+// and a quoted value then keeps its closing quote, so it compares the value as
+// read and the text before its first whitespace-led "#" with surrounding space
+// and quotes trimmed, which is the value YAML parsed; either one naming actor
+// counts as the author.
 func ImplementerIs(implementer, actor string, same func(a, b string) bool) bool {
 	if same(implementer, actor) {
 		return true
 	}
 	if loc := implementerCommentRe.FindStringIndex(implementer); loc != nil {
-		cut := strings.TrimSpace(implementer[:loc[0]])
+		cut := implementerScalar(implementer[:loc[0]])
 		return cut != "" && same(cut, actor)
 	}
 	return false
+}
+
+// implementerScalar trims surrounding space and quotes from a comment-cut
+// implementer, as the parser's comment-cutting readers clean a value.
+func implementerScalar(v string) string {
+	return strings.TrimSpace(strings.Trim(strings.TrimSpace(v), `"'`))
 }
 
 var implementerCommentRe = regexp.MustCompile(`\s#`)

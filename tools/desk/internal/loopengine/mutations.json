@@ -52,20 +52,26 @@
     {
       "name": "ImplementerIs never compares the comment-cut implementer",
       "file": "internal/loopengine/claim.go",
-      "old": "\tif loc := implementerCommentRe.FindStringIndex(implementer); loc != nil {",
-      "new": "\tif loc := implementerCommentRe.FindStringIndex(implementer); false && loc != nil {"
+      "old": "\t\treturn cut != \"\" && same(cut, actor)",
+      "new": "\t\treturn false && cut != \"\" && same(cut, actor)"
     },
     {
       "name": "ImplementerIs compares the comment text instead of the name before it",
       "file": "internal/loopengine/claim.go",
-      "old": "\t\tcut := strings.TrimSpace(implementer[:loc[0]])",
-      "new": "\t\tcut := strings.TrimSpace(implementer[loc[1]:])"
+      "old": "\t\tcut := implementerScalar(implementer[:loc[0]])",
+      "new": "\t\tcut := implementerScalar(implementer[loc[1]:])"
     },
     {
       "name": "ImplementerIs recognises a comment after only one kind of whitespace",
       "file": "internal/loopengine/claim.go",
       "old": "regexp.MustCompile(`\\s#`)",
       "new": "regexp.MustCompile(` #`)"
+    },
+    {
+      "name": "ImplementerIs keeps the quotes on the comment-cut implementer, so a quoted implementer with a comment never names the runner",
+      "file": "internal/loopengine/claim.go",
+      "old": "\treturn strings.TrimSpace(strings.Trim(strings.TrimSpace(v), `\"'`))",
+      "new": "\treturn strings.TrimSpace(v)"
     }
   ]
 }

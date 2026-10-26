@@ -348,6 +348,12 @@
       "file": "briefdoc/document.go",
       "old": "\t\tcut.keepsComment = false\n",
       "new": "\t\tcut.keepsComment = true\n"
+    },
+    {
+      "name": "comment keeping: the agreement check compares the comment-cut line with its quotes kept",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif lineValue(cut, capture) != values[r.key] {",
+      "new": "\t\tif strings.TrimSpace(strings.SplitN(capture, \" #\", 2)[0]) != values[r.key] {"
     }
   ]
 }

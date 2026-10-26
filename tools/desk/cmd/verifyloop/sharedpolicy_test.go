@@ -157,3 +157,28 @@ func TestCommentedMarkersReadAsBefore(t *testing.T) {
 		}
 	}
 }
+
+// TestAuthorRunnerGuardMatchesParsedImplementer pins that the author != runner
+// guard refuses every implementer line whose parsed value names the runner,
+// whatever quoting or inline comment the line carries.
+func TestAuthorRunnerGuardMatchesParsedImplementer(t *testing.T) {
+	for _, line := range authorRunnerLines {
+		fm := parseFrontmatter("---\ngate: model\n" + line + "\n---\n")
+		if fm.ParseError == "" && loopengine.CheckAuthorRunner(loopengine.Item{ID: "a", Implementer: fm.Implementer}, "runner-a") == nil {
+			t.Errorf("%q read as %q and was not refused for runner-a", line, fm.Implementer)
+		}
+	}
+}
+
+// authorRunnerLines are implementer lines whose parsed value is runner-a.
+var authorRunnerLines = []string{
+	"implementer: runner-a",
+	"implementer: runner-a # note",
+	`implementer: "runner-a"`,
+	`implementer: "runner-a" # note`,
+	`implementer: 'runner-a' # note`,
+	`implementer: "runner-a"  #`,
+	`implementer: "runner-a"  #note`,
+	"implementer:\n  \"runner-a\" # note",
+	"implementer:\n  'runner-a' # note",
+}
