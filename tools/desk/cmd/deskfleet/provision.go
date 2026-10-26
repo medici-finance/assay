@@ -7,7 +7,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"net/url"
 	"os"
@@ -33,6 +32,9 @@ type provisionOpts struct {
 	// noAvatars: the script's --no-avatars, kept for flag parity. It names the skip
 	// explicitly; with no --avatars-dir the step is skipped either way.
 	noAvatars bool
+	// apiBase is GITLAB_API_BASE as the verb resolved it (environment only); gitlabAPIBase
+	// checks it before any network contact.
+	apiBase string
 }
 
 // banner / ruleLine frame the closing summary and the partial-run report.
@@ -43,55 +45,37 @@ var (
 
 var prefixRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 
-func parseProvisionFlags(args []string, e *env) (provisionOpts, error) {
-	var o provisionOpts
-	fs := flag.NewFlagSet("deskfleet provision", flag.ContinueOnError)
-	fs.SetOutput(e.stderr)
-	fs.StringVar(&o.group, "group", "", "top-level GitLab group (path or id) that owns the fleet")
-	fs.StringVar(&o.prefix, "prefix", "", "username prefix: <prefix>-<role>-bot")
-	fs.StringVar(&o.project, "project", "", "fleet project (path or id) whose settings and labels to configure")
-	fs.StringVar(&o.ownerTokenFile, "owner-token-file", "", "FILE holding a group-owner PAT (owner-only; never a flag value)")
-	fs.StringVar(&o.outDir, "out-dir", "", "where gitlab-<role>.token files are written (default: the config home)")
-	fs.IntVar(&o.patExpiryDays, "pat-expiry-days", 7, "PAT lifetime in days (1-365)")
-	fs.BoolVar(&o.dryRun, "dry-run", false, "enumerate every action; make zero network calls")
-	fs.StringVar(&o.avatarsDir, "avatars-dir", "", "upload <dir>/<role>.png as each account's own avatar "+
-		"(PUT /user/avatar, as that role's own PAT); omitted = the avatar step is skipped")
-	fs.BoolVar(&o.avatarsOnly, "avatars-only", false, "set the avatars of accounts that already exist, as each "+
-		"role, from the gitlab-<role>.token files under --out-dir; creates, mints and configures nothing")
-	fs.BoolVar(&o.noAvatars, "no-avatars", false, "skip the avatar step (prints a NOTICE); the script's flag of the same name")
-	if err := fs.Parse(args); err != nil {
-		return o, err
-	}
-	if fs.NArg() > 0 {
-		return o, fmt.Errorf("unexpected argument %q", fs.Arg(0))
-	}
+// validateProvision is the domain check on the typed options the command tree resolved, in
+// the order and with the messages the Go flag parser's checks had. It reads nothing and
+// touches nothing, so a refused run has had no effect; it fills the --out-dir default.
+func validateProvision(o *provisionOpts) error {
 	if o.noAvatars && (o.avatarsOnly || o.avatarsDir != "") {
-		return o, errors.New("--no-avatars contradicts --avatars-only and --avatars-dir")
+		return errors.New("--no-avatars contradicts --avatars-only and --avatars-dir")
 	}
 	if o.avatarsOnly {
 		if o.avatarsDir == "" {
-			return o, errors.New("--avatars-only requires --avatars-dir <dir holding <role>.png>")
+			return errors.New("--avatars-only requires --avatars-dir <dir holding <role>.png>")
 		}
 		if o.prefix == "" {
-			return o, errors.New("--avatars-only requires --prefix (it names the accounts)")
+			return errors.New("--avatars-only requires --prefix (it names the accounts)")
 		}
 		if o.project != "" || o.ownerTokenFile != "" {
-			return o, errors.New("--avatars-only authenticates as each role from its own token file and touches " +
+			return errors.New("--avatars-only authenticates as each role from its own token file and touches " +
 				"no project setting — it takes no --project and no --owner-token-file")
 		}
 	} else if o.group == "" || o.prefix == "" {
-		return o, errors.New("--group and --prefix are required")
+		return errors.New("--group and --prefix are required")
 	}
 	if !prefixRE.MatchString(o.prefix) {
-		return o, fmt.Errorf("--prefix %q must be letters, digits, '_', '.' or '-', starting with a letter or digit", o.prefix)
+		return fmt.Errorf("--prefix %q must be letters, digits, '_', '.' or '-', starting with a letter or digit", o.prefix)
 	}
 	if o.patExpiryDays < 1 || o.patExpiryDays > 365 {
-		return o, fmt.Errorf("--pat-expiry-days must be 1-365 (got %d)", o.patExpiryDays)
+		return fmt.Errorf("--pat-expiry-days must be 1-365 (got %d)", o.patExpiryDays)
 	}
 	if o.outDir == "" {
 		o.outDir = deskkit.ConfigHomeDirs()[0]
 	}
-	return o, nil
+	return nil
 }
 
 // mintedToken is one PAT this run minted. It deliberately has NO field for the token value:
@@ -169,12 +153,8 @@ func stop(format string, a ...any) *stopError {
 	return &stopError{code: exitFailed, msg: fmt.Sprintf(format, a...)}
 }
 
-func cmdProvision(args []string, e *env) int {
-	o, err := parseProvisionFlags(args, e)
-	if err != nil {
-		fmt.Fprintf(e.stderr, "deskfleet provision: %v\n", err)
-		return exitUsage
-	}
+// runProvision is the `provision` handler: the command tree has parsed and validated o.
+func runProvision(o provisionOpts, e *env) int {
 	p := &provisioner{o: o, e: e}
 	p.outf("Assay fleet provisioning — group=%s prefix=%s project=%s dry-run=%t avatars-only=%t", orNone(o.group),
 		o.prefix, orNone(o.project), o.dryRun, o.avatarsOnly)
@@ -187,7 +167,7 @@ func cmdProvision(args []string, e *env) int {
 	}
 
 	// Preconditions — every one is checked BEFORE the first network contact.
-	base, err := gitlabAPIBase(e)
+	base, err := gitlabAPIBase(o.apiBase)
 	if err != nil {
 		p.errf("refused: %v", err)
 		return exitRefused
@@ -234,7 +214,7 @@ func orNone(s string) string {
 }
 
 func (p *provisioner) dryRun() {
-	if strings.TrimSpace(p.e.getenv("GITLAB_API_BASE")) == "" {
+	if strings.TrimSpace(p.o.apiBase) == "" {
 		p.outf("[dry-run] NOTICE: GITLAB_API_BASE is not set — a real run would refuse before any network contact")
 	}
 	for _, r := range fleetRoles {

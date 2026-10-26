@@ -129,7 +129,7 @@ func (p *provisioner) runAvatarsOnly() int {
 		}
 		return exitOK
 	}
-	base, err := gitlabAPIBase(p.e)
+	base, err := gitlabAPIBase(p.o.apiBase)
 	if err != nil {
 		p.errf("refused: %v", err)
 		return exitRefused
