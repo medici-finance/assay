@@ -39,6 +39,12 @@ type brief struct {
 	Consumers []string // raw consumers entries
 	Lifecycle string
 	Evidence  bool // the ## Evidence section is populated
+	// FrontmatterOK is false when the frontmatter is not a YAML mapping;
+	// Outcome and OutcomeRevision are the raw outcome and outcome-revision
+	// values (nil when absent), read for product target binding.
+	FrontmatterOK   bool
+	Outcome         any
+	OutcomeRevision any
 }
 
 // delivered is a brief whose history is closed: delivered lifecycle and a
@@ -104,6 +110,11 @@ func parseBrief(src *SnapshotSource, p string, raw []byte, stream, nn string) *b
 		b.Depends = resolveRefs(fm.Depends, ctx)
 		b.Unblocks = resolveRefs(fm.Unblocks, ctx)
 		b.Consumers = fm.Consumers
+	}
+	var keys map[string]any
+	if err := yaml.Unmarshal([]byte(fmText), &keys); err == nil {
+		b.FrontmatterOK = true
+		b.Outcome, b.OutcomeRevision = keys["outcome"], keys["outcome-revision"]
 	}
 	b.Evidence = evidencePopulated(raw)
 	return b

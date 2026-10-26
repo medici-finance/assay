@@ -164,6 +164,12 @@ type BriefFile struct {
 	// costoutcome.go, and the absence NOTICE for post-cutover briefs lives in
 	// lifecyclelint.go.
 	Outcome *string
+	// OutcomeRevision is the optional brief-v1 `outcome-revision:` key: the
+	// approved product target revision of Outcome this brief was selected
+	// against (statusgen/23). nil when absent — an unbound brief, which a
+	// product-binding assessment reports as unknown, never aligned. It binds
+	// only a named outcome; outcomeRevisionProblem checks its grammar.
+	OutcomeRevision *string
 	// Consumers is the optional brief-v1 `consumers:` list (brief-rule 9): the
 	// readers of a shared value this brief changes,
 	// each routed `<site>: fixed-here | follow-up <stream>/<NN> | out-of-scope
@@ -1025,6 +1031,16 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			addBad("outcome must be a string (a requirement id REQ-<slug>, or none)")
 		}
 	}
+	// outcome-revision is an OPTIONAL but KNOWN key: the approved product
+	// target revision the brief was selected against. A wrong TYPE is a parse
+	// error; its grammar and its pairing with outcome are checked semantically.
+	if v, ok := data["outcome-revision"]; ok {
+		if s, ok := v.(string); ok {
+			bf.OutcomeRevision = &s
+		} else {
+			addBad("outcome-revision must be a string (the approved product target revision the brief was selected against)")
+		}
+	}
 	// decision-issue is an OPTIONAL but KNOWN key: the GitHub
 	// issue # for the open needs-decision issue tracking this brief. Absence is
 	// fine (most briefs do not need a human decision); a wrong TYPE is an error.
@@ -1724,6 +1740,9 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 					add("%s: budget %s", path, reason)
 				}
 			}
+			if p := outcomeRevisionProblem(bf); p != "" {
+				add("%s: outcome-revision %s", path, p)
+			}
 			if bf.Outcome != nil {
 				probs, notes := outcomeChecks(*bf.Outcome, graphReposFor(s.Root), outcomeRegisterFor(s.Root))
 				for _, p := range probs {
@@ -2165,4 +2184,24 @@ func riskKeySet(keys []string) map[string]bool {
 		set[k] = true
 	}
 	return set
+}
+
+// outcomeRevisionRe is the revision-name grammar context-handoff-v3 records a
+// product target revision in.
+var outcomeRevisionRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
+
+// outcomeRevisionProblem checks a present outcome-revision: a revision name,
+// binding an outcome the brief names (never `none`, never an absent outcome).
+func outcomeRevisionProblem(bf *BriefFile) string {
+	if bf.OutcomeRevision == nil {
+		return ""
+	}
+	rev := *bf.OutcomeRevision
+	if bf.Outcome == nil || strings.TrimSpace(*bf.Outcome) == outcomeNone {
+		return fmt.Sprintf("%q binds no outcome — it is the product target revision of the outcome: key, which is absent or none", rev)
+	}
+	if !outcomeRevisionRe.MatchString(rev) {
+		return fmt.Sprintf("%q is not a revision name (lowercase letters and digits, then '.', '_' or '-')", rev)
+	}
+	return ""
 }

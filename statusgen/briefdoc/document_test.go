@@ -2,8 +2,11 @@ package briefdoc
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestQuotedRiskAndMalformed(t *testing.T) {
@@ -332,6 +335,140 @@ func TestLineReadersAgree(t *testing.T) {
 	} {
 		if _, e := ParseFields(input); e != nil {
 			t.Errorf("readable frontmatter refused: %q: %v", input, e)
+		}
+	}
+}
+
+// loopScalar is the column-0 reader both work loops used for every key before
+// this parser: the first `key:` line, the gap "\s*", the inline comment kept,
+// then surrounding space and quotes trimmed.
+func loopScalar(block, key string) string {
+	re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(key) + `:\s*(.*)$`)
+	if m := re.FindStringSubmatch(block); m != nil {
+		return strings.Trim(strings.TrimSpace(m[1]), `"'`)
+	}
+	return ""
+}
+
+// TestCommentKeepingKeysReadAsBefore pins that every key whose replaced
+// readers all kept an inline comment in the value reads exactly as those
+// readers did, comment and all, and that the keys whose replaced readers cut
+// the comment still read without it.
+func TestCommentKeepingKeysReadAsBefore(t *testing.T) {
+	for _, key := range []string{"implementer", "blocked-until", "verify-lane", "in-repair"} {
+		for _, value := range []string{"no # x", `"" # x`, "' ' # x", "no", `""`, "online", "'a' # x", "'pipeline #3'"} {
+			input := key + ": " + value
+			f, e := ParseFields(input)
+			if want := loopScalar(input, key); e != nil || f.Values[key] != want {
+				t.Errorf("%q: got %q, %v; the loop reader read %q", input, f.Values[key], e, want)
+			}
+		}
+	}
+	for _, marker := range []string{"blocked-until", "in-repair"} {
+		input := marker + ": 2026-11-01 # x"
+		f, e := ParseFields(input)
+		if want := loopScalar(input, marker); e != nil || f.Values[marker] != want {
+			t.Errorf("%q: got %q, %v; the loop reader read %q", input, f.Values[marker], e, want)
+		}
+	}
+	// A first match the parser reads as text inside an earlier value is not
+	// the key's own line, so its reading is not taken over the key's own line.
+	for _, input := range []string{
+		"title: \"first\nin-repair: no # x\n  end\"\nin-repair: no # x",
+		"meta: {a: 1,\nblocked-until: soon # x\n}\nblocked-until: soon # x",
+		"title: \"first\nverify-lane: online # x\n  end\"",
+	} {
+		if f, e := ParseFields(input); e == nil {
+			t.Errorf("hidden comment-keeping line was read as the key's own line: %q read as %+v", input, f)
+		}
+	}
+	for input, want := range map[string]string{
+		"gate: human # note":        "human",
+		"exec-tier: strong # x":     "strong",
+		"effort: M # x":             "M",
+		"brief: s/07 # x":           "s/07",
+		"decision-issue: 12 # x":    "12",
+		"deliverable_repo: a/b # x": "a/b",
+		"homed-in: a/b # x":         "a/b",
+	} {
+		key := strings.SplitN(input, ":", 2)[0]
+		if f, e := ParseFields(input); e != nil || f.Values[key] != want {
+			t.Errorf("%q: got %q, %v; want %q", input, f.Values[key], e, want)
+		}
+	}
+}
+
+// TestCommentKeptReadingNeedsParsedAgreement pins that a comment-keeping key
+// takes its line reading only when that reading, with the comment cut, is the
+// parsed value; any other shape is refused, as it was before comment keeping.
+func TestCommentKeptReadingNeedsParsedAgreement(t *testing.T) {
+	for _, input := range []string{
+		"implementer: runner-a\t# note",
+		"implementer: \"\n  runner-a\"",
+		"implementer: >-\n  runner-a",
+		"in-repair: \"no\n  pipeline-7\"",
+		"in-repair: no\n  pipeline-7",
+		"in-repair: '\n  pipeline-7'",
+		"blocked-until: \"\n  later\"",
+		"blocked-until: '\n  later'",
+		"verify-lane: \"\n  online\"",
+		"blocked-until: \"a # b\" # c",
+		"title: 'a\nimplementer: \"\" # note'",
+	} {
+		if f, e := ParseFields(input); e == nil {
+			t.Errorf("%q was admitted as %+v; the parsed value and the line reading disagree", input, f.Values)
+		}
+	}
+}
+
+// TestCommentKeepingKeysRefuseValuesSpanningLines pins that a value starting
+// on a comment-keeping key's own line and continuing onto later lines is
+// refused for each of those keys, quoted or block scalar alike.
+func TestCommentKeepingKeysRefuseValuesSpanningLines(t *testing.T) {
+	for _, key := range []string{"implementer", "blocked-until", "verify-lane", "in-repair"} {
+		for _, value := range []string{
+			"\"no\n  more\"",
+			"'no\n  more'",
+			"|\n  yes",
+			"|-\n  yes",
+			">\n  yes",
+			">-\n  yes",
+		} {
+			input := key + ": " + value
+			if f, e := ParseFields(input); e == nil {
+				t.Errorf("%q was admitted as %+v; a value spanning lines does not match the line reading", input, f.Values)
+			}
+		}
+	}
+}
+
+// TestCommentKeptReadingCutsBackToParsedValue pins the reading the
+// author != runner guard relies on: for every comment-keeping key, a quoted
+// or unquoted value with an inline comment is either refused or read so that
+// the text before its first whitespace-led "#", with surrounding space and
+// quotes trimmed, is exactly the value YAML parsed.
+func TestCommentKeptReadingCutsBackToParsedValue(t *testing.T) {
+	cutRe := regexp.MustCompile(`\s#`)
+	for _, key := range []string{"implementer", "blocked-until", "verify-lane", "in-repair"} {
+		for _, value := range []string{
+			"v # x", `"v" # x`, "'v' # x", `"v"  #`, `"v"  #x`, `"v" # x # y`, "\n  \"v\" # x", "\n  'v' # x",
+		} {
+			input := key + ": " + value
+			var parsed map[string]string
+			if err := yaml.Unmarshal([]byte(input), &parsed); err != nil {
+				t.Fatalf("%q: %v", input, err)
+			}
+			f, e := ParseFields(input)
+			if e != nil {
+				continue
+			}
+			got := f.Values[key]
+			if loc := cutRe.FindStringIndex(got); loc != nil {
+				got = got[:loc[0]]
+			}
+			if got = strings.TrimSpace(strings.Trim(strings.TrimSpace(got), `"'`)); got != parsed[key] {
+				t.Errorf("%q read as %q; cut back to %q, not the parsed %q", input, f.Values[key], got, parsed[key])
+			}
 		}
 	}
 }

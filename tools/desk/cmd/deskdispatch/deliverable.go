@@ -248,12 +248,6 @@ func (d deliverable) crossRepo(root string) bool {
 	return resolvePath(d.trackingRoot) != resolvePath(root)
 }
 
-var (
-	briefDeliverableRe = regexp.MustCompile(`(?m)^deliverable_repo:\s*(.*)$`)
-	briefHomedInRe     = regexp.MustCompile(`(?m)^homed-in:\s*(.*)$`)
-	briefIDRe          = regexp.MustCompile(`(?m)^brief:[ \t]*(.*)$`)
-)
-
 // briefV2Alias returns the repo-alias segment of a brief-v2 typed id (`<cell>:<alias>:<stream>:<NN>`),
 // or "" when the value is not of that shape (a v1 brief, or no `brief:` field). The alias names the
 // repo the brief is TRACKED in.
@@ -265,18 +259,15 @@ func briefV2Alias(id string) string {
 	return parts[1]
 }
 
-// briefField returns a trimmed, unquoted frontmatter scalar (an inline `# comment` dropped).
-func briefField(front string, re *regexp.Regexp) string {
+// briefField returns the shared parser's value for the top-level frontmatter key, or "" when the
+// block cannot be read or does not set it. It reads that key only, never another key whose
+// spelling starts with the same text.
+func briefField(front, key string) string {
 	f, err := briefdoc.ParseFields(front)
 	if err != nil {
 		return ""
 	}
-	for key, value := range f.Values {
-		if re.MatchString(key + ": " + value) {
-			return value
-		}
-	}
-	return ""
+	return f.Values[key]
 }
 
 // resolveBriefPath locates --brief: absolute as given; relative under --root first (the base the
@@ -372,9 +363,9 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 				"step %s: --brief %s has frontmatter that cannot be read (%v), so whether it declares a "+
 					"deliverable repo cannot be established. Nothing was claimed.", stepClaimAcquire, o.brief, perr), perr)
 		}
-		declDeliverable = briefField(front, briefDeliverableRe)
-		declHomedIn = briefField(front, briefHomedInRe)
-		declV2Alias = briefV2Alias(briefField(front, briefIDRe))
+		declDeliverable = briefField(front, "deliverable_repo")
+		declHomedIn = briefField(front, "homed-in")
+		declV2Alias = briefV2Alias(briefField(front, "brief"))
 	}
 	if o.itemAlias == "" && declDeliverable == "" && declHomedIn == "" && declV2Alias == "" {
 		if o.crossRepo {

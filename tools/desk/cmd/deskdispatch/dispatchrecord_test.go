@@ -294,6 +294,30 @@ func TestBriefFieldsStayOnLine(t *testing.T) {
 	}
 }
 
+// TestBriefFieldsReadTheirOwnKey: each record field reads its own frontmatter key, never a sibling
+// key whose quoted spelling starts with the same text. The decoy keys make a reader that matches its
+// pattern against every parsed key pick the wrong value on about half its calls per field, so 200
+// calls of three fields leave it no realistic chance (2^-600) of passing; the reader that looks the
+// key up directly is right on every call.
+func TestBriefFieldsReadTheirOwnKey(t *testing.T) {
+	root := t.TempDir()
+	body := "---\nbrief: example-stream/29\n'brief: decoy': other\nexec-tier: any\n'exec-tier: decoy': other\n" +
+		"effort: M\n'effort: decoy': other\n---\n"
+	if err := os.WriteFile(filepath.Join(root, "b.md"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wrong := 0
+	for i := 0; i < 200; i++ {
+		f := readBriefRecordFields(root, "b.md")
+		if sv(f.id) != `"example-stream/29"` || sv(f.execTier) != `"any"` || sv(f.effort) != `"M"` {
+			wrong++
+		}
+	}
+	if wrong > 0 {
+		t.Errorf("a sibling key was read in %d of 200 calls", wrong)
+	}
+}
+
 // TestModelStampOutcome: only an OK report records `applied`; an unrecognised one never does.
 func TestModelStampOutcome(t *testing.T) {
 	for in, want := range map[string]string{

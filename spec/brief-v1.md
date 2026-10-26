@@ -3,7 +3,7 @@
 **Version:** v1.0-draft
 **Status:** DRAFT — published for review. v1.0-draft is unstable: breaking changes MAY be
 made without a major-version bump; no stability commitment.
-**Describes reference implementation:** `statusgen` v1.0.62
+**Describes reference implementation:** `statusgen` v1.0.63
 
 ## 1. Scope
 
@@ -74,6 +74,7 @@ validated against the value set given.
 | `design` | string | CONDITIONAL | The design-decision record this brief was approved against, as a typed reference `DR-<slug>` into the DECISIONS register (`registers-v1.md` §7). REQUIRED for a **risk-gated** brief in the design-approval gate's scope (`lifecycle-v1.md` §4.4) once it is at `in-progress` or later; OPTIONAL — and never flagged when absent — otherwise. A present value that is not a valid `DR-<slug>` reference, or that dereferences to no record in the register, MUST be flagged; a wrong TYPE is a parse error. The gate is grandfathered (§4.4), so absence is flagged only for briefs in the gate's live scope, never for grandfathered legacy briefs. |
 | `budget` | scalar | OPTIONAL | What the brief is sized to spend, beside `effort`, WITH its unit: `<amount>[k\|M] <unit>` (the multiplier is case-sensitive: `k` thousand, `M` million), the unit being `tokens` or a three-letter currency code (`400k tokens`, `25 USD`). Absent means no budget checkpoint applies and MUST NOT be flagged. A present value without a unit (`budget: 400`), with an unrecognised unit, or with a non-positive amount MUST be flagged by value; a bare number is read as the scalar it is so it reaches that flag rather than failing as a type error. A non-scalar is a parse error. |
 | `outcome` | string | OPTIONAL | What the brief is meant to move: a requirement id from the requirement register (`registers-v1.md` §6) — `REQ-<slug>` in-repo or `<alias>:REQ-<slug>` cross-repo, the same grammar as `satisfies` — or the literal `none`. The register's ids ARE the vocabulary; there is no second one. A value that is neither `none` nor a requirement reference MUST be flagged, and so MUST a well-formed in-repo id the register does not define (an unknown outcome id). A cross-repo id names a register the offline linter cannot read and is a could-not-check NOTICE, never a pass. A wrong TYPE is a parse error. Absence is never a PROBLEM; a conforming linter SHOULD emit an advisory NOTICE for a brief authored after the key's introduction that carries neither an id nor `none` — `none` is a decision, absence is not. |
+| `outcome-revision` | string | OPTIONAL | The approved product target revision of the brief's `outcome` that the brief was selected against (statusgen/23): a revision name matching `^[a-z0-9][a-z0-9._-]*$`, such as `r1`. It qualifies `outcome` and never changes its grammar; there is no `REQ@revision` form. A present value MUST be flagged when the brief carries no `outcome` or `outcome: none` (a revision binds no requirement) or when it does not match the revision grammar. A wrong TYPE is a parse error. Absence is never flagged: a brief without it is **unbound**, which a [context-handoff-v3](./context-handoff-v3.md) receipt reports as an unknown product assessment, never as aligned. |
 | `parallel-streams` | array[mapping] | OPTIONAL | Declared shards of an intra-brief split. Each entry is a mapping with a REQUIRED `name` (string) and an OPTIONAL `files` (array of path globs the shard owns); no other key is permitted in an entry. Absent means one worker per brief. Only the entry SHAPE is validated in frontmatter — whether a declared split may actually be dispatched is decided by `statusgen shardcheck` against the file tree, not by the frontmatter linter. A declaration that parses is a request, not a permission. |
 | `split-from` | string | OPTIONAL | The `<stream>/<NN>` id of the brief this brief was split off from — the explicit parent for the split-flag conservation gate (§3.4), used when the parentage is NOT encoded in the numbering (a split across streams, or a renumbered child). Absent means the brief is not a declared split child. A value that is not a `<stream>/<NN>` in-repo brief reference, or that names the brief itself, MUST be flagged; a wrong TYPE is a parse error. A value that does not resolve to a brief in the tree is a `could-not-check` NOTICE (the parent may have been retired in the same change), never a silent pass. |
 
@@ -85,7 +86,7 @@ with the `risk` answers, any `wave` value inconsistent with `depends`, any empty
 `exec-tier`, and any `exec-tier: strong` brief missing `exec-tier-why`. It MUST also flag
 any out-of-set `domain`, `blocked-by`, or `measures` value, any malformed `homed-in`
 shape, any `budget` without a unit, any `outcome` that is neither `none` nor a registered
-requirement id, and any `parallel-streams` entry that carries a key other than `name`/`files`, is
+requirement id, any `outcome-revision` that binds no outcome or is not a revision name, and any `parallel-streams` entry that carries a key other than `name`/`files`, is
 missing `name`, or gives `name` a non-string value. For every optional field in section
 3.2 the rule is the same: an ABSENT field is never flagged, and a wrong *type* is a parse
 error, while a present-but-out-of-set *value* is the semantic flag described here.
@@ -257,13 +258,14 @@ Use `statusgen withdrawal-audit` and the [rollout runbook](../docs/withdrawal-ro
 to reconcile open implementation and evidence PRs. A missing context never suppresses
 those checks, and a supplied context never grants merge, closure or verification authority.
 
-### Product-target binding planning (13 October 2026)
+### Product-target binding (statusgen/23)
 
-The [future architecture amendment](../docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md)
-routes optional `outcome-revision` and versioned context bindings to statusgen/23.
-This note does not add a supported field to the frontmatter contract: parser, schemas,
-version negotiation and all consuming readers must land together. Keep `outcome` and
-`satisfies` grammar unchanged; missing legacy bindings remain explicitly unbound.
+The [architecture amendment](../docs/proposals/non-ci-architecture/26-product-intent-and-portfolio.md)
+routed optional `outcome-revision` and versioned context bindings to statusgen/23, which
+ships them together: the §3.2 key, the brief reader and linter, and the
+[context-handoff-v3](./context-handoff-v3.md) receipt that compares each binding with the
+current approved product target. The `outcome` and `satisfies` grammar is unchanged;
+missing legacy bindings remain explicitly unbound.
 Observation syntax belongs to the continuing-operations impact extension, not a second
 brief lifecycle or a universal observation mandate.
 
