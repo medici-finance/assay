@@ -167,7 +167,7 @@ chain (`DR-forge-neutral-36`: offline and frozen inputs only). The 2026-10-25 ru
 exporting `deskkit`: briefs 75 and 76 build one narrow typed library with its own credential,
 outside `tools/desk/internal/`, and the git path beside it. `desktools-v2/08` waits on <!-- graph: encoded forge-neutral/18→desktools-v2/08 -->
 another stream: it cannot start until `forge-neutral/18` and `/35` together reach zero `gh`
-sites in statusgen (26 remained on 2026-09-17), which is why it sits in the last wave and on
+sites in statusgen (26 remained on 2026-09-17), which is why it sits in wave 7 (only /77, which depends on it, is later) and on
 no critical path. Brief 77, which moves statusgen's reader onto the library, has the same
 cross-stream edges plus /75, /58 and /08, all in its frontmatter; the /08 edge is there so /08's
 class a gate lands first and /77 widens it, never the reverse. <!-- graph: encoded desktools-v2/08→desktools-v2/77 -->
@@ -418,7 +418,7 @@ human-gated briefs carry it; each cites the record with its `design:` key:
 
 Path: `58 → 75 → 77`, with `{forge-neutral/18, /35} → 08 → 77` and `{forge-neutral/18, /35} → 77`; /76 is independent. The /08
 edge fixes landing order: /08's Task 2 gate and Task 5 path entry land before /77 widens them, so
-the two cannot land the other way round and narrow /77's gate. /08's row 10 already admits the library's caller package. /08 holds statusgen's gh
+the two cannot land the other way round and narrow /77's gate. /08's row 10 admits the library's caller package only when /77 lands. /08 holds statusgen's gh
 column of the counter at zero; the rest of the statusgen total (the `origin` classifier and the
 API host literals) is /77's: /77 row 9 asserts it at `0`, and /77 Task 7 widens /08's gate to the
 whole total so it stays there (row 11 proves the script exits non-zero).
