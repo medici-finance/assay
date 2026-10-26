@@ -390,6 +390,8 @@ it downstream accordingly.
 
 ## Related pages
 
+- [What Assay is and is not](what-assay-is-and-is-not.md) — the short handover summary of these claim boundaries.
+
 - [`docs/evidence-bundle.md`](evidence-bundle.md) — the export format and the SOC2 CC8.1
   mapping this page is modelled on, including its "what the bundle does not claim" list.
 - [`docs/mistake-proofing.md`](mistake-proofing.md) — the device discipline (D1–D7, B1–B10).
