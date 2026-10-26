@@ -107,7 +107,7 @@
       "name": "accept every private-key mode (the checker stops being a guard at all)",
       "file": "cmd/desktoken/desktoken.go",
       "old": "\treturn perm&0o004 == 0 && perm&0o022 == 0",
-      "new": "\treturn true"
+      "new": "\t_ = perm\n\treturn true"
     },
     {
       "name": "coverage: a failed repository page becomes a SHORT list read as complete (drop the exit-6 refusal; return the partial list)",
@@ -149,7 +149,7 @@
       "name": "drop the App-name half of the owner-sidecar comparison (two Apps on one account start sharing a token cache file)",
       "file": "cmd/desktoken/installidcache.go",
       "old": "\treturn a == appName && strings.EqualFold(o, owner)",
-      "new": "\treturn strings.EqualFold(o, owner)"
+      "new": "\treturn a == a && strings.EqualFold(o, owner)"
     },
     {
       "name": "relax the cache probe's single-match rule to first-match (two distinct fresh candidates stop being ambiguous and one is picked)",
@@ -191,13 +191,13 @@
       "name": "drop the 404 invalidation route (a stale cached installation id fails every call for its whole TTL)",
       "file": "cmd/desktoken/desktoken.go",
       "old": "\t\tif installIDFromCache && errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {",
-      "new": "\t\tif false && errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {"
+      "new": "\t\tif false && installIDFromCache && errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {"
     },
     {
       "name": "unscope the 404 invalidation from cached ids (an operator's <PREFIX>_INSTALL_ID failure deletes a cache it never used)",
       "file": "cmd/desktoken/desktoken.go",
       "old": "\t\tif installIDFromCache && errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {",
-      "new": "\t\tif errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {"
+      "new": "\t\t_ = installIDFromCache\n\t\tif errors.Is(xerr, errInstallationGone) && mintOwner != \"\" {"
     },
     {
       "name": "review SEC-1 — desktoken's GitLab calls follow redirects again (rotation and self-check forward PRIVATE-TOKEN)",
