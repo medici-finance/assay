@@ -12,6 +12,7 @@ mutations = {
     "tamper": ('if hashlib.sha256(path.read_bytes()).hexdigest() != asset["sha256"]:', 'if False:'),
     "overflow": ('any(n < 0 or n > policy["max_tokens"] for n in counts)', 'False'),
     "fallback": ('not policy.get("allow_cpu_fallback", False)', 'False'),
+    "cpu-only": (' or backend not in policy.get("allowed_backends", ("cpu",))', ''),
     "backend": ('if result.get("actual_backend") != actual:', 'if False:'),
     "malformed": ('if label not in options:', 'if False:'),
     "network": ('result = runtime.infer(root, inputs, backend, local_only=True, truncate=False)', 'try:\n            result = runtime.infer(root, inputs, backend, local_only=True, truncate=False)\n        except PermissionError:\n            result = {"label":"hold", "actual_backend":backend}'),

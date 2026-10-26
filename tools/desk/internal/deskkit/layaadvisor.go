@@ -18,8 +18,11 @@ type LayaAdvisor struct {
 	Approved         bool
 	Backend          string
 	AllowCPUFallback bool
-	MaxBytes         int
-	Timeout          time.Duration
+	// AllowCUDA is a separate owner approval for the CUDA profile. The recorded
+	// owner ruling is CPU only; the zero value keeps CUDA and its CPU fallback off.
+	AllowCUDA bool
+	MaxBytes  int
+	Timeout   time.Duration
 }
 type layaRequest struct {
 	Request          AssessmentRequest `json:"request"`
@@ -59,6 +62,9 @@ func (a LayaAdvisor) Predict(ctx context.Context, c Consultation) (Prediction, e
 	}
 	if len(a.Command) == 0 || (a.Backend != "cpu" && a.Backend != "cuda") {
 		return fail, Refused("laya: invalid process or backend")
+	}
+	if a.Backend == "cuda" && !a.AllowCUDA {
+		return fail, Refused("laya: cuda profile not approved")
 	}
 	limit := a.MaxBytes
 	if limit <= 0 {

@@ -6,6 +6,15 @@ verified artifact bundle, calibration or activation. Nothing is wired into defau
 routing. The example manifest deliberately fails validation. No real checkpoint
 has been executed. Pending owner decisions prevent completing graph-execution/11.
 
+Owner policy (recorded on the decision issue, 2026-10-25): keep the provider disabled
+until a reviewed local read-only artifact bundle and a network-denying sandbox exist;
+CPU only, with no CUDA or MPS fallback. The Go `LayaAdvisor` therefore refuses a CUDA
+request, and the CUDA-to-CPU fallback behind it, unless the separate `AllowCUDA`
+approval is set; the Python policy does the same through `allowed_backends`, which
+defaults to CPU. Setting either is a new owner decision, not a tuning knob. The first
+preparatory change landed as preparation only; the artifact pin, executable loader,
+OS isolation and real smoke remain owed.
+
 An owner must choose an exact code revision, checkpoint revision, local tokenizer
 and encoder assets, separately documented code/weight/base license provenance,
 and a dependency lock with complete checksums. The inspected candidate runtime
@@ -37,9 +46,9 @@ seam; executable launch and real model loading remain held for review.
 The reviewed runtime must count tokens with its exact local tokenizer before
 inference and pass `local_only=True, truncate=False`. It must enforce read-only
 loading and never download. All question fields and option order are retained;
-context selection is unsupported and omissions are empty. CUDA availability or
-OOM can fall back to CPU only when both caller and local policy permit it; silent
-fallback is rejected. MPS is unqualified. Confidence/action stay uncalibrated,
+context selection is unsupported and omissions are empty. CUDA is off by default under the policy above; where a CUDA profile has been separately
+approved, availability failure or OOM can fall back to CPU only when both caller and
+local policy permit it, and silent fallback is rejected. MPS is unqualified. Confidence/action stay uncalibrated,
 shadow-only and abstaining; they cannot produce usable `Advice` or authorize effects.
 
 Planning envelope: an existing 8–16 GB RAM CPU machine for short-input trials;

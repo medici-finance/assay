@@ -44,8 +44,9 @@ def assess(packet, root, manifest, runtime, policy):
         raise Refused("owner approval required")
     validate_artifacts(root, manifest)
     backend = packet["backend"]
-    if backend not in ("cpu", "cuda"):
-        raise Refused("unqualified backend")
+    # Recorded owner ruling: CPU only. CUDA needs its own policy entry; MPS is unqualified.
+    if backend not in ("cpu", "cuda") or backend not in policy.get("allowed_backends", ("cpu",)):
+        raise Refused("unapproved backend")
     c = packet["consultation"]
     options = c["Vocabulary"]
     if options != packet["request"]["Vocabulary"] or not options or len(set(options)) != len(options):

@@ -7,6 +7,7 @@ path = root / "tools/desk/internal/deskkit/layaadvisor.go"
 original = path.read_text()
 mutations = {
     "fallback": ('a.AllowCPUFallback && response.FallbackReason != ""', 'response.FallbackReason != ""'),
+    "cpu-only": ('a.Backend == "cuda" && !a.AllowCUDA', 'false'),
     "approval": ('if !a.Approved {', 'if false {'),
     "timeout": ('exec.CommandContext(ctx, a.Command[0], a.Command[1:]...)', 'exec.Command(a.Command[0], a.Command[1:]...)'),
     "pipes": ('case <-ctx.Done():', 'case <-(chan struct{})(nil):'),
@@ -23,7 +24,7 @@ for name, (old, new) in mutations.items():
         raise SystemExit(f"mutation {name}: matcher changed")
     try:
         path.write_text(original.replace(old, new))
-        result = subprocess.run(["go", "test", "-timeout", "10s", "-count=1", "-run", "^TestLaya(Advisor|Buffer)", "./internal/deskkit"], cwd=root/"tools/desk", capture_output=True, text=True, timeout=30)
+        result = subprocess.run(["go", "test", "-timeout", "30s", "-count=1", "-run", "^TestLaya(Advisor|Buffer)", "./internal/deskkit"], cwd=root/"tools/desk", capture_output=True, text=True, timeout=60)
         if result.returncode == 0 or not any(marker in result.stdout for marker in ("--- FAIL: TestLayaAdvisor", "--- FAIL: TestLayaBuffer")):
             raise SystemExit(f"mutation {name} not caught: {result.stdout}{result.stderr}")
         print(f"checked-failed as expected: {name}")

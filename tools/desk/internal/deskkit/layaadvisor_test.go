@@ -88,13 +88,29 @@ func TestLayaAdvisorRoundTrip(t *testing.T) {
 }
 func TestLayaAdvisorUnauthorizedFallback(t *testing.T) {
 	a := layaFixture(t)
-	a.Backend = "cuda"
+	a.Backend, a.AllowCUDA = "cuda", true
 	if _, err := a.Predict(context.Background(), Consultation{}); err == nil {
 		t.Fatal("unauthorized fallback accepted")
 	}
 	a.AllowCPUFallback = true
 	if _, err := a.Predict(context.Background(), Consultation{}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A CUDA request is refused before launch unless the separate CUDA approval is set,
+// even when CPU fallback is allowed; the child never runs (the fixture would accept it).
+func TestLayaAdvisorCPUOnly(t *testing.T) {
+	a := layaFixture(t)
+	for _, backend := range []string{"cuda", "mps"} {
+		a.Backend, a.AllowCPUFallback = backend, true
+		if _, err := a.Predict(context.Background(), Consultation{}); err == nil || !strings.Contains(err.Error(), "laya:") {
+			t.Fatalf("%s accepted without approval: %v", backend, err)
+		}
+	}
+	a.Backend, a.AllowCUDA = "cuda", true
+	if _, err := a.Predict(context.Background(), Consultation{}); err != nil {
+		t.Fatalf("approved cuda profile with allowed fallback: %v", err)
 	}
 }
 func TestLayaAdvisorLimits(t *testing.T) {
