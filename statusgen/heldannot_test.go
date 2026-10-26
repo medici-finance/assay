@@ -123,7 +123,7 @@ func TestHeldScopeObservedOutput(t *testing.T) {
 		{"the #4294 row, latest entry", annObs("0", annQuote), false},
 		{"the #4294 row, superseded entry", annEntry("Verification — 2026-10-07", "**VERIFY: PASS**",
 			annRow("1", "0", "ok"), annRow("3 (Verify 3, negative)", "0", annQuote)) + annLater, false},
-		{"ok lead, its section", annObs("exit 0", "ok — its could-not-check section lists both rows"), false},
+		{"ok lead, its section", annObs("exit 0", "ok — prints its could-not-check section with both rows"), false},
 		{"planted second instance", planted, false},
 	})
 }
@@ -134,7 +134,7 @@ func TestHeldScopeObservedOutput(t *testing.T) {
 func TestHeldScopeObservedOutputRefuses(t *testing.T) {
 	noExit := "| # | Command | Result |\n|---|---|---|\n| 3 | `x` | " + annQuote + " |\n\n**VERIFY: PASS**\n"
 	note := "| # | Command | Exit | Result | Note |\n|---|---|---|---|---|\n" +
-		"| 3 | `x` | 0 | PASS | passed — a could-not-check mission section |\n\n**VERIFY: PASS**\n"
+		"| 3 | `x` | 0 | PASS | passed — prints a could-not-check mission section |\n\n**VERIFY: PASS**\n"
 	misaligned := "| # | Command | Exit | Result |\n|---|---|---|---|\n" +
 		"| 3 | a | b | 0 | " + annQuote + " |\n\n**VERIFY: PASS**\n"
 	runHeldLayerCases(t, []heldScanCase{
@@ -155,15 +155,15 @@ func TestHeldScopeObservedOutputRefuses(t *testing.T) {
 		{"not re-run in the cell", annObs("0", annQuote+"; row 4 not re-run"), true},
 		{"no runner in the cell", annObs("0", annQuote+"; no runner for row 4"), true},
 		{"no PASS lead", annObs("0", "yields a could-not-check mission section"), true},
-		{"lead not a word", annObs("0", "PASSWORD: a could-not-check mission section"), true},
+		{"lead not a word", annObs("0", "PASSWORD: prints a could-not-check mission section"), true},
 		{"not attributive", annObs("0", "PASS: could-not-check, no runner"), true},
-		{"no article", annObs("0", "PASS: then could-not-check mission"), true},
+		{"no article", annObs("0", "PASS: prints then could-not-check mission section"), true},
 		{"disposition noun", annObs("0", "PASS: a could-not-check result"), true},
 		{"row noun", annObs("0", "PASS: the could-not-check row"), true},
 		{"marker ends the cell", annObs("0", "PASS: a could-not-check"), true},
 		{"hold reason after", annObs("0", "PASS: a could-not-check because the runner was offline"), true},
-		{"HELD attributive", annObs("0", "PASS: a HELD mission section"), true},
-		{"struck text on the row", annObs("0", "PASS ~~old~~: a could-not-check mission section"), true},
+		{"HELD attributive", annObs("0", "PASS: prints a HELD mission section"), true},
+		{"struck text on the row", annObs("0", "PASS ~~old~~: prints a could-not-check mission section"), true},
 		{"no Exit column", noExit, true},
 		{"note column", note, true},
 		{"misaligned row", misaligned, true},
@@ -189,4 +189,57 @@ func TestHeldScopeZeroRatio(t *testing.T) {
 		{"two qualifiers", ev("Rows: 2 of 2 required verify rows passed; 0 could-not-check."), true},
 		{"not a count noun", ev("Rows: 2 of 2 required exits passed; 0 could-not-check."), true},
 	})
+}
+
+// TestHeldScopeCoverKeyDirection: a bare earlier row is covered only by a
+// later row under the same bare key. A later row whose key carries an
+// annotation is a different key and covers nothing.
+// regression: #4294
+func TestHeldScopeCoverKeyDirection(t *testing.T) {
+	lastKeyed := func(key string) string {
+		return annEntry("Verification — 2026-10-20", "**VERIFY: PASS**",
+			annRow("1", "0", "ok"), annRow("2", "0", "ok"), annRow(key, "0", "PASS"))
+	}
+	runHeldLayerCases(t, []heldScanCase{
+		{"later key annotated with a word", annHeld("3") + lastKeyed("3 (negative)"), true},
+		{"later key annotated with several words", annHeld("3") + lastKeyed("3 (positive not run)"), true},
+		{"later key annotated with a hold word", annHeld("3") + lastKeyed("3 (HELD)"), true},
+		{"later key annotated with its own number", annHeld("3") + lastKeyed("3 (Verify 3)"), true},
+		{"bare later key", annHeld("3") + lastKeyed("3"), false},
+		{"earlier annotated, later bare", annHeld("3 (Verify 3, negative)") + lastKeyed("3"), false},
+	})
+}
+
+// TestHeldScopeObservedOutputClosed: the observed-output reading needs a
+// positive match. A Result cell that opens on a pass but says anything else
+// about the marker is read as before.
+// regression: #4294
+func TestHeldScopeObservedOutputClosed(t *testing.T) {
+	runHeldLayerCases(t, []heldScanCase{
+		{"remainder awaits", annObs("0", "PASS (rows 1-2) — the could-not-check remainder awaits a runner"), true},
+		{"portion still open", annObs("0", "ok — the could-not-check portion is still open"), true},
+		{"half needs a runner", annObs("0", "PASS on positive; the could-not-check negative half needs a runner"), true},
+		{"offline wording", annObs("0", "ok — the could-not-check section is offline"), true},
+		{"unavailable wording", annObs("0", "PASS: prints its could-not-check section, runner unavailable"), true},
+		{"not exercised wording", annObs("0", "PASS: prints a could-not-check section; row 4 not exercised"), true},
+		{"unknown word after the noun", annObs("0", "PASS: prints a could-not-check section quarantined"), true},
+		{"no output verb", annObs("0", "PASS: a lint PROBLEM and a could-not-check mission section"), true},
+		{"verb in an earlier clause", annObs("0", "PASS: prints the banner; a could-not-check mission section"), true},
+		{"printed section", annObs("0", "PASS: prints its could-not-check mission section"), false},
+		{"printed section, quoted lead", annObs("0", annQuote), false},
+		{"no known noun after the marker", annObs("0", "PASS: prints a could-not-check with no content"), true},
+	})
+	// A hold word in an earlier clause of the cell is read even when the
+	// clause that holds the marker is well formed.
+	for _, hold := range []string{"BLOCKED on a runner", "row 4 failed", "row 4 skipped", "1 unrun", "row 4 deferred",
+		"review pending", "awaiting a runner", "row 4 awaits a runner", "waiting on a runner", "row 4 needs a runner",
+		"a runner is needed", "row 4 still to do", "row 4 is open", "row 4 remains", "row 4 outstanding",
+		"incomplete run", "partial run", "runner offline", "runner unavailable", "runner unreachable",
+		"row 4 unverified", "row 4 not yet run", "row 4 not exercised", "row 4 not executed", "row 4 not available",
+		"row 4 not checked", "row 4 not re-run", "row 4 not run", "no runner for row 4", "cannot reach the runner",
+		"can't reach the runner", "unable to reach the runner", "row 4 todo"} {
+		runHeldLayerCases(t, []heldScanCase{
+			{"earlier clause: " + hold, annObs("0", "PASS: "+hold+"; prints a could-not-check mission section"), true},
+		})
+	}
 }

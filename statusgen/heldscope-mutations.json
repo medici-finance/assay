@@ -940,8 +940,8 @@
     {
       "name": "#4294 observe: the cell need not open on a pass",
       "file": "heldscope.go",
-      "old": "\t\t\theldObserveLeadRe.MatchString(line[rg[0]:rg[1]]) && ",
-      "new": "\t\t\t"
+      "old": "if !heldObserveLeadRe.MatchString(line[rg[0]:rg[1]]) || ",
+      "new": "if "
     },
     {
       "name": "#4294 observe: the pass lead need not end a word",
@@ -952,26 +952,32 @@
     {
       "name": "#4294 observe: no article is needed before the marker",
       "file": "heldscope.go",
-      "old": " && heldObserveBeforeRe.MatchString(clean[rg[0]:h[0]])",
-      "new": ""
+      "old": "|| !heldObserveBeforeRe.MatchString(before) ||",
+      "new": "||"
     },
     {
-      "name": "#4294 observe: a disposition noun after the marker is admitted",
+      "name": "#4294 observe: a verb of output need not govern the marker",
       "file": "heldscope.go",
-      "old": "!heldObserveNouns[strings.ToLower(m[1])] && ",
-      "new": ""
+      "old": "if !heldObserveVerbRe.MatchString(before) {",
+      "new": "if false {"
     },
     {
-      "name": "#4294 observe: nothing need follow the marker",
+      "name": "#4294 observe: a verb in an earlier clause governs the marker",
       "file": "heldscope.go",
-      "old": "heldObserveAfterRe = regexp.MustCompile(`^[ \\t]+(\\pL[\\pL-]*)`)",
-      "new": "heldObserveAfterRe = regexp.MustCompile(`^[ \\t]*(\\pL*)`)"
+      "old": "\t\t\tbefore = before[i[len(i)-1][1]:]",
+      "new": "\t\t\t_ = i"
     },
     {
-      "name": "#4294 observe: a hold reason after the marker is admitted",
+      "name": "#4294 observe: text after the marker need not be a known noun",
       "file": "heldscope.go",
-      "old": " && !heldReasonAfterRe.MatchString(after) &&",
-      "new": " &&"
+      "old": "len(words) == 0 || !heldObserveHead[words[0]]",
+      "new": "false"
+    },
+    {
+      "name": "#4294 cover: the last entry's keys are also shortened (lines)",
+      "file": "heldscope.go",
+      "old": "for r := 0; r < last && r < len(out); r++ {",
+      "new": "for r := 0; r < len(out); r++ {"
     },
     {
       "name": "#4294 observe: hold words in the row are ignored",
@@ -980,64 +986,208 @@
       "new": " {"
     },
     {
-      "name": "#4294 observe: BLOCKED in the row is ignored",
+      "name": "#4294 observe: BLOCKED is not a hold word",
       "file": "heldscope.go",
-      "old": "(?i)\\b(?:blocked|fail",
-      "new": "(?i)\\b(?:fail"
+      "old": "(?:blocked|fail",
+      "new": "(?:fail"
     },
     {
-      "name": "#4294 observe: FAIL in the row is ignored",
+      "name": "#4294 observe: fail is not a hold word",
       "file": "heldscope.go",
-      "old": "(?:blocked|fail\\w*|skip",
-      "new": "(?:blocked|skip"
+      "old": "|fail\\w*|",
+      "new": "|"
     },
     {
-      "name": "#4294 observe: SKIP in the row is ignored",
+      "name": "#4294 observe: skip is not a hold word",
       "file": "heldscope.go",
-      "old": "|skip\\w*|unrun",
-      "new": "|unrun"
+      "old": "|skip\\w*|",
+      "new": "|"
     },
     {
-      "name": "#4294 observe: UNRUN in the row is ignored",
+      "name": "#4294 observe: unrun is not a hold word",
       "file": "heldscope.go",
-      "old": "|unrun|deferred",
-      "new": "|deferred"
+      "old": "|unrun|",
+      "new": "|"
     },
     {
-      "name": "#4294 observe: deferred in the row is ignored",
+      "name": "#4294 observe: deferred is not a hold word",
       "file": "heldscope.go",
-      "old": "|deferred|pending",
-      "new": "|pending"
+      "old": "|deferred|",
+      "new": "|"
     },
     {
-      "name": "#4294 observe: pending in the row is ignored",
+      "name": "#4294 observe: pending is not a hold word",
       "file": "heldscope.go",
-      "old": "|pending|awaiting",
-      "new": "|awaiting"
+      "old": "|pending|",
+      "new": "|"
     },
     {
-      "name": "#4294 observe: awaiting in the row is ignored",
+      "name": "#4294 observe: awaiting is not a hold word",
       "file": "heldscope.go",
-      "old": "|awaiting|waiting",
-      "new": "|waiting"
+      "old": "|awaiting|",
+      "new": "|"
     },
     {
-      "name": "#4294 observe: waiting in the row is ignored",
+      "name": "#4294 observe: awaits is not a hold word",
       "file": "heldscope.go",
-      "old": "|waiting|not[ \\t]+",
-      "new": "|not[ \\t]+"
+      "old": "|awaits?|",
+      "new": "|"
     },
     {
-      "name": "#4294 observe: not run in the row is ignored",
+      "name": "#4294 observe: waiting is not a hold word",
       "file": "heldscope.go",
-      "old": "|not[ \\t]+(?:re-?)?run|no",
-      "new": "|no"
+      "old": "|waiting|",
+      "new": "|"
     },
     {
-      "name": "#4294 observe: no runner in the row is ignored",
+      "name": "#4294 observe: needs is not a hold word",
       "file": "heldscope.go",
-      "old": "|no[ \\t]+runner)\\b`)",
-      "new": ")\\b`)"
+      "old": "|needs?|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: needed is not a hold word",
+      "file": "heldscope.go",
+      "old": "|needed|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: still is not a hold word",
+      "file": "heldscope.go",
+      "old": "|still|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: open is not a hold word",
+      "file": "heldscope.go",
+      "old": "|open|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: remain is not a hold word",
+      "file": "heldscope.go",
+      "old": "|remain\\w*|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: outstanding is not a hold word",
+      "file": "heldscope.go",
+      "old": "|outstanding|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: incomplete is not a hold word",
+      "file": "heldscope.go",
+      "old": "|incomplete|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: partial is not a hold word",
+      "file": "heldscope.go",
+      "old": "|partial\\w*|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: offline is not a hold word",
+      "file": "heldscope.go",
+      "old": "|offline|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: unavailable is not a hold word",
+      "file": "heldscope.go",
+      "old": "|unavailable|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: unreachable is not a hold word",
+      "file": "heldscope.go",
+      "old": "|unreachable|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: unverified is not a hold word",
+      "file": "heldscope.go",
+      "old": "|unverified|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: not yet is not a hold word",
+      "file": "heldscope.go",
+      "old": "(?:yet|exercised",
+      "new": "(?:exercised"
+    },
+    {
+      "name": "#4294 observe: not exercised is not a hold word",
+      "file": "heldscope.go",
+      "old": "|exercised|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: not executed is not a hold word",
+      "file": "heldscope.go",
+      "old": "|executed|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: not available is not a hold word",
+      "file": "heldscope.go",
+      "old": "|available|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: not checked is not a hold word",
+      "file": "heldscope.go",
+      "old": "|checked|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: not re-?run is not a hold word",
+      "file": "heldscope.go",
+      "old": "|re-?run|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: not run is not a hold word",
+      "file": "heldscope.go",
+      "old": "|run)",
+      "new": ")"
+    },
+    {
+      "name": "#4294 observe: no[ \\t]+runner is not a hold word",
+      "file": "heldscope.go",
+      "old": "|no[ \\t]+runner|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: cannot is not a hold word",
+      "file": "heldscope.go",
+      "old": "|cannot|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: can't is not a hold word",
+      "file": "heldscope.go",
+      "old": "|can't|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: unable is not a hold word",
+      "file": "heldscope.go",
+      "old": "|unable|",
+      "new": "|"
+    },
+    {
+      "name": "#4294 observe: todo is not a hold word",
+      "file": "heldscope.go",
+      "old": "|unable|todo)",
+      "new": "|unable)"
+    },
+    {
+      "name": "#4294 observe: text after the noun need not be neutral words",
+      "file": "heldscope.go",
+      "old": "\t\t\tif !heldObserveTail[w] {",
+      "new": "\t\t\tif !heldObserveTail[w] && false {"
     },
     {
       "name": "#4294 observe: a HELD occurrence is excused like could-not-check",
