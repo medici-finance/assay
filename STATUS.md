@@ -11,6 +11,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 
 | Stream | Priority | Status | Briefs done | Last touched | Notes |
 |---|---|---|---|---|---|
+| [agent-execution](docs/streams/agent-execution/README.md) | P2 | active | 0/9 | 2026-10-26 |  |
 | [apps-installer](docs/streams/apps-installer/README.md) | P1 | active | 2/10 | 2026-10-25 |  |
 | [build-less-brittle](docs/streams/build-less-brittle/README.md) | P0 | active | 4/14 | 2026-10-26 |  |
 | [cell-api](docs/streams/cell-api/README.md) | P2 | active | 0/7 | 2026-10-21 |  |
@@ -26,7 +27,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 3/61 | 2026-10-26 | 15 withdrawn |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-10-24 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 5/43 | 2026-10-26 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/32 | 2026-10-25 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 2/32 | 2026-10-26 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-10-23 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-10-25 |  |
 | [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-10-26 |  |
@@ -85,7 +86,6 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 | Stream | Priority | Briefs | Last touched |
 |---|---|---|---|
-| [agent-execution](docs/streams/agent-execution/README.md) | P2 | 0/9 | 2026-10-20 |
 | [audit-pack-example](docs/streams/audit-pack-example/README.md) | P2 | 0/1 | 2026-09-20 |
 | [auto-triage](docs/streams/auto-triage/README.md) | P2 | 0/4 | 2026-10-20 |
 | [brief-quality](docs/streams/brief-quality/README.md) | P1 | 0/9 | 2026-10-25 |
@@ -104,7 +104,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **Already delivered or re-homed — held out of dispatch (9):** composability/02 → already-merged-unflipped (merged PR #4278, Brief: trailer), desk-supervision/34 → already-merged-unflipped (merged PR #4135, Brief: trailer), desktools-v2/30 → already-merged-unflipped (merged PR #4410, Brief: trailer), desktools-v2/70 → already-merged-unflipped (merged PR #4074, Brief: trailer), desktools-v2/74 → already-merged-unflipped (merged PR #4260, Brief: trailer), statusgen/24 → already-merged-unflipped (merged PR #4337, Brief: trailer), statusgen/27 → already-merged-unflipped (merged PR #4134, Brief: trailer), statusgen/28 → already-merged-unflipped (merged PR #4140, Brief: trailer), statusgen/32 → already-merged-unflipped (merged PR #4137, Brief: trailer). Each is a board-honesty finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose brief file is gone); reconcile or retire the row to clear it.
 
-_Next-up: 20 of 59 eligible — 39 held back (19 by per-stream caps, 20 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 20 of 60 eligible — 40 held back (19 by per-stream caps, 21 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
 _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (18), desk-tools (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
@@ -113,6 +113,7 @@ _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. 
 | desktools-v2 | 58 — Extract the role credential provider and retire internal desktoken callouts [exec:strong] | 1 | 9000 + 1500 (drive:desktools-v2) |
 | desktools-v2 | 66 — Extract shared write policy and make writeguard a hook adapter [exec:strong] | 1 | 7500 + 1500 (drive:desktools-v2) |
 | desk-tools | 49 — Deduplicate verifier filings by their canonical work identity [exec:strong] | 1 | 8500 |
+| agent-execution | 01 — Qualified harness, model and backend capability contract [exec:strong] | 1 | 8000 |
 | desk-tools | 45 — Expose the canonical verification queue to its consumers [exec:strong] | 1 | 8000 |
 | desk-tools | 42 — Narrow issue discovery projections before enrichment [exec:strong] | 3 | 7000 |
 | milestone-support | 02 — Negotiate reader capabilities through one shared contract [exec:strong] | 1 | 7000 |
@@ -129,13 +130,12 @@ _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. 
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | derived-board | 10 — Complete candidate coverage for partial-delivery reconciliation [exec:strong] | 0 | 2000 |
 | statusgen | 23 — Product target binding and context drift assessment [exec:strong] | 3 | 2000 |
-| statusgen | 36 — Content-bound witness schema v2: the reader and the one digest owner [exec:strong] | 1 | 2000 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `WAITING-ON-REVIEW` — progress is gated only on review / sign-off; no operator action is needed.
 
-_last regen: 6f35cc472 2026-10-26T13:02:08Z_
+_last regen: 8a369f763 2026-10-26T13:05:10Z_
 
 **Progress:** 12/14 brief items done.
 
@@ -156,7 +156,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 6f35cc472 2026-10-26T13:02:08Z_
+_last regen: 8a369f763 2026-10-26T13:05:10Z_
 
 **Progress:** 35/94 brief items done.
 
@@ -1183,4 +1183,4 @@ _Terminal: retired by a later decision or merged into a successor. Not counted i
 
 ## Totals
 
-**35** streams (**25** active, **0** paused, **10** parked) · **107/553** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`
+**35** streams (**26** active, **0** paused, **9** parked) · **107/553** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`
