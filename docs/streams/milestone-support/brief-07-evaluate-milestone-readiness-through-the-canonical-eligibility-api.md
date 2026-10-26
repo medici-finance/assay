@@ -83,6 +83,8 @@ single-point-of-failure: incorrect shared identity or capability interpretation;
 
 Before changing the governed boundary, present the concrete implementation/design through the existing decision mechanism. Confirm the preserved actor, subject, revocation and effect-admission rules. Options: accept the bounded implementation; request corrections; hold. No answer supplies no approval. Do not infer this ruling from the planning request.
 
+Default if no answer: none — blocks until answered
+
 ## Task
 
 1. Extend the existing EvaluateEligibility/coverage owner rather than create a second planner. Consume normalized graph and acceptance observations; return work remaining, work complete/acceptance outstanding, accepted-for-subject and current availability as distinct fields with typed holds.
