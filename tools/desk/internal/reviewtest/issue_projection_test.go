@@ -46,7 +46,7 @@ func TestIssueProjectionFlow(t *testing.T) {
 // regression: class issue-projection
 func TestIssueProjectionFaults(t *testing.T) {
 	bin := build(t)
-	pattern := "TestProjectionFailures|TestTrustGate_BlessThenEdit|TestTrustGate_AdaWrongID|TestTrustGate_CommentsUnreadable_Exit6|TestEscalate_LongThread_BoardRenders|TestPartialListing_NeverRetires|TestPositiveClosedRead_StillRetires|TestAddressedEscalate|TestBoardLabelHistoryHold"
+	pattern := "TestProjectionFailures|TestTrustGate_BlessThenEdit|TestTrustGate_AdaWrongID|TestTrustGate_CommentsUnreadable_Exit6|TestEscalate_LongThread_BoardRenders|TestPartialListing_NeverRetires|TestPositiveClosedRead_StillRetires|TestPositiveClosedRead_RetainsUnclassified|TestAddressedEscalate|TestBoardLabelHistoryHold"
 	log, e := projectionTests(t, bin, "issueboard", pattern)
 	if e != nil {
 		t.Fatalf("production faults: %v\n%s", e, log)
