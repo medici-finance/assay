@@ -625,13 +625,7 @@ var (
 // that holds an ASCII letter or digit ends the skip, and its characters are read as they stand.
 // Every trim takes any Unicode white space, since a renderer shows a non-breaking or wide space
 // at the edge of a word as white space too.
-func pastLead(t string) string {
-	t = strings.TrimSpace(t)
-	for i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {
-		t = strings.TrimSpace(t[i:])
-	}
-	return t
-}
+func pastLead(t string) string { return skipLead(t, false) }
 
 // pastShownLead returns t as pastLead does, except that each leading word is read as a renderer
 // shows it: a word a renderer shows as a glyph (see glyphWordRe) and a span it typesets as math
@@ -639,24 +633,37 @@ func pastLead(t string) string {
 // read as part of one word. A word that, read so, holds no ASCII letter or digit is skipped. The
 // word that ends the skip and everything after it are taken as written, so a glyph, a math span
 // or anything else later in the text is read where it stands and cannot change what is skipped.
-func pastShownLead(t string) string {
+func pastShownLead(t string) string { return skipLead(t, true) }
+
+// skipLead is pastLead, or pastShownLead when shown is set. Both readings walk the same loop,
+// so a word is skipped, and the text trimmed, the same way in each.
+func skipLead(t string, shown bool) string {
 	t = strings.TrimSpace(t)
 	for {
-		end := shownWordEnd(t)
-		if end == len(t) || strings.IndexFunc(shownWord(t[:end]), asciiAlnum) >= 0 {
+		end := wordEnd(t, shown)
+		if end == 0 || end == len(t) {
+			return t
+		}
+		word := t[:end]
+		if shown {
+			word = shownWord(word)
+		}
+		if strings.IndexFunc(word, asciiAlnum) >= 0 {
 			return t
 		}
 		t = strings.TrimSpace(t[end:])
 	}
 }
 
-// shownWordEnd returns the end of t's first word: the first white space that is not inside a
-// math span (see mathLeadRe), or the end of t.
-func shownWordEnd(t string) int {
+// wordEnd returns the end of t's first word: its first white space, or the end of t. When shown
+// is set, white space inside a math span (see mathLeadRe) does not end the word.
+func wordEnd(t string, shown bool) int {
 	for i := 0; i < len(t); {
-		if m := mathLeadRe.FindString(t[i:]); m != "" {
-			i += len(m)
-			continue
+		if shown {
+			if m := mathLeadRe.FindString(t[i:]); m != "" {
+				i += len(m)
+				continue
+			}
 		}
 		r, size := utf8.DecodeRuneInString(t[i:])
 		if unicode.IsSpace(r) {

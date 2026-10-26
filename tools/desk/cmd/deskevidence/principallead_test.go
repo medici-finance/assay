@@ -354,4 +354,13 @@ func TestShowsAppRunShownLead(t *testing.T) {
 			t.Errorf("%q read as App-run", cell)
 		}
 	}
+	// Every trim of a shown text takes any white space, so a runner whose tag holds only login
+	// characters stays human when white space other than an ASCII space leads it.
+	for _, cell := range []string{
+		"\u00a0release[draft] @ abc1234", "&#160;release[draft] @ abc1234", "&#x3000;release[draft] @ abc1234",
+	} {
+		if showsAppRun(cell) {
+			t.Errorf("%q read as App-run", cell)
+		}
+	}
 }

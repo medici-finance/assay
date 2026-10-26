@@ -676,26 +676,26 @@
     {
       "name": "the reading past a leading word not trimmed",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "\tt = strings.TrimSpace(t)\n\tfor i := strings.IndexFunc",
-      "new": "\tfor i := strings.IndexFunc"
+      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := wordEnd(t, shown)",
+      "new": "\tfor {\n\t\tend := wordEnd(t, shown)"
     },
     {
       "name": "only the first leading word read past",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "; i = strings.IndexFunc(t, unicode.IsSpace) {",
-      "new": "; i = 0 {"
+      "old": "\t\tt = strings.TrimSpace(t[end:])\n\t}\n}",
+      "new": "\t\treturn strings.TrimSpace(t[end:])\n\t}\n}"
     },
     {
       "name": "the word after a leading word not trimmed",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "\t\tt = strings.TrimSpace(t[i:])\n",
-      "new": "\t\tt = t[i:]\n"
+      "old": "\t\tt = strings.TrimSpace(t[end:])\n",
+      "new": "\t\tt = t[end:]\n"
     },
     {
       "name": "a leading word read past only when it ends at a space",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "for i := strings.IndexFunc(t, unicode.IsSpace); i > 0",
-      "new": "for i := strings.IndexByte(t, ' '); i > 0"
+      "old": "\t\tif unicode.IsSpace(r) {\n\t\t\treturn i\n",
+      "new": "\t\tif r == ' ' {\n\t\t\treturn i\n"
     },
     {
       "name": "an ASCII punctuation word taken for a name",
@@ -718,26 +718,26 @@
     {
       "name": "the reading past a leading word trimmed of ASCII white space only",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "\tt = strings.TrimSpace(t)\n\tfor i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {\n\t\tt = strings.TrimSpace(t[i:])\n",
-      "new": "\tt = strings.Trim(t, \" \\t\")\n\tfor i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {\n\t\tt = strings.Trim(t[i:], \" \\t\")\n"
+      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := wordEnd(t, shown)\n\t\tif end == 0 || end == len(t) {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = shownWord(word)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.TrimSpace(t[end:])\n",
+      "new": "\tt = strings.Trim(t, \" \\t\")\n\tfor {\n\t\tend := wordEnd(t, shown)\n\t\tif end == 0 || end == len(t) {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = shownWord(word)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.Trim(t[end:], \" \\t\")\n"
     },
     {
       "name": "the reading past a leading word trimmed of every white space but a tab",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "\tt = strings.TrimSpace(t)\n\tfor i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {\n\t\tt = strings.TrimSpace(t[i:])\n",
-      "new": "\tt = strings.Trim(t, \" \"+string(rune(0xa0))+string(rune(0x3000)))\n\tfor i := strings.IndexFunc(t, unicode.IsSpace); i > 0 && strings.IndexFunc(t[:i], asciiAlnum) < 0; i = strings.IndexFunc(t, unicode.IsSpace) {\n\t\tt = strings.Trim(t[i:], \" \"+string(rune(0xa0))+string(rune(0x3000)))\n"
+      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := wordEnd(t, shown)\n\t\tif end == 0 || end == len(t) {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = shownWord(word)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.TrimSpace(t[end:])\n",
+      "new": "\tt = strings.Trim(t, \" \"+string(rune(0xa0))+string(rune(0x3000)))\n\tfor {\n\t\tend := wordEnd(t, shown)\n\t\tif end == 0 || end == len(t) {\n\t\t\treturn t\n\t\t}\n\t\tword := t[:end]\n\t\tif shown {\n\t\t\tword = shownWord(word)\n\t\t}\n\t\tif strings.IndexFunc(word, asciiAlnum) >= 0 {\n\t\t\treturn t\n\t\t}\n\t\tt = strings.Trim(t[end:], \" \"+string(rune(0xa0))+string(rune(0x3000)))\n"
     },
     {
       "name": "the reading past a leading word trimmed of ASCII white space only at its start",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "\tt = strings.TrimSpace(t)\n\tfor i := strings.IndexFunc",
-      "new": "\tt = strings.Trim(t, \" \\t\")\n\tfor i := strings.IndexFunc"
+      "old": "\tt = strings.TrimSpace(t)\n\tfor {\n\t\tend := wordEnd(t, shown)",
+      "new": "\tt = strings.Trim(t, \" \\t\")\n\tfor {\n\t\tend := wordEnd(t, shown)"
     },
     {
       "name": "the word after a leading word trimmed of ASCII white space only",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "\t\tt = strings.TrimSpace(t[i:])\n",
-      "new": "\t\tt = strings.Trim(t[i:], \" \\t\")\n"
+      "old": "\t\tt = strings.TrimSpace(t[end:])\n",
+      "new": "\t\tt = strings.Trim(t[end:], \" \\t\")\n"
     },
     {
       "name": "a word shown as a glyph not read as a symbol",
