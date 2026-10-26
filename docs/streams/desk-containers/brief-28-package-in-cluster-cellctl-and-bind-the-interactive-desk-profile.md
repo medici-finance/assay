@@ -10,7 +10,7 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: yes}
 issues: []
 schema: brief-v2
-version: 4
+version: 5
 authored: 2026-10-20 by Assay architecture authoring session
 sources:
   - https://github.com/medici-finance/assay/issues/3669
@@ -97,7 +97,7 @@ Current parked-profile and existing human activation gates remain.
 
 ## Desk-instance scope — 25 October 2026
 
-Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
 
 ## Task
 
@@ -172,8 +172,8 @@ coverage. These inputs are future implementation-verification evidence, not clai
 | 4 | check +flow | `(cd tools/desk && GOWORK=off go test -count=1 ./cmd/cellctl/... ./internal/cellop/...)` | exit 0; existing cell-op JSON/plan and host/compatibility registration behavior remain; docs examples are replayed against fake transport by the named lifecycle test |
 | 5 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief desk-containers/28 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required consumers stay held and omitted consumers remain a review obligation |
 | 6 | check +flow +mutation | `sh containers/operator/check.sh --dockerfile containers/operator/Dockerfile --component containers/k8s/components/operator --image "$ASSAY_OPERATOR_TEST_IMAGE" --self-test` | exit 0 only with the identified locally built candidate image; actual USER/base/config/layers/executable inventory and component pass, all forbidden-image, mount, credential and RBAC fixtures fail; absent image/tool is could-not-check, never PASS |
-
 | I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestKubeDeskPopulation$' > "$o" 2>&1 && grep -F -- '--- PASS: TestKubeDeskPopulation ' "$o")` | Named test executes (zero matching tests is not a pass); Effective rendered two-worker/three-reviewer configuration has distinct workloads/workspaces/instance labels; repeated up and paused peer create no extra owner. Collision/name-length and wrong UID fixtures refuse or use the defined safe locator. Mutation: scale one shared role PVC or generate fresh names per up makes the test fail. |
+
 ## Pre-mortem
 
 Packaging an unchanged host launcher: row 1. Duplicate launch after reconnect: row 1.

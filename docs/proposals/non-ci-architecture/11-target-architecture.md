@@ -313,6 +313,16 @@ never a closed breaker; `tools/desk/cmd/deskfile/deskfile.go:267` new-issue cap)
 amendment relaxes no brake. Relaxing one is a separate human decision, recorded by the
 maintainer and naming its compensating bound; nothing here makes that decision.
 
+**Desk work target clarification — 26 October 2026.** The aggregate number of active
+worker/review tasks is an approximate instantaneous occupancy gauge used for refill pacing,
+not a hard budget or authority boundary. Desks may temporarily over/undershoot and correct
+as observations refresh and tasks finish. No centralized role-capacity mutex, leased slot,
+serialized count-and-reserve or per-launch exact global read is required. This gauge has
+no cumulative window/reset allowance; do not repurpose the effect-class count rules below
+into an exact role-slot allocator. Item claims, instance ownership, uncertain effects and
+independent recursive-launch/time/cost/resource/write safety brakes remain unchanged.
+See [the instance contract](30-desk-instances-and-rolling-replacement.md#work-assignment-and-capacity).
+
 **Pacing counts are best effort.** A pacing count only shapes the throughput of
 operations that are already authorized and already bounded by the brakes, for example
 poll cadence, launch pacing, provider read-refresh rate limits
@@ -575,4 +585,4 @@ the efficiency spec; this pointer grants no new activation or revision-bound app
 
 ## Desk instances amendment — requested 25 October 2026
 
-Worker and review roles support multiple automatically named desk instances under the existing runtime. R2 owns instance/generation records and aggregate role capacity; R3 owns instance process/workspace lifecycle. R4 role authority is unchanged. Qualified replacement starts a successor after the predecessor stops admission, while the predecessor drains; exclusive work claims and outstanding-effect reconciliation remain mandatory. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.
+Worker and review roles support multiple automatically named desk instances under the existing runtime. R2 owns instance/generation records and approximate role work target; R3 owns instance process/workspace lifecycle. R4 role authority is unchanged. Qualified replacement starts a successor after the predecessor stops admission, while the predecessor drains; exclusive work claims and outstanding-effect reconciliation remain mandatory. See the [instance contract](30-desk-instances-and-rolling-replacement.md) for the controlling proposed delta, applied owner/brief routing and acceptance cases. This adds no implementation or activation claim.

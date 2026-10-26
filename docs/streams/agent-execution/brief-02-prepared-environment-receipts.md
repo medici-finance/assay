@@ -17,7 +17,7 @@ exec-tier-why: "Cross-component protocol, recovery and authority boundaries requ
 domain: "complicated"
 outcome: "none"
 consumers: ["loopadmin/workspace: follow-up agent-execution/02 (this brief; flips to fixed-here when the implementation edits the path)", "loopadmin/supervisor: follow-up agent-execution/03", "workflow/executionqualification: follow-up agent-execution/04", "loopadmin/adapters/axcompat: follow-up agent-execution/06", "workflow/workspace: out-of-scope (candidate freeze and acceptance remain graph-execution/23 and /28)"]
-version: 2
+version: 3
 id: "d3782f80-bb6f-4b7d-9ed5-36994224e9d9"
 ---
 
@@ -51,7 +51,7 @@ facts: As inspected on 2026-10-16 at main `ec8d77e56627a7c2269f3d143ef6a31f3e41b
 
 ## Desk-instance scope — 25 October 2026
 
-Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
 
 ## Task
 
@@ -76,8 +76,8 @@ These named tests, fixtures and mutations are deliverables of this brief; they h
 | 2 | check:ci +flow +mutation | `(cd loopadmin && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPreparedEnvironmentReuseAndPartialFailure$" ./... > "$execution_out" && grep -q -- "--- PASS: TestPreparedEnvironmentReuseAndPartialFailure " "$execution_out")` | exit 0; named PASS; changed invocation/policy requires rebinding; partial preparation and uncertain release preserve unpublished files; mutation: reuse a ready receipt without checking current policy — the named test must fail |
 | 3 | check:ci +flow +mutation | `(cd loopadmin && execution_out=$(mktemp) && trap 'rm -f "$execution_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestPreparedEnvironmentSchemaAndSecrets$" ./... > "$execution_out" && grep -q -- "--- PASS: TestPreparedEnvironmentSchemaAndSecrets " "$execution_out")` | exit 0; named PASS; schema drift, wrong invocation/allocation and credential-bearing receipt data fail with sanitized errors; mutation: omit credential exclusion on a nested receipt field — the named test must fail |
 | 4 | check:ci | `statusgen --consumers --brief agent-execution/02 --base $(git merge-base origin/main HEAD)` | exit 0; declared implementation sites and follow-up references corroborate; out-of-scope judgments remain UNCHECKED and reviewer-owned; completeness is not proved |
-
 | I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd loopadmin && GOWORK=off go test -count=1 -v ./runner/... -run '^TestDeskWorkspaceBinding$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskWorkspaceBinding ' "$o")` | Named test executes (zero matching tests is not a pass); Two same-role instances reuse compatible cell preparation without sharing writable workspaces; swapped instance readiness and unsupported continuity refuse. Mutation: use the role workspace for both instances makes the test fail. |
+
 ## Pre-mortem and dispatch checks
 
 The plausible wrong deliveries are precisely the mutations listed in Verify. Each must turn its named row red and the unmodified production flow green. The implementation records its executable mutation command/map entry beside the test so a non-implementer can repeat it. In particular, bypass the upper validation layer where the row names an independent lower control. Source baseline, declared consumers, module visibility, risk answers and M sizing were checked at authoring; design adequacy and report interpretation remain review-only. Recheck them at pickup rather than treating this dated inventory as current runtime proof.

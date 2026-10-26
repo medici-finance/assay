@@ -50,7 +50,7 @@ consumers:
 - 'workflow/controller: follow-up graph-execution/21'
 - 'spec/operator-incarnation-v1.md: follow-up graph-execution/16 (this brief; flips to fixed-here when the implementation edits the path)'
 - 'loopadmin supervisor launch admission (checks the current incarnation): follow-up graph-execution/26'
-version: 8
+version: 9
 id: db922112-28f0-44c0-b120-9d6c4f56e103
 ---
 
@@ -170,7 +170,7 @@ amendment relaxes none. No completed Evidence or current runtime behavior change
 
 ## Desk-instance scope — 25 October 2026
 
-Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
 
 ## Task
 
@@ -180,7 +180,7 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
 4. Document limitations for providers without fencing or idempotency: hold and require authorized resolution, never claim exactly-once. Restore/failover is a tested adapter capability, not assumed from SQLite transactions.
 5. (R2, 2026-10-13) Write `spec/operator-incarnation-v1.md` (planned) and extend the ownership-generation seam so effect admission checks the current operator incarnation with owner and generation. Mint a fresh incarnation and key on reconstruction, rollback and transfer; start paused on a mismatched or missing incarnation; keep the old incarnation as evidence provenance only. Prove it at the effect boundary with the scheduler bypassed. Add a test that resolves the contract's named fields against the incarnation type.
 
-- **Instance amendment:** Make ownership and reservation records distinguish cell/role/instance/execution generation. Admit worker/review tasks atomically against one cell-wide role limit across repositories and optional lower instance ceilings; keep shared provider/credential brakes. Paused/draining active work and unknown outcomes retain reservations. Preserve singleton other roles, exclusive work-item claims, operator incarnation and independent effect fencing.
+- **Instance amendment:** Make work/authority records distinguish cell/role/instance/execution generation. Treat the configured role work level across repositories as a best-effort refill target: each desk estimates shared active work, tolerates temporary over/under and periodically corrects it without a capacity mutex, semaphore, serialized count-and-reserve or leased slots. Observe paused/draining busy children when available and expose estimate freshness; missing/stale counter data alone does not block unrelated authorized work. Preserve exact per-item claims, singleton other roles, operator incarnation, effect fencing and all genuine hard safety budgets.
 
 ## Interface contract
 
@@ -203,9 +203,8 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 9 | check:ci +dereference +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestIncarnationSpecMatchesFields$" ./... > "$routing_out" && grep -q -- "--- PASS: TestIncarnationSpecMatchesFields " "$routing_out")` | exit 0; named PASS; every field `spec/operator-incarnation-v1.md` (planned) names exists on the incarnation type in `drainloop/incarnation.go` (planned), and every exported field is named in the contract; mutation: rename one field in the contract text — the named test must fail |
 | 10 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellBrakeCountUnavailableHolds$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCellBrakeCountUnavailableHolds " "$routing_out")` | exit 0; named PASS; with the pacing path bypassed, an unavailable or unverifiable cumulative-budget or per-target write-ceiling count holds admission and no effect is applied at the fake provider; mutation: treat an unavailable brake count as under budget — the named test must fail |
 | 11 | check:ci +flow +mutation | `(cd drainloop && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestCellPacingRestartNoMultiply$" ./... > "$routing_out" && grep -q -- "--- PASS: TestCellPacingRestartNoMultiply " "$routing_out")` | exit 0; named PASS; with at least two processes and a seed at most half the cap, after the shared pacing counter of an effect-class count is lost mid-window, K restarts and N processes re-derive the estimate from recorded intents and receipts before each admission, so every process's admissions are counted, and admit at most cap + C, or 2 × (cap + C) after one recorded reset; with intents committed but every pacing-row update skipped, admissions still stay within cap + C; a second unseeded reset, or an absent reset record, treats the window as exhausted; mutation: start the fallback estimate at zero, keep a per-process estimate that ignores other processes' admissions, or admit against the cached pacing row instead of the re-derived estimate — the named test must fail |
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd drainloop && GOWORK=off go test -count=1 -v ./... -run '^TestDeskRoleCapacity$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskRoleCapacity ' "$o")` | Two workers read active seven at target eight and each launch a different claimed task: actual nine is accepted. Fresh observations/completions stop and later resume refill toward eight; a stale overestimate also corrects. Counter-update failure does not block unrelated authorized work. Mutations: require a centralized capacity lease/mutex, count only per-instance work, never correct stale estimates or make counter maintenance fatal; each fails. Per-item duplicate ownership still refuses independently. |
 
-
-| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd drainloop && GOWORK=off go test -count=1 -v ./... -run '^TestDeskRoleCapacity$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskRoleCapacity ' "$o")` | Named test executes (zero matching tests is not a pass); Two heterogeneous workers contend for the final role slot across two repositories: only one admission wins. Crash/retry/restore and a paused/draining peer do not reset occupancy. Bypassing the caller cannot admit over the limit; mutation: scope occupancy by instance or repo, or release an unknown reservation, makes the test fail. |
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.
 
 ## Evidence

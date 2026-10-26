@@ -10,7 +10,7 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: yes}
 issues: []
 schema: brief-v2
-version: 4
+version: 5
 authored: 2026-10-20 by Assay architecture authoring session
 sources:
   - https://github.com/medici-finance/assay/issues/3669
@@ -102,7 +102,7 @@ and human gates remain in force. Refresh claims/active PRs before implementation
 
 ## Desk-instance scope — 25 October 2026
 
-Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
 
 ## Task
 
@@ -174,8 +174,8 @@ coverage. These inputs are future implementation-verification evidence, not clai
 | 3 | check +flow +mutation | `(cd loopadmin && o=$(mktemp) && GOWORK=off go test -count=1 -v ./adapters/kubernetes/... -run '^TestKubeProfileIsolation$' > "$o" && grep -F -- '--- PASS: TestKubeProfileIsolation ' "$o")` | exit 0, named PASS; wrong credential/profile and missing opt-in make zero calls, agent cannot reach operator/executor custody with upper caller bypassed, verifier never gains terminal authority; operator rejects compatibility bindings and all exec/port-forward/debug verbs (including get/create/patch/update); forbidden network endpoint or swapped capability fails |
 | 4 | check +flow +neighbour +dereference | `(cd loopadmin && GOWORK=off go test -count=1 ./runner/conformance/... ./adapters/kubernetes/...)` | exit 0, no skipped required profile cases; shared runner negotiation, existing local behavior and legacy image preflight preserved; actual image compatibility checks included by adapter tests |
 | 5 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief agent-execution/09 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required consumers stay held and omitted consumers remain a review obligation |
-
 | I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd loopadmin && GOWORK=off go test -count=1 -v ./adapters/kubernetes/... -run '^TestKubeDeskInstances$' > "$o" 2>&1 && grep -F -- '--- PASS: TestKubeDeskInstances ' "$o")` | Named test executes (zero matching tests is not a pass); Two mixed-profile worker Pods and three reviewer Pods have separate workspaces; concurrent up/attach and same-named changed UID cannot duplicate an instance. A successor starts while its predecessor drains without inheriting claims; mutation: key by role, share PVC or accept name without UID makes the test fail. |
+
 ## Pre-mortem
 
 Wrong Pod or duplicate role owner: row 1. Lost stop mistaken for cancellation: row 2.

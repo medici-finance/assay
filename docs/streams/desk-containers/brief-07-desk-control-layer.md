@@ -17,7 +17,7 @@ sources:
   - "docs/proposals/non-ci-architecture/28-interactive-kubernetes-desks.md — Linux operator cohort"
   - "freshness-checked 2026-10-20 @ 65f16f4a6b94 (fetched main; layout remains planned)"
 why: A single Linux operator terminal should expose five independent desk sessions without requiring native Windows or adding another launcher.
-version: 5
+version: 6
 id: cbf80c98-0c5e-4309-836b-89bced9ffae5
 exec-tier: strong
 exec-tier-why: Terminal presentation must preserve remote session and lifecycle ownership.
@@ -97,8 +97,8 @@ coverage. These inputs are future implementation-verification evidence, not clai
 | 2 | check +mutation | `sh containers/control/check.sh --offline --self-test` | exit 0; planted start-on-attach, stop-on-pane-close and credential read all fail the fixture; no cluster contact |
 | 3 | check +flow | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && statusgen --root . --consumers --brief desk-containers/07 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required consumers stay held and omitted consumers remain a review obligation |
 | 4 | check +dereference +mutation | `sh containers/control/check.sh --version-evidence --self-test` | exit 0; real selected tool version and local capabilities match EVALUATION.md; changed recorded version/capability fails; missing tool is could-not-check |
-
 | I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDeskInstanceLayout$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceLayout ' "$o")` | Two worker and three reviewer bindings remain distinct; paused/draining views and reconnect start zero model calls. Mutation: attach first role match makes the named test fail. |
+
 ## Pre-mortem
 
 Terminal becomes launch/lifetime owner: rows 1–2. A credentials-owning parallel launcher:

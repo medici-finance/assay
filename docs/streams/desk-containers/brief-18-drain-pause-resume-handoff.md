@@ -18,7 +18,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "Driver request 2026-10-14: a `drain <cell>` that drains the loops first and then shuts down, with a handoff note; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): these are runner-lifecycle states/transitions; cellctl verbs are adapters; today's STOP-flag/cadence mechanism is the interim first implementation, not the design"
@@ -117,7 +117,7 @@ facts:
 
 ## Desk-instance scope — 25 October 2026
 
-Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
 
 ## Task
 1. Implement the transition interface and the interim mechanism in `lifecycle.go`.
@@ -125,7 +125,7 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
 3. Add the handoff step and boot read through the one reference.
 4. Docs, labelling the mechanism interim and pointing to amendment 21; changelog fragment.
 
-- **Instance amendment:** Use /31 instance selectors/results and per-instance lifecycle/handoff records. Role/cell selectors expand explicitly, while instance stop verifies exact instance/generation/process or Pod UID and never closes a peer. Expose a durable stop-new-admission barrier separately from waiting for drain so /19 can overlap successor startup. Active children retain claims/slots and unknown effects remain held. Preserve all existing plan/TTY and foreign-stop restrictions.
+- **Instance amendment:** Use /31 instance selectors/results and per-instance lifecycle/handoff records. Role/cell selectors expand explicitly, while instance stop verifies exact instance/generation/process or Pod UID and never closes a peer. Expose a durable stop-new-admission barrier separately from waiting for drain so /19 can overlap successor startup. Active children retain their item claims and contribute observed work to approximate pacing; unknown effects remain held independently. Preserve all existing plan/TTY and foreign-stop restrictions.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
@@ -145,8 +145,8 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
 | 8j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainEmitsCellOpV1' -count=1 -v` | `--- PASS` — `drain --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 8 | check | `statusgen --root . --lint` | exit 0 |
 | 8a | check | `statusgen --root . --consumers --brief desk-containers/18` | exit 0 — the `consumers:` routing holds against the branch diff |
-
 | I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDrainDeskInstance$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDrainDeskInstance ' "$o")` | Named test executes (zero matching tests is not a pass); An old worker stops new dispatch but finishes its held task while an unpaused peer continues; identity mismatch and drain timeout preserve the targeted owner and report hold. Mutation: close role-wide surfaces or report unknown stop as drained makes the test fail. |
+
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->

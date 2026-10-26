@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Confirm the supported client matrix and selected read/status workflow, including explicit retained legacy consumers. Agent interfaces must not gain human acts or new ambient credentials."
 issues: []
 schema: brief-v2
-version: 4
+version: 5
 id: 9ca7f67b-e213-452c-93b3-1e86eb234144
 authored: 2026-10-20 by cell-api authoring
 decision-trigger: spec
@@ -106,7 +106,7 @@ keeps acceptance pending; it grants no time-based default or activation authorit
 
 ## Desk-instance scope — 25 October 2026
 
-Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
 
 ## Task
 
@@ -160,8 +160,8 @@ and omitted consumers remain a review obligation. These are future delivery inpu
 | 3 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && GOWORK=off go test -timeout 90s -count=1 -v -run '^TestCellClientReconnect$' ./internal/cellapi/integration/... > "$o" && grep -F -- '--- PASS: TestCellClientReconnect ' "$o")` | exit 0; named PASS. Dropped stream, expired cursor and revoked caller produce resync/refusal with zero new work/effect/model launches; a reconnect-triggered launch fails. |
 | 4 | check:ci +dereference | `test -n "$ASSAY_DELIVERY_SHA" && test -n "$ASSAY_DELIVERY_BASE_SHA" && git merge-base --is-ancestor "$ASSAY_DELIVERY_SHA" refs/remotes/origin/main && statusgen --root . --consumers --brief cell-api/04 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | exit 0 only for the named landed implementation delivery and its first parent; record exact corroborated/disproved/unchecked counts, 0 disproved; unchecked required consumers stay held and omitted consumers require review. |
 | 5 | check | `statusgen --root . --lint` | exit 0; no PROBLEM; no generated lifecycle cell or historical Evidence hand-edited. |
-
 | I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./internal/cellapi/integration/... -run '^TestDeskInstanceClients$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceClients ' "$o")` | Named test executes (zero matching tests is not a pass); Actual served CLI/MCP/TypeScript consumers agree on mixed population and ambiguous selector/unknown state; reconnect produces zero model calls. Mutation: one client renders only the first role member makes the test fail. |
+
 ## Threat model and detection
 
 | Failure mode | Caught by |

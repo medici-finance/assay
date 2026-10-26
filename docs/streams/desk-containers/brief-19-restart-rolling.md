@@ -17,7 +17,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "Driver request 2026-10-14: a `restart <cell>` that cycles the desks; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): restart is a runner-lifecycle sequence and cellctl is an adapter"
@@ -25,7 +25,7 @@ sources:
   - "desk-containers/17 — the converging `up --role`; desk-containers/18 — `drain <cell> [role...]`, `--now`, and the handoff record"
   - "freshness-checked 2026-10-14 @ caca38a58 (origin/main) — no restart verb; the nearest is `reset`, which also removes worktrees and caches (#2670)"
 exec-tier: strong
-exec-tier-why: Overlapping replacement spans instance admission, shared reservations and partial-failure recovery.
+exec-tier-why: Overlapping replacement spans instance admission, approximate refill pacing and exact work-ownership recovery.
 domain: complicated
 consumers:
   - "the runner lifecycle and ownership contract (target owner of the restart sequence): out-of-scope (graph-execution R2/R3; this verb is an adapter and needs no change when the mechanism moves)"
@@ -66,12 +66,12 @@ facts:
 
 ## Desk-instance scope — 25 October 2026
 
-Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
 
 ## Task
 1. Implement `restart` as above; register it; docs; changelog fragment.
 
-- **Instance amendment:** For qualified worker/review replacement, compose /18 admission barrier and /31 desired-entry binding with successor start before predecessor drain completion. Persist/reuse one replacement intent; old tasks/claims stay with the predecessor under aggregate capacity. New profile selection uses existing qualified configuration, not arbitrary provider input. Report successor failure or old drain timeout as partial; do not silently resume old admission. Keep sequential restart for singleton/non-overlap profiles and all existing plan/TTY/batch protections.
+- **Instance amendment:** For qualified worker/review replacement, compose /18 admission barrier and /31 desired-entry binding with successor start before predecessor drain completion. Persist/reuse one replacement intent; old tasks/claims stay with the predecessor and its observed work informs approximate role pacing. New profile selection uses existing qualified configuration, not arbitrary provider input. Report successor failure or old drain timeout as partial; do not silently resume old admission. Keep sequential restart for singleton/non-overlap profiles and all existing plan/TTY/batch protections.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
@@ -84,8 +84,8 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
 | 4j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRestartEmitsCellOpV1' -count=1 -v` | `--- PASS` — `restart --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
 | 4 | check | `statusgen --root . --lint` | exit 0 |
 | 4a | check | `statusgen --root . --consumers --brief desk-containers/19` | exit 0 — the `consumers:` routing holds against the branch diff |
+| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestReplaceDeskOverlap$' > "$o" 2>&1 && grep -F -- '--- PASS: TestReplaceDeskOverlap ' "$o")` | Named test executes (zero matching tests is not a pass); Hold an old child open; successor starts first, old instance takes no new item, and temporary shared-work overshoot is permitted and converges after refreshed observations/completions. Concurrent/retried replace creates one successor; failed start and drain timeout remain explicit. Mutation: wait for old completion before successor start, omit its observed busy children from role pacing, or duplicate its claim makes the test fail. |
 
-| I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestReplaceDeskOverlap$' > "$o" 2>&1 && grep -F -- '--- PASS: TestReplaceDeskOverlap ' "$o")` | Named test executes (zero matching tests is not a pass); Hold an old child open; successor starts first, old instance takes no new item, and shared occupancy never exceeds the role cap. Concurrent/retried replace creates one successor; failed start and drain timeout remain explicit. Mutation: wait for old completion before successor start, release its live slots, or duplicate its claim makes the test fail. |
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->

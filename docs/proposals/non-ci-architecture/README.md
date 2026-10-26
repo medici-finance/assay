@@ -179,4 +179,4 @@ activation boundaries remain. This records direction and authored work, not depl
 
 ## Automatic desk instances — requested 25 October 2026
 
-[Amendment 30](30-desk-instances-and-rolling-replacement.md) adds automatic word-based names, worker/review multiplicity, desired population in cell.env, shared role capacity and overlapping replacement. Existing runtime/runner/API owners carry the delta; applied brief routing and preserved Evidence are recorded there. Authoring only; existing ratification and activation gates remain.
+[Amendment 30](30-desk-instances-and-rolling-replacement.md) adds automatic word-based names, worker/review multiplicity, desired population in cell.env, approximate role pacing and overlapping replacement. Existing runtime/runner/API owners carry the delta; applied brief routing and preserved Evidence are recorded there. Authoring only; existing ratification and activation gates remain.

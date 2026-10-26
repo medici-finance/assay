@@ -17,7 +17,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 6
+version: 7
 authored: 2026-10-13 by the-desk (assay:author-brief, opus-5.5; requested by the driver); revised 2026-10-14 for review rounds 1-4 (security and correctness)
 sources:
   - "Driver request 2026-10-13: a `force` option on desk start that attempts to fix whatever stopped the boot; it may ask before anything destructive; `-y` assumes yes and asks nothing"
@@ -128,7 +128,7 @@ facts:
 
 ## Desk-instance scope — 25 October 2026
 
-Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner\'s delta; unchanged obligations remain.
+Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md) and refresh affected active claims/PRs before implementation. This is a source-pinned **adapt** handoff from public main `57196d5da`, not evidence of deployment. The Task and Verify additions below carry this owner's delta; unchanged obligations remain.
 
 ## Task
 1. Inventory every refusal reachable from `cellctl desk`: every `die()` and every `exitWith(n)` in cmdDesk → reconcilePreflight → deskLaunch → scrubbedDeskLaunch / runInteractiveHarness, plus loadCell. Map each one to a row id and a class, by cell kind. The inventory goes in `repair.go` as a comment table and in the PR body, with each site's exit code.
@@ -142,7 +142,7 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
    - the `--kind` rules in §"Every per-run choice": a per-run non-house `--kind` on a persisted house cell is refused on `desk` and `up`, with or without `--set`, so the "`--set` persists EVERY override" bullet gains that exception and points to `cellctl set <cell> --kind <k>` on a stopped cell;
    - the exit-5 fixed line.
 
-- **Instance amendment:** For configurations declaring required multi-instance support, force/repair must resolve exact instance/generation and refuse ambiguous role targets or unsupported readers. Keep existing singleton repair unchanged; do not start missing desired population through a separate launcher. Resume/cleanup cannot override instance pause, stronger stops, peer ownership or shared capacity.
+- **Instance amendment:** For configurations declaring required multi-instance support, force/repair must resolve exact instance/generation and refuse ambiguous role targets or unsupported readers. Keep existing singleton repair unchanged; do not start missing desired population through a separate launcher. Resume/cleanup cannot override instance pause, stronger stops, peer ownership or genuine safety brakes; aggregate work pacing remains approximate.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
@@ -161,8 +161,8 @@ Read the [instance contract](../../proposals/non-ci-architecture/30-desk-instanc
 | 10 | check | `statusgen --root . --lint > "${TMPDIR:-/tmp}/r25-lint.out" 2>&1 && grep -q '^LINT: PASS' "${TMPDIR:-/tmp}/r25-lint.out"` | exit 0; the lint output ends `LINT: PASS` |
 | 10a | check | `statusgen --root . --consumers --brief desk-containers/25` | exit 0 — the `consumers:` routing holds against the branch diff |
 | 11 | gate:model +flow | On a scratch cell whose persisted kind is **house** (run with no `--kind`), whose role worktree is a real directory under the cell (no `deskwt` on PATH), with a prior `cellctl desk` stopped by `kill -STOP` and a dirty role worktree that conflicts with main. (a) Run `cellctl desk example-cell worker-desk --force`. (b) `kill -CONT` the prior desk, run `cellctl down example-cell`, then re-run the same command, answering `y`. | (a) The stopped desk's role child is still alive, so `Diagnose` reads the holder as current: the run refuses, names `cellctl down`, sends no signal, and the stopped process still exists. (b) One prompt appears, naming the rescue ref by its full refname and the aside path. The desk launches. `run/repair.log` holds that line. `git show-ref --verify refs/heads/rescue/worker-desk-<stamp>` exits 0, and `git worktree list` shows the aside tree registered and locked. Record the transcript. No scratch cell available → could-not-check. |
-
 | I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRepairDeskInstances$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRepairDeskInstances ' "$o")` | Named test executes (zero matching tests is not a pass); Instance repair never touches paused peer or replaces an unknown owner; an old reader refuses required instance capability. Mutation: repair by role without instance identity makes the test fail. |
+
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->

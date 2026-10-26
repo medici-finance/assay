@@ -1,18 +1,18 @@
 ---
 brief: assay:assay:desk-containers:31
 title: Automatic desk instances and desired population through the shared runtime
-why: Operators need multiple independently configured workers and reviewers without duplicate work, multiplied capacity or up restarting desks intentionally left paused.
+why: Operators need multiple independently configured workers and reviewers without duplicate work, deliberately multiplied role targets or up restarting desks intentionally left paused.
 wave: 9
 depends: ["graph-execution/27", "desk-containers/15"]
 unblocks: ["desk-containers/18", "desk-containers/20", "desk-containers/22", "desk-containers/28"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
-gate-why: Changes desired-population, instance identity and legacy-to-managed ownership interpretation; the human confirms that existing paused work and role limits survive migration before enrollment.
+gate-why: Changes desired-population, instance identity and legacy-to-managed ownership interpretation; the human confirms that paused work, role pacing targets and independent safety limits survive migration before enrollment.
 decision-trigger: spec
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-25 by Assay architecture authoring session
 sources:
   - docs/proposals/non-ci-architecture/30-desk-instances-and-rolling-replacement.md
@@ -75,8 +75,9 @@ design-fit:
 ## Human decision
 
 At pickup, present the exact desired-population encoding and legacy migration plan.
-Demonstrate how paused desks, busy predecessors and current shared task limits are retained
-when multiple workers and reviewers are introduced. No live desk is enrolled by this brief.
+Demonstrate that paused desks and busy predecessors survive migration, that independent
+refill converges toward the approximate role target, and that hard safety limits remain
+intact when multiple workers and reviewers are introduced. No live desk is enrolled by this brief.
 
 Options:
 1. **Accept the demonstrated scoped migration** — adopt the versioned population representation after its independent checks; runtime activation remains separate.
@@ -95,7 +96,7 @@ active PRs before changing the selected contracts; keep historical Evidence and 
 
 1. Publish the exact versioned desired-population encoding in operator-owned cell.env:
    stable desired-entry key, role, qualified profile references, desired running/paused/stopped
-   state and optional narrower instance ceiling. Parse without shell evaluation. Legacy
+   state and optional narrower instance refill target. Parse without shell evaluation. Legacy
    ROLES maps to one implicit entry per role; reject ambiguous mixed input and duplicate
    singleton roles. Worker/review alone support multiplicity initially.
 2. Allocate names automatically from the versioned 200-word input, role/harness/provider
@@ -130,7 +131,7 @@ Named tests must execute; zero matches or required-case skips fail independent v
 |---|---|---|---|
 | I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C cellconfig test -count=1 -v ./... -run '^TestDeskPopulation$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskPopulation ' "$o")` | Named PASS; legacy singleton, two mixed-profile workers/three reviewers and paused entry parse correctly; mixed ambiguous input, duplicate singleton and unsupported required version refuse. Mutation: collapse by role fails. |
 | I2 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDeskNames$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskNames ' "$o")` | Named PASS; 200 distinct 3–4 letter words, concurrent collision retry, exhaustion hold, stable binding on repeated up, short-selector ambiguity and long Kubernetes locator tested. Mutation: overwrite collision or regenerate on every up fails. |
-| I3 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDeskPopulationUp$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskPopulationUp ' "$o")` | Actual config/client/supervisor fixture preserves paused/draining peers, reuses instance IDs and rejects stale generation below caller; shared role slots stay bounded across repositories. Mutation: clear pause, key lease by role or give each instance the role width fails. |
+| I3 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDeskPopulationUp$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskPopulationUp ' "$o")` | Actual config/client/supervisor fixture preserves paused/draining peers, reuses instance IDs and rejects stale generation below caller; independent role pacing includes both repositories, tolerates transient over/under and corrects after refresh. Mutation: clear pause, key lease by role or use only each instance's own work as the role estimate fails. |
 | I4 | check +flow +neighbour | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./internal/cellop/... -run '^TestDeskInstanceReaders$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDeskInstanceReaders ' "$o")` | Named PASS; real result/plan plus adjacent reader retains instance/generation/desired revision, stale plans refuse and incapable reader cannot flatten required population; singleton output remains supported. |
 | I5 | check +dereference | `statusgen --root . --lint` | exit 0; independent verifier additionally resolves named implementation consumers against the landed delivery and its actual first parent; unchecked required integration remains held. |
 

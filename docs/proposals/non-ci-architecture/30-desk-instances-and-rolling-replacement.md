@@ -46,7 +46,7 @@ from that prefix, and do not rotate identity on every `up` or attach.
 `cell.env` is the current operator configuration entrypoint. The configuration owner
 publishes one versioned desired-population representation with stable desired-entry
 keys, role, qualified profile references, desired running/paused/stopped state and an
-optional per-instance task ceiling. Initial generated names/IDs are assigned once and
+optional per-instance refill target. Initial generated names/IDs are assigned once and
 persisted through the trusted configuration/runtime binding; entries never require the
 operator to invent names. The implementation must specify the exact encoding and its
 atomic update/revision checks in its public config contract, docs and fixtures. Do not
@@ -81,22 +81,56 @@ Reuse the existing shared observation/watch owner and current role-policy evalua
 Additional desk instances must not each recreate upstream polling, queue collection or
 model-driven idle checks; explicit independent final review reads remain.
 
-The role's capacity is an aggregate task limit across its instances in the cell and
-across that cell's repositories. A lower optional instance ceiling narrows it; idle
-instance capacity is borrowable up to the role limit. Desk processes, child task slots
-and provider requests are separate counts. Adding a desk cannot multiply slots. Paused
-and draining instances continue to consume capacity for active children/assignments;
-unknown outcomes retain reservations until reconciled. Admission atomically checks and
-reserves against current occupancy before launching; crash, retry, restart and restore
-cannot reset consumption. No static per-instance partition or fairness scheduler is
-required initially; expose occupancy and holds and reuse existing priority policy.
+**Capacity clarification — 26 October 2026.** The shared work count is an
+approximate role-wide concurrency gauge and refill target across the cell's instances
+and repositories. It is pacing, not a hard admission budget or ownership boundary.
+Temporary undercount, overcount and concurrency above/below the target are accepted;
+desks converge toward the configured level as observations refresh and tasks finish.
+An optional per-instance target shapes local refill; it does not partition global slots.
+Adding an instance does not intentionally multiply the configured role target.
 
-Shared provider/credential brakes still apply across roles and cells that use the same
-budget scope. A new model/provider cannot bypass the role limit, and a new instance
-cannot bypass a provider brake. Today's optional per-repository repair-admission gate
-is not evidence of complete cell-wide capacity. A partially upgraded or legacy dispatcher
-in the same work domain must participate in the same limit or stay excluded from managed
-admission; an unknown legacy writer holds activation.
+Each desk independently estimates active role work from available shared observations
+(for example existing claims, roster/heartbeat summaries and supervisor process facts),
+uses the estimate to decide a bounded next refill, and refreshes/reconciles periodically.
+A cached/shared counter may be an optimization; no centralized capacity mutex, global
+semaphore, serialized count-and-reserve transaction, leased slot, or per-launch
+coordination round-trip is required. A cache update failure cannot block unrelated
+otherwise-authorized work. No exact last-slot winner, zero-overshoot promise or invented
+numeric drift bound is part of this contract.
+
+When the estimate is above target, stop refilling and let completions bring it down;
+do not kill work to enforce the target. When an overestimate ages out or fresher facts
+show a gap, refill again. Concurrent desks may read the same gap and both launch distinct
+claimed items. Estimate freshness/coverage and uncertainty stay visible; missing data
+is not presented as a measured zero. Retained recent observations and best-effort refresh
+can guide continued bounded refill through unavailable/stale telemetry. The pacing
+counter alone does not globally hold the role, require a leader/mutex for reconstruction,
+or create a fail-closed slot ledger. Include busy children on paused/draining predecessors
+in the estimate when observed; uncertainty affects the estimate rather than inventing
+an exact capacity reservation. Stale observations must be correctable so the role does
+not remain permanently starved or deliberately refill the whole target per instance.
+
+For example, with target eight and observed active work seven, two independent desks
+may each start one different item, giving actual work nine. Both can subsequently observe
+the excess and stop refilling until completions bring it toward eight. Conversely, an
+estimate of ten while only six remain must recover after observation refresh/expiry.
+Tests qualify correction in both directions, not a globally serialized last slot.
+
+This is an instantaneous occupancy gauge, not a cumulative operation count. Existing
+window/reset accounting for cumulative pacing counters is not turned into a new durable
+role-slot ledger. Reuse the existing observation/runtime owners and pacing classification;
+there is no requirement for an exact global re-derive before every desk dispatch.
+
+**Exactness remains where it protects work or authority.** Per-item claims still prevent
+two instances from owning the same task; review claim keys/current-head checks remain.
+Instance generations, role/scope authorization, uncertain external effects, durable effect
+identity and genuine fail-closed brakes (recursive child-launch/time/cost/resource budgets,
+write ceilings, circuit breakers and provider-enforced quotas) retain their contracts.
+Their reservations protect those operations/budgets, not this aggregate work gauge.
+A pacing estimate grants no authority. Classify provider request pacing separately from
+provider-enforced quotas or explicit safety brakes. Legacy writers must participate in
+canonical work ownership/authority before managed activation; their work should be
+observed best-effort, without requiring a capacity-slot protocol or identical counters.
 
 ## Lifecycle and overlapping replacement
 
@@ -112,7 +146,8 @@ For an eligible worker/review replacement:
    authority. Record an idempotent replacement intent with predecessor and desired revision.
 2. Stop new assignments on the predecessor and durably acknowledge that admission barrier.
 3. Start the successor without waiting for the predecessor's tasks to finish. It claims
-   only unowned eligible work and only within remaining shared task/provider capacity.
+   only unowned eligible work, using approximate role refill pacing and the existing
+   independent provider/safety controls.
 4. Let the predecessor finish its existing assignments and reconcile effects. Stop and
    retire that predecessor only after verified drain/stop; preserve its evidence and usage.
 
@@ -120,7 +155,7 @@ This permits distinct instance IDs to overlap. It does not permit two current ow
 of one instance/generation, transfer a live claim, launch a second copy of an unknown
 attempt or treat an uncertain old effect as cancelled. A healthy successor may do
 unrelated unclaimed work while an uncertain predecessor holds its affected items and
-reservations; no conflicting work or authority handback is admitted. Instance restart
+operation/authority reservations; its observed active work remains in the pacing estimate; no conflicting work or authority handback is admitted. Instance restart
 and Pod recovery still require the same-instance old execution to be stopped/fenced.
 
 Successor startup failure leaves the predecessor paused/draining and reports partial
@@ -154,7 +189,7 @@ Pod, service-account, mount or credential creation rights. Replacement preparati
 that same operator-owned provisioning path before successor start.
 
 Status, plans, logs and attach expose individual instances, predecessor/successor state,
-desired versus observed state, shared role usage and instance ceilings. Aggregates never
+desired versus observed state, estimated role work/target, observation freshness and optional instance targets. Aggregates never
 hide paused, draining, unknown or failed members. Short selectors must refuse ambiguity.
 Sanitized projections preserve profile/actor and per-invocation usage; terminal attachment
 remains optional presentation and causes zero model calls or ownership changes.
@@ -170,30 +205,40 @@ transport is qualified, the existing supported transport remains explicit.
 
 | Owner | Applied brief amendment |
 |---|---|
-| R2 ownership/capacity, coordination records | graph-execution/16, /19; shared supervisor journal /26 |
+| R2 exact ownership and runtime facts; approximate role pacing | graph-execution/16, /19; shared supervisor journal /26 |
 | Standing clients and claim/usage policy | graph-execution/27 |
 | Config, naming, desired-population adapter and cell-op extension | new desk-containers/31; consumes /27 and completed /15 |
 | Stops, lifecycle and replacement | desk-containers/16, /18, /19 |
 | Status, diagnostics, logs, upgrade, GC and repair consumers | desk-containers/07, /20–25 |
-| Qualified profile, readiness, recovery and projection | agent-execution/01–05, /09 |
+| Qualified profile, readiness, recovery and projection | delivered agent-execution/01 consumed; extension in /03, with /02, /04–05, /09 |
 | Managed Kubernetes/operator and independent journey | desk-containers/28–29; compatibility /06 preserved |
 | Served contracts, authorization, thin clients and cutover | cell-api/01–04, /06–07 |
 | Role/group transport routing | amendment 24 retains its existing owners; no transport implementation in this amendment |
 
-Qualification must use the production admission/runner/adapter paths with disposable
-PostgreSQL, fixture harnesses and fake providers/Kubernetes APIs. Prove two mixed-profile
-workers and three reviewers divide items/lanes, preserve a paused peer, and respect one
-aggregate role limit across two repositories. Race admission for the last slot and repeat
-it across crashes. Replace one instance while a child is busy: successor starts before
-old child completion, old instance takes zero new work, active reservations remain counted,
-and no duplicate item/effect occurs. Cover failure to start, drain timeout, lost acknowledgments,
-concurrent `up`/replace, name collision/exhaustion, ambiguous selector, Pod UID replacement,
-backup rollback, legacy writer exclusion, old-reader refusal and cross-cell isolation.
-Run named negative/mutation controls with caller/UI bypassed where appropriate. Fake
-transport success is not effective Kubernetes custody proof; desk-containers/29 retains
-its separate independently witnessed activation gate. Scale from one to the declared mixed population on an unchanged queue: zero extra model
-launches and no duplicated routine upstream collector; retain existing due refresh and
-independent final-read obligations. No cluster/model calls in authoring.
+Qualification must use production selection/runner/adapter paths with disposable
+PostgreSQL where required by exact work/authority records, fixture harnesses and fake
+providers/Kubernetes APIs. Prove two mixed-profile workers and three reviewers divide
+items/lanes, preserve a paused peer and use one configured role target across two
+repositories. Feed lagging observations to competing desks: permit both to fill an
+observed last gap with different items, then show refill stops above target and resumes
+after completions/refresh. Feed an overestimate and show its correction prevents permanent
+starvation. Counter-write failure, delayed/missing heartbeat, crash and restart do not
+require a global capacity lock or block unrelated authorized work solely on pacing data.
+Required mutation controls: replace pacing with a central slot mutex/leased semaphore,
+count only each instance's own work, never refresh a stale overestimate, or make counter
+maintenance failure fatal; each must fail the named production-path qualification.
+
+Replace one instance while a child is busy: successor starts before old child completion,
+old instance takes zero new work, observed predecessor work informs the estimate, and no
+duplicate item/effect occurs. Cover failure to start, drain timeout, lost acknowledgments,
+concurrent up/replace, name collision/exhaustion, ambiguous selector, Pod UID replacement,
+backup rollback, legacy ownership exclusion, old-reader refusal and cross-cell isolation.
+Exact ownership/authority and lower-boundary safety tests remain independent of pacing.
+Fake transport success is not effective Kubernetes custody proof; desk-containers/29
+retains its separate independently witnessed activation gate. Scale from one to the
+declared mixed population on an unchanged queue: zero extra model launches and no
+duplicated routine upstream collector, preserving due refresh/independent final reads.
+No cluster/model calls in authoring.
 
 ## Pickup, history and approval
 
@@ -204,7 +249,7 @@ completed Evidence remain controlling. Dated source accounts remain history. Ame
 unfinished Task/Verify versions require fresh pickup of the selected contract, active
 claims and code; they do not invalidate already delivered singleton behavior.
 
-Open-PR overlap was checked on 25 October 2026: public #4349 (execution amendment admission),
+Historical open-PR overlap was checked on 25 October 2026: public #4349 (execution amendment admission),
 #4223 (store acceptance/consumer holds) and #4420 (cell-op consumer verification) touch
 related documents. Preserve their distinct approval, acceptance and delivery-evidence
 changes when reconciling; this request does not silently adopt or cancel their work.
@@ -216,3 +261,14 @@ complexity measurement was taken; known coupling is the role-keyed launch/cadenc
 seam and optional per-repository admission gate. Remove that singleton coupling through
 the existing owner rather than add a second lease/store. This draft requires the existing
 revision-bound review/ratification process; the operator's request authorizes authoring.
+
+## Clarification pickup — 26 October 2026
+
+Merged public main `125611dfb` into this draft, preserving subsequent profile implementation,
+execution admission and store consumer-integration changes. The operator clarified that the
+shared work count is approximate and must not require centralized slot coordination.
+This explicitly supersedes this draft's earlier atomic aggregate-capacity requirement,
+not per-item claims or independent safety brakes. Related PRs #4223 and #4349 have since
+landed; their acceptance/admission history remains intact. The implemented profile contract
+is consumed with follow-on instance integration in agent-execution/03. Future qualification
+must show pacing convergence/no capacity lock as well as exact ownership safety.
