@@ -1,0 +1,30 @@
+{
+  "test": "go test -count=1 -timeout 60s -run '^TestOverflow' .",
+  "schemata": true,
+  "control": {
+    "name": "distinct CPU positive control loses measured work",
+    "file": "reduce.go",
+    "old": "addNonnegative(&g.SumOwnCPUMs, *r.CPUMs)",
+    "new": "addNonnegative(&g.SumOwnCPUMs, 0)"
+  },
+  "mutations": [
+    {
+      "name": "unchecked shared totals wrap on overflow",
+      "file": "reduce.go",
+      "old": "n < 0 || *dst < 0 || *dst > math.MaxInt64-n",
+      "new": "n < 0 || *dst < 0 || false && *dst > math.MaxInt64-n"
+    },
+    {
+      "name": "duration coverage wraps to claimed attempts",
+      "file": "v3.go",
+      "old": "if !addNonnegative(&n, x) {\n\t\t\t\treturn errAggregateOverflow\n\t\t\t}",
+      "new": "n += x"
+    },
+    {
+      "name": "duration histogram wraps to claimed measured count",
+      "file": "v3.go",
+      "old": "if !addNonnegative(&bins, x) {\n\t\t\t\treturn errAggregateOverflow\n\t\t\t}",
+      "new": "bins += x"
+    }
+  ]
+}

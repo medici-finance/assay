@@ -159,6 +159,27 @@ var AllowedInvocations = []Allowance{
 var UnresolvedArgv = []Allowance{
 	{Key: "cmd/cellctl/comms_init.go::Cell.initComms::<unresolved>", Reason: "The Codex executable resolved from PATH is hashed and queried with --version to pin the contained reader. It is a local harness version probe, not a forge CLI; no inference or authentication command is invoked."},
 	{
+		Key: "cmd/cellctl/hotfix.go::hotfixRunTimeout::<unresolved>",
+		Reason: "the local hotfix overlay's build runner (cellctl hotfix install): git and the Go toolchain " +
+			"for the compiled-in public repository, plus the staged binary's --version, each run as the " +
+			"invoking user with an environment set from scratch. argv[0] is a parameter because the callers " +
+			"name three different local programs; none is a forge CLI and no credential is in that " +
+			"environment. It registers the blind spot and grants no forge permit.",
+	},
+	{
+		Key: "internal/deskkit/hotfixself.go::pinnedVersionReal::<unresolved>",
+		Reason: "a hotfix binary's start-up check runs the pinned install's own --version to read its tag. " +
+			"argv[0] is the pinned fallback path the shim handed over, a desk binary in the root-owned " +
+			"install directory, not a forge CLI; the child gets the caller's environment minus the " +
+			"fallback variable. It registers the blind spot and grants no forge permit.",
+	},
+	{
+		Key: "internal/deskkit/hotfixexec_windows.go::hotfixExecFallback::<unresolved>",
+		Reason: "Windows has no exec: the hotfix overlay is unsupported there, and this keeps the package " +
+			"building by running the pinned fallback binary as a child. argv[0] is the pinned desk binary " +
+			"path, not a forge CLI. It registers the blind spot and grants no forge permit.",
+	},
+	{
 		Key: "internal/deskkit/layaadvisor.go::LayaAdvisor.Predict::<unresolved>",
 		Reason: "runs an explicitly approved operator-selected local inference executable, never wired into " +
 			"default routing; receives a JSON assessment and an offline-only environment without inherited " +
@@ -246,6 +267,11 @@ var UnresolvedArgv = []Allowance{
 	{
 		Key:    "cmd/deskadvisory/advisory.go::runChecks::<unresolved>",
 		Reason: "exec.LookPath of a tool name held in a variable; presence probe, launches nothing.",
+	},
+	{
+		Key: "internal/deskkit/preflight.go::instrumentProbe::<unresolved>",
+		Reason: "exec.LookPath of a pinned instrument name extracted from a Verify row, so its bytes can be " +
+			"hashed against the pin file; presence-and-digest probe, launches nothing.",
 	},
 	{
 		Key:    "cmd/deskboard/board.go::execGateScores::<unresolved>",

@@ -196,8 +196,8 @@
     {
       "name": "a sole help word on defaults reaches the verb's own comparison (the usage refusal, after the roster echo), not the help verb",
       "file": "cmd/cellctl/cobra.go",
-      "old": "\tif i+2 == len(args) && args[i] == \"defaults\" && (args[i+1] == \"-h\" || args[i+1] == \"--help\") {",
-      "new": "\tif false && i+2 == len(args) && args[i] == \"defaults\" && (args[i+1] == \"-h\" || args[i+1] == \"--help\") {"
+      "old": "\tif i+2 == len(args) && (args[i] == \"defaults\" || args[i] == \"hotfix\") && (args[i+1] == \"-h\" || args[i+1] == \"--help\") {",
+      "new": "\tif false && i+2 == len(args) && (args[i] == \"defaults\" || args[i] == \"hotfix\") && (args[i+1] == \"-h\" || args[i+1] == \"--help\") {"
     },
     {
       "name": "a --kind=<k> in another flag's value position or after a bare `--` kinds the cell (the old pre-scan read the separate word only)",

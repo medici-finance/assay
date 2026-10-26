@@ -10,6 +10,9 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Refactors identity matching consumed by human rulings and claim ownership; preservation of existing strict profiles and exact work binding requires human design confirmation."
 decision-trigger: spec
+decision-issue: 4219
+ruling: "https://github.com/medici-finance/assay/issues/4219#issuecomment-6389330807"
+design: DR-milestone-workref
 issues: []
 schema: brief-v2
 version: 1
@@ -118,6 +121,20 @@ Source records (SHA-256 at pickup):
 
 The named test/mutation commands below are implementation qualification. Independent
 post-merge Evidence remains empty until a non-implementer verifies the merged delivery.
+
+## Lifecycle reconciliation — 24 October 2026
+
+Implementation PR #4224 and independent PASS Evidence PR #4256 are merged.
+The bounded design ruling is option 1 on decision issue #4219, reaffirmed by the
+maintainer in the unedited own-account comment naming DR-milestone-workref. This repair
+attaches decision-issue, ruling and design links; the exact ruling corroborates under
+registers-v1 §7.5. Existing Evidence,
+Task, Verify, authored version and work identity are unchanged.
+
+Use the canonical reconciliation writer for any todo-to-implemented update. Do not
+manually advance verified/done or treat this reconciliation as human verification
+sign-off. Canonical eligibility allows a gate:human prerequisite at implemented with
+a recorded PASS to satisfy its dependent; /02 retains its own design/admission gate.
 
 ## Ground rules
 
