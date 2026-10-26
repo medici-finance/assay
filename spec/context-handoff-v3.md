@@ -9,8 +9,8 @@ Unknown versions fail closed, and canonical digests include the schema identifie
 existing v1 and v2 receipt keeps its digest.
 
 The resolver emits v3 only when the snapshot carries a `product` input. A snapshot without one
-still gives an architecture-only v1 receipt whose prerequisites say product alignment is
-unchecked.
+still gives an architecture-only receipt, v1, or v2 when an impact is `withdrawn`, whose
+prerequisites say product alignment is unchecked.
 
 ## 1. Two targets, two inputs
 
@@ -53,14 +53,19 @@ work.
 
 The decoder enforces these rules. An `aligned` or `mismatch` result needs covered coverage, an
 outcome, a bound revision and a current revision, and for a primary assessment a `bound`
-binding declaring that revision. An `unknown` result states its gap. The refusal code is
-`coverage`. Duplicate targets, bindings or assessments are refused as `duplicate-id`.
+binding declaring that revision. An `unknown` result states its gap. A non-null `current` is the
+last approved revision of the assessment's outcome in the section's own `targets[]`. The refusal
+code is `coverage`. Duplicate targets, bindings or assessments are refused as `duplicate-id`. A
+snapshot that lists one product target, or one subject's relationship to one outcome, twice is
+refused as a snapshot error.
 
 ## 4. A projection, never a veto
 
 The receipt's prerequisites replace the architecture-only line with a product-assessed scope line
-and add a `product:` line for every mismatch without a disposition in force, for every recorded
-decision, and for every coverage gap. These lines inform the deciding role. They gate nothing:
+and add a `product:` line for every mismatch without a disposition in force, for every disposition
+in force, and for every coverage gap. A gap that carries a disposition in force (an `unbound` or
+`undiscovered` assessment, §5) gets one line that names both the decision and the gap, for example
+`product: continue: <subject> <outcome> (secondary, undiscovered) current r1 (decided by <role>)`. These lines inform the deciding role. They gate nothing:
 no product result changes a lifecycle, an impact, the next act or a recheck outcome, and a stale
 product binding is never a veto.
 
@@ -80,13 +85,22 @@ A disposition is recorded with `statusgen context dispose`. It is refused with:
 | `disposition-scope` | The receipt has no product section; the subject has no assessment for the outcome or no current approved target; the assessment is aligned, not-applicable or has a coverage gap other than unbound or undiscovered; or `decided_by` is not the receipt's deciding role. |
 
 A disposition is in force only for the revision it names. When the current target moves on,
-the earlier disposition stays as history and the mismatch is open again. `stop` is a recorded
-decision, not a cancellation.
+the earlier disposition stays as history and the mismatch or gap is open again. `stop` is a
+recorded decision, not a cancellation.
+
+A carried disposition is checked again whenever a receipt is decoded or rechecked: one whose
+`decided_by` is not the receipt's deciding role is refused as `disposition-scope`. A recheck whose
+snapshot names a different deciding role than a prior receipt that carries dispositions is refused
+as a snapshot error, because those dispositions cannot be carried under another role.
 
 ## 6. What this does not establish
 
 - That the snapshot's product targets are the true approvals. The snapshot is the authorized
   universe, as in v1.
+- Who recorded a disposition. `decided_by` is a role name, not an authenticated identity, and a
+  carried disposition's `basis` names a receipt the record no longer holds, so it cannot be
+  checked after the fact. A disposition is trusted only as far as the custody of the receipt that
+  carries it, as every other receipt field is.
 - A `REQ@revision` grammar or any change to `outcome` and `satisfies`. `outcome-revision` is a
   separate optional key.
 - Product observation or measurement. Observed outcomes belong to the continuing-operations

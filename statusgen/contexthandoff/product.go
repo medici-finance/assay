@@ -10,8 +10,8 @@ import (
 
 // product.go is product target binding (statusgen/23): which approved product
 // target revision each impacted brief was selected against, how that binding
-// compares with the target that is current now, and the authorized
-// continue/adapt/stop dispositions recorded against a mismatch.
+// compares with the target that is current now, and the continue/adapt/stop
+// dispositions the deciding role records against a mismatch or a gap.
 //
 // The product target is a different input from the architecture target. A
 // change to one never moves the other: the architecture baseline
@@ -57,16 +57,18 @@ const (
 	RelationSecondary = "secondary" // an outcome the snapshot declares the work relates to
 )
 
-// Disposition decisions an authorized role records against a product
-// mismatch. None of them changes a lifecycle or cancels work by itself.
+// Disposition decisions the deciding role records against a product mismatch
+// or gap. None of them changes a lifecycle or cancels work by itself.
 const (
 	DecisionContinue = "continue"
 	DecisionAdapt    = "adapt"
 	DecisionStop     = "stop"
 )
 
-// Refusals of Dispose. They are not record-shape rules (a decoded record never
-// carries them), so they are not in the context-handoff-v1 rule list.
+// Refusals of Dispose. They are not in the context-handoff-v1 rule list. The
+// decoder and Recheck also refuse a carried disposition whose decided_by is not
+// the receipt's deciding role as disposition-scope (spec/context-handoff-v3.md
+// §5).
 const (
 	RuleStaleDisposition = "stale-disposition" // the receipt or the current target moved since the disposition was prepared
 	RuleDispositionScope = "disposition-scope" // the disposition names nothing it may decide, or comes from the wrong role
@@ -131,7 +133,9 @@ type ProductAssessment struct {
 	Reason   string  `json:"reason"`
 }
 
-// ProductDisposition is one authorized decision on a product mismatch. The list
+// ProductDisposition is one decision on a product mismatch or gap, recorded by
+// the receipt's deciding role. The record is not authenticated beyond the
+// custody of the receipt that carries it (spec/context-handoff-v3.md §6). The list
 // is append-only: a later disposition supersedes an earlier one for the same
 // subject and outcome, and the earlier one stays as history. Basis is the
 // digest of the receipt the decision was made on; ExpectedRevision is the
@@ -226,21 +230,29 @@ func (r *reader) productDisposition(v any, p string) ProductDisposition {
 }
 
 // checkProduct applies the product section's cross-field rules: unique
-// identities, a binding that says "bound" names its outcome and revision, and
-// an assessment that says aligned or mismatch is a covered exact comparison.
-// An absent binding is never aligned.
-func checkProduct(pr *Product) error {
+// identities, a binding that says "bound" names its outcome and revision, an
+// assessment that says aligned or mismatch is a covered exact comparison, an
+// assessment's current revision is its outcome's last approved target in the
+// section's own targets list, and every disposition was recorded by the
+// receipt's deciding role. An absent binding is never aligned. The basis
+// digest of a carried disposition cannot be checked after the fact: it names
+// a receipt the record no longer holds.
+func checkProduct(pr *Product, decidingRole string) error {
 	if pr == nil {
 		return nil
 	}
 	const p = "$.product"
 	targets := map[string]bool{}
+	current := map[string]string{}
 	for i, t := range pr.Targets {
 		k := t.Outcome + "@" + t.Revision
 		if targets[k] {
 			return refuse(RuleDuplicateID, idx(p+".targets", i), "product target %s is listed twice", k)
 		}
 		targets[k] = true
+		if t.Approval == ProductApproved {
+			current[t.Outcome] = t.Revision
+		}
 	}
 	bindings := map[string]ProductBinding{}
 	for i, b := range pr.Bindings {
@@ -272,6 +284,11 @@ func checkProduct(pr *Product) error {
 			return refuse(RuleDuplicateID, at, "%s is assessed twice for the same outcome and relation", a.Subject)
 		}
 		seen[k] = true
+		if a.Current != nil {
+			if cur, ok := current[deref(a.Outcome)]; !ok || cur != *a.Current {
+				return refuse(RuleCoverage, at+".current", "current %s is not the last approved product target of %s in $.product.targets", *a.Current, deref(a.Outcome))
+			}
+		}
 		switch a.Result {
 		case ResultAligned, ResultMismatch:
 			if a.Coverage != CoverageCovered || a.Outcome == nil || a.Bound == nil || a.Current == nil {
@@ -291,6 +308,11 @@ func checkProduct(pr *Product) error {
 			if a.Coverage == CoverageCovered {
 				return refuse(RuleCoverage, at+".coverage", "an unknown result states its coverage gap")
 			}
+		}
+	}
+	for i, d := range pr.Dispositions {
+		if d.DecidedBy != decidingRole {
+			return refuse(RuleDispositionScope, idx(p+".dispositions", i)+".decided_by", "%q is not the receipt's deciding role %q", d.DecidedBy, decidingRole)
 		}
 	}
 	return nil
@@ -324,6 +346,7 @@ func (sp *SnapshotProduct) validate(decl QID) error {
 		}
 		seen[t.Outcome+"@"+t.Revision] = true
 	}
+	rels := map[string]bool{}
 	for i := range sp.Relationships {
 		rel := &sp.Relationships[i]
 		q, err := ResolveQualifiedID(rel.Subject, &decl)
@@ -334,6 +357,11 @@ func (sp *SnapshotProduct) validate(decl QID) error {
 		if !outcomeRefRe.MatchString(rel.Outcome) {
 			return snapshotErr("product relationship %d: outcome %q is not <cell>:<repo>:REQ-<slug>", i, rel.Outcome)
 		}
+		k := rel.Subject + "\x00" + rel.Outcome
+		if rels[k] {
+			return snapshotErr("product relationship %d: %s to %s is listed twice", i, rel.Subject, rel.Outcome)
+		}
+		rels[k] = true
 	}
 	return nil
 }
@@ -513,8 +541,10 @@ func (pr *Product) effective(a ProductAssessment) *ProductDisposition {
 }
 
 // productLines are the readiness prerequisites a product section implies: a
-// mismatch with no disposition in force, a recorded decision, and every
-// coverage gap. They inform the deciding role; they gate nothing.
+// mismatch with no disposition in force, every decision in force, and every
+// coverage gap. A decided gap (one Dispose accepts: unbound or undiscovered
+// with a current target) gets one line naming both its decision and its gap.
+// They inform the deciding role; they gate nothing.
 func productLines(pr *Product) []string {
 	var out []string
 	for _, a := range pr.Assessments {
@@ -530,7 +560,11 @@ func productLines(pr *Product) []string {
 				out = append(out, productLinePrefix+"mismatch: "+a.Subject+" "+o+" bound "+*a.Bound+", current "+*a.Current+": needs a continue, adapt or stop disposition")
 			}
 		case ResultUnknown:
-			out = append(out, productLinePrefix+"unknown: "+a.Subject+" "+o+" ("+a.Relation+"): "+a.Coverage)
+			if d := pr.effective(a); d != nil && (a.Coverage == CoverageUnbound || a.Coverage == CoverageUndiscovered) {
+				out = append(out, productLinePrefix+d.Decision+": "+a.Subject+" "+o+" ("+a.Relation+", "+a.Coverage+") current "+*a.Current+" (decided by "+d.DecidedBy+")")
+			} else {
+				out = append(out, productLinePrefix+"unknown: "+a.Subject+" "+o+" ("+a.Relation+"): "+a.Coverage)
+			}
 		}
 	}
 	return out

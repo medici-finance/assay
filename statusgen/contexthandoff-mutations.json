@@ -1,5 +1,5 @@
 {
-  "test": "go test ./contexthandoff/ . -run '^(TestContextResolverWithheldConsumers|TestContextRecheckUnrelatedEdit|TestContextRecheckNewConsumerOutsideReadSet|TestContextMissingInputScoped|TestContextAmendmentPreservesDatedSources|TestContextActiveWorkerRefusesSilentRebind|TestContextCompetingProposals|TestContextDeliveredBriefRoutesFollowOn|TestContextRecheckTruncatedCoverageHolds|TestContextCLITruncatedCoverageHolds|TestContextDuplicateBriefIDVisible|TestContextCLIDiscoverRoundTrip|TestContextArchitectureCoverageNotProductAlignment|TestPickupContextRecheck|TestProductBindingIndependentTargets|TestProductBindingApprovalCoverage|TestProductBindingCheckpointFlow)$' -count=1 -timeout 300s",
+  "test": "go test ./contexthandoff/ . -run '^(TestContextResolverWithheldConsumers|TestContextRecheckUnrelatedEdit|TestContextRecheckNewConsumerOutsideReadSet|TestContextMissingInputScoped|TestContextAmendmentPreservesDatedSources|TestContextActiveWorkerRefusesSilentRebind|TestContextCompetingProposals|TestContextDeliveredBriefRoutesFollowOn|TestContextRecheckTruncatedCoverageHolds|TestContextCLITruncatedCoverageHolds|TestContextDuplicateBriefIDVisible|TestContextCLIDiscoverRoundTrip|TestContextArchitectureCoverageNotProductAlignment|TestPickupContextRecheck|TestProductBindingIndependentTargets|TestProductBindingApprovalCoverage|TestProductBindingCheckpointFlow|TestProductGapDecisionProjected|TestProductSnapshotRelationshipListedTwice|TestProductCarriedDispositionRole|TestProductAssessmentCurrentIsListedTarget)$' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL: claims ignored by the amendment check",
     "file": "contexthandoff/check.go",
@@ -138,6 +138,42 @@
       "file": "contexthandoff/product.go",
       "old": "\t\t\t\tout.Bindings[i].Selected = p.Selected\n",
       "new": "\t\t\t\tout.Bindings[i].Selected = b.Declared\n"
+    },
+    {
+      "name": "row23-4-gap-decision-unprojected",
+      "file": "contexthandoff/product.go",
+      "old": "\t\t\tif d := pr.effective(a); d != nil && (a.Coverage == CoverageUnbound || a.Coverage == CoverageUndiscovered) {\n",
+      "new": "\t\t\tif d := pr.effective(a); d != nil && a.Coverage == CoverageCovered {\n"
+    },
+    {
+      "name": "row23-5-relationship-repeat-accepted",
+      "file": "contexthandoff/product.go",
+      "old": "\t\trels[k] = true\n",
+      "new": "\t\trels[k] = false\n"
+    },
+    {
+      "name": "row23-6-current-includes-unapproved",
+      "file": "contexthandoff/product.go",
+      "old": "\t\tif t.Approval == ProductApproved {\n\t\t\tcurrent[t.Outcome] = t.Revision\n",
+      "new": "\t\tif t.Approval != ProductUnavailable {\n\t\t\tcurrent[t.Outcome] = t.Revision\n"
+    },
+    {
+      "name": "row23-7-carried-role-unchecked",
+      "file": "contexthandoff/product.go",
+      "old": "\t\tif d.DecidedBy != decidingRole {\n",
+      "new": "\t\tif d.DecidedBy == \"\" {\n"
+    },
+    {
+      "name": "row23-8-recheck-trusts-prior",
+      "file": "contexthandoff/recheck.go",
+      "old": "\tif err := checkProduct(prior.Product, prior.Readiness.DecidingRole); err != nil {\n",
+      "new": "\tif err := checkProduct(nil, prior.Readiness.DecidingRole); err != nil {\n"
+    },
+    {
+      "name": "row23-9-role-change-carried",
+      "file": "contexthandoff/recheck.go",
+      "old": "\tif prior.Product != nil && len(prior.Product.Dispositions) > 0 && prior.Readiness.DecidingRole != fresh.Readiness.DecidingRole {\n",
+      "new": "\tif prior.Product != nil && len(prior.Product.Dispositions) > 0 && false {\n"
     }
   ]
 }

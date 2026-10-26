@@ -75,6 +75,14 @@ func Recheck(prior *Handoff, s *Snapshot) (*RecheckResult, error) {
 	if prior.Product != nil && fresh.Product == nil {
 		return nil, snapshotErr("the prior receipt carries product bindings but the snapshot supplies no product input: they cannot be rechecked, and dropping them would lose their dispositions")
 	}
+	// The prior's product section is checked again, as the decoder would: a
+	// carried disposition and a carried assessment are never trusted on sight.
+	if err := checkProduct(prior.Product, prior.Readiness.DecidingRole); err != nil {
+		return nil, err
+	}
+	if prior.Product != nil && len(prior.Product.Dispositions) > 0 && prior.Readiness.DecidingRole != fresh.Readiness.DecidingRole {
+		return nil, snapshotErr("the snapshot changes the deciding role from %s to %s, but the prior receipt carries product dispositions recorded by %s: they cannot be carried under another deciding role; discover a fresh receipt", prior.Readiness.DecidingRole, fresh.Readiness.DecidingRole, prior.Readiness.DecidingRole)
+	}
 	c := &comparison{ix: ix, prior: prior, fresh: fresh, touched: map[string]bool{}}
 	c.compare()
 	c.compareProduct()

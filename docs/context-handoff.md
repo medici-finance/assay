@@ -186,12 +186,16 @@ statusgen context dispose  RECEIPT --subject ID --outcome REF --decision continu
 writes the updated receipt. It refuses with `stale-disposition` when `--basis`
 is not the receipt's digest or `--expected-revision` is not the current
 approved target, and with `disposition-scope` when there is nothing to decide
-or `--by` is not the receipt's deciding role.
+or `--by` is not the receipt's deciding role. A decision on an unbound or
+undiscovered gap is projected as one prerequisite line naming the decision and
+the gap. Every command that reads a v3 receipt refuses one carrying a
+disposition from another role.
 
 - `--snapshot` is required.
 - `--json` prints the machine output:
-  - **discover**: the canonical context-handoff-v1 record, which the
-    statusgen/19 decoder decodes and digests unchanged;
+  - **discover**: the canonical context-handoff record (v1, v2 when an impact
+    is withdrawn, v3 when the snapshot carries product input), which the
+    decoder decodes and digests unchanged;
   - **recheck**: `{outcome, prior, receipt, findings}`;
   - **check**: the full report;
   - **dispose**: the updated canonical receipt.

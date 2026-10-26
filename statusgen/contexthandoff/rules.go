@@ -33,7 +33,7 @@ func validateHandoff(h *Handoff) error {
 	if err := checkReadiness(h); err != nil {
 		return err
 	}
-	return checkProduct(h.Product)
+	return checkProduct(h.Product, h.Readiness.DecidingRole)
 }
 
 func checkTarget(t Target) error {

@@ -329,3 +329,136 @@ func TestProductV3SchemaParity(t *testing.T) {
 		t.Error("v3 schema accepted a receipt with no product section")
 	}
 }
+
+// productGapReceipt is a receipt whose alpha/04 also relates to the rival
+// outcome, an undiscovered secondary assessment with a current approved
+// target, and the receipt after a continue decision on that gap.
+func productGapReceipt(t *testing.T) (*Handoff, *Handoff, fstest.MapFS) {
+	t.Helper()
+	m := productJourney(t, productTarget(productOutcome, "r1", ProductApproved), productTarget(productRival, "r1", ProductApproved))
+	editSnapshot(t, m, func(v map[string]any) {
+		v["product"].(map[string]any)["relationships"] = []any{map[string]any{"subject": "alpha:04", "outcome": productRival}}
+	})
+	h := discover(t, snap(t, m, Limits{}))
+	out, err := Dispose(h, ProductDisposition{Subject: idA04, Outcome: productRival, ExpectedRevision: "r1",
+		Decision: DecisionContinue, Rationale: "out of scope for this change", DecidedBy: h.Readiness.DecidingRole, Basis: h.Digest()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h, out, m
+}
+
+// A decision Dispose accepts on an unbound or undiscovered gap is projected as
+// a prerequisite line naming the decision and the gap, in place of the bare
+// gap line, and survives a recheck.
+func TestProductGapDecisionProjected(t *testing.T) {
+	_, out, m := productGapReceipt(t)
+	want := "product: continue: " + idA04 + " " + productRival + " (secondary, undiscovered) current r1 (decided by " + out.Readiness.DecidingRole + ")"
+	if !contains(out.Readiness.Prerequisites, want) {
+		t.Errorf("prerequisites %v, want the recorded gap decision %q", out.Readiness.Prerequisites, want)
+	}
+	if hasLine(out.Readiness.Prerequisites, "product: unknown: "+idA04+" "+productRival) {
+		t.Errorf("prerequisites %v still show the decided gap as undecided", out.Readiness.Prerequisites)
+	}
+	rc, err := Recheck(out, snap(t, m, Limits{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contains(rc.Receipt.Readiness.Prerequisites, want) {
+		t.Errorf("recheck prerequisites %v, want the carried gap decision %q", rc.Receipt.Readiness.Prerequisites, want)
+	}
+	// Once the outcome's current target moves on, the decision is history and
+	// the gap is undecided again.
+	setProductTargets(t, m, productTarget(productOutcome, "r1", ProductApproved), productTarget(productRival, "r1", ProductApproved), productTarget(productRival, "r2", ProductApproved))
+	rc, err = Recheck(out, snap(t, m, Limits{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasLine(rc.Receipt.Readiness.Prerequisites, "product: continue: ") || !hasLine(rc.Receipt.Readiness.Prerequisites, "product: unknown: "+idA04+" "+productRival+" (secondary): undiscovered") {
+		t.Errorf("prerequisites %v, want the superseded gap decision out of force", rc.Receipt.Readiness.Prerequisites)
+	}
+}
+
+// A snapshot that lists one product relationship twice, in either spelling of
+// the subject, is refused as a snapshot error.
+func TestProductSnapshotRelationshipListedTwice(t *testing.T) {
+	m := productJourney(t, productTarget(productOutcome, "r1", ProductApproved), productTarget(productRival, "r1", ProductApproved))
+	editSnapshot(t, m, func(v map[string]any) {
+		v["product"].(map[string]any)["relationships"] = []any{
+			map[string]any{"subject": "alpha:04", "outcome": productRival},
+			map[string]any{"subject": idA04, "outcome": productRival},
+		}
+	})
+	_, err := LoadSnapshot(m, Limits{})
+	if err == nil || !strings.HasPrefix(err.Error(), "snapshot: ") || !strings.Contains(err.Error(), "listed twice") {
+		t.Errorf("a relationship listed twice: %v, want a snapshot error naming the repeat", err)
+	}
+}
+
+// A disposition carried in a receipt is checked again on decode and on recheck:
+// one not recorded by the receipt's deciding role is refused, and a recheck
+// whose snapshot changes the deciding role does not carry dispositions across.
+func TestProductCarriedDispositionRole(t *testing.T) {
+	_, out, m := productGapReceipt(t)
+	other := reshapeRaw(t, out, func(v map[string]any) {
+		d := v["product"].(map[string]any)["dispositions"].([]any)[0].(map[string]any)
+		d["decided_by"] = "another-role"
+	})
+	if _, err := DecodeHandoff(other); RuleOf(err) != RuleDispositionScope {
+		t.Errorf("a carried disposition from another role decodes: %v, want %s", err, RuleDispositionScope)
+	}
+
+	prior := *out
+	pr := *out.Product
+	pr.Dispositions = append([]ProductDisposition{}, out.Product.Dispositions...)
+	pr.Dispositions[0].DecidedBy = "another-role"
+	prior.Product = &pr
+	if _, err := Recheck(&prior, snap(t, m, Limits{})); RuleOf(err) != RuleDispositionScope {
+		t.Errorf("recheck of a prior with a disposition from another role: %v, want %s", err, RuleDispositionScope)
+	}
+
+	editSnapshot(t, m, func(v map[string]any) { v["deciding_role"] = "another-role" })
+	if _, err := Recheck(out, snap(t, m, Limits{})); err == nil || !strings.Contains(err.Error(), "deciding role") {
+		t.Errorf("recheck under a changed deciding role: %v, want a snapshot refusal naming the deciding role", err)
+	}
+}
+
+// An assessment's current revision is the last approved target of its outcome
+// in the receipt's own targets list, on decode and on recheck.
+func TestProductAssessmentCurrentIsListedTarget(t *testing.T) {
+	m := productJourney(t, productTarget(productOutcome, "r1", ProductApproved), productTarget(productOutcome, "r2", ProductUnapproved))
+	h := discover(t, snap(t, m, Limits{}))
+	edit := func(f func(am map[string]any)) []byte {
+		return reshapeRaw(t, h, func(v map[string]any) {
+			for _, x := range v["product"].(map[string]any)["assessments"].([]any) {
+				am := x.(map[string]any)
+				if am["subject"] == idA04 && am["outcome"] == productOutcome {
+					f(am)
+					return
+				}
+			}
+			t.Fatal("fixture error: no alpha/04 assessment")
+		})
+	}
+	for name, raw := range map[string][]byte{
+		"unapproved": edit(func(am map[string]any) { am["current"], am["result"] = "r2", ResultMismatch }),
+		"unlisted":   edit(func(am map[string]any) { am["current"], am["result"] = "r9", ResultMismatch }),
+	} {
+		if _, err := DecodeHandoff(raw); RuleOf(err) != RuleCoverage {
+			t.Errorf("an assessment current at an %s revision decodes: %v, want %s", name, err, RuleCoverage)
+		}
+	}
+
+	prior := *h
+	pr := *h.Product
+	pr.Assessments = append([]ProductAssessment{}, h.Product.Assessments...)
+	for i := range pr.Assessments {
+		if pr.Assessments[i].Subject == idA03 && deref(pr.Assessments[i].Outcome) == productOutcome {
+			pr.Assessments[i].Current, pr.Assessments[i].Result = ptr("r9"), ResultMismatch
+		}
+	}
+	prior.Product = &pr
+	if _, err := Recheck(&prior, snap(t, m, Limits{})); RuleOf(err) != RuleCoverage {
+		t.Errorf("recheck of a prior with an unlisted current revision: %v, want %s", err, RuleCoverage)
+	}
+}
