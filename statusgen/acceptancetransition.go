@@ -41,6 +41,15 @@ func transitionWitnessTree(dir, tree, runSHA string) string {
 
 func acceptanceTransition(path, verify, full, run, delivery, base, original, baseline, delivered string, audit bool, read func(string) (string, error)) (string, map[string]string, string) {
 	fail := func(s string) (string, map[string]string, string) { return "", nil, "acceptance transition: " + s }
+	// A relative spelling becomes exactly its absolute twin, working directory
+	// plus the raw spelling uncleaned, so EvalSymlinks resolves it like the OS open.
+	if !filepath.IsAbs(path) {
+		wd, e := os.Getwd()
+		if e != nil {
+			return fail("cannot resolve brief path")
+		}
+		path = wd + string(filepath.Separator) + path
+	}
 	markers := protectedMarkersNamed(normalizedProtectedEvidence(run), "Acceptance-Transition:")
 	if len(markers) != 1 || !markers[0].literal {
 		return fail("one literal live Acceptance-Transition marker is required")

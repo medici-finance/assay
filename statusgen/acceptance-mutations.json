@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^Test(AcceptanceTransition|TransitionExecution|TransitionCISkip|TransitionContext|ContextExecution)$' -count=1 -timeout 240s",
+  "test": "go test . -run '^Test(AcceptanceTransition|TransitionExecution|TransitionCISkip|TransitionContext|ContextExecution|TransitionRelativeBrief)$' -count=1 -timeout 240s",
   "control": {
     "name": "approval payload binding removed",
     "file": "acceptancetransition.go",
@@ -60,6 +60,18 @@
       "file": "acceptancetransition.go",
       "old": "!plain || len(spans) != 1",
       "new": "(false && !plain) || len(spans) != 1"
+    },
+    {
+      "name": "working-directory resolution removed",
+      "file": "acceptancetransition.go",
+      "old": "if !filepath.IsAbs(path) {",
+      "new": "if false && filepath.IsAbs(path) {"
+    },
+    {
+      "name": "lexical working-directory resolution",
+      "file": "acceptancetransition.go",
+      "old": "path = wd + string(filepath.Separator) + path",
+      "new": "path = filepath.Join(wd, path)"
     }
   ]
 }

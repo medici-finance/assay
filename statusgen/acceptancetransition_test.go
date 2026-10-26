@@ -342,3 +342,243 @@ func TestTransitionCISkip(t *testing.T) {
 		t.Fatalf("CI skip conferred coverage: %+v", cov["vf/01"])
 	}
 }
+
+// regression: #4246
+func TestTransitionRelativeBrief(t *testing.T) {
+	tests := []struct {
+		name string
+		// brief is the --brief value spelled against the row's working
+		// directory; empty keeps the fixture's absolute path.
+		brief string
+		// rootJoin builds the row's --brief as the fixture repository's
+		// root, a slash, and the brief spelling, by plain string
+		// concatenation: the raw absolute form of the same spelling, with
+		// .. preserved where filepath.Join would clean it away.
+		rootJoin bool
+		// sub runs the row from a fresh subdirectory of the fixture
+		// repository instead of its root.
+		sub bool
+		// prepare stages the row's filesystem shape once the approving
+		// evidence has landed and before the run.
+		prepare func(t *testing.T, f transitionFixture)
+		// wantCode is the verifyrun exit code; 0 expects acceptance.
+		wantCode int
+		// want is the refusal substring the run must print; empty expects
+		// acceptance, so a refusal cannot hide behind a nonzero code alone.
+		want string
+		// record drives the row through --acceptance-record instead of
+		// --check: a --check audit blames the brief's working-tree file,
+		// which a symlinked brief takes out of the repository before the
+		// transition's brief-path check ever runs.
+		record bool
+	}{
+		{
+			// Sanity: the absolute fixture path from the root is accepted.
+			name:     "approved-abs",
+			wantCode: 0,
+		},
+		{
+			// The same file named relatively from the root must be accepted
+			// with the identical repository-relative payload binding.
+			name:     "approved-relative-from-root",
+			brief:    vfBriefRel,
+			wantCode: 0,
+		},
+		{
+			// The same file named with .. segments from a subdirectory: the
+			// outcome and the payload's brief= value must not depend on where
+			// the invocation ran from.
+			name:     "approved-relative-from-subdir",
+			brief:    "../docs/streams/vf/brief-01-flip.md",
+			sub:      true,
+			wantCode: 0,
+		},
+		{
+			// A relative path naming no file is refused before the transition
+			// check: the brief cannot even be read.
+			name:     "nonexistent-relative",
+			brief:    "docs/streams/vf/no-such-brief.md",
+			wantCode: verifyrunExitCouldNot,
+			want:     "no such file or directory",
+		},
+		{
+			// A fully approving brief copy outside the repository, addressed
+			// with .. segments from a subdirectory: the provenance reads in
+			// the brief's directory cannot leave the repository, so the run
+			// refuses before the transition's brief-path check.
+			name:  "dotdot-escape",
+			brief: "../../outside-brief.md",
+			sub:   true,
+			prepare: func(t *testing.T, f transitionFixture) {
+				briefBesideRoot(t, f)
+			},
+			wantCode: verifyrunExitCouldNot,
+			want:     "cannot resolve HEAD as an immutable commit",
+		},
+		{
+			// A brief path that resolves through a symlink whose target sits
+			// outside the repository: the canonical path lands outside the
+			// root and the transition refuses it. Pinned by its exact message,
+			// so a mutant that skips the symlink resolution or the local-path
+			// check turns this row red through a different refusal.
+			name:   "symlink-escape",
+			brief:  vfBriefRel,
+			record: true,
+			prepare: func(t *testing.T, f transitionFixture) {
+				outside := briefBesideRoot(t, f)
+				if err := os.Remove(f.path); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(outside, f.path); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantCode: verifyrunExitCouldNot,
+			want:     "protected table: acceptance transition: cannot resolve brief path",
+		},
+		{
+			// The same escape spelled absolutely: a relative spelling is the
+			// working directory plus the raw spelling, uncleaned, so both
+			// spellings resolve through the same symlinks and the refusal
+			// must not depend on how the command named the brief.
+			name:   "symlink-escape-abs",
+			record: true,
+			prepare: func(t *testing.T, f transitionFixture) {
+				outside := briefBesideRoot(t, f)
+				if err := os.Remove(f.path); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(outside, f.path); err != nil {
+					t.Fatal(err)
+				}
+			},
+			wantCode: verifyrunExitCouldNot,
+			want:     "protected table: acceptance transition: cannot resolve brief path",
+		},
+		{
+			// A relative brief that escapes through a symlinked directory
+			// component followed by ..: the spelling resolves to the
+			// byte-identical copy outside the repository, while lexical
+			// path cleaning hides the escape and admits the in-repository
+			// brief. The refusal must consult the raw spelling; the row is
+			// pinned by its exact message.
+			name:     "symlink-dotdot-escape",
+			brief:    "docs/streams/vf/esc/../brief-01-flip.md",
+			record:   true,
+			prepare:  symlinkDotdotEscape,
+			wantCode: verifyrunExitCouldNot,
+			want:     "protected table: acceptance transition: cannot resolve brief path",
+		},
+		{
+			// The same escape spelled absolutely: the raw form is the
+			// working directory plus the relative spelling, uncleaned, so
+			// the refusal cannot depend on how the command named the brief.
+			name:     "symlink-dotdot-escape-abs",
+			brief:    "docs/streams/vf/esc/../brief-01-flip.md",
+			rootJoin: true,
+			record:   true,
+			prepare:  symlinkDotdotEscape,
+			wantCode: verifyrunExitCouldNot,
+			want:     "protected table: acceptance transition: cannot resolve brief path",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := transitionFixtureAt(t)
+			f.evidence(t, nil)
+			if tt.prepare != nil {
+				tt.prepare(t, f)
+			}
+			dir := f.root
+			if tt.sub {
+				dir = filepath.Join(f.root, "sub")
+				if err := os.Mkdir(dir, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Chdir(dir)
+			brief := tt.brief
+			if tt.rootJoin {
+				brief = f.root + "/" + tt.brief
+			}
+			if brief == "" {
+				brief = f.path
+			}
+			var res verifyrunResult
+			var out string
+			if tt.record {
+				// The acceptance-record driver refuses before any row runs
+				// when the transition rejects the brief path, so the identity
+				// it would run rows as never matters here; it is pinned to the
+				// verifier the sibling execution test uses.
+				vfGit(t, f.root, vfMailVerifier, "config", "user.name", vfRunner)
+				vfGit(t, f.root, vfMailVerifier, "config", "user.email", vfMailVerifier)
+				descriptor := filepath.Join(t.TempDir(), "transition.txt")
+				if err := os.WriteFile(descriptor, []byte(f.descriptor), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				res, out = captureVerifyrunOut(t, []string{"--brief", brief, "--root", f.root, "--acceptance-record", descriptor, "--acceptance-forge"})
+			} else {
+				res, out = captureVerifyrunOut(t, []string{"--check", "--brief", brief, "--acceptance-forge"})
+			}
+			if res.code != tt.wantCode {
+				t.Fatalf("verifyrun: %d, want %d (output: %s)", res.code, tt.wantCode, out)
+			}
+			if tt.want != "" && !strings.Contains(out, tt.want) {
+				t.Fatalf("output = %q, want it to contain %q", out, tt.want)
+			}
+		})
+	}
+}
+
+// briefBesideRoot copies the row's fully approving brief to a sibling of the
+// fixture repository's root, outside the repository, and returns its path.
+func briefBesideRoot(t *testing.T, f transitionFixture) string {
+	t.Helper()
+	outside := filepath.Join(f.root, "..", "outside-brief.md")
+	raw, err := os.ReadFile(f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outside, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(outside) })
+	return outside
+}
+
+// symlinkDotdotEscape stages the symlink-dotdot-escape rows' filesystem: a
+// byte-identical copy of the approving brief outside the repository, and an
+// esc symlink in the brief's own directory pointing at a directory outside
+// the root, so esc/../<basename> resolves physically to the outside copy.
+// The symlink is excluded in the fixture repository's .git/info/exclude, so
+// the untracked link cannot trip the later clean-source guard: the escape
+// must reach the transition's brief-path check, not be refused for dirt
+// first.
+func symlinkDotdotEscape(t *testing.T, f transitionFixture) {
+	t.Helper()
+	out := t.TempDir()
+	deep := filepath.Join(out, "deep")
+	if err := os.Mkdir(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, filepath.Base(vfBriefRel)), raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	escAbs := filepath.Join(filepath.Dir(f.path), "esc")
+	escRel := filepath.Join(filepath.Dir(vfBriefRel), "esc")
+	if err := os.Symlink(deep, escAbs); err != nil {
+		t.Fatal(err)
+	}
+	exclude, err := os.ReadFile(filepath.Join(f.root, ".git", "info", "exclude"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(f.root, ".git", "info", "exclude"), append(exclude, escRel+"\n"...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
