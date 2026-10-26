@@ -178,7 +178,8 @@ supersedes the 2026-10-08 amendment above (kept as history):
   blocks (class c) retire with forge-neutral/18's reads, and the `origin`-based forge
   classification (class b) and API host literals (class d) with /77, whose row 9 asserts the
   whole `statusgen sites:` total at `0`. Its Task 7 then widens /08's class a gate to that whole
-  total, so a site re-added later fails CI (row 11).
+  total, so a site re-added later fails CI (row 11). /77 depends on /08 (wave 8), so the class a
+  gate and the `statusgen/**` path entry always land first and /08 never narrows /77's gate.
 
 ### Principle 3 — PURPOSE-BUILT QUERIES (typed access-pattern operations)
 

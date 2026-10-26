@@ -2,8 +2,8 @@
 brief: assay:assay:desktools-v2:77
 title: "Retire the deskread bridge for statusgen's forge calls"
 why: "After forge-neutral/18 and /35, every statusgen forge read arrives at one reader seam whose online implementation starts a deskread process. The driver's ruling has statusgen link the shared forge library instead, and statusgen still reads forge tokens from the environment in four files. This brief swaps the one reader and retires those token reads, so a credential exists in statusgen only inside the library's client."
-wave: 7
-depends: ["desktools-v2/75", "desktools-v2/58", "forge-neutral/18", "forge-neutral/35"]
+wave: 8
+depends: ["desktools-v2/75", "desktools-v2/58", "desktools-v2/08", "forge-neutral/18", "forge-neutral/35"]
 unblocks: []
 effort: M
 gate: human
@@ -12,7 +12,7 @@ design: DR-forge-library
 issues: [2395]
 schema: brief-v2
 outcome: none
-version: 3
+version: 4
 id: 8ca0dffc-43e2-4ba1-911a-b26fab5b4d62
 authored: 2026-10-25 by desktools-v2 authoring session
 sources:
@@ -29,7 +29,7 @@ decision-trigger: start
 consumers:
   - "statusgen/forgeread.go: follow-up desktools-v2/77 (the online reader becomes library-backed; the offline and frozen readers are unchanged)"
   - "statusgen/claimdecay_github.go, statusgen/claimdecay_gitlab.go, statusgen/doratiming.go, statusgen/ghfetch.go: follow-up desktools-v2/77 (environment-token reads and the four `api.github.com` host literals retire; the claim-decay `gh auth token` fallback is already gone, retired by forge-neutral/18, and row 3 holds it gone)"
-  - "statusgen/forge.go: follow-up desktools-v2/77 (forge classification resolves through the library's forge resolver; statusgen's own `origin` read in `remoteOriginURL` retires, Task 6)"
+  - "statusgen/forge.go, statusgen/claimdecay.go: follow-up desktools-v2/77 (forge classification and the tracked-repo name resolve through the library's forge resolver; the `remoteOriginURL` var and all its non-test callers retire, Task 6; the three claim-decay readers' own `origin` reads go with Task 2's move)"
   - "statusgen/decisionruling.go: follow-up forge-neutral/35 (its token reads retire there)"
   - "statusgen/go.mod: follow-up desktools-v2/77 (requires the library module by require plus relative replace)"
   - "statusgen/evaluation/: out-of-scope (stays pure; row 4 proves it links no forge library)"
@@ -45,8 +45,9 @@ consumers:
 
 files:
 - `statusgen/forgeread.go` and its tests, `statusgen/go.mod`
-- `statusgen/claimdecay_github.go`, `statusgen/claimdecay_gitlab.go`, `statusgen/doratiming.go`,
-  `statusgen/ghfetch.go`, `statusgen/forge.go`
+- `statusgen/claimdecay.go` (`trackedGitHubRepo`), `statusgen/claimdecay_github.go`,
+  `statusgen/claimdecay_gitlab.go`, `statusgen/doratiming.go`, `statusgen/ghfetch.go`,
+  `statusgen/forge.go`
 - `statusgen/forgeclient_nogh_test.go` (planned), `statusgen/forge_offline_test.go` (planned)
 - `tools/desk/scripts/forge-ban.sh`, `tools/desk/internal/forgeban/allowlist.go` (the combined
   gh/glab ratchet from desktools-v2/75)
@@ -110,6 +111,12 @@ Default if no answer: none — blocks until answered.
 
 ## Ground rules
 
+Landing order: this brief depends on desktools-v2/08 (wave 8), so /08's class a gate and its <!-- graph: encoded desktools-v2/08→desktools-v2/77 -->
+`statusgen/**` entry in `forge-surface-control.yml` are on main first; Task 7 widens that gate
+and does not re-add the path entry. If /08 has not landed, stop: widening a gate that does not
+exist, or landing before /08 so its Task 2 later narrows this gate to class a, is the failure the
+dependency prevents.
+
 Feature branch and draft PR only; fake providers only. Touch no call site's mappings: only the
 reader behind the seam changes. Leave `decisionruling.go` to forge-neutral/35. The offline
 default stays: with no `--forge`, no client is built.
@@ -121,7 +128,7 @@ statusgen builds one library client per role and repository from its adapter lay
 package (`github.com/medici-finance/assay/statusgen`, where `forgeread.go` lives); no other
 statusgen package imports the library, directly or through a dependency (row 7). No statusgen code reads a forge-token environment variable or runs
 `gh auth token`, names a GitHub API host (row 9) or builds a GitLab API base from a
-host (row 10), or reads the `origin` remote to pick a forge (row 9). Class f stays an advisory
+host (row 10), or reads the `origin` remote to pick a forge (rows 9 and 13). Class f stays an advisory
 column, so row 10 holds the one code site in it, not every `gitlab.com` mention. Resolving a forge for a checkout builds no client, requests no credential and opens no
 connection (row 12).
 
@@ -150,8 +157,24 @@ connection (row 12).
 5. Update the library-first table, `forgeread/README.md` and the fragment.
 6. Resolve statusgen's forge classification (`detectForge`, `detectForgeForScaffold` in
    `statusgen/forge.go`) through the library's forge resolver, the one /75 moves out of
-   `tools/desk/internal/deskkit/forgeresolve.go`, asked about the tracking root, and delete statusgen's own
-   `origin` read in `remoteOriginURL` (`forge.go:113`). The three-state answer and `init`'s two
+   `tools/desk/internal/deskkit/forgeresolve.go`, asked about the tracking root, and delete the
+   `remoteOriginURL` var (`forge.go:112`, the `origin` read at `:113`) together with every non-test
+   caller. At `8169a8281` there are five: `detectForge` and `detectForgeForScaffold`
+   (`forge.go:126`, `:146`), `trackedGitHubRepo` (`claimdecay.go:168`, the owner/name for
+   `sameRepoPR`), `githubDecayEndpoint` (`claimdecay_github.go:134`) and `resolveGitLabAPI`
+   (`claimdecay_gitlab.go:120`). The last two are inside Task 2's move: the endpoint, API base and
+   project id become the library's, so their `origin` reads are deleted there. `trackedGitHubRepo`
+   asks the same pure resolver entry for the owner/name. The tests that substitute
+   `remoteOriginURL` (`forge_test.go`, `forgeneutral07_test.go`, `claimdecay_github_test.go`) switch
+   to a fake origin supplied to the pure entry. Row 13 holds that no non-test reference remains.
+   Scope of the claim: class b of `forge-ban.sh` only reads files named `*forge*` or `*resolve*`,
+   so moving the read into another file would zero the count without retiring it, which is why
+   row 13 greps the symbol and not the class b count. Five other statusgen files launch
+   `git remote get-url origin` for a purpose other than choosing a forge
+   (`acceptancetransition.go:215`, `containercredit.go:191`, `corroborate.go:1705`,
+   `doratiming.go:630` and `verifyrun.go:2771`: repo name lookups). They are git launches, so
+   desktools-v2/76's go-git move and its down-only git-launch ratchet own them; this brief leaves
+   them, and a new `origin` read added to pick a forge would show as a new launch there. The three-state answer and `init`'s two
    `forgeUnknown` cases keep their meaning, and resolving builds no client and reads no
    credential, so the offline default holds. The resolver /75 moves out has a pure entry that
    takes an origin URL and constructs nothing, and entries that resolve and then reach
@@ -168,8 +191,10 @@ connection (row 12).
    `statusgen api base: N` line counts non-test statusgen lines carrying a quoted string that
    holds `/api/v4`; it is its own line because class f also counts comments and an e-mail
    address that are not forge API reads. Make the workflow step /08 makes a gate cover the
-   widened condition. Update /08's Task 2 and consumers line to say /77 widens it (and its
-   version). The gh/glab launch ratchet is separate and unchanged by this task: statusgen
+   widened condition. /08 is a dependency, so its class a gate and the `statusgen/**` path entry
+   in `forge-surface-control.yml` (its Task 5) are already on main: confirm both before editing
+   and stop if either is absent. /08's Task 2 and consumers line already say /77 widens it (it
+   is at version 8 for that edge); if they do not, correct them in this diff. The gh/glab launch ratchet is separate and unchanged by this task: statusgen
    already counts 0 launches, so the combined line row 8 reads is N, the desk-side clean
    count, at most 7, and the new gate only adds a failing exit for statusgen. It never raises a
    ceiling. If row 9 does not read `0` after Tasks 2 and 6, stop: the gate would land red, and the
@@ -189,8 +214,9 @@ connection (row 12).
 | 8 | check +mutation | `sh tools/desk/scripts/forge-ban.sh` | exit 0 on the clean tree; the combined gh/glab line /75 row 6 added prints a count N of at most 7 over the surface /75's gate settled (built into the ratchet; the script takes no surface input), and the ratchet's recorded ceiling equals N. Planting one launch site (`exec.Command("gh", …)` in a new non-test desk-tools file) raises the count to N + 1, above the ceiling, and makes the script exit non-zero. A recorded ceiling above N fails the row, because that mutation would then pass |
 | 9 | check +dereference | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && sh tools/desk/scripts/forge-ban.sh > "$o" && grep -x -F 'statusgen sites: 0' "$o")` | exit 0 and the line `statusgen sites: 0`: every class `forge-ban.sh` sums for statusgen is at `0`, a and c through forge-neutral/18 and /35, b and d through Tasks 6 and 2. Measured at `e07782de2` and at `8169a8281`: the line reads `statusgen sites: 38` (a 30, b 1, c 3, d 4), so the row is red there. A landing check: a planted `var _ = "https://api.github.com"` in a new non-test statusgen file prints `statusgen sites: 1` and fails the row. The row proves the count was `0` when read; it cannot prove the script would refuse a later site, which row 11 does |
 | 10 | check +dereference +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && sh tools/desk/scripts/forge-ban.sh > "$o" && grep -x -F 'statusgen api base: 0' "$o")` | exit 0 and the line `statusgen api base: 0`: no non-test statusgen line carries a quoted string holding `/api/v4`. Before Task 7 the line does not exist, so the row is red; the equivalent count `grep -rEn '"[^"]*/api/v4' statusgen --include='*.go'` over non-test files is `1` at `8169a8281` (`claimdecay_gitlab.go:129`). A planted `var _ = "/api/v4"` in a new non-test statusgen file prints `statusgen api base: 1` and fails the row. A base assembled from separate string pieces is not seen; the library's client builds its own base, and row 2 and row 7 keep any other credential-bearing path out |
-| 11 | check +flow +mutation | `sh -c 'b=statusgen/zz_banprobe.go; f=statusgen/zz_forgeprobe.go; g=statusgen/zz_gqlprobe.go; trap "rm -f $b $f $g" 0; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; r0=$?; printf "package main\nvar _ = \"https://api.github.com\"\n" > $b; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; r1=$?; rm -f $b; printf "package main\nvar _ = \"origin\"\n" > $f; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; r2=$?; rm -f $f; printf "package main\nvar _ = \"pullRequest(number:1)\"\n" > $g; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; r3=$?; rm -f $g; echo "clean-rc=$r0 class-d-rc=$r1 class-b-rc=$r2 class-c-rc=$r3"; test "$r0" -eq 0 && test "$r1" -ne 0 && test "$r2" -ne 0 && test "$r3" -ne 0'` | exit 0; prints `clean-rc=0` and a non-zero `rc` for each planted class (d: an API host literal; b: an `"origin"` string in a file whose name holds `forge`, the only place the class b matcher looks; c: a `pullRequest(` block). The exit-status leg for row 9: it fails if the script merely prints a count and exits 0, so row 9 cannot pass vacuously. **Fail-first**: run at `8169a8281`, before Task 7, it prints `clean-rc=0 class-d-rc=0 class-b-rc=0 class-c-rc=0` and exits 1. The clean-tree leg also fails while any statusgen site remains, so the row reads green only with row 9. The probe files are removed whatever the result. Class a is the same leg in desktools-v2/08 row 3 |
+| 11 | check +flow +mutation | `sh -c 'b=statusgen/zz_banprobe.go; f=statusgen/zz_forgeprobe.go; g=statusgen/zz_gqlprobe.go; a=statusgen/zz_apiprobe.go; trap "rm -f $b $f $g $a" 0; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; r0=$?; printf "package main\nvar _ = \"https://api.github.com\"\n" > $b; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; r1=$?; rm -f $b; printf "package main\nvar _ = \"origin\"\n" > $f; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; r2=$?; rm -f $f; printf "package main\nvar _ = \"pullRequest(number:1)\"\n" > $g; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; r3=$?; rm -f $g; printf "package main\nvar _ = \"/api/v4\"\n" > $a; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; r4=$?; rm -f $a; echo "clean-rc=$r0 class-d-rc=$r1 class-b-rc=$r2 class-c-rc=$r3 api-base-rc=$r4"; test "$r0" -eq 0 && test "$r1" -ne 0 && test "$r2" -ne 0 && test "$r3" -ne 0 && test "$r4" -ne 0'` | exit 0; prints `clean-rc=0` and a non-zero `rc` for each of four planted sites, one at a time (d: an API host literal; b: an `"origin"` string in a file whose name holds `forge` or `resolve`, the only files the class b matcher reads; c: a `pullRequest(` block; api-base: a quoted `/api/v4` string, which only the new `statusgen api base:` count sees, so this plant proves the second exit condition of Task 7 on its own). **What it asserts, and when**: it asserts the post-landing tree, after Tasks 2, 6 and 7, where the clean run exits 0 and every plant exits non-zero. It cannot pass earlier, and it does not claim to: it is a landing check on the end state. **Fail-first** (measured at `8169a8281`, before Task 7): the clean run exits 0 because class b to d are advisory, and every plant also exits 0, so it prints `clean-rc=0 class-d-rc=0 class-b-rc=0 class-c-rc=0 api-base-rc=0` and exits 1. On a tree where Task 7 has landed but a statusgen site was left (Tasks 2 or 6 incomplete) it prints a non-zero `clean-rc` and fails, so the row reads green only together with rows 9 and 10. The row fails if the script merely prints counts and exits 0. The probe files are removed whatever the result. Class a is the same leg in desktools-v2/08 row 3 |
 | 12 | check:ci +flow +mutation | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -timeout 300s -v -run '^TestForgeDetectionIsOffline$' . > "$out" && grep -F -- '--- PASS: TestForgeDetectionIsOffline ' "$out")` | exit 0; named PASS. `TestForgeDetectionIsOffline` in `statusgen/forge_offline_test.go` (planned) runs `detectForge`, `detectForgeForScaffold` and their three offline callers (`runInit`, `forgeRoleRunner`, `decayReader`) in temp checkouts whose origin names GitHub, GitLab, a host naming neither, and no remote at all, with no `--forge`. The harness gives the library a fake credential provider that fails the test on any credential request, and uses the network dial hook of forge-neutral/18 row 4 (`TestLintOfflineMakesNoNetworkCall`) that fails on any connection. The three-state answers match the pre-swap answers. **+mutation**: swapping Task 6's call for a resolver entry that takes a credential provider records a request and fails the test; so does an entry that dials. **Fail-first**: run against the custody-reaching entry first and quote the red line under `## Fail-first` in the PR |
+| 13 | check +dereference +mutation | `test -d statusgen && { git grep -n remoteOriginURL -- 'statusgen/*.go' ':(exclude)statusgen/*_test.go' \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| wc -l` | output `0`: the `remoteOriginURL` var and its five non-test callers are gone (`6` non-comment lines at `8169a8281`: the var, `forge.go:126` and `:146`, `claimdecay.go:168`, `claimdecay_github.go:134`, `claimdecay_gitlab.go:120`), so the row is red until Task 6 and Task 2 land. A planted `var remoteOriginURL = func(string) (string, error) { return "", nil }` in a new non-test statusgen file prints `1` and fails the row. The row holds the symbol, not every `git remote get-url origin` launch: the five other launches are repo-name lookups owned by desktools-v2/76 (Task 6) |
 
 ## Pre-mortem and detection
 
@@ -206,6 +232,11 @@ connection (row 12).
   picks the forge) at landing: row 9. A GitLab API base survives: row 10.
 - A later change re-adds one of those after landing, and the script only prints a count: Task 7
   makes it exit non-zero, and row 11 proves it does.
+- The `origin` read survives under another name or file, so class b reads `0` without the read
+  being retired: row 13 holds the `remoteOriginURL` symbol at no non-test reference; a read moved
+  under a new name is a new git launch for desktools-v2/76's ratchet.
+- /77 lands before /08 and /08 Task 2 later narrows its gate to class a: the `desktools-v2/08` <!-- graph: encoded desktools-v2/08→desktools-v2/77 -->
+  dependency (wave 8) rules the order out, and Ground rules stops this brief if /08 is absent.
 - Task 6 reaches the credential-taking resolver entry, so `init` or the verify runner asks for a
   credential or dials with no `--forge`: row 12.
 
@@ -219,5 +250,7 @@ Gate: human. Review answers both: (1) is the library client the only credential 
 statusgen process? (2) do rows 2 to 4 and 7 prove that with the reader seam bypassed? Row 8 asserts the ruled
 ceiling (the clean count, at most 7) over the surface /75's gate settled; row 9 asserts
 statusgen's forge-ban total at `0` and row 10 its API-base count; row 11 proves the script exits
-non-zero when either returns (the durable gate, Task 7). Row 12 proves that forge detection
-reaches no credential and no network.
+non-zero when a planted site returns in any of classes b, c, d or the API-base count (the
+durable gate, Task 7); /08 lands first (dependency), so the gate it widens exists. Row 12 proves that forge detection
+reaches no credential and no network, and row 13 that the `origin` read behind it is gone and
+not merely moved out of the files class b scans.

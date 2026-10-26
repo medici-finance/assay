@@ -157,7 +157,7 @@ promoted by a maintainer; the prepared files are in `ci/staged-workflows/`).
 | Ruling and sign-off reads | forge-neutral/35 | /18 and its existing controls; reads go through the reader seam (deskread, then the library under desktools-v2/77), no credential of statusgen's own. |
 | Shared forge library and thin verb wrappers | desktools-v2/75 | desktools-v2/58's credential provider; carries the five custody records unchanged; owns the combined gh/glab ratchet. |
 | go-git and the git-launch ratchet | desktools-v2/76 | Builds on `gitcore`; statusgen's git launches move to go-git with parity goldens. |
-| Retire the deskread bridge for statusgen | desktools-v2/77 | /75, /58, forge-neutral/18 and /35; env-token reads, API host literals and the `origin`-based forge classifier in statusgen retire, and the statusgen forge-ban total becomes a failing gate. |
+| Retire the deskread bridge for statusgen | desktools-v2/77 | /75, /58, /08, forge-neutral/18 and /35; env-token reads, API host literals and the `origin`-based forge classifier in statusgen retire, and the statusgen forge-ban total becomes a failing gate. |
 | Scan and CI path coverage of the extracted module | forge-neutral/36 | Lands with the extraction: forge-CLI scan, ambient-token rule and workflow path filter cover `forgeread/`. |
 | Further read kinds in the SDK | desktools-v2/75 | Authenticated operations land in the shared forge library, not in the `forgeread` root package. |
 | Canonical evaluation extraction | statusgen/15 | Offline extraction from existing code; no dependency on fact-reader migration or workflow store. |
@@ -169,7 +169,7 @@ Wave 0: review this contract and the named consumer amendments; the driver's rul
 forge direction is recorded (#2395, `DR-forge-library`, superseding `DR-forge-neutral-36`). Wave 1: /36, under its own
 human gate, and statusgen/15 independently. Wave 2: their named consumers, subject to existing dependencies; the forge
 read chain (/18, /35, desktools-v2/08) keeps its own sequence and does not wait on /36.
-The shared-library chain runs desktools-v2/58 → /75 → /77, with /77 also after /18 and /35;
+The shared-library chain runs desktools-v2/58 → /75 → /77, with /77 also after /18, /35 and desktools-v2/08 (so /08's class a gate lands before /77 widens it);
 /76 is independent of it.
 Retirement follows consumer qualification, never merely library availability. Existing
 implemented briefs keep their evidence and scope; changes land as follow-ups.

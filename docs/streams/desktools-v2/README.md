@@ -136,7 +136,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 74 | [Add a verifyrun row selector that records only the named Verify rows](brief-74-add-a-verifyrun-row-selector-that-records-only-the-named-verify-rows.md) | 1 | M | todo | — | — |
 | 75 | [Build the shared forge library and make the desk verbs thin wrappers](brief-75-build-the-shared-forge-library-and-make-the-desk-verbs-thin-wrappers.md) | 2 | L | todo | — | — |
 | 76 | [Move statusgen's git launches to go-git and ratchet git launches down](brief-76-move-statusgens-git-launches-to-go-git-and-ratchet-git-launches-down.md) | 1 | L | todo | — | — |
-| 77 | [Retire the deskread bridge for statusgen's forge calls](brief-77-retire-the-deskread-bridge-for-statusgens-forge-calls.md) | 7 | M | todo | — | — |
+| 77 | [Retire the deskread bridge for statusgen's forge calls](brief-77-retire-the-deskread-bridge-for-statusgens-forge-calls.md) | 8 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -169,7 +169,8 @@ outside `tools/desk/internal/`, and the git path beside it. `desktools-v2/08` wa
 another stream: it cannot start until `forge-neutral/18` and `/35` together reach zero `gh`
 sites in statusgen (26 remained on 2026-09-17), which is why it sits in the last wave and on
 no critical path. Brief 77, which moves statusgen's reader onto the library, has the same
-cross-stream edges plus /75 and /58, all in its frontmatter.
+cross-stream edges plus /75, /58 and /08, all in its frontmatter; the /08 edge is there so /08's
+class a gate lands first and /77 widens it, never the reverse. <!-- graph: encoded desktools-v2/08→desktools-v2/77 -->
 
 ## Dependency waves
 
@@ -189,6 +190,8 @@ cross-stream edges plus /75 and /58, all in its frontmatter.
 - **Wave 7** — `desktools-v2/08` (hold statusgen at zero; depends 02 and the siblings
   `forge-neutral/18` and `/35`, waves 5 and 6 of their own stream — the wave number follows
   the later edge).
+- **Wave 8** — `desktools-v2/77` (retire the deskread bridge for statusgen; depends 75, 58,
+  `forge-neutral/18`, `/35` and 08 — the wave number follows the later edge, /08 at wave 7).
 
 Critical path: `01 → 02 → 03 → 06`, with the outbound-write chain `01 → 10 → 11` beside it.
 
@@ -410,11 +413,12 @@ human-gated briefs carry it; each cites the record with its `design:` key:
   with parity goldens for the history and merge-base semantics `statusgen/verifyflip.go`
   depends on, and adds statusgen's down-only git-launch ratchet beside the desk-tools counter
   that `desktools-go-git/08` flips.
-- **/77** (wave 7, after /75, /58, `forge-neutral/18` and `/35`) swaps statusgen's reader seam
+- **/77** (wave 8, after /75, /58, /08, `forge-neutral/18` and `/35`) swaps statusgen's reader seam
   from the `deskread` process to the library and retires statusgen's environment-token reads.
 
-Path: `58 → 75 → 77`, with `{forge-neutral/18, /35} → 77`; /76 is independent. /08 keeps its
-own sequence; its row 10 already admits the library's caller package. /08 holds statusgen's gh
+Path: `58 → 75 → 77`, with `{forge-neutral/18, /35} → 08 → 77` and `{forge-neutral/18, /35} → 77`; /76 is independent. The /08
+edge fixes landing order: /08's Task 2 gate and Task 5 path entry land before /77 widens them, so
+the two cannot land the other way round and narrow /77's gate. /08's row 10 already admits the library's caller package. /08 holds statusgen's gh
 column of the counter at zero; the rest of the statusgen total (the `origin` classifier and the
 API host literals) is /77's: /77 row 9 asserts it at `0`, and /77 Task 7 widens /08's gate to the
 whole total so it stays there (row 11 proves the script exits non-zero).

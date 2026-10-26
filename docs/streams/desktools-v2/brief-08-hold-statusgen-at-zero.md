@@ -11,7 +11,7 @@ why: >-
   migrates nothing itself.
 wave: 7
 depends: ["desktools-v2/02", "forge-neutral/18", "forge-neutral/35"]
-unblocks: []
+unblocks: ["desktools-v2/77"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -28,14 +28,14 @@ sources:
   - "tools/desk/scripts/forge-ban.sh (desktools-v2/02) — the counter whose statusgen half this brief flips to failing"
   - "freshness-checked 2026-09-17 @ 57509073 — 26 exec.Command(\"gh\" sites remain in 15 non-test statusgen files, so forge-neutral/18 is NOT yet at zero and this brief is not yet startable; statusgen/go.mod imports nothing from tools/desk"
 consumers:
-  - "tools/desk/scripts/forge-ban.sh: follow-up desktools-v2/08 (this brief; the statusgen column of class a, the gh launches, becomes failing — flips to fixed-here when the implementation edits the script). Classes b to d stay advisory here: forge-neutral/18 and desktools-v2/77 take them to 0, /77 row 9 asserts it, and /77 Task 7 widens this gate to the whole statusgen total (its row 11 proves the script exits non-zero)"
+  - "tools/desk/scripts/forge-ban.sh: follow-up desktools-v2/08 (this brief; the statusgen column of class a, the gh launches, becomes failing — flips to fixed-here when the implementation edits the script). Classes b to d stay advisory here: forge-neutral/18 and desktools-v2/77 take them to 0, /77 row 9 asserts it, and /77 Task 7 widens this gate to the whole statusgen total (its row 11 proves the script exits non-zero). /77 depends on this brief, so this gate and its `statusgen/**` path entry land first and /77 only widens them <!-- graph: encoded desktools-v2/08→desktools-v2/77 -->"
   - ".github/workflows/forge-surface-control.yml: follow-up desktools-v2/08 (this brief; the advisory step's statusgen half becomes a gate)"
   - "statusgen/forgeread_nogh_test.go and statusgen/reader_boundary_test.go: follow-up desktools-v2/08 (tests only; read migration stays with forge-neutral)"
   - "forgeread/ scan and path-trigger coverage: out-of-scope (forge-neutral/36 owns it and lands it with the extraction)"
 exec-tier: strong
 exec-tier-why: Cross-module capability checks must tell the permitted offline packages apart from indirect credential or write reach.
 domain: complicated
-version: 7
+version: 8
 id: 0a18147e-5225-4ba4-91ab-b3bcd92bc00d
 ---
 
@@ -149,7 +149,11 @@ changes here, and what does not:
   `deskread` the positive leg uses a stub `deskread`; desktools-v2/77 owns re-pointing that leg
   at the library client over a fake provider, with neither `gh` nor `deskread` on `PATH`. The
   test names and PASS lines do not change.
-- No dependency is added: /08 still follows `forge-neutral/18` and `/35` only. Rows 1 to 3
+- Landing order: /08 adds no new dependency and still follows `forge-neutral/18` and `/35` only,
+  but desktools-v2/77 now depends on /08 (wave 8). So /08's Task 2 gate and Task 5 path entry <!-- graph: encoded desktools-v2/08→desktools-v2/77 -->
+  always land before /77's Task 7 widens them, and Task 2 can never narrow a gate /77 already
+  widened. (Without that edge the two briefs, both wave 7, could land in either order, and this
+  brief's class a gate would overwrite /77's whole-total gate.) Rows 1 to 3
   need only gh launches gone, and /18 and /35 remove every one, the claim-decay fallback
   included. The statusgen sites in classes b to d stay until /77, which is why row 2 reads the
   class a column and not the total. /77 owns those sites and the row 4, 6, 7 and 10
@@ -159,7 +163,9 @@ changes here, and what does not:
 1. Confirm the precondition (Verify rows 1 and 8). Stop with NEEDS_CONTEXT if either fails.
 2. Make `forge-ban.sh` exit non-zero when the statusgen column of its class a (gh subprocess)
    line is above zero, leaving the desk-tools half and statusgen's classes b to d advisory.
-   Make the workflow step a gate for that column. Do not gate on the `statusgen sites:` total:
+   Make the workflow step a gate for that column. The condition is class a only, and desktools-v2/77
+   (which depends on this brief) widens it, so write it as the class a column and leave the
+   widening to /77. Do not gate on the `statusgen sites:` total:
    it also sums classes b to d, which reach `0` only under desktools-v2/77 (its row 9). That
    brief's Task 7 then widens this gate to the whole total.
 3. Add `TestScanNeverEmptyWithoutForgeBinary` in `statusgen/forgeread_nogh_test.go` (planned): with `PATH`
