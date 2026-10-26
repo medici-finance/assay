@@ -5,8 +5,9 @@ agent-execution stream are proposed by
 [PR #4349](https://github.com/medici-finance/assay/pull/4349) and take effect on the
 maintainer's merge of it, the ruling record under lifecycle §8.4. From that merge this
 document is the approved plan of record for the stream. Its routing edge is already closed:
-agent-execution briefs 01–08 and graph-execution briefs 20–22 and 25–27 already cite this
-path in their `sources:`, so no brief-authoring is owed.
+agent-execution briefs 01–08 already cite this path in their `sources:`, so no
+brief-authoring is owed. (Graph-execution briefs 20–22 and 25–27 link this amendment in
+their body text only; they are not `sources:` citations.)
 
 **Routes-to:** docs/streams/agent-execution/
 
