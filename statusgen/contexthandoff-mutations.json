@@ -1,5 +1,5 @@
 {
-  "test": "go test ./contexthandoff/ . -run '^(TestContextResolverWithheldConsumers|TestContextRecheckUnrelatedEdit|TestContextRecheckNewConsumerOutsideReadSet|TestContextMissingInputScoped|TestContextAmendmentPreservesDatedSources|TestContextActiveWorkerRefusesSilentRebind|TestContextCompetingProposals|TestContextDeliveredBriefRoutesFollowOn|TestContextRecheckTruncatedCoverageHolds|TestContextCLITruncatedCoverageHolds|TestContextDuplicateBriefIDVisible|TestContextCLIDiscoverRoundTrip|TestContextArchitectureCoverageNotProductAlignment|TestPickupContextRecheck)$' -count=1 -timeout 300s",
+  "test": "go test ./contexthandoff/ . -run '^(TestContextResolverWithheldConsumers|TestContextRecheckUnrelatedEdit|TestContextRecheckNewConsumerOutsideReadSet|TestContextMissingInputScoped|TestContextAmendmentPreservesDatedSources|TestContextActiveWorkerRefusesSilentRebind|TestContextCompetingProposals|TestContextDeliveredBriefRoutesFollowOn|TestContextRecheckTruncatedCoverageHolds|TestContextCLITruncatedCoverageHolds|TestContextDuplicateBriefIDVisible|TestContextCLIDiscoverRoundTrip|TestContextArchitectureCoverageNotProductAlignment|TestPickupContextRecheck|TestProductBindingIndependentTargets|TestProductBindingApprovalCoverage|TestProductBindingCheckpointFlow)$' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL: claims ignored by the amendment check",
     "file": "contexthandoff/check.go",
@@ -120,6 +120,24 @@
       "file": "contexthandoff/discover.go",
       "old": "\treturn append(out, ix.dups...)\n",
       "new": "\treturn out\n"
+    },
+    {
+      "name": "row23-1-one-revision-field",
+      "file": "contexthandoff/product.go",
+      "old": "\t\t\tcur, unavailable = ptr(t.Revision), false\n",
+      "new": "\t\t\tcur, unavailable = ptr(ix.s.Target.Revision), false\n"
+    },
+    {
+      "name": "row23-2-absent-binding-aligned",
+      "file": "contexthandoff/product.go",
+      "old": "\t\ta.Result, a.Coverage, a.Reason = ResultUnknown, CoverageUnbound, \"no product binding: unchecked, not aligned\"\n",
+      "new": "\t\ta.Result, a.Coverage, a.Reason = ResultAligned, CoverageCovered, \"no product binding: unchecked, not aligned\"\n"
+    },
+    {
+      "name": "row23-3-replace-selection",
+      "file": "contexthandoff/product.go",
+      "old": "\t\t\t\tout.Bindings[i].Selected = p.Selected\n",
+      "new": "\t\t\t\tout.Bindings[i].Selected = b.Declared\n"
     }
   ]
 }

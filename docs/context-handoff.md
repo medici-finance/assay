@@ -8,6 +8,8 @@ brief author need answered before a plan moves:
   context-handoff receipt.
 - **recheck**: does a prior receipt still hold against a newer snapshot?
 - **check**: are the amendment obligations safe to apply?
+- **dispose**: record a continue, adapt or stop decision on a product-binding
+  mismatch (statusgen/23).
 
 The record shapes are owned by statusgen/19: [`spec/context-handoff-v1.md`](../spec/context-handoff-v1.md),
 [`schemas/context-handoff-v1.json`](../schemas/context-handoff-v1.json) and
@@ -47,6 +49,7 @@ receipts and equal digests.
 | `edges[]` | Declared semantic edges (owns, produces, replaces and so on). Each has `subject`, `edge`, `term`, `locator` and an optional `version` |
 | `claims[]` | Observed dispatch claims. Each has `subject`, `claim`, `brief_revision`, `observed_at`, `owner` and `checkpoint`. They are read from the snapshot, never from a forge |
 | `proposals[]` | Paths of rival handoff records inside the snapshot. Only an approved rival can block or invalidate approved work |
+| `product` | Optional product-target input (statusgen/23): `targets[]` (`outcome` as `<cell>:<repo>:REQ-<slug>`, `revision`, `approval` of `approved`, `unapproved` or `unavailable`, and `reference`) and `relationships[]` (`subject`, `outcome`) declaring an outcome work relates to besides its own binding. When present, the receipt is [context-handoff-v3](../spec/context-handoff-v3.md) |
 
 A source whose directory is missing is **unavailable**, and so is a source that
 exceeds a read limit. An unavailable source is never read as empty. It becomes
@@ -73,10 +76,45 @@ with its parameters and results:
 | `read-set` | Every file the run read, by blob |
 | `coverage-scope` | What kind of alignment the receipt covers |
 
-**Coverage is architecture only.** Every receipt carries the prerequisite
-"architecture-only coverage: product alignment unchecked". A missing product
-binding means *unchecked*, never *aligned*. Product-target binding is owned by
-later statusgen briefs.
+**Coverage is architecture only** unless the snapshot carries a `product`
+input. Such a receipt carries the prerequisite "architecture-only coverage:
+product alignment unchecked". A missing product binding means *unchecked*,
+never *aligned*.
+
+## Product-target binding
+
+With a `product` input, `discover` emits a
+[context-handoff-v3](../spec/context-handoff-v3.md) receipt. The architecture
+target and the product target stay separate inputs: a product change never
+moves `$.target`, an impact or the next act.
+
+Each impacted brief (and the declaring brief) is bound from its own frontmatter:
+
+```yaml
+outcome: REQ-nightly-export   # the requirement the brief moves
+outcome-revision: r1          # the approved product target revision it was selected against
+```
+
+The receipt compares that binding with the outcome's current target, the last
+approved revision in snapshot order:
+
+| Result | Coverage | When |
+|---|---|---|
+| `aligned` | `covered` | The declared revision is the current approved one |
+| `mismatch` | `covered` | It is an older or different revision |
+| `not-applicable` | `covered` | `outcome: none` |
+| `unknown` | `unbound` | No outcome, or an outcome with no `outcome-revision`. Every legacy brief is here |
+| `unknown` | `undiscovered` | A declared relationship to an outcome the binding does not name |
+| `unknown` | `approval-unavailable`, `target-unknown`, `could-not-check` | The current target or the brief cannot be read |
+
+An unapproved rival is recorded but never becomes current, so it cannot stale
+approved work. The prerequisites list each mismatch and each gap as `product:`
+lines. They are a projection for the deciding role, never a veto.
+
+`recheck` reports product changes in a fifth class, `assess`. It never forces
+`reconcile` or `hold`. When a brief rebinds to a newer revision, the receipt
+keeps the revision the work was first selected against (`selected`) and every
+recorded disposition.
 
 ## Recheck
 
@@ -88,7 +126,8 @@ puts every change into one class:
 | `preserved` | An input changed, but no conclusion depends on it (an unrelated edit) |
 | `reconcile` | A conclusion depends on a changed input. Examples: a guideline added or changed, an approved owner, producer version or planned replacement changed, or a new or deleted consumer outside the prior read set |
 | `hold` | An input could not be checked. Either it is unavailable, which is a could-not-check scoped to that input, or the coverage on either side is partial, for example because a query was truncated at its result limit |
-| `ignored` | An input that cannot affect approved work, such as an unapproved (draft) rival |
+| `ignored` | An input that cannot affect approved work, such as an unapproved (draft) rival or an unapproved product target |
+| `assess` | A product-binding change in a v3 receipt: a new approved product target, an unavailable product approval, or a changed product assessment. The deciding role assesses it. It never forces `reconcile` or `hold` |
 
 Discovery is re-run over the whole new snapshot. It does not just re-hash the
 files that were read before, so a new consumer outside the old read set forces
@@ -139,16 +178,26 @@ it owns a term. Any other follow-up is refused as `amend-unbound`.
 statusgen context discover --snapshot DIR [--json]
 statusgen context recheck  --snapshot DIR RECEIPT [--json]
 statusgen context check    --snapshot DIR HANDOFF [MANIFEST] [PATCH...] [--json]
+statusgen context dispose  RECEIPT --subject ID --outcome REF --decision continue|adapt|stop
+                           --expected-revision REV --rationale TEXT --by ROLE --basis DIGEST [--json]
 ```
+
+`dispose` reads no snapshot. It appends one disposition to a v3 receipt and
+writes the updated receipt. It refuses with `stale-disposition` when `--basis`
+is not the receipt's digest or `--expected-revision` is not the current
+approved target, and with `disposition-scope` when there is nothing to decide
+or `--by` is not the receipt's deciding role.
 
 - `--snapshot` is required.
 - `--json` prints the machine output:
   - **discover**: the canonical context-handoff-v1 record, which the
     statusgen/19 decoder decodes and digests unchanged;
   - **recheck**: `{outcome, prior, receipt, findings}`;
-  - **check**: the full report.
+  - **check**: the full report;
+  - **dispose**: the updated canonical receipt.
 - Text output names the coverage state, every could-not-check scope and the
-  coverage scope line.
+  coverage scope line, and for a v3 receipt every product target, binding,
+  assessment and disposition.
 - Every input file is read with a 16 MiB bound.
 
 | Exit | Meaning |

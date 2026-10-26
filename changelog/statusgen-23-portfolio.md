@@ -1,0 +1,4 @@
+### Added
+- Briefs can bind their `outcome` to an approved product target revision with the optional `outcome-revision` key, and `statusgen context discover` then writes a `context-handoff-v3` receipt that compares each binding with the current approved target: aligned, mismatch, or unknown with the gap named (unbound, undiscovered, approval unavailable, target unknown). A missing binding is never reported as aligned, and an unapproved rival target never stales approved work.
+- `statusgen context recheck` reports product-target changes in a new `assess` class that never forces reconciliation or a hold, and keeps the revision work was first selected against when a brief rebinds.
+- `statusgen context dispose` records a continue, adapt or stop decision on a product mismatch, refusing a stale basis digest or a superseded expected revision.
