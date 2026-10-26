@@ -579,6 +579,13 @@ func TestCLILegacyForms(t *testing.T) {
 				t.Errorf("%v: exit %d stdout %q, want the version line", args, code, out)
 			}
 		}
+		// The explicit boolean forms are pinned: =true prints the version, =false is no version request.
+		if code, out, _ := r.exec("--version=true"); code != 0 || !strings.HasPrefix(out, "deskfleet sourceSHA=") {
+			t.Errorf("--version=true: exit %d stdout %q, want the version line and exit 0", code, out)
+		}
+		if code, out, _ := r.exec("--version=false"); code != exitUsage || strings.HasPrefix(out, "deskfleet sourceSHA=") {
+			t.Errorf("--version=false: exit %d stdout %q, want no version line and exit %d", code, out, exitUsage)
+		}
 	})
 
 	t.Run("usage-exit", func(t *testing.T) {
