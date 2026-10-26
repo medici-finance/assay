@@ -72,6 +72,13 @@ type BriefFile struct {
 	// which derivation question(s) it answered yes and why.
 	// NOTICEd when exec-tier: strong but exec-tier-why is absent or empty.
 	ExecTierWhy string
+	// IndependenceOverride is the optional `independence-override:` key: the
+	// recorded, human-authorized override of the committer-identity cross-check's
+	// hard PROBLEM for one brief (measured-status/05; attribution.go,
+	// independenceOverrideRefusal). "" when absent. Only its TYPE is checked at
+	// parse; its grammar, the named human, and who committed it are checked by
+	// attributionProblems, and only when the brief actually fails that check.
+	IndependenceOverride string
 	// BlockedBy is the optional brief-v1 `blocked-by:` field — "env" when the
 	// brief is blocked on infrastructure/environment; "" when absent (marks the env-blocked segment in the segmented Awaiting board).
 	BlockedBy string
@@ -1040,6 +1047,17 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 			bf.Ruling = strings.TrimSpace(s)
 		} else {
 			addBad("ruling must be a string (an issue-comment URL)")
+		}
+	}
+	// independence-override is an OPTIONAL but KNOWN key (measured-status/05): a
+	// single-line "human:<name> YYYY-MM-DD <reason>" value. A wrong TYPE is a parse
+	// error; everything else is judged where the override would apply
+	// (attribution.go), so a malformed value is echoed back there, never here.
+	if v, ok := data["independence-override"]; ok {
+		if s, isStr := v.(string); isStr {
+			bf.IndependenceOverride = strings.TrimSpace(s)
+		} else {
+			addBad("independence-override must be a string (\"human:<name> YYYY-MM-DD <reason>\")")
 		}
 	}
 	// brief-v2 reserved keys (derived-board/03). Parsed only for a v2 file; a v1

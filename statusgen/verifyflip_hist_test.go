@@ -483,6 +483,12 @@ func TestHistoryGitIsolated(t *testing.T) {
 		map[string]bool{"rawCommitAuthor": true, "parseRawAuthor": true, "blameEvidenceAuthors": true}) {
 		t.Error(leak)
 	}
+	// The independence-override recorder read (measured-status/05) is a provenance
+	// read of the same kind: blame picks the commit, then that commit's author.
+	for _, leak := range historyGitLeaks(t, fset, "gitinfo.go", nil,
+		map[string]bool{"frontmatterKeyLineProvenance": true}) {
+		t.Error(leak)
+	}
 }
 
 // TestHistoryGitGrafts pins historyGitEnv's graft isolation: a runner-local
