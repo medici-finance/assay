@@ -35,7 +35,7 @@ parse time).
 | `deskwt remove <path>` | exactly 1 | `runRemove` |
 | `deskwt prune` | none | `runPrune` |
 | `deskwt maintain` | none | `runMaintain` |
-| `deskwt maintain objects` | none (`objects` must be the first word after `maintain`; only the root's persistent flags, such as `--trace`, may stand between them) | `runObjectMaintenance` |
+| `deskwt maintain objects` | none (`objects` must be the first word after `maintain`; only the root's persistent flags, `--trace` and the `--perf-*` flags below, with the value word a `--perf-*` flag takes, may stand between them) | `runObjectMaintenance` |
 | `deskwt role-init [<role>]` | 0 or 1 | `runRoleInit` |
 | `deskwt role-clean [<role>]` | 0 or 1 | `runRoleClean` |
 
@@ -44,15 +44,32 @@ There are no hidden or internal entrypoints. Cobra's `completion` command is dis
 
 ### Flags and defaults
 
-Every setting is flag > literal default. There is no config file and no environment
-binding for any flag; the precedence matrix in `TestCLIConfigFlow` proves that a
-same-named environment variable or config key never supplies a value, that an explicit
-empty string beats the default, and that an unset flag keeps the baseline default. Scalar
-repeats keep the last value.
+Every verb setting in the table below is flag > literal default. There is no config file,
+and no environment binding for any verb flag or for `--trace`; the precedence matrix in
+`TestCLIConfigFlow` proves that a same-named environment variable or config key never
+supplies a value, that an explicit empty string beats the default, and that an unset flag
+keeps the baseline default. Scalar repeats keep the last value.
+
+The one exception is the set of eight persistent `--perf-*` flags, which the shared adapter
+binds on the root for every verb (cli-contract section 8, "Performance context"). They carry
+optional local performance-attribution context only. Each resolves flag > named environment
+variable > unset, and an explicitly empty flag clears an inherited environment value. They
+never change what a verb does, which role or credential it runs under, or its exit code,
+and an invalid value is not echoed. Attribution is recorded only when the opt-in
+`ASSAY_TELEMETRY=1` is set and a profile (`tool` or `workflow`) is selected; with no profile
+the recorder behaves as it did before.
 
 | Command | Flag | Type | Default |
 |---|---|---|---|
 | all | `--trace` | bool, any position | false; absent leaves `DESK_TRACE` in charge, explicit wins over it |
+| all | `--perf-profile` | string, persistent | unset; env `ASSAY_PERF_PROFILE` (`tool`, `workflow`; `off` or empty disables) |
+| all | `--perf-session-id` | string, persistent | unset; env `ASSAY_PERF_SESSION_ID` |
+| all | `--perf-agent-id` | string, persistent | unset; env `ASSAY_PERF_AGENT_ID` |
+| all | `--perf-parent-agent-id` | string, persistent | unset; env `ASSAY_PERF_PARENT_AGENT_ID` |
+| all | `--perf-parent-invocation-id` | string, persistent | unset; env `ASSAY_PERF_PARENT_INVOCATION_ID` |
+| all | `--perf-loop-role` | string, persistent | unset; env `DESK_LOOP` (not an `ASSAY_PERF_*` name) |
+| all | `--perf-role` | string, persistent | unset; env `ASSAY_PERF_ROLE` |
+| all | `--perf-work` | string, persistent, repeatable | unset; env `ASSAY_PERF_WORK` (a JSON array); repeated flags replace the whole environment list |
 | add | `--branch` | string | `""` (the worktree name) |
 | add | `--detach` | bool | false |
 | add | `--base` | string | `origin/main` |
@@ -101,7 +118,10 @@ are typed now; their range checks stay in the handlers (exit 5).
 
 Unchanged and not bound by the parser: `DESK_TRACE`, the kill switch and audit settings
 read by `deskkit`, `CELLS_ROOT` and `XDG_DATA_HOME` (prune cache pass), `DESK_SESSION` and
-`CLAUDE_SESSION_ID` (role session fallback), and the opt-in performance-record variables.
+`CLAUDE_SESSION_ID` (role session fallback), and the `ASSAY_TELEMETRY` opt-in. The
+`ASSAY_PERF_*` variables and `DESK_LOOP` named in the flag table are read by the shared
+performance resolver as the fallback for the `--perf-*` flags, not by `deskwt`'s own
+bindings.
 
 ### Exit codes and output
 
@@ -123,7 +143,7 @@ handler:
 - Documented forms in `tools/desk/README.md` and the desk skills: every flag above in
   `--f v`, `--f=v` and single-dash Go-flag spellings (`-repo /r`, `-branch=b1`), `--`
   termination, repeated flags, and `--trace` before or after the verb, including between
-  `maintain` and `objects` (`maintain --trace objects`).
+  `maintain` and `objects` (`maintain --trace objects`, `maintain --perf-role worker objects`).
 - Path values are passed through untouched, so Windows and POSIX paths reach the handler
   as given (`GOOS=windows go vet ./cmd/deskwt` keeps the package compiling there).
 
@@ -135,7 +155,9 @@ Each row is a CLI-contract change, not a lifecycle change.
 |---|---|---|
 | Unknown flag, malformed value, missing value, wrong positional count (`add`, `add a b`, `add a --detach=maybe`, `remove --force x`, `prune stray`, `maintain --timeout bogus`, `role-init a b`) | exit 5 after the kill switch, one `refused: bad flags` audit row | exit 2 before the kill switch and before any audit row, read or child process |
 | Unknown verb (`deskwt frobnicate`) | exit 5, usage on stderr | exit 2, Cobra's unknown-command message |
-| `maintain --apply objects` (the word after a flag) | exit 5 (`maintain requires no positional args …`) | exit 2: `objects` is a sub-verb only as the first word after `maintain`, not counting the root's persistent flags (`maintain --trace objects` runs the object pass, as before) |
+| `maintain --apply objects` (the word after a flag) | exit 5 (`maintain requires no positional args …`) | exit 2: `objects` is a sub-verb only as the first word after `maintain`, not counting the root's persistent flags, `--trace` and `--perf-*` (`maintain --trace objects` runs the object pass, as before) |
+| `--perf-profile`, `--perf-session-id`, `--perf-agent-id`, `--perf-parent-agent-id`, `--perf-parent-invocation-id`, `--perf-loop-role`, `--perf-role`, `--perf-work` before or after any verb (`deskwt --perf-role worker prune --dry-run`, `deskwt maintain --perf-role worker objects`) | not recognised: exit 5 (`unknown subcommand` before the verb, `flag provided but not defined` after it) | accepted on every verb, with the `ASSAY_PERF_*` / `DESK_LOOP` environment fallback in the flag table; attribution only, no effect on the verb's behaviour or exit code |
+| `deskwt --version=true` | exit 5 (only the bare `--version` token answered) | exit 0, prints the version, like `--version` (`--version=false` still exits 5) |
 | `deskwt <verb> --help`, `-h`, `-help`, `deskwt help <verb>` | the whole usage text on stderr, exit 0 | that verb's generated help on stdout, exit 0 |
 | `deskwt --help`, `-h`, `help` | usage on stderr, exit 0 | generated root help on stdout, exit 0 |
 | Help and version | ran after the roster echo and verb-activation check | run before either, with no config, roster, credential or network read, lock, worktree or child process |

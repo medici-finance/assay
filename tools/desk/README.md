@@ -2744,7 +2744,9 @@ deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              #
 credential or network read, lock or child process. Every flag above keeps its spelling,
 default and single-dash form. A usage error (unknown verb or flag, bad value, wrong number
 of positionals) now exits 2 before the kill switch and writes no audit row; domain refusals
-keep exit 5. The [compatibility page](../../docs/deskwt-cli-compat.md) pins the baseline
+keep exit 5. Every verb also accepts the eight shared persistent `--perf-*` attribution
+flags, which fall back to `ASSAY_PERF_*` (and `DESK_LOOP`) when unset. The
+[compatibility page](../../docs/deskwt-cli-compat.md) pins the baseline
 inventory and lists every observable change.
 
 - **`role-init`** is the isolate-first step every desk role takes before `deskboot`: from a
