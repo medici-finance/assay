@@ -116,10 +116,25 @@ activation gate and historical Evidence remain unchanged.
 
 graph-execution/33 makes the implementation pattern's `merge` node a `human` decision and leaves the
 merge act itself with no verified control until this brief binds admission at dispatch. That layer is
-owned here. Add `TestGraphAdmissionHumanFloorMerge` (planned) to the graphadmission test surface: an
-instance whose node would perform `merge` for any agent role is refused at dispatch at every
-disposition, fed straight to admission with the pattern lint and instance validator bypassed, and a
-well-formed `decisions[]` record naming that merge does not authorize the agent. Verify row 9 holds it.
+owned here. Admission refuses by operation name, and an assessment's operations are supplied by the
+caller (`AgenticAssessment.Operations`, `tools/desk/internal/deskkit/admission.go`). Today a node's
+operation is its effect kind, so an agent node shaped `{kind: dispatch, target: merge-commit}` would
+reach admission as `dispatch` and the human-floor refusal would never engage. This brief therefore
+derives the admission operations of a node from its floor artifact, not from its effect kind or label:
+any node output or effect target in graph-execution/33's closed floor-artifact list adds the matching
+floor operation (`merge-commit` -> `merge`, `release` -> `release`, `deployment` -> `deploy`, the same
+one-to-one list that brief fixes against `humanFloorOperations`), whatever the effect is declared as.
+Add `TestGraphAdmissionHumanFloorMerge` (planned) to
+`tools/desk/internal/deskkit/graphadmission_test.go` (planned). It feeds admission an agent node shaped
+`{kind: dispatch, target: merge-commit}` in a category whose permitted operations include `dispatch`,
+with the pattern lint and instance validator bypassed. It asserts the node is not admitted to the agent at any
+disposition (reason `human-floor:merge`), and that a well-formed `decisions[]` record naming that merge
+does not authorize the agent. Because the category permits `dispatch`, removing the derivation lets
+the node through as a permitted `dispatch`; the unknown-operation path cannot mask that. Verify
+row 9 holds it.
+Scope: admission sees only the operations requested through dispatch or routed through this brief's
+effect-admission recheck. A merge an agent performs out of band with a forge credential it holds is
+bounded only by that credential's scope, which graph-execution/33 records as unverified.
 
 ## Task
 
@@ -145,7 +160,7 @@ Every shared consumer above must be reconciled against the implementing diff. Pl
 | 6 | check:ci +flow +mutation | `(cd tools/desk && routing_out=$(mktemp) && trap 'rm -f "$routing_out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionDeskProgramRace$" ./... > "$routing_out" && grep -q -- "--- PASS: TestGraphAdmissionDeskProgramRace " "$routing_out")` | exit 0; named PASS; concurrent desk/program claims permit one owner and one launch; direct stale invocation is denied; mutation: skip the claim-generation compare on the program path — the named test must fail |
 | 7 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestAdmissionContext$" ./internal/deskkit/ > "$out" && grep -F -- "--- PASS: TestAdmissionContext " "$out")` | exit 0; named PASS; expired or incomplete evaluation context holds, while a current authorized context permits the existing admission path; mutation: accept a cached eligibility flag |
 | 8 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestAdmissionDuty$" ./internal/deskkit/ > "$out" && grep -F -- "--- PASS: TestAdmissionDuty " "$out")` | exit 0; named PASS; same principal under different keys and uncorroborated caller provenance cannot satisfy independent evidence; mutation: compare only role labels |
-| 9 | check:ci +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionHumanFloorMerge$" ./internal/deskkit/ > "$out" && grep -F -- "--- PASS: TestGraphAdmissionHumanFloorMerge " "$out")` | exit 0; named PASS; a dispatch that would perform `merge` for an agent role is refused at every disposition with the pattern and instance validators bypassed, and a recorded decision does not authorize it; mutation: drop `merge` from `humanFloorOperations` — the named test must fail |
+| 9 | check:ci +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run "^TestGraphAdmissionHumanFloorMerge$" ./internal/deskkit/ > "$out" && grep -F -- "--- PASS: TestGraphAdmissionHumanFloorMerge " "$out")` | exit 0; named PASS; an agent node `{kind: dispatch, target: merge-commit}` in a category that permits `dispatch`, fed to admission with the pattern lint and instance validator bypassed, is not admitted to the agent at any disposition (reason `human-floor:merge`), and a recorded decision does not authorize it; mutation: remove the floor-artifact derivation so the node's operation is its effect kind `dispatch` — the named test must fail |
 
 
 The flow row must call production contract code across the seam; isolated serializers or a hand-built expected JSON are insufficient. Negative rows must prove a distinct lower boundary where applicable, not merely repeat the upper validator.

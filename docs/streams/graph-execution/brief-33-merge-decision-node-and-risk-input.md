@@ -117,8 +117,8 @@ layering: no new component. The pattern schema owns the shape (`human` only on e
 nodes); the pattern lint owns the cross-field rule (human-floor outputs); the instance validator owns
 the actor rule. Each check runs in a different component on a different signal, so a declared-shape
 fault in one is caught by the next. None of them sees the merge act. Admission (from
-graph-execution/14) is the only planned layer that does; the forge's confinement of the act is
-unverified.
+graph-execution/14) is the only planned layer that does, and only for a merge requested through
+dispatch or effect admission; the forge's confinement of the act is unverified.
 
 design-fit:
   owner: statusgen/patterns.go (pattern contract) and statusgen/instance.go (instance contract)
@@ -197,7 +197,10 @@ Default if no answer: option 1 after 2026-11-02.
      `human` decision whichever class runs it. The node shape only declares the floor. No verified
      control enforces the act today: the forge ruleset requires a non-author approval and the
      required checks but does not restrict who merges (see the single-point-of-failure line).
-     Admission's human-floor refusal enforces it once graph-execution/14 binds it at dispatch. The §8 decision record
+     Admission's human-floor refusal enforces it for a merge requested through dispatch once
+     graph-execution/14 binds it there and derives the `merge` operation from the node's floor
+     artifact (`merge-commit`), not its effect kind; a merge performed out of band with a held forge
+     credential is bounded only by that credential's scope (unverified). The §8 decision record
      (`spec/workflow-instance-v1.md`) states that a human act happened. It does not prove who did it.
 3. **Schema: `human` on effect-free decision nodes only.** In `schemas/workflow-pattern-v1.json`, add
    `human` to the node `role` enum and an `if {role: const human} then {kind: const decision, and
@@ -316,7 +319,9 @@ one appeared. Neither is a pass.
 - An agent performs the merge and writes a well-formed `decisions[]` record: nothing in this brief
   catches it, because the record is not bound to an identity, and the forge ruleset does not
   restrict who merges. Nothing verified catches it until admission's human-floor refusal is bound at
-  graph-execution/14, whose Verify table carries the row for it.
+  graph-execution/14, which derives `merge` from the floor artifact and whose Verify row 9 feeds a
+  `dispatch`-labelled merge node. A merge done out of band with a held credential stays bounded only
+  by that credential's scope.
 - A new output name (`merged-head`) escapes the closed list: the list is a named constant with the
   three floor operations, and the spec text ties it one-to-one to admission's `humanFloorOperations`;
   a pattern adding a new floor-shaped output is a pattern review question.
@@ -344,8 +349,12 @@ requires a pull request, a non-last-pusher approving review and the required che
 restrict which identity performs the merge, and whether anything else on the forge does is
 unverified. Schema, lint and instance validator guard only the declared shape (a pattern or instance
 that names an agent merge); none of them sees the act, because a decision record carries no verified
-identity. Admission's human-floor refusal becomes the first verified layer on the act when
-graph-execution/14 binds it at dispatch (its Verify row 9); /14 depends on this brief, and the <!-- graph: encoded graph-execution/33→graph-execution/14 -->
+identity. Admission's human-floor refusal becomes the first verified layer on a merge requested
+through dispatch when graph-execution/14 binds it there and derives the `merge` operation from the
+node's floor artifact rather than its effect kind (its Verify row 9 feeds an agent node
+`{kind: dispatch, target: merge-commit}` with the upper layers bypassed). Admission sees only
+requested operations: a merge performed out of band with a held forge credential is bounded only by
+that credential's scope (unverified). /14 depends on this brief, and the <!-- graph: encoded graph-execution/33→graph-execution/14 -->
 runtime record of a human act belongs to /14 and /21. Is it acceptable to land the declared-shape
 layers while the act itself stays unconfined until /14?
 (2) do any rows prove a lower layer catches the fault with the upper layer bypassed? For the
