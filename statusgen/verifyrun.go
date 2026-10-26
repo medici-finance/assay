@@ -1943,9 +1943,16 @@ Flags:
                     SKIPPED (runner-executed, not selected here); legacy rows and
                     check:ci rows are unaffected. check:ci rows always run network-off.
   --acceptance-forge  explicitly permit fresh human-approval reads on the host.
-  --acceptance-record <file>  coordinate-only transition descriptor; host execution
-                    only, same-repository admission, with --acceptance-forge.
-                    Executes the canonical original-plus-approved obligation plan.
+  --acceptance-record <file>  coordinate-only protected-table descriptor; host
+                    execution only, same-repository admission. One
+                    Verification-Table line is a protected record: original
+                    rows must equal their delivered definitions and run as
+                    delivered; every delivered row the original table lacks
+                    (derived from git at the coordinates, never from the file)
+                    is witnessed author-added with no acceptance credit. That
+                    line plus an Acceptance-Transition line is a transition,
+                    which also needs --acceptance-forge and executes the
+                    canonical original-plus-approved obligation plan.
   --sandbox <mode>  the network-off sandbox (default unshare). unshare wraps each
                     check:ci row in ` + "`unshare --net --map-root-user`" + `.
                     container-netns is an EXPLICIT opt-in for a runner already
@@ -2129,7 +2136,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// and once from the ErrHelp branch below.
 	fs.Usage = func() {}
 	briefPath := fs.String("brief", "", "brief file whose Verify table to run")
-	transitionRecord := fs.String("acceptance-record", "", "coordinate-only protected transition descriptor; requires --acceptance-forge on the host")
+	transitionRecord := fs.String("acceptance-record", "", "coordinate-only protected record or transition descriptor; host only; a transition also requires --acceptance-forge")
 	checkMode := fs.Bool("check", false, "audit an existing witness table instead of running anything")
 	dryRun := fs.Bool("dry-run", false, "print the witness table without writing it back")
 	rootDir := fs.String("root", "", "repo root the commands run in (its repository's toplevel; a subdirectory is refused)")
@@ -2395,8 +2402,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// execution and does not need to parse the brief here — the inner run reads it
 	// against the bind-mounted /work. The pass-through flags (--check/--dry-run/--ci
 	// and a non-default --timeout) travel into the container.
-	if *transitionRecord != "" && (*inContainer || *checkMode || admittedHome != "" || !transitionForge) {
-		fmt.Fprintln(stderr, "statusgen verifyrun: --acceptance-record requires host execution, --acceptance-forge, and same-repository admission")
+	if *transitionRecord != "" && (*inContainer || *checkMode || admittedHome != "") {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --acceptance-record requires host execution and same-repository admission")
 		return verifyrunExitCouldNot
 	}
 	if *inContainer {
@@ -2465,7 +2472,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	}
 
 	var protectedExecution protectedPlan
+	// transitionDescriptor is the --acceptance-record text: a protected record
+	// (one Verification-Table line, #4499) or an acceptance transition (that
+	// line plus one Acceptance-Transition line). transitionRun is the latter.
 	var transitionDescriptor string
+	var transitionRun bool
 	if *transitionRecord != "" {
 		raw, err := os.ReadFile(*transitionRecord)
 		if err != nil {
@@ -2473,13 +2484,22 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 		transitionDescriptor = strings.TrimSpace(string(raw))
-		descriptorLines := strings.Split(transitionDescriptor, "\n")
-		if len(descriptorLines) != 2 || !strings.HasPrefix(descriptorLines[0], "Verification-Table:") || !strings.HasPrefix(descriptorLines[1], "Acceptance-Transition:") {
-			fmt.Fprintln(stderr, "transition descriptor must contain exactly the two provenance markers")
+		why := ""
+		transitionRun, why = acceptanceRecordKind(transitionDescriptor)
+		if why == "" && transitionRun && !transitionForge {
+			why = "statusgen verifyrun: an Acceptance-Transition record requires --acceptance-forge"
+		}
+		if why != "" {
+			fmt.Fprintln(stderr, why)
 			return verifyrunExitCouldNot
 		}
-		var why string
 		protectedExecution, why = protectedAcceptanceFor(verify, evidence, transitionDescriptor, path)
+		if why == "" && !transitionRun {
+			// No transition approves a changed original here, so every original
+			// row must run exactly as delivered (protectedAcceptanceFor has
+			// already required the current section to equal the delivery's).
+			why = originalDefinitionDrift(protectedExecution.Verify, verify)
+		}
 		if why != "" {
 			fmt.Fprintln(stderr, why)
 			return verifyrunExitCouldNot
@@ -2566,7 +2586,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	if netnsContainer {
 		executionTree = container.cell.RunnerTree
 	}
-	if transitionDescriptor != "" {
+	if transitionRun {
 		// A transition run binds the full HEAD as its immutable source, so it
 		// keeps the strict check: even an Evidence-only edit (an earlier run's
 		// uncommitted witnesses) refuses it, and a transition run records its
