@@ -75,6 +75,8 @@ and coverage remain the semantic owners. The later forge-library transition is
 separately gated under desktools-v2/75–77; this change imports no credential
 provider, desk internals or authenticated adapter and retains the deskread process
 boundary. The source-query service document is a draft, not a shipped reuse API.
+The earlier PR's advisory A4 is addressed by qualifying the default perf-v2
+statements in both the recorder comment and telemetry documentation.
 
 The existing context resolver and its new-consumer/partial-source controls remain
 unchanged. No active owner is replaced, no scope or claim authority is moved, and

@@ -279,7 +279,7 @@ the budget whichever schema recorded it. Its rules:
   calls and sits in no distribution, and a row with no measured run prints `-`, never `0`.
 - Older `statusgen` builds wrote perf-v1 with `forgeCalls` always `0`, meaning "not
   counted", so a `statusgen` perf-v1 record is an unavailable run too; perf-v1 has no
-  unavailable state of its own. Current `statusgen` writes perf-v2, whose `http` counter is
+  unavailable state of its own. Without a selected profile, current `statusgen` writes perf-v2, whose `http` counter is
   read like any other perf-v2 record.
 - Steps are never read (their calls belong to the invocation), and perf-v3 records stay in
   their own section.
@@ -303,8 +303,8 @@ environment value, and asserts none of them appears in the written bytes.
 
 ### statusgen writes the same local record
 
-`statusgen` appends to the same history. With `ASSAY_TELEMETRY=1` exported, each `statusgen`
-process writes one `perf-v2` record on exit into the same `~/.config/assay/perf/` day files,
+`statusgen` appends to the same history. With `ASSAY_TELEMETRY=1` exported and no selected
+profile, each process writes one `perf-v2` record on exit into the same `~/.config/assay/perf/` day files,
 with `tool` set to `statusgen`, `verb` the mode that ran (a positional sub-command such as
 `verifyrun`, else the first mode flag such as `--lint`, else `regen` for a plain run; a token
 outside that compiled-in roster is `other`), `exit` the process exit code and `result` its
