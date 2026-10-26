@@ -14,7 +14,7 @@ Answer two questions about one objective: what must be `done` before it can go l
 can be done now to move it forward. The answer is a page with:
 
 - a month of progress at the top, using plain-language labels;
-- outcome progress, changes since the previous report, and blocker categories;
+- outcome progress lines, changes since the previous report, and blocker categories;
 - the prerequisite graph, showing only work that is not fully done;
 - the critical path;
 - a ranked move list, where each move is tied to one node and the role that owns it.

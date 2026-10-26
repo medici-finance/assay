@@ -73,16 +73,33 @@ when supported. Otherwise use clearly labelled **proposed outcome** packages der
 named target briefs; record their membership/source and never imply that the proposals are
 operational milestones. Packages may overlap: do not add their counts.
 
-Use one stacked bar per outcome with mutually exclusive recorded stages: **Not started**,
-**Being implemented**, **Delivered / awaiting verification**, **Verified / awaiting closure**,
-and **Done**. Render blocked, withdrawn or unknown states explicitly when present; do not
-quietly force them into a stage. Provide exact counts and a text/table equivalent, a labelled
-legend and a stable denominator. Segment widths describe briefs, not effort or elapsed time.
-Do not call this an accepted outcome merely because all contributing briefs are done. Show
-outcome acceptance separately, with its exact contract/evidence; without that observation say
+Make the main outcome view **one time-series line per outcome**, labelled **Briefs remaining**.
+Use exactly the same ten weekly/daily readings, timezone, source revisions and canonical status
+reader as the monthly chart above. For each outcome, hold today's prerequisite membership
+fixed across those readings. Count present briefs not `done`; retain `verified` as remaining.
+Proven-not-yet-present briefs contribute to neither remaining nor total. Unknown or unmatched
+records make the affected outcome's reading unknown: draw a gap, never zero or a line through
+the gap. Do not re-resolve a different historical membership or backfill absent work as todo.
+
+Show a labelled, toggleable legend with each outcome's **current remaining/total** count,
+an axis labelled in briefs and an accessible table of all ten readings for every outcome.
+The table exposes period totals, remaining, unknown and not-yet-present counts. Separate the
+three weekly and seven daily slots visibly, as in the monthly chart. Explain that the six-line
+chart shows the entire selected plan's lifecycle mix; the outcome lines show the same data
+split into overlapping prerequisite packages. Their counts are not additive. A line can rise
+as today's scoped briefs first appear in recorded history; only `done` leaves remaining.
+Neither a passing run nor a merged reconciliation PR moves a point without a recorded status.
+
+Move current stage bars into a **collapsed details** section labelled **Current outcome stage
+breakdown**. Within it, use one stacked bar per outcome with mutually exclusive recorded
+stages: **Not started**, **Being implemented**, **Delivered / awaiting verification**,
+**Verified / awaiting closure**, and **Done**. Render blocked, withdrawn or unknown states
+explicitly. Provide exact counts, a labelled legend and a text/table equivalent. Widths count
+briefs, not effort or time. Do not call an outcome accepted merely because all its contributing
+briefs are done: show exact outcome acceptance separately; without that observation say
 **Acceptance not established** (or **No operational milestone record** for proposals).
 
-Beside the bar, show supporting evidence that the lifecycle alone hides. Examples are
+Keep supporting evidence visible beside the outcome chart, independently of the collapsed bars. It shows observations that the lifecycle alone hides. Examples are
 **Merged delivery; board reconciliation pending**, **Checks passed; closure tooling blocked**,
 and **Approval recorded; reconciliation PR open**. Every badge links to its source and states
 whether the evidence is on captured main or only on an open PR's captured head. Preserve
