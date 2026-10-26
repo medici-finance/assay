@@ -25,7 +25,7 @@ gate-why: >-
   same-identity re-touch will red until an independent commit or a recorded override cures it.
 decision-trigger: creation
 decision-issue: 3368
-ruling: "https://github.com/medici-finance/assay/issues/3368#issuecomment-6353106302"
+ruling: "https://github.com/medici-finance/assay/issues/3368#issuecomment-6417863766"
 sources:
   - "#1116 — attribution.go same-identity author/verifier pair only NOTICEs, never hard-rejects (security-hardening/27 gap)"
   - "statusgen/attribution.go — attributionProblems: the committer-identity cross-check block calls only addNotice(...); add(...) is reachable only from the token-level checks"
