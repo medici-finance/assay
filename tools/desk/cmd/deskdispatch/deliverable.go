@@ -365,6 +365,13 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 		}
 		briefText = string(raw)
 		front := briefFrontmatterBlock(briefText)
+		// A block the shared parser refuses could still carry a declaration, so
+		// it is a could-not-check too, never "declares nothing".
+		if _, perr := briefdoc.ParseFields(front); perr != nil {
+			return d, deskkit.Unverifiable(fmt.Sprintf(
+				"step %s: --brief %s has frontmatter that cannot be read (%v), so whether it declares a "+
+					"deliverable repo cannot be established. Nothing was claimed.", stepClaimAcquire, o.brief, perr), perr)
+		}
 		declDeliverable = briefField(front, briefDeliverableRe)
 		declHomedIn = briefField(front, briefHomedInRe)
 		declV2Alias = briefV2Alias(briefField(front, briefIDRe))

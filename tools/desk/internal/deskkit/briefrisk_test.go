@@ -65,6 +65,11 @@ func TestBriefFrontmatterRisk(t *testing.T) {
 		{name: "human gate after a document-end marker is unreadable and risk-classed", content: "---\neffort: S\n...\ngate: human\n---\nbody", want: true, wantHasFence: false},
 		{name: "risk answer in a second document is unreadable and risk-classed", content: "---\ngate: model\n--- {customer: yes}\n---\nbody", want: true, wantHasFence: false},
 		{name: "second document after a comment is unreadable and risk-classed", content: "---\ngate: model\n\n# note\n--- # second\nrisk: {customer: yes}\n---\nbody", want: true, wantHasFence: false},
+		{name: "zero-width-space-led risk key is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\u200bcustomer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "byte-order-mark-led risk key is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\ufeffcustomer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "word-joiner-led risk key is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\u2060regulatory: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "format-character-led risk key under another mapping is unreadable and risk-classed", content: "---\ngate: model\nmeta:\n  \u200bcustomer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "byte-order-mark-led flow line is unreadable and risk-classed", content: "---\ngate: model\n\ufeff--- {customer: yes}\n---\nbody", want: true, wantHasFence: false},
 		{name: "unrelated mapping beside a clean risk map stays clean", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nmeta:\n  owner: someone\n---\nbody", want: false, wantHasFence: true},
 		{
 			name:         "no gate no risk",

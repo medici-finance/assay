@@ -43,6 +43,7 @@ func TestBriefAdmissionMultipleDocuments(t *testing.T) {
 		"---\neffort: S\n...\ngate: human\n---\nbody",
 		"---\ngate: model\n--- {gate: human}\n---\nbody",
 		"---\ngate: model\n---\tgate: human\n---\nbody",
+		"---\ngate: model\n\ufeff--- {gate: human}\n---\nbody",
 	} {
 		if b := ParseBriefAdmission(content); !b.GatesHuman() || b.ExecTier != "strong" {
 			t.Errorf("second-document human gate dropped: %q read as %+v", content, b)

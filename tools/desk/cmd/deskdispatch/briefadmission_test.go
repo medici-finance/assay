@@ -229,6 +229,7 @@ func TestBriefGateSecondDocument(t *testing.T) {
 	for i, content := range []string{
 		"---\neffort: S\n...\ngate: human\n---\nbody\n",
 		"---\ngate: model\n--- {gate: human}\n---\nbody\n",
+		"---\ngate: model\n\ufeff--- {gate: human}\n---\nbody\n",
 	} {
 		name := fmt.Sprintf("brief-%02d.md", i)
 		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
@@ -237,5 +238,34 @@ func TestBriefGateSecondDocument(t *testing.T) {
 		if !briefGatesHuman(root, name) {
 			t.Errorf("second-document human gate dropped: %q read as gate %q", content, briefFrontmatterGate(root, name))
 		}
+	}
+}
+
+// TestDeliverableUnreadableFrontmatter pins that a brief whose frontmatter does
+// not parse is a could-not-check for the deliverable declarations, never "no
+// declaration": a refused block could still carry deliverable_repo, homed-in or
+// a brief-v2 id.
+func TestDeliverableUnreadableFrontmatter(t *testing.T) {
+	root := t.TempDir()
+	for i, content := range []string{
+		"---\ngate: model\ndeliverable_repo: example-tool\nmeta:\n  customer: yes\n---\nbody\n",
+		"---\ngate: model\n...\nhomed-in: example-org/console\n---\nbody\n",
+	} {
+		p := filepath.Join(root, fmt.Sprintf("brief-%02d.md", i))
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		d, err := resolveDeliverable(dispatchOpts{brief: p, root: root})
+		if deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable || !strings.Contains(fmt.Sprint(err), "frontmatter") {
+			t.Errorf("unreadable frontmatter read as no declaration: %q gave %+v, exit %d: %v", content, d, deskkit.ExitCodeOf(err), err)
+		}
+	}
+	// Control: a brief with readable frontmatter and no declaration stays inactive.
+	p := filepath.Join(root, "brief-plain.md")
+	if err := os.WriteFile(p, []byte("---\ngate: model\n---\nbody\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := resolveDeliverable(dispatchOpts{brief: p, root: root}); err != nil || d.active {
+		t.Errorf("readable brief with no declaration: %+v, %v", d, err)
 	}
 }

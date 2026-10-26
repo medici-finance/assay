@@ -102,6 +102,49 @@ func misplacedRiskKey(v interface{}) (string, bool) {
 	return "", false
 }
 
+// invisibleRune reports a rune that does not print: a format character
+// (category Cf, such as a zero-width space, word joiner or byte-order mark),
+// another non-graphic rune, a variation selector or another default-ignorable
+// code point. A key holding one can look identical on screen to a key it does
+// not equal.
+func invisibleRune(r rune) bool {
+	return unicode.Is(unicode.Cf, r) || !unicode.IsGraphic(r) ||
+		unicode.In(r, unicode.Variation_Selector, unicode.Other_Default_Ignorable_Code_Point)
+}
+
+// invisibleKey returns the first mapping key, at any depth in v, that contains
+// an invisible rune.
+func invisibleKey(v interface{}) (string, bool) {
+	hasInvisible := func(k string) bool { return strings.IndexFunc(k, invisibleRune) >= 0 }
+	switch x := v.(type) {
+	case map[string]interface{}:
+		for k, child := range x {
+			if hasInvisible(k) {
+				return k, true
+			}
+			if found, ok := invisibleKey(child); ok {
+				return found, true
+			}
+		}
+	case map[interface{}]interface{}:
+		for k, child := range x {
+			if s, ok := k.(string); ok && hasInvisible(s) {
+				return s, true
+			}
+			if found, ok := invisibleKey(child); ok {
+				return found, true
+			}
+		}
+	case []interface{}:
+		for _, child := range x {
+			if found, ok := invisibleKey(child); ok {
+				return found, true
+			}
+		}
+	}
+	return "", false
+}
+
 // textMarkers are free-text frontmatter markers whose value is shown as
 // written. An unquoted date or timestamp decodes as a YAML timestamp, so these
 // keys take the scalar's source text instead of refusing it.
@@ -153,13 +196,17 @@ func decodeSingle(block string) (map[string]interface{}, error) {
 
 // ParseFields decodes real YAML, rejects duplicate keys and invalid risk answers.
 // A risk answer is read only from the top-level risk mapping; a risk-answer key
-// anywhere else, or a second YAML document in the block, is an error, which
-// every desk caller treats as risk-bearing.
+// anywhere else, a second YAML document in the block, or a mapping key at any
+// depth that contains an invisible character, is an error, which every desk
+// caller treats as risk-bearing.
 func ParseFields(block string) (Fields, error) {
 	f := Fields{Values: map[string]string{}}
 	values, err := decodeSingle(block)
 	if err != nil {
 		return f, err
+	}
+	if found, ok := invisibleKey(map[string]interface{}(values)); ok {
+		return f, fmt.Errorf("frontmatter key %q contains an invisible character", found)
 	}
 	for k, v := range values {
 		if isRiskKey(k) {

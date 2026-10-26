@@ -124,3 +124,44 @@ func TestCommentContentBoundary(t *testing.T) {
 		t.Fatal("visible content lost")
 	}
 }
+
+// formatCharacterKeys are frontmatter blocks whose extra key, or `---` line,
+// contains a non-printing character. On screen each reads as a risk
+// answer or a human gate; a lower-case-and-trim key match would not see it.
+var formatCharacterKeys = []string{
+	"gate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\u200bcustomer: yes",
+	"gate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\ufeffcustomer: yes",
+	"gate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\u2060regulatory: yes",
+	"gate: model\nmeta:\n  \u200bcustomer: yes",
+	"gate: model\n\ufeff--- {customer: yes}",
+	"gate: model\n\ufeff--- {gate: human}",
+	"gate: model\n\ufeff---\ncustomer: yes",
+	"gate: model\nmeta:\n  - cust\u00adomer: yes",
+	"gate: model\nmeta:\n  \"customer\ufe0f\": yes",
+	"gate: model\nrisk: {\"\u200bcustomer\": yes}",
+	"gate: model\nmeta:\n  1: one\n  \u200bcustomer: yes",
+	"gate: model\nmeta:\n  \ue000customer: yes",
+}
+
+// TestFormatCharacterKeysRefused pins that a mapping key, at any depth, that
+// contains a non-printing character makes the frontmatter unreadable, so every
+// desk reader treats the brief as risk-bearing.
+func TestFormatCharacterKeysRefused(t *testing.T) {
+	for _, input := range formatCharacterKeys {
+		if f, e := ParseFields(input); e == nil {
+			t.Errorf("format-character-led key accepted: %q read as %+v", input, f)
+		}
+	}
+	for _, input := range []string{"gate: \u200bhuman", "risk: {customer: \"\u200byes\"}"} {
+		if f, e := ParseFields(input); e == nil {
+			t.Errorf("format character in a gate or risk value accepted: %q read as %+v", input, f)
+		}
+	}
+	// Controls: printable non-ASCII keys and a format character inside a
+	// free-text value stay readable.
+	for _, input := range []string{"gate: model\ntitle: caf\u00e9 notes", "gate: model\nowner-name: J\u00f6rg", "gate: model\ntitle: a\u200bb", "gate: model\nmeta:\n  r\u00e9sum\u00e9: none"} {
+		if _, e := ParseFields(input); e != nil {
+			t.Errorf("printable frontmatter refused: %q: %v", input, e)
+		}
+	}
+}
