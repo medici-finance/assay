@@ -79,18 +79,26 @@ func (b BriefAdmission) GatesHuman() bool { return b.Gate == "human" }
 // ParseBriefAdmission reads the admission fields from a brief file's content.
 func ParseBriefAdmission(content string) BriefAdmission {
 	front, _, err := briefdoc.Split(content)
-	if err != nil {
+	if err != nil || front == "" {
 		return BriefAdmission{}
 	}
 	f, err := briefdoc.ParseFields(front)
 	if err != nil {
-		return BriefAdmission{Gate: "human", ExecTier: "strong"}
+		// Unreadable: human-gated and strong, keeping the brief id and decision issue the
+		// line readers find so a decision hold still applies.
+		lf := briefdoc.LineFields(front)
+		return BriefAdmission{Gate: "human", ExecTier: "strong", ID: lf["brief"], DecisionIssue: decisionIssueNumber(lf["decision-issue"])}
 	}
-	b := BriefAdmission{Frontmatter: true, ID: f.Values["brief"], ExecTier: f.Values["exec-tier"], Gate: strings.ToLower(f.Values["gate"])}
-	if n, err := strconv.Atoi(strings.TrimPrefix(f.Values["decision-issue"], "#")); err == nil && n > 0 {
-		b.DecisionIssue = n
+	return BriefAdmission{Frontmatter: true, ID: f.Values["brief"], ExecTier: f.Values["exec-tier"], Gate: strings.ToLower(f.Values["gate"]), DecisionIssue: decisionIssueNumber(f.Values["decision-issue"])}
+}
+
+// decisionIssueNumber reads a `decision-issue:` value: a positive number, with or without
+// a leading "#", else 0.
+func decisionIssueNumber(v string) int {
+	if n, err := strconv.Atoi(strings.TrimPrefix(v, "#")); err == nil && n > 0 {
+		return n
 	}
-	return b
+	return 0
 }
 
 // DecisionForge is the read-only forge surface BriefDecisionWait uses. Every method is one

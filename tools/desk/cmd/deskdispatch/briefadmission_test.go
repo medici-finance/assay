@@ -243,6 +243,35 @@ func TestBriefGateSecondDocument(t *testing.T) {
 	}
 }
 
+// TestBriefGateContinuationLines pins that a gate or exec-tier line the shared
+// parser reads as text inside another value makes the dispatcher read the
+// brief as human-gated.
+func TestBriefGateContinuationLines(t *testing.T) {
+	root := t.TempDir()
+	for i, hidden := range continuationLines {
+		name := fmt.Sprintf("brief-%02d.md", i)
+		if err := os.WriteFile(filepath.Join(root, name), []byte("---\n"+hidden+"\n---\nbody\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if !briefGatesHuman(root, name) {
+			t.Errorf("continuation line %q read as gate %q", hidden, briefFrontmatterGate(root, name))
+		}
+	}
+}
+
+// continuationLines hide a column-0 policy line inside a multi-line value
+// opened on an earlier line: the shared parser reads the line as text in that
+// value, while a first-match line reader reads it as the key.
+var continuationLines = []string{
+	"meta: {a: 1,\ngate: human\n}\ngate: model",
+	"meta: {a:1,\ngate: human\n}",
+	"tags: [a,\ngate: human\n]\ngate: model",
+	"tags: [a,\nexec-tier: strong]\nexec-tier: any",
+	"title: \"first\ngate: human\n  end\"\ngate: model",
+	"title: 'first\nexec-tier: strong\n  end'",
+	"meta: {a: 1,\ndecision-issue: 12\n}",
+}
+
 // TestDeliverableUnreadableFrontmatter pins that a brief whose frontmatter does
 // not parse is a could-not-check for the deliverable declarations, never "no
 // declaration": a refused block could still carry deliverable_repo, homed-in or

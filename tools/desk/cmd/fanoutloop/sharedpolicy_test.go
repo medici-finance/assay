@@ -23,4 +23,23 @@ func TestSharedFrontmatter(t *testing.T) {
 			t.Errorf("second YAML document %q read as safe: %+v", second, fm)
 		}
 	}
+	for _, hidden := range continuationLines {
+		fm := parseFrontmatter("---\n" + hidden + "\n---\n")
+		if fm.ParseError == "" || fm.Gate != "human" || fm.ExecTier != "strong" {
+			t.Errorf("continuation line %q read as %+v", hidden, fm)
+		}
+	}
+}
+
+// continuationLines hide a column-0 policy line inside a multi-line value
+// opened on an earlier line: the shared parser reads the line as text in that
+// value, while a first-match line reader reads it as the key.
+var continuationLines = []string{
+	"meta: {a: 1,\ngate: human\n}\ngate: model",
+	"meta: {a:1,\ngate: human\n}",
+	"tags: [a,\ngate: human\n]\ngate: model",
+	"tags: [a,\nexec-tier: strong]\nexec-tier: any",
+	"title: \"first\ngate: human\n  end\"\ngate: model",
+	"title: 'first\nexec-tier: strong\n  end'",
+	"meta: {a: 1,\ndecision-issue: 12\n}",
 }

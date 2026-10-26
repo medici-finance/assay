@@ -1,6 +1,7 @@
 package briefdoc
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -57,6 +58,7 @@ var multiDocument = []string{
 	"gate: model\n---\tgate: human",
 	"gate: model\n...\n%YAML 1.2\n--- {customer: yes}",
 	"gate: model\n---\ngate: human",
+	"gate: model\n...\nnotes: [unclosed",
 }
 
 // TestMultipleDocumentsRefused pins that a frontmatter block holding more than
@@ -104,6 +106,10 @@ func TestUnquotedDateMarkers(t *testing.T) {
 		if _, e := ParseFields(input); e == nil {
 			t.Errorf("strict key accepted a non-text value: %q", input)
 		}
+	}
+	// The date refusal is its own check, not only the line backstop's.
+	if _, e := ParseFields("implementer: 2026-11-01"); e == nil || !strings.Contains(e.Error(), "not a date") {
+		t.Errorf("strict key date not refused as a date: %v", e)
 	}
 }
 
@@ -249,6 +255,80 @@ func TestTextRiskBackstop(t *testing.T) {
 		"gate: model\nrisk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}\nwhy: \"customer: yes is the point\"",
 		"gate: model\ntitle: \"customer: no\"",
 		"gate: model\nrisk:\n  customer: YES",
+	} {
+		if _, e := ParseFields(input); e != nil {
+			t.Errorf("readable frontmatter refused: %q: %v", input, e)
+		}
+	}
+}
+
+// lineShapes wrap a column-0 line in a multi-line YAML value opened on an
+// earlier line, so the parser reads the line as text inside that value and not
+// as a top-level key, while a first-match line reader still reads it as one.
+var lineShapes = map[string]string{
+	"flow mapping":           "meta: {a: 1,\n%s\n}",
+	"flow mapping, no space": "meta: {a:1,\n%s\n}",
+	"flow sequence":          "tags: [a,\n%s\n]",
+	"flow sequence, closing": "tags: [a,\n%s]",
+	"double-quoted scalar":   "title: \"first\n%s\n  end\"",
+	"single-quoted scalar":   "title: 'first\n%s\n  end'",
+}
+
+// lineKeys pairs each line reader key with the line a shape hides and a later
+// top-level line that sets the key to something else.
+var lineKeys = []struct{ hidden, later string }{
+	{"gate: human", "gate: model"},
+	{"gate:\n  human", "gate: model"},
+	{"exec-tier: strong", "exec-tier: any"},
+	{"exec-tier:\n  strong", "exec-tier: any"},
+	{"decision-issue: 12", "decision-issue: 3"},
+	{"effort: L", "effort: S"},
+	{"effort:\n  L", "effort: S"},
+	{"implementer: one", "implementer: two"},
+	{"blocked-until: 2026-11-01", "blocked-until: 2026-12-01"},
+	{"verify-lane: one", "verify-lane: two"},
+	{"in-repair: one", "in-repair: two"},
+	{"brief: s/07", "brief: s/08"},
+	{"deliverable_repo: a/b", "deliverable_repo: a/c"},
+	{"homed-in: a/b", "homed-in: a/c"},
+}
+
+// TestLineReadersAgree pins that a block where the first-match line readers
+// the desk tools used before this parser read a key differently from the
+// parsed mapping is refused, with or without a later top-level line for that
+// key and with or without a risk mapping; and that ordinary spellings those
+// readers and the parser read alike are not.
+func TestLineReadersAgree(t *testing.T) {
+	const riskNo = "risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n"
+	for name, shape := range lineShapes {
+		for _, k := range lineKeys {
+			hidden := fmt.Sprintf(shape, k.hidden)
+			for _, input := range []string{hidden, hidden + "\n" + k.later, riskNo + hidden, riskNo + hidden + "\n" + k.later} {
+				if _, err := decodeSingle(input); err != nil {
+					t.Fatalf("%s: fixture is not YAML: %q: %v", name, input, err)
+				}
+				if f, e := ParseFields(input); e == nil {
+					t.Errorf("%s: line read differently was accepted: %q read as %+v", name, input, f)
+				}
+			}
+		}
+	}
+	for _, input := range []string{
+		"exec-tier:\n  strong",
+		"effort:\n  L",
+	} {
+		if f, e := ParseFields(input); e == nil {
+			t.Errorf("value the line readers read differently was accepted: %q read as %+v", input, f)
+		}
+	}
+	for _, input := range []string{
+		"",
+		"gate: human # note\nexec-tier: strong\ndecision-issue: \"#12\"\nbrief: s/07\neffort: M",
+		"gate: Human\nexec-tier: STRONG",
+		"gate:\n  human",
+		"deliverable_repo: a/b\nhomed-in: 'a/b'\nimplementer: one\nverify-lane: two\nin-repair: three",
+		"blocked-until: 2026-11-01\ntitle: \"first\n  gate: human\n  end\"\ngate: model",
+		riskNo + "gate: model\nnotes: |\n  exec-tier: strong",
 	} {
 		if _, e := ParseFields(input); e != nil {
 			t.Errorf("readable frontmatter refused: %q: %v", input, e)

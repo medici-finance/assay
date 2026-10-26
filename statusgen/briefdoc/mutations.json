@@ -146,15 +146,15 @@
       "new": "\t\tif false && textRiskAnswer[k].MatchString(block) && !*answers[k] {"
     },
     {
-      "name": "text backstop: skipped when the block has no risk mapping",
+      "name": "backstops: skipped when the block has no risk mapping",
       "file": "briefdoc/document.go",
-      "old": "\t\treturn f, textRiskBackstop(block, f.Risk)\n\t}",
+      "old": "\t\treturn f, backstop(block, f)\n\t}",
       "new": "\t\treturn f, nil\n\t}"
     },
     {
-      "name": "text backstop: skipped when the block has a risk mapping",
+      "name": "backstops: skipped when the block has a risk mapping",
       "file": "briefdoc/document.go",
-      "old": "\t}\n\treturn f, textRiskBackstop(block, f.Risk)\n}",
+      "old": "\t}\n\treturn f, backstop(block, f)\n}",
       "new": "\t}\n\treturn f, nil\n}"
     },
     {
@@ -162,6 +162,126 @@
       "file": "briefdoc/document.go",
       "old": "regexp.MustCompile(`(?i)` + regexp.QuoteMeta(k)",
       "new": "regexp.MustCompile(regexp.QuoteMeta(k)"
+    },
+    {
+      "name": "backstops: the text risk backstop is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tif err := textRiskBackstop(block, f.Risk); err != nil {",
+      "new": "\tif err := error(nil); err != nil {"
+    },
+    {
+      "name": "line backstop: a line the parsed mapping reads differently is accepted",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif got != values[r.key] {",
+      "new": "\t\tif false && got != values[r.key] {"
+    },
+    {
+      "name": "line backstop: only lines the readers find are compared",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif got != values[r.key] {",
+      "new": "\t\tif got != \"\" && got != values[r.key] {"
+    },
+    {
+      "name": "line backstop: the backstop is not run",
+      "file": "briefdoc/document.go",
+      "old": "\treturn lineBackstop(block, f.Values)\n}",
+      "new": "\treturn nil\n}"
+    },
+    {
+      "name": "line backstop: values are compared without lower-casing gate and exec-tier",
+      "file": "briefdoc/document.go",
+      "old": "\tif key == \"gate\" || key == \"exec-tier\" {\n\t\tv = strings.ToLower(v)",
+      "new": "\tif false {\n\t\tv = strings.ToLower(v)"
+    },
+    {
+      "name": "line backstop: a trailing comment stays in the line reading",
+      "file": "briefdoc/document.go",
+      "old": "\tif i := strings.Index(v, \" #\"); i >= 0 {\n\t\tv = v[:i]\n\t}\n\tv = strings.Trim(strings.TrimSpace(v), `\"'`)\n\tif key",
+      "new": "\tif i := strings.Index(v, \" #\"); false && i >= 0 {\n\t\tv = v[:i]\n\t}\n\tv = strings.Trim(strings.TrimSpace(v), `\"'`)\n\tif key"
+    },
+    {
+      "name": "line backstop: quotes stay in the line reading",
+      "file": "briefdoc/document.go",
+      "old": "\tv = strings.Trim(strings.TrimSpace(v), `\"'`)\n\tif key",
+      "new": "\tv = strings.TrimSpace(v)\n\tif key"
+    },
+    {
+      "name": "line backstop: the gate reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"gate\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the exec-tier reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"exec-tier\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the exec-tier reader with gap [ \\t]* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"exec-tier\", `[ \\t]*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the effort reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"effort\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the effort reader with gap [ \\t]* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"effort\", `[ \\t]*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the implementer reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"implementer\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the blocked-until reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"blocked-until\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the verify-lane reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"verify-lane\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the in-repair reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"in-repair\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the decision-issue reader with gap [ \\t]* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"decision-issue\", `[ \\t]*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the brief reader with gap [ \\t]* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"brief\", `[ \\t]*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the deliverable_repo reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"deliverable_repo\", `\\s*`),\n",
+      "new": ""
+    },
+    {
+      "name": "line backstop: the homed-in reader with gap \\s* is dropped",
+      "file": "briefdoc/document.go",
+      "old": "\tnewLineReader(\"homed-in\", `\\s*`),\n",
+      "new": ""
     }
   ]
 }

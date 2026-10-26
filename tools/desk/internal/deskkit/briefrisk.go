@@ -274,7 +274,7 @@ func RiskFromBriefContent(content string) (classed bool, reason string, hasFront
 // be called clean), distinct from a fence that parsed and positively answered non-risk.
 func briefFrontmatterRisk(content string) (bool, string, bool) {
 	block, _, err := briefdoc.Split(content)
-	if err != nil {
+	if err != nil || block == "" {
 		return false, "", false
 	}
 	f, err := briefdoc.ParseFields(block)

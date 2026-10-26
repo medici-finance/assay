@@ -122,6 +122,93 @@ func textRiskBackstop(block string, r Risk) error {
 	return nil
 }
 
+// lineReader is one of the first-match column-0 line readers the desk tools
+// used for a frontmatter key before this parser.
+type lineReader struct {
+	key string
+	re  *regexp.Regexp
+}
+
+func newLineReader(key, gap string) lineReader {
+	return lineReader{key, regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(key) + `:` + gap + `(.*)$`)}
+}
+
+// lineReaders are those readers, with the gap each one allowed after the
+// colon: "\s*" can cross into the next line, "[ \t]*" cannot.
+var lineReaders = []lineReader{
+	newLineReader("gate", `\s*`),
+	newLineReader("exec-tier", `\s*`),
+	newLineReader("exec-tier", `[ \t]*`),
+	newLineReader("effort", `\s*`),
+	newLineReader("effort", `[ \t]*`),
+	newLineReader("implementer", `\s*`),
+	newLineReader("blocked-until", `\s*`),
+	newLineReader("verify-lane", `\s*`),
+	newLineReader("in-repair", `\s*`),
+	newLineReader("decision-issue", `[ \t]*`),
+	newLineReader("brief", `[ \t]*`),
+	newLineReader("deliverable_repo", `\s*`),
+	newLineReader("homed-in", `\s*`),
+}
+
+// lineValue cleans a line reader's capture the way those readers did: text
+// from " #" on is a comment, then surrounding space and quotes are trimmed.
+// gate and exec-tier compare lower-cased, as the parsed mapping holds them.
+func lineValue(key, v string) string {
+	if i := strings.Index(v, " #"); i >= 0 {
+		v = v[:i]
+	}
+	v = strings.Trim(strings.TrimSpace(v), `"'`)
+	if key == "gate" || key == "exec-tier" {
+		v = strings.ToLower(v)
+	}
+	return v
+}
+
+// lineBackstop refuses a block where any of those line readers reads a key
+// differently from the parsed mapping, for example a column-0 "gate: human"
+// line that YAML reads as the continuation of an earlier multi-line value. The
+// parser then never reads a policy key differently from the readers it
+// replaced without saying so.
+func lineBackstop(block string, values map[string]string) error {
+	for _, r := range lineReaders {
+		got := ""
+		if m := r.re.FindStringSubmatch(block); m != nil {
+			got = lineValue(r.key, m[1])
+		}
+		if got != values[r.key] {
+			return fmt.Errorf("frontmatter line reads %s differently from the parsed mapping", r.key)
+		}
+	}
+	return nil
+}
+
+// LineFields returns what the first of those line readers for each key reads
+// in block, cleaned the same way. It is for a caller that has already treated
+// a block ParseFields refused as human-gated and strong, and still wants the
+// identifiers those readers would have found, such as a decision issue; it is
+// never a source of policy answers.
+func LineFields(block string) map[string]string {
+	out := map[string]string{}
+	for _, r := range lineReaders {
+		if _, seen := out[r.key]; seen {
+			continue
+		}
+		if m := r.re.FindStringSubmatch(block); m != nil {
+			out[r.key] = lineValue(r.key, m[1])
+		}
+	}
+	return out
+}
+
+// backstop runs both text backstops over a block the mapping parsed cleanly.
+func backstop(block string, f Fields) error {
+	if err := textRiskBackstop(block, f.Risk); err != nil {
+		return err
+	}
+	return lineBackstop(block, f.Values)
+}
+
 // misplacedRiskKey returns the first risk-answer key found at any depth in v,
 // which is a value outside the top-level risk mapping.
 func misplacedRiskKey(v interface{}) (string, bool) {
@@ -266,9 +353,11 @@ func decodeSingle(block string) (map[string]interface{}, error) {
 // A risk answer is read only from the top-level risk mapping; a risk-answer key
 // anywhere else, a second YAML document in the block, or a mapping key at any
 // depth that contains an invisible character, a top-level key that reads as
-// gate or exec-tier without being spelled as one, or text the earlier
+// gate or exec-tier without being spelled as one, text the earlier
 // "<risk question>: yes" classifier reads as a yes the parsed risk answer does
-// not give, is an error, which every desk caller treats as risk-bearing.
+// not give, or a policy key line the earlier line readers read differently
+// from the parsed mapping, is an error, which every desk caller treats as
+// risk-bearing.
 func ParseFields(block string) (Fields, error) {
 	f := Fields{Values: map[string]string{}}
 	values, err := decodeSingle(block)
@@ -320,7 +409,7 @@ func ParseFields(block string) (Fields, error) {
 	}
 	raw, ok := values["risk"]
 	if !ok {
-		return f, textRiskBackstop(block, f.Risk)
+		return f, backstop(block, f)
 	}
 	risk, ok := raw.(map[string]interface{})
 	if !ok {
@@ -349,7 +438,7 @@ func ParseFields(block string) (Fields, error) {
 			return f, fmt.Errorf("risk %s must be yes or no", k)
 		}
 	}
-	return f, textRiskBackstop(block, f.Risk)
+	return f, backstop(block, f)
 }
 func Scalar(block, key string) string {
 	f, e := ParseFields(block)

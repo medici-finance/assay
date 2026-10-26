@@ -353,3 +353,18 @@ func TestAuthorsRiskFromBody(t *testing.T) {
 		}
 	})
 }
+
+// TestBriefFrontmatterRiskContinuationLines pins that a policy line the shared
+// parser reads as text inside another value classes the brief risk-bearing and
+// unverifiable, and that an empty frontmatter fence reads as no frontmatter.
+func TestBriefFrontmatterRiskContinuationLines(t *testing.T) {
+	for _, hidden := range continuationLines {
+		content := "---\n" + hidden + "\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n---\nbody"
+		if classed, _, hasFence := RiskFromBriefContent(content); !classed || hasFence {
+			t.Errorf("continuation line %q read as classed=%v hasFrontmatter=%v", hidden, classed, hasFence)
+		}
+	}
+	if classed, _, hasFence := RiskFromBriefContent("---\n---\nbody"); classed || hasFence {
+		t.Errorf("empty frontmatter read as classed=%v hasFrontmatter=%v", classed, hasFence)
+	}
+}
