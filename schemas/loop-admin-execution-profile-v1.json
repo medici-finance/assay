@@ -109,7 +109,7 @@
       }
     },
     "qualifiedProfile": {
-      "description": "What an adapter declares it is qualified to run. digest is the sha256 of the profile's canonical JSON with digest empty, so content that drifted under an old digest is refused.",
+      "description": "What an adapter declares it is qualified to run. digest is the sha256 of the profile's compact JSON encoding (members in listed order) with digest empty, so content that drifted under an old digest is refused.",
       "type": "object",
       "additionalProperties": false,
       "required": ["digest", "runner_profile", "roles", "harness", "model", "backend", "preservation", "cancellation", "budget_scopes", "telemetry", "qualification"],

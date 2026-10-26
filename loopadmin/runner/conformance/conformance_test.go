@@ -116,8 +116,11 @@ func TestRunnerConformanceModelFallback(t *testing.T) {
 func TestRunnerKitRunAll(t *testing.T) {
 	t.Run("full", func(t *testing.T) { conformance.RunAll(t, full) })
 	t.Run("minimal", func(t *testing.T) { conformance.RunAll(t, minimal) })
-	t.Run("qualified", func(t *testing.T) { conformance.RunAll(t, qualified) })
 }
+
+// TestRunnerKitRunAllQualified runs the whole kit against an adapter that declares the
+// qualified profile. regression: agent-execution/01
+func TestRunnerKitRunAllQualified(t *testing.T) { conformance.RunAll(t, qualified) }
 
 // The cases below each prove one contract rule on the Client alone: no caller
 // check runs, so the contract is the layer that refuses.

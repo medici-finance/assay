@@ -174,7 +174,8 @@ type ProfileDeclarer interface {
 var profileDigest = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // ProfileDigest is the digest a qualified profile's Digest must carry: sha256
-// over the profile's canonical JSON with Digest itself empty.
+// over the profile's compact JSON encoding (struct field order, as the spec lists
+// the members) with Digest itself empty.
 func ProfileDigest(p QualifiedProfile) string {
 	p.Digest = ""
 	b, _ := json.Marshal(p) // a struct of strings, slices and nested structs always marshals

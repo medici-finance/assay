@@ -28,7 +28,7 @@ What an adapter declares it is qualified to run. Every field is required.
 
 | Field | Meaning |
 |---|---|
-| `digest` | `sha256:` and the hex sha256 of the profile's canonical JSON with `digest` itself empty. A declaration whose content no longer hashes to its digest is refused, so content cannot drift under an old digest. |
+| `digest` | `sha256:` and the hex sha256 of the profile's compact JSON encoding (UTF-8, no insignificant whitespace, object members in the order this section and the schema list them) with `digest` itself empty. The reference `ProfileDigest` fixes the exact byte sequence. A declaration whose content no longer hashes to its digest is refused, so content cannot drift under an old digest. |
 | `runner_profile` | The runner v1 `profile.id` this tuple serves. |
 | `roles` | The role packets it is qualified for. |
 | `harness` | `implementation`, `version`, the immutable harness-component `bundle_digest` and its `bundle_provenance` reference. |
