@@ -20,20 +20,23 @@ gate-why: >-
   under-recorded read set lets a stale witness pass, which is the failure the coverage gate exists
   to prevent. The driver confirms the narrowing, the floor behind it, and the one-time re-witness.
 decision-trigger: creation
+decision-issue: 4512
+ruling: "https://github.com/medici-finance/assay/issues/4512#issuecomment-6420851894"
 issues: [2026]
 regression-of: medici-finance/assay#2304
 schema: brief-v2
 version: 1
-authored: 2026-10-26 by a worker-desk authoring session (design proposal; the driver rules on it before implementation is dispatched)
+authored: 2026-10-26 by a worker-desk authoring session (design proposal; the driver ruled option 1 on 2026-10-26, and review round 1 amended it)
 sources:
   - "medici-finance/assay#2026 (the mechanism's issue; its strike-two design note names options a-c)"
   - "medici-finance/assay#3105 (source issue: gate:model briefs held at verified)"
   - "medici-finance/assay#2018 (no gate or board line reports that zero briefs are released)"
   - "medici-finance/assay#2304 (prior fix: command-text input parser and witness landing check)"
+  - "medici-finance/assay#4512 (decision issue; the driver ruled option 1)"
   - "docs/contracts.md S-evidence-coverage"
   - "freshness-checked 2026-10-26 @ 5ddf5a317 (origin/main)"
 exec-tier: strong
-exec-tier-why: "(a) the recording mechanism and its completeness rule are not pre-specified; (b) correctness spans verifyrun, the coverage library and three callers; (c) an error here lets a stale witness release a brief to done; (d) raised by an error-class trigger (strike two on the mechanism's issue)."
+exec-tier-why: "(a) the recording mechanism and its completeness rule are not pre-specified; (b) correctness spans verifyrun, the coverage library, three callers and the evidence-landing verb; (c) an error here lets a stale witness release a brief to done; (d) raised by an error-class trigger (strike two on the mechanism's issue)."
 domain: complicated
 outcome: none
 consumers:
@@ -43,26 +46,32 @@ consumers:
   - "statusgen/reconcilefold.go: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
   - "statusgen/evaluation/coverage.go: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
   - "statusgen/evaluation/coverage_api.go: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "tools/desk/cmd/deskevidence/main.go: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
   - "docs/contracts.md: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
-  - "statusgen/evaluation/coverage_inputs.go: out-of-scope (the command-text parser stays until the measurement in Task step 9 shows it releases nothing on its own; its retirement is a later brief)"
+  - "statusgen/domain/assess.go: out-of-scope (a fourth library entry, imported only by tests; it passes its own coverage input, and the library's go-run rule in Task step 6 makes it fail closed without an edit)"
+  - "statusgen/evaluation/coverage_inputs.go: out-of-scope (the command-text parser stays until the measurement in Task step 10 shows it releases nothing on its own; its retirement is a later brief)"
 ---
 
 # Brief 15 — Witness inputs are recorded, not parsed
 
-Related: medici-finance/assay#2026 (this brief's issue), medici-finance/assay#3105,
-medici-finance/assay#2018.
+Related: medici-finance/assay#2026 (this brief's issue), medici-finance/assay#4512 (its decision
+issue), medici-finance/assay#3105, medici-finance/assay#2018.
 
-This is a design proposal. The coordinator relayed a go to author it; the scope below is a
-recommendation, not a ruling. The driver rules on the brief before implementation is dispatched.
+The driver ruled option 1 on the decision issue (see `ruling:`): a recorded read set with the go
+compiled-file floor, and one batch re-witness at a single main revision. Review round 1 then
+amended the recording, storage, judging and batch rules below. Implementation is dispatched from
+this brief once it merges.
 
 ## Context
 files:
-- `statusgen/verifyrun.go` — records each row's read set beside the witness (new recorder, Linux only)
+- `statusgen/verifyrun.go` — runs each row under the recorder and writes the read-set token into the witness row's Runner cell
+- `statusgen/readset_linux.go` (planned), `statusgen/readset_other.go` (planned) — the recorder, Linux only; every other host reports `could-not-check` (precedent: the Linux-only facility in `statusgen/netns.go`)
 - `statusgen/coverage.go` — the adapter: one read-set source (`coverageOptionsFor`) and the go compile-input floor, both handed to the library as observations
 - `statusgen/autoflip.go`, `statusgen/reconcilefold.go` — call `coverageOptionsFor` instead of passing `coverageOptions{}`
 - `statusgen/evaluation/coverage.go`, `statusgen/evaluation/coverage_api.go` — judge a witness against its recorded read set
+- `tools/desk/cmd/deskevidence/main.go` — lands a witness row and its read-set file in one commit
 - `docs/contracts.md` — the S-evidence-coverage row names the new independent layer
-- tests: `statusgen/evaluation/readset_test.go` (planned), `statusgen/readset_test.go` (planned)
+- tests: `statusgen/evaluation/readset_test.go` (planned), `statusgen/readset_test.go` (planned), `statusgen/readset_linux_test.go` (planned), `tools/desk/cmd/deskevidence/readset_test.go` (planned)
 
 facts:
 - Current shape. With no dependency manifest, a witness speaks for every path outside
@@ -70,7 +79,9 @@ facts:
   All three callers pass an empty manifest: `statusgen/autoflip.go:1068` and
   `statusgen/reconcilefold.go:138` pass `coverageOptions{}`, and `--coverage`
   (`statusgen/coverage.go:323`) passes `coverageOptions{Patterns: patterns}`. The
-  `Dependencies` field exists and nothing fills it.
+  `Dependencies` field exists and nothing fills it. A fourth entry point,
+  `statusgen/domain/assess.go:111`, calls `EvaluateCoverage` with a caller-built input; only
+  tests import it.
 - Prior fix (medici-finance/assay#2304). `deriveRowInputs` (`statusgen/evaluation/coverage_inputs.go`)
   reads the command text with a closed shell grammar. A row it cannot parse keeps the whole-tree
   scope. Its header states why `go` is outside the grammar: the modules most rows test read
@@ -91,9 +102,8 @@ facts:
   - A `--coverage --json` pass over all 568 briefs at the same revision released 0 briefs.
     42 claims pass only because the parser derived their inputs. 133 briefs are fully witnessed
     and held only by `wrong-revision`.
-- The desk's proposed derived set for go rows (`cd <module> && go test|build|vet`, inputs =
-  the module's files plus `go list -deps -test`) does not release enough to justify itself, and
-  it is unsound:
+- A derived input set for go rows (`cd <module> && go test|build|vet`, inputs = the module's
+  files plus `go list -deps -test`) does not release enough to justify itself, and it is unsound:
   - Yield. 25 of the 301 refused rows have that clean shape. Every one of the 36 briefs has some
     other row shape or a `+dirty` or edited witness. So 0 of 36 would release.
   - Soundness. build-less-brittle/10 row 1 (`cd tools/desk && go test ./internal/arch/`) runs
@@ -114,32 +124,46 @@ facts:
     - anything a test reads by running `git`.
   - Build tags change which files compile, but go/build still reads every Go file's header, so
     the listed files are read whatever the tags.
-  - Conclusion: the list is a sound LOWER bound on what a go row reads and an unsound upper bound.
+  - Conclusion: the list is a sound LOWER bound on what a go run reads and an unsound upper bound.
     This brief uses it only as the floor below.
 - History reads. A row that runs `git` (42 refused rows by command text), `statusgen` (86, most
-  of which read trailers), or a go test that asks git for the toplevel reads `.git`. The witness
-  revision's own `HEAD` differs from the item revision's, so a history-reading row can be judged
-  only at its exact revision. 28 of the 36 refused briefs have at least one such row by command
-  text. Count go tests that shell out and the number is higher. A recorded read set does not
-  release those briefs. They keep today's route.
-- single-point-of-failure: the recorder's completeness. Coverage releases a witness for any path
-  outside the read set verifyrun recorded, so a read the recorder misses is a stale pass. Two
-  layers stand behind it:
-  - The go compile-input floor. For a go row, the statusgen adapter computes `go list -deps -test`
-    at the witness revision, and any in-tree file it lists that the recorded set lacks is refused.
-    That is a static dependency graph computed by a different component at evaluation time, not
-    a run-time trace.
-  - Fail-closed recording. The recorder writes no read set for a read it cannot attribute:
-    `io_uring`, a connection to a local socket or daemon, or a host that is not Linux.
+  of which read trailers), or a go test that asks git for the toplevel reads the git directory.
+  So does `go build` or `go install` of a main package inside a repository, which stamps version
+  control data by running git unless `-buildvcs=false` is set. The witness revision's own `HEAD`
+  differs from the item revision's, so a history-reading row can be judged only at its exact
+  revision. 28 of the 36 refused briefs have at least one such row by command text. Count go
+  tests that shell out and the number is higher. A recorded read set does not release those
+  briefs. They keep today's route.
+- Witnesses reach main through the evidence-landing verb, which today commits one file per call
+  (`tools/desk/cmd/deskevidence/main.go`). verifyrun computes a brief run's tree once, before its
+  rows run, and exempts only that brief's own Evidence edit from `+dirty`
+  (`briefTreeSHA`, `statusgen/verifyrun.go`). Any other uncommitted change in the tree, including
+  another brief's Evidence, makes the witness `+dirty`.
+- single-point-of-failure: the recorder's completeness, and for a forged record, the binding of
+  the read set to the run that wrote it. Coverage releases a witness for any path outside the
+  read set, so a read the recorder misses, or a read set attached afterwards, is a stale pass.
+  Layers behind it:
+  - The go compile-input floor. For every go build-family invocation the trace records, the
+    statusgen adapter computes `go list -deps -test` at the witness revision with that
+    invocation's own arguments, and any in-tree file it lists that the recorded set lacks is
+    refused. That is a static dependency graph computed by a different component at evaluation
+    time, not a run-time trace. The library fails closed when the observation is missing.
+  - Default-deny recording. The recorder traces every system call except a fixed list known to
+    take no path and acquire no descriptor. Any call or read it cannot attribute writes no read
+    set, and the witness says `could-not-check` for its read set.
+  - Introduction binding. A read set counts only when its token and its file were both present in
+    the commit that first introduced the witness row.
   For a non-go row the floor is NONE: no static derivation exists for an arbitrary command. The
-  recorder's fail-closed rule is the only guard there, which is why that rule is strict.
+  default-deny rule is the guard there. A sampled re-run at the item head (Task step 9) checks
+  the batch once, before it lands. A standing second layer for non-go rows is not built here.
 
 design-fit:
   owner: statusgen coverage library (`statusgen/evaluation/coverage_api.go`, `EvaluateCoverage`), fed by the statusgen adapter (`statusgen/coverage.go`)
   contract: S-evidence-coverage
-  retires: []   # the command-text parser and its .gitattributes-ancestor rule retire in a later brief, gated on Task step 9's measurement
-  weight: verbs 0, flags 0, refusals +3 (unreadable read set, floor not covered, history read at a different revision), rule-text lines +0 (no skill or kit text changes)
+  retires: []   # the command-text parser and its .gitattributes-ancestor rule retire in a later brief, gated on Task step 10's measurement
+  weight: verbs 0, flags 0, refusals +5 (unreadable read set, floor not covered, go run with no floor, history read at a different revision, a landing whose read-set file is absent), rule-text lines +0 (no skill or kit text changes)
   why-add: each refusal is the fail-closed branch of a narrowing that does not exist today; the alternative is the parser, which narrows only for shell readers and is retired once this measures it redundant
+  relation: the read set is a new observation (`CoverageInput.ReadSets` and `CoverageInput.GoFloors`), not a dependency manifest. A manifest names a claim's declared dependencies by kind and stays graph-execution/30's input. When a claim has both, the read set replaces only the source scope and the manifest's policy, build and environment checks still run; the source scope is the union, so a manifest can only widen it.
 
 ## Human decision
 Should a verification witness be judged only against the files its run actually read? Today any
@@ -153,8 +177,9 @@ Options:
      while none of those files changed.
    - For go test rows, the evaluator also requires the record to include every file the go
      toolchain lists as compiled. A recorder that missed one is caught by a different signal.
-   - Anything the recorder cannot attribute keeps today's whole-tree check. So does any row
-     that reads repository history; those items stay on today's manual route.
+   - Anything the recorder cannot attribute, and any run on a host that is not Linux, is marked
+     could-not-check for its read set and keeps today's whole-tree check. So does any row that
+     reads repository history; those items stay on today's manual route.
    - The verify desk re-runs about 133 already-witnessed items once, at one main revision.
    - The command-text guesser stays until a measurement shows it adds nothing.
 2. **The same, plus a derived input set for existing go rows with no re-run.** This releases
@@ -165,15 +190,19 @@ Options:
 
 Default if no answer: none — blocks until answered.
 
+Ruled 2026-10-26: option 1, recorded read set with the go compiled-file floor and one batch
+re-witness at a single main revision, on decision issue #4512 (the `ruling:` frontmatter link).
+
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task instructions.
 - Stop at `implemented` — you do not set verified/done (a different, non-implementing identity does).
 - If anything is unclear or contradicts repo state: report NEEDS_CONTEXT, don't guess.
-- Do not run the batch re-witness (Task step 8 names it; the verify desk runs it after merge).
+- Do not run the batch re-witness (Task step 9 names it; the verify desk runs it after merge).
   Do not edit any brief's Verify table, Evidence or witness rows.
 - Do not remove or weaken `deriveRowInputs`, the command-text guard, the Expect guard, the
   landing check, or the `+dirty` / `+unknown` conservative scope.
-- No flag, environment variable or override may switch the floor or the fail-closed recording off.
+- No flag, environment variable or override may switch the floor, the default-deny recording or
+  the introduction binding off.
 - Pure verification: every new check is a closed-form comparison over recorded sets and trees.
   Add no runtime assertions to the code under test.
 
@@ -181,117 +210,222 @@ Default if no answer: none — blocks until answered.
 1. **Freshness.** On fresh `origin/main` re-read the files in Context and record the commit
    read. If a merged change already fills `Dependencies` from any source, stop and report
    NEEDS_CONTEXT.
-2. **Recorder (verifyrun, Linux).** Run each row under a tracer that follows every child
-   process (ptrace-class). `LD_PRELOAD` is not acceptable: Go binaries make raw system calls.
-   Record:
-   - every in-tree path opened for reading or mapped;
-   - every directory listed (the names of its direct children are an input);
-   - every in-tree path looked up and found absent (its continued absence is an input);
-   - every path stat-ed (its existence and mode are an input).
-   Collapse a directory to one entry only when every tracked file beneath it was read.
-   Out-of-tree reads (toolchain, module cache, `/etc`) are environment and stay outside the
-   coverage model. Write no read set, and add the note `read set not recorded: <reason>`, when:
-   - the host is not Linux;
-   - the row submits I/O through `io_uring`;
-   - a process connects to a local socket;
-   - a recorded in-tree path is untracked in the witness tree;
-   - the tracer loses a process.
-3. **Storage.** Write the read set as a sorted, newline-separated file under
-   `docs/streams/<stream>/reads/`, named by its sha256. Bind it to the witness with one line
-   after the Evidence table:
-   `Read-Set: row=<n> command=sha256:<12 hex of the row's Command text> tree=<12 hex> reads=sha256:<64 hex>`.
-   A line whose command digest or tree does not match its witness row is ignored. The witness
-   then has no read set.
+2. **Recorder (verifyrun; Linux only).** Run each row under a tracer that follows every child
+   process from its first instruction (ptrace-class, with a seccomp filter that traps every
+   system call outside a fixed list of calls that take no path and acquire no descriptor).
+   `LD_PRELOAD` is not acceptable: Go binaries make raw system calls. The row starts with only
+   descriptors 0, 1 and 2 open, and stdin is `/dev/null`.
+   - **The limit is Linux.** On any other host verifyrun runs the row as today and writes the
+     read-set token `could-not-check: recorder is Linux-only (<os>)`. It never writes an empty
+     read set. The file pair `readset_linux.go` / `readset_other.go` carries this, as
+     `statusgen/netns.go` does for its facility.
+   - **Path resolution.** Every path is resolved to an absolute, symlink-free path before it is
+     classified. A path relative to a directory descriptor resolves through the tracee's
+     descriptor table and working directory. A path through an in-tree symbolic link records
+     both the link and its target. A `/proc/<pid>/fd/<n>`, `/proc/<pid>/cwd`, `/proc/<pid>/root`
+     or `/dev/fd/<n>` path resolves to its target first.
+   - **History first.** Before anything else, the recorder resolves the run's git directory and
+     common directory (`git rev-parse --absolute-git-dir --git-common-dir` at the row's start,
+     plus any `GIT_DIR` or `GIT_COMMON_DIR` a traced process sets) and the `.git` entry at the
+     tree root. Any access to those paths or beneath them, in-tree or not, is recorded as one
+     `history` entry. Only then do the untracked and out-of-tree rules below apply. So a linked
+     worktree, whose git directory is outside the tree, still records the history read.
+   - **What it records**, for in-tree paths:
+     - every path opened for reading, mapped, or executed (`execve`, `execveat`); an executed
+       path is a read of that file;
+     - every path stat-ed or probed (`stat` family, `statx`, `access`, `faccessat`,
+       `faccessat2`, `readlink`, `readlinkat`); a stat-ed tracked regular file is judged by its
+       content (Task step 5), so a size test or a go test-cache check is covered;
+     - every directory listed (`getdents`, `getdents64`); the names of its direct children are an
+       input;
+     - every path looked up and found absent; its continued absence is an input;
+     - for every exec of the go tool: its working directory, arguments, and its `GOFLAGS`,
+       `GOWORK`, `GOOS`, `GOARCH` and `CGO_ENABLED` values, as one `go-run` entry.
+     A directory collapses to one entry only when every tracked file beneath it was read.
+   - **Environment.** Out-of-tree reads under a fixed environment set are not inputs: `/usr`,
+     `/bin`, `/sbin`, `/lib*`, `/etc`, `/dev`, `/sys`, the resolved `/proc` entries of traced
+     processes, `go env GOROOT`, `GOMODCACHE` and `GOCACHE`, `$HOME/.gitconfig` and
+     `$HOME/.config`, and files a traced process created during this row.
+   - **Default deny.** Write no read set, and write the token
+     `could-not-check: <reason>`, when any of these happens:
+     - a traced system call the recorder does not classify (for example `open_by_handle_at`,
+       `name_to_handle_at`, `io_uring_setup`, `io_uring_enter`);
+     - a connect to a non-loopback address, or to a loopback or local socket whose listener no
+       traced process created in this row;
+     - a namespace, mount or root change (`unshare`, `setns`, `clone` with a new-namespace flag,
+       `mount`, `pivot_root`, `chroot`);
+     - an out-of-tree read outside the environment set;
+     - an exec of an out-of-tree binary outside `/usr`, `/bin`, `/sbin` and `go env GOROOT`,
+       unless a traced process wrote it during this row (a tool built inside the row is
+       covered because its build's reads are recorded; a tool built by an earlier row, or one
+       installed on PATH, is not);
+     - a recorded in-tree path that is untracked in the witness tree (after the history rule);
+     - the tracer loses a process.
+     A row that runs a prebuilt tool therefore keeps today's whole-tree scope. To gain a read set,
+     the row builds the tool itself (`go build -buildvcs=false -o <tmp> .` then runs it).
+3. **Storage.** verifyrun writes the read set to `docs/streams/<stream>/reads/<sha256>`, named by
+   the full sha256 of its content. The file starts with a header and then the sorted,
+   newline-separated entries:
+   - `witness-commit <40 hex>`, the full commit the row ran on;
+   - `command sha256:<64 hex>`, the digest of the row's Command text;
+   - `brief <repo path>` and `row <n>`.
+   The witness row's Runner cell carries the token as a parenthetical after the tree, in the same
+   write as the row: `<runner> @ <tree> (reads sha256:<64 hex>)`, or
+   `(reads could-not-check: <reason>)`. The existing tree token parser stops at `(`, so the cell
+   stays readable by today's code. There is no separate `Read-Set:` line.
 4. **One source, three callers.** Add `coverageOptionsFor(root string, patterns []string) coverageOptions`
-   in `statusgen/coverage.go`. It reads the `Read-Set` lines and their files, and computes the go
-   floor (step 6). `autoflip.go`, `reconcilefold.go` and `runCoverage` call it. No caller builds
-   `coverageOptions{}` itself.
-5. **Judging (library).** A witness with a readable read set speaks for exactly the recorded
-   paths. It is stale when any of the following holds:
-   - a recorded file's blob or mode differs between the witness tree and the item tree;
+   in `statusgen/coverage.go`. It reads each witness's read-set token and file and the
+   introduction observation (step 5), and computes the go floor for every `go-run` entry
+   (step 6). `autoflip.go`, `reconcilefold.go` and `runCoverage` call it. No caller builds
+   `coverageOptions{}` itself. `statusgen/domain/assess.go:111` stays as it is; step 6's library
+   rule makes it fail closed.
+5. **Judging (library).** A read set counts only when all of the following hold. Otherwise the
+   witness keeps today's scope and reason, and the claim never narrows:
+   - The token's file exists and its content's sha256 is the token's digest. If not, the claim
+     is `could-not-check` with the reason
+     `the witness's recorded read set cannot be read or does not match its digest`.
+   - The file's header matches the witness: its commit is the witness tree's full commit, its
+     command digest is the row's Command text, and its brief and row are this row.
+   - Introduction binding: in the commit that first introduced this witness row into the brief
+     file, the row's Runner cell already carried the same token, and the file existed at that
+     commit. The adapter supplies that commit's row text and file presence as an observation.
+     A token or file added by a later commit is ignored.
+   - After exempt paths are subtracted, the set holds at least one in-tree path. An empty set, or
+     one holding only exempt paths, is ignored.
+   Exempt paths: a recorded read of the brief's own file, of `docs/streams/**`, of `STATUS.md`,
+   or of any other path verify and regen write, is subtracted by the same function the
+   conservative scope uses, so the read-set scope never covers more of the bookkeeping surface
+   than today's scope. The claim's reason states how many recorded reads were exempt. The
+   brief's own Verify rows stay bound by the Command and Expect guards.
+   A counted read set makes the witness speak for exactly its remaining entries. It is stale when
+   any of the following holds:
+   - a recorded or stat-ed tracked file's blob or mode differs between the witness tree and the
+     item tree;
    - a listed directory's direct-children names differ;
    - a path recorded absent now exists;
    - the result of `git check-attr` for `text`, `eol`, `filter`, `working-tree-encoding` and
      `ident` on a recorded path differs.
    So a `.gitattributes` change that alters no recorded path's checkout releases. Exact refusal
    strings, which the tests assert:
-   - `the witness's recorded read set cannot be read or does not match its digest`: a
-     `Read-Set` line whose file is absent, unreadable or of another digest. The claim is
-     `could-not-check`.
+   - `the witness's recorded read set cannot be read or does not match its digest` (above).
    - `the row read repository history (.git), so only a witness at the item's exact revision speaks for it`:
-     any recorded path under the git directory. Exact revision only.
+     a read set with a `history` entry. Exact revision only.
    Unchanged:
-   - A witness with no `Read-Set` line keeps today's scope and reason.
+   - A witness with no read-set token, or a `could-not-check` token, keeps today's scope.
    - A `+dirty` or `+unknown` witness keeps the conservative scope, read set or not.
    - The command-text and Expect guards run before any of this.
-6. **The go floor (adapter, lower layer).** For a row shaped `cd <dir> && go test|build|vet …`,
-   the adapter exports the witness tree to a scratch directory. It runs
-   `go list -deps -test -json` there with `GOFLAGS=-mod=readonly GOPROXY=off GOWORK=off`.
-   It collects every in-tree file listed: Go, cgo, C, H, S, ignored, test, x-test and embed
-   files, plus each in-tree module's `go.mod` and `go.sum`. It hands the result to the library
-   as an observation. The library refuses the claim with
-   `the recorded read set omits a file the go toolchain compiles for this row` when the
-   recorded set lacks any of them. If `go list` fails, the claim is `could-not-check` (for
-   example, the module cache misses a dependency). The floor never widens a release. It only
-   refuses.
-7. **Contract.** In `docs/contracts.md`, rewrite the S-evidence-coverage row's
+6. **The go floor (adapter, lower layer).** A row is a go row when its read set has a `go-run`
+   entry, whatever the command text looks like: a pipe tail, `go -C`, or a script that runs go
+   all count. For each `go-run` entry whose subcommand is `build`, `test`, `vet`, `run`,
+   `install` or `list`, the adapter:
+   - exports the witness tree to a scratch directory;
+   - runs `go list -deps -test -json` there, in the recorded working directory, with the
+     recorded package arguments, `-tags` and `GOOS`/`GOARCH`/`CGO_ENABLED`, and with
+     `GOFLAGS=-mod=readonly GOPROXY=off` added to the recorded `GOFLAGS`;
+   - collects every in-tree file listed: Go, cgo, C, H, S, ignored, test, x-test and embed files,
+     plus each in-tree module's `go.mod` and `go.sum` and any in-tree `go.work` the run used;
+   - hands the result to the library as an observation keyed by that entry.
+   The library refuses the claim with
+   `the recorded read set omits a file the go toolchain compiles for this row` when the recorded
+   set lacks any listed file. If `go list` fails, the claim is `could-not-check` (for example,
+   the module cache misses a dependency). A read set with a build-family `go-run` entry and no
+   floor observation for it is `could-not-check` with the reason
+   `the read set records a go build but no compile-input floor was supplied`, so a caller that
+   skips the floor fails closed. The floor never widens a release. It only refuses.
+7. **Landing (deskevidence).** When a landed Evidence row's Runner cell carries a
+   `reads sha256:` token, deskevidence commits the brief and the named
+   `docs/streams/<stream>/reads/<sha256>` file in ONE commit. It refuses the landing, before any
+   write, when the file is absent locally or its digest differs. The same holds for the
+   Evidence-PR flow: the PR carries the row and its file together.
+8. **Contract.** In `docs/contracts.md`, rewrite the S-evidence-coverage row's
    independent-layer column to name the compile-input floor, its signal (a static dependency
-   graph computed at evaluation time) and its gap (rows that are not go rows).
-8. **Name the batch re-witness. Do not run it.** Add a section `## Batch re-witness` to this
+   graph computed at evaluation time) and its gap (rows that are not go rows). Correct the stale
+   comment in `statusgen/evaluation/coverage.go` that says graph-execution/09 supplies manifests:
+   name graph-execution/30 as the manifest's owner and this brief's read set as a separate
+   observation.
+9. **Name the batch re-witness. Do not run it.** Add a section `## Batch re-witness` to this
    brief's stream README that states:
    - Who runs it: the verify desk, a non-implementing identity, with writing-form `verifyrun`
      under the recorder on a Linux host (a container qualifies).
    - Which revision: the first main commit that contains this brief's merge, the same one for
      every row.
+   - One fresh detached worktree per brief at that revision. Each brief's rows run in a tree
+     that is clean apart from that brief's own Evidence and read-set files, so no witness is
+     `+dirty` from another brief's edits. Its Evidence and read-set files land from that
+     worktree before the next brief starts.
    - Its bound: the briefs at `verified` whose only hold is `wrong-revision`, listed by
      `statusgen --coverage --json` at that revision before the run starts (133 at 5ddf5a317).
      Nothing is added mid-batch.
+   - Before anything lands: the dry-run release count with the batch's witnesses, and a re-run at
+     the main head of ten released claims whose rows are not go rows. Any disagreement stops the
+     batch and is filed as a finding.
    - Failures: a row that fails takes the ordinary red path and is never re-run to green.
-   - Exclusions: history-reading rows gain nothing from it, and the section says so.
-9. **Parser measurement (report only).** On the implementation branch, count the claims that
-   pass only through `deriveRowInputs` (42 at 5ddf5a317) and put that number in the PR body. The
-   parser's retirement is a later brief, opened only once that count is 0 after the batch
-   re-witness.
+   - Exclusions: history-reading rows and rows that run a prebuilt tool gain nothing from it,
+     and the section says so.
+   verifyrun's own-brief exemption from `+dirty` extends to that brief's own read-set files named
+   by its Evidence, so resuming a brief's run in the same worktree stays clean. Another brief's
+   read-set file stays dirty.
+10. **Parser measurement (report only).** On the implementation branch, count the claims that
+    pass only through `deriveRowInputs` (42 at 5ddf5a317) and put that number in the PR body.
+    The parser's retirement is a later brief, opened only once that count is 0 after the batch
+    re-witness.
 
 ## Verify (executable — no prose-only DoD items)
-Baselines: rows 1–14 and 16–17 are fail-first. Each names a test or check this brief adds, so
-on the base commit each prints 0 or exits 1. Row 15 compares against before-measurement 2
-(author-run, 5ddf5a317), re-taken at the implementation's merge. Before-measurement 1 (35 at
-9ab9fa76ab4d, relayed) is context only, and no row asserts against it.
+Baselines: rows 1–14, 16, 17 and 19–27 are fail-first. Each names a test or check this brief
+adds, so on the base commit each prints 0 or exits 1. Row 15 compares a build of the
+implementation merge against a build of its first parent. Row 18 is the lint. Before-measurement
+2 (36 at 5ddf5a317, author-run) is the reference row 15's Evidence sits beside. Before-measurement
+1 (35 at 9ab9fa76ab4d, relayed) is context only, and no row asserts against it.
+Linux rows: rows 14, 16, 21, 23 and 25 drive the recorder. Run them on a Linux runner (a
+container qualifies). On any other host the tests assert the `could-not-check: recorder is
+Linux-only` token instead and print the same PASS line, so their result there says nothing about
+the recorder; record such a run as `could-not-check` for the recorder, not as its proof.
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
 | 1 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetReleasesUnreadPathChange$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetReleasesUnreadPathChange \('` | output is 1 — the test asserts a witness whose read set omits `.claude-plugin/marketplace.json`, `.assay-surfaces` and `.gitattributes` is released (claim `pass`) when the item differs from the witness only in those three paths | check:ci |
 | 2 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetRefusesChangedDependency$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetRefusesChangedDependency \('` | output is 1 — the test asserts that, with the row-1 unrelated-path release in place, a one-line change to a recorded file of a depended-on package leaves the claim `wrong-revision` with a reason containing `differs between the witness's tree and the item's and the witness speaks for it` and naming that file | check:ci +mutation |
 | 3 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetFloorCatchesUnderRecordedGoInput$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetFloorCatchesUnderRecordedGoInput \('` | output is 1 — LOWER layer with the UPPER bypassed: the read set deliberately omits a depended-on Go file and only that file changed, so the tree-wise comparison alone would release; the test asserts the claim is refused with the reason `the recorded read set omits a file the go toolchain compiles for this row` | check:ci +mutation |
-| 4 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetMissingFailsClosed$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetMissingFailsClosed \('` | output is 1 — the test asserts a `Read-Set` line whose file is absent, and one whose file has a different digest, each give claim `could-not-check` with the reason `the witness's recorded read set cannot be read or does not match its digest`, and never `pass` | check:ci +mutation |
+| 4 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetMissingFailsClosed$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetMissingFailsClosed \('` | output is 1 — the test asserts a read-set token whose file is absent, and one whose file has a different digest, each give claim `could-not-check` with the reason `the witness's recorded read set cannot be read or does not match its digest`, and never `pass` | check:ci +mutation |
 | 5 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetDirtyWitnessStillRefuses$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetDirtyWitnessStillRefuses \('` | output is 1 — the test asserts a `+dirty` witness carrying a valid read set, with only an unrecorded path changed, stays `wrong-revision` with a reason containing `uncommitted edits (+dirty)` | check:ci |
 | 6 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetEditedRowStillRefuses$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetEditedRowStillRefuses \('` | output is 1 — the test asserts a witness with a valid read set whose row Command was edited after the run is refused with a reason containing `the witness records a different command than the Verify row now carries` | check:ci |
-| 7 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetHistoryReadNeedsExactRevision$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetHistoryReadNeedsExactRevision \('` | output is 1 — the test asserts a read set containing a path under the git directory is refused at any other revision with the reason `the row read repository history (.git), so only a witness at the item's exact revision speaks for it`, and released at the exact revision | check:ci +mutation |
+| 7 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetHistoryReadNeedsExactRevision$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetHistoryReadNeedsExactRevision \('` | output is 1 — the test asserts a read set with a `history` entry is refused at any other revision with the reason `the row read repository history (.git), so only a witness at the item's exact revision speaks for it`, and released at the exact revision | check:ci +mutation |
 | 8 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetNegativeInputsRefuse$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetNegativeInputsRefuse \('` | output is 1 — the test asserts two refusals: a file added to a directory the row listed, and a file appearing at a path the row looked up and found absent; each leaves the claim `wrong-revision` | check:ci +mutation |
 | 9 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetContentAttributeChangeRefuses$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetContentAttributeChangeRefuses \('` | output is 1 — the test asserts a `.gitattributes` change that sets `eol` on a recorded path refuses the claim, while one that touches no recorded path releases | check:ci +mutation |
-| 10 | `cd statusgen && go test ./evaluation/ -run '^TestLegacyWitnessKeepsConservativeScope$' -count=1 -v \| grep -c -E '^--- PASS: TestLegacyWitnessKeepsConservativeScope \('` | output is 1 — the test asserts a witness with no `Read-Set` line whose row is `cd tools/x && go test ./...` stays `wrong-revision` when only `.claude-plugin/marketplace.json` changed (no derived go input set exists) | check:ci |
-| 11 | `cd statusgen && go test . -run '^TestCoverageCallersAgreeOnReadSet$' -count=1 -v \| grep -c -E '^--- PASS: TestCoverageCallersAgreeOnReadSet \('` | output is 1 — over one fixture repository the test asserts the auto-flip dry run flips the brief, the reconcile fold folds it, and `--coverage` reports it released, all for the same recorded witness | check:ci +flow |
+| 10 | `cd statusgen && go test ./evaluation/ -run '^TestLegacyWitnessKeepsConservativeScope$' -count=1 -v \| grep -c -E '^--- PASS: TestLegacyWitnessKeepsConservativeScope \('` | output is 1 — the test asserts a witness with no read-set token, and one with a `could-not-check` token, whose row is `cd tools/x && go test ./...` each stay `wrong-revision` when only `.claude-plugin/marketplace.json` changed | check:ci |
+| 11 | `cd statusgen && go test . -run '^TestCoverageCallersApplyFloor$' -count=1 -v \| grep -c -E '^--- PASS: TestCoverageCallersApplyFloor \('` | output is 1 — over one fixture repository the test asserts the auto-flip dry run flips the brief, the reconcile fold folds it, and `--coverage` reports it released for one recorded witness; then, with a compiled file planted missing from the record and only that file changed, all three refuse with the floor reason, the floor computed by `coverageOptionsFor` and not injected | check:ci +flow +mutation |
 | 12 | `! grep -n -F 'coverageOptions{}' statusgen/autoflip.go statusgen/reconcilefold.go statusgen/coverage.go` | exit 0 — no caller builds an empty manifest; all three go through `coverageOptionsFor` | check |
-| 13 | `cd statusgen && go test . -run '^TestGoFloorFromWitnessTree$' -count=1 -v \| grep -c -E '^--- PASS: TestGoFloorFromWitnessTree \('` | output is 1 — over a fixture module with a cgo file, an embedded file, a build-tag-excluded file and an x-test file, the test asserts the floor lists all four and `go.mod`; with a dependency missing from the module cache it asserts `could-not-check` | check:ci |
-| 14 | `cd statusgen && go test . -run '^TestVerifyrunRecordsReadSet$' -count=1 -v \| grep -c -E '^--- PASS: TestVerifyrunRecordsReadSet \('` | output is 1 on Linux — the test runs a row that reads a fixture file through a child process, lists a directory and probes an absent path, and asserts all three appear in the written read set and the `Read-Set` line's digest matches the file | check:ci +dereference |
-| 15 | `statusgen --root . --auto-flip-model --dry-run \| grep -c 'REFUSED (stays verified)'` | the printed count equals the count printed by a statusgen built from the implementation merge's first parent, run on the same checkout; both are recorded in Evidence beside before-measurement 2 (36 at 5ddf5a317). The implementation alone releases no existing witness, because none yet carries a read set | gate:model |
-| 16 | `cd statusgen && go test . -run '^TestVerifyrunUntraceableReadOmitsReadSet$' -count=1 -v \| grep -c -E '^--- PASS: TestVerifyrunUntraceableReadOmitsReadSet \('` | output is 1 — the test asserts a row that connects to a local socket, and a run on a non-Linux host (simulated), each write no `Read-Set` line and a note starting `read set not recorded:` | check:ci +mutation |
-| 17 | `grep -F '\| S-evidence-coverage \|' docs/contracts.md \| grep -c -F 'compile-input floor'` | output is 1 — the contract row names the new independent layer | check |
-| 18 | `statusgen --root . --lint` | exit 0; no PROBLEM line names `build-less-brittle/15` | check |
+| 13 | `cd statusgen && go test . -run '^TestGoFloorFromWitnessTree$' -count=1 -v \| grep -c -E '^--- PASS: TestGoFloorFromWitnessTree \('` | output is 1 — over a fixture module with a cgo file, an embedded file, a build-tag-excluded file and an x-test file, the test asserts the floor lists all four and `go.mod`; that a recorded `-tags` value and package argument reach `go list`; and with a dependency missing from the module cache it asserts `could-not-check` | check:ci |
+| 14 | `cd statusgen && go test . -run '^TestVerifyrunRecordsReadSet$' -count=1 -v \| grep -c -E '^--- PASS: TestVerifyrunRecordsReadSet \('` | output is 1 on a Linux runner — the test runs a row that reads a fixture file through a child process, execs an in-tree script, follows an in-tree symbolic link, opens a file relative to a directory descriptor, lists a directory, stats a file and probes an absent path, and asserts each appears in the written read set (the link and its target both), the Runner cell's token digest matches the file, and the file's header names the full witness commit and the command digest | check:ci +dereference |
+| 15 | `M=$(git log --first-parent --diff-filter=A --format=%H -1 -- statusgen/evaluation/readset_test.go) && T=$(mktemp -d) && git worktree add --detach "$T/at" "$M" && mkdir -p "$T/base" && git archive "$M^1" \| tar -x -C "$T/base" && (cd "$T/at/statusgen" && go build -buildvcs=false -o "$T/sg-new" .) && (cd "$T/base/statusgen" && go build -buildvcs=false -o "$T/sg-old" .) && a=$("$T/sg-new" --root "$T/at" --auto-flip-model --dry-run \| grep -c 'REFUSED (stays verified)'); b=$("$T/sg-old" --root "$T/at" --auto-flip-model --dry-run \| grep -c 'REFUSED (stays verified)'); git worktree remove --force "$T/at"; echo "new=$a old=$b"` | one line `new=<n> old=<n>` with the two numbers equal: at the implementation merge, a statusgen built from it and one built from its first parent refuse the same briefs, because no existing witness yet carries a read set. Both numbers are recorded in Evidence beside before-measurement 2 (36 at 5ddf5a317) | gate:model |
+| 16 | `cd statusgen && go test . -run '^TestVerifyrunUntraceableReadOmitsReadSet$' -count=1 -v \| grep -c -E '^--- PASS: TestVerifyrunUntraceableReadOmitsReadSet \('` | output is 1 on a Linux runner — the test asserts each of these writes no read set and a Runner token starting `reads could-not-check:`, never an empty set: a non-loopback connect; a connect to a local socket no traced process listens on; an `unshare`; an `open_by_handle_at`; an out-of-tree read outside the environment set; an exec of a binary built by an earlier row; and a simulated non-Linux host. On a non-Linux host the last case is real | check:ci +mutation |
+| 17 | `grep -E '^[\|] S-evidence-coverage [\|]' docs/contracts.md \| grep -c -F 'compile-input floor'` | output is 1 — the S-row itself, anchored at the line start, names the new independent layer; an R-row that names S-evidence-coverage as its owner does not match | check |
+| 18 | `T=$(mktemp -d) && (cd statusgen && go build -buildvcs=false -o "$T/sg" .) && "$T/sg" --root . --lint` | exit 0; no PROBLEM line names `build-less-brittle/15` | check |
+| 19 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetAddedAfterWitnessIgnored$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetAddedAfterWitnessIgnored \('` | output is 1 — the test asserts four cases keep today's scope and stay `wrong-revision` when only an unrecorded path changed: a read-set token added to a witness row by a later commit; a read-set file first committed after the row; a file whose header names another row or commit; and a read set holding only exempt paths | check:ci +mutation |
+| 20 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetStatComparesContent$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetStatComparesContent \('` | output is 1 — the test asserts a tracked file the row only stat-ed, changed in content with the same size and mode, leaves the claim `wrong-revision` naming that file | check:ci +mutation |
+| 21 | `cd statusgen && go test . -run '^TestVerifyrunCachedGoTestRecordsFixtures$' -count=1 -v \| grep -c -E '^--- PASS: TestVerifyrunCachedGoTestRecordsFixtures \('` | output is 1 on a Linux runner — the test runs a go test that opens a fixture file twice with a shared build cache, the second run served from the test cache, and asserts the second read set still lists the fixture | check:ci |
+| 22 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetGoRunWithoutFloorCouldNotCheck$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetGoRunWithoutFloorCouldNotCheck \('` | output is 1 — the test asserts a read set with a `go-run test` entry evaluated with no floor observation is `could-not-check` with the reason `the read set records a go build but no compile-input floor was supplied`, through `EvaluateCoverage` directly as `statusgen/domain/assess.go` calls it | check:ci +mutation |
+| 23 | `cd statusgen && go test . -run '^TestVerifyrunHistoryReadInLinkedWorktree$' -count=1 -v \| grep -c -E '^--- PASS: TestVerifyrunHistoryReadInLinkedWorktree \('` | output is 1 on a Linux runner — in a primary checkout and in a linked worktree whose git directory is outside the tree, the test runs a `git log` row and asserts the read set carries a `history` entry and is not dropped by the untracked or out-of-tree rules | check:ci +mutation |
+| 24 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetExemptPathsSubtracted$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetExemptPathsSubtracted \('` | output is 1 — the test asserts recorded reads of the brief's own file, a `docs/streams/` file and `STATUS.md` do not hold the claim when they change, that the reason states the exempt count, and that a non-exempt recorded path still does | check:ci |
+| 25 | `cd statusgen && go test . -run '^TestVerifyrunReadSetFilesAndDirty$' -count=1 -v \| grep -c -E '^--- PASS: TestVerifyrunReadSetFilesAndDirty \('` | output is 1 on a Linux runner — the test asserts a resumed run of a brief over its own uncommitted Evidence and read-set files writes a clean tree token, and a run with another brief's uncommitted read-set file writes `+dirty` | check:ci |
+| 26 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestDeskevidenceLandsReadSetWithRow$' -count=1 -v \| grep -c -E '^--- PASS: TestDeskevidenceLandsReadSetWithRow \('` | output is 1 — against a fake forge the test asserts one commit carries both the Evidence row and its read-set file, and that a row whose read-set file is absent locally, or has another digest, is refused before any write | check:ci +flow |
+| 27 | `awk '/^## Batch re-witness/{f=1} f' docs/streams/build-less-brittle/README.md \| grep -c -F 'One fresh detached worktree per brief'` | output is 1 — the README's batch section requires a clean per-brief tree | check |
 
 <!--
 Pre-mortem → detection map (author-brief B5)
 | Failure mode of the work | Caught by |
 |---|---|
-| Recorder misses a read on a go row, stale witness released | row 3 (floor, upper bypassed); row 14 (recorder sees child-process reads) |
-| Recorder misses a read on a non-go row | row 16 for the named untraceable channels; otherwise review-only — no static floor exists, stated as the SPOF |
-| Narrowing also releases a real change | rows 2, 8, 9 |
+| Recorder misses a read on a go row, stale witness released | row 3 (floor, upper bypassed, library); row 11 (floor through the real callers); row 14 (recorder sees child, exec, symlink and dirfd reads) |
+| Recorder misses a read on a non-go row | row 16 for the default-deny channels; row 20/21 for stat-only reads; otherwise review-only — no static floor exists, stated as the SPOF |
+| A caller skips the floor | rows 12, 22 |
+| Read set attached after the witness, or empty | row 19 |
+| Narrowing also releases a real change | rows 2, 8, 9, 20 |
 | Existing witnesses quietly released before the re-witness | rows 10, 15 |
-| +dirty / edited / history rows loosened | rows 5, 6, 7 |
-| One caller left on the empty manifest | rows 11, 12 |
-| Read set file tampered or lost | row 4 |
-| Batch re-witness run by the implementer or unbounded | Ground rules; README section (step 8) is review-checked |
+| +dirty / edited / history rows loosened | rows 5, 6, 7, 23 |
+| Bookkeeping exemptions drift | row 24 |
+| Read set file tampered or lost, or never landed | rows 4, 26 |
+| Batch makes later witnesses +dirty | rows 25, 27 |
+| Batch re-witness run by the implementer or unbounded | Ground rules; README section (step 9) is review-checked |
 -->
 
 ## Evidence
@@ -301,7 +435,8 @@ Pre-mortem → detection map (author-brief B5)
 ## Review
 Gate: human (from frontmatter `gate: human`, the narrowing of a verification control). The
 reviewer answers both design-fit questions in the verdict: (1) the single control between a
-missed read and a stale release is the recorder's completeness; is the go floor plus fail-closed
-recording an acceptable guard for go rows, and is the absence of a floor for other rows
-acceptable? (2) row 3 proves the lower layer (the floor) refuses with the upper layer (the
-tree-wise comparison) bypassed; confirm it plants the omission rather than walking the happy path.
+missed read and a stale release is the recorder's completeness, and for a forged record the
+introduction binding; is the go floor plus default-deny recording an acceptable guard for go
+rows, and is the absence of a floor for other rows acceptable? (2) rows 3 and 11 prove the lower
+layer (the floor) refuses with the upper layer (the tree-wise comparison) bypassed, row 11
+through the real callers; confirm both plant the omission rather than walking the happy path.

@@ -105,7 +105,7 @@ M1–M6/C1–C4 and implemented-brief status remain unchanged.
         └──► 08 hotspot metric + brittle mark ───────────────┘
 03 weight ratchet ──────────────────► 06, 07 ──────────────────────────────────┘
 14 delivery-binding design (independent of 01–13; its implementation briefs follow its owed decisions)
-15 recorded witness inputs (independent of 01–14; gate: human — the driver rules on it before dispatch)
+15 recorded witness inputs (independent of 01–14; gate: human — ruled option 1 on its decision issue; dispatchable once it merges)
 ```
 
 **Longest chain:** `01 → 02 → 04 → 05 → 11 → 12 → 13` (seven briefs). Before the
@@ -142,7 +142,7 @@ scanner fix becomes the real head of the 04 → 05 chain.
 
 | Wave | Briefs | Starts when |
 |---|---|---|
-| 0 | 01, 03, 14, 15 | this stream merged (the spec approval); 14 starts now, independent of 01–13; 15 starts once the driver rules on it |
+| 0 | 01, 03, 14, 15 | this stream merged (the spec approval); 14 starts now, independent of 01–13; 15 is ruled and starts once it merges |
 | 1 | 02, 07, 08 | 01 merged (07 also after 03) |
 | 2 | 04, 06, 10 | 02 merged (06 also after 03 and 07; 10 after 01 and 07) |
 | 3 | 05, 09 | 03 and 04 merged (09 after 04 and 08) |
