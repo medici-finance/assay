@@ -289,6 +289,13 @@ func worktreeCreateHint(kit, branch, deskwtSaid string) string {
 	// open PR when the real obstruction was an unrelated stale local directory. "never clobbered"
 	// appears in that message and in no branch message, so it is the discriminator. The answer
 	// mirrors the verifier arm above — point at the stale dir and `deskwt remove`, never at a PR.
+	// A resume's earlier home was found but failed deskwt's finished-home proof (#4272): it
+	// holds something the forge does not, is locked, or belongs to another run. Removing it
+	// blind would lose exactly that, so the hint points at the clause deskwt named.
+	case strings.Contains(deskwtSaid, "Not adopted as a finished home"):
+		return "An earlier home of this item exists but is NOT provably finished (deskwt names the failed clause " +
+			"below) — it may hold work the forge does not. Inspect it; push or discard that work, or let its owner " +
+			"finish, then re-dispatch. Do not remove it unread."
 	case strings.Contains(deskwtSaid, "never clobbered"):
 		return "The worktree TARGET DIRECTORY already exists and deskwt never clobbers one — this is a stale " +
 			"directory on this session key, NOT a branch collision and NOT a delivered brief, so do not look " +

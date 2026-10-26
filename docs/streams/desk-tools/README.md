@@ -232,6 +232,10 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 51 | [Drive the verifier skill from the current queue and landing contract](brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md) | 4 | M | todo | — | — |
 | 52 | [Link decision and verification cards without conflating their authority](brief-52-link-decision-and-verification-cards-without-conflating-their-authority.md) | 1 | M | todo | — | — |
 | 53 | [Rename pr-review-desk to review-desk without breaking live windows or adopters](brief-53-rename-pr-review-desk-to-review-desk.md) | 1 | L | todo | — | — |
+| 55 | [Adopt parity-checked prune mutation selection](brief-55-adopt-parity-checked-prune-mutation-selection.md) | 1 | M | todo | — | — |
+| 56 | [Make mutation reports resumable and measurable](brief-56-make-mutation-reports-resumable-and-measurable.md) | 1 | M | todo | — | — |
+| 57 | [Budget concurrent mutation work across the host](brief-57-budget-concurrent-mutation-work-across-the-host.md) | 1 | M | todo | — | — |
+| 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -257,7 +261,7 @@ in PR #2620. They do not mark desk-tools/32 implemented or resurrect its closed 
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /59 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/35 (depends on desk-tools/34), desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is

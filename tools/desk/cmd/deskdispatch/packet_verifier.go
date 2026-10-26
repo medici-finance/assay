@@ -66,14 +66,14 @@ package main
 // subprocess inventory (reviewguard_test.go) is therefore unchanged by this file.
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/medici-finance/assay/tools/desk/internal/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/packet"
@@ -375,18 +375,7 @@ func (d verifierBrief) briefTextTitle() string {
 // no-break space and a carriage return too), then one to six `#` and white space. It
 // returns the level and the trimmed title, or level 0 for a line that is not a heading. An
 // indented heading is a heading here because it is one to those readers.
-func vpHeading(line string) (level int, title string) {
-	t := strings.TrimSpace(line)
-	rest := strings.TrimLeft(t, "#")
-	level = len(t) - len(rest)
-	if level < 1 || level > 6 {
-		return 0, ""
-	}
-	if r, _ := utf8.DecodeRuneInString(rest); rest != "" && !unicode.IsSpace(r) {
-		return 0, "" // `#word`: no gap after the mark
-	}
-	return level, strings.TrimSpace(rest)
-}
+func vpHeading(line string) (int, string) { return briefdoc.Heading(line) }
 
 // vpIsEvidenceHeading reports whether a line is an Evidence heading, at any level.
 func vpIsEvidenceHeading(line string) (level int, ok bool) {
@@ -396,18 +385,12 @@ func vpIsEvidenceHeading(line string) (level int, ok bool) {
 
 // vpIsVerifyHeading reports whether a line is the Verify heading: level two, as every
 // reader of the section requires, with a title that begins with the word.
-func vpIsVerifyHeading(line string) bool {
-	level, title := vpHeading(line)
-	return level == 2 && vpVerifyRe.MatchString(title)
-}
+func vpIsVerifyHeading(line string) bool { return briefdoc.IsVerify(line) }
 
 // vpEndsSection reports whether a line ends a level-two section: the next level-two
 // heading, which is where every reader ends the Verify and Evidence sections. A level-one
 // line does not — in a brief that is far more often a comment inside an example.
-func vpEndsSection(line string) bool {
-	level, _ := vpHeading(line)
-	return level == 2
-}
+func vpEndsSection(line string) bool { return briefdoc.IsSection(line) }
 
 // vpTablesIn returns every Markdown table in lines, in order.
 func vpTablesIn(lines []string) []vpTable {

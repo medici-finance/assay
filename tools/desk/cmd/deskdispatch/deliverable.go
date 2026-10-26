@@ -60,6 +60,8 @@ package main
 // deliverable repo's own checkout (--root) stays the worktree source.
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+
 	"fmt"
 	"os"
 	"path/filepath"
@@ -265,15 +267,16 @@ func briefV2Alias(id string) string {
 
 // briefField returns a trimmed, unquoted frontmatter scalar (an inline `# comment` dropped).
 func briefField(front string, re *regexp.Regexp) string {
-	m := re.FindStringSubmatch(front)
-	if m == nil {
+	f, err := briefdoc.ParseFields(front)
+	if err != nil {
 		return ""
 	}
-	v := m[1]
-	if i := strings.Index(v, " #"); i >= 0 {
-		v = v[:i]
+	for key, value := range f.Values {
+		if re.MatchString(key + ": " + value) {
+			return value
+		}
 	}
-	return strings.Trim(strings.TrimSpace(v), `"'`)
+	return ""
 }
 
 // resolveBriefPath locates --brief: absolute as given; relative under --root first (the base the
@@ -362,6 +365,13 @@ func resolveDeliverable(o dispatchOpts) (deliverable, error) {
 		}
 		briefText = string(raw)
 		front := briefFrontmatterBlock(briefText)
+		// A block the shared parser refuses could still carry a declaration, so
+		// it is a could-not-check too, never "declares nothing".
+		if _, perr := briefdoc.ParseFields(front); perr != nil {
+			return d, deskkit.Unverifiable(fmt.Sprintf(
+				"step %s: --brief %s has frontmatter that cannot be read (%v), so whether it declares a "+
+					"deliverable repo cannot be established. Nothing was claimed.", stepClaimAcquire, o.brief, perr), perr)
+		}
 		declDeliverable = briefField(front, briefDeliverableRe)
 		declHomedIn = briefField(front, briefHomedInRe)
 		declV2Alias = briefV2Alias(briefField(front, briefIDRe))

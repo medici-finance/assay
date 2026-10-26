@@ -2,12 +2,9 @@ package main
 
 // Roster / authority configuration — statusgen's half.
 //
-// KEEP IN SYNC with the desk-tools deskkit roster loader. statusgen and
-// desk-tools are separate Go modules that deliberately share no code (the
-// documented-duplicate pattern), so this is a cross-tree duplicate of deskkit's
-// loader. A behavioural coupling test binds the two READERS over a shared
-// vector file, so the duplication cannot drift. A change to either copy must be
-// made in both.
+// Common lexical roster normalization and trust judgments are owned by deskcore/trust.
+// This adapter retains mode-specific source selection, permissions, echoing and
+// configuration fields; shared behavioral vectors exercise both production adapters.
 //
 // The full rationale — why a repository/organization variable rather than a file
 // in the repo, why the write class must not consult the environment, why an
@@ -92,6 +89,8 @@ package main
 // code question this file can settle.
 
 import (
+	trustcore "github.com/medici-finance/assay/deskcore/trust"
+
 	"fmt"
 	"io"
 	"os"
@@ -477,50 +476,7 @@ const (
 // scanApplyProductConfig / scanProductConfigLines), are absent from the default
 // (open-core) build, and sit outside the namespace whose unknown keys refuse. See
 // openstub.go for the no-op defaults.
-func scanKnownRosterKeys() []string {
-	return []string{
-		scanEnvBlessLogin, scanEnvTrustedLogins, scanEnvTrustedBotSlugs,
-		scanEnvAllowedRepos, scanEnvHumanLoginMap, scanEnvFormerHumanLoginMap,
-		scanEnvRiskPathTriggersExtra,
-		scanEnvRepoAliases, scanEnvReleaseRepo, scanEnvWriteguardCallout,
-		scanEnvRosterSchema, scanEnvHomeRepo, scanEnvScanRepos,
-		// DESK-only, recognised-not-applied (the scan-override audit identity): the
-		// OS-account→login map deskkit's OverrideIdentity consumes — see its
-		// declaration above.
-		scanEnvOSUserLoginMap,
-		// DESK-only, recognised-not-applied (desktools-v2/11): the outbound-write check's
-		// house callout — see their declarations above.
-		scanEnvOutboundCallout, scanEnvOutboundCalloutRequired, scanEnvOutboundCalloutTimeout,
-		scanEnvAuthorizedAuthors, scanEnvChannelDriftTarget,
-		scanEnvSweepWithheldStreams, scanEnvDeterministicGatePatterns,
-		// DESK-only, recognised-not-applied — see their declarations above for who
-		// consumes each and why statusgen must not fail closed on it.
-		scanEnvRepoForges, scanEnvRiskCallout,
-		scanEnvWithheldIdentifiers, scanEnvAllowCluster,
-		scanEnvGitLabSessionEmails,
-		scanEnvGitLabDisplayNames,
-		scanEnvStreamCap,
-		scanEnvCriticalStampAuthorities,
-		scanEnvContributorLedger,
-		// DESK-only, recognised-not-applied (verify-integrity/10): consumed by
-		// cmd/deskcalibrate / a documented policy key, never by statusgen — but
-		// they share this roster.env, so statusgen must not fail closed on either.
-		scanEnvReviewerVendor, scanEnvVerifierVendor,
-		// DESK-only, recognised-not-applied (forge-neutral brief 14): cmd/deskrun's
-		// per-repo run-credential binding.
-		scanEnvRunCredentials,
-		// DESK-only, recognised-not-applied (the claim-store seam): the claim-store keys the
-		// desk tools' resolver consumes — see their declarations above.
-		scanEnvClaimStore, scanEnvClaimDir, scanEnvClaimSingleHost, scanEnvUsageDir,
-		// DESK-only, recognised-not-applied (the auto-approve lane): the lane config keys the
-		// desk tools' lane parser consumes — see their declarations above.
-		scanEnvAutoApproveAreas, scanEnvAutoApproveEjectLine,
-		scanEnvAutoApproveFPYFloor, scanEnvAutoApproveDailyCap, scanEnvAutoApproveSignOffThread,
-		// DESK-only, recognised-not-applied (#336): the model-floor's stamp-authority
-		// allowance — see its declaration above.
-		scanEnvStampTrustedLogins,
-	}
-}
+func scanKnownRosterKeys() []string { return trustcore.KnownRosterKeys() }
 
 // scanConfigHomeFile is the local source of truth — outside every ref.
 const scanConfigHomeFile = "~/.config/assay/roster.env"
@@ -840,39 +796,9 @@ func scanCheckOwnerPerms(path string, isDir bool) error {
 	return checkFileOwner(path, fi)
 }
 
-func scanParseDotenv(s string) map[string]string {
-	m := map[string]string{}
-	for _, line := range strings.Split(s, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
-		eq := strings.IndexByte(line, '=')
-		if eq < 0 {
-			continue
-		}
-		key := strings.TrimSpace(line[:eq])
-		val := strings.Trim(strings.TrimSpace(line[eq+1:]), `"'`)
-		if v := strings.TrimSpace(val); v != "" {
-			m[key] = v
-		}
-	}
-	return m
-}
+func scanParseDotenv(s string) map[string]string { return trustcore.ParseDotenv(s) }
 
-func scanSplitList(raw string) []string {
-	fields := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == ';' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
-	})
-	out := make([]string, 0, len(fields))
-	for _, f := range fields {
-		if f = strings.TrimSpace(f); f != "" {
-			out = append(out, f)
-		}
-	}
-	return out
-}
+func scanSplitList(raw string) []string { return trustcore.SplitList(raw) }
 
 // scanSplitDisplayNameEntries splits ASSAY_GITLAB_DISPLAY_NAMES into its `<username>=<display
 // name>` entries. It splits ONLY on `;` and newline — deliberately NOT on space or comma the
@@ -892,32 +818,12 @@ func scanSplitDisplayNameEntries(raw string) []string {
 	return out
 }
 
-func scanSplitIdentity(entry string) (login string, id int64, ok bool) {
-	l, rest, found := strings.Cut(entry, ":")
-	l = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "@")))
-	if l == "" {
-		return "", 0, false
-	}
-	if !found || strings.TrimSpace(rest) == "" {
-		return l, 0, true
-	}
-	n, err := strconv.ParseInt(strings.TrimSpace(rest), 10, 64)
-	if err != nil || n <= 0 {
-		return "", 0, false
-	}
-	return l, n, true
-}
+func scanSplitIdentity(entry string) (string, int64, bool) { return trustcore.SplitIdentity(entry) }
 
 // scanLooksLikeBot mirrors deskkit.looksLikeBot.
 // The authorisation half of a two-factor mechanism has to be a human act, and a
 // blessing IS that authorisation half.
-func scanLooksLikeBot(login string) bool {
-	l := strings.ToLower(strings.TrimSpace(login))
-	return strings.HasSuffix(l, "[bot]") ||
-		strings.HasPrefix(l, "app/") ||
-		strings.HasSuffix(l, "-app") ||
-		strings.HasSuffix(l, "-bot")
-}
+func scanLooksLikeBot(login string) bool { return trustcore.LooksLikeBot(login) }
 
 func scanParseConfig(class scanToolClass, source string, vals map[string]string) scanConfig {
 	cfg := scanConfig{

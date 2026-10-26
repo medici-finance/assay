@@ -10,7 +10,7 @@ import (
 // The head pin is the thing that stops a verdict landing on code nobody reviewed, and
 // before this gate its ARGUMENT had no form check at all. An abbreviated SHA was
 // accepted, carried all the way to the equality test against the resolved head, failed
-// it, and was then rendered by short() as `5d529c27e3b1` vs `5d529c27e3b1a04f9c2d…` —
+// it, and was then rendered by short() as `4c418b16e3b1` vs `4c418b16e3b1a04f9c2d…` —
 // a "head mismatch" whose two SHAs differ only in length.
 //
 // That report names the wrong problem. A head mismatch means "the branch moved, re-review

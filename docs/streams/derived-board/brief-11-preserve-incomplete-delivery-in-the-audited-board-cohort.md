@@ -256,6 +256,67 @@ enumeration over the delivery commits 92315c7fa and 85fe81678 still found these 
 
 **VERIFY: PASS** — 9 of 9 rows pass (rows 1–6 bracketed container witness, rows 7–9 host witness); gate model; no generated board, runtime deployment or broader #2703 cohort is certified.
 
+Independent post-merge re-verification, 2026-10-25, on merged main source
+0c3b558efec39c54781c270ef639fba38376ba8f (non-implementer verifier, claude-opus-5-5,
+strong tier, attestation run a13ee6bc6891). This run replaces the 2026-10-24 run above for
+the lifecycle flip: that earlier run passed every row, but its supplemental table carried
+Runner cells in a shape the flip does not read. Every acceptance row below is a
+statusgen verifyrun witness; no Runner cell is hand-written, and supplemental observations
+are recorded in prose with no acceptance credit.
+
+Rows 1–6 (check:ci) ran inside the admission bracket in a network-off container on the
+release-pinned verify-runner v1.0.60 image (linux/amd64, default seccomp profile). Rows 7–9
+need Git history and ran on the host through a separate, disjoint row selection.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortSource$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortSource' "$o")` | pass exit=0 sandbox=container-netns | sha256:c9a47c8b4c33 | 2026-10-25 | assay-verifier-app[bot] @ 0c3b558efec3 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortFlow$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortFlow' "$o")` | pass exit=0 sandbox=container-netns | sha256:6e8f3e09ced2 | 2026-10-25 | assay-verifier-app[bot] @ 0c3b558efec3 (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortPlant$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortPlant' "$o")` | pass exit=0 sandbox=container-netns | sha256:5c4db3a937b3 | 2026-10-25 | assay-verifier-app[bot] @ 0c3b558efec3 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortFloors$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortFloors' "$o")` | pass exit=0 sandbox=container-netns | sha256:b845a443ab79 | 2026-10-25 | assay-verifier-app[bot] @ 0c3b558efec3 (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortFull$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortFull' "$o")` | pass exit=0 sandbox=container-netns | sha256:89d08394f5e4 | 2026-10-25 | assay-verifier-app[bot] @ 0c3b558efec3 (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(cd statusgen && for t in TestRolloutSourceAdmission TestCISliceSourceAdmission TestOwedTaskSourceAdmission TestEvidenceAdmission TestAdmissionCacheAndDelivery TestPartialBackfillSkips TestPartialRegenDriftAgrees TestApplyReconcileWrites; do o=$(mktemp); go test . -run "^$t" -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- "--- PASS: $t" "$o"; r=$?; if test "$r" -ne 0; then exit "$r"; fi; done)` | pass exit=0 sandbox=container-netns | sha256:cc39e5338fd4 | 2026-10-25 | assay-verifier-app[bot] @ 0c3b558efec3 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:b794d4196a454f598ff2f6b699cb30567ba710597411964c2ced43dac67d7a2a
+Container-Image: sha256:4cb3f129e71ff220b62995c587fd4716e2c73c81267bc583df3f544f6fdd5ae3
+Verification-Attestation: medici-finance/assay#4443 run=a13ee6bc68911aae23ba022ab81a8b8772f74a113a9e5c768778c4fc8003edc9 source=0c3b558efec39c54781c270ef639fba38376ba8f brief=docs/streams/derived-board/brief-11-preserve-incomplete-delivery-in-the-audited-board-cohort.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=a13ee6bc68911aae23ba022ab81a8b8772f74a113a9e5c768778c4fc8003edc9 source=0c3b558efec39c54781c270ef639fba38376ba8f tree=sha256:b794d4196a454f598ff2f6b699cb30567ba710597411964c2ced43dac67d7a2a witness=sha256:24d0b9c9e19515099849cb441a8c6f32521dea0076cc391eb6ea8b24ece29579 opened=2026-10-25T19:37:00Z closed=2026-10-25T19:39:46Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 7 | `o=$(mktemp); git diff --name-only 44829891e8f74b1520b64f4180910d96e17be96a^1 44829891e8f74b1520b64f4180910d96e17be96a > "$o" && python3 -c 'import pathlib,sys; actual=set(pathlib.Path(sys.argv[1]).read_text().splitlines()); expected={"changelog/statusgen-26-v3.md","docs/streams/statusgen/README.md","docs/telemetry.md","statusgen/brieffile.go","statusgen/dispatchqueue.go","statusgen/forgeread.go","statusgen/load.go","statusgen/main.go","statusgen/parse.go","statusgen/perfrecord.go","statusgen/perfrecord_test.go"}; assert actual==expected, actual; print("PR 3759: exact eleven delivery paths confirmed")' "$o"` | pass exit=0 | sha256:ea0361a76ccf | 2026-10-25 | assay-verifier-app[bot] @ 0c3b558efec3 (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --consumers --brief derived-board/11 --delivery "$DELIVERY" --base 5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7` | pass exit=0 | sha256:cba4c48dfef6 | 2026-10-25 | assay-verifier-app[bot] @ 0c3b558efec3 (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --lint` | pass exit=0 | sha256:2c2f6e9a64bc | 2026-10-25 | assay-verifier-app[bot] @ 0c3b558efec3 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#4443 run=a13ee6bc68911aae23ba022ab81a8b8772f74a113a9e5c768778c4fc8003edc9 source=0c3b558efec39c54781c270ef639fba38376ba8f brief=docs/streams/derived-board/brief-11-preserve-incomplete-delivery-in-the-audited-board-cohort.md model=claude-opus-5-5 tier=strong
+
+Key output lines. Row 7 printed `PR 3759: exact eleven delivery paths confirmed` (its output
+digest equals the 2026-10-24 run's). Row 8 ran with DELIVERY set to the recorded delivery
+commit 92315c7fa0f0b1e9a5e66a3c6dfdabc8a1d0cde7 and printed
+`summary: 4 corroborated, 0 disproved, 13 unchecked, 0 brief(s) claiming nothing`; the 13
+unchecked entries remain review judgments, not passes. Row 9 printed `LINT: PASS`. The
+bracket digest for the container block reports verdict=match with one Tree-Digest,
+Container-Image and attestation line.
+
+Supplemental observations on the source commit (no acceptance credit): the statusgen/26
+diff from base 5dcdff9fb holds only the version 2 to 3 bump and the single assay#3759 partial
+delivery entry, with Tasks, Verify and Evidence unchanged; no Go file names
+TestInvocationSnapshotReuseParity and no synthetic workload files exist under statusgen, so
+Tasks 3/4 and Verify 2 remain owed; no commit between base 5dcdff9fb and the source commit
+touches the production owners named out-of-scope (briefdelivery, briefauthoring, lifecycle,
+reconcile, reconcilebackfill, reconcileapply, regen).
+
+Discarded attempts: none. Each witness ran once. After the host witness, rows 7–9 were
+re-run by hand in the home only to read their output lines; they matched and carry no credit.
+
+Risk-bearing values. The fail-safe trigger does not fire: the risk metadata is present with
+every field no, the brief is not irreversible, and no risk-classed path changed. The
+enumeration over the delivery commits 92315c7fa and 85fe81678 found these values:
+
+- RISK-VALUE: DERIVED — covers = partial @ docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md:16 — statusgen/26 Tasks 3/4 and Verify 2 have no deliverable at the source commit (named parity test and workloads absent), and PR 3759's eleven files, confirmed by row 7, deliver only sub-split (a); partial is the true scope and full would be a false completion.
+- RISK-VALUE: DERIVED — version = 3 @ the same brief, line 14 — one increment from 2 for the added delivery metadata, as the brief-v2 metadata contract requires.
+- Test-only bounds (members want 10 @ statusgen/boardcohort_test.go:137, collection cutoff 3803 @ line 371) match the ten-row fixed cohort and the recorded collection; they are reversible test constants and rank last.
+
+**VERIFY: PASS** — 9 of 9 rows pass (rows 1–6 bracketed container witness, rows 7–9 host witness); gate model; no generated board, runtime deployment or broader #2703 cohort is certified.
+
 ## Review
 
 Gate model: all four risks are no for a reversible public source declaration and hermetic controls; no live operation, sensitive data, regulatory or irreversible change is authorized. Human merge remains required. Strong execution follows the cross-artifact flow and recurring class. The fixed cohort and per-member semantic dispositions require full independent review. This is the required bounded design amendment, not an implementation retry or a class-stop waiver.

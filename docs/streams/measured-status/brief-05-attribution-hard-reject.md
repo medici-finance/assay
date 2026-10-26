@@ -24,6 +24,8 @@ gate-why: >-
   (multi-identity repo, same-identity author/verifier pair) and accepts that a legitimate
   same-identity re-touch will red until an independent commit or a recorded override cures it.
 decision-trigger: creation
+decision-issue: 3368
+ruling: "https://github.com/medici-finance/assay/issues/3368#issuecomment-6353106302"
 sources:
   - "#1116 — attribution.go same-identity author/verifier pair only NOTICEs, never hard-rejects (security-hardening/27 gap)"
   - "statusgen/attribution.go — attributionProblems: the committer-identity cross-check block calls only addNotice(...); add(...) is reachable only from the token-level checks"
@@ -44,6 +46,12 @@ files:
 - `statusgen/attribution.go` — `attributionProblems`, the committer-identity cross-check block and its `sameIdentity` resolution (currently `addNotice`).
 - `statusgen/attribution_test.go` — the two cross-check tests asserting today's NOTICE-only behaviour.
 - `statusgen/testdata/attribution/` — the brief fixtures the tests read.
+- `statusgen/brieffile.go` — parses the optional `independence-override:` frontmatter key (Option 3).
+- `statusgen/gitinfo.go` — the git reads the override is judged on: the commit that last wrote the committed override line (through the isolated provenance read, so runner git configuration cannot move it), that commit's own author email and date, and the Evidence section's text at that commit (compared by content, not by commit ancestry).
+- `statusgen/attribution_override_test.go` — the override path's tests, including that an override committed under the excused identity's own author email is refused, with or without a `.mailmap`.
+- `schemas/brief-v1.json`, `schemas/brief-v2.json`, `schemas/brief-v3.json` (and their `statusgen/schemas/` copies) — type the `independence-override` key as a string.
+- `statusgen/attribution-mutations.json` — the mutation spec for the override's refusal conditions (muhar).
+- `spec/brief-v1.md` — §3.2 row for the `independence-override` key.
 facts:
 - three-state read MUST be preserved: one git identity behind every checked brief is
   INCONCLUSIVE (commit metadata cannot tell author from verifier) and stays a NOTICE; MULTIPLE
@@ -60,6 +68,20 @@ facts:
   NOTICE-only today and is being changed to assert a hard PROBLEM instead, so simply running the
   updated test against the unflipped `addNotice(...)` branch (before Task step 1 is applied)
   already demonstrates the red-before state — no separate mutation is needed.
+- freshness-checked 2026-10-25: the Option 1 hard PROBLEM is already on main (the escalated,
+  confirmed same-identity pair calls `add(...)`; the single-identity and git-unreadable cases stay
+  NOTICEs). The ruling chose Option 3, so the remaining delta is the recorded override path
+  (an override naming a human): an `independence-override: "human:<name> YYYY-MM-DD <reason>"` frontmatter value,
+  honored only when the name is a CURRENT human who is not the author, the brief is outside any
+  declared fixture corpus, the committed line was last written by a commit whose git author email
+  differs from the identity it excuses, the date is no more than one day after that commit's
+  committer date, and the Evidence
+  section has not changed since that commit. Anything else keeps the hard PROBLEM and says why the
+  override was refused.
+- the offline check reads git metadata, which the committer sets. It refuses an override committed
+  under the excused identity's own author email; it does not prove the named human authorized it.
+  The control that binds the name to the human is `--corroborate` on the PR that adds the override,
+  and it binds only where that lane runs.
 
 ## Human decision
 A verification is supposed to be independent: the person or agent who checks a piece of work
@@ -103,12 +125,14 @@ Default if no answer: none — blocks until answered (this narrows a trust gate 
    case stays green.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd statusgen && go test . -run TestAttributionIdentityCrossCheck -count=1` | exit 0; output contains "ok" |
-| 2 | `cd statusgen && go test . -run 'TestAttributionIdentity' -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (both the hard-reject and the inconclusive-NOTICE cases ran and passed) |
-| 3 | `cd statusgen && go vet ./...` | exit 0 (the flipped branch compiles and vets clean) |
-| 4 | `cd statusgen && go test . -count=1` | exit 0 (the whole statusgen suite is green with the flip) |
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check | `cd statusgen && go test . -run TestAttributionIdentityCrossCheck -count=1` | exit 0; output contains "ok" |
+| 2 | check | `cd statusgen && go test . -run 'TestAttributionIdentity' -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (both the hard-reject and the inconclusive-NOTICE cases ran and passed) |
+| 3 | check | `cd statusgen && go vet ./...` | exit 0 (the flipped branch compiles and vets clean) |
+| 4 | check | `cd statusgen && go test . -count=1` | exit 0 (the whole statusgen suite is green with the flip) |
+| 5 | check +flow | `cd statusgen && go test . -run 'TestAttributionIdentityOverride\|TestIndependenceOverride\|TestAttributionIdentityNoOverrideStaysHard' -count=1 -v 2>&1 \| grep -c -- '--- PASS'` | ≥ 10 — the honored override, every refusal (self-serve with and without a `.mailmap`, recorder read independent of runner git configuration, self-edit, stale, uncommitted, working-tree edit, fixture corpus, postdated, former/unknown human, author, malformed) and the no-override default all ran and passed |
+| 6 | check +mutation | `m=$(mktemp -d)/muhar && (cd tools/desk && go build -o "$m" ./cmd/muhar) && cd statusgen && "$m" -spec attribution-mutations.json` | exit 0; "Harness healthy: baseline GREEN, positive control CAUGHT."; every override refusal mutation CAUGHT, "0 NOT CAUGHT, 0 could-not-mutate" |
 
 ## Evidence
 <!-- appended at implementation time by a non-implementer -->

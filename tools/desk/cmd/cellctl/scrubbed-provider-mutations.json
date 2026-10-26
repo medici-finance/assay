@@ -1,0 +1,108 @@
+{
+  "test": "go test ./cmd/cellctl -count=1 -timeout=90s -run '^TestScrubbed'",
+  "control": {
+    "name": "invert credential delivery assertion",
+    "file": "cmd/cellctl/scrubbed_provider_test.go",
+    "old": "if envValue(env, \"ANTHROPIC_AUTH_TOKEN\") != \"cell-only-fixture\" {",
+    "new": "if envValue(env, \"ANTHROPIC_AUTH_TOKEN\") == \"cell-only-fixture\" {"
+  },
+  "mutations": [
+    {
+      "name": "host token fallback",
+      "file": "cmd/cellctl/scrubbed_provider.go",
+      "old": "var p Provider\n\tif !scrubbedProviderName",
+      "new": "var p Provider\n\tif token := c.Env.Get(\"KIMI_API_KEY\"); token != \"\" { return Provider{TokenVal:token},nil }\n\tif !scrubbedProviderName"
+    },
+    {
+      "name": "accept broadly readable token",
+      "file": "cmd/cellctl/scrubbed_provider.go",
+      "old": "\tif err := privateCommsFile(path); err != nil {\n\t\treturn p, fmt.Errorf(\"provider custody: %w\", err)\n\t}\n",
+      "new": ""
+    },
+    {
+      "name": "accept empty token",
+      "file": "cmd/cellctl/scrubbed_provider.go",
+      "old": " || token == \"\"",
+      "new": ""
+    },
+    {
+      "name": "accept multiline token",
+      "file": "cmd/cellctl/scrubbed_provider.go",
+      "old": " || strings.ContainsAny(token, \" \\t\\r\\n\\x00\")",
+      "new": ""
+    },
+    {
+      "name": "accept oversized token",
+      "file": "cmd/cellctl/scrubbed_provider.go",
+      "old": "len(raw) > 16384",
+      "new": "false"
+    },
+    {
+      "name": "accept linked token file",
+      "file": "cmd/cellctl/scrubbed_provider.go",
+      "old": "\tif err := privateCommsFile(path); err != nil {\n\t\treturn p, fmt.Errorf(\"provider custody: %w\", err)\n\t}\n\tbefore, err := os.Lstat(path)",
+      "new": "\tbefore, err := os.Stat(path)"
+    },
+    {
+      "name": "accept linked custody directory",
+      "file": "cmd/cellctl/scrubbed_provider.go",
+      "old": "\t\tif err := privateCommsDir(dir); err != nil {\n\t\t\treturn p, fmt.Errorf(\"provider custody: %w\", err)\n\t\t}",
+      "new": "\t\t_ = dir"
+    },
+    {
+      "name": "accept invalid provider name",
+      "file": "cmd/cellctl/scrubbed_provider.go",
+      "old": "return p, fmt.Errorf(\"invalid scrubbed provider name\")",
+      "new": "return p, nil"
+    },
+    {
+      "name": "accept insecure endpoint",
+      "file": "cmd/cellctl/scrubbed_provider.go",
+      "old": "return p, fmt.Errorf(\"scrubbed provider %s requires an HTTPS endpoint without credentials, query or fragment\", name)",
+      "new": "return p, nil"
+    },
+    {
+      "name": "drop runtime credential delivery",
+      "file": "cmd/cellctl/scrubbed_provider.go",
+      "old": "env = envSet(env, \"ANTHROPIC_AUTH_TOKEN\", p.TokenVal)",
+      "new": "// mutation: drop token handoff"
+    },
+    {
+      "name": "put credential in pane argv",
+      "file": "cmd/cellctl/scrubbed_provider.go",
+      "old": "return []string{selfPath(), \"--cells-root\", root, \"scrubbed-run\", ref, role, harness, model, session, wt, provider}",
+      "new": "p := c.resolveProvider(provider)\n return []string{\"env\", \"ANTHROPIC_AUTH_TOKEN=\"+p.TokenVal, selfPath(), \"--cells-root\", root, \"scrubbed-run\", ref, role, harness, model, session, wt, provider}"
+    },
+    {
+      "name": "drop session ownership lock",
+      "file": "cmd/cellctl/launch.go",
+      "old": "c.takeSessionLock(lockdir, sessname)",
+      "new": "// mutation: drop lock"
+    },
+    {
+      "name": "accept unsupported orca cockpit",
+      "file": "cmd/cellctl/scrubbed_cockpit.go",
+      "old": "return cockpitResolution{Err: \"scrubbed cockpit must be tmux or herdr\"}",
+      "new": "return cockpitResolution{Cockpit: \"orca\"}"
+    },
+    {
+      "name": "drop perf context at provider runtime",
+      "file": "cmd/cellctl/scrubbed_provider.go",
+      "old": "env.Pairs = deskkit.PerfContextEnv(env.Pairs, perfrec.ResolveContext(perfrec.ContextInput{}), false)",
+      "new": "_ = deskkit.PerfContextEnv; _ = perfrec.ContextInput{}"
+    },
+    {
+      "name": "probe orca during scrubbed auto",
+      "file": "cmd/cellctl/scrubbed_cockpit.go",
+      "old": "if want == \"auto\" {",
+      "new": "if want == \"auto\" { _ = c.resolveCockpit(want, src)"
+    },
+    {
+      "name": "hide smoke network target",
+      "file": "cmd/cellctl/smoke.go",
+      "old": "base_url=%s (read-only, tool-free, one shot)\\n\", model, harness, prov.BaseURL",
+      "new": "target-omitted=%s (read-only, tool-free, one shot)\\n\", model, harness, \"omitted\""
+    }
+  ],
+  "build": "go test ./cmd/cellctl -run '^$' -count=1"
+}

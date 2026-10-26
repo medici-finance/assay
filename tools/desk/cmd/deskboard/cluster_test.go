@@ -415,7 +415,7 @@ func TestCIUnknown_BlocksTheFlip_268(t *testing.T) {
 }
 
 // TestSecurityMarker_DivergenceIsReported_268 and its mirror-spelling pin used to live
-// here (at#268 divergence 2: this board's accepted Security-Review spelling was a strict
+// here (the second verdict-spelling divergence: this board's accepted Security-Review spelling was a strict
 // SUBSET of deskpost's, and this reported the disagreement rather than silently refusing
 // forever). PR #584 (merged after this branch last synced) fixed the
 // divergence STRUCTURALLY instead: deskboard now calls deskkit.HasSecurityReviewPass /

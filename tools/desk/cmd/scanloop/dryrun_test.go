@@ -35,7 +35,7 @@ printf '%s' "$d" > "$STUB_SAW_DIR"
 cat "$d"/*.state > "$STUB_SAW_CONTENT" 2>/dev/null || : > "$STUB_SAW_CONTENT"
 mkdir -p "$d"
 for slug in "$@"; do
-  printf 'advanced\n' >> "$d/$(printf '%s' "$slug" | sed 's#/#__#g').state"
+  printf '\n' >> "$d/$(printf '%s' "$slug" | sed 's#/#__#g').state"
 done
 `
 	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
@@ -143,7 +143,7 @@ func TestRunDryRun_LeavesTheRealBaselinesByteIdentical(t *testing.T) {
 		t.Fatalf("the dry-run poller was handed the REAL state dir %s", stateDir)
 	}
 	seen, _ := os.ReadFile(sawContent)
-	if want := strings.Repeat("x\n", len(before)); string(seen) != want {
+	if want := strings.Repeat("\n", len(before)); string(seen) != want {
 		t.Fatalf("the throwaway copy did not carry the real baselines (the preview would not be live): got %q", seen)
 	}
 	if _, err := os.Stat(string(polled)); !os.IsNotExist(err) {
@@ -175,7 +175,7 @@ func TestRunReal_StillAdvancesTheBaselines(t *testing.T) {
 		t.Fatal("a real pass did not advance the baselines — the stub is not exercising the write")
 	}
 	for name, body := range after {
-		if body != "x\nadvanced\n" {
+		if body != "\n\n" {
 			t.Fatalf("baseline %s = %q, want it advanced", name, body)
 		}
 	}

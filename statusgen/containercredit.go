@@ -27,14 +27,14 @@ package main
 // attributed record in (b) is the anchor; server-side push rules close the rest.
 
 import (
+	"github.com/medici-finance/assay/deskcore/attestation"
+
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
-	"path"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -47,8 +47,8 @@ const (
 
 	// verifierRecordTitle and verifierRecordPreamble are deskkit's
 	// VerifierAttestationTitle and the fixed first paragraph of verifierBody.
-	verifierRecordTitle    = "[verification-attestation] "
-	verifierRecordPreamble = "Dispatcher-owned pre-work attestation. This record contains NO verification result.\n\n"
+	verifierRecordTitle    = attestation.Title
+	verifierRecordPreamble = attestation.Preamble
 
 	// The dispatcher's model stamp labels (deskkit DispatchedModelPrefix,
 	// DispatchedTierPrefix).
@@ -276,16 +276,7 @@ func (cc *creditContext) provenance(c bracketCheck) creditVerdict {
 
 // creditBinding mirrors deskkit's VerifierBinding field for field, in the same
 // order with the same tags, so json.MarshalIndent renders the same body.
-type creditBinding struct {
-	Version                                                                              int
-	SourceRepo, TrackingSource, TrackingHomeSHA256, TrackingCheckout                     string `json:",omitempty"`
-	Run, Repo, Source, Brief, BriefSHA256, PlanSHA256, HomeSHA256, Model, Tier, Checkout string
-}
-
-var (
-	creditHexCommitRe = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
-	creditCheckoutRe  = regexp.MustCompile(`^autocrlf=(true|false|input) eol=(lf|crlf|native)$`)
-)
+type creditBinding = attestation.Binding
 
 // creditRecord is one <repo>#<issue> read: whether the record is admitted, and
 // the attestation line rendered from its binding. It names no bracket.
@@ -344,21 +335,15 @@ func (cc *creditContext) admitRecord(a []string) (creditVerdict, string, string)
 	if err != nil {
 		return creditCouldNot("record: %v", err), target, ""
 	}
-	_, raw, ok := strings.Cut(first.Body, "\n\n")
-	if !ok {
-		return creditNot("record: %s's body is not a binding", target), target, ""
-	}
-	var b creditBinding
-	dec := json.NewDecoder(strings.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&b); err != nil {
+	b, err := attestation.ParseBody(first.Body)
+	if err != nil {
 		return creditNot("record: %s's body is not a binding: %v", target, err), target, ""
 	}
+
 	if why := creditBindingProblem(b, repo); why != "" {
 		return creditNot("record: %s: %s", target, why), target, ""
 	}
-	data, _ := json.MarshalIndent(b, "", "  ")
-	title, body := verifierRecordTitle+b.Run, verifierRecordPreamble+string(data)+"\n"
+	title, body := verifierRecordTitle+b.Run, attestation.Body(b)
 	if why := cc.recordTarget(first, title, body); why != "" {
 		return creditNot("record: %s %s", target, why), target, ""
 	}
@@ -367,14 +352,10 @@ func (cc *creditContext) admitRecord(a []string) (creditVerdict, string, string)
 	if err != nil {
 		return creditCouldNot("record: %v", err), target, ""
 	}
-	switch {
-	case trust.BodyHistoryKnown == nil || !*trust.BodyHistoryKnown:
-		return creditNot("record: %s's body history was not reported (bodyHistoryKnown is false or absent)", target), target, ""
-	case !trust.Complete:
-		return creditNot("record: %s's body history is incomplete", target), target, ""
-	case trust.BodyEditedAt != "":
-		return creditNot("record: %s's body was edited at %s", target, trust.BodyEditedAt), target, ""
+	if why := attestation.HistoryProblem(trust.BodyHistoryKnown != nil && *trust.BodyHistoryKnown, trust.Complete, trust.BodyEditedAt != ""); why != "" {
+		return creditNot("record: %s's %s", target, why), target, ""
 	}
+
 	if first.State != "closed" {
 		return creditNot("record: %s is %s, not closed; the pre-work attestation has not completed", target, first.State), target, ""
 	}
@@ -415,54 +396,12 @@ func (cc *creditContext) admitRecord(a []string) (creditVerdict, string, string)
 // version 1 (same-repository) binding is accepted: a container run refuses
 // version 2 receipts, so no version 2 record can back a bracket.
 func creditBindingProblem(b creditBinding, repo string) string {
-	switch {
-	case b.Version == 2:
-		return "version 2 (cross-repository) attestations are refused for container runs"
-	case b.Version != 1:
-		return fmt.Sprintf("binding version %d is not accepted", b.Version)
-	case b.Repo != repo:
-		return fmt.Sprintf("the binding's repo %s is not the repository read, %s", b.Repo, repo)
-	case !hex64Re.MatchString(b.Run), len(b.Source) != 40, !creditHexCommitRe.MatchString(b.Source),
-		!hex64Re.MatchString(b.HomeSHA256), !hex64Re.MatchString(b.BriefSHA256), !hex64Re.MatchString(b.PlanSHA256):
-		return "invalid binding (run, source or a digest is not hex)"
-	case b.SourceRepo != "" || b.TrackingSource != "" || b.TrackingHomeSHA256 != "" || b.TrackingCheckout != "":
-		return "a same-repository binding carries cross-repository fields"
-	}
-	brief := strings.TrimSpace(strings.ReplaceAll(b.Brief, "\\", "/"))
-	if brief != "" {
-		brief = path.Clean(brief)
-	}
-	if brief == "" || strings.HasPrefix(brief, "/") || strings.HasPrefix(brief, "../") {
-		return fmt.Sprintf("the binding's brief %s is not a repository path", b.Brief)
-	}
-	if !creditModelSlugOK(b.Model) {
-		return fmt.Sprintf("the binding's model %q is not a model slug", b.Model)
-	}
-	if t := strings.ToLower(strings.TrimSpace(b.Tier)); t != "any" && t != "strong" {
-		return fmt.Sprintf("the binding's tier %q is not an exec-tier value", b.Tier)
-	}
-	if !creditCheckoutRe.MatchString(b.Checkout) {
-		return "invalid binding checkout conversion"
-	}
-	return ""
+	return attestation.BindingProblem(b, repo, attestation.ContainerV1, false)
 }
 
 // creditModelSlugOK is deskkit's model-label shape: lowercased and trimmed,
 // non-empty, [a-z0-9.-] only, with at least one letter or digit.
-func creditModelSlugOK(slug string) bool {
-	s := strings.ToLower(strings.TrimSpace(slug))
-	alnum := false
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			alnum = true
-		case r == '-' || r == '.':
-		default:
-			return false
-		}
-	}
-	return alnum
-}
+func creditModelSlugOK(slug string) bool { return attestation.ModelSlugOK(slug) }
 
 // isDispatcher is deskkit's SameActor against the dispatcher's GitHub App
 // login: a case-folded name match that is an App on both sides.
@@ -480,69 +419,25 @@ func (cc *creditContext) isDispatcher(login string) bool {
 // recordTarget is deskkit's attestationTarget: the dispatcher authored it, and
 // its title and body are exactly the binding's rendering. "" when it holds.
 func (cc *creditContext) recordTarget(iss *creditIssue, title, body string) string {
+	if iss == nil {
+		return attestation.TargetProblem(false, false, false, "", "", title, body)
+	}
 	login := ""
 	if iss.Author != nil {
 		login = iss.Author.Login
 	}
-	switch {
-	case !cc.isDispatcher(login):
-		return fmt.Sprintf("was written by %q, not the dispatcher %s[bot]", login, cc.desk)
-	case iss.Title != title:
-		return fmt.Sprintf("has title %q, not %q", iss.Title, title)
-	case iss.Body != body:
-		return "has a body that is not the exact rendering of its binding"
-	}
-	return ""
+	return attestation.TargetProblem(true, false, cc.isDispatcher(login), iss.Title, iss.Body, title, body)
 }
 
 // attestedStamp is deskkit's AttestedModelStampOf for the dispatched pair:
 // every present stamp label's standing application must be the dispatcher's,
 // and the labels must name one model and one tier.
-func (cc *creditContext) attestedStamp(present []string, events []creditLabelEvent) (model, tier, why string) {
-	isStamp := func(n string) bool {
-		return strings.HasPrefix(n, dispatchedModelPrefix) || strings.HasPrefix(n, dispatchedTierPrefix)
-	}
-	norm := func(n string) string { return strings.ToLower(strings.TrimSpace(n)) }
-	standing := map[string]string{}
+func (cc *creditContext) attestedStamp(present []string, events []creditLabelEvent) (string, string, string) {
+	facts := make([]attestation.LabelEvent, 0, len(events))
 	for _, e := range events {
-		n := norm(e.Label)
-		if !isStamp(n) {
-			continue
-		}
-		if e.Removed {
-			delete(standing, n)
-			continue
-		}
-		standing[n] = strings.TrimSpace(e.ActorLogin)
+		facts = append(facts, attestation.LabelEvent{Label: e.Label, Removed: e.Removed, Authority: cc.isDispatcher(e.ActorLogin)})
 	}
-	var models, tiers []string
-	seen := map[string]bool{}
-	for _, l := range present {
-		n := norm(l)
-		if !isStamp(n) || seen[n] {
-			continue
-		}
-		seen[n] = true
-		who, ok := standing[n]
-		if !ok {
-			return "", "", fmt.Sprintf("the stamp label %s has no standing application in the label history", n)
-		}
-		if !cc.isDispatcher(who) {
-			return "", "", fmt.Sprintf("the stamp label %s was applied by %q, not the dispatcher", n, who)
-		}
-		if v, ok := strings.CutPrefix(n, dispatchedModelPrefix); ok {
-			models = append(models, strings.TrimSpace(v))
-		} else {
-			tiers = append(tiers, strings.TrimSpace(strings.TrimPrefix(n, dispatchedTierPrefix)))
-		}
-	}
-	if len(models) == 0 && len(tiers) == 0 {
-		return "", "", "it carries no dispatcher model stamp"
-	}
-	if len(models) != 1 || len(tiers) != 1 || models[0] == "" || tiers[0] == "" || (tiers[0] != "any" && tiers[0] != "strong") {
-		return "", "", fmt.Sprintf("its dispatcher stamp is not one model and one tier (models %v, tiers %v)", models, tiers)
-	}
-	return models[0], tiers[0], ""
+	return attestation.Stamp(present, facts)
 }
 
 // --- deskread -----------------------------------------------------------------

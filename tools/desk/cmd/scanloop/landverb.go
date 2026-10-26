@@ -3,7 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/medici-finance/assay/deskcore/issueflow"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -61,6 +63,8 @@ func cmdLand(args []string, declaredLoop string, w io.Writer) error {
 	detail := fs.String("detail", "", "rejected | watching (exit rejected-watching only)")
 	kind := fs.String("kind", "", "the classifier reason the item was parked with")
 	dispatchRef := fs.String("dispatch-ref", "", "the dispatch_ref join key, when known")
+	handoffPath := fs.String("handoff", "", "optional intake-handoff-v1 JSON companion; preserves existing exit history")
+	handoffReader := fs.String("handoff-reader", "", "explicit companion reader version (required with --handoff)")
 	openedFlag := fs.String("opened", "", "the inbound event's time, RFC 3339, as the EMITTED line printed it")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("scanloop land: bad flags: " + clipValue(err.Error(), 80))
@@ -103,6 +107,31 @@ func cmdLand(args []string, declaredLoop string, w io.Writer) error {
 		SessionTag:  recordSessionTag(),
 		DispatchRef: strings.TrimSpace(*dispatchRef),
 	}
+	if *handoffPath != "" {
+		if !issueflow.SupportsIntakeHandoff(*handoffReader) {
+			return deskkit.Refused("--handoff requires a supported --handoff-reader version")
+		}
+		raw, err := os.ReadFile(*handoffPath)
+		if err != nil {
+			return deskkit.Unverifiable("cannot read intake handoff", err)
+		}
+		h, err := issueflow.DecodeIntakeHandoff(raw)
+		if err != nil {
+			return deskkit.Refused("invalid intake handoff: " + err.Error())
+		}
+		prior, err := landHandoff(rec, h)
+		if err != nil {
+			return err
+		}
+		if prior != "" {
+			fmt.Fprintf(w, "scanloop land: %s already left by %s; that exit is immutable and --exit %s was NOT recorded\n", rec.Item, prior, rec.Exit)
+		}
+		fmt.Fprintf(w, "scanloop land: %s disposition revision %d recorded; successor admission remains independent\n", rec.Item, h.Revision)
+		return nil
+	}
+	if *handoffReader != "" {
+		return deskkit.Refused("--handoff-reader requires --handoff")
+	}
 	wrote, err := appendExitRecord(rec, func() error {
 		return auditExit("scanloop", ExitRecord{ItemID: rec.Item, Exit: exit, Lane: LaneRouting, Artifact: rec.Artifact})
 	})
@@ -115,5 +144,11 @@ func cmdLand(args []string, declaredLoop string, w io.Writer) error {
 	}
 	fmt.Fprintf(w, "scanloop land: %s -> %s (%s) recorded as a %s-tier judgment by %s\n",
 		rec.Item, exit, firstNonEmpty(rec.Artifact, rec.Detail), rec.TriagerTier, role)
+	if exit == ExitRejectedWatching && rec.Opened == "" {
+		// The replay discharge keys on item + opened (judgedRejection), so a rejection
+		// with no event time is recorded but never ends replay. Say so, rather than let
+		// the issue re-present with no visible reason.
+		fmt.Fprintf(w, "scanloop land: NOTE %s was recorded without --opened, so it does not end replay of the issue; land it again with the EMITTED line's --opened\n", rec.Item)
+	}
 	return nil
 }

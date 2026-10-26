@@ -86,6 +86,7 @@ package main
 // executing anything.
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -612,6 +613,9 @@ type shellPlan struct {
 	ok     bool     // a pipefail-capable bash was found AND probed clean
 	reason string   // when !ok, exactly what was tried, for the could-not-run row
 	env    []string // the rows' environment; nil inherits the caller's (rowEnv)
+	// stop is the run's interrupt (watchRunInterrupt): a delivered stop
+	// signal cancels it, and with it every row. nil never cancels.
+	stop context.Context
 }
 
 // rowEnv is the environment every Verify row of the run executes in: the
@@ -865,7 +869,9 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	}
 	posixShell := shell != rowShellCmd && shell != rowShellPwsh
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	// The row deadline derives from the run's interrupt, so a stop signal
+	// delivered to statusgen cancels the row the same way the deadline does.
+	ctx, cancel := context.WithTimeout(plan.rowParent(), timeout)
 	defer cancel()
 
 	// The wrapper (netnsWrapperArgv: `unshare --net --map-root-user` + the
@@ -890,6 +896,18 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	argv := append(append([]string{}, wrapper...), shellArgv...)
 	argv = append(argv, unescapePipes(command))
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	// Keep the unchanged row deadline effective for ordinary descendants too:
+	// killing only the shell leaves children holding the output pipe, so a
+	// timed-out check can keep running while verifyrun waits for their EOF.
+	// Reuse the same platform policy as the bounded Git reader. Unix kills the
+	// owned process group; Windows retains its documented direct-child limit.
+	// Do not add a short WaitDelay: it also starts after a successful shell
+	// exit and could truncate valid background output before this row deadline.
+	// The group kill is armed below with context.AfterFunc, not left to
+	// exec's own Cancel alone: exec calls Cancel only while the shell is
+	// un-reaped, and a shell that exits leaving a child on the pipe would
+	// otherwise outrun the deadline.
+	killWholeProcessGroup(cmd)
 	cmd.Dir = root
 	cmd.Env = plan.rowEnv()
 	// On Windows a `cmd` row's command line must be built RAW, not from
@@ -906,7 +924,25 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// reason that has nothing to do with the check.
 	cmd.Stdin = nil
 
-	out, err := cmd.CombinedOutput()
+	// One buffer for both streams, as CombinedOutput gives: exec shares a
+	// single pipe when Stdout and Stderr are the same writer.
+	var combined bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &combined, &combined
+	err := cmd.Start()
+	if err == nil {
+		// Fires at the row deadline or on a run interrupt, whether or not the
+		// shell has already been reaped; stopped once Wait has every byte.
+		stopGroupKill := context.AfterFunc(ctx, func() { _ = cmd.Cancel() })
+		err = cmd.Wait()
+		stopGroupKill()
+	}
+	out := combined.Bytes()
+	// A stop signal is checked first: its cancellation is not a deadline, and
+	// a row it killed must never fall through to a pass/fail verdict.
+	if why := plan.interruption(); why != "" {
+		return runResult{exit: -1, output: out, couldNotRun: true,
+			reason: why + " — the row was stopped and no verdict was produced"}
+	}
 	if ctx.Err() == context.DeadlineExceeded {
 		return runResult{exit: -1, output: out, couldNotRun: true,
 			reason: fmt.Sprintf("timed out after %s — no verdict was produced", timeout)}
@@ -1212,6 +1248,100 @@ func treeSHA(root string) string {
 	return sha
 }
 
+// briefTreeSHA is treeSHA for a run of brief (#4299). The one change it does
+// not count as dirty is an edit confined to brief's own `## Evidence` section:
+// a witness or verdict the verifier recorded there is not source the commands
+// ran against, and admission already reads such an edit as clean. Any other
+// change, including an untracked file, a second changed path, an edit outside
+// that section, a new section heading or a carriage return, keeps `+dirty`.
+func briefTreeSHA(root, brief string) string {
+	tree := treeSHA(root)
+	if strings.HasSuffix(tree, "+dirty") && evidenceOnlyChange(root, brief) {
+		return strings.TrimSuffix(tree, "+dirty")
+	}
+	return tree
+}
+
+// evidenceOnlyChange reports whether the working tree's ONLY change against
+// HEAD is to brief, and brief differs from its HEAD blob only inside the
+// `## Evidence` section the brief parser bounds (evidenceSectionSpan).
+func evidenceOnlyChange(root, brief string) bool {
+	top, err := exec.Command("git", "-C", root, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return false
+	}
+	dir, err := filepath.EvalSymlinks(strings.TrimSpace(string(top)))
+	if err != nil {
+		return false
+	}
+	abs, err := filepath.Abs(brief)
+	if err == nil {
+		abs, err = filepath.EvalSymlinks(abs)
+	}
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(dir, abs)
+	if err != nil || !filepath.IsLocal(rel) {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	out, err := exec.Command("git", "-C", dir, "status", "--porcelain=v1", "-z", "--untracked-files=all").Output()
+	if err != nil {
+		return false
+	}
+	entries := strings.Split(strings.TrimSuffix(string(out), "\x00"), "\x00")
+	if len(entries) != 1 || len(entries[0]) < 4 || entries[0][3:] != rel {
+		return false
+	}
+	switch entries[0][:2] {
+	case " M", "M ", "MM":
+	default:
+		return false
+	}
+	head, err := exec.Command("git", "-C", dir, "show", "HEAD:"+rel).Output()
+	if err != nil {
+		return false
+	}
+	work, err := os.ReadFile(abs)
+	if err != nil {
+		return false
+	}
+	a, okA := outsideEvidence(string(head))
+	b, okB := outsideEvidence(string(work))
+	return okA && okB && a == b
+}
+
+// outsideEvidence is a brief's text with its `## Evidence` section's lines cut
+// out, bounded exactly as the brief parser bounds them: the frontmatter fence
+// is split off first, then evidenceSectionSpan finds the section in the body.
+// ok is false for text the comparison cannot read the same way on both sides:
+// a carriage return, an unterminated frontmatter, or no Evidence section.
+func outsideEvidence(text string) (string, bool) {
+	if strings.Contains(text, "\r") {
+		return "", false
+	}
+	lines := strings.Split(text, "\n")
+	body := 0
+	if strings.TrimSpace(lines[0]) == "---" {
+		body = -1
+		for i := 1; i < len(lines); i++ {
+			if strings.TrimSpace(lines[i]) == "---" {
+				body = i + 1
+				break
+			}
+		}
+		if body < 0 {
+			return "", false
+		}
+	}
+	start, end, ok := evidenceSectionSpan(lines[body:])
+	if !ok {
+		return "", false
+	}
+	return strings.Join(lines[:body+start], "\n") + "\x00" + strings.Join(lines[body+end:], "\n"), true
+}
+
 // ---------------------------------------------------------------------------
 // The run
 // ---------------------------------------------------------------------------
@@ -1462,6 +1592,10 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 		// prechecked container every row runs in.
 		rowSandbox := ""
 		switch {
+		case plan.interruption() != "":
+			// The run was stopped by a signal: no later row starts.
+			res = runResult{exit: -1, couldNotRun: true,
+				reason: plan.interruption() + " before this row started — it was not run"}
 		case refused != "":
 			rowSandbox = sandbox
 			res = runResult{exit: -1, couldNotRun: true, reason: refused}
@@ -2389,6 +2523,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	}
 
 	plan := resolveShellPlan()
+	// Rows run in their own process groups, so statusgen forwards a stop
+	// signal to them itself (verifyinterrupt.go) from here until it returns.
+	stop, releaseInterrupt := watchRunInterrupt()
+	defer releaseInterrupt()
+	plan.stop = stop
 	if attestation != "" {
 		plan.env = admittedRowEnv(os.Environ())
 	}
@@ -2423,13 +2562,17 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 	}
-	executionTree := treeSHA(root)
+	executionTree := briefTreeSHA(root, path)
 	if netnsContainer {
 		executionTree = container.cell.RunnerTree
 	}
 	if transitionDescriptor != "" {
+		// A transition run binds the full HEAD as its immutable source, so it
+		// keeps the strict check: even an Evidence-only edit (an earlier run's
+		// uncommitted witnesses) refuses it, and a transition run records its
+		// rows on a committed tree before any container bracket is opened.
 		full, err := historyGit(root, "rev-parse", "--verify", "HEAD^{commit}").Output()
-		if err != nil || strings.Contains(executionTree, "+") {
+		if err != nil || strings.Contains(executionTree, "+") || strings.Contains(treeSHA(root), "+") {
 			fmt.Fprintln(stderr, "transition execution requires a clean immutable source")
 			return verifyrunExitCouldNot
 		}
@@ -2521,6 +2664,12 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		for ; next < len(ws); next++ {
 			report(ws[next])
 		}
+	}
+	// A stopped run is not a witness: the rows above report could-not-run on
+	// the console, and nothing is written to the brief or a witness file.
+	if why := plan.interruption(); why != "" {
+		fmt.Fprintf(stderr, "statusgen verifyrun: %s; the run stopped and no witness was written\n", why)
+		return verifyrunExitCouldNot
 	}
 	if ff != nil {
 		worst = foldFailFirst(ws, ff, riskyIDs, worst, stdout)
