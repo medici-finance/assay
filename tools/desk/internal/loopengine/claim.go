@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -36,18 +37,36 @@ func (e *AuthorIsRunnerError) Error() string {
 func (e *AuthorIsRunnerError) ExitCode() int { return ExitAuthorIsRunner }
 
 // CheckAuthorRunner is the structural author != runner guard: a pure comparison between the
-// item's recorded implementer and the identity the engine would dispatch as (runnerID).
+// item's recorded implementer (as read, and with any inline comment cut; see ImplementerIs)
+// and the identity the engine would dispatch as (runnerID).
 // Returns *AuthorIsRunnerError (exit 7) when they match; nil otherwise. An empty runnerID
 // or empty Implementer disables the check (the adapter owns attribution in that case).
 func CheckAuthorRunner(it Item, runnerID string) error {
 	if runnerID == "" || it.Implementer == "" {
 		return nil
 	}
-	if it.Implementer == runnerID {
+	if ImplementerIs(it.Implementer, runnerID, func(a, b string) bool { return a == b }) {
 		return &AuthorIsRunnerError{ItemID: it.ID, Runner: runnerID, BriefPath: it.BriefPath}
 	}
 	return nil
 }
+
+// ImplementerIs reports whether a declared implementer names actor under same.
+// A brief's implementer can be read with an inline comment kept ("a # note"),
+// so it compares both the value as read and the value cut at the first
+// whitespace-led "#"; either one naming actor counts as the author.
+func ImplementerIs(implementer, actor string, same func(a, b string) bool) bool {
+	if same(implementer, actor) {
+		return true
+	}
+	if loc := implementerCommentRe.FindStringIndex(implementer); loc != nil {
+		cut := strings.TrimSpace(implementer[:loc[0]])
+		return cut != "" && same(cut, actor)
+	}
+	return false
+}
+
+var implementerCommentRe = regexp.MustCompile(`\s#`)
 
 // ExitCodeOf maps a loopengine error to a process exit code. It recognizes the distinct
 // author==runner code (7) and otherwise delegates to deskkit.ExitCodeOf (0/3/4/5/6, failing

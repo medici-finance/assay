@@ -193,11 +193,12 @@ func topLevelKeyLines(block string) map[string]int {
 }
 
 // keepReaderValues gives each key whose readers kept the inline comment the
-// value its reader read, whenever that reader's first match is the parsed
-// mapping's own line for the key. YAML drops an inline comment and reads
-// quotes its own way, so without this "in-repair: no # x" would read as "no"
-// where the reader read "no # x". A match on any other line is left to
-// lineBackstop.
+// value its reader read, so "in-repair: no # x" reads as "no # x" where YAML
+// drops the comment. It does so only when the reader's first match is the
+// parsed mapping's own line for the key AND that reading, with the comment
+// cut, is the parsed value. Any other reading keeps the parsed value, which
+// lineBackstop then compares with the reader's, so a key whose line and
+// parsed value disagree is refused just as it is for the comment-cutting keys.
 func keepReaderValues(block string, values map[string]string) {
 	lines := topLevelKeyLines(block)
 	for _, r := range lineReaders {
@@ -208,8 +209,14 @@ func keepReaderValues(block string, values map[string]string) {
 		if loc == nil {
 			continue
 		}
+		capture := block[loc[2]:loc[3]]
+		cut := r
+		cut.keepsComment = false
+		if lineValue(cut, capture) != values[r.key] {
+			continue
+		}
 		if line, ok := lines[r.key]; ok && line == strings.Count(block[:loc[0]], "\n")+1 {
-			values[r.key] = lineValue(r, block[loc[2]:loc[3]])
+			values[r.key] = lineValue(r, capture)
 		}
 	}
 }
@@ -217,9 +224,10 @@ func keepReaderValues(block string, values map[string]string) {
 // lineBackstop refuses a block where any of those line readers reads a key
 // differently from the parsed mapping, for example a column-0 "gate: human"
 // line that YAML reads as the continuation of an earlier multi-line value.
-// After keepReaderValues, a key that only comment-keeping readers read takes
-// exactly their value; gate, exec-tier and effort take the comment-cut value
-// their cutting readers took, because their readers did not agree.
+// After keepReaderValues, a key that only comment-keeping readers read holds
+// their value only where its comment-cut form is the parsed value; gate,
+// exec-tier and effort take the comment-cut value their cutting readers took,
+// because their readers did not agree.
 func lineBackstop(block string, values map[string]string) error {
 	for _, r := range lineReaders {
 		got := ""

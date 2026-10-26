@@ -354,7 +354,7 @@ func loopScalar(block, key string) string {
 // the comment still read without it.
 func TestCommentKeepingKeysReadAsBefore(t *testing.T) {
 	for _, key := range []string{"implementer", "blocked-until", "verify-lane", "in-repair"} {
-		for _, value := range []string{"no # x", `"" # x`, "' ' # x", "no", `""`, "online", "'pipeline #3'", `"a # b" # c`} {
+		for _, value := range []string{"no # x", `"" # x`, "' ' # x", "no", `""`, "online", "'a' # x", "'pipeline #3'"} {
 			input := key + ": " + value
 			f, e := ParseFields(input)
 			if want := loopScalar(input, key); e != nil || f.Values[key] != want {
@@ -392,6 +392,29 @@ func TestCommentKeepingKeysReadAsBefore(t *testing.T) {
 		key := strings.SplitN(input, ":", 2)[0]
 		if f, e := ParseFields(input); e != nil || f.Values[key] != want {
 			t.Errorf("%q: got %q, %v; want %q", input, f.Values[key], e, want)
+		}
+	}
+}
+
+// TestCommentKeptReadingNeedsParsedAgreement pins that a comment-keeping key
+// takes its line reading only when that reading, with the comment cut, is the
+// parsed value; any other shape is refused, as it was before comment keeping.
+func TestCommentKeptReadingNeedsParsedAgreement(t *testing.T) {
+	for _, input := range []string{
+		"implementer: runner-a\t# note",
+		"implementer: \"\n  runner-a\"",
+		"implementer: >-\n  runner-a",
+		"in-repair: \"no\n  pipeline-7\"",
+		"in-repair: no\n  pipeline-7",
+		"in-repair: '\n  pipeline-7'",
+		"blocked-until: \"\n  later\"",
+		"blocked-until: '\n  later'",
+		"verify-lane: \"\n  online\"",
+		"blocked-until: \"a # b\" # c",
+		"title: 'a\nimplementer: \"\" # note'",
+	} {
+		if f, e := ParseFields(input); e == nil {
+			t.Errorf("%q was admitted as %+v; the parsed value and the line reading disagree", input, f.Values)
 		}
 	}
 }

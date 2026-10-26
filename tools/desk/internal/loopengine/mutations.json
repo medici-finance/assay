@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/loopengine/ -count=1 -run 'TestClaim'",
+  "test": "go test ./internal/loopengine/ -count=1 -run 'TestClaim|TestCheckAuthorRunner'",
   "control": {
     "name": "CONTROL — disarm the whole dedupe-at-start gate (Claim stops consulting evidence at all)",
     "file": "internal/loopengine/claim.go",
@@ -42,6 +42,30 @@
       "file": "internal/loopengine/claim.go",
       "old": "\tif taken, err := checkWorkEvidence(cfg, it); err != nil || taken {\n\t\treturn false, err\n\t}\n\tok, err := deskkit.Acquire(toClaimConfig(cfg), deskkit.Claim{",
       "new": "\tok, err := deskkit.Acquire(toClaimConfig(cfg), deskkit.Claim{"
+    },
+    {
+      "name": "author-runner guard compares only the implementer as read, so an inline comment after the runner's name hides the author",
+      "file": "internal/loopengine/claim.go",
+      "old": "\tif ImplementerIs(it.Implementer, runnerID, func(a, b string) bool { return a == b }) {",
+      "new": "\tif it.Implementer == runnerID {"
+    },
+    {
+      "name": "ImplementerIs never compares the comment-cut implementer",
+      "file": "internal/loopengine/claim.go",
+      "old": "\tif loc := implementerCommentRe.FindStringIndex(implementer); loc != nil {",
+      "new": "\tif loc := implementerCommentRe.FindStringIndex(implementer); false && loc != nil {"
+    },
+    {
+      "name": "ImplementerIs compares the comment text instead of the name before it",
+      "file": "internal/loopengine/claim.go",
+      "old": "\t\tcut := strings.TrimSpace(implementer[:loc[0]])",
+      "new": "\t\tcut := strings.TrimSpace(implementer[loc[1]:])"
+    },
+    {
+      "name": "ImplementerIs recognises a comment after only one kind of whitespace",
+      "file": "internal/loopengine/claim.go",
+      "old": "regexp.MustCompile(`\\s#`)",
+      "new": "regexp.MustCompile(` #`)"
     }
   ]
 }

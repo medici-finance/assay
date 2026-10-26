@@ -336,6 +336,18 @@
       "file": "briefdoc/document.go",
       "old": "strings.Count(block[:loc[0]], \"\\n\")+1 {",
       "new": "strings.Count(block[:loc[0]], \"\\n\") {"
+    },
+    {
+      "name": "comment keeping: the kept reading is taken without its comment-cut form matching the parsed value",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif lineValue(cut, capture) != values[r.key] {",
+      "new": "\t\tif false && lineValue(cut, capture) != values[r.key] {"
+    },
+    {
+      "name": "comment keeping: the agreement check compares the comment-kept reading instead of the cut one",
+      "file": "briefdoc/document.go",
+      "old": "\t\tcut.keepsComment = false\n",
+      "new": "\t\tcut.keepsComment = true\n"
     }
   ]
 }
