@@ -1,15 +1,18 @@
 # Library-first component contracts
 
-Status: implementation direction, 2026-10-08, ruled for offline and frozen inputs only. The
-driver ruled on #2395 for option 1, recorded in
-[`DR-forge-neutral-36`](streams/decisions/DR-forge-neutral-36.md): statusgen may link a narrow
-module's offline and frozen packages; every online forge read stays on the read verb, `deskkit`
-stays internal, and no credential moves into a process that has none today. The forge-seam
-direction of 2026-09-14 (statusgen reaches the seam by running the read verb, never by linking
-a package; see the desktools-v2 spec header) is amended in that part only. forge-neutral/36
-becomes eligible for pick-up and keeps its own human gate; the ruling is not its sign-off. The
-first slice, the `forgeread` module, is described under "The first shared read" below; the
-other rows describe upcoming work, not a claim that those SDKs or extractions exist.
+Status: implementation direction, 2026-10-25. The driver's ruling on #2395, recorded in
+[`DR-forge-library`](streams/decisions/DR-forge-library.md), supersedes the 2026-10-08
+offline-and-frozen-only ruling (`DR-forge-neutral-36`, kept as history): one shared forge
+library for reads and writes, built by desktools-v2. `deskread` and the write verbs become thin
+command-line wrappers around it, and statusgen links it for its forge calls instead of running a
+desk-tools command. The library owns the credential: one client per role and repository, the
+token in a private field no caller can read, never an ambient fallback. gh/glab launches are held
+to at most 7 across desk-tools and statusgen by a down-only ratchet, and git uses go-git, with a
+git launch only where go-git cannot do the operation. The briefs are desktools-v2/75 (library and
+wrappers), /76 (go-git and the git-launch ratchet) and /77 (statusgen off the `deskread`
+bridge), each under its own human gate. The first slice, the `forgeread` module, is described
+under "The first shared read" below; the other rows describe upcoming work, not a claim that
+those SDKs or extractions exist.
 
 Shared behavior has one canonical implementation exposed through versioned libraries or
 SDKs. Consumers link it directly where compatible with their authority and deployment.
@@ -24,7 +27,8 @@ runtime containment. Taxonomy membership describes components and grants no auth
 |---|---|---|
 | Inter-cell message contract (cellmsg-v1) | `comms/contract` (module `github.com/medici-finance/assay/comms`, comms-core/01): `Envelope`, `ParseEnvelope`, `ParseEnvelopeWith`, `Vocabulary`, `Message`, `Address`, `Receipt`, `ErrorCode`, `Mint`, `Verify`, `VerifyEnvelope` | `tools/desk/internal/comms` (the Assay policy adapter: verb and class vocabulary, compiled lane ACL, `Admit`), then `commsgw`, `commsloop`, `deskcomms`, `commsqueue`. Follow-ups comms-core/02 (server) and /03 (client SDK) consume it. Structure only: no role names, no ACL, no credential, no network, no process launch. |
 | Local performance observations | `perfrec` owns the recorder, typed versioned codecs, context validation, selectors and reducers. desktools-v2/67 adds the bounded v4 reader; /68 owns subsequent selected-profile cutover. | Desk wrappers and statusgen link the same module. No network, subprocess, credential, upload or authority moves into the library. v1–v3 remain historical contracts; no parallel recorder or authenticated statusgen adapter. |
-| Forge facts and completeness | Existing forge adapters; narrow `forgeread` API, forge-neutral/36; typed positive issue-state adapter in Go API 1.1 | `deskread`, issueboard and statusgen's offline/frozen reader adapter. No generic query, raw token getter or write API on the consumer interface. Statusgen's online reads remain on `deskread`. |
+| Forge facts and completeness | Existing forge adapters; narrow `forgeread` API, forge-neutral/36; typed positive issue-state adapter in Go API 1.1 | `deskread`, issueboard and statusgen's offline/frozen reader adapter. No generic query, raw token getter or write API on the consumer interface. Statusgen's online reads stay on `deskread` until desktools-v2/77 moves them onto the shared forge library. |
+| Forge operations (reads and writes) and role credential | Planned shared forge library (`DR-forge-library`), desktools-v2/75: proposed root module `forgeclient/`, composing `forgeread`'s adapters and desktools-v2/58's credential provider | `deskread` and every desk write verb as thin wrappers; statusgen through its forge adapter layer only (desktools-v2/77). Enumerated typed operations only; one client per role and repository; token in a private field; no ambient fallback; no raw URL, request or query. `statusgen/evaluation` links none of it. |
 | Local write-isolation policy | Proposed `deskcore/writepolicy`, [write-policy contract](write-policy.md), desktools-v2/66 | `writeguard` is a thin hook adapter; managed adapters supply validated allocation observations. Core has no effects or authority; independent guards keep their owners. |
 | Work-reference interpretation | `statusgen/workref` (`Parse`, `Resolve`, copied supplied registry), milestone-support/01 | Both actual QID and trailer adapters call the package in-process with explicit, distinct legacy profiles. Typed brief adapter remains opt-in; no operational prefixed writes, capability advertisement, credential or authority moves. |
 | Eligibility and evidence coverage | `statusgen/evaluation` (canonical owner since statusgen/15): `EvaluateEligibility`, `EvaluateCoverage` | statusgen commands, workflow bindings, projection producers. Explicit observations in; deterministic verdicts out. No admission, identity, capacity or claim authority. |
@@ -75,13 +79,15 @@ belong to a maintainer with the workflows scope.
 - Caller-facing SDK packages must not transitively import custody, credential minting,
   role executors or write adapters. Authenticated read adapters are effectful packages,
   composed only where the existing identity policy permits that process to hold access.
-- A role-owned credential is not passed into statusgen to avoid a subprocess. **Every online
-  forge read statusgen makes stays on the deskread read-verb adapter**, a process boundary,
-  under the identity the verb resolves. In-process SDK use inside statusgen is limited to
-  offline and frozen inputs, which need no credential. `deskkit` stays internal: statusgen's
-  module manifest names nothing under `tools/desk`. No brief in this plan retires the
-  deskread bridge for any online read. Retiring it would need its own human-gated brief and a
-  driver ruling, and none is authored. No new daemon, token service or credential profile is
+- *(Superseded 2026-10-25 by `DR-forge-library`.)* Until then this bullet kept every online
+  statusgen forge read on the `deskread` process adapter and kept credentials out of statusgen.
+  Now statusgen links the shared forge library for its forge calls, and a credential exists
+  inside the statusgen process only in the library client's private field, for one role and one
+  repository, with no ambient fallback. Only statusgen's forge adapter layer constructs a client;
+  `statusgen/evaluation` and the offline/frozen paths stay credential-free. `deskkit` stays
+  internal and statusgen's module manifest still names nothing under `tools/desk`, which is why
+  the library and the credential provider live outside that tree. desktools-v2/77 retires the
+  bridge under its own human gate. No new daemon, token service or credential profile is
   implied.
 - The CI workflow-token profile stays owned by forge-neutral/34. Extracting its constructor
   later must preserve opt-in, repository/host binding, read-kind limits and refusals. The SDK
@@ -119,8 +125,9 @@ kept paginating past the walk ceiling; no partial list is returned) or "unsuppor
 (a refusal, not an answer) identically on both. Credential resolution, host and repository
 validation and the CI-token read-only profile stay in `deskkit`; the composition it hands the
 adapter refuses any repository other than the one its credential was admitted for, before a
-request is built. statusgen's online reads still run the `deskread` verb; its default reader is
-the SDK's offline reader.
+request is built. statusgen's online reads still run the `deskread` verb until desktools-v2/77,
+when that composition moves into the shared forge library (desktools-v2/75) and statusgen links
+it; its default reader is the SDK's offline reader either way.
 
 Two versions, separately. The Go API version is `forgeread.APIVersion` (semantic versioning of
 the exported Go surface; a module release is tagged `forgeread/vX.Y.Z`). The JSON envelope
@@ -138,19 +145,24 @@ promoted by a maintainer; the prepared files are in `ci/staged-workflows/`).
 | Work | Owner | Dependency / retirement |
 |---|---|---|
 | First shared fact-read slice and SDK | forge-neutral/36 (new) | Existing OpenIssues implementations; no dependency on /18, /34 or /35. Preserves their identity work. |
-| Remaining statusgen read migrations | forge-neutral/18 | Existing /08, /33 and /34; no dependency on /36. Online reads stay on deskread; if /36 has landed, uses its OpenIssues types, and moves no adapter into the SDK; preserve /35's separately reviewed ruling-control moves. |
-| Ruling and sign-off reads | forge-neutral/35 | /18 and its existing controls; reads go through deskread, no independent credentials. |
+| Remaining statusgen read migrations | forge-neutral/18 | Existing /08, /33 and /34; no dependency on /36. Moves each read onto statusgen's injected reader seam, served by `deskread` today; if /36 has landed, uses its OpenIssues types; preserve /35's separately reviewed ruling-control moves. desktools-v2/77 later swaps the seam's transport. |
+| Ruling and sign-off reads | forge-neutral/35 | /18 and its existing controls; reads go through the reader seam (deskread, then the library under desktools-v2/77), no credential of statusgen's own. |
+| Shared forge library and thin verb wrappers | desktools-v2/75 | desktools-v2/58's credential provider; carries the five custody records unchanged; owns the combined gh/glab ratchet. |
+| go-git and the git-launch ratchet | desktools-v2/76 | Builds on `gitcore`; statusgen's git launches move to go-git with parity goldens. |
+| Retire the deskread bridge for statusgen | desktools-v2/77 | /75, /58, forge-neutral/18 and /35; env-token reads in statusgen retire. |
 | Scan and CI path coverage of the extracted module | forge-neutral/36 | Lands with the extraction: forge-CLI scan, ambient-token rule and workflow path filter cover `forgeread/`. |
-| Further read kinds in the SDK | not yet briefed | Each authenticated adapter moved into the SDK is a /36-class extraction under a human gate. |
+| Further read kinds in the SDK | desktools-v2/75 | Authenticated operations land in the shared forge library, not in the `forgeread` root package. |
 | Canonical evaluation extraction | statusgen/15 | Offline extraction from existing code; no dependency on fact-reader migration or workflow store. |
 | Durable bindings | graph-execution/19 | Consumes statusgen/15; no second extraction or copied evaluator. |
-| Hold no-forge-CLI / no-ambient behavior | desktools-v2/08 | After /18 AND /35; permit the narrow SDK's offline and frozen packages only; keep the manifest check that statusgen names nothing under `tools/desk`. |
+| Hold no-forge-CLI / no-ambient behavior | desktools-v2/08 | After /18 AND /35; permit the `forgeread` root package and the shared forge library's caller package, never a `forgeread` adapter directly or a desk-tools package; keep the manifest check that statusgen names nothing under `tools/desk`. |
 | CLI parsing | desktools-v2/16, /18 and remaining CLI briefs | Continue independently; no change to semantic or authority contracts. |
 
 Wave 0: review this contract and the named consumer amendments; the driver's ruling on the
-forge-read direction is recorded (#2395, `DR-forge-neutral-36`). Wave 1: /36, under its own
+forge direction is recorded (#2395, `DR-forge-library`, superseding `DR-forge-neutral-36`). Wave 1: /36, under its own
 human gate, and statusgen/15 independently. Wave 2: their named consumers, subject to existing dependencies; the forge
 read chain (/18, /35, desktools-v2/08) keeps its own sequence and does not wait on /36.
+The shared-library chain runs desktools-v2/58 → /75 → /77, with /77 also after /18 and /35;
+/76 is independent of it.
 Retirement follows consumer qualification, never merely library availability. Existing
 implemented briefs keep their evidence and scope; changes land as follow-ups.
 

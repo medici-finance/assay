@@ -20,6 +20,7 @@ schema: brief-v2
 authored: 2026-09-17 by desktools-v2 authoring session (re-scoped from the withdrawn statusgen-migration draft)
 sources:
   - "#2111 — Cobra/Viper adoption; CLI compatibility amendment 2026-10-03 (spec §9)"
+  - "docs/streams/decisions/DR-forge-library.md — 2026-10-25 ruling on #2395 superseding DR-forge-neutral-36; widens row 10's allowed set by the shared forge library's caller package"
   - "docs/streams/desktools-v2/spec.md §2 Principle 2 — online reads cross the deskread verb boundary and deskkit stays internal; v2 contributes enforcement and proof, not migration"
   - "docs/streams/forge-neutral/brief-18-statusgen-off-gh-one-read-verb.md (forge-neutral/18, in-progress) — OWNS the migration; its Verify row 3 (zero forge-CLI sites in statusgen/) is its completion test. This brief starts where that one ends"
   - "statusgen/forgeread.go — the forgeReader seam: offlineReader is the default, deskreadReader runs the verb once per repo set, every repo lands in exactly one of data / unavailable"
@@ -34,7 +35,7 @@ consumers:
 exec-tier: strong
 exec-tier-why: Cross-module capability checks must tell the permitted offline packages apart from indirect credential or write reach.
 domain: complicated
-version: 4
+version: 5
 id: 0a18147e-5225-4ba4-91ab-b3bcd92bc00d
 ---
 
@@ -67,9 +68,10 @@ facts:
   sibling brief's deliverable.
 - statusgen does not import `deskkit` and must not start to (`statusgen/forgeread.go` header;
   spec §2 Principle 2): `deskkit` stays internal, and `statusgen/go.mod` names nothing under
-  `tools/desk` (row 5). If forge-neutral/36 has landed, statusgen may link only that module's
-  offline and frozen packages, never an authenticated read adapter (row 10). This brief adds
-  no module dependency and no read implementation.
+  `tools/desk` (row 5). statusgen may link the `forgeread` root package and, once
+  desktools-v2/77 lands, the shared forge library's caller package (`DR-forge-library`), never
+  a `forgeread` adapter package directly and never a desk-tools package (row 10). This brief
+  adds no module dependency and no read implementation.
 - The custody property is already `deskread`'s: it resolves its `Forge` through the `deskkit`
   resolver under the session's minted App role and has no ambient fallback. This brief PROVES
   that end to end from statusgen's side; it does not re-implement it.
@@ -107,6 +109,28 @@ changes below do not depend on that ruling. None of them loosens a row.
 - Scan and path-trigger coverage of the extracted `forgeread/` module is forge-neutral/36's and
   lands with that extraction, not here.
 
+## Shared forge library amendment — 2026-10-25 (ruled: `DR-forge-library`)
+
+The driver's later ruling on #2395 (`DR-forge-library`) supersedes `DR-forge-neutral-36`:
+statusgen links one shared forge library for its forge calls (desktools-v2/75 builds it,
+desktools-v2/77 moves statusgen onto it), and the library holds the credential privately. What
+changes here, and what does not:
+
+- **Row 1 (zero `"gh"` lines in statusgen) and rows 2 and 3 stand.** They are compatible with the
+  ruling's at most 7 gh/glab launch sites across desk-tools and statusgen; desktools-v2/75 owns
+  that combined ratchet.
+- **Row 5 stands.** The library is a separate root module, so statusgen's manifest still names
+  nothing under `tools/desk`.
+- **Row 10's allowed set widens by exactly one package**: the shared forge library's caller
+  package. It still fails on any desk-tools package and on a direct import of any `forgeread`
+  adapter package; reaching an adapter through the library is the library's own composition.
+  If /08 lands before /77, the widened set is unused and the row is unchanged in effect.
+- **Rows 4, 6 and 7** prove the scan with no `gh` on `PATH`. While statusgen reads through
+  `deskread` the positive leg uses a stub `deskread`; desktools-v2/77 owns re-pointing that leg
+  at the library client over a fake provider, with neither `gh` nor `deskread` on `PATH`. The
+  test names and PASS lines do not change.
+- No dependency is added: /08 still follows `forge-neutral/18` and `/35` only.
+
 ## Task
 1. Confirm the precondition (Verify rows 1 and 8). Stop with NEEDS_CONTEXT if either fails.
 2. Make `forge-ban.sh` exit non-zero when its `statusgen sites:` count is above zero, leaving
@@ -124,7 +148,7 @@ changes below do not depend on that ruling. None of them loosens a row.
 
 ## Cobra/Viper integration — preserve the statusgen module boundary
 
-Statusgen receives a dedicated bounded CLI migration owner from desktools-v2/15. This brief still owns holding its forge-CLI count at zero, not its command-tree rewrite. Preserve all existing invocation and machine-output consumers while that owner adopts Cobra/Viper; statusgen continues to call deskread for online reads rather than import deskkit. Source discovery and CLI completion must include statusgen even though it is a separate module. Never treat library imports or a CLI refactor as proof of the existing forge-ban Verify rows.
+Statusgen receives a dedicated bounded CLI migration owner from desktools-v2/15. This brief still owns holding its forge-CLI count at zero, not its command-tree rewrite. Preserve all existing invocation and machine-output consumers while that owner adopts Cobra/Viper; statusgen continues to reach the forge through its reader seam (deskread today, the shared forge library after desktools-v2/77) rather than import deskkit. Source discovery and CLI completion must include statusgen even though it is a separate module. Never treat library imports or a CLI refactor as proof of the existing forge-ban Verify rows.
 
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect |
@@ -138,7 +162,7 @@ Statusgen receives a dedicated bounded CLI migration owner from desktools-v2/15.
 | 7 | `cd statusgen && go test -run '^TestScanNeverEmptyWithoutForgeBinary/windows$' -v .` | output must contain the named top-level or subtest `--- PASS:` line (a missing selector is failure); named Windows PATH/PATHEXT subtest PASS; brief 08 creates it using an .exe stub (desktools-v2/12 Windows row) |
 | 8 | `grep -cE -e '^[\|] 18 [\|].*[\|] implemented [\|]' -e '^[\|] 18 [\|].*[\|] verified [\|]' -e '^[\|] 18 [\|].*[\|] done [\|]' -e '^[\|] 35 [\|].*[\|] implemented [\|]' -e '^[\|] 35 [\|].*[\|] verified [\|]' -e '^[\|] 35 [\|].*[\|] done [\|]' docs/streams/forge-neutral/README.md` | prints `2`: both forge-neutral/18 and /35 are at least implemented on the board. The board half of the precondition. `0` or `1` means this brief is not startable |
 | 9 | `grep -c -F '"statusgen/**"' .github/workflows/forge-surface-control.yml` | prints `2`: the `pull_request` and `push` path lists both carry `statusgen/**`, so a statusgen-only change runs the gate rows 2 and 3 make. Measured at this amendment: `0` |
-| 10 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestReaderCapabilityBoundary$" ./... > "$result" && grep -F -- "--- PASS: TestReaderCapabilityBoundary " "$result")` | exit 0; named PASS. `TestReaderCapabilityBoundary` (planned) resolves statusgen's non-test import graph and fails on any package under the desk-tools module and on any authenticated read-adapter package of the shared module; only that module's offline and frozen packages may appear. **+mutation**: each of three planted violations must fail it — a direct import of a desk-tools package, an indirect import of an adapter package through a statusgen helper, and an adapter import added by a build-tagged file. Row 5 and this row are independent: one reads the manifest, the other the resolved graph |
+| 10 | `(cd statusgen && result=$(mktemp) && trap 'rm -f "$result"' 0 && GOWORK=off go test -count=1 -v -run "^TestReaderCapabilityBoundary$" ./... > "$result" && grep -F -- "--- PASS: TestReaderCapabilityBoundary " "$result")` | exit 0; named PASS. `TestReaderCapabilityBoundary` (planned) resolves statusgen's non-test import graph and fails on any package under the desk-tools module and on any direct import of an authenticated read-adapter package of the `forgeread` module; only the `forgeread` root package and the shared forge library's caller package (`DR-forge-library`, desktools-v2/75) may appear as statusgen imports, and an adapter package may appear only as a dependency of that library package. **+mutation**: each of three planted violations must fail it — a direct import of a desk-tools package, an indirect import of an adapter package through a statusgen helper, and an adapter import added by a build-tagged file. Row 5 and this row are independent: one reads the manifest, the other the resolved graph |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item. -->
