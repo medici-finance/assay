@@ -115,7 +115,7 @@ concurrency:
 
 env:
   # Matches ci.yml. Kept in sync with statusgen/go.mod's `go` directive.
-  GO_VERSION: "1.27.2"
+  GO_VERSION: "1.27.3"
 
 jobs:
   # Work out WHICH tag this run is about, before anything is built or written.
@@ -539,7 +539,7 @@ jobs:
           # to GO_VERSION above; bump both together — a GO_VERSION change without
           # a matching digest fails this step CLOSED rather than trusting the
           # fetch.
-          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
@@ -1043,7 +1043,7 @@ jobs:
           # to GO_VERSION above; bump both together — a GO_VERSION change without
           # a matching digest fails this step CLOSED rather than trusting the
           # fetch.
-          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
@@ -1925,7 +1925,7 @@ jobs:
           # to GO_VERSION above; bump both together — a GO_VERSION change without
           # a matching digest fails this step CLOSED rather than trusting the
           # fetch.
-          GO_SHA256: "ecbadb99091a3f46e31f5f934b068b1864eafa7995211b39eaddf76996045fe5"
+          GO_SHA256: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40"
         run: |
           set -euo pipefail
           url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
