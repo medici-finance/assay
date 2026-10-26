@@ -247,6 +247,15 @@
       "mayBless": false,
       "trustedAuthorID": true,
       "whyAuthorID": "the same unpinned human on a surface with NO id: login-only, as before the conversion — the general-purpose path must NOT be tightened here either, or gh-CLI-sourced surfaces stop trusting a configured identity"
+    },
+    {
+      "why": "A rostered bot with a supplied numeric ID must match its pin; the same strict rule applies in both modules.",
+      "login": "example-reviewer-app[bot]",
+      "id": 9999,
+      "trustedAuthorID": false,
+      "trustedAuthor": true,
+      "trustedContent": false,
+      "mayBless": false
     }
   ],
   "repoCases": [

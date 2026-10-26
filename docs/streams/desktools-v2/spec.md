@@ -15,6 +15,14 @@ offline and frozen packages; every online forge read stays on the read verb, `de
 internal, and no credential moves into a process that has none today. The 2026-09-14 direction
 in Principle 2 is amended in that part only; the rest of the approved text stands.
 
+**Amendment, 2026-10-25 (ruled on #2395, recorded in
+[`DR-forge-library`](../decisions/DR-forge-library.md), superseding `DR-forge-neutral-36`):**
+one shared forge library for reads and writes, built by this stream. `deskread` and the write
+verbs become thin command-line wrappers around it, statusgen links it for its forge calls, the
+library owns the per-role-and-repository credential, gh/glab launches are held to at most 7 by a
+down-only ratchet and git uses go-git. It amends §2 Principle 2, commitments 1 and 3 and §9's
+module-boundary sentence; see the Principle 2 amendment of that date.
+
 ## 1. The problem — the forge abstraction leaks
 
 The desk tools were written ad-hoc, one verb at a time, while the desk flows were still
@@ -142,6 +150,37 @@ proposal: nothing here makes `deskkit` importable.
 One correction is independent of the ruling: `desktools-v2/08`'s final zero follows both
 `forge-neutral/18` and `/35`, because /18 deliberately leaves the control-feeding reads to /35.
 
+#### Amendment, 2026-10-25 — one shared forge library for reads and writes (`DR-forge-library`)
+
+The driver's ruling on #2395, recorded in [`DR-forge-library`](../decisions/DR-forge-library.md),
+supersedes the 2026-10-08 amendment above (kept as history):
+
+- **One library, thin wrappers.** This stream builds one shared forge library for reads and
+  writes (`desktools-v2/75`). `deskread` and the write verbs (`deskpost`, `deskpr`, `deskreply`,
+  `deskfile`, `deskevidence`, `deskrun` and the rest) become thin command-line wrappers around
+  it. Callers see enumerated typed operations, never raw URLs, requests or queries
+  (Principle 3 unchanged).
+- **statusgen links it.** statusgen's forge calls go through the library instead of running a
+  desk-tools command (`desktools-v2/77`). The verb boundary of 2026-09-14 is retired for
+  statusgen's forge access; `deskkit` itself stays internal, which is why the library is placed
+  outside `tools/desk/internal/` (proposed root module `forgeclient/`, decided at /75's gate).
+- **The library owns the credential.** One client per role and repository, the token in a
+  private field no caller can read, never an ambient fallback. DR-desktools-v2-03,
+  DR-forge-neutral-34, DR-forge-neutral-14, DR-forge-neutral-17 and DR-forge-gitlab-11 move into
+  it unchanged. Custody-first (Principle 1) now binds at the library's constructor.
+- **Launch ratchets.** gh/glab: at most 7 launch sites across desk-tools and statusgen, down-only
+  (`desktools-v2/75` adds the ratchet at its pickup count; `desktools-v2/77` lowers it to the
+  clean count, at most 7, and asserts it once statusgen's gh launches count 0). git: go-git, a git launch only where go-git cannot do the operation, on
+  its own down-only ratchet (`desktools-v2/76`).
+- `forge-neutral/18` and `/35` still move statusgen's reads onto its injected reader seam; the
+  seam's transport changes under /77. `desktools-v2/08` still holds statusgen's gh count (the
+  counter's class a) at zero. statusgen's other counted forge facts are not /08's: the GraphQL
+  blocks (class c) retire with forge-neutral/18's reads, and the `origin`-based forge
+  classification (class b) and API host literals (class d) with /77, whose row 9 asserts the
+  whole `statusgen sites:` total at `0`. Its Task 7 then widens /08's class a gate to that whole
+  total, so a site re-added later fails CI (row 11). /77 depends on /08 (wave 8), so the class a
+  gate and the `statusgen/**` path entry always land first and /08 never narrows /77's gate.
+
 ### Principle 3 — PURPOSE-BUILT QUERIES (typed access-pattern operations)
 
 The v2 Forge library exposes typed **access-pattern** operations — e.g. *review-queue
@@ -181,14 +220,17 @@ Architectural commitments (including the additive CLI contract of §9):
 1. **ONE seam, and only the two backends may speak GitHub/GitLab.** Every transport, identity
    handoff, query construction, remote name, and subprocess name passes through
    `deskkit.Forge`. (Principle 3's "no raw query crosses the interface" is the query half of
-   this.)
+   this.) *(2026-10-25, `DR-forge-library`: the seam becomes the shared forge library that
+   `desktools-v2/75` builds; the backends move behind it and the rule is otherwise unchanged.)*
 2. **A ban-lint that makes the reach-past a red build, not a code-review catch** — and that
    covers statusgen, which is not under `forgeban` today.
 3. **The cross-module boundary is a VERB, not a package.** A second module reaches the seam
    by running `deskread` and parsing its versioned envelope (Principle 2); `deskkit` stays
    internal. v2 enforces that boundary, it does not replace it. (The 2026-10-08 amendment in
-   Principle 2, `DR-forge-neutral-36`, lets statusgen link a narrow module's offline and frozen
-   packages; every online forge read still crosses the verb.)
+   Principle 2, `DR-forge-neutral-36`, let statusgen link a narrow module's offline and frozen
+   packages. *Superseded 2026-10-25 by `DR-forge-library`: the cross-module boundary is the
+   shared forge library, a narrow typed package with its own credential, which statusgen
+   links; `deskkit` stays internal.*)
 4. **Custody-first native clients** (Principle 1): explicit minted-token, key-presence
    boundary, refuse-ambient — on the desk read path and on statusgen.
 5. **Incremental, tool-by-tool migration, with the old path REMOVED as each lands.**
@@ -403,8 +445,9 @@ have a bounded Go-port owner. A small tool is not an exception.
   result. The contract explicitly covers `--flag=value`, `--flag value`, `--`, repeated flags,
   dash-leading values, required arguments, unknown flags and persistent flags.
 - No new runtime policy engine or mandatory config file is introduced. Each independent
-  module keeps its boundary; statusgen still uses deskread for forge access, never imports
-  internal deskkit for CLI reuse. Unrequested completion commands are disabled by default.
+  module keeps its boundary; statusgen never imports internal deskkit for CLI reuse. (Its forge
+  access moves from `deskread` to the shared forge library under `desktools-v2/77`,
+  `DR-forge-library`; the CLI migration does not depend on that.) Unrequested completion commands are disabled by default.
 
 ### Configuration contract
 

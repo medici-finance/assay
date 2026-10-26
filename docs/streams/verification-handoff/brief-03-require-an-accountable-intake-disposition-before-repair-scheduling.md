@@ -11,6 +11,8 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Changes the intake and scanner adapters boundary used to schedule, preserve or resolve verification work; human review must confirm that trust, ownership, retention and independent acceptance cannot be inferred from routing."
 decision-trigger: start
 decision-issue: 4307
+design: DR-handoff-intake
+ruling: "https://github.com/medici-finance/assay/issues/4307#issuecomment-6399188555"
 issues: []
 schema: brief-v2
 version: 1
@@ -24,6 +26,21 @@ sources:
   - "spec/intake-exit-v1.md; docs/streams/desk-supervision/repair-obligation-v1.md; docs/verify-wake.md"
   - "freshness-checked 2026-10-23 @ fbe0331e2fc9f5c822c4edeafb8a18865c916828"
 consumers:
+  - "deskcore/issueflow/intake.go: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "tools/desk/cmd/scanloop/run.go: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "tools/desk/cmd/scanloop/monitor.go: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "tools/desk/cmd/scanloop/observations.go: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "tools/desk/cmd/scanloop/landverb.go: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "tools/desk/cmd/scanloop/handoffrecord.go: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "statusgen/main.go: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "statusgen/model.go: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "statusgen/nextup.go: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "statusgen/placeholder.go: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "statusgen/registerentries.go: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "statusgen/intakehandoffs.go: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "spec/intake-handoff-v1.md: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "docs/contracts.md: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
+  - "statusgen/testdata/verification-handoff/mutate.py: follow-up verification-handoff/03 (this delivery; adapter or contract extension)"
   - "tools/desk/cmd/scanloop/adapter.go: follow-up verification-handoff/03 (this delivery; existing owner or planned extension)"
   - "tools/desk/cmd/scanloop/lane.go: follow-up verification-handoff/03 (this delivery; existing owner or planned extension)"
   - "tools/desk/cmd/scanloop/exitrecord.go: follow-up verification-handoff/03 (this delivery; existing owner or planned extension)"
@@ -32,6 +49,9 @@ consumers:
   - "statusgen/intakeexits.go: follow-up verification-handoff/03 (this delivery; existing owner or planned extension)"
   - "spec/intake-exit-v1.md: follow-up verification-handoff/03 (this delivery; existing owner or planned extension)"
   - "plugins/assay/skills/intake-desk/SKILL.md: follow-up verification-handoff/03 (this delivery; existing owner or planned extension)"
+  - ".cursor/skills/intake-desk/SKILL.md: follow-up verification-handoff/03 (generated harness copy of the canonical intake skill)"
+  - ".cursor/assay-managed.json: follow-up verification-handoff/03 (generated harness content digest)"
+  - "tools/desk/internal/reviewtest/issue_projection_test.go: follow-up verification-handoff/03 (named production fault controls)"
   - "statusgen/testdata/verification-handoff/03-mutations.json: follow-up verification-handoff/03 (this delivery; existing owner or planned extension)"
   - "changelog/verification-handoff-03.md: follow-up verification-handoff/03 (this delivery; existing owner or planned extension)"
 ---
@@ -40,7 +60,7 @@ consumers:
 
 ## Context
 
-files: tools/desk/cmd/scanloop/adapter.go, tools/desk/cmd/scanloop/lane.go, tools/desk/cmd/scanloop/exitrecord.go, tools/desk/cmd/issueboard/, statusgen/scanissues.go, statusgen/intakeexits.go, spec/intake-exit-v1.md, plugins/assay/skills/intake-desk/SKILL.md, statusgen/testdata/verification-handoff/03-mutations.json (planned), changelog/verification-handoff-03.md (planned)
+files: .cursor/skills/intake-desk/SKILL.md, .cursor/assay-managed.json, tools/desk/internal/reviewtest/issue_projection_test.go, deskcore/issueflow/intake.go, tools/desk/cmd/scanloop/run.go, tools/desk/cmd/scanloop/monitor.go, tools/desk/cmd/scanloop/observations.go, tools/desk/cmd/scanloop/landverb.go, tools/desk/cmd/scanloop/handoffrecord.go, statusgen/main.go, statusgen/model.go, statusgen/nextup.go, statusgen/placeholder.go, statusgen/registerentries.go, statusgen/intakehandoffs.go, spec/intake-handoff-v1.md, docs/contracts.md, statusgen/testdata/verification-handoff/mutate.py, tools/desk/cmd/scanloop/adapter.go, tools/desk/cmd/scanloop/lane.go, tools/desk/cmd/scanloop/exitrecord.go, tools/desk/cmd/issueboard/, statusgen/scanissues.go, statusgen/intakeexits.go, spec/intake-exit-v1.md, plugins/assay/skills/intake-desk/SKILL.md, statusgen/testdata/verification-handoff/03-mutations.json (planned), changelog/verification-handoff-03.md (planned)
 
 facts:
 - Baseline main fbe0331e2fc9f5c822c4edeafb8a18865c916828, inspected 23 October 2026; source was draft and stream was parked at authoring. Scope approval and stream activation take effect on the maintainer's merge of PR #4206; per-brief gates remain separate.
@@ -118,7 +138,8 @@ credited independent PASS for /01 are distinct from its still-unadvanced board r
 
 Observed main: `385cb29e5682dcb9a886b298076f722b4823ec1b`.
 The /01 public library and `verification-handoff-v1` contract are now shipped in
-source; both consumer modules import them. The original authoring-time statements
+source; both consumer modules import `deskcore/issueflow` for selection, while
+production callers do not yet consume its handoff assessment. The original authoring-time statements
 above remain historical, rather than being rewritten as implementation evidence.
 
 Inspected owners: `scanloop.SelectQueue`, the production monitor composition in
@@ -138,6 +159,16 @@ an unread outstanding-work input; this is a developer experiment, not the brief'
 independent Evidence or a completed Verify row. The remaining regression work must
 cover source/event identity, partial writes, duplicate retries, both writers,
 successor/external obligations, and shared scanner/issueboard eligibility.
+
+### Design confirmation and resumed pickup — 2026-10-25
+
+**Ruling (2026-10-25): option 1.** The driver approved this brief and its bounded design, transcribed as [DR-handoff-intake](../decisions/DR-handoff-intake.md): https://github.com/medici-finance/assay/issues/4307#issuecomment-6399188555
+
+This resolves the design hold in the dated pickup above. The new implementation
+run starts from `617c0cd694d6b1698ec75f327ac6ac65fa434279`; the shared /01 delivery
+and credited independent PASS remain available. Continue within the approved
+Task, preserving the original Evidence and all final acceptance and activation
+gates. The 2026-10-24 experiment remains developer preparation, not Verify credit.
 
 ## Ground rules
 

@@ -91,6 +91,8 @@ single-point-of-failure: incorrect shared identity or capability interpretation;
 
 Review the concrete identity/capability boundary and preserved existing authority checks through the existing decision process before implementation. Options: approve the bounded design, request correction, or hold. No answer supplies no approval. The authoring request does not grant implementation sign-off.
 
+Default if no answer: none — blocks until answered
+
 ## Task
 
 1. Define and implement the shared pure reader-capabilities contract in public statusgen/readercaps, consumed by both binaries. Settle the §10 open envelope/stream opt-in decision here: record provider/version, supported schema/semantic versions and operation scope, and explicit requirements carried by opted-in records. Publish spec/schema and conformance fixtures in this delivery before dependent briefs author those fields.

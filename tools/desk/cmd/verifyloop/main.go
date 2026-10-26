@@ -113,7 +113,9 @@ func runMeasured(args []string, performance verifyPerformance) int {
 			fmt.Fprintln(os.Stderr, err.Error())
 			return deskkit.ExitCodeOf(err)
 		}
-		return loopengine.ExitCodeOf(cmdPlanMeasured(args[1:], performance))
+		// The boot just admitted each root's prerequisite record, so this pass binds every
+		// run to one (example-stream/50). A plan entered without the boot has no record to bind.
+		return loopengine.ExitCodeOf(cmdPlanWorld(args[1:], performance, planWorldGate()))
 	default:
 		fmt.Fprintf(os.Stderr, "verifyloop: unknown subcommand %q\n\n%s", args[0], usage)
 		return deskkit.ExitRefused
@@ -124,7 +126,15 @@ func cmdPlan(args []string) error {
 	return cmdPlanMeasured(args, verifyPerformance{})
 }
 
+// planWorldGate builds the booted plan's prerequisite gate. It is a package var ONLY as
+// the test seam beside preflightRoot: a stubbed envelope admits no record to gate on.
+var planWorldGate = newWorldGate
+
 func cmdPlanMeasured(args []string, performance verifyPerformance) error {
+	return cmdPlanWorld(args, performance, nil)
+}
+
+func cmdPlanWorld(args []string, performance verifyPerformance, world *worldGate) error {
 	fs := flag.NewFlagSet("plan", flag.ContinueOnError)
 	root := fs.String("root", ".", "repo root to scan for the Awaiting queue")
 	sha := fs.String("sha", "", "merged-main target SHA verifiers run against")
@@ -136,7 +146,8 @@ func cmdPlanMeasured(args []string, performance verifyPerformance) error {
 		return deskkit.Refused("bad flags: " + err.Error())
 	}
 
-	v := &VerifyLoop{performance: performance, Root: *root, TargetSHA: *sha, RunnerID: *runner, RootRepo: deskkit.RepoSlugForDir(*root)}
+	v := &VerifyLoop{performance: performance, Root: *root, TargetSHA: *sha, RunnerID: *runner, RootRepo: deskkit.RepoSlugForDir(*root),
+		World: world}
 	if !*noForge {
 		v.Issues = issueSourceFn()
 		if source, ok := v.Issues.(*forgeIssueSource); ok {
