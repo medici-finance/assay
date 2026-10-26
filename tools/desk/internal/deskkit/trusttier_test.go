@@ -336,7 +336,10 @@ func TestContributorLedgerRosterCoupling(t *testing.T) {
 			continue
 		}
 		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if pkg, isIdent := sel.X.(*ast.Ident); ok && isIdent && pkg.Name == "trustcore" && sel.Sel.Name == "KnownRosterKeys" {
+		if !ok {
+			continue
+		}
+		if pkg, isIdent := sel.X.(*ast.Ident); isIdent && pkg.Name == "trustcore" && sel.Sel.Name == "KnownRosterKeys" {
 			delegates = true
 		}
 	}

@@ -61,6 +61,10 @@ func TestBriefFrontmatterRisk(t *testing.T) {
 		{name: "misplaced risk is unreadable and risk-classed", content: "---\ngate: model\nregulatory: yes\n---\nbody", want: true, wantHasFence: false},
 		{name: "risk answer under another mapping is unreadable and risk-classed", content: "---\ngate: model\nrisks:\n  regulatory: yes\n---\nbody", want: true, wantHasFence: false},
 		{name: "risk answer nested under an unrelated key is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nmeta:\n  customer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "risk answer after a document-end marker is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n...\nregulatory: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "human gate after a document-end marker is unreadable and risk-classed", content: "---\neffort: S\n...\ngate: human\n---\nbody", want: true, wantHasFence: false},
+		{name: "risk answer in a second document is unreadable and risk-classed", content: "---\ngate: model\n--- {customer: yes}\n---\nbody", want: true, wantHasFence: false},
+		{name: "second document after a comment is unreadable and risk-classed", content: "---\ngate: model\n\n# note\n--- # second\nrisk: {customer: yes}\n---\nbody", want: true, wantHasFence: false},
 		{name: "unrelated mapping beside a clean risk map stays clean", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nmeta:\n  owner: someone\n---\nbody", want: false, wantHasFence: true},
 		{
 			name:         "no gate no risk",

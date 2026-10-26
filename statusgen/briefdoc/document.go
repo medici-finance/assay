@@ -2,8 +2,10 @@
 package briefdoc
 
 import (
+	"errors"
 	"fmt"
 	"gopkg.in/yaml.v3"
+	"io"
 	"regexp"
 	"strings"
 	"time"
@@ -128,13 +130,35 @@ type Fields struct {
 	Risk   Risk
 }
 
+// decodeSingle decodes block as exactly one YAML document. A block holding a
+// second document (after a "..." or "--- <content>" line) is an error: a
+// single-document decode would silently drop whatever the later document says.
+func decodeSingle(block string) (map[string]interface{}, error) {
+	var values map[string]interface{}
+	dec := yaml.NewDecoder(strings.NewReader(block))
+	if err := dec.Decode(&values); err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	} else if err != nil {
+		return nil, nil
+	}
+	var extra yaml.Node
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("frontmatter holds more than one YAML document")
+	}
+	return values, nil
+}
+
 // ParseFields decodes real YAML, rejects duplicate keys and invalid risk answers.
 // A risk answer is read only from the top-level risk mapping; a risk-answer key
-// anywhere else is an error, which every caller treats as risk-bearing.
+// anywhere else, or a second YAML document in the block, is an error, which
+// every desk caller treats as risk-bearing.
 func ParseFields(block string) (Fields, error) {
 	f := Fields{Values: map[string]string{}}
-	var values map[string]interface{}
-	if err := yaml.Unmarshal([]byte(block), &values); err != nil {
+	values, err := decodeSingle(block)
+	if err != nil {
 		return f, err
 	}
 	for k, v := range values {

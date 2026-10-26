@@ -220,3 +220,22 @@ func TestDecisionForgeWiredInMain(t *testing.T) {
 		t.Error("decisionWaitForgeFn is set outside main(): tests that do not ask for it would read a forge")
 	}
 }
+
+// TestBriefGateSecondDocument pins that a human gate in a second YAML document
+// inside the frontmatter fence still fires the decision gate: the block is
+// unreadable, and unreadable metadata gates human.
+func TestBriefGateSecondDocument(t *testing.T) {
+	root := t.TempDir()
+	for i, content := range []string{
+		"---\neffort: S\n...\ngate: human\n---\nbody\n",
+		"---\ngate: model\n--- {gate: human}\n---\nbody\n",
+	} {
+		name := fmt.Sprintf("brief-%02d.md", i)
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if !briefGatesHuman(root, name) {
+			t.Errorf("second-document human gate dropped: %q read as gate %q", content, briefFrontmatterGate(root, name))
+		}
+	}
+}

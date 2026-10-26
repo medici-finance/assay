@@ -35,3 +35,17 @@ func TestParseBriefAdmission(t *testing.T) {
 		t.Errorf("a body line was read as frontmatter: %+v", got)
 	}
 }
+
+// TestBriefAdmissionMultipleDocuments pins that a human gate in a second YAML
+// document inside the frontmatter fence still gates the brief.
+func TestBriefAdmissionMultipleDocuments(t *testing.T) {
+	for _, content := range []string{
+		"---\neffort: S\n...\ngate: human\n---\nbody",
+		"---\ngate: model\n--- {gate: human}\n---\nbody",
+		"---\ngate: model\n---\tgate: human\n---\nbody",
+	} {
+		if b := ParseBriefAdmission(content); !b.GatesHuman() || b.ExecTier != "strong" {
+			t.Errorf("second-document human gate dropped: %q read as %+v", content, b)
+		}
+	}
+}

@@ -1,0 +1,65 @@
+{
+  "test": "go test . -count=1 -timeout 120s",
+  "control": {
+    "name": "CONTROL: the frontmatter decode stops refusing a second YAML document, so a risk answer or human gate after a document marker is dropped; TestMultipleDocumentsRefused must go red",
+    "file": "document.go",
+    "old": "\tif err := dec.Decode(&extra); !errors.Is(err, io.EOF) {",
+    "new": "\tif err := dec.Decode(&extra); false && !errors.Is(err, io.EOF) {"
+  },
+  "mutations": [
+    {
+      "name": "multi-document: a parse error in the second document is ignored instead of refused",
+      "file": "document.go",
+      "old": "\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t\treturn nil, fmt.Errorf(\"frontmatter holds more than one YAML document\")",
+      "new": "\t\tif err != nil {\n\t\t\treturn values, nil\n\t\t}\n\t\treturn nil, fmt.Errorf(\"frontmatter holds more than one YAML document\")"
+    },
+    {
+      "name": "multi-document: the block is decoded as the first document only (single-document Unmarshal)",
+      "file": "document.go",
+      "old": "\tvalues, err := decodeSingle(block)\n",
+      "new": "\tvar values map[string]interface{}\n\terr := yaml.Unmarshal([]byte(block), &values)\n"
+    },
+    {
+      "name": "misplaced risk: a risk answer nested under another key is no longer refused",
+      "file": "document.go",
+      "old": "\t\tif found, ok := misplacedRiskKey(v); ok {",
+      "new": "\t\tif found, ok := misplacedRiskKey(v); false && ok {"
+    },
+    {
+      "name": "misplaced risk: the nested walk skips sequences",
+      "file": "document.go",
+      "old": "\tcase []interface{}:\n\t\tfor _, child := range x {",
+      "new": "\tcase []string:\n\t\tfor _, child := range x {"
+    },
+    {
+      "name": "misplaced risk: risk-key matching becomes case-sensitive",
+      "file": "document.go",
+      "old": "\tk = strings.ToLower(strings.TrimSpace(k))\n",
+      "new": "\tk = strings.TrimSpace(k)\n"
+    },
+    {
+      "name": "misplaced risk: a top-level risk answer outside the risk mapping is no longer refused",
+      "file": "document.go",
+      "old": "if isRiskKey(k) {\n\t\t\treturn f, fmt.Errorf(\"risk answer %s must be under the risk mapping\", k)",
+      "new": "if false && isRiskKey(k) {\n\t\t\treturn f, fmt.Errorf(\"risk answer %s must be under the risk mapping\", k)"
+    },
+    {
+      "name": "risk map: an unknown risk answer inside the risk mapping is admitted",
+      "file": "document.go",
+      "old": "if _, known := answers[k]; !known {",
+      "new": "if _, known := answers[k]; false && !known {"
+    },
+    {
+      "name": "date markers: an unquoted blocked-until or in-repair date is refused again",
+      "file": "document.go",
+      "old": "if src, ok := sourceScalar(block, k); ok && textMarkers[k] {",
+      "new": "if src, ok := sourceScalar(block, k); false && ok && textMarkers[k] {"
+    },
+    {
+      "name": "date markers: every strict key accepts a date as text",
+      "file": "document.go",
+      "old": "} else if scalarKeys[k] {",
+      "new": "} else if false && scalarKeys[k] {"
+    }
+  ]
+}

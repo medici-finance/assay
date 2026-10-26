@@ -47,6 +47,42 @@ func TestRiskAnswerOutsideRiskMapping(t *testing.T) {
 	}
 }
 
+// multiDocument are frontmatter blocks whose second YAML document carries a
+// risk answer or a human gate. A single-document decode would drop it.
+var multiDocument = []string{
+	"gate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n...\nregulatory: yes",
+	"effort: S\n...\ngate: human",
+	"gate: model\n--- {customer: yes}",
+	"gate: model\n\n# a second document follows\n--- # note\nrisk: {customer: yes}",
+	"gate: model\n---\tgate: human",
+	"gate: model\n...\n%YAML 1.2\n--- {customer: yes}",
+	"gate: model\n---\ngate: human",
+}
+
+// TestMultipleDocumentsRefused pins that a frontmatter block holding more than
+// one YAML document is an error, so every desk reader treats it as unreadable
+// and risk-bearing instead of reading only the first document.
+func TestMultipleDocumentsRefused(t *testing.T) {
+	for _, input := range multiDocument {
+		if f, e := ParseFields(input); e == nil {
+			t.Errorf("second YAML document ignored: %q read as %+v", input, f)
+		}
+	}
+	// Controls: a lone document-end marker, text containing dots or dashes, and
+	// a block scalar holding a dashed line are one document.
+	for _, input := range []string{
+		"gate: model\n...",
+		"gate: model\n...\n# trailing comment",
+		"title: wait...\ngate: model",
+		"notes: |\n  ---\n  not a document\ngate: model",
+		"",
+	} {
+		if _, e := ParseFields(input); e != nil {
+			t.Errorf("single document refused: %q: %v", input, e)
+		}
+	}
+}
+
 // TestUnquotedDateMarkers pins that an unquoted YAML date or timestamp for the
 // free-text markers is read as its source text, so a deferral marker defers
 // instead of making the brief unreadable. Other strict keys keep refusing a
@@ -64,7 +100,7 @@ func TestUnquotedDateMarkers(t *testing.T) {
 			t.Errorf("%q: got %q, %v; want %q", input, f.Values[key], e, want)
 		}
 	}
-	for _, input := range []string{"gate: 2026-11-01", "exec-tier: 2026-11-01", "blocked-until: [2026-11-01]", "blocked-until: {at: 2026-11-01}"} {
+	for _, input := range []string{"gate: 2026-11-01", "exec-tier: 2026-11-01", "effort: 2026-11-01", "implementer: 2026-11-01", "verify-lane: 2026-11-01", "blocked-until: [2026-11-01]", "blocked-until: {at: 2026-11-01}"} {
 		if _, e := ParseFields(input); e == nil {
 			t.Errorf("strict key accepted a non-text value: %q", input)
 		}
