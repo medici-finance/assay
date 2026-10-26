@@ -27,12 +27,16 @@ on:
       - "loopadmin/**"
       - "spec/loop-admin-runner-v1.md"
       - "schemas/loop-admin-runner-v1.json"
+      - "spec/loop-admin-execution-profile-v1.md"
+      - "schemas/loop-admin-execution-profile-v1.json"
       - ".github/workflows/loopadmin.yml"
   pull_request:
     paths:
       - "loopadmin/**"
       - "spec/loop-admin-runner-v1.md"
       - "schemas/loop-admin-runner-v1.json"
+      - "spec/loop-admin-execution-profile-v1.md"
+      - "schemas/loop-admin-execution-profile-v1.json"
       - ".github/workflows/loopadmin.yml"
 
 permissions:
