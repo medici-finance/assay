@@ -32,8 +32,9 @@ sources:
   - "depends iso-9001/01, /03, /04, /05: each converts a 'not provided' into a 'provided'. A one-pager written before them states a what-you-can-cite list that this same stream falsifies three times over — and a stale claim-boundary page is the exact defect the page exists to prevent."
   - "The standard-side reading: a vendor's own certificate does not validate a tool for an adopter's intended use — it is one input to supplier evaluation and nothing more; and validation is intended-use-specific and therefore inherently the adopter's act, which nobody can perform for them. Both belong on this page in plain words."
   - "The standard-side reading, second half: what a certified adopter actually needs from a tool is a statement of intended use and limitations, immutable versioned releases whose version is reported into every record, a published defect process including notification of defects that could have produced wrong past results, a support and lifecycle policy, exportable human-readable records, and an explicit statement of non-determinism where a model is in the loop. This page states which of those exist here and which do not."
+  - "2026-10-26 pickup @ 8663d6a: docs/iso9001-mapping.md §8.4 / 8.6 and .github/workflows/release.yml now describe SLSA/Sigstore provenance for published assets; pre-change releases remain sha256-only. Correct the obsolete absence below without strengthening the claim or changing any Verify command."
   - "freshness-checked 2026-08-25 @ 6871a3b (origin/main) — `docs/what-assay-is-and-is-not.md` (planned) does not exist; the honest framing lives only inside `docs/evidence-bundle.md`."
-version: 1
+version: 2
 id: 92e336c2-c5a9-408f-bc82-3c32b1472b18
 ---
 
@@ -58,12 +59,15 @@ facts:
 - **Lead with the no.** The first section answers "does adopting this make us compliant" with
   a plain no and a one-line reason, before anything about what the tooling does. A reader who
   stops after the first section must not be able to leave with the wrong impression.
-- **State the three things this repo genuinely does not have**, because they are what an
-  adopter's own auditor will reach for: there is no signing or provenance attestation anywhere
-  in the release pipeline (integrity is sha256 pinning, which stops a silent substitution and
-  establishes nothing about who built the artifact); there is no defect-notification path for
-  a defect found in a shipped release that could have produced wrong past results; and there
-  is no stated support lifetime or end-of-support policy for a released version.
+- **State the remaining absences and the shipped provenance boundary.** There is no
+  defect-notification path for a defect found in a shipped release that could have produced
+  wrong past results, and no stated support lifetime or end-of-support policy for a released
+  version. The release workflow now attests published assets with SLSA build provenance and
+  publishes Sigstore bundles; pre-change releases remain sha256-only. A pinned checksum
+  detects substitution but does not identify the builder. Provenance identifies the build
+  workflow; it does not review source, establish intended-use validation, or replace human
+  release authorization. Extract this boundary from `docs/iso9001-mapping.md`, not the
+  obsolete 2026-08-25 absence.
 - **State the non-determinism plainly.** A model is in the loop. The board is derived from
   agent-authored artifacts checked for internal consistency, not measured from ground truth,
   and identical inputs are not guaranteed to produce identical judgements. A tool whose
@@ -99,9 +103,11 @@ facts:
    produce a recorded, exportable process — an input to a review, not a review.
 3. **List what an adopter can cite**, each with what it establishes and what it does not, and
    each pointing at the page that carries the detail rather than restating it.
-4. **List what is not provided**: signing and provenance attestation, a delivered-defect
-   notification path, a stated support lifetime, and validation for the adopter's intended
-   use.
+4. **List what is not provided**: a delivered-defect notification path, a stated support
+   lifetime, and validation for the adopter's intended use. State the shipped provenance
+   boundary alongside what can be cited: SLSA/Sigstore identifies the build workflow, does
+   not review source or establish intended-use validation, and does not cover pre-change
+   releases that remain sha256-only.
 5. **State the determinism position** — which parts are deterministic, that a model is in the
    loop, and that the board is derived from authored artifacts rather than measured.
 6. **Add the two adopter-interest sentences** about a vendor certificate and about validation
@@ -116,7 +122,7 @@ facts:
 | 1 | `test -f docs/what-assay-is-and-is-not.md` | exit 0 — **DEREFERENCE, inverts**: the page does not exist at authoring (2026-08-25 @ `6871a3b`) |
 | 2 | `git grep -nF 'not an audit opinion' -- docs/evidence-bundle.md` | exit 0 — **DEREFERENCE**: the source sentence this page extracts still stands where it was, so the extraction did not silently relocate the only copy |
 | 3 | `git grep -cE -e 'certif' -e 'audit opinion' -- docs/what-assay-is-and-is-not.md` | exit 0; a non-zero count — the plain no is on the page, in those words |
-| 4 | `git grep -cE -e 'attestation' -e 'sha256' -- docs/what-assay-is-and-is-not.md` | exit 0; a non-zero count — the no-signing position is stated rather than left as an absence a reader must notice |
+| 4 | `git grep -cE -e 'attestation' -e 'sha256' -- docs/what-assay-is-and-is-not.md` | exit 0; a non-zero count — the provenance and checksum boundary is stated explicitly rather than left for a reader to infer |
 | 5 | `git grep -nF 'not measured from ground truth' -- docs/what-assay-is-and-is-not.md` | exit 0 — the determinism and derivation position is stated in the corpus's own existing words |
 | 6 | `git grep -n 'what-assay-is-and-is-not' -- README.md docs/evidence-bundle.md docs/iso9001-mapping.md` | exit 0, at least two hits — the page is reachable from the surfaces a reader actually starts on |
 | 7 | `test -f docs/records-and-retention.md` | exit 0 — **DEREFERENCE**: iso-9001/05 has landed, so the can-cite list is not naming an artifact that does not exist. If this row is red, stop: the dependency did not land |
@@ -139,7 +145,7 @@ is the only control here. Reviewer records verdict + date in the stream README t
 Reviewer questions specific to this brief: (1) read the page as a hostile reader looking for a
 sentence to quote in a sales deck — is there one? (2) can every statement be traced to an
 already-shipped page, or does the extraction introduce a claim? (3) does a reader who stops
-after the first section leave with the right impression? (4) are the four not-provided items
-stated as absences rather than as roadmap? (5) does the determinism section separate the
+after the first section leave with the right impression? (4) are the remaining not-provided items
+stated as absences rather than as roadmap, and is provenance limited to the shipped boundary? (5) does the determinism section separate the
 deterministic parts from the model-in-the-loop parts, rather than implying either covers the
 whole?
