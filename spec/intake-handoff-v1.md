@@ -109,7 +109,9 @@ issue is a new key, so the issue is presented again.
 The trust gate records a terminal disposition on a retained event in two cases.
 The first is `gone`: the forge gave a definite not-found (404 or 410) for an
 issue in a repository that the same pass read cleanly. The second is
-`quarantined`: the event was read cleanly and is untrusted and unblessed. The
+`quarantined`: the event's author is untrusted and no blessing admits it, either
+because its thread was read cleanly and holds none, or because the thread
+overflowed one page and a blessing cannot be read off a partial thread. The
 retired event stays in the history and is not read again. A newer event is read
 and gated again, so a later blessing or edit is not lost. The pass that first
 reads a gone item still reports could-not-check. Transient failures, other

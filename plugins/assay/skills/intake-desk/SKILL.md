@@ -293,7 +293,7 @@ The drain replays durable observations after restart and still applies current
 trust; use the displayed judgment to reconcile existing work, not to repeat it.
 Replay of an issue stops only when its latest event has a recorded companion
 assessed `observed` or `external-wait`, or an exit you recorded by judgment as
-`rejected-watching`. A mechanical exit never stops it. Read the result back in
+`rejected-watching` with that event's `--opened`. A mechanical exit never stops it. Read the result back in
 the next pass report: an issue still owed prints an `intake:` line under
 `EMITTED` with its assessment, and a settled one no longer queues.
 `statusgen --intake-handoffs` reads only the committed intake register, never an

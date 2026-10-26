@@ -339,6 +339,48 @@ func TestIntakeHandoffDisposition(t *testing.T) {
 		}
 	})
 
+	// A rejection landed without --opened has no event to discharge: it is recorded, the verb
+	// says it does not end replay, and landing it again with the event's --opened does.
+	t.Run("rejection landed without opened is named and does not discharge", func(t *testing.T) {
+		isolatedDeskHome(t)
+		dir := t.TempDir()
+		scope := []string{"medici-finance/assay"}
+		baseline := filepath.Join(dir, "medici-finance__assay.state")
+		if err := os.WriteFile(baseline, []byte("medici-finance/assay#85 2026-08-24T11:55:00Z\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		land := func(extra ...string) string {
+			t.Helper()
+			var out strings.Builder
+			args := append([]string{"--item", "medici-finance/assay#85", "--exit", string(ExitRejectedWatching), "--detail", "rejected", "--tier", "any"}, extra...)
+			if err := cmdLand(args, "intake-desk", &out); err != nil {
+				t.Fatalf("land %v: %v", extra, err)
+			}
+			return out.String()
+		}
+		queued := func() []string {
+			t.Helper()
+			loop := passLoop(t, "")
+			loop.Monitor = retainingMonitor(dir, scope, func() (*MonitorReport, error) { return ParseMonitorOutput(""), nil })
+			if _, err := loop.SelectQueue(); err != nil {
+				t.Fatal(err)
+			}
+			return loop.Queued()
+		}
+		if out := land(); !strings.Contains(out, "NOTE medici-finance/assay#85 was recorded without --opened") {
+			t.Fatalf("missing-opened rejection not named: %q", out)
+		}
+		if q := queued(); strings.Join(q, ",") != "medici-finance/assay#85" {
+			t.Fatalf("a rejection without an event time discharged replay: %v", q)
+		}
+		if out := land("--opened", "2026-08-24T11:55:00Z"); strings.Contains(out, "NOTE") {
+			t.Fatalf("event-bound rejection still noted: %q", out)
+		}
+		if q := queued(); len(q) != 0 {
+			t.Fatalf("event-bound rejection did not discharge replay: %v", q)
+		}
+	})
+
 	t.Run("retained unreadable or untrusted observation retires", func(t *testing.T) {
 		isolatedDeskHome(t)
 		dir := t.TempDir()

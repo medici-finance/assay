@@ -144,5 +144,11 @@ func cmdLand(args []string, declaredLoop string, w io.Writer) error {
 	}
 	fmt.Fprintf(w, "scanloop land: %s -> %s (%s) recorded as a %s-tier judgment by %s\n",
 		rec.Item, exit, firstNonEmpty(rec.Artifact, rec.Detail), rec.TriagerTier, role)
+	if exit == ExitRejectedWatching && rec.Opened == "" {
+		// The replay discharge keys on item + opened (judgedRejection), so a rejection
+		// with no event time is recorded but never ends replay. Say so, rather than let
+		// the issue re-present with no visible reason.
+		fmt.Fprintf(w, "scanloop land: NOTE %s was recorded without --opened, so it does not end replay of the issue; land it again with the EMITTED line's --opened\n", rec.Item)
+	}
 	return nil
 }

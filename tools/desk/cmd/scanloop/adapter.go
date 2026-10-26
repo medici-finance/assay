@@ -316,9 +316,9 @@ func (s *ScanLoop) SelectQueue() ([]loopengine.Item, error) {
 }
 
 // retireSettledReads records a terminal disposition for each retained event whose trust read
-// reached a definite answer that no replay can change: quarantined (read cleanly, untrusted and
-// unblessed at its current content) or gone (a definite not-found in a repo the poller read
-// cleanly this pass). Only in-scope trust-gate verdicts qualify; an out-of-scope leftover is not
+// reached a definite answer that no replay can change: quarantined (untrusted and unblessed at
+// its current content, including a thread that overflowed one page and so fails closed) or gone
+// (a definite not-found in a repo the poller read cleanly this pass). Only in-scope trust-gate verdicts qualify; an out-of-scope leftover is not
 // judged here. Nothing is admitted by this: quarantine stays quarantine and a gone item stays
 // COULD-NOT-CHECK for this pass. Transient and degraded failures are never retired, so they keep
 // failing closed. A failed write is loud.

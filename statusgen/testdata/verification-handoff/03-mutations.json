@@ -129,13 +129,35 @@
     {
       "id": "settled-discharge",
       "target": "tools/desk/cmd/scanloop/observations.go",
-      "old": "retired[observationKey(item.ID(), item.UpdatedAt)] || settledHandoff(item.HandoffState)",
-      "new": "retired[observationKey(item.ID(), item.UpdatedAt)]",
+      "old": "if retired[key] || rejected[key] || settledHandoff(item.HandoffState) {",
+      "new": "if retired[key] || rejected[key] {",
       "test": "TestIntakeHandoffDisposition",
       "expect": "settled #77 queued again",
       "module": "tools/desk",
       "package": "./cmd/scanloop",
       "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case settled-discharge"
+    },
+    {
+      "id": "rejection-discharge",
+      "target": "tools/desk/cmd/scanloop/observations.go",
+      "old": "if retired[key] || rejected[key] || settledHandoff(item.HandoffState) {",
+      "new": "if retired[key] || settledHandoff(item.HandoffState) {",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "rejected/watched must leave replay",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case rejection-discharge"
+    },
+    {
+      "id": "rejection-judgment-only",
+      "target": "tools/desk/cmd/scanloop/observations.go",
+      "old": "r.Exit == ExitRejectedWatching && r.DecidedBy == decidedJudgment && r.Opened != \"\"",
+      "new": "r.Exit == ExitRejectedWatching && r.Opened != \"\"",
+      "test": "TestIntakeHandoffDisposition",
+      "expect": "rejected/watched must leave replay",
+      "module": "tools/desk",
+      "package": "./cmd/scanloop",
+      "command": "python3 -I statusgen/testdata/verification-handoff/mutate.py --manifest 03-mutations.json --case rejection-judgment-only"
     },
     {
       "id": "replay-cap",
