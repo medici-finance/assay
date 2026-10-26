@@ -330,7 +330,7 @@ func TestShowsAppRunGlyphLead(t *testing.T) {
 // human runner, or with a letter or digit glued to the span, they are not.
 func TestShowsAppRunShownLead(t *testing.T) {
 	for _, lead := range []string{
-		"$\\bullet$", "$\\;$", "$\\cdot \\cdot$", "$$\\ast$$", "$x$", "($\\star$)", "\u2713 $\\bullet$",
+		"$\\bullet$", "$\\;$", "$\\cdot \\cdot$", "$$\\ast$$", "$x$", "($\\circ$)", "\u2713 $\\bullet$",
 		"$\\bullet$ $\\bullet$",
 		"<details><summary>&#x2714;</summary>y</details>", "<details>y</details>",
 		"<details open><summary>-</summary>y z</details>", "y <br>", "y<br/>", "<p>y</p>", "<div>y z</div>",
