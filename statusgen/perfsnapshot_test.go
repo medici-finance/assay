@@ -62,6 +62,16 @@ func resetPerfInputs() { resetReadMemo(); resetBriefParseMemo() }
 
 func snapshotSetup(t *testing.T) string {
 	t.Helper()
+	// Keep the invoking toolchain's prepared caches when isolating HOME. In CI,
+	// their defaults are derived from HOME; changing it must not force downloads.
+	cacheCmd := exec.Command("go", "env", "GOCACHE", "GOMODCACHE")
+	cacheOut, cacheErr := goquiet.Cmd(cacheCmd).CombinedOutput()
+	caches := strings.Split(strings.TrimSpace(string(cacheOut)), "\n")
+	if cacheErr != nil || len(caches) != 2 {
+		t.Fatalf("resolve prepared Go caches: %v\n%s", cacheErr, cacheOut)
+	}
+	t.Setenv("GOCACHE", strings.TrimSpace(caches[0]))
+	t.Setenv("GOMODCACHE", strings.TrimSpace(caches[1]))
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
