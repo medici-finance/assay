@@ -418,3 +418,24 @@ func TestCommentKeptReadingNeedsParsedAgreement(t *testing.T) {
 		}
 	}
 }
+
+// TestCommentKeepingKeysRefuseValuesSpanningLines pins that a value starting
+// on a comment-keeping key's own line and continuing onto later lines is
+// refused for each of those keys, quoted or block scalar alike.
+func TestCommentKeepingKeysRefuseValuesSpanningLines(t *testing.T) {
+	for _, key := range []string{"implementer", "blocked-until", "verify-lane", "in-repair"} {
+		for _, value := range []string{
+			"\"no\n  more\"",
+			"'no\n  more'",
+			"|\n  yes",
+			"|-\n  yes",
+			">\n  yes",
+			">-\n  yes",
+		} {
+			input := key + ": " + value
+			if f, e := ParseFields(input); e == nil {
+				t.Errorf("%q was admitted as %+v; a value spanning lines does not match the line reading", input, f.Values)
+			}
+		}
+	}
+}
