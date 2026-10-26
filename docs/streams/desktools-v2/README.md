@@ -414,4 +414,6 @@ human-gated briefs carry it; each cites the record with its `design:` key:
   from the `deskread` process to the library and retires statusgen's environment-token reads.
 
 Path: `58 → 75 → 77`, with `{forge-neutral/18, /35} → 77`; /76 is independent. /08 keeps its
-own sequence; its row 10 already admits the library's caller package.
+own sequence; its row 10 already admits the library's caller package. /08 holds statusgen's gh
+column of the counter at zero; the rest of the statusgen total (the `origin` classifier and the
+API host literals) is /77's, and /77 row 9 asserts it at `0`.

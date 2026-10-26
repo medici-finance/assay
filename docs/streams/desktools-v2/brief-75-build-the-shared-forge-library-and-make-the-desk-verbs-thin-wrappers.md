@@ -12,7 +12,7 @@ design: DR-forge-library
 issues: [2395]
 schema: brief-v2
 outcome: none
-version: 1
+version: 2
 id: f6e03aed-326e-4cb0-aa40-3194727e140c
 authored: 2026-10-25 by desktools-v2 authoring session
 sources:
@@ -138,10 +138,11 @@ explicit, read-only constructor. Verb CLIs keep their flags, outputs and exit cl
    library, and each gets a lower-layer twin that bypasses the verb.
 5. Add the combined gh/glab ratchet: one counter over desk-tools and statusgen non-test code,
    starting at the count measured at pickup, failing on any rise. This brief does not reach 7:
-   statusgen's launches are still counted. desktools-v2/77, which runs after statusgen reaches
-   0 (forge-neutral/18 and /35), lowers the ceiling to 7 and asserts it (its Task 4 and row 8).
-   Report the skill scripts separately; this brief's gate decides whether they count, and /77's
-   row takes that answer as its parameter.
+   statusgen's launches are still counted. desktools-v2/77, which runs after statusgen's gh
+   launches reach 0 (forge-neutral/18 and /35), lowers the ceiling to the clean count, at most
+   7, and asserts it (its Task 4 and row 8). Report the skill scripts separately; this brief's
+   gate decides whether they count, and this brief builds that answer into the ratchet, so the
+   script takes no surface input and /77 row 8 reads the combined line row 6 adds.
 6. Update the library-first table, contracts and the tool README; add the fragment.
 
 ## Verify

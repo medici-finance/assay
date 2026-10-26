@@ -169,11 +169,15 @@ supersedes the 2026-10-08 amendment above (kept as history):
   DR-forge-neutral-34, DR-forge-neutral-14, DR-forge-neutral-17 and DR-forge-gitlab-11 move into
   it unchanged. Custody-first (Principle 1) now binds at the library's constructor.
 - **Launch ratchets.** gh/glab: at most 7 launch sites across desk-tools and statusgen, down-only
-  (`desktools-v2/75` adds the ratchet at its pickup count; `desktools-v2/77` lowers it to 7 and
-  asserts it once statusgen counts 0). git: go-git, a git launch only where go-git cannot do the operation, on
+  (`desktools-v2/75` adds the ratchet at its pickup count; `desktools-v2/77` lowers it to the
+  clean count, at most 7, and asserts it once statusgen's gh launches count 0). git: go-git, a git launch only where go-git cannot do the operation, on
   its own down-only ratchet (`desktools-v2/76`).
 - `forge-neutral/18` and `/35` still move statusgen's reads onto its injected reader seam; the
-  seam's transport changes under /77. `desktools-v2/08` still holds statusgen's gh count at zero.
+  seam's transport changes under /77. `desktools-v2/08` still holds statusgen's gh count (the
+  counter's class a) at zero. statusgen's other counted forge facts are not /08's: the GraphQL
+  blocks (class c) retire with forge-neutral/18's reads, and the `origin`-based forge
+  classification (class b) and API host literals (class d) with /77, whose row 9 asserts the
+  whole `statusgen sites:` total at `0`.
 
 ### Principle 3 — PURPOSE-BUILT QUERIES (typed access-pattern operations)
 

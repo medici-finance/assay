@@ -5,8 +5,8 @@ why: >-
   statusgen's forge reads are being moved off gh by a sibling brief (forge-neutral/18), through
   the deskread verb. Nothing yet stops the next change from adding a gh shell-out back: statusgen
   has never had a row in the forge-CLI permit register, and the v2 counter only counts. This
-  brief turns the statusgen half of that counter into a failing check once the sibling reaches
-  zero, and proves the property the migration was for — a scan run with no gh on PATH and no
+  brief turns the statusgen column of that counter's gh class into a failing check once the
+  sibling reaches zero, and proves the property the migration was for — a scan run with no gh on PATH and no
   ambient credential reads a real queue or says could-not-check, never an empty one (#628). It
   migrates nothing itself.
 wave: 7
@@ -28,14 +28,14 @@ sources:
   - "tools/desk/scripts/forge-ban.sh (desktools-v2/02) — the counter whose statusgen half this brief flips to failing"
   - "freshness-checked 2026-09-17 @ 57509073 — 26 exec.Command(\"gh\" sites remain in 15 non-test statusgen files, so forge-neutral/18 is NOT yet at zero and this brief is not yet startable; statusgen/go.mod imports nothing from tools/desk"
 consumers:
-  - "tools/desk/scripts/forge-ban.sh: follow-up desktools-v2/08 (this brief; the statusgen half becomes failing — flips to fixed-here when the implementation edits the script)"
+  - "tools/desk/scripts/forge-ban.sh: follow-up desktools-v2/08 (this brief; the statusgen column of class a, the gh launches, becomes failing — flips to fixed-here when the implementation edits the script). Classes b to d stay advisory here: forge-neutral/18 and desktools-v2/77 take them to 0 and /77 row 9 asserts it"
   - ".github/workflows/forge-surface-control.yml: follow-up desktools-v2/08 (this brief; the advisory step's statusgen half becomes a gate)"
   - "statusgen/forgeread_nogh_test.go and statusgen/reader_boundary_test.go: follow-up desktools-v2/08 (tests only; read migration stays with forge-neutral)"
   - "forgeread/ scan and path-trigger coverage: out-of-scope (forge-neutral/36 owns it and lands it with the extraction)"
 exec-tier: strong
 exec-tier-why: Cross-module capability checks must tell the permitted offline packages apart from indirect credential or write reach.
 domain: complicated
-version: 5
+version: 6
 id: 0a18147e-5225-4ba4-91ab-b3bcd92bc00d
 ---
 
@@ -44,7 +44,8 @@ id: 0a18147e-5225-4ba4-91ab-b3bcd92bc00d
 ## Context
 
 files:
-- `tools/desk/scripts/forge-ban.sh` (planned) — the statusgen half exits non-zero above zero.
+- `tools/desk/scripts/forge-ban.sh` (planned) — the statusgen column of class a (gh launches)
+  exits non-zero above zero.
 - `.github/workflows/forge-surface-control.yml` — that half becomes a gate, not an echo, and the path filter gains `statusgen/**` so a statusgen change runs it.
 - NEW `statusgen/forgeread_nogh_test.go` (planned) — the no-`gh` scan proof.
 - NEW `statusgen/reader_boundary_test.go` (planned) — the capability-boundary test, row 10.
@@ -116,12 +117,22 @@ statusgen links one shared forge library for its forge calls (desktools-v2/75 bu
 desktools-v2/77 moves statusgen onto it), and the library holds the credential privately. What
 changes here, and what does not:
 
-- **Row 1 (zero `"gh"` lines in statusgen) and rows 2 and 3 stand.** They are compatible with the
-  ruling's at most 7 gh/glab launch sites across desk-tools and statusgen; desktools-v2/75 adds
-  that combined ratchet and desktools-v2/77 lowers it to 7. The two `"gh"` lines of the
-  claim-decay `gh auth token` fallback (`statusgen/claimdecay_github.go`) are retired by
-  forge-neutral/18, which this brief already follows, so rows 1 and 2 can reach `0` without
-  /77.
+- **Row 1 (zero `"gh"` lines in statusgen) and rows 2 and 3 stand, with row 2 and Task 2 on the
+  gh class only.** They are compatible with the ruling's at most 7 gh/glab launch sites across
+  desk-tools and statusgen; desktools-v2/75 adds that combined ratchet and desktools-v2/77
+  lowers it to its clean count, at most 7. Rows 1 to 3 read gh launches only: row 2 reads the
+  statusgen column of `forge-ban.sh`'s class a line, not the `statusgen sites:` total, which
+  also sums classes b to d. The class a sites all retire under forge-neutral/18 and /35, which
+  this brief follows; that includes the two `"gh"` lines of the claim-decay `gh auth token`
+  fallback (`statusgen/claimdecay_github.go`), which /18 deletes. So rows 1 to 3 can reach `0`
+  without /77.
+- **The rest of the statusgen total is not this brief's.** At `e07782de2` (and unchanged at
+  `8169a8281`) `forge-ban.sh` prints `statusgen sites: 38`: class a 30, b 1, c 3, d 4. Class c
+  (`autonomy.go:548`, `:557`, `autoflip.go:1470`, the GraphQL blocks of reads /18 moves) is
+  forge-neutral/18's, at its row 24. Classes b (`forge.go:113`, the `origin` read behind
+  `detectForge`) and d (`claimdecay_github.go:116`, `:140`, `ghfetch.go:42`, `:47`) are
+  desktools-v2/77's, Tasks 2 and 6, and /77 row 9 asserts the whole total at `0`. /08 does not
+  make those classes failing.
 - **Row 5 stands.** The library is a separate root module, so statusgen's manifest still names
   nothing under `tools/desk`.
 - **Row 10's allowed set widens by exactly one package, and only when desktools-v2/77 lands**:
@@ -136,14 +147,18 @@ changes here, and what does not:
   `deskread` the positive leg uses a stub `deskread`; desktools-v2/77 owns re-pointing that leg
   at the library client over a fake provider, with neither `gh` nor `deskread` on `PATH`. The
   test names and PASS lines do not change.
-- No dependency is added: /08 still follows `forge-neutral/18` and `/35` only. Nothing /08's
-  rows need gone is owned by a later brief: /18 retires the claim-decay fallback, /35 the
-  resolver fallbacks, and /77 owns only the row 4, 6, 7 and 10 re-pointing named here.
+- No dependency is added: /08 still follows `forge-neutral/18` and `/35` only. Rows 1 to 3
+  need only gh launches gone, and /18 and /35 remove every one, the claim-decay fallback
+  included. The statusgen sites in classes b to d stay until /77, which is why row 2 reads the
+  class a column and not the total. /77 owns those sites and the row 4, 6, 7 and 10
+  re-pointing named here.
 
 ## Task
 1. Confirm the precondition (Verify rows 1 and 8). Stop with NEEDS_CONTEXT if either fails.
-2. Make `forge-ban.sh` exit non-zero when its `statusgen sites:` count is above zero, leaving
-   the desk-tools half advisory. Make the workflow step a gate for that half.
+2. Make `forge-ban.sh` exit non-zero when the statusgen column of its class a (gh subprocess)
+   line is above zero, leaving the desk-tools half and statusgen's classes b to d advisory.
+   Make the workflow step a gate for that column. Do not gate on the `statusgen sites:` total:
+   it also sums classes b to d, which reach `0` only under desktools-v2/77 (its row 9).
 3. Add `TestScanNeverEmptyWithoutForgeBinary` in `statusgen/forgeread_nogh_test.go` (planned): with `PATH`
    set to an empty temp directory, (a) a stub `deskread` placed on it that prints a valid
    envelope yields the stub's issues — the scan needs no `gh`; (b) with no `deskread` either,
@@ -163,7 +178,7 @@ Statusgen receives a dedicated bounded CLI migration owner from desktools-v2/15.
 | # | Command | Expect |
 |---|---------|--------|
 | 1 | `test -d statusgen && { grep -rnF --include='*.go' --exclude='*_test.go' '"gh"' statusgen \|\| [ $? -eq 1 ]; } \| { grep -v -E '^[^:]+:[0-9]+:[[:space:]]*//' \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0`: no non-test, non-comment statusgen line carries the double-quoted literal `"gh"`, so `exec.Command` and `exec.CommandContext` launches are both seen. This is the source-text half of the precondition; it cannot see /35's native HTTP client, which row 8 covers. Any non-zero count means this brief is not startable |
-| 2 | `sh tools/desk/scripts/forge-ban.sh; echo rc=$?` | prints `statusgen sites: 0` and `rc=0` on the clean tree |
+| 2 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && { sh tools/desk/scripts/forge-ban.sh > "$o"; echo "rc=$?"; } && grep -E '^ *class a ' "$o")` | prints `rc=0` and a class a line ending `statusgen=0` on the clean tree: no gh subprocess in statusgen. It reads the class a column only; the `statusgen sites:` total also sums classes b to d, which desktools-v2/77 row 9 takes to `0`. Measured at `e07782de2`: `statusgen=30` |
 | 3 | `sh -c 'f=statusgen/zz_banprobe.go; printf "package main\nimport \"os/exec\"\nvar _ = exec.Command(\"gh\", \"api\")\n" > "$f"; sh tools/desk/scripts/forge-ban.sh >/dev/null 2>&1; rc=$?; rm -f "$f"; echo "rc=$rc"; test "$rc" -ne 0'` | exit 0; prints a non-zero `rc=` — the negative-path row: a re-added `gh` shell-out in statusgen makes the counter FAIL, and the probe file is removed whatever the result |
 | 4 | `cd statusgen && go test -timeout 5m -run TestScanNeverEmptyWithoutForgeBinary -v .` | output contains the literal line `--- PASS: TestScanNeverEmptyWithoutForgeBinary` (assert on that line, not the exit status — a `-run` selector matching nothing exits 0) |
 | 5 | `grep -q 'tools/desk' statusgen/go.mod; test $? -eq 1` | exit 0 (grep found no match — statusgen still imports nothing from desk-tools; the verb boundary held) |
