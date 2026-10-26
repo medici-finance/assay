@@ -3,6 +3,11 @@
 The injected runtime must load local files only and expose exact token counts with
 truncation disabled. A network-denying OS sandbox is required for real execution;
 Python environment flags are defense in depth, never a network sandbox.
+
+Per the driver's ruling the provider is CPU only, with no CUDA or MPS and no device
+fallback, and stays disabled until a reviewed read-only artifact bundle and a
+network-denying sandbox exist. Packet and policy keys are closed sets, so no extra
+key can enable another backend or a fallback.
 """
 import hashlib
 import json
@@ -13,6 +18,11 @@ import time
 
 class Refused(ValueError):
     pass
+
+
+BACKEND = "cpu"
+PACKET_KEYS = frozenset({"request", "consultation", "backend"})
+POLICY_KEYS = frozenset({"approved", "max_bytes", "max_tokens", "max_options"})
 
 
 def validate_artifacts(root, manifest):
@@ -40,13 +50,16 @@ def validate_artifacts(root, manifest):
 
 
 def assess(packet, root, manifest, runtime, policy):
-    if not policy.get("approved", False):
+    if set(policy) - POLICY_KEYS:
+        raise Refused("unknown policy key")
+    if policy.get("approved") is not True:
         raise Refused("owner approval required")
+    if set(packet) != PACKET_KEYS:
+        raise Refused("unexpected packet field")
+    # Exact comparison before any file or runtime access; nothing is normalised.
+    if packet["backend"] != BACKEND:
+        raise Refused("unqualified backend; cpu only")
     validate_artifacts(root, manifest)
-    backend = packet["backend"]
-    # Recorded owner ruling: CPU only. CUDA needs its own policy entry; MPS is unqualified.
-    if backend not in ("cpu", "cuda") or backend not in policy.get("allowed_backends", ("cpu",)):
-        raise Refused("unapproved backend")
     c = packet["consultation"]
     options = c["Vocabulary"]
     if options != packet["request"]["Vocabulary"] or not options or len(set(options)) != len(options):
@@ -58,16 +71,12 @@ def assess(packet, root, manifest, runtime, policy):
     counts = runtime.token_counts(inputs)
     if len(counts) != len(inputs) or any(n < 0 or n > policy["max_tokens"] for n in counts) or len(options) > policy["max_options"]:
         raise Refused("token or option overflow")
-    actual, reason = backend, ""
     started = time.monotonic()
     try:
-        result = runtime.infer(root, inputs, backend, local_only=True, truncate=False)
+        result = runtime.infer(root, inputs, BACKEND, local_only=True, truncate=False)
     except (MemoryError, DeviceUnavailable) as exc:
-        if backend != "cuda" or not packet["allow_cpu_fallback"] or not policy.get("allow_cpu_fallback", False):
-            raise Refused("unauthorized CPU fallback") from exc
-        actual, reason = "cpu", type(exc).__name__
-        result = runtime.infer(root, inputs, actual, local_only=True, truncate=False)
-    if result.get("actual_backend") != actual:
+        raise Refused("device failure; no fallback permitted") from exc
+    if result.get("actual_backend") != BACKEND:
         raise Refused("runtime silently changed backend")
     label = result.get("label")
     if label not in options:
@@ -76,9 +85,9 @@ def assess(packet, root, manifest, runtime, policy):
     return {"prediction": {
         "Subject": req["Subject"], "InputDigest": req["InputDigest"], "SchemaDigest": req["SchemaDigest"],
         "Abstained": True, "ShadowLabels": [label], "LabelProbabilities": {},
-        "RequestedBackend": backend, "ActualBackend": actual,
+        "RequestedBackend": BACKEND, "ActualBackend": BACKEND,
         "ProviderVersion": manifest["code_revision"], "EvidenceRefs": ["sha256:" + hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest()],
-    }, "fallback_reason": reason, "diagnostics": {"latency_seconds": time.monotonic() - started, "omissions": [], "precision": result.get("precision", "unknown"), "memory_bytes": result.get("memory_bytes")}}
+    }, "fallback_reason": "", "diagnostics": {"latency_seconds": time.monotonic() - started, "omissions": [], "precision": result.get("precision", "unknown"), "memory_bytes": result.get("memory_bytes")}}
 
 
 class DeviceUnavailable(RuntimeError):

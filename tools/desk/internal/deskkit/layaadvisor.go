@@ -10,25 +10,27 @@ import (
 	"time"
 )
 
-// LayaAdvisor is optional and never installed in default routing. Approval is
-// supplied by the operator, never by the subprocess. No ambient credentials pass.
+// layaBackend is the only qualified backend. Per the driver's ruling the provider is
+// CPU only: CUDA and MPS are refused, and no device fallback is accepted in either
+// direction. The comparison is exact; no case or whitespace variant is normalised.
+const layaBackend = "cpu"
+
+// LayaAdvisor is optional and never installed in default routing; per the driver's
+// ruling it stays unwired until a reviewed read-only artifact bundle and a
+// network-denying sandbox exist. Approval is supplied by the operator, never by the
+// subprocess. No ambient credentials pass.
 type LayaAdvisor struct {
-	Command          []string
-	Request          AssessmentRequest
-	Approved         bool
-	Backend          string
-	AllowCPUFallback bool
-	// AllowCUDA is a separate owner approval for the CUDA profile. The recorded
-	// owner ruling is CPU only; the zero value keeps CUDA and its CPU fallback off.
-	AllowCUDA bool
-	MaxBytes  int
-	Timeout   time.Duration
+	Command  []string
+	Request  AssessmentRequest
+	Approved bool
+	Backend  string
+	MaxBytes int
+	Timeout  time.Duration
 }
 type layaRequest struct {
-	Request          AssessmentRequest `json:"request"`
-	Consultation     Consultation      `json:"consultation"`
-	Backend          string            `json:"backend"`
-	AllowCPUFallback bool              `json:"allow_cpu_fallback"`
+	Request      AssessmentRequest `json:"request"`
+	Consultation Consultation      `json:"consultation"`
+	Backend      string            `json:"backend"`
 }
 type layaDiagnostics struct {
 	LatencySeconds float64  `json:"latency_seconds"`
@@ -60,11 +62,12 @@ func (a LayaAdvisor) Predict(ctx context.Context, c Consultation) (Prediction, e
 	if !a.Approved {
 		return fail, Refused("laya: activation requires owner approval")
 	}
-	if len(a.Command) == 0 || (a.Backend != "cpu" && a.Backend != "cuda") {
-		return fail, Refused("laya: invalid process or backend")
+	if len(a.Command) == 0 {
+		return fail, Refused("laya: invalid process")
 	}
-	if a.Backend == "cuda" && !a.AllowCUDA {
-		return fail, Refused("laya: cuda profile not approved")
+	// Refused before any process starts: no other backend is qualified.
+	if a.Backend != layaBackend {
+		return fail, Refused("laya: unqualified backend; cpu only")
 	}
 	limit := a.MaxBytes
 	if limit <= 0 {
@@ -73,7 +76,7 @@ func (a LayaAdvisor) Predict(ctx context.Context, c Consultation) (Prediction, e
 	if len(c.Context)+len(c.Detail)+len(c.Prompt) > limit {
 		return fail, Refused("laya: input byte limit")
 	}
-	input, err := json.Marshal(layaRequest{a.Request, c, a.Backend, a.AllowCPUFallback})
+	input, err := json.Marshal(layaRequest{a.Request, c, layaBackend})
 	if err != nil || len(input) > limit {
 		return fail, Refused("laya: request byte limit")
 	}
@@ -84,7 +87,9 @@ func (a LayaAdvisor) Predict(ctx context.Context, c Consultation) (Prediction, e
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, a.Command[0], a.Command[1:]...)
-	cmd.Env = []string{"HF_HUB_OFFLINE=1", "TRANSFORMERS_OFFLINE=1", "KUBECONFIG=/dev/null"}
+	// A fixed environment: offline flags, CUDA devices hidden, nothing inherited.
+	// Defense in depth only; it is not a sandbox and has no MPS equivalent.
+	cmd.Env = []string{"HF_HUB_OFFLINE=1", "TRANSFORMERS_OFFLINE=1", "KUBECONFIG=/dev/null", "CUDA_VISIBLE_DEVICES="}
 	out := &boundedBuffer{limit: limit}
 	diagnostic := &boundedBuffer{limit: 4096}
 	// Every pipe is drained here, never by os/exec, so completion has one bound:
@@ -157,13 +162,16 @@ func (a LayaAdvisor) decode(ctx context.Context, output []byte) (Prediction, err
 		return fail, Refused("laya: trailing output")
 	}
 	p := response.Prediction
-	if p.RequestedBackend != a.Backend {
+	// Checked against the constant, not the advisor's field, so this layer refuses a
+	// non-CPU record even if the pre-launch check were bypassed.
+	if p.RequestedBackend != layaBackend {
 		return fail, Refused("laya: requested backend mismatch")
 	}
-	if p.ActualBackend != a.Backend {
-		if !(a.Backend == "cuda" && p.ActualBackend == "cpu" && a.AllowCPUFallback && response.FallbackReason != "") {
-			return fail, Refused("laya: unauthorized fallback")
-		}
+	if p.ActualBackend != layaBackend {
+		return fail, Refused("laya: unauthorized fallback")
+	}
+	if response.FallbackReason != "" {
+		return fail, Refused("laya: fallback not permitted")
 	}
 	if err = ValidatePrediction(a.Request, p); err != nil {
 		return fail, err
