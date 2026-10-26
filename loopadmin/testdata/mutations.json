@@ -1370,5 +1370,75 @@
     "file": "runner/secrets.go",
     "old": "if slotWords[w] && !describesOnly(words[i+1:]) {",
     "new": "if slotWords[w] && len(words) == i+1 {"
+  },
+  {
+    "test": "TestExecutionProfileV1Compatibility",
+    "why": "agent-execution/01: an adapter that does not declare a required extension accepts it anyway",
+    "file": "runner/request.go",
+    "old": "if !c.hasExtension(ext) {",
+    "new": "if false && !c.hasExtension(ext) {"
+  },
+  {
+    "test": "TestExecutionProfileV1Compatibility",
+    "why": "agent-execution/01: the client ignores require and checks the profile only when a value is carried",
+    "file": "runner/executionprofile.go",
+    "old": "return r.requires(RequireExecutionProfile) || (carried && c.hasExtension(ExecutionProfileExt))",
+    "new": "return carried && c.hasExtension(ExecutionProfileExt)"
+  },
+  {
+    "test": "TestExecutionProfilePreservationFlow",
+    "why": "agent-execution/01: admission treats every resume declaration as full process preservation",
+    "file": "runner/executionprofile.go",
+    "old": "checkPreservation(p.Preservation.Resume, need.Needs.Resume, \"needs.resume\")",
+    "new": "checkPreservation(Preservation{SupportYes, SupportYes, SupportYes, SupportYes, SupportYes}, need.Needs.Resume, \"needs.resume\")"
+  },
+  {
+    "test": "TestExecutionProfilePreservationFlow",
+    "why": "agent-execution/01: acceptance treats every reported restoration as full process preservation",
+    "file": "runner/executionprofile.go",
+    "old": "checkPreservation(*rep.Restored, need.Needs.Resume, \"restored\")",
+    "new": "checkPreservation(Preservation{SupportYes, SupportYes, SupportYes, SupportYes, SupportYes}, need.Needs.Resume, \"restored\")"
+  },
+  {
+    "test": "TestExecutionProfileBindingAndSchema",
+    "why": "agent-execution/01: accept a declared profile whose digest is not the digest of its content",
+    "file": "runner/executionprofile.go",
+    "old": "if p.Digest != ProfileDigest(p) {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestExecutionProfileBindingAndSchema",
+    "why": "agent-execution/01: accept a report naming another qualified profile digest",
+    "file": "runner/executionprofile.go",
+    "old": "return rep.Digest != need.Digest || rep.Harness != need.Harness",
+    "new": "return rep.Harness != need.Harness"
+  },
+  {
+    "test": "TestExecutionProfileBindingAndSchema",
+    "why": "agent-execution/01: the adapter trusts the client's admission and runs its own check no longer",
+    "file": "runner/fake/fake.go",
+    "old": "need, err := runner.AdmitExecutionProfile(req, a.profiles)\n\tif err != nil {\n\t\treturn nil, err\n\t}",
+    "new": "need, _ := runner.DecodeProfileRequirement(req.Extensions[runner.ExecutionProfileExt])"
+  },
+  {
+    "test": "TestExecutionProfileBindingAndSchema",
+    "why": "agent-execution/01: the caller commits without checking its own current profile",
+    "file": "runner/conformance/profiles.go",
+    "old": "if acc.Execution == nil || acc.Execution.Digest != cur {",
+    "new": "if false && cur != \"\" {"
+  },
+  {
+    "test": "TestExecutionProfileBindingAndSchema",
+    "why": "agent-execution/01: a Go type drifts from the schema (a required dimension becomes optional)",
+    "file": "runner/executionprofile.go",
+    "old": "Descendants         Support `json:\"descendants\"`",
+    "new": "Descendants         Support `json:\"descendants,omitempty\"`"
+  },
+  {
+    "test": "TestRunnerProfileBeforeStart",
+    "why": "agent-execution/01: the client skips the execution-profile admission",
+    "file": "runner/client.go",
+    "old": "need, err := req.checkExecutionProfile(c.caps, c.profiles)",
+    "new": "need, err := (*ProfileRequirement)(nil), error(nil)"
   }
 ]

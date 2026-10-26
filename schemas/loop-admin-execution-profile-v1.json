@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/loop-admin-execution-profile-v1.json",
+  "title": "loop-admin execution-profile/v1 extension",
+  "description": "Machine-readable contract for the execution-profile/v1 extension of the shared runner protocol (spec/loop-admin-execution-profile-v1.md). The root is the REQUEST value a launch request carries under ext[\"execution-profile/v1\"], made mandatory by listing ext:execution-profile/v1 in require. $defs carries the adapter-side shapes: the qualifiedProfile an adapter declares and the report it puts under a receipt's or observation's ext. The contract is DESCRIPTIVE of shape: required fields, field types and closed value sets. It deliberately does NOT encode the rules the runner module enforces before Start (the pinned digest names a declared profile; a declared digest is the sha256 of the declared profile's canonical content; the pinned harness, model binding and backend are the declared ones; the request's runner profile id, pinned model, role and budget scope are qualified; every need is declared supported) or at acceptance (the report names the pinned digest, harness and backend; a resumed launch reports each needed dimension restored). Decoding is strict as for the request: exact keys, no repeated key, no null for a defined field. Unknown and unsupported are distinct values; a need refused for either is refused with a different reason, and neither is read as the other.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["digest", "harness", "model", "backend", "needs"],
+  "properties": {
+    "digest": { "description": "The pinned qualified profile's digest.", "$ref": "#/$defs/digest" },
+    "harness": { "$ref": "#/$defs/harness" },
+    "model": { "$ref": "#/$defs/modelBinding" },
+    "backend": { "$ref": "#/$defs/backend" },
+    "needs": { "$ref": "#/$defs/needs" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "support": {
+      "description": "supported, unsupported (checked: it does not) or unknown (could not check).",
+      "enum": ["supported", "unsupported", "unknown"]
+    },
+    "coverage": { "enum": ["none", "partial", "complete", "unknown"] },
+    "harness": {
+      "description": "The harness implementation and version, bound to the immutable digest and provenance reference of the harness-component bundle.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["implementation", "version", "bundle_digest", "bundle_provenance"],
+      "properties": {
+        "implementation": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "bundle_digest": { "$ref": "#/$defs/digest" },
+        "bundle_provenance": { "type": "string", "minLength": 1 }
+      }
+    },
+    "modelBinding": {
+      "description": "The model profile and the model it pins: a REQUESTED identity, never an observation. The model a run actually used is the observation's actual_model.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "model"],
+      "properties": {
+        "profile": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 }
+      }
+    },
+    "backend": {
+      "description": "The qualified execution backend and platform profile.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "platform"],
+      "properties": {
+        "profile": { "type": "string", "minLength": 1 },
+        "platform": { "type": "string", "minLength": 1 }
+      }
+    },
+    "preservation": {
+      "description": "Per dimension, whether that part of a session survives an operation. Each dimension is declared on its own; none implies another.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "conversation", "process_memory", "descendants", "pending_interactions"],
+      "properties": {
+        "files": { "$ref": "#/$defs/support" },
+        "conversation": { "$ref": "#/$defs/support" },
+        "process_memory": { "$ref": "#/$defs/support" },
+        "descendants": { "$ref": "#/$defs/support" },
+        "pending_interactions": { "$ref": "#/$defs/support" }
+      }
+    },
+    "operations": {
+      "description": "Preservation by lifecycle operation, in the cell operator vocabulary: resume (paused to running, and v1's continuation of a pinned session) and restart (drain, stop, start).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resume", "restart"],
+      "properties": {
+        "resume": { "$ref": "#/$defs/preservation" },
+        "restart": { "$ref": "#/$defs/preservation" }
+      }
+    },
+    "preservationNeed": {
+      "description": "The dimensions a launch cannot do without for one operation. An absent or false dimension is not needed.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "files": { "type": "boolean" },
+        "conversation": { "type": "boolean" },
+        "process_memory": { "type": "boolean" },
+        "descendants": { "type": "boolean" },
+        "pending_interactions": { "type": "boolean" }
+      }
+    },
+    "needs": {
+      "description": "What the launch requires of the qualified profile. The budget scope needed is the request's own budget.scope.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resume": { "$ref": "#/$defs/preservationNeed" },
+        "restart": { "$ref": "#/$defs/preservationNeed" },
+        "cancel_confirmation": { "type": "boolean" },
+        "telemetry": { "enum": ["partial", "complete"] }
+      }
+    },
+    "qualification": {
+      "description": "Opaque references to the qualification evidence and the limits it holds within. The caller validates them.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence", "limits"],
+      "properties": {
+        "evidence": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "limits": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "qualifiedProfile": {
+      "description": "What an adapter declares it is qualified to run. digest is the sha256 of the profile's canonical JSON with digest empty, so content that drifted under an old digest is refused.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "runner_profile", "roles", "harness", "model", "backend", "preservation", "cancellation", "budget_scopes", "telemetry", "qualification"],
+      "properties": {
+        "digest": { "$ref": "#/$defs/digest" },
+        "runner_profile": { "description": "The runner v1 profile.id this tuple serves.", "type": "string", "minLength": 1 },
+        "roles": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "harness": { "$ref": "#/$defs/harness" },
+        "model": { "$ref": "#/$defs/modelBinding" },
+        "backend": { "$ref": "#/$defs/backend" },
+        "preservation": { "$ref": "#/$defs/operations" },
+        "cancellation": { "description": "Whether a cancel is confirmed by an observed stop.", "$ref": "#/$defs/support" },
+        "budget_scopes": { "type": "array", "items": { "enum": ["launch", "request"] } },
+        "telemetry": { "$ref": "#/$defs/coverage" },
+        "qualification": { "$ref": "#/$defs/qualification" }
+      }
+    },
+    "report": {
+      "description": "The adapter's execution report under a receipt's or observation's ext: the identities it observed running and, for a resumed launch, what it observed restored. Untrusted; it grants no scheduling, provider-write or acceptance authority.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "harness", "backend"],
+      "properties": {
+        "digest": { "$ref": "#/$defs/digest" },
+        "harness": { "$ref": "#/$defs/harness" },
+        "backend": { "$ref": "#/$defs/backend" },
+        "restored": { "$ref": "#/$defs/preservation" }
+      }
+    }
+  }
+}
