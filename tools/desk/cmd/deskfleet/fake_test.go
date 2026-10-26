@@ -383,10 +383,13 @@ func newHarness(t *testing.T, f *fakeForge) *harness {
 		h.apiBase = f.base()
 	}
 	h.e = &env{
-		stdout:           h.out,
-		stderr:           h.err,
-		http:             &http.Client{Timeout: 10 * time.Second},
-		getenv:           func(k string) string { return map[string]string{"GITLAB_API_BASE": h.apiBase}[k] },
+		stdout: h.out,
+		stderr: h.err,
+		http:   &http.Client{Timeout: 10 * time.Second},
+		lookupEnv: func(k string) (string, bool) {
+			v, ok := map[string]string{"GITLAB_API_BASE": h.apiBase}[k]
+			return v, ok
+		},
 		now:              func() time.Time { return time.Date(2026, 9, 23, 12, 0, 0, 0, time.UTC) },
 		createRestricted: createRestricted,
 		githubAPIBase:    "https://api.github.invalid",

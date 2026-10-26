@@ -282,10 +282,9 @@
       "path": "tools/desk/cmd/deskfleet",
       "module": "tools/desk",
       "parser_owner": "desktools-v2/23",
-      "parser_state": "pending",
-      "context": "current-parser-gap",
-      "owner": "desktools-v2/23",
-      "gap": "Environment-only recorder where present; retain parser/domain ownership until its bounded CLI owner binds the public context."
+      "parser_state": "migrated",
+      "context": "parsed-to-recorder",
+      "owner": "desktools-v2/64"
     },
     {
       "executable": "deskflip",
