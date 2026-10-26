@@ -118,12 +118,12 @@ const annQuote = "\"PASS: negative\" — the planted brief yields its named diag
 // regression: #4294
 func TestHeldScopeObservedOutput(t *testing.T) {
 	planted := "| Row | Command | Exit code | Observed |\n|---|---|---|---|\n" +
-		"| 5 | `x` | exit 0 | **passed** — prints the could-not-check banner once |\n\n**VERIFY: PASS**\n"
+		"| 5 | `x` | exit 0 | **passed** — the product prints the could-not-check banner once |\n\n**VERIFY: PASS**\n"
 	runHeldLayerCases(t, []heldScanCase{
 		{"the #4294 row, latest entry", annObs("0", annQuote), false},
 		{"the #4294 row, superseded entry", annEntry("Verification — 2026-10-07", "**VERIFY: PASS**",
 			annRow("1", "0", "ok"), annRow("3 (Verify 3, negative)", "0", annQuote)) + annLater, false},
-		{"ok lead, its section", annObs("exit 0", "ok — prints its could-not-check section with both rows"), false},
+		{"ok lead, its section", annObs("exit 0", "ok — the product prints its could-not-check section with no content"), false},
 		{"planted second instance", planted, false},
 	})
 }
@@ -134,7 +134,7 @@ func TestHeldScopeObservedOutput(t *testing.T) {
 func TestHeldScopeObservedOutputRefuses(t *testing.T) {
 	noExit := "| # | Command | Result |\n|---|---|---|\n| 3 | `x` | " + annQuote + " |\n\n**VERIFY: PASS**\n"
 	note := "| # | Command | Exit | Result | Note |\n|---|---|---|---|---|\n" +
-		"| 3 | `x` | 0 | PASS | passed — prints a could-not-check mission section |\n\n**VERIFY: PASS**\n"
+		"| 3 | `x` | 0 | PASS | passed — the product prints a could-not-check mission section |\n\n**VERIFY: PASS**\n"
 	misaligned := "| # | Command | Exit | Result |\n|---|---|---|---|\n" +
 		"| 3 | a | b | 0 | " + annQuote + " |\n\n**VERIFY: PASS**\n"
 	runHeldLayerCases(t, []heldScanCase{
@@ -155,15 +155,15 @@ func TestHeldScopeObservedOutputRefuses(t *testing.T) {
 		{"not re-run in the cell", annObs("0", annQuote+"; row 4 not re-run"), true},
 		{"no runner in the cell", annObs("0", annQuote+"; no runner for row 4"), true},
 		{"no PASS lead", annObs("0", "yields a could-not-check mission section"), true},
-		{"lead not a word", annObs("0", "PASSWORD: prints a could-not-check mission section"), true},
+		{"lead not a word", annObs("0", "PASSWORD: the product prints a could-not-check mission section"), true},
 		{"not attributive", annObs("0", "PASS: could-not-check, no runner"), true},
-		{"no article", annObs("0", "PASS: prints then could-not-check mission section"), true},
+		{"no article", annObs("0", "PASS: the product prints then could-not-check mission section"), true},
 		{"disposition noun", annObs("0", "PASS: a could-not-check result"), true},
 		{"row noun", annObs("0", "PASS: the could-not-check row"), true},
 		{"marker ends the cell", annObs("0", "PASS: a could-not-check"), true},
 		{"hold reason after", annObs("0", "PASS: a could-not-check because the runner was offline"), true},
-		{"HELD attributive", annObs("0", "PASS: prints a HELD mission section"), true},
-		{"struck text on the row", annObs("0", "PASS ~~old~~: prints a could-not-check mission section"), true},
+		{"HELD attributive", annObs("0", "PASS: the product prints a HELD mission section"), true},
+		{"struck text on the row", annObs("0", "PASS ~~old~~: the product prints a could-not-check mission section"), true},
 		{"no Exit column", noExit, true},
 		{"note column", note, true},
 		{"misaligned row", misaligned, true},
@@ -217,10 +217,11 @@ func TestHeldScopeCoverKeyDirection(t *testing.T) {
 	})
 }
 
-// TestHeldScopeObservedOutputSubject: every word of the Result cell before
-// the marker comes from a closed vocabulary that names the product under
-// test and its output. A subject that names the verifier, its runner, a case,
-// a half or rows, a pronoun, a digit, or a verb a verifier uses for its own
+// TestHeldScopeObservedOutputSubject: the words of the Result cell before
+// the marker are a named product subject, one output verb and words of a
+// closed object vocabulary. A subject that names the verifier, its runner,
+// the row's own command or its output, a case, a half or rows, a pronoun or a
+// digit, a cell with no subject, or a verb a verifier uses for its own
 // instrument (reports, shows) leaves the row read as a hold, in the last
 // entry as in any other.
 // regression: #4294
@@ -234,6 +235,7 @@ func TestHeldScopeObservedOutputSubject(t *testing.T) {
 		{"runner prints", annObs("0", "PASS: the runner prints a could-not-check label"), true},
 		{"harness prints", annObs("0", "PASS: the harness prints a could-not-check banner"), true},
 		{"product verb, then runner", annObs("0", "PASS: prints the banner and the runner prints a could-not-check label"), true},
+		{"product subject, then runner", annObs("0", "PASS: the product prints a diagnostic and the runner prints a could-not-check label"), true},
 		{"digit before the marker", annObs("0", "PASS: row 4 prints a could-not-check label"), true},
 		{"pronoun subject", annObs("0", "PASS: it prints a could-not-check banner"), true},
 		{"case label, then a case subject", annObs("0", "PASS: positive; negative yields a could-not-check label"), true},
@@ -241,20 +243,55 @@ func TestHeldScopeObservedOutputSubject(t *testing.T) {
 		{"implicit subject, contains", annObs("0", "PASS: contains a could-not-check banner"), true},
 		{"implicit subject, includes", annObs("0", "PASS: includes a could-not-check banner"), true},
 		{"implicit subject, displays", annObs("0", "PASS: displays a could-not-check banner"), true},
+		{"product subject, reports", annObs("0", "PASS: the product reports a could-not-check label"), true},
+		{"product subject, shows", annObs("0", "PASS: the product shows a could-not-check banner"), true},
+		{"product subject, contains", annObs("0", "PASS: the product contains a could-not-check banner"), true},
+		{"product subject, includes", annObs("0", "PASS: the product includes a could-not-check banner"), true},
+		{"product subject, displays", annObs("0", "PASS: the product displays a could-not-check banner"), true},
 		{"case label not positive or negative", annObs("0", "PASS: half — yields a could-not-check label"), true},
 		{"lead fused to a product word", annObs("0", "PASSbrief yields a could-not-check label"), true},
+		{"lead fused to the subject", annObs("0", "PASSthe product prints a could-not-check banner"), true},
 		{"a word that only holds a verb", annObs("0", "PASS: the brief misprints and prints a could-not-check label"), true},
 		{"inline-code subject", annObs("0", "PASS: `runner` prints a could-not-check label"), true},
+		{"inline code inside the subject", annObs("0", "PASS: the product `runner` prints a could-not-check label"), true},
 		{"verifier prints", annObs("0", "ok — the verifier prints a could-not-check banner"), true},
 		{"case subject, product verb", annObs("0", "PASS on positive: the case prints a could-not-check label"), true},
-		{"verb only in an earlier clause", annObs("0", "PASS: prints; a could-not-check mission section"), true},
-		{"no article, product words only", annObs("0", "PASS: prints could-not-check mission section"), true},
-		{"struck span in another cell", annObsNote("PASS: prints a could-not-check mission section", "~~old run~~"), true},
-		{"command prints", annObs("0", "PASS: the command prints a could-not-check banner"), false},
-		{"output lists", annObs("0", "PASS: the output lists a could-not-check banner"), false},
-		{"case label lead", annObs("0", "\"PASS: negative\" — yields a could-not-check label"), false},
+		{"verb only in an earlier clause", annObs("0", "PASS: the planted brief prints; a could-not-check mission section"), true},
+		{"no article, product words only", annObs("0", "PASS: the planted brief prints could-not-check mission section"), true},
+		{"struck span in another cell", annObsNote("PASS: the planted brief prints a could-not-check mission section", "~~old run~~"), true},
+		// The row's own instrument as the subject: the Command cell is the
+		// verify script, so its command, tool, cli, binary, output or stdout
+		// printing could-not-check is the row's disposition.
+		{"command prints", annObs("0", "PASS: the command prints a could-not-check banner"), true},
+		{"output lists", annObs("0", "PASS: the output lists a could-not-check banner"), true},
+		{"output lists, all rows", annObs("0", "PASS: the output lists a could-not-check banner in all rows"), true},
+		{"tool emits", annObs("0", "PASS: the tool emits a could-not-check label"), true},
+		{"stdout lists", annObs("0", "PASS: the stdout lists a could-not-check banner"), true},
+		{"command prints, all rows", annObs("0", "PASS: the command prints a could-not-check label in all rows"), true},
+		{"case label, command yields", annObs("0", "PASS: negative — the command yields a could-not-check label"), true},
+		{"cli prints", annObs("0", "PASS: the cli prints a could-not-check banner"), true},
+		{"binary prints", annObs("0", "PASS: the binary prints a could-not-check banner"), true},
+		{"fixture prints", annObs("0", "PASS: the fixture prints a could-not-check banner"), true},
+		{"linter prints", annObs("0", "PASS: the linter prints a could-not-check banner"), true},
+		{"lint prints", annObs("0", "PASS: the lint prints a could-not-check label"), true},
+		{"bare brief", annObs("0", "PASS: the brief yields a could-not-check label"), true},
+		// No subject: the cell's implied subject is the row's command.
+		{"implicit subject, prints", annObs("0", "PASS: prints a could-not-check mission section"), true},
+		{"implicit subject, its section", annObs("0", "PASS: prints its could-not-check mission section"), true},
+		{"case label lead", annObs("0", "\"PASS: negative\" — yields a could-not-check label"), true},
+		// After the verb: object words only, never a second verb or subject.
+		{"second clause, lint prints", annObs("0", "PASS: the planted brief yields a lint problem and the lint prints a could-not-check label"), true},
+		{"instrument noun after the verb", annObs("0", "PASS: the planted brief yields the output and a could-not-check banner"), true},
+		{"possessive with no antecedent", annObs("0", "PASS: the product prints their could-not-check labels"), true},
+		{"a hyphenated word that holds a verb", annObs("0", "PASS: the planted brief out-prints a could-not-check label"), true},
+		// After the marker: words that count or name Verify rows or cases.
+		{"product subject, all rows", annObs("0", "PASS: the planted brief yields a could-not-check label in all rows"), true},
+		{"product subject, both", annObs("0", "PASS: the product prints a could-not-check section in both"), true},
+		{"case label lead, product subject", annObs("0", "\"PASS: negative\" — the planted brief yields a could-not-check label"), false},
+		{"product subject", annObs("0", "PASS: the product prints a could-not-check banner"), false},
+		{"product subject, capitals", annObs("0", "PASS: The Planted Brief Yields a could-not-check label"), false},
 		{"the #4294 row", annObs("0", annQuote), false},
-		{"empty note cell", annObsNote("PASS: prints a could-not-check mission section", ""), false},
+		{"empty note cell", annObsNote("PASS: the planted brief prints a could-not-check mission section", ""), false},
 	})
 	// The hold-word check reads every read cell of the row, so a hold word
 	// in a cell beside a well-formed Result cell keeps the row held.
@@ -266,7 +303,7 @@ func TestHeldScopeObservedOutputSubject(t *testing.T) {
 		"row 4 not checked", "row 4 not re-run", "row 4 not run", "no runner for row 4", "cannot reach the runner",
 		"can't reach the runner", "unable to reach the runner", "row 4 todo"} {
 		runHeldLayerCases(t, []heldScanCase{
-			{"note cell: " + hold, annObsNote("PASS: prints a could-not-check mission section", hold), true},
+			{"note cell: " + hold, annObsNote("PASS: the planted brief prints a could-not-check mission section", hold), true},
 		})
 	}
 }
@@ -288,14 +325,14 @@ func TestHeldScopeObservedOutputClosed(t *testing.T) {
 		{"portion still open", annObs("0", "ok — the could-not-check portion is still open"), true},
 		{"half needs a runner", annObs("0", "PASS on positive; the could-not-check negative half needs a runner"), true},
 		{"offline wording", annObs("0", "ok — the could-not-check section is offline"), true},
-		{"unavailable wording", annObs("0", "PASS: prints its could-not-check section, runner unavailable"), true},
-		{"not exercised wording", annObs("0", "PASS: prints a could-not-check section; row 4 not exercised"), true},
-		{"unknown word after the noun", annObs("0", "PASS: prints a could-not-check section quarantined"), true},
+		{"unavailable wording", annObs("0", "PASS: the product prints its could-not-check section, runner unavailable"), true},
+		{"not exercised wording", annObs("0", "PASS: the product prints a could-not-check section; row 4 not exercised"), true},
+		{"unknown word after the noun", annObs("0", "PASS: the product prints a could-not-check section quarantined"), true},
 		{"no output verb", annObs("0", "PASS: a lint PROBLEM and a could-not-check mission section"), true},
-		{"verb in an earlier clause", annObs("0", "PASS: prints the banner; a could-not-check mission section"), true},
-		{"printed section", annObs("0", "PASS: prints its could-not-check mission section"), false},
+		{"verb in an earlier clause", annObs("0", "PASS: the product prints a diagnostic; a could-not-check mission section"), true},
+		{"printed section", annObs("0", "PASS: the product prints its could-not-check mission section"), false},
 		{"printed section, quoted lead", annObs("0", annQuote), false},
-		{"no known noun after the marker", annObs("0", "PASS: prints a could-not-check with no content"), true},
+		{"no known noun after the marker", annObs("0", "PASS: the product prints a could-not-check with no content"), true},
 	})
 	// A hold word in an earlier clause of the cell is read even when the
 	// clause that holds the marker is well formed.
@@ -307,7 +344,7 @@ func TestHeldScopeObservedOutputClosed(t *testing.T) {
 		"row 4 not checked", "row 4 not re-run", "row 4 not run", "no runner for row 4", "cannot reach the runner",
 		"can't reach the runner", "unable to reach the runner", "row 4 todo"} {
 		runHeldLayerCases(t, []heldScanCase{
-			{"earlier clause: " + hold, annObs("0", "PASS: "+hold+"; prints a could-not-check mission section"), true},
+			{"earlier clause: " + hold, annObs("0", "PASS: "+hold+"; the planted brief prints a could-not-check mission section"), true},
 		})
 	}
 }

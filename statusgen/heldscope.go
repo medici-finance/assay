@@ -142,19 +142,24 @@ import (
 //     cell matches a closed grammar, every part of which must hold: the row's
 //     table has an Exit column and every Exit cell of the row reads clean
 //     (heldOutcome); the cell opens on PASS, passed or ok, optionally with a
-//     positive or negative case label (heldObserveLeadRe); every word between
-//     that lead and the marker, as written, is a product-output verb or a word
-//     of a small vocabulary that names the product under test and its output
-//     (heldObserveSubject: "the planted brief yields its named diagnostic"),
-//     so a subject that names the verifier, its runner, a case, a half or
-//     rows, a pronoun or a digit leaves the row read; an article or possessive
+//     positive or negative case label (heldObserveLeadRe); the words between
+//     that lead and the marker, as written, are one named subject that is the
+//     product under test (heldObserveSubject: "the planted brief", "the
+//     product"), then one product-output verb, then only words of a small
+//     object vocabulary (heldObserveObject: "its named diagnostic, a lint
+//     PROBLEM and a"), so a cell with no subject, a subject that names the
+//     row's own instrument (its command, tool, cli, binary, output or stdout:
+//     the Command cell is the verify script), the verifier, its runner or
+//     fixture, a case, a half or rows, a pronoun or a digit, or a second verb
+//     after the first, leaves the row read; an article or possessive
 //     comes right before the marker and, in the clause that holds it (since
 //     the last ; . ! ? or dash), a verb of product output governs it
 //     (heldObserveVerbRe: "prints", "yields", "lists"; never "reports" or
 //     "shows", which a verifier also uses for its own instrument); the text
 //     after the marker is a noun it qualifies (heldObserveHead: "mission
 //     section", "banner") followed only by words of a small neutral vocabulary
-//     (heldObserveTail), so any other word, a digit or a hold reason leaves
+//     (heldObserveTail; never "rows", "all" or "both", which count or name
+//     Verify rows or cases), so any other word, a digit or a hold reason leaves
 //     the row read; the line has no struck span; and no read cell of the row
 //     holds a hold or fail word (heldObserveHoldRe, a second check behind the
 //     grammar; a HELD there is read as its own occurrence). Wording the
@@ -1245,17 +1250,27 @@ var (
 	heldObserveVerbRe = regexp.MustCompile(`(?i)\b(?:` + heldObserveVerbs + `)\b`)
 	// heldObserveVerbWordRe is one word that is such a verb.
 	heldObserveVerbWordRe = regexp.MustCompile(`^(?:` + heldObserveVerbs + `)$`)
-	// heldObserveSubject are the words, besides the output verbs, that may
-	// stand between the lead and the marker: articles, "and", and nouns that
-	// name the product under test and its output ("the planted brief yields
-	// its named diagnostic, a lint PROBLEM and a"). A word that names the
-	// verifier, its runner or harness, a case, a half or rows, a pronoun, or
-	// a digit is not among them, so it leaves the row held.
-	heldObserveSubject = map[string]bool{"a": true, "an": true, "the": true, "its": true, "their": true,
-		"and": true, "brief": true, "planted": true, "fixture": true, "command": true, "tool": true,
-		"cli": true, "binary": true, "lint": true, "linter": true, "output": true, "stdout": true,
-		"diagnostic": true, "diagnostics": true, "named": true, "problem": true, "problems": true,
-		"product": true}
+	// heldObserveSubject are the subjects, as lowercased words joined by one
+	// space, that may stand between the lead and the output verb: each names
+	// the product under test, never the verification. "planted brief" is an
+	// input the product reads; a bare "brief" can name the brief whose Verify
+	// table holds the row, so it is not one. The generic names of a program
+	// or what it wrote (command, tool, cli, binary, lint, linter, output,
+	// stdout) and "fixture" can name the row's own instrument, which the
+	// Command cell runs, so none is a subject; nor is the verifier, its
+	// runner or harness, a case, a half, rows, a pronoun or a digit. A cell
+	// with no subject leaves the row held too: its implied subject is the
+	// row's command.
+	heldObserveSubject = map[string]bool{"the planted brief": true, "the product": true}
+	// heldObserveObject are the words that may follow the output verb, up to
+	// the marker: articles, "its", "and", and nouns of what the product wrote
+	// ("its named diagnostic, a lint PROBLEM and a"). With no verb among them
+	// none can open a clause of its own, so "lint" here only qualifies a
+	// noun. "their" is not among them: the cell's one subject is singular,
+	// so it would point outside the cell, at rows or cases.
+	heldObserveObject = map[string]bool{"a": true, "an": true, "the": true, "its": true, "and": true,
+		"named": true, "diagnostic": true, "diagnostics": true, "lint": true, "problem": true,
+		"problems": true}
 	// heldObserveHoldRe is a hold or fail word anywhere in a row's read cells.
 	// It is a second check behind the closed grammar, never the only one.
 	// HELD is not among them: every HELD occurrence is read on its own, and
@@ -1268,11 +1283,32 @@ var (
 		"headings": true, "label": true, "labels": true, "mission": true}
 	heldObserveTail = map[string]bool{"section": true, "sections": true, "banner": true, "heading": true,
 		"headings": true, "label": true, "labels": true, "mission": true, "with": true, "no": true,
-		"empty": true, "content": true, "once": true, "twice": true, "both": true, "all": true, "rows": true,
+		"empty": true, "content": true, "once": true, "twice": true,
 		"the": true, "a": true, "an": true, "its": true, "and": true, "as": true, "expected": true,
 		"correctly": true, "in": true, "output": true, "text": true, "lists": true, "listing": true,
 		"printed": true, "shown": true}
 )
+
+// heldObserveWords reports whether words, lowercased, are one product subject
+// (heldObserveSubject), one output verb and then only object words
+// (heldObserveObject), in that order (rule 4, #4294).
+func heldObserveWords(words []string) bool {
+	for i, w := range words {
+		if !heldObserveVerbWordRe.MatchString(w) {
+			continue
+		}
+		if !heldObserveSubject[strings.Join(words[:i], " ")] {
+			return false
+		}
+		for _, o := range words[i+1:] {
+			if !heldObserveObject[o] {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
 
 // heldObservedOutput reports whether the occurrence at clean[h[0]:h[1]] is a
 // row's record of what the product printed rather than its disposition (rule
@@ -1292,13 +1328,11 @@ func heldObservedOutput(line, clean string, read heldLineRead, h []int) bool {
 		if lead == nil || !heldObserveBeforeRe.MatchString(before) || heldReasonAfterRe.MatchString(after) {
 			return false
 		}
-		// Every word between the lead and the marker, as the row is
-		// written (inline code included), is a product word or an output
-		// verb: the subject of the verb is the product, never the verifier.
-		for _, w := range heldObserveTailRe.FindAllString(strings.ToLower(line[rg[0]+lead[1]:h[0]]), -1) {
-			if !heldObserveSubject[w] && !heldObserveVerbWordRe.MatchString(w) {
-				return false
-			}
+		// The words between the lead and the marker, as the row is
+		// written (inline code included): the subject of the verb is the
+		// product, never the verification.
+		if !heldObserveWords(heldObserveTailRe.FindAllString(strings.ToLower(line[rg[0]+lead[1]:h[0]]), -1)) {
+			return false
 		}
 		if i := heldObserveClauseRe.FindAllStringIndex(before, -1); len(i) > 0 {
 			before = before[i[len(i)-1][1]:]

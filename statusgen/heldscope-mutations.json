@@ -1,7 +1,7 @@
 {
   "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction' -count=1 -timeout 300s",
   "control": {
-    "name": "CONTROL — supersession drops every earlier hold (the S1 defect)",
+    "name": "CONTROL \u2014 supersession drops every earlier hold (the S1 defect)",
     "file": "heldscope.go",
     "old": "\tif s.from < 0 {\n\t\treturn false\n\t}",
     "new": "\tif s.from < 0 {\n\t\treturn false\n\t}\n\treturn true"
@@ -1228,14 +1228,14 @@
     {
       "name": "#4294 observe: words before the marker are not checked against the vocabulary",
       "file": "heldscope.go",
-      "old": "if !heldObserveSubject[w] && !heldObserveVerbWordRe.MatchString(w) {",
-      "new": "if !heldObserveSubject[w] && !heldObserveVerbWordRe.MatchString(w) && false {"
+      "old": "if !heldObserveWords(heldObserveTailRe",
+      "new": "if false && !heldObserveWords(heldObserveTailRe"
     },
     {
-      "name": "#4294 observe: an output verb is not admitted before the marker",
+      "name": "#4294 observe: the subject before the verb is not checked",
       "file": "heldscope.go",
-      "old": "if !heldObserveSubject[w] && !heldObserveVerbWordRe.MatchString(w) {",
-      "new": "if !heldObserveSubject[w] {"
+      "old": "if !heldObserveSubject[strings.Join(words[:i], \" \")] {",
+      "new": "if false {"
     },
     {
       "name": "#4294 observe: a word that only holds an output verb counts as the verb",
@@ -1246,50 +1246,50 @@
     {
       "name": "#4294 observe: the vocabulary is read from the scan's cleaned row (inline code dropped)",
       "file": "heldscope.go",
-      "old": "range heldObserveTailRe.FindAllString(strings.ToLower(line[rg[0]+lead[1]:h[0]]), -1)",
-      "new": "range heldObserveTailRe.FindAllString(strings.ToLower(clean[rg[0]+lead[1]:h[0]]), -1)"
+      "old": "heldObserveWords(heldObserveTailRe.FindAllString(strings.ToLower(line[rg[0]+lead[1]:h[0]]), -1))",
+      "new": "heldObserveWords(heldObserveTailRe.FindAllString(strings.ToLower(clean[rg[0]+lead[1]:h[0]]), -1))"
     },
     {
       "name": "#4294 observe: the vocabulary admits runner",
       "file": "heldscope.go",
-      "old": "\"product\": true}",
-      "new": "\"product\": true, \"runner\": true}"
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the runner\": true}"
     },
     {
       "name": "#4294 observe: the vocabulary admits verifier",
       "file": "heldscope.go",
-      "old": "\"product\": true}",
-      "new": "\"product\": true, \"verifier\": true}"
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the verifier\": true}"
     },
     {
       "name": "#4294 observe: the vocabulary admits harness",
       "file": "heldscope.go",
-      "old": "\"product\": true}",
-      "new": "\"product\": true, \"harness\": true}"
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the harness\": true}"
     },
     {
       "name": "#4294 observe: the vocabulary admits case and positive",
       "file": "heldscope.go",
-      "old": "\"product\": true}",
-      "new": "\"product\": true, \"case\": true, \"on\": true, \"positive\": true}"
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"on positive the case\": true}"
     },
     {
       "name": "#4294 observe: the vocabulary admits half and negative",
       "file": "heldscope.go",
-      "old": "\"product\": true}",
-      "new": "\"product\": true, \"half\": true, \"negative\": true}"
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the negative half\": true}"
     },
     {
       "name": "#4294 observe: the vocabulary admits rows and digits",
       "file": "heldscope.go",
-      "old": "\"product\": true}",
-      "new": "\"product\": true, \"rows\": true, \"row\": true, \"1-2\": true, \"4\": true}"
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"row 4\": true}"
     },
     {
       "name": "#4294 observe: the vocabulary admits a pronoun",
       "file": "heldscope.go",
-      "old": "\"product\": true}",
-      "new": "\"product\": true, \"it\": true}"
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"it\": true}"
     },
     {
       "name": "#4294 observe: reports is a verb of output again",
@@ -1332,6 +1332,108 @@
       "file": "heldscope.go",
       "old": "\\\\b(?:[ \\\\t]*:[ \\\\t]*(?:positive|negative)\\\\b)?\")",
       "new": "\\\\b\")"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the command",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the command\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the tool",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the tool\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the stdout",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the stdout\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the cli",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the cli\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the binary",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the binary\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the fixture",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the fixture\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the linter",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the linter\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the lint",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the lint\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: the subject vocabulary admits the brief",
+      "file": "heldscope.go",
+      "old": "\"the product\": true}",
+      "new": "\"the product\": true, \"the brief\": true}"
+    },
+    {
+      "name": "#4294 observe S2-r4: a cell with no subject is admitted (implied subject)",
+      "file": "heldscope.go",
+      "old": "if !heldObserveSubject[strings.Join(words[:i], \" \")] {",
+      "new": "if i > 0 && !heldObserveSubject[strings.Join(words[:i], \" \")] {"
+    },
+    {
+      "name": "#4294 observe S2-r4: the words after the verb are not checked",
+      "file": "heldscope.go",
+      "old": "if !heldObserveObject[o] {",
+      "new": "if !heldObserveObject[o] && false {"
+    },
+    {
+      "name": "#4294 observe S2-r4: a second verb is admitted after the first",
+      "file": "heldscope.go",
+      "old": "if !heldObserveObject[o] {",
+      "new": "if !heldObserveObject[o] && !heldObserveVerbWordRe.MatchString(o) {"
+    },
+    {
+      "name": "#4294 observe S2-r4: the object vocabulary admits their",
+      "file": "heldscope.go",
+      "old": "heldObserveObject = map[string]bool{\"a\": true,",
+      "new": "heldObserveObject = map[string]bool{\"their\": true, \"a\": true,"
+    },
+    {
+      "name": "#4294 observe S2-r4: the object vocabulary admits instrument nouns",
+      "file": "heldscope.go",
+      "old": "heldObserveObject = map[string]bool{\"a\": true,",
+      "new": "heldObserveObject = map[string]bool{\"output\": true, \"stdout\": true, \"command\": true, \"a\": true,"
+    },
+    {
+      "name": "#4294 observe S2-r4: words with no output verb are admitted",
+      "file": "heldscope.go",
+      "old": "\t\treturn true\n\t}\n\treturn false\n}\n\n// heldObservedOutput",
+      "new": "\t\treturn true\n\t}\n\treturn true\n}\n\n// heldObservedOutput"
+    },
+    {
+      "name": "#4294 observe S2-r4: the tail admits rows and all",
+      "file": "heldscope.go",
+      "old": "\"once\": true, \"twice\": true,\n",
+      "new": "\"once\": true, \"twice\": true, \"rows\": true, \"all\": true,\n"
+    },
+    {
+      "name": "#4294 observe S2-r4: the tail admits both",
+      "file": "heldscope.go",
+      "old": "\"once\": true, \"twice\": true,\n",
+      "new": "\"once\": true, \"twice\": true, \"both\": true,\n"
     }
   ]
 }
