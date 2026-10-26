@@ -329,6 +329,57 @@ func TestCadenceHeartbeatGuard(t *testing.T) {
 	}
 }
 
+// The guard trips only while between-pass maintenance is running. The loop-top
+// call and the running-pass heartbeat call never see that state, so only the
+// heartbeat-time call inside the maintenance wait loop can stop the run.
+//
+// regression: #3383
+func TestCadenceMaintenanceHeartbeatGuard(t *testing.T) {
+	dir := t.TempDir()
+	l := take(t, dir)
+	cfg := testConfig()
+	cfg.Interval = time.Hour
+	cfg.Budget = time.Hour
+	var inMaintenance atomic.Bool
+	cfg.Guard = func() error {
+		if inMaintenance.Load() {
+			return errStop
+		}
+		return nil
+	}
+	var entries atomic.Int32
+	maintenanceErr := make(chan error, 1)
+	cfg.BetweenPasses = func(ctx context.Context) error {
+		entries.Add(1)
+		inMaintenance.Store(true)
+		defer inMaintenance.Store(false)
+		<-ctx.Done()
+		maintenanceErr <- ctx.Err()
+		return ctx.Err()
+	}
+	// Bound a missing maintenance guard; the healthy path returns in a few beats.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	var launches atomic.Int32
+	err := l.Run(ctx, cfg, func(context.Context) Result { launches.Add(1); return good() })
+	if !errors.Is(err, errStop) {
+		t.Fatalf("maintenance heartbeat guard did not stop the run: %v", err)
+	}
+	if got := <-maintenanceErr; !errors.Is(got, context.Canceled) {
+		t.Fatalf("maintenance context was not cancelled by the guard: %v", got)
+	}
+	if launches.Load() != 1 || entries.Load() != 1 {
+		t.Fatalf("launches=%d maintenance entries=%d", launches.Load(), entries.Load())
+	}
+	s, err := Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Running || s.Sequence != 1 || s.Maintenance != "could-not-check" {
+		t.Fatalf("guard-stopped maintenance recorded healthy %#v", s)
+	}
+}
+
 func TestMissingSummaryDegrades(t *testing.T) {
 	for _, result := range []Result{{Outcome: "ok"}, {Outcome: "noop", Summary: good().Summary, ExitCode: 1}, {Outcome: "ok", Summary: good().Summary, Err: errors.New("secret-must-not-persist")}} {
 		dir := t.TempDir()
