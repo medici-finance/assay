@@ -41,6 +41,8 @@ consumers:
   - "statusgen/perfworkload_test.go: fixed-here (synthetic fresh-reference workload driver)"
   - "statusgen/bench/: fixed-here (repeatable entrypoint, inventory and measured report)"
   - "statusgen/testdata/perfworkload/: fixed-here (declared synthetic corpus)"
+  - "docs/streams/desktools-v2/cli-migration.json: fixed-here (exact owned test route for the workload launcher)"
+  - "tools/desk/internal/clicontract/perfworkload_test.go: fixed-here (owner, neighbor, removed-route and shipping controls)"
 ---
 
 # Brief 26 — Extend statusgen phase measurements through the shared performance recorder
