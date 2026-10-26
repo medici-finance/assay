@@ -28,7 +28,7 @@ next act.
 | `targets[]` | Each product target revision the snapshot supplies, in snapshot order: `outcome` (a qualified requirement reference `<cell>:<repo>:REQ-<slug>`), `revision`, `approval` (`approved`, `unapproved` or `unavailable`) and `reference`. The last approved revision of an outcome is its **current** target. |
 | `bindings[]` | One per subject (the declaring brief, every impact and every subject of a declared relationship): `state` (`bound`, `unbound`, `none` or `could-not-check`), `outcome`, `declared` (the brief's `outcome-revision`), `selected` (the revision the work was first selected against), `locator` and `reason`. |
 | `assessments[]` | The exact comparison of each binding with its outcome's current target: `relation` (`primary` for the brief's own outcome, `secondary` for a declared relationship), `bound`, `current`, `result` (`aligned`, `mismatch`, `unknown` or `not-applicable`), `coverage` and `reason`. |
-| `dispositions[]` | Append-only decisions on a mismatch: `subject`, `outcome`, `expected_revision`, `decision` (`continue`, `adapt` or `stop`), `rationale`, `decided_by` and `basis` (the digest of the receipt the decision was made on). |
+| `dispositions[]` | Append-only decisions on a mismatch, or on an `unbound` or `undiscovered` gap with a current approved target (§5): `subject`, `outcome`, `expected_revision`, `decision` (`continue`, `adapt` or `stop`), `rationale`, `decided_by` and `basis` (the digest of the receipt the decision was made on). |
 
 A brief's `outcome` in the in-repo form `REQ-<slug>` is qualified with the brief's own cell and
 repository. A cross-repo alias (`<alias>:REQ-<slug>`) names a register the offline snapshot cannot
@@ -62,10 +62,16 @@ refused as a snapshot error.
 ## 4. A projection, never a veto
 
 The receipt's prerequisites replace the architecture-only line with a product-assessed scope line
-and add a `product:` line for every mismatch without a disposition in force, for every disposition
-in force, and for every coverage gap. A gap that carries a disposition in force (an `unbound` or
-`undiscovered` assessment, §5) gets one line that names both the decision and the gap, for example
-`product: continue: <subject> <outcome> (secondary, undiscovered) current r1 (decided by <role>)`. These lines inform the deciding role. They gate nothing:
+and add `product:` lines. A mismatch gets one line: the decision when a disposition is in force
+for it, otherwise a line saying it needs one. An `unbound` or `undiscovered` gap with a
+disposition in force gets one line that names both the decision and the gap, for example
+`product: continue: <subject> <outcome> (secondary, undiscovered) current r1 (decided by <role>)`.
+Every other coverage gap gets its plain gap line. An `aligned` or `not-applicable` assessment
+gets no line. A disposition is keyed on its revision, not on the state it was made on (§5), so it
+can stay in force after its assessment becomes `aligned` or a gap of another kind, such as
+`approval-unavailable`. That disposition is kept in `dispositions[]`, but no line names it: an
+aligned assessment prints no line, and the other gap prints only its plain gap line. These lines
+inform the deciding role. They gate nothing:
 no product result changes a lifecycle, an impact, the next act or a recheck outcome, and a stale
 product binding is never a veto.
 
@@ -87,6 +93,14 @@ A disposition is recorded with `statusgen context dispose`. It is refused with:
 A disposition is in force only for the revision it names. When the current target moves on,
 the earlier disposition stays as history and the mismatch or gap is open again. `stop` is a
 recorded decision, not a cancellation.
+
+A disposition is keyed on its subject, outcome and expected revision. It records no relation,
+coverage or bound revision, so it covers every state of that subject and outcome at that
+revision, not only the state it was made on. A decision recorded on an `unbound` gap stays in
+force when the brief later binds to another revision and the assessment becomes a mismatch, and
+the mismatch line then names that decision (§4). The reverse also holds. To decide the new state
+again, the deciding role records another disposition. The latest one for the subject, outcome
+and revision is in force.
 
 A carried disposition is checked again whenever a receipt is decoded or rechecked: one whose
 `decided_by` is not the receipt's deciding role is refused as `disposition-scope`. A recheck whose

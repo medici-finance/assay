@@ -379,6 +379,93 @@ func TestProductGapDecisionProjected(t *testing.T) {
 	}
 }
 
+// linesFor are the product prerequisite lines that name subject and outcome.
+func linesFor(lines []string, subject, outcome string) []string {
+	var out []string
+	for _, l := range lines {
+		if strings.HasPrefix(l, "product: ") && strings.Contains(l, " "+subject+" "+outcome+" ") {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// A disposition stays in force on an aligned or approval-unavailable
+// assessment, held in the product section, but no prerequisite line names the
+// decision: an aligned assessment prints no line and an approval-unavailable
+// one prints only its plain gap line.
+func TestProductInForceDecisionUnprojected(t *testing.T) {
+	adapted := func(t *testing.T) (*Handoff, fstest.MapFS) {
+		t.Helper()
+		m := productJourney(t, productTarget(productOutcome, "r1", ProductApproved), productTarget(productOutcome, "r2", ProductApproved))
+		h := discover(t, snap(t, m, Limits{}))
+		out, err := Dispose(h, ProductDisposition{Subject: idA04, Outcome: productOutcome, ExpectedRevision: "r2",
+			Decision: DecisionAdapt, Rationale: "adapt to r2", DecidedBy: h.Readiness.DecidingRole, Basis: h.Digest()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out, m
+	}
+	check := func(t *testing.T, rc *RecheckResult, result, coverage string, want []string) {
+		t.Helper()
+		a := wantAssessment(t, rc.Receipt, idA04, productOutcome, RelationPrimary, result, coverage)
+		if deref(a.Current) != "r2" {
+			t.Errorf("current %q, want r2", deref(a.Current))
+		}
+		d := rc.Receipt.Product.effective(*a)
+		if d == nil || d.Decision != DecisionAdapt || d.ExpectedRevision != "r2" {
+			t.Errorf("disposition in force %+v, want the adapt at r2 carried and in force", d)
+		}
+		if got := linesFor(rc.Receipt.Readiness.Prerequisites, idA04, productOutcome); !reflect.DeepEqual(got, want) {
+			t.Errorf("lines for %s %s: %q, want exactly %q", idA04, productOutcome, got, want)
+		}
+	}
+
+	t.Run("aligned", func(t *testing.T) {
+		out, m := adapted(t)
+		replaceIn(t, m, fileA04, "outcome-revision: r1\n", "outcome-revision: r2\n")
+		rc, err := Recheck(out, snap(t, m, Limits{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		check(t, rc, ResultAligned, CoverageCovered, nil)
+	})
+	t.Run("approval-unavailable", func(t *testing.T) {
+		out, m := adapted(t)
+		setProductTargets(t, m, productTarget(productOutcome, "r1", ProductApproved), productTarget(productOutcome, "r2", ProductApproved), productTarget(productOutcome, "r3", ProductUnavailable))
+		rc, err := Recheck(out, snap(t, m, Limits{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		check(t, rc, ResultUnknown, CoverageApprovalUnavailable, []string{"product: unknown: " + idA04 + " " + productOutcome + " (primary): approval-unavailable"})
+	})
+}
+
+// A decision covers every state of its subject and outcome at the revision it
+// names: a continue recorded on an unbound gap stays in force, and is shown,
+// once the brief binds to another revision and the assessment is a mismatch.
+func TestProductDecisionCarriesAcrossStates(t *testing.T) {
+	m := productJourney(t, productTarget(productOutcome, "r1", ProductApproved))
+	replaceIn(t, m, fileA04, "outcome-revision: r1\n", "")
+	h := discover(t, snap(t, m, Limits{}))
+	wantAssessment(t, h, idA04, productOutcome, RelationPrimary, ResultUnknown, CoverageUnbound)
+	out, err := Dispose(h, ProductDisposition{Subject: idA04, Outcome: productOutcome, ExpectedRevision: "r1",
+		Decision: DecisionContinue, Rationale: "unbound is fine for now", DecidedBy: h.Readiness.DecidingRole, Basis: h.Digest()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replaceIn(t, m, fileA04, "outcome: REQ-nightly-export\n", "outcome: REQ-nightly-export\noutcome-revision: r0\n")
+	rc, err := Recheck(out, snap(t, m, Limits{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAssessment(t, rc.Receipt, idA04, productOutcome, RelationPrimary, ResultMismatch, CoverageCovered)
+	want := []string{"product: continue: " + idA04 + " " + productOutcome + " bound r0, current r1 (decided by " + rc.Receipt.Readiness.DecidingRole + ")"}
+	if got := linesFor(rc.Receipt.Readiness.Prerequisites, idA04, productOutcome); !reflect.DeepEqual(got, want) {
+		t.Errorf("lines for %s %s: %q, want the gap decision carried onto the mismatch %q", idA04, productOutcome, got, want)
+	}
+}
+
 // A snapshot that lists one product relationship twice, in either spelling of
 // the subject, is refused as a snapshot error.
 func TestProductSnapshotRelationshipListedTwice(t *testing.T) {

@@ -9,7 +9,7 @@ brief author need answered before a plan moves:
 - **recheck**: does a prior receipt still hold against a newer snapshot?
 - **check**: are the amendment obligations safe to apply?
 - **dispose**: record a continue, adapt or stop decision on a product-binding
-  mismatch (statusgen/23).
+  mismatch, or on an unbound or undiscovered gap (statusgen/23).
 
 The record shapes are owned by statusgen/19: [`spec/context-handoff-v1.md`](../spec/context-handoff-v1.md),
 [`schemas/context-handoff-v1.json`](../schemas/context-handoff-v1.json) and
@@ -188,7 +188,11 @@ is not the receipt's digest or `--expected-revision` is not the current
 approved target, and with `disposition-scope` when there is nothing to decide
 or `--by` is not the receipt's deciding role. A decision on an unbound or
 undiscovered gap is projected as one prerequisite line naming the decision and
-the gap. Every command that reads a v3 receipt refuses one carrying a
+the gap. A decision covers every state of its subject and outcome at the
+revision it names, so it stays in force if that assessment later becomes a
+mismatch, aligned, or another kind of gap. On a mismatch its line names the
+decision. On an aligned assessment or another kind of gap, no line names it,
+although the receipt still records it. Every command that reads a v3 receipt refuses one carrying a
 disposition from another role.
 
 - `--snapshot` is required.

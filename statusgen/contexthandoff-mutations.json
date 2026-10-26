@@ -1,5 +1,5 @@
 {
-  "test": "go test ./contexthandoff/ . -run '^(TestContextResolverWithheldConsumers|TestContextRecheckUnrelatedEdit|TestContextRecheckNewConsumerOutsideReadSet|TestContextMissingInputScoped|TestContextAmendmentPreservesDatedSources|TestContextActiveWorkerRefusesSilentRebind|TestContextCompetingProposals|TestContextDeliveredBriefRoutesFollowOn|TestContextRecheckTruncatedCoverageHolds|TestContextCLITruncatedCoverageHolds|TestContextDuplicateBriefIDVisible|TestContextCLIDiscoverRoundTrip|TestContextArchitectureCoverageNotProductAlignment|TestPickupContextRecheck|TestProductBindingIndependentTargets|TestProductBindingApprovalCoverage|TestProductBindingCheckpointFlow|TestProductGapDecisionProjected|TestProductSnapshotRelationshipListedTwice|TestProductCarriedDispositionRole|TestProductAssessmentCurrentIsListedTarget)$' -count=1 -timeout 300s",
+  "test": "go test ./contexthandoff/ . -run '^(TestContextResolverWithheldConsumers|TestContextRecheckUnrelatedEdit|TestContextRecheckNewConsumerOutsideReadSet|TestContextMissingInputScoped|TestContextAmendmentPreservesDatedSources|TestContextActiveWorkerRefusesSilentRebind|TestContextCompetingProposals|TestContextDeliveredBriefRoutesFollowOn|TestContextRecheckTruncatedCoverageHolds|TestContextCLITruncatedCoverageHolds|TestContextDuplicateBriefIDVisible|TestContextCLIDiscoverRoundTrip|TestContextArchitectureCoverageNotProductAlignment|TestPickupContextRecheck|TestProductBindingIndependentTargets|TestProductBindingApprovalCoverage|TestProductBindingCheckpointFlow|TestProductGapDecisionProjected|TestProductSnapshotRelationshipListedTwice|TestProductCarriedDispositionRole|TestProductAssessmentCurrentIsListedTarget|TestProductInForceDecisionUnprojected|TestProductDecisionCarriesAcrossStates)$' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL: claims ignored by the amendment check",
     "file": "contexthandoff/check.go",
@@ -174,6 +174,18 @@
       "file": "contexthandoff/recheck.go",
       "old": "\tif prior.Product != nil && len(prior.Product.Dispositions) > 0 && prior.Readiness.DecidingRole != fresh.Readiness.DecidingRole {\n",
       "new": "\tif prior.Product != nil && len(prior.Product.Dispositions) > 0 && false {\n"
+    },
+    {
+      "name": "row23-10-any-gap-decision-projected",
+      "file": "contexthandoff/product.go",
+      "old": "\t\t\tif d := pr.effective(a); d != nil && (a.Coverage == CoverageUnbound || a.Coverage == CoverageUndiscovered) {\n",
+      "new": "\t\t\tif d := pr.effective(a); d != nil {\n"
+    },
+    {
+      "name": "row23-11-aligned-decision-projected",
+      "file": "contexthandoff/product.go",
+      "old": "\t\tcase ResultMismatch:\n\t\t\tif d := pr.effective(a); d != nil {\n",
+      "new": "\t\tcase ResultAligned:\n\t\t\tif d := pr.effective(a); d != nil {\n\t\t\t\tout = append(out, productLinePrefix+d.Decision+\": \"+a.Subject+\" \"+o+\" current \"+*a.Current+\" (decided by \"+d.DecidedBy+\")\")\n\t\t\t}\n\t\tcase ResultMismatch:\n\t\t\tif d := pr.effective(a); d != nil {\n"
     }
   ]
 }

@@ -92,7 +92,8 @@ recheck   compare a prior receipt with a new snapshot: preserved, reconcile or h
 check     check a handoff's amendment obligations (and manifest, patches) against
           the snapshot
 dispose   record a continue, adapt or stop decision on a product-binding
-          mismatch in a context-handoff-v3 receipt
+          mismatch, or an unbound or undiscovered gap, in a
+          context-handoff-v3 receipt
 
 Every verb reads only --snapshot DIR (dispose reads none) and the files it
 names. A snapshot with no product section gives an architecture-only receipt:
@@ -441,7 +442,7 @@ cancellation, patches a delivered brief, or contradicts an approved rival.`,
 func newContextDisposeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dispose RECEIPT --subject ID --outcome REF --decision continue|adapt|stop --expected-revision REV --rationale TEXT --by ROLE --basis DIGEST [--json]",
-		Short: "record a continue, adapt or stop decision on a product-binding mismatch",
+		Short: "record a continue, adapt or stop decision on a product-binding mismatch or an unbound or undiscovered gap",
 		Long: `dispose reads RECEIPT (a context-handoff-v3 receipt) and writes it back to
 stdout with one product disposition appended. --basis is the digest of the
 receipt the decision was made on and --expected-revision the current approved

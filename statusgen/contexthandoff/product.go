@@ -540,11 +540,14 @@ func (pr *Product) effective(a ProductAssessment) *ProductDisposition {
 	return nil
 }
 
-// productLines are the readiness prerequisites a product section implies: a
-// mismatch with no disposition in force, every decision in force, and every
+// productLines are the readiness prerequisites a product section implies: one
+// line per mismatch (its decision in force, or that it needs one) and one per
 // coverage gap. A decided gap (one Dispose accepts: unbound or undiscovered
 // with a current target) gets one line naming both its decision and its gap.
-// They inform the deciding role; they gate nothing.
+// A decision still in force on an aligned assessment, or on a gap of another
+// kind, is kept in the section but named by no line: aligned prints nothing
+// and the other gap prints its plain gap line. They inform the deciding role;
+// they gate nothing.
 func productLines(pr *Product) []string {
 	var out []string
 	for _, a := range pr.Assessments {
