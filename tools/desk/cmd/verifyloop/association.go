@@ -9,6 +9,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/runnercmds"
 )
 
 // Planning has a pass-local reader. Dispatch deliberately keeps the original
@@ -148,4 +149,20 @@ func verifierPromptPlan(text string) string {
 		return text[:at[0]]
 	}
 	return text
+}
+
+// itemWorldSpec reads what one item's run needs from its brief: the declared
+// sibling checkouts and the pinned instruments its runner-executed Verify rows
+// call. It reads the brief already materialized under root and nothing else.
+func itemWorldSpec(it loopengine.Item, root string) (deskkit.WorldSpec, error) {
+	spec := deskkit.WorldSpec{Root: root}
+	if strings.TrimSpace(it.BriefPath) == "" {
+		return spec, fmt.Errorf("item %s names no brief to read prerequisites from", it.ID)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, it.BriefPath))
+	if err != nil {
+		return spec, fmt.Errorf("cannot read the brief's prerequisites: %w", err)
+	}
+	// One derivation, shared with the dispatcher's prepare step.
+	return deskkit.WorldSpecFromBrief(root, string(raw), runnercmds.Commands(string(raw))), nil
 }

@@ -3,15 +3,15 @@
   "control": {
     "name": "CONTROL — make the per-platform pin fallback unreachable (the defect, restated as a mutation)",
     "file": "internal/deskkit/desktoolspin.go",
-    "old": "\tfor _, name := range []string{DeskToolsArtifact, DeskToolsPlatformArtifact(platform)} {",
-    "new": "\tfor _, name := range []string{DeskToolsArtifact} {"
+    "old": "\tfor _, name := range []string{deskToolsName, DeskToolsPlatformArtifact(platform)} {",
+    "new": "\tfor _, name := range []string{deskToolsName} {"
   },
   "mutations": [
     {
       "name": "let the per-platform line WIN over a bare line that is present (an existing consumer's verdict changes under it)",
       "file": "internal/deskkit/desktoolspin.go",
-      "old": "\tfor _, name := range []string{DeskToolsArtifact, DeskToolsPlatformArtifact(platform)} {",
-      "new": "\tfor _, name := range []string{DeskToolsPlatformArtifact(platform), DeskToolsArtifact} {"
+      "old": "\tfor _, name := range []string{deskToolsName, DeskToolsPlatformArtifact(platform)} {",
+      "new": "\tfor _, name := range []string{DeskToolsPlatformArtifact(platform), deskToolsName} {"
     },
     {
       "name": "ask for the artifact PREFIX instead of the exact per-platform name (collapses the two pin lines into one match)",

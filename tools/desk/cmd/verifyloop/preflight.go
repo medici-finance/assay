@@ -72,12 +72,19 @@ func preflightRunnerTable(getenv func(string) string) error {
 // could-not-run refusal, or nil when every check is passing. It is a package var ONLY as a
 // test seam (a fixture root has no App credential to mint); production is the real
 // deskkit preflight, unchanged from what the single-root boot has always run.
+//
+// The same run admits the root's run-bound prerequisite record (example-stream/50) as a
+// seventh check: a root whose source, desk-tools pin, runtime or App capability
+// evidence cannot be read or contradicts its pin is skipped with that exact reason, and
+// a green root's record is kept so every item queued from it is admitted on top of it.
 var preflightRoot = func(root string) error {
 	rep := deskkit.PreflightRequest{
 		Role:    verifyloopRole,
 		Root:    root,
 		Landing: deskkit.Landing{Dir: root, Remote: "origin"},
+		World:   &deskkit.WorldSpec{},
 	}.Run()
+	recordRootWorld(root, rep.World)
 	return rep.Err()
 }
 

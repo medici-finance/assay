@@ -42,6 +42,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -125,6 +126,10 @@ const (
 	CheckCommitIdentity = "commit-identity"
 	CheckSiblings       = "sibling-checkouts"
 	CheckAmbientID      = "ambient-identity"
+	// CheckRunWorld is the run-bound prerequisite record (example-stream/50). It is
+	// appended only when a caller asks for one (PreflightRequest.World), so the
+	// six boot checks above keep their meaning for every other desk.
+	CheckRunWorld = "run-prerequisites"
 )
 
 // Check is one envelope check's result.
@@ -184,6 +189,10 @@ func notApplicable(name, detail, remediation, refs string) Check {
 type PreflightReport struct {
 	Role   string
 	Checks []Check
+	// World is the run-bound prerequisite record admitted with this envelope,
+	// present only when the request asked for one and it was admitted ready. A
+	// held or unreadable record leaves it nil and reddens CheckRunWorld instead.
+	World *RunWorld
 }
 
 // Green reports whether the envelope permits the pass to proceed: every check is
@@ -411,6 +420,17 @@ type PreflightProbes struct {
 	// and the check is red. detail names what was found. An error is
 	// could-not-check.
 	CredHelperMatchesApp func(l Landing, appTokenPath string) (matches bool, detail string, err error)
+	// Revision returns the materialized local revision (HEAD) of a checkout. It
+	// reads the local object store only; it never fetches.
+	Revision func(dir string) (string, error)
+	// Instrument resolves a pinned instrument on PATH and returns its path and
+	// the sha256 of its bytes. A missing instrument is an error.
+	Instrument func(name string) (path, digest string, err error)
+	// RunningTool returns the desk-tools release tag this process runs as
+	// ("dev" for an unstamped build).
+	RunningTool func() string
+	// Runtime returns this host's <GOOS>-<GOARCH>.
+	Runtime func() string
 }
 
 // SiblingReq is one sibling checkout a queued brief declares it needs, with the
@@ -441,6 +461,11 @@ type PreflightRequest struct {
 	// ("43"), file name ("brief-43-x.md"), or full path.
 	ClaimedBrief string
 	Probes       PreflightProbes
+	// World, when non-nil, asks Run to admit the run-bound prerequisite record
+	// for Root as a seventh check (CheckRunWorld). Its App capability evidence is
+	// the app-scopes check this same Run computed; a caller-supplied Capability
+	// is ignored, so a boot cannot vouch for a capability it did not read.
+	World *WorldSpec
 }
 
 // Preflight runs the six envelope checks for a role against the current
@@ -494,14 +519,25 @@ func (req PreflightRequest) Run() PreflightReport {
 	forge := p.ResolveForgeKind(repo)
 
 	tokenPath, mint := checkColdMint(p, role, repo, forge)
+	scopes := checkAppScopes(p, role, tokenPath, forge)
 	rep.Checks = append(rep.Checks,
 		mint,
-		checkAppScopes(p, role, tokenPath, forge),
+		scopes,
 		checkWriteTransport(p, l, role, repo),
 		checkCommitIdentity(p, role, l.Dir),
 		checkSiblings(p, root, req.ClaimedBrief),
 		checkAmbientIdentity(p, l, tokenPath, forge),
 	)
+	if req.World != nil {
+		spec := *req.World
+		spec.Root, spec.Repo, spec.Capability, spec.Base = root, repo, scopes, nil
+		adm := AdmitWorld(spec, p)
+		rep.Checks = append(rep.Checks, adm.Check())
+		if adm.Ready() {
+			w := adm.World
+			rep.World = &w
+		}
+	}
 	return rep
 }
 
@@ -542,6 +578,18 @@ func (p PreflightProbes) withDefaults() PreflightProbes {
 	}
 	if p.CredHelperMatchesApp == nil {
 		p.CredHelperMatchesApp = credHelperMatchesAppProbe
+	}
+	if p.Revision == nil {
+		p.Revision = revisionProbe
+	}
+	if p.Instrument == nil {
+		p.Instrument = instrumentProbe
+	}
+	if p.RunningTool == nil {
+		p.RunningTool = ReleaseTagOrDev
+	}
+	if p.Runtime == nil {
+		p.Runtime = func() string { return runtime.GOOS + "-" + runtime.GOARCH }
 	}
 	return p
 }
@@ -2008,4 +2056,530 @@ func orCurrent(s string) string {
 		return "(current branch)"
 	}
 	return s
+}
+
+// --- check 7: the run-bound prerequisite record (example-stream/50) -------------
+//
+// The six boot checks answer "can this desk operate at all". They do not say
+// whether the world ONE run will execute in is the one the run was admitted
+// against: the root's source revision, the sibling checkouts its brief
+// declares, the pinned instruments its Verify rows call, the desk-tools build
+// and host runtime, and the App capability evidence the envelope read. A verify
+// row that runs against a moved sibling or a drifted instrument spends a pass
+// and returns a result about the environment, not the code.
+//
+// AdmitWorld records those inputs from LOCAL materialized state only: local
+// HEADs, files on PATH, the pin file, and the capability check the envelope
+// already ran. It never fetches, never mints, and never probes a live service.
+// An input it cannot read is could-not-check; an input that contradicts its pin
+// is a hold. Neither is a code FAIL, and neither is the successful empty scan of
+// a brief that declares no sibling and calls no pinned instrument (Scanned 0).
+// Recheck re-observes the same record before landing, so a source, tool or
+// sibling that moved between admission and landing invalidates the run.
+
+// runWorldVersion is the RunWorld record shape. Fields are only ever added.
+const runWorldVersion = 1
+
+// RunWorld input keys. Sibling and instrument keys carry their name after the
+// prefix ("sibling:../tracker", "instrument:statusgen").
+const (
+	WorldSource     = "source"
+	WorldTool       = "tool"
+	WorldRuntime    = "runtime"
+	WorldCapability = "capability"
+	worldSibling    = "sibling:"
+	worldInstrument = "instrument:"
+)
+
+// RunWorld is one run's admitted prerequisite record.
+type RunWorld struct {
+	Version int
+	Repo    string `json:",omitempty"`
+	Root    string
+	// Inputs maps each input key to the value observed at admission.
+	Inputs map[string]string
+	// Paths maps sibling keys to the checkout path observed, so a recheck
+	// re-reads exactly what admission read. Instruments are bound by the digest
+	// of their bytes and carry no path.
+	Paths map[string]string `json:",omitempty"`
+	// Scanned counts the declared siblings and pinned instruments admitted. Zero
+	// is a successful empty scan, never could-not-check.
+	Scanned int
+}
+
+// Digest is the record's identity: a sha256 over every field that defines it.
+func (w RunWorld) Digest() string {
+	keys := make([]string, 0, len(w.Inputs))
+	for k := range w.Inputs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	fmt.Fprintf(&b, "v%d\nrepo=%s\nroot=%s\n", w.Version, w.Repo, w.Root)
+	for _, k := range keys {
+		fmt.Fprintf(&b, "%s=%s|%s\n", k, w.Inputs[k], w.Paths[k])
+	}
+	return verifierDigest([]byte(b.String()))
+}
+
+// WorldSpec is what one admission must record.
+type WorldSpec struct {
+	Root string
+	Repo string
+	// Source, when set, is the root revision the run was queued at; a root
+	// whose HEAD differs is a hold. Empty records the HEAD observed.
+	Source string
+	// Siblings are the brief's declared out-of-repo checkouts ("../name").
+	Siblings []string
+	// Instruments are the pinned programs the Verify rows call.
+	Instruments []string
+	// Capability is the App capability evidence the envelope read (the
+	// app-scopes-vs-duties check). A zero Check is could-not-check.
+	Capability Check
+	// Base, when set, is the root's admitted record. The App capability is
+	// carried from it, so an item admission never mints per row.
+	Base *RunWorld
+}
+
+// WorldAdmission is AdmitWorld's answer: the record plus one Check per input.
+type WorldAdmission struct {
+	World  RunWorld
+	Checks []Check
+}
+
+// Ready reports whether every input was read and conforms. An admission with
+// no checks is not ready.
+func (a WorldAdmission) Ready() bool {
+	if len(a.Checks) == 0 {
+		return false
+	}
+	for _, c := range a.Checks {
+		if !c.State.Passing() {
+			return false
+		}
+	}
+	return true
+}
+
+// Reason is the one-line hold reason: "environment hold: ..." when an input
+// contradicts its pin or admission, else "environment could-not-check: ...".
+// It is "" for a ready admission.
+func (a WorldAdmission) Reason() string {
+	var held, unread []string
+	for _, c := range a.Checks {
+		switch c.State {
+		case CheckedFailed:
+			held = append(held, c.Name+": "+c.Detail)
+		case CouldNotCheck:
+			unread = append(unread, c.Name+": "+c.Detail)
+		}
+	}
+	if len(a.Checks) == 0 {
+		unread = []string{"no prerequisite was read"}
+	}
+	switch {
+	case len(held) > 0:
+		return oneLine("environment hold: " + strings.Join(append(held, unread...), "; "))
+	case len(unread) > 0:
+		return oneLine("environment could-not-check: " + strings.Join(unread, "; "))
+	}
+	return ""
+}
+
+// Err maps a held or unreadable admission to could-not-run (exit 6). It is
+// never a FAIL: the run did not execute, so nothing about the code is known.
+func (a WorldAdmission) Err() error {
+	if a.Ready() {
+		return nil
+	}
+	return Unverifiable(a.Reason(), nil)
+}
+
+// Check folds the admission into the one CheckRunWorld result a preflight
+// report carries.
+func (a WorldAdmission) Check() Check {
+	const refs = "example-stream/50"
+	var failedAny, unreadAny bool
+	var fix []string
+	for _, c := range a.Checks {
+		switch c.State {
+		case CheckedFailed:
+			failedAny = true
+			fix = append(fix, c.Remediation)
+		case CouldNotCheck:
+			unreadAny = true
+			fix = append(fix, c.Remediation)
+		}
+	}
+	remedy := strings.Join(fix, "; ")
+	switch {
+	case len(a.Checks) == 0:
+		return unchecked(CheckRunWorld, "no prerequisite was read", "admit the run with a WorldSpec naming its root", refs)
+	case failedAny:
+		return failed(CheckRunWorld, a.Reason(), remedy, refs)
+	case unreadAny:
+		return unchecked(CheckRunWorld, a.Reason(), remedy, refs)
+	}
+	return clean(CheckRunWorld, fmt.Sprintf("prerequisite record %s admitted (%d declared sibling/instrument input(s))",
+		a.World.Digest()[:12], a.World.Scanned), refs)
+}
+
+// AdmitWorld records one run's prerequisites. It never returns an error: every
+// failure is a Check with a state and a remediation.
+func AdmitWorld(spec WorldSpec, probes PreflightProbes) WorldAdmission {
+	p := probes.withDefaults()
+	root := spec.Root
+	if root == "" {
+		root = "."
+	}
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	a := WorldAdmission{World: RunWorld{Version: runWorldVersion, Repo: spec.Repo, Root: root,
+		Inputs: map[string]string{}, Paths: map[string]string{}}}
+	record := func(key, value string, c Check) {
+		c.Name = key
+		if c.State.Passing() {
+			a.World.Inputs[key] = value
+		}
+		a.Checks = append(a.Checks, c)
+	}
+
+	// Source: the root's materialized HEAD.
+	if rev, err := p.Revision(root); err != nil {
+		record(WorldSource, "", unchecked("", "cannot read the root revision at "+root+": "+oneLine(err.Error()),
+			"run from a readable git checkout of the root", ""))
+	} else if want := worldSourceWant(spec); want != "" && want != rev {
+		record(WorldSource, "", failed("", "root revision "+short(rev)+" differs from the admitted "+short(want),
+			"re-admit the run at the root's current revision", ""))
+	} else {
+		record(WorldSource, rev, clean("", "root at "+short(rev), ""))
+	}
+
+	pinRoot := NearestPinRoot(root)
+	host := p.Runtime()
+	record(WorldRuntime, host, clean("", "host runtime "+host, ""))
+	tool, toolCheck := admitTool(p, pinRoot, host)
+	record(WorldTool, tool, toolCheck)
+
+	// Capability: carried from the root's admitted record, or the envelope's check.
+	switch {
+	case spec.Base != nil && spec.Base.Inputs[WorldCapability] != "":
+		record(WorldCapability, spec.Base.Inputs[WorldCapability], clean("", "carried from the root admission", ""))
+	case spec.Capability.State == CheckedFailed:
+		record(WorldCapability, "", failed("", "denied App capability: "+spec.Capability.Detail,
+			orStr(spec.Capability.Remediation, "grant the role's App the scope its duty needs"), ""))
+	case spec.Capability.State.Passing() && spec.Capability.Name != "":
+		record(WorldCapability, spec.Capability.Name+"="+spec.Capability.State.String(),
+			clean("", spec.Capability.Name+" "+spec.Capability.State.String(), ""))
+	default:
+		detail := "no App capability evidence was read"
+		if spec.Capability.Detail != "" {
+			detail += ": " + spec.Capability.Detail
+		}
+		record(WorldCapability, "", unchecked("", detail,
+			orStr(spec.Capability.Remediation, "run the envelope preflight so its app-scopes check is the capability evidence"), ""))
+	}
+
+	var roots []RootConfig
+	if len(spec.Siblings) > 0 {
+		roots, _ = p.SiblingRoots()
+	}
+	for _, rel := range dedupe(spec.Siblings) {
+		key := worldSibling + rel
+		abs := resolveSiblingPath(root, rel, roots)
+		a.World.Paths[key] = abs
+		if ok, err := p.DirExists(abs); err != nil || !ok {
+			why := "declared sibling is not materialized at " + abs
+			if err != nil {
+				why = "cannot stat declared sibling at " + abs + ": " + oneLine(err.Error())
+			}
+			record(key, "", unchecked("", why, "materialize "+rel+" locally (resolve its location via "+RootsEnv+")", ""))
+			continue
+		}
+		rev, err := p.Revision(abs)
+		if err != nil {
+			record(key, "", unchecked("", "cannot read the sibling revision at "+abs+": "+oneLine(err.Error()),
+				"make "+abs+" a readable git checkout", ""))
+			continue
+		}
+		record(key, rev, clean("", rel+" at "+short(rev), ""))
+		a.World.Scanned++
+	}
+	for _, name := range dedupe(spec.Instruments) {
+		key := worldInstrument + name
+		// An instrument is recorded by the digest of its bytes, never by where
+		// PATH found it: the same pinned bytes at another path are the same world.
+		value, _, c := admitInstrument(p, pinRoot, name, host)
+		record(key, value, c)
+		if c.State.Passing() {
+			a.World.Scanned++
+		}
+	}
+	if !a.Ready() {
+		a.World.Paths = nil
+	}
+	return a
+}
+
+// worldSourceWant is the revision an admission must find at the root ("" =
+// record what is there).
+func worldSourceWant(spec WorldSpec) string {
+	return spec.Source
+}
+
+// admitTool reads the desk-tools build against the nearest pin. No pin file,
+// or a pin file with no desk-tools line, is a source tree or a consumer that
+// does not pin the tools: the running tag is recorded, clean.
+func admitTool(p PreflightProbes, pinRoot, host string) (string, Check) {
+	running := p.RunningTool()
+	if pinRoot == "" {
+		return running, clean("", "desk-tools "+running+" (no pin file applies)", "")
+	}
+	tag, artifact, found := DeskToolsReleasePin(pinRoot, host)
+	if !found {
+		if pinnedForOtherHost(pinRoot, deskToolsName) {
+			return "", failed("", "unsupported runtime: no desk-tools pin for "+host+" in "+filepath.Join(pinRoot, AssayVersionsFile),
+				"run the verifier on a pinned platform, or pin desk-tools-"+host, "")
+		}
+		return running, clean("", "desk-tools "+running+" (no desk-tools pin line)", "")
+	}
+	if running == devRelease {
+		return "", unchecked("", "unstamped desk-tools build cannot be matched to the "+artifact+" pin "+tag,
+			"run the pinned desk-tools release ("+tag+")", "")
+	}
+	if strings.TrimPrefix(running, DeskToolsArtifact+"/") != strings.TrimPrefix(tag, DeskToolsArtifact+"/") {
+		return "", failed("", "pin drift: desk-tools "+running+" runs but "+artifact+" pins "+tag,
+			"install the pinned desk-tools release ("+tag+")", "")
+	}
+	return running, clean("", "desk-tools "+running+" matches "+artifact, "")
+}
+
+// admitInstrument resolves one pinned instrument and compares its bytes to the
+// host-platform pin line. The bare line names the CI artifact, so it is used
+// only when no host line exists, and a mismatch then is could-not-check.
+func admitInstrument(p PreflightProbes, pinRoot, name, host string) (value, path string, c Check) {
+	path, digest, err := p.Instrument(name)
+	if err != nil {
+		return "", "", unchecked("", "instrument "+name+" is not available: "+oneLine(err.Error()),
+			"install the pinned "+name+" on PATH", "")
+	}
+	value = "sha256:" + digest
+	if pinRoot == "" {
+		return value, path, clean("", name+" at "+path+" (no pin file applies)", "")
+	}
+	raw, rerr := os.ReadFile(filepath.Join(pinRoot, AssayVersionsFile))
+	if rerr != nil {
+		return "", path, unchecked("", "cannot read the "+name+" pin: "+oneLine(rerr.Error()), "make the pin file readable", "")
+	}
+	for _, line := range hostAssets(name, host) {
+		tag, sha, found, lerr := lookupPin(raw, pinRoot, line)
+		if lerr != nil {
+			return "", path, unchecked("", oneLine(lerr.Error()), "repair the "+line+" pin line", "")
+		}
+		if found {
+			if !strings.EqualFold(sha, digest) {
+				return "", path, failed("", "pin drift: "+path+" is not the "+line+" "+tag+" pin",
+					"install the pinned "+name+" "+tag+" (never a local build)", "")
+			}
+			return value, path, clean("", name+" matches "+line+" "+tag, "")
+		}
+	}
+	tag, sha, found, lerr := lookupPin(raw, pinRoot, name)
+	switch {
+	case lerr != nil:
+		return "", path, unchecked("", oneLine(lerr.Error()), "repair the "+name+" pin line", "")
+	case found && strings.EqualFold(sha, digest):
+		return value, path, clean("", name+" matches the bare "+name+" "+tag+" pin", "")
+	case found:
+		return "", path, unchecked("", "no "+name+" pin line for "+host+"; the bare line names another build",
+			"pin "+name+"-"+host, "")
+	case pinnedForOtherHost(pinRoot, name):
+		return "", path, failed("", "unsupported runtime: no "+name+" pin for "+host,
+			"run the verifier on a pinned platform, or pin "+name+"-"+host, "")
+	}
+	return value, path, clean("", name+" at "+path+" (not pinned)", "")
+}
+
+// hostAssets is HostPlatformAssets for the runtime the admission observed, so
+// a record names the platform its probe read rather than the build's.
+func hostAssets(artifact, host string) []string {
+	base := artifact + "-" + host
+	if strings.HasPrefix(host, "windows-") {
+		return []string{base + ".exe", base}
+	}
+	return []string{base}
+}
+
+// pinnedForOtherHost reports whether the pin file carries artifact lines for
+// some platform, so the absence of this host's line is an unsupported runtime.
+func pinnedForOtherHost(pinRoot, artifact string) bool {
+	raw, err := os.ReadFile(filepath.Join(pinRoot, AssayVersionsFile))
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		f := strings.Fields(line)
+		if len(f) >= 3 && strings.HasPrefix(f[0], artifact+"-") && !strings.HasSuffix(f[0], SourcePinSuffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// WorldInstruments returns the programs at command position in commands that
+// the root's nearest pin file pins, sorted. An unpinned program is not an
+// instrument: its absence is the row's own result, not the environment's.
+func WorldInstruments(root string, commands []string) []string {
+	pinRoot := NearestPinRoot(root)
+	if pinRoot == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(filepath.Join(pinRoot, AssayVersionsFile))
+	if err != nil {
+		return nil
+	}
+	pinned := map[string]bool{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if f := strings.Fields(line); len(f) >= 3 && !strings.HasPrefix(f[0], "#") {
+			pinned[f[0]] = true
+		}
+	}
+	isPinned := func(name string) bool {
+		if pinned[name] {
+			return true
+		}
+		for a := range pinned {
+			if strings.HasPrefix(a, name+"-") && !strings.HasSuffix(a, SourcePinSuffix) {
+				return true
+			}
+		}
+		return false
+	}
+	var out []string
+	for _, cmd := range commands {
+		for _, seg := range commandSegments.Split(cmd, -1) {
+			f := strings.Fields(strings.Trim(strings.TrimSpace(seg), "`()"))
+			for len(f) > 0 && strings.Contains(f[0], "=") {
+				f = f[1:] // leading VAR=value assignments
+			}
+			if len(f) == 0 {
+				continue
+			}
+			name := filepath.Base(strings.Trim(f[0], "`()"))
+			if name != "" && isPinned(name) {
+				out = append(out, name)
+			}
+		}
+	}
+	return dedupe(out)
+}
+
+var commandSegments = regexp.MustCompile(`&&|\|\||[;|]`)
+
+// DeclaredSiblings returns the ../<name> checkouts a brief's `out-of-repo
+// files:` declaration names.
+func DeclaredSiblings(brief string) []string { return declaredSiblings(brief) }
+
+// Recheck re-observes the record's inputs from the same local paths and
+// returns nil only when every one still holds its admitted value. The App
+// capability is carried, never re-minted. A changed input refuses (the run is
+// invalid and must be re-admitted); an unreadable one is could-not-check.
+func (w RunWorld) Recheck(probes PreflightProbes) error {
+	if w.Version != runWorldVersion || len(w.Inputs) == 0 {
+		return Unverifiable("environment could-not-check: the prerequisite record is unreadable", nil)
+	}
+	p := probes.withDefaults()
+	var changed, unread []string
+	compare := func(key, got string, err error) {
+		switch {
+		case err != nil:
+			unread = append(unread, key+": "+oneLine(err.Error()))
+		case got != w.Inputs[key]:
+			changed = append(changed, key)
+		}
+	}
+	keys := make([]string, 0, len(w.Inputs))
+	for k := range w.Inputs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		switch {
+		case key == WorldSource:
+			rev, err := p.Revision(w.Root)
+			compare(key, rev, err)
+		case key == WorldTool:
+			compare(key, p.RunningTool(), nil)
+		case key == WorldRuntime:
+			compare(key, p.Runtime(), nil)
+		case key == WorldCapability:
+		case strings.HasPrefix(key, worldSibling):
+			rev, err := p.Revision(w.Paths[key])
+			compare(key, rev, err)
+		case strings.HasPrefix(key, worldInstrument):
+			_, digest, err := p.Instrument(strings.TrimPrefix(key, worldInstrument))
+			compare(key, "sha256:"+digest, err)
+		default:
+			unread = append(unread, key+": unknown prerequisite key")
+		}
+	}
+	if len(changed) > 0 {
+		return Refused("environment changed since admission: " + strings.Join(changed, ", ") +
+			" — the run is invalid; re-admit it before landing")
+	}
+	if len(unread) > 0 {
+		return Unverifiable("environment could-not-check since admission: "+strings.Join(unread, "; "), nil)
+	}
+	return nil
+}
+
+func revisionProbe(dir string) (string, error) {
+	if dir == "" {
+		return "", errors.New("no checkout path")
+	}
+	out, err := verifierGitBytes(dir, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func instrumentProbe(name string) (string, string, error) {
+	path, err := exec.LookPath(name)
+	if err != nil {
+		return "", "", err
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return path, "", err
+	}
+	return path, verifierDigest(b), nil
+}
+
+func short(rev string) string {
+	if len(rev) > 12 {
+		return rev[:12]
+	}
+	return rev
+}
+
+func orStr(s, def string) string {
+	if strings.TrimSpace(s) == "" {
+		return def
+	}
+	return s
+}
+
+func dedupe(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range in {
+		if s = strings.TrimSpace(s); s != "" && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
