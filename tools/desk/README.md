@@ -2744,6 +2744,16 @@ deskwt role-init <role> [--repo-root <checkout>] [--session <s>] [--no-fetch]   
 deskwt role-clean <role> [--repo-root <checkout>] [--session <s>]              # …and its teardown
 ```
 
+`deskwt` generates its help with Cobra: `deskwt --help`, `deskwt <verb> --help` and
+`deskwt help maintain objects` print to stdout, exit 0, before any configuration, roster,
+credential or network read, lock or child process. Every flag above keeps its spelling,
+default and single-dash form. A usage error (unknown verb or flag, bad value, wrong number
+of positionals) now exits 2 before the kill switch and writes no audit row; domain refusals
+keep exit 5. Every verb also accepts the eight shared persistent `--perf-*` attribution
+flags, which fall back to `ASSAY_PERF_*` (and `DESK_LOOP`) when unset. The
+[compatibility page](../../docs/deskwt-cli-compat.md) pins the baseline
+inventory and lists every observable change.
+
 - **`role-init`** is the isolate-first step every desk role takes before `deskboot`: from a
   FRESHLY FETCHED `origin/main` of the checkout it is pointed at (`--repo-root <checkout>`, else
   the cwd) it creates the session-scoped worktree `tracker-<loop>-<session>` under the
