@@ -34,8 +34,8 @@
     {
       "name": "misplaced risk: risk-key matching becomes case-sensitive",
       "file": "briefdoc/document.go",
-      "old": "\tk = strings.ToLower(strings.TrimSpace(k))\n",
-      "new": "\tk = strings.TrimSpace(k)\n"
+      "old": "\t\tif strings.EqualFold(k, r) {",
+      "new": "\t\tif k == r {"
     },
     {
       "name": "misplaced risk: a top-level risk answer outside the risk mapping is no longer refused",
@@ -102,6 +102,66 @@
       "file": "briefdoc/document.go",
       "old": "\tcase []interface{}:\n\t\tfor _, child := range x {\n\t\t\tif found, ok := invisibleKey(child); ok {",
       "new": "\tcase []string:\n\t\tfor _, child := range x {\n\t\t\tif found, ok := invisibleKey(child); ok {"
+    },
+    {
+      "name": "key folding: risk-key matching lower-cases instead of case folding",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif strings.EqualFold(k, r) {",
+      "new": "\t\tif strings.ToLower(k) == r {"
+    },
+    {
+      "name": "key folding: risk keys are compared with their decoration kept",
+      "file": "briefdoc/document.go",
+      "old": "\tk = keyLetters(k)\n",
+      "new": "\tk = strings.TrimSpace(k)\n"
+    },
+    {
+      "name": "policy keys: a decorated gate or exec-tier key is ignored instead of refused",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif decoratedPolicyKey(k) {",
+      "new": "\t\tif false && decoratedPolicyKey(k) {"
+    },
+    {
+      "name": "blank runes: non-ASCII space separators are no longer treated as invisible",
+      "file": "briefdoc/document.go",
+      "old": "\treturn r != ' ' && unicode.Is(unicode.Zs, r) || r == '\\u2800'",
+      "new": "\treturn r == '\\u2800'"
+    },
+    {
+      "name": "blank runes: the braille blank pattern is no longer treated as invisible",
+      "file": "briefdoc/document.go",
+      "old": "\treturn r != ' ' && unicode.Is(unicode.Zs, r) || r == '\\u2800'",
+      "new": "\treturn r != ' ' && unicode.Is(unicode.Zs, r)"
+    },
+    {
+      "name": "blank runes: a key led by a combining mark is accepted",
+      "file": "briefdoc/document.go",
+      "old": "\tif r, _ := utf8.DecodeRuneInString(k); unicode.Is(unicode.M, r) {",
+      "new": "\tif r, _ := utf8.DecodeRuneInString(k); false && unicode.Is(unicode.M, r) {"
+    },
+    {
+      "name": "text backstop: a text risk answer the parse does not give is accepted",
+      "file": "briefdoc/document.go",
+      "old": "\t\tif textRiskAnswer[k].MatchString(block) && !*answers[k] {",
+      "new": "\t\tif false && textRiskAnswer[k].MatchString(block) && !*answers[k] {"
+    },
+    {
+      "name": "text backstop: skipped when the block has no risk mapping",
+      "file": "briefdoc/document.go",
+      "old": "\t\treturn f, textRiskBackstop(block, f.Risk)\n\t}",
+      "new": "\t\treturn f, nil\n\t}"
+    },
+    {
+      "name": "text backstop: skipped when the block has a risk mapping",
+      "file": "briefdoc/document.go",
+      "old": "\t}\n\treturn f, textRiskBackstop(block, f.Risk)\n}",
+      "new": "\t}\n\treturn f, nil\n}"
+    },
+    {
+      "name": "text backstop: matching becomes case-sensitive",
+      "file": "briefdoc/document.go",
+      "old": "regexp.MustCompile(`(?i)` + regexp.QuoteMeta(k)",
+      "new": "regexp.MustCompile(regexp.QuoteMeta(k)"
     }
   ]
 }

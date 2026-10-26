@@ -165,3 +165,93 @@ func TestFormatCharacterKeysRefused(t *testing.T) {
 		}
 	}
 }
+
+// blankDecoratedRiskKeys are frontmatter blocks whose extra key, or `---`
+// line, carries a risk answer behind a printing rune that renders blank, a
+// leading combining mark, a non-ASCII space, or a case-fold variant letter.
+// The earlier "<risk question>: yes" classifier reads each as risk-bearing.
+var blankDecoratedRiskKeys = []string{
+	"gate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\u2800customer: yes",
+	"gate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\u2800regulatory: yes",
+	"gate: model\nmeta:\n  \u2800customer: yes",
+	"gate: model\nmeta:\n  - \u2800customer: yes",
+	"gate: model\nmeta: {\u2800customer: yes}",
+	"gate: model\n\u2800--- {customer: yes}",
+	"gate: model\n\u0301customer: yes",
+	"gate: model\nmeta:\n  \u0301customer: yes",
+	"gate: model\n\u00a0--- {customer: yes}",
+	"gate: model\n\u3000--- {customer: yes}",
+	"gate: model\n\u2003--- {customer: yes}",
+	"gate: model\n\u202f--- {customer: yes}",
+	"gate: model\n\u1680--- {customer: yes}",
+	"gate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\ncu\u017ftomer: yes",
+	"gate: model\nmeta:\n  cu\u017ftomer: yes",
+}
+
+// TestBlankDecoratedRiskKeysRefused pins that each blank-decorated risk answer
+// makes the frontmatter unreadable, so every desk reader treats the brief as
+// risk-bearing.
+func TestBlankDecoratedRiskKeysRefused(t *testing.T) {
+	for _, input := range blankDecoratedRiskKeys {
+		if f, e := ParseFields(input); e == nil {
+			t.Errorf("blank-decorated risk key accepted: %q read as %+v", input, f)
+		}
+	}
+}
+
+// TestKeyChecksIndependent pins each key check on a shape that only it
+// refuses: none of these carries a "<risk question>: yes" text, so the text
+// backstop does not fire.
+func TestKeyChecksIndependent(t *testing.T) {
+	for _, input := range []string{
+		// non-printing runes in an ordinary key, at each depth and container
+		"gate: model\nmeta:\n  ti\u200btle: x",
+		"gate: model\nmeta:\n  ti\ue000tle: x",
+		"gate: model\nmeta:\n  title\ufe0f: x",
+		"gate: model\nmeta:\n  ti\u2800tle: x",
+		"gate: model\nmeta:\n  ti\u3000tle: x",
+		"gate: model\nmeta:\n  \u0301title: x",
+		"gate: model\nmeta:\n  inner:\n    ti\u200btle: x",
+		"gate: model\nmeta:\n  1: one\n  ti\u200btle: x",
+		"gate: model\nmeta:\n  - ti\u200btle: x",
+		// decorated or case-variant risk keys answered no
+		"gate: model\nmeta:\n  \"[customer]\": no",
+		"gate: model\nmeta:\n  CUSTOMER: no",
+		"gate: model\nmeta:\n  cu\u017ftomer: no",
+		"gate: model\nmeta:\n  - customer: no",
+		"gate: model\ncustomer: no",
+		// a top-level key that reads as a policy key but is not spelled as one
+		"gate: model\nGate: human",
+		"gate: model\n(gate): human",
+		"exec-tier: any\nExec-Tier: strong",
+	} {
+		if f, e := ParseFields(input); e == nil {
+			t.Errorf("key check did not refuse: %q read as %+v", input, f)
+		}
+	}
+}
+
+// TestTextRiskBackstop pins that text the earlier "<risk question>: yes"
+// classifier reads as a yes, when the parsed risk answer is not yes, makes the
+// frontmatter unreadable; and that a parsed yes, or text answering no, does
+// not.
+func TestTextRiskBackstop(t *testing.T) {
+	for _, input := range []string{
+		"gate: model\nnotes: |\n  customer: yes",
+		"gate: model\ntitle: \"the sensitive-data: yes case\"",
+		"gate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nwhy: >-\n  a sibling with Irreversible:YES is held",
+	} {
+		if f, e := ParseFields(input); e == nil {
+			t.Errorf("text risk answer read as clean: %q read as %+v", input, f)
+		}
+	}
+	for _, input := range []string{
+		"gate: model\nrisk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}\nwhy: \"customer: yes is the point\"",
+		"gate: model\ntitle: \"customer: no\"",
+		"gate: model\nrisk:\n  customer: YES",
+	} {
+		if _, e := ParseFields(input); e != nil {
+			t.Errorf("readable frontmatter refused: %q: %v", input, e)
+		}
+	}
+}

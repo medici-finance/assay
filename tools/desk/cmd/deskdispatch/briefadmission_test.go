@@ -230,6 +230,8 @@ func TestBriefGateSecondDocument(t *testing.T) {
 		"---\neffort: S\n...\ngate: human\n---\nbody\n",
 		"---\ngate: model\n--- {gate: human}\n---\nbody\n",
 		"---\ngate: model\n\ufeff--- {gate: human}\n---\nbody\n",
+		"---\ngate: model\n\u2800--- {gate: human}\n---\nbody\n",
+		"---\ngate: model\nGate: human\n---\nbody\n",
 	} {
 		name := fmt.Sprintf("brief-%02d.md", i)
 		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {

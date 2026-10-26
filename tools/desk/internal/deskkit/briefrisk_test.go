@@ -70,6 +70,12 @@ func TestBriefFrontmatterRisk(t *testing.T) {
 		{name: "word-joiner-led risk key is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\u2060regulatory: yes\n---\nbody", want: true, wantHasFence: false},
 		{name: "format-character-led risk key under another mapping is unreadable and risk-classed", content: "---\ngate: model\nmeta:\n  \u200bcustomer: yes\n---\nbody", want: true, wantHasFence: false},
 		{name: "byte-order-mark-led flow line is unreadable and risk-classed", content: "---\ngate: model\n\ufeff--- {customer: yes}\n---\nbody", want: true, wantHasFence: false},
+		{name: "blank-pattern-led risk key is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\n\u2800customer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "blank-pattern-led risk key under another mapping is unreadable and risk-classed", content: "---\ngate: model\nmeta:\n  \u2800customer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "combining-mark-led risk key is unreadable and risk-classed", content: "---\ngate: model\n\u0301regulatory: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "non-ASCII-space-led flow line is unreadable and risk-classed", content: "---\ngate: model\n\u00a0--- {customer: yes}\n---\nbody", want: true, wantHasFence: false},
+		{name: "case-fold-variant risk key is unreadable and risk-classed", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\ncu\u017ftomer: yes\n---\nbody", want: true, wantHasFence: false},
+		{name: "risk answer in a free-text value is unreadable and risk-classed", content: "---\ngate: model\nnotes: |\n  customer: yes\n---\nbody", want: true, wantHasFence: false},
 		{name: "unrelated mapping beside a clean risk map stays clean", content: "---\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nmeta:\n  owner: someone\n---\nbody", want: false, wantHasFence: true},
 		{
 			name:         "no gate no risk",

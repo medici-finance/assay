@@ -57,17 +57,69 @@ func (r *Risk) answers() map[string]*bool {
 	return m
 }
 
-// isRiskKey reports whether a mapping key names a risk question, ignoring case
-// and surrounding space so a near-miss spelling cannot slip past as an
-// ordinary key.
+// keyLetters keeps only the letters, digits and hyphens of a key, without
+// leading or trailing hyphens, so a policy key spelling decorated with spaces,
+// marks, symbols or a "---" prefix compares equal to the plain spelling.
+func keyLetters(k string) string {
+	var b strings.Builder
+	for _, r := range k {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' {
+			b.WriteRune(r)
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+// isRiskKey reports whether a mapping key names a risk question once its
+// decoration is dropped (keyLetters), under Unicode case folding, so a
+// near-miss spelling cannot slip past as an ordinary key.
 func isRiskKey(k string) bool {
-	k = strings.ToLower(strings.TrimSpace(k))
+	k = keyLetters(k)
 	for _, r := range riskKeys {
-		if k == r {
+		if strings.EqualFold(k, r) {
 			return true
 		}
 	}
 	return false
+}
+
+// policyKeys are the top-level keys that route a brief to a human or a strong
+// implementer. A key that reads as one of them but is not spelled exactly
+// like it is refused rather than ignored.
+var policyKeys = [...]string{"gate", "exec-tier"}
+
+// decoratedPolicyKey reports a top-level key that reads as a policy key but is
+// not spelled exactly like it.
+func decoratedPolicyKey(k string) bool {
+	for _, p := range policyKeys {
+		if k != p && strings.EqualFold(keyLetters(k), p) {
+			return true
+		}
+	}
+	return false
+}
+
+// textRiskAnswer is the risk classifier the desk readers used before this
+// parser: a case-insensitive "<risk question>: yes" anywhere in the block.
+var textRiskAnswer = func() map[string]*regexp.Regexp {
+	m := make(map[string]*regexp.Regexp, len(riskKeys))
+	for _, k := range riskKeys {
+		m[k] = regexp.MustCompile(`(?i)` + regexp.QuoteMeta(k) + `\s*:\s*yes`)
+	}
+	return m
+}()
+
+// textRiskBackstop refuses a block whose text the earlier classifier would
+// read as answering a risk question yes when the parsed answer is not yes, so
+// the parser never reads a brief as less risky than that classifier did.
+func textRiskBackstop(block string, r Risk) error {
+	answers := r.answers()
+	for _, k := range riskKeys {
+		if textRiskAnswer[k].MatchString(block) && !*answers[k] {
+			return fmt.Errorf("frontmatter text answers %s yes outside the risk mapping", k)
+		}
+	}
+	return nil
 }
 
 // misplacedRiskKey returns the first risk-answer key found at any depth in v,
@@ -109,13 +161,30 @@ func misplacedRiskKey(v interface{}) (string, bool) {
 // not equal.
 func invisibleRune(r rune) bool {
 	return unicode.Is(unicode.Cf, r) || !unicode.IsGraphic(r) ||
-		unicode.In(r, unicode.Variation_Selector, unicode.Other_Default_Ignorable_Code_Point)
+		unicode.In(r, unicode.Variation_Selector, unicode.Other_Default_Ignorable_Code_Point) ||
+		blankRune(r)
+}
+
+// blankRune reports a printing rune that renders as empty space: a space
+// separator other than the ASCII space, or the braille blank pattern.
+func blankRune(r rune) bool {
+	return r != ' ' && unicode.Is(unicode.Zs, r) || r == '\u2800'
+}
+
+// invisibleText reports a key that holds an invisible rune or starts with a
+// combining mark, which has no base letter to attach to and so renders on
+// whatever precedes it.
+func invisibleText(k string) bool {
+	if r, _ := utf8.DecodeRuneInString(k); unicode.Is(unicode.M, r) {
+		return true
+	}
+	return strings.IndexFunc(k, invisibleRune) >= 0
 }
 
 // invisibleKey returns the first mapping key, at any depth in v, that contains
 // an invisible rune.
 func invisibleKey(v interface{}) (string, bool) {
-	hasInvisible := func(k string) bool { return strings.IndexFunc(k, invisibleRune) >= 0 }
+	hasInvisible := invisibleText
 	switch x := v.(type) {
 	case map[string]interface{}:
 		for k, child := range x {
@@ -197,8 +266,10 @@ func decodeSingle(block string) (map[string]interface{}, error) {
 // ParseFields decodes real YAML, rejects duplicate keys and invalid risk answers.
 // A risk answer is read only from the top-level risk mapping; a risk-answer key
 // anywhere else, a second YAML document in the block, or a mapping key at any
-// depth that contains an invisible character, is an error, which every desk
-// caller treats as risk-bearing.
+// depth that contains an invisible character, a top-level key that reads as
+// gate or exec-tier without being spelled as one, or text the earlier
+// "<risk question>: yes" classifier reads as a yes the parsed risk answer does
+// not give, is an error, which every desk caller treats as risk-bearing.
 func ParseFields(block string) (Fields, error) {
 	f := Fields{Values: map[string]string{}}
 	values, err := decodeSingle(block)
@@ -209,6 +280,9 @@ func ParseFields(block string) (Fields, error) {
 		return f, fmt.Errorf("frontmatter key %q contains an invisible character", found)
 	}
 	for k, v := range values {
+		if decoratedPolicyKey(k) {
+			return f, fmt.Errorf("frontmatter key %q reads as a policy key but is not spelled as one", k)
+		}
 		if isRiskKey(k) {
 			return f, fmt.Errorf("risk answer %s must be under the risk mapping", k)
 		}
@@ -247,7 +321,7 @@ func ParseFields(block string) (Fields, error) {
 	}
 	raw, ok := values["risk"]
 	if !ok {
-		return f, nil
+		return f, textRiskBackstop(block, f.Risk)
 	}
 	risk, ok := raw.(map[string]interface{})
 	if !ok {
@@ -276,7 +350,7 @@ func ParseFields(block string) (Fields, error) {
 			return f, fmt.Errorf("risk %s must be yes or no", k)
 		}
 	}
-	return f, nil
+	return f, textRiskBackstop(block, f.Risk)
 }
 func Scalar(block, key string) string {
 	f, e := ParseFields(block)
