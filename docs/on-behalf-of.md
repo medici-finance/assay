@@ -288,35 +288,58 @@ same roster's human set:
     (a word ends at white space), since such a word cannot be a login and a reader takes the
     word after it for the name, whatever its characters are and whether or not they render.
     That reading is taken once more with its leading words read as a renderer shows them: a
-    word a renderer replaces with a glyph (`:name:`) is read as one symbol with no ASCII
-    letter or digit. Each leading word still ends at white space and is read by itself, and
-    the rest of the text stays as written, so a glyph word, a dollar sign or a clock time
-    later in a cell can add a reading but never removes one. When a text holds two or more runs
-    of `$` a renderer can take as math delimiters (an escaped dollar sign, one written as an
-    entity and one inside a code span are not, since a renderer shows each as text, and the runs
-    are found before entities are decoded), it is read beside the text as written, always with
-    the text before the first run as written: once for each run, with everything from the first
-    run up to and including it dropped, as when the spans there show only a symbol or blank
-    space; once with every run dropped and the text between them read as math; and once for
-    each two adjacent runs and each place in the text between them where a control word, a
-    brace or white space ends, with everything from the first run up to that place dropped, the
-    text from there to the second run read as math and the text after it as written. Text read
-    as math has its markup (control words, braces, backticks and sub- or superscript signs)
-    removed, a control word for a bracket, brace, bar or escaped sign read as that character,
-    and is read both with its white space and with it dropped, as math typesets the symbols in
-    it without the white space between them. No reading depends on which runs before a span a
-    renderer pairs. The text after each raw line break or block element tag (a paragraph, list,
-    table or disclosure element and the like) is also read as a text of its own, since a
-    renderer starts a new line there. Every reading is taken both with and without the text of
-    a raw HTML element a sanitizer can drop with its text (`<script>`, `<style>` and the like),
-    and apart from that, both with and without the text of an element a renderer hides by
-    default (a ruby fallback `<rp>`, a `<datalist>` or `<dialog>`, or any element with a
-    `hidden` attribute, which may follow white space, a slash or a closing quote). Such an
-    element is read dropped two ways: to the first closing tag after it, and to the closing tag
-    that matches it, counting the elements of the same name opened inside it. These readings
-    are rules the tool holds, not a renderer's own behaviour; each only adds a reading, so they
-    can refuse a cell a renderer shows plainly, and a renderer can pair, typeset or hide text in
-    a way none of them names.
+    word a renderer replaces with a glyph (`:name:`) is read as one symbol with no ASCII letter
+    or digit. Each leading word still ends at white space and is read by itself, and the rest
+    of the text stays as written, so a glyph word or a clock time later in a cell can add a
+    reading but never removes one. A text holding an HTML tag with a quoted attribute value is
+    also read with every such value emptied, beside the text as written, since a `>` inside
+    quotes ends no tag. When a text holds two or more runs of `$` a renderer can take as math
+    delimiters (an escaped dollar sign, one written as an entity and one inside a code span are
+    not, since a renderer shows each as text, and the runs are found before entities are
+    decoded), it is read beside the text as written, always with the text before the first run
+    as written: once for each run, with everything from the first run up to and including it
+    dropped, as when the spans there show only a symbol or blank space; once with every run
+    dropped and the text between them read as math; and once for each two adjacent runs and
+    each place in the text between them where a control word, a brace or white space ends, with
+    everything from the first run up to that place dropped, the text from there to the second
+    run read as math and the text after it as written. Where code spans stand is read two ways,
+    each giving its own set of runs: by a loose match that pairs backtick runs of any lengths,
+    and as CommonMark reads them (a backtick run no backslash escapes opens a code span, which
+    only the next run of the same length closes). Beside both, the runs are also paired from
+    the left, inside code spans too, for a renderer that typesets math there, each span read
+    from each place a control word, a brace or white space ends. Text read as math has its
+    markup (control words, braces, backticks and sub- or superscript signs) removed, a control
+    word for a bracket, brace, bar or escaped sign read as that character, and is read both
+    with its white space and with it dropped, as math typesets the symbols in it without the
+    white space between them, and once more for each two control words or symbols the tool does
+    not name, in order, read as an opening and a closing bracket, since a renderer can typeset
+    any of them as one. No reading depends on which runs before a span a renderer pairs. A
+    later backtick run can still close a code span an earlier one opens, and so take the runs
+    of `$` inside it out of the CommonMark reading, as it takes them out of what a renderer
+    typesets; the loose and left-paired readings keep them. The text after each raw line break
+    or block element tag (a paragraph, list, table or disclosure element and the like) is also
+    read as a text of its own, since a renderer starts a new line there. Every reading is taken
+    both with and without the text of a raw HTML element a sanitizer can drop with its text
+    (`<script>`, `<style>` and the like), and apart from that, both with and without the text
+    of the elements a renderer hides by default (a ruby fallback `<rp>`, a `<datalist>` or
+    `<dialog>`, or any element with a `hidden` attribute, which may follow white space, a slash
+    or a closing quote). Those are read dropped several ways: once with every ruby fallback,
+    data list or dialog dropped to the next closing tag of its own kind and every element whose
+    `hidden` attribute follows white space dropped to the first closing tag after it; and, with
+    the hidden elements taken in order, once without the first, once without the first two and
+    so on to all of them, each dropped both to the first closing tag after it and to the
+    closing tag that matches it, counting the elements of the same name opened inside it, since
+    a renderer can hide one element and show the next. These readings are rules the tool holds,
+    not a renderer's own behaviour; apart from the code-span case above each only adds a
+    reading, so they can refuse a cell a renderer shows plainly, and a renderer can pair,
+    typeset or hide text in a way none of them names. A text reached by more than one reading
+    is read once. The number of readings, each about as long as the text, grows with the line
+    breaks and hidden elements a text holds, times the places between two runs of `$` a span's
+    text can start at, times the pairs of control words in a span, so a short text can ask for
+    far more work than its length. The readings of one cell or line may read at most 128 MiB of
+    text in all; past that cap the text is taken as showing App-run text and refused, never
+    read with fewer readings. The heaviest text in the briefs the cap was checked against reads
+    about 22 MiB.
     Every trim takes any Unicode white space, a non-breaking or wide space included.
     A cell's text so starts at the first word a reader can take for a name. A cell's
     identity region is its text up to the first ASCII space or `(`, where the lint cuts it,
@@ -350,7 +373,8 @@ same roster's human set:
     are code, not headings, and are not counted.
   - **Outside the section.** An added line outside the section the lint reads (or anywhere
     in the body, when there is no such section) may not show an App-run Runner cell in a
-    `|`-separated row, or hold a raw HTML table or heading tag outside a code span. Fenced
+    `|`-separated row, or hold a raw HTML table or heading tag outside a code span, with code
+    spans read both by the loose match and as CommonMark reads them. Fenced
     code is left alone.
 
 Like the lint, the tool looks for `## Evidence` only in the brief's body, after the

@@ -529,6 +529,8 @@ var (
 	// or heading of its own that the lint never reads.
 	rawTableTagRe = regexp.MustCompile(`(?i)<\s*/?\s*(?:table|thead|tbody|tfoot|tr|td|th|h[1-6])\b`)
 	// codeSpanRe matches an inline code span, whose text a renderer shows as code, not markup.
+	// It pairs backtick runs of any lengths, where a renderer pairs only runs of the same length
+	// (see codeSpans), so it can take text a renderer shows as markup for code.
 	codeSpanRe = regexp.MustCompile("(`+)[^`]+?(`+)")
 	// gfmDelimiterCellRe matches one cell of a delimiter row a GFM renderer accepts.
 	gfmDelimiterCellRe = regexp.MustCompile(`^:?-+:?$`)
@@ -547,67 +549,144 @@ func linkReadings(s string) []string {
 	return []string{s, reduceLinks(s, false), reduceLinks(s, true)}
 }
 
-// shownTexts returns the texts a renderer can show for s, for deciding what a reader sees: each
-// comment reading and each link reading, with HTML tags and emphasis, strikethrough, code and
-// escape characters removed, and entities decoded, read once with the text of each element a
-// sanitizer can drop kept and dropped, and apart from those, of each element a renderer hides
-// by default kept and dropped two ways (see droppedElementRe, hiddenElementRe and dropHidden),
-// each of those once more from each place a renderer starts a new line at (see lineBreakRe),
-// and each of those once more for each math reading the tool takes (see mathReadings). Each is
-// read once as it stands and once with every character that renders as nothing dropped (see
-// rendersBlank) and the words that lead it and cannot be a login skipped (see pastLead), so a
-// text's identity region (see identityRegion) starts at the first word a reader can take for a
-// name. That last reading is taken once more with its leading words read as a renderer shows
-// them (see pastShownLead).
-// Every reading is added beside the others and none replaces one, so text later in a cell can
-// add a reading but never take one away. A cell shows something when any of these does.
-func shownTexts(s string) []string {
-	var out []string
-	for _, c := range commentReadings(s) {
-		// The shortcut reading takes every balanced `[text]` as a reference link whose
-		// definition stands somewhere in the brief (or on another branch), since a renderer
-		// shows its text and not its brackets whenever a definition resolves; it is a reading
-		// of what could be shown, never of link syntax (see linkSyntax).
-		readings := append(linkReadings(c), reduceLinksMode(c, true, true))
-		for _, r := range readings {
-			// Elements a sanitizer drops and elements a renderer hides are read kept and dropped
-			// apart from each other, since either can show while the other does not. A hidden
-			// element is read dropped both to the first closing tag after it and to the closing
-			// tag that matches it.
-			sanitized := droppedElementRe.ReplaceAllString(r, "")
-			shown := []string{r}
-			for _, base := range []string{r, sanitized} {
-				for _, e := range []string{base, hiddenElementRe.ReplaceAllString(base, ""), dropHidden(base)} {
-					if !slices.Contains(shown, e) {
-						shown = append(shown, e)
+// readingCap is the most text, in bytes, the tool reads for one cell or line across all its
+// readings (see eachShownText). The number of readings, each about as long as the text, grows
+// with the line breaks and hidden elements a text holds, times the places between two runs of
+// `$` a span's text can start at (white space and control words), times the pairs of control
+// words in a span, so a short text can ask for far more work than its length. Past the cap the
+// text is taken as showing App-run text and refused, never read with fewer readings. The
+// heaviest text in the briefs the cap was set against reads about 22 MiB.
+const readingCap = 128 << 20
+
+// readingBudget counts the bytes of the readings taken for one text against readingCap.
+type readingBudget struct{ left int }
+
+// take charges s to the budget and reports whether the budget still holds.
+func (b *readingBudget) take(s string) bool {
+	b.left -= len(s) + 1
+	return b.left >= 0
+}
+
+// eachShownText calls f with each text a renderer can show for s, for deciding what a reader
+// sees, until f returns true, and reports whether it did; it reports true as well when the
+// readings of s exceed readingCap, so a text too costly to read every way fails closed. A text
+// reached more than one way is read once.
+// The texts are: s as written and with the quoted attribute values inside its HTML tags
+// emptied (see quotedValueReadings); each comment reading and each link reading of those,
+// with HTML tags and emphasis, strikethrough, code and escape characters removed, and entities
+// decoded, read once with the text of each element a sanitizer can drop kept and dropped, and
+// apart from those, of the elements a renderer hides by default kept and dropped (see
+// hiddenReadings); each of those once more from each place a renderer starts a new line at
+// (see lineBreakRe); and each of those once more for each math reading the tool takes (see
+// mathDecodings). Each is read once as it stands and once with every character that renders
+// as nothing dropped (see rendersBlank) and the words that lead it and cannot be a login
+// skipped (see pastLead), so a text's identity region (see identityRegion) starts at the
+// first word a reader can take for a name. That last reading is taken once more with its
+// leading words read as a renderer shows them (see pastShownLead).
+// Every reading is added beside the others and none replaces one. Text later in a cell can
+// still close a code span a run of backticks opens, which takes the runs of `$` inside it out
+// of the reading that pairs runs outside code spans, as it takes them out of what a renderer
+// typesets (see mathDecodings). A cell shows something when any of these does.
+func eachShownText(s string, f func(string) bool) bool {
+	return eachShownTextWithin(s, readingCap, f)
+}
+
+// eachShownTextWithin is eachShownText with limit in place of readingCap.
+func eachShownTextWithin(s string, limit int, f func(string) bool) bool {
+	b := &readingBudget{left: limit}
+	over := false
+	visit := func(d string) bool {
+		t := strings.TrimSpace(runnerMarkupRe.ReplaceAllString(d, ""))
+		if !b.take(t) {
+			over = true
+			return true
+		}
+		if f(t) {
+			return true
+		}
+		blank := strings.Map(dropBlank, t)
+		seen := pastLead(blank)
+		if seen != t && f(seen) {
+			return true
+		}
+		// Only the leading words are read as a renderer shows them, each by itself, and what
+		// follows them is taken as written.
+		lead := pastShownLead(blank)
+		return lead != seen && lead != t && f(lead)
+	}
+	// Each text is read once however many ways lead to it.
+	took, have, read := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, a := range quotedValueReadings(s) {
+		for _, c := range commentReadings(a) {
+			// The shortcut reading takes every balanced `[text]` as a reference link whose
+			// definition stands somewhere in the brief (or on another branch), since a renderer
+			// shows its text and not its brackets whenever a definition resolves; it is a reading
+			// of what could be shown, never of link syntax (see linkSyntax).
+			for _, r := range append(linkReadings(c), reduceLinksMode(c, true, true)) {
+				// Elements a sanitizer drops and elements a renderer hides are read kept and
+				// dropped apart from each other, since either can show while the other does not.
+				if took[r] {
+					continue
+				}
+				took[r], have[r] = true, true
+				sanitized := droppedElementRe.ReplaceAllString(r, "")
+				shown := []string{r}
+				for _, base := range []string{r, sanitized} {
+					for _, e := range append([]string{base}, hiddenReadings(base)...) {
+						if !have[e] {
+							if !b.take(e) {
+								return true
+							}
+							have[e] = true
+							shown = append(shown, e)
+						}
 					}
 				}
-			}
-			for i, n := 0, len(shown); i < n; i++ {
-				for _, m := range lineBreakRe.FindAllStringIndex(shown[i], -1) {
-					shown = append(shown, shown[i][m[1]:])
-				}
-			}
-			for _, v := range shown {
-				v = htmlTagRe.ReplaceAllString(v, "")
-				for _, d := range mathDecodings(v) {
-					t := strings.TrimSpace(runnerMarkupRe.ReplaceAllString(d, ""))
-					out = append(out, t)
-					blank := strings.Map(dropBlank, t)
-					seen := pastLead(blank)
-					if seen != t {
-						out = append(out, seen)
+				for i, n := 0, len(shown); i < n; i++ {
+					for _, m := range lineBreakRe.FindAllStringIndex(shown[i], -1) {
+						if e := shown[i][m[1]:]; !have[e] {
+							if !b.take(e) {
+								return true
+							}
+							have[e] = true
+							shown = append(shown, e)
+						}
 					}
-					// Only the leading words are read as a renderer shows them, each by itself, and
-					// what follows them is taken as written.
-					if lead := pastShownLead(blank); lead != seen && lead != t {
-						out = append(out, lead)
+				}
+				for _, v := range shown {
+					if v = htmlTagRe.ReplaceAllString(v, ""); read[v] {
+						continue
+					}
+					read[v] = true
+					if mathDecodings(v, b, visit) || over {
+						return true
 					}
 				}
 			}
 		}
 	}
-	return out
+	return false
+}
+
+// quotedTagRe matches an HTML tag whose quoted attribute values may hold a `>`, which ends no
+// tag inside quotes; quotedValueRe matches one such quoted value.
+var (
+	quotedTagRe   = regexp.MustCompile(`<\s*/?\s*[A-Za-z][A-Za-z0-9-]*(?:[^>"']|"[^"]*"|'[^']*')*>`)
+	quotedValueRe = regexp.MustCompile(`"[^"]*"|'[^']*'`)
+)
+
+// quotedValueReadings returns s, and when s holds an HTML tag with a quoted attribute value
+// (see quotedTagRe), s once more with every such value emptied, so a `>` inside quotes is never
+// read as the end of a tag. The reading as written is kept, so text a renderer shows after a
+// quote it does not take as one is read as well.
+func quotedValueReadings(s string) []string {
+	q := quotedTagRe.ReplaceAllStringFunc(s, func(tag string) string {
+		return quotedValueRe.ReplaceAllStringFunc(tag, func(v string) string { return v[:1] + v[:1] })
+	})
+	if q == s {
+		return []string{s}
+	}
+	return []string{s, q}
 }
 
 var (
@@ -618,10 +697,13 @@ var (
 	glyphWordRe      = regexp.MustCompile(`(?i):[a-z0-9_+-]+:`)
 	glyphPlaceholder = "\u25a1"
 	// mathDelimRe matches a run of `$`, which a renderer can take as a math delimiter. Which runs
-	// a renderer pairs is its own rule, which the tool does not hold: mathDelimiters leaves out
-	// only the dollar signs a renderer shows as text, and mathReadings reads the text between
-	// every two adjacent runs that are left.
+	// a renderer pairs is its own rule, which the tool does not hold: mathReadings reads the text
+	// between every two adjacent runs mathDelimiters leaves once it drops the dollar signs it
+	// reads as text, with each of two readings of where code spans stand (see mathDecodings).
 	mathDelimRe = regexp.MustCompile(`\$+`)
+	// mathSpanRe matches a run of `$`, text on one line holding no `$`, and the next run of `$`,
+	// which pairs runs from the left (see leftmostReadings).
+	mathSpanRe = regexp.MustCompile(`\$+[^$\n]+\$+`)
 	// mathMarkupRe matches a control word or symbol (a backslash and a name or one character), a
 	// brace, a backtick or a sub- or superscript sign. In a math span a renderer typesets each as
 	// no text of its own, except those mathGlyphs names. A control word can typeset its argument
@@ -641,8 +723,12 @@ var (
 	hiddenOpenRe = regexp.MustCompile(`(?is)` + hiddenOpen)
 	// hiddenElementRe matches such an element from its opening tag to the first closing tag of
 	// any kind after it, or the end of the text, which is where a parser can end a ruby fallback
-	// that the next one closes. dropHidden reads it to the closing tag that matches it.
+	// that the next one closes. hiddenSpans reads it to the closing tag that matches it.
 	hiddenElementRe = regexp.MustCompile(`(?is)(?:` + hiddenOpen + `).*?(?:<\s*/[^>]*>|$)`)
+	// hiddenKindRe matches, more narrowly, a ruby fallback, a data list or a dialog element to
+	// the next closing tag of its own kind, and an element whose hidden attribute follows white
+	// space to the first closing tag of any kind after it.
+	hiddenKindRe = regexp.MustCompile(`(?is)<\s*(?:rp|datalist|dialog)\b[^>]*>.*?(?:<\s*/\s*(?:rp|datalist|dialog)\s*>|$)|<\s*[a-z][a-z0-9-]*\b[^>]*\shidden\b[^>]*>.*?(?:<\s*/[^>]*>|$)`)
 	// elementTagRe matches an opening or closing HTML tag: group 1 holds a closing tag's slash,
 	// and group 2 the element's name.
 	elementTagRe = regexp.MustCompile(`(?i)<\s*(/?)\s*([a-z][a-z0-9-]*)\b[^>]*>`)
@@ -652,27 +738,49 @@ var (
 // white space, a slash or a closing quote.
 const hiddenOpen = `<\s*(rp|datalist|dialog)\b[^>]*>|<\s*([a-z][a-z0-9-]*)\b[^>]*?[\s/"']hidden\b[^>]*>`
 
-// dropHidden returns s without each element a renderer hides by default (see hiddenOpenRe),
-// taken from its opening tag to the closing tag that matches it, counting the elements of the
-// same name opened inside it, or to the end of the text.
-func dropHidden(s string) string {
-	var b strings.Builder
-	for {
-		m := hiddenOpenRe.FindStringSubmatchIndex(s)
+// hiddenReadings returns s read without the elements a renderer hides by default, beside s as
+// written: once without every element hiddenKindRe matches, and, with the elements hiddenOpenRe
+// opens taken in order both to the first closing tag after each (see hiddenElementRe) and to
+// the closing tag that matches it (see hiddenSpans), once without the first one, once without
+// the first two, and so on to all of them. Whether a renderer hides an element can differ from
+// one element to the next, so text inside a later element is read as shown after earlier ones
+// are hidden.
+func hiddenReadings(s string) []string {
+	out := []string{hiddenKindRe.ReplaceAllString(s, "")}
+	for _, spans := range [][][]int{hiddenElementRe.FindAllStringIndex(s, -1), hiddenSpans(s)} {
+		for k := 1; k <= len(spans); k++ {
+			var b strings.Builder
+			last := 0
+			for _, sp := range spans[:k] {
+				b.WriteString(s[last:sp[0]])
+				last = sp[1]
+			}
+			b.WriteString(s[last:])
+			out = append(out, b.String())
+		}
+	}
+	return out
+}
+
+// hiddenSpans returns the byte ranges of the elements in s a renderer hides by default (see
+// hiddenOpenRe), each taken from its opening tag to the closing tag that matches it, counting
+// the elements of the same name opened inside it, or to the end of the text.
+func hiddenSpans(s string) [][]int {
+	var out [][]int
+	for at := 0; ; {
+		m := hiddenOpenRe.FindStringSubmatchIndex(s[at:])
 		if m == nil {
-			b.WriteString(s)
-			return b.String()
+			return out
 		}
 		g := 2
 		if m[2] < 0 {
 			g = 4
 		}
-		name := s[m[g]:m[g+1]]
-		b.WriteString(s[:m[0]])
-		s = s[m[1]:]
+		name := s[at+m[g] : at+m[g+1]]
+		start, rest := at+m[0], at+m[1]
 		end, depth := len(s), 1
-		for _, t := range elementTagRe.FindAllStringSubmatchIndex(s, -1) {
-			if !strings.EqualFold(s[t[4]:t[5]], name) {
+		for _, t := range elementTagRe.FindAllStringSubmatchIndex(s[rest:], -1) {
+			if !strings.EqualFold(s[rest+t[4]:rest+t[5]], name) {
 				continue
 			}
 			if t[3] > t[2] {
@@ -681,11 +789,12 @@ func dropHidden(s string) string {
 				depth++
 			}
 			if depth == 0 {
-				end = t[1]
+				end = rest + t[1]
 				break
 			}
 		}
-		s = s[end:]
+		out = append(out, []int{start, end})
+		at = end
 	}
 }
 
@@ -725,21 +834,47 @@ func skipLead(t string, shown bool) string {
 	}
 }
 
-// mathDecodings returns each math reading of s (see mathReadings), each in each decoding of it
-// (see decodings). The math readings are taken before entities are decoded, so a dollar sign
-// written as an entity, which a renderer shows as text, is never read as a delimiter.
-func mathDecodings(s string) []string {
-	var out []string
-	for _, m := range mathReadings(s) {
-		out = append(out, decodings(m)...)
+// mathDecodings calls visit with each math reading of s, each in each decoding of it, until
+// visit returns true, and reports whether it did or the budget ran out. The readings are
+// those mathReadings takes on the runs mathDelimiters leaves, found before entities are
+// decoded, once outside the code spans codeSpanRe matches and once outside those codeSpans
+// finds, and, beside them, those leftmostReadings takes on each decoding, which pairs runs
+// inside code spans too. No set of runs replaces another: each only adds readings.
+func mathDecodings(s string, b *readingBudget, visit func(string) bool) bool {
+	seen := map[string]bool{}
+	add := func(d string) bool {
+		if seen[d] {
+			return false
+		}
+		seen[d] = true
+		return !b.take(d) || visit(d)
 	}
-	return out
+	emit := func(m string) bool {
+		for _, d := range decodings(m) {
+			if add(d) {
+				return true
+			}
+		}
+		return false
+	}
+	runs := mathDelimiters(s, codeSpanRe.FindAllStringIndex(s, -1))
+	if mathReadings(s, runs, emit) {
+		return true
+	}
+	if spans := mathDelimiters(s, codeSpans(s)); !slices.EqualFunc(spans, runs, slices.Equal[[]int]) && mathReadings(s, spans, emit) {
+		return true
+	}
+	for _, d := range decodings(s) {
+		if leftmostReadings(d, add) {
+			return true
+		}
+	}
+	return false
 }
 
 // mathDelimiters returns the runs of `$` in s a renderer can take as math delimiters: each run
-// without a dollar sign a backslash escapes, and none inside a code span.
-func mathDelimiters(s string) [][]int {
-	code := codeSpanRe.FindAllStringIndex(s, -1)
+// without a dollar sign a backslash escapes, and none inside one of the code spans given.
+func mathDelimiters(s string, code [][]int) [][]int {
 	var out [][]int
 	for _, m := range mathDelimRe.FindAllStringIndex(s, -1) {
 		n := 0
@@ -757,9 +892,32 @@ func mathDelimiters(s string) [][]int {
 	return out
 }
 
-// mathReadings returns d, and when d holds two or more runs a renderer can take as math
-// delimiters (see mathDelimiters), d read by these rules, each beside the others and each with
-// the text before the first run as written:
+// codeSpans returns the byte ranges of the code spans in s as CommonMark reads them: a run of
+// backticks no backslash escapes opens one, which the next run of exactly its length closes
+// (see codeSpanEnd), and a run that closes none is text.
+func codeSpans(s string) [][]int {
+	var out [][]int
+	for i := 0; i < len(s); {
+		switch s[i] {
+		case '\\':
+			i += 2
+		case '`':
+			if end := codeSpanEnd(s, i); end > i {
+				out = append(out, []int{i, end})
+				i = end
+			} else {
+				i += len(s[i:]) - len(strings.TrimLeft(s[i:], "`"))
+			}
+		default:
+			i++
+		}
+	}
+	return out
+}
+
+// mathReadings calls add with d, and when runs holds two or more runs of `$` in d, with d read
+// by these rules, each beside the others and each with the text before the first run as
+// written, until add returns true, and reports whether it did:
 //   - once for each run, with everything from the first run up to and including it dropped, as
 //     spans that show only a symbol or blank space;
 //   - once with every run dropped and the text between the first and the last read as math
@@ -769,34 +927,34 @@ func mathDelimiters(s string) [][]int {
 //     dropped, the text from there to the second run read as math, with its white space and
 //     without, and the text after the second run as written.
 //
+// Each text read as math is read once more for each two control words or symbols in it that
+// mathGlyphs does not name, in order, with the first read as an opening and the second as a
+// closing bracket (see mathText), since the tool does not know every glyph a renderer
+// typesets and any of them can be a bracket.
 // No reading depends on which runs before a span a renderer pairs. A renderer can typeset a
 // span's text as text, so a name inside a span is read where a reader sees it, and a control
 // word can show the text before such a place as blank space or as nothing, so each place is read
 // as the start of what is shown. These are rules the tool holds, not a renderer's: a renderer
 // can pair or typeset runs in a way none of them names.
-func mathReadings(d string) []string {
-	runs := mathDelimiters(d)
-	if len(runs) < 2 {
-		return []string{d}
+func mathReadings(d string, runs [][]int, add func(string) bool) bool {
+	if add(d) {
+		return true
 	}
-	out := []string{d}
-	seen := map[string]bool{d: true}
-	add := func(r string) {
-		if !seen[r] {
-			seen[r] = true
-			out = append(out, r)
-		}
+	if len(runs) < 2 {
+		return false
 	}
 	lead := d[:runs[0][0]]
 	var all strings.Builder
 	for i, r := range runs {
-		add(lead + d[r[1]:])
+		if add(lead + d[r[1]:]) {
+			return true
+		}
 		if i+1 < len(runs) {
 			all.WriteString(d[r[1]:runs[i+1][0]])
 		}
 	}
-	for _, collapse := range []bool{false, true} {
-		add(lead + mathText(all.String(), collapse) + d[runs[len(runs)-1][1]:])
+	if mathTexts(all.String(), func(m string) bool { return add(lead + m + d[runs[len(runs)-1][1]:]) }) {
+		return true
 	}
 	for i := 0; i+1 < len(runs); i++ {
 		body, after := d[runs[i][1]:runs[i+1][0]], d[runs[i+1][1]:]
@@ -810,11 +968,33 @@ func mathReadings(d string) []string {
 			starts = append(starts, m[1])
 		}
 		for _, at := range starts {
-			add(lead + mathText(body[at:], false) + after)
-			add(lead + mathText(body[at:], true) + after)
+			if mathTexts(body[at:], func(m string) bool { return add(lead + m + after) }) {
+				return true
+			}
 		}
 	}
-	return out
+	return false
+}
+
+// mathTexts calls add with each reading of s as math, until add returns true, and reports
+// whether it did: s read by mathText with its white space kept and dropped, and each of those
+// once more for each two control words or symbols mathGlyphs does not name, in order, read as
+// an opening and a closing bracket.
+func mathTexts(s string, add func(string) bool) bool {
+	for _, collapse := range []bool{false, true} {
+		if add(mathText(s, collapse, -1, -1)) {
+			return true
+		}
+		n := len(unnamedMarkup(s, collapse))
+		for i := 0; i < n; i++ {
+			for j := i + 1; j < n; j++ {
+				if add(mathText(s, collapse, i, j)) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // mathGlyphs are the control words and symbols a renderer typesets in math as a character a
@@ -825,15 +1005,58 @@ var mathGlyphs = map[string]string{
 	`\vert`: "|", `\lvert`: "|", `\rvert`: "|",
 }
 
-// mathText returns s as a renderer typesets it in math: each control word or symbol mathGlyphs
-// names as its character, and every other match of mathMarkupRe as nothing. With collapse set,
-// its entities are decoded and its white space dropped, as math drops the white space between
-// the symbols it typesets.
-func mathText(s string, collapse bool) string {
+// mathPrepare returns s as mathText reads it before its markup: with collapse set, with its
+// entities decoded.
+func mathPrepare(s string, collapse bool) string {
 	if collapse {
-		s = html.UnescapeString(s)
+		return html.UnescapeString(s)
 	}
-	s = mathMarkupRe.ReplaceAllStringFunc(s, func(m string) string { return mathGlyphs[m] })
+	return s
+}
+
+// unnamedMarkup returns the byte ranges, in s as mathPrepare returns it, of the control words
+// and symbols mathGlyphs does not name.
+func unnamedMarkup(s string, collapse bool) [][]int {
+	s = mathPrepare(s, collapse)
+	var out [][]int
+	for _, m := range mathMarkupRe.FindAllStringIndex(s, -1) {
+		if _, ok := mathGlyphs[s[m[0]:m[1]]]; !ok && s[m[0]] == '\\' {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// mathText returns s as a renderer can typeset it in math: each control word or symbol
+// mathGlyphs names as its character, the open-th and close-th of those it does not name (see
+// unnamedMarkup) as an opening and a closing bracket when open is not negative, and every other
+// match of mathMarkupRe as nothing. With collapse set, its entities are decoded and its white
+// space dropped, as math drops the white space between the symbols it typesets.
+func mathText(s string, collapse bool, open, close int) string {
+	s = mathPrepare(s, collapse)
+	var b strings.Builder
+	last, k := 0, 0
+	for _, m := range mathMarkupRe.FindAllStringIndex(s, -1) {
+		b.WriteString(s[last:m[0]])
+		last = m[1]
+		w := s[m[0]:m[1]]
+		if g, ok := mathGlyphs[w]; ok {
+			b.WriteString(g)
+			continue
+		}
+		if w[0] != '\\' {
+			continue
+		}
+		switch {
+		case open >= 0 && k == open:
+			b.WriteString("[")
+		case open >= 0 && k == close:
+			b.WriteString("]")
+		}
+		k++
+	}
+	b.WriteString(s[last:])
+	s = b.String()
 	if collapse {
 		s = strings.Map(func(r rune) rune {
 			if unicode.IsSpace(r) {
@@ -843,6 +1066,42 @@ func mathText(s string, collapse bool) string {
 		}, s)
 	}
 	return s
+}
+
+// leftmostReadings calls add with each reading of d that pairs its runs of `$` from the left,
+// as mathSpanRe matches them, until add returns true, and reports whether it did: once for each
+// span and each place in its text where a control word, a brace or white space ends, with that
+// span read from there on with every match of mathMarkupRe removed, every span before it
+// dropped and the text between and after the spans as written; and once with every span
+// dropped. It is read beside mathReadings, and any span it takes is one more reading.
+func leftmostReadings(d string, add func(string) bool) bool {
+	spans := mathSpanRe.FindAllStringIndex(d, -1)
+	if len(spans) == 0 {
+		return false
+	}
+	var before strings.Builder
+	last := 0
+	for _, sp := range spans {
+		before.WriteString(d[last:sp[0]])
+		last = sp[1]
+		body := strings.Trim(d[sp[0]:sp[1]], "$")
+		starts := []int{0}
+		for i, r := range body {
+			if unicode.IsSpace(r) {
+				starts = append(starts, i+utf8.RuneLen(r))
+			}
+		}
+		for _, m := range mathMarkupRe.FindAllStringIndex(body, -1) {
+			starts = append(starts, m[1])
+		}
+		for _, at := range starts {
+			if add(before.String() + mathMarkupRe.ReplaceAllString(body[at:], "") + d[sp[1]:]) {
+				return true
+			}
+		}
+	}
+	before.WriteString(d[last:])
+	return add(before.String())
 }
 
 // asciiAlnum reports whether r is an ASCII letter or digit.
@@ -877,7 +1136,7 @@ func decodings(s string) []string {
 // enclosing mark, a default-ignorable code point (the filler letters among them), the blank
 // braille pattern, or a character in no letter, mark, number, punctuation, symbol or separator
 // category, which is a control, format, private-use, noncharacter or unassigned code point.
-// It is wider than rowattribution.go's stripInvisible, which reads an empty Runner: shownTexts
+// It is wider than rowattribution.go's stripInvisible, which reads an empty Runner: eachShownText
 // keeps each text as it stands beside the text with these dropped, so a wider family only reads
 // more of what a reader can be shown.
 func rendersBlank(r rune) bool {
@@ -1103,7 +1362,7 @@ func inlineDestinationEnd(s string, p int) int {
 	return -1
 }
 
-// shownMarkup describes the first thing in s that shownTexts strips, decodes or reduces, or
+// shownMarkup describes the first thing in s that eachShownText strips, decodes or reduces, or
 // that keeps the lint from reading it as a reader does, for a refusal: an HTML tag or comment
 // bracket, an entity, emphasis, strikethrough, code or escape character, then a character
 // outside printable ASCII (a non-ASCII character or a tab), then a `[bot]` login followed by
@@ -1238,12 +1497,7 @@ func identityShowsTag(s string) bool {
 // showsAppRun reports whether a cell shows a reader an App-run Runner cell in any of its
 // shown texts, as the lint reads one or as a reader does (see identityShowsTag).
 func showsAppRun(cell string) bool {
-	for _, t := range shownTexts(cell) {
-		if isAppRunnerCell(t) || identityShowsTag(t) {
-			return true
-		}
-	}
-	return false
+	return eachShownText(cell, func(t string) bool { return isAppRunnerCell(t) || identityShowsTag(t) })
 }
 
 // showsAttribution reports whether a line shows a reader App-run or on-behalf-of text in any
@@ -1251,7 +1505,7 @@ func showsAppRun(cell string) bool {
 // as App-run (see identityShowsTag). A word starts the text or follows a space, a tab or a `(`,
 // since identityRegion ends a region at a space or `(` and a word in parentheses shows as one.
 func showsAttribution(line string) bool {
-	for _, t := range shownTexts(line) {
+	return eachShownText(line, func(t string) bool {
 		if l := strings.ToLower(t); strings.Contains(l, "[bot]") || strings.Contains(l, onBehalfOfCellMarker) {
 			return true
 		}
@@ -1260,8 +1514,8 @@ func showsAttribution(line string) bool {
 				return true
 			}
 		}
-	}
-	return false
+		return false
+	})
 }
 
 // linkSyntax reports whether s holds Markdown link, image or autolink syntax a renderer shows
@@ -1494,7 +1748,7 @@ func outsideEvidenceProblem(lines []string, start, end int, onBranch map[string]
 		if fence != "" || (start >= 0 && i >= start-1 && i < end) || onBranch[lines[i]] {
 			continue
 		}
-		if rawTableTagRe.MatchString(outsideCodeSpans(lines[i])) {
+		if slices.ContainsFunc(outsideCodeSpans(lines[i]), rawTableTagRe.MatchString) {
 			return i, "it holds a raw HTML table or heading tag, which a renderer shows as a table or heading the lint never reads"
 		}
 		t := strings.TrimSpace(lines[i])
@@ -1511,12 +1765,21 @@ func outsideEvidenceProblem(lines []string, start, end int, onBranch map[string]
 }
 
 // outsideCodeSpans returns line without its inline code spans, whose text a renderer shows as
-// code; a line holding a backslash (which can escape a backtick) is returned whole.
-func outsideCodeSpans(line string) string {
-	if strings.Contains(line, "\\") {
-		return line
+// code, read two ways: without the spans codeSpanRe matches, and without those codeSpans finds,
+// which pairs only backtick runs of the same length. A line holding a backslash (which can
+// escape a backtick) is returned whole in the first reading.
+func outsideCodeSpans(line string) []string {
+	var b strings.Builder
+	last := 0
+	for _, sp := range codeSpans(line) {
+		b.WriteString(line[last:sp[0]])
+		last = sp[1]
 	}
-	return codeSpanRe.ReplaceAllString(line, "")
+	b.WriteString(line[last:])
+	if strings.Contains(line, "\\") {
+		return []string{line, b.String()}
+	}
+	return []string{codeSpanRe.ReplaceAllString(line, ""), b.String()}
 }
 
 // outsideRefusal is the refusal for an outsideEvidenceProblem line.

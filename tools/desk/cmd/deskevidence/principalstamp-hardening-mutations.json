@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunLeadWord|TestShowsTagBlankInside|TestStampBlankLeadAllowed|TestStampCodeSpanTagReading|TestShowsAppRunGlyphLead|TestShowsAppRunShownLead)$' -count=1 -timeout=300s",
+  "test": "go test ./cmd/deskevidence/ -run '^(TestPrincipalStampRefusesUnreadable|TestLandedPrincipalBackstop|TestPrincipalStampReadsBodyNotFrontmatter|TestPrincipalStampRelandedRowUnderNewHeader|TestPrincipalStampRefusesControlInAnyLine|TestMergeEvidenceLocatesBodySection|TestStampRefusesPipelessRow|TestStampRefusesSecondHeading|TestStampRefusesRunnerMarkup|TestStampRefusesRunnerHeader|TestStampAppendAfterAttest|TestStampRefusesLayoutRows|TestStampRefusesShownComment|TestStampRefusesShownHeading|TestStampRefusesOutsideRows|TestStampLayoutShapesAllowed|TestStampHeaderOnBranchRows|TestStampRefusesLinkedRunner|TestStampRefusesLinkedAppCell|TestStampRefusesLinkedLayout|TestStampLinkShapesAllowed|TestStampRowsAfterAttest|TestStampRefusesFoldedRunner|TestStampRefusesFoldedLayout|TestStampRefusesFoldedNoteLine|TestStampFoldShapesAllowed|TestStampRefusesShapeFamily|TestShowsAppRunAnyNonASCII|TestStampLandsCJKTags|TestStampShapeRegionAllowed|TestStampRefusesShownOnly|TestStampRefusesBlankLead|TestStampRefusesBlankLeadNote|TestShowsAppRunLeadWord|TestShowsTagBlankInside|TestStampBlankLeadAllowed|TestStampCodeSpanTagReading|TestShowsAppRunGlyphLead|TestShowsAppRunShownLead|TestShowsAppRunKeepsRefusalInContext|TestShownTextsFailClosedPastCap)$' -count=1 -timeout=300s",
   "control": {
     "name": "unreadable-cell refusal not consulted",
     "file": "cmd/deskevidence/principalstamp.go",
@@ -286,8 +286,8 @@
     {
       "name": "a raw HTML table outside the Evidence section is not refused",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if rawTableTagRe.MatchString(outsideCodeSpans(lines[i])) {",
-      "new": "if false && rawTableTagRe.MatchString(outsideCodeSpans(lines[i])) {"
+      "old": "if slices.ContainsFunc(outsideCodeSpans(lines[i]), rawTableTagRe.MatchString) {",
+      "new": "if false && slices.ContainsFunc(outsideCodeSpans(lines[i]), rawTableTagRe.MatchString) {"
     },
     {
       "name": "an App-run cell in a row outside the Evidence section is not refused",
@@ -304,8 +304,8 @@
     {
       "name": "a code span outside the Evidence section is read as markup",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "return codeSpanRe.ReplaceAllString(line, \"\")",
-      "new": "return line"
+      "old": "return []string{codeSpanRe.ReplaceAllString(line, \"\"), b.String()}",
+      "new": "return []string{line, b.String()}"
     },
     {
       "name": "the layout check is not consulted",
@@ -520,14 +520,14 @@
     {
       "name": "a shortcut reference link is not reduced to its text",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "readings := append(linkReadings(c), reduceLinksMode(c, true, true))",
-      "new": "readings := linkReadings(c)"
+      "old": "for _, r := range append(linkReadings(c), reduceLinksMode(c, true, true)) {",
+      "new": "for _, r := range linkReadings(c) {"
     },
     {
       "name": "a Runner cell that shows a login and tag is read only as the lint reads it",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if isAppRunnerCell(t) || identityShowsTag(t) {",
-      "new": "if isAppRunnerCell(t) {"
+      "old": "return eachShownText(cell, func(t string) bool { return isAppRunnerCell(t) || identityShowsTag(t) })",
+      "new": "return eachShownText(cell, func(t string) bool { return isAppRunnerCell(t) })"
     },
     {
       "name": "a line closing a table is not read for a login and tag",
@@ -670,8 +670,8 @@
     {
       "name": "a leading word that cannot be a login not read past",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "seen := pastLead(blank)\n\t\t\t\t\tif seen != t {\n\t\t\t\t\t\tout = append(out, seen)\n\t\t\t\t\t}\n\t\t\t\t\t// Only the leading words are read as a renderer shows them, each by itself, and\n\t\t\t\t\t// what follows them is taken as written.\n\t\t\t\t\tif lead := pastShownLead(blank);",
-      "new": "seen := strings.TrimSpace(blank)\n\t\t\t\t\tif seen != t {\n\t\t\t\t\t\tout = append(out, seen)\n\t\t\t\t\t}\n\t\t\t\t\t// Only the leading words are read as a renderer shows them, each by itself, and\n\t\t\t\t\t// what follows them is taken as written.\n\t\t\t\t\tif lead := strings.TrimSpace(blank);"
+      "old": "seen := pastLead(blank)\n\t\tif seen != t && f(seen) {\n\t\t\treturn true\n\t\t}\n\t\t// Only the leading words are read as a renderer shows them, each by itself, and what\n\t\t// follows them is taken as written.\n\t\tlead := pastShownLead(blank)",
+      "new": "seen := strings.TrimSpace(blank)\n\t\tif seen != t && f(seen) {\n\t\t\treturn true\n\t\t}\n\t\t// Only the leading words are read as a renderer shows them, each by itself, and what\n\t\t// follows them is taken as written.\n\t\tlead := strings.TrimSpace(blank)"
     },
     {
       "name": "the reading past a leading word not trimmed",
@@ -748,44 +748,44 @@
     {
       "name": "the shown-lead reading not read past its leading words",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if lead := pastShownLead(blank); lead != seen && lead != t {",
-      "new": "if lead := blank; lead != seen && lead != t {"
+      "old": "lead := pastShownLead(blank)",
+      "new": "lead := blank"
     },
     {
       "name": "the shown-lead reading not taken",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if lead := pastShownLead(blank); lead != seen && lead != t {",
-      "new": "if lead := pastShownLead(blank); false && lead != seen && lead != t {"
+      "old": "return lead != seen && lead != t && f(lead)",
+      "new": "return false && lead != seen && lead != t && f(lead)"
     },
     {
       "name": "the shown-lead reading kept only when it ends the untrimmed text",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if lead := pastShownLead(blank); lead != seen && lead != t {",
-      "new": "if lead := pastShownLead(blank); lead != seen && lead != t && strings.HasSuffix(blank, lead) {"
+      "old": "return lead != seen && lead != t && f(lead)",
+      "new": "return lead != seen && lead != t && strings.HasSuffix(blank, lead) && f(lead)"
     },
     {
       "name": "the shown-lead reading kept only when it ends the text read with every glyph word as a symbol",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if lead := pastShownLead(blank); lead != seen && lead != t {",
-      "new": "if lead := pastShownLead(blank); lead != seen && lead != t && strings.HasSuffix(strings.TrimSpace(glyphWordRe.ReplaceAllString(blank, glyphPlaceholder)), lead) {"
+      "old": "return lead != seen && lead != t && f(lead)",
+      "new": "return lead != seen && lead != t && strings.HasSuffix(strings.TrimSpace(glyphWordRe.ReplaceAllString(blank, glyphPlaceholder)), lead) && f(lead)"
     },
     {
       "name": "the glyph reading taken from the whole text and kept only when it ends the untrimmed text",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "if lead := pastShownLead(blank); lead != seen && lead != t {\n\t\t\t\t\t\tout = append(out, lead)\n\t\t\t\t\t}",
-      "new": "if g := glyphWordRe.ReplaceAllString(t, glyphPlaceholder); g != t {\n\t\t\t\t\t\tif seen := pastLead(strings.Map(dropBlank, g)); strings.HasSuffix(blank, seen) {\n\t\t\t\t\t\t\tout = append(out, seen)\n\t\t\t\t\t\t}\n\t\t\t\t\t}"
+      "old": "lead := pastShownLead(blank)\n\t\treturn lead != seen && lead != t && f(lead)",
+      "new": "if g := glyphWordRe.ReplaceAllString(t, glyphPlaceholder); g != t {\n\t\t\tif seen := pastLead(strings.Map(dropBlank, g)); strings.HasSuffix(blank, seen) {\n\t\t\t\treturn f(seen)\n\t\t\t}\n\t\t}\n\t\treturn false"
     },
     {
       "name": "the reading with each run and every run before it dropped not taken",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "add(lead + d[r[1]:])",
+      "old": "if add(lead + d[r[1]:]) {\n\t\t\treturn true\n\t\t}",
       "new": "_ = r"
     },
     {
       "name": "a math span's text read only from its start",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "for _, at := range starts {",
-      "new": "for _, at := range starts[:1] {"
+      "old": "for _, at := range starts {\n\t\t\tif mathTexts(",
+      "new": "for _, at := range starts[:1] {\n\t\t\tif mathTexts("
     },
     {
       "name": "the text after a line break or block element not read",
@@ -892,32 +892,32 @@
     {
       "name": "a math span's text not read",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "add(lead + mathText(body[at:], false) + after)\n\t\t\tadd(lead + mathText(body[at:], true) + after)",
+      "old": "if mathTexts(body[at:], func(m string) bool { return add(lead + m + after) }) {\n\t\t\t\treturn true\n\t\t\t}",
       "new": "_, _ = at, after"
     },
     {
       "name": "a math span's markup not removed from its text",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "s = mathMarkupRe.ReplaceAllStringFunc(s, func(m string) string { return mathGlyphs[m] })",
-      "new": "_ = mathGlyphs"
+      "old": "b.WriteString(s[last:m[0]])\n\t\tlast = m[1]\n\t\tw := s[m[0]:m[1]]",
+      "new": "b.WriteString(s[last:m[0]])\n\t\tlast = m[0]\n\t\tw := s[m[0]:m[1]]"
     },
     {
       "name": "a math span's text not read from after a control word in it",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "for _, m := range mathMarkupRe.FindAllStringIndex(body, -1) {",
-      "new": "for _, m := range mathMarkupRe.FindAllStringIndex(body, 0) {"
+      "old": "for _, m := range mathMarkupRe.FindAllStringIndex(body, -1) {\n\t\t\tstarts = append(starts, m[1])\n\t\t}\n\t\tfor _, at := range starts {\n\t\t\tif mathTexts(",
+      "new": "for _, m := range mathMarkupRe.FindAllStringIndex(body, 0) {\n\t\t\tstarts = append(starts, m[1])\n\t\t}\n\t\tfor _, at := range starts {\n\t\t\tif mathTexts("
     },
     {
       "name": "the math readings not taken",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "for _, d := range mathDecodings(v) {",
-      "new": "for _, d := range decodings(v) {"
+      "old": "if mathDecodings(v, b, visit) || over {",
+      "new": "if slices.ContainsFunc(decodings(v), visit) || over {"
     },
     {
       "name": "an element a renderer hides by default read only with its text",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "[]string{base, hiddenElementRe.ReplaceAllString(base, \"\"), dropHidden(base)}",
-      "new": "[]string{base}"
+      "old": "for _, e := range append([]string{base}, hiddenReadings(base)...) {",
+      "new": "for _, e := range []string{base} {"
     },
     {
       "name": "a ruby fallback not read as hidden",
@@ -946,14 +946,14 @@
     {
       "name": "leftmost pairing restored: runs paired two by two from the first, with no reading of all the text between them",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "for _, collapse := range []bool{false, true} {\n\t\tadd(lead + mathText(all.String(), collapse) + d[runs[len(runs)-1][1]:])\n\t}\n\tfor i := 0; i+1 < len(runs); i++ {",
+      "old": "if mathTexts(all.String(), func(m string) bool { return add(lead + m + d[runs[len(runs)-1][1]:]) }) {\n\t\treturn true\n\t}\n\tfor i := 0; i+1 < len(runs); i++ {",
       "new": "_ = all.String()\n\tfor i := 0; i+1 < len(runs); i += 2 {"
     },
     {
       "name": "a math span's text not read with its white space dropped",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": "add(lead + mathText(body[at:], true) + after)",
-      "new": "add(lead + mathText(body[at:], false) + after)"
+      "old": "for _, collapse := range []bool{false, true} {\n\t\tif add(mathText(s, collapse, -1, -1)) {",
+      "new": "for _, collapse := range []bool{false} {\n\t\tif add(mathText(s, collapse, -1, -1)) {"
     },
     {
       "name": "a bracket control word not read as its glyph",
@@ -964,8 +964,8 @@
     {
       "name": "a hidden element not read to the closing tag that matches it",
       "file": "cmd/deskevidence/principalstamp.go",
-      "old": ", dropHidden(base)} {",
-      "new": "} {"
+      "old": "for _, spans := range [][][]int{hiddenElementRe.FindAllStringIndex(s, -1), hiddenSpans(s)} {",
+      "new": "for _, spans := range [][][]int{hiddenElementRe.FindAllStringIndex(s, -1)} {"
     },
     {
       "name": "a hidden element read to its first closing tag of the same name only",
@@ -984,6 +984,90 @@
       "file": "cmd/deskevidence/principalstamp.go",
       "old": "[\\s/\"']hidden\\b",
       "new": "[\\s/]hidden\\b"
+    },
+    {
+      "name": "the code spans read as CommonMark pairs them not taken as a second set of math delimiters",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if spans := mathDelimiters(s, codeSpans(s)); !slices.EqualFunc(",
+      "new": "if spans := mathDelimiters(s, codeSpans(s)); false && !slices.EqualFunc("
+    },
+    {
+      "name": "code spans read as pairing backtick runs of any lengths",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "func codeSpans(s string) [][]int {\n\tvar out [][]int",
+      "new": "func codeSpans(s string) [][]int {\n\tif true {\n\t\treturn codeSpanRe.FindAllStringIndex(s, -1)\n\t}\n\tvar out [][]int"
+    },
+    {
+      "name": "an escaped backtick read as opening a code span",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "case '\\\\':\n\t\t\ti += 2\n\t\tcase '`':\n\t\t\tif end := codeSpanEnd(s, i); end > i {\n\t\t\t\tout = append(out, []int{i, end})",
+      "new": "case '\\\\':\n\t\t\ti++\n\t\tcase '`':\n\t\t\tif end := codeSpanEnd(s, i); end > i {\n\t\t\t\tout = append(out, []int{i, end})"
+    },
+    {
+      "name": "control words the tool does not name never read as a bracket pair",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "n := len(unnamedMarkup(s, collapse))",
+      "new": "n := 0 * len(unnamedMarkup(s, collapse))"
+    },
+    {
+      "name": "only adjacent unnamed control words read as a bracket pair",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for j := i + 1; j < n; j++ {",
+      "new": "for j := i + 1; j < n && j == i+1; j++ {"
+    },
+    {
+      "name": "quoted attribute values never emptied, so a quoted `>` ends a tag",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if q == s {\n\t\treturn []string{s}\n\t}\n\treturn []string{s, q}",
+      "new": "_ = q\n\treturn []string{s}"
+    },
+    {
+      "name": "the reading with quoted attribute values emptied replaces the reading as written",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return []string{s, q}",
+      "new": "return []string{q}"
+    },
+    {
+      "name": "the narrow hidden-element reading not taken",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "out := []string{hiddenKindRe.ReplaceAllString(s, \"\")}",
+      "new": "var out []string"
+    },
+    {
+      "name": "hidden elements dropped only all at once, never the first ones alone",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for k := 1; k <= len(spans); k++ {",
+      "new": "for k := len(spans); k <= len(spans); k++ {"
+    },
+    {
+      "name": "the reading cap never charged, so a costly text is read without bound",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "b.left -= len(s) + 1\n\treturn b.left >= 0",
+      "new": "b.left -= len(s) + 1\n\treturn true"
+    },
+    {
+      "name": "leftmost pairing of runs of `$` not read",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "for _, d := range decodings(s) {\n\t\tif leftmostReadings(d, add) {",
+      "new": "for _, d := range decodings(s)[:0] {\n\t\tif leftmostReadings(d, add) {"
+    },
+    {
+      "name": "only the first link or comment reading of a text read",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "if took[r] {",
+      "new": "if len(took) > 0 {"
+    },
+    {
+      "name": "the raw-tag check outside code spans read only one way",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "return []string{codeSpanRe.ReplaceAllString(line, \"\"), b.String()}",
+      "new": "return []string{codeSpanRe.ReplaceAllString(line, \"\")}"
+    },
+    {
+      "name": "the reading cap never reached",
+      "file": "cmd/deskevidence/principalstamp.go",
+      "old": "\tb.left -= len(s) + 1\n\treturn b.left >= 0",
+      "new": "\tb.left -= len(s) + 1\n\treturn true"
     }
   ]
 }

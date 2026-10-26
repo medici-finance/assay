@@ -106,14 +106,18 @@ func TestStampHeaderOnBranchRows(t *testing.T) {
 }
 
 // regression: #4075
-// TestStampRefusesOutsideRows: an App-run row, or a raw HTML table, added outside the one
-// section the lint reads, whether or not the brief has such a section.
+// TestStampRefusesOutsideRows: an App-run row, or a raw HTML table (one between backtick runs
+// of different lengths among them), added outside the one section the lint reads, whether or
+// not the brief has such a section.
 func TestStampRefusesOutsideRows(t *testing.T) {
 	cases := []struct{ name, base, added, line string }{
 		{"no-evidence-section", "# Brief\n\n## Results\n", "\n| # | Runner |\n|---|---|\n| 3 | " + renderOther + " |\n", "line 7"},
 		{"row-after-section", restampHead + renderHuman, "\n## Notes\n\n| 3 | " + renderOther + " |\n", "line 11"},
 		{"html-after-section", restampHead + renderHuman, "\n## Notes\n\n<table>\n<tr><td>" + renderOther + "</td></tr>\n</table>\n",
 			"line 11"},
+		// Backtick runs of different lengths open no code span, so the tag between them is markup.
+		{"html-between-unequal-backticks", restampHead + renderHuman, "\n## Notes\n\nA `` <table><tr><td>" + renderOther +
+			"</td></tr></table> `\n", "line 11"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

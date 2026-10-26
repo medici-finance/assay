@@ -144,6 +144,43 @@ var leadRunners = []struct{ name, cell string }{
 	{"glyph-dollars-later-dollars", ":robot: $$ example-app[bot]" + foldTail + " $$"},
 	{"typeset-dollar-later-dollar", "$\\circ$ $ example-app[bot]" + foldTail + " $"},
 	{"glyph-dollar-later-dollar-escaped-tag", ":robot: $ example-app[bot\\]" + foldTail + " $"},
+	// A math span between backtick runs a renderer does not pair as a code span: runs of
+	// different lengths, or a run whose first backtick is escaped.
+	{"code-runs-unequal", "`$` `` $\\qquad \\mathsf{example-app[bot]}$ `" + foldTail},
+	{"code-run-escaped", "`$` \\` $\\qquad \\mathsf{example-app[bot]}$ `" + foldTail},
+	{"code-runs-longer-open", "`$` ``` $\\qquad \\mathsf{example-app[bot]}$ ``" + foldTail},
+	{"code-runs-shorter-open", "`$` ` $\\qquad \\mathsf{example-app[bot]}$ ``" + foldTail},
+	// A math span whose tag is bracketed by control words the tool does not name, any of which a
+	// renderer can typeset as a bracket, with or without another control word inside the tag.
+	{"typeset-bracket-words-unnamed", "$\\qquad \\mathsf{example-app\\lang bot\\rang}$" + foldTail},
+	{"typeset-corner-words", "$\\qquad \\mathsf{example-app\\ulcorner bot\\urcorner}$" + foldTail},
+	{"typeset-moustache-words", "$\\qquad \\mathsf{example-app\\lmoustache bot\\rmoustache}$" + foldTail},
+	{"typeset-bracket-words-word-inside", "$\\qquad \\mathsf{example-app\\lang b\\textrm{o}t\\rang}$" + foldTail},
+	// A `>` inside a quoted attribute value, which ends no tag, before an element's text or
+	// before the hidden attribute.
+	{"quoted-bracket-single", "<em data-x='> y '>example-app[bot]</em>" + foldTail},
+	{"quoted-bracket-double", "<q cite=\"a> b c\">example-app[bot]</q>" + foldTail},
+	{"hidden-after-quoted-bracket", "<small data-n='>' hidden>y z</small> example-app[bot]" + foldTail},
+	// A hidden element the narrow reading drops, then one with its hidden attribute after a
+	// slash holding the login, which shows where a renderer hides only the first.
+	{"hidden-then-hidden-slash", "<i hidden>y z</i> <b/hidden>example-app[bot]" + foldTail + "</b>"},
+	// Two hidden elements written the same way, the login in the second, which shows where a
+	// renderer hides only the first.
+	{"hidden-slash-then-hidden-slash", "<b/hidden>y z</b> <i/hidden>example-app[bot]" + foldTail + "</i>"},
+	// A hidden element left open before a dialog holding nested markup, which shows the login
+	// where a renderer hides the dialog and not the element left open.
+	{"hidden-open-then-dialog", "<b/hidden><dialog><u>q</u>y z</dialog> example-app[bot]" + foldTail},
+	// An apostrophe inside an unquoted attribute value, which opens no quote, and a later quote
+	// the tool could pair with it.
+	{"quoted-bracket-unquoted-apostrophe", "<b x=it's>example-app[bot]</b> <i y='>" + foldTail},
+	// A math span after a lone run of `$` whose text a bracket joins to the word before the
+	// control word that leads the login.
+	{"typeset-after-lone-dollar-bracket", "$ $y(\\quad{}example-app[bot]$" + foldTail},
+	// A math span inside a code span, for a renderer that typesets it there.
+	{"typeset-inside-code-span", "`$\\qquad \\mathsf{example-app[bot]}$`" + foldTail},
+	// A span after a lone run of `$` whose text ends in a letter, read as a span that shows
+	// only a symbol.
+	{"symbol-span-letter-after-lone-dollar", "$ $q$ example-app[bot]" + foldTail},
 }
 
 // regression: #4102
@@ -327,6 +364,13 @@ func TestStampBlankLeadAllowed(t *testing.T) {
 		"\\$5 $\\circ$ human:operator @ abc1234",
 		"`$$` $\\qquad \\textrm{human:operator}$ @ abc1234",
 		"<small hidden><u>y</u> z</small> human:operator @ abc1234",
+		"`$` `` $\\qquad \\mathsf{human:operator}$ ` @ abc1234",
+		"$\\lang \\rang$ human:operator @ abc1234 (see example-app\\lang x\\rang review)",
+		"<em data-x='> y '>human:operator</em> @ abc1234",
+		"<small data-n='>' hidden>y z</small> human:operator @ abc1234",
+		"<i hidden>y z</i> <b/hidden>human:operator @ abc1234</b>",
+		"$ $y(\\quad{}human:operator$ @ abc1234",
+		"<b/hidden><dialog><u>q</u>y z</dialog> human:operator @ abc1234",
 	} {
 		t.Run(strings.TrimSpace(runner[strings.IndexByte(runner, ' '):]), func(t *testing.T) {
 			f := setupStamp(t, true)
@@ -406,6 +450,7 @@ func TestShowsAppRunShownLead(t *testing.T) {
 		":robot: $", ":robot:$", "$\\circ$ $",
 		"$ $\\star$", "\\$ $\\star$", "&#x24; $\\star$", "`` $ `` $\\star$", "$ $\\qquad \\mathrm{y}$",
 		"<small hidden><u>y</u> z</small>", "<abbr/hidden>y</abbr>", "<rp>(<rp>y</rp>) z</rp>",
+		"<small data-n='>' hidden>y z</small>", "<em data-x='> y '></em>", "`$` `` $\\qquad \\mathrm{y}$ `",
 	} {
 		if cell := lead + " example-app[bot]" + foldTail; !showsAppRun(cell) {
 			t.Errorf("%q not read as App-run", cell)
@@ -446,5 +491,60 @@ func TestShowsAppRunShownLead(t *testing.T) {
 		if showsAppRun(cell) {
 			t.Errorf("%q read as App-run", cell)
 		}
+	}
+}
+
+// regression: #4102
+// TestShowsAppRunKeepsRefusalInContext: a cell that shows a reader App-run text still does with
+// text before or after it that holds a `>` inside a quoted attribute value, an element with the
+// hidden attribute, a run of `$` or a control word, and, for a cell with no backtick, backtick
+// runs of different lengths or an escaped one. (A backtick run can close a code span a cell
+// opens, whose text a renderer shows as code, so that context is left to cells without one.)
+func TestShowsAppRunKeepsRefusalInContext(t *testing.T) {
+	suffixes := []string{" <em data-x='>'>", " <i hidden>", " $", " $\\lang$"}
+	prefixes := []string{"<em data-x='>'></em> ", "<i data-n='>'></i>"}
+	for _, tc := range leadRunners {
+		if !showsAppRun(tc.cell) {
+			t.Errorf("%s: %q not read as App-run", tc.name, tc.cell)
+			continue
+		}
+		sfx, pfx := suffixes, prefixes
+		if !strings.Contains(tc.cell, "`") {
+			sfx = append(sfx[:len(sfx):len(sfx)], " `` `", " \\`", "`")
+			pfx = append(pfx[:len(pfx):len(pfx)], "`` ` ")
+		}
+		for _, x := range sfx {
+			if cell := tc.cell + x; !showsAppRun(cell) {
+				t.Errorf("%s: %q not read as App-run", tc.name, cell)
+			}
+		}
+		for _, x := range pfx {
+			if cell := x + tc.cell; !showsAppRun(cell) {
+				t.Errorf("%s: %q not read as App-run", tc.name, cell)
+			}
+		}
+	}
+}
+
+// regression: #4102
+// TestShownTextsFailClosedPastCap: a text whose readings run past the limit is reported as
+// showing what is asked for, never read with fewer readings, and the same human text under the
+// tool's cap is not.
+func TestShownTextsFailClosedPastCap(t *testing.T) {
+	cell := strings.Repeat("<br>", 10) + strings.Repeat("$\\quad x y$ ", 20) + " human:operator @ abc1234"
+	never := func(string) bool { return false }
+	if !eachShownTextWithin(cell, 1<<10, never) {
+		t.Errorf("%q read within a 1 KiB limit", cell)
+	}
+	if eachShownTextWithin(cell, readingCap, never) || showsAppRun(cell) || showsAttribution(cell) {
+		t.Errorf("%q refused under the cap", cell)
+	}
+	// With no line break or hidden element, the limit is reached among the math readings.
+	math := strings.Repeat("$\\quad x y$ ", 40) + " human:operator @ abc1234"
+	if !eachShownTextWithin(math, 4<<10, never) {
+		t.Errorf("%q read within a 4 KiB limit", math)
+	}
+	if eachShownTextWithin(math, readingCap, never) {
+		t.Errorf("%q refused under the cap", math)
 	}
 }
