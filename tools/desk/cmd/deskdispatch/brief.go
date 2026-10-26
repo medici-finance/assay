@@ -64,13 +64,6 @@ func briefFrontmatterGate(root, brief string) string {
 	return f.Values["gate"]
 }
 
-// briefExecTierRe / briefEffortRe match the top-level `exec-tier:` and `effort:` frontmatter
-// lines the dispatch record carries; `brief:` is deliverable.go's briefIDRe.
-var (
-	briefExecTierRe = regexp.MustCompile(`(?m)^exec-tier:[ \t]*(.*)$`)
-	briefEffortRe   = regexp.MustCompile(`(?m)^effort:[ \t]*(.*)$`)
-)
-
 // briefRecordFields is what the dispatch record reads from the brief's OWN frontmatter, with the
 // same extractor as `gate:`. Each is nil when the brief cannot be read, has no frontmatter fence,
 // or names no value — never a guess.
@@ -97,13 +90,13 @@ func readBriefRecordFields(root, brief string) briefRecordFields {
 	if front == "" {
 		return f
 	}
-	opt := func(re *regexp.Regexp) *string {
-		if v := briefField(front, re); v != "" {
+	opt := func(key string) *string {
+		if v := briefField(front, key); v != "" {
 			return &v
 		}
 		return nil
 	}
-	f.id, f.execTier, f.effort = opt(briefIDRe), opt(briefExecTierRe), opt(briefEffortRe)
+	f.id, f.execTier, f.effort = opt("brief"), opt("exec-tier"), opt("effort")
 	return f
 }
 

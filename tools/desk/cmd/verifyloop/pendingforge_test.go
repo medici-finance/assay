@@ -266,6 +266,13 @@ func TestPendingForge(t *testing.T) {
 		// regression: A1 — the verifier App authored the Evidence AND is brief 01's declared
 		// implementer: no independent verifier, so no hold (could-not-check, never awaiting-merge).
 		{name: "implementer-is-verifier", want: "could-not-check", implementer: "example-verifier[bot]"},
+		// The same, with an inline comment after the declared implementer.
+		{name: "implementer-is-verifier-annotated", want: "could-not-check", implementer: "example-verifier[bot] # note"},
+		// The same, with the declared implementer quoted, in each quoting style and placement.
+		{name: "implementer-is-verifier-quoted-annotated", want: "could-not-check", implementer: `"example-verifier[bot]" # note`},
+		{name: "implementer-is-verifier-single-quoted-annotated", want: "could-not-check", implementer: `'example-verifier[bot]' # note`},
+		{name: "implementer-is-verifier-quoted-bare-annotation", want: "could-not-check", implementer: `"example-verifier[bot]"  #`},
+		{name: "implementer-is-verifier-quoted-next-line", want: "could-not-check", implementer: "\n  \"example-verifier[bot]\" # note"},
 		{name: "wrong-id", want: "could-not-check", change: func(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.VerifierReceipt, p string) {
 			f.pr.Author.ID = 123
 		}},
