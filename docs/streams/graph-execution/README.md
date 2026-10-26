@@ -113,6 +113,7 @@ or removing any human gate (spec §5 states the divergence).
 | 30 | [Derived evaluation context and bounded validity](brief-30-derived-evaluation-context-and-bounded-validity.md) | 3 | M | todo | — | — |
 | 31 | [Accountable principal and assurance provenance](brief-31-accountable-principal-and-assurance-provenance.md) | 3 | M | todo | — | — |
 | 32 | [Investigate criterion-level evidence freshness](brief-32-investigate-criterion-level-evidence-freshness.md) | 0 | M | implemented | — | — |
+| 33 | [Merge as a human decision node, and a derived risk-input mapping](brief-33-merge-decision-node-and-risk-input.md) | 0 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
@@ -387,3 +388,15 @@ integration prerequisite; calibrated-provider activation still requires /12. Kub
 the separately gated agent-execution/08 profile, not an interim runner prerequisite.
 
 The historical critical-path sketch retains the former /12 → /18 edge for history; it is superseded by the 19 October verifier migration sequence above.
+
+## Merge decision amendment — 2026-10-26
+
+[Brief 33](brief-33-merge-decision-node-and-risk-input.md) amends the shipped implementation
+pattern, per the driver's ruling:
+https://github.com/medici-finance/assay/issues/1933#issuecomment-6419943765
+Its `merge` node becomes a `human` decision closed by an external authenticated act, `human`
+is allowed as an owner only on effect-free decision nodes, the pattern and its testdata twins
+are re-pinned, and the `risk-input` mapping is derived rather than named. The role-effect table
+is not widened. graph-execution/02 stays held until /33 lands. /33 is a Wave 0 item with no open
+dependency, because /02 and /09's deliverables are already on main; it is a new prerequisite of
+/14, which binds the re-pinned pattern at dispatch.
