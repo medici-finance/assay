@@ -38,9 +38,10 @@ import (
 // approval ever disagree, the environment is the authority. The tag-push path
 // resolves the selected merged release PR through its detail endpoint; never
 // substitute the pushing token's identity for its recorded merger. The line records who
-// authorized the cut, never who or what built the artifact; the pipeline
-// carries no signature or provenance attestation, and nothing here may be
-// read as claiming one.
+// authorized the cut, never who or what built the artifact. Build provenance
+// is the separate Sigstore bundle the release publishes beside every asset
+// (<asset>.sigstore.json, #3094; pinned by tools/release/bundles_test.py), and
+// nothing here may be read as checking it.
 func releaseAuthorizerCouplingProblems(wf string) []string {
 	var problems []string
 	for _, c := range []struct{ want, problem string }{

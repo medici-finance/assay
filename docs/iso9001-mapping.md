@@ -286,10 +286,14 @@ release" into "a person clicked approve".
   `requirements:`) before the pack has anything to walk — a release cut with no scope
   frontmatter is a real release with an EMPTY declared pack, not an error, and not yet an
   automated part of the release workflow itself.
-- **Integrity is sha256-only.** There is no provenance attestation and no signing anywhere in
-  the pipeline. A pinned sha256 stops a silent re-tag, which is the threat the pin contract
-  claims to address; it does not establish *who built the artifact*. Anyone reading this page
-  as a supply-chain assurance should stop at that sentence.
+- **Provenance is new and only as strong as its verifier.** A pinned sha256 stops a silent
+  re-tag, which is the threat the pin contract claims to address; it does not establish *who
+  built the artifact*. The release workflow now attests every published asset with SLSA build
+  provenance and publishes the Sigstore bundle beside each one (`<asset>.sigstore.json`,
+  #3094), which `deskinstall` verifies before placing anything. Releases cut before that
+  change carry no bundle, so for them integrity is still sha256-only. The attestation names
+  the workflow that built the bytes; it is not a review of the source, and the human approval
+  in the gated release environment is still the authorization.
 - **Release notes are not classified by behavioural impact.** An adopter's revalidation
   trigger is a change to the software, its configuration, its intended use or the underlying
   risk. Undifferentiated notes force either full revalidation every release or an

@@ -712,8 +712,8 @@ func flipHeaderCols(lines []string, row, width int) (si, vi int, err error) {
 //     changed the Evidence section, must be the verifier's or a roster
 //     human's (flipJudgeHistory). The walk follows every parent of every merge, and a
 //     merge changed nothing only when it is the trivial result — its Evidence
-//     is one parent's, and no other parent's side added anything since their
-//     merge base (flipEvidenceChanged). A brief not at the same path since the
+//     is one parent's, and every other parent's Evidence is already a merge
+//     base's while the kept parent's is none of theirs (flipEvidenceChanged). A brief not at the same path since the
 //     PASS was recorded is could-not-check. And the working tree's Evidence
 //     must be HEAD's: an uncommitted deletion has neither a blame record nor a
 //     commit.
@@ -998,10 +998,10 @@ func flipJudgeHistory(p evidenceActorPolicy, dir, base string, since []string) e
 // changed it when the two differ; a root commit always did. A merge changed
 // nothing only when it is the trivial result: its Evidence equals some parent
 // X's, and every other parent Y brought nothing X lacks — Y's Evidence equals
-// X's, or equals the Evidence at every merge base of X and Y (Y's side made no
-// net change). A merge that equals one parent but dropped what another parent's
-// side added — a later verifier FAIL resolved away — changed Evidence, and its
-// author is judged like any other.
+// X's, or Y's side made no net change by flipSideBroughtNothing. A merge that
+// equals one parent but dropped what another parent's side added — a later
+// verifier FAIL resolved away — changed Evidence, and its author is judged
+// like any other.
 func flipEvidenceChanged(dir, ev string, parents []string, evAt func(string) (string, error)) (bool, error) {
 	pev := make([]string, len(parents))
 	for i, par := range parents {
@@ -1024,19 +1024,12 @@ func flipEvidenceChanged(dir, ev string, parents []string, evAt func(string) (st
 			if err != nil {
 				return false, err
 			}
-			if len(bases) == 0 {
+			nothing, err := flipSideBroughtNothing(pev[x], pev[y], bases, evAt)
+			if err != nil {
+				return false, err
+			}
+			if !nothing {
 				trivial = false
-			}
-			for _, b := range bases {
-				bev, err := evAt(b)
-				if err != nil {
-					return false, err
-				}
-				if bev != pev[y] {
-					trivial = false
-				}
-			}
-			if !trivial {
 				break
 			}
 		}
@@ -1045,6 +1038,43 @@ func flipEvidenceChanged(dir, ev string, parents []string, evAt func(string) (st
 		}
 	}
 	return true, nil
+}
+
+// flipSideBroughtNothing reports whether a merge parent Y, whose Evidence yev
+// differs from the kept parent X's xev, made no net change that X lacks,
+// judged against every merge base of X and Y. It holds when yev equals the
+// Evidence at SOME merge base, and xev equals the Evidence at NONE of them.
+// No merge base (unrelated histories) never holds.
+//
+// Why SOME base suffices for Y (#4466): a merge base is an ancestor of X, so
+// when Y's Evidence is a base's, every byte Y carries — a later FAIL included
+// — was already in X's own history. X lacking it means a commit on X's side
+// after that base removed it, and that commit is walked and judged on its own
+// (a merge on X's side by this same rule). The merge that keeps X then removes
+// nothing X's history had not already removed. The match is on the whole
+// section, so a base from before Y's verdict cannot stand in for Y. Requiring
+// EVERY base to match judged a criss-cross merge whose branch side is
+// unchanged since the newer base but differs from the older one.
+//
+// Why NO base may hold X's Evidence: when some base b' does, X's side made no
+// net change since b' while Y's side did, so a merge taken from b' would keep
+// Y's Evidence. The two sides then resolved one disagreement in opposite
+// directions, and the merge picked a side — that is judged.
+func flipSideBroughtNothing(xev, yev string, bases []string, evAt func(string) (string, error)) (bool, error) {
+	some, xAt := false, false
+	for _, b := range bases {
+		bev, err := evAt(b)
+		if err != nil {
+			return false, err
+		}
+		switch bev {
+		case yev:
+			some = true
+		case xev:
+			xAt = true
+		}
+	}
+	return some && !xAt, nil
 }
 
 // flipMergeBases lists every merge base of a and b. Unrelated histories have

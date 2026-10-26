@@ -1,0 +1,1 @@
+- Bind desk-tools/42 consumer verification to its first implementation delivery and exact first parent; preserve its separate integration and acceptance holds, human gate, historical Evidence and independent reverification.

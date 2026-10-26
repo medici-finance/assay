@@ -1,0 +1,2 @@
+### Added
+- A design record for binding post-merge consumer Verify rows to an immutable, merge-time delivery record (build-less-brittle/14). It covers a census of the hand-repaired instances, four alternatives compared on one criterion, the recommended design with its fail-closed refusals, three independent layers and the single point of failure, three decisions owed (#4380, #4381), and four implementation briefs listed but not yet written. It changes no tool or Verify table.
